@@ -2,6 +2,9 @@
 // they are built (players, games, skills, live, votes, matches).
 
 import { Router } from 'express';
+import { playersRouter } from './players';
+import { gamesRouter } from './games';
+import { skillsRouter } from './skills';
 
 export const apiRouter = Router();
 
@@ -9,3 +12,7 @@ export const apiRouter = Router();
 apiRouter.get('/health', (_req, res) => {
   res.json({ ok: true, time: Date.now() });
 });
+
+apiRouter.use('/players', playersRouter);
+apiRouter.use('/games', gamesRouter);
+apiRouter.use('/skills', skillsRouter);
