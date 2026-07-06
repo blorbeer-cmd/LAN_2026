@@ -8,6 +8,8 @@ import { skillsRouter } from './skills';
 import { liveRouter } from './live';
 import { matchmakingRouter } from './matchmaking';
 import { votesRouter } from './votes';
+import { matchesRouter } from './matches';
+import { leaderboardRouter } from './leaderboard';
 
 export const apiRouter = Router();
 
@@ -22,3 +24,5 @@ apiRouter.use('/skills', skillsRouter);
 apiRouter.use('/live', liveRouter);
 apiRouter.use('/matchmaking', matchmakingRouter);
 apiRouter.use('/votes', votesRouter);
+apiRouter.use('/matches', matchesRouter);
+apiRouter.use('/leaderboard', leaderboardRouter);
