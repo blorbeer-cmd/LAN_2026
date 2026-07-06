@@ -3,6 +3,11 @@
 // matching (FR-10), so the mapping can be edited centrally without touching
 // any agent. Authenticated by the player's own API key (NFR-15), NOT the
 // shared UI access token — the agent only ever knows its server URL + key.
+//
+// A single PC can have several games running at once (e.g. a launcher plus
+// the actual game, or two games side by side), so a report can match several
+// games; the server syncs the player's active-games set to match exactly what
+// was just reported.
 
 import { Router } from 'express';
 import { db } from '../db';
@@ -14,11 +19,6 @@ export const agentRouter = Router();
 interface PlayerRow {
   id: string;
   name: string;
-}
-
-interface LiveStatusExisting {
-  game_id: string | null;
-  since: number | null;
 }
 
 // POST /api/agent/report
@@ -44,34 +44,52 @@ agentRouter.post('/report', (req, res) => {
 
   const normalized = [...new Set(processNames.map((p) => p.trim().toLowerCase()).filter(Boolean))];
 
-  let matchedGameId: string | null = null;
+  // A report can match several distinct games at once (e.g. cs2.exe AND
+  // rocketleague.exe both running).
+  let matchedGameIds: string[] = [];
   if (normalized.length > 0) {
     const placeholders = normalized.map(() => '?').join(',');
-    const match = db
-      .prepare(`SELECT game_id FROM game_process_names WHERE process_name IN (${placeholders}) LIMIT 1`)
-      .get(...normalized) as { game_id: string } | undefined;
-    matchedGameId = match?.game_id ?? null;
+    const matches = db
+      .prepare(`SELECT DISTINCT game_id FROM game_process_names WHERE process_name IN (${placeholders})`)
+      .all(...normalized) as Array<{ game_id: string }>;
+    matchedGameIds = matches.map((m) => m.game_id);
   }
 
-  const existing = db
-    .prepare('SELECT game_id, since FROM live_status WHERE player_id = ?')
-    .get(player.id) as LiveStatusExisting | undefined;
-
   const now = Date.now();
-  // Keep the original start time if the reported game hasn't changed, so
-  // "seit wann" reflects when this session of the game actually began.
-  const since =
-    matchedGameId && matchedGameId === existing?.game_id ? existing!.since : matchedGameId ? now : null;
 
-  db.prepare(
-    `INSERT INTO live_status (player_id, game_id, since, last_seen, manual_note)
-     VALUES (?, ?, ?, ?, NULL)
-     ON CONFLICT(player_id) DO UPDATE SET
-       game_id = excluded.game_id,
-       since = excluded.since,
-       last_seen = excluded.last_seen`
-  ).run(player.id, matchedGameId, since, now);
+  const sync = db.transaction(() => {
+    db.prepare(
+      `INSERT INTO live_status (player_id, last_seen, manual_note) VALUES (?, ?, NULL)
+       ON CONFLICT(player_id) DO UPDATE SET last_seen = excluded.last_seen`
+    ).run(player.id, now);
+
+    const existing = db
+      .prepare('SELECT game_id FROM live_status_games WHERE player_id = ?')
+      .all(player.id) as Array<{ game_id: string }>;
+    const existingIds = new Set(existing.map((e) => e.game_id));
+    const matchedIds = new Set(matchedGameIds);
+
+    // Games no longer detected: remove.
+    for (const gameId of existingIds) {
+      if (!matchedIds.has(gameId)) {
+        db.prepare('DELETE FROM live_status_games WHERE player_id = ? AND game_id = ?').run(
+          player.id,
+          gameId
+        );
+      }
+    }
+    // Newly detected games: add with since=now. Games still running keep
+    // their original "since" untouched (no-op).
+    for (const gameId of matchedIds) {
+      if (!existingIds.has(gameId)) {
+        db.prepare(
+          'INSERT INTO live_status_games (player_id, game_id, since) VALUES (?, ?, ?)'
+        ).run(player.id, gameId, now);
+      }
+    }
+  });
+  sync();
 
   broadcast(Events.liveStatusChanged, getLiveBoard());
-  res.json({ ok: true, playerId: player.id, gameId: matchedGameId });
+  res.json({ ok: true, playerId: player.id, gameIds: matchedGameIds });
 });

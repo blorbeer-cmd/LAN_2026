@@ -55,13 +55,23 @@ db.exec(`
     PRIMARY KEY (player_id, game_id)
   );
 
-  -- Current live state per player. game_id NULL means "not in a known game".
+  -- Per-player live meta: when the agent last reported and an optional manual
+  -- override (e.g. "Pause/Essen"). Which games are currently running lives in
+  -- live_status_games below, since a PC can run several games at once
+  -- (e.g. a launcher + the actual game, or genuinely two games side by side).
   CREATE TABLE IF NOT EXISTS live_status (
-    player_id  TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
-    game_id    TEXT REFERENCES games(id) ON DELETE SET NULL,
-    since      INTEGER,            -- when the current game started (ms UTC)
-    last_seen  INTEGER NOT NULL,   -- last agent report (ms UTC)
-    manual_note TEXT               -- optional manual override text (e.g. "Pause")
+    player_id   TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+    last_seen   INTEGER NOT NULL,   -- last agent report (ms UTC)
+    manual_note TEXT                -- optional manual override text (e.g. "Pause")
+  );
+
+  -- One row per game currently detected as running for a player. Rows are
+  -- added/removed on every agent report to match what's actually running.
+  CREATE TABLE IF NOT EXISTS live_status_games (
+    player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    game_id   TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    since     INTEGER NOT NULL,     -- when this game started (ms UTC)
+    PRIMARY KEY (player_id, game_id)
   );
 
   -- Simple single active vote for "what's next". One row per player per open
@@ -85,6 +95,7 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_skills_game ON skills(game_id);
+  CREATE INDEX IF NOT EXISTS idx_live_status_games_game ON live_status_games(game_id);
   CREATE INDEX IF NOT EXISTS idx_votes_round ON votes(round);
   CREATE INDEX IF NOT EXISTS idx_matches_game ON matches(game_id);
 `);

@@ -41,11 +41,11 @@ Ohne diese Punkte funktioniert nichts anderes. Zuerst bauen.
 
 | ID | Anforderung |
 |----|-------------|
-| FR-09 | Agent auf jedem Spieler-PC scannt periodisch laufende Prozesse und meldet dem Server das aktuell laufende Spiel. |
+| FR-09 | Agent auf jedem Spieler-PC scannt periodisch laufende Prozesse und meldet dem Server die aktuell laufenden Spiele. **Mehrere Spiele gleichzeitig sind normal** (z.B. Launcher + Spiel, oder wirklich zwei Spiele parallel) und werden alle erfasst, nicht nur eines. |
 | FR-10 | Prozessname→Spiel-Zuordnung ist zentral gepflegt (`game_process_names`), erweiterbar ohne Agent-Update. |
 | FR-11 | Server authentifiziert Agent-Meldungen über den API-Key des Spielers; ungültige Keys werden abgewiesen. |
 | FR-12 | Server erkennt „offline" automatisch: bleibt eine Agent-Meldung länger als ein Timeout aus, wird der Status auf offline gesetzt. |
-| FR-13 | Live-Status-Board zeigt für alle Spieler: welches Spiel, seit wann, Zustand (spielt / pausiert / offline) mit klarer Farbcodierung. |
+| FR-13 | Live-Status-Board zeigt für alle Spieler: welche(s) Spiel(e) (als Liste), seit wann je Spiel, Zustand (spielt / pausiert / offline) mit klarer Farbcodierung. |
 | FR-14 | Ein Client-Fehler oder abgestürzter Agent darf niemals Server oder andere Clients beeinträchtigen. |
 
 ### Skill-Ratings & Matchmaking
