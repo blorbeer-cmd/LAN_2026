@@ -7,6 +7,7 @@ import { gamesRouter } from './games';
 import { skillsRouter } from './skills';
 import { liveRouter } from './live';
 import { matchmakingRouter } from './matchmaking';
+import { votesRouter } from './votes';
 
 export const apiRouter = Router();
 
@@ -20,3 +21,4 @@ apiRouter.use('/games', gamesRouter);
 apiRouter.use('/skills', skillsRouter);
 apiRouter.use('/live', liveRouter);
 apiRouter.use('/matchmaking', matchmakingRouter);
+apiRouter.use('/votes', votesRouter);
