@@ -5,6 +5,7 @@ import { Router } from 'express';
 import { playersRouter } from './players';
 import { gamesRouter } from './games';
 import { skillsRouter } from './skills';
+import { liveRouter } from './live';
 
 export const apiRouter = Router();
 
@@ -16,3 +17,4 @@ apiRouter.get('/health', (_req, res) => {
 apiRouter.use('/players', playersRouter);
 apiRouter.use('/games', gamesRouter);
 apiRouter.use('/skills', skillsRouter);
+apiRouter.use('/live', liveRouter);

@@ -7,6 +7,7 @@ import path from 'path';
 
 import { requireAccess, accessProtectionEnabled } from './auth';
 import { apiRouter } from './routes';
+import { agentRouter } from './routes/agent';
 
 export function createApp(): express.Express {
   const app = express();
@@ -19,7 +20,12 @@ export function createApp(): express.Express {
     res.json({ accessProtection: accessProtectionEnabled() });
   });
 
-  // All feature APIs sit behind the shared-token gate.
+  // Agent reports authenticate via the player's own API key (NFR-15), not the
+  // shared UI token — the agent never knows that token. Must be mounted
+  // before the requireAccess gate below so it isn't blocked by it.
+  app.use('/api/agent', agentRouter);
+
+  // All browser-facing feature APIs sit behind the shared-token gate.
   app.use('/api', requireAccess, apiRouter);
 
   // Static frontend. The login screen itself is static and handles token entry
