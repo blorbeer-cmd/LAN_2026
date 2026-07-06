@@ -76,7 +76,7 @@ Deutlicher Mehrwert, direkt nach dem MVP.
 | ID | Anforderung |
 |----|-------------|
 | FR-22 | Match-Ergebnis erfassen: Spiel, beteiligte Teams/Spieler, Gewinner. |
-| FR-23 | Punktesystem übers Wochenende (z. B. Punkte je Sieg/Teilnahme), aggregiertes Gesamt-Leaderboard. |
+| FR-23 | Punktesystem übers Wochenende (z. B. Punkte je Sieg/Teilnahme), aggregiertes Gesamt-Leaderboard. *(Konkrete Punkte-Regeln werden später im Detail festgelegt.)* |
 | FR-24 | Leaderboard filterbar pro Spiel und als Gesamtwertung; Gesamtsieger der LAN klar erkennbar. |
 | FR-25 | Ergebnisse editierbar/löschbar (Korrektur von Fehleingaben). |
 
@@ -154,7 +154,7 @@ absichern.
 | NFR-13 | Keine Secrets im Code/Repo: Port/Basis-URL über Umgebungsvariablen, Agent-Key in lokaler Config (gitignored). |
 | NFR-14 | DB-Datei liegt außerhalb des Repos bzw. ist in `.gitignore`. |
 | NFR-15 | Agent-Meldungen sind nur mit gültigem, spielereigenem API-Key möglich. |
-| NFR-16 | Da der Server in der Cloud erreichbar ist: einfacher Schutz gegen fremden Zugriff (z. B. gemeinsames Zugangs-Token für die Web-UI). |
+| NFR-16 | Da der Server in der Cloud erreichbar ist: leichter Zugangsschutz per gemeinsamem Zugangs-Token für die Web-UI. *(Entschieden: einfaches geteiltes Token genügt.)* |
 | NFR-17 | Schlanke Codebasis ohne Frontend-Build-Step (Vanilla JS + moderne CSS), um bewegliche Teile und Bugs zu minimieren. |
 
 ### Konventionen (aus CLAUDE.md)
