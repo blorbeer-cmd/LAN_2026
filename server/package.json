@@ -8,7 +8,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts"
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "test": "tsc -p tsconfig.test.json && cross-env DB_FILE=:memory: node --test \"dist-test/**/*.test.js\""
   },
   "dependencies": {
     "better-sqlite3": "^11.3.0",
@@ -20,6 +21,9 @@
     "@types/better-sqlite3": "^7.6.11",
     "@types/express": "^4.17.21",
     "@types/node": "^22.5.0",
+    "@types/supertest": "^6.0.2",
+    "cross-env": "^7.0.3",
+    "supertest": "^7.0.0",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.5.4"
   }

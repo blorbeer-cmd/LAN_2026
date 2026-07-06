@@ -52,9 +52,19 @@ Tool für eine LAN-Party mit ~15 Leuten. Kein Enterprise-Overkill, aber solide Q
 - **API-Format:** JSON, `{ "error": "..." }` bei Fehlern, passende HTTP-Statuscodes.
 - **Commits:** klein und beschreibend, imperativ (`add matchmaking endpoint`).
 
+## Tests (Qualität absichern)
+
+- **Wo möglich Unit-Tests.** Reine Logik (Matchmaking, Skill-Berechnung, Status-Ableitung,
+  Validierung) bekommt direkte Tests mit dem eingebauten `node:test`-Runner.
+- **Wo möglich Integration-/E2E-Tests.** API-Endpunkte werden per HTTP getestet (`supertest`),
+  Frontend-Klickpfade per Playwright, sobald das Frontend steht.
+- Tests laufen gegen eine In-Memory-DB, nie gegen echte Daten. Details in `server/TESTING.md`.
+- Neue Features kommen mit Tests; `npm test` muss grün sein.
+
 ## Qualitäts-Checkliste vor jedem Commit
 
 - [ ] Server startet ohne Fehler (`npm run build` läuft durch, keine TS-Fehler).
+- [ ] `npm test` ist grün (Unit + Integration), neue Logik ist durch Tests abgedeckt.
 - [ ] Eingaben werden validiert, keine ungefangenen Exceptions in Handlern.
 - [ ] Neue Realtime-Events werden auch im Frontend behandelt.
 - [ ] Bedienung getestet: Feature ist ohne Erklärung auffindbar und in wenigen Klicks nutzbar.

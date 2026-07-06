@@ -8,9 +8,11 @@ import path from 'path';
 import { nanoid } from 'nanoid';
 import { config } from './config';
 
-// Ensure the data directory exists before opening the DB file.
-const dataDir = path.dirname(config.dbFile);
-fs.mkdirSync(dataDir, { recursive: true });
+// Ensure the data directory exists before opening a file-based DB. Skipped for
+// the in-memory database used in tests.
+if (config.dbFile !== ':memory:') {
+  fs.mkdirSync(path.dirname(config.dbFile), { recursive: true });
+}
 
 export const db = new Database(config.dbFile);
 

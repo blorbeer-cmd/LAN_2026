@@ -15,10 +15,14 @@ export const config = {
   port: intFromEnv('PORT', 3000),
 
   // Absolute path to the SQLite database file. Kept outside the repo tree by
-  // default (server/data/) and gitignored.
-  dbFile: process.env.DB_FILE
-    ? path.resolve(process.env.DB_FILE)
-    : path.join(__dirname, '..', 'data', 'lan.db'),
+  // default (server/data/) and gitignored. The special value ":memory:" opens
+  // an in-memory database (used by the test suite for isolation).
+  dbFile:
+    process.env.DB_FILE === ':memory:'
+      ? ':memory:'
+      : process.env.DB_FILE
+        ? path.resolve(process.env.DB_FILE)
+        : path.join(__dirname, '..', 'data', 'lan.db'),
 
   // Shared access token protecting the whole app (light protection because the
   // server is reachable from the cloud). If empty, access protection is OFF.

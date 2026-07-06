@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+dist-test/
 
 # Datenbank (wird zur Laufzeit erzeugt)
 server/data/
