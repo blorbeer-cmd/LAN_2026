@@ -24,4 +24,5 @@ export const Events = {
   liveStatusChanged: 'live:changed',
   votesChanged: 'votes:changed',
   leaderboardChanged: 'leaderboard:changed',
+  matchmakingGenerated: 'matchmaking:generated',
 } as const;
