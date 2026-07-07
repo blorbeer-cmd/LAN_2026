@@ -65,6 +65,14 @@ export function invalidateTournaments() {
   detailForId = null;
 }
 
+// Called from app.js when a player taps a tournament notification toast, so
+// switching to the Turniere tab lands directly on that tournament's board
+// instead of the list.
+export function focusTournament(id) {
+  currentTournamentId = id;
+  detailForId = null;
+}
+
 function resetCreateForm() {
   createOpen = false;
   createCheckedIds = null;

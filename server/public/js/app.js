@@ -16,7 +16,7 @@ import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
 import { renderProfile } from './views/profile.js';
-import { renderTournaments, invalidateTournaments } from './views/tournament.js';
+import { renderTournaments, invalidateTournaments, focusTournament } from './views/tournament.js';
 
 const VIEWS = {
   live: renderLive,
@@ -187,9 +187,23 @@ function wireSocket() {
     invalidateMatchmakingHistory();
     if (currentView === 'matchmaking') renderCurrent();
   });
-  socket.on('tournaments:changed', () => {
+  socket.on('tournaments:changed', (payload) => {
     invalidateTournaments();
     if (currentView === 'tournaments') renderCurrent();
+
+    // Same pattern as the vote nudge: only the players actually named in
+    // this notification see it, and not if they're already looking at the
+    // Turniere tab (it just updated in place).
+    const myId = getMyId();
+    if (payload?.notify && myId && payload.notify.playerIds.includes(myId) && currentView !== 'tournaments') {
+      showToast(payload.notify.message, {
+        duration: 5000,
+        onClick: () => {
+          focusTournament(payload.tournamentId);
+          switchView('tournaments');
+        },
+      });
+    }
   });
 }
 

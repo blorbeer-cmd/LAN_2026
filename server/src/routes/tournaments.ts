@@ -221,8 +221,8 @@ tournamentsRouter.post('/', (req, res) => {
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
   }
-  const game = db.prepare('SELECT id, name FROM games WHERE id = ?').get(gameId) as
-    | { id: string; name: string }
+  const game = db.prepare('SELECT id, name, icon FROM games WHERE id = ?').get(gameId) as
+    | { id: string; name: string; icon: string }
     | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
 
@@ -254,20 +254,13 @@ tournamentsRouter.post('/', (req, res) => {
   const now = Date.now();
 
   const teamIds = teamsInput.map(() => nanoid());
+  const tournamentName = isNonEmptyString(name, 80) ? (name as string).trim() : `${game.name}-Turnier`;
 
   const create = db.transaction(() => {
     db.prepare(
       `INSERT INTO tournaments (id, event_id, game_id, name, format, two_legged, status, created_at)
        VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`
-    ).run(
-      tournamentId,
-      getActiveEventId(),
-      gameId,
-      isNonEmptyString(name, 80) ? (name as string).trim() : `${game.name}-Turnier`,
-      resolvedFormat,
-      resolvedTwoLegged ? 1 : 0,
-      now
-    );
+    ).run(tournamentId, getActiveEventId(), gameId, tournamentName, resolvedFormat, resolvedTwoLegged ? 1 : 0, now);
 
     const insertTeam = db.prepare(
       'INSERT INTO tournament_teams (id, tournament_id, name, player_ids) VALUES (?, ?, ?, ?)'
@@ -299,7 +292,20 @@ tournamentsRouter.post('/', (req, res) => {
   });
   create();
 
-  broadcast(Events.tournamentsChanged, null);
+  // Every participant gets nudged that they've been entered into a new
+  // tournament — otherwise the only way to notice is to happen to open the
+  // Turniere tab.
+  broadcast(Events.tournamentsChanged, {
+    type: 'created',
+    tournamentId,
+    tournamentName,
+    gameId,
+    gameIcon: game.icon,
+    notify: {
+      playerIds: allPlayerIds,
+      message: `🏆 Neues Turnier: ${tournamentName}`,
+    },
+  });
   res.status(201).json(buildDetail(tournamentId));
 });
 
@@ -341,6 +347,11 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
   const winnerTeamIndex = winnerTeamId === null ? null : winnerTeamId === match.team_a_id ? 0 : 1;
   const leaderboardMatchId = nanoid();
 
+  // Set inside the transaction below when this result causes some next
+  // bracket match to have both its teams known for the first time — that's
+  // the moment those players deserve a "your match is up" nudge.
+  let readyNextMatchId: string | null = null;
+
   const record = db.transaction(() => {
     db.prepare(
       'INSERT INTO matches (id, game_id, event_id, played_at, result) VALUES (?, ?, ?, ?, ?)'
@@ -378,6 +389,9 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
           next.teamBId,
           nextRow.id
         );
+        if (next.teamAId && next.teamBId) {
+          readyNextMatchId = nextRow.id;
+        }
       }
 
       if (bracketIsComplete(after)) {
@@ -397,7 +411,33 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
   });
   record();
 
-  broadcast(Events.tournamentsChanged, null);
+  let notify: { playerIds: string[]; message: string } | undefined;
+  if (readyNextMatchId) {
+    const nextMatch = db.prepare('SELECT team_a_id, team_b_id FROM tournament_matches WHERE id = ?').get(
+      readyNextMatchId
+    ) as { team_a_id: string; team_b_id: string };
+    const nextTeams = db
+      .prepare(
+        `SELECT id, name, player_ids FROM tournament_teams WHERE id IN (?, ?)`
+      )
+      .all(nextMatch.team_a_id, nextMatch.team_b_id) as Array<{ id: string; name: string; player_ids: string }>;
+    const nextTeamA = nextTeams.find((t) => t.id === nextMatch.team_a_id);
+    const nextTeamB = nextTeams.find((t) => t.id === nextMatch.team_b_id);
+    if (nextTeamA && nextTeamB) {
+      notify = {
+        playerIds: [...JSON.parse(nextTeamA.player_ids), ...JSON.parse(nextTeamB.player_ids)],
+        message: `⚔️ Dein nächstes Match steht an: ${nextTeamA.name} vs ${nextTeamB.name}`,
+      };
+    }
+  }
+
+  broadcast(Events.tournamentsChanged, {
+    type: notify ? 'match_ready' : 'updated',
+    tournamentId: tournament.id,
+    tournamentName: tournament.name,
+    gameId: tournament.game_id,
+    ...(notify ? { notify } : {}),
+  });
   broadcast(Events.leaderboardChanged, null);
   res.json(buildDetail(tournament.id));
 });
@@ -409,6 +449,6 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
 tournamentsRouter.delete('/:id', (req, res) => {
   const result = db.prepare('DELETE FROM tournaments WHERE id = ?').run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
-  broadcast(Events.tournamentsChanged, null);
+  broadcast(Events.tournamentsChanged, { type: 'deleted', tournamentId: req.params.id });
   res.status(204).end();
 });
