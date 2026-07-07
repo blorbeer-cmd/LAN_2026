@@ -4,25 +4,20 @@
 // just a shared access token, so "who am I" is a convenience the browser
 // remembers locally, not a security boundary), then can maintain their own
 // gamer name (unique across everyone), a profile picture, their own skill
-// ratings, and browse their personal stats: playtime per game and per event,
-// how much they multitasked, and how much of their playtime was actually
-// active vs. just idling/AFK.
+// ratings and seat neighbors. Personal playtime/awards stats live on their
+// own view (myStats.js) — kept separate so this setup page doesn't turn into
+// an ever-longer scroll mixing one-time setup with an open-ended dashboard.
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, avatarHtml, formatDateTime, gameBadgeHtml } from '../format.js';
+import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
 import { getMyId, setMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { getPushSubscriptionState, enablePush, disablePush } from '../push.js';
-
-let statsCache = null;
-let statsLoading = false;
-let statsForPlayerId = null;
-let statsEventId = '';
+import { invalidateMyStats } from './myStats.js';
 
 // Who you've declared as a seat neighbor for the active event (FR-18
-// extension). Cached the same way as statsCache — fetched lazily, reset
-// whenever the active identity changes.
+// extension). Fetched lazily, reset whenever the active identity changes.
 let neighborsCache = null;
 let neighborsLoading = false;
 let neighborsForPlayerId = null;
@@ -103,22 +98,6 @@ function renderIdentityPicker(container, ctx) {
   });
 }
 
-async function loadStats(playerId, eventId, ctx) {
-  statsLoading = true;
-  ctx.rerender();
-  try {
-    const params = eventId ? { eventId } : {};
-    statsCache = await api.players.stats(playerId, params);
-    statsForPlayerId = playerId;
-  } catch (err) {
-    showToast(err.message, { error: true });
-    statsCache = null;
-  } finally {
-    statsLoading = false;
-    ctx.rerender();
-  }
-}
-
 function ratingFor(playerId, gameId) {
   const entry = state.skills.find((s) => s.player_id === playerId && s.game_id === gameId);
   return entry ? entry.rating : 5;
@@ -181,129 +160,6 @@ function renderPushSection() {
     </div>`;
 }
 
-function renderEventOptions() {
-  const sorted = [...state.events].sort((a, b) => b.starts_at - a.starts_at);
-  const options = sorted
-    .map((e) => `<option value="${e.id}" ${e.id === statsEventId ? 'selected' : ''}>${escapeHtml(e.name)}</option>`)
-    .join('');
-  return `<option value="" ${statsEventId === '' ? 'selected' : ''}>🌐 Gesamt (alle Events)</option>${options}`;
-}
-
-function renderStats(me) {
-  if (statsLoading || !statsCache) {
-    return `<div class="empty-state" style="padding:20px;">Lädt…</div>`;
-  }
-  const s = statsCache;
-
-  const activeHint =
-    s.activePercent !== null
-      ? `<div class="muted" style="font-size:0.8rem;">davon aktiv gespielt: ${escapeHtml(s.activeFormatted)} (${s.activePercent}%)</div>`
-      : '';
-
-  const kpis = `
-    <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));">
-      <div class="card">
-        <div class="muted" style="font-size:0.8rem;">Gesamtspielzeit</div>
-        <div class="lb-points">${escapeHtml(s.formatted)}</div>
-        ${activeHint}
-      </div>
-      <div class="card">
-        <div class="muted" style="font-size:0.8rem;">Sessions</div>
-        <div class="lb-points">${s.sessionCount}</div>
-      </div>
-      <div class="card">
-        <div class="muted" style="font-size:0.8rem;">Verschiedene Spiele</div>
-        <div class="lb-points">${s.distinctGamesCount}</div>
-      </div>
-      <div class="card">
-        <div class="muted" style="font-size:0.8rem;">Mehrere Spiele gleichzeitig</div>
-        <div class="lb-points">${escapeHtml(s.simultaneous.multiGameFormatted)}</div>
-        ${s.simultaneous.maxSimultaneous > 0 ? `<div class="muted" style="font-size:0.8rem;">max. ${s.simultaneous.maxSimultaneous} gleichzeitig</div>` : ''}
-      </div>
-    </div>
-  `;
-
-  const awardsHtml = s.awards.length
-    ? `<div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));">
-        ${s.awards
-          .map(
-            (a) => `
-          <div class="card">
-            <div class="row-between">
-              <span style="font-size:1.4rem;">${escapeHtml(a.emoji)}</span>
-              <span class="lb-points">${escapeHtml(a.value)}</span>
-            </div>
-            <div class="player-name">${escapeHtml(a.title)}</div>
-            <div class="muted" style="font-size:0.8rem;">${escapeHtml(a.description)}</div>
-          </div>`
-          )
-          .join('')}
-      </div>`
-    : `<div class="empty-state" style="padding:20px;"><span class="emoji">🏅</span>Noch keine eigenen Awards.</div>`;
-
-  const gamesHtml = s.games.length
-    ? s.games
-        .map(
-          (g) => `
-        <div class="lb-row">
-          <span>${escapeHtml(g.gameIcon)}</span>
-          <span style="flex:1;">
-            ${escapeHtml(g.gameName)}
-            ${g.activeMs > 0 && g.activeMs < g.totalMs ? `<div class="muted" style="font-size:0.75rem;">davon aktiv: ${escapeHtml(g.activeFormatted)}</div>` : ''}
-          </span>
-          <span class="lb-points">${escapeHtml(g.formatted)}</span>
-        </div>`
-        )
-        .join('')
-    : `<div class="empty-state" style="padding:20px;">Noch keine Spielzeit erfasst.</div>`;
-
-  const eventsHtml = s.events.length
-    ? s.events
-        .map(
-          (e) => `
-        <div class="lb-row">
-          <span style="flex:1;">${escapeHtml(e.eventName)}</span>
-          <span class="lb-points">${escapeHtml(e.formatted)}</span>
-        </div>`
-        )
-        .join('')
-    : `<div class="empty-state" style="padding:20px;">Noch keine Events mit Spielzeit.</div>`;
-
-  const longestHtml = s.longestSessions.length
-    ? s.longestSessions
-        .map(
-          (l) => `
-        <div class="lb-row">
-          <span style="flex:1;">
-            ${escapeHtml(l.gameIcon)} ${escapeHtml(l.gameName)}
-            <div class="muted" style="font-size:0.75rem;">${formatDateTime(l.startedAt)} – ${l.endedAt ? formatDateTime(l.endedAt) : 'läuft noch'}</div>
-          </span>
-          <span class="lb-points">${escapeHtml(l.formatted)}</span>
-        </div>`
-        )
-        .join('')
-    : `<div class="empty-state" style="padding:20px;">Noch keine Sessions.</div>`;
-
-  return `
-    <div class="card stack">
-      <select id="profile-stats-event">${renderEventOptions()}</select>
-    </div>
-    ${kpis}
-
-    <div class="section-title">🏅 Meine Erfolge</div>
-    ${awardsHtml}
-
-    <div class="section-title">🎮 Spielzeit pro Spiel</div>
-    <div class="card">${gamesHtml}</div>
-
-    <div class="section-title">📅 Spielzeit pro Event</div>
-    <div class="card">${eventsHtml}</div>
-
-    <div class="section-title">🏃 Meine längsten Sessions</div>
-    <div class="card">${longestHtml}</div>
-  `;
-}
-
 export function renderProfile(container, ctx) {
   const myId = getMyId();
   const me = state.players.find((p) => p.id === myId);
@@ -312,9 +168,6 @@ export function renderProfile(container, ctx) {
     return;
   }
 
-  if (statsForPlayerId !== myId && !statsLoading) {
-    loadStats(myId, statsEventId, ctx);
-  }
   if (neighborsForPlayerId !== myId && !neighborsLoading) {
     loadNeighbors(myId, ctx);
   }
@@ -402,13 +255,15 @@ export function renderProfile(container, ctx) {
       das für das jeweilige Spiel wichtig ist (in den Spiel-Einstellungen einstellbar).
     </p>
 
-    <div class="section-title">📊 Meine Statistiken</div>
-    <div id="profile-stats">${renderStats(me)}</div>
+    <div class="card row-between">
+      <span>📊 <strong>Meine Statistiken</strong></span>
+      <button type="button" class="btn btn-sm" data-navigate="myStats">Ansehen</button>
+    </div>
   `;
 
   container.querySelector('#profile-not-me').addEventListener('click', () => {
     setMyId('');
-    statsForPlayerId = null;
+    invalidateMyStats();
     neighborsForPlayerId = null;
     ctx.rerender();
   });
@@ -536,15 +391,6 @@ export function renderProfile(container, ctx) {
         pushState = await getPushSubscriptionState();
         ctx.rerender();
       }
-    });
-  }
-
-  const statsEventSelect = container.querySelector('#profile-stats-event');
-  if (statsEventSelect) {
-    statsEventSelect.addEventListener('change', (e) => {
-      statsEventId = e.target.value;
-      statsForPlayerId = null;
-      ctx.rerender();
     });
   }
 }

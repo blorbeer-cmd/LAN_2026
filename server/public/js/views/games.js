@@ -48,7 +48,7 @@ function renderEventSection() {
       <div class="lb-row">
         <span style="flex:1;">${escapeHtml(e.name)}</span>
         <span class="muted" style="font-size:0.78rem;">${new Date(e.starts_at).toLocaleDateString('de-DE')} – ${e.ends_at ? new Date(e.ends_at).toLocaleDateString('de-DE') : '?'}</span>
-        <button type="button" class="icon-btn" data-export-event="${e.id}" data-export-name="${escapeHtml(e.name)}" aria-label="Exportieren" title="Als Andenken exportieren">💾</button>
+        <button type="button" class="btn btn-sm" data-export-event="${e.id}" data-export-name="${escapeHtml(e.name)}" title="Als Andenken exportieren">💾 Exportieren</button>
       </div>`
     )
     .join('');
@@ -59,7 +59,7 @@ function renderEventSection() {
       <div class="row-between">
         <span>Aktuell: <strong>${escapeHtml(active ? active.name : '–')}</strong></span>
         <div class="row" style="gap:6px;">
-          ${active ? `<button type="button" class="icon-btn" data-export-event="${active.id}" data-export-name="${escapeHtml(active.name)}" aria-label="Exportieren" title="Als Andenken exportieren">💾</button>` : ''}
+          ${active ? `<button type="button" class="btn btn-sm" data-export-event="${active.id}" data-export-name="${escapeHtml(active.name)}" title="Als Andenken exportieren">💾 Exportieren</button>` : ''}
           <button type="button" class="btn btn-sm" id="new-event-btn">Neues Event starten</button>
         </div>
       </div>

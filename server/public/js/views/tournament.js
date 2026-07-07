@@ -395,8 +395,8 @@ function renderRoundRobin(t, ctx) {
       <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
         <span class="lb-rank">${i + 1}</span>
         <span style="flex:1;">${teamLabel(teamsById, s.teamId)}</span>
-        <span class="muted" style="font-size:0.8rem;">${s.wins}S/${s.draws}U/${s.losses}N</span>
-        <span class="lb-points">${s.points} P</span>
+        <span class="muted" style="font-size:0.8rem;" title="${s.wins} Siege, ${s.draws} Unentschieden, ${s.losses} Niederlagen">${s.wins}S/${s.draws}U/${s.losses}N</span>
+        <span class="lb-points" title="${s.points} Punkte">${s.points} P</span>
       </div>`
     )
     .join('');

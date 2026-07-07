@@ -28,8 +28,8 @@ export function renderLeaderboard(container, ctx) {
           <span class="lb-rank">${i + 1}</span>
           ${avatarHtml(player || { color }, 24)}
           <span style="flex:1;">${escapeHtml(name)}</span>
-          <span class="muted" style="font-size:0.8rem;">${s.wins}S / ${s.matchesPlayed}M</span>
-          <span class="lb-points">${s.points} P</span>
+          <span class="muted" style="font-size:0.8rem;" title="${s.wins} Siege von ${s.matchesPlayed} Matches">${s.wins}S / ${s.matchesPlayed}M</span>
+          <span class="lb-points" title="${s.points} Punkte">${s.points} P</span>
         </div>`;
     })
     .join('');
