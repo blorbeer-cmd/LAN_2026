@@ -19,6 +19,7 @@ import { exportRouter } from './export';
 import { hallOfFameRouter } from './hallOfFame';
 import { seatingRouter } from './seating';
 import { pingsRouter } from './pings';
+import { digestRouter } from './digest';
 
 export const apiRouter = Router();
 
@@ -44,3 +45,4 @@ apiRouter.use('/export', exportRouter);
 apiRouter.use('/hall-of-fame', hallOfFameRouter);
 apiRouter.use('/seating', seatingRouter);
 apiRouter.use('/pings', pingsRouter);
+apiRouter.use('/digest', digestRouter);

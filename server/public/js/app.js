@@ -8,7 +8,7 @@ import { state } from './state.js';
 import { loadAll } from './data.js';
 import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
-import { renderLive, invalidatePings } from './views/live.js';
+import { renderLive, invalidatePings, invalidateDigest } from './views/live.js';
 import { renderPlayers } from './views/players.js';
 import { renderGames } from './views/games.js';
 import { renderMatchmaking, invalidateMatchmakingHistory } from './views/matchmaking.js';
@@ -157,13 +157,19 @@ function wireSocket() {
     'leaderboard:changed',
     'events:changed',
   ];
-  fullReloadEvents.forEach((event) => socket.on(event, () => ctx.refresh()));
+  fullReloadEvents.forEach((event) =>
+    socket.on(event, () => {
+      invalidateDigest();
+      ctx.refresh();
+    })
+  );
 
   // These events carry the fresh payload directly, so we can update state
   // and re-render without an extra round trip — important since live-status
   // updates can arrive frequently (every agent report + periodic sweep).
   socket.on('live:changed', (payload) => {
     state.live = payload;
+    invalidateDigest(); // a newly-running game may now need a skill rating
     if (currentView === 'live') renderCurrent();
   });
   socket.on('votes:changed', (payload) => {
@@ -172,6 +178,7 @@ function wireSocket() {
     lastVoteRound = payload.round;
 
     state.votes = payload;
+    invalidateDigest();
     if (currentView === 'votes') renderCurrent();
 
     // Anyone with an identity gets nudged that a new vote opened, even if
@@ -193,6 +200,7 @@ function wireSocket() {
   });
   socket.on('tournaments:changed', (payload) => {
     invalidateTournaments();
+    invalidateDigest();
     if (currentView === 'tournaments') renderCurrent();
 
     // Same pattern as the vote nudge: only the players actually named in

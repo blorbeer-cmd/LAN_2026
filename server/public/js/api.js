@@ -198,4 +198,8 @@ export const api = {
       apiFetch(`/api/pings/${id}/interested`, { method: 'POST', body: JSON.stringify({ playerId }) }),
     remove: (id) => apiFetch(`/api/pings/${id}`, { method: 'DELETE' }),
   },
+
+  digest: {
+    get: (playerId) => apiFetch(`/api/digest?playerId=${encodeURIComponent(playerId)}`),
+  },
 };

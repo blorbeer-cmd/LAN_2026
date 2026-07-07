@@ -32,6 +32,60 @@ export function invalidatePings() {
   pingsCache = null;
 }
 
+// "Was steht an?" personal digest (open vote / ready tournament match /
+// unrated live game). Keyed by which player it was loaded for, so switching
+// "who am I" on this device refetches instead of showing someone else's.
+let digestCache = null;
+let digestLoadedForId = null;
+let digestLoading = false;
+
+async function loadDigest(ctx, myId) {
+  digestLoading = true;
+  try {
+    digestCache = await api.digest.get(myId);
+    digestLoadedForId = myId;
+  } catch {
+    digestCache = null;
+    digestLoadedForId = null;
+  } finally {
+    digestLoading = false;
+    ctx.rerender();
+  }
+}
+
+export function invalidateDigest() {
+  digestCache = null;
+  digestLoadedForId = null;
+}
+
+function renderDigest(myId) {
+  if (!myId || digestLoading || !digestCache || digestLoadedForId !== myId) return '';
+  const items = [];
+  if (digestCache.openVote) {
+    items.push(`
+      <div class="chip" data-navigate="votes" style="cursor:pointer;">
+        🗳️ Abstimmung läuft – du hast noch nicht abgestimmt
+      </div>`);
+  }
+  for (const m of digestCache.readyMatches) {
+    items.push(`
+      <div class="chip" data-navigate="tournaments" style="cursor:pointer;">
+        🏆 ${gameBadgeHtml({ id: m.gameId, icon: m.gameIcon }, 20)} Dein Match ist bereit: ${escapeHtml(m.myTeamName)} vs. ${escapeHtml(m.opponentTeamName)}
+      </div>`);
+  }
+  for (const g of digestCache.missingSkills) {
+    items.push(`
+      <div class="chip" data-navigate="profile" style="cursor:pointer;">
+        ⭐ ${gameBadgeHtml(g, 20)} Bewerte deinen Skill für ${escapeHtml(g.name)} – wird gerade gespielt
+      </div>`);
+  }
+  if (items.length === 0) return '';
+  return `
+    <div class="section-title">Was steht an?</div>
+    <div class="stack" style="gap:6px;margin-bottom:16px;">${items.join('')}</div>
+  `;
+}
+
 function formatExpiresIn(expiresAt) {
   const diffMin = Math.round((expiresAt - Date.now()) / 60000);
   if (diffMin <= 0) return 'läuft gleich ab';
@@ -140,6 +194,9 @@ export function renderLive(container, ctx) {
   if (pingsCache === null && !pingsLoading) {
     loadPings(ctx);
   }
+  if (myId && digestLoadedForId !== myId && !digestLoading) {
+    loadDigest(ctx, myId);
+  }
 
   const cards = players
     .map((p) => {
@@ -182,6 +239,7 @@ export function renderLive(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Live-Status</h1>
     ${whoAmI}
+    ${renderDigest(myId)}
     <div class="card" style="margin-bottom:16px;">
       <div class="row-between">
         <strong>🎮 Jetzt zocken?</strong>
