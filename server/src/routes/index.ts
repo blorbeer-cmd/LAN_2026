@@ -17,6 +17,7 @@ import { tournamentsRouter } from './tournaments';
 import { qrcodeRouter } from './qrcode';
 import { exportRouter } from './export';
 import { hallOfFameRouter } from './hallOfFame';
+import { seatingRouter } from './seating';
 
 export const apiRouter = Router();
 
@@ -40,3 +41,4 @@ apiRouter.use('/tournaments', tournamentsRouter);
 apiRouter.use('/qrcode', qrcodeRouter);
 apiRouter.use('/export', exportRouter);
 apiRouter.use('/hall-of-fame', hallOfFameRouter);
+apiRouter.use('/seating', seatingRouter);

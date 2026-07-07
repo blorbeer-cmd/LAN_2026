@@ -18,6 +18,7 @@ import { renderAnalytics } from './views/analytics.js';
 import { renderProfile } from './views/profile.js';
 import { renderTournaments, invalidateTournaments, focusTournament } from './views/tournament.js';
 import { renderHallOfFame } from './views/hallOfFame.js';
+import { renderSeating } from './views/seating.js';
 
 const VIEWS = {
   live: renderLive,
@@ -30,6 +31,7 @@ const VIEWS = {
   profile: renderProfile,
   tournaments: renderTournaments,
   hallOfFame: renderHallOfFame,
+  seating: renderSeating,
 };
 
 let currentView = 'live';

@@ -339,7 +339,10 @@ export function renderProfile(container, ctx) {
 
     ${state.games.length > 0 ? `<div class="section-title">Skill-Ratings</div><div class="card">${skillRows}</div>` : ''}
 
-    <div class="section-title">🪑 Sitznachbarn</div>
+    <div class="row-between">
+      <div class="section-title" style="margin-bottom:8px;">🪑 Sitznachbarn</div>
+      <button type="button" class="btn btn-sm" data-navigate="seating">Sitzplan ansehen</button>
+    </div>
     <div class="card">${renderNeighbors(myId)}</div>
     <p class="muted" style="font-size:0.8rem;margin-top:6px;">
       Wen hast du bei dieser LAN neben dir sitzen? Wird beim Teams-Auslosen berücksichtigt, wenn

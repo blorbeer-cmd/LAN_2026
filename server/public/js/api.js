@@ -186,4 +186,8 @@ export const api = {
   hallOfFame: {
     get: () => apiFetch('/api/hall-of-fame'),
   },
+
+  seating: {
+    get: () => apiFetch('/api/seating'),
+  },
 };
