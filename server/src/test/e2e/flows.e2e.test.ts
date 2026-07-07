@@ -99,6 +99,7 @@ test('full click-through: players, matchmaking, voting, leaderboard', async () =
   await page.click('#match-form button[type="submit"]');
   await page.waitForSelector('.lb-row');
   assert.ok((await page.locator('.lb-row').count()) >= 2);
+  await page.waitForSelector('text=Spielzeit');
 
   // Back to Live: should now show both players (offline, since no agent ran).
   await page.click('[data-view="live"]');

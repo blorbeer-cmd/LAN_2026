@@ -101,6 +101,41 @@ export function getLiveBoard(): LiveBoardEntry[] {
   });
 }
 
+// Garbage-collects "currently playing" rows for players whose agent has gone
+// silent past the timeout (crashed, PC switched off, network dead). Without
+// this, a crashed agent's last known game would linger in live_status_games
+// forever — masked in the UI by the "offline" state, but it would silently
+// keep inflating that game's playtime (FR-29) since its play_sessions row
+// would never get an ended_at. Closes sessions at last_seen (the last
+// confirmed real timestamp), not "now", since the game may have stopped
+// running well before we noticed.
+export function closeStaleSessions(now: number): void {
+  const stale = db
+    .prepare(
+      `SELECT lsg.player_id AS player_id, lsg.game_id AS game_id, ls.last_seen AS last_seen
+       FROM live_status_games lsg
+       JOIN live_status ls ON ls.player_id = lsg.player_id
+       WHERE ? - ls.last_seen > ?`
+    )
+    .all(now, config.offlineTimeoutMs) as Array<{ player_id: string; game_id: string; last_seen: number }>;
+
+  if (stale.length === 0) return;
+
+  const cleanup = db.transaction(() => {
+    for (const row of stale) {
+      db.prepare('DELETE FROM live_status_games WHERE player_id = ? AND game_id = ?').run(
+        row.player_id,
+        row.game_id
+      );
+      db.prepare(
+        `UPDATE play_sessions SET ended_at = ?
+         WHERE player_id = ? AND game_id = ? AND ended_at IS NULL`
+      ).run(row.last_seen, row.player_id, row.game_id);
+    }
+  });
+  cleanup();
+}
+
 // Periodically re-broadcasts the board so clients transition players to
 // "offline" even when no new report arrives (e.g. a PC was switched off).
 export function startOfflineSweeper(_io: Server): void {
@@ -108,6 +143,7 @@ export function startOfflineSweeper(_io: Server): void {
   const interval = Math.max(5_000, Math.floor(config.offlineTimeoutMs / 2));
   setInterval(() => {
     try {
+      closeStaleSessions(Date.now());
       broadcast(Events.liveStatusChanged, getLiveBoard());
     } catch (err) {
       // Never let a sweep error take down the timer/process.

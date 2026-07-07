@@ -1,7 +1,9 @@
-// Leaderboard view (FR-22..25): overall or per-game standings, plus a form to
-// record a match result. Team assignment uses one "which team?" selector per
-// player (instead of duplicated checkboxes per team column) so a player can
-// never accidentally end up on two teams at once.
+// Leaderboard view (FR-22..25) plus playtime stats (FR-29): overall or
+// per-game standings, a form to record a match result, and total playtime
+// per player (derived from the agent's start/stop history). Team assignment
+// uses one "which team?" selector per player (instead of duplicated
+// checkboxes per team column) so a player can never accidentally end up on
+// two teams at once.
 
 import { api } from '../api.js';
 import { state } from '../state.js';
@@ -32,6 +34,22 @@ export function renderLeaderboard(container, ctx) {
     })
     .join('');
 
+  // When filtered to one game, show that game's per-player times (already
+  // scoped by the API); otherwise show each player's grand total across all
+  // games — either way, the same "totals" list applies since the API scopes
+  // it to whatever ?gameId= was requested.
+  const playtime = state.playtime?.totals || [];
+  const playtimeRows = playtime
+    .map(
+      (p) => `
+      <div class="lb-row">
+        <span class="avatar-dot" style="background:${escapeHtml(p.playerColor)}"></span>
+        <span style="flex:1;">${escapeHtml(p.playerName)}</span>
+        <span class="lb-points">${escapeHtml(p.formatted)}</span>
+      </div>`
+    )
+    .join('');
+
   container.innerHTML = `
     <div class="row-between">
       <h1 class="view-title">Rangliste</h1>
@@ -41,11 +59,20 @@ export function renderLeaderboard(container, ctx) {
     <div class="card">
       ${standings.length === 0 ? `<div class="empty-state"><span class="emoji">🏆</span>Noch keine Ergebnisse.</div>` : rows}
     </div>
+
+    <div class="section-title">⏱️ Spielzeit</div>
+    <div class="card">
+      ${playtime.length === 0 ? `<div class="empty-state" style="padding:20px;"><span class="emoji">⏱️</span>Noch keine erfasste Spielzeit.</div>` : playtimeRows}
+    </div>
   `;
 
   container.querySelector('#lb-filter').addEventListener('change', async (e) => {
     state.selectedGameId = e.target.value || null;
-    state.leaderboard = await api.leaderboard.get(state.selectedGameId || undefined);
+    const gameId = state.selectedGameId || undefined;
+    [state.leaderboard, state.playtime] = await Promise.all([
+      api.leaderboard.get(gameId),
+      api.stats.playtime(gameId),
+    ]);
     ctx.rerender();
   });
 

@@ -11,6 +11,7 @@ export const state = {
   votes: null,
   matches: [],
   leaderboard: null,
+  playtime: null,
   selectedGameId: null, // remembers the last game picked in Teams/Rangliste
   lastMatchmaking: null, // last drawn teams, shared live across all clients
 };

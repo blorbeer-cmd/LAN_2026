@@ -102,4 +102,8 @@ export const api = {
   leaderboard: {
     get: (gameId) => apiFetch(`/api/leaderboard${gameId ? `?gameId=${gameId}` : ''}`),
   },
+
+  stats: {
+    playtime: (gameId) => apiFetch(`/api/stats/playtime${gameId ? `?gameId=${gameId}` : ''}`),
+  },
 };

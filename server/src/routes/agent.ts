@@ -10,6 +10,7 @@
 // was just reported.
 
 import { Router } from 'express';
+import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getLiveBoard } from '../liveStatus';
@@ -69,22 +70,30 @@ agentRouter.post('/report', (req, res) => {
     const existingIds = new Set(existing.map((e) => e.game_id));
     const matchedIds = new Set(matchedGameIds);
 
-    // Games no longer detected: remove.
+    // Games no longer detected: remove, and close their open play_sessions
+    // row (FR-29) so total playtime stops accumulating for it.
     for (const gameId of existingIds) {
       if (!matchedIds.has(gameId)) {
         db.prepare('DELETE FROM live_status_games WHERE player_id = ? AND game_id = ?').run(
           player.id,
           gameId
         );
+        db.prepare(
+          `UPDATE play_sessions SET ended_at = ?
+           WHERE player_id = ? AND game_id = ? AND ended_at IS NULL`
+        ).run(now, player.id, gameId);
       }
     }
-    // Newly detected games: add with since=now. Games still running keep
-    // their original "since" untouched (no-op).
+    // Newly detected games: add with since=now, and open a play_sessions row.
+    // Games still running keep their original "since" untouched (no-op).
     for (const gameId of matchedIds) {
       if (!existingIds.has(gameId)) {
         db.prepare(
           'INSERT INTO live_status_games (player_id, game_id, since) VALUES (?, ?, ?)'
         ).run(player.id, gameId, now);
+        db.prepare(
+          'INSERT INTO play_sessions (id, player_id, game_id, started_at, ended_at) VALUES (?, ?, ?, ?, NULL)'
+        ).run(nanoid(), player.id, gameId, now);
       }
     }
   });

@@ -10,6 +10,7 @@ import { matchmakingRouter } from './matchmaking';
 import { votesRouter } from './votes';
 import { matchesRouter } from './matches';
 import { leaderboardRouter } from './leaderboard';
+import { statsRouter } from './stats';
 
 export const apiRouter = Router();
 
@@ -26,3 +27,4 @@ apiRouter.use('/matchmaking', matchmakingRouter);
 apiRouter.use('/votes', votesRouter);
 apiRouter.use('/matches', matchesRouter);
 apiRouter.use('/leaderboard', leaderboardRouter);
+apiRouter.use('/stats', statsRouter);

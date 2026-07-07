@@ -74,6 +74,19 @@ db.exec(`
     PRIMARY KEY (player_id, game_id)
   );
 
+  -- Historical play sessions (FR-29): one row per continuous stretch of a
+  -- player having a game detected as running. Written alongside
+  -- live_status_games on every agent report (open on start, closed on stop),
+  -- so total playtime per player/game can be computed even after a session
+  -- has ended. ended_at NULL means the session is still ongoing.
+  CREATE TABLE IF NOT EXISTS play_sessions (
+    id         TEXT PRIMARY KEY,
+    player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    game_id    TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    started_at INTEGER NOT NULL,
+    ended_at   INTEGER
+  );
+
   -- Simple single active vote for "what's next". One row per player per open
   -- vote round is enforced in the application layer.
   CREATE TABLE IF NOT EXISTS votes (
@@ -98,6 +111,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_live_status_games_game ON live_status_games(game_id);
   CREATE INDEX IF NOT EXISTS idx_votes_round ON votes(round);
   CREATE INDEX IF NOT EXISTS idx_matches_game ON matches(game_id);
+  CREATE INDEX IF NOT EXISTS idx_play_sessions_player ON play_sessions(player_id);
+  CREATE INDEX IF NOT EXISTS idx_play_sessions_game ON play_sessions(game_id);
+  CREATE INDEX IF NOT EXISTS idx_play_sessions_open ON play_sessions(ended_at);
 `);
 
 // Key/value table for small bits of server state (e.g. current vote round).
