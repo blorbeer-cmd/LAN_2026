@@ -113,4 +113,54 @@ test('full click-through: players, matchmaking, voting, leaderboard', async () =
   await page.waitForSelector('.badge-paused');
   await page.click('[data-toggle-pause]');
   await page.waitForFunction(() => !document.querySelector('.badge-paused'));
+
+  // Auswertungen dashboard: reachable from Rangliste, loads its async data
+  // and renders the section headers (no play_sessions exist in this flow —
+  // no agent ever reported — so we check structure, not specific awards).
+  await page.click('[data-view="leaderboard"]');
+  await page.click('[data-navigate="analytics"]');
+  await page.waitForSelector('text=Auswertungen');
+  await page.waitForSelector('text=Wer hat wann was gespielt', { timeout: 5000 });
+  await page.waitForSelector('text=Awards');
+});
+
+test('Auswertungen shows a real award and a visible, auto-scrolled concurrency chart', async () => {
+  // Create a player + a session via the real agent-report endpoint (not the
+  // UI) so there's an actual play_sessions row to render.
+  const playerRes = await page.request.post(`${BASE_URL}/api/players`, {
+    data: { name: 'Analytics E2E Player' },
+  });
+  const player = await playerRes.json();
+  const gamesRes = await page.request.get(`${BASE_URL}/api/games`);
+  const games = (await gamesRes.json()) as Array<{ id: string; name: string; icon: string }>;
+  const cs2 = games.find((g) => g.name === 'Counter-Strike 2')!;
+
+  await page.request.post(`${BASE_URL}/api/agent/report`, {
+    headers: { 'x-api-key': player.api_key },
+    data: { processNames: ['cs2.exe'] },
+  });
+  await new Promise((r) => setTimeout(r, 50));
+  await page.request.post(`${BASE_URL}/api/agent/report`, {
+    headers: { 'x-api-key': player.api_key },
+    data: { processNames: [] }, // close the session so it has a real duration
+  });
+
+  await page.reload();
+  await page.waitForSelector('#app:not([hidden])');
+  await page.click('[data-view="leaderboard"]');
+  await page.click('[data-navigate="analytics"]');
+  await page.waitForSelector('text=Marathon-Zocker', { timeout: 5000 });
+  assert.ok((await page.textContent('.view-title'))?.includes('Auswertungen'));
+
+  // Switch the concurrency chart to CS2 and confirm at least one bar has a
+  // real height (regression check for the auto-scroll/empty-looking-chart
+  // bug: bars must be reachable/visible, not scrolled off-screen).
+  await page.selectOption('#an-concurrency-game', { label: `${cs2.icon} ${cs2.name}` });
+  await page.waitForFunction(
+    () => {
+      const bars = Array.from(document.querySelectorAll<HTMLElement>('#an-concurrency-chart > div'));
+      return bars.some((b) => (parseFloat(b.style.height) || 0) > 2);
+    },
+    { timeout: 5000 }
+  );
 });

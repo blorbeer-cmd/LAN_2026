@@ -18,6 +18,7 @@ import {
   type SessionDuration,
 } from '../sessionStats';
 import { parseTimeRangeQuery } from './queryHelpers';
+import { computeAwards } from '../awards';
 
 export const analyticsRouter = Router();
 
@@ -197,4 +198,46 @@ analyticsRouter.get('/concurrency', (req, res) => {
 
   const buckets = computeConcurrencyOverTime(sessions, range.from, range.to, bucketMin * 60_000, now);
   res.json({ gameId, bucketMinutes: bucketMin, buckets });
+});
+
+// GET /api/analytics/awards - the "witzige" awards (Marathon-Zocker,
+// Multitasking-Meister, Nachteule, ...), optionally filtered by ?from=&to=.
+analyticsRouter.get('/awards', (req, res) => {
+  const range = parseTimeRangeQuery(req.query as Record<string, unknown>);
+  if ('error' in range) return res.status(400).json({ error: range.error });
+
+  const now = Date.now();
+  const rawRows = loadAllSessions(null);
+  const rawSessions: PlaySession[] = rawRows.map((r) => ({
+    playerId: r.player_id,
+    gameId: r.game_id,
+    startedAt: r.started_at,
+    endedAt: r.ended_at,
+    activeMs: r.active_ms,
+  }));
+  const sessions = clipSessionsToRange(rawSessions, now, range.from, range.to);
+
+  const rawAwards = computeAwards(sessions, now);
+  const { playerById } = loadNamesFor(
+    [...new Set(rawAwards.map((a) => a.playerId))],
+    []
+  );
+
+  const awards = rawAwards.map((a) => ({
+    id: a.id,
+    emoji: a.emoji,
+    title: a.title,
+    description: a.description,
+    playerId: a.playerId,
+    playerName: playerById.get(a.playerId)?.name ?? 'Unbekannt',
+    playerColor: playerById.get(a.playerId)?.color ?? '#999999',
+    value:
+      a.valueMs !== undefined
+        ? formatDurationMs(a.valueMs)
+        : a.valuePercent !== undefined
+          ? `${a.valuePercent}%`
+          : `${a.valueCount}`,
+  }));
+
+  res.json({ awards });
 });

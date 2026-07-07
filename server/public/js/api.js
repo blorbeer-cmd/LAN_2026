@@ -106,4 +106,23 @@ export const api = {
   stats: {
     playtime: (gameId) => apiFetch(`/api/stats/playtime${gameId ? `?gameId=${gameId}` : ''}`),
   },
+
+  analytics: {
+    overview: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return apiFetch(`/api/analytics/overview${qs ? `?${qs}` : ''}`);
+    },
+    sessions: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return apiFetch(`/api/analytics/sessions${qs ? `?${qs}` : ''}`);
+    },
+    concurrency: (params) => {
+      const qs = new URLSearchParams(params).toString();
+      return apiFetch(`/api/analytics/concurrency?${qs}`);
+    },
+    awards: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return apiFetch(`/api/analytics/awards${qs ? `?${qs}` : ''}`);
+    },
+  },
 };

@@ -116,3 +116,17 @@ test('GET /api/analytics/concurrency rejects an out-of-range bucketMinutes', asy
   );
   assert.equal(res.status, 400);
 });
+
+test('GET /api/analytics/awards includes the Marathon-Zocker award with a player name', async () => {
+  const res = await request(app).get('/api/analytics/awards');
+  assert.equal(res.status, 200);
+  const marathon = res.body.awards.find((a: { id: string }) => a.id === 'marathon');
+  assert.ok(marathon);
+  assert.ok(marathon.playerName);
+  assert.ok(marathon.value);
+});
+
+test('GET /api/analytics/awards rejects from > to', async () => {
+  const res = await request(app).get('/api/analytics/awards?from=2000&to=1000');
+  assert.equal(res.status, 400);
+});

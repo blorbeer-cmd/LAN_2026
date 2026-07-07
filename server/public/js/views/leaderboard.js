@@ -81,7 +81,10 @@ export function renderLeaderboard(container, ctx) {
   container.innerHTML = `
     <div class="row-between">
       <h1 class="view-title">Rangliste</h1>
-      <button type="button" class="btn btn-primary btn-sm" id="add-match-btn">+ Ergebnis</button>
+      <div class="row" style="gap:6px;">
+        <button type="button" class="btn btn-sm" data-navigate="analytics">📊 Auswertungen</button>
+        <button type="button" class="btn btn-primary btn-sm" id="add-match-btn">+ Ergebnis</button>
+      </div>
     </div>
     <select id="lb-filter" style="margin-bottom:12px;">${gameOptions}</select>
     <div class="card">
