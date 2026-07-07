@@ -87,6 +87,7 @@ export const api = {
 
   votes: {
     get: () => apiFetch('/api/votes'),
+    history: () => apiFetch('/api/votes/history'),
     start: () => apiFetch('/api/votes/start', { method: 'POST' }),
     cast: (playerId, gameId) =>
       apiFetch('/api/votes', { method: 'POST', body: JSON.stringify({ playerId, gameId }) }),

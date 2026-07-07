@@ -4,7 +4,7 @@
 
 const MAX_VISIBLE = 2;
 
-export function showToast(message, { error = false, duration = 2600 } = {}) {
+export function showToast(message, { error = false, duration = 2600, onClick } = {}) {
   const container = document.getElementById('toast-container');
   if (!container) return;
 
@@ -13,8 +13,18 @@ export function showToast(message, { error = false, duration = 2600 } = {}) {
   }
 
   const el = document.createElement('div');
-  el.className = `toast${error ? ' toast-error' : ''}`;
+  el.className = `toast${error ? ' toast-error' : ''}${onClick ? ' toast-clickable' : ''}`;
   el.textContent = message;
+  if (onClick) {
+    // Toasts aren't interactive by default (pointer-events: none on the
+    // container, so a burst of them never blocks taps on the page below) —
+    // opt this one back in since it's meant to be tapped.
+    el.style.pointerEvents = 'auto';
+    el.addEventListener('click', () => {
+      onClick();
+      el.remove();
+    });
+  }
   container.appendChild(el);
   setTimeout(() => el.remove(), duration);
 }

@@ -107,3 +107,30 @@ test('POST /api/votes/cancel rejects when nothing is open', async () => {
   const res = await request(app).post('/api/votes/cancel');
   assert.equal(res.status, 409);
 });
+
+test('GET /api/votes/history lists closed rounds, newest first, with their winner(s)', async () => {
+  const res = await request(app).get('/api/votes/history');
+  assert.equal(res.status, 200);
+  // Round 1 closed with Rocket League winning; round 2 was cancelled, so it
+  // must not show up here at all.
+  assert.equal(res.body.history.length, 1);
+  const [entry] = res.body.history;
+  assert.equal(entry.round, 1);
+  assert.equal(entry.totalVotes, 2);
+  assert.deepEqual(
+    entry.winners.map((w: { gameId: string }) => w.gameId),
+    [gameRl]
+  );
+});
+
+test('GET /api/votes/history still lists a round nobody voted in', async () => {
+  await request(app).post('/api/votes/start');
+  const res = await request(app).post('/api/votes/close');
+  assert.deepEqual(res.body.winnerGameIds, []);
+
+  const history = await request(app).get('/api/votes/history');
+  const entry = history.body.history.find((h: { round: number }) => h.round === res.body.round);
+  assert.ok(entry, 'the empty round should still appear in history');
+  assert.equal(entry.totalVotes, 0);
+  assert.deepEqual(entry.winners, []);
+});

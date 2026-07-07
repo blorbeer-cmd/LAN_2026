@@ -12,7 +12,7 @@ import { renderLive } from './views/live.js';
 import { renderPlayers } from './views/players.js';
 import { renderGames } from './views/games.js';
 import { renderMatchmaking } from './views/matchmaking.js';
-import { renderVotes } from './views/votes.js';
+import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
 import { renderProfile } from './views/profile.js';
@@ -30,6 +30,12 @@ const VIEWS = {
 
 let currentView = 'live';
 const viewContainer = document.getElementById('view-container');
+
+// Tracks the last vote round we've seen, so the socket handler can tell a
+// genuinely new round (round number just changed while open) apart from a
+// vote being cast or the round being closed — only the former deserves a
+// "hey, go vote" nudge.
+let lastVoteRound = null;
 
 const ctx = {
   // Reload everything from the API, then re-render the active view. Use
@@ -155,8 +161,24 @@ function wireSocket() {
     if (currentView === 'live') renderCurrent();
   });
   socket.on('votes:changed', (payload) => {
+    const isNewRound = payload.open && payload.round !== lastVoteRound;
+    if (!payload.open) invalidateVoteHistory(); // round just closed/cancelled
+    lastVoteRound = payload.round;
+
     state.votes = payload;
     if (currentView === 'votes') renderCurrent();
+
+    // Anyone with an identity gets nudged that a new vote opened, even if
+    // they're not currently looking at the Votes tab — otherwise the only
+    // way to notice is to happen to switch there. Skip it if they're already
+    // on Votes: the view itself just updated in place, a toast on top would
+    // just be noise.
+    if (isNewRound && getMyId() && currentView !== 'votes') {
+      showToast('🗳️ Neue Abstimmung gestartet – tippen zum Mitmachen', {
+        duration: 4500,
+        onClick: () => switchView('votes'),
+      });
+    }
   });
   socket.on('matchmaking:generated', (payload) => {
     state.lastMatchmaking = payload;
@@ -170,6 +192,7 @@ async function main() {
   wireNav();
   wireSocket();
   await loadAll();
+  lastVoteRound = state.votes ? state.votes.round : null;
   // Nobody has set up "who am I" on this device yet (fresh invite link, new
   // phone, …) — send them straight into self-onboarding instead of the Live
   // board, so setting up name/avatar/skills/agent-key is the first thing

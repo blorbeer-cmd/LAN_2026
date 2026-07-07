@@ -76,9 +76,14 @@ votesRouter.post('/start', (_req, res) => {
     return res.status(409).json({ error: 'Es läuft bereits eine Abstimmung.' });
   }
   const nextRound = state.round + 1;
+  const now = Date.now();
   setState(ROUND_KEY, String(nextRound));
   setState(OPEN_KEY, '1');
-  setState(STARTED_AT_KEY, String(Date.now()));
+  setState(STARTED_AT_KEY, String(now));
+
+  db.prepare(
+    'INSERT INTO vote_rounds (round, event_id, started_at, closed_at, winner_game_ids) VALUES (?, ?, ?, NULL, NULL)'
+  ).run(nextRound, getActiveEventId(), now);
 
   const payload = buildPayload();
   broadcast(Events.votesChanged, payload);
@@ -128,6 +133,12 @@ votesRouter.post('/close', (_req, res) => {
   const topVotes = results[0]?.votes ?? 0;
   const winnerGameIds = topVotes > 0 ? results.filter((r) => r.votes === topVotes).map((r) => r.gameId) : [];
 
+  db.prepare('UPDATE vote_rounds SET closed_at = ?, winner_game_ids = ? WHERE round = ?').run(
+    Date.now(),
+    JSON.stringify(winnerGameIds),
+    state.round
+  );
+
   const payload = buildPayload({ winnerGameIds });
   broadcast(Events.votesChanged, payload);
   res.json(payload);
@@ -142,9 +153,62 @@ votesRouter.post('/cancel', (_req, res) => {
     return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
   }
   db.prepare('DELETE FROM votes WHERE round = ?').run(state.round);
+  db.prepare('DELETE FROM vote_rounds WHERE round = ?').run(state.round);
   setState(OPEN_KEY, '0');
 
   const payload = buildPayload();
   broadcast(Events.votesChanged, payload);
   res.json(payload);
+});
+
+interface VoteRoundRow {
+  round: number;
+  eventId: string;
+  eventName: string;
+  startedAt: number;
+  closedAt: number;
+  winnerGameIdsJson: string | null;
+}
+
+// GET /api/votes/history - past (closed) rounds for the active event, newest
+// first: when it happened, how many votes were cast, and who won. Rounds
+// nobody voted in still show up (with an empty winners list) since they come
+// from vote_rounds, not from the votes table itself.
+votesRouter.get('/history', (req, res) => {
+  const { eventId, limit } = req.query;
+  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getActiveEventId();
+  const limitNum = Math.min(50, Math.max(1, parseInt(typeof limit === 'string' ? limit : '', 10) || 20));
+
+  const rows = db
+    .prepare(
+      `SELECT vr.round AS round, vr.event_id AS eventId, e.name AS eventName,
+              vr.started_at AS startedAt, vr.closed_at AS closedAt,
+              vr.winner_game_ids AS winnerGameIdsJson
+       FROM vote_rounds vr
+       JOIN events e ON e.id = vr.event_id
+       WHERE vr.closed_at IS NOT NULL AND vr.event_id = ?
+       ORDER BY vr.round DESC
+       LIMIT ?`
+    )
+    .all(filterEventId, limitNum) as VoteRoundRow[];
+
+  const history = rows.map((r) => {
+    const winnerIds: string[] = r.winnerGameIdsJson ? JSON.parse(r.winnerGameIdsJson) : [];
+    const results = buildResults(r.round);
+    const totalVotes = results.reduce((sum, x) => sum + x.votes, 0);
+    const winners = results
+      .filter((x) => winnerIds.includes(x.gameId))
+      .map((x) => ({ gameId: x.gameId, gameName: x.gameName, icon: x.icon, votes: x.votes }));
+    return {
+      round: r.round,
+      eventId: r.eventId,
+      eventName: r.eventName,
+      startedAt: r.startedAt,
+      closedAt: r.closedAt,
+      totalVotes,
+      winners,
+    };
+  });
+
+  res.json({ history });
 });
