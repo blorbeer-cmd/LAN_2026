@@ -117,7 +117,7 @@ export function renderGames(container, ctx) {
     ${
       state.games.length === 0
         ? `<div class="empty-state"><span class="emoji">🎮</span>Noch keine Spiele.</div>`
-        : `<div class="stack">${rows}</div>`
+        : `<div class="card-grid">${rows}</div>`
     }
   `;
 

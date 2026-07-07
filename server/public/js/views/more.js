@@ -25,6 +25,6 @@ export function renderMore(container) {
 
   container.innerHTML = `
     <h1 class="view-title">Mehr</h1>
-    <div class="stack">${rows}</div>
+    <div class="card-grid">${rows}</div>
   `;
 }

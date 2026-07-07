@@ -95,7 +95,7 @@ function renderList(container, ctx) {
       ? `<div class="empty-state">Lädt…</div>`
       : listCache.length === 0
         ? `<div class="empty-state"><span class="emoji">🏆</span>Noch keine Turniere.</div>`
-        : `<div class="stack">${listCache
+        : `<div class="card-grid">${listCache
             .map(
               (t) => `
             <button type="button" class="card row" style="width:100%;text-align:left;cursor:pointer;" data-open-tournament="${t.id}">

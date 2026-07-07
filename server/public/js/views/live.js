@@ -249,7 +249,7 @@ export function renderLive(container, ctx) {
     </div>
     ${renderPings(myId)}
     ${renderActiveGroups(players)}
-    <div class="stack">${cards}</div>
+    <div class="card-grid">${cards}</div>
   `;
 
   wireWhoAmICard(container, 'live-whoami', ctx);

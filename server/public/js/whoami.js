@@ -39,8 +39,8 @@ export function whoAmICardHtml(selectId, { marginBottom } = {}) {
   return `
     <div class="card stack"${style}>
       <div class="row">
-        <span style="flex:1;">Wer bist du?</span>
-        <select id="${selectId}">
+        <span style="flex-shrink:0;">Wer bist du?</span>
+        <select id="${selectId}" style="flex:1;">
           <option value="">– wählen –</option>
           ${state.players.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}
         </select>
