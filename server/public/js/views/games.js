@@ -27,6 +27,15 @@ function renderInviteSection() {
         eigene Agent-Key richten sich alle selbst ein.
       </p>
     </div>
+
+    <div class="section-title">🖥️ TV-/Kiosk-Ansicht</div>
+    <div class="card stack">
+      <a href="/kiosk.html${token ? `?token=${encodeURIComponent(token)}` : ''}" target="_blank" rel="noopener" class="btn btn-block">Kiosk-Ansicht öffnen</a>
+      <p class="muted" style="font-size:0.8rem;">
+        Für einen gemeinsamen Bildschirm/Beamer im Raum: Live-Status, Abstimmung, Rangliste und
+        laufendes Turnier, aktualisiert sich von selbst. Keine Bedienung nötig.
+      </p>
+    </div>
   `;
 }
 

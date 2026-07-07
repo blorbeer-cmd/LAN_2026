@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0f1420" />
+  <title>RespawnHQ — Kiosk</title>
+  <link rel="icon" type="image/svg+xml" href="/img/logo.svg" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/kiosk.css" />
+</head>
+<body class="kiosk-body">
+  <div id="kiosk-root">
+    <header class="kiosk-header">
+      <div class="topbar-title"><img class="topbar-logo" src="/img/logo.svg" alt="" width="32" height="32" /> <span>RespawnHQ</span></div>
+      <div class="row" style="gap:14px;">
+        <span id="kiosk-clock" class="kiosk-clock"></span>
+        <span id="kiosk-conn-dot" class="conn-dot" title="Verbindungsstatus"></span>
+      </div>
+    </header>
+
+    <main class="kiosk-grid">
+      <section class="kiosk-card">
+        <h2>📡 Live-Status</h2>
+        <div id="kiosk-live"><div class="empty-state">Lädt…</div></div>
+      </section>
+
+      <section class="kiosk-card">
+        <h2>🗳️ Abstimmung</h2>
+        <div id="kiosk-votes"><div class="empty-state">Lädt…</div></div>
+      </section>
+
+      <section class="kiosk-card">
+        <h2>🏆 Rangliste</h2>
+        <div id="kiosk-leaderboard"><div class="empty-state">Lädt…</div></div>
+      </section>
+
+      <section class="kiosk-card">
+        <h2 id="kiosk-tournament-title">🏟️ Turnier</h2>
+        <div id="kiosk-tournament"><div class="empty-state">Lädt…</div></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="/js/kiosk.js"></script>
+</body>
+</html>
