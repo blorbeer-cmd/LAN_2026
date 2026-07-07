@@ -130,3 +130,39 @@ test('GET /api/analytics/awards rejects from > to', async () => {
   const res = await request(app).get('/api/analytics/awards?from=2000&to=1000');
   assert.equal(res.status, 400);
 });
+
+test('eventId filters analytics precisely, independent of session timestamps', async () => {
+  const firstEvent = await request(app).get('/api/events/active');
+
+  // A session recorded in the first event.
+  await report(apiKeyA, ['cs2.exe']);
+  await new Promise((r) => setTimeout(r, 30));
+  await report(apiKeyA, []);
+
+  const beforeSwitch = await request(app).get(`/api/analytics/sessions?eventId=${firstEvent.body.id}`);
+  const countBeforeSwitch = beforeSwitch.body.length;
+  assert.ok(countBeforeSwitch > 0);
+
+  // Switch to a new event and record a different session there.
+  const secondEvent = await request(app).post('/api/events').send({ name: 'Zweites Event' });
+  await report(apiKeyB, ['rocketleague.exe']);
+  await new Promise((r) => setTimeout(r, 30));
+  await report(apiKeyB, []);
+
+  const secondSessions = await request(app).get(`/api/analytics/sessions?eventId=${secondEvent.body.id}`);
+  assert.equal(secondSessions.body.length, 1, 'the new event should only contain the one new session');
+  assert.equal(secondSessions.body[0].playerId, playerB);
+
+  // The first event's own sessions must be unaffected by what happened after
+  // the switch (exact event_id filtering, not an approximate date range).
+  const afterSwitch = await request(app).get(`/api/analytics/sessions?eventId=${firstEvent.body.id}`);
+  assert.equal(afterSwitch.body.length, countBeforeSwitch);
+
+  const secondPlaytime = await request(app).get(`/api/stats/playtime?eventId=${secondEvent.body.id}`);
+  assert.ok(secondPlaytime.body.entries.every((e: { playerId: string }) => e.playerId === playerB));
+
+  const secondOverview = await request(app).get(`/api/analytics/overview?eventId=${secondEvent.body.id}`);
+  assert.ok(
+    secondOverview.body.longestSessionsPerPlayerGame.every((e: { playerId: string }) => e.playerId === playerB)
+  );
+});

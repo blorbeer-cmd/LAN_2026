@@ -16,9 +16,11 @@ let cache = null;
 let loading = false;
 
 function defaultFilters() {
-  const to = Date.now();
-  const from = to - 3 * 24 * 60 * 60 * 1000; // covers a typical LAN weekend
-  return { from, to, concurrencyGameId: null, bucketMinutes: 60 };
+  // eventId: 'active' resolves to the currently active event on first
+  // render; '' means "Gesamt, alle Events". from/to are an OPTIONAL extra
+  // narrowing on top of whichever event is selected (e.g. "just Saturday
+  // night of this LAN") — null until the user explicitly applies one.
+  return { eventId: 'active', from: null, to: null, concurrencyGameId: null, bucketMinutes: 60 };
 }
 let filters = defaultFilters();
 
@@ -28,18 +30,68 @@ function toDatetimeLocal(ms) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// Resolves the 'active' sentinel to a real event id once the events list is
+// available, so the view opens pre-filtered to the current LAN by default.
+function resolveEventSelection() {
+  if (filters.eventId !== 'active') return;
+  const active = state.events.find((e) => e.isActive);
+  if (active) filters.eventId = active.id;
+}
+
+// The event's own date range, used only to pre-fill the manual date/time
+// inputs with something sensible — the actual query scopes by eventId
+// directly (exact), not by this range, unless the user applies a narrower one.
+function selectedEventRange() {
+  const ev = state.events.find((e) => e.id === filters.eventId);
+  if (ev) return { from: ev.starts_at, to: ev.ends_at ?? Date.now() };
+  const to = Date.now();
+  return { from: to - 3 * 24 * 60 * 60 * 1000, to };
+}
+
 async function loadData(ctx) {
   loading = true;
   ctx.rerender();
   try {
-    const params = { from: String(filters.from), to: String(filters.to) };
+    resolveEventSelection();
+    const params = {};
+    if (filters.eventId) params.eventId = filters.eventId;
+    if (filters.from && filters.to) {
+      params.from = String(filters.from);
+      params.to = String(filters.to);
+    }
+
+    // The concurrency endpoint always needs a concrete range (it doesn't
+    // understand eventId) — fall back to the selected event's own range, or
+    // span every known event for "Gesamt". Bucket size adapts to keep the
+    // number of bars sane regardless of how wide the range ends up being.
+    let concurrencyFrom;
+    let concurrencyTo;
+    if (filters.from && filters.to) {
+      concurrencyFrom = filters.from;
+      concurrencyTo = filters.to;
+    } else if (filters.eventId) {
+      ({ from: concurrencyFrom, to: concurrencyTo } = selectedEventRange());
+    } else {
+      concurrencyFrom = state.events.length
+        ? state.events.reduce((min, e) => Math.min(min, e.starts_at), Date.now())
+        : Date.now() - 30 * 24 * 60 * 60 * 1000;
+      concurrencyTo = Date.now();
+    }
+    const targetBucketCount = 200;
+    const spanMinutes = Math.max(1, (concurrencyTo - concurrencyFrom) / 60_000);
+    const bucketMinutes = Math.min(
+      24 * 60,
+      Math.max(filters.bucketMinutes, Math.ceil(spanMinutes / targetBucketCount))
+    );
+    const concurrencyParams = { from: String(concurrencyFrom), to: String(concurrencyTo) };
+
     const gameId = filters.concurrencyGameId || (state.games[0] && state.games[0].id) || null;
     const [overview, sessions, awards, concurrency] = await Promise.all([
       api.analytics.overview(params),
       api.analytics.sessions(params),
       api.analytics.awards(params),
       gameId
-        ? api.analytics.concurrency({ ...params, gameId, bucketMinutes: String(filters.bucketMinutes) })
+        ? api.analytics.concurrency({ ...concurrencyParams, gameId, bucketMinutes: String(bucketMinutes) })
         : Promise.resolve(null),
     ]);
     cache = { overview, sessions, awards, concurrency, gameId };
@@ -52,28 +104,51 @@ async function loadData(ctx) {
   }
 }
 
+function renderEventOptions() {
+  const sorted = [...state.events].sort((a, b) => b.starts_at - a.starts_at);
+  const options = sorted
+    .map((e) => {
+      const range = `${new Date(e.starts_at).toLocaleDateString('de-DE')}${e.ends_at ? '–' + new Date(e.ends_at).toLocaleDateString('de-DE') : ' (läuft)'}`;
+      return `<option value="${e.id}" ${e.id === filters.eventId ? 'selected' : ''}>${escapeHtml(e.name)} (${range})</option>`;
+    })
+    .join('');
+  return `<option value="" ${filters.eventId === '' ? 'selected' : ''}>🌐 Gesamt (alle Events)</option>${options}`;
+}
+
 export function renderAnalytics(container, ctx) {
   if (cache === null && !loading) {
     loadData(ctx);
   }
+  resolveEventSelection();
+  const displayRange = filters.from && filters.to ? { from: filters.from, to: filters.to } : selectedEventRange();
 
   container.innerHTML = `
     <h1 class="view-title">📊 Auswertungen</h1>
     <div class="card stack">
+      <select id="an-event">${renderEventOptions()}</select>
       <div class="row">
-        <input type="datetime-local" id="an-from" value="${toDatetimeLocal(filters.from)}" style="flex:1;" />
-        <input type="datetime-local" id="an-to" value="${toDatetimeLocal(filters.to)}" style="flex:1;" />
+        <input type="datetime-local" id="an-from" value="${toDatetimeLocal(displayRange.from)}" style="flex:1;" />
+        <input type="datetime-local" id="an-to" value="${toDatetimeLocal(displayRange.to)}" style="flex:1;" />
       </div>
-      <button type="button" class="btn btn-primary btn-block" id="an-apply">Zeitraum anwenden</button>
+      <button type="button" class="btn btn-primary btn-block" id="an-apply">Zeitraum zusätzlich eingrenzen</button>
+      <div class="muted" style="font-size:0.75rem;">Event wählen zeigt genau dessen Daten. Die Felder darüber grenzen innerhalb des Events optional weiter ein (z.B. nur Samstagnacht).</div>
     </div>
     <div id="an-content">${loading || !cache ? `<div class="empty-state">Lädt…</div>` : renderContent()}</div>
   `;
 
+  container.querySelector('#an-event').addEventListener('change', (e) => {
+    filters.eventId = e.target.value; // '' selects "Gesamt (alle Events)"
+    filters.from = null;
+    filters.to = null;
+    cache = null;
+    ctx.rerender();
+  });
+
   container.querySelector('#an-apply').addEventListener('click', () => {
     const fromVal = container.querySelector('#an-from').value;
     const toVal = container.querySelector('#an-to').value;
-    if (fromVal) filters.from = new Date(fromVal).getTime();
-    if (toVal) filters.to = new Date(toVal).getTime();
+    filters.from = fromVal ? new Date(fromVal).getTime() : null;
+    filters.to = toVal ? new Date(toVal).getTime() : null;
     cache = null;
     ctx.rerender();
   });
@@ -187,7 +262,10 @@ function renderConcurrencyChart(concurrency) {
   if (!concurrency || concurrency.buckets.length === 0) {
     return `<div class="empty-state" style="padding:20px;">Keine Daten für dieses Spiel im Zeitraum.</div>`;
   }
-  const max = Math.max(1, ...concurrency.buckets.map((b) => b.count));
+  // Plain reduce, not Math.max(...arr): a wide "Gesamt" range can produce
+  // thousands of buckets, and spreading that many args into Math.max blows
+  // the call stack.
+  const max = concurrency.buckets.reduce((m, b) => Math.max(m, b.count), 1);
   const bars = concurrency.buckets
     .map((b) => {
       const heightPct = Math.round((b.count / max) * 100);

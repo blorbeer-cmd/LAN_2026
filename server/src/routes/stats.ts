@@ -22,26 +22,40 @@ interface GameRow {
   icon: string;
 }
 
-// GET /api/stats/playtime - optionally filtered by ?gameId= and/or a day/time
-// range (?from=&to=, epoch ms). Returns both the per-player-per-game
-// breakdown and a per-player grand total (handy for an overall "who's played
-// the most" view when unfiltered).
+// GET /api/stats/playtime - optionally filtered by ?gameId=, ?eventId=
+// (exact — matches the event tagged on each session) and/or a day/time range
+// (?from=&to=, epoch ms, clips/prorates further within whatever eventId/
+// gameId already selected). Returns both the per-player-per-game breakdown
+// and a per-player grand total (handy for an overall "who's played the most"
+// view when unfiltered).
 statsRouter.get('/playtime', (req, res) => {
-  const { gameId } = req.query;
+  const { gameId, eventId } = req.query;
   const filterGameId = typeof gameId === 'string' ? gameId : null;
+  const filterEventId = typeof eventId === 'string' ? eventId : null;
 
   const range = parseTimeRangeQuery(req.query as Record<string, unknown>);
   if ('error' in range) return res.status(400).json({ error: range.error });
 
-  const rows = (
-    filterGameId
-      ? db
-          .prepare(
-            'SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions WHERE game_id = ?'
-          )
-          .all(filterGameId)
-      : db.prepare('SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions').all()
-  ) as Array<{ player_id: string; game_id: string; started_at: number; ended_at: number | null; active_ms: number }>;
+  const clauses: string[] = [];
+  const sqlParams: string[] = [];
+  if (filterGameId) {
+    clauses.push('game_id = ?');
+    sqlParams.push(filterGameId);
+  }
+  if (filterEventId) {
+    clauses.push('event_id = ?');
+    sqlParams.push(filterEventId);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const rows = db
+    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions ${where}`)
+    .all(...sqlParams) as Array<{
+    player_id: string;
+    game_id: string;
+    started_at: number;
+    ended_at: number | null;
+    active_ms: number;
+  }>;
 
   const now = Date.now();
   const rawSessions: PlaySession[] = rows.map((r) => ({

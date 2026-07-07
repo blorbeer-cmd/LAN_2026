@@ -33,22 +33,41 @@ interface GameRow {
   icon: string;
 }
 
-function loadAllSessions(gameId: string | null): Array<{
+// Filters directly by the event_id tagged onto each session at creation time
+// (exact) rather than approximating "this event" via a date range — a
+// session's real timestamps don't always line up perfectly with an event's
+// nominal start/end (agent clock skew, a session still open when the next
+// event starts, etc.).
+function loadAllSessions(
+  gameId: string | null,
+  eventId: string | null = null
+): Array<{
   player_id: string;
   game_id: string;
   started_at: number;
   ended_at: number | null;
   active_ms: number;
 }> {
-  return (
-    gameId
-      ? db
-          .prepare(
-            'SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions WHERE game_id = ?'
-          )
-          .all(gameId)
-      : db.prepare('SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions').all()
-  ) as Array<{ player_id: string; game_id: string; started_at: number; ended_at: number | null; active_ms: number }>;
+  const clauses: string[] = [];
+  const params: string[] = [];
+  if (gameId) {
+    clauses.push('game_id = ?');
+    params.push(gameId);
+  }
+  if (eventId) {
+    clauses.push('event_id = ?');
+    params.push(eventId);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  return db
+    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions ${where}`)
+    .all(...params) as Array<{
+    player_id: string;
+    game_id: string;
+    started_at: number;
+    ended_at: number | null;
+    active_ms: number;
+  }>;
 }
 
 function loadNamesFor(playerIds: string[], gameIds: string[]) {
@@ -88,13 +107,14 @@ function enrichDuration(
 // ?from=&to=. The core "interesting numbers" for a dashboard, computed
 // together since they all need the same session data anyway.
 analyticsRouter.get('/overview', (req, res) => {
-  const { gameId } = req.query;
+  const { gameId, eventId } = req.query;
   const filterGameId = typeof gameId === 'string' ? gameId : null;
+  const filterEventId = typeof eventId === 'string' ? eventId : null;
   const range = parseTimeRangeQuery(req.query as Record<string, unknown>);
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(filterGameId);
+  const rawRows = loadAllSessions(filterGameId, filterEventId);
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -138,14 +158,17 @@ analyticsRouter.get('/overview', (req, res) => {
 // GET /api/analytics/sessions - raw session log ("wer hat wann was
 // gespielt"), newest first. Filterable by ?gameId=, ?playerId=, ?from=&to=.
 analyticsRouter.get('/sessions', (req, res) => {
-  const { gameId, playerId } = req.query;
+  const { gameId, playerId, eventId } = req.query;
   const filterGameId = typeof gameId === 'string' ? gameId : null;
   const filterPlayerId = typeof playerId === 'string' ? playerId : null;
+  const filterEventId = typeof eventId === 'string' ? eventId : null;
   const range = parseTimeRangeQuery(req.query as Record<string, unknown>);
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(filterGameId).filter((r) => !filterPlayerId || r.player_id === filterPlayerId);
+  const rawRows = loadAllSessions(filterGameId, filterEventId).filter(
+    (r) => !filterPlayerId || r.player_id === filterPlayerId
+  );
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -203,11 +226,13 @@ analyticsRouter.get('/concurrency', (req, res) => {
 // GET /api/analytics/awards - the "witzige" awards (Marathon-Zocker,
 // Multitasking-Meister, Nachteule, ...), optionally filtered by ?from=&to=.
 analyticsRouter.get('/awards', (req, res) => {
+  const { eventId } = req.query;
+  const filterEventId = typeof eventId === 'string' ? eventId : null;
   const range = parseTimeRangeQuery(req.query as Record<string, unknown>);
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(null);
+  const rawRows = loadAllSessions(null, filterEventId);
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
