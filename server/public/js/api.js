@@ -40,6 +40,27 @@ export async function apiFetch(path, options = {}) {
   return body;
 }
 
+// For endpoints that don't return JSON (e.g. the QR code SVG) — apiFetch
+// always tries to JSON.parse the body, which would silently swallow a
+// non-JSON response. Still attaches the access token like apiFetch does.
+export async function fetchText(path) {
+  const headers = {};
+  const token = getToken();
+  if (token) headers['x-access-token'] = token;
+  const res = await fetch(path, { headers });
+  const text = await res.text();
+  if (!res.ok) {
+    let message = `Fehler ${res.status}`;
+    try {
+      message = JSON.parse(text).error || message;
+    } catch {
+      // body wasn't JSON either; keep the generic message
+    }
+    throw new Error(message);
+  }
+  return text;
+}
+
 export const api = {
   meta: () => apiFetch('/api/meta'),
 
@@ -152,5 +173,9 @@ export const api = {
         body: JSON.stringify({ winnerTeamId }),
       }),
     remove: (id) => apiFetch(`/api/tournaments/${id}`, { method: 'DELETE' }),
+  },
+
+  qrcode: {
+    svg: (text) => fetchText(`/api/qrcode?text=${encodeURIComponent(text)}`),
   },
 };

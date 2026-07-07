@@ -14,6 +14,7 @@ import { statsRouter } from './stats';
 import { analyticsRouter } from './analytics';
 import { eventsRouter } from './events';
 import { tournamentsRouter } from './tournaments';
+import { qrcodeRouter } from './qrcode';
 
 export const apiRouter = Router();
 
@@ -34,3 +35,4 @@ apiRouter.use('/stats', statsRouter);
 apiRouter.use('/analytics', analyticsRouter);
 apiRouter.use('/events', eventsRouter);
 apiRouter.use('/tournaments', tournamentsRouter);
+apiRouter.use('/qrcode', qrcodeRouter);

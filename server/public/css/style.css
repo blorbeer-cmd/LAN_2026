@@ -326,6 +326,18 @@ input[type='number']::-webkit-inner-spin-button {
   padding: 14px 16px;
 }
 
+/* The QR code SVG already draws its own white background (needed for
+   scanability regardless of theme) — just round its corners and give it
+   some breathing room against the dark page behind it. */
+#invite-qr svg {
+  border-radius: var(--radius);
+  overflow: hidden;
+  max-width: 100%;
+  height: auto;
+  padding: 12px;
+  background: #ffffff;
+}
+
 .empty-state {
   text-align: center;
   padding: 40px 16px;

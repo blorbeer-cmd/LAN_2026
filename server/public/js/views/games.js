@@ -19,9 +19,12 @@ function renderInviteSection() {
         <input type="text" id="invite-link" readonly value="${escapeHtml(url)}" style="flex:1;font-family:monospace;font-size:0.8rem;" />
         <button type="button" class="btn btn-sm" id="invite-copy">Kopieren</button>
       </div>
+      <button type="button" class="btn btn-sm" id="invite-qr-toggle">📱 QR-Code anzeigen</button>
+      <div id="invite-qr" style="text-align:center;" hidden></div>
       <p class="muted" style="font-size:0.8rem;">
-        Diesen Link verschicken – öffnet die Seite direkt eingeloggt und führt neue Leute direkt zur
-        Profil-Erstellung. Name, Bild, Skills und der eigene Agent-Key richten sich alle selbst ein.
+        Diesen Link verschicken (oder den QR-Code zeigen/aushängen) – öffnet die Seite direkt
+        eingeloggt und führt neue Leute direkt zur Profil-Erstellung. Name, Bild, Skills und der
+        eigene Agent-Key richten sich alle selbst ein.
       </p>
     </div>
   `;
@@ -89,6 +92,31 @@ export function renderGames(container, ctx) {
       showToast('Einladungslink kopiert.');
     } catch {
       showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+    }
+  });
+
+  container.querySelector('#invite-qr-toggle').addEventListener('click', async (e) => {
+    const qrEl = container.querySelector('#invite-qr');
+    if (!qrEl.hidden) {
+      qrEl.hidden = true;
+      e.target.textContent = '📱 QR-Code anzeigen';
+      return;
+    }
+    e.target.textContent = '📱 QR-Code ausblenden';
+    qrEl.hidden = false;
+    if (!qrEl.dataset.loaded) {
+      const url = container.querySelector('#invite-link').value;
+      try {
+        // Rendered server-side and injected as trusted markup (our own
+        // /api/qrcode response, not user input) so it displays inline
+        // without a network round trip to a third-party QR service that
+        // would otherwise see the access token embedded in the link.
+        qrEl.innerHTML = await api.qrcode.svg(url);
+        qrEl.dataset.loaded = '1';
+      } catch (err) {
+        qrEl.textContent = 'QR-Code konnte nicht geladen werden.';
+        showToast(err.message, { error: true });
+      }
     }
   });
 
