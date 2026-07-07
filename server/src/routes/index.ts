@@ -15,6 +15,7 @@ import { analyticsRouter } from './analytics';
 import { eventsRouter } from './events';
 import { tournamentsRouter } from './tournaments';
 import { qrcodeRouter } from './qrcode';
+import { exportRouter } from './export';
 
 export const apiRouter = Router();
 
@@ -36,3 +37,4 @@ apiRouter.use('/analytics', analyticsRouter);
 apiRouter.use('/events', eventsRouter);
 apiRouter.use('/tournaments', tournamentsRouter);
 apiRouter.use('/qrcode', qrcodeRouter);
+apiRouter.use('/export', exportRouter);

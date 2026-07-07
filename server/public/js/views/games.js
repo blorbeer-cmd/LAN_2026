@@ -39,6 +39,7 @@ function renderEventSection() {
       <div class="lb-row">
         <span style="flex:1;">${escapeHtml(e.name)}</span>
         <span class="muted" style="font-size:0.78rem;">${new Date(e.starts_at).toLocaleDateString('de-DE')} – ${e.ends_at ? new Date(e.ends_at).toLocaleDateString('de-DE') : '?'}</span>
+        <button type="button" class="icon-btn" data-export-event="${e.id}" data-export-name="${escapeHtml(e.name)}" aria-label="Exportieren" title="Als Andenken exportieren">💾</button>
       </div>`
     )
     .join('');
@@ -48,11 +49,36 @@ function renderEventSection() {
     <div class="card stack">
       <div class="row-between">
         <span>Aktuell: <strong>${escapeHtml(active ? active.name : '–')}</strong></span>
-        <button type="button" class="btn btn-sm" id="new-event-btn">Neues Event starten</button>
+        <div class="row" style="gap:6px;">
+          ${active ? `<button type="button" class="icon-btn" data-export-event="${active.id}" data-export-name="${escapeHtml(active.name)}" aria-label="Exportieren" title="Als Andenken exportieren">💾</button>` : ''}
+          <button type="button" class="btn btn-sm" id="new-event-btn">Neues Event starten</button>
+        </div>
       </div>
       ${past.length > 0 ? `<div class="muted" style="font-size:0.78rem;margin-top:4px;">Vergangene Events</div>${pastRows}` : ''}
     </div>
   `;
+}
+
+// Triggers a browser download of the event's JSON snapshot ("Andenken").
+// Built client-side from the already-authenticated api.export.snapshot()
+// call (a plain <a href="/api/export"> couldn't carry the access-token
+// header), so this always goes through a Blob + temporary object URL.
+async function downloadExport(eventId, eventName) {
+  try {
+    const data = await api.export.snapshot(eventId);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safeName = eventName.replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '') || 'event';
+    a.href = url;
+    a.download = `respawnhq-${safeName}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showToast(err.message, { error: true });
+  }
 }
 
 export function renderGames(container, ctx) {
@@ -84,6 +110,10 @@ export function renderGames(container, ctx) {
         : `<div class="stack">${rows}</div>`
     }
   `;
+
+  container.querySelectorAll('[data-export-event]').forEach((btn) => {
+    btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent, btn.dataset.exportName));
+  });
 
   container.querySelector('#invite-copy').addEventListener('click', async () => {
     const value = container.querySelector('#invite-link').value;

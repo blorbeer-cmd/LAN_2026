@@ -178,4 +178,8 @@ export const api = {
   qrcode: {
     svg: (text) => fetchText(`/api/qrcode?text=${encodeURIComponent(text)}`),
   },
+
+  export: {
+    snapshot: (eventId) => apiFetch(`/api/export${eventId ? `?eventId=${eventId}` : ''}`),
+  },
 };
