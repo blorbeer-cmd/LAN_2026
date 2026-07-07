@@ -7,15 +7,7 @@ import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, formatDate } from '../format.js';
 import { showToast } from '../toast.js';
-
-const MY_ID_KEY = 'lan2026_my_player_id';
-
-function getMyId() {
-  return localStorage.getItem(MY_ID_KEY) || '';
-}
-function setMyId(id) {
-  localStorage.setItem(MY_ID_KEY, id);
-}
+import { getMyId, setMyId } from '../whoami.js';
 
 export function renderVotes(container, ctx) {
   const votes = state.votes;

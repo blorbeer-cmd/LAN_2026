@@ -104,4 +104,12 @@ test('full click-through: players, matchmaking, voting, leaderboard', async () =
   await page.click('[data-view="live"]');
   await page.waitForSelector('.player-card');
   assert.equal(await page.locator('.player-card').count(), 2);
+
+  // Manual pause override (FR-28): pick "who am I", toggle pause, see the
+  // badge flip, then toggle back.
+  await page.selectOption('#live-whoami', { label: 'E2E Alice' });
+  await page.click('[data-toggle-pause]');
+  await page.waitForSelector('.badge-paused');
+  await page.click('[data-toggle-pause]');
+  await page.waitForFunction(() => !document.querySelector('.badge-paused'));
 });

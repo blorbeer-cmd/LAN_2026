@@ -73,6 +73,8 @@ export const api = {
 
   live: {
     board: () => apiFetch('/api/live'),
+    setNote: (playerId, note) =>
+      apiFetch(`/api/live/${playerId}/note`, { method: 'POST', body: JSON.stringify({ note }) }),
   },
 
   matchmaking: {
