@@ -8,6 +8,7 @@ import { state, gameById } from '../state.js';
 import { escapeHtml, gameBadgeHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
+import { resizeImageFile } from '../imageUtils.js';
 
 function renderInviteSection() {
   const token = getToken();
@@ -232,10 +233,19 @@ function openGameDetail(gameId, ctx) {
     escapeHtml(game.name),
     `
       <div class="stack">
-        <div class="row">
-          <input type="text" id="edit-icon" value="${escapeHtml(game.icon)}" maxlength="8" style="width:70px;" />
+        <div class="row" style="align-items:center;">
+          <label for="edit-icon-image-input" style="cursor:pointer;" title="Eigenes Icon/Logo hochladen">
+            ${gameBadgeHtml(game, 56)}
+          </label>
+          <input type="file" id="edit-icon-image-input" accept="image/*" hidden />
+          <input type="text" id="edit-icon" value="${escapeHtml(game.icon)}" maxlength="8" style="width:56px;" title="Emoji-Icon (Fallback ohne eigenes Bild)" />
           <input type="text" id="edit-name" value="${escapeHtml(game.name)}" maxlength="60" style="flex:1;" />
         </div>
+        ${
+          game.icon_image
+            ? `<button type="button" class="btn btn-sm" id="edit-icon-image-remove" style="align-self:flex-start;">🗑️ Eigenes Icon entfernen</button>`
+            : `<p class="muted" style="font-size:0.78rem;margin-top:-4px;">Tipp: Badge antippen, um ein eigenes Icon/Logo hochzuladen (z. B. Spiel-Artwork).</p>`
+        }
         <div class="row">
           <input type="number" id="edit-min" min="1" max="20" value="${game.min_team_size}" placeholder="Min. Team" style="flex:1;" />
           <input type="number" id="edit-max" min="1" max="20" value="${game.max_team_size}" placeholder="Max. Team" style="flex:1;" />
@@ -254,6 +264,36 @@ function openGameDetail(gameId, ctx) {
     `,
     {
       onMount: (el) => {
+        el.querySelector('#edit-icon-image-input').addEventListener('change', async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          try {
+            const iconImage = await resizeImageFile(file, 128);
+            await api.games.update(gameId, { iconImage });
+            close();
+            await ctx.refresh();
+            showToast('Icon aktualisiert.');
+            openGameDetail(gameId, ctx);
+          } catch (err) {
+            showToast(err.message, { error: true });
+          }
+        });
+
+        const removeIconBtn = el.querySelector('#edit-icon-image-remove');
+        if (removeIconBtn) {
+          removeIconBtn.addEventListener('click', async () => {
+            try {
+              await api.games.update(gameId, { iconImage: null });
+              close();
+              await ctx.refresh();
+              showToast('Eigenes Icon entfernt.');
+              openGameDetail(gameId, ctx);
+            } catch (err) {
+              showToast(err.message, { error: true });
+            }
+          });
+        }
+
         el.querySelector('#edit-save').addEventListener('click', async () => {
           const name = el.querySelector('#edit-name').value.trim();
           const icon = el.querySelector('#edit-icon').value.trim() || '🎮';

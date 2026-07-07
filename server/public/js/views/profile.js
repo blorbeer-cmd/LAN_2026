@@ -15,6 +15,7 @@ import { getMyId, setMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { getPushSubscriptionState, enablePush, disablePush } from '../push.js';
 import { invalidateMyStats } from './myStats.js';
+import { resizeImageFile } from '../imageUtils.js';
 
 // Who you've declared as a seat neighbor for the active event (FR-18
 // extension). Fetched lazily, reset whenever the active identity changes.
@@ -27,32 +28,6 @@ let neighborsForPlayerId = null;
 // permission/registration lookups, no network round trip).
 let pushState = null;
 let pushBusy = false;
-
-// Resizes/compresses a picked image client-side so the DB (a single SQLite
-// file synced/backed up as a whole) doesn't balloon from full-resolution
-// phone photos — a small square thumbnail is all a profile picture needs.
-function resizeImageFile(file, maxSize = 200, quality = 0.8) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden.'));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error('Das ist kein gültiges Bild.'));
-      img.onload = () => {
-        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
-        const w = Math.max(1, Math.round(img.width * scale));
-        const h = Math.max(1, Math.round(img.height * scale));
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', quality));
-      };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
 
 function renderIdentityPicker(container, ctx) {
   const myId = getMyId();

@@ -448,6 +448,15 @@ input[type='number']::-webkit-inner-spin-button {
   line-height: 1;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
+.game-badge-img {
+  background: var(--bg-elevated-2);
+  overflow: hidden;
+}
+.game-badge-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 
 /* ---------- Status badges & chips ---------- */
 
