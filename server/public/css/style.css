@@ -262,6 +262,20 @@ input[type='color'] {
   cursor: pointer;
 }
 
+/* Number inputs are often sized narrow (team counts, etc.); the native
+   up/down spinner steals space from that on top of the usual padding,
+   which is what was clipping placeholders like "Teams". Not worth the
+   spinner anyway on a touch-first UI. */
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 /* ---------- Layout helpers ---------- */
 
 .row {

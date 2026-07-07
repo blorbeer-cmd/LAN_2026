@@ -49,7 +49,7 @@ export function renderMatchmaking(container, ctx) {
       <select id="mm-game">${gameOptions}</select>
       <div>${playerRows}</div>
       <div class="row">
-        <input type="number" id="mm-teamcount" placeholder="Teams" min="2" style="width:80px;flex-shrink:0;" />
+        <input type="number" id="mm-teamcount" placeholder="Teams" min="2" style="width:90px;flex-shrink:0;" />
         <button type="button" class="btn btn-primary" id="mm-generate" style="flex:1;">Teams auslosen</button>
       </div>
       <div class="muted" style="font-size:0.78rem;margin-top:-6px;">Anzahl Teams leer lassen für automatisch (Standard: 2)</div>
