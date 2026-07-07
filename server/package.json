@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "test": "tsc -p tsconfig.test.json && cross-env DB_FILE=:memory: node --test \"dist-test/**/*.test.js\""
+    "test": "tsc -p tsconfig.test.json && cross-env DB_FILE=:memory: node --test \"dist-test/*.test.js\" \"dist-test/test/*.test.js\"",
+    "test:e2e": "tsc -p tsconfig.test.json && node --test \"dist-test/test/e2e/*.test.js\""
   },
   "dependencies": {
     "better-sqlite3": "^11.3.0",
@@ -23,6 +24,7 @@
     "@types/node": "^22.5.0",
     "@types/supertest": "^6.0.2",
     "cross-env": "^7.0.3",
+    "playwright": "1.56.1",
     "supertest": "^7.0.0",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.5.4"

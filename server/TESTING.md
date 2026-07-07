@@ -1,34 +1,43 @@
 # Tests
 
 Qualität wird über automatisierte Tests abgesichert. Bewusst schlank gehalten – kein schweres
-Framework, sondern der **eingebaute Node-Test-Runner** (`node:test`) plus **supertest** für die API.
+Framework, sondern der **eingebaute Node-Test-Runner** (`node:test`) plus **supertest** für die API
+und **Playwright** für echte Browser-Klickpfade.
 
 ## Test-Arten
 
 | Art | Womit | Was |
 |-----|-------|-----|
-| **Unit** | `node:test` + `assert` | Reine Logik ohne I/O: Zugangs-Guard (`auth.test.ts`), Live-Status-Ableitung (`liveStatus.test.ts`). |
+| **Unit** | `node:test` + `assert` | Reine Logik ohne I/O: Zugangs-Guard, Live-Status-Ableitung, Matchmaking-Balancing, Leaderboard-Scoring (`src/*.test.ts`). |
 | **Integration** | `node:test` + `supertest` | Echte HTTP-Requests gegen die Express-App (`src/test/*.test.ts`), gegen eine **In-Memory-DB**. |
-| **E2E (Browser)** | Playwright | Folgt, sobald das Frontend steht: Klickpfade durch die Web-UI. |
+| **E2E (Browser)** | `node:test` + Playwright (`src/test/e2e/*.e2e.test.ts`) | Startet den echten gebauten Server + einen echten Chromium und klickt durch die Web-UI: Spieler anlegen, Teams auslosen, abstimmen, Ergebnis eintragen, Zugangs-Token-Login. |
 
 ## Ausführen
 
 ```bash
 cd server
-npm test          # baut Tests nach dist-test/ und führt alle *.test.ts aus
+npm test          # schnell: Unit + Integration (In-Memory-DB, kein Server/Browser nötig)
+npm run test:e2e  # langsamer: startet Server-Prozess(e) + Chromium, klickt durch die UI
 ```
 
-- Tests laufen gegen eine **In-Memory-SQLite** (`DB_FILE=:memory:`), berühren also nie echte Daten.
+- Unit/Integration laufen gegen eine **In-Memory-SQLite** (`DB_FILE=:memory:`), berühren also nie
+  echte Daten.
+- E2E startet den gebauten Server (`dist/index.js`) als eigenen Kindprozess auf einem Test-Port,
+  ebenfalls mit `DB_FILE=:memory:`, und schließt ihn danach automatisch wieder.
 - Jede Test-Datei läuft in einem eigenen Prozess (Isolation durch den Node-Runner).
 
 ## Konventionen
 
-- Testdateien heißen `*.test.ts` und liegen neben dem Code (Unit) bzw. unter `src/test/`
-  (Integration).
-- Der Produktions-Build (`npm run build`) schließt Testdateien aus – sie landen nie in `dist/`.
+- Unit-Testdateien heißen `*.test.ts` und liegen neben dem Code.
+- Integrationstests liegen unter `src/test/*.test.ts`.
+- E2E-Tests liegen unter `src/test/e2e/*.e2e.test.ts` und laufen **nicht** in `npm test` mit (eigenes
+  Script `test:e2e`), da sie einen Server + Browser brauchen und entsprechend langsamer sind.
+- Der Produktions-Build (`npm run build`) schließt alle Testdateien aus – sie landen nie in `dist/`.
 - `index.ts` startet den Server nur, wenn es direkt ausgeführt wird (`require.main === module`),
   damit Tests die App importieren können, ohne einen Port zu belegen.
 
 ## Vor jedem Commit
 
 `npm run build` **und** `npm test` müssen grün sein (siehe Qualitäts-Checkliste in `CLAUDE.md`).
+`npm run test:e2e` sollte laufen, wenn sich am Frontend oder an view-übergreifenden Abläufen etwas
+geändert hat.
