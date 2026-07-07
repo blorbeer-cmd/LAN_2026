@@ -66,3 +66,21 @@ test('token is remembered across a reload', async () => {
   const loginHidden = await page.getAttribute('#login-screen', 'hidden');
   assert.notEqual(loginHidden, null);
 });
+
+test('an invite link (?token=) logs in automatically without the login form', async () => {
+  await page.evaluate(() => localStorage.clear());
+  await page.goto(`${BASE_URL}/?token=${TOKEN}`);
+  await page.waitForSelector('#app:not([hidden])');
+
+  // Settings shows that same link back, built from the now-stored token.
+  await page.click('#settings-btn');
+  await page.waitForSelector('#invite-link');
+  const linkValue = await page.inputValue('#invite-link');
+  assert.ok(linkValue.includes(`token=${TOKEN}`));
+});
+
+test('an invite link with a wrong token falls back to the login screen', async () => {
+  await page.evaluate(() => localStorage.clear());
+  await page.goto(`${BASE_URL}/?token=not-the-real-token`);
+  await page.waitForSelector('#login-screen:not([hidden])');
+});

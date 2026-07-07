@@ -1,13 +1,56 @@
-// Games/settings view (FR-07, FR-10, FR-30): manage the game catalog and the
-// process-name mappings the agent uses to recognize what's running. Reached
-// via the ⚙️ icon, not the main bottom nav — this is setup work, not something
-// people touch during actual play.
+// Settings view (FR-07, FR-10, FR-30): event management, the invite link,
+// and the game catalog + process-name mappings the agent uses to recognize
+// what's running. Reached via the ⚙️ icon, not the main bottom nav — this is
+// setup work, not something people touch during actual play.
 
-import { api } from '../api.js';
+import { api, getToken } from '../api.js';
 import { state, gameById } from '../state.js';
 import { escapeHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
+
+function renderInviteSection() {
+  const token = getToken();
+  const url = token ? `${location.origin}/?token=${encodeURIComponent(token)}` : location.origin;
+  return `
+    <div class="section-title">🔗 Einladungslink</div>
+    <div class="card stack">
+      <div class="row">
+        <input type="text" id="invite-link" readonly value="${escapeHtml(url)}" style="flex:1;font-family:monospace;font-size:0.8rem;" />
+        <button type="button" class="btn btn-sm" id="invite-copy">Kopieren</button>
+      </div>
+      <p class="muted" style="font-size:0.8rem;">
+        Diesen Link verschicken – öffnet die Seite direkt eingeloggt. Der Empfänger legt sich dann
+        unter „Spieler" selbst an.
+      </p>
+    </div>
+  `;
+}
+
+function renderEventSection() {
+  const active = state.events?.find((e) => e.isActive);
+  const past = (state.events || []).filter((e) => !e.isActive);
+  const pastRows = past
+    .map(
+      (e) => `
+      <div class="lb-row">
+        <span style="flex:1;">${escapeHtml(e.name)}</span>
+        <span class="muted" style="font-size:0.78rem;">${new Date(e.starts_at).toLocaleDateString('de-DE')} – ${e.ends_at ? new Date(e.ends_at).toLocaleDateString('de-DE') : '?'}</span>
+      </div>`
+    )
+    .join('');
+
+  return `
+    <div class="section-title">🎪 Event</div>
+    <div class="card stack">
+      <div class="row-between">
+        <span>Aktuell: <strong>${escapeHtml(active ? active.name : '–')}</strong></span>
+        <button type="button" class="btn btn-sm" id="new-event-btn">Neues Event starten</button>
+      </div>
+      ${past.length > 0 ? `<div class="muted" style="font-size:0.78rem;margin-top:4px;">Vergangene Events</div>${pastRows}` : ''}
+    </div>
+  `;
+}
 
 export function renderGames(container, ctx) {
   const rows = state.games
@@ -25,8 +68,11 @@ export function renderGames(container, ctx) {
     .join('');
 
   container.innerHTML = `
+    <h1 class="view-title">Einstellungen</h1>
+    ${renderEventSection()}
+    ${renderInviteSection()}
     <div class="row-between">
-      <h1 class="view-title">Spiele verwalten</h1>
+      <div class="section-title" style="margin:0;">🎮 Spiele verwalten</div>
       <button type="button" class="btn btn-primary btn-sm" id="add-game-btn">+ Spiel</button>
     </div>
     ${
@@ -35,6 +81,31 @@ export function renderGames(container, ctx) {
         : `<div class="stack">${rows}</div>`
     }
   `;
+
+  container.querySelector('#invite-copy').addEventListener('click', async () => {
+    const value = container.querySelector('#invite-link').value;
+    try {
+      await navigator.clipboard.writeText(value);
+      showToast('Einladungslink kopiert.');
+    } catch {
+      showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+    }
+  });
+
+  container.querySelector('#new-event-btn').addEventListener('click', async () => {
+    const name = prompt('Name für das neue Event (z.B. "LAN Winter 2027"):');
+    if (!name || !name.trim()) return;
+    if (!confirm(`Neues Event "${name.trim()}" starten? Das aktuelle Event wird beendet und der Live-Status zurückgesetzt.`)) {
+      return;
+    }
+    try {
+      await api.events.create(name.trim());
+      await ctx.refresh();
+      showToast('Neues Event gestartet.');
+    } catch (err) {
+      showToast(err.message, { error: true });
+    }
+  });
 
   container.querySelector('#add-game-btn').addEventListener('click', () => openGameForm(ctx));
   container.querySelectorAll('[data-game]').forEach((btn) => {

@@ -6,7 +6,7 @@ import { api } from './api.js';
 import { state } from './state.js';
 
 export async function loadAll() {
-  const [players, games, skills, live, votes, matches, leaderboard, playtime] = await Promise.all([
+  const [players, games, skills, live, votes, matches, leaderboard, playtime, events] = await Promise.all([
     api.players.list(),
     api.games.list(),
     api.skills.list(),
@@ -15,6 +15,7 @@ export async function loadAll() {
     api.matches.list(),
     api.leaderboard.get(state.selectedGameId || undefined),
     api.stats.playtime(state.selectedGameId || undefined),
+    api.events.list(),
   ]);
-  Object.assign(state, { players, games, skills, live, votes, matches, leaderboard, playtime });
+  Object.assign(state, { players, games, skills, live, votes, matches, leaderboard, playtime, events });
 }

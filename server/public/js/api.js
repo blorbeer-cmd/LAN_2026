@@ -125,4 +125,11 @@ export const api = {
       return apiFetch(`/api/analytics/awards${qs ? `?${qs}` : ''}`);
     },
   },
+
+  events: {
+    list: () => apiFetch('/api/events'),
+    active: () => apiFetch('/api/events/active'),
+    create: (name) => apiFetch('/api/events', { method: 'POST', body: JSON.stringify({ name }) }),
+    rename: (id, name) => apiFetch(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  },
 };

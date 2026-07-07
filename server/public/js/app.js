@@ -66,9 +66,19 @@ async function tokenWorks(candidate) {
 
 // Gates the whole app behind the shared access token, if one is configured
 // server-side (NFR-16). Resolves once a working token is stored.
+//
+// Invite links carry the token in the URL (?token=...): opening one logs in
+// automatically without anyone having to type or paste anything, which is
+// the whole point of sending a link instead of a password.
 async function ensureAccess() {
   const meta = await api.meta();
   if (!meta.accessProtection) return;
+
+  const fromUrl = new URLSearchParams(location.search).get('token');
+  if (fromUrl && (await tokenWorks(fromUrl))) {
+    setToken(fromUrl);
+    return;
+  }
 
   const existing = getToken();
   if (existing && (await tokenWorks(existing))) return;
@@ -120,7 +130,13 @@ function wireSocket() {
 
   // These events carry no payload (or aren't worth special-casing) — just
   // reload everything. Infrequent (admin-type actions), so this is cheap.
-  const fullReloadEvents = ['players:changed', 'games:changed', 'skills:changed', 'leaderboard:changed'];
+  const fullReloadEvents = [
+    'players:changed',
+    'games:changed',
+    'skills:changed',
+    'leaderboard:changed',
+    'events:changed',
+  ];
   fullReloadEvents.forEach((event) => socket.on(event, () => ctx.refresh()));
 
   // These events carry the fresh payload directly, so we can update state
