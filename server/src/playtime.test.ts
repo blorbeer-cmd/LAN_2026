@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computePlaytime, formatDurationMs, type PlaySession } from './playtime';
+import {
+  computePlaytime,
+  aggregateByGame,
+  formatDurationMs,
+  type PlaySession,
+  type PlaytimeEntry,
+} from './playtime';
 
 test('computePlaytime sums a single closed session', () => {
   const sessions: PlaySession[] = [
@@ -60,4 +66,31 @@ test('formatDurationMs formats hours+minutes', () => {
 
 test('formatDurationMs rounds to the nearest minute', () => {
   assert.equal(formatDurationMs(59_500), '1m');
+});
+
+test('aggregateByGame sums across all players for the same game', () => {
+  const entries: PlaytimeEntry[] = [
+    { playerId: 'p1', gameId: 'g1', totalMs: 1000 },
+    { playerId: 'p2', gameId: 'g1', totalMs: 2000 },
+    { playerId: 'p1', gameId: 'g2', totalMs: 500 },
+  ];
+  const result = aggregateByGame(entries);
+  assert.equal(result.length, 2);
+  assert.deepEqual(
+    result.find((r) => r.gameId === 'g1'),
+    { gameId: 'g1', totalMs: 3000 }
+  );
+});
+
+test('aggregateByGame sorts descending by total time', () => {
+  const entries: PlaytimeEntry[] = [
+    { playerId: 'p1', gameId: 'g1', totalMs: 1000 },
+    { playerId: 'p1', gameId: 'g2', totalMs: 5000 },
+  ];
+  const result = aggregateByGame(entries);
+  assert.equal(result[0].gameId, 'g2');
+});
+
+test('aggregateByGame returns an empty list for no entries', () => {
+  assert.deepEqual(aggregateByGame([]), []);
 });

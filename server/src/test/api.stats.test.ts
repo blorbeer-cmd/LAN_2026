@@ -72,3 +72,24 @@ test('GET /api/stats/playtime totals aggregate across games for the same player'
   assert.ok(total);
   assert.ok(total.formatted); // e.g. "1m" or "45m"
 });
+
+test('GET /api/stats/playtime totalsByGame aggregates across all players for CS2', async () => {
+  // A second player also plays a CS2 session, so the per-game total should
+  // exceed what any single player racked up alone.
+  const other = await request(app).post('/api/players').send({ name: 'Playtime Tester 2' });
+  await request(app)
+    .post('/api/agent/report')
+    .set('x-api-key', other.body.api_key)
+    .send({ processNames: ['cs2.exe'] });
+  await new Promise((r) => setTimeout(r, 50));
+  await request(app).post('/api/agent/report').set('x-api-key', other.body.api_key).send({ processNames: [] });
+
+  const res = await request(app).get(`/api/stats/playtime?gameId=${cs2GameId}`);
+  const gameTotal = res.body.totalsByGame.find((g: { gameId: string }) => g.gameId === cs2GameId);
+  const player1Ms = res.body.entries.find((e: { playerId: string }) => e.playerId === playerId).totalMs;
+  const player2Ms = res.body.entries.find((e: { playerId: string }) => e.playerId === other.body.id).totalMs;
+
+  assert.ok(gameTotal);
+  assert.equal(gameTotal.totalMs, player1Ms + player2Ms);
+  assert.equal(gameTotal.gameName, 'Counter-Strike 2');
+});

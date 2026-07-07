@@ -3,7 +3,7 @@
 
 import { Router } from 'express';
 import { db } from '../db';
-import { computePlaytime, formatDurationMs, type PlaySession } from '../playtime';
+import { computePlaytime, aggregateByGame, formatDurationMs, type PlaySession } from '../playtime';
 
 export const statsRouter = Router();
 
@@ -83,5 +83,15 @@ statsRouter.get('/playtime', (req, res) => {
     }))
     .sort((a, b) => b.totalMs - a.totalMs);
 
-  res.json({ gameId: filterGameId, entries, totals });
+  // Per-game total across everyone — "how long did this game run at the
+  // party in total", not per person.
+  const totalsByGame = aggregateByGame(perGame).map(({ gameId: id, totalMs }) => ({
+    gameId: id,
+    gameName: gameByIdMap.get(id)?.name ?? 'Unbekannt',
+    gameIcon: gameByIdMap.get(id)?.icon ?? '🎮',
+    totalMs,
+    formatted: formatDurationMs(totalMs),
+  }));
+
+  res.json({ gameId: filterGameId, entries, totals, totalsByGame });
 });

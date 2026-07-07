@@ -30,6 +30,23 @@ export function computePlaytime(sessions: PlaySession[], now: number): PlaytimeE
   return [...byKey.values()].sort((a, b) => b.totalMs - a.totalMs);
 }
 
+export interface GameTotal {
+  gameId: string;
+  totalMs: number;
+}
+
+// Sums per-player-per-game entries into a per-game total across everyone —
+// "how long did this game run at the party in total", not per person.
+export function aggregateByGame(entries: PlaytimeEntry[]): GameTotal[] {
+  const totals = new Map<string, number>();
+  for (const e of entries) {
+    totals.set(e.gameId, (totals.get(e.gameId) ?? 0) + e.totalMs);
+  }
+  return [...totals.entries()]
+    .map(([gameId, totalMs]) => ({ gameId, totalMs }))
+    .sort((a, b) => b.totalMs - a.totalMs);
+}
+
 // "2h 15m" / "45m" style formatting for display.
 export function formatDurationMs(ms: number): string {
   const totalMinutes = Math.round(ms / 60000);

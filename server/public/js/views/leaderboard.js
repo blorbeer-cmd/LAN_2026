@@ -50,6 +50,20 @@ export function renderLeaderboard(container, ctx) {
     )
     .join('');
 
+  // "How long did this game run at the party in total" — summed across
+  // everyone, as opposed to the per-player breakdown above.
+  const playtimeByGame = state.playtime?.totalsByGame || [];
+  const playtimeByGameRows = playtimeByGame
+    .map(
+      (g) => `
+      <div class="lb-row">
+        <span>${escapeHtml(g.gameIcon)}</span>
+        <span style="flex:1;">${escapeHtml(g.gameName)}</span>
+        <span class="lb-points">${escapeHtml(g.formatted)}</span>
+      </div>`
+    )
+    .join('');
+
   container.innerHTML = `
     <div class="row-between">
       <h1 class="view-title">Rangliste</h1>
@@ -63,6 +77,11 @@ export function renderLeaderboard(container, ctx) {
     <div class="section-title">⏱️ Spielzeit</div>
     <div class="card">
       ${playtime.length === 0 ? `<div class="empty-state" style="padding:20px;"><span class="emoji">⏱️</span>Noch keine erfasste Spielzeit.</div>` : playtimeRows}
+    </div>
+
+    <div class="section-title">🕒 Spielzeit pro Spiel (alle zusammen)</div>
+    <div class="card">
+      ${playtimeByGame.length === 0 ? `<div class="empty-state" style="padding:20px;"><span class="emoji">🕒</span>Noch keine erfasste Spielzeit.</div>` : playtimeByGameRows}
     </div>
   `;
 
