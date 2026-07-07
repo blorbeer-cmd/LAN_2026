@@ -359,6 +359,15 @@ export function renderProfile(container, ctx) {
 
     <div class="section-title">🖥️ Live-Status-Agent</div>
     <div class="card stack">
+      <label class="check-row">
+        <input type="checkbox" id="agent-track-activity" />
+        <span style="flex:1;">Erweitertes Aktivitäts-Tracking</span>
+      </label>
+      <p class="muted" style="font-size:0.8rem;margin-top:-4px;">
+        Aus (Standard): der Server weiß nur „läuft Spiel X gerade". An: zusätzlich, ob das
+        Spielfenster wirklich im Vordergrund ist statt nur im Hintergrund zu laufen – zeigt sich z. B.
+        als „davon aktiv gespielt" in deiner Statistik. Wirkt sich erst beim nächsten Download aus.
+      </p>
       <button type="button" class="btn btn-primary btn-block" id="agent-download">📥 Agent für Windows herunterladen</button>
       <p class="muted" style="font-size:0.8rem;">
         ZIP entpacken, <code>install.bat</code> doppelklicken – Server-Adresse und dein API-Key sind
@@ -434,7 +443,8 @@ export function renderProfile(container, ctx) {
     const originalLabel = btn.textContent;
     btn.textContent = 'Wird vorbereitet…';
     try {
-      const { blob, filename } = await api.agent.download(myId);
+      const trackActivity = container.querySelector('#agent-track-activity').checked;
+      const { blob, filename } = await api.agent.download(myId, trackActivity);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

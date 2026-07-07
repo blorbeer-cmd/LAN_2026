@@ -27,6 +27,21 @@ function sanitizeForFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9äöüÄÖÜß_-]+/g, '_').slice(0, 40) || 'Spieler';
 }
 
+// Exported (pure, no fs/network) so it's directly unit-testable without
+// needing a real prebuilt exe on disk. trackActivity is opt-in and chosen by
+// the player at download time (a checkbox on the Profile page) rather than
+// something they'd have to edit into the config file by hand afterwards —
+// anything other than exactly "1" is treated as declined, matching the
+// agent's own default-off behavior.
+export function buildAgentConfig(serverUrl: string, apiKey: string, trackActivityParam: unknown) {
+  return {
+    serverUrl,
+    apiKey,
+    pollIntervalMs: 10000,
+    trackActivity: trackActivityParam === '1',
+  };
+}
+
 // Kept plain-ASCII (no umlauts) since a .bat file's default codepage often
 // mangles them; \r\n line endings since Windows batch is picky about that.
 function buildInstallBat(): string {
@@ -53,9 +68,10 @@ function buildInstallBat(): string {
   return lines.join('\r\n') + '\r\n';
 }
 
-// GET /api/agent-download?playerId=... - streams a personalized ZIP.
+// GET /api/agent-download?playerId=...&trackActivity=1 - streams a
+// personalized ZIP.
 agentDownloadRouter.get('/', (req, res) => {
-  const { playerId } = req.query;
+  const { playerId, trackActivity } = req.query;
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
@@ -72,12 +88,7 @@ agentDownloadRouter.get('/', (req, res) => {
   }
 
   const serverUrl = `${req.protocol}://${req.get('host')}`;
-  const config = {
-    serverUrl,
-    apiKey: player.api_key,
-    pollIntervalMs: 10000,
-    trackActivity: false,
-  };
+  const config = buildAgentConfig(serverUrl, player.api_key, trackActivity);
 
   res.attachment(`RespawnHQ-Agent-${sanitizeForFilename(player.name)}.zip`);
   res.set('Content-Type', 'application/zip');

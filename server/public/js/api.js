@@ -234,6 +234,7 @@ export const api = {
   },
 
   agent: {
-    download: (playerId) => fetchBlob(`/api/agent-download?playerId=${encodeURIComponent(playerId)}`),
+    download: (playerId, trackActivity) =>
+      fetchBlob(`/api/agent-download?playerId=${encodeURIComponent(playerId)}${trackActivity ? '&trackActivity=1' : ''}`),
   },
 };

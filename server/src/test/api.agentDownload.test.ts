@@ -9,9 +9,26 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
+import { buildAgentConfig } from '../routes/agentDownload';
 
 const app = createApp();
 let playerId: string;
+
+test('buildAgentConfig defaults trackActivity to off', () => {
+  const config = buildAgentConfig('http://192.168.1.50:3000', 'the-key', undefined);
+  assert.deepEqual(config, {
+    serverUrl: 'http://192.168.1.50:3000',
+    apiKey: 'the-key',
+    pollIntervalMs: 10000,
+    trackActivity: false,
+  });
+});
+
+test('buildAgentConfig only turns trackActivity on for exactly "1"', () => {
+  assert.equal(buildAgentConfig('http://x', 'k', '1').trackActivity, true);
+  assert.equal(buildAgentConfig('http://x', 'k', 'true').trackActivity, false);
+  assert.equal(buildAgentConfig('http://x', 'k', '0').trackActivity, false);
+});
 
 test('setup: a player', async () => {
   const p = await request(app).post('/api/players').send({ name: 'Download Tester' });
