@@ -9,7 +9,7 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, formatDateTime, avatarHtml } from '../format.js';
+import { escapeHtml, formatDateTime, avatarHtml, gameBadgeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 
 let cache = null;
@@ -192,7 +192,7 @@ function renderContent() {
           (r) => `
         <div class="lb-row">
           ${avatarHtml(state.players.find((p) => p.id === r.playerId) || { color: r.playerColor }, 20)}
-          <span style="flex:1;">${escapeHtml(r.gameIcon)} ${escapeHtml(r.gameName)} — ${escapeHtml(r.playerName)}</span>
+          <span class="row" style="flex:1;gap:6px;">${gameBadgeHtml({ id: r.gameId, icon: r.gameIcon }, 20)} ${escapeHtml(r.gameName)} — ${escapeHtml(r.playerName)}</span>
           <span class="lb-points">${escapeHtml(r.formatted)}</span>
         </div>`
         )
@@ -227,7 +227,7 @@ function renderContent() {
       <div class="lb-row">
         ${avatarHtml(state.players.find((p) => p.id === s.playerId) || { color: s.playerColor }, 20)}
         <span style="flex:1;">
-          ${escapeHtml(s.playerName)} — ${escapeHtml(s.gameIcon)} ${escapeHtml(s.gameName)}
+          ${escapeHtml(s.playerName)} — ${gameBadgeHtml({ id: s.gameId, icon: s.gameIcon }, 18)} ${escapeHtml(s.gameName)}
           <div class="muted" style="font-size:0.75rem;">${formatDateTime(s.startedAt)} – ${s.endedAt ? formatDateTime(s.endedAt) : 'läuft noch'}</div>
         </span>
         <span class="lb-points">${escapeHtml(s.formatted)}</span>

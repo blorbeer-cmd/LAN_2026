@@ -1,4 +1,4 @@
-# LAN 2026 – Agent
+# RespawnHQ – Agent
 
 Kleines Programm, das auf jedem Spieler-PC läuft. Es kennt nur drei Dinge: die Server-URL, den
 eigenen API-Key und wie oft es nachschauen soll. Es scannt periodisch die laufenden Prozesse und

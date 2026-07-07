@@ -48,3 +48,23 @@ export function avatarHtml(player, size = 32) {
   }
   return `<span class="avatar-dot" style="background:${color};width:${size}px;height:${size}px;"></span>`;
 }
+
+// Deterministic accent color per game (hashed from its id), so every game
+// gets a stable little visual identity across the app without anyone having
+// to pick a color by hand.
+export function gameColor(gameId) {
+  let hash = 0;
+  const s = String(gameId ?? '');
+  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+  return `hsl(${hash % 360} 70% 45%)`;
+}
+
+// Small round badge carrying a game's icon on a tinted background — the
+// "little design that fits the game" reused in every list/chip that
+// mentions one.
+export function gameBadgeHtml(game, size = 28) {
+  if (!game) return '';
+  const color = gameColor(game.id);
+  const fontSize = Math.round(size * 0.55);
+  return `<span class="game-badge" style="background:${color};width:${size}px;height:${size}px;font-size:${fontSize}px;">${escapeHtml(game.icon)}</span>`;
+}

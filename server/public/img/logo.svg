@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="RespawnHQ">
+  <defs>
+    <linearGradient id="rhq-badge" x1="6" y1="6" x2="114" y2="114" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5b8cff" />
+      <stop offset="1" stop-color="#a855f7" />
+    </linearGradient>
+    <linearGradient id="rhq-beam" x1="60" y1="22" x2="60" y2="62" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.35" />
+    </linearGradient>
+  </defs>
+
+  <rect x="6" y="6" width="108" height="108" rx="30" fill="url(#rhq-badge)" />
+
+  <!-- respawn beacon: two descending chevrons dropping the player back in -->
+  <circle cx="60" cy="46" r="30" fill="#ffffff" opacity="0.1" />
+  <path d="M38,24 60,38 82,24 82,32 60,46 38,32 Z" fill="#ffffff" opacity="0.5" />
+  <path d="M42,40 60,54 78,40 78,49 60,63 42,49 Z" fill="url(#rhq-beam)" />
+
+  <!-- controller -->
+  <rect x="26" y="66" width="68" height="36" rx="18" fill="#f7f9ff" />
+  <rect x="37" y="79" width="14" height="4.5" rx="2.25" fill="url(#rhq-badge)" />
+  <rect x="42" y="74" width="4.5" height="14" rx="2.25" fill="url(#rhq-badge)" />
+  <circle cx="69" cy="78" r="4" fill="url(#rhq-badge)" />
+  <circle cx="78" cy="87" r="4" fill="url(#rhq-badge)" />
+</svg>

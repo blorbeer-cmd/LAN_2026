@@ -4,7 +4,7 @@
 
 import { api } from '../api.js';
 import { state, playerById } from '../state.js';
-import { escapeHtml, avatarHtml } from '../format.js';
+import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 
@@ -92,7 +92,7 @@ function openPlayerDetail(playerId, ctx) {
       const rating = ratingFor(playerId, g.id);
       return `
         <div class="skill-row" data-game="${g.id}">
-          <span>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</span>
+          <span class="row" style="gap:8px;">${gameBadgeHtml(g, 24)} ${escapeHtml(g.name)}</span>
           <span class="skill-value">${rating}</span>
           <input type="range" class="skill-row-slider" min="1" max="10" step="1" value="${rating}" />
         </div>`;

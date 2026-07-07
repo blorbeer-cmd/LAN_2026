@@ -5,7 +5,7 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, formatDate } from '../format.js';
+import { escapeHtml, formatDate, gameBadgeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId, setMyId } from '../whoami.js';
 
@@ -38,7 +38,7 @@ export function renderVotes(container, ctx) {
       return `
         <div class="vote-row ${isTop ? 'is-winner' : ''}">
           <div class="row-between">
-            <span>${escapeHtml(r.icon)} ${escapeHtml(r.gameName)}</span>
+            <span class="row" style="gap:8px;">${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 24)} ${escapeHtml(r.gameName)}</span>
             <span class="muted">${r.votes} Stimme(n)</span>
           </div>
           <div class="vote-bar-track"><div class="vote-bar-fill" style="width:${(r.votes / maxVotes) * 100}%"></div></div>

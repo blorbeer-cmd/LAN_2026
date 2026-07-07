@@ -4,8 +4,8 @@
 // draw, not just whoever clicked the button.
 
 import { api } from '../api.js';
-import { state } from '../state.js';
-import { escapeHtml, avatarHtml } from '../format.js';
+import { state, gameById } from '../state.js';
+import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 
 // Persists across re-renders of this view (but not across a full page
@@ -110,7 +110,7 @@ function renderResult(result) {
     .join('');
 
   return `
-    <div class="section-title">${escapeHtml(result.gameName)} — Ergebnis</div>
+    <div class="section-title row" style="gap:8px;">${gameBadgeHtml(gameById(result.gameId), 22)} ${escapeHtml(result.gameName)} — Ergebnis</div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));">${teamsHtml}</div>
   `;
 }

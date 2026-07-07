@@ -52,7 +52,7 @@ function start(): void {
 
   server.listen(config.port, () => {
     // eslint-disable-next-line no-console
-    console.log(`LAN 2026 server läuft auf http://localhost:${config.port}`);
+    console.log(`RespawnHQ server läuft auf http://localhost:${config.port}`);
     if (!accessProtectionEnabled()) {
       // eslint-disable-next-line no-console
       console.log('Hinweis: Kein ACCESS_TOKEN gesetzt – Zugangsschutz ist deaktiviert.');
