@@ -5,7 +5,7 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml } from '../format.js';
+import { escapeHtml, avatarHtml } from '../format.js';
 import { showToast } from '../toast.js';
 
 // Persists across re-renders of this view (but not across a full page
@@ -37,7 +37,7 @@ export function renderMatchmaking(container, ctx) {
       (p) => `
       <label class="check-row">
         <input type="checkbox" data-player="${p.id}" ${checkedIds.has(p.id) ? 'checked' : ''} />
-        <span class="avatar-dot" style="background:${escapeHtml(p.color)}"></span>
+        ${avatarHtml(p, 20)}
         <span style="flex:1;">${escapeHtml(p.name)}</span>
       </label>`
     )
@@ -99,7 +99,7 @@ function renderResult(result) {
           .map(
             (p) => `
           <div class="team-player">
-            <span class="avatar-dot" style="background:${escapeHtml(p.color)}"></span>
+            ${avatarHtml(p, 20)}
             ${escapeHtml(p.name)}
             <span class="rating">${p.rating}</span>
           </div>`

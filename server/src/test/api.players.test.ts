@@ -64,6 +64,55 @@ test('PATCH /api/players/:id rejects an invalid color', async () => {
   assert.equal(res.status, 400);
 });
 
+test('POST /api/players rejects a name that is already taken (case-insensitive)', async () => {
+  const dup = await request(app).post('/api/players').send({ name: 'alexandra' });
+  assert.equal(dup.status, 409);
+  assert.match(dup.body.error, /vergeben/);
+});
+
+test('PATCH /api/players/:id rejects renaming to a name already taken by someone else', async () => {
+  const other = await request(app).post('/api/players').send({ name: 'Bine' });
+  const res = await request(app).patch(`/api/players/${other.body.id}`).send({ name: 'ALEXANDRA' });
+  assert.equal(res.status, 409);
+  await request(app).delete(`/api/players/${other.body.id}`);
+});
+
+test('PATCH /api/players/:id keeping your own name (same casing or not) is not a conflict', async () => {
+  const res = await request(app).patch(`/api/players/${createdId}`).send({ name: 'Alexandra' });
+  assert.equal(res.status, 200);
+});
+
+test('PATCH /api/players/:id rejects an invalid avatar value', async () => {
+  const res = await request(app).patch(`/api/players/${createdId}`).send({ avatar: 'not-a-data-url' });
+  assert.equal(res.status, 400);
+});
+
+test('PATCH /api/players/:id accepts and stores a valid avatar data URL', async () => {
+  const avatar = 'data:image/png;base64,aGVsbG8=';
+  const res = await request(app).patch(`/api/players/${createdId}`).send({ avatar });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.avatar, avatar);
+
+  const fetched = await request(app).get(`/api/players/${createdId}`);
+  assert.equal(fetched.body.avatar, avatar);
+});
+
+test('GET /api/players/:id/stats 404s for an unknown id', async () => {
+  const res = await request(app).get('/api/players/does-not-exist/stats');
+  assert.equal(res.status, 404);
+});
+
+test('GET /api/players/:id/stats returns an empty-but-shaped summary before any sessions', async () => {
+  const res = await request(app).get(`/api/players/${createdId}/stats`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.playerId, createdId);
+  assert.equal(res.body.totalMs, 0);
+  assert.deepEqual(res.body.games, []);
+  assert.deepEqual(res.body.events, []);
+  assert.deepEqual(res.body.awards, []);
+  assert.equal(res.body.simultaneous.maxSimultaneous, 0);
+});
+
 test('DELETE /api/players/:id removes the player', async () => {
   const res = await request(app).delete(`/api/players/${createdId}`);
   assert.equal(res.status, 204);

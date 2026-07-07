@@ -93,3 +93,19 @@ test('GET /api/stats/playtime totalsByGame aggregates across all players for CS2
   assert.equal(gameTotal.totalMs, player1Ms + player2Ms);
   assert.equal(gameTotal.gameName, 'Counter-Strike 2');
 });
+
+test('GET /api/players/:id/stats reflects this player\'s own sessions only', async () => {
+  const res = await request(app).get(`/api/players/${playerId}/stats`);
+  assert.equal(res.status, 200);
+  assert.ok(res.body.totalMs > 0);
+  assert.equal(res.body.sessionCount, 2); // two CS2 sessions recorded above
+  assert.equal(res.body.distinctGamesCount, 1);
+
+  const cs2 = res.body.games.find((g: { gameId: string }) => g.gameId === cs2GameId);
+  assert.ok(cs2);
+  assert.equal(cs2.gameName, 'Counter-Strike 2');
+  assert.equal(cs2.totalMs, res.body.totalMs);
+
+  assert.ok(res.body.events.length >= 1);
+  assert.ok(res.body.longestSessions.length > 0);
+});

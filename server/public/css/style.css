@@ -324,10 +324,19 @@ input[type='color'] {
 /* ---------- Player avatar / color dot ---------- */
 
 .avatar-dot {
+  display: inline-block;
   width: 12px;
   height: 12px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+.avatar-img {
+  display: inline-block;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+  background: var(--bg-elevated-2);
 }
 
 .player-name {

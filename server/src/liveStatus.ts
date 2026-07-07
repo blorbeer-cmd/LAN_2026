@@ -21,6 +21,7 @@ export interface LiveBoardEntry {
   player_id: string;
   name: string;
   color: string;
+  avatar: string | null;
   last_seen: number | null;
   manual_note: string | null;
   games: LiveGameEntry[];
@@ -49,8 +50,8 @@ export function getLiveBoard(): LiveBoardEntry[] {
   const now = Date.now();
 
   const players = db
-    .prepare('SELECT id, name, color FROM players ORDER BY name COLLATE NOCASE')
-    .all() as Array<{ id: string; name: string; color: string }>;
+    .prepare('SELECT id, name, color, avatar FROM players ORDER BY name COLLATE NOCASE')
+    .all() as Array<{ id: string; name: string; color: string; avatar: string | null }>;
 
   const statusRows = db
     .prepare('SELECT player_id, last_seen, manual_note FROM live_status')
@@ -93,6 +94,7 @@ export function getLiveBoard(): LiveBoardEntry[] {
       player_id: p.id,
       name: p.name,
       color: p.color,
+      avatar: p.avatar,
       last_seen: lastSeen,
       manual_note: manualNote,
       games,

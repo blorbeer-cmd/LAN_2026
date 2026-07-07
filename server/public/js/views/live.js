@@ -3,7 +3,7 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, formatSince, stateLabel } from '../format.js';
+import { escapeHtml, formatSince, stateLabel, avatarHtml } from '../format.js';
 import { getMyId, setMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 
@@ -89,7 +89,7 @@ export function renderLive(container, ctx) {
 
       return `
         <div class="card player-card">
-          <span class="avatar-dot" style="background:${escapeHtml(p.color)}"></span>
+          ${avatarHtml(p, 36)}
           <div class="player-card-main">
             <div class="row-between">
               <span class="player-name">${escapeHtml(p.name)}${isMe ? ' <span class=\"muted\">(du)</span>' : ''}</span>

@@ -36,3 +36,15 @@ const STATE_LABELS = { playing: 'Spielt', paused: 'Pause', offline: 'Offline' };
 export function stateLabel(state) {
   return STATE_LABELS[state] || state;
 }
+
+// Renders a player's profile picture if they set one, falling back to the
+// existing color-dot avatar otherwise. `player` just needs `color` and
+// optionally `avatar`; accepts a partial object so callers with only an
+// enriched (playerColor-style) payload can pass `{ color: p.playerColor }`.
+export function avatarHtml(player, size = 32) {
+  const color = escapeHtml((player && player.color) || '#999999');
+  if (player && player.avatar) {
+    return `<img class="avatar-img" src="${escapeHtml(player.avatar)}" alt="" style="width:${size}px;height:${size}px;" />`;
+  }
+  return `<span class="avatar-dot" style="background:${color};width:${size}px;height:${size}px;"></span>`;
+}

@@ -49,6 +49,10 @@ export const api = {
     create: (data) => apiFetch('/api/players', { method: 'POST', body: JSON.stringify(data) }),
     update: (id, data) => apiFetch(`/api/players/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     remove: (id) => apiFetch(`/api/players/${id}`, { method: 'DELETE' }),
+    stats: (id, params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return apiFetch(`/api/players/${id}/stats${qs ? `?${qs}` : ''}`);
+    },
   },
 
   games: {

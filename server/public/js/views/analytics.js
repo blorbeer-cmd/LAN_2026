@@ -9,7 +9,7 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, formatDateTime } from '../format.js';
+import { escapeHtml, formatDateTime, avatarHtml } from '../format.js';
 import { showToast } from '../toast.js';
 
 let cache = null;
@@ -178,7 +178,7 @@ function renderContent() {
           <div class="player-name">${escapeHtml(a.title)}</div>
           <div class="muted" style="font-size:0.8rem;">${escapeHtml(a.description)}</div>
           <div class="row" style="margin-top:6px;">
-            <span class="avatar-dot" style="background:${escapeHtml(a.playerColor)}"></span>
+            ${avatarHtml(state.players.find((p) => p.id === a.playerId) || { color: a.playerColor }, 20)}
             <span>${escapeHtml(a.playerName)}</span>
           </div>
         </div>`
@@ -191,7 +191,7 @@ function renderContent() {
         .map(
           (r) => `
         <div class="lb-row">
-          <span class="avatar-dot" style="background:${escapeHtml(r.playerColor)}"></span>
+          ${avatarHtml(state.players.find((p) => p.id === r.playerId) || { color: r.playerColor }, 20)}
           <span style="flex:1;">${escapeHtml(r.gameIcon)} ${escapeHtml(r.gameName)} — ${escapeHtml(r.playerName)}</span>
           <span class="lb-points">${escapeHtml(r.formatted)}</span>
         </div>`
@@ -204,7 +204,7 @@ function renderContent() {
         .map(
           (r) => `
         <div class="lb-row">
-          <span class="avatar-dot" style="background:${escapeHtml(r.playerColor)}"></span>
+          ${avatarHtml(state.players.find((p) => p.id === r.playerId) || { color: r.playerColor }, 20)}
           <span style="flex:1;">${escapeHtml(r.playerName)} <span class="muted" style="font-size:0.78rem;">(max. ${r.maxSimultaneous} gleichzeitig)</span></span>
           <span class="lb-points">${escapeHtml(r.multiGameFormatted)}</span>
         </div>`
@@ -225,7 +225,7 @@ function renderContent() {
     .map(
       (s) => `
       <div class="lb-row">
-        <span class="avatar-dot" style="background:${escapeHtml(s.playerColor)}"></span>
+        ${avatarHtml(state.players.find((p) => p.id === s.playerId) || { color: s.playerColor }, 20)}
         <span style="flex:1;">
           ${escapeHtml(s.playerName)} — ${escapeHtml(s.gameIcon)} ${escapeHtml(s.gameName)}
           <div class="muted" style="font-size:0.75rem;">${formatDateTime(s.startedAt)} – ${s.endedAt ? formatDateTime(s.endedAt) : 'läuft noch'}</div>

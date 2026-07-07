@@ -24,6 +24,7 @@ interface PlayerRow {
   id: string;
   name: string;
   color: string;
+  avatar: string | null;
 }
 
 // POST /api/matchmaking
@@ -52,7 +53,7 @@ matchmakingRouter.post('/', (req, res) => {
 
   const placeholders = uniqueIds.map(() => '?').join(',');
   const players = db
-    .prepare(`SELECT id, name, color FROM players WHERE id IN (${placeholders})`)
+    .prepare(`SELECT id, name, color, avatar FROM players WHERE id IN (${placeholders})`)
     .all(...uniqueIds) as PlayerRow[];
   if (players.length !== uniqueIds.length) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });

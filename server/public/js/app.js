@@ -14,6 +14,7 @@ import { renderMatchmaking } from './views/matchmaking.js';
 import { renderVotes } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
+import { renderProfile } from './views/profile.js';
 
 const VIEWS = {
   live: renderLive,
@@ -23,6 +24,7 @@ const VIEWS = {
   leaderboard: renderLeaderboard,
   settings: renderGames,
   analytics: renderAnalytics,
+  profile: renderProfile,
 };
 
 let currentView = 'live';
@@ -112,6 +114,7 @@ function wireNav() {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
   document.getElementById('settings-btn').addEventListener('click', () => switchView('settings'));
+  document.getElementById('profile-btn').addEventListener('click', () => switchView('profile'));
 
   // Views can request navigation to a non-bottom-nav view (settings,
   // analytics) by rendering a button with data-navigate="<view>", without

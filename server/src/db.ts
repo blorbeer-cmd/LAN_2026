@@ -26,6 +26,7 @@ db.exec(`
     id         TEXT PRIMARY KEY,
     name       TEXT NOT NULL,
     color      TEXT NOT NULL DEFAULT '#4f9dff',
+    avatar     TEXT,
     api_key    TEXT NOT NULL UNIQUE,
     created_at INTEGER NOT NULL
   );
@@ -141,6 +142,35 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_play_sessions_open ON play_sessions(ended_at);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_event ON play_sessions(event_id);
 `);
+
+// Migration: older databases were created before the `avatar` column existed.
+// CREATE TABLE IF NOT EXISTS above only applies to brand-new databases, so
+// add it here if missing (checked via PRAGMA rather than a version counter —
+// simple and idempotent, matches the size of this project).
+function migrateAvatarColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'avatar')) return;
+  db.exec('ALTER TABLE players ADD COLUMN avatar TEXT');
+}
+migrateAvatarColumn();
+
+// Gamer names must be unique across the whole player list (case-insensitive)
+// so invited players can tell each other apart. A unique index rather than a
+// column constraint so it also applies to databases migrating in from before
+// this rule existed. Wrapped defensively: if an existing database somehow
+// already has two players sharing a name, creating the index would throw and
+// take the whole server down on startup, which would be far worse than
+// leaving the (rare, pre-existing) duplicate unenforced until someone renames
+// one of them.
+function ensureUniquePlayerNames(): void {
+  try {
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_players_name_unique ON players (name COLLATE NOCASE)');
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('Konnte eindeutigen Namens-Index nicht anlegen (vermutlich Duplikate in bestehenden Daten):', err);
+  }
+}
+ensureUniquePlayerNames();
 
 // Key/value table for small bits of server state (e.g. current vote round).
 db.exec(`

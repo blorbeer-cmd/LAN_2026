@@ -7,7 +7,7 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml } from '../format.js';
+import { escapeHtml, avatarHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 
@@ -26,7 +26,7 @@ export function renderLeaderboard(container, ctx) {
       return `
         <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
           <span class="lb-rank">${i + 1}</span>
-          <span class="avatar-dot" style="background:${escapeHtml(color)}"></span>
+          ${avatarHtml(player || { color }, 24)}
           <span style="flex:1;">${escapeHtml(name)}</span>
           <span class="muted" style="font-size:0.8rem;">${s.wins}S / ${s.matchesPlayed}M</span>
           <span class="lb-points">${s.points} P</span>
@@ -51,7 +51,7 @@ export function renderLeaderboard(container, ctx) {
     .map(
       (p) => `
       <div class="lb-row">
-        <span class="avatar-dot" style="background:${escapeHtml(p.playerColor)}"></span>
+        ${avatarHtml(state.players.find((pl) => pl.id === p.playerId) || { color: p.playerColor }, 24)}
         <span style="flex:1;">
           ${escapeHtml(p.playerName)}
           ${activeHint(p.activeMs, p.totalMs, p.activeFormatted)}
@@ -150,7 +150,7 @@ function openMatchForm(ctx) {
             .map(
               (p) => `
               <div class="row" style="padding:4px 0;">
-                <span class="avatar-dot" style="background:${escapeHtml(p.color)}"></span>
+                ${avatarHtml(p, 20)}
                 <span style="flex:1;">${escapeHtml(p.name)}</span>
                 <select data-team-for="${p.id}">
                   <option value="">–</option>

@@ -4,7 +4,7 @@
 
 import { api } from '../api.js';
 import { state, playerById } from '../state.js';
-import { escapeHtml } from '../format.js';
+import { escapeHtml, avatarHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 
@@ -24,7 +24,7 @@ export function renderPlayers(container, ctx) {
     .map(
       (p) => `
       <button type="button" class="card row" style="width:100%;text-align:left;cursor:pointer;" data-player="${p.id}">
-        <span class="avatar-dot" style="background:${escapeHtml(p.color)}"></span>
+        ${avatarHtml(p, 28)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
         <span class="muted">›</span>
       </button>`
