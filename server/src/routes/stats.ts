@@ -6,6 +6,8 @@
 import { Router } from 'express';
 import { db } from '../db';
 import { computePlaytime, aggregateByGame, formatDurationMs, type PlaySession } from '../playtime';
+import { clipSessionsToRange } from '../sessionStats';
+import { parseTimeRangeQuery } from './queryHelpers';
 
 export const statsRouter = Router();
 
@@ -20,12 +22,16 @@ interface GameRow {
   icon: string;
 }
 
-// GET /api/stats/playtime - optionally filtered by ?gameId=. Returns both the
-// per-player-per-game breakdown and a per-player grand total (handy for an
-// overall "who's played the most" view when unfiltered).
+// GET /api/stats/playtime - optionally filtered by ?gameId= and/or a day/time
+// range (?from=&to=, epoch ms). Returns both the per-player-per-game
+// breakdown and a per-player grand total (handy for an overall "who's played
+// the most" view when unfiltered).
 statsRouter.get('/playtime', (req, res) => {
   const { gameId } = req.query;
   const filterGameId = typeof gameId === 'string' ? gameId : null;
+
+  const range = parseTimeRangeQuery(req.query as Record<string, unknown>);
+  if ('error' in range) return res.status(400).json({ error: range.error });
 
   const rows = (
     filterGameId
@@ -37,15 +43,17 @@ statsRouter.get('/playtime', (req, res) => {
       : db.prepare('SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions').all()
   ) as Array<{ player_id: string; game_id: string; started_at: number; ended_at: number | null; active_ms: number }>;
 
-  const sessions: PlaySession[] = rows.map((r) => ({
+  const now = Date.now();
+  const rawSessions: PlaySession[] = rows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
     startedAt: r.started_at,
     endedAt: r.ended_at,
     activeMs: r.active_ms,
   }));
+  const sessions = clipSessionsToRange(rawSessions, now, range.from, range.to);
 
-  const perGame = computePlaytime(sessions, Date.now());
+  const perGame = computePlaytime(sessions, now);
 
   const playerIds = [...new Set(perGame.map((e) => e.playerId))];
   const gameIds = [...new Set(perGame.map((e) => e.gameId))];
