@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f1420" />
+  <title>LAN 2026</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎮</text></svg>" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div id="login-screen" class="login-screen" hidden>
+    <form id="login-form" class="login-card">
+      <div class="login-icon">🔒</div>
+      <h1>LAN 2026</h1>
+      <p class="muted">Zugangs-Token eingeben, um fortzufahren.</p>
+      <input id="login-token" type="password" inputmode="text" autocomplete="off" placeholder="Token" autofocus />
+      <button type="submit" class="btn btn-primary">Beitreten</button>
+      <p id="login-error" class="error-text" hidden></p>
+    </form>
+  </div>
+
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <div class="topbar-title">🎮 <span>LAN 2026</span></div>
+      <div class="topbar-actions">
+        <span id="conn-dot" class="conn-dot" title="Verbindungsstatus"></span>
+        <button id="profile-btn" class="icon-btn" aria-label="Mein Profil" title="Mein Profil">👤</button>
+        <button id="settings-btn" class="icon-btn" aria-label="Spiele verwalten" title="Spiele verwalten">⚙️</button>
+      </div>
+    </header>
+
+    <main id="view-container" class="view-container"></main>
+
+    <nav class="bottom-nav" aria-label="Hauptnavigation">
+      <button class="nav-btn" data-view="live" aria-label="Live-Status">
+        <span class="nav-icon">📡</span><span class="nav-label">Live</span>
+      </button>
+      <button class="nav-btn" data-view="players" aria-label="Spieler">
+        <span class="nav-icon">👥</span><span class="nav-label">Spieler</span>
+      </button>
+      <button class="nav-btn" data-view="matchmaking" aria-label="Teams">
+        <span class="nav-icon">⚖️</span><span class="nav-label">Teams</span>
+      </button>
+      <button class="nav-btn" data-view="votes" aria-label="Abstimmung">
+        <span class="nav-icon">🗳️</span><span class="nav-label">Vote</span>
+      </button>
+      <button class="nav-btn" data-view="leaderboard" aria-label="Rangliste">
+        <span class="nav-icon">🏆</span><span class="nav-label">Rang</span>
+      </button>
+    </nav>
+  </div>
+
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

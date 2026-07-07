@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-test/
+
+# Datenbank (wird zur Laufzeit erzeugt)
+server/data/
+*.db
+*.db-journal
+
+# Lokale Agent-Konfiguration (enthält API-Key)
+agent/agent.config.json
+
+# Logs & OS-Kram
+*.log
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
