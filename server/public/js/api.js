@@ -182,4 +182,8 @@ export const api = {
   export: {
     snapshot: (eventId) => apiFetch(`/api/export${eventId ? `?eventId=${eventId}` : ''}`),
   },
+
+  hallOfFame: {
+    get: () => apiFetch('/api/hall-of-fame'),
+  },
 };

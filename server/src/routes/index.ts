@@ -16,6 +16,7 @@ import { eventsRouter } from './events';
 import { tournamentsRouter } from './tournaments';
 import { qrcodeRouter } from './qrcode';
 import { exportRouter } from './export';
+import { hallOfFameRouter } from './hallOfFame';
 
 export const apiRouter = Router();
 
@@ -38,3 +39,4 @@ apiRouter.use('/events', eventsRouter);
 apiRouter.use('/tournaments', tournamentsRouter);
 apiRouter.use('/qrcode', qrcodeRouter);
 apiRouter.use('/export', exportRouter);
+apiRouter.use('/hall-of-fame', hallOfFameRouter);

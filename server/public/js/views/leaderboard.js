@@ -84,6 +84,7 @@ export function renderLeaderboard(container, ctx) {
       <div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end;">
         <button type="button" class="btn btn-sm" data-navigate="analytics">📊 Auswertungen</button>
         <button type="button" class="btn btn-sm" data-navigate="tournaments">🏆 Turniere</button>
+        <button type="button" class="btn btn-sm" data-navigate="hallOfFame">🏛️ Hall of Fame</button>
         <button type="button" class="btn btn-primary btn-sm" id="add-match-btn">+ Ergebnis</button>
       </div>
     </div>

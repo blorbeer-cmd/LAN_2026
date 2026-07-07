@@ -17,6 +17,7 @@ import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
 import { renderProfile } from './views/profile.js';
 import { renderTournaments, invalidateTournaments, focusTournament } from './views/tournament.js';
+import { renderHallOfFame } from './views/hallOfFame.js';
 
 const VIEWS = {
   live: renderLive,
@@ -28,6 +29,7 @@ const VIEWS = {
   analytics: renderAnalytics,
   profile: renderProfile,
   tournaments: renderTournaments,
+  hallOfFame: renderHallOfFame,
 };
 
 let currentView = 'live';

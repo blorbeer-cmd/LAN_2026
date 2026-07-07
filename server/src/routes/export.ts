@@ -8,8 +8,8 @@ import { db } from '../db';
 import { computeStandings, type MatchForScoring } from '../leaderboard';
 import { computePlaytime, aggregateByGame, formatDurationMs, type PlaySession } from '../playtime';
 import { computeAwards } from '../awards';
-import { computeRoundRobinStandings } from '../tournament';
 import { getActiveEventId } from '../events';
+import { getCompletedTournamentSummaries } from './tournamentChampion';
 
 export const exportRouter = Router();
 
@@ -114,47 +114,14 @@ exportRouter.get('/', (req, res) => {
   }));
 
   // ---------- Tournament champions ----------
-  const tournamentRows = db
-    .prepare("SELECT id, game_id, name, format FROM tournaments WHERE event_id = ? AND status = 'completed'")
-    .all(filterEventId) as Array<{ id: string; game_id: string; name: string; format: string }>;
-
-  const tournaments = tournamentRows.map((t) => {
-    const teamRows = db
-      .prepare('SELECT id, name, player_ids FROM tournament_teams WHERE tournament_id = ?')
-      .all(t.id) as Array<{ id: string; name: string; player_ids: string }>;
-    const teamById = new Map(teamRows.map((tm) => [tm.id, tm]));
-
-    let championTeamId: string | null = null;
-    if (t.format === 'single_elimination') {
-      const rows = db
-        .prepare('SELECT round, winner_team_id FROM tournament_matches WHERE tournament_id = ?')
-        .all(t.id) as Array<{ round: number; winner_team_id: string | null }>;
-      const finalRound = Math.max(...rows.map((r) => r.round));
-      championTeamId = rows.find((r) => r.round === finalRound)?.winner_team_id ?? null;
-    } else {
-      const rows = db
-        .prepare('SELECT team_a_id, team_b_id, winner_team_id, is_draw FROM tournament_matches WHERE tournament_id = ?')
-        .all(t.id) as Array<{ team_a_id: string; team_b_id: string; winner_team_id: string | null; is_draw: number }>;
-      const decided = rows
-        .filter((r) => r.winner_team_id !== null || r.is_draw)
-        .map((r) => ({ teamAId: r.team_a_id, teamBId: r.team_b_id, winnerTeamId: r.winner_team_id }));
-      const standings = computeRoundRobinStandings(teamRows.map((tm) => tm.id), decided);
-      championTeamId = standings[0]?.teamId ?? null;
-    }
-
-    const championTeam = championTeamId ? teamById.get(championTeamId) : undefined;
-    const game = gameById.get(t.game_id);
-    return {
-      name: t.name,
-      format: t.format,
-      gameName: game?.name ?? 'Unbekannt',
-      gameIcon: game?.icon ?? '🎮',
-      championTeamName: championTeam?.name ?? null,
-      championPlayers: championTeam
-        ? (JSON.parse(championTeam.player_ids) as string[]).map((id) => playerById.get(id)?.name ?? 'Unbekannt')
-        : [],
-    };
-  });
+  const tournaments = getCompletedTournamentSummaries(filterEventId).map((t) => ({
+    name: t.name,
+    format: t.format,
+    gameName: t.gameName,
+    gameIcon: t.gameIcon,
+    championTeamName: t.championTeamName,
+    championPlayers: t.championPlayerIds.map((id) => playerById.get(id)?.name ?? 'Unbekannt'),
+  }));
 
   res.json({
     event: { id: event.id, name: event.name, startsAt: event.starts_at, endsAt: event.ends_at },
