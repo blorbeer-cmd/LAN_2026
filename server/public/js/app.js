@@ -8,7 +8,7 @@ import { state } from './state.js';
 import { loadAll } from './data.js';
 import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
-import { renderLive } from './views/live.js';
+import { renderLive, invalidatePings } from './views/live.js';
 import { renderPlayers } from './views/players.js';
 import { renderGames } from './views/games.js';
 import { renderMatchmaking, invalidateMatchmakingHistory } from './views/matchmaking.js';
@@ -206,6 +206,20 @@ function wireSocket() {
           focusTournament(payload.tournamentId);
           switchView('tournaments');
         },
+      });
+    }
+  });
+  socket.on('pings:changed', (payload) => {
+    invalidatePings();
+    if (currentView === 'live') renderCurrent();
+
+    // Everyone except the pinger gets a nudge, same exclusion-based targeting
+    // the server already used for the toast message.
+    const myId = getMyId();
+    if (payload?.notify && myId && myId !== payload.notify.excludePlayerId && currentView !== 'live') {
+      showToast(payload.notify.message, {
+        duration: 4500,
+        onClick: () => switchView('live'),
       });
     }
   });

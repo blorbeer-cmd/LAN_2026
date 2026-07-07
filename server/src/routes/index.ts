@@ -18,6 +18,7 @@ import { qrcodeRouter } from './qrcode';
 import { exportRouter } from './export';
 import { hallOfFameRouter } from './hallOfFame';
 import { seatingRouter } from './seating';
+import { pingsRouter } from './pings';
 
 export const apiRouter = Router();
 
@@ -42,3 +43,4 @@ apiRouter.use('/qrcode', qrcodeRouter);
 apiRouter.use('/export', exportRouter);
 apiRouter.use('/hall-of-fame', hallOfFameRouter);
 apiRouter.use('/seating', seatingRouter);
+apiRouter.use('/pings', pingsRouter);

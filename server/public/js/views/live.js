@@ -9,6 +9,86 @@ import { showToast } from '../toast.js';
 
 const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
 
+// "Jetzt zocken" pings live in their own cache (like vote/matchmaking
+// history), refreshed from app.js via invalidatePings() on pings:changed.
+let pingsCache = null;
+let pingsLoading = false;
+let pingFormOpen = false;
+
+async function loadPings(ctx) {
+  pingsLoading = true;
+  try {
+    const res = await api.pings.list();
+    pingsCache = res.pings;
+  } catch {
+    pingsCache = [];
+  } finally {
+    pingsLoading = false;
+    ctx.rerender();
+  }
+}
+
+export function invalidatePings() {
+  pingsCache = null;
+}
+
+function formatExpiresIn(expiresAt) {
+  const diffMin = Math.round((expiresAt - Date.now()) / 60000);
+  if (diffMin <= 0) return 'läuft gleich ab';
+  if (diffMin < 60) return `noch ${diffMin} Min.`;
+  const h = Math.floor(diffMin / 60);
+  const m = diffMin % 60;
+  return `noch ${h}h ${m}min`;
+}
+
+function renderPingForm() {
+  if (!pingFormOpen) return '';
+  const options = state.games.map((g) => `<option value="${g.id}">${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`).join('');
+  return `
+    <div class="stack" style="margin-top:10px;gap:8px;">
+      <select id="ping-game">${options}</select>
+      <input type="text" id="ping-message" placeholder="Nachricht (optional)" maxlength="140" />
+      <button type="button" class="btn btn-primary btn-block" id="ping-submit">Ping senden</button>
+    </div>`;
+}
+
+function renderPings(myId) {
+  if (pingsLoading || pingsCache === null) {
+    return `<div class="empty-state" style="padding:16px;">Lädt…</div>`;
+  }
+  if (pingsCache.length === 0) {
+    return `<div class="empty-state" style="padding:16px;"><span class="emoji">🎮</span>Gerade will niemand spontan spielen.</div>`;
+  }
+  return pingsCache
+    .map((p) => {
+      const isCreator = p.playerId === myId;
+      const amInterested = myId && p.interested.some((i) => i.id === myId);
+      const interestedAvatars = p.interested.length
+        ? `<div class="row" style="gap:4px;margin-top:6px;">${p.interested.map((i) => avatarHtml(i, 24)).join('')}</div>`
+        : '';
+      const joinBtn =
+        myId && !isCreator
+          ? `<button type="button" class="btn btn-sm ${amInterested ? '' : 'btn-primary'}" data-ping-join="${p.id}">${amInterested ? 'Bin raus' : 'Ich bin dabei'}</button>`
+          : '';
+      return `
+        <div class="card" style="margin-bottom:8px;">
+          <div class="row-between">
+            <span class="row" style="gap:8px;">${gameBadgeHtml({ id: p.gameId, icon: p.gameIcon }, 24)} <strong>${escapeHtml(p.gameName)}</strong></span>
+            <button type="button" class="btn btn-sm btn-danger" data-ping-cancel="${p.id}" title="Ping beenden">✕</button>
+          </div>
+          <div class="muted" style="font-size:0.85rem;margin-top:4px;">
+            ${avatarHtml({ color: p.playerColor, avatar: p.playerAvatar }, 18)} ${escapeHtml(p.playerName)}${p.message ? ` – „${escapeHtml(p.message)}"` : ''}
+          </div>
+          <div class="row-between" style="margin-top:8px;">
+            <span class="muted" style="font-size:0.78rem;">${formatExpiresIn(p.expiresAt)}</span>
+            ${joinBtn}
+          </div>
+          ${interestedAvatars}
+        </div>`;
+    })
+    .join('');
+}
+
 // Groups currently-playing players by game (FR-27): a quick glance at who's
 // in the same game right now, complementing the per-player list below.
 function renderActiveGroups(players) {
@@ -57,6 +137,10 @@ export function renderLive(container, ctx) {
   const myId = getMyId();
   const whoAmI = whoAmICardHtml('live-whoami', { marginBottom: '16px' });
 
+  if (pingsCache === null && !pingsLoading) {
+    loadPings(ctx);
+  }
+
   const cards = players
     .map((p) => {
       const badgeClass = `badge-${p.state}`;
@@ -98,11 +182,67 @@ export function renderLive(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Live-Status</h1>
     ${whoAmI}
+    <div class="card" style="margin-bottom:16px;">
+      <div class="row-between">
+        <strong>🎮 Jetzt zocken?</strong>
+        ${myId ? `<button type="button" class="btn btn-sm ${pingFormOpen ? '' : 'btn-primary'}" id="ping-toggle">${pingFormOpen ? 'Abbrechen' : '+ Ping'}</button>` : ''}
+      </div>
+      ${myId ? renderPingForm() : `<div class="muted" style="font-size:0.85rem;margin-top:4px;">Wähle oben, wer du bist, um zu pingen.</div>`}
+    </div>
+    ${renderPings(myId)}
     ${renderActiveGroups(players)}
     <div class="stack">${cards}</div>
   `;
 
   wireWhoAmICard(container, 'live-whoami', ctx);
+
+  const pingToggleBtn = container.querySelector('#ping-toggle');
+  if (pingToggleBtn) {
+    pingToggleBtn.addEventListener('click', () => {
+      pingFormOpen = !pingFormOpen;
+      ctx.rerender();
+    });
+  }
+
+  const pingSubmitBtn = container.querySelector('#ping-submit');
+  if (pingSubmitBtn) {
+    pingSubmitBtn.addEventListener('click', async () => {
+      const gameSelect = container.querySelector('#ping-game');
+      const messageInput = container.querySelector('#ping-message');
+      if (!gameSelect || !gameSelect.value) return showToast('Bitte ein Spiel auswählen.', { error: true });
+      try {
+        await api.pings.create({
+          playerId: myId,
+          gameId: gameSelect.value,
+          message: messageInput.value.trim() || undefined,
+        });
+        pingFormOpen = false;
+        showToast('Ping gesendet – viel Spaß beim Zocken!');
+      } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  }
+
+  container.querySelectorAll('[data-ping-join]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await api.pings.toggleInterested(btn.dataset.pingJoin, myId);
+      } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-ping-cancel]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await api.pings.remove(btn.dataset.pingCancel);
+      } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  });
 
   container.querySelectorAll('[data-toggle-pause]').forEach((btn) => {
     btn.addEventListener('click', async () => {

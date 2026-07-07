@@ -27,4 +27,5 @@ export const Events = {
   matchmakingGenerated: 'matchmaking:generated',
   eventsChanged: 'events:changed',
   tournamentsChanged: 'tournaments:changed',
+  pingsChanged: 'pings:changed',
 } as const;

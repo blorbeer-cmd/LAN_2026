@@ -221,12 +221,34 @@ db.exec(`
     played_at      INTEGER
   );
 
+  -- "Jetzt zocken" pings: a spontaneous, short-lived "I want to play X right
+  -- now, who's in?" — deliberately lighter-weight than a vote round (no
+  -- start/stop lifecycle, just expires on its own) for the common case of
+  -- one player wanting to round up others immediately.
+  CREATE TABLE IF NOT EXISTS game_pings (
+    id         TEXT PRIMARY KEY,
+    player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    game_id    TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    message    TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+
+  -- Who tapped "Ich bin dabei" on a ping.
+  CREATE TABLE IF NOT EXISTS game_ping_interested (
+    ping_id   TEXT NOT NULL REFERENCES game_pings(id) ON DELETE CASCADE,
+    player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    PRIMARY KEY (ping_id, player_id)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_skills_game ON skills(game_id);
   CREATE INDEX IF NOT EXISTS idx_live_status_games_game ON live_status_games(game_id);
   CREATE INDEX IF NOT EXISTS idx_votes_round ON votes(round);
   CREATE INDEX IF NOT EXISTS idx_votes_event ON votes(event_id);
   CREATE INDEX IF NOT EXISTS idx_vote_rounds_event ON vote_rounds(event_id);
   CREATE INDEX IF NOT EXISTS idx_seat_neighbors_event_player ON seat_neighbors(event_id, player_id);
+  CREATE INDEX IF NOT EXISTS idx_game_pings_event ON game_pings(event_id, expires_at);
   CREATE INDEX IF NOT EXISTS idx_matches_game ON matches(game_id);
   CREATE INDEX IF NOT EXISTS idx_matches_event ON matches(event_id);
   CREATE INDEX IF NOT EXISTS idx_matchmaking_draws_event ON matchmaking_draws(event_id);

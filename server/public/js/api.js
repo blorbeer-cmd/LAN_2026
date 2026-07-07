@@ -190,4 +190,12 @@ export const api = {
   seating: {
     get: () => apiFetch('/api/seating'),
   },
+
+  pings: {
+    list: () => apiFetch('/api/pings'),
+    create: (data) => apiFetch('/api/pings', { method: 'POST', body: JSON.stringify(data) }),
+    toggleInterested: (id, playerId) =>
+      apiFetch(`/api/pings/${id}/interested`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    remove: (id) => apiFetch(`/api/pings/${id}`, { method: 'DELETE' }),
+  },
 };
