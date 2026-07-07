@@ -174,6 +174,53 @@ db.exec(`
     generated_at          INTEGER NOT NULL
   );
 
+  -- Tournaments (FR-33): either a single-elimination bracket ("Turnierbaum")
+  -- or a round-robin league ("jeder gegen jeden"), the latter optionally
+  -- played home-and-away (two_legged). Kept as its own family of tables
+  -- rather than reusing matchmaking_draws, since a tournament's teams are
+  -- fixed for its whole duration and its matches need to track bracket
+  -- position / round-robin standings, neither of which a one-off draw needs.
+  CREATE TABLE IF NOT EXISTS tournaments (
+    id         TEXT PRIMARY KEY,
+    event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    game_id    TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    name       TEXT NOT NULL,
+    format     TEXT NOT NULL,               -- 'single_elimination' | 'round_robin'
+    two_legged INTEGER NOT NULL DEFAULT 0,  -- only meaningful for round_robin
+    status     TEXT NOT NULL DEFAULT 'active', -- 'active' | 'completed'
+    created_at INTEGER NOT NULL
+  );
+
+  -- A tournament's roster: fixed for the tournament's whole duration (unlike
+  -- a matchmaking draw's teams, which are a one-off snapshot).
+  CREATE TABLE IF NOT EXISTS tournament_teams (
+    id            TEXT PRIMARY KEY,
+    tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    name          TEXT NOT NULL,
+    player_ids    TEXT NOT NULL  -- JSON array of player ids
+  );
+
+  -- One row per bracket slot (single_elimination) or fixture (round_robin).
+  -- For a bracket, later rounds start with NULL team_*_id and get filled in
+  -- as earlier rounds are decided (see tournament.ts's applyBracketResult).
+  -- match_id points at the matches row created when a result is recorded,
+  -- so playing in a tournament also counts toward the normal leaderboard;
+  -- ON DELETE SET NULL rather than CASCADE so correcting/removing that
+  -- leaderboard entry doesn't silently erase the tournament result too.
+  CREATE TABLE IF NOT EXISTS tournament_matches (
+    id             TEXT PRIMARY KEY,
+    tournament_id  TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    round          INTEGER NOT NULL,
+    slot           INTEGER NOT NULL,
+    team_a_id      TEXT REFERENCES tournament_teams(id) ON DELETE CASCADE,
+    team_b_id      TEXT REFERENCES tournament_teams(id) ON DELETE CASCADE,
+    winner_team_id TEXT REFERENCES tournament_teams(id) ON DELETE CASCADE,
+    is_draw        INTEGER NOT NULL DEFAULT 0,
+    is_bye         INTEGER NOT NULL DEFAULT 0,
+    match_id       TEXT REFERENCES matches(id) ON DELETE SET NULL,
+    played_at      INTEGER
+  );
+
   CREATE INDEX IF NOT EXISTS idx_skills_game ON skills(game_id);
   CREATE INDEX IF NOT EXISTS idx_live_status_games_game ON live_status_games(game_id);
   CREATE INDEX IF NOT EXISTS idx_votes_round ON votes(round);
@@ -184,6 +231,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_matches_event ON matches(event_id);
   CREATE INDEX IF NOT EXISTS idx_matchmaking_draws_event ON matchmaking_draws(event_id);
   CREATE INDEX IF NOT EXISTS idx_matchmaking_draws_game ON matchmaking_draws(game_id);
+  CREATE INDEX IF NOT EXISTS idx_tournaments_event ON tournaments(event_id);
+  CREATE INDEX IF NOT EXISTS idx_tournament_teams_tournament ON tournament_teams(tournament_id);
+  CREATE INDEX IF NOT EXISTS idx_tournament_matches_tournament ON tournament_matches(tournament_id);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_player ON play_sessions(player_id);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_game ON play_sessions(game_id);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_open ON play_sessions(ended_at);

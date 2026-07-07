@@ -16,6 +16,7 @@ import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
 import { renderProfile } from './views/profile.js';
+import { renderTournaments, invalidateTournaments } from './views/tournament.js';
 
 const VIEWS = {
   live: renderLive,
@@ -26,6 +27,7 @@ const VIEWS = {
   settings: renderGames,
   analytics: renderAnalytics,
   profile: renderProfile,
+  tournaments: renderTournaments,
 };
 
 let currentView = 'live';
@@ -184,6 +186,10 @@ function wireSocket() {
     state.lastMatchmaking = payload;
     invalidateMatchmakingHistory();
     if (currentView === 'matchmaking') renderCurrent();
+  });
+  socket.on('tournaments:changed', () => {
+    invalidateTournaments();
+    if (currentView === 'tournaments') renderCurrent();
   });
 }
 

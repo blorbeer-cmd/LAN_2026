@@ -141,4 +141,16 @@ export const api = {
     create: (name) => apiFetch('/api/events', { method: 'POST', body: JSON.stringify({ name }) }),
     rename: (id, name) => apiFetch(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   },
+
+  tournaments: {
+    list: () => apiFetch('/api/tournaments'),
+    get: (id) => apiFetch(`/api/tournaments/${id}`),
+    create: (data) => apiFetch('/api/tournaments', { method: 'POST', body: JSON.stringify(data) }),
+    recordResult: (tournamentId, matchId, winnerTeamId) =>
+      apiFetch(`/api/tournaments/${tournamentId}/matches/${matchId}/result`, {
+        method: 'POST',
+        body: JSON.stringify({ winnerTeamId }),
+      }),
+    remove: (id) => apiFetch(`/api/tournaments/${id}`, { method: 'DELETE' }),
+  },
 };

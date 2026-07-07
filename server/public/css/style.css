@@ -481,6 +481,66 @@ input[type='range'] {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- Tournament bracket ---------- */
+
+.bracket-scroll {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  margin: 0 -16px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+.bracket-round {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 14px;
+  min-width: 190px;
+  flex-shrink: 0;
+}
+.bracket-round-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+.bracket-match {
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  padding: 6px;
+}
+.bracket-team {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 0.9rem;
+  cursor: default;
+}
+button.bracket-team {
+  cursor: pointer;
+}
+button.bracket-team:hover {
+  background: var(--bg-elevated-2);
+}
+.bracket-team.is-winner {
+  font-weight: 700;
+  color: var(--state-playing);
+}
+.bracket-team.is-tbd {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* ---------- Checkbox list (present players) ---------- */
 
 .check-row {
