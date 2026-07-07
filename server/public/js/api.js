@@ -61,6 +61,29 @@ export async function fetchText(path) {
   return text;
 }
 
+// For binary downloads (the personalized agent ZIP): needs the access token
+// attached like every other call, but must hand back a Blob (with its
+// filename) instead of trying to JSON.parse it, and read the server's error
+// JSON on failure the same way fetchText does.
+export async function fetchBlob(path) {
+  const headers = {};
+  const token = getToken();
+  if (token) headers['x-access-token'] = token;
+  const res = await fetch(path, { headers });
+  if (!res.ok) {
+    let message = `Fehler ${res.status}`;
+    try {
+      message = (await res.json()).error || message;
+    } catch {
+      // body wasn't JSON either; keep the generic message
+    }
+    throw new Error(message);
+  }
+  const disposition = res.headers.get('content-disposition') || '';
+  const match = disposition.match(/filename="([^"]+)"/);
+  return { blob: await res.blob(), filename: match ? match[1] : 'download' };
+}
+
 export const api = {
   meta: () => apiFetch('/api/meta'),
 
@@ -208,5 +231,9 @@ export const api = {
     subscribe: (playerId, subscription) =>
       apiFetch('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ playerId, subscription }) }),
     unsubscribe: (endpoint) => apiFetch('/api/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
+  },
+
+  agent: {
+    download: (playerId) => fetchBlob(`/api/agent-download?playerId=${encodeURIComponent(playerId)}`),
   },
 };

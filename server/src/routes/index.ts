@@ -21,6 +21,7 @@ import { seatingRouter } from './seating';
 import { pingsRouter } from './pings';
 import { digestRouter } from './digest';
 import { pushRouter } from './push';
+import { agentDownloadRouter } from './agentDownload';
 
 export const apiRouter = Router();
 
@@ -48,3 +49,4 @@ apiRouter.use('/seating', seatingRouter);
 apiRouter.use('/pings', pingsRouter);
 apiRouter.use('/digest', digestRouter);
 apiRouter.use('/push', pushRouter);
+apiRouter.use('/agent-download', agentDownloadRouter);

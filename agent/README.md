@@ -5,7 +5,15 @@ eigenen API-Key und wie oft es nachschauen soll. Es scannt periodisch die laufen
 meldet sie dem Server – die Zuordnung „welcher Prozessname gehört zu welchem Spiel" liegt zentral
 auf dem Server (`⚙️ Spiele verwalten` im Web-Tool) und muss hier nicht gepflegt werden.
 
-## Einrichtung
+## Für Teilnehmer: fertiges Download (empfohlen)
+
+Im Web-Tool auf der eigenen Profil-Seite: „📥 Agent für Windows herunterladen". Die ZIP enthält die
+fertige `.exe` mit bereits eingetragener Server-Adresse und eigenem API-Key sowie ein
+`install.bat`, das alles einrichtet (inkl. Autostart bei jedem Windows-Login) – kein Node.js, keine
+Config-Datei von Hand nötig. Der folgende Abschnitt ist nur für die manuelle/Nicht-Windows-Variante
+relevant.
+
+## Manuelle Einrichtung
 
 1. `agent.config.example.json` zu `agent.config.json` kopieren.
 2. Server-URL und den persönlichen API-Key eintragen (den Key gibt's im Web-Tool unter
@@ -48,15 +56,17 @@ tatsächlich aktiv gespielt wurde (z. B. in der Rangliste als „davon aktiv ges
 
 ## Als eigenständige `.exe` paketieren
 
-Damit auf den Spieler-PCs kein Node.js installiert sein muss, lässt sich der Agent mit
-[`pkg`](https://github.com/yao-pkg/pkg) (gepflegter Fork) bündeln:
+Für den Ein-Klick-Download oben braucht der Server eine gebaute `.exe` unter
+`server/agent-dist/lan2026-agent.exe` (siehe dessen README). Gebaut wird sie mit
+[`pkg`](https://github.com/yao-pkg/pkg) (gepflegter Fork), auf einer Maschine mit normalem
+Internetzugang (pkg lädt beim ersten Lauf eine Node-Runtime für das Ziel-Betriebssystem herunter):
 
 ```bash
 npm install -g @yao-pkg/pkg
-pkg . --targets node18-win-x64 --output lan2026-agent.exe
+npx pkg src/index.js --targets node18-win-x64 --output ../server/agent-dist/lan2026-agent.exe
 ```
 
-Die erzeugte `lan2026-agent.exe` neben eine `agent.config.json` legen und starten – fertig.
+Alternativ direkt neben eine `agent.config.json` legen und manuell starten – fertig.
 
 ## Tests
 

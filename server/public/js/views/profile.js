@@ -357,16 +357,25 @@ export function renderProfile(container, ctx) {
       <div class="muted" style="font-size:0.8rem;">Bild antippen zum Ändern. Name muss über alle Spieler eindeutig sein.</div>
     </div>
 
-    <div class="section-title">🔑 Agent-API-Key</div>
+    <div class="section-title">🖥️ Live-Status-Agent</div>
     <div class="card stack">
-      <div class="row">
-        <input type="text" id="profile-apikey" readonly value="Laden…" style="flex:1;font-family:monospace;" />
-        <button type="button" class="btn btn-sm" id="profile-copy-key">Kopieren</button>
-      </div>
+      <button type="button" class="btn btn-primary btn-block" id="agent-download">📥 Agent für Windows herunterladen</button>
       <p class="muted" style="font-size:0.8rem;">
-        Diesen Key in die Config deines Agenten (auf deinem PC) eintragen, damit dein Live-Status
-        automatisch erkannt wird.
+        ZIP entpacken, <code>install.bat</code> doppelklicken – Server-Adresse und dein API-Key sind
+        schon eingetragen. Der Agent startet danach automatisch bei jedem Windows-Login und erkennt,
+        welches Spiel du gerade spielst.
       </p>
+      <details>
+        <summary class="muted" style="font-size:0.8rem;cursor:pointer;">Kein Windows / manuelle Einrichtung</summary>
+        <div class="row" style="margin-top:8px;">
+          <input type="text" id="profile-apikey" readonly value="Laden…" style="flex:1;font-family:monospace;" />
+          <button type="button" class="btn btn-sm" id="profile-copy-key">Kopieren</button>
+        </div>
+        <p class="muted" style="font-size:0.8rem;margin-top:6px;">
+          Diesen Key in die Config des Agenten (<code>agent/</code>-Ordner im Repo, mit Node.js
+          gestartet) eintragen – siehe <code>agent/README.md</code>.
+        </p>
+      </details>
     </div>
 
     <div class="section-title">🔔 Push-Benachrichtigungen</div>
@@ -416,6 +425,27 @@ export function renderProfile(container, ctx) {
       showToast('API-Key kopiert.');
     } catch {
       showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+    }
+  });
+
+  container.querySelector('#agent-download').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const originalLabel = btn.textContent;
+    btn.textContent = 'Wird vorbereitet…';
+    try {
+      const { blob, filename } = await api.agent.download(myId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      showToast(err.message, { error: true });
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
     }
   });
 
