@@ -64,6 +64,15 @@ body {
   height: 100%;
 }
 
+/* Several elements below (.login-screen, .app) set their own `display` via a
+   class, which has the same specificity as the UA stylesheet's
+   `[hidden] { display: none }` rule — author CSS wins the tie, so without
+   this, toggling the `hidden` attribute alone would NOT actually hide them.
+   This rule must win regardless of what else is in this file. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   background: var(--bg);
   color: var(--text);
