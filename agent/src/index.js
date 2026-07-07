@@ -5,6 +5,7 @@
 
 const { loadConfig } = require('./config');
 const { getRunningProcessNames } = require('./processList');
+const { getActivitySnapshot } = require('./activity');
 const { reportToServer } = require('./report');
 
 function log(message) {
@@ -15,7 +16,10 @@ function log(message) {
 async function tick(config) {
   try {
     const processNames = await getRunningProcessNames();
-    const result = await reportToServer(config, processNames);
+    // Opt-in only: reveals which process is focused + idle time, so the
+    // server can tell "actually played" apart from "just running".
+    const activitySnapshot = config.trackActivity ? await getActivitySnapshot() : null;
+    const result = await reportToServer(config, processNames, activitySnapshot);
     const count = result?.gameIds?.length ?? 0;
     log(count > 0 ? `✅ Verbunden – ${count} Spiel(e) erkannt.` : '✅ Verbunden – kein bekanntes Spiel aktiv.');
   } catch (err) {
@@ -28,7 +32,10 @@ async function tick(config) {
 
 function start(configPath) {
   const config = loadConfig(configPath);
-  log(`LAN-2026-Agent gestartet. Server: ${config.serverUrl} · Intervall: ${config.pollIntervalMs}ms`);
+  log(
+    `LAN-2026-Agent gestartet. Server: ${config.serverUrl} · Intervall: ${config.pollIntervalMs}ms` +
+      (config.trackActivity ? ' · Aktivitäts-Tracking: an' : '')
+  );
 
   tick(config);
   const timer = setInterval(() => tick(config), config.pollIntervalMs);

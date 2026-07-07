@@ -38,13 +38,24 @@ export function renderLeaderboard(container, ctx) {
   // scoped by the API); otherwise show each player's grand total across all
   // games — either way, the same "totals" list applies since the API scopes
   // it to whatever ?gameId= was requested.
+  // activeMs (focused + not idle) is only non-zero for players who opted
+  // into activity tracking, so only show the "davon aktiv" hint when there's
+  // something meaningful to say — otherwise it'd just be noisy zeros.
+  const activeHint = (activeMs, totalMs, activeFormatted) =>
+    activeMs > 0 && activeMs < totalMs
+      ? `<div class="muted" style="font-size:0.75rem;">davon aktiv gespielt: ${escapeHtml(activeFormatted)}</div>`
+      : '';
+
   const playtime = state.playtime?.totals || [];
   const playtimeRows = playtime
     .map(
       (p) => `
       <div class="lb-row">
         <span class="avatar-dot" style="background:${escapeHtml(p.playerColor)}"></span>
-        <span style="flex:1;">${escapeHtml(p.playerName)}</span>
+        <span style="flex:1;">
+          ${escapeHtml(p.playerName)}
+          ${activeHint(p.activeMs, p.totalMs, p.activeFormatted)}
+        </span>
         <span class="lb-points">${escapeHtml(p.formatted)}</span>
       </div>`
     )
@@ -58,7 +69,10 @@ export function renderLeaderboard(container, ctx) {
       (g) => `
       <div class="lb-row">
         <span>${escapeHtml(g.gameIcon)}</span>
-        <span style="flex:1;">${escapeHtml(g.gameName)}</span>
+        <span style="flex:1;">
+          ${escapeHtml(g.gameName)}
+          ${activeHint(g.activeMs, g.totalMs, g.activeFormatted)}
+        </span>
         <span class="lb-points">${escapeHtml(g.formatted)}</span>
       </div>`
     )

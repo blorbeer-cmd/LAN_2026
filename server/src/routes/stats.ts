@@ -1,5 +1,7 @@
 // Playtime statistics (FR-29): aggregated from the play_sessions history the
-// agent report endpoint writes on every start/stop transition.
+// agent report endpoint writes on every start/stop transition. activeMs
+// (only non-zero for players who opted into activity tracking) reflects time
+// the game was actually focused+used, as opposed to just running.
 
 import { Router } from 'express';
 import { db } from '../db';
@@ -28,16 +30,19 @@ statsRouter.get('/playtime', (req, res) => {
   const rows = (
     filterGameId
       ? db
-          .prepare('SELECT player_id, game_id, started_at, ended_at FROM play_sessions WHERE game_id = ?')
+          .prepare(
+            'SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions WHERE game_id = ?'
+          )
           .all(filterGameId)
-      : db.prepare('SELECT player_id, game_id, started_at, ended_at FROM play_sessions').all()
-  ) as Array<{ player_id: string; game_id: string; started_at: number; ended_at: number | null }>;
+      : db.prepare('SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions').all()
+  ) as Array<{ player_id: string; game_id: string; started_at: number; ended_at: number | null; active_ms: number }>;
 
   const sessions: PlaySession[] = rows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
     startedAt: r.started_at,
     endedAt: r.ended_at,
+    activeMs: r.active_ms,
   }));
 
   const perGame = computePlaytime(sessions, Date.now());
@@ -67,30 +72,39 @@ statsRouter.get('/playtime', (req, res) => {
     gameIcon: gameByIdMap.get(e.gameId)?.icon ?? '🎮',
     totalMs: e.totalMs,
     formatted: formatDurationMs(e.totalMs),
+    activeMs: e.activeMs,
+    activeFormatted: formatDurationMs(e.activeMs),
   }));
 
-  const totalsByPlayer = new Map<string, number>();
+  const totalsByPlayer = new Map<string, { totalMs: number; activeMs: number }>();
   for (const e of entries) {
-    totalsByPlayer.set(e.playerId, (totalsByPlayer.get(e.playerId) ?? 0) + e.totalMs);
+    const current = totalsByPlayer.get(e.playerId) ?? { totalMs: 0, activeMs: 0 };
+    current.totalMs += e.totalMs;
+    current.activeMs += e.activeMs;
+    totalsByPlayer.set(e.playerId, current);
   }
   const totals = [...totalsByPlayer.entries()]
-    .map(([playerId, totalMs]) => ({
+    .map(([playerId, v]) => ({
       playerId,
       playerName: playerById.get(playerId)?.name ?? 'Unbekannt',
       playerColor: playerById.get(playerId)?.color ?? '#999999',
-      totalMs,
-      formatted: formatDurationMs(totalMs),
+      totalMs: v.totalMs,
+      formatted: formatDurationMs(v.totalMs),
+      activeMs: v.activeMs,
+      activeFormatted: formatDurationMs(v.activeMs),
     }))
     .sort((a, b) => b.totalMs - a.totalMs);
 
   // Per-game total across everyone — "how long did this game run at the
   // party in total", not per person.
-  const totalsByGame = aggregateByGame(perGame).map(({ gameId: id, totalMs }) => ({
+  const totalsByGame = aggregateByGame(perGame).map(({ gameId: id, totalMs, activeMs }) => ({
     gameId: id,
     gameName: gameByIdMap.get(id)?.name ?? 'Unbekannt',
     gameIcon: gameByIdMap.get(id)?.icon ?? '🎮',
     totalMs,
     formatted: formatDurationMs(totalMs),
+    activeMs,
+    activeFormatted: formatDurationMs(activeMs),
   }));
 
   res.json({ gameId: filterGameId, entries, totals, totalsByGame });

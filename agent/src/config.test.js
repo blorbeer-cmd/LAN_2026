@@ -60,3 +60,28 @@ test('loadConfig ignores an invalid (non-positive) poll interval and falls back 
   assert.equal(config.pollIntervalMs, DEFAULT_POLL_INTERVAL_MS);
   fs.unlinkSync(file);
 });
+
+test('loadConfig defaults trackActivity to false when omitted', () => {
+  const file = writeTempConfig(JSON.stringify({ serverUrl: 'http://x:3000', apiKey: 'abc' }));
+  const config = loadConfig(file);
+  assert.equal(config.trackActivity, false);
+  fs.unlinkSync(file);
+});
+
+test('loadConfig respects trackActivity: true', () => {
+  const file = writeTempConfig(
+    JSON.stringify({ serverUrl: 'http://x:3000', apiKey: 'abc', trackActivity: true })
+  );
+  const config = loadConfig(file);
+  assert.equal(config.trackActivity, true);
+  fs.unlinkSync(file);
+});
+
+test('loadConfig treats a non-boolean trackActivity as false', () => {
+  const file = writeTempConfig(
+    JSON.stringify({ serverUrl: 'http://x:3000', apiKey: 'abc', trackActivity: 'yes' })
+  );
+  const config = loadConfig(file);
+  assert.equal(config.trackActivity, false);
+  fs.unlinkSync(file);
+});

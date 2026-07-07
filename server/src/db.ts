@@ -79,12 +79,18 @@ db.exec(`
   -- live_status_games on every agent report (open on start, closed on stop),
   -- so total playtime per player/game can be computed even after a session
   -- has ended. ended_at NULL means the session is still ongoing.
+  -- active_ms accumulates estimated time the game was actually being played
+  -- (its window focused + system not idle), as opposed to just running in
+  -- the background. Only accrues when the player's agent opts in to sending
+  -- foreground/idle data (trackActivity); otherwise stays 0 and total
+  -- playtime (ended_at - started_at) is all we know.
   CREATE TABLE IF NOT EXISTS play_sessions (
     id         TEXT PRIMARY KEY,
     player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     game_id    TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
     started_at INTEGER NOT NULL,
-    ended_at   INTEGER
+    ended_at   INTEGER,
+    active_ms  INTEGER NOT NULL DEFAULT 0
   );
 
   -- Simple single active vote for "what's next". One row per player per open

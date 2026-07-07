@@ -15,7 +15,8 @@ auf dem Server (`⚙️ Spiele verwalten` im Web-Tool) und muss hier nicht gepfl
 {
   "serverUrl": "http://192.168.1.50:3000",
   "apiKey": "dein-persoenlicher-api-key",
-  "pollIntervalMs": 10000
+  "pollIntervalMs": 10000,
+  "trackActivity": false
 }
 ```
 
@@ -28,6 +29,22 @@ npm start
 
 Die Konsole zeigt den Verbindungsstatus (✅ verbunden / ❌ Fehler) – Netzwerk-Aussetzer oder ein
 Server-Neustart sind kein Problem, der Agent versucht es beim nächsten Intervall automatisch erneut.
+
+## Aktivitäts-Tracking (optional, standardmäßig aus)
+
+Normal weiß der Server nur: „läuft der Spiele-Prozess gerade". Mit `"trackActivity": true` meldet
+der Agent zusätzlich, welches Fenster gerade im Vordergrund ist und wie lange keine Maus-/
+Tastatureingabe kam. Der Server kann damit unterscheiden, ob ein Spiel nur im Hintergrund lief oder
+tatsächlich aktiv gespielt wurde (z. B. in der Rangliste als „davon aktiv gespielt: 2h 15m").
+
+- **Nur Windows** – nutzt `user32.dll` über ein kleines PowerShell-Skript. Auf anderen Systemen
+  wird die Option ignoriert.
+- **Opt-in** – jeder Spieler entscheidet selbst, ob sein Agent das mitschickt. Standard ist `false`.
+- **Was tatsächlich übertragen wird**: der Prozessname des aktuell fokussierten Fensters (das kann
+  grundsätzlich jedes laufende Programm sein, nicht nur eines unserer Spiele) sowie die Leerlaufzeit
+  in Sekunden als Zahl. Der Server nutzt das nur, wenn es zu einem der konfigurierten Spiele passt –
+  alles andere wird verworfen und nirgends gespeichert oder angezeigt. Wer das nicht möchte, lässt
+  `trackActivity` einfach auf `false`.
 
 ## Als eigenständige `.exe` paketieren
 

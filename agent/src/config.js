@@ -37,10 +37,19 @@ function loadConfig(configPath) {
       ? parsed.pollIntervalMs
       : DEFAULT_POLL_INTERVAL_MS;
 
+  // Opt-in: reports which process has the focused window + how long since the
+  // last keyboard/mouse input, so the server can tell "was actually played"
+  // apart from "was just running in the background". Off by default —
+  // players should explicitly choose to share this extra bit of activity
+  // data about themselves. Windows-only (relies on user32.dll); ignored on
+  // other platforms regardless of this setting.
+  const trackActivity = parsed.trackActivity === true;
+
   return {
     serverUrl: parsed.serverUrl.trim().replace(/\/+$/, ''),
     apiKey: parsed.apiKey.trim(),
     pollIntervalMs,
+    trackActivity,
   };
 }
 
