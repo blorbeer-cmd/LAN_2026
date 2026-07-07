@@ -161,7 +161,7 @@ function renderActiveGroups(players) {
     .sort((a, b) => b.players.length - a.players.length)
     .map(
       (g) => `
-      <div class="chip">${gameBadgeHtml(g, 20)} <strong>${escapeHtml(g.name)}</strong>: ${g.players.map(escapeHtml).join(', ')}</div>`
+      <div class="chip" style="flex-wrap:wrap;">${gameBadgeHtml(g, 20)} <strong style="white-space:nowrap;">${escapeHtml(g.name)}</strong>: ${g.players.map(escapeHtml).join(', ')}</div>`
     )
     .join('');
 

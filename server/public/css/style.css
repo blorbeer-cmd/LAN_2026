@@ -75,7 +75,13 @@ input {
 /* ---------- App shell ---------- */
 
 .app {
-  min-height: 100dvh;
+  /* Fixed, not min-height: flex children default to min-height:auto, so a
+     merely min-height'd container happily grows past the viewport to fit a
+     long list instead of letting .view-container's own overflow-y:auto
+     handle it — and since .bottom-nav is position:fixed to the real
+     viewport, that growth silently clips the last bit of every long list
+     behind the nav instead of making it scrollable. */
+  height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -161,6 +167,7 @@ input {
 
 .view-container {
   flex: 1;
+  min-height: 0; /* allow this flex item to actually shrink and scroll internally, see .app */
   overflow-y: auto;
   padding: 16px 16px calc(var(--nav-height) + 24px);
   max-width: 720px;
@@ -177,9 +184,21 @@ input {
   padding-bottom: env(safe-area-inset-bottom);
   background: var(--bg-elevated);
   border-top: 1px solid var(--border);
+  z-index: 10;
+}
+
+/* The bar's background/border span the full width (looks intentional at any
+   size), but the tap targets themselves are capped to the same column width
+   as .view-container and centered — on a wide laptop screen, 5 icons spread
+   with justify-content:space-around across the full viewport would land tens
+   of pixels apart with dead space between each, instead of reading as one
+   navigation bar. */
+.bottom-nav-inner {
   display: flex;
   justify-content: space-around;
-  z-index: 10;
+  max-width: 720px;
+  height: 100%;
+  margin: 0 auto;
 }
 
 .nav-btn {
