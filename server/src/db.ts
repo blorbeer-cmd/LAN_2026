@@ -121,6 +121,19 @@ db.exec(`
     UNIQUE (player_id, round)
   );
 
+  -- One row per vote round, so the history view can list past rounds even
+  -- ones nobody voted in (which would otherwise leave no trace in the votes
+  -- table at all). Written on /start, filled in with the winner(s) on /close;
+  -- deleted on /cancel so mistaken rounds don't linger in the history,
+  -- mirroring the votes rows themselves being deleted on cancel.
+  CREATE TABLE IF NOT EXISTS vote_rounds (
+    round           INTEGER PRIMARY KEY,
+    event_id        TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    started_at      INTEGER NOT NULL,
+    closed_at       INTEGER,
+    winner_game_ids TEXT   -- JSON array of game ids, set on close
+  );
+
   -- Recorded matches for the leaderboard. Result details are stored as JSON to
   -- stay flexible while the scoring rules are still being decided.
   CREATE TABLE IF NOT EXISTS matches (
@@ -135,6 +148,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_live_status_games_game ON live_status_games(game_id);
   CREATE INDEX IF NOT EXISTS idx_votes_round ON votes(round);
   CREATE INDEX IF NOT EXISTS idx_votes_event ON votes(event_id);
+  CREATE INDEX IF NOT EXISTS idx_vote_rounds_event ON vote_rounds(event_id);
   CREATE INDEX IF NOT EXISTS idx_matches_game ON matches(game_id);
   CREATE INDEX IF NOT EXISTS idx_matches_event ON matches(event_id);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_player ON play_sessions(player_id);

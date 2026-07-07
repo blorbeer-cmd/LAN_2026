@@ -3,8 +3,8 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, formatSince, stateLabel, avatarHtml } from '../format.js';
-import { getMyId, setMyId } from '../whoami.js';
+import { escapeHtml, formatSince, stateLabel, avatarHtml, gameBadgeHtml } from '../format.js';
+import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { showToast } from '../toast.js';
 
 const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
@@ -16,7 +16,7 @@ function renderActiveGroups(players) {
   for (const p of players) {
     if (p.state !== 'playing') continue;
     for (const g of p.games) {
-      const entry = byGame.get(g.game_id) ?? { name: g.game_name, icon: g.game_icon, players: [] };
+      const entry = byGame.get(g.game_id) ?? { id: g.game_id, name: g.game_name, icon: g.game_icon, players: [] };
       entry.players.push(p.name);
       byGame.set(g.game_id, entry);
     }
@@ -27,7 +27,7 @@ function renderActiveGroups(players) {
     .sort((a, b) => b.players.length - a.players.length)
     .map(
       (g) => `
-      <div class="chip">${escapeHtml(g.icon)} <strong>${escapeHtml(g.name)}</strong>: ${g.players.map(escapeHtml).join(', ')}</div>`
+      <div class="chip">${gameBadgeHtml(g, 20)} <strong>${escapeHtml(g.name)}</strong>: ${g.players.map(escapeHtml).join(', ')}</div>`
     )
     .join('');
 
@@ -55,15 +55,7 @@ export function renderLive(container, ctx) {
   }
 
   const myId = getMyId();
-  const whoAmI = `
-    <div class="card row" style="margin-bottom:16px;">
-      <span style="flex:1;">Wer bist du?</span>
-      <select id="live-whoami">
-        <option value="">– wählen –</option>
-        ${state.players.map((p) => `<option value="${p.id}" ${p.id === myId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
-      </select>
-    </div>
-  `;
+  const whoAmI = whoAmICardHtml('live-whoami', { marginBottom: '16px' });
 
   const cards = players
     .map((p) => {
@@ -71,7 +63,7 @@ export function renderLive(container, ctx) {
       const games = p.games
         .map(
           (g) =>
-            `<span class="chip">${escapeHtml(g.game_icon)} ${escapeHtml(g.game_name)} · ${formatSince(g.since)}</span>`
+            `<span class="chip">${gameBadgeHtml({ id: g.game_id, icon: g.game_icon }, 20)} ${escapeHtml(g.game_name)} · ${formatSince(g.since)}</span>`
         )
         .join('');
 
@@ -110,10 +102,7 @@ export function renderLive(container, ctx) {
     <div class="stack">${cards}</div>
   `;
 
-  container.querySelector('#live-whoami').addEventListener('change', (e) => {
-    setMyId(e.target.value);
-    ctx.rerender();
-  });
+  wireWhoAmICard(container, 'live-whoami', ctx);
 
   container.querySelectorAll('[data-toggle-pause]').forEach((btn) => {
     btn.addEventListener('click', async () => {

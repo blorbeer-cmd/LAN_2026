@@ -5,9 +5,60 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, formatDate } from '../format.js';
+import { escapeHtml, formatDate, formatDateTime, gameBadgeHtml } from '../format.js';
 import { showToast } from '../toast.js';
-import { getMyId, setMyId } from '../whoami.js';
+import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+
+// Cached separately from `state` (like analytics.js does) since it's fetched
+// from its own endpoint, not part of the main loadAll() round-trip.
+let historyCache = null;
+let historyLoading = false;
+
+async function loadHistory(ctx) {
+  historyLoading = true;
+  try {
+    const res = await api.votes.history();
+    historyCache = res.history;
+  } catch {
+    historyCache = [];
+  } finally {
+    historyLoading = false;
+    ctx.rerender();
+  }
+}
+
+// Called from app.js whenever a votes:changed event reports the round is no
+// longer open, so a freshly closed round shows up next time this view opens
+// instead of whatever the last fetch happened to see.
+export function invalidateVoteHistory() {
+  historyCache = null;
+}
+
+function renderHistory() {
+  if (historyLoading || historyCache === null) {
+    return `<div class="empty-state" style="padding:16px;">Lädt…</div>`;
+  }
+  if (historyCache.length === 0) {
+    return `<div class="empty-state" style="padding:16px;"><span class="emoji">🗳️</span>Noch keine vergangenen Abstimmungen.</div>`;
+  }
+  return historyCache
+    .map((h) => {
+      const winners = h.winners.length
+        ? h.winners
+            .map((w) => `<span class="chip">${gameBadgeHtml({ id: w.gameId, icon: w.icon }, 20)} ${escapeHtml(w.gameName)}</span>`)
+            .join('')
+        : `<span class="muted">Niemand hat abgestimmt</span>`;
+      return `
+        <div class="lb-row" style="align-items:flex-start;">
+          <div class="stack" style="gap:4px;flex:1;">
+            <div class="chip-list">${winners}</div>
+            <span class="muted" style="font-size:0.75rem;">${formatDateTime(h.closedAt)}</span>
+          </div>
+          <span class="muted" style="font-size:0.8rem;flex-shrink:0;">${h.totalVotes} Stimme(n)</span>
+        </div>`;
+    })
+    .join('');
+}
 
 export function renderVotes(container, ctx) {
   const votes = state.votes;
@@ -16,16 +67,11 @@ export function renderVotes(container, ctx) {
     return;
   }
 
-  const myId = getMyId();
-  const whoAmI = `
-    <div class="card row">
-      <span style="flex:1;">Wer bist du?</span>
-      <select id="whoami">
-        <option value="">– wählen –</option>
-        ${state.players.map((p) => `<option value="${p.id}" ${p.id === myId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
-      </select>
-    </div>
-  `;
+  if (historyCache === null && !historyLoading) {
+    loadHistory(ctx);
+  }
+
+  const whoAmI = whoAmICardHtml('whoami');
 
   const maxVotes = Math.max(1, ...votes.results.map((r) => r.votes));
   const rows = votes.results
@@ -38,7 +84,7 @@ export function renderVotes(container, ctx) {
       return `
         <div class="vote-row ${isTop ? 'is-winner' : ''}">
           <div class="row-between">
-            <span>${escapeHtml(r.icon)} ${escapeHtml(r.gameName)}</span>
+            <span class="row" style="gap:8px;">${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 24)} ${escapeHtml(r.gameName)}</span>
             <span class="muted">${r.votes} Stimme(n)</span>
           </div>
           <div class="vote-bar-track"><div class="vote-bar-fill" style="width:${(r.votes / maxVotes) * 100}%"></div></div>
@@ -66,9 +112,12 @@ export function renderVotes(container, ctx) {
       ${rows}
     </div>
     <div style="margin-top:12px;">${controls}</div>
+
+    <div class="section-title">🕓 Vote-Historie</div>
+    <div class="card">${renderHistory()}</div>
   `;
 
-  container.querySelector('#whoami').addEventListener('change', (e) => setMyId(e.target.value));
+  wireWhoAmICard(container, 'whoami', ctx);
 
   container.querySelectorAll('[data-vote-game]').forEach((btn) => {
     btn.addEventListener('click', async () => {

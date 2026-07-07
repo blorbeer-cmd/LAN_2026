@@ -5,7 +5,7 @@
 
 import { api, getToken } from '../api.js';
 import { state, gameById } from '../state.js';
-import { escapeHtml } from '../format.js';
+import { escapeHtml, gameBadgeHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 
@@ -20,8 +20,8 @@ function renderInviteSection() {
         <button type="button" class="btn btn-sm" id="invite-copy">Kopieren</button>
       </div>
       <p class="muted" style="font-size:0.8rem;">
-        Diesen Link verschicken – öffnet die Seite direkt eingeloggt. Der Empfänger legt sich dann
-        unter „Spieler" selbst an.
+        Diesen Link verschicken – öffnet die Seite direkt eingeloggt und führt neue Leute direkt zur
+        Profil-Erstellung. Name, Bild, Skills und der eigene Agent-Key richten sich alle selbst ein.
       </p>
     </div>
   `;
@@ -57,7 +57,7 @@ export function renderGames(container, ctx) {
     .map(
       (g) => `
       <button type="button" class="card row" style="width:100%;text-align:left;cursor:pointer;" data-game="${g.id}">
-        <span style="font-size:1.3rem;">${escapeHtml(g.icon)}</span>
+        ${gameBadgeHtml(g, 40)}
         <span style="flex:1;">
           <div class="player-name">${escapeHtml(g.name)}</div>
           <div class="muted" style="font-size:0.8rem;">Team: ${g.min_team_size}-${g.max_team_size} · ${g.processNames.length} Prozess(e)</div>

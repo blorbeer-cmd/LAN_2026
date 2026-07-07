@@ -10,7 +10,7 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
+import { escapeHtml, avatarHtml, formatDateTime, gameBadgeHtml } from '../format.js';
 import { getMyId, setMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 
@@ -48,18 +48,22 @@ function resizeImageFile(file, maxSize = 200, quality = 0.8) {
 function renderIdentityPicker(container, ctx) {
   const myId = getMyId();
   container.innerHTML = `
-    <h1 class="view-title">👤 Mein Profil</h1>
+    <h1 class="view-title">👋 Willkommen bei RespawnHQ</h1>
     <div class="card stack">
-      <div>Wer bist du?</div>
+      <div class="player-name">Neu hier? Leg dir dein Profil an:</div>
+      <form id="profile-new-form" class="row">
+        <input type="text" id="profile-new-name" placeholder="Dein Gamer-Name" maxlength="60" style="flex:1;" required autofocus />
+        <button type="submit" class="btn btn-primary btn-sm">Los geht's</button>
+      </form>
+      <div class="muted" style="font-size:0.8rem;">Profilbild, Skills und dein Agent-Key richtest du direkt im Anschluss ein.</div>
+    </div>
+
+    <div class="section-title">Schon dabei?</div>
+    <div class="card">
       <select id="profile-whoami">
-        <option value="">– wählen –</option>
+        <option value="">– deinen Namen wählen –</option>
         ${state.players.map((p) => `<option value="${p.id}" ${p.id === myId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
       </select>
-      <div class="muted" style="font-size:0.8rem;">Noch nicht dabei? Leg dir unten ein Profil an.</div>
-      <form id="profile-new-form" class="row">
-        <input type="text" id="profile-new-name" placeholder="Dein Gamer-Name" maxlength="60" style="flex:1;" required />
-        <button type="submit" class="btn btn-primary btn-sm">Anlegen</button>
-      </form>
     </div>
   `;
 
@@ -246,7 +250,7 @@ export function renderProfile(container, ctx) {
       const rating = ratingFor(myId, g.id);
       return `
         <div class="skill-row" data-game="${g.id}">
-          <span>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</span>
+          <span class="row" style="gap:8px;">${gameBadgeHtml(g, 24)} ${escapeHtml(g.name)}</span>
           <span class="skill-value">${rating}</span>
           <input type="range" class="skill-row-slider" min="1" max="10" step="1" value="${rating}" />
         </div>`;
@@ -276,6 +280,18 @@ export function renderProfile(container, ctx) {
       <div class="muted" style="font-size:0.8rem;">Bild antippen zum Ändern. Name muss über alle Spieler eindeutig sein.</div>
     </div>
 
+    <div class="section-title">🔑 Agent-API-Key</div>
+    <div class="card stack">
+      <div class="row">
+        <input type="text" id="profile-apikey" readonly value="Laden…" style="flex:1;font-family:monospace;" />
+        <button type="button" class="btn btn-sm" id="profile-copy-key">Kopieren</button>
+      </div>
+      <p class="muted" style="font-size:0.8rem;">
+        Diesen Key in die Config deines Agenten (auf deinem PC) eintragen, damit dein Live-Status
+        automatisch erkannt wird.
+      </p>
+    </div>
+
     ${state.games.length > 0 ? `<div class="section-title">Skill-Ratings</div><div class="card">${skillRows}</div>` : ''}
 
     <div class="section-title">📊 Meine Statistiken</div>
@@ -286,6 +302,30 @@ export function renderProfile(container, ctx) {
     setMyId('');
     statsForPlayerId = null;
     ctx.rerender();
+  });
+
+  // Fetched lazily (the roster list intentionally omits API keys) and only
+  // ever for your own profile — see the players.js detail modal for the
+  // admin-side equivalent.
+  api.players
+    .get(myId)
+    .then((full) => {
+      const input = container.querySelector('#profile-apikey');
+      if (input) input.value = full.api_key;
+    })
+    .catch(() => {
+      const input = container.querySelector('#profile-apikey');
+      if (input) input.value = 'Fehler beim Laden';
+    });
+
+  container.querySelector('#profile-copy-key').addEventListener('click', async () => {
+    const value = container.querySelector('#profile-apikey').value;
+    try {
+      await navigator.clipboard.writeText(value);
+      showToast('API-Key kopiert.');
+    } catch {
+      showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+    }
   });
 
   container.querySelector('#profile-save').addEventListener('click', async () => {

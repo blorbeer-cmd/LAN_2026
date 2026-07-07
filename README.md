@@ -1,4 +1,4 @@
-# LAN 2026 – LAN-Party Tool
+# RespawnHQ – LAN-Party Tool
 
 Ein kleines, selbst gehostetes Web-Tool für unsere jährliche LAN-Party (~15 Leute, 3 Tage).
 Alles Wichtige an einem Ort: **Teams auslosen**, **abstimmen was als Nächstes gespielt wird**,
