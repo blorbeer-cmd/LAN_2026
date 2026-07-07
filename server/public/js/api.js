@@ -202,4 +202,11 @@ export const api = {
   digest: {
     get: (playerId) => apiFetch(`/api/digest?playerId=${encodeURIComponent(playerId)}`),
   },
+
+  push: {
+    vapidPublicKey: () => apiFetch('/api/push/vapid-public-key'),
+    subscribe: (playerId, subscription) =>
+      apiFetch('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ playerId, subscription }) }),
+    unsubscribe: (endpoint) => apiFetch('/api/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
+  },
 };

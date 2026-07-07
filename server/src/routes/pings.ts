@@ -9,6 +9,7 @@ import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getActiveEventId } from '../events';
 import { isNonEmptyString } from '../validation';
+import { notifyPlayers } from '../push';
 
 export const pingsRouter = Router();
 
@@ -144,6 +145,14 @@ pingsRouter.post('/', (req, res) => {
       message: `🎮 ${player.name} will jetzt ${game.icon} ${game.name} spielen`,
       pingId: id,
     },
+  });
+  const otherPlayerIds = (db.prepare('SELECT id FROM players WHERE id != ?').all(playerId) as Array<{ id: string }>).map(
+    (p) => p.id
+  );
+  notifyPlayers(otherPlayerIds, {
+    title: `🎮 ${player.name} will jetzt zocken`,
+    body: `${game.icon} ${game.name}${message ? ` – „${(message as string).trim()}"` : ''}`,
+    url: '/',
   });
   res.status(201).json({ pings });
 });

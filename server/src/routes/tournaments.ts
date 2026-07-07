@@ -10,6 +10,7 @@ import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getActiveEventId } from '../events';
 import { isNonEmptyString } from '../validation';
+import { notifyPlayers } from '../push';
 import {
   generateBracket,
   applyBracketResult,
@@ -306,6 +307,7 @@ tournamentsRouter.post('/', (req, res) => {
       message: `🏆 Neues Turnier: ${tournamentName}`,
     },
   });
+  notifyPlayers(allPlayerIds, { title: '🏆 Neues Turnier', body: tournamentName, url: '/' });
   res.status(201).json(buildDetail(tournamentId));
 });
 
@@ -428,6 +430,7 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
         playerIds: [...JSON.parse(nextTeamA.player_ids), ...JSON.parse(nextTeamB.player_ids)],
         message: `⚔️ Dein nächstes Match steht an: ${nextTeamA.name} vs ${nextTeamB.name}`,
       };
+      notifyPlayers(notify.playerIds, { title: '⚔️ Dein Match ist bereit', body: notify.message, url: '/' });
     }
   }
 

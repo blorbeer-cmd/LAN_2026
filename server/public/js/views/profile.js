@@ -13,6 +13,7 @@ import { state } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime, gameBadgeHtml } from '../format.js';
 import { getMyId, setMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
+import { getPushSubscriptionState, enablePush, disablePush } from '../push.js';
 
 let statsCache = null;
 let statsLoading = false;
@@ -25,6 +26,12 @@ let statsEventId = '';
 let neighborsCache = null;
 let neighborsLoading = false;
 let neighborsForPlayerId = null;
+
+// 'unsupported' | 'denied' | 'unsubscribed' | 'subscribed' | null (not yet
+// checked). Re-checked whenever the view renders fresh (cheap local
+// permission/registration lookups, no network round trip).
+let pushState = null;
+let pushBusy = false;
 
 // Resizes/compresses a picked image client-side so the DB (a single SQLite
 // file synced/backed up as a whole) doesn't balloon from full-resolution
@@ -150,6 +157,28 @@ function renderNeighbors(myId) {
       </label>`
     )
     .join('');
+}
+
+async function loadPushState(ctx) {
+  pushState = await getPushSubscriptionState();
+  ctx.rerender();
+}
+
+function renderPushSection() {
+  if (pushState === 'unsupported') {
+    return `<div class="muted" style="font-size:0.85rem;">Dieser Browser unterstützt keine Push-Benachrichtigungen.</div>`;
+  }
+  if (pushState === 'denied') {
+    return `<div class="muted" style="font-size:0.85rem;">Berechtigung wurde blockiert – in den Browser-Einstellungen für diese Seite wieder erlauben.</div>`;
+  }
+  const subscribed = pushState === 'subscribed';
+  return `
+    <div class="row-between">
+      <span class="muted" style="font-size:0.85rem;">${subscribed ? 'Aktiv auf diesem Gerät.' : 'Erhalte einen Hinweis auch, wenn die App nicht offen ist.'}</span>
+      <button type="button" class="btn btn-sm ${subscribed ? 'btn-danger' : 'btn-primary'}" id="push-toggle" ${pushBusy ? 'disabled' : ''}>
+        ${pushBusy ? 'Einen Moment…' : subscribed ? 'Deaktivieren' : 'Aktivieren'}
+      </button>
+    </div>`;
 }
 
 function renderEventOptions() {
@@ -289,6 +318,9 @@ export function renderProfile(container, ctx) {
   if (neighborsForPlayerId !== myId && !neighborsLoading) {
     loadNeighbors(myId, ctx);
   }
+  if (pushState === null) {
+    loadPushState(ctx);
+  }
 
   const skillRows = state.games
     .map((g) => {
@@ -336,6 +368,9 @@ export function renderProfile(container, ctx) {
         automatisch erkannt wird.
       </p>
     </div>
+
+    <div class="section-title">🔔 Push-Benachrichtigungen</div>
+    <div class="card">${renderPushSection()}</div>
 
     ${state.games.length > 0 ? `<div class="section-title">Skill-Ratings</div><div class="card">${skillRows}</div>` : ''}
 
@@ -440,6 +475,29 @@ export function renderProfile(container, ctx) {
       }
     });
   });
+
+  const pushToggle = container.querySelector('#push-toggle');
+  if (pushToggle) {
+    pushToggle.addEventListener('click', async () => {
+      pushBusy = true;
+      ctx.rerender();
+      try {
+        if (pushState === 'subscribed') {
+          await disablePush();
+          showToast('Push-Benachrichtigungen deaktiviert.');
+        } else {
+          await enablePush(myId);
+          showToast('Push-Benachrichtigungen aktiviert.');
+        }
+      } catch (err) {
+        showToast(err.message, { error: true });
+      } finally {
+        pushBusy = false;
+        pushState = await getPushSubscriptionState();
+        ctx.rerender();
+      }
+    });
+  }
 
   const statsEventSelect = container.querySelector('#profile-stats-event');
   if (statsEventSelect) {

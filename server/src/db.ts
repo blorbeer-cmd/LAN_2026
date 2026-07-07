@@ -242,6 +242,20 @@ db.exec(`
     PRIMARY KEY (ping_id, player_id)
   );
 
+  -- Web Push subscriptions (real OS-level notifications, not just in-app
+  -- toasts): one row per browser/device a player opted in on. Keyed by
+  -- endpoint (unique per browser+origin) rather than player_id, since one
+  -- player can have several devices subscribed; re-subscribing the same
+  -- endpoint under a different player just re-points it (see push.ts).
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id         TEXT PRIMARY KEY,
+    player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    endpoint   TEXT NOT NULL UNIQUE,
+    p256dh     TEXT NOT NULL,
+    auth       TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_skills_game ON skills(game_id);
   CREATE INDEX IF NOT EXISTS idx_live_status_games_game ON live_status_games(game_id);
   CREATE INDEX IF NOT EXISTS idx_votes_round ON votes(round);
@@ -260,6 +274,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_play_sessions_game ON play_sessions(game_id);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_open ON play_sessions(ended_at);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_event ON play_sessions(event_id);
+  CREATE INDEX IF NOT EXISTS idx_push_subscriptions_player ON push_subscriptions(player_id);
 `);
 
 // Migration: older databases were created before the `avatar` column existed.
