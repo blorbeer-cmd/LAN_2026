@@ -182,7 +182,7 @@ export function renderLive(container, ctx) {
     container.innerHTML = `
       <h1 class="view-title">Live-Status</h1>
       <div class="empty-state">
-        <span class="emoji">👋</span>
+        <img src="/img/mascot.svg" alt="" width="72" height="66" class="mascot" />
         Noch keine Spieler angelegt.<br />Leg welche im Tab „Spieler" an.
       </div>`;
     return;
