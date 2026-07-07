@@ -28,7 +28,9 @@ let createOpen = false;
 let createCheckedIds = null;
 let createFormat = 'single_elimination';
 let createTwoLegged = false;
+let createAvoidAdjacent = false;
 let createProposedTeams = null; // [{ name, playerIds, players (for display), totalRating }]
+let createSeatConflicts = null; // { conflicts, considered } from the last proposal, for the seating note
 
 async function loadList(ctx) {
   listLoading = true;
@@ -78,7 +80,9 @@ function resetCreateForm() {
   createCheckedIds = null;
   createFormat = 'single_elimination';
   createTwoLegged = false;
+  createAvoidAdjacent = false;
   createProposedTeams = null;
+  createSeatConflicts = null;
 }
 
 // ---------- list + create ----------
@@ -91,7 +95,7 @@ function renderList(container, ctx) {
       ? `<div class="empty-state">Lädt…</div>`
       : listCache.length === 0
         ? `<div class="empty-state"><span class="emoji">🏆</span>Noch keine Turniere.</div>`
-        : `<div class="stack">${listCache
+        : `<div class="card-grid">${listCache
             .map(
               (t) => `
             <button type="button" class="card row" style="width:100%;text-align:left;cursor:pointer;" data-open-tournament="${t.id}">
@@ -106,6 +110,7 @@ function renderList(container, ctx) {
             .join('')}</div>`;
 
   container.innerHTML = `
+    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <div class="row-between">
       <h1 class="view-title">Turniere</h1>
       <button type="button" class="btn btn-primary btn-sm" id="tourn-new-btn">+ Turnier</button>
@@ -159,6 +164,13 @@ function renderCreateForm(el, ctx) {
     )
     .join('');
 
+  const seatingNote =
+    createSeatConflicts && createSeatConflicts.considered
+      ? createSeatConflicts.conflicts > 0
+        ? `<div class="muted" style="font-size:0.78rem;">🪑 ${createSeatConflicts.conflicts} von ${createSeatConflicts.considered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten (sonst wäre es zu unfair geworden).</div>`
+        : `<div class="muted" style="font-size:0.78rem;">🪑 Alle Sitznachbarn sind im selben Team.</div>`
+      : '';
+
   const teamsPreview = createProposedTeams
     ? `
       <div class="section-title">Teams (Namen anpassbar)</div>
@@ -167,12 +179,14 @@ function renderCreateForm(el, ctx) {
           .map(
             (t, i) => `
           <div class="team-card">
-            <input type="text" data-team-name="${i}" value="${escapeHtml(t.name)}" maxlength="60" style="margin-bottom:6px;font-weight:700;" />
+            <input type="text" data-team-name="${i}" value="${escapeHtml(t.name)}" maxlength="60" style="margin-bottom:2px;font-weight:700;" />
+            <div class="muted" style="font-size:0.78rem;margin-bottom:6px;">Score ${t.totalRating}</div>
             ${t.players.map((p) => `<div class="team-player">${avatarHtml(p, 18)} ${escapeHtml(p.name)}</div>`).join('')}
           </div>`
           )
           .join('')}
       </div>
+      ${seatingNote}
       <div class="row">
         <button type="button" class="btn btn-sm" id="tourn-reroll" style="flex:1;">🎲 Nochmal auslosen</button>
       </div>
@@ -188,6 +202,10 @@ function renderCreateForm(el, ctx) {
       <select id="tourn-game">${gameOptions}</select>
       <div>${playerRows}</div>
       <input type="number" id="tourn-teamcount" placeholder="Anzahl Teams" min="2" style="width:140px;" />
+      <label class="check-row">
+        <input type="checkbox" id="tourn-avoid-adjacent" ${createAvoidAdjacent ? 'checked' : ''} />
+        <span>🪑 Sitznachbarn nicht gegeneinander auslosen (kommen bevorzugt ins selbe Team)</span>
+      </label>
       <button type="button" class="btn" id="tourn-propose">Teams vorschlagen</button>
 
       ${teamsPreview}
@@ -238,6 +256,10 @@ function renderCreateForm(el, ctx) {
     });
   }
 
+  el.querySelector('#tourn-avoid-adjacent').addEventListener('change', (e) => {
+    createAvoidAdjacent = e.target.checked;
+  });
+
   async function proposeTeams() {
     const gameId = el.querySelector('#tourn-game').value;
     const playerIds = [...createCheckedIds];
@@ -245,7 +267,7 @@ function renderCreateForm(el, ctx) {
       return showToast('Mindestens 2 Spieler auswählen.', { error: true });
     }
     const teamCountRaw = el.querySelector('#tourn-teamcount').value;
-    const body = { gameId, playerIds };
+    const body = { gameId, playerIds, avoidAdjacentOpponents: createAvoidAdjacent };
     if (teamCountRaw) body.teamCount = parseInt(teamCountRaw, 10);
     try {
       const result = await api.matchmaking.generate(body);
@@ -253,7 +275,11 @@ function renderCreateForm(el, ctx) {
         name: `Team ${i + 1}`,
         players: t.players,
         playerIds: t.players.map((p) => p.id),
+        totalRating: t.totalRating,
       }));
+      createSeatConflicts = result.seatPairsConsidered
+        ? { conflicts: result.seatConflicts, considered: result.seatPairsConsidered }
+        : null;
       ctx.rerender();
     } catch (err) {
       showToast(err.message, { error: true });

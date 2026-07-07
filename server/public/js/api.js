@@ -204,6 +204,7 @@ export const api = {
 
   export: {
     snapshot: (eventId) => apiFetch(`/api/export${eventId ? `?eventId=${eventId}` : ''}`),
+    pdf: (eventId) => fetchBlob(`/api/export/pdf${eventId ? `?eventId=${eventId}` : ''}`),
   },
 
   hallOfFame: {

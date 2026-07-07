@@ -74,6 +74,7 @@ export function renderHallOfFame(container, ctx) {
   if (cache === null && !loading) load(ctx);
 
   container.innerHTML = `
+    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <h1 class="view-title">🏛️ Hall of Fame</h1>
     ${
       loading || cache === null

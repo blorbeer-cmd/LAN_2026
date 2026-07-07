@@ -5,7 +5,7 @@ import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
-import { isNonEmptyString, isIntInRange } from '../validation';
+import { isNonEmptyString, isIntInRange, isValidAvatar } from '../validation';
 
 export const gamesRouter = Router();
 
@@ -17,6 +17,7 @@ interface GameRow {
   id: string;
   name: string;
   icon: string;
+  icon_image: string | null;
   min_team_size: number;
   max_team_size: number;
   created_at: number;
@@ -64,10 +65,13 @@ function validateTeamSizes(
 
 // POST /api/games - create a new game.
 gamesRouter.post('/', (req, res) => {
-  const { name, icon, minTeamSize, maxTeamSize } = req.body ?? {};
+  const { name, icon, iconImage, minTeamSize, maxTeamSize } = req.body ?? {};
 
   if (!isNonEmptyString(name)) {
     return res.status(400).json({ error: 'Name ist erforderlich (1-60 Zeichen).' });
+  }
+  if (iconImage !== undefined && iconImage !== null && !isValidAvatar(iconImage)) {
+    return res.status(400).json({ error: 'iconImage muss ein gültiges Bild (data:image/...) sein.' });
   }
   const sizes = validateTeamSizes(minTeamSize, maxTeamSize);
   if ('error' in sizes) return res.status(400).json({ error: sizes.error });
@@ -76,15 +80,16 @@ gamesRouter.post('/', (req, res) => {
     id: nanoid(),
     name: name.trim(),
     icon: isNonEmptyString(icon, 8) ? icon : DEFAULT_ICON,
+    icon_image: iconImage ?? null,
     min_team_size: sizes.min,
     max_team_size: sizes.max,
     created_at: Date.now(),
   };
 
   db.prepare(
-    `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(row.id, row.name, row.icon, row.min_team_size, row.max_team_size, row.created_at);
+    `INSERT INTO games (id, name, icon, icon_image, min_team_size, max_team_size, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(row.id, row.name, row.icon, row.icon_image, row.min_team_size, row.max_team_size, row.created_at);
 
   broadcast(Events.gamesChanged, null);
   res.status(201).json(withProcessNames(row));
@@ -97,12 +102,15 @@ gamesRouter.patch('/:id', (req, res) => {
     | undefined;
   if (!existing) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
 
-  const { name, icon, minTeamSize, maxTeamSize } = req.body ?? {};
+  const { name, icon, iconImage, minTeamSize, maxTeamSize } = req.body ?? {};
   if (name !== undefined && !isNonEmptyString(name)) {
     return res.status(400).json({ error: 'Name muss 1-60 Zeichen lang sein.' });
   }
   if (icon !== undefined && !isNonEmptyString(icon, 8)) {
     return res.status(400).json({ error: 'Icon muss 1-8 Zeichen lang sein.' });
+  }
+  if (iconImage !== undefined && iconImage !== null && !isValidAvatar(iconImage)) {
+    return res.status(400).json({ error: 'iconImage muss ein gültiges Bild (data:image/...) sein.' });
   }
   const sizes = validateTeamSizes(
     minTeamSize !== undefined ? minTeamSize : existing.min_team_size,
@@ -114,13 +122,14 @@ gamesRouter.patch('/:id', (req, res) => {
     ...existing,
     name: name !== undefined ? name.trim() : existing.name,
     icon: icon !== undefined ? icon : existing.icon,
+    icon_image: iconImage !== undefined ? iconImage : existing.icon_image,
     min_team_size: sizes.min,
     max_team_size: sizes.max,
   };
 
   db.prepare(
-    'UPDATE games SET name = ?, icon = ?, min_team_size = ?, max_team_size = ? WHERE id = ?'
-  ).run(next.name, next.icon, next.min_team_size, next.max_team_size, next.id);
+    'UPDATE games SET name = ?, icon = ?, icon_image = ?, min_team_size = ?, max_team_size = ? WHERE id = ?'
+  ).run(next.name, next.icon, next.icon_image, next.min_team_size, next.max_team_size, next.id);
 
   broadcast(Events.gamesChanged, null);
   res.json(withProcessNames(next));

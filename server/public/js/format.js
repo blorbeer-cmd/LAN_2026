@@ -1,5 +1,7 @@
 // Small formatting/escaping helpers shared by every view.
 
+import { state } from './state.js';
+
 export function escapeHtml(value) {
   const s = String(value ?? '');
   return s
@@ -59,12 +61,25 @@ export function gameColor(gameId) {
   return `hsl(${hash % 360} 70% 45%)`;
 }
 
-// Small round badge carrying a game's icon on a tinted background — the
-// "little design that fits the game" reused in every list/chip that
-// mentions one.
+// Small round badge carrying a game's icon (or, if the organizer uploaded
+// one, its actual box art/logo) on a tinted background — the "little design
+// that fits the game" reused in every list/chip that mentions one.
+//
+// Looked up fresh from state.games by id rather than trusting whatever
+// fields the caller happened to have on hand (many API payloads only carry
+// a flattened { id, icon } pair, not the full game row) — this way a custom
+// icon_image shows up everywhere a badge appears without having to thread
+// it through every endpoint that mentions a game.
 export function gameBadgeHtml(game, size = 28) {
   if (!game) return '';
+  const full = state.games.find((g) => g.id === game.id);
+  const iconImage = full ? full.icon_image : null;
+  const icon = (full && full.icon) || game.icon;
+
+  if (iconImage) {
+    return `<span class="game-badge game-badge-img" style="width:${size}px;height:${size}px;"><img src="${escapeHtml(iconImage)}" alt="" /></span>`;
+  }
   const color = gameColor(game.id);
   const fontSize = Math.round(size * 0.55);
-  return `<span class="game-badge" style="background:${color};width:${size}px;height:${size}px;font-size:${fontSize}px;">${escapeHtml(game.icon)}</span>`;
+  return `<span class="game-badge" style="background:${color};width:${size}px;height:${size}px;font-size:${fontSize}px;">${escapeHtml(icon)}</span>`;
 }

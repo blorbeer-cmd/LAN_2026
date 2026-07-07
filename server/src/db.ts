@@ -47,6 +47,7 @@ db.exec(`
     id            TEXT PRIMARY KEY,
     name          TEXT NOT NULL,
     icon          TEXT NOT NULL DEFAULT '🎮',
+    icon_image    TEXT,    -- optional data: URL (self-uploaded box art/logo), takes over from icon when set
     min_team_size INTEGER NOT NULL DEFAULT 1,
     max_team_size INTEGER NOT NULL DEFAULT 5,
     created_at    INTEGER NOT NULL
@@ -287,6 +288,13 @@ function migrateAvatarColumn(): void {
   db.exec('ALTER TABLE players ADD COLUMN avatar TEXT');
 }
 migrateAvatarColumn();
+
+function migrateGameIconImageColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(games)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'icon_image')) return;
+  db.exec('ALTER TABLE games ADD COLUMN icon_image TEXT');
+}
+migrateGameIconImageColumn();
 
 // Gamer names must be unique across the whole player list (case-insensitive)
 // so invited players can tell each other apart. A unique index rather than a

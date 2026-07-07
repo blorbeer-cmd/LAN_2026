@@ -39,7 +39,7 @@ export function renderPlayers(container, ctx) {
     ${
       state.players.length === 0
         ? `<div class="empty-state"><span class="emoji">🧑‍🤝‍🧑</span>Noch keine Spieler.<br />Leg den ersten an.</div>`
-        : `<div class="stack">${rows}</div>`
+        : `<div class="card-grid">${rows}</div>`
     }
   `;
 

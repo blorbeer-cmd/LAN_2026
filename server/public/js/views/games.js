@@ -8,6 +8,7 @@ import { state, gameById } from '../state.js';
 import { escapeHtml, gameBadgeHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
+import { resizeImageFile } from '../imageUtils.js';
 
 function renderInviteSection() {
   const token = getToken();
@@ -48,7 +49,7 @@ function renderEventSection() {
       <div class="lb-row">
         <span style="flex:1;">${escapeHtml(e.name)}</span>
         <span class="muted" style="font-size:0.78rem;">${new Date(e.starts_at).toLocaleDateString('de-DE')} – ${e.ends_at ? new Date(e.ends_at).toLocaleDateString('de-DE') : '?'}</span>
-        <button type="button" class="btn btn-sm" data-export-event="${e.id}" data-export-name="${escapeHtml(e.name)}" title="Als Andenken exportieren">💾 Exportieren</button>
+        <button type="button" class="btn btn-sm" data-export-event="${e.id}" title="Als PDF exportieren">📄 PDF</button>
       </div>`
     )
     .join('');
@@ -59,7 +60,7 @@ function renderEventSection() {
       <div class="row-between">
         <span>Aktuell: <strong>${escapeHtml(active ? active.name : '–')}</strong></span>
         <div class="row" style="gap:6px;">
-          ${active ? `<button type="button" class="btn btn-sm" data-export-event="${active.id}" data-export-name="${escapeHtml(active.name)}" title="Als Andenken exportieren">💾 Exportieren</button>` : ''}
+          ${active ? `<button type="button" class="btn btn-sm" data-export-event="${active.id}" title="Als PDF exportieren">📄 Exportieren</button>` : ''}
           <button type="button" class="btn btn-sm" id="new-event-btn">Neues Event starten</button>
         </div>
       </div>
@@ -68,19 +69,17 @@ function renderEventSection() {
   `;
 }
 
-// Triggers a browser download of the event's JSON snapshot ("Andenken").
-// Built client-side from the already-authenticated api.export.snapshot()
-// call (a plain <a href="/api/export"> couldn't carry the access-token
-// header), so this always goes through a Blob + temporary object URL.
-async function downloadExport(eventId, eventName) {
+// Triggers a browser download of the event's PDF "Andenken" — a designed
+// keepsake (Rangliste, Spielzeit, Awards, Turnier-Champions), not raw data.
+// Goes through api.export.pdf()'s Blob (a plain <a href="/api/export/pdf">
+// couldn't carry the access-token header).
+async function downloadExport(eventId) {
   try {
-    const data = await api.export.snapshot(eventId);
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const { blob, filename } = await api.export.pdf(eventId);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const safeName = eventName.replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '') || 'event';
     a.href = url;
-    a.download = `respawnhq-${safeName}.json`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -109,19 +108,19 @@ export function renderGames(container, ctx) {
     <h1 class="view-title">Einstellungen</h1>
     ${renderEventSection()}
     ${renderInviteSection()}
-    <div class="row-between">
+    <div class="row-between" style="margin-top:20px;">
       <div class="section-title" style="margin:0;">🎮 Spiele verwalten</div>
       <button type="button" class="btn btn-primary btn-sm" id="add-game-btn">+ Spiel</button>
     </div>
     ${
       state.games.length === 0
         ? `<div class="empty-state"><span class="emoji">🎮</span>Noch keine Spiele.</div>`
-        : `<div class="stack">${rows}</div>`
+        : `<div class="card-grid">${rows}</div>`
     }
   `;
 
   container.querySelectorAll('[data-export-event]').forEach((btn) => {
-    btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent, btn.dataset.exportName));
+    btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent));
   });
 
   container.querySelector('#invite-copy').addEventListener('click', async () => {
@@ -187,10 +186,20 @@ function openGameForm(ctx) {
       <form id="add-game-form" class="stack">
         <input type="text" id="new-game-icon" placeholder="Icon (Emoji)" maxlength="8" value="🎮" />
         <input type="text" id="new-game-name" placeholder="Name" maxlength="60" required autofocus />
-        <div class="row">
-          <input type="number" id="new-game-min" placeholder="Min. Teamgröße" min="1" max="20" value="1" style="flex:1;" />
-          <input type="number" id="new-game-max" placeholder="Max. Teamgröße" min="1" max="20" value="5" style="flex:1;" />
+        <div class="row" style="align-items:flex-start;">
+          <div style="flex:1;">
+            <label for="new-game-min" class="field-label">Min. Teamgröße</label>
+            <input type="number" id="new-game-min" min="1" max="20" value="1" />
+          </div>
+          <div style="flex:1;">
+            <label for="new-game-max" class="field-label">Max. Teamgröße</label>
+            <input type="number" id="new-game-max" min="1" max="20" value="5" />
+          </div>
         </div>
+        <p class="muted" style="font-size:0.78rem;margin-top:-6px;">
+          Wie groß darf ein Team bei diesem Spiel sein? Wird beim „Teams auslosen" verwendet –
+          z. B. 1-1 für 1-gegen-1, 1-5 für Squads bis zu fünft.
+        </p>
         <button type="submit" class="btn btn-primary btn-block">Anlegen</button>
       </form>
     `,
@@ -232,14 +241,33 @@ function openGameDetail(gameId, ctx) {
     escapeHtml(game.name),
     `
       <div class="stack">
-        <div class="row">
-          <input type="text" id="edit-icon" value="${escapeHtml(game.icon)}" maxlength="8" style="width:70px;" />
+        <div class="row" style="align-items:center;">
+          <label for="edit-icon-image-input" style="cursor:pointer;" title="Eigenes Icon/Logo hochladen">
+            ${gameBadgeHtml(game, 56)}
+          </label>
+          <input type="file" id="edit-icon-image-input" accept="image/*" hidden />
+          <input type="text" id="edit-icon" value="${escapeHtml(game.icon)}" maxlength="8" style="width:56px;" title="Emoji-Icon (Fallback ohne eigenes Bild)" />
           <input type="text" id="edit-name" value="${escapeHtml(game.name)}" maxlength="60" style="flex:1;" />
         </div>
-        <div class="row">
-          <input type="number" id="edit-min" min="1" max="20" value="${game.min_team_size}" placeholder="Min. Team" style="flex:1;" />
-          <input type="number" id="edit-max" min="1" max="20" value="${game.max_team_size}" placeholder="Max. Team" style="flex:1;" />
+        ${
+          game.icon_image
+            ? `<button type="button" class="btn btn-sm" id="edit-icon-image-remove" style="align-self:flex-start;">🗑️ Eigenes Icon entfernen</button>`
+            : `<p class="muted" style="font-size:0.78rem;margin-top:-4px;">Tipp: Badge antippen, um ein eigenes Icon/Logo hochzuladen (z. B. Spiel-Artwork).</p>`
+        }
+        <div class="row" style="align-items:flex-start;">
+          <div style="flex:1;">
+            <label for="edit-min" class="field-label">Min. Teamgröße</label>
+            <input type="number" id="edit-min" min="1" max="20" value="${game.min_team_size}" />
+          </div>
+          <div style="flex:1;">
+            <label for="edit-max" class="field-label">Max. Teamgröße</label>
+            <input type="number" id="edit-max" min="1" max="20" value="${game.max_team_size}" />
+          </div>
         </div>
+        <p class="muted" style="font-size:0.78rem;margin-top:-6px;">
+          Wie groß darf ein Team bei diesem Spiel sein? Wird beim „Teams auslosen" verwendet –
+          z. B. 1-1 für 1-gegen-1, 1-5 für Squads bis zu fünft.
+        </p>
         <button type="button" class="btn btn-primary" id="edit-save">Speichern</button>
 
         <div class="section-title">Prozessnamen (für den Agent)</div>
@@ -254,6 +282,36 @@ function openGameDetail(gameId, ctx) {
     `,
     {
       onMount: (el) => {
+        el.querySelector('#edit-icon-image-input').addEventListener('change', async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          try {
+            const iconImage = await resizeImageFile(file, 128);
+            await api.games.update(gameId, { iconImage });
+            close();
+            await ctx.refresh();
+            showToast('Icon aktualisiert.');
+            openGameDetail(gameId, ctx);
+          } catch (err) {
+            showToast(err.message, { error: true });
+          }
+        });
+
+        const removeIconBtn = el.querySelector('#edit-icon-image-remove');
+        if (removeIconBtn) {
+          removeIconBtn.addEventListener('click', async () => {
+            try {
+              await api.games.update(gameId, { iconImage: null });
+              close();
+              await ctx.refresh();
+              showToast('Eigenes Icon entfernt.');
+              openGameDetail(gameId, ctx);
+            } catch (err) {
+              showToast(err.message, { error: true });
+            }
+          });
+        }
+
         el.querySelector('#edit-save').addEventListener('click', async () => {
           const name = el.querySelector('#edit-name').value.trim();
           const icon = el.querySelector('#edit-icon').value.trim() || '🎮';

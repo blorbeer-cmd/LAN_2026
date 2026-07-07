@@ -49,6 +49,36 @@ test('PATCH /api/games/:id 404s for an unknown id', async () => {
   assert.equal(res.status, 404);
 });
 
+const TINY_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+test('PATCH /api/games/:id accepts a custom iconImage (self-uploaded logo/artwork)', async () => {
+  const res = await request(app).patch(`/api/games/${createdId}`).send({ iconImage: TINY_PNG });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.icon_image, TINY_PNG);
+
+  const list = await request(app).get('/api/games');
+  const g = list.body.find((x: { id: string }) => x.id === createdId);
+  assert.equal(g.icon_image, TINY_PNG);
+});
+
+test('PATCH /api/games/:id rejects a malformed iconImage', async () => {
+  const res = await request(app).patch(`/api/games/${createdId}`).send({ iconImage: 'not-an-image' });
+  assert.equal(res.status, 400);
+});
+
+test('PATCH /api/games/:id clears iconImage when explicitly set to null', async () => {
+  const res = await request(app).patch(`/api/games/${createdId}`).send({ iconImage: null });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.icon_image, null);
+});
+
+test('POST /api/games accepts an iconImage at creation', async () => {
+  const res = await request(app).post('/api/games').send({ name: 'Mit Icon', iconImage: TINY_PNG });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.icon_image, TINY_PNG);
+});
+
 test('POST /api/games/:id/processes adds a mapping', async () => {
   const res = await request(app)
     .post(`/api/games/${createdId}/processes`)

@@ -20,6 +20,7 @@ import { renderTournaments, invalidateTournaments, focusTournament } from './vie
 import { renderHallOfFame } from './views/hallOfFame.js';
 import { renderSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
+import { renderMore } from './views/more.js';
 
 const VIEWS = {
   live: renderLive,
@@ -34,6 +35,7 @@ const VIEWS = {
   hallOfFame: renderHallOfFame,
   seating: renderSeating,
   myStats: renderMyStats,
+  more: renderMore,
 };
 
 let currentView = 'live';
