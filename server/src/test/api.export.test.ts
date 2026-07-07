@@ -64,3 +64,27 @@ test('GET /api/export includes a completed tournament champion', async () => {
   assert.equal(entry.championTeamName, 'Alice Squad');
   assert.deepEqual(entry.championPlayers, ['Export Alice']);
 });
+
+test('GET /api/export/pdf 404s for an unknown eventId', async () => {
+  const res = await request(app).get('/api/export/pdf?eventId=ghost');
+  assert.equal(res.status, 404);
+});
+
+test('GET /api/export/pdf returns a PDF document', async () => {
+  // supertest/superagent doesn't know application/pdf, so it falls back to a
+  // raw Buffer in res.body rather than auto-parsing — same situation as the
+  // QR code SVG endpoint's test.
+  const res = await request(app)
+    .get('/api/export/pdf')
+    .buffer(true)
+    .parse((response, callback) => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => chunks.push(chunk));
+      response.on('end', () => callback(null, Buffer.concat(chunks)));
+    });
+  assert.equal(res.status, 200);
+  assert.match(res.headers['content-type'], /application\/pdf/);
+  assert.match(res.headers['content-disposition'], /attachment; filename="respawnhq-.+\.pdf"/);
+  const buf = res.body as Buffer;
+  assert.equal(buf.subarray(0, 5).toString('latin1'), '%PDF-');
+});

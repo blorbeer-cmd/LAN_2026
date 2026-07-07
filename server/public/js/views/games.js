@@ -49,7 +49,7 @@ function renderEventSection() {
       <div class="lb-row">
         <span style="flex:1;">${escapeHtml(e.name)}</span>
         <span class="muted" style="font-size:0.78rem;">${new Date(e.starts_at).toLocaleDateString('de-DE')} – ${e.ends_at ? new Date(e.ends_at).toLocaleDateString('de-DE') : '?'}</span>
-        <button type="button" class="btn btn-sm" data-export-event="${e.id}" data-export-name="${escapeHtml(e.name)}" title="Als Andenken exportieren">💾 Exportieren</button>
+        <button type="button" class="btn btn-sm" data-export-event="${e.id}" title="Als PDF exportieren">📄 PDF</button>
       </div>`
     )
     .join('');
@@ -60,7 +60,7 @@ function renderEventSection() {
       <div class="row-between">
         <span>Aktuell: <strong>${escapeHtml(active ? active.name : '–')}</strong></span>
         <div class="row" style="gap:6px;">
-          ${active ? `<button type="button" class="btn btn-sm" data-export-event="${active.id}" data-export-name="${escapeHtml(active.name)}" title="Als Andenken exportieren">💾 Exportieren</button>` : ''}
+          ${active ? `<button type="button" class="btn btn-sm" data-export-event="${active.id}" title="Als PDF exportieren">📄 Exportieren</button>` : ''}
           <button type="button" class="btn btn-sm" id="new-event-btn">Neues Event starten</button>
         </div>
       </div>
@@ -69,19 +69,17 @@ function renderEventSection() {
   `;
 }
 
-// Triggers a browser download of the event's JSON snapshot ("Andenken").
-// Built client-side from the already-authenticated api.export.snapshot()
-// call (a plain <a href="/api/export"> couldn't carry the access-token
-// header), so this always goes through a Blob + temporary object URL.
-async function downloadExport(eventId, eventName) {
+// Triggers a browser download of the event's PDF "Andenken" — a designed
+// keepsake (Rangliste, Spielzeit, Awards, Turnier-Champions), not raw data.
+// Goes through api.export.pdf()'s Blob (a plain <a href="/api/export/pdf">
+// couldn't carry the access-token header).
+async function downloadExport(eventId) {
   try {
-    const data = await api.export.snapshot(eventId);
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const { blob, filename } = await api.export.pdf(eventId);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const safeName = eventName.replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '') || 'event';
     a.href = url;
-    a.download = `respawnhq-${safeName}.json`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -122,7 +120,7 @@ export function renderGames(container, ctx) {
   `;
 
   container.querySelectorAll('[data-export-event]').forEach((btn) => {
-    btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent, btn.dataset.exportName));
+    btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent));
   });
 
   container.querySelector('#invite-copy').addEventListener('click', async () => {

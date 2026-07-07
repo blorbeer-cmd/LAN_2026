@@ -10,6 +10,8 @@ import { computePlaytime, aggregateByGame, formatDurationMs, type PlaySession } 
 import { computeAwards } from '../awards';
 import { getActiveEventId } from '../events';
 import { getCompletedTournamentSummaries } from './tournamentChampion';
+import { renderExportPdf } from '../pdfExport';
+import PDFDocument from 'pdfkit';
 
 export const exportRouter = Router();
 
@@ -30,14 +32,28 @@ interface EventRow {
   ends_at: number | null;
 }
 
-// GET /api/export - a full snapshot for one event (the active one by
-// default, or an explicit ?eventId=).
-exportRouter.get('/', (req, res) => {
-  const { eventId } = req.query;
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getActiveEventId();
+export interface ExportSnapshot {
+  event: { id: string; name: string; startsAt: number; endsAt: number | null };
+  exportedAt: number;
+  leaderboard: Array<{ playerId: string; name: string; points: number; wins: number; matchesPlayed: number }>;
+  playtimeByPlayer: Array<{ playerId: string; name: string; totalFormatted: string }>;
+  playtimeByGame: Array<{ gameId: string; gameName: string; gameIcon: string; totalFormatted: string }>;
+  awards: Array<{ emoji: string; title: string; description: string; playerName: string; value: string }>;
+  tournaments: Array<{
+    name: string;
+    format: string;
+    gameName: string;
+    gameIcon: string;
+    championTeamName: string | null;
+    championPlayers: string[];
+  }>;
+}
 
+// Builds the full "Andenken" snapshot for one event — shared by the JSON
+// and PDF export endpoints so they can never drift apart.
+export function buildExportSnapshot(filterEventId: string): ExportSnapshot | undefined {
   const event = db.prepare('SELECT * FROM events WHERE id = ?').get(filterEventId) as EventRow | undefined;
-  if (!event) return res.status(404).json({ error: 'Event nicht gefunden.' });
+  if (!event) return undefined;
 
   const players = db.prepare('SELECT id, name, color FROM players').all() as PlayerRow[];
   const playerById = new Map(players.map((p) => [p.id, p]));
@@ -123,7 +139,7 @@ exportRouter.get('/', (req, res) => {
     championPlayers: t.championPlayerIds.map((id) => playerById.get(id)?.name ?? 'Unbekannt'),
   }));
 
-  res.json({
+  return {
     event: { id: event.id, name: event.name, startsAt: event.starts_at, endsAt: event.ends_at },
     exportedAt: now,
     leaderboard,
@@ -131,5 +147,38 @@ exportRouter.get('/', (req, res) => {
     playtimeByGame,
     awards,
     tournaments,
-  });
+  };
+}
+
+// GET /api/export - a full JSON snapshot for one event (the active one by
+// default, or an explicit ?eventId=).
+exportRouter.get('/', (req, res) => {
+  const { eventId } = req.query;
+  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getActiveEventId();
+  const snapshot = buildExportSnapshot(filterEventId);
+  if (!snapshot) return res.status(404).json({ error: 'Event nicht gefunden.' });
+  res.json(snapshot);
+});
+
+function sanitizeForFilename(name: string): string {
+  return name.replace(/[^a-zA-Z0-9äöüÄÖÜß_-]+/g, '_').slice(0, 40) || 'Event';
+}
+
+// GET /api/export/pdf - the same snapshot, rendered as a designed PDF
+// keepsake instead of raw JSON.
+exportRouter.get('/pdf', (req, res) => {
+  const { eventId } = req.query;
+  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getActiveEventId();
+  const snapshot = buildExportSnapshot(filterEventId);
+  if (!snapshot) return res.status(404).json({ error: 'Event nicht gefunden.' });
+
+  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="respawnhq-${sanitizeForFilename(snapshot.event.name)}.pdf"`
+  );
+  doc.pipe(res);
+  renderExportPdf(doc, snapshot);
+  doc.end();
 });
