@@ -320,6 +320,16 @@ input[type='number']::-webkit-inner-spin-button {
   margin: 0;
 }
 
+/* A persistent label above a field — for cases where a placeholder alone
+   isn't enough (e.g. a number input that starts pre-filled with a default
+   value, so its placeholder text never actually becomes visible). */
+.field-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 0 0 4px 2px;
+}
+
 /* ---------- Layout helpers ---------- */
 
 .row {

@@ -110,7 +110,7 @@ export function renderGames(container, ctx) {
     <h1 class="view-title">Einstellungen</h1>
     ${renderEventSection()}
     ${renderInviteSection()}
-    <div class="row-between">
+    <div class="row-between" style="margin-top:20px;">
       <div class="section-title" style="margin:0;">🎮 Spiele verwalten</div>
       <button type="button" class="btn btn-primary btn-sm" id="add-game-btn">+ Spiel</button>
     </div>
@@ -188,10 +188,20 @@ function openGameForm(ctx) {
       <form id="add-game-form" class="stack">
         <input type="text" id="new-game-icon" placeholder="Icon (Emoji)" maxlength="8" value="🎮" />
         <input type="text" id="new-game-name" placeholder="Name" maxlength="60" required autofocus />
-        <div class="row">
-          <input type="number" id="new-game-min" placeholder="Min. Teamgröße" min="1" max="20" value="1" style="flex:1;" />
-          <input type="number" id="new-game-max" placeholder="Max. Teamgröße" min="1" max="20" value="5" style="flex:1;" />
+        <div class="row" style="align-items:flex-start;">
+          <div style="flex:1;">
+            <label for="new-game-min" class="field-label">Min. Teamgröße</label>
+            <input type="number" id="new-game-min" min="1" max="20" value="1" />
+          </div>
+          <div style="flex:1;">
+            <label for="new-game-max" class="field-label">Max. Teamgröße</label>
+            <input type="number" id="new-game-max" min="1" max="20" value="5" />
+          </div>
         </div>
+        <p class="muted" style="font-size:0.78rem;margin-top:-6px;">
+          Wie groß darf ein Team bei diesem Spiel sein? Wird beim „Teams auslosen" verwendet –
+          z. B. 1-1 für 1-gegen-1, 1-5 für Squads bis zu fünft.
+        </p>
         <button type="submit" class="btn btn-primary btn-block">Anlegen</button>
       </form>
     `,
@@ -246,10 +256,20 @@ function openGameDetail(gameId, ctx) {
             ? `<button type="button" class="btn btn-sm" id="edit-icon-image-remove" style="align-self:flex-start;">🗑️ Eigenes Icon entfernen</button>`
             : `<p class="muted" style="font-size:0.78rem;margin-top:-4px;">Tipp: Badge antippen, um ein eigenes Icon/Logo hochzuladen (z. B. Spiel-Artwork).</p>`
         }
-        <div class="row">
-          <input type="number" id="edit-min" min="1" max="20" value="${game.min_team_size}" placeholder="Min. Team" style="flex:1;" />
-          <input type="number" id="edit-max" min="1" max="20" value="${game.max_team_size}" placeholder="Max. Team" style="flex:1;" />
+        <div class="row" style="align-items:flex-start;">
+          <div style="flex:1;">
+            <label for="edit-min" class="field-label">Min. Teamgröße</label>
+            <input type="number" id="edit-min" min="1" max="20" value="${game.min_team_size}" />
+          </div>
+          <div style="flex:1;">
+            <label for="edit-max" class="field-label">Max. Teamgröße</label>
+            <input type="number" id="edit-max" min="1" max="20" value="${game.max_team_size}" />
+          </div>
         </div>
+        <p class="muted" style="font-size:0.78rem;margin-top:-6px;">
+          Wie groß darf ein Team bei diesem Spiel sein? Wird beim „Teams auslosen" verwendet –
+          z. B. 1-1 für 1-gegen-1, 1-5 für Squads bis zu fünft.
+        </p>
         <button type="button" class="btn btn-primary" id="edit-save">Speichern</button>
 
         <div class="section-title">Prozessnamen (für den Agent)</div>
