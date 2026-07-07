@@ -8,6 +8,7 @@ import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db, getState, setState } from '../db';
 import { broadcast, Events } from '../realtime';
+import { getActiveEventId } from '../events';
 
 export const votesRouter = Router();
 
@@ -105,9 +106,9 @@ votesRouter.post('/', (req, res) => {
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
 
   db.prepare(
-    `INSERT INTO votes (id, player_id, game_id, round, created_at) VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO votes (id, player_id, game_id, event_id, round, created_at) VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(player_id, round) DO UPDATE SET game_id = excluded.game_id, created_at = excluded.created_at`
-  ).run(nanoid(), playerId, gameId, state.round, Date.now());
+  ).run(nanoid(), playerId, gameId, getActiveEventId(), state.round, Date.now());
 
   const payload = buildPayload();
   broadcast(Events.votesChanged, payload);

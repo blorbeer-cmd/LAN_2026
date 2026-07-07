@@ -9,6 +9,7 @@ import { nanoid } from 'nanoid';
 import { db } from './db';
 import { config } from './config';
 import { closeStaleSessions } from './liveStatus';
+import { getActiveEventId } from './events';
 
 test('a stale live_status_games row is removed and its session closed at last_seen', () => {
   const playerId = nanoid();
@@ -36,8 +37,8 @@ test('a stale live_status_games row is removed and its session closed at last_se
   );
   const sessionId = nanoid();
   db.prepare(
-    'INSERT INTO play_sessions (id, player_id, game_id, started_at, ended_at) VALUES (?, ?, ?, ?, NULL)'
-  ).run(sessionId, playerId, gameId, longAgo);
+    'INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at) VALUES (?, ?, ?, ?, ?, NULL)'
+  ).run(sessionId, playerId, gameId, getActiveEventId(), longAgo);
 
   closeStaleSessions(Date.now());
 

@@ -1,11 +1,15 @@
 // Recorded match results (FR-22, FR-25). Result details (teams + winner) are
 // stored as JSON since the leaderboard scoring rules are still being decided
-// and this keeps the schema stable while that's worked out.
+// and this keeps the schema stable while that's worked out. Each match is
+// tagged with the event that was active when it was recorded, so results can
+// be viewed per LAN afterwards; editing a match never moves it to a
+// different event.
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
+import { getActiveEventId } from '../events';
 
 export const matchesRouter = Router();
 
@@ -21,12 +25,19 @@ interface MatchResult {
 interface MatchRow {
   id: string;
   game_id: string;
+  event_id: string;
   played_at: number;
   result: string;
 }
 
 function parseMatch(row: MatchRow) {
-  return { id: row.id, gameId: row.game_id, playedAt: row.played_at, ...(JSON.parse(row.result) as MatchResult) };
+  return {
+    id: row.id,
+    gameId: row.game_id,
+    eventId: row.event_id,
+    playedAt: row.played_at,
+    ...(JSON.parse(row.result) as MatchResult),
+  };
 }
 
 function validateTeams(
@@ -78,14 +89,22 @@ function allPlayersExist(playerIds: string[]): boolean {
   return found.length === new Set(playerIds).size;
 }
 
-// GET /api/matches - list, newest first, optionally filtered by ?gameId=.
+// GET /api/matches - list, newest first, optionally filtered by ?gameId=
+// and/or ?eventId=.
 matchesRouter.get('/', (req, res) => {
-  const { gameId } = req.query;
-  const rows = (
-    typeof gameId === 'string'
-      ? db.prepare('SELECT * FROM matches WHERE game_id = ? ORDER BY played_at DESC').all(gameId)
-      : db.prepare('SELECT * FROM matches ORDER BY played_at DESC').all()
-  ) as MatchRow[];
+  const { gameId, eventId } = req.query;
+  const clauses: string[] = [];
+  const params: string[] = [];
+  if (typeof gameId === 'string') {
+    clauses.push('game_id = ?');
+    params.push(gameId);
+  }
+  if (typeof eventId === 'string') {
+    clauses.push('event_id = ?');
+    params.push(eventId);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const rows = db.prepare(`SELECT * FROM matches ${where} ORDER BY played_at DESC`).all(...params) as MatchRow[];
   res.json(rows.map(parseMatch));
 });
 
@@ -114,12 +133,14 @@ matchesRouter.post('/', (req, res) => {
   const row: MatchRow = {
     id: nanoid(),
     game_id: gameId,
+    event_id: getActiveEventId(),
     played_at: playedAt ?? Date.now(),
     result: JSON.stringify({ teams: validated.teams, winnerTeamIndex: validated.winnerTeamIndex }),
   };
-  db.prepare('INSERT INTO matches (id, game_id, played_at, result) VALUES (?, ?, ?, ?)').run(
+  db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result) VALUES (?, ?, ?, ?, ?)').run(
     row.id,
     row.game_id,
+    row.event_id,
     row.played_at,
     row.result
   );
@@ -128,7 +149,8 @@ matchesRouter.post('/', (req, res) => {
   res.status(201).json(parseMatch(row));
 });
 
-// PATCH /api/matches/:id - correct a mistaken entry.
+// PATCH /api/matches/:id - correct a mistaken entry. event_id never changes —
+// a match stays tagged to the LAN it was actually played at.
 matchesRouter.patch('/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM matches WHERE id = ?').get(req.params.id) as
     | MatchRow
@@ -178,7 +200,9 @@ matchesRouter.patch('/:id', (req, res) => {
   );
 
   broadcast(Events.leaderboardChanged, null);
-  res.json(parseMatch({ id: existing.id, game_id: nextGameId, played_at: nextPlayedAt, result: nextResult }));
+  res.json(
+    parseMatch({ id: existing.id, game_id: nextGameId, event_id: existing.event_id, played_at: nextPlayedAt, result: nextResult })
+  );
 });
 
 // DELETE /api/matches/:id

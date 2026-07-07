@@ -30,6 +30,18 @@ db.exec(`
     created_at INTEGER NOT NULL
   );
 
+  -- LAN events (e.g. "LAN Party Sommer 2026"). Exactly one is active at a
+  -- time (ends_at IS NULL); starting a new one closes the previous one.
+  -- Players, games and skills stay global across events on purpose (the same
+  -- friend group year after year) — only live/session/vote/match data is
+  -- scoped per event so analytics can be viewed per LAN afterwards.
+  CREATE TABLE IF NOT EXISTS events (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    starts_at  INTEGER NOT NULL,
+    ends_at    INTEGER
+  );
+
   CREATE TABLE IF NOT EXISTS games (
     id            TEXT PRIMARY KEY,
     name          TEXT NOT NULL,
@@ -88,17 +100,21 @@ db.exec(`
     id         TEXT PRIMARY KEY,
     player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     game_id    TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     started_at INTEGER NOT NULL,
     ended_at   INTEGER,
     active_ms  INTEGER NOT NULL DEFAULT 0
   );
 
   -- Simple single active vote for "what's next". One row per player per open
-  -- vote round is enforced in the application layer.
+  -- vote round is enforced in the application layer. Round numbers increment
+  -- forever (never reset per event) so the UNIQUE constraint stays valid
+  -- across event boundaries; event_id is stored for historical filtering.
   CREATE TABLE IF NOT EXISTS votes (
     id         TEXT PRIMARY KEY,
     player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     game_id    TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     round      INTEGER NOT NULL,   -- vote round id, lets us reset without deleting history
     created_at INTEGER NOT NULL,
     UNIQUE (player_id, round)
@@ -109,6 +125,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS matches (
     id         TEXT PRIMARY KEY,
     game_id    TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     played_at  INTEGER NOT NULL,
     result     TEXT NOT NULL        -- JSON: teams/players and winner
   );
@@ -116,10 +133,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_skills_game ON skills(game_id);
   CREATE INDEX IF NOT EXISTS idx_live_status_games_game ON live_status_games(game_id);
   CREATE INDEX IF NOT EXISTS idx_votes_round ON votes(round);
+  CREATE INDEX IF NOT EXISTS idx_votes_event ON votes(event_id);
   CREATE INDEX IF NOT EXISTS idx_matches_game ON matches(game_id);
+  CREATE INDEX IF NOT EXISTS idx_matches_event ON matches(event_id);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_player ON play_sessions(player_id);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_game ON play_sessions(game_id);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_open ON play_sessions(ended_at);
+  CREATE INDEX IF NOT EXISTS idx_play_sessions_event ON play_sessions(event_id);
 `);
 
 // Key/value table for small bits of server state (e.g. current vote round).
@@ -186,3 +206,25 @@ function seedGames(): void {
 }
 
 seedGames();
+
+const ACTIVE_EVENT_KEY = 'active_event_id';
+
+// Seed a default event, once, on an empty database. This is the ONLY place
+// that ever creates the first event: events.ts's getActiveEventId() is a
+// pure reader that assumes this has already run. Deliberately NOT done
+// lazily inside a request handler — startNewEvent() clears live_status as
+// part of starting fresh, and calling it reactively mid-transaction (e.g.
+// from inside the agent report handler) would wipe out data that same
+// request had just written moments earlier.
+function seedDefaultEvent(): void {
+  if (getState(ACTIVE_EVENT_KEY)) return;
+  const id = nanoid();
+  db.prepare('INSERT INTO events (id, name, starts_at, ends_at) VALUES (?, ?, ?, NULL)').run(
+    id,
+    'LAN Party',
+    Date.now()
+  );
+  setState(ACTIVE_EVENT_KEY, id);
+}
+
+seedDefaultEvent();

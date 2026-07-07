@@ -21,6 +21,7 @@ import { broadcast, Events } from '../realtime';
 import { getLiveBoard } from '../liveStatus';
 import { isGameActive } from '../activity';
 import { config } from '../config';
+import { getActiveEventId } from '../events';
 
 export const agentRouter = Router();
 
@@ -140,8 +141,8 @@ agentRouter.post('/report', (req, res) => {
           'INSERT INTO live_status_games (player_id, game_id, since) VALUES (?, ?, ?)'
         ).run(player.id, gameId, now);
         db.prepare(
-          'INSERT INTO play_sessions (id, player_id, game_id, started_at, ended_at) VALUES (?, ?, ?, ?, NULL)'
-        ).run(nanoid(), player.id, gameId, now);
+          'INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at) VALUES (?, ?, ?, ?, ?, NULL)'
+        ).run(nanoid(), player.id, gameId, getActiveEventId(), now);
       }
     }
 

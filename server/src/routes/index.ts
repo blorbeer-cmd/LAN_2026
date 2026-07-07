@@ -12,6 +12,7 @@ import { matchesRouter } from './matches';
 import { leaderboardRouter } from './leaderboard';
 import { statsRouter } from './stats';
 import { analyticsRouter } from './analytics';
+import { eventsRouter } from './events';
 
 export const apiRouter = Router();
 
@@ -30,3 +31,4 @@ apiRouter.use('/matches', matchesRouter);
 apiRouter.use('/leaderboard', leaderboardRouter);
 apiRouter.use('/stats', statsRouter);
 apiRouter.use('/analytics', analyticsRouter);
+apiRouter.use('/events', eventsRouter);

@@ -25,4 +25,5 @@ export const Events = {
   votesChanged: 'votes:changed',
   leaderboardChanged: 'leaderboard:changed',
   matchmakingGenerated: 'matchmaking:generated',
+  eventsChanged: 'events:changed',
 } as const;
