@@ -134,6 +134,19 @@ db.exec(`
     winner_game_ids TEXT   -- JSON array of game ids, set on close
   );
 
+  -- Physical seating declared per event (FR-18 extension): "player_id sits
+  -- next to neighbor_id". Self-service, one row per direction a player
+  -- declares (so a player can update their own row without needing their
+  -- neighbor to also confirm it) — matchmaking treats the pair as adjacent
+  -- if either direction exists. Scoped per event since people sit somewhere
+  -- different at every LAN.
+  CREATE TABLE IF NOT EXISTS seat_neighbors (
+    event_id    TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    player_id   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    neighbor_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    PRIMARY KEY (event_id, player_id, neighbor_id)
+  );
+
   -- Recorded matches for the leaderboard. Result details are stored as JSON to
   -- stay flexible while the scoring rules are still being decided.
   CREATE TABLE IF NOT EXISTS matches (
@@ -149,6 +162,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_votes_round ON votes(round);
   CREATE INDEX IF NOT EXISTS idx_votes_event ON votes(event_id);
   CREATE INDEX IF NOT EXISTS idx_vote_rounds_event ON vote_rounds(event_id);
+  CREATE INDEX IF NOT EXISTS idx_seat_neighbors_event_player ON seat_neighbors(event_id, player_id);
   CREATE INDEX IF NOT EXISTS idx_matches_game ON matches(game_id);
   CREATE INDEX IF NOT EXISTS idx_matches_event ON matches(event_id);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_player ON play_sessions(player_id);

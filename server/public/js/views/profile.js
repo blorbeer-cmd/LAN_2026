@@ -19,6 +19,13 @@ let statsLoading = false;
 let statsForPlayerId = null;
 let statsEventId = '';
 
+// Who you've declared as a seat neighbor for the active event (FR-18
+// extension). Cached the same way as statsCache — fetched lazily, reset
+// whenever the active identity changes.
+let neighborsCache = null;
+let neighborsLoading = false;
+let neighborsForPlayerId = null;
+
 // Resizes/compresses a picked image client-side so the DB (a single SQLite
 // file synced/backed up as a whole) doesn't balloon from full-resolution
 // phone photos — a small square thumbnail is all a profile picture needs.
@@ -108,6 +115,41 @@ async function loadStats(playerId, eventId, ctx) {
 function ratingFor(playerId, gameId) {
   const entry = state.skills.find((s) => s.player_id === playerId && s.game_id === gameId);
   return entry ? entry.rating : 5;
+}
+
+async function loadNeighbors(playerId, ctx) {
+  neighborsLoading = true;
+  try {
+    neighborsCache = await api.players.neighbors(playerId);
+    neighborsForPlayerId = playerId;
+  } catch (err) {
+    showToast(err.message, { error: true });
+    neighborsCache = null;
+  } finally {
+    neighborsLoading = false;
+    ctx.rerender();
+  }
+}
+
+function renderNeighbors(myId) {
+  const others = state.players.filter((p) => p.id !== myId);
+  if (others.length === 0) {
+    return `<div class="empty-state" style="padding:16px;">Noch keine anderen Spieler da.</div>`;
+  }
+  if (neighborsLoading || neighborsCache === null) {
+    return `<div class="empty-state" style="padding:16px;">Lädt…</div>`;
+  }
+  const checked = new Set(neighborsCache.neighborIds);
+  return others
+    .map(
+      (p) => `
+      <label class="check-row">
+        <input type="checkbox" data-neighbor="${p.id}" ${checked.has(p.id) ? 'checked' : ''} />
+        ${avatarHtml(p, 20)}
+        <span style="flex:1;">${escapeHtml(p.name)}</span>
+      </label>`
+    )
+    .join('');
 }
 
 function renderEventOptions() {
@@ -244,6 +286,9 @@ export function renderProfile(container, ctx) {
   if (statsForPlayerId !== myId && !statsLoading) {
     loadStats(myId, statsEventId, ctx);
   }
+  if (neighborsForPlayerId !== myId && !neighborsLoading) {
+    loadNeighbors(myId, ctx);
+  }
 
   const skillRows = state.games
     .map((g) => {
@@ -294,6 +339,13 @@ export function renderProfile(container, ctx) {
 
     ${state.games.length > 0 ? `<div class="section-title">Skill-Ratings</div><div class="card">${skillRows}</div>` : ''}
 
+    <div class="section-title">🪑 Sitznachbarn</div>
+    <div class="card">${renderNeighbors(myId)}</div>
+    <p class="muted" style="font-size:0.8rem;margin-top:6px;">
+      Wen hast du bei dieser LAN neben dir sitzen? Wird beim Teams-Auslosen berücksichtigt, wenn
+      das für das jeweilige Spiel wichtig ist (in den Spiel-Einstellungen einstellbar).
+    </p>
+
     <div class="section-title">📊 Meine Statistiken</div>
     <div id="profile-stats">${renderStats(me)}</div>
   `;
@@ -301,6 +353,7 @@ export function renderProfile(container, ctx) {
   container.querySelector('#profile-not-me').addEventListener('click', () => {
     setMyId('');
     statsForPlayerId = null;
+    neighborsForPlayerId = null;
     ctx.rerender();
   });
 
@@ -370,6 +423,18 @@ export function renderProfile(container, ctx) {
           showToast(err.message, { error: true });
         }
       }, 250);
+    });
+  });
+
+  container.querySelectorAll('[data-neighbor]').forEach((cb) => {
+    cb.addEventListener('change', async () => {
+      const ids = [...container.querySelectorAll('[data-neighbor]:checked')].map((el) => el.dataset.neighbor);
+      try {
+        neighborsCache = await api.players.setNeighbors(myId, ids);
+      } catch (err) {
+        showToast(err.message, { error: true });
+        cb.checked = !cb.checked; // revert the click that failed to save
+      }
     });
   });
 

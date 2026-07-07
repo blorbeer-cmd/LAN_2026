@@ -11,6 +11,7 @@ import { showToast } from '../toast.js';
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
 let checkedIds = null;
+let avoidAdjacentOpponents = false;
 
 export function renderMatchmaking(container, ctx) {
   if (state.games.length === 0 || state.players.length === 0) {
@@ -53,6 +54,10 @@ export function renderMatchmaking(container, ctx) {
         <button type="button" class="btn btn-primary" id="mm-generate" style="flex:1;">Teams auslosen</button>
       </div>
       <div class="muted" style="font-size:0.78rem;margin-top:-6px;">Anzahl Teams leer lassen für automatisch (Standard: 2)</div>
+      <label class="check-row">
+        <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
+        <span>🪑 Sitznachbarn nicht gegeneinander auslosen</span>
+      </label>
     </div>
     <div id="mm-result">${renderResult(state.lastMatchmaking)}</div>
   `;
@@ -68,6 +73,10 @@ export function renderMatchmaking(container, ctx) {
     });
   });
 
+  container.querySelector('#mm-avoid-adjacent').addEventListener('change', (e) => {
+    avoidAdjacentOpponents = e.target.checked;
+  });
+
   container.querySelector('#mm-generate').addEventListener('click', async () => {
     const gameId = container.querySelector('#mm-game').value;
     const playerIds = [...checkedIds];
@@ -75,7 +84,7 @@ export function renderMatchmaking(container, ctx) {
       return showToast('Mindestens 2 Spieler auswählen.', { error: true });
     }
     const teamCountRaw = container.querySelector('#mm-teamcount').value;
-    const body = { gameId, playerIds };
+    const body = { gameId, playerIds, avoidAdjacentOpponents };
     if (teamCountRaw) body.teamCount = parseInt(teamCountRaw, 10);
 
     try {
@@ -109,8 +118,15 @@ function renderResult(result) {
     )
     .join('');
 
+  const seatingNote = result.seatPairsConsidered
+    ? result.seatConflicts > 0
+      ? `<div class="muted" style="font-size:0.78rem;margin-top:8px;">🪑 ${result.seatConflicts} von ${result.seatPairsConsidered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten (sonst wäre es zu unfair geworden).</div>`
+      : `<div class="muted" style="font-size:0.78rem;margin-top:8px;">🪑 Alle Sitznachbarn sind im selben Team.</div>`
+    : '';
+
   return `
     <div class="section-title row" style="gap:8px;">${gameBadgeHtml(gameById(result.gameId), 22)} ${escapeHtml(result.gameName)} — Ergebnis</div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));">${teamsHtml}</div>
+    ${seatingNote}
   `;
 }

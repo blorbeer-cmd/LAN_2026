@@ -113,6 +113,50 @@ test('GET /api/players/:id/stats returns an empty-but-shaped summary before any 
   assert.equal(res.body.simultaneous.maxSimultaneous, 0);
 });
 
+test('GET /api/players/:id/neighbors starts out empty', async () => {
+  const res = await request(app).get(`/api/players/${createdId}/neighbors`);
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.neighborIds, []);
+});
+
+test('PUT /api/players/:id/neighbors rejects a non-array neighborIds', async () => {
+  const res = await request(app).put(`/api/players/${createdId}/neighbors`).send({ neighborIds: 'nope' });
+  assert.equal(res.status, 400);
+});
+
+test('PUT /api/players/:id/neighbors sets and replaces the declared neighbors', async () => {
+  const other = await request(app).post('/api/players').send({ name: 'Neighbor One' });
+  const third = await request(app).post('/api/players').send({ name: 'Neighbor Two' });
+
+  const first = await request(app)
+    .put(`/api/players/${createdId}/neighbors`)
+    .send({ neighborIds: [other.body.id] });
+  assert.equal(first.status, 200);
+  assert.deepEqual(first.body.neighborIds, [other.body.id]);
+
+  // A second PUT fully replaces the set rather than appending to it.
+  const second = await request(app)
+    .put(`/api/players/${createdId}/neighbors`)
+    .send({ neighborIds: [third.body.id] });
+  assert.deepEqual(second.body.neighborIds, [third.body.id]);
+
+  const check = await request(app).get(`/api/players/${createdId}/neighbors`);
+  assert.deepEqual(check.body.neighborIds, [third.body.id]);
+});
+
+test('PUT /api/players/:id/neighbors silently drops your own id and unknown ids', async () => {
+  const res = await request(app)
+    .put(`/api/players/${createdId}/neighbors`)
+    .send({ neighborIds: [createdId, 'ghost-id'] });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.neighborIds, []);
+});
+
+test('PUT /api/players/:id/neighbors 404s for an unknown player', async () => {
+  const res = await request(app).put('/api/players/ghost/neighbors').send({ neighborIds: [] });
+  assert.equal(res.status, 404);
+});
+
 test('DELETE /api/players/:id removes the player', async () => {
   const res = await request(app).delete(`/api/players/${createdId}`);
   assert.equal(res.status, 204);

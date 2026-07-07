@@ -53,6 +53,9 @@ export const api = {
       const qs = new URLSearchParams(params).toString();
       return apiFetch(`/api/players/${id}/stats${qs ? `?${qs}` : ''}`);
     },
+    neighbors: (id) => apiFetch(`/api/players/${id}/neighbors`),
+    setNeighbors: (id, neighborIds) =>
+      apiFetch(`/api/players/${id}/neighbors`, { method: 'PUT', body: JSON.stringify({ neighborIds }) }),
   },
 
   games: {

@@ -6,6 +6,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString, isHexColor, isValidAvatar } from '../validation';
+import { getActiveEventId } from '../events';
 import { formatDurationMs, computePlaytime, type PlaySession } from '../playtime';
 import {
   sessionDurations,
@@ -144,6 +145,66 @@ playersRouter.delete('/:id', (req, res) => {
   }
   broadcast(Events.playersChanged, null);
   res.status(204).end();
+});
+
+// GET /api/players/:id/neighbors - who this player says they sit next to,
+// for the given (or active) event. Self-service, so this is always scoped
+// to a single player, never a roster-wide listing.
+playersRouter.get('/:id/neighbors', (req, res) => {
+  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(req.params.id);
+  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+
+  const { eventId } = req.query;
+  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getActiveEventId();
+
+  const rows = db
+    .prepare('SELECT neighbor_id FROM seat_neighbors WHERE event_id = ? AND player_id = ?')
+    .all(filterEventId, req.params.id) as Array<{ neighbor_id: string }>;
+
+  res.json({ eventId: filterEventId, neighborIds: rows.map((r) => r.neighbor_id) });
+});
+
+// PUT /api/players/:id/neighbors - replace who this player sits next to for
+// an event, in one shot (like skills.set, meant to be called fire-and-forget
+// straight off a checkbox list). Body: { eventId?, neighborIds: string[] }
+playersRouter.put('/:id/neighbors', (req, res) => {
+  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(req.params.id) as
+    | { id: string }
+    | undefined;
+  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+
+  const { eventId, neighborIds } = req.body ?? {};
+  if (!Array.isArray(neighborIds) || !neighborIds.every((n) => typeof n === 'string')) {
+    return res.status(400).json({ error: 'neighborIds muss ein String-Array sein.' });
+  }
+  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getActiveEventId();
+
+  // Silently drop yourself and anything that isn't actually a player, rather
+  // than erroring — a stale id from a checkbox list a moment after someone
+  // else got deleted shouldn't block saving the rest.
+  const uniqueIds = [...new Set(neighborIds)].filter((id) => id !== player.id);
+  const validIds =
+    uniqueIds.length === 0
+      ? []
+      : (db
+          .prepare(`SELECT id FROM players WHERE id IN (${uniqueIds.map(() => '?').join(',')})`)
+          .all(...uniqueIds) as Array<{ id: string }>).map((r) => r.id);
+
+  const replace = db.transaction(() => {
+    db.prepare('DELETE FROM seat_neighbors WHERE event_id = ? AND player_id = ?').run(
+      filterEventId,
+      player.id
+    );
+    const insert = db.prepare(
+      'INSERT INTO seat_neighbors (event_id, player_id, neighbor_id) VALUES (?, ?, ?)'
+    );
+    for (const neighborId of validIds) {
+      insert.run(filterEventId, player.id, neighborId);
+    }
+  });
+  replace();
+
+  res.json({ eventId: filterEventId, neighborIds: validIds });
 });
 
 interface GameRow {
