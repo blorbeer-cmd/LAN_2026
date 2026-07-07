@@ -123,6 +123,7 @@ export function renderAnalytics(container, ctx) {
   const displayRange = filters.from && filters.to ? { from: filters.from, to: filters.to } : selectedEventRange();
 
   container.innerHTML = `
+    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <h1 class="view-title">📊 Auswertungen</h1>
     <div class="card stack">
       <select id="an-event">${renderEventOptions()}</select>

@@ -110,6 +110,7 @@ function renderList(container, ctx) {
             .join('')}</div>`;
 
   container.innerHTML = `
+    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <div class="row-between">
       <h1 class="view-title">Turniere</h1>
       <button type="button" class="btn btn-primary btn-sm" id="tourn-new-btn">+ Turnier</button>
