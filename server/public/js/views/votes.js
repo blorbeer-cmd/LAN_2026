@@ -7,7 +7,7 @@ import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, formatDate, gameBadgeHtml } from '../format.js';
 import { showToast } from '../toast.js';
-import { getMyId, setMyId } from '../whoami.js';
+import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 
 export function renderVotes(container, ctx) {
   const votes = state.votes;
@@ -16,19 +16,7 @@ export function renderVotes(container, ctx) {
     return;
   }
 
-  const myId = getMyId();
-  const whoAmI = `
-    <div class="card stack">
-      <div class="row">
-        <span style="flex:1;">Wer bist du?</span>
-        <select id="whoami">
-          <option value="">– wählen –</option>
-          ${state.players.map((p) => `<option value="${p.id}" ${p.id === myId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
-        </select>
-      </div>
-      ${!myId ? `<div class="row-between"><span class="muted" style="font-size:0.8rem;">Noch nicht dabei?</span><button type="button" class="btn btn-sm" data-navigate="profile">+ Profil anlegen</button></div>` : ''}
-    </div>
-  `;
+  const whoAmI = whoAmICardHtml('whoami');
 
   const maxVotes = Math.max(1, ...votes.results.map((r) => r.votes));
   const rows = votes.results
@@ -71,7 +59,7 @@ export function renderVotes(container, ctx) {
     <div style="margin-top:12px;">${controls}</div>
   `;
 
-  container.querySelector('#whoami').addEventListener('change', (e) => setMyId(e.target.value));
+  wireWhoAmICard(container, 'whoami', ctx);
 
   container.querySelectorAll('[data-vote-game]').forEach((btn) => {
     btn.addEventListener('click', async () => {

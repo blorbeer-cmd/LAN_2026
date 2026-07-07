@@ -4,7 +4,7 @@
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, formatSince, stateLabel, avatarHtml, gameBadgeHtml } from '../format.js';
-import { getMyId, setMyId } from '../whoami.js';
+import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { showToast } from '../toast.js';
 
 const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
@@ -55,18 +55,7 @@ export function renderLive(container, ctx) {
   }
 
   const myId = getMyId();
-  const whoAmI = `
-    <div class="card stack" style="margin-bottom:16px;">
-      <div class="row">
-        <span style="flex:1;">Wer bist du?</span>
-        <select id="live-whoami">
-          <option value="">– wählen –</option>
-          ${state.players.map((p) => `<option value="${p.id}" ${p.id === myId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
-        </select>
-      </div>
-      ${!myId ? `<div class="row-between"><span class="muted" style="font-size:0.8rem;">Noch nicht dabei?</span><button type="button" class="btn btn-sm" data-navigate="profile">+ Profil anlegen</button></div>` : ''}
-    </div>
-  `;
+  const whoAmI = whoAmICardHtml('live-whoami', { marginBottom: '16px' });
 
   const cards = players
     .map((p) => {
@@ -113,10 +102,7 @@ export function renderLive(container, ctx) {
     <div class="stack">${cards}</div>
   `;
 
-  container.querySelector('#live-whoami').addEventListener('change', (e) => {
-    setMyId(e.target.value);
-    ctx.rerender();
-  });
+  wireWhoAmICard(container, 'live-whoami', ctx);
 
   container.querySelectorAll('[data-toggle-pause]').forEach((btn) => {
     btn.addEventListener('click', async () => {
