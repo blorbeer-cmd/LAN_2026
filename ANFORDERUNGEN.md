@@ -105,7 +105,7 @@ Wenn Zeit bleibt oder für kommende Jahre.
 
 | ID | Anforderung |
 |----|-------------|
-| FR-33 | Turnierbaum/Bracket-Generator (Single/Double Elimination) mit automatischer Aktualisierung. |
+| FR-33 | Turnier-Creator: Spiel + Teams auswählen, automatisch K.O.-Turnierbaum **oder** Liga „jeder gegen jeden" generieren (Liga optional mit Hin-/Rückspielen); Ergebnisse je Match eintragbar, Turnierbaum/Tabelle aktualisiert sich automatisch. *(Umgesetzt — siehe `tournament.ts`.)* |
 | FR-34 | Zufalls-Picker: wirft ein Spiel **und** ein Team-Setup aus, wenn keiner sich entscheiden kann. |
 | FR-35 | Session-/Zeitplaner: grobe Slots über die 3 Tage, damit nicht mehrere Gruppen konkurrieren. |
 | FR-36 | Mehrjahres-Historie: Sieger und Statistiken über verschiedene LAN-Jahre hinweg. |

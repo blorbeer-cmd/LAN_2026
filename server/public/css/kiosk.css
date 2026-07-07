@@ -1,0 +1,87 @@
+/* Kiosk/TV dashboard: a second, much bigger-format stylesheet for a shared
+   screen nobody touches — no bottom nav, no buttons, just glanceable status
+   that updates itself. Layered on top of style.css for the shared color
+   variables and card look, not a replacement for it. */
+
+.kiosk-body {
+  overflow: hidden;
+}
+
+#kiosk-root {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.kiosk-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 28px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+.kiosk-header .topbar-title {
+  font-size: 1.3rem;
+}
+.kiosk-clock {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.3rem;
+  color: var(--text-muted);
+}
+.kiosk-header .conn-dot {
+  width: 14px;
+  height: 14px;
+}
+
+.kiosk-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 18px;
+  padding: 18px;
+  min-height: 0;
+}
+
+.kiosk-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.kiosk-card h2 {
+  margin: 0 0 10px;
+  font-size: 1.15rem;
+  flex-shrink: 0;
+}
+.kiosk-card > div {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.kiosk-card .player-card,
+.kiosk-card .lb-row,
+.kiosk-card .vote-row {
+  font-size: 1.05rem;
+}
+
+/* Narrower/portrait screens (a TV in portrait mode, or a smaller monitor):
+   stack the cards in one column and let the page scroll instead of
+   squeezing everything into a fixed 2x2 grid. */
+@media (max-width: 900px) {
+  .kiosk-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    overflow-y: auto;
+  }
+  .kiosk-card {
+    min-height: 260px;
+  }
+}

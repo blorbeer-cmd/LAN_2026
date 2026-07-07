@@ -19,9 +19,21 @@ function renderInviteSection() {
         <input type="text" id="invite-link" readonly value="${escapeHtml(url)}" style="flex:1;font-family:monospace;font-size:0.8rem;" />
         <button type="button" class="btn btn-sm" id="invite-copy">Kopieren</button>
       </div>
+      <button type="button" class="btn btn-sm" id="invite-qr-toggle">📱 QR-Code anzeigen</button>
+      <div id="invite-qr" style="text-align:center;" hidden></div>
       <p class="muted" style="font-size:0.8rem;">
-        Diesen Link verschicken – öffnet die Seite direkt eingeloggt und führt neue Leute direkt zur
-        Profil-Erstellung. Name, Bild, Skills und der eigene Agent-Key richten sich alle selbst ein.
+        Diesen Link verschicken (oder den QR-Code zeigen/aushängen) – öffnet die Seite direkt
+        eingeloggt und führt neue Leute direkt zur Profil-Erstellung. Name, Bild, Skills und der
+        eigene Agent-Key richten sich alle selbst ein.
+      </p>
+    </div>
+
+    <div class="section-title">🖥️ TV-/Kiosk-Ansicht</div>
+    <div class="card stack">
+      <a href="/kiosk.html${token ? `?token=${encodeURIComponent(token)}` : ''}" target="_blank" rel="noopener" class="btn btn-block">Kiosk-Ansicht öffnen</a>
+      <p class="muted" style="font-size:0.8rem;">
+        Für einen gemeinsamen Bildschirm/Beamer im Raum: Live-Status, Abstimmung, Rangliste und
+        laufendes Turnier, aktualisiert sich von selbst. Keine Bedienung nötig.
       </p>
     </div>
   `;
@@ -36,6 +48,7 @@ function renderEventSection() {
       <div class="lb-row">
         <span style="flex:1;">${escapeHtml(e.name)}</span>
         <span class="muted" style="font-size:0.78rem;">${new Date(e.starts_at).toLocaleDateString('de-DE')} – ${e.ends_at ? new Date(e.ends_at).toLocaleDateString('de-DE') : '?'}</span>
+        <button type="button" class="btn btn-sm" data-export-event="${e.id}" data-export-name="${escapeHtml(e.name)}" title="Als Andenken exportieren">💾 Exportieren</button>
       </div>`
     )
     .join('');
@@ -45,11 +58,36 @@ function renderEventSection() {
     <div class="card stack">
       <div class="row-between">
         <span>Aktuell: <strong>${escapeHtml(active ? active.name : '–')}</strong></span>
-        <button type="button" class="btn btn-sm" id="new-event-btn">Neues Event starten</button>
+        <div class="row" style="gap:6px;">
+          ${active ? `<button type="button" class="btn btn-sm" data-export-event="${active.id}" data-export-name="${escapeHtml(active.name)}" title="Als Andenken exportieren">💾 Exportieren</button>` : ''}
+          <button type="button" class="btn btn-sm" id="new-event-btn">Neues Event starten</button>
+        </div>
       </div>
       ${past.length > 0 ? `<div class="muted" style="font-size:0.78rem;margin-top:4px;">Vergangene Events</div>${pastRows}` : ''}
     </div>
   `;
+}
+
+// Triggers a browser download of the event's JSON snapshot ("Andenken").
+// Built client-side from the already-authenticated api.export.snapshot()
+// call (a plain <a href="/api/export"> couldn't carry the access-token
+// header), so this always goes through a Blob + temporary object URL.
+async function downloadExport(eventId, eventName) {
+  try {
+    const data = await api.export.snapshot(eventId);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safeName = eventName.replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '') || 'event';
+    a.href = url;
+    a.download = `respawnhq-${safeName}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showToast(err.message, { error: true });
+  }
 }
 
 export function renderGames(container, ctx) {
@@ -82,6 +120,10 @@ export function renderGames(container, ctx) {
     }
   `;
 
+  container.querySelectorAll('[data-export-event]').forEach((btn) => {
+    btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent, btn.dataset.exportName));
+  });
+
   container.querySelector('#invite-copy').addEventListener('click', async () => {
     const value = container.querySelector('#invite-link').value;
     try {
@@ -89,6 +131,31 @@ export function renderGames(container, ctx) {
       showToast('Einladungslink kopiert.');
     } catch {
       showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+    }
+  });
+
+  container.querySelector('#invite-qr-toggle').addEventListener('click', async (e) => {
+    const qrEl = container.querySelector('#invite-qr');
+    if (!qrEl.hidden) {
+      qrEl.hidden = true;
+      e.target.textContent = '📱 QR-Code anzeigen';
+      return;
+    }
+    e.target.textContent = '📱 QR-Code ausblenden';
+    qrEl.hidden = false;
+    if (!qrEl.dataset.loaded) {
+      const url = container.querySelector('#invite-link').value;
+      try {
+        // Rendered server-side and injected as trusted markup (our own
+        // /api/qrcode response, not user input) so it displays inline
+        // without a network round trip to a third-party QR service that
+        // would otherwise see the access token embedded in the link.
+        qrEl.innerHTML = await api.qrcode.svg(url);
+        qrEl.dataset.loaded = '1';
+      } catch (err) {
+        qrEl.textContent = 'QR-Code konnte nicht geladen werden.';
+        showToast(err.message, { error: true });
+      }
     }
   });
 

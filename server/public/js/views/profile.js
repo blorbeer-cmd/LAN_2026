@@ -4,20 +4,29 @@
 // just a shared access token, so "who am I" is a convenience the browser
 // remembers locally, not a security boundary), then can maintain their own
 // gamer name (unique across everyone), a profile picture, their own skill
-// ratings, and browse their personal stats: playtime per game and per event,
-// how much they multitasked, and how much of their playtime was actually
-// active vs. just idling/AFK.
+// ratings and seat neighbors. Personal playtime/awards stats live on their
+// own view (myStats.js) — kept separate so this setup page doesn't turn into
+// an ever-longer scroll mixing one-time setup with an open-ended dashboard.
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, avatarHtml, formatDateTime, gameBadgeHtml } from '../format.js';
+import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
 import { getMyId, setMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
+import { getPushSubscriptionState, enablePush, disablePush } from '../push.js';
+import { invalidateMyStats } from './myStats.js';
 
-let statsCache = null;
-let statsLoading = false;
-let statsForPlayerId = null;
-let statsEventId = '';
+// Who you've declared as a seat neighbor for the active event (FR-18
+// extension). Fetched lazily, reset whenever the active identity changes.
+let neighborsCache = null;
+let neighborsLoading = false;
+let neighborsForPlayerId = null;
+
+// 'unsupported' | 'denied' | 'unsubscribed' | 'subscribed' | null (not yet
+// checked). Re-checked whenever the view renders fresh (cheap local
+// permission/registration lookups, no network round trip).
+let pushState = null;
+let pushBusy = false;
 
 // Resizes/compresses a picked image client-side so the DB (a single SQLite
 // file synced/backed up as a whole) doesn't balloon from full-resolution
@@ -89,148 +98,66 @@ function renderIdentityPicker(container, ctx) {
   });
 }
 
-async function loadStats(playerId, eventId, ctx) {
-  statsLoading = true;
-  ctx.rerender();
-  try {
-    const params = eventId ? { eventId } : {};
-    statsCache = await api.players.stats(playerId, params);
-    statsForPlayerId = playerId;
-  } catch (err) {
-    showToast(err.message, { error: true });
-    statsCache = null;
-  } finally {
-    statsLoading = false;
-    ctx.rerender();
-  }
-}
-
 function ratingFor(playerId, gameId) {
   const entry = state.skills.find((s) => s.player_id === playerId && s.game_id === gameId);
   return entry ? entry.rating : 5;
 }
 
-function renderEventOptions() {
-  const sorted = [...state.events].sort((a, b) => b.starts_at - a.starts_at);
-  const options = sorted
-    .map((e) => `<option value="${e.id}" ${e.id === statsEventId ? 'selected' : ''}>${escapeHtml(e.name)}</option>`)
-    .join('');
-  return `<option value="" ${statsEventId === '' ? 'selected' : ''}>🌐 Gesamt (alle Events)</option>${options}`;
+async function loadNeighbors(playerId, ctx) {
+  neighborsLoading = true;
+  try {
+    neighborsCache = await api.players.neighbors(playerId);
+    neighborsForPlayerId = playerId;
+  } catch (err) {
+    showToast(err.message, { error: true });
+    neighborsCache = null;
+  } finally {
+    neighborsLoading = false;
+    ctx.rerender();
+  }
 }
 
-function renderStats(me) {
-  if (statsLoading || !statsCache) {
-    return `<div class="empty-state" style="padding:20px;">Lädt…</div>`;
+function renderNeighbors(myId) {
+  const others = state.players.filter((p) => p.id !== myId);
+  if (others.length === 0) {
+    return `<div class="empty-state" style="padding:16px;">Noch keine anderen Spieler da.</div>`;
   }
-  const s = statsCache;
+  if (neighborsLoading || neighborsCache === null) {
+    return `<div class="empty-state" style="padding:16px;">Lädt…</div>`;
+  }
+  const checked = new Set(neighborsCache.neighborIds);
+  return others
+    .map(
+      (p) => `
+      <label class="check-row">
+        <input type="checkbox" data-neighbor="${p.id}" ${checked.has(p.id) ? 'checked' : ''} />
+        ${avatarHtml(p, 20)}
+        <span style="flex:1;">${escapeHtml(p.name)}</span>
+      </label>`
+    )
+    .join('');
+}
 
-  const activeHint =
-    s.activePercent !== null
-      ? `<div class="muted" style="font-size:0.8rem;">davon aktiv gespielt: ${escapeHtml(s.activeFormatted)} (${s.activePercent}%)</div>`
-      : '';
+async function loadPushState(ctx) {
+  pushState = await getPushSubscriptionState();
+  ctx.rerender();
+}
 
-  const kpis = `
-    <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));">
-      <div class="card">
-        <div class="muted" style="font-size:0.8rem;">Gesamtspielzeit</div>
-        <div class="lb-points">${escapeHtml(s.formatted)}</div>
-        ${activeHint}
-      </div>
-      <div class="card">
-        <div class="muted" style="font-size:0.8rem;">Sessions</div>
-        <div class="lb-points">${s.sessionCount}</div>
-      </div>
-      <div class="card">
-        <div class="muted" style="font-size:0.8rem;">Verschiedene Spiele</div>
-        <div class="lb-points">${s.distinctGamesCount}</div>
-      </div>
-      <div class="card">
-        <div class="muted" style="font-size:0.8rem;">Mehrere Spiele gleichzeitig</div>
-        <div class="lb-points">${escapeHtml(s.simultaneous.multiGameFormatted)}</div>
-        ${s.simultaneous.maxSimultaneous > 0 ? `<div class="muted" style="font-size:0.8rem;">max. ${s.simultaneous.maxSimultaneous} gleichzeitig</div>` : ''}
-      </div>
-    </div>
-  `;
-
-  const awardsHtml = s.awards.length
-    ? `<div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));">
-        ${s.awards
-          .map(
-            (a) => `
-          <div class="card">
-            <div class="row-between">
-              <span style="font-size:1.4rem;">${escapeHtml(a.emoji)}</span>
-              <span class="lb-points">${escapeHtml(a.value)}</span>
-            </div>
-            <div class="player-name">${escapeHtml(a.title)}</div>
-            <div class="muted" style="font-size:0.8rem;">${escapeHtml(a.description)}</div>
-          </div>`
-          )
-          .join('')}
-      </div>`
-    : `<div class="empty-state" style="padding:20px;"><span class="emoji">🏅</span>Noch keine eigenen Awards.</div>`;
-
-  const gamesHtml = s.games.length
-    ? s.games
-        .map(
-          (g) => `
-        <div class="lb-row">
-          <span>${escapeHtml(g.gameIcon)}</span>
-          <span style="flex:1;">
-            ${escapeHtml(g.gameName)}
-            ${g.activeMs > 0 && g.activeMs < g.totalMs ? `<div class="muted" style="font-size:0.75rem;">davon aktiv: ${escapeHtml(g.activeFormatted)}</div>` : ''}
-          </span>
-          <span class="lb-points">${escapeHtml(g.formatted)}</span>
-        </div>`
-        )
-        .join('')
-    : `<div class="empty-state" style="padding:20px;">Noch keine Spielzeit erfasst.</div>`;
-
-  const eventsHtml = s.events.length
-    ? s.events
-        .map(
-          (e) => `
-        <div class="lb-row">
-          <span style="flex:1;">${escapeHtml(e.eventName)}</span>
-          <span class="lb-points">${escapeHtml(e.formatted)}</span>
-        </div>`
-        )
-        .join('')
-    : `<div class="empty-state" style="padding:20px;">Noch keine Events mit Spielzeit.</div>`;
-
-  const longestHtml = s.longestSessions.length
-    ? s.longestSessions
-        .map(
-          (l) => `
-        <div class="lb-row">
-          <span style="flex:1;">
-            ${escapeHtml(l.gameIcon)} ${escapeHtml(l.gameName)}
-            <div class="muted" style="font-size:0.75rem;">${formatDateTime(l.startedAt)} – ${l.endedAt ? formatDateTime(l.endedAt) : 'läuft noch'}</div>
-          </span>
-          <span class="lb-points">${escapeHtml(l.formatted)}</span>
-        </div>`
-        )
-        .join('')
-    : `<div class="empty-state" style="padding:20px;">Noch keine Sessions.</div>`;
-
+function renderPushSection() {
+  if (pushState === 'unsupported') {
+    return `<div class="muted" style="font-size:0.85rem;">Dieser Browser unterstützt keine Push-Benachrichtigungen.</div>`;
+  }
+  if (pushState === 'denied') {
+    return `<div class="muted" style="font-size:0.85rem;">Berechtigung wurde blockiert – in den Browser-Einstellungen für diese Seite wieder erlauben.</div>`;
+  }
+  const subscribed = pushState === 'subscribed';
   return `
-    <div class="card stack">
-      <select id="profile-stats-event">${renderEventOptions()}</select>
-    </div>
-    ${kpis}
-
-    <div class="section-title">🏅 Meine Erfolge</div>
-    ${awardsHtml}
-
-    <div class="section-title">🎮 Spielzeit pro Spiel</div>
-    <div class="card">${gamesHtml}</div>
-
-    <div class="section-title">📅 Spielzeit pro Event</div>
-    <div class="card">${eventsHtml}</div>
-
-    <div class="section-title">🏃 Meine längsten Sessions</div>
-    <div class="card">${longestHtml}</div>
-  `;
+    <div class="row-between">
+      <span class="muted" style="font-size:0.85rem;">${subscribed ? 'Aktiv auf diesem Gerät.' : 'Erhalte einen Hinweis auch, wenn die App nicht offen ist.'}</span>
+      <button type="button" class="btn btn-sm ${subscribed ? 'btn-danger' : 'btn-primary'}" id="push-toggle" ${pushBusy ? 'disabled' : ''}>
+        ${pushBusy ? 'Einen Moment…' : subscribed ? 'Deaktivieren' : 'Aktivieren'}
+      </button>
+    </div>`;
 }
 
 export function renderProfile(container, ctx) {
@@ -241,8 +168,11 @@ export function renderProfile(container, ctx) {
     return;
   }
 
-  if (statsForPlayerId !== myId && !statsLoading) {
-    loadStats(myId, statsEventId, ctx);
+  if (neighborsForPlayerId !== myId && !neighborsLoading) {
+    loadNeighbors(myId, ctx);
+  }
+  if (pushState === null) {
+    loadPushState(ctx);
   }
 
   const skillRows = state.games
@@ -280,27 +210,61 @@ export function renderProfile(container, ctx) {
       <div class="muted" style="font-size:0.8rem;">Bild antippen zum Ändern. Name muss über alle Spieler eindeutig sein.</div>
     </div>
 
-    <div class="section-title">🔑 Agent-API-Key</div>
+    <div class="section-title">🖥️ Live-Status-Agent</div>
     <div class="card stack">
-      <div class="row">
-        <input type="text" id="profile-apikey" readonly value="Laden…" style="flex:1;font-family:monospace;" />
-        <button type="button" class="btn btn-sm" id="profile-copy-key">Kopieren</button>
-      </div>
-      <p class="muted" style="font-size:0.8rem;">
-        Diesen Key in die Config deines Agenten (auf deinem PC) eintragen, damit dein Live-Status
-        automatisch erkannt wird.
+      <label class="check-row">
+        <input type="checkbox" id="agent-track-activity" />
+        <span style="flex:1;">Erweitertes Aktivitäts-Tracking</span>
+      </label>
+      <p class="muted" style="font-size:0.8rem;margin-top:-4px;">
+        Aus (Standard): der Server weiß nur „läuft Spiel X gerade". An: zusätzlich, ob das
+        Spielfenster wirklich im Vordergrund ist statt nur im Hintergrund zu laufen – zeigt sich z. B.
+        als „davon aktiv gespielt" in deiner Statistik. Wirkt sich erst beim nächsten Download aus.
       </p>
+      <button type="button" class="btn btn-primary btn-block" id="agent-download">📥 Agent für Windows herunterladen</button>
+      <p class="muted" style="font-size:0.8rem;">
+        ZIP entpacken, <code>install.bat</code> doppelklicken – Server-Adresse und dein API-Key sind
+        schon eingetragen. Der Agent startet danach automatisch bei jedem Windows-Login und erkennt,
+        welches Spiel du gerade spielst.
+      </p>
+      <details>
+        <summary class="muted" style="font-size:0.8rem;cursor:pointer;">Kein Windows / manuelle Einrichtung</summary>
+        <div class="row" style="margin-top:8px;">
+          <input type="text" id="profile-apikey" readonly value="Laden…" style="flex:1;font-family:monospace;" />
+          <button type="button" class="btn btn-sm" id="profile-copy-key">Kopieren</button>
+        </div>
+        <p class="muted" style="font-size:0.8rem;margin-top:6px;">
+          Diesen Key in die Config des Agenten (<code>agent/</code>-Ordner im Repo, mit Node.js
+          gestartet) eintragen – siehe <code>agent/README.md</code>.
+        </p>
+      </details>
     </div>
+
+    <div class="section-title">🔔 Push-Benachrichtigungen</div>
+    <div class="card">${renderPushSection()}</div>
 
     ${state.games.length > 0 ? `<div class="section-title">Skill-Ratings</div><div class="card">${skillRows}</div>` : ''}
 
-    <div class="section-title">📊 Meine Statistiken</div>
-    <div id="profile-stats">${renderStats(me)}</div>
+    <div class="row-between">
+      <div class="section-title" style="margin-bottom:8px;">🪑 Sitznachbarn</div>
+      <button type="button" class="btn btn-sm" data-navigate="seating">Sitzplan ansehen</button>
+    </div>
+    <div class="card">${renderNeighbors(myId)}</div>
+    <p class="muted" style="font-size:0.8rem;margin-top:6px;">
+      Wen hast du bei dieser LAN neben dir sitzen? Wird beim Teams-Auslosen berücksichtigt, wenn
+      das für das jeweilige Spiel wichtig ist (in den Spiel-Einstellungen einstellbar).
+    </p>
+
+    <div class="card row-between">
+      <span>📊 <strong>Meine Statistiken</strong></span>
+      <button type="button" class="btn btn-sm" data-navigate="myStats">Ansehen</button>
+    </div>
   `;
 
   container.querySelector('#profile-not-me').addEventListener('click', () => {
     setMyId('');
-    statsForPlayerId = null;
+    invalidateMyStats();
+    neighborsForPlayerId = null;
     ctx.rerender();
   });
 
@@ -325,6 +289,28 @@ export function renderProfile(container, ctx) {
       showToast('API-Key kopiert.');
     } catch {
       showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+    }
+  });
+
+  container.querySelector('#agent-download').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const originalLabel = btn.textContent;
+    btn.textContent = 'Wird vorbereitet…';
+    try {
+      const trackActivity = container.querySelector('#agent-track-activity').checked;
+      const { blob, filename } = await api.agent.download(myId, trackActivity);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      showToast(err.message, { error: true });
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
     }
   });
 
@@ -373,12 +359,38 @@ export function renderProfile(container, ctx) {
     });
   });
 
-  const statsEventSelect = container.querySelector('#profile-stats-event');
-  if (statsEventSelect) {
-    statsEventSelect.addEventListener('change', (e) => {
-      statsEventId = e.target.value;
-      statsForPlayerId = null;
+  container.querySelectorAll('[data-neighbor]').forEach((cb) => {
+    cb.addEventListener('change', async () => {
+      const ids = [...container.querySelectorAll('[data-neighbor]:checked')].map((el) => el.dataset.neighbor);
+      try {
+        neighborsCache = await api.players.setNeighbors(myId, ids);
+      } catch (err) {
+        showToast(err.message, { error: true });
+        cb.checked = !cb.checked; // revert the click that failed to save
+      }
+    });
+  });
+
+  const pushToggle = container.querySelector('#push-toggle');
+  if (pushToggle) {
+    pushToggle.addEventListener('click', async () => {
+      pushBusy = true;
       ctx.rerender();
+      try {
+        if (pushState === 'subscribed') {
+          await disablePush();
+          showToast('Push-Benachrichtigungen deaktiviert.');
+        } else {
+          await enablePush(myId);
+          showToast('Push-Benachrichtigungen aktiviert.');
+        }
+      } catch (err) {
+        showToast(err.message, { error: true });
+      } finally {
+        pushBusy = false;
+        pushState = await getPushSubscriptionState();
+        ctx.rerender();
+      }
     });
   }
 }

@@ -8,14 +8,18 @@ import { state } from './state.js';
 import { loadAll } from './data.js';
 import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
-import { renderLive } from './views/live.js';
+import { renderLive, invalidatePings, invalidateDigest } from './views/live.js';
 import { renderPlayers } from './views/players.js';
 import { renderGames } from './views/games.js';
-import { renderMatchmaking } from './views/matchmaking.js';
+import { renderMatchmaking, invalidateMatchmakingHistory } from './views/matchmaking.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
 import { renderProfile } from './views/profile.js';
+import { renderTournaments, invalidateTournaments, focusTournament } from './views/tournament.js';
+import { renderHallOfFame } from './views/hallOfFame.js';
+import { renderSeating } from './views/seating.js';
+import { renderMyStats } from './views/myStats.js';
 
 const VIEWS = {
   live: renderLive,
@@ -26,6 +30,10 @@ const VIEWS = {
   settings: renderGames,
   analytics: renderAnalytics,
   profile: renderProfile,
+  tournaments: renderTournaments,
+  hallOfFame: renderHallOfFame,
+  seating: renderSeating,
+  myStats: renderMyStats,
 };
 
 let currentView = 'live';
@@ -151,13 +159,19 @@ function wireSocket() {
     'leaderboard:changed',
     'events:changed',
   ];
-  fullReloadEvents.forEach((event) => socket.on(event, () => ctx.refresh()));
+  fullReloadEvents.forEach((event) =>
+    socket.on(event, () => {
+      invalidateDigest();
+      ctx.refresh();
+    })
+  );
 
   // These events carry the fresh payload directly, so we can update state
   // and re-render without an extra round trip — important since live-status
   // updates can arrive frequently (every agent report + periodic sweep).
   socket.on('live:changed', (payload) => {
     state.live = payload;
+    invalidateDigest(); // a newly-running game may now need a skill rating
     if (currentView === 'live') renderCurrent();
   });
   socket.on('votes:changed', (payload) => {
@@ -166,6 +180,7 @@ function wireSocket() {
     lastVoteRound = payload.round;
 
     state.votes = payload;
+    invalidateDigest();
     if (currentView === 'votes') renderCurrent();
 
     // Anyone with an identity gets nudged that a new vote opened, even if
@@ -182,7 +197,41 @@ function wireSocket() {
   });
   socket.on('matchmaking:generated', (payload) => {
     state.lastMatchmaking = payload;
+    invalidateMatchmakingHistory();
     if (currentView === 'matchmaking') renderCurrent();
+  });
+  socket.on('tournaments:changed', (payload) => {
+    invalidateTournaments();
+    invalidateDigest();
+    if (currentView === 'tournaments') renderCurrent();
+
+    // Same pattern as the vote nudge: only the players actually named in
+    // this notification see it, and not if they're already looking at the
+    // Turniere tab (it just updated in place).
+    const myId = getMyId();
+    if (payload?.notify && myId && payload.notify.playerIds.includes(myId) && currentView !== 'tournaments') {
+      showToast(payload.notify.message, {
+        duration: 5000,
+        onClick: () => {
+          focusTournament(payload.tournamentId);
+          switchView('tournaments');
+        },
+      });
+    }
+  });
+  socket.on('pings:changed', (payload) => {
+    invalidatePings();
+    if (currentView === 'live') renderCurrent();
+
+    // Everyone except the pinger gets a nudge, same exclusion-based targeting
+    // the server already used for the toast message.
+    const myId = getMyId();
+    if (payload?.notify && myId && myId !== payload.notify.excludePlayerId && currentView !== 'live') {
+      showToast(payload.notify.message, {
+        duration: 4500,
+        onClick: () => switchView('live'),
+      });
+    }
   });
 }
 

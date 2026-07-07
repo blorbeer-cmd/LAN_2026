@@ -5,10 +5,12 @@
 // whoever clicked the button.
 
 import { Router } from 'express';
+import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
-import { balanceTeams, computeTeamCount, type PlayerRating } from '../matchmaking';
+import { balanceTeams, computeTeamCount, countSeatConflicts, type PlayerRating, type SeatPair } from '../matchmaking';
 import { isIntInRange } from '../validation';
+import { getActiveEventId } from '../events';
 
 export const matchmakingRouter = Router();
 
@@ -28,9 +30,13 @@ interface PlayerRow {
 }
 
 // POST /api/matchmaking
-// Body: { gameId: string, playerIds: string[], teamCount?: number }
+// Body: { gameId: string, playerIds: string[], teamCount?: number,
+//         avoidAdjacentOpponents?: boolean }
+// avoidAdjacentOpponents is a per-draw choice, not a game setting — whether
+// it's worth keeping seat-neighbors off opposing teams depends on how
+// competitive/serious that particular round is, not the game itself.
 matchmakingRouter.post('/', (req, res) => {
-  const { gameId, playerIds, teamCount } = req.body ?? {};
+  const { gameId, playerIds, teamCount, avoidAdjacentOpponents } = req.body ?? {};
 
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
@@ -44,6 +50,9 @@ matchmakingRouter.post('/', (req, res) => {
   }
   if (teamCount !== undefined && !isIntInRange(teamCount, 2, uniqueIds.length)) {
     return res.status(400).json({ error: `teamCount muss zwischen 2 und ${uniqueIds.length} liegen.` });
+  }
+  if (avoidAdjacentOpponents !== undefined && typeof avoidAdjacentOpponents !== 'boolean') {
+    return res.status(400).json({ error: 'avoidAdjacentOpponents muss ein Boolean sein.' });
   }
 
   const game = db.prepare('SELECT id, name, max_team_size FROM games WHERE id = ?').get(gameId) as
@@ -69,8 +78,33 @@ matchmakingRouter.post('/', (req, res) => {
     rating: ratingByPlayer.get(p.id) ?? DEFAULT_RATING,
   }));
 
+  // Seat neighbors only get looked up when this particular draw asked for
+  // it (FR-18 extension) — skip the query entirely otherwise.
+  const avoidPairs: SeatPair[] = [];
+  if (avoidAdjacentOpponents) {
+    const neighborRows = db
+      .prepare(
+        `SELECT player_id, neighbor_id FROM seat_neighbors
+         WHERE event_id = ? AND player_id IN (${placeholders}) AND neighbor_id IN (${placeholders})`
+      )
+      .all(getActiveEventId(), ...uniqueIds, ...uniqueIds) as Array<{
+      player_id: string;
+      neighbor_id: string;
+    }>;
+    // Neighbors are declared per-direction (see seat_neighbors' comment in
+    // db.ts) — dedupe A-B/B-A into a single pair so it isn't double-weighted.
+    const seen = new Set<string>();
+    for (const r of neighborRows) {
+      const key = [r.player_id, r.neighbor_id].sort().join('::');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      avoidPairs.push([r.player_id, r.neighbor_id]);
+    }
+  }
+
   const resolvedTeamCount = computeTeamCount(teamCount, players.length, game.max_team_size);
-  const teamIdLists = balanceTeams(ratings, resolvedTeamCount);
+  const teamIdLists = balanceTeams(ratings, resolvedTeamCount, avoidPairs);
+  const seatConflicts = countSeatConflicts(teamIdLists, avoidPairs);
 
   const playerById = new Map(players.map((p) => [p.id, p]));
   const teams = teamIdLists.map((ids) => {
@@ -84,7 +118,75 @@ matchmakingRouter.post('/', (req, res) => {
     };
   });
 
-  const result = { gameId, gameName: game.name, teams, generatedAt: Date.now() };
+  const result = {
+    gameId,
+    gameName: game.name,
+    teams,
+    seatConflicts,
+    seatPairsConsidered: avoidPairs.length,
+    generatedAt: Date.now(),
+  };
+
+  // Logged for the history view (every draw, including re-rolls — see the
+  // matchmaking_draws comment in db.ts for why this is separate from the
+  // actually-recorded `matches`).
+  db.prepare(
+    `INSERT INTO matchmaking_draws (id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(nanoid(), gameId, getActiveEventId(), JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt);
+
   broadcast(Events.matchmakingGenerated, result);
   res.json(result);
+});
+
+interface DrawRow {
+  id: string;
+  gameId: string;
+  gameName: string;
+  gameIcon: string;
+  teamsJson: string;
+  seatConflicts: number;
+  seatPairsConsidered: number;
+  generatedAt: number;
+}
+
+// GET /api/matchmaking/history - past draws for the active event (or an
+// explicit ?eventId=), newest first, optionally narrowed to one ?gameId=.
+matchmakingRouter.get('/history', (req, res) => {
+  const { eventId, gameId, limit } = req.query;
+  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getActiveEventId();
+  const limitNum = Math.min(50, Math.max(1, parseInt(typeof limit === 'string' ? limit : '', 10) || 20));
+
+  const clauses = ['md.event_id = ?'];
+  const params: Array<string | number> = [filterEventId];
+  if (typeof gameId === 'string' && gameId) {
+    clauses.push('md.game_id = ?');
+    params.push(gameId);
+  }
+
+  const rows = db
+    .prepare(
+      `SELECT md.id AS id, md.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
+              md.teams AS teamsJson, md.seat_conflicts AS seatConflicts,
+              md.seat_pairs_considered AS seatPairsConsidered, md.generated_at AS generatedAt
+       FROM matchmaking_draws md
+       JOIN games g ON g.id = md.game_id
+       WHERE ${clauses.join(' AND ')}
+       ORDER BY md.generated_at DESC
+       LIMIT ?`
+    )
+    .all(...params, limitNum) as DrawRow[];
+
+  const history = rows.map((r) => ({
+    id: r.id,
+    gameId: r.gameId,
+    gameName: r.gameName,
+    gameIcon: r.gameIcon,
+    teams: JSON.parse(r.teamsJson),
+    seatConflicts: r.seatConflicts,
+    seatPairsConsidered: r.seatPairsConsidered,
+    generatedAt: r.generatedAt,
+  }));
+
+  res.json({ history });
 });

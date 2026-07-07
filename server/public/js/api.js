@@ -40,6 +40,50 @@ export async function apiFetch(path, options = {}) {
   return body;
 }
 
+// For endpoints that don't return JSON (e.g. the QR code SVG) — apiFetch
+// always tries to JSON.parse the body, which would silently swallow a
+// non-JSON response. Still attaches the access token like apiFetch does.
+export async function fetchText(path) {
+  const headers = {};
+  const token = getToken();
+  if (token) headers['x-access-token'] = token;
+  const res = await fetch(path, { headers });
+  const text = await res.text();
+  if (!res.ok) {
+    let message = `Fehler ${res.status}`;
+    try {
+      message = JSON.parse(text).error || message;
+    } catch {
+      // body wasn't JSON either; keep the generic message
+    }
+    throw new Error(message);
+  }
+  return text;
+}
+
+// For binary downloads (the personalized agent ZIP): needs the access token
+// attached like every other call, but must hand back a Blob (with its
+// filename) instead of trying to JSON.parse it, and read the server's error
+// JSON on failure the same way fetchText does.
+export async function fetchBlob(path) {
+  const headers = {};
+  const token = getToken();
+  if (token) headers['x-access-token'] = token;
+  const res = await fetch(path, { headers });
+  if (!res.ok) {
+    let message = `Fehler ${res.status}`;
+    try {
+      message = (await res.json()).error || message;
+    } catch {
+      // body wasn't JSON either; keep the generic message
+    }
+    throw new Error(message);
+  }
+  const disposition = res.headers.get('content-disposition') || '';
+  const match = disposition.match(/filename="([^"]+)"/);
+  return { blob: await res.blob(), filename: match ? match[1] : 'download' };
+}
+
 export const api = {
   meta: () => apiFetch('/api/meta'),
 
@@ -53,6 +97,9 @@ export const api = {
       const qs = new URLSearchParams(params).toString();
       return apiFetch(`/api/players/${id}/stats${qs ? `?${qs}` : ''}`);
     },
+    neighbors: (id) => apiFetch(`/api/players/${id}/neighbors`),
+    setNeighbors: (id, neighborIds) =>
+      apiFetch(`/api/players/${id}/neighbors`, { method: 'PUT', body: JSON.stringify({ neighborIds }) }),
   },
 
   games: {
@@ -83,6 +130,7 @@ export const api = {
 
   matchmaking: {
     generate: (data) => apiFetch('/api/matchmaking', { method: 'POST', body: JSON.stringify(data) }),
+    history: (gameId) => apiFetch(`/api/matchmaking/history${gameId ? `?gameId=${gameId}` : ''}`),
   },
 
   votes: {
@@ -136,5 +184,57 @@ export const api = {
     active: () => apiFetch('/api/events/active'),
     create: (name) => apiFetch('/api/events', { method: 'POST', body: JSON.stringify({ name }) }),
     rename: (id, name) => apiFetch(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  },
+
+  tournaments: {
+    list: () => apiFetch('/api/tournaments'),
+    get: (id) => apiFetch(`/api/tournaments/${id}`),
+    create: (data) => apiFetch('/api/tournaments', { method: 'POST', body: JSON.stringify(data) }),
+    recordResult: (tournamentId, matchId, winnerTeamId) =>
+      apiFetch(`/api/tournaments/${tournamentId}/matches/${matchId}/result`, {
+        method: 'POST',
+        body: JSON.stringify({ winnerTeamId }),
+      }),
+    remove: (id) => apiFetch(`/api/tournaments/${id}`, { method: 'DELETE' }),
+  },
+
+  qrcode: {
+    svg: (text) => fetchText(`/api/qrcode?text=${encodeURIComponent(text)}`),
+  },
+
+  export: {
+    snapshot: (eventId) => apiFetch(`/api/export${eventId ? `?eventId=${eventId}` : ''}`),
+  },
+
+  hallOfFame: {
+    get: () => apiFetch('/api/hall-of-fame'),
+  },
+
+  seating: {
+    get: () => apiFetch('/api/seating'),
+  },
+
+  pings: {
+    list: () => apiFetch('/api/pings'),
+    create: (data) => apiFetch('/api/pings', { method: 'POST', body: JSON.stringify(data) }),
+    toggleInterested: (id, playerId) =>
+      apiFetch(`/api/pings/${id}/interested`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    remove: (id) => apiFetch(`/api/pings/${id}`, { method: 'DELETE' }),
+  },
+
+  digest: {
+    get: (playerId) => apiFetch(`/api/digest?playerId=${encodeURIComponent(playerId)}`),
+  },
+
+  push: {
+    vapidPublicKey: () => apiFetch('/api/push/vapid-public-key'),
+    subscribe: (playerId, subscription) =>
+      apiFetch('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ playerId, subscription }) }),
+    unsubscribe: (endpoint) => apiFetch('/api/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
+  },
+
+  agent: {
+    download: (playerId, trackActivity) =>
+      fetchBlob(`/api/agent-download?playerId=${encodeURIComponent(playerId)}${trackActivity ? '&trackActivity=1' : ''}`),
   },
 };

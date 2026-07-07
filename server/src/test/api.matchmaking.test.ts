@@ -83,3 +83,99 @@ test('POST /api/matchmaking uses a neutral default rating for unrated players', 
     .find((p: { id: string }) => p.id === unrated.body.id);
   assert.equal(found.rating, 5);
 });
+
+test('POST /api/matchmaking ignores seat neighbors unless this draw asks for it', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Seating Test Game A' });
+
+  const names = ['E', 'F', 'G', 'H'];
+  const ratings = [8, 7, 6, 1];
+  const ids: string[] = [];
+  for (let i = 0; i < names.length; i++) {
+    const p = await request(app).post('/api/players').send({ name: names[i] });
+    ids.push(p.body.id);
+    await request(app).put('/api/skills').send({ playerId: p.body.id, gameId: game.body.id, rating: ratings[i] });
+  }
+  await request(app).put(`/api/players/${ids[0]}/neighbors`).send({ neighborIds: [ids[1]] });
+
+  const res = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: ids, teamCount: 2 }); // avoidAdjacentOpponents omitted
+  assert.equal(res.status, 200);
+  assert.equal(res.body.seatConflicts, 0); // not evaluated either way
+  assert.equal(res.body.seatPairsConsidered, 0);
+});
+
+test('POST /api/matchmaking rejects a non-boolean avoidAdjacentOpponents', async () => {
+  const res = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId, playerIds, avoidAdjacentOpponents: 'yes' });
+  assert.equal(res.status, 400);
+});
+
+test('POST /api/matchmaking keeps seat neighbors together when this draw asks for it', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Seating Test Game B' });
+
+  // Same ratings as the deterministic matchmaking.test.ts unit test: the
+  // plain skill-balanced draft splits the two highest-rated players (I, J)
+  // across teams, and reuniting them only costs a small, affordable amount
+  // of balance.
+  const names = ['I', 'J', 'K', 'L'];
+  const ratings = [8, 7, 6, 1];
+  const ids: string[] = [];
+  for (let i = 0; i < names.length; i++) {
+    const p = await request(app).post('/api/players').send({ name: names[i] });
+    ids.push(p.body.id);
+    await request(app).put('/api/skills').send({ playerId: p.body.id, gameId: game.body.id, rating: ratings[i] });
+  }
+  await request(app).put(`/api/players/${ids[0]}/neighbors`).send({ neighborIds: [ids[1]] });
+
+  const res = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: ids, teamCount: 2, avoidAdjacentOpponents: true });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.seatPairsConsidered, 1);
+  assert.equal(res.body.seatConflicts, 0);
+  const teamOf = (id: string) =>
+    res.body.teams.findIndex((t: { players: { id: string }[] }) => t.players.some((p) => p.id === id));
+  assert.equal(teamOf(ids[0]), teamOf(ids[1]));
+});
+
+test('GET /api/matchmaking/history lists past draws for this game, newest first, with team scores', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'History Test Game' });
+  const names = ['M', 'N'];
+  const ratings = [9, 4];
+  const ids: string[] = [];
+  for (let i = 0; i < names.length; i++) {
+    const p = await request(app).post('/api/players').send({ name: names[i] });
+    ids.push(p.body.id);
+    await request(app).put('/api/skills').send({ playerId: p.body.id, gameId: game.body.id, rating: ratings[i] });
+  }
+
+  // Two separate draws (e.g. a re-roll) — both should show up.
+  await request(app).post('/api/matchmaking').send({ gameId: game.body.id, playerIds: ids, teamCount: 2 });
+  const second = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: ids, teamCount: 2 });
+
+  const history = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}`);
+  assert.equal(history.status, 200);
+  assert.equal(history.body.history.length, 2);
+
+  const [newest] = history.body.history;
+  assert.equal(newest.gameId, game.body.id);
+  assert.equal(newest.gameName, 'History Test Game');
+  assert.equal(newest.generatedAt, second.body.generatedAt);
+  // Each historical team keeps its score (totalRating), same as a fresh draw.
+  for (const team of newest.teams) {
+    assert.equal(
+      team.totalRating,
+      team.players.reduce((sum: number, p: { rating: number }) => sum + p.rating, 0)
+    );
+  }
+});
+
+test('GET /api/matchmaking/history does not leak draws from other games', async () => {
+  const res = await request(app).get(`/api/matchmaking/history?gameId=${gameId}`);
+  assert.equal(res.status, 200);
+  assert.ok(res.body.history.every((h: { gameId: string }) => h.gameId === gameId));
+});

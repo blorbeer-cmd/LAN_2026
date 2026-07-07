@@ -13,6 +13,15 @@ import { leaderboardRouter } from './leaderboard';
 import { statsRouter } from './stats';
 import { analyticsRouter } from './analytics';
 import { eventsRouter } from './events';
+import { tournamentsRouter } from './tournaments';
+import { qrcodeRouter } from './qrcode';
+import { exportRouter } from './export';
+import { hallOfFameRouter } from './hallOfFame';
+import { seatingRouter } from './seating';
+import { pingsRouter } from './pings';
+import { digestRouter } from './digest';
+import { pushRouter } from './push';
+import { agentDownloadRouter } from './agentDownload';
 
 export const apiRouter = Router();
 
@@ -32,3 +41,12 @@ apiRouter.use('/leaderboard', leaderboardRouter);
 apiRouter.use('/stats', statsRouter);
 apiRouter.use('/analytics', analyticsRouter);
 apiRouter.use('/events', eventsRouter);
+apiRouter.use('/tournaments', tournamentsRouter);
+apiRouter.use('/qrcode', qrcodeRouter);
+apiRouter.use('/export', exportRouter);
+apiRouter.use('/hall-of-fame', hallOfFameRouter);
+apiRouter.use('/seating', seatingRouter);
+apiRouter.use('/pings', pingsRouter);
+apiRouter.use('/digest', digestRouter);
+apiRouter.use('/push', pushRouter);
+apiRouter.use('/agent-download', agentDownloadRouter);

@@ -5,12 +5,69 @@
 
 import { api } from '../api.js';
 import { state, gameById } from '../state.js';
-import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
+import { escapeHtml, avatarHtml, gameBadgeHtml, formatDateTime } from '../format.js';
 import { showToast } from '../toast.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
 let checkedIds = null;
+let avoidAdjacentOpponents = false;
+
+// Cached separately from `state` (like votes.js does for Vote-Historie)
+// since it's fetched from its own endpoint, scoped to whichever game is
+// currently selected.
+let historyCache = null;
+let historyLoading = false;
+let historyForGameId = null;
+
+async function loadHistory(gameId, ctx) {
+  historyLoading = true;
+  try {
+    const res = await api.matchmaking.history(gameId);
+    historyCache = res.history;
+    historyForGameId = gameId;
+  } catch {
+    historyCache = [];
+    historyForGameId = gameId;
+  } finally {
+    historyLoading = false;
+    ctx.rerender();
+  }
+}
+
+// Called from app.js whenever a matchmaking:generated event arrives, so a
+// freshly drawn set of teams shows up in the history next render instead of
+// whatever the last fetch happened to see.
+export function invalidateMatchmakingHistory() {
+  historyForGameId = null;
+}
+
+function renderHistory() {
+  if (historyLoading || historyCache === null) {
+    return `<div class="empty-state" style="padding:16px;">Lädt…</div>`;
+  }
+  if (historyCache.length === 0) {
+    return `<div class="empty-state" style="padding:16px;"><span class="emoji">⚖️</span>Noch keine Auslosungen für dieses Spiel.</div>`;
+  }
+  return historyCache
+    .map((draw) => {
+      const teamsHtml = draw.teams
+        .map(
+          (t, i) => `
+          <div class="team-card">
+            <div class="team-card-header"><span>Team ${i + 1}</span><span>Score ${t.totalRating}</span></div>
+            ${t.players.map((p) => `<div class="team-player">${avatarHtml(p, 18)} ${escapeHtml(p.name)}<span class="rating">${p.rating}</span></div>`).join('')}
+          </div>`
+        )
+        .join('');
+      return `
+        <div class="card stack" style="margin-bottom:10px;">
+          <div class="muted" style="font-size:0.75rem;">${formatDateTime(draw.generatedAt)}</div>
+          <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));">${teamsHtml}</div>
+        </div>`;
+    })
+    .join('');
+}
 
 export function renderMatchmaking(container, ctx) {
   if (state.games.length === 0 || state.players.length === 0) {
@@ -27,6 +84,10 @@ export function renderMatchmaking(container, ctx) {
   }
 
   const selectedGameId = state.selectedGameId || state.games[0].id;
+
+  if (historyForGameId !== selectedGameId && !historyLoading) {
+    loadHistory(selectedGameId, ctx);
+  }
 
   const gameOptions = state.games
     .map((g) => `<option value="${g.id}" ${g.id === selectedGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`)
@@ -49,16 +110,24 @@ export function renderMatchmaking(container, ctx) {
       <select id="mm-game">${gameOptions}</select>
       <div>${playerRows}</div>
       <div class="row">
-        <input type="number" id="mm-teamcount" placeholder="Teams" min="2" style="width:80px;flex-shrink:0;" />
+        <input type="number" id="mm-teamcount" placeholder="Teams" min="2" style="width:90px;flex-shrink:0;" />
         <button type="button" class="btn btn-primary" id="mm-generate" style="flex:1;">Teams auslosen</button>
       </div>
       <div class="muted" style="font-size:0.78rem;margin-top:-6px;">Anzahl Teams leer lassen für automatisch (Standard: 2)</div>
+      <label class="check-row">
+        <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
+        <span>🪑 Sitznachbarn nicht gegeneinander auslosen</span>
+      </label>
     </div>
     <div id="mm-result">${renderResult(state.lastMatchmaking)}</div>
+
+    <div class="section-title">🕓 Team-Historie</div>
+    ${renderHistory()}
   `;
 
   container.querySelector('#mm-game').addEventListener('change', (e) => {
     state.selectedGameId = e.target.value;
+    ctx.rerender();
   });
 
   container.querySelectorAll('[data-player]').forEach((cb) => {
@@ -68,6 +137,10 @@ export function renderMatchmaking(container, ctx) {
     });
   });
 
+  container.querySelector('#mm-avoid-adjacent').addEventListener('change', (e) => {
+    avoidAdjacentOpponents = e.target.checked;
+  });
+
   container.querySelector('#mm-generate').addEventListener('click', async () => {
     const gameId = container.querySelector('#mm-game').value;
     const playerIds = [...checkedIds];
@@ -75,7 +148,7 @@ export function renderMatchmaking(container, ctx) {
       return showToast('Mindestens 2 Spieler auswählen.', { error: true });
     }
     const teamCountRaw = container.querySelector('#mm-teamcount').value;
-    const body = { gameId, playerIds };
+    const body = { gameId, playerIds, avoidAdjacentOpponents };
     if (teamCountRaw) body.teamCount = parseInt(teamCountRaw, 10);
 
     try {
@@ -94,7 +167,7 @@ function renderResult(result) {
     .map(
       (t, i) => `
       <div class="team-card">
-        <div class="team-card-header"><span>Team ${i + 1}</span><span>Σ ${t.totalRating}</span></div>
+        <div class="team-card-header"><span>Team ${i + 1}</span><span>Score ${t.totalRating}</span></div>
         ${t.players
           .map(
             (p) => `
@@ -109,8 +182,15 @@ function renderResult(result) {
     )
     .join('');
 
+  const seatingNote = result.seatPairsConsidered
+    ? result.seatConflicts > 0
+      ? `<div class="muted" style="font-size:0.78rem;margin-top:8px;">🪑 ${result.seatConflicts} von ${result.seatPairsConsidered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten (sonst wäre es zu unfair geworden).</div>`
+      : `<div class="muted" style="font-size:0.78rem;margin-top:8px;">🪑 Alle Sitznachbarn sind im selben Team.</div>`
+    : '';
+
   return `
     <div class="section-title row" style="gap:8px;">${gameBadgeHtml(gameById(result.gameId), 22)} ${escapeHtml(result.gameName)} — Ergebnis</div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));">${teamsHtml}</div>
+    ${seatingNote}
   `;
 }

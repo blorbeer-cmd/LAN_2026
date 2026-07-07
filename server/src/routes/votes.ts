@@ -9,6 +9,7 @@ import { nanoid } from 'nanoid';
 import { db, getState, setState } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getActiveEventId } from '../events';
+import { notifyPlayers } from '../push';
 
 export const votesRouter = Router();
 
@@ -87,6 +88,14 @@ votesRouter.post('/start', (_req, res) => {
 
   const payload = buildPayload();
   broadcast(Events.votesChanged, payload);
+
+  const allPlayerIds = (db.prepare('SELECT id FROM players').all() as Array<{ id: string }>).map((p) => p.id);
+  notifyPlayers(allPlayerIds, {
+    title: '🗳️ Neue Abstimmung',
+    body: 'Was zocken wir als Nächstes? Jetzt abstimmen.',
+    url: '/',
+  });
+
   res.status(201).json(payload);
 });
 

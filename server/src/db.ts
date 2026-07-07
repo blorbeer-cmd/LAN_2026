@@ -134,6 +134,19 @@ db.exec(`
     winner_game_ids TEXT   -- JSON array of game ids, set on close
   );
 
+  -- Physical seating declared per event (FR-18 extension): "player_id sits
+  -- next to neighbor_id". Self-service, one row per direction a player
+  -- declares (so a player can update their own row without needing their
+  -- neighbor to also confirm it) — matchmaking treats the pair as adjacent
+  -- if either direction exists. Scoped per event since people sit somewhere
+  -- different at every LAN.
+  CREATE TABLE IF NOT EXISTS seat_neighbors (
+    event_id    TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    player_id   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    neighbor_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    PRIMARY KEY (event_id, player_id, neighbor_id)
+  );
+
   -- Recorded matches for the leaderboard. Result details are stored as JSON to
   -- stay flexible while the scoring rules are still being decided.
   CREATE TABLE IF NOT EXISTS matches (
@@ -144,17 +157,124 @@ db.exec(`
     result     TEXT NOT NULL        -- JSON: teams/players and winner
   );
 
+  -- History of drawn (not necessarily played) teams from "Teams auslosen".
+  -- Every draw is logged, including re-rolls — distinct from the matches
+  -- table above, which is the actual recorded outcome of a game someone
+  -- chose to enter afterwards. The teams column is a full snapshot (not
+  -- just player ids) so the history keeps showing the exact names/ratings
+  -- used at draw time even if a player later gets renamed, re-rated, or
+  -- removed.
+  CREATE TABLE IF NOT EXISTS matchmaking_draws (
+    id                    TEXT PRIMARY KEY,
+    game_id               TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    event_id              TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    teams                 TEXT NOT NULL,  -- JSON: [{ players: [{id,name,color,avatar,rating}], totalRating }]
+    seat_conflicts        INTEGER NOT NULL DEFAULT 0,
+    seat_pairs_considered INTEGER NOT NULL DEFAULT 0,
+    generated_at          INTEGER NOT NULL
+  );
+
+  -- Tournaments (FR-33): either a single-elimination bracket ("Turnierbaum")
+  -- or a round-robin league ("jeder gegen jeden"), the latter optionally
+  -- played home-and-away (two_legged). Kept as its own family of tables
+  -- rather than reusing matchmaking_draws, since a tournament's teams are
+  -- fixed for its whole duration and its matches need to track bracket
+  -- position / round-robin standings, neither of which a one-off draw needs.
+  CREATE TABLE IF NOT EXISTS tournaments (
+    id         TEXT PRIMARY KEY,
+    event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    game_id    TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    name       TEXT NOT NULL,
+    format     TEXT NOT NULL,               -- 'single_elimination' | 'round_robin'
+    two_legged INTEGER NOT NULL DEFAULT 0,  -- only meaningful for round_robin
+    status     TEXT NOT NULL DEFAULT 'active', -- 'active' | 'completed'
+    created_at INTEGER NOT NULL
+  );
+
+  -- A tournament's roster: fixed for the tournament's whole duration (unlike
+  -- a matchmaking draw's teams, which are a one-off snapshot).
+  CREATE TABLE IF NOT EXISTS tournament_teams (
+    id            TEXT PRIMARY KEY,
+    tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    name          TEXT NOT NULL,
+    player_ids    TEXT NOT NULL  -- JSON array of player ids
+  );
+
+  -- One row per bracket slot (single_elimination) or fixture (round_robin).
+  -- For a bracket, later rounds start with NULL team_*_id and get filled in
+  -- as earlier rounds are decided (see tournament.ts's applyBracketResult).
+  -- match_id points at the matches row created when a result is recorded,
+  -- so playing in a tournament also counts toward the normal leaderboard;
+  -- ON DELETE SET NULL rather than CASCADE so correcting/removing that
+  -- leaderboard entry doesn't silently erase the tournament result too.
+  CREATE TABLE IF NOT EXISTS tournament_matches (
+    id             TEXT PRIMARY KEY,
+    tournament_id  TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    round          INTEGER NOT NULL,
+    slot           INTEGER NOT NULL,
+    team_a_id      TEXT REFERENCES tournament_teams(id) ON DELETE CASCADE,
+    team_b_id      TEXT REFERENCES tournament_teams(id) ON DELETE CASCADE,
+    winner_team_id TEXT REFERENCES tournament_teams(id) ON DELETE CASCADE,
+    is_draw        INTEGER NOT NULL DEFAULT 0,
+    is_bye         INTEGER NOT NULL DEFAULT 0,
+    match_id       TEXT REFERENCES matches(id) ON DELETE SET NULL,
+    played_at      INTEGER
+  );
+
+  -- "Jetzt zocken" pings: a spontaneous, short-lived "I want to play X right
+  -- now, who's in?" — deliberately lighter-weight than a vote round (no
+  -- start/stop lifecycle, just expires on its own) for the common case of
+  -- one player wanting to round up others immediately.
+  CREATE TABLE IF NOT EXISTS game_pings (
+    id         TEXT PRIMARY KEY,
+    player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    game_id    TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    message    TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+
+  -- Who tapped "Ich bin dabei" on a ping.
+  CREATE TABLE IF NOT EXISTS game_ping_interested (
+    ping_id   TEXT NOT NULL REFERENCES game_pings(id) ON DELETE CASCADE,
+    player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    PRIMARY KEY (ping_id, player_id)
+  );
+
+  -- Web Push subscriptions (real OS-level notifications, not just in-app
+  -- toasts): one row per browser/device a player opted in on. Keyed by
+  -- endpoint (unique per browser+origin) rather than player_id, since one
+  -- player can have several devices subscribed; re-subscribing the same
+  -- endpoint under a different player just re-points it (see push.ts).
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id         TEXT PRIMARY KEY,
+    player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    endpoint   TEXT NOT NULL UNIQUE,
+    p256dh     TEXT NOT NULL,
+    auth       TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_skills_game ON skills(game_id);
   CREATE INDEX IF NOT EXISTS idx_live_status_games_game ON live_status_games(game_id);
   CREATE INDEX IF NOT EXISTS idx_votes_round ON votes(round);
   CREATE INDEX IF NOT EXISTS idx_votes_event ON votes(event_id);
   CREATE INDEX IF NOT EXISTS idx_vote_rounds_event ON vote_rounds(event_id);
+  CREATE INDEX IF NOT EXISTS idx_seat_neighbors_event_player ON seat_neighbors(event_id, player_id);
+  CREATE INDEX IF NOT EXISTS idx_game_pings_event ON game_pings(event_id, expires_at);
   CREATE INDEX IF NOT EXISTS idx_matches_game ON matches(game_id);
   CREATE INDEX IF NOT EXISTS idx_matches_event ON matches(event_id);
+  CREATE INDEX IF NOT EXISTS idx_matchmaking_draws_event ON matchmaking_draws(event_id);
+  CREATE INDEX IF NOT EXISTS idx_matchmaking_draws_game ON matchmaking_draws(game_id);
+  CREATE INDEX IF NOT EXISTS idx_tournaments_event ON tournaments(event_id);
+  CREATE INDEX IF NOT EXISTS idx_tournament_teams_tournament ON tournament_teams(tournament_id);
+  CREATE INDEX IF NOT EXISTS idx_tournament_matches_tournament ON tournament_matches(tournament_id);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_player ON play_sessions(player_id);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_game ON play_sessions(game_id);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_open ON play_sessions(ended_at);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_event ON play_sessions(event_id);
+  CREATE INDEX IF NOT EXISTS idx_push_subscriptions_player ON push_subscriptions(player_id);
 `);
 
 // Migration: older databases were created before the `avatar` column existed.

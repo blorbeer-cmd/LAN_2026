@@ -12,5 +12,8 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.21.0"
   }
 }
