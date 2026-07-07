@@ -86,6 +86,7 @@ export const api = {
 
   matchmaking: {
     generate: (data) => apiFetch('/api/matchmaking', { method: 'POST', body: JSON.stringify(data) }),
+    history: (gameId) => apiFetch(`/api/matchmaking/history${gameId ? `?gameId=${gameId}` : ''}`),
   },
 
   votes: {

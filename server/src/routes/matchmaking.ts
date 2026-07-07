@@ -5,6 +5,7 @@
 // whoever clicked the button.
 
 import { Router } from 'express';
+import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { balanceTeams, computeTeamCount, countSeatConflicts, type PlayerRating, type SeatPair } from '../matchmaking';
@@ -125,6 +126,67 @@ matchmakingRouter.post('/', (req, res) => {
     seatPairsConsidered: avoidPairs.length,
     generatedAt: Date.now(),
   };
+
+  // Logged for the history view (every draw, including re-rolls — see the
+  // matchmaking_draws comment in db.ts for why this is separate from the
+  // actually-recorded `matches`).
+  db.prepare(
+    `INSERT INTO matchmaking_draws (id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(nanoid(), gameId, getActiveEventId(), JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt);
+
   broadcast(Events.matchmakingGenerated, result);
   res.json(result);
+});
+
+interface DrawRow {
+  id: string;
+  gameId: string;
+  gameName: string;
+  gameIcon: string;
+  teamsJson: string;
+  seatConflicts: number;
+  seatPairsConsidered: number;
+  generatedAt: number;
+}
+
+// GET /api/matchmaking/history - past draws for the active event (or an
+// explicit ?eventId=), newest first, optionally narrowed to one ?gameId=.
+matchmakingRouter.get('/history', (req, res) => {
+  const { eventId, gameId, limit } = req.query;
+  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getActiveEventId();
+  const limitNum = Math.min(50, Math.max(1, parseInt(typeof limit === 'string' ? limit : '', 10) || 20));
+
+  const clauses = ['md.event_id = ?'];
+  const params: Array<string | number> = [filterEventId];
+  if (typeof gameId === 'string' && gameId) {
+    clauses.push('md.game_id = ?');
+    params.push(gameId);
+  }
+
+  const rows = db
+    .prepare(
+      `SELECT md.id AS id, md.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
+              md.teams AS teamsJson, md.seat_conflicts AS seatConflicts,
+              md.seat_pairs_considered AS seatPairsConsidered, md.generated_at AS generatedAt
+       FROM matchmaking_draws md
+       JOIN games g ON g.id = md.game_id
+       WHERE ${clauses.join(' AND ')}
+       ORDER BY md.generated_at DESC
+       LIMIT ?`
+    )
+    .all(...params, limitNum) as DrawRow[];
+
+  const history = rows.map((r) => ({
+    id: r.id,
+    gameId: r.gameId,
+    gameName: r.gameName,
+    gameIcon: r.gameIcon,
+    teams: JSON.parse(r.teamsJson),
+    seatConflicts: r.seatConflicts,
+    seatPairsConsidered: r.seatPairsConsidered,
+    generatedAt: r.generatedAt,
+  }));
+
+  res.json({ history });
 });

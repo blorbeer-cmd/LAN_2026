@@ -139,3 +139,43 @@ test('POST /api/matchmaking keeps seat neighbors together when this draw asks fo
     res.body.teams.findIndex((t: { players: { id: string }[] }) => t.players.some((p) => p.id === id));
   assert.equal(teamOf(ids[0]), teamOf(ids[1]));
 });
+
+test('GET /api/matchmaking/history lists past draws for this game, newest first, with team scores', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'History Test Game' });
+  const names = ['M', 'N'];
+  const ratings = [9, 4];
+  const ids: string[] = [];
+  for (let i = 0; i < names.length; i++) {
+    const p = await request(app).post('/api/players').send({ name: names[i] });
+    ids.push(p.body.id);
+    await request(app).put('/api/skills').send({ playerId: p.body.id, gameId: game.body.id, rating: ratings[i] });
+  }
+
+  // Two separate draws (e.g. a re-roll) — both should show up.
+  await request(app).post('/api/matchmaking').send({ gameId: game.body.id, playerIds: ids, teamCount: 2 });
+  const second = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: ids, teamCount: 2 });
+
+  const history = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}`);
+  assert.equal(history.status, 200);
+  assert.equal(history.body.history.length, 2);
+
+  const [newest] = history.body.history;
+  assert.equal(newest.gameId, game.body.id);
+  assert.equal(newest.gameName, 'History Test Game');
+  assert.equal(newest.generatedAt, second.body.generatedAt);
+  // Each historical team keeps its score (totalRating), same as a fresh draw.
+  for (const team of newest.teams) {
+    assert.equal(
+      team.totalRating,
+      team.players.reduce((sum: number, p: { rating: number }) => sum + p.rating, 0)
+    );
+  }
+});
+
+test('GET /api/matchmaking/history does not leak draws from other games', async () => {
+  const res = await request(app).get(`/api/matchmaking/history?gameId=${gameId}`);
+  assert.equal(res.status, 200);
+  assert.ok(res.body.history.every((h: { gameId: string }) => h.gameId === gameId));
+});

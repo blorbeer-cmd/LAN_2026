@@ -157,6 +157,23 @@ db.exec(`
     result     TEXT NOT NULL        -- JSON: teams/players and winner
   );
 
+  -- History of drawn (not necessarily played) teams from "Teams auslosen".
+  -- Every draw is logged, including re-rolls — distinct from the matches
+  -- table above, which is the actual recorded outcome of a game someone
+  -- chose to enter afterwards. The teams column is a full snapshot (not
+  -- just player ids) so the history keeps showing the exact names/ratings
+  -- used at draw time even if a player later gets renamed, re-rated, or
+  -- removed.
+  CREATE TABLE IF NOT EXISTS matchmaking_draws (
+    id                    TEXT PRIMARY KEY,
+    game_id               TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    event_id              TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    teams                 TEXT NOT NULL,  -- JSON: [{ players: [{id,name,color,avatar,rating}], totalRating }]
+    seat_conflicts        INTEGER NOT NULL DEFAULT 0,
+    seat_pairs_considered INTEGER NOT NULL DEFAULT 0,
+    generated_at          INTEGER NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_skills_game ON skills(game_id);
   CREATE INDEX IF NOT EXISTS idx_live_status_games_game ON live_status_games(game_id);
   CREATE INDEX IF NOT EXISTS idx_votes_round ON votes(round);
@@ -165,6 +182,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_seat_neighbors_event_player ON seat_neighbors(event_id, player_id);
   CREATE INDEX IF NOT EXISTS idx_matches_game ON matches(game_id);
   CREATE INDEX IF NOT EXISTS idx_matches_event ON matches(event_id);
+  CREATE INDEX IF NOT EXISTS idx_matchmaking_draws_event ON matchmaking_draws(event_id);
+  CREATE INDEX IF NOT EXISTS idx_matchmaking_draws_game ON matchmaking_draws(game_id);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_player ON play_sessions(player_id);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_game ON play_sessions(game_id);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_open ON play_sessions(ended_at);

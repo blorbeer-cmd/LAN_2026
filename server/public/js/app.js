@@ -11,7 +11,7 @@ import { getMyId } from './whoami.js';
 import { renderLive } from './views/live.js';
 import { renderPlayers } from './views/players.js';
 import { renderGames } from './views/games.js';
-import { renderMatchmaking } from './views/matchmaking.js';
+import { renderMatchmaking, invalidateMatchmakingHistory } from './views/matchmaking.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
@@ -182,6 +182,7 @@ function wireSocket() {
   });
   socket.on('matchmaking:generated', (payload) => {
     state.lastMatchmaking = payload;
+    invalidateMatchmakingHistory();
     if (currentView === 'matchmaking') renderCurrent();
   });
 }
