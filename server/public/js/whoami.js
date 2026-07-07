@@ -10,4 +10,7 @@ export function getMyId() {
 
 export function setMyId(id) {
   localStorage.setItem(MY_ID_KEY, id);
+  // Clears/sets the "you still need to set yourself up" dot on the profile
+  // icon right away, without waiting for the next view switch to notice.
+  document.getElementById('profile-btn')?.classList.toggle('needs-setup', !id);
 }

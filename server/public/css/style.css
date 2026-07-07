@@ -144,6 +144,20 @@ input {
 .icon-btn:hover {
   background: var(--bg-elevated-2);
 }
+.icon-btn.needs-setup {
+  position: relative;
+}
+.icon-btn.needs-setup::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--state-paused);
+  box-shadow: 0 0 0 2px var(--bg-elevated);
+}
 
 .view-container {
   flex: 1;

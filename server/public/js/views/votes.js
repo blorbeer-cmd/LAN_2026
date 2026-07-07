@@ -18,12 +18,15 @@ export function renderVotes(container, ctx) {
 
   const myId = getMyId();
   const whoAmI = `
-    <div class="card row">
-      <span style="flex:1;">Wer bist du?</span>
-      <select id="whoami">
-        <option value="">– wählen –</option>
-        ${state.players.map((p) => `<option value="${p.id}" ${p.id === myId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
-      </select>
+    <div class="card stack">
+      <div class="row">
+        <span style="flex:1;">Wer bist du?</span>
+        <select id="whoami">
+          <option value="">– wählen –</option>
+          ${state.players.map((p) => `<option value="${p.id}" ${p.id === myId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
+        </select>
+      </div>
+      ${!myId ? `<div class="row-between"><span class="muted" style="font-size:0.8rem;">Noch nicht dabei?</span><button type="button" class="btn btn-sm" data-navigate="profile">+ Profil anlegen</button></div>` : ''}
     </div>
   `;
 

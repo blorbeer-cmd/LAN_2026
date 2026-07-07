@@ -20,8 +20,8 @@ function renderInviteSection() {
         <button type="button" class="btn btn-sm" id="invite-copy">Kopieren</button>
       </div>
       <p class="muted" style="font-size:0.8rem;">
-        Diesen Link verschicken – öffnet die Seite direkt eingeloggt. Der Empfänger legt sich dann
-        unter „Spieler" selbst an.
+        Diesen Link verschicken – öffnet die Seite direkt eingeloggt und führt neue Leute direkt zur
+        Profil-Erstellung. Name, Bild, Skills und der eigene Agent-Key richten sich alle selbst ein.
       </p>
     </div>
   `;

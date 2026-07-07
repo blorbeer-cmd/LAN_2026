@@ -56,12 +56,15 @@ export function renderLive(container, ctx) {
 
   const myId = getMyId();
   const whoAmI = `
-    <div class="card row" style="margin-bottom:16px;">
-      <span style="flex:1;">Wer bist du?</span>
-      <select id="live-whoami">
-        <option value="">– wählen –</option>
-        ${state.players.map((p) => `<option value="${p.id}" ${p.id === myId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
-      </select>
+    <div class="card stack" style="margin-bottom:16px;">
+      <div class="row">
+        <span style="flex:1;">Wer bist du?</span>
+        <select id="live-whoami">
+          <option value="">– wählen –</option>
+          ${state.players.map((p) => `<option value="${p.id}" ${p.id === myId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
+        </select>
+      </div>
+      ${!myId ? `<div class="row-between"><span class="muted" style="font-size:0.8rem;">Noch nicht dabei?</span><button type="button" class="btn btn-sm" data-navigate="profile">+ Profil anlegen</button></div>` : ''}
     </div>
   `;
 

@@ -7,6 +7,7 @@ import { connectSocket } from './socket.js';
 import { state } from './state.js';
 import { loadAll } from './data.js';
 import { showToast } from './toast.js';
+import { getMyId } from './whoami.js';
 import { renderLive } from './views/live.js';
 import { renderPlayers } from './views/players.js';
 import { renderGames } from './views/games.js';
@@ -53,6 +54,10 @@ function switchView(view) {
   document.querySelectorAll('.nav-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.view === view);
   });
+  // A little indicator on the profile icon points new/unset devices at
+  // self-onboarding (name, avatar, skills, agent key) instead of leaving
+  // them to stumble onto it.
+  document.getElementById('profile-btn').classList.toggle('needs-setup', !getMyId());
   renderCurrent();
   viewContainer.scrollTop = 0;
 }
@@ -165,7 +170,11 @@ async function main() {
   wireNav();
   wireSocket();
   await loadAll();
-  switchView('live');
+  // Nobody has set up "who am I" on this device yet (fresh invite link, new
+  // phone, …) — send them straight into self-onboarding instead of the Live
+  // board, so setting up name/avatar/skills/agent-key is the first thing
+  // they see, not something they have to go looking for.
+  switchView(getMyId() ? 'live' : 'profile');
 }
 
 main().catch((err) => {
