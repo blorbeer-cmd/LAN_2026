@@ -134,6 +134,53 @@ test('a player with no report at all appears as offline on the board', async () 
   assert.deepEqual(entry.games, []);
 });
 
+test('a report with no foreground signal at all leaves activity_tracked false and every game not foreground', async () => {
+  await request(app)
+    .post('/api/agent/report')
+    .set('x-api-key', apiKey)
+    .send({ processNames: ['cs2.exe', 'rocketleague.exe'] });
+
+  const board = await request(app).get('/api/live');
+  const entry = board.body.find((r: { player_id: string }) => r.player_id === playerId);
+  assert.equal(entry.activity_tracked, false);
+  assert.ok(entry.games.every((g: { foreground: boolean }) => g.foreground === false));
+});
+
+test('a report with a foreground signal marks activity_tracked and the focused game only', async () => {
+  await request(app)
+    .post('/api/agent/report')
+    .set('x-api-key', apiKey)
+    .send({ processNames: ['cs2.exe', 'rocketleague.exe'], foregroundProcessName: 'cs2.exe', idleSeconds: 0 });
+
+  const board = await request(app).get('/api/live');
+  const entry = board.body.find((r: { player_id: string }) => r.player_id === playerId);
+  assert.equal(entry.activity_tracked, true);
+  const cs2Entry = entry.games.find((g: { game_id: string }) => g.game_id === cs2GameId);
+  const rlEntry = entry.games.find((g: { game_id: string }) => g.game_id === rocketLeagueGameId);
+  assert.equal(cs2Entry.foreground, true);
+  assert.equal(rlEntry.foreground, false);
+});
+
+test('focus switching between two running games updates which one is foreground on the next report', async () => {
+  await request(app)
+    .post('/api/agent/report')
+    .set('x-api-key', apiKey)
+    .send({ processNames: ['cs2.exe', 'rocketleague.exe'], foregroundProcessName: 'rocketleague.exe', idleSeconds: 0 });
+
+  const board = await request(app).get('/api/live');
+  const entry = board.body.find((r: { player_id: string }) => r.player_id === playerId);
+  const cs2Entry = entry.games.find((g: { game_id: string }) => g.game_id === cs2GameId);
+  const rlEntry = entry.games.find((g: { game_id: string }) => g.game_id === rocketLeagueGameId);
+  assert.equal(cs2Entry.foreground, false);
+  assert.equal(rlEntry.foreground, true);
+
+  // Clean up back to the single-game state the following tests expect.
+  await request(app)
+    .post('/api/agent/report')
+    .set('x-api-key', apiKey)
+    .send({ processNames: ['cs2.exe'] });
+});
+
 test('POST /api/agent/report includes trackingPaused: false by default', async () => {
   const res = await request(app)
     .post('/api/agent/report')
