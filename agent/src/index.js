@@ -1,19 +1,38 @@
 // Agent main loop: periodically scans running processes and reports them to
 // the server. Deliberately minimal — this is the one piece of the tool that
 // runs unattended on someone else's PC, so it must never crash and must make
-// its own connection status obvious (FR-32) without needing a GUI.
+// its own connection status obvious (FR-32) without needing a GUI for the
+// core loop. It does now expose one thing via a tiny local control panel: the
+// player's own way to pause tracking, toggle autostart, or uninstall — see
+// controlServer.js.
 
+const os = require('os');
+const path = require('path');
 const { loadConfig } = require('./config');
 const { getRunningProcessNames } = require('./processList');
 const { getActivitySnapshot } = require('./activity');
 const { reportToServer } = require('./report');
+const { loadState, setPaused } = require('./state');
+const { getStartupShortcutPath, isAutostartEnabled, enableAutostart, disableAutostart } = require('./autostart');
+const { scheduleUninstall } = require('./uninstaller');
+const { createControlServer, listenWithRetry } = require('./controlServer');
+
+const DEFAULT_CONTROL_PORT = 47813;
 
 function log(message) {
   const ts = new Date().toISOString().slice(11, 19);
   console.log(`[${ts}] ${message}`);
 }
 
-async function tick(config) {
+function getStartupDir() {
+  return path.join(process.env.APPDATA || '', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+}
+
+async function tick(config, stateFilePath) {
+  if (loadState(stateFilePath).paused) {
+    log('⏸ Pausiert – kein Reporting an den Server.');
+    return;
+  }
   try {
     const processNames = await getRunningProcessNames();
     // Opt-in only: reveals which process is focused + idle time, so the
@@ -32,14 +51,60 @@ async function tick(config) {
 
 function start(configPath) {
   const config = loadConfig(configPath);
+  const installDir = path.dirname(config.configPath);
+  const stateFilePath = path.join(installDir, 'agent.state.json');
+  const startupDir = getStartupDir();
+  const shortcutPath = getStartupShortcutPath(startupDir);
+  // pkg (the packager used for the distributed .exe) sets process.pkg; running
+  // from source (dev/tests) has no real install dir to manage autostart for.
+  const isPackaged = typeof process.pkg !== 'undefined';
+  const exePath = isPackaged ? process.execPath : null;
+
   log(
     `LAN-2026-Agent gestartet. Server: ${config.serverUrl} · Intervall: ${config.pollIntervalMs}ms` +
       (config.trackActivity ? ' · Aktivitäts-Tracking: an' : '')
   );
 
-  tick(config);
-  const timer = setInterval(() => tick(config), config.pollIntervalMs);
-  return () => clearInterval(timer);
+  tick(config, stateFilePath);
+  const timer = setInterval(() => tick(config, stateFilePath), config.pollIntervalMs);
+
+  const controlServer = createControlServer({
+    getStatus: () => ({
+      serverUrl: config.serverUrl,
+      pollIntervalMs: config.pollIntervalMs,
+      trackActivity: config.trackActivity,
+      paused: loadState(stateFilePath).paused,
+      autostart: isAutostartEnabled(startupDir),
+      autostartSupported: os.platform() === 'win32' && isPackaged,
+    }),
+    pause: () => setPaused(stateFilePath, true),
+    resume: () => setPaused(stateFilePath, false),
+    enableAutostart: () => {
+      if (!isPackaged || !exePath) {
+        throw new Error('Autostart kann nur mit der installierten .exe eingerichtet werden.');
+      }
+      return enableAutostart({ startupDir, exePath, installDir });
+    },
+    disableAutostart: () => disableAutostart(startupDir),
+    uninstall: () => {
+      scheduleUninstall({ installDir, startupShortcutPath: shortcutPath });
+      // Give the HTTP response time to flush to the browser before we exit.
+      setTimeout(() => process.exit(0), 300);
+    },
+  });
+
+  listenWithRetry(controlServer, DEFAULT_CONTROL_PORT)
+    .then(({ port }) => log(`🖥️  Steuerung erreichbar unter http://127.0.0.1:${port}`))
+    .catch((err) => log(`⚠️ Steuer-Oberfläche konnte nicht gestartet werden: ${err.message}`));
+
+  return () => {
+    clearInterval(timer);
+    try {
+      controlServer.close();
+    } catch {
+      // not listening yet / already closed — nothing to do
+    }
+  };
 }
 
 process.on('uncaughtException', (err) => log(`Unerwarteter Fehler: ${err.message}`));
