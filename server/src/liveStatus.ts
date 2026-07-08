@@ -38,9 +38,9 @@ export function deriveState(
   input: { last_seen: number | null; manual_note: string | null; activeGamesCount: number },
   now: number
 ): LiveState {
+  if (input.manual_note) return 'paused';
   const fresh = input.last_seen != null && now - input.last_seen <= config.offlineTimeoutMs;
   if (fresh && input.activeGamesCount > 0) return 'playing';
-  if (input.manual_note) return 'paused';
   return 'offline';
 }
 
