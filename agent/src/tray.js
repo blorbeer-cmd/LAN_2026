@@ -57,7 +57,7 @@ $exitItem.add_Click({
 // hiding the actual shared window. Synchronous and best-effort — never
 // throws, so a failure here just leaves the console visible instead of
 // breaking startup.
-function hideConsoleWindow() {
+function hideConsoleWindow(log = () => {}) {
   if (os.platform() !== 'win32') return;
   const script =
     'Add-Type -Name W -Namespace RespawnHQ -MemberDefinition ' +
@@ -65,9 +65,11 @@ function hideConsoleWindow() {
     '[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int n);\'; ' +
     '[RespawnHQ.W]::ShowWindow([RespawnHQ.W]::GetConsoleWindow(), 0)';
   try {
-    spawnSync('powershell', ['-NoProfile', '-Command', script], { timeout: 5000 });
-  } catch {
-    // Leave the console visible rather than crash startup over this.
+    const result = spawnSync('powershell', ['-NoProfile', '-Command', script], { timeout: 5000 });
+    if (result.error) log(`Konsole ausblenden fehlgeschlagen: ${result.error.message}`);
+    else if (result.status !== 0) log(`Konsole ausblenden: PowerShell endete mit Code ${result.status}.`);
+  } catch (err) {
+    log(`Konsole ausblenden fehlgeschlagen: ${err.message}`);
   }
 }
 
@@ -78,16 +80,33 @@ function hideConsoleWindow() {
 //
 // -STA matters: WinForms (NotifyIcon, ContextMenuStrip, Application.Run)
 // needs a single-threaded apartment, but powershell.exe defaults to MTA —
-// without this flag, creating the icon throws and nothing ever appears,
-// silently, since stderr wasn't being kept anywhere.
-function startTrayIcon(controlUrl, agentPid) {
+// without this flag, creating the icon throws.
+//
+// `log` (optional) gets every step of what happened — every previous
+// failure here was completely silent (nothing launched, no error anywhere),
+// which made it undiagnosable over chat. Antivirus/Defender silently
+// blocking an unsigned .exe from spawning a hidden PowerShell with an inline
+// script is a real possibility, so this needs to be visible in the agent's
+// own log/console, not just a temp file the player has to go find.
+function startTrayIcon(controlUrl, agentPid, log = () => {}) {
   if (os.platform() !== 'win32') return null;
+
+  let scriptPath;
+  let errorLogPath;
   try {
-    const scriptPath = path.join(os.tmpdir(), `lan2026-agent-tray-${agentPid}.ps1`);
-    const errorLogPath = path.join(os.tmpdir(), `lan2026-agent-tray-${agentPid}.err.log`);
+    scriptPath = path.join(os.tmpdir(), `lan2026-agent-tray-${agentPid}.ps1`);
+    errorLogPath = path.join(os.tmpdir(), `lan2026-agent-tray-${agentPid}.err.log`);
     fs.writeFileSync(scriptPath, buildTrayScript(controlUrl, agentPid), 'utf8');
+    log(`Tray: Skript geschrieben (${scriptPath}).`);
+  } catch (err) {
+    log(`Tray: Skript konnte nicht geschrieben werden: ${err.message}`);
+    return null;
+  }
+
+  let child;
+  try {
     const errorFd = fs.openSync(errorLogPath, 'a');
-    const child = spawn(
+    child = spawn(
       'powershell',
       [
         '-NoProfile',
@@ -102,11 +121,18 @@ function startTrayIcon(controlUrl, agentPid) {
       ],
       { windowsHide: true, detached: true, stdio: ['ignore', 'ignore', errorFd] }
     );
-    child.unref();
-    return child;
-  } catch {
+  } catch (err) {
+    log(`Tray: PowerShell konnte nicht gestartet werden: ${err.message}`);
     return null;
   }
+
+  log(`Tray: PowerShell gestartet (PID ${child.pid}).`);
+  child.on('error', (err) => log(`Tray: Prozessfehler: ${err.message}`));
+  child.on('exit', (code, signal) => {
+    log(`Tray: Prozess beendet (code=${code}, signal=${signal}) – Details ggf. in ${errorLogPath}.`);
+  });
+  child.unref();
+  return child;
 }
 
 module.exports = { buildTrayScript, hideConsoleWindow, startTrayIcon };

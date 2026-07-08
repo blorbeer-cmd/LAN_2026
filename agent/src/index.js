@@ -188,14 +188,21 @@ function start(configPath) {
       log(`🖥️  Steuerung erreichbar unter ${controlUrl}`);
 
       // Dev runs (npm start) keep their console — only the packaged .exe on
-      // Windows gets the tray treatment, and only once the tray icon is
-      // actually up (so a failure here never leaves the agent invisible and
-      // uncontrollable).
+      // Windows gets the tray treatment, and only once the tray process is
+      // still alive a moment later (so a spawn that starts but dies right
+      // away — e.g. antivirus killing an unsigned .exe's hidden PowerShell
+      // child — never leaves the agent invisible and uncontrollable).
       if (isPackaged && os.platform() === 'win32') {
-        trayProcess = startTrayIcon(controlUrl, process.pid);
+        trayProcess = startTrayIcon(controlUrl, process.pid, log);
         if (trayProcess) {
-          hideConsoleWindow();
-          log('🔽 Konsole ausgeblendet – Steuerung jetzt über das Tray-Icon oder ' + controlUrl + '.');
+          setTimeout(() => {
+            if (trayProcess && trayProcess.exitCode === null && !trayProcess.killed) {
+              hideConsoleWindow(log);
+              log('🔽 Konsole ausgeblendet – Steuerung jetzt über das Tray-Icon oder ' + controlUrl + '.');
+            } else {
+              log('⚠️ Tray-Icon ist gleich nach dem Start wieder beendet, Konsole bleibt sichtbar.');
+            }
+          }, 1500);
         } else {
           log('⚠️ Tray-Icon konnte nicht gestartet werden, Konsole bleibt sichtbar.');
         }
