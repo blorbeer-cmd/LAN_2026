@@ -135,15 +135,17 @@ function renderEventCard(e) {
     : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${e.id}">🏁 Beenden</button>`;
 
   return `
-    <div class="card stack" style="gap:8px;">
+    <div class="card stack" style="gap:12px;">
       <div class="row-between">
         <strong>${escapeHtml(e.name)}</strong>
         ${eventStatusBadge(e)}
       </div>
-      ${e.location ? `<div class="muted" style="font-size:0.8rem;">📍 ${escapeHtml(e.location)}</div>` : ''}
-      ${e.description ? `<div class="muted" style="font-size:0.8rem;">${escapeHtml(e.description)}</div>` : ''}
-      <div class="muted" style="font-size:0.78rem;">${dateRange} · ${participantCount} Teilnehmer</div>
-      <div class="row" style="gap:6px;flex-wrap:wrap;">
+      <div class="stack" style="gap:5px;">
+        ${e.location ? `<div class="muted" style="font-size:0.82rem;">📍 ${escapeHtml(e.location)}</div>` : ''}
+        <div class="muted" style="font-size:0.82rem;">🗓️ ${dateRange} · 👥 ${participantCount} Teilnehmer</div>
+        ${e.description ? `<div class="muted" style="font-size:0.82rem;">${escapeHtml(e.description)}</div>` : ''}
+      </div>
+      <div class="row event-card-actions" style="gap:8px;flex-wrap:wrap;">
         ${trackingBtn}
         ${endBtn}
         <button type="button" class="btn btn-sm" data-participants-event="${e.id}">👥 Teilnehmer</button>
@@ -160,10 +162,10 @@ function renderEventSection() {
 
   return `
     <div class="row-between" style="margin-top:20px;">
-      <div class="section-title" style="margin:0;">🎪 Events</div>
+      <div class="section-title" style="margin:0 0 8px;">🎪 Events</div>
       <button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>
     </div>
-    <p class="muted" style="font-size:0.8rem;margin-top:-4px;">
+    <p class="muted" style="font-size:0.8rem;margin:0 0 14px;">
       Mehrere Events können nebeneinander bestehen, aber nur eines gleichzeitig „tracken" (Live-Status
       und Spielzeit automatisch erfassen). Was außerhalb eines getrackten Events passiert, läuft unter
       „Außerhalb von Events" – ganz normal nutzbar, nur ohne festes Event zugeordnet.
@@ -171,7 +173,7 @@ function renderEventSection() {
     ${
       realEvents.length === 0
         ? `<div class="empty-state"><span class="emoji">🎪</span>Noch keine Events angelegt.</div>`
-        : `<div class="card-grid">${cards}</div>`
+        : `<div class="card-grid" style="gap:16px;">${cards}</div>`
     }
   `;
 }
@@ -342,7 +344,7 @@ export function renderGames(container, ctx) {
     ${renderEventSection()}
     ${renderInviteSection()}
     <div class="row-between" style="margin-top:20px;">
-      <div class="section-title" style="margin:0;">🎮 Spiele verwalten</div>
+      <div class="section-title" style="margin:0 0 8px;">🎮 Spiele verwalten</div>
       <button type="button" class="btn btn-primary btn-sm" id="add-game-btn">+ Spiel</button>
     </div>
     ${

@@ -574,6 +574,14 @@ input[type='number']::-webkit-inner-spin-button {
   gap: 6px;
 }
 
+/* Divider between an event card's info block and its action buttons — keeps
+   the buttons from reading as glued to the text right above them, especially
+   once they wrap onto a second line. */
+.event-card-actions {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
 /* ---------- Live board ---------- */
 
 .player-card {
