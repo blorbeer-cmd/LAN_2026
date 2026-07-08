@@ -12,7 +12,8 @@ function makeHandlers() {
     getStatus: () => ({
       serverUrl: 'http://example.test',
       pollIntervalMs: 10000,
-      trackActivity: false,
+      trackActivity: state.trackActivity,
+      activityTrackingSupported: true,
       paused: state.paused,
       autostart: state.autostart,
       autostartSupported: true,
@@ -24,6 +25,14 @@ function makeHandlers() {
     resume: () => {
       handlerCalls.push('resume');
       state.paused = false;
+    },
+    enableActivityTracking: () => {
+      handlerCalls.push('enableActivityTracking');
+      state.trackActivity = true;
+    },
+    disableActivityTracking: () => {
+      handlerCalls.push('disableActivityTracking');
+      state.trackActivity = false;
     },
     enableAutostart: () => {
       handlerCalls.push('enableAutostart');
@@ -40,7 +49,7 @@ function makeHandlers() {
 }
 
 before(async () => {
-  state = { paused: false, autostart: false };
+  state = { paused: false, autostart: false, trackActivity: false };
   handlerCalls = [];
   server = createControlServer(makeHandlers());
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -55,6 +64,7 @@ after(() => {
 beforeEach(() => {
   state.paused = false;
   state.autostart = false;
+  state.trackActivity = false;
   handlerCalls = [];
 });
 
@@ -83,6 +93,14 @@ test('POST /api/pause and /api/resume toggle paused state', async () => {
   const resumeRes = await fetch(`${baseUrl}/api/resume`, { method: 'POST' });
   assert.equal(resumeRes.status, 200);
   assert.equal(state.paused, false);
+});
+
+test('POST /api/activity-tracking/enable and /disable call through to handlers', async () => {
+  await fetch(`${baseUrl}/api/activity-tracking/enable`, { method: 'POST' });
+  assert.equal(state.trackActivity, true);
+
+  await fetch(`${baseUrl}/api/activity-tracking/disable`, { method: 'POST' });
+  assert.equal(state.trackActivity, false);
 });
 
 test('POST /api/autostart/enable and /disable call through to handlers', async () => {

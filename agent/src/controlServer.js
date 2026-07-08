@@ -89,6 +89,17 @@ function renderPage() {
 
     <div class="row">
       <div>
+        <div>Erweiterte Daten senden</div>
+        <div class="hint" id="activityHint"></div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="activityToggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="row">
+      <div>
         <div>Autostart bei Windows-Login</div>
         <div class="hint" id="autostartHint"></div>
       </div>
@@ -115,6 +126,11 @@ async function loadStatus() {
   badge.textContent = s.paused ? '⏸ Pausiert' : '▶ Aktiv – trackt';
   badge.className = 'badge ' + (s.paused ? 'paused' : 'playing');
   document.getElementById('toggleBtn').textContent = s.paused ? '▶ Fortsetzen' : '⏸ Pausieren';
+  const activityToggle = document.getElementById('activityToggle');
+  activityToggle.checked = s.trackActivity;
+  document.getElementById('activityHint').textContent = s.activityTrackingSupported
+    ? 'Aktives Fenster + Leerlaufzeit, nur für bekannte Spiele (siehe README).'
+    : 'Nur unter Windows wirksam, hier ohne Effekt.';
   const autostartToggle = document.getElementById('autostartToggle');
   autostartToggle.checked = s.autostart;
   autostartToggle.disabled = !s.autostartSupported;
@@ -136,6 +152,14 @@ document.getElementById('toggleBtn').addEventListener('click', async () => {
   const res = await fetch('/api/' + action, { method: 'POST' });
   if (res.ok) { await loadStatus(); showMsg(action === 'pause' ? 'Pausiert.' : 'Fortgesetzt.'); }
   else showMsg('Fehler beim Umschalten.', true);
+});
+
+document.getElementById('activityToggle').addEventListener('change', async (e) => {
+  const enable = e.target.checked;
+  const res = await fetch('/api/activity-tracking/' + (enable ? 'enable' : 'disable'), { method: 'POST' });
+  if (res.ok) { showMsg(enable ? 'Erweiterte Daten aktiviert.' : 'Erweiterte Daten deaktiviert.'); }
+  else { e.target.checked = !enable; showMsg('Fehler.', true); }
+  await loadStatus();
 });
 
 document.getElementById('autostartToggle').addEventListener('change', async (e) => {
@@ -170,8 +194,9 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-// handlers: { getStatus, pause, resume, enableAutostart, disableAutostart, uninstall }
-// (all may be sync or return a Promise; getStatus returns the full status object)
+// handlers: { getStatus, pause, resume, enableActivityTracking, disableActivityTracking,
+// enableAutostart, disableAutostart, uninstall } — all may be sync or return a Promise;
+// getStatus returns the full status object.
 function createControlServer(handlers) {
   return http.createServer(async (req, res) => {
     let pathname;
@@ -195,6 +220,14 @@ function createControlServer(handlers) {
       }
       if (req.method === 'POST' && pathname === '/api/resume') {
         await handlers.resume();
+        return sendJson(res, 200, { ok: true });
+      }
+      if (req.method === 'POST' && pathname === '/api/activity-tracking/enable') {
+        await handlers.enableActivityTracking();
+        return sendJson(res, 200, { ok: true });
+      }
+      if (req.method === 'POST' && pathname === '/api/activity-tracking/disable') {
+        await handlers.disableActivityTracking();
         return sendJson(res, 200, { ok: true });
       }
       if (req.method === 'POST' && pathname === '/api/autostart/enable') {

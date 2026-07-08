@@ -12,7 +12,7 @@ const { loadConfig } = require('./config');
 const { getRunningProcessNames } = require('./processList');
 const { getActivitySnapshot } = require('./activity');
 const { reportToServer } = require('./report');
-const { loadState, setPaused } = require('./state');
+const { loadState, setPaused, setTrackActivity } = require('./state');
 const { getStartupShortcutPath, isAutostartEnabled, enableAutostart, disableAutostart } = require('./autostart');
 const { scheduleUninstall } = require('./uninstaller');
 const { createControlServer, listenWithRetry } = require('./controlServer');
@@ -29,15 +29,18 @@ function getStartupDir() {
 }
 
 async function tick(config, stateFilePath) {
-  if (loadState(stateFilePath).paused) {
+  const state = loadState(stateFilePath, { trackActivity: config.trackActivity });
+  if (state.paused) {
     log('⏸ Pausiert – kein Reporting an den Server.');
     return;
   }
   try {
     const processNames = await getRunningProcessNames();
     // Opt-in only: reveals which process is focused + idle time, so the
-    // server can tell "actually played" apart from "just running".
-    const activitySnapshot = config.trackActivity ? await getActivitySnapshot() : null;
+    // server can tell "actually played" apart from "just running". The
+    // player can flip this later via the control panel, so the state file
+    // (not the original downloaded config) is the source of truth here.
+    const activitySnapshot = state.trackActivity ? await getActivitySnapshot() : null;
     const result = await reportToServer(config, processNames, activitySnapshot);
     const count = result?.gameIds?.length ?? 0;
     log(count > 0 ? `✅ Verbunden – ${count} Spiel(e) erkannt.` : '✅ Verbunden – kein bekanntes Spiel aktiv.');
@@ -60,25 +63,32 @@ function start(configPath) {
   const isPackaged = typeof process.pkg !== 'undefined';
   const exePath = isPackaged ? process.execPath : null;
 
+  const initialTrackActivity = loadState(stateFilePath, { trackActivity: config.trackActivity }).trackActivity;
   log(
     `LAN-2026-Agent gestartet. Server: ${config.serverUrl} · Intervall: ${config.pollIntervalMs}ms` +
-      (config.trackActivity ? ' · Aktivitäts-Tracking: an' : '')
+      (initialTrackActivity ? ' · Aktivitäts-Tracking: an' : '')
   );
 
   tick(config, stateFilePath);
   const timer = setInterval(() => tick(config, stateFilePath), config.pollIntervalMs);
 
   const controlServer = createControlServer({
-    getStatus: () => ({
-      serverUrl: config.serverUrl,
-      pollIntervalMs: config.pollIntervalMs,
-      trackActivity: config.trackActivity,
-      paused: loadState(stateFilePath).paused,
-      autostart: isAutostartEnabled(startupDir),
-      autostartSupported: os.platform() === 'win32' && isPackaged,
-    }),
+    getStatus: () => {
+      const state = loadState(stateFilePath, { trackActivity: config.trackActivity });
+      return {
+        serverUrl: config.serverUrl,
+        pollIntervalMs: config.pollIntervalMs,
+        paused: state.paused,
+        trackActivity: state.trackActivity,
+        activityTrackingSupported: os.platform() === 'win32',
+        autostart: isAutostartEnabled(startupDir),
+        autostartSupported: os.platform() === 'win32' && isPackaged,
+      };
+    },
     pause: () => setPaused(stateFilePath, true),
     resume: () => setPaused(stateFilePath, false),
+    enableActivityTracking: () => setTrackActivity(stateFilePath, true),
+    disableActivityTracking: () => setTrackActivity(stateFilePath, false),
     enableAutostart: () => {
       if (!isPackaged || !exePath) {
         throw new Error('Autostart kann nur mit der installierten .exe eingerichtet werden.');

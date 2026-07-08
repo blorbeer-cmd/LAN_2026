@@ -194,7 +194,9 @@ export function renderProfile(container, ctx) {
       <p class="muted" style="font-size:0.8rem;margin-top:-4px;">
         Aus (Standard): der Server weiß nur „läuft Spiel X gerade". An: zusätzlich, ob das
         Spielfenster wirklich im Vordergrund ist statt nur im Hintergrund zu laufen – zeigt sich z. B.
-        als „davon aktiv gespielt" in deiner Statistik. Wirkt sich erst beim nächsten Download aus.
+        als „davon aktiv gespielt" in deiner Statistik. Das hier ist nur der Startwert für den
+        nächsten Download – danach lässt sich das jederzeit in der Steuerungs-Oberfläche des Agents
+        (Desktop-Verknüpfung „RespawnHQ-Agent Steuerung") umschalten, ohne neu herunterzuladen.
       </p>
       <button type="button" class="btn btn-primary btn-block" id="agent-download">📥 Agent für Windows herunterladen</button>
       <p class="muted" style="font-size:0.8rem;">
