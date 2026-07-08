@@ -177,6 +177,14 @@ export const api = {
       const qs = new URLSearchParams(params).toString();
       return apiFetch(`/api/analytics/awards${qs ? `?${qs}` : ''}`);
     },
+    games: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return apiFetch(`/api/analytics/games${qs ? `?${qs}` : ''}`);
+    },
+    gamesTournaments: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return apiFetch(`/api/analytics/games-tournaments${qs ? `?${qs}` : ''}`);
+    },
   },
 
   events: {
