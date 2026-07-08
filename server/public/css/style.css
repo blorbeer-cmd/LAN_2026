@@ -7,7 +7,9 @@
   --bg: #0f1420;
   --bg-elevated: #171e2e;
   --bg-elevated-2: #1e2740;
-  --border: #2a3350;
+  /* Translucent instead of a solid hex: hairlines pick up a hint of whatever
+     is behind them, which reads softer/more modern than uniform solid lines. */
+  --border: rgba(122, 141, 195, 0.21);
   --text: #eef1f8;
   --text-muted: #8b93a7;
   --accent: #5b8cff;
@@ -54,11 +56,51 @@ body {
 }
 
 body {
-  background: var(--bg);
+  /* Two faint accent glows behind everything give the flat dark canvas some
+     depth without images or extra elements; fixed so they don't scroll away. */
+  background:
+    radial-gradient(640px 420px at 88% -8%, rgba(145, 99, 245, 0.13), transparent 65%),
+    radial-gradient(720px 520px at -12% 108%, rgba(91, 140, 255, 0.09), transparent 65%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font);
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
+}
+
+/* ---------- Scrollbars ----------
+   The OS-default chrome scrollbar is a wide grey slab that clashes with the
+   dark UI. Slim, rounded, translucent thumb on a transparent track instead —
+   visible when you need it, invisible when you don't. */
+html {
+  scrollbar-color: rgba(139, 147, 167, 0.35) transparent; /* Firefox */
+}
+* {
+  scrollbar-width: thin; /* Firefox */
+}
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(139, 147, 167, 0.3);
+  border-radius: 999px;
+  /* Transparent outer edge shrinks the visible thumb without shrinking the
+     grab/tap target. */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 147, 167, 0.55);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 button,
@@ -102,6 +144,17 @@ input {
   position: sticky;
   top: 0;
   z-index: 10;
+}
+/* Frosted-glass bars where supported: content scrolling past shimmers
+   through, which instantly reads as a current-gen app. Solid fallback above
+   stays for anything without backdrop-filter. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .topbar,
+  .bottom-nav {
+    background: rgba(23, 30, 46, 0.7);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(16px) saturate(1.4);
+  }
 }
 /* Thin brand-gradient stripe under the header — a small, cheap touch that
    ties every screen back to the logo's colors without needing images. */
@@ -181,9 +234,6 @@ input {
   line-height: 1;
   border-radius: var(--radius-sm);
 }
-.icon-btn:hover {
-  background: var(--bg-elevated-2);
-}
 .icon-btn.needs-setup {
   position: relative;
 }
@@ -207,6 +257,17 @@ input {
   max-width: var(--content-max-width);
   width: 100%;
   margin: 0 auto;
+}
+/* Re-applied by switchView() on every tab change (and only there — realtime
+   re-renders must not flash): the incoming view fades/slides in briefly. */
+.view-container.view-enter {
+  animation: view-in 0.22s ease;
+}
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
 }
 
 /* On a laptop/desktop screen, a 720px-capped column leaves most of the
@@ -261,19 +322,46 @@ input {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 3px;
   color: var(--text-muted);
   font-size: 0.7rem;
   border-radius: var(--radius-sm);
+  position: relative;
+  transition: color 0.15s ease;
 }
 .nav-icon {
   font-size: 1.3rem;
+  transition: transform 0.18s ease;
+}
+/* Soft pill behind the active tab's icon (Material/iOS-style) — scales in
+   instead of popping, so switching tabs feels alive. */
+.nav-btn::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  width: 46px;
+  height: 27px;
+  border-radius: 999px;
+  background: rgba(91, 140, 255, 0.17);
+  opacity: 0;
+  transform: translateX(-50%) scale(0.55);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  pointer-events: none;
 }
 .nav-btn.active {
   color: var(--accent);
 }
+.nav-btn.active::before {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
 .nav-btn.active .nav-icon {
+  transform: translateY(-1px);
   filter: drop-shadow(0 0 6px rgba(91, 140, 255, 0.55));
+}
+.nav-btn.active .nav-label {
+  font-weight: 700;
 }
 
 /* ---------- Buttons & inputs ---------- */
@@ -287,7 +375,20 @@ input {
   cursor: pointer;
   background: var(--bg-elevated-2);
   color: var(--text);
-  transition: transform 0.05s ease, opacity 0.15s ease;
+  transition: transform 0.05s ease, opacity 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
+}
+/* Hover feedback only where hover exists — on touch screens :hover sticks
+   after a tap and leaves buttons looking half-pressed. */
+@media (hover: hover) {
+  .btn:hover:not(:disabled) {
+    filter: brightness(1.12);
+  }
+  .btn-primary:hover:not(:disabled) {
+    box-shadow: 0 4px 20px rgba(91, 140, 255, 0.42);
+  }
+  .icon-btn:hover {
+    background: var(--bg-elevated-2);
+  }
 }
 .btn:active {
   transform: scale(0.97);
@@ -341,6 +442,34 @@ textarea {
 textarea {
   font-family: inherit;
   resize: vertical;
+}
+
+/* Focus: accent ring on fields, visible keyboard-focus outline everywhere
+   else — without leaving mouse/touch users with permanent outlines. */
+input[type='text']:focus,
+input[type='password']:focus,
+input[type='number']:focus,
+input[type='datetime-local']:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: rgba(91, 140, 255, 0.65);
+  box-shadow: 0 0 0 3px rgba(91, 140, 255, 0.16);
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Native dropdown arrows don't theme; replace with a custom chevron so
+   selects match the rest of the dark controls. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238b93a7' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 38px;
 }
 /* Chrome/Edge render the datetime-local picker icon dark-on-dark by default
    (it doesn't follow color-scheme automatically inside a custom-background
@@ -460,6 +589,20 @@ input[type='number']::-webkit-inner-spin-button {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
+/* Cards that ARE buttons (game rows, tournament list, "Mehr" hub): lift
+   slightly on hover so tappable rows are distinguishable from static cards
+   on a laptop without needing extra affordance on touch. */
+button.card {
+  transition: border-color 0.15s ease, transform 0.15s ease, background-color 0.15s ease;
+}
+@media (hover: hover) {
+  button.card:hover {
+    border-color: rgba(91, 140, 255, 0.55);
+    background: var(--bg-elevated-2);
+    transform: translateY(-1px);
+  }
+}
+
 /* The QR code SVG already draws its own white background (needed for
    scanability regardless of theme) — just round its corners and give it
    some breathing room against the dark page behind it. */
@@ -496,9 +639,15 @@ input[type='number']::-webkit-inner-spin-button {
     transform: translateY(-5px);
   }
 }
+/* One switch for every animation/transition in the file — anyone who asked
+   their OS for reduced motion gets a fully static UI. */
 @media (prefers-reduced-motion: reduce) {
-  .mascot {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
@@ -851,11 +1000,18 @@ button.bracket-team:hover {
 .toast {
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   padding: 10px 14px;
   font-size: 0.88rem;
   box-shadow: var(--shadow);
   text-align: center;
+  animation: toast-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
 }
 .toast.toast-error {
   color: var(--danger);
@@ -871,11 +1027,14 @@ button.bracket-team:hover {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(6, 9, 18, 0.55);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
   display: flex;
   align-items: flex-end;
   justify-content: center;
   z-index: 50;
+  animation: backdrop-in 0.18s ease;
 }
 @media (min-width: 640px) {
   .modal-backdrop {
@@ -891,10 +1050,32 @@ button.bracket-team:hover {
   max-width: 480px;
   max-height: 85dvh;
   overflow-y: auto;
+  /* Bottom sheet slides up on phones… */
+  animation: sheet-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 @media (min-width: 640px) {
   .modal {
     border-radius: var(--radius-lg);
+    /* …and gently scales in as a centered dialog on wider screens. */
+    animation-name: dialog-in;
+    animation-duration: 0.18s;
+  }
+}
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(28px);
+    opacity: 0.5;
+  }
+}
+@keyframes dialog-in {
+  from {
+    transform: scale(0.96) translateY(6px);
+    opacity: 0;
   }
 }
 .modal-header {
