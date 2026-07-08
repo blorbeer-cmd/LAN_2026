@@ -7,6 +7,7 @@ import { api } from '../api.js';
 import { state, gameById } from '../state.js';
 import { escapeHtml, avatarHtml, gameBadgeHtml, formatDateTime } from '../format.js';
 import { showToast } from '../toast.js';
+import { openMatchForm } from './leaderboard.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -159,6 +160,17 @@ export function renderMatchmaking(container, ctx) {
       showToast(err.message, { error: true });
     }
   });
+
+  const recordBtn = container.querySelector('#mm-record-result');
+  if (recordBtn) {
+    recordBtn.addEventListener('click', () => {
+      const result = state.lastMatchmaking;
+      openMatchForm(ctx, {
+        presetGameId: result.gameId,
+        presetTeams: result.teams.map((t) => ({ playerIds: t.players.map((p) => p.id) })),
+      });
+    });
+  }
 }
 
 function renderResult(result) {
@@ -192,5 +204,6 @@ function renderResult(result) {
     <div class="section-title row" style="gap:8px;">${gameBadgeHtml(gameById(result.gameId), 22)} ${escapeHtml(result.gameName)} — Ergebnis</div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));">${teamsHtml}</div>
     ${seatingNote}
+    <button type="button" class="btn btn-primary btn-block" id="mm-record-result" style="margin-top:10px;">✅ Ergebnis eintragen</button>
   `;
 }
