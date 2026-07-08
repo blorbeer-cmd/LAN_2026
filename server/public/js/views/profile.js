@@ -188,6 +188,14 @@ export function renderProfile(container, ctx) {
     <div class="section-title">🖥️ Live-Status-Agent</div>
     <div class="card stack">
       <label class="check-row">
+        <input type="checkbox" id="tracking-paused" ${me.tracking_paused ? 'checked' : ''} />
+        <span style="flex:1;">🚫 Tracking pausieren</span>
+      </label>
+      <p class="muted" style="font-size:0.8rem;margin-top:-4px;">
+        Dein Agent darf weiterlaufen und meldet sich weiter beim Server, aber nichts davon wird
+        gespeichert – kein Live-Status, keine Spielzeit. Jederzeit wieder umschaltbar.
+      </p>
+      <label class="check-row">
         <input type="checkbox" id="agent-track-activity" />
         <span style="flex:1;">Erweitertes Aktivitäts-Tracking</span>
       </label>
@@ -200,7 +208,9 @@ export function renderProfile(container, ctx) {
       <p class="muted" style="font-size:0.8rem;">
         ZIP entpacken, <code>install.bat</code> doppelklicken – Server-Adresse und dein API-Key sind
         schon eingetragen. Der Agent startet danach automatisch bei jedem Windows-Login und erkennt,
-        welches Spiel du gerade spielst.
+        welches Spiel du gerade spielst. Im selben ZIP liegt auch <code>uninstall.bat</code>, falls du
+        den Agent später komplett wieder loswerden willst (für ein vorübergehendes Pausieren reicht
+        die Option oben).
       </p>
       <details>
         <summary class="muted" style="font-size:0.8rem;cursor:pointer;">Kein Windows / manuelle Einrichtung</summary>
@@ -256,6 +266,16 @@ export function renderProfile(container, ctx) {
       const input = container.querySelector('#profile-apikey');
       if (input) input.value = 'Fehler beim Laden';
     });
+
+  container.querySelector('#tracking-paused').addEventListener('change', async (e) => {
+    try {
+      await api.players.update(myId, { trackingPaused: e.target.checked });
+      await ctx.refresh();
+      showToast(e.target.checked ? 'Tracking pausiert.' : 'Tracking wieder aktiv.');
+    } catch (err) {
+      showToast(err.message, { error: true });
+    }
+  });
 
   container.querySelector('#profile-copy-key').addEventListener('click', async () => {
     const value = container.querySelector('#profile-apikey').value;

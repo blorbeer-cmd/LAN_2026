@@ -8,7 +8,7 @@ import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
-import { getActiveEventId } from '../events';
+import { getTrackingEventId } from '../events';
 import { isNonEmptyString } from '../validation';
 import { notifyPlayers } from '../push';
 import {
@@ -218,7 +218,7 @@ function buildDetail(tournamentId: string) {
 // a picker list (use GET /:id for the full board).
 tournamentsRouter.get('/', (req, res) => {
   const { eventId } = req.query;
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getActiveEventId();
+  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
 
   const rows = db
     .prepare(
@@ -350,7 +350,7 @@ tournamentsRouter.post('/', (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`
     ).run(
       tournamentId,
-      getActiveEventId(),
+      getTrackingEventId(),
       gameId,
       tournamentName,
       resolvedFormat,

@@ -23,29 +23,49 @@ db.pragma('foreign_keys = ON');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS players (
-    id         TEXT PRIMARY KEY,
-    name       TEXT NOT NULL,
-    color      TEXT NOT NULL DEFAULT '#4f9dff',
-    avatar     TEXT,
-    api_key    TEXT NOT NULL UNIQUE,
-    created_at INTEGER NOT NULL
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    color           TEXT NOT NULL DEFAULT '#4f9dff',
+    avatar          TEXT,
+    api_key         TEXT NOT NULL UNIQUE,
+    tracking_paused INTEGER NOT NULL DEFAULT 0, -- player-side opt-out; agent reports for this player are dropped
+    created_at      INTEGER NOT NULL
   );
 
-  -- LAN events (e.g. "LAN Party Sommer 2026"). Exactly one is active at a
-  -- time (tracked by the app_state active_event_id key, not by ends_at —
-  -- see events.ts); starting a new one closes the previous one. location/
-  -- description are optional freeform notes (e.g. "bei Tim", "Fokus: AoE2-
-  -- Turnier"). Players, games and skills stay global across events on
-  -- purpose (the same friend group year after year) — only live/session/
-  -- vote/match data is scoped per event so analytics can be viewed per LAN
-  -- afterwards.
+  -- LAN events (e.g. "LAN Party Sommer 2026"). Several can exist and even
+  -- overlap in time — the thing that must stay exclusive is *tracking*
+  -- (live status / playtime), not the events themselves: at most one event
+  -- has tracking_enabled = 1 at any moment (enforced in events.ts, not by
+  -- the schema), and only that event's roster (event_participants) gets
+  -- tracked. ended_at is set once an event is explicitly closed (separate
+  -- from just pausing tracking). location/description are optional
+  -- freeform notes (e.g. "bei Tim", "Fokus: AoE2-Turnier"). A permanent
+  -- sentinel row (id = OUTSIDE_EVENTS_ID, seeded below) represents
+  -- "außerhalb von Events" — where everything gets tagged whenever no real
+  -- event is tracking, so every event-scoped table can keep a plain
+  -- NOT NULL event_id instead of needing a nullable "no event" case
+  -- threaded through the whole codebase. Players, games and skills stay
+  -- global across events on purpose (the same friend group year after
+  -- year) — only live/session/vote/match data is scoped per event so
+  -- analytics can be viewed per LAN afterwards.
   CREATE TABLE IF NOT EXISTS events (
-    id          TEXT PRIMARY KEY,
-    name        TEXT NOT NULL,
-    starts_at   INTEGER NOT NULL,
-    ends_at     INTEGER,
-    location    TEXT,
-    description TEXT
+    id               TEXT PRIMARY KEY,
+    name             TEXT NOT NULL,
+    starts_at        INTEGER NOT NULL,
+    ends_at          INTEGER,
+    location         TEXT,
+    description      TEXT,
+    tracking_enabled INTEGER NOT NULL DEFAULT 0,
+    ended_at         INTEGER
+  );
+
+  -- An event's roster. Only participants get tracked while their event has
+  -- tracking_enabled — everyone else's agent reports are simply ignored
+  -- while that event is the one tracking (see routes/agent.ts).
+  CREATE TABLE IF NOT EXISTS event_participants (
+    event_id  TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    PRIMARY KEY (event_id, player_id)
   );
 
   CREATE TABLE IF NOT EXISTS games (
@@ -355,6 +375,54 @@ function migrateEventColumns(): void {
 }
 migrateEventColumns();
 
+// Fixed id for the permanent "außerhalb von Events" sentinel — see the
+// `events` table comment above for why this exists. Exported so events.ts
+// can recognize/exclude it without duplicating the constant.
+export const OUTSIDE_EVENTS_ID = 'outside-events';
+
+// Migration: older databases predate the tracking_enabled/ended_at event
+// columns, event_participants, and players.tracking_paused (all added
+// together, replacing the old "exactly one active event" model with
+// "several events, at most one tracking"). If this is an upgrade (the
+// columns didn't exist yet), preserve continuity by turning tracking on for
+// whichever event used to be "active" under the old model and rostering
+// every current player onto it — otherwise an in-progress LAN would
+// silently stop being tracked the moment the server restarts on the new
+// version.
+function migrateEventTrackingColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  const isUpgrade = !columns.some((c) => c.name === 'tracking_enabled');
+  if (isUpgrade) db.exec('ALTER TABLE events ADD COLUMN tracking_enabled INTEGER NOT NULL DEFAULT 0');
+  if (!columns.some((c) => c.name === 'ended_at')) db.exec('ALTER TABLE events ADD COLUMN ended_at INTEGER');
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS event_participants (
+      event_id  TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      PRIMARY KEY (event_id, player_id)
+    );
+  `);
+
+  const playerColumns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  if (!playerColumns.some((c) => c.name === 'tracking_paused')) {
+    db.exec('ALTER TABLE players ADD COLUMN tracking_paused INTEGER NOT NULL DEFAULT 0');
+  }
+
+  if (isUpgrade) {
+    const previousActiveId = getState('active_event_id');
+    if (previousActiveId) {
+      db.prepare('UPDATE events SET tracking_enabled = 1 WHERE id = ?').run(previousActiveId);
+      const players = db.prepare('SELECT id FROM players').all() as Array<{ id: string }>;
+      const insertParticipant = db.prepare(
+        'INSERT OR IGNORE INTO event_participants (event_id, player_id) VALUES (?, ?)'
+      );
+      for (const p of players) insertParticipant.run(previousActiveId, p.id);
+    }
+  }
+}
+// Called further down, once app_state (and getState/setState) exist — see
+// the call site right after those are defined.
+
 // Gamer names must be unique across the whole player list (case-insensitive)
 // so invited players can tell each other apart. A unique index rather than a
 // column constraint so it also applies to databases migrating in from before
@@ -394,6 +462,10 @@ export function setState(key: string, value: string): void {
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   ).run(key, value);
 }
+
+// Needs app_state (just above) to exist first for its upgrade-continuity
+// backfill, which reads the old active_event_id key.
+migrateEventTrackingColumns();
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.
@@ -438,24 +510,18 @@ function seedGames(): void {
 
 seedGames();
 
-const ACTIVE_EVENT_KEY = 'active_event_id';
-
-// Seed a default event, once, on an empty database. This is the ONLY place
-// that ever creates the first event: events.ts's getActiveEventId() is a
-// pure reader that assumes this has already run. Deliberately NOT done
-// lazily inside a request handler — startNewEvent() clears live_status as
-// part of starting fresh, and calling it reactively mid-transaction (e.g.
-// from inside the agent report handler) would wipe out data that same
-// request had just written moments earlier.
-function seedDefaultEvent(): void {
-  if (getState(ACTIVE_EVENT_KEY)) return;
-  const id = nanoid();
-  db.prepare('INSERT INTO events (id, name, starts_at, ends_at) VALUES (?, ?, ?, NULL)').run(
-    id,
-    'LAN Party',
-    Date.now()
-  );
-  setState(ACTIVE_EVENT_KEY, id);
+// Seed the permanent "außerhalb von Events" sentinel, once. This is the ONLY
+// place that ever creates it: events.ts's getTrackingEventId() is a pure
+// reader that assumes this has already run. Never touched again after —
+// no tracking, no roster, no end date, always present as the fallback
+// event_id for anything recorded while no real event is tracking.
+function seedOutsideEventsEvent(): void {
+  const exists = db.prepare('SELECT 1 FROM events WHERE id = ?').get(OUTSIDE_EVENTS_ID);
+  if (exists) return;
+  db.prepare(
+    `INSERT INTO events (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at)
+     VALUES (?, ?, ?, NULL, NULL, NULL, 0, NULL)`
+  ).run(OUTSIDE_EVENTS_ID, 'Außerhalb von Events', Date.now());
 }
 
-seedDefaultEvent();
+seedOutsideEventsEvent();

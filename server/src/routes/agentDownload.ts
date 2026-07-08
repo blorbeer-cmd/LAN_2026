@@ -68,6 +68,30 @@ function buildInstallBat(): string {
   return lines.join('\r\n') + '\r\n';
 }
 
+// Companion to install.bat, for anyone who wants the agent fully off their
+// PC rather than just pausing tracking from the web app: stops the running
+// process, removes the autostart shortcut, and deletes the install
+// directory. Doesn't touch anything server-side — a player can just use the
+// "Tracking pausieren" toggle on their profile instead if they might want
+// it back later.
+function buildUninstallBat(): string {
+  const lines = [
+    '@echo off',
+    'setlocal',
+    'set "INSTALL_DIR=%LOCALAPPDATA%\\RespawnHQ-Agent"',
+    'set "STARTUP_DIR=%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"',
+    '',
+    'echo RespawnHQ-Agent wird entfernt...',
+    'taskkill /IM lan2026-agent.exe /F >nul 2>&1',
+    'del /Q "%STARTUP_DIR%\\RespawnHQ-Agent.lnk" >nul 2>&1',
+    'rmdir /S /Q "%INSTALL_DIR%" >nul 2>&1',
+    '',
+    'echo Fertig! Der Agent laeuft nicht mehr und startet auch nicht mehr automatisch.',
+    'timeout /t 5',
+  ];
+  return lines.join('\r\n') + '\r\n';
+}
+
 // GET /api/agent-download?playerId=...&trackActivity=1 - streams a
 // personalized ZIP.
 agentDownloadRouter.get('/', (req, res) => {
@@ -106,5 +130,6 @@ agentDownloadRouter.get('/', (req, res) => {
   archive.file(EXE_PATH, { name: 'lan2026-agent.exe' });
   archive.append(JSON.stringify(config, null, 2), { name: 'agent.config.json' });
   archive.append(buildInstallBat(), { name: 'install.bat' });
+  archive.append(buildUninstallBat(), { name: 'uninstall.bat' });
   archive.finalize();
 });

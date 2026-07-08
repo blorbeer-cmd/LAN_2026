@@ -5,7 +5,7 @@
 
 import { Router } from 'express';
 import { db } from '../db';
-import { getActiveEventId } from '../events';
+import { getTrackingEventId } from '../events';
 
 export const seatingRouter = Router();
 
@@ -21,7 +21,7 @@ interface PlayerRow {
 // whoever hasn't declared any neighbor at all.
 seatingRouter.get('/', (req, res) => {
   const { eventId } = req.query;
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getActiveEventId();
+  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
 
   const pairRows = db
     .prepare('SELECT player_id, neighbor_id FROM seat_neighbors WHERE event_id = ?')

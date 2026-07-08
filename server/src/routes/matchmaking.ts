@@ -10,7 +10,7 @@ import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { balanceTeams, computeTeamCount, countSeatConflicts, type PlayerRating, type SeatPair } from '../matchmaking';
 import { isIntInRange } from '../validation';
-import { getActiveEventId } from '../events';
+import { getTrackingEventId } from '../events';
 
 export const matchmakingRouter = Router();
 
@@ -87,7 +87,7 @@ matchmakingRouter.post('/', (req, res) => {
         `SELECT player_id, neighbor_id FROM seat_neighbors
          WHERE event_id = ? AND player_id IN (${placeholders}) AND neighbor_id IN (${placeholders})`
       )
-      .all(getActiveEventId(), ...uniqueIds, ...uniqueIds) as Array<{
+      .all(getTrackingEventId(), ...uniqueIds, ...uniqueIds) as Array<{
       player_id: string;
       neighbor_id: string;
     }>;
@@ -133,7 +133,7 @@ matchmakingRouter.post('/', (req, res) => {
   db.prepare(
     `INSERT INTO matchmaking_draws (id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(nanoid(), gameId, getActiveEventId(), JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt);
+  ).run(nanoid(), gameId, getTrackingEventId(), JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt);
 
   broadcast(Events.matchmakingGenerated, result);
   res.json(result);
@@ -154,7 +154,7 @@ interface DrawRow {
 // explicit ?eventId=), newest first, optionally narrowed to one ?gameId=.
 matchmakingRouter.get('/history', (req, res) => {
   const { eventId, gameId, limit } = req.query;
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getActiveEventId();
+  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
   const limitNum = Math.min(50, Math.max(1, parseInt(typeof limit === 'string' ? limit : '', 10) || 20));
 
   const clauses = ['md.event_id = ?'];

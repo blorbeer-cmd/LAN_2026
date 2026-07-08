@@ -6,7 +6,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString, isHexColor, isValidAvatar } from '../validation';
-import { getActiveEventId } from '../events';
+import { getTrackingEventId } from '../events';
 import { formatDurationMs, computePlaytime, type PlaySession } from '../playtime';
 import {
   sessionDurations,
@@ -25,6 +25,7 @@ interface PlayerRow {
   color: string;
   avatar: string | null;
   api_key: string;
+  tracking_paused: number;
   created_at: number;
 }
 
@@ -87,27 +88,32 @@ playersRouter.post('/', (req, res) => {
     color: color ?? DEFAULT_COLOR,
     avatar: avatar ?? null,
     api_key: nanoid(24),
+    tracking_paused: 0,
     created_at: Date.now(),
   };
 
   db.prepare(
-    'INSERT INTO players (id, name, color, avatar, api_key, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(row.id, row.name, row.color, row.avatar, row.api_key, row.created_at);
+    'INSERT INTO players (id, name, color, avatar, api_key, tracking_paused, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(row.id, row.name, row.color, row.avatar, row.api_key, row.tracking_paused, row.created_at);
 
   broadcast(Events.playersChanged, null);
   res.status(201).json(row);
 });
 
-// PATCH /api/players/:id - rename, recolor, and/or update the avatar. Also
-// used by players managing their own profile (no separate ownership check —
-// this tool trusts the friend group it's built for; see auth.ts).
+// PATCH /api/players/:id - rename, recolor, update the avatar, and/or
+// pause/resume tracking. Also used by players managing their own profile
+// (no separate ownership check — this tool trusts the friend group it's
+// built for; see auth.ts). trackingPaused is the player-side opt-out: while
+// true, the agent's reports for this player are received but silently
+// dropped (see routes/agent.ts) — no live status, no playtime, regardless
+// of whether an event is tracking.
 playersRouter.patch('/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id) as
     | PlayerRow
     | undefined;
   if (!existing) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
-  const { name, color, avatar } = req.body ?? {};
+  const { name, color, avatar, trackingPaused } = req.body ?? {};
   if (name !== undefined && !isNonEmptyString(name)) {
     return res.status(400).json({ error: 'Name muss 1-60 Zeichen lang sein.' });
   }
@@ -117,6 +123,9 @@ playersRouter.patch('/:id', (req, res) => {
   if (avatar !== undefined && avatar !== null && !isValidAvatar(avatar)) {
     return res.status(400).json({ error: 'Ungültiges Bildformat.' });
   }
+  if (trackingPaused !== undefined && typeof trackingPaused !== 'boolean') {
+    return res.status(400).json({ error: 'trackingPaused muss ein Boolean sein.' });
+  }
 
   const nextName = name !== undefined ? name.trim() : existing.name;
   if (name !== undefined && nameTaken(nextName, existing.id)) {
@@ -124,16 +133,18 @@ playersRouter.patch('/:id', (req, res) => {
   }
   const nextColor = color !== undefined ? color : existing.color;
   const nextAvatar = avatar !== undefined ? avatar : existing.avatar;
+  const nextTrackingPaused = trackingPaused !== undefined ? (trackingPaused ? 1 : 0) : existing.tracking_paused;
 
-  db.prepare('UPDATE players SET name = ?, color = ?, avatar = ? WHERE id = ?').run(
+  db.prepare('UPDATE players SET name = ?, color = ?, avatar = ?, tracking_paused = ? WHERE id = ?').run(
     nextName,
     nextColor,
     nextAvatar,
+    nextTrackingPaused,
     existing.id
   );
 
   broadcast(Events.playersChanged, null);
-  res.json({ ...existing, name: nextName, color: nextColor, avatar: nextAvatar });
+  res.json({ ...existing, name: nextName, color: nextColor, avatar: nextAvatar, tracking_paused: nextTrackingPaused });
 });
 
 // DELETE /api/players/:id - removes the player and cascades to their skills/
@@ -155,7 +166,7 @@ playersRouter.get('/:id/neighbors', (req, res) => {
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const { eventId } = req.query;
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getActiveEventId();
+  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
 
   const rows = db
     .prepare('SELECT neighbor_id FROM seat_neighbors WHERE event_id = ? AND player_id = ?')
@@ -177,7 +188,7 @@ playersRouter.put('/:id/neighbors', (req, res) => {
   if (!Array.isArray(neighborIds) || !neighborIds.every((n) => typeof n === 'string')) {
     return res.status(400).json({ error: 'neighborIds muss ein String-Array sein.' });
   }
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getActiveEventId();
+  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
 
   // Silently drop yourself and anything that isn't actually a player, rather
   // than erroring — a stale id from a checkbox list a moment after someone

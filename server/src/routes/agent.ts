@@ -21,13 +21,14 @@ import { broadcast, Events } from '../realtime';
 import { getLiveBoard } from '../liveStatus';
 import { isGameActive } from '../activity';
 import { config } from '../config';
-import { getActiveEventId } from '../events';
+import { getTrackingEventId, isParticipant, OUTSIDE_EVENTS_ID } from '../events';
 
 export const agentRouter = Router();
 
 interface PlayerRow {
   id: string;
   name: string;
+  tracking_paused: number;
 }
 
 // POST /api/agent/report
@@ -39,11 +40,20 @@ agentRouter.post('/report', (req, res) => {
     return res.status(401).json({ error: 'API-Key fehlt (Header x-api-key).' });
   }
 
-  const player = db.prepare('SELECT id, name FROM players WHERE api_key = ?').get(apiKey) as
+  const player = db.prepare('SELECT id, name, tracking_paused FROM players WHERE api_key = ?').get(apiKey) as
     | PlayerRow
     | undefined;
   if (!player) {
     return res.status(401).json({ error: 'Ungültiger API-Key.' });
+  }
+
+  // Player-side opt-out always wins. Otherwise: if a specific event is
+  // currently tracking, only its roster gets recorded — everyone else stays
+  // untracked while that event's window is active (see events.ts). No event
+  // tracking ("außerhalb von Events") has no roster restriction.
+  const trackingEventId = getTrackingEventId();
+  if (player.tracking_paused || (trackingEventId !== OUTSIDE_EVENTS_ID && !isParticipant(trackingEventId, player.id))) {
+    return res.json({ ok: true, playerId: player.id, gameIds: [], tracked: false });
   }
 
   const { processNames, foregroundProcessName, idleSeconds } = req.body ?? {};
@@ -142,7 +152,7 @@ agentRouter.post('/report', (req, res) => {
         ).run(player.id, gameId, now);
         db.prepare(
           'INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at) VALUES (?, ?, ?, ?, ?, NULL)'
-        ).run(nanoid(), player.id, gameId, getActiveEventId(), now);
+        ).run(nanoid(), player.id, gameId, trackingEventId, now);
       }
     }
 
@@ -159,5 +169,5 @@ agentRouter.post('/report', (req, res) => {
   sync();
 
   broadcast(Events.liveStatusChanged, getLiveBoard());
-  res.json({ ok: true, playerId: player.id, gameIds: matchedGameIds });
+  res.json({ ok: true, playerId: player.id, gameIds: matchedGameIds, tracked: true });
 });

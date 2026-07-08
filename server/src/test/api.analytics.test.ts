@@ -134,7 +134,8 @@ test('GET /api/analytics/awards rejects from > to', async () => {
 test('eventId filters analytics precisely, independent of session timestamps', async () => {
   const firstEvent = await request(app).get('/api/events/active');
 
-  // A session recorded in the first event.
+  // A session recorded in the first event ("außerhalb von Events" at this
+  // point, since nothing has started tracking yet).
   await report(apiKeyA, ['cs2.exe']);
   await new Promise((r) => setTimeout(r, 30));
   await report(apiKeyA, []);
@@ -143,8 +144,15 @@ test('eventId filters analytics precisely, independent of session timestamps', a
   const countBeforeSwitch = beforeSwitch.body.length;
   assert.ok(countBeforeSwitch > 0);
 
-  // Switch to a new event and record a different session there.
-  const secondEvent = await request(app).post('/api/events').send({ name: 'Zweites Event' });
+  // Switch to a new event: create it, roster player B onto it, and start
+  // tracking — only then does a new session actually land there.
+  const secondEvent = await request(app).post('/api/events').send({
+    name: 'Zweites Event',
+    startsAt: Date.now(),
+    endsAt: Date.now() + 24 * 60 * 60 * 1000,
+  });
+  await request(app).put(`/api/events/${secondEvent.body.id}/participants`).send({ playerIds: [playerB] });
+  await request(app).post(`/api/events/${secondEvent.body.id}/tracking/start`).send({});
   await report(apiKeyB, ['rocketleague.exe']);
   await new Promise((r) => setTimeout(r, 30));
   await report(apiKeyB, []);

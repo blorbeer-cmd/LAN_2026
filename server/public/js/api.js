@@ -190,10 +190,15 @@ export const api = {
   events: {
     list: () => apiFetch('/api/events'),
     active: () => apiFetch('/api/events/active'),
-    // data: { name, startsAt?, endsAt?, location?, description? }
+    // data: { name, startsAt, endsAt, location?, description? }
     create: (data) => apiFetch('/api/events', { method: 'POST', body: JSON.stringify(data) }),
     // fields: any subset of { name?, startsAt?, endsAt?, location?, description? }
     update: (id, fields) => apiFetch(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify(fields) }),
+    startTracking: (id) => apiFetch(`/api/events/${id}/tracking/start`, { method: 'POST' }),
+    stopTracking: (id) => apiFetch(`/api/events/${id}/tracking/stop`, { method: 'POST' }),
+    end: (id) => apiFetch(`/api/events/${id}/end`, { method: 'POST' }),
+    setParticipants: (id, playerIds) =>
+      apiFetch(`/api/events/${id}/participants`, { method: 'PUT', body: JSON.stringify({ playerIds }) }),
   },
 
   tournaments: {

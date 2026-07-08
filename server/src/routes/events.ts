@@ -1,23 +1,60 @@
-// Event management (start a new LAN, list history, edit metadata). Exactly
-// one event is active at a time — starting a new one automatically closes
-// whichever was active.
+// Event management: create/edit events, manage each one's roster, and
+// control tracking (at most one event tracks at a time — see events.ts for
+// why). Ending an event is separate from just pausing its tracking.
 
 import { Router } from 'express';
+import {
+  listEvents,
+  getEvent,
+  getTrackingEvent,
+  createEvent,
+  updateEvent,
+  startTracking,
+  stopTracking,
+  endEvent,
+  getParticipantIds,
+  setParticipants,
+  OUTSIDE_EVENTS_ID,
+  type UpdateEventFields,
+} from '../events';
 import { db } from '../db';
-import { listEvents, getActiveEvent, startNewEvent, updateEvent, type UpdateEventFields } from '../events';
 import { broadcast, Events } from '../realtime';
 import { getLiveBoard } from '../liveStatus';
 import { isNonEmptyString } from '../validation';
 
 export const eventsRouter = Router();
 
+function serializeEvent(event: ReturnType<typeof getEvent>) {
+  if (!event) return undefined;
+  return {
+    id: event.id,
+    name: event.name,
+    starts_at: event.starts_at,
+    ends_at: event.ends_at,
+    location: event.location,
+    description: event.description,
+    trackingEnabled: Boolean(event.tracking_enabled),
+    isEnded: Boolean(event.ended_at),
+    endedAt: event.ended_at,
+    isOutsideEvents: event.id === OUTSIDE_EVENTS_ID,
+    participantIds: event.id === OUTSIDE_EVENTS_ID ? undefined : getParticipantIds(event.id),
+  };
+}
+
+// GET /api/events - every real event plus the "außerhalb von Events"
+// sentinel (flagged via isOutsideEvents) so filter dropdowns elsewhere in
+// the app can just iterate this one list.
 eventsRouter.get('/', (_req, res) => {
-  const active = getActiveEvent();
-  res.json(listEvents().map((e) => ({ ...e, isActive: e.id === active.id })));
+  const trackingId = getTrackingEvent().id;
+  const real = listEvents().map((e) => ({ ...serializeEvent(e), isActive: e.id === trackingId }));
+  const outside = serializeEvent(getEvent(OUTSIDE_EVENTS_ID))!;
+  res.json([...real, { ...outside, isActive: trackingId === OUTSIDE_EVENTS_ID }]);
 });
 
+// GET /api/events/active - the event currently tracking, or the "außerhalb
+// von Events" sentinel if none is.
 eventsRouter.get('/active', (_req, res) => {
-  res.json(getActiveEvent());
+  res.json(serializeEvent(getTrackingEvent()));
 });
 
 // Optional freeform text (location/description): undefined = not provided,
@@ -34,9 +71,8 @@ function parseOptionalText(
   return { ok: true, value: value.trim() };
 }
 
-// Optional timestamp (startsAt/endsAt): undefined = not provided, null =
-// explicitly cleared (only meaningful for endsAt), otherwise must be a
-// finite number (epoch ms).
+// Optional timestamp for PATCH (undefined = not provided, null = explicitly
+// cleared — only meaningful for endsAt there); POST requires both instead.
 function parseOptionalTimestamp(
   value: unknown,
   label: string
@@ -48,19 +84,28 @@ function parseOptionalTimestamp(
   return { ok: true, value };
 }
 
-// POST /api/events - start a new event, closing the current one.
-// Body: { name, startsAt?, endsAt?, location?, description? }
+function parseRequiredTimestamp(value: unknown, label: string): { ok: true; value: number } | { ok: false; error: string } {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return { ok: false, error: `${label} ist erforderlich (Zeitstempel in ms).` };
+  }
+  return { ok: true, value };
+}
+
+// POST /api/events - create a new event. Tracking starts OFF — several
+// events can exist side by side, so creating one never touches whichever
+// event (if any) is currently tracking.
+// Body: { name, startsAt, endsAt, location?, description? }
 eventsRouter.post('/', (req, res) => {
   const { name, startsAt, endsAt, location, description } = req.body ?? {};
   if (!isNonEmptyString(name, 80)) {
     return res.status(400).json({ error: 'Name ist erforderlich (1-80 Zeichen).' });
   }
 
-  const parsedStartsAt = parseOptionalTimestamp(startsAt, 'startsAt');
+  const parsedStartsAt = parseRequiredTimestamp(startsAt, 'startsAt');
   if (!parsedStartsAt.ok) return res.status(400).json({ error: parsedStartsAt.error });
-  const parsedEndsAt = parseOptionalTimestamp(endsAt, 'endsAt');
+  const parsedEndsAt = parseRequiredTimestamp(endsAt, 'endsAt');
   if (!parsedEndsAt.ok) return res.status(400).json({ error: parsedEndsAt.error });
-  if (parsedStartsAt.value !== null && parsedEndsAt.value !== null && parsedEndsAt.value < parsedStartsAt.value) {
+  if (parsedEndsAt.value < parsedStartsAt.value) {
     return res.status(400).json({ error: 'endsAt darf nicht vor startsAt liegen.' });
   }
   const parsedLocation = parseOptionalText(location, 80, 'location');
@@ -68,28 +113,25 @@ eventsRouter.post('/', (req, res) => {
   const parsedDescription = parseOptionalText(description, 500, 'description');
   if (!parsedDescription.ok) return res.status(400).json({ error: parsedDescription.error });
 
-  const event = startNewEvent(name.trim(), {
-    startsAt: parsedStartsAt.value ?? undefined,
+  const event = createEvent(name.trim(), {
+    startsAt: parsedStartsAt.value,
     endsAt: parsedEndsAt.value,
     location: parsedLocation.value,
     description: parsedDescription.value,
   });
 
   broadcast(Events.eventsChanged, null);
-  // A new event clears live status, so the board needs an immediate refresh
-  // rather than waiting for the next agent report.
-  broadcast(Events.liveStatusChanged, getLiveBoard());
-  res.status(201).json(event);
+  res.status(201).json(serializeEvent(event));
 });
 
 // PATCH /api/events/:id - metadata correction only (name/dates/location/
-// description); never changes which event is active or touches live status.
+// description); never touches tracking state or live status.
 // Body: any subset of { name?, startsAt?, endsAt?, location?, description? }
 eventsRouter.patch('/:id', (req, res) => {
-  const existing = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id) as
-    | { starts_at: number; ends_at: number | null }
-    | undefined;
-  if (!existing) return res.status(404).json({ error: 'Event nicht gefunden.' });
+  const existing = getEvent(req.params.id);
+  if (!existing || existing.id === OUTSIDE_EVENTS_ID) {
+    return res.status(404).json({ error: 'Event nicht gefunden.' });
+  }
 
   const { name, startsAt, endsAt, location, description } = req.body ?? {};
   const fields: UpdateEventFields = {};
@@ -110,7 +152,9 @@ eventsRouter.patch('/:id', (req, res) => {
   }
   // Validated against the EFFECTIVE start/end (existing values merged with
   // whatever this request is changing), so e.g. patching just endsAt on an
-  // event whose existing startsAt is later still gets caught.
+  // event whose existing startsAt is later still gets caught. endsAt is
+  // required at creation but stays PATCH-clearable (null) for now, matching
+  // the general "PATCH only changes what you send" convention.
   const effectiveStartsAt = fields.startsAt ?? existing.starts_at;
   const effectiveEndsAt = fields.endsAt !== undefined ? fields.endsAt : existing.ends_at;
   if (effectiveEndsAt !== null && effectiveEndsAt < effectiveStartsAt) {
@@ -129,5 +173,67 @@ eventsRouter.patch('/:id', (req, res) => {
 
   const updated = updateEvent(req.params.id, fields);
   broadcast(Events.eventsChanged, null);
-  res.json(updated);
+  res.json(serializeEvent(updated));
+});
+
+// POST /api/events/:id/tracking/start - 409s (with the conflicting event's
+// id/name) if a different event is already tracking.
+eventsRouter.post('/:id/tracking/start', (req, res) => {
+  const result = startTracking(req.params.id);
+  if (!result.ok) {
+    const status = result.code === 'not_found' ? 404 : result.code === 'conflict' ? 409 : 400;
+    return res.status(status).json({
+      error: result.error,
+      ...(result.conflictEventId ? { conflictEventId: result.conflictEventId, conflictEventName: result.conflictEventName } : {}),
+    });
+  }
+  broadcast(Events.eventsChanged, null);
+  broadcast(Events.liveStatusChanged, getLiveBoard());
+  res.json(serializeEvent(result.event));
+});
+
+// POST /api/events/:id/tracking/stop - pauses tracking without ending the
+// event; can be resumed with .../tracking/start later.
+eventsRouter.post('/:id/tracking/stop', (req, res) => {
+  const updated = stopTracking(req.params.id);
+  if (!updated) return res.status(404).json({ error: 'Event nicht gefunden.' });
+  broadcast(Events.eventsChanged, null);
+  broadcast(Events.liveStatusChanged, getLiveBoard());
+  res.json(serializeEvent(updated));
+});
+
+// POST /api/events/:id/end - closes the event for good (stops tracking
+// first if it was on).
+eventsRouter.post('/:id/end', (req, res) => {
+  const updated = endEvent(req.params.id);
+  if (!updated) return res.status(404).json({ error: 'Event nicht gefunden.' });
+  broadcast(Events.eventsChanged, null);
+  broadcast(Events.liveStatusChanged, getLiveBoard());
+  res.json(serializeEvent(updated));
+});
+
+// PUT /api/events/:id/participants - replace the whole roster.
+// Body: { playerIds: string[] }
+eventsRouter.put('/:id/participants', (req, res) => {
+  const event = getEvent(req.params.id);
+  if (!event || event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
+
+  const { playerIds } = req.body ?? {};
+  if (!Array.isArray(playerIds) || !playerIds.every((p) => typeof p === 'string')) {
+    return res.status(400).json({ error: 'playerIds muss ein String-Array sein.' });
+  }
+  const uniqueIds = [...new Set(playerIds)];
+  if (uniqueIds.length > 0) {
+    const placeholders = uniqueIds.map(() => '?').join(',');
+    const found = db.prepare(`SELECT id FROM players WHERE id IN (${placeholders})`).all(...uniqueIds) as Array<{
+      id: string;
+    }>;
+    if (found.length !== uniqueIds.length) {
+      return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
+    }
+  }
+
+  setParticipants(req.params.id, uniqueIds);
+  broadcast(Events.eventsChanged, null);
+  res.json(serializeEvent(getEvent(req.params.id)));
 });
