@@ -246,7 +246,7 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
   // tournament reports itself finished.
   await page.waitForSelector('.bracket-match');
   for (let i = 0; i < 8; i++) {
-    const btn = page.locator('button.bracket-team:not(.is-tbd)').first();
+    const btn = page.locator('button.bracket-team-row:not(.is-tbd)').first();
     if ((await btn.count()) === 0) break;
     if (await page.locator('text=Beendet').count()) break;
     await btn.click();

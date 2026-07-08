@@ -15,11 +15,11 @@ const ITEMS = [
 export function renderMore(container) {
   const rows = ITEMS.map(
     (item) => `
-    <button type="button" class="card row" style="width:100%;text-align:left;cursor:pointer;" data-navigate="${item.view}">
-      <span style="font-size:1.6rem;">${item.icon}</span>
+    <button type="button" class="card row list-row" data-navigate="${item.view}">
+      <span class="list-row-icon">${item.icon}</span>
       <span style="flex:1;">
         <div class="player-name">${item.title}</div>
-        <div class="muted" style="font-size:0.8rem;">${item.desc}</div>
+        <div class="muted list-row-desc">${item.desc}</div>
       </span>
       <span class="muted">›</span>
     </button>`

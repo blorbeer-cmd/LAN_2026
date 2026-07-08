@@ -328,8 +328,8 @@ export function renderGames(container, ctx) {
   const rows = state.games
     .map(
       (g) => `
-      <button type="button" class="card row" style="width:100%;text-align:left;cursor:pointer;" data-game="${g.id}">
-        ${gameBadgeHtml(g, 40)}
+      <button type="button" class="card row list-row" data-game="${g.id}">
+        ${gameBadgeHtml(g, 36)}
         <span style="flex:1;">
           <div class="player-name">${escapeHtml(g.name)}</div>
           <div class="muted" style="font-size:0.8rem;">Team: ${g.min_team_size}-${g.max_team_size} · ${g.processNames.length} Prozess(e)</div>

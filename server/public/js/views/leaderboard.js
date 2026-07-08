@@ -40,11 +40,13 @@ export function renderLeaderboard(container, ctx) {
   // it to whatever ?gameId= was requested.
   // activeMs (focused + not idle) is only non-zero for players who opted
   // into activity tracking, so only show the "davon aktiv" hint when there's
-  // something meaningful to say — otherwise it'd just be noisy zeros.
-  const activeHint = (activeMs, totalMs, activeFormatted) =>
-    activeMs > 0 && activeMs < totalMs
-      ? `<div class="muted" style="font-size:0.75rem;">davon aktiv gespielt: ${escapeHtml(activeFormatted)}</div>`
-      : '';
+  // something meaningful to say. Still renders the line (just visibility:
+  // hidden, not omitted) so every row in the list reserves the same height —
+  // otherwise rows with the hint were visibly taller than rows without it.
+  const activeHint = (activeMs, totalMs, activeFormatted) => {
+    const show = activeMs > 0 && activeMs < totalMs;
+    return `<div class="muted" style="font-size:0.75rem;${show ? '' : 'visibility:hidden;'}">davon aktiv gespielt: ${escapeHtml(activeFormatted || '0m')}</div>`;
+  };
 
   const playtime = state.playtime?.totals || [];
   const playtimeRows = playtime
