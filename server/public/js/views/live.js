@@ -3,7 +3,7 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, formatSince, stateLabel, avatarHtml, gameBadgeHtml } from '../format.js';
+import { escapeHtml, formatSince, stateLabel, avatarHtml, gameBadgeHtml, gameChipsHtml } from '../format.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { showToast } from '../toast.js';
 
@@ -201,12 +201,7 @@ export function renderLive(container, ctx) {
   const cards = players
     .map((p) => {
       const badgeClass = `badge-${p.state}`;
-      const games = p.games
-        .map(
-          (g) =>
-            `<span class="chip">${gameBadgeHtml({ id: g.game_id, icon: g.game_icon }, 20)} ${escapeHtml(g.game_name)} · ${formatSince(g.since)}</span>`
-        )
-        .join('');
+      const games = gameChipsHtml(p.games, p.activity_tracked);
 
       const noteLine =
         p.state === 'paused' && p.manual_note

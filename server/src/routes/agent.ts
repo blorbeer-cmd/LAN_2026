@@ -85,6 +85,11 @@ agentRouter.post('/report', (req, res) => {
       ? foregroundProcessName.trim().toLowerCase()
       : null;
   const normalizedIdleSeconds = typeof idleSeconds === 'number' && Number.isFinite(idleSeconds) ? idleSeconds : null;
+  // Whether this report carried the foreground/idle signal at all (i.e. the
+  // agent has "erweitertes Aktivitäts-Tracking" on) — distinct from
+  // normalizedForeground being null, which can also mean "tracking is on but
+  // nothing recognized is focused right now".
+  const activityTracked = foregroundProcessName !== undefined;
 
   // A report can match several distinct games at once (e.g. cs2.exe AND
   // rocketleague.exe both running).
@@ -131,9 +136,9 @@ agentRouter.post('/report', (req, res) => {
     const elapsedMs = previous ? Math.min(now - previous.last_seen, config.offlineTimeoutMs) : 0;
 
     db.prepare(
-      `INSERT INTO live_status (player_id, last_seen, manual_note) VALUES (?, ?, NULL)
-       ON CONFLICT(player_id) DO UPDATE SET last_seen = excluded.last_seen`
-    ).run(player.id, now);
+      `INSERT INTO live_status (player_id, last_seen, manual_note, activity_tracked) VALUES (?, ?, NULL, ?)
+       ON CONFLICT(player_id) DO UPDATE SET last_seen = excluded.last_seen, activity_tracked = excluded.activity_tracked`
+    ).run(player.id, now, activityTracked ? 1 : 0);
 
     const existing = db
       .prepare('SELECT game_id FROM live_status_games WHERE player_id = ?')
@@ -156,12 +161,19 @@ agentRouter.post('/report', (req, res) => {
       }
     }
     // Newly detected games: add with since=now, and open a play_sessions row.
-    // Games still running keep their original "since" untouched (no-op).
+    // Games still running keep their original "since" untouched, but their
+    // is_foreground flag is refreshed every tick since focus can switch
+    // between them (e.g. alt-tabbing from the game to its launcher).
     for (const gameId of matchedIds) {
-      if (!existingIds.has(gameId)) {
+      const isForeground = gameId === activeGameId ? 1 : 0;
+      if (existingIds.has(gameId)) {
         db.prepare(
-          'INSERT INTO live_status_games (player_id, game_id, since) VALUES (?, ?, ?)'
-        ).run(player.id, gameId, now);
+          'UPDATE live_status_games SET is_foreground = ? WHERE player_id = ? AND game_id = ?'
+        ).run(isForeground, player.id, gameId);
+      } else {
+        db.prepare(
+          'INSERT INTO live_status_games (player_id, game_id, since, is_foreground) VALUES (?, ?, ?, ?)'
+        ).run(player.id, gameId, now, isForeground);
         db.prepare(
           'INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at) VALUES (?, ?, ?, ?, ?, NULL)'
         ).run(nanoid(), player.id, gameId, trackingEventId, now);

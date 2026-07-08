@@ -98,18 +98,27 @@ db.exec(`
   -- override (e.g. "Pause/Essen"). Which games are currently running lives in
   -- live_status_games below, since a PC can run several games at once
   -- (e.g. a launcher + the actual game, or genuinely two games side by side).
+  -- activity_tracked mirrors whether that last report actually carried the
+  -- foreground/idle signal (i.e. the player's agent has trackActivity on) —
+  -- the frontend uses it to decide whether live_status_games.is_foreground
+  -- means anything or is just "unknown" (always 0 when this is 0).
   CREATE TABLE IF NOT EXISTS live_status (
-    player_id   TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
-    last_seen   INTEGER NOT NULL,   -- last agent report (ms UTC)
-    manual_note TEXT                -- optional manual override text (e.g. "Pause")
+    player_id       TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+    last_seen       INTEGER NOT NULL,   -- last agent report (ms UTC)
+    manual_note     TEXT,               -- optional manual override text (e.g. "Pause")
+    activity_tracked INTEGER NOT NULL DEFAULT 0
   );
 
   -- One row per game currently detected as running for a player. Rows are
   -- added/removed on every agent report to match what's actually running.
+  -- is_foreground: whether this is the one game (of possibly several running
+  -- at once) whose window was actually focused as of the last report — only
+  -- meaningful when the owning live_status row has activity_tracked = 1.
   CREATE TABLE IF NOT EXISTS live_status_games (
-    player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-    game_id   TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
-    since     INTEGER NOT NULL,     -- when this game started (ms UTC)
+    player_id     TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    game_id       TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    since         INTEGER NOT NULL,     -- when this game started (ms UTC)
+    is_foreground INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (player_id, game_id)
   );
 
@@ -364,6 +373,20 @@ function migrateTournamentColumns(): void {
   if (!hasMatchCol('score_b')) db.exec('ALTER TABLE tournament_matches ADD COLUMN score_b INTEGER');
 }
 migrateTournamentColumns();
+
+// Migration: older databases predate the foreground-game tracking columns
+// (which game of possibly several is actually focused right now).
+function migrateForegroundColumns(): void {
+  const liveStatusColumns = db.prepare('PRAGMA table_info(live_status)').all() as Array<{ name: string }>;
+  if (!liveStatusColumns.some((c) => c.name === 'activity_tracked')) {
+    db.exec('ALTER TABLE live_status ADD COLUMN activity_tracked INTEGER NOT NULL DEFAULT 0');
+  }
+  const liveStatusGamesColumns = db.prepare('PRAGMA table_info(live_status_games)').all() as Array<{ name: string }>;
+  if (!liveStatusGamesColumns.some((c) => c.name === 'is_foreground')) {
+    db.exec('ALTER TABLE live_status_games ADD COLUMN is_foreground INTEGER NOT NULL DEFAULT 0');
+  }
+}
+migrateForegroundColumns();
 
 // Migration: older databases predate the optional location/description
 // event fields.

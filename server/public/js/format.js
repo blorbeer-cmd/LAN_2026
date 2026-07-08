@@ -91,3 +91,21 @@ export function gameBadgeHtml(game, size = 28) {
   const fontSize = Math.round(size * 0.55);
   return `<span class="game-badge" style="background:${color};width:${size}px;height:${size}px;font-size:${fontSize}px;">${escapeHtml(icon)}</span>`;
 }
+
+// Renders the "currently running games" chip list for one live-board entry
+// (shared by the Live view and the kiosk dashboard). Only distinguishes
+// foreground vs. background when there's actually more than one game running
+// at once *and* the player's agent sent the foreground signal at all
+// (activityTracked) — with a single game, or with no signal, there's nothing
+// meaningful to disambiguate, so all chips render the same as before.
+export function gameChipsHtml(games, activityTracked, badgeSize = 20) {
+  const showForeground = activityTracked && games.length > 1;
+  return games
+    .map((g) => {
+      const isForeground = showForeground && g.foreground;
+      const cls = !showForeground ? 'chip' : isForeground ? 'chip chip-foreground' : 'chip chip-background';
+      const tag = isForeground ? ' <strong>· aktiv</strong>' : '';
+      return `<span class="${cls}">${gameBadgeHtml({ id: g.game_id, icon: g.game_icon }, badgeSize)} ${escapeHtml(g.game_name)} · ${formatSince(g.since)}${tag}</span>`;
+    })
+    .join('');
+}

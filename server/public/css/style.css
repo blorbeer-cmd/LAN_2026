@@ -600,6 +600,18 @@ input[type='number']::-webkit-inner-spin-button {
 .player-card-games .chip {
   color: var(--text-muted);
 }
+/* Which of several simultaneously-running games actually has focus right
+   now (only rendered when that's known and there's more than one to tell
+   apart — see gameChipsHtml in format.js). */
+.player-card-games .chip.chip-foreground {
+  color: var(--state-playing);
+  background: var(--state-playing-bg);
+  border-color: var(--state-playing);
+  font-weight: 600;
+}
+.player-card-games .chip.chip-background {
+  opacity: 0.6;
+}
 
 /* ---------- Sliders (skill ratings) ---------- */
 

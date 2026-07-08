@@ -6,7 +6,7 @@
 
 import { api, getToken, setToken } from './api.js';
 import { connectSocket } from './socket.js';
-import { escapeHtml, formatSince, stateLabel, avatarHtml, gameBadgeHtml } from './format.js';
+import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml } from './format.js';
 
 const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
 
@@ -41,9 +41,7 @@ function renderLive(players) {
   });
   return `<div class="stack" style="gap:8px;">${sorted
     .map((p) => {
-      const games = p.games
-        .map((g) => `<span class="chip">${gameBadgeHtml({ id: g.game_id, icon: g.game_icon }, 18)} ${escapeHtml(g.game_name)} · ${formatSince(g.since)}</span>`)
-        .join('');
+      const games = gameChipsHtml(p.games, p.activity_tracked, 18);
       return `
         <div class="card player-card">
           ${avatarHtml(p, 32)}

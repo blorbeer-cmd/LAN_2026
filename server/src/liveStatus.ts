@@ -15,6 +15,7 @@ export interface LiveGameEntry {
   game_name: string;
   game_icon: string;
   since: number;
+  foreground: boolean;
 }
 
 export interface LiveBoardEntry {
@@ -26,6 +27,10 @@ export interface LiveBoardEntry {
   manual_note: string | null;
   games: LiveGameEntry[];
   state: LiveState;
+  // Whether the last report actually carried the foreground/idle signal
+  // (the player's agent has "erweitertes Aktivitäts-Tracking" on) — tells the
+  // frontend whether `foreground` above is meaningful or just unknown.
+  activity_tracked: boolean;
 }
 
 export type LiveState = 'playing' | 'paused' | 'offline';
@@ -54,13 +59,13 @@ export function getLiveBoard(): LiveBoardEntry[] {
     .all() as Array<{ id: string; name: string; color: string; avatar: string | null }>;
 
   const statusRows = db
-    .prepare('SELECT player_id, last_seen, manual_note FROM live_status')
-    .all() as Array<{ player_id: string; last_seen: number; manual_note: string | null }>;
+    .prepare('SELECT player_id, last_seen, manual_note, activity_tracked FROM live_status')
+    .all() as Array<{ player_id: string; last_seen: number; manual_note: string | null; activity_tracked: number }>;
   const statusByPlayer = new Map(statusRows.map((r) => [r.player_id, r]));
 
   const gameRows = db
     .prepare(
-      `SELECT lsg.player_id, lsg.game_id, g.name AS game_name, g.icon AS game_icon, lsg.since
+      `SELECT lsg.player_id, lsg.game_id, g.name AS game_name, g.icon AS game_icon, lsg.since, lsg.is_foreground
        FROM live_status_games lsg
        JOIN games g ON g.id = lsg.game_id
        ORDER BY lsg.since ASC`
@@ -71,6 +76,7 @@ export function getLiveBoard(): LiveBoardEntry[] {
     game_name: string;
     game_icon: string;
     since: number;
+    is_foreground: number;
   }>;
 
   const gamesByPlayer = new Map<string, LiveGameEntry[]>();
@@ -81,6 +87,7 @@ export function getLiveBoard(): LiveBoardEntry[] {
       game_name: row.game_name,
       game_icon: row.game_icon,
       since: row.since,
+      foreground: Boolean(row.is_foreground),
     });
     gamesByPlayer.set(row.player_id, list);
   }
@@ -99,6 +106,7 @@ export function getLiveBoard(): LiveBoardEntry[] {
       manual_note: manualNote,
       games,
       state: deriveState({ last_seen: lastSeen, manual_note: manualNote, activeGamesCount: games.length }, now),
+      activity_tracked: Boolean(status?.activity_tracked),
     };
   });
 }
