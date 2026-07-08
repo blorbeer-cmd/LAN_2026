@@ -9,6 +9,7 @@ import { escapeHtml, gameBadgeHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 import { resizeImageFile } from '../imageUtils.js';
+import { suggestProcessNames } from '../gameProcessSuggestions.js';
 
 function renderInviteSection() {
   const token = getToken();
@@ -186,6 +187,7 @@ function openGameForm(ctx) {
       <form id="add-game-form" class="stack">
         <input type="text" id="new-game-icon" placeholder="Icon (Emoji)" maxlength="8" value="🎮" />
         <input type="text" id="new-game-name" placeholder="Name" maxlength="60" required autofocus />
+        <p class="muted" id="new-game-process-hint" style="font-size:0.78rem;margin-top:-6px;" hidden></p>
         <div class="row" style="align-items:flex-start;">
           <div style="flex:1;">
             <label for="new-game-min" class="field-label">Min. Teamgröße</label>
@@ -205,6 +207,16 @@ function openGameForm(ctx) {
     `,
     {
       onMount: (el) => {
+        const nameInput = el.querySelector('#new-game-name');
+        const hint = el.querySelector('#new-game-process-hint');
+        nameInput.addEventListener('input', () => {
+          const suggested = suggestProcessNames(nameInput.value);
+          hint.hidden = suggested.length === 0;
+          hint.textContent = suggested.length
+            ? `💡 Bekannter Prozessname wird automatisch ergänzt: ${suggested.join(', ')}`
+            : '';
+        });
+
         el.querySelector('#add-game-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const name = el.querySelector('#new-game-name').value.trim();
@@ -213,10 +225,27 @@ function openGameForm(ctx) {
           const maxTeamSize = parseInt(el.querySelector('#new-game-max').value, 10) || 5;
           if (!name) return;
           try {
-            await api.games.create({ name, icon, minTeamSize, maxTeamSize });
+            const game = await api.games.create({ name, icon, minTeamSize, maxTeamSize });
+            // Best-effort only: a suggested name might already be taken by
+            // another game (e.g. shared engine process) — that must never
+            // block or cast doubt on the game that just got created fine.
+            const suggested = suggestProcessNames(name);
+            const added = [];
+            for (const processName of suggested) {
+              try {
+                await api.games.addProcess(game.id, processName);
+                added.push(processName);
+              } catch {
+                // ignore, admin can still add it manually in the game details
+              }
+            }
             close();
             await ctx.refresh();
-            showToast(`${name} wurde hinzugefügt.`);
+            showToast(
+              added.length
+                ? `${name} wurde hinzugefügt, inkl. Prozessname ${added.join(', ')} (in den Spieldetails anpassbar).`
+                : `${name} wurde hinzugefügt.`
+            );
           } catch (err) {
             showToast(err.message, { error: true });
           }
@@ -236,6 +265,12 @@ function openGameDetail(gameId, ctx) {
       <span class="chip">${escapeHtml(pn)} <button type="button" class="icon-btn" data-remove-proc="${escapeHtml(pn)}" aria-label="Entfernen" style="font-size:0.8rem;padding:0 2px;">✕</button></span>`
     )
     .join('');
+
+  // Only offer the suggestion for games created before this feature existed
+  // (or renamed since) — once at least one process name is set, the admin
+  // has already handled it themselves.
+  const suggestedProcessNames =
+    game.processNames.length === 0 ? suggestProcessNames(game.name) : [];
 
   const { close } = openModal(
     escapeHtml(game.name),
@@ -272,6 +307,11 @@ function openGameDetail(gameId, ctx) {
 
         <div class="section-title">Prozessnamen (für den Agent)</div>
         <div class="chip-list">${processChips || '<span class="muted">Noch keine.</span>'}</div>
+        ${
+          suggestedProcessNames.length
+            ? `<button type="button" class="btn btn-sm" id="use-suggested-process" style="align-self:flex-start;">💡 Vorschlag übernehmen: ${escapeHtml(suggestedProcessNames.join(', '))}</button>`
+            : ''
+        }
         <div class="row">
           <input type="text" id="new-process" placeholder="z.B. cs2.exe" style="flex:1;" />
           <button type="button" class="btn btn-sm" id="add-process">+</button>
@@ -341,6 +381,22 @@ function openGameDetail(gameId, ctx) {
             showToast(err.message, { error: true });
           }
         });
+
+        const suggestBtn = el.querySelector('#use-suggested-process');
+        if (suggestBtn) {
+          suggestBtn.addEventListener('click', async () => {
+            try {
+              for (const processName of suggestedProcessNames) {
+                await api.games.addProcess(gameId, processName);
+              }
+              close();
+              await ctx.refresh();
+              openGameDetail(gameId, ctx);
+            } catch (err) {
+              showToast(err.message, { error: true });
+            }
+          });
+        }
 
         el.querySelectorAll('[data-remove-proc]').forEach((btn) => {
           btn.addEventListener('click', async () => {
