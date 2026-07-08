@@ -92,29 +92,30 @@ function hideConsoleWindow(log = () => {}) {
   }
 }
 
-// Starts the tray icon as a detached process so it keeps running
-// independently of the agent's own event loop. Returns the child process (so
-// callers can kill it on shutdown/uninstall) or null if not on Windows / the
-// spawn itself failed synchronously.
+// Starts the tray icon as a background process. Returns the child process
+// (so callers can kill it on shutdown/uninstall) or null if not on Windows /
+// the spawn itself failed synchronously.
 //
 // -STA matters: WinForms (NotifyIcon, ContextMenuStrip, Application.Run)
 // needs a single-threaded apartment, but powershell.exe defaults to MTA —
 // without this flag, creating the icon throws.
 //
-// `log` (optional) gets every step of what happened — every previous
-// failure here was completely silent (nothing launched, no error anywhere),
-// which made it undiagnosable over chat. Antivirus/Defender silently
-// blocking an unsigned .exe from spawning a hidden PowerShell with an inline
-// script is a real possibility, so this needs to be visible in the agent's
-// own log/console, not just a temp file the player has to go find.
+// Deliberately plain stdio: 'ignore' and no `detached` — a first attempt
+// redirected stderr through a raw fs file descriptor on a detached process,
+// and the script never even reached its own first line (no trace.log entry
+// at all), which points at that combination being the problem rather than
+// anything the script itself does. All diagnostics now come from the
+// script's own trace log (see buildTrayScript) instead.
+//
+// `log` (optional) gets every step of what happened on the Node side — every
+// previous failure here was completely silent, which made it undiagnosable
+// over chat.
 function startTrayIcon(controlUrl, agentPid, log = () => {}) {
   if (os.platform() !== 'win32') return null;
 
   let scriptPath;
-  let errorLogPath;
   try {
     scriptPath = path.join(os.tmpdir(), `lan2026-agent-tray-${agentPid}.ps1`);
-    errorLogPath = path.join(os.tmpdir(), `lan2026-agent-tray-${agentPid}.err.log`);
     fs.writeFileSync(scriptPath, buildTrayScript(controlUrl, agentPid), 'utf8');
     log(`Tray: Skript geschrieben (${scriptPath}).`);
   } catch (err) {
@@ -124,7 +125,6 @@ function startTrayIcon(controlUrl, agentPid, log = () => {}) {
 
   let child;
   try {
-    const errorFd = fs.openSync(errorLogPath, 'a');
     child = spawn(
       'powershell',
       [
@@ -138,7 +138,7 @@ function startTrayIcon(controlUrl, agentPid, log = () => {}) {
         '-File',
         scriptPath,
       ],
-      { windowsHide: true, detached: true, stdio: ['ignore', 'ignore', errorFd] }
+      { windowsHide: true, stdio: 'ignore' }
     );
   } catch (err) {
     log(`Tray: PowerShell konnte nicht gestartet werden: ${err.message}`);
@@ -148,7 +148,7 @@ function startTrayIcon(controlUrl, agentPid, log = () => {}) {
   log(`Tray: PowerShell gestartet (PID ${child.pid}).`);
   child.on('error', (err) => log(`Tray: Prozessfehler: ${err.message}`));
   child.on('exit', (code, signal) => {
-    log(`Tray: Prozess beendet (code=${code}, signal=${signal}) – Details ggf. in ${errorLogPath}.`);
+    log(`Tray: Prozess beendet (code=${code}, signal=${signal}).`);
   });
   child.unref();
   return child;
