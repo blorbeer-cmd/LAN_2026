@@ -49,7 +49,11 @@ matchmakingRouter.post('/', (req, res) => {
     return res.status(400).json({ error: 'playerIds enthält Duplikate.' });
   }
   if (teamCount !== undefined && !isIntInRange(teamCount, 2, uniqueIds.length)) {
-    return res.status(400).json({ error: `teamCount muss zwischen 2 und ${uniqueIds.length} liegen.` });
+    // Surfaced directly as a toast by the matchmaking view, so phrase it for
+    // humans (the other shape errors here are unreachable through the UI).
+    return res
+      .status(400)
+      .json({ error: `Anzahl Teams muss zwischen 2 und ${uniqueIds.length} (Anzahl Spieler) liegen.` });
   }
   if (avoidAdjacentOpponents !== undefined && typeof avoidAdjacentOpponents !== 'boolean') {
     return res.status(400).json({ error: 'avoidAdjacentOpponents muss ein Boolean sein.' });
