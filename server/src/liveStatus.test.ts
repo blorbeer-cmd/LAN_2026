@@ -51,6 +51,12 @@ test('stale report but a manual note => paused (note wins over offline)', () => 
   assert.equal(state, 'paused');
 });
 
+test('recent report with an active game but a manual note => paused (manual pause wins while still playing)', () => {
+  const now = 1_000_000;
+  const state = deriveState({ last_seen: now - 1_000, manual_note: 'Pause / Essen', activeGamesCount: 1 }, now);
+  assert.equal(state, 'paused');
+});
+
 test('nothing reported at all => offline', () => {
   const state = deriveState({ last_seen: null, manual_note: null, activeGamesCount: 0 }, 1_000_000);
   assert.equal(state, 'offline');
