@@ -37,8 +37,17 @@ const LOG_FILE_MAX_BYTES = 2 * 1024 * 1024; // reset instead of growing forever 
 
 let logFilePath = null;
 
+// toISOString() would print UTC, which reads as "wrong" (and was, in
+// Germany, consistently 1-2h behind) to anyone glancing at the console —
+// pad manually since toLocaleTimeString()'s output format isn't guaranteed
+// across locales/Node builds.
+function formatLocalTime(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 function log(message) {
-  const ts = new Date().toISOString().slice(11, 19);
+  const ts = formatLocalTime(new Date());
   const line = `[${ts}] ${message}`;
   console.log(line);
   if (logFilePath) {
