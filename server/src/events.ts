@@ -20,6 +20,15 @@ export interface EventRow {
   name: string;
   starts_at: number;
   ends_at: number | null;
+  location: string | null;
+  description: string | null;
+}
+
+export interface StartEventOptions {
+  startsAt?: number;
+  endsAt?: number | null;
+  location?: string | null;
+  description?: string | null;
 }
 
 export function getActiveEventId(): string {
@@ -39,7 +48,7 @@ export function listEvents(): EventRow[] {
   return db.prepare('SELECT * FROM events ORDER BY starts_at DESC').all() as EventRow[];
 }
 
-export function startNewEvent(name: string): EventRow {
+export function startNewEvent(name: string, options: StartEventOptions = {}): EventRow {
   const now = Date.now();
   const previousId = getState(ACTIVE_EVENT_KEY);
   if (previousId) {
@@ -47,7 +56,16 @@ export function startNewEvent(name: string): EventRow {
   }
 
   const id = nanoid();
-  db.prepare('INSERT INTO events (id, name, starts_at, ends_at) VALUES (?, ?, ?, NULL)').run(id, name, now);
+  db.prepare(
+    'INSERT INTO events (id, name, starts_at, ends_at, location, description) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(
+    id,
+    name,
+    options.startsAt ?? now,
+    options.endsAt ?? null,
+    options.location ?? null,
+    options.description ?? null
+  );
   setState(ACTIVE_EVENT_KEY, id);
 
   db.prepare('DELETE FROM live_status_games').run();
@@ -57,8 +75,33 @@ export function startNewEvent(name: string): EventRow {
   return db.prepare('SELECT * FROM events WHERE id = ?').get(id) as EventRow;
 }
 
-export function renameEvent(id: string, name: string): EventRow | undefined {
-  const result = db.prepare('UPDATE events SET name = ? WHERE id = ?').run(name, id);
-  if (result.changes === 0) return undefined;
-  return db.prepare('SELECT * FROM events WHERE id = ?').get(id) as EventRow;
+export interface UpdateEventFields {
+  name?: string;
+  startsAt?: number;
+  endsAt?: number | null;
+  location?: string | null;
+  description?: string | null;
+}
+
+// Metadata-only correction — never touches which event is active or wipes
+// live status (that's what starting a new event is for). Safe to call on
+// past events too (e.g. backfilling a forgotten end date/location).
+export function updateEvent(id: string, fields: UpdateEventFields): EventRow | undefined {
+  const existing = db.prepare('SELECT * FROM events WHERE id = ?').get(id) as EventRow | undefined;
+  if (!existing) return undefined;
+
+  const next: EventRow = {
+    ...existing,
+    name: fields.name !== undefined ? fields.name : existing.name,
+    starts_at: fields.startsAt !== undefined ? fields.startsAt : existing.starts_at,
+    ends_at: fields.endsAt !== undefined ? fields.endsAt : existing.ends_at,
+    location: fields.location !== undefined ? fields.location : existing.location,
+    description: fields.description !== undefined ? fields.description : existing.description,
+  };
+
+  db.prepare(
+    'UPDATE events SET name = ?, starts_at = ?, ends_at = ?, location = ?, description = ? WHERE id = ?'
+  ).run(next.name, next.starts_at, next.ends_at, next.location, next.description, next.id);
+
+  return next;
 }

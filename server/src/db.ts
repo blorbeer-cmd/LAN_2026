@@ -32,15 +32,20 @@ db.exec(`
   );
 
   -- LAN events (e.g. "LAN Party Sommer 2026"). Exactly one is active at a
-  -- time (ends_at IS NULL); starting a new one closes the previous one.
-  -- Players, games and skills stay global across events on purpose (the same
-  -- friend group year after year) — only live/session/vote/match data is
-  -- scoped per event so analytics can be viewed per LAN afterwards.
+  -- time (tracked by the app_state active_event_id key, not by ends_at —
+  -- see events.ts); starting a new one closes the previous one. location/
+  -- description are optional freeform notes (e.g. "bei Tim", "Fokus: AoE2-
+  -- Turnier"). Players, games and skills stay global across events on
+  -- purpose (the same friend group year after year) — only live/session/
+  -- vote/match data is scoped per event so analytics can be viewed per LAN
+  -- afterwards.
   CREATE TABLE IF NOT EXISTS events (
-    id         TEXT PRIMARY KEY,
-    name       TEXT NOT NULL,
-    starts_at  INTEGER NOT NULL,
-    ends_at    INTEGER
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    starts_at   INTEGER NOT NULL,
+    ends_at     INTEGER,
+    location    TEXT,
+    description TEXT
   );
 
   CREATE TABLE IF NOT EXISTS games (
@@ -339,6 +344,16 @@ function migrateTournamentColumns(): void {
   if (!hasMatchCol('score_b')) db.exec('ALTER TABLE tournament_matches ADD COLUMN score_b INTEGER');
 }
 migrateTournamentColumns();
+
+// Migration: older databases predate the optional location/description
+// event fields.
+function migrateEventColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  const has = (name: string) => columns.some((c) => c.name === name);
+  if (!has('location')) db.exec('ALTER TABLE events ADD COLUMN location TEXT');
+  if (!has('description')) db.exec('ALTER TABLE events ADD COLUMN description TEXT');
+}
+migrateEventColumns();
 
 // Gamer names must be unique across the whole player list (case-insensitive)
 // so invited players can tell each other apart. A unique index rather than a

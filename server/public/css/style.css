@@ -322,7 +322,9 @@ input {
 input[type='text'],
 input[type='password'],
 input[type='number'],
-select {
+input[type='datetime-local'],
+select,
+textarea {
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -330,6 +332,16 @@ select {
   font-size: 0.95rem;
   color: var(--text);
   width: 100%;
+}
+textarea {
+  font-family: inherit;
+  resize: vertical;
+}
+/* Chrome/Edge render the datetime-local picker icon dark-on-dark by default
+   (it doesn't follow color-scheme automatically inside a custom-background
+   input) — invert it so it's visible against the app's dark inputs. */
+input[type='datetime-local']::-webkit-calendar-picker-indicator {
+  filter: invert(1);
 }
 input[type='color'] {
   width: 44px;

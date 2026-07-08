@@ -9,7 +9,7 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, formatDateTime, avatarHtml, gameBadgeHtml } from '../format.js';
+import { escapeHtml, formatDateTime, avatarHtml, gameBadgeHtml, toDatetimeLocal } from '../format.js';
 import { showToast } from '../toast.js';
 
 let cache = null;
@@ -23,12 +23,6 @@ function defaultFilters() {
   return { eventId: 'active', from: null, to: null, concurrencyGameId: null, bucketMinutes: 60 };
 }
 let filters = defaultFilters();
-
-function toDatetimeLocal(ms) {
-  const d = new Date(ms);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 // Resolves the 'active' sentinel to a real event id once the events list is
 // available, so the view opens pre-filtered to the current LAN by default.

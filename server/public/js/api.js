@@ -190,8 +190,10 @@ export const api = {
   events: {
     list: () => apiFetch('/api/events'),
     active: () => apiFetch('/api/events/active'),
-    create: (name) => apiFetch('/api/events', { method: 'POST', body: JSON.stringify({ name }) }),
-    rename: (id, name) => apiFetch(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+    // data: { name, startsAt?, endsAt?, location?, description? }
+    create: (data) => apiFetch('/api/events', { method: 'POST', body: JSON.stringify(data) }),
+    // fields: any subset of { name?, startsAt?, endsAt?, location?, description? }
+    update: (id, fields) => apiFetch(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify(fields) }),
   },
 
   tournaments: {

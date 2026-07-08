@@ -105,3 +105,64 @@ test('PATCH /api/events/:id 404s for an unknown id', async () => {
   const res = await request(app).patch('/api/events/does-not-exist').send({ name: 'X' });
   assert.equal(res.status, 404);
 });
+
+test('POST /api/events accepts a planned time frame, location and description', async () => {
+  const startsAt = Date.now() + 60_000;
+  const endsAt = startsAt + 2 * 24 * 60 * 60 * 1000;
+  const res = await request(app)
+    .post('/api/events')
+    .send({ name: 'LAN Winter 2027', startsAt, endsAt, location: 'Bei Tim', description: 'Fokus: AoE2-Turnier' });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.starts_at, startsAt);
+  assert.equal(res.body.ends_at, endsAt);
+  assert.equal(res.body.location, 'Bei Tim');
+  assert.equal(res.body.description, 'Fokus: AoE2-Turnier');
+});
+
+test('POST /api/events rejects an endsAt before startsAt', async () => {
+  const startsAt = Date.now() + 60_000;
+  const res = await request(app)
+    .post('/api/events')
+    .send({ name: 'Zeitreise-Event', startsAt, endsAt: startsAt - 1000 });
+  assert.equal(res.status, 400);
+});
+
+test('POST /api/events rejects a location that is too long', async () => {
+  const res = await request(app)
+    .post('/api/events')
+    .send({ name: 'Zu langer Ort', location: 'x'.repeat(81) });
+  assert.equal(res.status, 400);
+});
+
+test('PATCH /api/events/:id updates dates/location/description without touching active state', async () => {
+  const active = await request(app).get('/api/events/active');
+  const newStart = active.body.starts_at - 3600_000;
+  const res = await request(app)
+    .patch(`/api/events/${active.body.id}`)
+    .send({ startsAt: newStart, location: 'Wohnzimmer', description: 'Nur Chillen' });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.starts_at, newStart);
+  assert.equal(res.body.location, 'Wohnzimmer');
+  assert.equal(res.body.description, 'Nur Chillen');
+
+  // Confirm this event is still the active one and got no live-status wipe
+  // side effect (PATCH is metadata-only, unlike POST).
+  const stillActive = await request(app).get('/api/events/active');
+  assert.equal(stillActive.body.id, active.body.id);
+});
+
+test('PATCH /api/events/:id can clear an optional field by sending an empty string', async () => {
+  const active = await request(app).get('/api/events/active');
+  await request(app).patch(`/api/events/${active.body.id}`).send({ location: 'Irgendwo' });
+  const cleared = await request(app).patch(`/api/events/${active.body.id}`).send({ location: '' });
+  assert.equal(cleared.status, 200);
+  assert.equal(cleared.body.location, null);
+});
+
+test("PATCH /api/events/:id rejects endsAt before the event's existing startsAt", async () => {
+  const active = await request(app).get('/api/events/active');
+  const res = await request(app)
+    .patch(`/api/events/${active.body.id}`)
+    .send({ endsAt: active.body.starts_at - 1 });
+  assert.equal(res.status, 400);
+});

@@ -5,24 +5,98 @@
 
 import { api, getToken } from '../api.js';
 import { state, gameById } from '../state.js';
-import { escapeHtml, gameBadgeHtml } from '../format.js';
+import { escapeHtml, gameBadgeHtml, toDatetimeLocal } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 import { resizeImageFile } from '../imageUtils.js';
 import { suggestProcessNames } from '../gameProcessSuggestions.js';
 
+// The invite link is the shared access token, not tied to any one event —
+// same link always leads into whichever event is currently active. Factored
+// out so it can be reused both in the Einstellungen page and in the
+// "share it now" modal shown right after starting a new event.
+function inviteUrl() {
+  const token = getToken();
+  return token ? `${location.origin}/?token=${encodeURIComponent(token)}` : location.origin;
+}
+
+function renderInviteLinkBody() {
+  return `
+    <div class="row">
+      <input type="text" id="invite-link" readonly value="${escapeHtml(inviteUrl())}" style="flex:1;font-family:monospace;font-size:0.8rem;" />
+      <button type="button" class="btn btn-sm" id="invite-copy">Kopieren</button>
+    </div>
+    <button type="button" class="btn btn-sm" id="invite-qr-toggle">📱 QR-Code anzeigen</button>
+    <div id="invite-qr" style="text-align:center;" hidden></div>
+  `;
+}
+
+// Wires the copy button + QR toggle within whichever root contains
+// renderInviteLinkBody()'s markup (the settings page, or a modal).
+function wireInviteLinkBody(root) {
+  root.querySelector('#invite-copy').addEventListener('click', async () => {
+    const value = root.querySelector('#invite-link').value;
+    try {
+      await navigator.clipboard.writeText(value);
+      showToast('Einladungslink kopiert.');
+    } catch {
+      showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+    }
+  });
+
+  root.querySelector('#invite-qr-toggle').addEventListener('click', async (e) => {
+    const qrEl = root.querySelector('#invite-qr');
+    if (!qrEl.hidden) {
+      qrEl.hidden = true;
+      e.target.textContent = '📱 QR-Code anzeigen';
+      return;
+    }
+    e.target.textContent = '📱 QR-Code ausblenden';
+    qrEl.hidden = false;
+    if (!qrEl.dataset.loaded) {
+      const url = root.querySelector('#invite-link').value;
+      try {
+        // Rendered server-side and injected as trusted markup (our own
+        // /api/qrcode response, not user input) so it displays inline
+        // without a network round trip to a third-party QR service that
+        // would otherwise see the access token embedded in the link.
+        qrEl.innerHTML = await api.qrcode.svg(url);
+        qrEl.dataset.loaded = '1';
+      } catch (err) {
+        qrEl.textContent = 'QR-Code konnte nicht geladen werden.';
+        showToast(err.message, { error: true });
+      }
+    }
+  });
+}
+
+// Shown right after starting a new event — the whole point of asking for a
+// time frame/location up front is to immediately hand over a link that's
+// ready to send, instead of making the admin go find "Einladungslink" again.
+function openShareLinkModal(eventName) {
+  const { el } = openModal(
+    `🎉 ${escapeHtml(eventName)} gestartet`,
+    `
+      <div class="stack">
+        ${renderInviteLinkBody()}
+        <p class="muted" style="font-size:0.8rem;">
+          Diesen Link verschicken (oder den QR-Code zeigen/aushängen) – öffnet die Seite direkt
+          eingeloggt und führt neue Leute direkt zur Profil-Erstellung. Name, Bild, Skills und der
+          eigene Agent-Key richten sich alle selbst ein.
+        </p>
+      </div>
+    `,
+    { onMount: (modalEl) => wireInviteLinkBody(modalEl) }
+  );
+  void el;
+}
+
 function renderInviteSection() {
   const token = getToken();
-  const url = token ? `${location.origin}/?token=${encodeURIComponent(token)}` : location.origin;
   return `
     <div class="section-title">🔗 Einladungslink</div>
     <div class="card stack">
-      <div class="row">
-        <input type="text" id="invite-link" readonly value="${escapeHtml(url)}" style="flex:1;font-family:monospace;font-size:0.8rem;" />
-        <button type="button" class="btn btn-sm" id="invite-copy">Kopieren</button>
-      </div>
-      <button type="button" class="btn btn-sm" id="invite-qr-toggle">📱 QR-Code anzeigen</button>
-      <div id="invite-qr" style="text-align:center;" hidden></div>
+      ${renderInviteLinkBody()}
       <p class="muted" style="font-size:0.8rem;">
         Diesen Link verschicken (oder den QR-Code zeigen/aushängen) – öffnet die Seite direkt
         eingeloggt und führt neue Leute direkt zur Profil-Erstellung. Name, Bild, Skills und der
@@ -48,8 +122,12 @@ function renderEventSection() {
     .map(
       (e) => `
       <div class="lb-row">
-        <span style="flex:1;">${escapeHtml(e.name)}</span>
+        <span style="flex:1;">
+          ${escapeHtml(e.name)}
+          ${e.location ? `<div class="muted" style="font-size:0.75rem;">📍 ${escapeHtml(e.location)}</div>` : ''}
+        </span>
         <span class="muted" style="font-size:0.78rem;">${new Date(e.starts_at).toLocaleDateString('de-DE')} – ${e.ends_at ? new Date(e.ends_at).toLocaleDateString('de-DE') : '?'}</span>
+        <button type="button" class="icon-btn" data-edit-event="${e.id}" aria-label="Bearbeiten" title="Bearbeiten">✏️</button>
         <button type="button" class="btn btn-sm" data-export-event="${e.id}" title="Als PDF exportieren">📄 PDF</button>
       </div>`
     )
@@ -59,12 +137,17 @@ function renderEventSection() {
     <div class="section-title">🎪 Event</div>
     <div class="card stack">
       <div class="row-between">
-        <span>Aktuell: <strong>${escapeHtml(active ? active.name : '–')}</strong></span>
+        <span style="flex:1;">
+          Aktuell: <strong>${escapeHtml(active ? active.name : '–')}</strong>
+          ${active?.location ? `<div class="muted" style="font-size:0.78rem;">📍 ${escapeHtml(active.location)}</div>` : ''}
+          ${active?.description ? `<div class="muted" style="font-size:0.78rem;">${escapeHtml(active.description)}</div>` : ''}
+        </span>
         <div class="row" style="gap:6px;">
+          ${active ? `<button type="button" class="icon-btn" data-edit-event="${active.id}" aria-label="Bearbeiten" title="Bearbeiten">✏️</button>` : ''}
           ${active ? `<button type="button" class="btn btn-sm" data-export-event="${active.id}" title="Als PDF exportieren">📄 Exportieren</button>` : ''}
-          <button type="button" class="btn btn-sm" id="new-event-btn">Neues Event starten</button>
         </div>
       </div>
+      <button type="button" class="btn btn-primary btn-block" id="new-event-btn">Neues Event starten</button>
       ${past.length > 0 ? `<div class="muted" style="font-size:0.78rem;margin-top:4px;">Vergangene Events</div>${pastRows}` : ''}
     </div>
   `;
@@ -88,6 +171,97 @@ async function downloadExport(eventId) {
   } catch (err) {
     showToast(err.message, { error: true });
   }
+}
+
+// existing === null: "Neues Event starten" (activates it, closes the
+// previous one, resets live status). existing !== null: metadata-only edit
+// of that event (any event, past or active) — never touches which event is
+// active.
+function openEventForm(ctx, existing) {
+  const isEdit = Boolean(existing);
+  const now = Date.now();
+
+  const { close } = openModal(
+    isEdit ? 'Event bearbeiten' : 'Neues Event starten',
+    `
+      <form id="event-form" class="stack">
+        <div>
+          <label for="event-name" class="field-label">Name</label>
+          <input type="text" id="event-name" maxlength="80" required autofocus value="${escapeHtml(existing?.name ?? '')}" placeholder="z.B. LAN Winter 2027" />
+        </div>
+        <div class="row" style="align-items:flex-start;">
+          <div style="flex:1;">
+            <label for="event-starts" class="field-label">Beginnt am</label>
+            <input type="datetime-local" id="event-starts" value="${toDatetimeLocal(existing?.starts_at ?? now)}" />
+          </div>
+          <div style="flex:1;">
+            <label for="event-ends" class="field-label">Endet am</label>
+            <input type="datetime-local" id="event-ends" value="${existing?.ends_at ? toDatetimeLocal(existing.ends_at) : ''}" />
+          </div>
+        </div>
+        <p class="muted" style="font-size:0.78rem;margin-top:-6px;">„Endet am" leer lassen, solange noch offen ist, wann Schluss ist.</p>
+        <div>
+          <label for="event-location" class="field-label">Ort (optional)</label>
+          <input type="text" id="event-location" maxlength="80" placeholder="z.B. bei Tim" value="${escapeHtml(existing?.location ?? '')}" />
+        </div>
+        <div>
+          <label for="event-description" class="field-label">Notiz (optional)</label>
+          <textarea id="event-description" maxlength="500" rows="2" placeholder="z.B. Fokus: AoE2-Turnier">${escapeHtml(existing?.description ?? '')}</textarea>
+        </div>
+        ${
+          !isEdit
+            ? `<p class="muted" style="font-size:0.78rem;">Startet das Event sofort und beendet das aktuelle – Live-Status wird zurückgesetzt.</p>`
+            : ''
+        }
+        <button type="submit" class="btn btn-primary btn-block">${isEdit ? 'Speichern' : 'Event starten'}</button>
+      </form>
+    `,
+    {
+      onMount: (modalEl) => {
+        modalEl.querySelector('#event-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const name = modalEl.querySelector('#event-name').value.trim();
+          if (!name) return;
+          const startsVal = modalEl.querySelector('#event-starts').value;
+          const endsVal = modalEl.querySelector('#event-ends').value;
+          const location = modalEl.querySelector('#event-location').value.trim();
+          const description = modalEl.querySelector('#event-description').value.trim();
+
+          if (
+            !isEdit &&
+            !confirm(`Neues Event "${name}" starten? Das aktuelle Event wird beendet und der Live-Status zurückgesetzt.`)
+          ) {
+            return;
+          }
+
+          const payload = {
+            name,
+            startsAt: startsVal ? new Date(startsVal).getTime() : undefined,
+            endsAt: endsVal ? new Date(endsVal).getTime() : null,
+            location: location || null,
+            description: description || null,
+          };
+
+          try {
+            if (isEdit) {
+              await api.events.update(existing.id, payload);
+              close();
+              await ctx.refresh();
+              showToast('Event aktualisiert.');
+            } else {
+              await api.events.create(payload);
+              close();
+              await ctx.refresh();
+              showToast('Neues Event gestartet.');
+              openShareLinkModal(name);
+            }
+          } catch (err) {
+            showToast(err.message, { error: true });
+          }
+        });
+      },
+    }
+  );
 }
 
 export function renderGames(container, ctx) {
@@ -124,54 +298,14 @@ export function renderGames(container, ctx) {
     btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent));
   });
 
-  container.querySelector('#invite-copy').addEventListener('click', async () => {
-    const value = container.querySelector('#invite-link').value;
-    try {
-      await navigator.clipboard.writeText(value);
-      showToast('Einladungslink kopiert.');
-    } catch {
-      showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
-    }
-  });
+  wireInviteLinkBody(container);
 
-  container.querySelector('#invite-qr-toggle').addEventListener('click', async (e) => {
-    const qrEl = container.querySelector('#invite-qr');
-    if (!qrEl.hidden) {
-      qrEl.hidden = true;
-      e.target.textContent = '📱 QR-Code anzeigen';
-      return;
-    }
-    e.target.textContent = '📱 QR-Code ausblenden';
-    qrEl.hidden = false;
-    if (!qrEl.dataset.loaded) {
-      const url = container.querySelector('#invite-link').value;
-      try {
-        // Rendered server-side and injected as trusted markup (our own
-        // /api/qrcode response, not user input) so it displays inline
-        // without a network round trip to a third-party QR service that
-        // would otherwise see the access token embedded in the link.
-        qrEl.innerHTML = await api.qrcode.svg(url);
-        qrEl.dataset.loaded = '1';
-      } catch (err) {
-        qrEl.textContent = 'QR-Code konnte nicht geladen werden.';
-        showToast(err.message, { error: true });
-      }
-    }
-  });
-
-  container.querySelector('#new-event-btn').addEventListener('click', async () => {
-    const name = prompt('Name für das neue Event (z.B. "LAN Winter 2027"):');
-    if (!name || !name.trim()) return;
-    if (!confirm(`Neues Event "${name.trim()}" starten? Das aktuelle Event wird beendet und der Live-Status zurückgesetzt.`)) {
-      return;
-    }
-    try {
-      await api.events.create(name.trim());
-      await ctx.refresh();
-      showToast('Neues Event gestartet.');
-    } catch (err) {
-      showToast(err.message, { error: true });
-    }
+  container.querySelector('#new-event-btn').addEventListener('click', () => openEventForm(ctx, null));
+  container.querySelectorAll('[data-edit-event]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const event = (state.events || []).find((e) => e.id === btn.dataset.editEvent);
+      if (event) openEventForm(ctx, event);
+    });
   });
 
   container.querySelector('#add-game-btn').addEventListener('click', () => openGameForm(ctx));
