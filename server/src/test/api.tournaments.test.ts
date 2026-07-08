@@ -131,6 +131,34 @@ test('recording round-1 results advances winners into the final and creates lead
   assert.equal(matches.body.length, 2);
 });
 
+test('a second report for an already-decided match is rejected (two phones racing)', async () => {
+  const round1 = bracketMatches.filter((m) => m.round === 1);
+
+  // Same winner again: without the guard this would double-count the match
+  // on the leaderboard.
+  const sameAgain = await request(app)
+    .post(`/api/tournaments/${bracketId}/matches/${round1[0].id}/result`)
+    .send({ winnerTeamId: round1[0].teamAId });
+  assert.equal(sameAgain.status, 409);
+  assert.match(sameAgain.body.error, /schon ein Ergebnis/);
+
+  // Conflicting winner: without the guard this would re-run bracket
+  // progression and overwrite the final's team slots.
+  const conflicting = await request(app)
+    .post(`/api/tournaments/${bracketId}/matches/${round1[0].id}/result`)
+    .send({ winnerTeamId: round1[0].teamBId });
+  assert.equal(conflicting.status, 409);
+
+  // Neither attempt left a trace: still exactly 2 leaderboard matches, and
+  // the final still pairs the two original round-1 winners.
+  const matches = await request(app).get(`/api/matches?gameId=${gameId}`);
+  assert.equal(matches.body.length, 2);
+  const detail = await request(app).get(`/api/tournaments/${bracketId}`);
+  const final = detail.body.matches.find((m: { round: number }) => m.round === 2);
+  assert.equal(final.teamAId, round1[0].teamAId);
+  assert.equal(final.teamBId, round1[1].teamAId);
+});
+
 test('recording the final marks the tournament completed', async () => {
   const detail = await request(app).get(`/api/tournaments/${bracketId}`);
   const final = detail.body.matches.find((m: { round: number }) => m.round === 2);

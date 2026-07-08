@@ -1,17 +1,22 @@
-// Integration tests for the personalized agent-download ZIP. The actual
-// ZIP-streaming path needs a real prebuilt lan2026-agent.exe in
-// server/agent-dist/ (see its README — building it needs real internet
-// access this environment doesn't have), so these cover request validation
-// and the graceful "not built yet" fallback, which is the real state of a
-// freshly cloned repo.
+// Integration tests for the personalized agent-download ZIP. Whether the
+// success path (streamed ZIP) or the graceful "not built yet" 503 applies
+// depends on whether a prebuilt server/agent-dist/lan2026-agent.exe is
+// present — the repo ships one, but a stripped-down deployment might not —
+// so the test asserts whichever branch matches the actual repo state
+// instead of hardcoding one of them.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'fs';
+import path from 'path';
 import request from 'supertest';
 import { createApp } from '../app';
 import { buildAgentConfig } from '../routes/agentDownload';
 
 const app = createApp();
+const exeExists = fs.existsSync(
+  path.join(__dirname, '..', '..', 'agent-dist', 'lan2026-agent.exe')
+);
 let playerId: string;
 
 test('buildAgentConfig defaults trackActivity to off', () => {
@@ -45,8 +50,25 @@ test('GET /api/agent-download 404s for an unknown player', async () => {
   assert.equal(res.status, 404);
 });
 
-test('GET /api/agent-download responds with a clear 503 while the exe has not been built yet', async () => {
-  const res = await request(app).get(`/api/agent-download?playerId=${playerId}`);
-  assert.equal(res.status, 503);
-  assert.match(res.body.error, /agent-dist/);
+test('GET /api/agent-download streams a ZIP (or a clear 503 while the exe is missing)', async () => {
+  const res = await request(app)
+    .get(`/api/agent-download?playerId=${playerId}`)
+    .buffer(true)
+    .parse((r, cb) => {
+      const chunks: Buffer[] = [];
+      r.on('data', (c: Buffer) => chunks.push(c));
+      r.on('end', () => cb(null, Buffer.concat(chunks)));
+    });
+
+  if (exeExists) {
+    assert.equal(res.status, 200);
+    assert.equal(res.headers['content-type'], 'application/zip');
+    assert.match(res.headers['content-disposition'] ?? '', /RespawnHQ-Agent-Download_Tester\.zip/);
+    // ZIP local-file-header magic ("PK\x03\x04") proves a real archive got
+    // streamed, not an error page with ZIP headers.
+    assert.equal((res.body as Buffer).subarray(0, 4).toString('binary'), 'PK\x03\x04');
+  } else {
+    assert.equal(res.status, 503);
+    assert.match(JSON.parse((res.body as Buffer).toString()).error, /agent-dist/);
+  }
 });

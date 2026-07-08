@@ -247,11 +247,21 @@ export function openMatchForm(ctx, options = {}) {
 
         modalEl.querySelector('#match-form').addEventListener('submit', async (e) => {
           e.preventDefault();
+          // An impatient double-tap on "Speichern" (easy on slow party WiFi)
+          // would otherwise record the same match twice — there's nothing
+          // server-side to dedupe on, identical rematches are legitimate.
+          const submitBtn = modalEl.querySelector('#match-form button[type="submit"]');
+          if (submitBtn.disabled) return;
+          submitBtn.disabled = true;
+          const unlock = () => {
+            submitBtn.disabled = false;
+          };
           const gameId = modalEl.querySelector('#match-game').value;
 
           if (isFfa) {
             const participants = ffaParticipants();
             if (participants.length < 2) {
+              unlock();
               return showToast('Mindestens 2 Teilnehmer auswählen.', { error: true });
             }
             const teams = participants.map((p) => ({ playerIds: [p.id] }));
@@ -263,6 +273,7 @@ export function openMatchForm(ctx, options = {}) {
               await ctx.refresh();
               showToast('Ergebnis gespeichert.');
             } catch (err) {
+              unlock();
               showToast(err.message, { error: true });
             }
             return;
@@ -274,6 +285,7 @@ export function openMatchForm(ctx, options = {}) {
           });
           const nonEmptyTeams = teams.filter((t) => t.playerIds.length > 0);
           if (nonEmptyTeams.length < 2) {
+            unlock();
             return showToast('Mindestens 2 Teams müssen Spieler enthalten.', { error: true });
           }
           const winnerRaw = modalEl.querySelector('input[name="winner"]:checked')?.value;
@@ -285,6 +297,7 @@ export function openMatchForm(ctx, options = {}) {
             const winnerTeam = teams[parseInt(winnerRaw, 10)];
             const idx = nonEmptyTeams.indexOf(winnerTeam);
             if (idx === -1) {
+              unlock();
               return showToast('Das Gewinner-Team hat keine Spieler zugeordnet.', { error: true });
             }
             winnerTeamIndex = idx;
@@ -296,6 +309,7 @@ export function openMatchForm(ctx, options = {}) {
             await ctx.refresh();
             showToast('Ergebnis gespeichert.');
           } catch (err) {
+            unlock();
             showToast(err.message, { error: true });
           }
         });

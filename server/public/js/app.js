@@ -72,6 +72,12 @@ function switchView(view) {
   document.querySelectorAll('.nav-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.view === view);
   });
+  // Restart the view-enter animation (see .view-enter in style.css). Only on
+  // deliberate navigation — realtime-triggered re-renders of the same view
+  // must never flash, so renderCurrent() alone doesn't do this.
+  viewContainer.classList.remove('view-enter');
+  void viewContainer.offsetWidth; // force reflow so removing+adding re-triggers
+  viewContainer.classList.add('view-enter');
   // A little indicator on the profile icon points new/unset devices at
   // self-onboarding (name, avatar, skills, agent key) instead of leaving
   // them to stumble onto it.

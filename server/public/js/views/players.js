@@ -32,6 +32,7 @@ export function renderPlayers(container, ctx) {
     .join('');
 
   container.innerHTML = `
+    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <div class="row-between">
       <h1 class="view-title">Spieler</h1>
       <button type="button" class="btn btn-primary btn-sm" id="add-player-btn">+ Spieler</button>

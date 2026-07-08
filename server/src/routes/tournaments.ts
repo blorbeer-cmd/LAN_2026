@@ -467,6 +467,13 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
   if (!match.team_a_id || !match.team_b_id) {
     return res.status(409).json({ error: 'Beide Teams müssen feststehen, bevor ein Ergebnis eingetragen werden kann.' });
   }
+  // Two phones can both still show the match as open and report "almost at
+  // the same time" — without this guard the second report would insert a
+  // second leaderboard match (double-counted) and, on a conflicting winner,
+  // re-run bracket progression and corrupt the next round's team slots.
+  if (match.winner_team_id !== null || match.is_draw) {
+    return res.status(409).json({ error: 'Für dieses Match ist schon ein Ergebnis eingetragen.' });
+  }
 
   // Knockout-shaped matches — the whole bracket in single_elimination, or
   // just the knockout stage of group_knockout — never allow a draw.

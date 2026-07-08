@@ -183,7 +183,8 @@ export function renderLive(container, ctx) {
       <h1 class="view-title">Live-Status</h1>
       <div class="empty-state">
         <img src="/img/mascot.svg" alt="" width="72" height="66" class="mascot" />
-        Noch keine Spieler angelegt.<br />Leg welche im Tab „Spieler" an.
+        Noch keine Spieler angelegt.<br />
+        <button type="button" class="btn btn-primary btn-sm" data-navigate="profile" style="margin-top:12px;">👤 Eigenes Profil anlegen</button>
       </div>`;
     return;
   }
