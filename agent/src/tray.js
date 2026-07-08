@@ -51,8 +51,12 @@ $exitItem.add_Click({
 // Hides the agent's own console window (Windows only; a Node child process
 // spawned without its own new console attaches to the parent's, so hiding it
 // from inside this short-lived helper hides the same window the agent owns).
-// Synchronous and best-effort — never throws, so a failure here just leaves
-// the console visible instead of breaking startup.
+// Deliberately does NOT pass windowsHide/CREATE_NO_WINDOW here — that flag
+// detaches the child from any console entirely, so GetConsoleWindow() inside
+// it would return NULL and ShowWindow would silently no-op instead of
+// hiding the actual shared window. Synchronous and best-effort — never
+// throws, so a failure here just leaves the console visible instead of
+// breaking startup.
 function hideConsoleWindow() {
   if (os.platform() !== 'win32') return;
   const script =
@@ -61,10 +65,7 @@ function hideConsoleWindow() {
     '[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int n);\'; ' +
     '[RespawnHQ.W]::ShowWindow([RespawnHQ.W]::GetConsoleWindow(), 0)';
   try {
-    spawnSync('powershell', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', script], {
-      windowsHide: true,
-      timeout: 5000,
-    });
+    spawnSync('powershell', ['-NoProfile', '-Command', script], { timeout: 5000 });
   } catch {
     // Leave the console visible rather than crash startup over this.
   }
