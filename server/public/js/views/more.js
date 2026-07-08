@@ -1,12 +1,13 @@
-// "Mehr" hub: the secondary destinations (Auswertungen, Turniere, Hall of
-// Fame, Sitzplan) used to live as buttons crammed into the Rangliste
-// header — this gives each its own clear entry point instead, and leaves
-// room to add more later without the bottom nav running out of icons.
+// "Mehr" hub: the secondary destinations (Spieler-Verwaltung, Auswertungen,
+// Hall of Fame, Sitzplan) each get their own clear entry point here, leaving
+// the bottom nav to the things people reach for constantly during the party
+// (tournaments earned that spot; the roster is mostly a setup-time concern
+// since everyone self-onboards through their profile).
 
 const ITEMS = [
+  { view: 'players', icon: '👥', title: 'Spieler', desc: 'Alle Teilnehmer: anlegen, umbenennen, Agent-Keys nachschlagen.' },
   { view: 'analytics', icon: '🕒', title: 'Spielzeit-Auswertungen', desc: 'Awards, Spielzeiten, beliebteste Spiele, wer wann was gespielt hat.' },
   { view: 'gameStats', icon: '📊', title: 'Spiele & Turniere', desc: 'Match- und Turnier-Statistiken, Rivalitäten, Duos, Underdog-Siege.' },
-  { view: 'tournaments', icon: '🏆', title: 'Turniere', desc: 'Turnierbäume und Ligen erstellen und verfolgen.' },
   { view: 'hallOfFame', icon: '🏛️', title: 'Hall of Fame', desc: 'Champions über alle LAN-Partys hinweg.' },
   { view: 'seating', icon: '🪑', title: 'Sitzplan', desc: 'Wer neben wem sitzt, gruppiert aus den Profilangaben.' },
 ];

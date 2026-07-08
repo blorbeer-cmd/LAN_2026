@@ -69,8 +69,10 @@ test('fresh device lands on self-onboarding and creates its profile there', asyn
 });
 
 test('full click-through: players, matchmaking, voting, leaderboard, live pause', async () => {
-  // Add a second player via the roster view.
-  await page.click('[data-view="players"]');
+  // Add a second player via the roster view (lives in the "Mehr" hub — the
+  // bottom nav slot went to Turniere).
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="players"]');
   await page.click('#add-player-btn');
   await page.fill('#new-player-name', 'E2E Bob');
   await page.click('#add-player-form button[type="submit"]');
@@ -227,8 +229,8 @@ test('Spiele verwalten: create a game, and a duplicate name is rejected with a c
 });
 
 test('Turnier: create a K.O. bracket from proposed teams and play it to a champion', async () => {
-  await page.click('[data-view="more"]');
-  await page.click('[data-navigate="tournaments"]');
+  // Tournaments earned their own bottom-nav slot.
+  await page.click('[data-view="tournaments"]');
   await page.waitForSelector('#tourn-new-btn');
   await page.click('#tourn-new-btn');
 
