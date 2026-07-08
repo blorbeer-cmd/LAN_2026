@@ -50,6 +50,7 @@ function loadConfig(configPath) {
     apiKey: parsed.apiKey.trim(),
     pollIntervalMs,
     trackActivity,
+    configPath: resolved,
   };
 }
 

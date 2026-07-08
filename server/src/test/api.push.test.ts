@@ -85,6 +85,59 @@ test('a subscription that comes back as gone (410) is pruned', async (t) => {
   assert.equal(sendMock.mock.calls.length, 0, 'expired subscription should have been removed');
 });
 
+test('finishing a round-robin round pushes the next round\'s teams', async (t) => {
+  // Mocked from the start: tournament creation fires its own "Neues Turnier"
+  // push immediately, and the real webpush transport hitting these fake
+  // endpoints would come back as gone (404/410) and prune the subscription
+  // before we get to the assertion below.
+  t.mock.method(pushTransport, 'send', async () => {});
+
+  const game = await request(app).post('/api/games').send({ name: 'RR Push Test Game' });
+  const gameId = game.body.id;
+  const teamPlayerIds: string[] = [];
+  for (const name of ['RR1', 'RR2', 'RR3']) {
+    const p = await request(app).post('/api/players').send({ name });
+    teamPlayerIds.push(p.body.id);
+  }
+  // The subscribed player (`playerId`, from the module-level setup test)
+  // needs a subscription to receive this — reuse a fresh subscription so
+  // this test doesn't depend on state left over from earlier ones.
+  await request(app)
+    .post('/api/push/subscribe')
+    .send({
+      playerId,
+      subscription: { endpoint: 'https://push.example.com/sub-rr', keys: { p256dh: 'p', auth: 'a' } },
+    });
+
+  // 3 solo teams, single-leg: circle method gives 3 rounds of 1 match each,
+  // so team `playerId` is placed in a fixture for round 2 or 3, guaranteeing
+  // there's a "next round" to be pushed once an earlier round completes.
+  const created = await request(app)
+    .post('/api/tournaments')
+    .send({
+      gameId,
+      format: 'round_robin',
+      teams: [{ playerIds: [playerId] }, { playerIds: [teamPlayerIds[0]] }, { playerIds: [teamPlayerIds[1]] }],
+    });
+  const tournamentId = created.body.id;
+  const matches = created.body.matches; // ordered by round, slot
+
+  // Re-mock to isolate just the calls made by recording this result (the
+  // tournament creation above already triggered its own "Neues Turnier" push).
+  const sendMock = t.mock.method(pushTransport, 'send', async () => {});
+  await request(app)
+    .post(`/api/tournaments/${tournamentId}/matches/${matches[0].id}/result`)
+    .send({ winnerTeamId: matches[0].teamAId });
+
+  assert.ok(sendMock.mock.calls.length >= 1, 'expected a push once round 1 completed');
+  const payloads = sendMock.mock.calls.map((c) => JSON.parse(c.arguments[1] as string));
+  assert.ok(payloads.some((p) => /nächstes Match/.test(p.body)));
+
+  // Leave no subscription behind for `playerId` — later tests in this file
+  // assert exact push counts and would otherwise pick up this extra device.
+  await request(app).post('/api/push/unsubscribe').send({ endpoint: 'https://push.example.com/sub-rr' });
+});
+
 test('POST /api/push/unsubscribe requires an endpoint', async () => {
   const res = await request(app).post('/api/push/unsubscribe');
   assert.equal(res.status, 400);

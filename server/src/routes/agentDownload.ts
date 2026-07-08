@@ -44,6 +44,11 @@ export function buildAgentConfig(serverUrl: string, apiKey: string, trackActivit
 
 // Kept plain-ASCII (no umlauts) since a .bat file's default codepage often
 // mangles them; \r\n line endings since Windows batch is picky about that.
+//
+// Also drops a desktop shortcut to the agent's own local control panel (a
+// tiny web page it serves on 127.0.0.1) — that's where a player later
+// pauses tracking, turns autostart off, or uninstalls, without ever touching
+// the task manager or the startup folder by hand.
 function buildInstallBat(): string {
   const lines = [
     '@echo off',
@@ -59,7 +64,14 @@ function buildInstallBat(): string {
     'set "STARTUP_DIR=%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"',
     'powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (New-Object -ComObject WScript.Shell).CreateShortcut(\'%STARTUP_DIR%\\RespawnHQ-Agent.lnk\'); $s.TargetPath = \'%INSTALL_DIR%\\lan2026-agent.exe\'; $s.WorkingDirectory = \'%INSTALL_DIR%\'; $s.WindowStyle = 7; $s.Save()"',
     '',
+    '(',
+    '  echo [InternetShortcut]',
+    '  echo URL=http://127.0.0.1:47813',
+    ') > "%USERPROFILE%\\Desktop\\RespawnHQ-Agent Steuerung.url"',
+    '',
     'echo Fertig! Der Agent startet ab jetzt automatisch bei jedem Windows-Login.',
+    'echo Auf dem Desktop liegt eine Verknuepfung "RespawnHQ-Agent Steuerung" zum',
+    'echo Pausieren, Autostart an/aus stellen oder Deinstallieren.',
     'echo Starte ihn jetzt auch gleich...',
     'start "" "%INSTALL_DIR%\\lan2026-agent.exe"',
     '',
