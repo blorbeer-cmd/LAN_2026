@@ -13,13 +13,23 @@ fertige `.exe` mit bereits eingetragener Server-Adresse und eigenem API-Key sowi
 Config-Datei von Hand nötig. Der folgende Abschnitt ist nur für die manuelle/Nicht-Windows-Variante
 relevant.
 
-## Steuerung: pausieren, Autostart umschalten, deinstallieren
+## Steuerung: Tray-Icon, pausieren, Autostart umschalten, deinstallieren
 
-Der Agent bringt eine eigene kleine Weboberfläche mit – kein Tray-Icon, kein natives Fenster,
-einfach eine Seite unter `http://127.0.0.1:47813`, solange der Agent läuft. `install.bat` legt dafür
-eine Verknüpfung „RespawnHQ-Agent Steuerung" auf dem Desktop an.
+Läuft die installierte `.exe` unter Windows, verschwindet das Konsolenfenster nach dem Start
+(keine sichtbare Log-Ausgabe mehr alle paar Sekunden) und stattdessen erscheint ein kleines Icon im
+System-Tray. Doppelklick darauf (oder Rechtsklick → „Steuerung oeffnen") öffnet die eigentliche
+Steuerung – eine kleine Weboberfläche unter `http://127.0.0.1:47813`, solange der Agent läuft.
+Rechtsklick → „Beenden" beendet den Agent direkt aus dem Tray. `install.bat` legt zusätzlich eine
+Verknüpfung „RespawnHQ-Agent Steuerung" auf dem Desktop an, die zur selben Weboberfläche führt.
+Klappt das Tray-Icon aus irgendeinem Grund nicht (z. B. sehr alte Windows-Version ohne .NET), bleibt
+das Konsolenfenster einfach sichtbar und die Desktop-Verknüpfung funktioniert unverändert. Läuft der
+Agent per `npm start` (nicht als `.exe`), bleibt die Konsole immer sichtbar – das Tray-Icon ist nur
+etwas für die gepackte Variante.
 
-Dort gibt es vier Aktionen:
+Nach dem Ausblenden landet die Log-Ausgabe zusätzlich in `agent.log` im Installationsordner
+(`%LOCALAPPDATA%\RespawnHQ-Agent`), damit sich Verbindungsprobleme trotzdem nachvollziehen lassen.
+
+In der Weboberfläche gibt es vier Aktionen:
 
 - **Pausieren / Fortsetzen** – stoppt sofort das Melden an den Server (der Spieler erscheint nach
   dem üblichen Timeout als „offline"), ohne den Agent zu beenden. Der Zustand wird lokal gespeichert

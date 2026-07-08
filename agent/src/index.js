@@ -12,7 +12,14 @@
 // resuming via the web profile is picked up here on the next tick() via the
 // report response, so the local control panel never silently disagrees with
 // the web app.
+//
+// Once packaged (.exe, not `npm start`) and on Windows, the console window
+// gets hidden in favor of a system tray icon (see tray.js) — a visible
+// window logging every 10 seconds was the whole thing players complained
+// about. Since that removes the only place errors were visible, log() also
+// mirrors everything into a small log file in the install dir.
 
+const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { loadConfig } = require('./config');
@@ -23,12 +30,34 @@ const { loadState, setPaused, setTrackActivity } = require('./state');
 const { getStartupShortcutPath, isAutostartEnabled, enableAutostart, disableAutostart } = require('./autostart');
 const { scheduleUninstall } = require('./uninstaller');
 const { createControlServer, listenWithRetry } = require('./controlServer');
+const { startTrayIcon, hideConsoleWindow } = require('./tray');
 
 const DEFAULT_CONTROL_PORT = 47813;
+const LOG_FILE_MAX_BYTES = 2 * 1024 * 1024; // reset instead of growing forever across a multi-day LAN party
+
+let logFilePath = null;
 
 function log(message) {
   const ts = new Date().toISOString().slice(11, 19);
-  console.log(`[${ts}] ${message}`);
+  const line = `[${ts}] ${message}`;
+  console.log(line);
+  if (logFilePath) {
+    try {
+      fs.appendFileSync(logFilePath, line + '\n');
+    } catch {
+      // Logging itself must never be why the agent goes down.
+    }
+  }
+}
+
+function setUpLogFile(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size > LOG_FILE_MAX_BYTES) fs.unlinkSync(filePath);
+  } catch {
+    // No existing file yet — nothing to reset.
+  }
+  logFilePath = filePath;
 }
 
 function getStartupDir() {
@@ -81,6 +110,12 @@ function start(configPath) {
   // from source (dev/tests) has no real install dir to manage autostart for.
   const isPackaged = typeof process.pkg !== 'undefined';
   const exePath = isPackaged ? process.execPath : null;
+
+  // Only meaningful once the console might get hidden below — dev runs
+  // (npm start) keep logging to the console only, no file to manage.
+  if (isPackaged) setUpLogFile(path.join(installDir, 'agent.log'));
+
+  let trayProcess = null;
 
   const initialTrackActivity = loadState(stateFilePath, { trackActivity: config.trackActivity }).trackActivity;
   log(
@@ -135,13 +170,37 @@ function start(configPath) {
     disableAutostart: () => disableAutostart(startupDir),
     uninstall: () => {
       scheduleUninstall({ installDir, startupShortcutPath: shortcutPath });
+      if (trayProcess) {
+        try {
+          trayProcess.kill();
+        } catch {
+          // already gone — nothing to clean up
+        }
+      }
       // Give the HTTP response time to flush to the browser before we exit.
       setTimeout(() => process.exit(0), 300);
     },
   });
 
   listenWithRetry(controlServer, DEFAULT_CONTROL_PORT)
-    .then(({ port }) => log(`🖥️  Steuerung erreichbar unter http://127.0.0.1:${port}`))
+    .then(({ port }) => {
+      const controlUrl = `http://127.0.0.1:${port}`;
+      log(`🖥️  Steuerung erreichbar unter ${controlUrl}`);
+
+      // Dev runs (npm start) keep their console — only the packaged .exe on
+      // Windows gets the tray treatment, and only once the tray icon is
+      // actually up (so a failure here never leaves the agent invisible and
+      // uncontrollable).
+      if (isPackaged && os.platform() === 'win32') {
+        trayProcess = startTrayIcon(controlUrl, process.pid);
+        if (trayProcess) {
+          hideConsoleWindow();
+          log('🔽 Konsole ausgeblendet – Steuerung jetzt über das Tray-Icon oder ' + controlUrl + '.');
+        } else {
+          log('⚠️ Tray-Icon konnte nicht gestartet werden, Konsole bleibt sichtbar.');
+        }
+      }
+    })
     .catch((err) => log(`⚠️ Steuer-Oberfläche konnte nicht gestartet werden: ${err.message}`));
 
   return () => {
@@ -150,6 +209,13 @@ function start(configPath) {
       controlServer.close();
     } catch {
       // not listening yet / already closed — nothing to do
+    }
+    if (trayProcess) {
+      try {
+        trayProcess.kill();
+      } catch {
+        // already gone — nothing to clean up
+      }
     }
   };
 }
