@@ -16,35 +16,54 @@ const { spawn, spawnSync } = require('child_process');
 
 // Exported (pure) so it's unit-testable without Windows: verifies the right
 // URL/PID get embedded and the expected menu actions are present.
+//
+// Wrapped in try/catch with a checkpoint after every step, all written to
+// its own trace log — the process exited clean (code 0, no stderr) on the
+// very first real test, meaning it finished *without* ever actually
+// blocking on Application.Run(), and there was nothing to tell us why.
 function buildTrayScript(controlUrl, agentPid) {
   return `
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
+$traceLog = "$env:TEMP\\lan2026-agent-tray-${agentPid}.trace.log"
+function Trace($msg) { Add-Content -Path $traceLog -Value "$(Get-Date -Format o) $msg" }
 
-$controlUrl = "${controlUrl}"
-$agentPid = ${agentPid}
+try {
+  Trace "start (PSVersion=$($PSVersionTable.PSVersion), STA=$([System.Threading.Thread]::CurrentThread.GetApartmentState()))"
 
-$icon = New-Object System.Windows.Forms.NotifyIcon
-$icon.Icon = [System.Drawing.SystemIcons]::Application
-$icon.Text = "RespawnHQ-Agent"
-$icon.Visible = $true
+  Add-Type -AssemblyName System.Windows.Forms
+  Add-Type -AssemblyName System.Drawing
+  Trace "assemblies loaded"
 
-$menu = New-Object System.Windows.Forms.ContextMenuStrip
-$openItem = $menu.Items.Add("Steuerung oeffnen")
-$exitItem = $menu.Items.Add("Beenden")
-$icon.ContextMenuStrip = $menu
+  $controlUrl = "${controlUrl}"
+  $agentPid = ${agentPid}
 
-$openAction = { Start-Process $controlUrl }
-$openItem.add_Click($openAction)
-$icon.add_DoubleClick($openAction)
+  $icon = New-Object System.Windows.Forms.NotifyIcon
+  $icon.Icon = [System.Drawing.SystemIcons]::Application
+  $icon.Text = "RespawnHQ-Agent"
+  $icon.Visible = $true
+  Trace "notify icon created and visible"
 
-$exitItem.add_Click({
-  $icon.Visible = $false
-  try { Stop-Process -Id $agentPid -Force -ErrorAction SilentlyContinue } catch {}
-  [System.Windows.Forms.Application]::Exit()
-})
+  $menu = New-Object System.Windows.Forms.ContextMenuStrip
+  $openItem = $menu.Items.Add("Steuerung oeffnen")
+  $exitItem = $menu.Items.Add("Beenden")
+  $icon.ContextMenuStrip = $menu
 
-[System.Windows.Forms.Application]::Run()
+  $openAction = { Start-Process $controlUrl }
+  $openItem.add_Click($openAction)
+  $icon.add_DoubleClick($openAction)
+
+  $exitItem.add_Click({
+    $icon.Visible = $false
+    try { Stop-Process -Id $agentPid -Force -ErrorAction SilentlyContinue } catch {}
+    [System.Windows.Forms.Application]::Exit()
+  })
+  Trace "menu wired, entering message loop"
+
+  [System.Windows.Forms.Application]::Run()
+  Trace "Application.Run() returned (icon should be gone now)"
+} catch {
+  Trace "EXCEPTION: $($_ | Out-String)"
+}
+Trace "script end"
 `.trim();
 }
 
