@@ -35,6 +35,24 @@ test('POST /api/games creates a game with defaults', async () => {
   createdId = res.body.id;
 });
 
+test('POST /api/games rejects a duplicate name (case-insensitive), so votes/skills never split across two identical entries', async () => {
+  const res = await request(app).post('/api/games').send({ name: 'counter-strike 2' });
+  assert.equal(res.status, 409);
+  assert.match(res.body.error, /gibt es schon/);
+});
+
+test("PATCH /api/games/:id rejects renaming onto another game's name", async () => {
+  const res = await request(app).patch(`/api/games/${createdId}`).send({ name: 'Rocket League' });
+  assert.equal(res.status, 409);
+  assert.match(res.body.error, /gibt es schon/);
+});
+
+test('PATCH /api/games/:id still allows re-saving a game under its own name (e.g. icon-only edit)', async () => {
+  const res = await request(app).patch(`/api/games/${createdId}`).send({ name: 'Testspiel' });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.name, 'Testspiel');
+});
+
 test('PATCH /api/games/:id updates fields', async () => {
   const res = await request(app)
     .patch(`/api/games/${createdId}`)

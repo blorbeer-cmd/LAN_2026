@@ -23,6 +23,16 @@ interface GameRow {
   created_at: number;
 }
 
+// Case-insensitive lookup used to give a friendly 409 instead of silently
+// creating a second "Counter-Strike 2" — a duplicate game would split votes,
+// skills and results across two indistinguishable entries in every dropdown.
+function nameTaken(name: string, excludingId?: string): boolean {
+  const row = db
+    .prepare('SELECT id FROM games WHERE name = ? COLLATE NOCASE AND id != ?')
+    .get(name, excludingId ?? '') as { id: string } | undefined;
+  return Boolean(row);
+}
+
 function withProcessNames(game: GameRow) {
   const procs = db
     .prepare('SELECT process_name FROM game_process_names WHERE game_id = ? ORDER BY process_name')
@@ -76,9 +86,14 @@ gamesRouter.post('/', (req, res) => {
   const sizes = validateTeamSizes(minTeamSize, maxTeamSize);
   if ('error' in sizes) return res.status(400).json({ error: sizes.error });
 
+  const trimmedName = name.trim();
+  if (nameTaken(trimmedName)) {
+    return res.status(409).json({ error: `Das Spiel "${trimmedName}" gibt es schon.` });
+  }
+
   const row: GameRow = {
     id: nanoid(),
-    name: name.trim(),
+    name: trimmedName,
     icon: isNonEmptyString(icon, 8) ? icon : DEFAULT_ICON,
     icon_image: iconImage ?? null,
     min_team_size: sizes.min,
@@ -117,6 +132,10 @@ gamesRouter.patch('/:id', (req, res) => {
     maxTeamSize !== undefined ? maxTeamSize : existing.max_team_size
   );
   if ('error' in sizes) return res.status(400).json({ error: sizes.error });
+
+  if (name !== undefined && nameTaken(name.trim(), existing.id)) {
+    return res.status(409).json({ error: `Das Spiel "${name.trim()}" gibt es schon.` });
+  }
 
   const next: GameRow = {
     ...existing,
