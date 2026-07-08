@@ -193,7 +193,8 @@ export function renderProfile(container, ctx) {
       </label>
       <p class="muted" style="font-size:0.8rem;margin-top:-4px;">
         Dein Agent darf weiterlaufen und meldet sich weiter beim Server, aber nichts davon wird
-        gespeichert – kein Live-Status, keine Spielzeit. Jederzeit wieder umschaltbar.
+        gespeichert – kein Live-Status, keine Spielzeit. Dasselbe Pausieren geht auch direkt am PC
+        über die Steuerungs-Oberfläche des Agents – beide Wege zeigen denselben Stand.
       </p>
       <label class="check-row">
         <input type="checkbox" id="agent-track-activity" />

@@ -1,18 +1,13 @@
 // Sends the currently seen process names to the server's agent-report
-// endpoint. Uses the global fetch (Node 18+) so there's no extra dependency
-// to bundle into the packaged .exe.
+// endpoint, and a small helper to push the local pause toggle up to the
+// server. Uses the global fetch (Node 18+) so there's no extra dependency to
+// bundle into the packaged .exe.
 
-async function reportToServer({ serverUrl, apiKey }, processNames, activitySnapshot) {
-  const requestBody = { processNames };
-  if (activitySnapshot) {
-    requestBody.foregroundProcessName = activitySnapshot.foregroundProcessName;
-    requestBody.idleSeconds = activitySnapshot.idleSeconds;
-  }
-
-  const res = await fetch(`${serverUrl}/api/agent/report`, {
+async function postJson(serverUrl, apiKey, path, body) {
+  const res = await fetch(`${serverUrl}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-    body: JSON.stringify(requestBody),
+    body: JSON.stringify(body),
   });
 
   const text = await res.text();
@@ -32,4 +27,22 @@ async function reportToServer({ serverUrl, apiKey }, processNames, activitySnaps
   return responseBody;
 }
 
-module.exports = { reportToServer };
+async function reportToServer({ serverUrl, apiKey }, processNames, activitySnapshot) {
+  const requestBody = { processNames };
+  if (activitySnapshot) {
+    requestBody.foregroundProcessName = activitySnapshot.foregroundProcessName;
+    requestBody.idleSeconds = activitySnapshot.idleSeconds;
+  }
+  return postJson(serverUrl, apiKey, '/api/agent/report', requestBody);
+}
+
+// Mirrors a local pause/resume up to the server, so the web profile's
+// "Tracking pausieren" toggle and this agent's own control panel stay in
+// sync instead of being two independent, potentially-disagreeing flags.
+// Best-effort by design (callers swallow failures) — the local toggle must
+// still work instantly even if the PC is briefly offline.
+async function syncTrackingPaused({ serverUrl, apiKey }, paused) {
+  return postJson(serverUrl, apiKey, '/api/agent/tracking-paused', { paused });
+}
+
+module.exports = { reportToServer, syncTrackingPaused };

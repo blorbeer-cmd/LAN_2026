@@ -133,3 +133,43 @@ test('a player with no report at all appears as offline on the board', async () 
   assert.equal(entry.state, 'offline');
   assert.deepEqual(entry.games, []);
 });
+
+test('POST /api/agent/report includes trackingPaused: false by default', async () => {
+  const res = await request(app)
+    .post('/api/agent/report')
+    .set('x-api-key', apiKey)
+    .send({ processNames: [] });
+  assert.equal(res.body.trackingPaused, false);
+});
+
+test('POST /api/agent/tracking-paused without x-api-key is rejected', async () => {
+  const res = await request(app).post('/api/agent/tracking-paused').send({ paused: true });
+  assert.equal(res.status, 401);
+});
+
+test('POST /api/agent/tracking-paused rejects a non-boolean paused', async () => {
+  const res = await request(app)
+    .post('/api/agent/tracking-paused')
+    .set('x-api-key', apiKey)
+    .send({ paused: 'yes' });
+  assert.equal(res.status, 400);
+});
+
+test('POST /api/agent/tracking-paused sets the flag that both the web profile and /report see', async () => {
+  const paused = await request(app).post('/api/agent/tracking-paused').set('x-api-key', apiKey).send({ paused: true });
+  assert.equal(paused.status, 200);
+  assert.equal(paused.body.trackingPaused, true);
+
+  const profile = await request(app).get(`/api/players/${playerId}`);
+  assert.equal(profile.body.tracking_paused, 1);
+
+  const report = await request(app)
+    .post('/api/agent/report')
+    .set('x-api-key', apiKey)
+    .send({ processNames: ['cs2.exe'] });
+  assert.equal(report.body.tracked, false);
+  assert.equal(report.body.trackingPaused, true);
+
+  const resumed = await request(app).post('/api/agent/tracking-paused').set('x-api-key', apiKey).send({ paused: false });
+  assert.equal(resumed.body.trackingPaused, false);
+});

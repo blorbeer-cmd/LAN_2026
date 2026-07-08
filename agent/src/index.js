@@ -5,13 +5,20 @@
 // core loop. It does now expose one thing via a tiny local control panel: the
 // player's own way to pause tracking, toggle autostart, or uninstall — see
 // controlServer.js.
+//
+// The pause flag has exactly one source of truth: the player's
+// tracking_paused column on the server. Pausing/resuming here pushes it to
+// the server (best-effort — see the pause/resume handlers below); pausing/
+// resuming via the web profile is picked up here on the next tick() via the
+// report response, so the local control panel never silently disagrees with
+// the web app.
 
 const os = require('os');
 const path = require('path');
 const { loadConfig } = require('./config');
 const { getRunningProcessNames } = require('./processList');
 const { getActivitySnapshot } = require('./activity');
-const { reportToServer } = require('./report');
+const { reportToServer, syncTrackingPaused } = require('./report');
 const { loadState, setPaused, setTrackActivity } = require('./state');
 const { getStartupShortcutPath, isAutostartEnabled, enableAutostart, disableAutostart } = require('./autostart');
 const { scheduleUninstall } = require('./uninstaller');
@@ -30,20 +37,32 @@ function getStartupDir() {
 
 async function tick(config, stateFilePath) {
   const state = loadState(stateFilePath, { trackActivity: config.trackActivity });
-  if (state.paused) {
-    log('⏸ Pausiert – kein Reporting an den Server.');
-    return;
-  }
   try {
-    const processNames = await getRunningProcessNames();
+    // While locally paused, skip the (mildly expensive) process scan but
+    // still ping the server with an empty report — that's how this agent
+    // learns a web-profile-initiated resume happened, without the player
+    // needing to come back to this PC to notice.
+    const processNames = state.paused ? [] : await getRunningProcessNames();
     // Opt-in only: reveals which process is focused + idle time, so the
     // server can tell "actually played" apart from "just running". The
     // player can flip this later via the control panel, so the state file
     // (not the original downloaded config) is the source of truth here.
-    const activitySnapshot = state.trackActivity ? await getActivitySnapshot() : null;
+    const activitySnapshot = !state.paused && state.trackActivity ? await getActivitySnapshot() : null;
     const result = await reportToServer(config, processNames, activitySnapshot);
-    const count = result?.gameIds?.length ?? 0;
-    log(count > 0 ? `✅ Verbunden – ${count} Spiel(e) erkannt.` : '✅ Verbunden – kein bekanntes Spiel aktiv.');
+
+    // The server's tracking_paused column is the single source of truth for
+    // the pause flag — mirror it locally so a pause/resume made via the web
+    // profile shows up here too (the control panel, and this same gate).
+    if (typeof result?.trackingPaused === 'boolean' && result.trackingPaused !== state.paused) {
+      setPaused(stateFilePath, result.trackingPaused);
+    }
+
+    if (state.paused) {
+      log('⏸ Pausiert – kein Tracking.');
+    } else {
+      const count = result?.gameIds?.length ?? 0;
+      log(count > 0 ? `✅ Verbunden – ${count} Spiel(e) erkannt.` : '✅ Verbunden – kein bekanntes Spiel aktiv.');
+    }
   } catch (err) {
     // Never let a single failed tick crash the loop: a Wi-Fi hiccup or a
     // server restart must self-heal on the next tick, not require the
@@ -85,8 +104,26 @@ function start(configPath) {
         autostartSupported: os.platform() === 'win32' && isPackaged,
       };
     },
-    pause: () => setPaused(stateFilePath, true),
-    resume: () => setPaused(stateFilePath, false),
+    // Local state flips instantly regardless of network (the control panel
+    // must feel responsive even offline); syncing it to the server is
+    // best-effort so the web profile's toggle agrees too — a failure here
+    // just means the next successful tick() will reconcile it instead.
+    pause: async () => {
+      setPaused(stateFilePath, true);
+      try {
+        await syncTrackingPaused(config, true);
+      } catch (err) {
+        log(`⚠️ Pausieren konnte nicht mit dem Server synchronisiert werden: ${err.message}`);
+      }
+    },
+    resume: async () => {
+      setPaused(stateFilePath, false);
+      try {
+        await syncTrackingPaused(config, false);
+      } catch (err) {
+        log(`⚠️ Fortsetzen konnte nicht mit dem Server synchronisiert werden: ${err.message}`);
+      }
+    },
     enableActivityTracking: () => setTrackActivity(stateFilePath, true),
     disableActivityTracking: () => setTrackActivity(stateFilePath, false),
     enableAutostart: () => {
