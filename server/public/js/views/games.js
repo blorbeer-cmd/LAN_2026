@@ -160,7 +160,7 @@ function renderEventSection() {
 
   return `
     <div class="row-between" style="margin-top:20px;">
-      <div class="section-title" style="margin:0;">🎪 Events</div>
+      <div class="section-title" style="margin:0 0 8px;">🎪 Events</div>
       <button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>
     </div>
     <p class="muted" style="font-size:0.8rem;margin-top:-4px;">
@@ -342,7 +342,7 @@ export function renderGames(container, ctx) {
     ${renderEventSection()}
     ${renderInviteSection()}
     <div class="row-between" style="margin-top:20px;">
-      <div class="section-title" style="margin:0;">🎮 Spiele verwalten</div>
+      <div class="section-title" style="margin:0 0 8px;">🎮 Spiele verwalten</div>
       <button type="button" class="btn btn-primary btn-sm" id="add-game-btn">+ Spiel</button>
     </div>
     ${
