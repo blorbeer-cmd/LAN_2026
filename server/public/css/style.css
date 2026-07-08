@@ -332,6 +332,11 @@ textarea {
   font-size: 0.95rem;
   color: var(--text);
   width: 100%;
+  /* Flex items default to min-width:auto, i.e. never shrink past their
+     content's intrinsic width — for a datetime-local input that's wide
+     enough that two side by side in a .row overflow the card on a phone
+     screen instead of sharing the space evenly. */
+  min-width: 0;
 }
 textarea {
   font-family: inherit;
@@ -432,7 +437,14 @@ input[type='number']::-webkit-inner-spin-button {
   letter-spacing: 0.03em;
   margin: 20px 0 8px;
 }
-.section-title:first-child {
+/* Scoped to a direct child of the view container (i.e. actually the first
+   thing on the page) — NOT a bare `.section-title:first-child`, which would
+   also match a section-title that merely happens to be the first child of
+   some unrelated wrapper (e.g. a `.row-between` pairing it with a button).
+   That mismatch is exactly what left headings like "Sitznachbarn" glued to
+   whatever came before them: the wrapper isn't the top of the page, but the
+   selector couldn't tell the difference and zeroed the margin anyway. */
+.view-container > .section-title:first-child {
   margin-top: 0;
 }
 
