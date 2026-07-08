@@ -75,15 +75,32 @@ function hideConsoleWindow() {
 // independently of the agent's own event loop. Returns the child process (so
 // callers can kill it on shutdown/uninstall) or null if not on Windows / the
 // spawn itself failed synchronously.
+//
+// -STA matters: WinForms (NotifyIcon, ContextMenuStrip, Application.Run)
+// needs a single-threaded apartment, but powershell.exe defaults to MTA —
+// without this flag, creating the icon throws and nothing ever appears,
+// silently, since stderr wasn't being kept anywhere.
 function startTrayIcon(controlUrl, agentPid) {
   if (os.platform() !== 'win32') return null;
   try {
     const scriptPath = path.join(os.tmpdir(), `lan2026-agent-tray-${agentPid}.ps1`);
+    const errorLogPath = path.join(os.tmpdir(), `lan2026-agent-tray-${agentPid}.err.log`);
     fs.writeFileSync(scriptPath, buildTrayScript(controlUrl, agentPid), 'utf8');
+    const errorFd = fs.openSync(errorLogPath, 'a');
     const child = spawn(
       'powershell',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', scriptPath],
-      { windowsHide: true, detached: true, stdio: 'ignore' }
+      [
+        '-NoProfile',
+        '-STA',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-WindowStyle',
+        'Hidden',
+        '-File',
+        scriptPath,
+      ],
+      { windowsHide: true, detached: true, stdio: ['ignore', 'ignore', errorFd] }
     );
     child.unref();
     return child;
