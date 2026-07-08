@@ -29,12 +29,17 @@ export function getCompletedTournamentSummaries(eventId: string): TournamentCham
     const teamById = new Map(teamRows.map((tm) => [tm.id, tm]));
 
     let championTeamId: string | null = null;
-    if (t.format === 'single_elimination') {
+    if (t.format === 'single_elimination' || t.format === 'group_knockout') {
+      // group_knockout only ever reaches 'completed' once its knockout
+      // bracket (not the group stage) has a decided final — same
+      // "winner of the highest round" resolution as a plain bracket, just
+      // scoped to the knockout-stage rows.
       const rows = db
-        .prepare('SELECT round, winner_team_id FROM tournament_matches WHERE tournament_id = ?')
-        .all(t.id) as Array<{ round: number; winner_team_id: string | null }>;
-      const finalRound = Math.max(...rows.map((r) => r.round));
-      championTeamId = rows.find((r) => r.round === finalRound)?.winner_team_id ?? null;
+        .prepare('SELECT round, winner_team_id, stage FROM tournament_matches WHERE tournament_id = ?')
+        .all(t.id) as Array<{ round: number; winner_team_id: string | null; stage: string | null }>;
+      const bracketRows = t.format === 'group_knockout' ? rows.filter((r) => r.stage === 'knockout') : rows;
+      const finalRound = Math.max(...bracketRows.map((r) => r.round));
+      championTeamId = bracketRows.find((r) => r.round === finalRound)?.winner_team_id ?? null;
     } else {
       const rows = db
         .prepare('SELECT team_a_id, team_b_id, winner_team_id, is_draw FROM tournament_matches WHERE tournament_id = ?')

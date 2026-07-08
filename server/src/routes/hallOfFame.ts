@@ -6,15 +6,10 @@ import { Router } from 'express';
 import { db } from '../db';
 import { computeStandings, type MatchForScoring } from '../leaderboard';
 import { getCompletedTournamentSummaries } from './tournamentChampion';
+import { listEvents } from '../events';
 
 export const hallOfFameRouter = Router();
 
-interface EventRow {
-  id: string;
-  name: string;
-  starts_at: number;
-  ends_at: number | null;
-}
 interface PlayerRow {
   id: string;
   name: string;
@@ -33,7 +28,9 @@ function playerSummary(playerById: Map<string, PlayerRow>, playerId: string) {
 }
 
 hallOfFameRouter.get('/', (_req, res) => {
-  const events = db.prepare('SELECT * FROM events ORDER BY starts_at DESC').all() as EventRow[];
+  // Real events only — "außerhalb von Events" isn't a LAN party to crown a
+  // champion of, it's just the fallback bucket for untracked activity.
+  const events = listEvents();
   const players = db.prepare('SELECT id, name, color, avatar FROM players').all() as PlayerRow[];
   const playerById = new Map(players.map((p) => [p.id, p]));
 

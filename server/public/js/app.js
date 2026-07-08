@@ -15,6 +15,7 @@ import { renderMatchmaking, invalidateMatchmakingHistory } from './views/matchma
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
+import { renderGameStats } from './views/gameStats.js';
 import { renderProfile } from './views/profile.js';
 import { renderTournaments, invalidateTournaments, focusTournament } from './views/tournament.js';
 import { renderHallOfFame } from './views/hallOfFame.js';
@@ -30,6 +31,7 @@ const VIEWS = {
   leaderboard: renderLeaderboard,
   settings: renderGames,
   analytics: renderAnalytics,
+  gameStats: renderGameStats,
   profile: renderProfile,
   tournaments: renderTournaments,
   hallOfFame: renderHallOfFame,

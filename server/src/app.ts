@@ -30,12 +30,23 @@ export function createApp(): express.Express {
 
   // Static frontend. The login screen itself is static and handles token entry
   // client-side, so serving files openly is fine — the data APIs are protected.
+  // no-cache (not no-store) forces the browser to revalidate with the server
+  // on every load via ETag instead of silently reusing a stale cached JS/CSS
+  // file after a deploy — this is what caused updated views to appear "not
+  // to have shipped" even though the server had the new code.
   const publicDir = path.join(__dirname, '..', 'public');
-  app.use(express.static(publicDir));
+  app.use(
+    express.static(publicDir, {
+      setHeaders: (res) => {
+        res.setHeader('Cache-Control', 'no-cache');
+      },
+    })
+  );
 
   // SPA fallback: any non-API route serves the app shell.
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) return next();
+    res.setHeader('Cache-Control', 'no-cache');
     res.sendFile(path.join(publicDir, 'index.html'));
   });
 

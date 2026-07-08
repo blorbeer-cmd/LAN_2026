@@ -21,13 +21,14 @@ import { broadcast, Events } from '../realtime';
 import { getLiveBoard } from '../liveStatus';
 import { isGameActive } from '../activity';
 import { config } from '../config';
-import { getActiveEventId } from '../events';
+import { getTrackingEventId, isParticipant, OUTSIDE_EVENTS_ID } from '../events';
 
 export const agentRouter = Router();
 
 interface PlayerRow {
   id: string;
   name: string;
+  tracking_paused: number;
 }
 
 // POST /api/agent/report
@@ -39,11 +40,32 @@ agentRouter.post('/report', (req, res) => {
     return res.status(401).json({ error: 'API-Key fehlt (Header x-api-key).' });
   }
 
-  const player = db.prepare('SELECT id, name FROM players WHERE api_key = ?').get(apiKey) as
+  const player = db.prepare('SELECT id, name, tracking_paused FROM players WHERE api_key = ?').get(apiKey) as
     | PlayerRow
     | undefined;
   if (!player) {
     return res.status(401).json({ error: 'Ungültiger API-Key.' });
+  }
+
+  // Player-side opt-out always wins. Otherwise: if a specific event is
+  // currently tracking, only its roster gets recorded — everyone else stays
+  // untracked while that event's window is active (see events.ts). No event
+  // tracking ("außerhalb von Events") has no roster restriction.
+  //
+  // trackingPaused on the response is always the player's own opt-out flag
+  // specifically (not the combined tracked/untracked outcome) — the agent
+  // mirrors it into its local control panel, so pausing/resuming via the web
+  // profile shows up there too. It deliberately does NOT reflect roster
+  // gating, which is event-specific and not something the player asked for.
+  const trackingEventId = getTrackingEventId();
+  if (player.tracking_paused || (trackingEventId !== OUTSIDE_EVENTS_ID && !isParticipant(trackingEventId, player.id))) {
+    return res.json({
+      ok: true,
+      playerId: player.id,
+      gameIds: [],
+      tracked: false,
+      trackingPaused: Boolean(player.tracking_paused),
+    });
   }
 
   const { processNames, foregroundProcessName, idleSeconds } = req.body ?? {};
@@ -142,7 +164,7 @@ agentRouter.post('/report', (req, res) => {
         ).run(player.id, gameId, now);
         db.prepare(
           'INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at) VALUES (?, ?, ?, ?, ?, NULL)'
-        ).run(nanoid(), player.id, gameId, getActiveEventId(), now);
+        ).run(nanoid(), player.id, gameId, trackingEventId, now);
       }
     }
 
@@ -159,5 +181,39 @@ agentRouter.post('/report', (req, res) => {
   sync();
 
   broadcast(Events.liveStatusChanged, getLiveBoard());
-  res.json({ ok: true, playerId: player.id, gameIds: matchedGameIds });
+  res.json({
+    ok: true,
+    playerId: player.id,
+    gameIds: matchedGameIds,
+    tracked: true,
+    trackingPaused: Boolean(player.tracking_paused),
+  });
+});
+
+// POST /api/agent/tracking-paused - lets the agent's own local control panel
+// flip the same opt-out flag the web profile's "Tracking pausieren" toggle
+// uses, so there's one source of truth reachable from either place instead
+// of two toggles that can silently disagree.
+// Headers: x-api-key: <player's api key>
+// Body: { paused: boolean }
+agentRouter.post('/tracking-paused', (req, res) => {
+  const apiKey = req.header('x-api-key');
+  if (!apiKey) {
+    return res.status(401).json({ error: 'API-Key fehlt (Header x-api-key).' });
+  }
+
+  const player = db.prepare('SELECT id FROM players WHERE api_key = ?').get(apiKey) as { id: string } | undefined;
+  if (!player) {
+    return res.status(401).json({ error: 'Ungültiger API-Key.' });
+  }
+
+  const { paused } = req.body ?? {};
+  if (typeof paused !== 'boolean') {
+    return res.status(400).json({ error: 'paused muss ein Boolean sein.' });
+  }
+
+  db.prepare('UPDATE players SET tracking_paused = ? WHERE id = ?').run(paused ? 1 : 0, player.id);
+
+  broadcast(Events.playersChanged, null);
+  res.json({ ok: true, trackingPaused: paused });
 });

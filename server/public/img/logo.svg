@@ -1,38 +1,48 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="RespawnHQ">
   <defs>
-    <linearGradient id="rhq-badge" x1="4" y1="2" x2="116" y2="118" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#6d9dff" />
-      <stop offset="0.55" stop-color="#9163f5" />
-      <stop offset="1" stop-color="#ef5da8" />
+    <linearGradient id="rhq-badge" x1="2" y1="0" x2="118" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7fb4ff" />
+      <stop offset="0.38" stop-color="#7c6bff" />
+      <stop offset="0.7" stop-color="#c15be6" />
+      <stop offset="1" stop-color="#ff5fa8" />
     </linearGradient>
-    <linearGradient id="rhq-beam" x1="60" y1="20" x2="60" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.98" />
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0.4" />
+    <linearGradient id="rhq-beam" x1="60" y1="19" x2="60" y2="66" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="1" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.45" />
     </linearGradient>
-    <linearGradient id="rhq-sheen" x1="60" y1="6" x2="60" y2="60" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22" />
+    <linearGradient id="rhq-sheen" x1="60" y1="4" x2="60" y2="62" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.3" />
       <stop offset="1" stop-color="#ffffff" stop-opacity="0" />
     </linearGradient>
+    <radialGradient id="rhq-glow" cx="50%" cy="36%" r="62%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.4" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0" />
+    </radialGradient>
   </defs>
 
-  <rect x="4" y="4" width="112" height="112" rx="32" fill="url(#rhq-badge)" />
+  <!-- ambient glow behind the badge, for extra pop at larger sizes -->
+  <circle cx="60" cy="58" r="58" fill="url(#rhq-glow)" />
+
+  <rect x="4" y="4" width="112" height="112" rx="30" fill="url(#rhq-badge)" />
+  <rect x="5" y="5" width="110" height="110" rx="29" fill="none" stroke="#ffffff" stroke-opacity="0.28" stroke-width="1.6" />
   <!-- glass sheen across the top half, for a bit of app-icon depth -->
-  <rect x="4" y="4" width="112" height="56" rx="32" fill="url(#rhq-sheen)" />
+  <rect x="4" y="4" width="112" height="58" rx="30" fill="url(#rhq-sheen)" />
 
   <!-- respawn beacon: two descending chevrons dropping the player back in -->
-  <circle cx="60" cy="46" r="31" fill="#ffffff" opacity="0.08" />
-  <path d="M36,22 60,37 84,22 84,31 60,46 36,31 Z" fill="#ffffff" opacity="0.5" />
-  <path d="M41,39 60,54 79,39 79,49 60,64 41,49 Z" fill="url(#rhq-beam)" />
+  <circle cx="60" cy="45" r="32" fill="#ffffff" opacity="0.1" />
+  <path d="M34,21 60,37 86,21 86,31 60,47 34,31 Z" fill="#ffffff" opacity="0.55" />
+  <path d="M40,39 60,55 80,39 80,50 60,66 40,50 Z" fill="url(#rhq-beam)" />
 
   <!-- controller -->
-  <rect x="24" y="66" width="72" height="38" rx="19" fill="#f8faff" />
-  <rect x="36" y="80" width="15" height="4.5" rx="2.25" fill="url(#rhq-badge)" />
-  <rect x="42" y="74.5" width="4.5" height="15" rx="2.25" fill="url(#rhq-badge)" />
-  <circle cx="70" cy="79" r="4.2" fill="url(#rhq-badge)" />
-  <circle cx="80" cy="88.5" r="4.2" fill="url(#rhq-badge)" />
+  <rect x="22" y="66" width="76" height="40" rx="20" fill="#f9fbff" />
+  <rect x="35" y="81" width="16" height="4.6" rx="2.3" fill="url(#rhq-badge)" />
+  <rect x="41" y="75" width="4.6" height="16" rx="2.3" fill="url(#rhq-badge)" />
+  <circle cx="72" cy="80" r="4.4" fill="url(#rhq-badge)" />
+  <circle cx="83" cy="90" r="4.4" fill="url(#rhq-badge)" />
 
-  <!-- pixel sparks: a small retro nod without depicting any specific game -->
-  <rect x="10" y="88" width="6" height="6" fill="#ffffff" opacity="0.55" />
-  <rect x="18" y="80" width="4" height="4" fill="#ffffff" opacity="0.4" />
-  <rect x="100" y="30" width="6" height="6" fill="#ffffff" opacity="0.5" />
+  <!-- energy sparks: a bit more motion/flair than a plain badge -->
+  <rect x="7" y="90" width="7.5" height="7.5" fill="#ffffff" opacity="0.6" transform="rotate(14 10.75 93.75)" />
+  <rect x="17" y="79" width="4.5" height="4.5" fill="#ffffff" opacity="0.42" transform="rotate(14 19.25 81.25)" />
+  <rect x="98" y="24" width="7.5" height="7.5" fill="#ffffff" opacity="0.58" transform="rotate(-12 101.75 27.75)" />
+  <circle cx="106" cy="47" r="2.6" fill="#ffffff" opacity="0.45" />
 </svg>

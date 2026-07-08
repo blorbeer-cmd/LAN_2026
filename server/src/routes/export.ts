@@ -8,7 +8,7 @@ import { db } from '../db';
 import { computeStandings, type MatchForScoring } from '../leaderboard';
 import { computePlaytime, aggregateByGame, formatDurationMs, type PlaySession } from '../playtime';
 import { computeAwards } from '../awards';
-import { getActiveEventId } from '../events';
+import { getTrackingEventId } from '../events';
 import { getCompletedTournamentSummaries } from './tournamentChampion';
 import { renderExportPdf } from '../pdfExport';
 import PDFDocument from 'pdfkit';
@@ -154,7 +154,7 @@ export function buildExportSnapshot(filterEventId: string): ExportSnapshot | und
 // default, or an explicit ?eventId=).
 exportRouter.get('/', (req, res) => {
   const { eventId } = req.query;
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getActiveEventId();
+  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
   const snapshot = buildExportSnapshot(filterEventId);
   if (!snapshot) return res.status(404).json({ error: 'Event nicht gefunden.' });
   res.json(snapshot);
@@ -168,7 +168,7 @@ function sanitizeForFilename(name: string): string {
 // keepsake instead of raw JSON.
 exportRouter.get('/pdf', (req, res) => {
   const { eventId } = req.query;
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getActiveEventId();
+  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
   const snapshot = buildExportSnapshot(filterEventId);
   if (!snapshot) return res.status(404).json({ error: 'Event nicht gefunden.' });
 

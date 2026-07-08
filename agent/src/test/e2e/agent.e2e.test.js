@@ -21,6 +21,8 @@ const BASE_URL = `http://localhost:${PORT}`;
 let serverProcess;
 let stopAgent;
 let configFile;
+let stateFilePath;
+let player;
 
 async function waitForServer(url, timeoutMs = 10_000) {
   const start = Date.now();
@@ -74,10 +76,11 @@ test('agent reports the running node process and the server reflects it as "play
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: 'E2E Agent Player' }),
   });
-  const player = await playerRes.json();
+  player = await playerRes.json();
 
   // Write a real agent config file and start the real agent loop.
   configFile = path.join(os.tmpdir(), `agent-e2e-config-${Date.now()}.json`);
+  stateFilePath = path.join(path.dirname(configFile), 'agent.state.json');
   fs.writeFileSync(
     configFile,
     JSON.stringify({ serverUrl: BASE_URL, apiKey: player.api_key, pollIntervalMs: 300 })
@@ -99,4 +102,27 @@ test('agent reports the running node process and the server reflects it as "play
     entry.games.some((g) => g.game_id === game.id),
     'the E2E Node Game should be listed as currently running'
   );
+});
+
+test('pausing via the web profile (PATCH /api/players) is picked up by the already-running agent', async () => {
+  await fetch(`${BASE_URL}/api/players/${player.id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trackingPaused: true }),
+  });
+
+  // Wait for the agent's next tick (pollIntervalMs=300) to pick this up via
+  // the report response and mirror it into its local state file.
+  await new Promise((r) => setTimeout(r, 700));
+  const paused = JSON.parse(fs.readFileSync(stateFilePath, 'utf8'));
+  assert.equal(paused.paused, true, 'agent should mirror the server-side pause locally');
+
+  await fetch(`${BASE_URL}/api/players/${player.id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trackingPaused: false }),
+  });
+  await new Promise((r) => setTimeout(r, 700));
+  const resumed = JSON.parse(fs.readFileSync(stateFilePath, 'utf8'));
+  assert.equal(resumed.paused, false, 'agent should mirror the server-side resume locally');
 });

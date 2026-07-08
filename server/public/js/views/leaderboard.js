@@ -112,13 +112,28 @@ export function renderLeaderboard(container, ctx) {
   container.querySelector('#add-match-btn').addEventListener('click', () => openMatchForm(ctx));
 }
 
-function openMatchForm(ctx) {
+// Also called from matchmaking.js (with presetGameId/presetTeams) so a
+// freshly drawn set of teams can go straight into "Ergebnis eintragen"
+// without re-picking every player by hand.
+export function openMatchForm(ctx, options = {}) {
   if (state.games.length === 0 || state.players.length === 0) {
     return showToast('Dafür braucht es mindestens ein Spiel und 2 Spieler.', { error: true });
   }
 
-  let teamCount = 2;
-  const defaultGameId = state.selectedGameId || state.games[0].id;
+  let teamCount = options.presetTeams ? Math.max(2, options.presetTeams.length) : 2;
+  let isFfa = false;
+  const defaultGameId = options.presetGameId || state.selectedGameId || state.games[0].id;
+
+  const presetTeamIndexByPlayer = new Map();
+  if (options.presetTeams) {
+    options.presetTeams.forEach((t, i) => t.playerIds.forEach((pid) => presetTeamIndexByPlayer.set(pid, i)));
+  }
+
+  // Free-for-all defaults to whoever is currently shown as playing, same
+  // convention as "Teams auslosen" and tournament creation.
+  let ffaCheckedIds = new Set(state.live.filter((p) => p.state === 'playing').map((p) => p.player_id));
+  if (ffaCheckedIds.size === 0) ffaCheckedIds = new Set(state.players.map((p) => p.id));
+  const ffaParticipants = () => state.players.filter((p) => ffaCheckedIds.has(p.id));
 
   const { close, el } = openModal(
     'Ergebnis eintragen',
@@ -127,57 +142,132 @@ function openMatchForm(ctx) {
         <select id="match-game">
           ${state.games.map((g) => `<option value="${g.id}" ${g.id === defaultGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`).join('')}
         </select>
-        <div class="row">
-          <span style="flex:1;">Anzahl Teams</span>
-          <input type="number" id="match-teamcount" min="2" max="6" value="2" style="width:70px;" />
-        </div>
-        <div class="section-title">Spieler-Zuordnung</div>
-        <div id="match-players"></div>
-        <div class="section-title">Gewinner</div>
-        <div id="match-winner"></div>
+        <label class="check-row">
+          <input type="checkbox" id="match-ffa" />
+          <span>🎲 Frei-für-alle (kein Team, jeder für sich)</span>
+        </label>
+        <div id="match-body"></div>
         <button type="submit" class="btn btn-primary btn-block">Speichern</button>
       </form>
     `,
     {
       onMount: (modalEl) => {
+        const bodyEl = modalEl.querySelector('#match-body');
+
         function renderTeamPickers() {
-          const playersEl = modalEl.querySelector('#match-players');
-          const teamOptions = Array.from({ length: teamCount }, (_, i) => `<option value="${i}">Team ${i + 1}</option>`).join('');
-          playersEl.innerHTML = state.players
+          const teamOptions = (playerId) =>
+            Array.from(
+              { length: teamCount },
+              (_, i) => `<option value="${i}" ${presetTeamIndexByPlayer.get(playerId) === i ? 'selected' : ''}>Team ${i + 1}</option>`
+            ).join('');
+          const playersHtml = state.players
             .map(
               (p) => `
               <div class="row" style="padding:4px 0;">
                 ${avatarHtml(p, 20)}
                 <span style="flex:1;">${escapeHtml(p.name)}</span>
                 <select data-team-for="${p.id}">
-                  <option value="">–</option>
-                  ${teamOptions}
+                  <option value="" ${presetTeamIndexByPlayer.has(p.id) ? '' : 'selected'}>–</option>
+                  ${teamOptions(p.id)}
                 </select>
               </div>`
             )
             .join('');
 
-          const winnerEl = modalEl.querySelector('#match-winner');
+          bodyEl.innerHTML = `
+            <div class="row">
+              <span style="flex:1;">Anzahl Teams</span>
+              <input type="number" id="match-teamcount" min="2" max="6" value="${teamCount}" style="width:70px;" />
+            </div>
+            <div class="section-title">Spieler-Zuordnung</div>
+            <div id="match-players">${playersHtml}</div>
+            <div class="section-title">Gewinner</div>
+            <div class="row" style="flex-wrap:wrap;">
+              ${Array.from({ length: teamCount }, (_, i) => `<label class="chip"><input type="radio" name="winner" value="${i}" /> Team ${i + 1}</label>`).join('')}
+              <label class="chip"><input type="radio" name="winner" value="" checked /> Unentschieden</label>
+            </div>
+          `;
+
+          bodyEl.querySelector('#match-teamcount').addEventListener('input', (e) => {
+            teamCount = Math.min(6, Math.max(2, parseInt(e.target.value, 10) || 2));
+            renderTeamPickers();
+          });
+        }
+
+        function renderFfaWinnerOptions() {
+          const winnerEl = bodyEl.querySelector('#match-ffa-winner');
+          const participants = ffaParticipants();
           winnerEl.innerHTML = `
             <div class="row" style="flex-wrap:wrap;">
-              ${Array.from({ length: teamCount }, (_, i) => `
-                <label class="chip"><input type="radio" name="winner" value="${i}" /> Team ${i + 1}</label>
-              `).join('')}
-              <label class="chip"><input type="radio" name="winner" value="" checked /> Unentschieden</label>
+              ${participants.map((p) => `<label class="chip"><input type="radio" name="ffa-winner" value="${p.id}" /> ${escapeHtml(p.name)}</label>`).join('')}
+              <label class="chip"><input type="radio" name="ffa-winner" value="" checked /> Kein Sieger</label>
             </div>
           `;
         }
 
-        renderTeamPickers();
+        function renderFfaPickers() {
+          bodyEl.innerHTML = `
+            <div class="section-title">Teilnehmer</div>
+            <div id="match-ffa-players">
+              ${state.players
+                .map(
+                  (p) => `
+                <label class="check-row">
+                  <input type="checkbox" data-ffa-player="${p.id}" ${ffaCheckedIds.has(p.id) ? 'checked' : ''} />
+                  ${avatarHtml(p, 20)}
+                  <span style="flex:1;">${escapeHtml(p.name)}</span>
+                </label>`
+                )
+                .join('')}
+            </div>
+            <div class="section-title">Gewinner</div>
+            <div id="match-ffa-winner"></div>
+          `;
+          renderFfaWinnerOptions();
+          bodyEl.querySelectorAll('[data-ffa-player]').forEach((cb) => {
+            cb.addEventListener('change', () => {
+              if (cb.checked) ffaCheckedIds.add(cb.dataset.ffaPlayer);
+              else ffaCheckedIds.delete(cb.dataset.ffaPlayer);
+              renderFfaWinnerOptions();
+            });
+          });
+        }
 
-        modalEl.querySelector('#match-teamcount').addEventListener('input', (e) => {
-          teamCount = Math.min(6, Math.max(2, parseInt(e.target.value, 10) || 2));
-          renderTeamPickers();
+        function renderBody() {
+          if (isFfa) renderFfaPickers();
+          else renderTeamPickers();
+        }
+
+        renderBody();
+
+        modalEl.querySelector('#match-ffa').addEventListener('change', (e) => {
+          isFfa = e.target.checked;
+          renderBody();
         });
 
         modalEl.querySelector('#match-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const gameId = modalEl.querySelector('#match-game').value;
+
+          if (isFfa) {
+            const participants = ffaParticipants();
+            if (participants.length < 2) {
+              return showToast('Mindestens 2 Teilnehmer auswählen.', { error: true });
+            }
+            const teams = participants.map((p) => ({ playerIds: [p.id] }));
+            const winnerPlayerId = modalEl.querySelector('input[name="ffa-winner"]:checked')?.value || null;
+            const winnerTeamIndex = winnerPlayerId ? participants.findIndex((p) => p.id === winnerPlayerId) : null;
+            try {
+              await api.matches.create({ gameId, teams, winnerTeamIndex });
+              close();
+              await ctx.refresh();
+              showToast('Ergebnis gespeichert.');
+            } catch (err) {
+              showToast(err.message, { error: true });
+            }
+            return;
+          }
+
           const teams = Array.from({ length: teamCount }, () => ({ playerIds: [] }));
           modalEl.querySelectorAll('[data-team-for]').forEach((sel) => {
             if (sel.value !== '') teams[parseInt(sel.value, 10)].playerIds.push(sel.dataset.teamFor);

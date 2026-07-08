@@ -8,7 +8,7 @@ import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db, getState, setState } from '../db';
 import { broadcast, Events } from '../realtime';
-import { getActiveEventId } from '../events';
+import { getTrackingEventId } from '../events';
 import { notifyPlayers } from '../push';
 
 export const votesRouter = Router();
@@ -84,7 +84,7 @@ votesRouter.post('/start', (_req, res) => {
 
   db.prepare(
     'INSERT INTO vote_rounds (round, event_id, started_at, closed_at, winner_game_ids) VALUES (?, ?, ?, NULL, NULL)'
-  ).run(nextRound, getActiveEventId(), now);
+  ).run(nextRound, getTrackingEventId(), now);
 
   const payload = buildPayload();
   broadcast(Events.votesChanged, payload);
@@ -122,7 +122,7 @@ votesRouter.post('/', (req, res) => {
   db.prepare(
     `INSERT INTO votes (id, player_id, game_id, event_id, round, created_at) VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(player_id, round) DO UPDATE SET game_id = excluded.game_id, created_at = excluded.created_at`
-  ).run(nanoid(), playerId, gameId, getActiveEventId(), state.round, Date.now());
+  ).run(nanoid(), playerId, gameId, getTrackingEventId(), state.round, Date.now());
 
   const payload = buildPayload();
   broadcast(Events.votesChanged, payload);
@@ -185,7 +185,7 @@ interface VoteRoundRow {
 // from vote_rounds, not from the votes table itself.
 votesRouter.get('/history', (req, res) => {
   const { eventId, limit } = req.query;
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getActiveEventId();
+  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
   const limitNum = Math.min(50, Math.max(1, parseInt(typeof limit === 'string' ? limit : '', 10) || 20));
 
   const rows = db

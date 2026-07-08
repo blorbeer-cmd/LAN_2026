@@ -134,7 +134,8 @@ test('GET /api/analytics/awards rejects from > to', async () => {
 test('eventId filters analytics precisely, independent of session timestamps', async () => {
   const firstEvent = await request(app).get('/api/events/active');
 
-  // A session recorded in the first event.
+  // A session recorded in the first event ("außerhalb von Events" at this
+  // point, since nothing has started tracking yet).
   await report(apiKeyA, ['cs2.exe']);
   await new Promise((r) => setTimeout(r, 30));
   await report(apiKeyA, []);
@@ -143,8 +144,15 @@ test('eventId filters analytics precisely, independent of session timestamps', a
   const countBeforeSwitch = beforeSwitch.body.length;
   assert.ok(countBeforeSwitch > 0);
 
-  // Switch to a new event and record a different session there.
-  const secondEvent = await request(app).post('/api/events').send({ name: 'Zweites Event' });
+  // Switch to a new event: create it, roster player B onto it, and start
+  // tracking — only then does a new session actually land there.
+  const secondEvent = await request(app).post('/api/events').send({
+    name: 'Zweites Event',
+    startsAt: Date.now(),
+    endsAt: Date.now() + 24 * 60 * 60 * 1000,
+  });
+  await request(app).put(`/api/events/${secondEvent.body.id}/participants`).send({ playerIds: [playerB] });
+  await request(app).post(`/api/events/${secondEvent.body.id}/tracking/start`).send({});
   await report(apiKeyB, ['rocketleague.exe']);
   await new Promise((r) => setTimeout(r, 30));
   await report(apiKeyB, []);
@@ -165,4 +173,101 @@ test('eventId filters analytics precisely, independent of session timestamps', a
   assert.ok(
     secondOverview.body.longestSessionsPerPlayerGame.every((e: { playerId: string }) => e.playerId === playerB)
   );
+});
+
+test('GET /api/analytics/games ranks games by playtime with distinct player/session counts', async () => {
+  const res = await request(app).get('/api/analytics/games');
+  assert.equal(res.status, 200);
+  const cs2 = res.body.games.find((g: { gameId: string }) => g.gameId === cs2GameId);
+  assert.ok(cs2);
+  assert.ok(cs2.playerCount >= 2); // both Analytics A and B played CS2
+  assert.ok(cs2.sessionCount >= 2);
+  assert.ok(cs2.totalFormatted);
+});
+
+// ---------- games-tournaments (matches, tournaments, draws, fun stats) ----------
+
+let statP1: string;
+let statP2: string;
+let statP3: string;
+
+test('setup: players + skills + matches + a tournament + a draw for games-tournaments stats', async () => {
+  const p1 = await request(app).post('/api/players').send({ name: 'Stat P1' });
+  const p2 = await request(app).post('/api/players').send({ name: 'Stat P2' });
+  const p3 = await request(app).post('/api/players').send({ name: 'Stat P3' });
+  statP1 = p1.body.id;
+  statP2 = p2.body.id;
+  statP3 = p3.body.id;
+
+  // P1 is rated far below P2 for CS2, so P1 beating P2 is a clear underdog win.
+  await request(app).put('/api/skills').send({ playerId: statP1, gameId: cs2GameId, rating: 2 });
+  await request(app).put('/api/skills').send({ playerId: statP2, gameId: cs2GameId, rating: 9 });
+
+  // P1 vs P2 twice (the rivalry), once each way so it's not just a repeat of
+  // the underdog match.
+  await request(app)
+    .post('/api/matches')
+    .send({ gameId: cs2GameId, teams: [{ playerIds: [statP1] }, { playerIds: [statP2] }], winnerTeamIndex: 0 });
+  await request(app)
+    .post('/api/matches')
+    .send({ gameId: cs2GameId, teams: [{ playerIds: [statP1] }, { playerIds: [statP2] }], winnerTeamIndex: 1 });
+
+  // P1+P3 team up and win (the duo).
+  await request(app)
+    .post('/api/matches')
+    .send({
+      gameId: cs2GameId,
+      teams: [{ playerIds: [statP1, statP3] }, { playerIds: [statP2] }],
+      winnerTeamIndex: 0,
+    });
+
+  await request(app)
+    .post('/api/tournaments')
+    .send({ gameId: cs2GameId, format: 'round_robin', teams: [{ playerIds: [statP1] }, { playerIds: [statP2] }] });
+
+  await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId: cs2GameId, playerIds: [statP1, statP2, statP3] });
+});
+
+test('GET /api/analytics/games-tournaments aggregates matches, tournaments, draws and fun stats', async () => {
+  const res = await request(app).get('/api/analytics/games-tournaments');
+  assert.equal(res.status, 200);
+
+  assert.ok(res.body.matches.total >= 3);
+  const cs2Matches = res.body.matches.byGame.find((g: { gameId: string }) => g.gameId === cs2GameId);
+  assert.ok(cs2Matches.count >= 3);
+
+  assert.ok(res.body.tournaments.total >= 1);
+  const rrFormat = res.body.tournaments.byFormat.find((f: { format: string }) => f.format === 'round_robin');
+  assert.ok(rrFormat);
+
+  assert.ok(res.body.draws.total >= 1);
+
+  assert.ok(res.body.fun.biggestRivalry);
+  // 2 direct P1-vs-P2 matches, plus the duo match (P1+P3 vs P2) also counts
+  // as a P1-vs-P2 encounter — 3 total.
+  assert.equal(res.body.fun.biggestRivalry.count, 3);
+  assert.deepEqual(
+    [res.body.fun.biggestRivalry.playerA.id, res.body.fun.biggestRivalry.playerB.id].sort(),
+    [statP1, statP2].sort()
+  );
+
+  assert.ok(res.body.fun.bestDuo);
+  assert.deepEqual([res.body.fun.bestDuo.playerA.id, res.body.fun.bestDuo.playerB.id].sort(), [statP1, statP3].sort());
+  assert.equal(res.body.fun.bestDuo.gamesTogether, 1);
+  assert.equal(res.body.fun.bestDuo.winsTogether, 1);
+
+  assert.ok(res.body.fun.biggestUnderdogWin);
+  assert.ok(res.body.fun.biggestUnderdogWin.winners.some((w: { id: string }) => w.id === statP1));
+});
+
+test('GET /api/analytics/games-tournaments filters by eventId', async () => {
+  const ghostEvent = await request(app).post('/api/events').send({ name: 'Leeres Event' });
+  const res = await request(app).get(`/api/analytics/games-tournaments?eventId=${ghostEvent.body.id}`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.matches.total, 0);
+  assert.equal(res.body.tournaments.total, 0);
+  assert.equal(res.body.draws.total, 0);
+  assert.equal(res.body.fun.biggestRivalry, null);
 });
