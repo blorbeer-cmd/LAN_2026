@@ -354,6 +354,14 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
   // the moment those players deserve a "your match is up" nudge.
   let readyNextMatchId: string | null = null;
 
+  // Round-robin fixtures already know both opponents from the start, so
+  // there's no "team becomes known" moment to hook into like the bracket
+  // has. The equivalent nudge-worthy moment is the round itself wrapping up:
+  // once every match in a round is decided, the next round's matches are
+  // "up", so their teams get notified. Populated inside the transaction
+  // below with the ids of any matches that just became ready this way.
+  let readyRoundRobinMatchIds: string[] = [];
+
   const record = db.transaction(() => {
     db.prepare(
       'INSERT INTO matches (id, game_id, event_id, played_at, result) VALUES (?, ?, ?, ?, ?)'
@@ -409,29 +417,61 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
       if (remaining.n === 0) {
         db.prepare("UPDATE tournaments SET status = 'completed' WHERE id = ?").run(tournament.id);
       }
+
+      const roundRemaining = db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM tournament_matches
+           WHERE tournament_id = ? AND round = ? AND is_bye = 0 AND winner_team_id IS NULL AND is_draw = 0`
+        )
+        .get(tournament.id, match.round) as { n: number };
+      if (roundRemaining.n === 0) {
+        readyRoundRobinMatchIds = (
+          db
+            .prepare('SELECT id FROM tournament_matches WHERE tournament_id = ? AND round = ? ORDER BY slot')
+            .all(tournament.id, match.round + 1) as Array<{ id: string }>
+        ).map((r) => r.id);
+      }
     }
   });
   record();
 
-  let notify: { playerIds: string[]; message: string } | undefined;
-  if (readyNextMatchId) {
-    const nextMatch = db.prepare('SELECT team_a_id, team_b_id FROM tournament_matches WHERE id = ?').get(
-      readyNextMatchId
-    ) as { team_a_id: string; team_b_id: string };
+  // Looks up a match's two teams and, if both are known, sends the "your
+  // match is up" push + returns the notify payload for the socket broadcast.
+  function buildMatchReadyNotify(matchId: string): { playerIds: string[]; message: string } | undefined {
+    const nextMatch = db.prepare('SELECT team_a_id, team_b_id FROM tournament_matches WHERE id = ?').get(matchId) as
+      | { team_a_id: string; team_b_id: string }
+      | undefined;
+    if (!nextMatch || !nextMatch.team_a_id || !nextMatch.team_b_id) return undefined;
     const nextTeams = db
-      .prepare(
-        `SELECT id, name, player_ids FROM tournament_teams WHERE id IN (?, ?)`
-      )
+      .prepare(`SELECT id, name, player_ids FROM tournament_teams WHERE id IN (?, ?)`)
       .all(nextMatch.team_a_id, nextMatch.team_b_id) as Array<{ id: string; name: string; player_ids: string }>;
     const nextTeamA = nextTeams.find((t) => t.id === nextMatch.team_a_id);
     const nextTeamB = nextTeams.find((t) => t.id === nextMatch.team_b_id);
-    if (nextTeamA && nextTeamB) {
-      notify = {
-        playerIds: [...JSON.parse(nextTeamA.player_ids), ...JSON.parse(nextTeamB.player_ids)],
-        message: `⚔️ Dein nächstes Match steht an: ${nextTeamA.name} vs ${nextTeamB.name}`,
-      };
-      notifyPlayers(notify.playerIds, { title: '⚔️ Dein Match ist bereit', body: notify.message, url: '/' });
-    }
+    if (!nextTeamA || !nextTeamB) return undefined;
+    const matchNotify = {
+      playerIds: [...JSON.parse(nextTeamA.player_ids), ...JSON.parse(nextTeamB.player_ids)],
+      message: `⚔️ Dein nächstes Match steht an: ${nextTeamA.name} vs ${nextTeamB.name}`,
+    };
+    notifyPlayers(matchNotify.playerIds, { title: '⚔️ Dein Match ist bereit', body: matchNotify.message, url: '/' });
+    return matchNotify;
+  }
+
+  const notify = readyNextMatchId ? buildMatchReadyNotify(readyNextMatchId) : undefined;
+
+  // A round wrapping up can ready several next-round matches at once (round-
+  // robin isn't gated to one match at a time like the bracket is), so each
+  // gets its own broadcast/toast rather than trying to cram them into the
+  // single `notify` slot the response below uses.
+  for (const matchId of readyRoundRobinMatchIds) {
+    const roundNotify = buildMatchReadyNotify(matchId);
+    if (!roundNotify) continue;
+    broadcast(Events.tournamentsChanged, {
+      type: 'match_ready',
+      tournamentId: tournament.id,
+      tournamentName: tournament.name,
+      gameId: tournament.game_id,
+      notify: roundNotify,
+    });
   }
 
   broadcast(Events.tournamentsChanged, {
