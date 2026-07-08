@@ -117,23 +117,41 @@ input {
 }
 
 .topbar-title {
-  font-weight: 700;
-  font-size: 1.05rem;
+  font-size: 1.2rem;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
 }
 
 .topbar-logo {
   display: block;
   border-radius: 8px;
+  filter: drop-shadow(0 0 6px rgba(145, 99, 245, 0.5));
 }
 
 .login-logo {
   display: block;
   margin: 0 auto;
   border-radius: 18px;
-  box-shadow: var(--shadow), 0 0 44px rgba(145, 99, 245, 0.35);
+  box-shadow: var(--shadow), 0 0 52px rgba(145, 99, 245, 0.45);
+}
+
+/* The wordmark: a gradient-filled, slightly slanted logotype instead of
+   plain bold text, so the brand reads as a LAN-party/esports mark rather
+   than a generic app title. Reuses the same accent gradient as everything
+   else (buttons, the topbar stripe) so it doesn't introduce a new color. */
+.brand-title {
+  display: inline-block;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-style: italic;
+  transform: skewX(-4deg);
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 14px rgba(145, 99, 245, 0.5));
 }
 
 .topbar-actions {
@@ -767,8 +785,8 @@ button.bracket-team:hover {
   font-size: 2.2rem;
 }
 .login-card h1 {
-  margin: 0;
-  font-size: 1.3rem;
+  margin: 4px 0 0;
+  font-size: 1.9rem;
 }
 
 /* ---------- Toasts ---------- */
