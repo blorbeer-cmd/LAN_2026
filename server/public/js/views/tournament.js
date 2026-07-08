@@ -105,7 +105,7 @@ function renderList(container, ctx) {
         : `<div class="card-grid">${listCache
             .map(
               (t) => `
-            <button type="button" class="card row" style="width:100%;text-align:left;cursor:pointer;" data-open-tournament="${t.id}">
+            <button type="button" class="card row list-row" data-open-tournament="${t.id}">
               ${gameBadgeHtml({ id: t.gameId, icon: t.gameIcon }, 36)}
               <span style="flex:1;">
                 <div class="player-name">${escapeHtml(t.name)}</div>
@@ -386,9 +386,10 @@ function teamLabel(teamsById, teamId) {
   return t ? escapeHtml(t.name) : 'TBD';
 }
 
-// A team's score-entry mini-form, shown instead of the plain winner-pick
-// buttons whenever the tournament tracks a real score — the winner itself
-// is derived server-side from whichever number is higher.
+// A team's score-entry mini-form for round-robin fixtures (the bracket has
+// its own inline variant, see renderBracketMatchBox) — shown instead of the
+// plain winner-pick buttons whenever the tournament tracks a real score, the
+// winner itself is derived server-side from whichever number is higher.
 function renderScoreForm(m) {
   return `
     <input type="number" min="0" inputmode="numeric" data-score-a="${m.id}" style="width:52px;" placeholder="0" />
@@ -397,54 +398,111 @@ function renderScoreForm(m) {
     <button type="button" class="btn btn-sm" data-submit-score="${m.id}">✓</button>`;
 }
 
+// Must match the CSS custom properties --bracket-match-h / --bracket-pair-gap
+// in style.css exactly — buildBracketNode() below uses these as pure numbers
+// to compute connector-line positions, so a mismatch would make the lines
+// land a few pixels off the boxes they're supposed to connect.
+const BRACKET_MATCH_H = 76;
+const BRACKET_PAIR_GAP = 20;
+
+// Height a subtree rooted `depth` rounds above a leaf renders at: depth 0 is
+// a single match box, each level up is two of the previous level stacked
+// with one gap between them. Matches how .bracket-node/.bracket-children
+// actually stack in CSS (flex column, no manual sizing) — this is the exact
+// pixel math behind it, not a measurement.
+function bracketSubtreeHeight(depth) {
+  return depth === 0 ? BRACKET_MATCH_H : 2 * bracketSubtreeHeight(depth - 1) + BRACKET_PAIR_GAP;
+}
+
+// One match's contents, fixed at exactly BRACKET_MATCH_H tall regardless of
+// state (bye / TBD / decided / awaiting a score) — see .bracket-match. Score
+// tracking shows the number inline in each team's own row instead of on a
+// separate line below, which is what keeps every box the same height.
+function renderBracketMatchBox(m, t, teamsById) {
+  if (m.isBye) {
+    return `
+      <div class="bracket-match">
+        <div class="bracket-team-row is-winner"><span class="bracket-team-name">${teamLabel(teamsById, m.winnerTeamId)}</span></div>
+        <div class="bracket-team-row is-tbd"><span class="bracket-team-name">Freilos</span></div>
+      </div>`;
+  }
+
+  const canRecord = t.status === 'active' && m.teamAId && m.teamBId && !m.winnerTeamId;
+
+  const teamRow = (teamId, score) => {
+    const isWinner = m.winnerTeamId && m.winnerTeamId === teamId;
+    const label = teamId ? teamLabel(teamsById, teamId) : 'TBD';
+    const cls = `bracket-team-row${isWinner ? ' is-winner' : ''}${!teamId ? ' is-tbd' : ''}`;
+    if (canRecord && t.trackScore) {
+      const side = teamId === m.teamAId ? 'a' : 'b';
+      return `
+        <div class="${cls}">
+          <span class="bracket-team-name">${label}</span>
+          <input type="number" min="0" inputmode="numeric" class="bracket-score-input" data-score-${side}="${m.id}" placeholder="0" />
+        </div>`;
+    }
+    if (canRecord && teamId) {
+      return `<button type="button" class="${cls}" data-match="${m.id}" data-winner="${teamId}"><span class="bracket-team-name">${label}</span></button>`;
+    }
+    const scoreReadout = t.trackScore && score !== null ? `<span class="bracket-score">${score}</span>` : '';
+    return `<div class="${cls}"><span class="bracket-team-name">${label}</span>${scoreReadout}</div>`;
+  };
+
+  // Floats in the connector gutter to the right of the box (see
+  // .bracket-score-submit) instead of taking up a 3rd row — keeps the box
+  // itself exactly 2 rows tall even while a score is being entered.
+  const submitBtn =
+    canRecord && t.trackScore
+      ? `<button type="button" class="bracket-score-submit btn" data-submit-score="${m.id}" aria-label="Ergebnis speichern">✓</button>`
+      : '';
+
+  return `<div class="bracket-match">${teamRow(m.teamAId, m.scoreA)}${teamRow(m.teamBId, m.scoreB)}${submitBtn}</div>`;
+}
+
+// Recursively renders the bracket as nested pairs instead of flat per-round
+// columns: a round-r match's DOM node contains its own two round-(r-1)
+// feeder nodes, so flexbox's align-items:center naturally centers this
+// match against the combined height of its two feeders — exactly, no matter
+// how many rounds deep the tree goes. The connector lines drawn in CSS ride
+// along on top of that same alignment (see .bracket-children::before/::after
+// in style.css), using --conn-half computed here from the fixed match
+// height/gap so they land precisely on both feeders' centers.
+function buildBracketNode(matchesByKey, round, slot, t, teamsById) {
+  const m = matchesByKey.get(`${round}:${slot}`);
+  const matchHtml = renderBracketMatchBox(m, t, teamsById);
+  if (round === 1) {
+    return matchHtml;
+  }
+  const feederDepth = round - 2; // depth (rounds above a leaf) of this node's two children
+  const connHalf = bracketSubtreeHeight(feederDepth) / 2;
+  const left = buildBracketNode(matchesByKey, round - 1, slot * 2, t, teamsById);
+  const right = buildBracketNode(matchesByKey, round - 1, slot * 2 + 1, t, teamsById);
+  return `
+    <div class="bracket-node">
+      <div class="bracket-children" style="--conn-half:${connHalf}px;">
+        ${left}
+        ${right}
+      </div>
+      ${matchHtml}
+    </div>`;
+}
+
 // matches defaults to the tournament's full match list (single_elimination),
 // but group_knockout passes just its knockout-stage rows so this can be
 // reused for that sub-bracket once it's been generated.
 function renderBracket(t, ctx, matches = t.matches) {
   const teamsById = new Map(t.teams.map((team) => [team.id, team]));
   const totalRounds = Math.max(...matches.map((m) => m.round));
+  const matchesByKey = new Map(matches.map((m) => [`${m.round}:${m.slot}`, m]));
 
-  const columns = [];
-  for (let round = 1; round <= totalRounds; round++) {
-    const roundMatches = matches.filter((m) => m.round === round).sort((a, b) => a.slot - b.slot);
-    columns.push(`
-      <div class="bracket-round">
-        <div class="bracket-round-title">${bracketRoundLabel(round, totalRounds)}</div>
-        ${roundMatches
-          .map((m) => {
-            if (m.isBye) {
-              return `
-                <div class="bracket-match">
-                  <div class="bracket-team is-winner">${teamLabel(teamsById, m.winnerTeamId)}</div>
-                  <div class="bracket-team is-tbd">Freilos</div>
-                </div>`;
-            }
-            const canRecord = t.status === 'active' && m.teamAId && m.teamBId && !m.winnerTeamId;
-            const teamRow = (teamId) => {
-              const isWinner = m.winnerTeamId && m.winnerTeamId === teamId;
-              const label = teamId ? teamLabel(teamsById, teamId) : 'TBD';
-              const cls = `bracket-team${isWinner ? ' is-winner' : ''}${!teamId ? ' is-tbd' : ''}`;
-              if (canRecord && teamId && !t.trackScore) {
-                return `<button type="button" class="${cls}" data-match="${m.id}" data-winner="${teamId}">${label}</button>`;
-              }
-              return `<div class="${cls}">${label}</div>`;
-            };
-            const scoreLine =
-              t.trackScore && m.scoreA !== null
-                ? `<div class="muted" style="font-size:0.72rem;text-align:center;">${m.scoreA} : ${m.scoreB}</div>`
-                : '';
-            const scoreForm =
-              canRecord && t.trackScore
-                ? `<div class="row" style="gap:4px;margin-top:4px;justify-content:center;">${renderScoreForm(m)}</div>`
-                : '';
-            return `<div class="bracket-match">${teamRow(m.teamAId)}${teamRow(m.teamBId)}${scoreLine}${scoreForm}</div>`;
-          })
-          .join('')}
-      </div>
-    `);
-  }
+  const titles = Array.from({ length: totalRounds }, (_, i) => `<div>${bracketRoundLabel(i + 1, totalRounds)}</div>`).join('');
+  const tree = buildBracketNode(matchesByKey, totalRounds, 0, t, teamsById);
 
-  return `<div class="bracket-scroll">${columns.join('')}</div>`;
+  return `
+    <div class="bracket-tree-wrap">
+      <div class="bracket-round-titles">${titles}</div>
+      ${tree}
+    </div>`;
 }
 
 // ---------- detail: round-robin (also reused for each group_knockout group) ----------

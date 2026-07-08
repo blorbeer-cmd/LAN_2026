@@ -23,8 +23,8 @@ export function renderPlayers(container, ctx) {
   const rows = state.players
     .map(
       (p) => `
-      <button type="button" class="card row" style="width:100%;text-align:left;cursor:pointer;" data-player="${p.id}">
-        ${avatarHtml(p, 28)}
+      <button type="button" class="card row list-row" data-player="${p.id}">
+        ${avatarHtml(p, 36)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
         <span class="muted">›</span>
       </button>`
