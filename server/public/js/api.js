@@ -190,10 +190,13 @@ export const api = {
     list: () => apiFetch('/api/tournaments'),
     get: (id) => apiFetch(`/api/tournaments/${id}`),
     create: (data) => apiFetch('/api/tournaments', { method: 'POST', body: JSON.stringify(data) }),
-    recordResult: (tournamentId, matchId, winnerTeamId) =>
+    // payload is either { winnerTeamId } (win/loss-only tournaments) or
+    // { scoreA, scoreB } (score-tracking tournaments) — the server derives
+    // the winner itself in the latter case.
+    recordResult: (tournamentId, matchId, payload) =>
       apiFetch(`/api/tournaments/${tournamentId}/matches/${matchId}/result`, {
         method: 'POST',
-        body: JSON.stringify({ winnerTeamId }),
+        body: JSON.stringify(payload),
       }),
     remove: (id) => apiFetch(`/api/tournaments/${id}`, { method: 'DELETE' }),
   },

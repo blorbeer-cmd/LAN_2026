@@ -175,35 +175,52 @@ db.exec(`
     generated_at          INTEGER NOT NULL
   );
 
-  -- Tournaments (FR-33): either a single-elimination bracket ("Turnierbaum")
-  -- or a round-robin league ("jeder gegen jeden"), the latter optionally
-  -- played home-and-away (two_legged). Kept as its own family of tables
-  -- rather than reusing matchmaking_draws, since a tournament's teams are
-  -- fixed for its whole duration and its matches need to track bracket
-  -- position / round-robin standings, neither of which a one-off draw needs.
+  -- Tournaments (FR-33): a single-elimination bracket ("Turnierbaum"), a
+  -- round-robin league ("jeder gegen jeden", optionally home-and-away), or a
+  -- group stage followed by a knockout bracket ("Gruppenphase + K.O.").
+  -- group_count/advancers_per_group are only meaningful for group_knockout —
+  -- how many groups the roster is split into, and how many teams per group
+  -- advance into the knockout bracket once every group match is decided.
+  -- track_score applies to all formats: whether results carry an actual
+  -- score (tournament_matches.score_a/score_b) or are win/loss-only.
+  -- Kept as its own family of tables rather than reusing matchmaking_draws,
+  -- since a tournament's teams are fixed for its whole duration and its
+  -- matches need to track bracket position / standings, neither of which a
+  -- one-off draw needs.
   CREATE TABLE IF NOT EXISTS tournaments (
-    id         TEXT PRIMARY KEY,
-    event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-    game_id    TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
-    name       TEXT NOT NULL,
-    format     TEXT NOT NULL,               -- 'single_elimination' | 'round_robin'
-    two_legged INTEGER NOT NULL DEFAULT 0,  -- only meaningful for round_robin
-    status     TEXT NOT NULL DEFAULT 'active', -- 'active' | 'completed'
-    created_at INTEGER NOT NULL
+    id                   TEXT PRIMARY KEY,
+    event_id             TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    game_id              TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    name                 TEXT NOT NULL,
+    format               TEXT NOT NULL,               -- 'single_elimination' | 'round_robin' | 'group_knockout'
+    two_legged           INTEGER NOT NULL DEFAULT 0,  -- only meaningful for round_robin / group stage
+    track_score          INTEGER NOT NULL DEFAULT 0,  -- results carry a real score, not just win/loss
+    group_count          INTEGER,                     -- only for group_knockout
+    advancers_per_group  INTEGER,                     -- only for group_knockout
+    status               TEXT NOT NULL DEFAULT 'active', -- 'active' | 'completed'
+    created_at           INTEGER NOT NULL
   );
 
   -- A tournament's roster: fixed for the tournament's whole duration (unlike
-  -- a matchmaking draw's teams, which are a one-off snapshot).
+  -- a matchmaking draw's teams, which are a one-off snapshot). group_index
+  -- (0-indexed) is only set for group_knockout tournaments.
   CREATE TABLE IF NOT EXISTS tournament_teams (
     id            TEXT PRIMARY KEY,
     tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
     name          TEXT NOT NULL,
-    player_ids    TEXT NOT NULL  -- JSON array of player ids
+    player_ids    TEXT NOT NULL, -- JSON array of player ids
+    group_index   INTEGER
   );
 
-  -- One row per bracket slot (single_elimination) or fixture (round_robin).
-  -- For a bracket, later rounds start with NULL team_*_id and get filled in
-  -- as earlier rounds are decided (see tournament.ts's applyBracketResult).
+  -- One row per bracket slot (single_elimination), fixture (round_robin), or
+  -- group-stage fixture / knockout-bracket slot (group_knockout). For a
+  -- bracket, later rounds start with NULL team_*_id and get filled in as
+  -- earlier rounds are decided (see tournament.ts's applyBracketResult).
+  -- stage/group_index disambiguate group_knockout's two phases: 'group'
+  -- rows belong to one group's round-robin schedule (group_index says
+  -- which), 'knockout' rows are the bracket generated once every group
+  -- match is decided — both NULL for the other two formats. score_a/score_b
+  -- are only populated when the owning tournament has track_score set.
   -- match_id points at the matches row created when a result is recorded,
   -- so playing in a tournament also counts toward the normal leaderboard;
   -- ON DELETE SET NULL rather than CASCADE so correcting/removing that
@@ -213,9 +230,13 @@ db.exec(`
     tournament_id  TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
     round          INTEGER NOT NULL,
     slot           INTEGER NOT NULL,
+    stage          TEXT,     -- 'group' | 'knockout' (group_knockout only)
+    group_index    INTEGER,  -- group_knockout group-stage rows only
     team_a_id      TEXT REFERENCES tournament_teams(id) ON DELETE CASCADE,
     team_b_id      TEXT REFERENCES tournament_teams(id) ON DELETE CASCADE,
     winner_team_id TEXT REFERENCES tournament_teams(id) ON DELETE CASCADE,
+    score_a        INTEGER,
+    score_b        INTEGER,
     is_draw        INTEGER NOT NULL DEFAULT 0,
     is_bye         INTEGER NOT NULL DEFAULT 0,
     match_id       TEXT REFERENCES matches(id) ON DELETE SET NULL,
@@ -295,6 +316,29 @@ function migrateGameIconImageColumn(): void {
   db.exec('ALTER TABLE games ADD COLUMN icon_image TEXT');
 }
 migrateGameIconImageColumn();
+
+// Migration: older databases predate the group-knockout format and score
+// tracking (both added together) — add the columns they need if missing.
+function migrateTournamentColumns(): void {
+  const tournamentColumns = db.prepare('PRAGMA table_info(tournaments)').all() as Array<{ name: string }>;
+  const has = (name: string) => tournamentColumns.some((c) => c.name === name);
+  if (!has('track_score')) db.exec('ALTER TABLE tournaments ADD COLUMN track_score INTEGER NOT NULL DEFAULT 0');
+  if (!has('group_count')) db.exec('ALTER TABLE tournaments ADD COLUMN group_count INTEGER');
+  if (!has('advancers_per_group')) db.exec('ALTER TABLE tournaments ADD COLUMN advancers_per_group INTEGER');
+
+  const teamColumns = db.prepare('PRAGMA table_info(tournament_teams)').all() as Array<{ name: string }>;
+  if (!teamColumns.some((c) => c.name === 'group_index')) {
+    db.exec('ALTER TABLE tournament_teams ADD COLUMN group_index INTEGER');
+  }
+
+  const matchColumns = db.prepare('PRAGMA table_info(tournament_matches)').all() as Array<{ name: string }>;
+  const hasMatchCol = (name: string) => matchColumns.some((c) => c.name === name);
+  if (!hasMatchCol('stage')) db.exec('ALTER TABLE tournament_matches ADD COLUMN stage TEXT');
+  if (!hasMatchCol('group_index')) db.exec('ALTER TABLE tournament_matches ADD COLUMN group_index INTEGER');
+  if (!hasMatchCol('score_a')) db.exec('ALTER TABLE tournament_matches ADD COLUMN score_a INTEGER');
+  if (!hasMatchCol('score_b')) db.exec('ALTER TABLE tournament_matches ADD COLUMN score_b INTEGER');
+}
+migrateTournamentColumns();
 
 // Gamer names must be unique across the whole player list (case-insensitive)
 // so invited players can tell each other apart. A unique index rather than a

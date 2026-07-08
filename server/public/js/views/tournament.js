@@ -12,6 +12,7 @@ import { showToast } from '../toast.js';
 const FORMAT_LABELS = {
   single_elimination: '🏆 K.O.-Turnier',
   round_robin: '🔁 Liga (jeder gegen jeden)',
+  group_knockout: '👥 Gruppenphase + K.O.',
 };
 
 // ---------- module state ----------
@@ -29,6 +30,9 @@ let createCheckedIds = null;
 let createFormat = 'single_elimination';
 let createTwoLegged = false;
 let createAvoidAdjacent = false;
+let createTrackScore = false;
+let createGroupCount = 2;
+let createAdvancersPerGroup = 2;
 let createProposedTeams = null; // [{ name, playerIds, players (for display), totalRating }]
 let createSeatConflicts = null; // { conflicts, considered } from the last proposal, for the seating note
 
@@ -81,6 +85,9 @@ function resetCreateForm() {
   createFormat = 'single_elimination';
   createTwoLegged = false;
   createAvoidAdjacent = false;
+  createTrackScore = false;
+  createGroupCount = 2;
+  createAdvancersPerGroup = 2;
   createProposedTeams = null;
   createSeatConflicts = null;
 }
@@ -214,13 +221,35 @@ function renderCreateForm(el, ctx) {
         ${Object.entries(FORMAT_LABELS).map(([v, label]) => `<option value="${v}" ${v === createFormat ? 'selected' : ''}>${label}</option>`).join('')}
       </select>
       ${
-        createFormat === 'round_robin'
+        createFormat === 'group_knockout'
+          ? `<div class="row" style="align-items:flex-start;">
+               <div style="flex:1;">
+                 <label for="tourn-group-count" class="field-label">Anzahl Gruppen</label>
+                 <input type="number" id="tourn-group-count" min="2" value="${createGroupCount}" />
+               </div>
+               <div style="flex:1;">
+                 <label for="tourn-advancers" class="field-label">Aufsteiger pro Gruppe</label>
+                 <input type="number" id="tourn-advancers" min="1" value="${createAdvancersPerGroup}" />
+               </div>
+             </div>
+             <p class="muted" style="font-size:0.78rem;margin-top:-6px;">
+               Die Teams spielen zuerst in Gruppen jeder gegen jeden, danach ziehen die besten
+               Teams je Gruppe automatisch in ein K.O.-Turnier ein.
+             </p>`
+          : ''
+      }
+      ${
+        createFormat === 'round_robin' || createFormat === 'group_knockout'
           ? `<label class="check-row">
                <input type="checkbox" id="tourn-two-legged" ${createTwoLegged ? 'checked' : ''} />
-               <span>🔁 Hin- und Rückspiele (jeder spielt zweimal gegen jeden)</span>
+               <span>🔁 Hin- und Rückspiele${createFormat === 'group_knockout' ? ' (in der Gruppenphase)' : ' (jeder spielt zweimal gegen jeden)'}</span>
              </label>`
           : ''
       }
+      <label class="check-row">
+        <input type="checkbox" id="tourn-track-score" ${createTrackScore ? 'checked' : ''} />
+        <span>🔢 Ergebnisse mit Punktestand erfassen (statt nur Sieg/Niederlage)</span>
+      </label>
       <button type="button" class="btn btn-primary btn-block" id="tourn-submit" ${createProposedTeams ? '' : 'disabled'}>Turnier erstellen</button>
     </div>
   `;
@@ -259,6 +288,23 @@ function renderCreateForm(el, ctx) {
   el.querySelector('#tourn-avoid-adjacent').addEventListener('change', (e) => {
     createAvoidAdjacent = e.target.checked;
   });
+
+  el.querySelector('#tourn-track-score').addEventListener('change', (e) => {
+    createTrackScore = e.target.checked;
+  });
+
+  const groupCountInput = el.querySelector('#tourn-group-count');
+  if (groupCountInput) {
+    groupCountInput.addEventListener('input', (e) => {
+      createGroupCount = parseInt(e.target.value, 10) || 2;
+    });
+  }
+  const advancersInput = el.querySelector('#tourn-advancers');
+  if (advancersInput) {
+    advancersInput.addEventListener('input', (e) => {
+      createAdvancersPerGroup = parseInt(e.target.value, 10) || 1;
+    });
+  }
 
   async function proposeTeams() {
     const gameId = el.querySelector('#tourn-game').value;
@@ -305,7 +351,11 @@ function renderCreateForm(el, ctx) {
         const created = await api.tournaments.create({
           gameId,
           format: createFormat,
-          twoLegged: createFormat === 'round_robin' ? createTwoLegged : false,
+          twoLegged: createFormat === 'round_robin' || createFormat === 'group_knockout' ? createTwoLegged : false,
+          trackScore: createTrackScore,
+          ...(createFormat === 'group_knockout'
+            ? { groupCount: createGroupCount, advancersPerGroup: createAdvancersPerGroup }
+            : {}),
           teams: createProposedTeams.map((t) => ({ name: t.name, playerIds: t.playerIds })),
         });
         resetCreateForm();
@@ -337,17 +387,31 @@ function teamLabel(teamsById, teamId) {
   return t ? escapeHtml(t.name) : 'TBD';
 }
 
-function renderBracket(t, ctx) {
+// A team's score-entry mini-form, shown instead of the plain winner-pick
+// buttons whenever the tournament tracks a real score — the winner itself
+// is derived server-side from whichever number is higher.
+function renderScoreForm(m) {
+  return `
+    <input type="number" min="0" inputmode="numeric" data-score-a="${m.id}" style="width:52px;" placeholder="0" />
+    <span class="muted">:</span>
+    <input type="number" min="0" inputmode="numeric" data-score-b="${m.id}" style="width:52px;" placeholder="0" />
+    <button type="button" class="btn btn-sm" data-submit-score="${m.id}">✓</button>`;
+}
+
+// matches defaults to the tournament's full match list (single_elimination),
+// but group_knockout passes just its knockout-stage rows so this can be
+// reused for that sub-bracket once it's been generated.
+function renderBracket(t, ctx, matches = t.matches) {
   const teamsById = new Map(t.teams.map((team) => [team.id, team]));
-  const totalRounds = Math.max(...t.matches.map((m) => m.round));
+  const totalRounds = Math.max(...matches.map((m) => m.round));
 
   const columns = [];
   for (let round = 1; round <= totalRounds; round++) {
-    const matches = t.matches.filter((m) => m.round === round).sort((a, b) => a.slot - b.slot);
+    const roundMatches = matches.filter((m) => m.round === round).sort((a, b) => a.slot - b.slot);
     columns.push(`
       <div class="bracket-round">
         <div class="bracket-round-title">${bracketRoundLabel(round, totalRounds)}</div>
-        ${matches
+        ${roundMatches
           .map((m) => {
             if (m.isBye) {
               return `
@@ -361,12 +425,20 @@ function renderBracket(t, ctx) {
               const isWinner = m.winnerTeamId && m.winnerTeamId === teamId;
               const label = teamId ? teamLabel(teamsById, teamId) : 'TBD';
               const cls = `bracket-team${isWinner ? ' is-winner' : ''}${!teamId ? ' is-tbd' : ''}`;
-              if (canRecord && teamId) {
+              if (canRecord && teamId && !t.trackScore) {
                 return `<button type="button" class="${cls}" data-match="${m.id}" data-winner="${teamId}">${label}</button>`;
               }
               return `<div class="${cls}">${label}</div>`;
             };
-            return `<div class="bracket-match">${teamRow(m.teamAId)}${teamRow(m.teamBId)}</div>`;
+            const scoreLine =
+              t.trackScore && m.scoreA !== null
+                ? `<div class="muted" style="font-size:0.72rem;text-align:center;">${m.scoreA} : ${m.scoreB}</div>`
+                : '';
+            const scoreForm =
+              canRecord && t.trackScore
+                ? `<div class="row" style="gap:4px;margin-top:4px;justify-content:center;">${renderScoreForm(m)}</div>`
+                : '';
+            return `<div class="bracket-match">${teamRow(m.teamAId)}${teamRow(m.teamBId)}${scoreLine}${scoreForm}</div>`;
           })
           .join('')}
       </div>
@@ -376,17 +448,16 @@ function renderBracket(t, ctx) {
   return `<div class="bracket-scroll">${columns.join('')}</div>`;
 }
 
-// ---------- detail: round-robin ----------
+// ---------- detail: round-robin (also reused for each group_knockout group) ----------
 
-function renderRoundRobin(t, ctx) {
-  const teamsById = new Map(t.teams.map((team) => [team.id, team]));
+function renderRoundRobinBoard(t, teamsById, matches, standings) {
   const byRound = new Map();
-  for (const m of t.matches) byRound.set(m.round, [...(byRound.get(m.round) ?? []), m]);
+  for (const m of matches) byRound.set(m.round, [...(byRound.get(m.round) ?? []), m]);
 
   const fixturesHtml = [...byRound.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([round, matches]) => {
-      const rows = matches
+    .map(([round, roundMatches]) => {
+      const rows = roundMatches
         .map((m) => {
           const decided = m.winnerTeamId !== null || m.isDraw;
           const canRecord = t.status === 'active' && !decided;
@@ -395,11 +466,19 @@ function renderRoundRobin(t, ctx) {
           const aWon = m.winnerTeamId === m.teamAId;
           const bWon = m.winnerTeamId === m.teamBId;
           if (!canRecord) {
-            const resultText = m.isDraw ? 'Unentschieden' : aWon ? `${nameA} gewinnt` : bWon ? `${nameB} gewinnt` : '–';
+            const scoreText = t.trackScore && m.scoreA !== null ? ` (${m.scoreA}:${m.scoreB})` : '';
+            const resultText = m.isDraw ? `Unentschieden${scoreText}` : aWon ? `${nameA} gewinnt${scoreText}` : bWon ? `${nameB} gewinnt${scoreText}` : '–';
             return `
               <div class="lb-row">
                 <span style="flex:1;">${nameA} <span class="muted">vs</span> ${nameB}</span>
                 <span class="muted" style="font-size:0.8rem;">${resultText}</span>
+              </div>`;
+          }
+          if (t.trackScore) {
+            return `
+              <div class="lb-row" style="flex-wrap:wrap;gap:6px;">
+                <span style="flex:1 1 100%;">${nameA} <span class="muted">vs</span> ${nameB}</span>
+                ${renderScoreForm(m)}
               </div>`;
           }
           return `
@@ -415,7 +494,7 @@ function renderRoundRobin(t, ctx) {
     })
     .join('');
 
-  const standingsRows = (t.standings || [])
+  const standingsRows = (standings || [])
     .map(
       (s, i) => `
       <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
@@ -434,6 +513,33 @@ function renderRoundRobin(t, ctx) {
   `;
 }
 
+function renderRoundRobin(t, ctx) {
+  const teamsById = new Map(t.teams.map((team) => [team.id, team]));
+  return renderRoundRobinBoard(t, teamsById, t.matches, t.standings);
+}
+
+// ---------- detail: group stage + knockout ----------
+
+function renderGroupKnockout(t, ctx) {
+  const teamsById = new Map(t.teams.map((team) => [team.id, team]));
+
+  const groupBlocks = (t.groups || [])
+    .map((g) => {
+      const groupMatches = t.matches.filter((m) => m.stage === 'group' && m.groupIndex === g.groupIndex);
+      return `<div class="section-title">👥 Gruppe ${g.groupIndex + 1}</div>${renderRoundRobinBoard(t, teamsById, groupMatches, g.standings)}`;
+    })
+    .join('');
+
+  const knockoutMatches = t.matches.filter((m) => m.stage === 'knockout');
+  const knockoutHtml =
+    knockoutMatches.length === 0
+      ? `<div class="section-title" style="margin-top:14px;">🏆 K.O.-Runde</div>
+         <div class="empty-state">Startet automatisch, sobald alle Gruppenspiele entschieden sind.</div>`
+      : `<div class="section-title" style="margin-top:14px;">🏆 K.O.-Runde</div>${renderBracket(t, ctx, knockoutMatches)}`;
+
+  return `${groupBlocks}${knockoutHtml}`;
+}
+
 function renderDetail(container, ctx) {
   if (detailForId !== currentTournamentId && !detailLoading) {
     loadDetail(currentTournamentId, ctx);
@@ -450,7 +556,20 @@ function renderDetail(container, ctx) {
   }
 
   const t = detailCache;
-  const board = t.format === 'single_elimination' ? renderBracket(t, ctx) : renderRoundRobin(t, ctx);
+  const board =
+    t.format === 'single_elimination'
+      ? renderBracket(t, ctx)
+      : t.format === 'group_knockout'
+        ? renderGroupKnockout(t, ctx)
+        : renderRoundRobin(t, ctx);
+
+  const formatMeta = [
+    t.twoLegged ? 'Hin- und Rückspiele' : null,
+    t.format === 'group_knockout' ? `${t.groupCount} Gruppen · Top ${t.advancersPerGroup} steigen auf` : null,
+    t.trackScore ? 'Punktestand' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   container.innerHTML = `
     <div class="row-between">
@@ -459,7 +578,7 @@ function renderDetail(container, ctx) {
     </div>
     <h1 class="view-title row" style="gap:8px;">${gameBadgeHtml({ id: t.gameId, icon: t.gameIcon }, 26)} ${escapeHtml(t.name)}</h1>
     <div class="muted" style="margin-top:-10px;margin-bottom:12px;">
-      ${FORMAT_LABELS[t.format]}${t.twoLegged ? ' · Hin- und Rückspiele' : ''} ·
+      ${FORMAT_LABELS[t.format]}${formatMeta ? ` · ${formatMeta}` : ''} ·
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
     </div>
     ${board}
@@ -487,7 +606,26 @@ function renderDetail(container, ctx) {
     btn.addEventListener('click', async () => {
       const winnerTeamId = btn.dataset.winner || null;
       try {
-        detailCache = await api.tournaments.recordResult(t.id, btn.dataset.match, winnerTeamId);
+        detailCache = await api.tournaments.recordResult(t.id, btn.dataset.match, { winnerTeamId });
+        ctx.rerender();
+      } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-submit-score]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const matchId = btn.dataset.submitScore;
+      const inputA = container.querySelector(`[data-score-a="${matchId}"]`);
+      const inputB = container.querySelector(`[data-score-b="${matchId}"]`);
+      const scoreA = parseInt(inputA.value, 10);
+      const scoreB = parseInt(inputB.value, 10);
+      if (!Number.isInteger(scoreA) || !Number.isInteger(scoreB) || scoreA < 0 || scoreB < 0) {
+        return showToast('Bitte beide Ergebnisse eintragen.', { error: true });
+      }
+      try {
+        detailCache = await api.tournaments.recordResult(t.id, matchId, { scoreA, scoreB });
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });

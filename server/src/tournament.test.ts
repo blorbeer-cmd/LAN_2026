@@ -6,7 +6,10 @@ import {
   bracketIsComplete,
   generateRoundRobin,
   computeRoundRobinStandings,
+  assignGroups,
+  selectAdvancers,
   type BracketMatchSlot,
+  type TeamStanding,
 } from './tournament';
 
 test('generateBracket with a power-of-two team count has no byes', () => {
@@ -158,6 +161,49 @@ test('computeRoundRobinStandings includes teams with zero games played', () => {
   const standings = computeRoundRobinStandings(['a', 'b'], []);
   assert.equal(standings.length, 2);
   assert.ok(standings.every((s) => s.played === 0 && s.points === 0));
+});
+
+test('assignGroups deals teams round-robin so group sizes differ by at most one', () => {
+  const groups = assignGroups(['a', 'b', 'c', 'd', 'e', 'f', 'g'], 3);
+  assert.equal(groups.length, 3);
+  assert.deepEqual(
+    groups.map((g) => g.length).sort(),
+    [2, 2, 3]
+  );
+  assert.deepEqual(new Set(groups.flat()).size, 7); // every team assigned exactly once
+});
+
+test('assignGroups rejects fewer than 2 groups', () => {
+  assert.throws(() => assignGroups(['a', 'b', 'c', 'd'], 1));
+});
+
+test('assignGroups rejects a group count that would leave a group with under 2 teams', () => {
+  assert.throws(() => assignGroups(['a', 'b', 'c'], 2));
+});
+
+test('selectAdvancers takes the top N per group and orders group winners ahead of runners-up', () => {
+  const groupA: TeamStanding[] = [
+    { teamId: 'a1', played: 2, wins: 2, draws: 0, losses: 0, points: 6 },
+    { teamId: 'a2', played: 2, wins: 1, draws: 0, losses: 1, points: 3 },
+    { teamId: 'a3', played: 2, wins: 0, draws: 0, losses: 2, points: 0 },
+  ];
+  const groupB: TeamStanding[] = [
+    { teamId: 'b1', played: 2, wins: 2, draws: 0, losses: 0, points: 6 },
+    { teamId: 'b2', played: 2, wins: 1, draws: 0, losses: 1, points: 3 },
+    { teamId: 'b3', played: 2, wins: 0, draws: 0, losses: 2, points: 0 },
+  ];
+  const advancers = selectAdvancers([groupA, groupB], 2);
+  assert.deepEqual(advancers, ['a1', 'b1', 'a2', 'b2']); // both group winners, then both runners-up
+});
+
+test('selectAdvancers skips a group that has fewer teams than the advancer count', () => {
+  const groupA: TeamStanding[] = [
+    { teamId: 'a1', played: 1, wins: 1, draws: 0, losses: 0, points: 3 },
+    { teamId: 'a2', played: 1, wins: 0, draws: 0, losses: 1, points: 0 },
+  ];
+  const groupB: TeamStanding[] = [{ teamId: 'b1', played: 0, wins: 0, draws: 0, losses: 0, points: 0 }];
+  const advancers = selectAdvancers([groupA, groupB], 2);
+  assert.deepEqual(advancers, ['a1', 'b1', 'a2']); // rank-1 seeds first, then rank-2 (group B has none)
 });
 
 // Sanity check that the two pure modules agree on shape when chained: a
