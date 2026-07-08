@@ -177,23 +177,41 @@ export const api = {
       const qs = new URLSearchParams(params).toString();
       return apiFetch(`/api/analytics/awards${qs ? `?${qs}` : ''}`);
     },
+    games: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return apiFetch(`/api/analytics/games${qs ? `?${qs}` : ''}`);
+    },
+    gamesTournaments: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return apiFetch(`/api/analytics/games-tournaments${qs ? `?${qs}` : ''}`);
+    },
   },
 
   events: {
     list: () => apiFetch('/api/events'),
     active: () => apiFetch('/api/events/active'),
-    create: (name) => apiFetch('/api/events', { method: 'POST', body: JSON.stringify({ name }) }),
-    rename: (id, name) => apiFetch(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+    // data: { name, startsAt, endsAt, location?, description? }
+    create: (data) => apiFetch('/api/events', { method: 'POST', body: JSON.stringify(data) }),
+    // fields: any subset of { name?, startsAt?, endsAt?, location?, description? }
+    update: (id, fields) => apiFetch(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify(fields) }),
+    startTracking: (id) => apiFetch(`/api/events/${id}/tracking/start`, { method: 'POST' }),
+    stopTracking: (id) => apiFetch(`/api/events/${id}/tracking/stop`, { method: 'POST' }),
+    end: (id) => apiFetch(`/api/events/${id}/end`, { method: 'POST' }),
+    setParticipants: (id, playerIds) =>
+      apiFetch(`/api/events/${id}/participants`, { method: 'PUT', body: JSON.stringify({ playerIds }) }),
   },
 
   tournaments: {
     list: () => apiFetch('/api/tournaments'),
     get: (id) => apiFetch(`/api/tournaments/${id}`),
     create: (data) => apiFetch('/api/tournaments', { method: 'POST', body: JSON.stringify(data) }),
-    recordResult: (tournamentId, matchId, winnerTeamId) =>
+    // payload is either { winnerTeamId } (win/loss-only tournaments) or
+    // { scoreA, scoreB } (score-tracking tournaments) — the server derives
+    // the winner itself in the latter case.
+    recordResult: (tournamentId, matchId, payload) =>
       apiFetch(`/api/tournaments/${tournamentId}/matches/${matchId}/result`, {
         method: 'POST',
-        body: JSON.stringify({ winnerTeamId }),
+        body: JSON.stringify(payload),
       }),
     remove: (id) => apiFetch(`/api/tournaments/${id}`, { method: 'DELETE' }),
   },

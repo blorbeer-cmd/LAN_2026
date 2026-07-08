@@ -19,8 +19,13 @@ test('setup: a game, two players, a match, and a completed tournament', async ()
   playerA = a.body.id;
   playerB = b.body.id;
 
-  const active = await request(app).get('/api/events/active');
-  activeEventId = active.body.id;
+  // Hall of Fame only ever covers real (trackable) events, never "außerhalb
+  // von Events" — create and start tracking one so this data lands there.
+  const trackedEvent = await request(app)
+    .post('/api/events')
+    .send({ name: 'HoF Test Event', startsAt: Date.now(), endsAt: Date.now() + 24 * 60 * 60 * 1000 });
+  activeEventId = trackedEvent.body.id;
+  await request(app).post(`/api/events/${activeEventId}/tracking/start`).send({});
 
   // Alice wins the overall leaderboard for this event...
   await request(app)
@@ -60,7 +65,10 @@ test('GET /api/hall-of-fame all-time rankings credit the champion', async () => 
 });
 
 test('GET /api/hall-of-fame reports no champion for an event with no matches', async () => {
-  const created = await request(app).post('/api/events').send({ name: 'Empty HoF Event' });
+  const created = await request(app)
+    .post('/api/events')
+    .send({ name: 'Empty HoF Event', startsAt: Date.now(), endsAt: Date.now() + 1000 });
+  assert.equal(created.status, 201);
   const res = await request(app).get('/api/hall-of-fame');
   const entry = res.body.events.find((e: { eventId: string }) => e.eventId === created.body.id);
   assert.ok(entry);

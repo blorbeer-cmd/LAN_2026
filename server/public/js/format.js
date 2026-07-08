@@ -34,6 +34,14 @@ export function formatDate(timestampMs) {
   return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
 }
 
+// "2026-07-08T14:30" — the value format <input type="datetime-local">
+// expects/emits, in the browser's local time (not UTC).
+export function toDatetimeLocal(timestampMs) {
+  const d = new Date(timestampMs);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 const STATE_LABELS = { playing: 'Spielt', paused: 'Pause', offline: 'Offline' };
 export function stateLabel(state) {
   return STATE_LABELS[state] || state;

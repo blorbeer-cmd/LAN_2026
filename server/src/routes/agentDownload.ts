@@ -44,6 +44,11 @@ export function buildAgentConfig(serverUrl: string, apiKey: string, trackActivit
 
 // Kept plain-ASCII (no umlauts) since a .bat file's default codepage often
 // mangles them; \r\n line endings since Windows batch is picky about that.
+//
+// Also drops a desktop shortcut to the agent's own local control panel (a
+// tiny web page it serves on 127.0.0.1) — that's where a player later
+// pauses tracking, turns autostart off, or uninstalls, without ever touching
+// the task manager or the startup folder by hand.
 function buildInstallBat(): string {
   const lines = [
     '@echo off',
@@ -59,10 +64,41 @@ function buildInstallBat(): string {
     'set "STARTUP_DIR=%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"',
     'powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (New-Object -ComObject WScript.Shell).CreateShortcut(\'%STARTUP_DIR%\\RespawnHQ-Agent.lnk\'); $s.TargetPath = \'%INSTALL_DIR%\\lan2026-agent.exe\'; $s.WorkingDirectory = \'%INSTALL_DIR%\'; $s.WindowStyle = 7; $s.Save()"',
     '',
+    '(',
+    '  echo [InternetShortcut]',
+    '  echo URL=http://127.0.0.1:47813',
+    ') > "%USERPROFILE%\\Desktop\\RespawnHQ-Agent Steuerung.url"',
+    '',
     'echo Fertig! Der Agent startet ab jetzt automatisch bei jedem Windows-Login.',
+    'echo Auf dem Desktop liegt eine Verknuepfung "RespawnHQ-Agent Steuerung" zum',
+    'echo Pausieren, Autostart an/aus stellen oder Deinstallieren.',
     'echo Starte ihn jetzt auch gleich...',
     'start "" "%INSTALL_DIR%\\lan2026-agent.exe"',
     '',
+    'timeout /t 5',
+  ];
+  return lines.join('\r\n') + '\r\n';
+}
+
+// Companion to install.bat, for anyone who wants the agent fully off their
+// PC rather than just pausing tracking from the web app: stops the running
+// process, removes the autostart shortcut, and deletes the install
+// directory. Doesn't touch anything server-side — a player can just use the
+// "Tracking pausieren" toggle on their profile instead if they might want
+// it back later.
+function buildUninstallBat(): string {
+  const lines = [
+    '@echo off',
+    'setlocal',
+    'set "INSTALL_DIR=%LOCALAPPDATA%\\RespawnHQ-Agent"',
+    'set "STARTUP_DIR=%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"',
+    '',
+    'echo RespawnHQ-Agent wird entfernt...',
+    'taskkill /IM lan2026-agent.exe /F >nul 2>&1',
+    'del /Q "%STARTUP_DIR%\\RespawnHQ-Agent.lnk" >nul 2>&1',
+    'rmdir /S /Q "%INSTALL_DIR%" >nul 2>&1',
+    '',
+    'echo Fertig! Der Agent laeuft nicht mehr und startet auch nicht mehr automatisch.',
     'timeout /t 5',
   ];
   return lines.join('\r\n') + '\r\n';
@@ -106,5 +142,6 @@ agentDownloadRouter.get('/', (req, res) => {
   archive.file(EXE_PATH, { name: 'lan2026-agent.exe' });
   archive.append(JSON.stringify(config, null, 2), { name: 'agent.config.json' });
   archive.append(buildInstallBat(), { name: 'install.bat' });
+  archive.append(buildUninstallBat(), { name: 'uninstall.bat' });
   archive.finalize();
 });

@@ -9,7 +9,7 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, formatDateTime, avatarHtml, gameBadgeHtml } from '../format.js';
+import { escapeHtml, formatDateTime, avatarHtml, gameBadgeHtml, toDatetimeLocal } from '../format.js';
 import { showToast } from '../toast.js';
 
 let cache = null;
@@ -23,12 +23,6 @@ function defaultFilters() {
   return { eventId: 'active', from: null, to: null, concurrencyGameId: null, bucketMinutes: 60 };
 }
 let filters = defaultFilters();
-
-function toDatetimeLocal(ms) {
-  const d = new Date(ms);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 // Resolves the 'active' sentinel to a real event id once the events list is
 // available, so the view opens pre-filtered to the current LAN by default.
@@ -86,18 +80,19 @@ async function loadData(ctx) {
     const concurrencyParams = { from: String(concurrencyFrom), to: String(concurrencyTo) };
 
     const gameId = filters.concurrencyGameId || (state.games[0] && state.games[0].id) || null;
-    const [overview, sessions, awards, concurrency] = await Promise.all([
+    const [overview, sessions, awards, popularGames, concurrency] = await Promise.all([
       api.analytics.overview(params),
       api.analytics.sessions(params),
       api.analytics.awards(params),
+      api.analytics.games(params),
       gameId
         ? api.analytics.concurrency({ ...concurrencyParams, gameId, bucketMinutes: String(bucketMinutes) })
         : Promise.resolve(null),
     ]);
-    cache = { overview, sessions, awards, concurrency, gameId };
+    cache = { overview, sessions, awards, popularGames, concurrency, gameId };
   } catch (err) {
     showToast(err.message, { error: true });
-    cache = { overview: null, sessions: [], awards: { awards: [] }, concurrency: null, gameId: null };
+    cache = { overview: null, sessions: [], awards: { awards: [] }, popularGames: { games: [] }, concurrency: null, gameId: null };
   } finally {
     loading = false;
     ctx.rerender();
@@ -124,7 +119,7 @@ export function renderAnalytics(container, ctx) {
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
-    <h1 class="view-title">📊 Auswertungen</h1>
+    <h1 class="view-title">🕒 Spielzeit-Auswertungen</h1>
     <div class="card stack">
       <select id="an-event">${renderEventOptions()}</select>
       <div class="row">
@@ -166,6 +161,24 @@ function renderContent() {
     simultaneousGameTime: [],
   };
   const sessions = cache.sessions || [];
+  const popularGames = cache.popularGames?.games || [];
+
+  const popularGamesHtml = popularGames.length
+    ? popularGames
+        .map(
+          (g, i) => `
+        <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
+          <span class="lb-rank">${i + 1}</span>
+          ${gameBadgeHtml({ id: g.gameId, icon: g.gameIcon }, 24)}
+          <span style="flex:1;">
+            ${escapeHtml(g.gameName)}
+            <div class="muted" style="font-size:0.75rem;">${g.playerCount} Spieler · ${g.sessionCount} Session(s)</div>
+          </span>
+          <span class="lb-points">${escapeHtml(g.totalFormatted)}</span>
+        </div>`
+        )
+        .join('')
+    : `<div class="empty-state" style="padding:20px;">Keine Sessions in diesem Zeitraum.</div>`;
 
   const awardsHtml = awards.length
     ? awards
@@ -237,6 +250,9 @@ function renderContent() {
     .join('');
 
   return `
+    <div class="section-title">🎮 Beliebteste Spiele</div>
+    <div class="card">${popularGamesHtml}</div>
+
     <div class="section-title">🏅 Awards</div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));">${awardsHtml}</div>
 

@@ -117,12 +117,39 @@ function renderTournament(t) {
     return `<div class="muted" style="margin-bottom:6px;">${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)} — Liga</div>${rows}`;
   }
 
+  // group_knockout has two distinct phases mixed into one `matches` list
+  // (group-stage rows and, once generated, knockout-bracket rows) — round
+  // numbers restart per group and per stage, so the bracket logic below
+  // would mix them up. Show group standings while the group stage is still
+  // running, then fall through to the same bracket rendering once the
+  // knockout bracket exists (filtered to just its own rows).
+  const knockoutMatches = t.matches.filter((m) => m.stage === 'knockout');
+  if (t.format === 'group_knockout' && knockoutMatches.length === 0) {
+    const groupBlocks = (t.groups || [])
+      .map((g) => {
+        const rows = g.standings
+          .map(
+            (s, i) => `
+            <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
+              <span class="lb-rank">${i + 1}</span>
+              <span style="flex:1;">${teamName(s.teamId)}</span>
+              <span class="lb-points">${s.points} P</span>
+            </div>`
+          )
+          .join('');
+        return `<div class="muted" style="margin:6px 0 2px;">Gruppe ${g.groupIndex + 1}</div>${rows}`;
+      })
+      .join('');
+    return `<div class="muted" style="margin-bottom:6px;">${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)} — Gruppenphase</div>${groupBlocks}`;
+  }
+  const bracketMatches = t.format === 'group_knockout' ? knockoutMatches : t.matches;
+
   // Bracket: show whichever round still has an undecided-but-playable
   // match, or the final result if it's all done.
-  const totalRounds = Math.max(...t.matches.map((m) => m.round));
+  const totalRounds = Math.max(...bracketMatches.map((m) => m.round));
   const currentRound =
-    t.matches.find((m) => !m.isBye && m.teamAId && m.teamBId && !m.winnerTeamId)?.round ?? totalRounds;
-  const rows = t.matches
+    bracketMatches.find((m) => !m.isBye && m.teamAId && m.teamBId && !m.winnerTeamId)?.round ?? totalRounds;
+  const rows = bracketMatches
     .filter((m) => m.round === currentRound)
     .map((m) => {
       if (m.isBye) {

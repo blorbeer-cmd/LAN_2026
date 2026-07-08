@@ -4,7 +4,8 @@
 // room to add more later without the bottom nav running out of icons.
 
 const ITEMS = [
-  { view: 'analytics', icon: '📊', title: 'Auswertungen', desc: 'Awards, Spielzeiten, wer wann was gespielt hat.' },
+  { view: 'analytics', icon: '🕒', title: 'Spielzeit-Auswertungen', desc: 'Awards, Spielzeiten, beliebteste Spiele, wer wann was gespielt hat.' },
+  { view: 'gameStats', icon: '📊', title: 'Spiele & Turniere', desc: 'Match- und Turnier-Statistiken, Rivalitäten, Duos, Underdog-Siege.' },
   { view: 'tournaments', icon: '🏆', title: 'Turniere', desc: 'Turnierbäume und Ligen erstellen und verfolgen.' },
   { view: 'hallOfFame', icon: '🏛️', title: 'Hall of Fame', desc: 'Champions über alle LAN-Partys hinweg.' },
   { view: 'seating', icon: '🪑', title: 'Sitzplan', desc: 'Wer neben wem sitzt, gruppiert aus den Profilangaben.' },

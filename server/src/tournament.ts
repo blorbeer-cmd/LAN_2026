@@ -1,12 +1,15 @@
 // Pure tournament logic (FR-33), kept free of DB/HTTP so it's directly
-// unit-testable — same split as matchmaking.ts. Covers both formats:
+// unit-testable — same split as matchmaking.ts. Covers three formats:
 //   - single-elimination bracket ("Turnierbaum"), with byes for team counts
 //     that aren't a power of two
 //   - round-robin ("jeder gegen jeden"), single or double (Hin-/Rückspiele)
+//   - group stage + knockout ("Gruppenphase + K.O."): the roster is split
+//     into groups that each play round-robin, then the top N teams per
+//     group feed into a single-elimination bracket (reusing generateBracket)
 // A "team" here is just an opaque id — team formation itself (balancing by
 // skill) is handled by matchmaking.ts and reused as-is.
 
-export type TournamentFormat = 'single_elimination' | 'round_robin';
+export type TournamentFormat = 'single_elimination' | 'round_robin' | 'group_knockout';
 
 // ---------- Single-elimination bracket ----------
 
@@ -219,4 +222,36 @@ export function computeRoundRobinStandings(
   }
 
   return [...byTeam.values()].sort((x, y) => y.points - x.points || y.wins - x.wins);
+}
+
+// ---------- Group stage + knockout ----------
+
+// Deals teams into groupCount groups as evenly as possible (round-robin
+// dealing, so group sizes never differ by more than one). Caller decides
+// team order beforehand (e.g. shuffled) — this only controls the split.
+export function assignGroups(teamIds: string[], groupCount: number): string[][] {
+  if (groupCount < 2) throw new Error('Es müssen mindestens 2 Gruppen sein.');
+  if (teamIds.length < groupCount * 2) {
+    throw new Error('Jede Gruppe braucht mindestens 2 Teams.');
+  }
+  const groups: string[][] = Array.from({ length: groupCount }, () => []);
+  teamIds.forEach((id, i) => groups[i % groupCount].push(id));
+  return groups;
+}
+
+// Picks the top `advancersPerGroup` teams from each group's standings and
+// interleaves them into a single seed order for generateBracket: all group
+// winners first (strongest first), then all runners-up, and so on — so
+// generateBracket's balanced seeding naturally keeps group-mates apart for
+// as long as possible instead of an immediate rematch.
+export function selectAdvancers(standingsByGroup: TeamStanding[][], advancersPerGroup: number): string[] {
+  const seeded: string[] = [];
+  for (let rank = 0; rank < advancersPerGroup; rank++) {
+    const atThisRank = standingsByGroup
+      .map((standings) => standings[rank])
+      .filter((s): s is TeamStanding => Boolean(s))
+      .sort((x, y) => y.points - x.points || y.wins - x.wins);
+    seeded.push(...atThisRank.map((s) => s.teamId));
+  }
+  return seeded;
 }

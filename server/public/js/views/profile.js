@@ -188,19 +188,32 @@ export function renderProfile(container, ctx) {
     <div class="section-title">🖥️ Live-Status-Agent</div>
     <div class="card stack">
       <label class="check-row">
+        <input type="checkbox" id="tracking-paused" ${me.tracking_paused ? 'checked' : ''} />
+        <span style="flex:1;">🚫 Tracking pausieren</span>
+      </label>
+      <p class="muted" style="font-size:0.8rem;margin-top:-4px;">
+        Dein Agent darf weiterlaufen und meldet sich weiter beim Server, aber nichts davon wird
+        gespeichert – kein Live-Status, keine Spielzeit. Dasselbe Pausieren geht auch direkt am PC
+        über die Steuerungs-Oberfläche des Agents – beide Wege zeigen denselben Stand.
+      </p>
+      <label class="check-row">
         <input type="checkbox" id="agent-track-activity" />
         <span style="flex:1;">Erweitertes Aktivitäts-Tracking</span>
       </label>
       <p class="muted" style="font-size:0.8rem;margin-top:-4px;">
         Aus (Standard): der Server weiß nur „läuft Spiel X gerade". An: zusätzlich, ob das
         Spielfenster wirklich im Vordergrund ist statt nur im Hintergrund zu laufen – zeigt sich z. B.
-        als „davon aktiv gespielt" in deiner Statistik. Wirkt sich erst beim nächsten Download aus.
+        als „davon aktiv gespielt" in deiner Statistik. Das hier ist nur der Startwert für den
+        nächsten Download – danach lässt sich das jederzeit in der Steuerungs-Oberfläche des Agents
+        (Desktop-Verknüpfung „RespawnHQ-Agent Steuerung") umschalten, ohne neu herunterzuladen.
       </p>
       <button type="button" class="btn btn-primary btn-block" id="agent-download">📥 Agent für Windows herunterladen</button>
       <p class="muted" style="font-size:0.8rem;">
         ZIP entpacken, <code>install.bat</code> doppelklicken – Server-Adresse und dein API-Key sind
         schon eingetragen. Der Agent startet danach automatisch bei jedem Windows-Login und erkennt,
-        welches Spiel du gerade spielst.
+        welches Spiel du gerade spielst. Im selben ZIP liegt auch <code>uninstall.bat</code>, falls du
+        den Agent später komplett wieder loswerden willst (für ein vorübergehendes Pausieren reicht
+        die Option oben).
       </p>
       <details>
         <summary class="muted" style="font-size:0.8rem;cursor:pointer;">Kein Windows / manuelle Einrichtung</summary>
@@ -256,6 +269,16 @@ export function renderProfile(container, ctx) {
       const input = container.querySelector('#profile-apikey');
       if (input) input.value = 'Fehler beim Laden';
     });
+
+  container.querySelector('#tracking-paused').addEventListener('change', async (e) => {
+    try {
+      await api.players.update(myId, { trackingPaused: e.target.checked });
+      await ctx.refresh();
+      showToast(e.target.checked ? 'Tracking pausiert.' : 'Tracking wieder aktiv.');
+    } catch (err) {
+      showToast(err.message, { error: true });
+    }
+  });
 
   container.querySelector('#profile-copy-key').addEventListener('click', async () => {
     const value = container.querySelector('#profile-apikey').value;

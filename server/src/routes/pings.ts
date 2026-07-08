@@ -7,7 +7,7 @@ import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
-import { getActiveEventId } from '../events';
+import { getTrackingEventId } from '../events';
 import { isNonEmptyString } from '../validation';
 import { notifyPlayers } from '../push';
 
@@ -87,7 +87,7 @@ function buildActivePings(eventId: string) {
 // event (or an explicit ?eventId=), newest first.
 pingsRouter.get('/', (req, res) => {
   const { eventId } = req.query;
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getActiveEventId();
+  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
   res.json({ pings: buildActivePings(filterEventId) });
 });
 
@@ -131,7 +131,7 @@ pingsRouter.post('/', (req, res) => {
 
   const now = Date.now();
   const id = nanoid();
-  const eventId = getActiveEventId();
+  const eventId = getTrackingEventId();
   db.prepare(
     'INSERT INTO game_pings (id, player_id, game_id, event_id, message, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ).run(id, playerId, gameId, eventId, isNonEmptyString(message, 140) ? (message as string).trim() : null, now, now + minutes * 60_000);

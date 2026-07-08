@@ -9,7 +9,7 @@ import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
-import { getActiveEventId } from '../events';
+import { getTrackingEventId } from '../events';
 
 export const matchesRouter = Router();
 
@@ -133,7 +133,7 @@ matchesRouter.post('/', (req, res) => {
   const row: MatchRow = {
     id: nanoid(),
     game_id: gameId,
-    event_id: getActiveEventId(),
+    event_id: getTrackingEventId(),
     played_at: playedAt ?? Date.now(),
     result: JSON.stringify({ teams: validated.teams, winnerTeamIndex: validated.winnerTeamIndex }),
   };

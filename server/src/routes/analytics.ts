@@ -6,7 +6,7 @@
 
 import { Router } from 'express';
 import { db } from '../db';
-import { formatDurationMs, type PlaySession } from '../playtime';
+import { formatDurationMs, computePlaytime, aggregateByGame, type PlaySession } from '../playtime';
 import {
   sessionDurations,
   longestSessionPerPlayerGame,
@@ -19,6 +19,7 @@ import {
 } from '../sessionStats';
 import { parseTimeRangeQuery } from './queryHelpers';
 import { computeAwards } from '../awards';
+import { matchCountsByGame, biggestRivalry, bestDuo, biggestUnderdogWin, type MatchForUnderdog } from '../gameStats';
 
 export const analyticsRouter = Router();
 
@@ -265,4 +266,187 @@ analyticsRouter.get('/awards', (req, res) => {
   }));
 
   res.json({ awards });
+});
+
+// GET /api/analytics/games - "Beliebteste Spiele": per-game total playtime,
+// distinct player count, and session count, most-played first. Same
+// optional ?eventId=&from=&to= filtering as the endpoints above.
+analyticsRouter.get('/games', (req, res) => {
+  const { eventId } = req.query;
+  const filterEventId = typeof eventId === 'string' ? eventId : null;
+  const range = parseTimeRangeQuery(req.query as Record<string, unknown>);
+  if ('error' in range) return res.status(400).json({ error: range.error });
+
+  const now = Date.now();
+  const rawRows = loadAllSessions(null, filterEventId);
+  const rawSessions: PlaySession[] = rawRows.map((r) => ({
+    playerId: r.player_id,
+    gameId: r.game_id,
+    startedAt: r.started_at,
+    endedAt: r.ended_at,
+    activeMs: r.active_ms,
+  }));
+  const sessions = clipSessionsToRange(rawSessions, now, range.from, range.to);
+
+  const totals = aggregateByGame(computePlaytime(sessions, now));
+
+  const sessionCountByGame = new Map<string, number>();
+  const playersByGame = new Map<string, Set<string>>();
+  for (const s of sessions) {
+    sessionCountByGame.set(s.gameId, (sessionCountByGame.get(s.gameId) ?? 0) + 1);
+    if (!playersByGame.has(s.gameId)) playersByGame.set(s.gameId, new Set());
+    playersByGame.get(s.gameId)!.add(s.playerId);
+  }
+
+  const { gameById } = loadNamesFor([], totals.map((t) => t.gameId));
+
+  const games = totals.map((t) => ({
+    gameId: t.gameId,
+    gameName: gameById.get(t.gameId)?.name ?? 'Unbekannt',
+    gameIcon: gameById.get(t.gameId)?.icon ?? '🎮',
+    totalFormatted: formatDurationMs(t.totalMs),
+    sessionCount: sessionCountByGame.get(t.gameId) ?? 0,
+    playerCount: playersByGame.get(t.gameId)?.size ?? 0,
+  }));
+
+  res.json({ games });
+});
+
+interface MatchRow {
+  id: string;
+  game_id: string;
+  result: string;
+}
+
+function loadAllMatches(eventId: string | null): MatchForUnderdog[] {
+  const clauses: string[] = [];
+  const params: string[] = [];
+  if (eventId) {
+    clauses.push('event_id = ?');
+    params.push(eventId);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const rows = db.prepare(`SELECT id, game_id, result FROM matches ${where}`).all(...params) as MatchRow[];
+  return rows.map((r) => {
+    const parsed = JSON.parse(r.result) as { teams: Array<{ playerIds: string[] }>; winnerTeamIndex: number | null };
+    return { id: r.id, gameId: r.game_id, teams: parsed.teams, winnerTeamIndex: parsed.winnerTeamIndex };
+  });
+}
+
+function countBy<T>(rows: T[], key: (r: T) => string): Array<{ key: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const r of rows) counts.set(key(r), (counts.get(key(r)) ?? 0) + 1);
+  return [...counts.entries()].map(([k, count]) => ({ key: k, count })).sort((a, b) => b.count - a.count);
+}
+
+// GET /api/analytics/games-tournaments - the "Spiele & Turniere" tab: how
+// much each game got played/drawn/competed in, plus a few "witzige"
+// head-to-head stats. Optionally filtered by ?eventId= (default: all-time,
+// since these are the kind of numbers people like comparing across LANs).
+analyticsRouter.get('/games-tournaments', (req, res) => {
+  const { eventId } = req.query;
+  const filterEventId = typeof eventId === 'string' && eventId ? eventId : null;
+
+  const matches = loadAllMatches(filterEventId);
+  const matchCounts = matchCountsByGame(matches);
+
+  const eventClause = filterEventId ? 'WHERE event_id = ?' : '';
+  const eventParams = filterEventId ? [filterEventId] : [];
+
+  const tournamentRows = db
+    .prepare(`SELECT format, status, game_id FROM tournaments ${eventClause}`)
+    .all(...eventParams) as Array<{ format: string; status: string; game_id: string }>;
+  const tournamentByGame = countBy(tournamentRows, (t) => t.game_id);
+  const tournamentByFormat = countBy(tournamentRows, (t) => t.format);
+
+  const drawRows = db
+    .prepare(`SELECT game_id, seat_conflicts, seat_pairs_considered FROM matchmaking_draws ${eventClause}`)
+    .all(...eventParams) as Array<{ game_id: string; seat_conflicts: number; seat_pairs_considered: number }>;
+  const drawsByGame = countBy(drawRows, (d) => d.game_id);
+  const totalSeatPairsConsidered = drawRows.reduce((sum, d) => sum + d.seat_pairs_considered, 0);
+  const totalSeatConflicts = drawRows.reduce((sum, d) => sum + d.seat_conflicts, 0);
+
+  const rivalry = biggestRivalry(matches);
+  const duo = bestDuo(matches);
+
+  // Same neutral default rating as matchmaking.ts's DEFAULT_RATING — a
+  // player who's never rated a game isn't meaningfully "weaker" than one
+  // who is.
+  const skillRows = db.prepare('SELECT player_id, game_id, rating FROM skills').all() as Array<{
+    player_id: string;
+    game_id: string;
+    rating: number;
+  }>;
+  const ratingByKey = new Map(skillRows.map((r) => [`${r.player_id}::${r.game_id}`, r.rating]));
+  const ratingOf = (playerId: string, gameId: string) => ratingByKey.get(`${playerId}::${gameId}`) ?? 5;
+  const underdog = biggestUnderdogWin(matches, ratingOf);
+  const underdogMatch = underdog ? matches.find((m) => m.id === underdog.matchId) : undefined;
+
+  const involvedPlayerIds = [
+    ...(rivalry ? [rivalry.playerAId, rivalry.playerBId] : []),
+    ...(duo ? [duo.playerAId, duo.playerBId] : []),
+    ...(underdogMatch ? underdogMatch.teams[underdog!.winnerTeamIndex].playerIds : []),
+  ];
+  const involvedGameIds = [
+    ...new Set([
+      ...matchCounts.map((m) => m.gameId),
+      ...tournamentRows.map((t) => t.game_id),
+      ...drawRows.map((d) => d.game_id),
+      ...(underdog ? [underdog.gameId] : []),
+    ]),
+  ];
+  const { playerById, gameById } = loadNamesFor(involvedPlayerIds, involvedGameIds);
+
+  const gameLabel = (gameId: string) => ({
+    gameId,
+    gameName: gameById.get(gameId)?.name ?? 'Unbekannt',
+    gameIcon: gameById.get(gameId)?.icon ?? '🎮',
+  });
+  const playerLabel = (id: string) => ({
+    id,
+    name: playerById.get(id)?.name ?? 'Unbekannt',
+    color: playerById.get(id)?.color ?? '#999999',
+  });
+
+  res.json({
+    matches: {
+      total: matches.length,
+      byGame: matchCounts.map((m) => ({ ...gameLabel(m.gameId), count: m.count, decided: m.decided, undecided: m.undecided })),
+    },
+    tournaments: {
+      total: tournamentRows.length,
+      completed: tournamentRows.filter((t) => t.status === 'completed').length,
+      active: tournamentRows.filter((t) => t.status !== 'completed').length,
+      byFormat: tournamentByFormat.map((f) => ({ format: f.key, count: f.count })),
+      byGame: tournamentByGame.map((g) => ({ ...gameLabel(g.key), count: g.count })),
+    },
+    draws: {
+      total: drawRows.length,
+      byGame: drawsByGame.map((g) => ({ ...gameLabel(g.key), count: g.count })),
+      seatConflictRatePercent:
+        totalSeatPairsConsidered > 0 ? Math.round((totalSeatConflicts / totalSeatPairsConsidered) * 100) : null,
+    },
+    fun: {
+      biggestRivalry: rivalry
+        ? { playerA: playerLabel(rivalry.playerAId), playerB: playerLabel(rivalry.playerBId), count: rivalry.count }
+        : null,
+      bestDuo: duo
+        ? {
+            playerA: playerLabel(duo.playerAId),
+            playerB: playerLabel(duo.playerBId),
+            gamesTogether: duo.gamesTogether,
+            winsTogether: duo.winsTogether,
+          }
+        : null,
+      biggestUnderdogWin:
+        underdog && underdogMatch
+          ? {
+              ...gameLabel(underdog.gameId),
+              winnerAvgRating: Math.round(underdog.winnerAvgRating * 10) / 10,
+              loserAvgRating: Math.round(underdog.loserAvgRating * 10) / 10,
+              winners: underdogMatch.teams[underdog.winnerTeamIndex].playerIds.map(playerLabel),
+            }
+          : null,
+    },
+  });
 });
