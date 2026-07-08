@@ -1,7 +1,8 @@
 // Browser E2E test: drives the real built server + real Chromium through the
-// main click paths (players, matchmaking, voting, leaderboard). Separate from
-// the fast unit/integration suite (`npm test`) — run via `npm run test:e2e`
-// since it spawns a server process and a browser, which is much slower.
+// main click paths (self-onboarding, players, matchmaking, voting,
+// leaderboard, game admin, tournament). Separate from the fast
+// unit/integration suite (`npm test`) — run via `npm run test:e2e` since it
+// spawns a server process and a browser, which is much slower.
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -40,6 +41,9 @@ before(async () => {
   // a download (see PLAYWRIGHT_BROWSERS_PATH in the environment docs).
   browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
   page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  // Native confirm() dialogs (vote cancel, game delete, tracking start) —
+  // accept them so click-through tests don't hang.
+  page.on('dialog', (d) => void d.accept());
 });
 
 after(async () => {
@@ -47,18 +51,26 @@ after(async () => {
   serverProcess?.kill();
 });
 
-test('full click-through: players, matchmaking, voting, leaderboard', async () => {
+test('fresh device lands on self-onboarding and creates its profile there', async () => {
   await page.goto(BASE_URL);
   await page.waitForSelector('#app:not([hidden])');
-  assert.equal(await page.textContent('.view-title'), 'Live-Status');
 
-  // Add two players.
+  // No identity stored on this device yet -> the app must route straight to
+  // the profile/onboarding view, not the Live board.
+  assert.equal(await page.textContent('.view-title'), '👋 Willkommen bei RespawnHQ');
+
+  await page.fill('#profile-new-name', 'E2E Alice');
+  await page.click('#profile-new-form button[type="submit"]');
+
+  // Creating the profile switches into the full profile editor for the new
+  // identity (name field prefilled, skill sliders section, agent download).
+  await page.waitForSelector('#profile-name');
+  assert.equal(await page.inputValue('#profile-name'), 'E2E Alice');
+});
+
+test('full click-through: players, matchmaking, voting, leaderboard, live pause', async () => {
+  // Add a second player via the roster view.
   await page.click('[data-view="players"]');
-  await page.click('#add-player-btn');
-  await page.fill('#new-player-name', 'E2E Alice');
-  await page.click('#add-player-form button[type="submit"]');
-  await page.waitForSelector('text=E2E Alice');
-
   await page.click('#add-player-btn');
   await page.fill('#new-player-name', 'E2E Bob');
   await page.click('#add-player-form button[type="submit"]');
@@ -79,10 +91,12 @@ test('full click-through: players, matchmaking, voting, leaderboard', async () =
   const teamCards = await page.locator('.team-card').count();
   assert.ok(teamCards >= 2, 'expected at least 2 team cards');
 
-  // Voting: start a round, cast a vote, close it.
+  // Voting: start a round and cast a vote. The device identity was already
+  // set during onboarding, so no "who am I" picker appears — voting is one
+  // tap, which is exactly the intended flow.
   await page.click('[data-view="votes"]');
+  await page.waitForSelector('text=Du bist E2E Alice');
   await page.click('#votes-start');
-  await page.selectOption('#whoami', { label: 'E2E Alice' });
   await page.click('[data-vote-game] >> nth=0');
   await page.waitForFunction(() => document.body.textContent?.includes('1 Stimme'));
   await page.click('#votes-close');
@@ -106,25 +120,15 @@ test('full click-through: players, matchmaking, voting, leaderboard', async () =
   await page.waitForSelector('.player-card');
   assert.equal(await page.locator('.player-card').count(), 2);
 
-  // Manual pause override (FR-28): pick "who am I", toggle pause, see the
-  // badge flip, then toggle back.
-  await page.selectOption('#live-whoami', { label: 'E2E Alice' });
+  // Manual pause override (FR-28): the pause toggle renders only on your own
+  // card. Toggle pause, see the badge flip, then toggle back.
   await page.click('[data-toggle-pause]');
   await page.waitForSelector('.badge-paused');
   await page.click('[data-toggle-pause]');
   await page.waitForFunction(() => !document.querySelector('.badge-paused'));
-
-  // Auswertungen dashboard: reachable from Rangliste, loads its async data
-  // and renders the section headers (no play_sessions exist in this flow —
-  // no agent ever reported — so we check structure, not specific awards).
-  await page.click('[data-view="leaderboard"]');
-  await page.click('[data-navigate="analytics"]');
-  await page.waitForSelector('text=Auswertungen');
-  await page.waitForSelector('text=Wer hat wann was gespielt', { timeout: 5000 });
-  await page.waitForSelector('text=Awards');
 });
 
-test('Auswertungen shows a real award and a visible, auto-scrolled concurrency chart', async () => {
+test('Auswertungen (via Mehr) shows a real award and a visible, auto-scrolled concurrency chart', async () => {
   // Create a player + a session via the real agent-report endpoint (not the
   // UI) so there's an actual play_sessions row to render.
   const playerRes = await page.request.post(`${BASE_URL}/api/players`, {
@@ -147,7 +151,8 @@ test('Auswertungen shows a real award and a visible, auto-scrolled concurrency c
 
   await page.reload();
   await page.waitForSelector('#app:not([hidden])');
-  await page.click('[data-view="leaderboard"]');
+  // Spielzeit-Auswertungen lives in the "Mehr" tab.
+  await page.click('[data-view="more"]');
   await page.click('[data-navigate="analytics"]');
   await page.waitForSelector('text=Marathon-Zocker', { timeout: 5000 });
   assert.ok((await page.textContent('.view-title'))?.includes('Auswertungen'));
@@ -165,13 +170,11 @@ test('Auswertungen shows a real award and a visible, auto-scrolled concurrency c
   );
 });
 
-test('Mein Profil: pick identity, rename with a uniqueness conflict, then succeed', async () => {
+test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statistiken reachable', async () => {
   await page.click('#profile-btn');
 
-  // The earlier "full click-through" test already picked "E2E Alice" as
-  // whoami (via the Live view's pause toggle) — that identity is shared
-  // storage, so this view opens straight into the profile editor for her
-  // rather than the identity picker.
+  // The device identity is still "E2E Alice" from onboarding, so this view
+  // opens straight into the profile editor rather than the identity picker.
   await page.waitForSelector('#profile-name');
   assert.equal(await page.inputValue('#profile-name'), 'E2E Alice');
 
@@ -190,12 +193,62 @@ test('Mein Profil: pick identity, rename with a uniqueness conflict, then succee
     return el?.value === 'E2E Alice Pro';
   });
 
-  // Self-service skill rating and the personal stats dashboard both render.
+  // Self-service skill rating renders, and the personal stats dashboard is
+  // one tap away (it moved to its own view, myStats).
   assert.ok((await page.locator('.skill-row').count()) > 0);
+  await page.click('[data-navigate="myStats"]');
   await page.waitForSelector('text=Meine Statistiken');
-  await page.waitForSelector('#profile-stats-event');
+  await page.waitForSelector('#my-stats-event');
 
-  // "Nicht du?" resets identity back to the picker.
+  // Back to the profile; "Nicht du?" resets identity back to the picker.
+  await page.click('[data-navigate="profile"]');
+  await page.waitForSelector('#profile-not-me');
   await page.click('#profile-not-me');
   await page.waitForSelector('#profile-whoami');
+  // Restore the identity — later tests (tournament) still act as her.
+  await page.selectOption('#profile-whoami', { label: 'E2E Alice Pro' });
+});
+
+test('Spiele verwalten: create a game, and a duplicate name is rejected with a clear error', async () => {
+  await page.click('#settings-btn');
+  await page.click('#add-game-btn');
+  await page.fill('#new-game-name', 'E2E Partyspiel');
+  await page.click('#add-game-form button[type="submit"]');
+  await page.waitForSelector('text=E2E Partyspiel');
+
+  // Same name again (different case): server must refuse — otherwise votes,
+  // skills and results would silently split across two identical entries.
+  await page.click('#add-game-btn');
+  await page.fill('#new-game-name', 'e2e partyspiel');
+  await page.click('#add-game-form button[type="submit"]');
+  await page.waitForSelector('.toast-error');
+  await page.waitForSelector('text=gibt es schon');
+  await page.click('[data-close]');
+});
+
+test('Turnier: create a K.O. bracket from proposed teams and play it to a champion', async () => {
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="tournaments"]');
+  await page.waitForSelector('#tourn-new-btn');
+  await page.click('#tourn-new-btn');
+
+  // Propose balanced teams from the checked players (all by default), then
+  // create — the submit button only unlocks once a proposal exists.
+  await page.waitForSelector('#tourn-propose');
+  assert.equal(await page.locator('#tourn-submit').isDisabled(), true);
+  await page.click('#tourn-propose');
+  await page.waitForSelector('[data-team-name]');
+  await page.click('#tourn-submit');
+
+  // Bracket renders with clickable team buttons; click winners until the
+  // tournament reports itself finished.
+  await page.waitForSelector('.bracket-match');
+  for (let i = 0; i < 8; i++) {
+    const btn = page.locator('button.bracket-team:not(.is-tbd)').first();
+    if ((await btn.count()) === 0) break;
+    if (await page.locator('text=Beendet').count()) break;
+    await btn.click();
+    await page.waitForTimeout(300);
+  }
+  await page.waitForSelector('text=Beendet', { timeout: 5000 });
 });
