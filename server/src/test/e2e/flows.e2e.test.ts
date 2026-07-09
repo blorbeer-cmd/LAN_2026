@@ -306,6 +306,77 @@ test('Essensbestellung: open an order with a send time, edit it, add a priced it
   await page.waitForSelector('text=Geht raus um 24.12., 22:00 Uhr');
 });
 
+test('Arcade: open a quiz lobby, see it listed, then close it again', async () => {
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="arcade"]');
+  await page.waitForSelector('#quiz-create-lobby');
+  await page.click('#quiz-create-lobby');
+
+  // The host sees their own lobby with a "Schließen" button instead of a
+  // join button/"Drin" badge - closing was previously impossible (the only
+  // way to get rid of a lobby was to disconnect the socket, e.g. by closing
+  // the tab), leaving abandoned lobbies listed forever.
+  await page.waitForSelector('[data-close-lobby]');
+  await page.click('[data-close-lobby]');
+  await page.waitForSelector('text=Keine offene Quiz-Lobby.');
+
+  // Closed - the create button is enabled again.
+  await page.waitForSelector('#quiz-create-lobby:not([disabled])');
+});
+
+test('An- & Abreise: carpool marks the driver, enforces seats, driver can only delete', async () => {
+  // A third roster player to later demonstrate a full carpool.
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="players"]');
+  await page.click('#add-player-btn');
+  await page.fill('#new-player-name', 'E2E Carol');
+  await page.click('#add-player-form button[type="submit"]');
+  await page.waitForSelector('text=E2E Carol');
+
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="arrivals"]');
+  await page.waitForSelector('[data-new-carpool="arrival"]');
+
+  // Current identity is still "E2E Alice Pro" - she creates the carpool and
+  // becomes its driver, with just 1 free passenger seat.
+  await page.click('[data-new-carpool="arrival"]');
+  await page.fill('#carpool-label', 'Auto Alice');
+  await page.fill('#carpool-location', 'Hamburg');
+  await page.fill('#carpool-seats', '1');
+  await page.click('#carpool-form button[type="submit"]');
+  await page.waitForSelector('text=🚗 E2E Alice Pro fährt');
+  await page.waitForSelector('text=1/1 frei');
+  // The driver only ever gets Bearbeiten/Löschen, never a "Raus" button.
+  await page.waitForSelector('[data-edit-carpool]');
+  await page.waitForSelector('[data-remove-carpool]');
+  assert.equal(await page.locator('[data-leave-carpool]').count(), 0);
+
+  // Switch identity to Bob: he joins, taking the last seat.
+  await page.click('[data-whoami-change]');
+  await page.selectOption('#arrivals-whoami', { label: 'E2E Bob' });
+  await page.waitForSelector('[data-join-carpool]');
+  await page.click('[data-join-carpool]');
+  await page.waitForSelector('text=0/1 frei');
+  await page.waitForSelector('[data-leave-carpool]');
+
+  // A third player finds the carpool full and can't join.
+  await page.click('[data-whoami-change]');
+  await page.selectOption('#arrivals-whoami', { label: 'E2E Carol' });
+  await page.waitForSelector('text=Voll');
+  assert.equal(await page.locator('[data-join-carpool]').count(), 0);
+
+  // Bob leaves, freeing the seat back up; the driver deletes the group.
+  await page.click('[data-whoami-change]');
+  await page.selectOption('#arrivals-whoami', { label: 'E2E Bob' });
+  await page.click('[data-leave-carpool]');
+  await page.waitForSelector('text=1/1 frei');
+
+  await page.click('[data-whoami-change]');
+  await page.selectOption('#arrivals-whoami', { label: 'E2E Alice Pro' });
+  await page.click('[data-remove-carpool]');
+  await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
+});
+
 test('Durchsage: send a broadcast, see it in the history', async () => {
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="broadcast"]');

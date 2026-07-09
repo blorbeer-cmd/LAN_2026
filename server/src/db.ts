@@ -469,13 +469,22 @@ db.exec(`
     PRIMARY KEY (event_id, player_id)
   );
 
+  -- created_by is always the driver (enforced in arrivals.ts: can't leave,
+  -- only delete the whole group) - start_at/start_location/eta_at are the
+  -- driver's plan (when/where they set off, and when they expect to
+  -- arrive), seats_total caps how many others (not counting the driver) can
+  -- join via carpool_members.
   CREATE TABLE IF NOT EXISTS carpools (
-    id         TEXT PRIMARY KEY,
-    event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-    direction  TEXT NOT NULL,
-    label      TEXT NOT NULL,
-    created_by TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-    created_at INTEGER NOT NULL
+    id             TEXT PRIMARY KEY,
+    event_id       TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    direction      TEXT NOT NULL,
+    label          TEXT NOT NULL,
+    start_at       INTEGER,
+    start_location TEXT,
+    eta_at         INTEGER,
+    seats_total    INTEGER NOT NULL DEFAULT 3,
+    created_by     TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    created_at     INTEGER NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS carpool_members (
@@ -559,6 +568,18 @@ function migrateFoodOrderSendAtColumn(): void {
   db.exec('ALTER TABLE food_orders ADD COLUMN send_at INTEGER');
 }
 migrateFoodOrderSendAtColumn();
+
+// Migration: older databases predate the carpool driver plan (when/where
+// they start, ETA, seat count).
+function migrateCarpoolPlanColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(carpools)').all() as Array<{ name: string }>;
+  const has = (name: string) => columns.some((c) => c.name === name);
+  if (!has('start_at')) db.exec('ALTER TABLE carpools ADD COLUMN start_at INTEGER');
+  if (!has('start_location')) db.exec('ALTER TABLE carpools ADD COLUMN start_location TEXT');
+  if (!has('eta_at')) db.exec('ALTER TABLE carpools ADD COLUMN eta_at INTEGER');
+  if (!has('seats_total')) db.exec('ALTER TABLE carpools ADD COLUMN seats_total INTEGER NOT NULL DEFAULT 3');
+}
+migrateCarpoolPlanColumns();
 
 // Migration: older databases predate the group-knockout format and score
 // tracking (both added together) — add the columns they need if missing.
