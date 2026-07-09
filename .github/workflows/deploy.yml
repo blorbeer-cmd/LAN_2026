@@ -19,7 +19,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 24 (current Active LTS) — matches server/Dockerfile. Also fixes
+          # a real bug: npm test's `node --test "<glob>"` needs the test
+          # runner's own glob support, a semver-major feature added in 21
+          # and never backported to 20 — Node 20 fails with "Could not find
+          # 'dist-test/*.test.js'" (verified by reproducing it locally).
+          node-version: 24
           cache: npm
           cache-dependency-path: server/package-lock.json
       - run: npm ci

@@ -2,7 +2,7 @@
 # full build image, then ship only the runtime bits. Both stages use the same
 # base image so the native addon's glibc ABI matches between build and run.
 
-FROM node:20-bookworm-slim AS builder
+FROM node:24-bookworm-slim AS builder
 WORKDIR /app
 
 # better-sqlite3 compiles a native addon at install time.
@@ -21,7 +21,7 @@ RUN npm run build
 # only copies production node_modules.
 RUN npm prune --omit=dev
 
-FROM node:20-bookworm-slim AS runtime
+FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
@@ -31,7 +31,7 @@ COPY --from=builder /app/dist ./dist
 COPY public ./public
 COPY agent-dist ./agent-dist
 
-# node:20-bookworm-slim ships a non-root "node" user out of the box.
+# node:24-bookworm-slim ships a non-root "node" user out of the box.
 RUN chown -R node:node /app
 USER node
 
