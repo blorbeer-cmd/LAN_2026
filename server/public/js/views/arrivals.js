@@ -60,29 +60,50 @@ function renderMyForm(myId) {
 }
 
 function renderCarpool(c, direction, myId) {
+  const isDriver = c.driverId === myId;
   const amIn = Boolean(myId && c.members.some((m) => m.id === myId));
+  const full = c.seatsFree <= 0;
   const memberHtml =
     c.members.length > 0
       ? `<div class="row arrivals-chip-row">${c.members
-          .map((m) => `<span class="chip">${avatarHtml(m, 18)} ${escapeHtml(m.name)}</span>`)
+          .map((m) => `<span class="chip">${avatarHtml(m, 18)} ${escapeHtml(m.name)}${m.id === c.driverId ? ' 🚗 Fahrer' : ''}</span>`)
           .join('')}</div>`
       : `<div class="muted" style="font-size:0.85rem;">Noch niemand dabei.</div>`;
+  const planLines = [
+    c.startAt || c.startLocation
+      ? `<div class="arrivals-time-line"><span>🕐</span><strong>${c.startAt ? formatDateTime(c.startAt) : 'Zeit offen'}${c.startLocation ? ` ab ${escapeHtml(c.startLocation)}` : ''}</strong></div>`
+      : '',
+    c.etaAt ? `<div class="arrivals-time-line"><span>🏁</span><strong>ETA ${formatDateTime(c.etaAt)}</strong></div>` : '',
+    `<div class="arrivals-time-line"><span>💺</span><strong>${c.seatsFree}/${c.seatsTotal} frei</strong></div>`,
+  ]
+    .filter(Boolean)
+    .join('');
+
+  let joinAction = '';
+  if (myId && !isDriver) {
+    if (amIn) {
+      joinAction = `<button type="button" class="btn btn-sm" data-leave-carpool="${c.id}">Raus</button>`;
+    } else if (full) {
+      joinAction = `<button type="button" class="btn btn-sm" disabled>Voll</button>`;
+    } else {
+      joinAction = `<button type="button" class="btn btn-sm btn-primary" data-join-carpool="${c.id}">Dabei</button>`;
+    }
+  }
+
   return `
     <div class="arrivals-carpool-row">
       <div class="arrivals-carpool-head">
         <div>
           <strong>${escapeHtml(c.label)}</strong>
-          <div class="muted" style="font-size:0.78rem;">von ${escapeHtml(c.createdByName)} · ${formatDateTime(c.createdAt)}</div>
+          <div class="muted" style="font-size:0.78rem;">🚗 ${escapeHtml(c.createdByName)} fährt · angelegt ${formatDateTime(c.createdAt)}</div>
         </div>
         <div class="arrivals-carpool-actions">
-          ${
-            myId
-              ? `<button type="button" class="btn btn-sm ${amIn ? '' : 'btn-primary'}" data-${amIn ? 'leave' : 'join'}-carpool="${c.id}">${amIn ? 'Raus' : 'Dabei'}</button>`
-              : ''
-          }
-          ${c.createdBy === myId ? `<button type="button" class="btn btn-sm btn-danger" data-remove-carpool="${c.id}">Löschen</button>` : ''}
+          ${joinAction}
+          ${isDriver ? `<button type="button" class="btn btn-sm" data-edit-carpool="${c.id}">Bearbeiten</button>` : ''}
+          ${isDriver ? `<button type="button" class="btn btn-sm btn-danger" data-remove-carpool="${c.id}">Löschen</button>` : ''}
         </div>
       </div>
+      ${planLines}
       ${memberHtml}
       ${!myId ? `<div class="muted" style="font-size:0.85rem;">Wähle oben, wer du bist, um beizutreten.</div>` : ''}
     </div>`;
@@ -147,27 +168,64 @@ function renderPeopleList() {
     <div class="card arrivals-people-card">${rows || '<div class="empty-state">Noch keine Spieler.</div>'}</div>`;
 }
 
-function openCarpoolForm(direction, myId, ctx) {
-  const label = direction === 'arrival' ? 'Anreise-Fahrgemeinschaft' : 'Abreise-Fahrgemeinschaft';
+// Shared create/edit form: `existing` is null for a new carpool (direction
+// is fixed then, chosen from the section the "+ Neu" button lives in) or an
+// existing carpool object to edit in place (direction can't change - editing
+// only touches the driver's plan, not which list it's listed under).
+function openCarpoolForm(direction, myId, ctx, existing = null) {
+  const isEdit = Boolean(existing);
+  const title = isEdit ? 'Fahrgemeinschaft bearbeiten' : direction === 'arrival' ? 'Anreise-Fahrgemeinschaft' : 'Abreise-Fahrgemeinschaft';
   const { close } = openModal(
-    label,
+    title,
     `
       <form id="carpool-form" class="stack">
-        <input type="text" id="carpool-label" maxlength="120" required autofocus placeholder="z.B. Auto Tim, ab Hamburg 16 Uhr" />
-        <button type="submit" class="btn btn-primary btn-block">Anlegen</button>
+        <input type="text" id="carpool-label" maxlength="120" required autofocus placeholder="z.B. Auto Tim" value="${escapeHtml(existing?.label ?? '')}" />
+        <div>
+          <label for="carpool-location" class="field-label">Von wo</label>
+          <input type="text" id="carpool-location" maxlength="120" placeholder="z.B. Hamburg" value="${escapeHtml(existing?.startLocation ?? '')}" />
+        </div>
+        <div class="field-row">
+          <div>
+            <label for="carpool-start-at" class="field-label">Start</label>
+            ${dateTimeFieldHtml('carpool-start-at', existing?.startAt ?? null, { clearable: true })}
+          </div>
+          <div>
+            <label for="carpool-eta-at" class="field-label">ETA (Ankunft ca.)</label>
+            ${dateTimeFieldHtml('carpool-eta-at', existing?.etaAt ?? null, { clearable: true })}
+          </div>
+        </div>
+        <div>
+          <label for="carpool-seats" class="field-label">Freie Plätze (ohne dich)</label>
+          <input type="number" id="carpool-seats" min="1" max="8" value="${existing?.seatsTotal ?? 3}" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">${isEdit ? 'Speichern' : 'Anlegen'}</button>
       </form>
     `,
     {
       onMount: (el) => {
+        wireDateTimeField(el, 'carpool-start-at');
+        wireDateTimeField(el, 'carpool-eta-at');
+
         el.querySelector('#carpool-form').addEventListener('submit', async (e) => {
           e.preventDefault();
-          const text = el.querySelector('#carpool-label').value.trim();
-          if (!text) return;
+          const label = el.querySelector('#carpool-label').value.trim();
+          if (!label) return;
+          const startLocation = el.querySelector('#carpool-location').value.trim() || null;
+          const startAt = parseDatetimeValue(el.querySelector('#carpool-start-at').value);
+          const etaAt = parseDatetimeValue(el.querySelector('#carpool-eta-at').value);
+          const seatsTotal = Number(el.querySelector('#carpool-seats').value);
+          if (Number.isNaN(startAt) || Number.isNaN(etaAt)) {
+            return showToast('Bitte gültige Datum/Uhrzeit-Werte eintragen.', { error: true });
+          }
           try {
-            await api.arrivals.createCarpool({ playerId: myId, direction, label: text });
+            if (isEdit) {
+              await api.arrivals.editCarpool(existing.id, { playerId: myId, label, startLocation, startAt, etaAt, seatsTotal });
+            } else {
+              await api.arrivals.createCarpool({ playerId: myId, direction, label, startLocation, startAt, etaAt, seatsTotal });
+            }
             close();
             cache = null;
-            showToast('Fahrgemeinschaft angelegt.');
+            showToast(isEdit ? 'Fahrgemeinschaft aktualisiert.' : 'Fahrgemeinschaft angelegt.');
             ctx.rerender();
           } catch (err) {
             showToast(err.message, { error: true });
@@ -231,6 +289,14 @@ export function renderArrivals(container, ctx) {
     btn.addEventListener('click', () => {
       if (!myId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
       openCarpoolForm(btn.dataset.newCarpool, myId, ctx);
+    });
+  });
+
+  container.querySelectorAll('[data-edit-carpool]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const all = [...(cache?.carpools?.arrival || []), ...(cache?.carpools?.departure || [])];
+      const carpool = all.find((c) => c.id === btn.dataset.editCarpool);
+      if (carpool) openCarpoolForm(carpool.direction, myId, ctx, carpool);
     });
   });
 

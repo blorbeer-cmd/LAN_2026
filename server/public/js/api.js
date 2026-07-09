@@ -343,6 +343,7 @@ export const api = {
     list: () => apiFetch('/api/arrivals'),
     saveMine: (data) => apiFetch('/api/arrivals/mine', { method: 'PUT', body: JSON.stringify(data) }),
     createCarpool: (data) => apiFetch('/api/arrivals/carpools', { method: 'POST', body: JSON.stringify(data) }),
+    editCarpool: (id, data) => apiFetch(`/api/arrivals/carpools/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     joinCarpool: (id, playerId) =>
       apiFetch(`/api/arrivals/carpools/${id}/join`, { method: 'POST', body: JSON.stringify({ playerId }) }),
     leaveCarpool: (id, playerId) =>
