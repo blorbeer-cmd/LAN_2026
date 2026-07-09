@@ -4,10 +4,11 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, avatarHtml, formatDateTime, toDatetimeLocal } from '../format.js';
+import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 
 let cache = null;
 let loading = false;
@@ -29,10 +30,6 @@ export function invalidateArrivals() {
   cache = null;
 }
 
-function datetimeValue(ms) {
-  return ms ? toDatetimeLocal(ms) : '';
-}
-
 function parseDatetimeValue(value) {
   if (!value) return null;
   const timestamp = new Date(value).getTime();
@@ -42,21 +39,23 @@ function parseDatetimeValue(value) {
 function renderMyForm(myId) {
   const own = (cache?.arrivals || []).find((a) => a.player_id === myId);
   return `
-    <div class="section-title">Meine An-/Abreise</div>
-    <form class="card stack" id="arrival-form">
-      <div class="row" style="align-items:flex-start;">
-        <div style="flex:1;">
-          <label for="arrival-at" class="field-label">Anreise</label>
-          <input type="datetime-local" id="arrival-at" value="${datetimeValue(own?.arrival_at)}" ${myId ? '' : 'disabled'} />
+    <div class="arrivals-block">
+      <div class="section-title">Meine An-/Abreise</div>
+      <form class="card stack" id="arrival-form">
+        <div class="field-row">
+          <div>
+            <label for="arrival-at" class="field-label">Anreise</label>
+            ${dateTimeFieldHtml('arrival-at', own?.arrival_at ?? null, { clearable: true, disabled: !myId })}
+          </div>
+          <div>
+            <label for="departure-at" class="field-label">Abreise</label>
+            ${dateTimeFieldHtml('departure-at', own?.departure_at ?? null, { clearable: true, disabled: !myId })}
+          </div>
         </div>
-        <div style="flex:1;">
-          <label for="departure-at" class="field-label">Abreise</label>
-          <input type="datetime-local" id="departure-at" value="${datetimeValue(own?.departure_at)}" ${myId ? '' : 'disabled'} />
-        </div>
-      </div>
-      <textarea id="arrival-note" maxlength="240" rows="2" placeholder="Notiz, z.B. komme erst nach der Arbeit" ${myId ? '' : 'disabled'}>${escapeHtml(own?.note || '')}</textarea>
-      <button type="submit" class="btn btn-primary btn-block" ${myId ? '' : 'disabled'}>Speichern</button>
-    </form>
+        <textarea id="arrival-note" maxlength="240" rows="2" placeholder="Notiz, z.B. komme erst nach der Arbeit" ${myId ? '' : 'disabled'}>${escapeHtml(own?.note || '')}</textarea>
+        <button type="submit" class="btn btn-primary btn-block" ${myId ? '' : 'disabled'}>Speichern</button>
+      </form>
+    </div>
   `;
 }
 
@@ -64,33 +63,56 @@ function renderCarpool(c, direction, myId) {
   const amIn = Boolean(myId && c.members.some((m) => m.id === myId));
   const memberHtml =
     c.members.length > 0
-      ? `<div class="row" style="gap:4px;flex-wrap:wrap;">${c.members
+      ? `<div class="row arrivals-chip-row">${c.members
           .map((m) => `<span class="chip">${avatarHtml(m, 18)} ${escapeHtml(m.name)}</span>`)
           .join('')}</div>`
       : `<div class="muted" style="font-size:0.85rem;">Noch niemand dabei.</div>`;
   return `
-    <div class="card stack" style="gap:8px;">
-      <div class="row-between">
-        <strong>${escapeHtml(c.label)}</strong>
-        ${c.createdBy === myId ? `<button type="button" class="btn btn-sm btn-danger" data-remove-carpool="${c.id}">Löschen</button>` : ''}
+    <div class="arrivals-carpool-row">
+      <div class="arrivals-carpool-head">
+        <div>
+          <strong>${escapeHtml(c.label)}</strong>
+          <div class="muted" style="font-size:0.78rem;">von ${escapeHtml(c.createdByName)} · ${formatDateTime(c.createdAt)}</div>
+        </div>
+        <div class="arrivals-carpool-actions">
+          ${
+            myId
+              ? `<button type="button" class="btn btn-sm ${amIn ? '' : 'btn-primary'}" data-${amIn ? 'leave' : 'join'}-carpool="${c.id}">${amIn ? 'Raus' : 'Dabei'}</button>`
+              : ''
+          }
+          ${c.createdBy === myId ? `<button type="button" class="btn btn-sm btn-danger" data-remove-carpool="${c.id}">Löschen</button>` : ''}
+        </div>
       </div>
-      <div class="muted" style="font-size:0.78rem;">von ${escapeHtml(c.createdByName)} · ${formatDateTime(c.createdAt)}</div>
       ${memberHtml}
-      ${
-        myId
-          ? `<button type="button" class="btn btn-sm ${amIn ? '' : 'btn-primary'}" data-${amIn ? 'leave' : 'join'}-carpool="${c.id}">${amIn ? 'Ich fahre doch nicht mit' : 'Ich bin dabei'}</button>`
-          : `<div class="muted" style="font-size:0.85rem;">Wähle oben, wer du bist, um beizutreten.</div>`
-      }
+      ${!myId ? `<div class="muted" style="font-size:0.85rem;">Wähle oben, wer du bist, um beizutreten.</div>` : ''}
     </div>`;
 }
 
 function renderCarpoolSection(direction, title, myId) {
   const rows = cache?.carpools?.[direction] || [];
   return `
-    <div class="section-title">${title}</div>
-    <div class="stack" style="gap:10px;">
-      ${rows.length ? rows.map((c) => renderCarpool(c, direction, myId)).join('') : `<div class="empty-state" style="padding:16px;">Noch keine Fahrgemeinschaft.</div>`}
-      <button type="button" class="btn btn-sm" data-new-carpool="${direction}" ${myId ? '' : 'disabled'}>+ Fahrgemeinschaft</button>
+    <div class="arrivals-carpool-section">
+      <div class="row-between">
+        <strong>${title}</strong>
+        <button type="button" class="btn btn-sm" data-new-carpool="${direction}" ${myId ? '' : 'disabled'}>+ Neu</button>
+      </div>
+      ${rows.length ? rows.map((c) => renderCarpool(c, direction, myId)).join('') : `<div class="muted arrivals-carpool-empty">Noch keine Fahrgemeinschaft.</div>`}
+    </div>`;
+}
+
+function renderCarpools(myId) {
+  return `
+    <div class="arrivals-block">
+      <div class="section-title">Fahrgemeinschaften</div>
+      <div class="card stack arrivals-carpool-card">
+        ${renderCarpoolSection('arrival', 'Anreise', myId)}
+        ${renderCarpoolSection('departure', 'Abreise', myId)}
+        ${
+          myId
+            ? ''
+            : `<div class="muted" style="font-size:0.85rem;padding:0 12px 12px;">Wähle oben, wer du bist, um Fahrgemeinschaften anzulegen oder beizutreten.</div>`
+        }
+      </div>
     </div>`;
 }
 
@@ -105,17 +127,16 @@ function renderPeopleList() {
       return a.player.name.localeCompare(b.player.name, 'de');
     })
     .map(({ player, entry }) => {
-      const times = [
-        entry?.arrival_at ? `Anreise ${formatDateTime(entry.arrival_at)}` : null,
-        entry?.departure_at ? `Abreise ${formatDateTime(entry.departure_at)}` : null,
-      ].filter(Boolean);
+      const arrival = entry?.arrival_at ? formatDateTime(entry.arrival_at) : 'offen';
+      const departure = entry?.departure_at ? formatDateTime(entry.departure_at) : 'offen';
       return `
-        <div class="card row list-row">
-          ${avatarHtml(player, 32)}
-          <span style="flex:1;">
+        <div class="arrivals-person-row">
+          ${avatarHtml(player, 30)}
+          <span class="arrivals-person-main">
             <div class="player-name">${escapeHtml(player.name)}</div>
-            <div class="muted list-row-desc">${times.length ? escapeHtml(times.join(' · ')) : 'Noch keine Zeiten eingetragen.'}</div>
-            ${entry?.note ? `<div class="muted list-row-desc">${escapeHtml(entry.note)}</div>` : ''}
+            <div class="arrivals-time-line"><span>An</span><strong>${escapeHtml(arrival)}</strong></div>
+            <div class="arrivals-time-line"><span>Ab</span><strong>${escapeHtml(departure)}</strong></div>
+            ${entry?.note ? `<div class="muted arrivals-note">${escapeHtml(entry.note)}</div>` : ''}
           </span>
         </div>`;
     })
@@ -123,7 +144,7 @@ function renderPeopleList() {
 
   return `
     <div class="section-title">Alle Zeiten</div>
-    <div class="card-grid">${rows || '<div class="empty-state">Noch keine Spieler.</div>'}</div>`;
+    <div class="card arrivals-people-card">${rows || '<div class="empty-state">Noch keine Spieler.</div>'}</div>`;
 }
 
 function openCarpoolForm(direction, myId, ctx) {
@@ -166,20 +187,22 @@ export function renderArrivals(container, ctx) {
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <h1 class="view-title">🚗 An- & Abreise</h1>
     ${whoAmICardHtml('arrivals-whoami', { marginBottom: '12px' })}
-    ${loaded ? renderMyForm(myId) : '<div class="empty-state">Lädt…</div>'}
     ${
       loaded
-        ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:16px;">
-             <div>${renderCarpoolSection('arrival', 'Anreise-Gruppen', myId)}</div>
-             <div>${renderCarpoolSection('departure', 'Abreise-Gruppen', myId)}</div>
-           </div>
-           ${renderPeopleList()}`
-        : ''
+        ? `<div class="arrivals-layout">
+             ${renderMyForm(myId)}
+             ${renderCarpools(myId)}
+             ${renderPeopleList()}
+           </div>`
+        : '<div class="empty-state">Lädt…</div>'
     }
   `;
 
   wireWhoAmICard(container, 'arrivals-whoami', ctx);
   if (!loaded) return;
+
+  wireDateTimeField(container, 'arrival-at');
+  wireDateTimeField(container, 'departure-at');
 
   container.querySelector('#arrival-form').addEventListener('submit', async (e) => {
     e.preventDefault();

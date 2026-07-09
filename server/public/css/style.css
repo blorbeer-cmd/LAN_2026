@@ -774,6 +774,89 @@ button.card {
   font-size: 0.8rem;
 }
 
+.arrivals-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.arrivals-block > .section-title {
+  margin-top: 0;
+}
+.arrivals-chip-row {
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.arrivals-carpool-card {
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.arrivals-carpool-section {
+  display: grid;
+  gap: var(--space-2);
+  padding: 12px;
+}
+.arrivals-carpool-section + .arrivals-carpool-section {
+  border-top: 1px solid var(--border);
+}
+.arrivals-carpool-row {
+  display: grid;
+  gap: var(--space-2);
+  padding: 10px 0 0;
+  border-top: 1px solid rgba(122, 141, 195, 0.13);
+}
+.arrivals-carpool-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.arrivals-carpool-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.arrivals-carpool-empty {
+  font-size: 0.85rem;
+}
+.arrivals-people-card {
+  padding: 0;
+  overflow: hidden;
+}
+.arrivals-person-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.arrivals-person-row:last-child {
+  border-bottom: none;
+}
+.arrivals-person-main {
+  min-width: 0;
+}
+.arrivals-time-line {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 6px;
+  align-items: baseline;
+  font-size: 0.82rem;
+}
+.arrivals-time-line span {
+  color: var(--text-muted);
+}
+.arrivals-time-line strong {
+  font-weight: 600;
+}
+.arrivals-note {
+  font-size: 0.78rem;
+  margin-top: 3px;
+}
+
 /* The QR code SVG already draws its own white background (needed for
    scanability regardless of theme) — just round its corners and give it
    some breathing room against the dark page behind it. */
