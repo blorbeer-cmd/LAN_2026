@@ -69,9 +69,11 @@ test('fresh device lands on self-onboarding and creates its profile there', asyn
   await page.click('#profile-new-form button[type="submit"]');
 
   // Creating the profile switches into the full profile editor for the new
-  // identity (name field prefilled, skill sliders section, agent download).
+  // identity (name field prefilled, agent download, an onboarding nudge
+  // toward the Spiele view since nothing's rated yet).
   await page.waitForSelector('#profile-name');
   assert.equal(await page.inputValue('#profile-name'), 'E2E Alice');
+  await page.waitForSelector('text=Bock & Skill eintragen');
 });
 
 test('full click-through: players, matchmaking, voting, leaderboard, live pause', async () => {
@@ -201,9 +203,10 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
     return el?.value === 'E2E Alice Pro';
   });
 
-  // Self-service skill rating renders, and the personal stats dashboard is
-  // one tap away (it moved to its own view, myStats).
-  assert.ok((await page.locator('.skill-row').count()) > 0);
+  // Bock/Skill-Ratings live in the Spiele view now, reachable from here via
+  // the onboarding nudge; the personal stats dashboard is one tap away too
+  // (it moved to its own view, myStats).
+  await page.waitForSelector('text=Bock & Skill eintragen');
   await page.click('[data-navigate="myStats"]');
   await page.waitForSelector('text=Meine Statistiken');
   await page.waitForSelector('#my-stats-event');
