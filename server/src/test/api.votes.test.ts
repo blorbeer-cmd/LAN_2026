@@ -195,7 +195,10 @@ test('points mode: start, cast, and close a round', async () => {
   const wrongMode = await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameCs2 });
   assert.equal(wrongMode.status, 409);
 
-  // No cap on how many games a player can rate - every seeded game at once is fine.
+  // No cap on how many games a player can rate - every seeded game at once is
+  // fine. The live per-game breakdown is withheld while open (see the
+  // redaction test above), so this is verified via the player's own
+  // submission (api.votes.mine), not the aggregate results.
   const allGames = await request(app).get('/api/games');
   const noCap = await request(app)
     .post('/api/votes/points')
@@ -204,7 +207,9 @@ test('points mode: start, cast, and close a round', async () => {
       entries: allGames.body.map((g: { id: string }) => ({ gameId: g.id, points: 1 })),
     });
   assert.equal(noCap.status, 200);
-  assert.equal(noCap.body.results.filter((r: { points: number }) => r.points > 0).length, allGames.body.length);
+  assert.equal(noCap.body.results.length, allGames.body.length);
+  const mineAfterNoCap = await request(app).get(`/api/votes/mine?playerId=${playerA}`);
+  assert.equal(mineAfterNoCap.body.entries.length, allGames.body.length);
 
   const duplicateGame = await request(app)
     .post('/api/votes/points')
@@ -291,9 +296,10 @@ test('points mode: submitting an empty entries array clears a player\'s previous
   const mine = await request(app).get(`/api/votes/mine?playerId=${playerA}`);
   assert.deepEqual(mine.body.entries, []);
 
+  // Still withheld while open, whether cleared or not.
   const res = await request(app).get('/api/votes');
   const cs2Result = res.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
-  assert.equal(cs2Result.points, 0);
+  assert.equal(cs2Result.points, undefined);
 
   await request(app).post('/api/votes/cancel');
 });
