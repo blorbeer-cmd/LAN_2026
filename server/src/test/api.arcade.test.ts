@@ -29,3 +29,27 @@ test('GET /api/arcade/stats summarizes completed quiz results', async () => {
   assert.equal(quiz.players[0].wins, 1);
   assert.equal(quiz.players[0].points, 5);
 });
+
+test('GET /api/arcade/stats labels and aggregates tetris results too', async () => {
+  const cara = await request(app).post('/api/players').send({ name: 'Tetris Cara' });
+  const dan = await request(app).post('/api/players').send({ name: 'Tetris Dan' });
+  const now = Date.now();
+  const scores = [
+    { playerId: cara.body.id, name: cara.body.name, score: 4200, lines: 21 },
+    { playerId: dan.body.id, name: dan.body.name, score: 3100, lines: 15 },
+  ];
+
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run('tetris-test-result', 'tetris', cara.body.id, JSON.stringify(scores), JSON.stringify(scores), 'completed', now - 1000, now);
+
+  const res = await request(app).get('/api/arcade/stats');
+  assert.equal(res.status, 200);
+  const tetris = res.body.games.find((game: { gameType: string }) => game.gameType === 'tetris');
+  assert.equal(tetris.title, 'Tetris Battle');
+  assert.equal(tetris.matches, 1);
+  assert.equal(tetris.leader.name, 'Tetris Cara');
+  assert.equal(tetris.players[0].wins, 1);
+  assert.equal(tetris.players[0].points, 4200);
+});

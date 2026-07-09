@@ -301,6 +301,16 @@ export function renderArcade(container, ctx) {
       </div>
       ${renderLobbyList()}
     </div>
+    <div class="section-title">🧩 Tetris Battle</div>
+    <div class="card">
+      <div class="row-between" style="gap:10px;">
+        <div>
+          <strong>1 gegen 1</strong>
+          <div class="muted" style="font-size:0.8rem;">Gleiche Steine für beide, volle Reihen schicken Müll rüber. Wer oben rausbaut, verliert.</div>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" data-navigate="tetris">Öffnen</button>
+      </div>
+    </div>
     <div class="section-title">📊 Arcade-Statistiken</div>
     <div class="card stack">${arcadeStatsHtml()}</div>
     ${targetControls(lobby)}

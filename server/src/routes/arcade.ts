@@ -3,6 +3,13 @@ import { db } from '../db';
 
 export const arcadeRouter = Router();
 
+// Display names per arcade game_type, so the stats view labels each tab
+// nicely instead of showing the raw internal key.
+const ARCADE_TITLES: Record<string, string> = {
+  quiz: 'Gaming-Quiz',
+  tetris: 'Tetris Battle',
+};
+
 interface ArcadeResultRow {
   game_type: string;
   winner_id: string | null;
@@ -52,7 +59,7 @@ arcadeRouter.get('/stats', (_req, res) => {
       const players = [...game.players.values()].sort((a, b) => b.wins - a.wins || b.points - a.points || a.name.localeCompare(b.name, 'de'));
       return {
         gameType: game.gameType,
-        title: game.gameType === 'quiz' ? 'Gaming-Quiz' : game.gameType,
+        title: ARCADE_TITLES[game.gameType] ?? game.gameType,
         matches: game.matches,
         leader: players[0] ?? null,
         players,

@@ -11,6 +11,7 @@ import { setIo } from './realtime';
 import { accessProtectionEnabled } from './auth';
 import { startOfflineSweeper } from './liveStatus';
 import { registerArcadeSockets } from './arcade/arcade';
+import { registerTetrisSockets } from './arcade/tetris';
 
 // Boots the full runtime: HTTP server + Socket.IO + offline sweeper + listen.
 // Wrapped in a function guarded by require.main so importing this file (e.g.
@@ -34,6 +35,7 @@ function start(): void {
   });
 
   registerArcadeSockets(io);
+  registerTetrisSockets(io);
 
   // Periodically flip stale players to offline.
   startOfflineSweeper(io);

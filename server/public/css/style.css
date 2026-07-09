@@ -732,6 +732,113 @@ button.card {
   }
 }
 
+/* ---------- Tetris Battle (views/tetris.js) ---------- */
+.tetris-boards {
+  display: flex;
+  gap: var(--space-4);
+  justify-content: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+}
+.tetris-board-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.tetris-board-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.tetris-canvas-wrap {
+  position: relative;
+  line-height: 0;
+}
+.tetris-canvas {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(15, 20, 32, 0.9);
+  touch-action: none; /* stop the board from scrolling the page on touch */
+}
+.tetris-stats-line {
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+/* Incoming-garbage warning, pinned to the top-right of a board. */
+.tetris-incoming {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--state-paused);
+}
+.tetris-incoming-hot {
+  color: var(--danger);
+}
+/* Countdown / pause overlay centred over the player's own board. */
+.tetris-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 9, 18, 0.55);
+  border-radius: var(--radius-sm);
+}
+.tetris-overlay-text {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--text);
+}
+.tetris-countdown {
+  font-size: 3rem;
+  color: var(--accent);
+  animation: tetris-count 1s ease-out;
+}
+@keyframes tetris-count {
+  from {
+    opacity: 0.3;
+    transform: scale(1.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.tetris-controls {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--space-2);
+  max-width: 420px;
+  margin: var(--space-4) auto 0;
+}
+.tetris-ctrl {
+  font-size: 1.3rem;
+  padding: 14px 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.tetris-ctrl-drop {
+  background: var(--accent-gradient);
+  color: var(--accent-text);
+}
+.tetris-help {
+  text-align: center;
+  font-size: 0.75rem;
+  margin-top: var(--space-3);
+}
+/* On a laptop the on-screen buttons aren't needed (keyboard is better), but
+   keep them for touch; hide the hint text's keyboard part is fine as-is. */
+@media (hover: hover) and (pointer: fine) {
+  .tetris-controls {
+    max-width: 320px;
+    opacity: 0.85;
+  }
+}
+
 /* The QR code SVG already draws its own white background (needed for
    scanability regardless of theme) — just round its corners and give it
    some breathing room against the dark page behind it. */
