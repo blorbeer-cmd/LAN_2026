@@ -14,6 +14,7 @@ const ITEMS = [
   { view: 'gameStats', icon: '📊', title: 'Spiele & Turniere', desc: 'Match- und Turnier-Statistiken, Rivalitäten, Duos, Underdog-Siege.' },
   { view: 'hallOfFame', icon: '🏛️', title: 'Hall of Fame', desc: 'Champions über alle LAN-Partys hinweg.' },
   { view: 'seating', icon: '🪑', title: 'Sitzplan', desc: 'Wer neben wem sitzt, gruppiert aus den Profilangaben.' },
+  { view: 'admin', icon: '🔑', title: 'Admin', desc: 'Test-Spieler anlegen, Admin vergeben, moderieren.' },
 ];
 
 export function renderMore(container) {

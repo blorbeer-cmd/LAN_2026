@@ -34,3 +34,34 @@ export const requireAccess = createAccessGuard(config.accessToken);
 export function accessProtectionEnabled(token: string = config.accessToken): boolean {
   return Boolean(token);
 }
+
+// ---------- Admin gate ----------
+//
+// Admin-only endpoints (grant/revoke admin, and anything moderation-y added
+// later) sit behind this. It's intentionally separate from requireAccess:
+// requireAccess keeps strangers out of the whole UI, requireAdmin keeps
+// regular party guests out of the admin extras. An empty adminPin means
+// dev/open mode — the gate lets everyone through, so local testing needs no
+// secret (matches how an empty accessToken disables access protection).
+
+export function adminUnlockValid(pin: unknown, expected: string = config.adminPin): boolean {
+  if (!expected) return true; // open mode
+  return typeof pin === 'string' && pin === expected;
+}
+
+export function createAdminGuard(expectedPin: string): RequestHandler {
+  return function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+    if (!expectedPin) return next(); // open mode
+    if (req.header('x-admin-pin') === expectedPin) return next();
+    res.status(403).json({ error: 'Nur für Admins.' });
+  };
+}
+
+// Default admin guard wired to the configured PIN, used by the running server.
+export const requireAdmin = createAdminGuard(config.adminPin);
+
+// Whether an admin PIN is configured at all (false = open mode). The frontend
+// uses this to decide whether to prompt for a PIN before enabling admin mode.
+export function adminPinRequired(pin: string = config.adminPin): boolean {
+  return Boolean(pin);
+}
