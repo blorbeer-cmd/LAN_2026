@@ -243,13 +243,27 @@ input {
 }
 
 .icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
+  color: var(--text);
   font-size: 1.15rem;
   cursor: pointer;
   padding: 6px;
   line-height: 1;
   border-radius: var(--radius-sm);
+  text-decoration: none;
+}
+.github-icon-btn {
+  width: 36px;
+  height: 36px;
+}
+.github-icon {
+  width: 24px;
+  height: 24px;
+  display: block;
 }
 .icon-btn.needs-setup {
   position: relative;

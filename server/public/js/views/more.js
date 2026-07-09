@@ -13,23 +13,11 @@ const ITEMS = [
   { view: 'gameStats', icon: '📊', title: 'Spiele & Turniere', desc: 'Match- und Turnier-Statistiken, Rivalitäten, Duos, Underdog-Siege.' },
   { view: 'hallOfFame', icon: '🏛️', title: 'Hall of Fame', desc: 'Champions über alle LAN-Partys hinweg.' },
   { view: 'seating', icon: '🪑', title: 'Sitzplan', desc: 'Wer neben wem sitzt, gruppiert aus den Profilangaben.' },
-  { href: 'https://github.com/blorbeer-cmd/LAN_2026/issues/new', icon: '💬', title: 'Feedback / Idee', desc: 'Fehler melden oder Feature vorschlagen (GitHub).' },
 ];
 
 export function renderMore(container) {
   const rows = ITEMS.map(
-    (item) =>
-      item.href
-        ? `
-    <a class="card row list-row" href="${item.href}" target="_blank" rel="noopener">
-      <span class="list-row-icon">${item.icon}</span>
-      <span style="flex:1;">
-        <div class="player-name">${item.title}</div>
-        <div class="muted list-row-desc">${item.desc}</div>
-      </span>
-      <span class="muted">›</span>
-    </a>`
-        : `
+    (item) => `
     <button type="button" class="card row list-row" data-navigate="${item.view}">
       <span class="list-row-icon">${item.icon}</span>
       <span style="flex:1;">
