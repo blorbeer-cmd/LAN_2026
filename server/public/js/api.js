@@ -126,6 +126,7 @@ export const api = {
     },
     set: (playerId, gameId, rating) =>
       apiFetch('/api/skills', { method: 'PUT', body: JSON.stringify({ playerId, gameId, rating }) }),
+    suggestions: () => apiFetch('/api/skills/suggestions'),
   },
 
   preferences: {

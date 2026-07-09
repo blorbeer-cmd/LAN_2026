@@ -255,6 +255,38 @@ test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bo
   });
 });
 
+test('Spiele: a skill suggestion chip appears after enough recorded results and can be applied', async () => {
+  const playersRes = await page.request.get(`${BASE_URL}/api/players`);
+  const players = (await playersRes.json()) as Array<{ id: string; name: string }>;
+  const alice = players.find((p) => p.name === 'E2E Alice Pro')!;
+  const bob = players.find((p) => p.name === 'E2E Bob')!;
+  const gamesRes = await page.request.get(`${BASE_URL}/api/games`);
+  const games = (await gamesRes.json()) as Array<{ id: string; name: string }>;
+  const cs2 = games.find((g) => g.name === 'Counter-Strike 2')!;
+
+  for (let i = 0; i < 3; i++) {
+    const res = await page.request.post(`${BASE_URL}/api/matches`, {
+      data: { gameId: cs2.id, teams: [{ playerIds: [alice.id] }, { playerIds: [bob.id] }], winnerTeamIndex: 0 },
+    });
+    assert.equal(res.status(), 201);
+  }
+
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="gameCatalog"]');
+  const cs2Card = page.locator('.game-card', { hasText: 'Counter-Strike 2' });
+  await cs2Card.waitFor();
+  const chip = cs2Card.locator('[data-apply-suggestion]');
+  await chip.waitFor();
+
+  await chip.click();
+  await page.waitForFunction(() => {
+    const cards = Array.from(document.querySelectorAll('.game-card'));
+    const card = cards.find((c) => c.textContent?.includes('Counter-Strike 2'));
+    const value = card?.querySelector('[data-kind="skill"] .skill-value')?.textContent;
+    return value && value !== '–';
+  });
+});
+
 test('Turnier: create a K.O. bracket from proposed teams and play it to a champion', async () => {
   // Tournaments earned their own bottom-nav slot.
   await page.click('[data-view="tournaments"]');

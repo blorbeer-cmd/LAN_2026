@@ -19,10 +19,41 @@ let activeTab = 'catalog'; // 'catalog' | 'suggestions'
 let sortKey = 'avgBock';
 let sortDir = 'desc';
 
-// No dedicated fetch/cache here on purpose: games/skills/preferences are all
-// already part of the app-wide loadAll() round trip (see data.js) and kept
-// fresh via the existing games:changed/skills:changed/preferences:changed
-// socket handlers in app.js — this view just reads straight from `state`.
+// No dedicated fetch/cache here on purpose for games/skills/preferences:
+// they're all already part of the app-wide loadAll() round trip (see
+// data.js) and kept fresh via the existing games:changed/skills:changed/
+// preferences:changed socket handlers in app.js — this view just reads
+// straight from `state`. Skill suggestions (derived from match results,
+// see skillSuggestion.ts) are their own read-only fetch since they aren't
+// part of loadAll() — cheap to recompute, but no realtime push exists for
+// them, so a stale suggestion just self-corrects next time this view opens.
+let suggestionsCache = null;
+let suggestionsLoading = false;
+
+// Called from app.js whenever a leaderboard:changed event reports a match
+// result was recorded/edited/deleted — the suggestion is derived from match
+// history, so a stale cache would keep showing yesterday's numbers.
+export function invalidateSkillSuggestions() {
+  suggestionsCache = null;
+}
+
+async function loadSuggestions(ctx) {
+  suggestionsLoading = true;
+  try {
+    const res = await api.skills.suggestions();
+    suggestionsCache = res.suggestions;
+  } catch {
+    suggestionsCache = [];
+  } finally {
+    suggestionsLoading = false;
+    ctx.rerender();
+  }
+}
+
+function suggestionFor(gameId, playerId) {
+  if (!playerId) return null;
+  return (suggestionsCache || []).find((s) => s.gameId === gameId && s.playerId === playerId) ?? null;
+}
 
 function ratingStats(rows, gameId) {
   const matching = rows.filter((r) => r.game_id === gameId);
@@ -63,13 +94,31 @@ function statusBadgeHtml(game) {
   return `<span class="badge badge-offline">📚 Katalog</span>`;
 }
 
-function ratingRowHtml({ label, accentClass, mine, avg, count, gameId, kind, disabled }) {
+// The 🧠 suggestion chip: only rendered once there's actually a suggestion
+// for this player+game (see suggestionFor/loadSuggestions above). Highlighted
+// when it diverges from the player's own self-rating by 2+ points — a gentle
+// nudge to reconsider, not a claim that the derived number is "more right".
+function suggestionChipHtml(gameId, suggestion, mine) {
+  if (!suggestion) return '';
+  const diverges = mine !== null && Math.abs(suggestion.rating - mine) >= 2;
+  const winRatePercent = suggestion.gamesPlayed > 0 ? Math.round((suggestion.wins / suggestion.gamesPlayed) * 100) : 0;
+  return `
+    <button
+      type="button"
+      class="chip chip-suggestion ${diverges ? 'chip-suggestion-diverges' : ''}"
+      data-apply-suggestion="${gameId}"
+      data-suggested-rating="${suggestion.rating}"
+      title="Aus ${suggestion.matchCount} Ergebnissen (${winRatePercent}% Siege) – antippen zum Übernehmen"
+    >🧠 ${suggestion.rating}</button>`;
+}
+
+function ratingRowHtml({ label, accentClass, mine, avg, count, gameId, kind, disabled, suggestionHtml }) {
   const avgText = avg === null ? '– noch keine Wertung' : `Ø ${avg.toFixed(1)} (${count})`;
   const sliderValue = mine ?? 5;
   return `
     <div class="skill-row" data-game="${gameId}" data-kind="${kind}">
-      <span class="row" style="gap:6px;">
-        ${label} <span class="muted game-avg-note">${avgText}</span>
+      <span class="row" style="gap:6px;flex-wrap:wrap;">
+        ${label} <span class="muted game-avg-note">${avgText}</span> ${suggestionHtml || ''}
       </span>
       <span class="skill-value">${mine ?? '–'}</span>
       <input type="range" class="skill-row-slider ${accentClass}" min="1" max="10" step="1" value="${sliderValue}" ${disabled ? 'disabled' : ''} />
@@ -121,6 +170,7 @@ function gameCardHtml(game, myId) {
               gameId: game.id,
               kind: 'skill',
               disabled: !myId,
+              suggestionHtml: suggestionChipHtml(game.id, suggestionFor(game.id, myId), mySkill),
             })
       }
 
@@ -399,6 +449,8 @@ function openGameDetail(gameId, ctx) {
 }
 
 export function renderGameCatalog(container, ctx) {
+  if (suggestionsCache === null && !suggestionsLoading) loadSuggestions(ctx);
+
   const myId = getMyId();
   const games = state.games.filter((g) => (activeTab === 'suggestions' ? g.isSuggestion : !g.isSuggestion));
   const rows = sortedGames(games, myId);
@@ -506,6 +558,20 @@ export function renderGameCatalog(container, ctx) {
         await api.games.remove(game.id);
         await ctx.refresh();
         showToast('Spiel gelöscht.');
+      } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-apply-suggestion]').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!myId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+      try {
+        await api.skills.set(myId, btn.dataset.applySuggestion, parseInt(btn.dataset.suggestedRating, 10));
+        await ctx.refresh();
+        showToast('Skill-Vorschlag übernommen.');
       } catch (err) {
         showToast(err.message, { error: true });
       }

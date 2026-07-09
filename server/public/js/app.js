@@ -16,7 +16,7 @@ import { renderBroadcast, invalidateBroadcasts } from './views/broadcast.js';
 import { renderInfoBoard, invalidateInfoBoard } from './views/infoBoard.js';
 import { renderFoodOrders, invalidateFoodOrders } from './views/foodOrders.js';
 import { renderArcade } from './views/arcade.js';
-import { renderGameCatalog } from './views/gameCatalog.js';
+import { renderGameCatalog, invalidateSkillSuggestions } from './views/gameCatalog.js';
 import { renderArrivals, invalidateArrivals } from './views/arrivals.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
@@ -207,6 +207,10 @@ function wireSocket() {
   fullReloadEvents.forEach((event) =>
     socket.on(event, () => {
       invalidateDigest();
+      // Cheap enough to invalidate on every one of these (not just
+      // leaderboard:changed, the only one that actually changes match
+      // history) — the next time the Spiele view opens it just refetches.
+      invalidateSkillSuggestions();
       ctx.refresh();
     })
   );

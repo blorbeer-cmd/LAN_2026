@@ -878,6 +878,20 @@ button.card {
   font-size: 0.75rem;
   font-weight: 400;
 }
+/* Skill-Vorschlag chip (derived from match results, see skillSuggestion.ts):
+   a tappable button, not just a label — clicking applies it. Highlighted
+   when it diverges 2+ points from the player's own self-rating. */
+.chip-suggestion {
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+}
+.chip-suggestion-diverges {
+  color: var(--state-playing);
+  background: var(--state-playing-bg);
+  border-color: var(--state-playing);
+  font-weight: 600;
+}
 .catalog-sort-btn {
   padding: 6px 10px;
 }
