@@ -34,4 +34,5 @@ export const Events = {
   infoChanged: 'info:changed',
   foodOrdersChanged: 'foodOrders:changed',
   gameCatalogChanged: 'gameCatalog:changed',
+  arrivalsChanged: 'arrivals:changed',
 } as const;

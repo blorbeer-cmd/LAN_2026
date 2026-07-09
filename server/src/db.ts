@@ -428,6 +428,33 @@ db.exec(`
     created_at  INTEGER NOT NULL
   );
 
+  -- An-/Abreise: one self-service row per player/event, plus separate
+  -- arrival/departure carpool groups that players can join/leave.
+  CREATE TABLE IF NOT EXISTS arrivals (
+    event_id     TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    player_id    TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    arrival_at   INTEGER,
+    departure_at INTEGER,
+    note         TEXT,
+    updated_at   INTEGER NOT NULL,
+    PRIMARY KEY (event_id, player_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS carpools (
+    id         TEXT PRIMARY KEY,
+    event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    direction  TEXT NOT NULL,
+    label      TEXT NOT NULL,
+    created_by TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS carpool_members (
+    carpool_id TEXT NOT NULL REFERENCES carpools(id) ON DELETE CASCADE,
+    player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    PRIMARY KEY (carpool_id, player_id)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_skills_game ON skills(game_id);
   CREATE INDEX IF NOT EXISTS idx_preferences_game ON preferences(game_id);
   CREATE INDEX IF NOT EXISTS idx_game_catalog_title ON game_catalog(title);
@@ -455,6 +482,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_broadcasts_created ON broadcasts(created_at);
   CREATE INDEX IF NOT EXISTS idx_food_orders_event ON food_orders(event_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_food_order_items_order ON food_order_items(order_id);
+  CREATE INDEX IF NOT EXISTS idx_arrivals_event ON arrivals(event_id, arrival_at, departure_at);
+  CREATE INDEX IF NOT EXISTS idx_carpools_event ON carpools(event_id, direction, created_at);
+  CREATE INDEX IF NOT EXISTS idx_carpool_members_carpool ON carpool_members(carpool_id);
 `);
 
 // Migration: older databases were created before the `avatar` column existed.

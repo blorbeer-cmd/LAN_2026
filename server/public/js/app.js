@@ -16,6 +16,7 @@ import { renderBroadcast, invalidateBroadcasts } from './views/broadcast.js';
 import { renderInfoBoard, invalidateInfoBoard } from './views/infoBoard.js';
 import { renderFoodOrders, invalidateFoodOrders } from './views/foodOrders.js';
 import { renderGameCatalog, invalidateGameCatalog } from './views/gameCatalog.js';
+import { renderArrivals, invalidateArrivals } from './views/arrivals.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
@@ -47,6 +48,7 @@ const VIEWS = {
   infoBoard: renderInfoBoard,
   foodOrders: renderFoodOrders,
   gameCatalog: renderGameCatalog,
+  arrivals: renderArrivals,
   admin: renderAdmin,
 };
 
@@ -323,6 +325,11 @@ function wireSocket() {
   socket.on('gameCatalog:changed', () => {
     invalidateGameCatalog();
     if (currentView === 'gameCatalog') renderCurrent();
+  });
+
+  socket.on('arrivals:changed', () => {
+    invalidateArrivals();
+    if (currentView === 'arrivals') renderCurrent();
   });
 }
 

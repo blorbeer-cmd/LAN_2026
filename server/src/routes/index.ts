@@ -28,6 +28,7 @@ import { broadcastsRouter } from './broadcasts';
 import { infoBoardRouter } from './infoBoard';
 import { foodOrdersRouter } from './foodOrders';
 import { gameCatalogRouter } from './gameCatalog';
+import { arrivalsRouter } from './arrivals';
 import { adminRouter } from './admin';
 
 export const apiRouter = Router();
@@ -63,4 +64,5 @@ apiRouter.use('/broadcasts', broadcastsRouter);
 apiRouter.use('/info', infoBoardRouter);
 apiRouter.use('/food-orders', foodOrdersRouter);
 apiRouter.use('/game-catalog', gameCatalogRouter);
+apiRouter.use('/arrivals', arrivalsRouter);
 apiRouter.use('/admin', adminRouter);
