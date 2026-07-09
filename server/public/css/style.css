@@ -848,6 +848,15 @@ input[type='range'] {
   min-width: 1.6em;
   text-align: right;
 }
+/* "Bock"-Level slider (how much a player wants to play something right now,
+   see profile.js) reuses .skill-row-slider's layout but gets its own accent
+   color so it reads as a distinct concept from the skill sliders above it.
+   Repeats the type selector to outrank the plain input[type='range'] rule
+   above (an attribute selector counts as a class for specificity purposes,
+   so a bare `.preference-row-slider` class alone would lose to it). */
+input[type='range'].preference-row-slider {
+  accent-color: var(--accent-3);
+}
 
 /* ---------- Team results ---------- */
 

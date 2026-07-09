@@ -94,6 +94,20 @@ db.exec(`
     PRIMARY KEY (player_id, game_id)
   );
 
+  -- "Bock"-Rating 1-10 per (player, game): how much a player currently feels
+  -- like playing it, as opposed to skills.rating (how good they are). Kept
+  -- as its own table rather than a column on skills since it's meant to be
+  -- changed on a whim throughout the LAN (mood-of-the-moment), independent
+  -- of the skill rating lifecycle. Aggregated across all players it becomes
+  -- a game's overall "Beliebtheit", used to pre-sort the voting view and
+  -- shown there directly (see routes/votes.ts).
+  CREATE TABLE IF NOT EXISTS preferences (
+    player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    game_id   TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    rating    INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 10),
+    PRIMARY KEY (player_id, game_id)
+  );
+
   -- Per-player live meta: when the agent last reported and an optional manual
   -- override (e.g. "Pause/Essen"). Which games are currently running lives in
   -- live_status_games below, since a PC can run several games at once
@@ -142,31 +156,38 @@ db.exec(`
     active_ms  INTEGER NOT NULL DEFAULT 0
   );
 
-  -- Simple single active vote for "what's next". One row per player per open
-  -- vote round is enforced in the application layer. Round numbers increment
-  -- forever (never reset per event) so the UNIQUE constraint stays valid
-  -- across event boundaries; event_id is stored for historical filtering.
+  -- "What's next" votes. Round numbers increment forever (never reset per
+  -- event) so the UNIQUE constraint stays valid across event boundaries;
+  -- event_id is stored for historical filtering. Two modes, chosen per round
+  -- in vote_rounds.mode: 'single' (one row per player per round, changing a
+  -- vote replaces it — enforced in routes/votes.ts, not by a UNIQUE(player,
+  -- round) constraint, since 'points' mode needs several rows per player)
+  -- and 'points' (up to 5 rows per player per round, one per game they gave
+  -- points to). points stays NULL for 'single'-mode rows.
   CREATE TABLE IF NOT EXISTS votes (
     id         TEXT PRIMARY KEY,
     player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     game_id    TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
     event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     round      INTEGER NOT NULL,   -- vote round id, lets us reset without deleting history
+    points     INTEGER CHECK (points IS NULL OR points BETWEEN 1 AND 10),
     created_at INTEGER NOT NULL,
-    UNIQUE (player_id, round)
+    UNIQUE (player_id, round, game_id)
   );
 
   -- One row per vote round, so the history view can list past rounds even
   -- ones nobody voted in (which would otherwise leave no trace in the votes
   -- table at all). Written on /start, filled in with the winner(s) on /close;
   -- deleted on /cancel so mistaken rounds don't linger in the history,
-  -- mirroring the votes rows themselves being deleted on cancel.
+  -- mirroring the votes rows themselves being deleted on cancel. mode is
+  -- fixed for the round's whole lifetime ('single' | 'points').
   CREATE TABLE IF NOT EXISTS vote_rounds (
     round           INTEGER PRIMARY KEY,
     event_id        TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     started_at      INTEGER NOT NULL,
     closed_at       INTEGER,
-    winner_game_ids TEXT   -- JSON array of game ids, set on close
+    winner_game_ids TEXT,   -- JSON array of game ids, set on close
+    mode            TEXT NOT NULL DEFAULT 'single'
   );
 
   -- Physical seating declared per event (FR-18 extension): "player_id sits
@@ -313,6 +334,7 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_skills_game ON skills(game_id);
+  CREATE INDEX IF NOT EXISTS idx_preferences_game ON preferences(game_id);
   CREATE INDEX IF NOT EXISTS idx_live_status_games_game ON live_status_games(game_id);
   CREATE INDEX IF NOT EXISTS idx_votes_round ON votes(round);
   CREATE INDEX IF NOT EXISTS idx_votes_event ON votes(event_id);
@@ -387,6 +409,60 @@ function migrateForegroundColumns(): void {
   }
 }
 migrateForegroundColumns();
+
+// Migration: older databases predate the points-mode voting round (added
+// alongside the "Bock"/preference feature). votes used to have
+// UNIQUE(player_id, round) and no points column; points-mode needs several
+// rows per player per round (one per game they gave points to), so the
+// constraint has to widen to (player_id, round, game_id). better-sqlite3
+// can't ALTER an inline UNIQUE constraint, so detect the old one via
+// index_info and rebuild the table when found; the points column and
+// vote_rounds.mode are plain ADD COLUMNs.
+function migrateVotesPointsMode(): void {
+  const voteRoundsColumns = db.prepare('PRAGMA table_info(vote_rounds)').all() as Array<{ name: string }>;
+  if (!voteRoundsColumns.some((c) => c.name === 'mode')) {
+    db.exec("ALTER TABLE vote_rounds ADD COLUMN mode TEXT NOT NULL DEFAULT 'single'");
+  }
+
+  const voteColumns = db.prepare('PRAGMA table_info(votes)').all() as Array<{ name: string }>;
+  const hasPoints = voteColumns.some((c) => c.name === 'points');
+
+  const indexes = db.prepare('PRAGMA index_list(votes)').all() as Array<{ name: string; unique: number }>;
+  const oldUniqueIndex = indexes.find((idx) => {
+    if (!idx.unique) return false;
+    const cols = (db.prepare(`PRAGMA index_info(${idx.name})`).all() as Array<{ name: string }>).map((c) => c.name);
+    return cols.length === 2 && cols[0] === 'player_id' && cols[1] === 'round';
+  });
+
+  if (hasPoints && !oldUniqueIndex) return; // already migrated, or a fresh DB
+
+  db.transaction(() => {
+    if (!hasPoints) db.exec('ALTER TABLE votes ADD COLUMN points INTEGER');
+    if (oldUniqueIndex) {
+      db.exec(`
+        CREATE TABLE votes_new (
+          id         TEXT PRIMARY KEY,
+          player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+          game_id    TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+          event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+          round      INTEGER NOT NULL,
+          points     INTEGER CHECK (points IS NULL OR points BETWEEN 1 AND 10),
+          created_at INTEGER NOT NULL,
+          UNIQUE (player_id, round, game_id)
+        );
+      `);
+      db.exec(
+        'INSERT INTO votes_new (id, player_id, game_id, event_id, round, points, created_at) ' +
+          'SELECT id, player_id, game_id, event_id, round, points, created_at FROM votes'
+      );
+      db.exec('DROP TABLE votes');
+      db.exec('ALTER TABLE votes_new RENAME TO votes');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_votes_round ON votes(round)');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_votes_event ON votes(event_id)');
+    }
+  })();
+}
+migrateVotesPointsMode();
 
 // Migration: older databases predate the optional location/description
 // event fields.

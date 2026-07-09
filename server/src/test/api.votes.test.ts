@@ -134,3 +134,124 @@ test('GET /api/votes/history still lists a round nobody voted in', async () => {
   assert.equal(entry.totalVotes, 0);
   assert.deepEqual(entry.winners, []);
 });
+
+test('a fresh round with no votes yet is sorted by aggregate "Bock" rating (Beliebtheit)', async () => {
+  // Rocket League gets rated much higher than CS2 by both players; with no
+  // votes cast yet in the new round, the results order should already
+  // reflect that instead of falling back to alphabetical order.
+  await request(app).put('/api/preferences').send({ playerId: playerA, gameId: gameCs2, rating: 2 });
+  await request(app).put('/api/preferences').send({ playerId: playerB, gameId: gameCs2, rating: 2 });
+  await request(app).put('/api/preferences').send({ playerId: playerA, gameId: gameRl, rating: 9 });
+  await request(app).put('/api/preferences').send({ playerId: playerB, gameId: gameRl, rating: 10 });
+
+  const started = await request(app).post('/api/votes/start');
+  assert.equal(started.body.open, true);
+  const res = await request(app).get('/api/votes');
+  const rlIndex = res.body.results.findIndex((r: { gameId: string }) => r.gameId === gameRl);
+  const cs2Index = res.body.results.findIndex((r: { gameId: string }) => r.gameId === gameCs2);
+  assert.ok(rlIndex < cs2Index, 'Rocket League (higher avg preference) should be sorted before CS2');
+
+  const rlResult = res.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
+  assert.equal(rlResult.avgPreference, 9.5);
+  assert.equal(rlResult.preferenceCount, 2);
+
+  await request(app).post('/api/votes/cancel');
+});
+
+test('POST /api/votes/start rejects an invalid mode', async () => {
+  const res = await request(app).post('/api/votes/start').send({ mode: 'nonsense' });
+  assert.equal(res.status, 400);
+});
+
+test('points mode: start, cast, and close a round', async () => {
+  const started = await request(app).post('/api/votes/start').send({ mode: 'points' });
+  assert.equal(started.status, 201);
+  assert.equal(started.body.mode, 'points');
+
+  // A single-mode vote is rejected once the round is in points mode.
+  const wrongMode = await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameCs2 });
+  assert.equal(wrongMode.status, 409);
+
+  const tooMany = await request(app)
+    .post('/api/votes/points')
+    .send({ playerId: playerA, entries: Array.from({ length: 6 }, () => ({ gameId: gameCs2, points: 1 })) });
+  assert.equal(tooMany.status, 400);
+
+  const duplicateGame = await request(app)
+    .post('/api/votes/points')
+    .send({
+      playerId: playerA,
+      entries: [
+        { gameId: gameCs2, points: 5 },
+        { gameId: gameCs2, points: 6 },
+      ],
+    });
+  assert.equal(duplicateGame.status, 400);
+
+  const outOfRange = await request(app)
+    .post('/api/votes/points')
+    .send({ playerId: playerA, entries: [{ gameId: gameCs2, points: 11 }] });
+  assert.equal(outOfRange.status, 400);
+
+  const castA = await request(app)
+    .post('/api/votes/points')
+    .send({
+      playerId: playerA,
+      entries: [
+        { gameId: gameCs2, points: 10 },
+        { gameId: gameRl, points: 4 },
+      ],
+    });
+  assert.equal(castA.status, 200);
+
+  const castB = await request(app)
+    .post('/api/votes/points')
+    .send({ playerId: playerB, entries: [{ gameId: gameRl, points: 8 }] });
+  assert.equal(castB.status, 200);
+
+  const mine = await request(app).get(`/api/votes/mine?playerId=${playerA}`);
+  assert.equal(mine.status, 200);
+  assert.equal(mine.body.mode, 'points');
+  assert.equal(mine.body.entries.length, 2);
+
+  // Resubmitting replaces the player's previous set entirely.
+  const recastA = await request(app)
+    .post('/api/votes/points')
+    .send({ playerId: playerA, entries: [{ gameId: gameCs2, points: 3 }] });
+  assert.equal(recastA.status, 200);
+  const mineAfter = await request(app).get(`/api/votes/mine?playerId=${playerA}`);
+  assert.equal(mineAfter.body.entries.length, 1);
+  assert.equal(mineAfter.body.entries[0].gameId, gameCs2);
+  assert.equal(mineAfter.body.entries[0].points, 3);
+
+  // A points-mode submission is rejected once the round is in single mode... but here it's still points mode,
+  // so a points cast for an unknown game 404s instead.
+  const unknownGame = await request(app)
+    .post('/api/votes/points')
+    .send({ playerId: playerB, entries: [{ gameId: 'ghost', points: 5 }] });
+  assert.equal(unknownGame.status, 404);
+
+  const res = await request(app).get('/api/votes');
+  const cs2Result = res.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
+  const rlResult = res.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
+  assert.equal(cs2Result.points, 3); // player A's replaced entry
+  assert.equal(rlResult.points, 8); // only player B still has RL
+
+  const closed = await request(app).post('/api/votes/close');
+  assert.equal(closed.status, 200);
+  assert.deepEqual(closed.body.winnerGameIds, [gameRl]);
+
+  const history = await request(app).get('/api/votes/history');
+  const entry = history.body.history.find((h: { round: number }) => h.round === closed.body.round);
+  assert.ok(entry);
+  assert.equal(entry.mode, 'points');
+});
+
+test('points endpoint is rejected while a round is in single mode', async () => {
+  await request(app).post('/api/votes/start');
+  const res = await request(app)
+    .post('/api/votes/points')
+    .send({ playerId: playerA, entries: [{ gameId: gameCs2, points: 5 }] });
+  assert.equal(res.status, 409);
+  await request(app).post('/api/votes/cancel');
+});

@@ -78,6 +78,11 @@ function ratingFor(playerId, gameId) {
   return entry ? entry.rating : 5;
 }
 
+function preferenceFor(playerId, gameId) {
+  const entry = state.preferences.find((p) => p.player_id === playerId && p.game_id === gameId);
+  return entry ? entry.rating : 5;
+}
+
 async function loadNeighbors(playerId, ctx) {
   neighborsLoading = true;
   try {
@@ -162,6 +167,18 @@ export function renderProfile(container, ctx) {
     })
     .join('');
 
+  const preferenceRows = state.games
+    .map((g) => {
+      const rating = preferenceFor(myId, g.id);
+      return `
+        <div class="skill-row" data-game="${g.id}">
+          <span class="row" style="gap:8px;">${gameBadgeHtml(g, 24)} ${escapeHtml(g.name)}</span>
+          <span class="skill-value">${rating}</span>
+          <input type="range" class="skill-row-slider preference-row-slider" min="1" max="10" step="1" value="${rating}" />
+        </div>`;
+    })
+    .join('');
+
   container.innerHTML = `
     <div class="row-between">
       <h1 class="view-title">👤 Mein Profil</h1>
@@ -231,7 +248,18 @@ export function renderProfile(container, ctx) {
     <div class="section-title">🔔 Push-Benachrichtigungen</div>
     <div class="card">${renderPushSection()}</div>
 
-    ${state.games.length > 0 ? `<div class="section-title">Skill-Ratings</div><div class="card">${skillRows}</div>` : ''}
+    ${state.games.length > 0 ? `<div class="section-title">Skill-Ratings</div><div class="card" id="skill-ratings-list">${skillRows}</div>` : ''}
+
+    ${
+      state.games.length > 0
+        ? `<div class="section-title">🔥 Bock-Level</div>
+           <p class="muted" style="font-size:0.8rem;margin-top:-4px;">
+             Worauf hast du gerade am meisten Lust? Kannst du jederzeit ändern – fließt live in die
+             Sortierung der Abstimmung mit ein.
+           </p>
+           <div class="card" id="preference-ratings-list">${preferenceRows}</div>`
+        : ''
+    }
 
     <div class="row-between">
       <div class="section-title" style="margin-bottom:8px;">🪑 Sitznachbarn</div>
@@ -338,7 +366,7 @@ export function renderProfile(container, ctx) {
     }
   });
 
-  container.querySelectorAll('.skill-row').forEach((row) => {
+  container.querySelectorAll('#skill-ratings-list .skill-row').forEach((row) => {
     const gameId = row.dataset.game;
     const slider = row.querySelector('input[type="range"]');
     const valueEl = row.querySelector('.skill-value');
@@ -349,6 +377,25 @@ export function renderProfile(container, ctx) {
       debounceTimer = setTimeout(async () => {
         try {
           await api.skills.set(myId, gameId, parseInt(slider.value, 10));
+          await ctx.refresh();
+        } catch (err) {
+          showToast(err.message, { error: true });
+        }
+      }, 250);
+    });
+  });
+
+  container.querySelectorAll('#preference-ratings-list .skill-row').forEach((row) => {
+    const gameId = row.dataset.game;
+    const slider = row.querySelector('input[type="range"]');
+    const valueEl = row.querySelector('.skill-value');
+    let debounceTimer = null;
+    slider.addEventListener('input', () => {
+      valueEl.textContent = slider.value;
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(async () => {
+        try {
+          await api.preferences.set(myId, gameId, parseInt(slider.value, 10));
           await ctx.refresh();
         } catch (err) {
           showToast(err.message, { error: true });

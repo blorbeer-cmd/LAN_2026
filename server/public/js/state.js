@@ -7,6 +7,7 @@ export const state = {
   players: [],
   games: [],
   skills: [],
+  preferences: [],
   live: [],
   votes: null,
   matches: [],

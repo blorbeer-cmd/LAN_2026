@@ -166,6 +166,7 @@ function wireSocket() {
     'players:changed',
     'games:changed',
     'skills:changed',
+    'preferences:changed',
     'leaderboard:changed',
     'events:changed',
   ];

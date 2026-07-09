@@ -1,8 +1,19 @@
-// "What's next?" voting (FR-19..21). State (current round, open/closed) lives
-// in the small app_state key/value table so we don't need a dedicated table
-// just for a single flag + counter. "Zuletzt gespielt" / play counts (FR-20)
-// are derived from the matches table (actual recorded results), not from vote
-// outcomes, since a vote winner isn't guaranteed to actually get played.
+// "What's next?" voting (FR-19..21). State (current round, open/closed,
+// mode) lives in the small app_state key/value table so we don't need a
+// dedicated table just for a few flags + counter. "Zuletzt gespielt" / play
+// counts (FR-20) are derived from the matches table (actual recorded
+// results), not from vote outcomes, since a vote winner isn't guaranteed to
+// actually get played.
+//
+// Two modes, chosen when a round is started:
+// - 'single' (default): each player picks exactly one game; changing your
+//   pick replaces the previous one.
+// - 'points': each player distributes 1-10 points across up to 5 games;
+//   resubmitting replaces the player's whole set for the round.
+// Both modes rank games by a "score" (vote count for 'single', point sum for
+// 'points'); ties (including the all-zero state before anyone has voted)
+// fall back to the games' aggregate "Bock" rating (preferences table) so the
+// list starts out sorted by general popularity, not alphabetically.
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
@@ -10,24 +21,32 @@ import { db, getState, setState } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getTrackingEventId } from '../events';
 import { notifyPlayers } from '../push';
+import { isIntInRange } from '../validation';
 
 export const votesRouter = Router();
 
 const ROUND_KEY = 'vote_round';
 const OPEN_KEY = 'vote_open';
 const STARTED_AT_KEY = 'vote_started_at';
+const MODE_KEY = 'vote_mode';
+
+type VoteMode = 'single' | 'points';
+const MAX_POINT_GAMES = 5;
 
 interface RoundState {
   round: number;
   open: boolean;
   startedAt: number | null;
+  mode: VoteMode;
 }
 
 function readRoundState(): RoundState {
+  const storedMode = getState(MODE_KEY);
   return {
     round: parseInt(getState(ROUND_KEY) ?? '0', 10),
     open: getState(OPEN_KEY) === '1',
     startedAt: getState(STARTED_AT_KEY) ? parseInt(getState(STARTED_AT_KEY)!, 10) : null,
+    mode: storedMode === 'points' ? 'points' : 'single',
   };
 }
 
@@ -35,34 +54,62 @@ interface ResultRow {
   gameId: string;
   gameName: string;
   icon: string;
-  votes: number;
+  votes: number; // number of (player, game) rows, i.e. distinct voters for this game
+  points: number; // sum of points given (0 in 'single' mode)
+  score: number; // the metric this round ranks by: votes for 'single', points for 'points'
   lastPlayedAt: number | null;
   playCount: number;
+  avgPreference: number | null; // aggregate "Bock" rating across all players, null if nobody has rated it
+  preferenceCount: number;
 }
 
-function buildResults(round: number): ResultRow[] {
-  return db
+function buildResults(round: number, mode: VoteMode): ResultRow[] {
+  const rows = db
     .prepare(
       `SELECT g.id AS gameId, g.name AS gameName, g.icon AS icon,
               COUNT(v.player_id) AS votes,
-              m.lastPlayedAt AS lastPlayedAt, COALESCE(m.playCount, 0) AS playCount
+              COALESCE(SUM(v.points), 0) AS points,
+              m.lastPlayedAt AS lastPlayedAt, COALESCE(m.playCount, 0) AS playCount,
+              p.avgPreference AS avgPreference, COALESCE(p.preferenceCount, 0) AS preferenceCount
        FROM games g
        LEFT JOIN votes v ON v.game_id = g.id AND v.round = ?
        LEFT JOIN (
          SELECT game_id, MAX(played_at) AS lastPlayedAt, COUNT(*) AS playCount
          FROM matches GROUP BY game_id
        ) m ON m.game_id = g.id
-       GROUP BY g.id
-       ORDER BY votes DESC, g.name COLLATE NOCASE`
+       LEFT JOIN (
+         SELECT game_id, AVG(rating) AS avgPreference, COUNT(*) AS preferenceCount
+         FROM preferences GROUP BY game_id
+       ) p ON p.game_id = g.id
+       GROUP BY g.id`
     )
-    .all(round) as ResultRow[];
+    .all(round) as Array<Omit<ResultRow, 'score'>>;
+
+  const results: ResultRow[] = rows.map((r) => ({ ...r, score: mode === 'points' ? r.points : r.votes }));
+
+  // Sort by this round's score first, then by aggregate popularity (so the
+  // list starts out popularity-sorted before anyone has voted), then name.
+  results.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    const aPref = a.avgPreference ?? -1;
+    const bPref = b.avgPreference ?? -1;
+    if (bPref !== aPref) return bPref - aPref;
+    return a.gameName.localeCompare(b.gameName, 'de');
+  });
+  return results;
 }
 
 function buildPayload(extra: Record<string, unknown> = {}) {
   const state = readRoundState();
-  const results = buildResults(state.round);
+  const results = buildResults(state.round, state.mode);
   const totalVotes = results.reduce((sum, r) => sum + r.votes, 0);
-  return { ...state, results, totalVotes, ...extra };
+  const totalPoints = results.reduce((sum, r) => sum + r.points, 0);
+  const totalVoters = (
+    db.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM votes WHERE round = ?').get(state.round) as {
+      n: number;
+    }
+  ).n;
+  return { ...state, results, totalVotes, totalPoints, totalVoters, ...extra };
 }
 
 // GET /api/votes - current round's state and tally.
@@ -70,21 +117,46 @@ votesRouter.get('/', (_req, res) => {
   res.json(buildPayload());
 });
 
+// GET /api/votes/mine?playerId= - the given player's own entries in the
+// current round, so the frontend can prefill/highlight their picks (mainly
+// needed for 'points' mode's multi-select UI, which can't be reconstructed
+// from the aggregated results alone).
+votesRouter.get('/mine', (req, res) => {
+  const { playerId } = req.query;
+  if (typeof playerId !== 'string' || !playerId) {
+    return res.status(400).json({ error: 'playerId ist erforderlich.' });
+  }
+  const state = readRoundState();
+  const entries = db
+    .prepare('SELECT game_id AS gameId, points FROM votes WHERE player_id = ? AND round = ?')
+    .all(playerId, state.round) as Array<{ gameId: string; points: number | null }>;
+  res.json({ round: state.round, mode: state.mode, entries });
+});
+
 // POST /api/votes/start - begins a new round. Fails if one is already open.
-votesRouter.post('/start', (_req, res) => {
+// Body: { mode? } - 'single' (default) or 'points'.
+votesRouter.post('/start', (req, res) => {
   const state = readRoundState();
   if (state.open) {
     return res.status(409).json({ error: 'Es läuft bereits eine Abstimmung.' });
   }
+
+  const { mode } = req.body ?? {};
+  if (mode !== undefined && mode !== 'single' && mode !== 'points') {
+    return res.status(400).json({ error: 'mode muss "single" oder "points" sein.' });
+  }
+  const nextMode: VoteMode = mode === 'points' ? 'points' : 'single';
+
   const nextRound = state.round + 1;
   const now = Date.now();
   setState(ROUND_KEY, String(nextRound));
   setState(OPEN_KEY, '1');
   setState(STARTED_AT_KEY, String(now));
+  setState(MODE_KEY, nextMode);
 
   db.prepare(
-    'INSERT INTO vote_rounds (round, event_id, started_at, closed_at, winner_game_ids) VALUES (?, ?, ?, NULL, NULL)'
-  ).run(nextRound, getTrackingEventId(), now);
+    'INSERT INTO vote_rounds (round, event_id, started_at, closed_at, winner_game_ids, mode) VALUES (?, ?, ?, NULL, NULL, ?)'
+  ).run(nextRound, getTrackingEventId(), now, nextMode);
 
   const payload = buildPayload();
   broadcast(Events.votesChanged, payload);
@@ -92,19 +164,25 @@ votesRouter.post('/start', (_req, res) => {
   const allPlayerIds = (db.prepare('SELECT id FROM players').all() as Array<{ id: string }>).map((p) => p.id);
   notifyPlayers(allPlayerIds, {
     title: '🗳️ Neue Abstimmung',
-    body: 'Was zocken wir als Nächstes? Jetzt abstimmen.',
+    body:
+      nextMode === 'points'
+        ? 'Was zocken wir als Nächstes? Bis zu 5 Spiele mit Punkten bewerten.'
+        : 'Was zocken wir als Nächstes? Jetzt abstimmen.',
     url: '/',
   });
 
   res.status(201).json(payload);
 });
 
-// POST /api/votes - cast or change a vote in the current round.
+// POST /api/votes - cast or change a vote in the current round ('single' mode only).
 // Body: { playerId, gameId }
 votesRouter.post('/', (req, res) => {
   const state = readRoundState();
   if (!state.open) {
     return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
+  }
+  if (state.mode !== 'single') {
+    return res.status(409).json({ error: 'Die aktuelle Abstimmung läuft im Punkte-Modus.' });
   }
 
   const { playerId, gameId } = req.body ?? {};
@@ -119,10 +197,74 @@ votesRouter.post('/', (req, res) => {
   const game = db.prepare('SELECT id FROM games WHERE id = ?').get(gameId);
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
 
-  db.prepare(
-    `INSERT INTO votes (id, player_id, game_id, event_id, round, created_at) VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(player_id, round) DO UPDATE SET game_id = excluded.game_id, created_at = excluded.created_at`
-  ).run(nanoid(), playerId, gameId, getTrackingEventId(), state.round, Date.now());
+  const castVote = db.transaction(() => {
+    db.prepare('DELETE FROM votes WHERE player_id = ? AND round = ?').run(playerId, state.round);
+    db.prepare(
+      'INSERT INTO votes (id, player_id, game_id, event_id, round, points, created_at) VALUES (?, ?, ?, ?, ?, NULL, ?)'
+    ).run(nanoid(), playerId, gameId, getTrackingEventId(), state.round, Date.now());
+  });
+  castVote();
+
+  const payload = buildPayload();
+  broadcast(Events.votesChanged, payload);
+  res.json(payload);
+});
+
+// POST /api/votes/points - cast or replace a player's points in the current
+// round ('points' mode only). Body: { playerId, entries: [{ gameId, points }] },
+// 1-5 entries, distinct games, 1-10 points each. Resubmitting replaces the
+// player's whole previous set so they can change their mind any time.
+votesRouter.post('/points', (req, res) => {
+  const state = readRoundState();
+  if (!state.open) {
+    return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
+  }
+  if (state.mode !== 'points') {
+    return res.status(409).json({ error: 'Die aktuelle Abstimmung läuft im Einzel-Modus.' });
+  }
+
+  const { playerId, entries } = req.body ?? {};
+  if (typeof playerId !== 'string' || !playerId) {
+    return res.status(400).json({ error: 'playerId ist erforderlich.' });
+  }
+  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
+  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+
+  if (!Array.isArray(entries) || entries.length === 0 || entries.length > MAX_POINT_GAMES) {
+    return res.status(400).json({ error: `Bitte 1 bis ${MAX_POINT_GAMES} Spiele mit je 1-10 Punkten angeben.` });
+  }
+
+  const seen = new Set<string>();
+  const clean: Array<{ gameId: string; points: number }> = [];
+  for (const entry of entries) {
+    const { gameId, points } = (entry ?? {}) as { gameId?: unknown; points?: unknown };
+    if (typeof gameId !== 'string' || !gameId) {
+      return res.status(400).json({ error: 'Jeder Eintrag braucht eine gameId.' });
+    }
+    if (seen.has(gameId)) {
+      return res.status(400).json({ error: 'Jedes Spiel darf nur einmal bewertet werden.' });
+    }
+    seen.add(gameId);
+    if (!isIntInRange(points, 1, 10)) {
+      return res.status(400).json({ error: 'Punkte müssen eine Ganzzahl zwischen 1 und 10 sein.' });
+    }
+    const game = db.prepare('SELECT id FROM games WHERE id = ?').get(gameId);
+    if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+    clean.push({ gameId, points });
+  }
+
+  const now = Date.now();
+  const eventId = getTrackingEventId();
+  const castPoints = db.transaction(() => {
+    db.prepare('DELETE FROM votes WHERE player_id = ? AND round = ?').run(playerId, state.round);
+    const insert = db.prepare(
+      'INSERT INTO votes (id, player_id, game_id, event_id, round, points, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+    for (const entry of clean) {
+      insert.run(nanoid(), playerId, entry.gameId, eventId, state.round, entry.points, now);
+    }
+  });
+  castPoints();
 
   const payload = buildPayload();
   broadcast(Events.votesChanged, payload);
@@ -138,9 +280,9 @@ votesRouter.post('/close', (_req, res) => {
   }
   setState(OPEN_KEY, '0');
 
-  const results = buildResults(state.round);
-  const topVotes = results[0]?.votes ?? 0;
-  const winnerGameIds = topVotes > 0 ? results.filter((r) => r.votes === topVotes).map((r) => r.gameId) : [];
+  const results = buildResults(state.round, state.mode);
+  const topScore = results[0]?.score ?? 0;
+  const winnerGameIds = topScore > 0 ? results.filter((r) => r.score === topScore).map((r) => r.gameId) : [];
 
   db.prepare('UPDATE vote_rounds SET closed_at = ?, winner_game_ids = ? WHERE round = ?').run(
     Date.now(),
@@ -176,6 +318,7 @@ interface VoteRoundRow {
   eventName: string;
   startedAt: number;
   closedAt: number;
+  mode: VoteMode;
   winnerGameIdsJson: string | null;
 }
 
@@ -191,7 +334,7 @@ votesRouter.get('/history', (req, res) => {
   const rows = db
     .prepare(
       `SELECT vr.round AS round, vr.event_id AS eventId, e.name AS eventName,
-              vr.started_at AS startedAt, vr.closed_at AS closedAt,
+              vr.started_at AS startedAt, vr.closed_at AS closedAt, vr.mode AS mode,
               vr.winner_game_ids AS winnerGameIdsJson
        FROM vote_rounds vr
        JOIN events e ON e.id = vr.event_id
@@ -203,17 +346,18 @@ votesRouter.get('/history', (req, res) => {
 
   const history = rows.map((r) => {
     const winnerIds: string[] = r.winnerGameIdsJson ? JSON.parse(r.winnerGameIdsJson) : [];
-    const results = buildResults(r.round);
+    const results = buildResults(r.round, r.mode);
     const totalVotes = results.reduce((sum, x) => sum + x.votes, 0);
     const winners = results
       .filter((x) => winnerIds.includes(x.gameId))
-      .map((x) => ({ gameId: x.gameId, gameName: x.gameName, icon: x.icon, votes: x.votes }));
+      .map((x) => ({ gameId: x.gameId, gameName: x.gameName, icon: x.icon, votes: x.votes, points: x.points }));
     return {
       round: r.round,
       eventId: r.eventId,
       eventName: r.eventName,
       startedAt: r.startedAt,
       closedAt: r.closedAt,
+      mode: r.mode,
       totalVotes,
       winners,
     };

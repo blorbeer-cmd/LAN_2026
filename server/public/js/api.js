@@ -122,6 +122,15 @@ export const api = {
       apiFetch('/api/skills', { method: 'PUT', body: JSON.stringify({ playerId, gameId, rating }) }),
   },
 
+  preferences: {
+    list: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return apiFetch(`/api/preferences${qs ? `?${qs}` : ''}`);
+    },
+    set: (playerId, gameId, rating) =>
+      apiFetch('/api/preferences', { method: 'PUT', body: JSON.stringify({ playerId, gameId, rating }) }),
+  },
+
   live: {
     board: () => apiFetch('/api/live'),
     setNote: (playerId, note) =>
@@ -135,10 +144,13 @@ export const api = {
 
   votes: {
     get: () => apiFetch('/api/votes'),
+    mine: (playerId) => apiFetch(`/api/votes/mine?playerId=${encodeURIComponent(playerId)}`),
     history: () => apiFetch('/api/votes/history'),
-    start: () => apiFetch('/api/votes/start', { method: 'POST' }),
+    start: (mode) => apiFetch('/api/votes/start', { method: 'POST', body: JSON.stringify(mode ? { mode } : {}) }),
     cast: (playerId, gameId) =>
       apiFetch('/api/votes', { method: 'POST', body: JSON.stringify({ playerId, gameId }) }),
+    castPoints: (playerId, entries) =>
+      apiFetch('/api/votes/points', { method: 'POST', body: JSON.stringify({ playerId, entries }) }),
     close: () => apiFetch('/api/votes/close', { method: 'POST' }),
     cancel: () => apiFetch('/api/votes/cancel', { method: 'POST' }),
   },
