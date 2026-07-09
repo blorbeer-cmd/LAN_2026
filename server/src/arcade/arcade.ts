@@ -3,7 +3,8 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { matchesAnswer, pickQuestion } from './quizLogic';
 
-const TARGET_SCORE = 3;
+const DEFAULT_TARGET_SCORE = 5;
+const QUESTION_MS = 20_000;
 
 interface PlayerRef {
   id: string;
@@ -14,7 +15,8 @@ interface Lobby {
   id: string;
   gameType: 'quiz';
   host: PlayerRef;
-  hostSocketId: string;
+  players: PlayerRef[];
+  socketIds: Map<string, string>;
   createdAt: number;
 }
 
@@ -29,11 +31,18 @@ interface QuizQuestion {
 interface MatchState {
   id: string;
   room: string;
-  players: [PlayerRef, PlayerRef];
+  host: PlayerRef;
+  players: PlayerRef[];
   socketIds: Map<string, string>;
   scores: Map<string, number>;
+  targetScore: number;
   currentQuestion: QuizQuestion | null;
+  questionTimer: NodeJS.Timeout | null;
+  questionExpiresAt: number | null;
+  questionRemainingMs: number | null;
+  paused: boolean;
   answered: boolean;
+  startedAt: number;
 }
 
 const lobbies = new Map<string, Lobby>();
@@ -45,11 +54,17 @@ function playerById(playerId: unknown): PlayerRef | null {
   return row ?? null;
 }
 
+function targetScore(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return null;
+  return value >= 1 && value <= 100 ? value : null;
+}
+
 function publicLobbies() {
   return [...lobbies.values()].map((l) => ({
     id: l.id,
     gameType: l.gameType,
     host: l.host,
+    players: l.players,
     createdAt: l.createdAt,
   }));
 }
@@ -70,11 +85,11 @@ function loadQuestionFor(match: MatchState): QuizQuestion | null {
     .prepare(
       `SELECT question_id
        FROM quiz_seen
-       WHERE player_id IN (?, ?)
+       WHERE player_id IN (${match.players.map(() => '?').join(',')})
        GROUP BY question_id
-       HAVING COUNT(DISTINCT player_id) = 2`
+       HAVING COUNT(DISTINCT player_id) = ?`
     )
-    .all(match.players[0].id, match.players[1].id) as Array<{ question_id: string }>;
+    .all(...match.players.map((p) => p.id), match.players.length) as Array<{ question_id: string }>;
   const id = pickQuestion(
     questions.map((q) => q.id),
     new Set(seenRows.map((r) => r.question_id))
@@ -82,24 +97,14 @@ function loadQuestionFor(match: MatchState): QuizQuestion | null {
   return id ? questions.find((q) => q.id === id) ?? null : null;
 }
 
-function sendQuestion(io: Server, match: MatchState) {
-  const question = loadQuestionFor(match);
-  match.currentQuestion = question;
-  match.answered = false;
-  if (!question) {
-    io.to(match.room).emit('arcade:match:end', { matchId: match.id, reason: 'no-questions', scores: scorePayload(match) });
-    matches.delete(match.id);
-    return;
-  }
-  io.to(match.room).emit('arcade:quiz:question', {
-    matchId: match.id,
-    questionId: question.id,
-    question: question.question,
-    category: question.category,
-    difficulty: question.difficulty,
-    scores: scorePayload(match),
-    targetScore: TARGET_SCORE,
-  });
+function clearQuestionTimer(match: MatchState) {
+  if (match.questionTimer) clearTimeout(match.questionTimer);
+  match.questionTimer = null;
+  match.questionExpiresAt = null;
+}
+
+function firstAcceptedAnswer(question: QuizQuestion): string {
+  return (JSON.parse(question.answers) as string[])[0];
 }
 
 function markSeen(match: MatchState, winnerId: string | null) {
@@ -115,6 +120,83 @@ function markSeen(match: MatchState, winnerId: string | null) {
   }
 }
 
+function finishMatch(io: Server, match: MatchState, winner: PlayerRef | null, reason = 'completed') {
+  clearQuestionTimer(match);
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    nanoid(),
+    'quiz',
+    winner?.id ?? null,
+    JSON.stringify(match.players),
+    JSON.stringify(scorePayload(match)),
+    reason,
+    match.startedAt,
+    Date.now()
+  );
+  io.to(match.room).emit('arcade:match:end', { matchId: match.id, winner, reason, scores: scorePayload(match) });
+  matches.delete(match.id);
+}
+
+function scheduleQuestionTimeout(io: Server, match: MatchState, delayMs: number) {
+  match.questionTimer = setTimeout(() => {
+    if (!matches.has(match.id) || match.answered || match.paused || !match.currentQuestion) return;
+    match.answered = true;
+    markSeen(match, null);
+    io.to(match.room).emit('arcade:quiz:timeout', {
+      matchId: match.id,
+      correctAnswer: firstAcceptedAnswer(match.currentQuestion),
+      scores: scorePayload(match),
+    });
+    setTimeout(() => {
+      if (matches.has(match.id)) sendQuestion(io, match);
+    }, 1400);
+  }, delayMs);
+}
+
+function sendQuestion(io: Server, match: MatchState) {
+  clearQuestionTimer(match);
+  const question = loadQuestionFor(match);
+  match.currentQuestion = question;
+  match.answered = false;
+  match.paused = false;
+  match.questionRemainingMs = null;
+  if (!question) return finishMatch(io, match, null, 'no-questions');
+
+  const startedAt = Date.now();
+  match.questionExpiresAt = startedAt + QUESTION_MS;
+  io.to(match.room).emit('arcade:quiz:question', {
+    matchId: match.id,
+    questionId: question.id,
+    question: question.question,
+    category: question.category,
+    difficulty: question.difficulty,
+    scores: scorePayload(match),
+    targetScore: match.targetScore,
+    startedAt,
+    expiresAt: match.questionExpiresAt,
+  });
+
+  scheduleQuestionTimeout(io, match, QUESTION_MS);
+}
+
+function removeFromOpenLobbies(io: Server, socketId: string) {
+  let changed = false;
+  for (const [id, lobby] of lobbies) {
+    const player = [...lobby.socketIds.entries()].find(([, value]) => value === socketId);
+    if (!player) continue;
+    if (lobby.host.id === player[0]) {
+      lobbies.delete(id);
+    } else {
+      lobby.socketIds.delete(player[0]);
+      lobby.players = lobby.players.filter((p) => p.id !== player[0]);
+    }
+    changed = true;
+  }
+  if (changed) emitLobbies(io);
+}
+
 export function registerArcadeSockets(io: Server): void {
   io.on('connection', (socket: Socket) => {
     socket.emit('arcade:lobbies', { lobbies: publicLobbies() });
@@ -127,10 +209,15 @@ export function registerArcadeSockets(io: Server): void {
       const player = playerById(payload?.playerId);
       if (!player || payload?.gameType !== 'quiz') return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
 
-      for (const [id, lobby] of lobbies) {
-        if (lobby.hostSocketId === socket.id || lobby.host.id === player.id) lobbies.delete(id);
-      }
-      const lobby: Lobby = { id: nanoid(), gameType: 'quiz', host: player, hostSocketId: socket.id, createdAt: Date.now() };
+      removeFromOpenLobbies(io, socket.id);
+      const lobby: Lobby = {
+        id: nanoid(),
+        gameType: 'quiz',
+        host: player,
+        players: [player],
+        socketIds: new Map([[player.id, socket.id]]),
+        createdAt: Date.now(),
+      };
       lobbies.set(lobby.id, lobby);
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
@@ -138,38 +225,53 @@ export function registerArcadeSockets(io: Server): void {
 
     socket.on('arcade:lobby:join', (payload: { lobbyId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
-      const guest = playerById(payload?.playerId);
-      if (!lobby || !guest) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
-      if (guest.id === lobby.host.id) return ack?.({ ok: false, error: 'Du bist schon Host dieser Lobby.' });
+      const player = playerById(payload?.playerId);
+      if (!lobby || !player) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
 
-      const hostSocket = io.sockets.sockets.get(lobby.hostSocketId);
-      if (!hostSocket) {
-        lobbies.delete(lobby.id);
-        emitLobbies(io);
-        return ack?.({ ok: false, error: 'Host ist nicht mehr verbunden.' });
+      removeFromOpenLobbies(io, socket.id);
+      if (!lobby.players.some((p) => p.id === player.id)) lobby.players.push(player);
+      lobby.socketIds.set(player.id, socket.id);
+      emitLobbies(io);
+      ack?.({ ok: true, lobbyId: lobby.id });
+    });
+
+    socket.on('arcade:lobby:start', (payload: { lobbyId?: string; playerId?: string; targetScore?: number }, ack?: (res: unknown) => void) => {
+      const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
+      const score = targetScore(payload?.targetScore) ?? DEFAULT_TARGET_SCORE;
+      if (!lobby) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
+      if (payload?.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' });
+      if (lobby.players.length < 2) return ack?.({ ok: false, error: 'Mindestens zwei Spieler werden gebraucht.' });
+
+      const room = `arcade:${nanoid()}`;
+      for (const socketId of lobby.socketIds.values()) {
+        io.sockets.sockets.get(socketId)?.join(room);
       }
-
       const match: MatchState = {
         id: nanoid(),
-        room: `arcade:${nanoid()}`,
-        players: [lobby.host, guest],
-        socketIds: new Map([
-          [lobby.host.id, lobby.hostSocketId],
-          [guest.id, socket.id],
-        ]),
-        scores: new Map([
-          [lobby.host.id, 0],
-          [guest.id, 0],
-        ]),
+        room,
+        host: lobby.host,
+        players: lobby.players,
+        socketIds: new Map(lobby.socketIds),
+        scores: new Map(lobby.players.map((p) => [p.id, 0])),
+        targetScore: score,
         currentQuestion: null,
+        questionTimer: null,
+        questionExpiresAt: null,
+        questionRemainingMs: null,
+        paused: false,
         answered: false,
+        startedAt: Date.now(),
       };
       matches.set(match.id, match);
       lobbies.delete(lobby.id);
-      hostSocket.join(match.room);
-      socket.join(match.room);
       emitLobbies(io);
-      io.to(match.room).emit('arcade:match:start', { matchId: match.id, gameType: 'quiz', players: match.players, targetScore: TARGET_SCORE });
+      io.to(room).emit('arcade:match:start', {
+        matchId: match.id,
+        gameType: 'quiz',
+        host: match.host,
+        players: match.players,
+        targetScore: score,
+      });
       ack?.({ ok: true, matchId: match.id });
       sendQuestion(io, match);
     });
@@ -177,12 +279,13 @@ export function registerArcadeSockets(io: Server): void {
     socket.on('arcade:quiz:answer', (payload: { matchId?: string; playerId?: string; text?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
       const player = match?.players.find((p) => p.id === payload?.playerId);
-      if (!match || !player || !match.currentQuestion || match.answered || typeof payload?.text !== 'string') {
+      if (!match || !player || !match.currentQuestion || match.answered || match.paused || typeof payload?.text !== 'string') {
         return ack?.({ ok: false, error: 'Antwort nicht angenommen.' });
       }
       const accepted = JSON.parse(match.currentQuestion.answers) as string[];
       if (!matchesAnswer(payload.text, accepted)) return ack?.({ ok: true, correct: false });
 
+      clearQuestionTimer(match);
       match.answered = true;
       match.scores.set(player.id, (match.scores.get(player.id) ?? 0) + 1);
       markSeen(match, player.id);
@@ -194,32 +297,69 @@ export function registerArcadeSockets(io: Server): void {
         scores,
       });
 
-      if ((match.scores.get(player.id) ?? 0) >= TARGET_SCORE) {
-        io.to(match.room).emit('arcade:match:end', { matchId: match.id, winner: player, scores });
-        matches.delete(match.id);
+      if ((match.scores.get(player.id) ?? 0) >= match.targetScore) {
+        finishMatch(io, match, player);
       } else {
         setTimeout(() => {
           if (matches.has(match.id)) sendQuestion(io, match);
-        }, 1800);
+        }, 1400);
       }
       ack?.({ ok: true, correct: true });
     });
 
-    socket.on('disconnect', () => {
-      let changed = false;
-      for (const [id, lobby] of lobbies) {
-        if (lobby.hostSocketId === socket.id) {
-          lobbies.delete(id);
-          changed = true;
-        }
-      }
-      if (changed) emitLobbies(io);
+    socket.on('arcade:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
+      if (!match.currentQuestion || match.answered || match.paused) return ack?.({ ok: true });
 
+      match.questionRemainingMs = Math.max(1, (match.questionExpiresAt ?? Date.now()) - Date.now());
+      if (match.questionTimer) clearTimeout(match.questionTimer);
+      match.questionTimer = null;
+      match.questionExpiresAt = null;
+      match.paused = true;
+      io.to(match.room).emit('arcade:match:paused', {
+        matchId: match.id,
+        scores: scorePayload(match),
+        remainingMs: match.questionRemainingMs,
+      });
+      ack?.({ ok: true });
+    });
+
+    socket.on('arcade:match:resume', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann fortsetzen.' });
+      if (!match.currentQuestion || match.answered || !match.paused) return ack?.({ ok: true });
+
+      const remainingMs = match.questionRemainingMs ?? QUESTION_MS;
+      match.questionExpiresAt = Date.now() + remainingMs;
+      match.questionRemainingMs = null;
+      match.paused = false;
+      scheduleQuestionTimeout(io, match, remainingMs);
+      io.to(match.room).emit('arcade:match:resumed', {
+        matchId: match.id,
+        scores: scorePayload(match),
+        expiresAt: match.questionExpiresAt,
+      });
+      ack?.({ ok: true });
+    });
+
+    socket.on('arcade:match:finish', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann beenden.' });
+      finishMatch(io, match, null, 'ended-by-host');
+      ack?.({ ok: true });
+    });
+
+    socket.on('disconnect', () => {
+      removeFromOpenLobbies(io, socket.id);
       for (const [id, match] of matches) {
         const player = [...match.socketIds.entries()].find(([, socketId]) => socketId === socket.id);
         if (!player) continue;
         io.to(match.room).emit('arcade:match:opponent-left', { matchId: id, playerId: player[0] });
-        matches.delete(id);
+        finishMatch(io, match, null, 'player-left');
       }
     });
   });

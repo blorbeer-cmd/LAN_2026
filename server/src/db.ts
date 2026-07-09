@@ -380,6 +380,17 @@ db.exec(`
     PRIMARY KEY (question_id, player_id)
   );
 
+  CREATE TABLE IF NOT EXISTS arcade_results (
+    id          TEXT PRIMARY KEY,
+    game_type   TEXT NOT NULL,
+    winner_id   TEXT REFERENCES players(id) ON DELETE SET NULL,
+    players     TEXT NOT NULL,
+    scores      TEXT NOT NULL,
+    reason      TEXT NOT NULL,
+    started_at  INTEGER NOT NULL,
+    ended_at    INTEGER NOT NULL
+  );
+
   -- Info-Board: the answers to the questions everyone asks five times per
   -- evening (WLAN password, Discord link, game-server IPs, house rules).
   -- Plain title+content entries, editable by anyone (LAN trust model).

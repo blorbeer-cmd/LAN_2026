@@ -28,6 +28,7 @@ import { broadcastsRouter } from './broadcasts';
 import { infoBoardRouter } from './infoBoard';
 import { foodOrdersRouter } from './foodOrders';
 import { quizRouter } from './quiz';
+import { arcadeRouter } from './arcade';
 
 export const apiRouter = Router();
 
@@ -62,3 +63,4 @@ apiRouter.use('/broadcasts', broadcastsRouter);
 apiRouter.use('/info', infoBoardRouter);
 apiRouter.use('/food-orders', foodOrdersRouter);
 apiRouter.use('/quiz', quizRouter);
+apiRouter.use('/arcade', arcadeRouter);
