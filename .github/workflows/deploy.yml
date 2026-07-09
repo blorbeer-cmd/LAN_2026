@@ -66,6 +66,16 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     environment: production
+    # Only one deploy against the single production box at a time. Two
+    # pushes close together would otherwise both SSH in and race on the
+    # same `.env`/`docker compose` state — queue the second instead of
+    # running it in parallel (test/build-and-push above stay unaffected,
+    # only this job serializes). Not scoped to a branch/sha on purpose:
+    # there's exactly one production target, so every deploy shares the
+    # same lock regardless of which commit triggered it.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
     steps:
       # Pinning the box to this exact sha (not a floating :latest tag) keeps
       # deploys reproducible and makes infra/cloud-init.yaml.tpl's
