@@ -5,11 +5,12 @@
 
 import { api, getToken } from '../api.js';
 import { state, gameById } from '../state.js';
-import { escapeHtml, gameBadgeHtml, toDatetimeLocal } from '../format.js';
+import { escapeHtml, gameBadgeHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 import { resizeImageFile } from '../imageUtils.js';
 import { suggestProcessNames } from '../gameProcessSuggestions.js';
+import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 
 // The invite link is the shared access token, not tied to any one event —
 // same link always leads into whichever event is currently active. Factored
@@ -214,14 +215,14 @@ function openEventForm(ctx, existing) {
           <label for="event-name" class="field-label">Name</label>
           <input type="text" id="event-name" maxlength="80" required autofocus value="${escapeHtml(existing?.name ?? '')}" placeholder="z.B. LAN Winter 2027" />
         </div>
-        <div class="row" style="align-items:flex-start;">
-          <div style="flex:1;">
+        <div class="field-row">
+          <div>
             <label for="event-starts" class="field-label">Beginnt am</label>
-            <input type="datetime-local" id="event-starts" required value="${toDatetimeLocal(existing?.starts_at ?? now)}" />
+            ${dateTimeFieldHtml('event-starts', existing?.starts_at ?? now, { clearable: false })}
           </div>
-          <div style="flex:1;">
+          <div>
             <label for="event-ends" class="field-label">Endet am</label>
-            <input type="datetime-local" id="event-ends" ${isEdit ? '' : 'required'} value="${toDatetimeLocal(existing?.ends_at ?? defaultEnd)}" />
+            ${dateTimeFieldHtml('event-ends', existing?.ends_at ?? defaultEnd, { clearable: isEdit })}
           </div>
         </div>
         <div>
@@ -242,6 +243,9 @@ function openEventForm(ctx, existing) {
     `,
     {
       onMount: (modalEl) => {
+        wireDateTimeField(modalEl, 'event-starts');
+        wireDateTimeField(modalEl, 'event-ends');
+
         modalEl.querySelector('#event-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const name = modalEl.querySelector('#event-name').value.trim();

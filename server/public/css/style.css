@@ -541,6 +541,126 @@ input[type='number']::-webkit-inner-spin-button {
   justify-content: space-between;
   gap: var(--space-3);
 }
+
+/* A pair of labeled fields side by side (arrival/departure, event start/end,
+   analytics date range). Native datetime-local controls have a wide,
+   non-shrinkable intrinsic content width — a plain `.row` with `flex:1`
+   children can't shrink them below that, so on a narrow phone the second
+   field gets pushed past the card edge. flex-wrap plus a sane min-width lets
+   the pair drop to one field per line instead of overflowing. */
+.field-row {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.field-row > div {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+/* ---------- Custom date/time field (server/public/js/dateTimeField.js) ----------
+   Replaces <input type="datetime-local">: the native control's closed-state
+   segments and popup calendar are drawn by the browser/OS, not themeable to
+   match the rest of the app (they stay a generic light "Windows" widget
+   regardless of dark mode). This is a themed trigger + hour/minute selects +
+   a calendar popover built from the same card/button classes as everywhere
+   else in the app. */
+.dt-field {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.dt-date-btn {
+  flex: 1 1 140px;
+  display: flex;
+  align-items: center;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 11px 12px;
+  font-size: 0.95rem;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.dt-date-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.dt-time-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+.dt-time-select {
+  width: 62px;
+  padding: 11px 22px 11px 10px;
+  background-position: right 6px center;
+}
+.dt-time-sep {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.dt-clear-btn {
+  color: var(--text-muted);
+}
+
+.dt-popover {
+  width: 280px;
+  max-width: calc(100vw - 16px);
+  z-index: 80;
+  box-shadow: var(--shadow);
+}
+.dt-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+.dt-calendar {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.dt-calendar th {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding-bottom: 6px;
+}
+.dt-calendar td {
+  text-align: center;
+  padding: 2px;
+}
+.dt-day {
+  width: 100%;
+  aspect-ratio: 1;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .dt-day:hover {
+    background: var(--bg-elevated-2);
+  }
+}
+.dt-day-today {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.dt-day-selected {
+  background: var(--accent-gradient);
+  color: var(--accent-text);
+  font-weight: 700;
+}
+.dt-popover .btn-block {
+  margin-top: var(--space-2);
+}
+
 .stack {
   display: flex;
   flex-direction: column;
