@@ -1,11 +1,18 @@
-// Auswertungen (analytics) view: awards, longest sessions, multitasking,
-// a raw "who played what when" session log, and a per-game concurrency
-// chart. Reached via a button on the Rangliste view, not the main bottom
-// nav — this is for browsing after the fact, not something needed mid-game.
+// Auswertungen view: two tabs sharing one event/date filter — "Spielzeit"
+// (awards, longest sessions, multitasking, a raw session log, a per-game
+// concurrency chart) and "Matches & Turniere" (recorded results, tournament
+// counts, team-auslosen history, a few "witzige" head-to-head records).
+// Reached via the "Mehr" hub, not the main bottom nav — this is for browsing
+// after the fact, not something needed mid-game. Used to be two separate
+// views; merged since both answer
+// "how did the LAN go", just from different angles (see server/CLAUDE.md
+// games reorg) — one entry in the Mehr hub instead of two, and switching
+// angles no longer means re-picking the event/date range from scratch.
 //
-// Data is fetched lazily on first render and cached in this module (not the
-// shared `state`, since it's filtered by its own date range independent of
-// the rest of the app) — loadData() fetches, then triggers a re-render.
+// Data is fetched lazily per tab and cached in this module (not the shared
+// `state`, since it's filtered by its own date range independent of the
+// rest of the app) — loadPlaytimeData()/loadMatchesData() fetch, then
+// trigger a re-render.
 
 import { api } from '../api.js';
 import { state } from '../state.js';
@@ -13,14 +20,19 @@ import { escapeHtml, formatDateTime, avatarHtml, gameBadgeHtml } from '../format
 import { showToast } from '../toast.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 
-let cache = null;
+let activeTab = 'playtime'; // 'playtime' | 'matches'
+
+let cache = null; // playtime tab
 let loading = false;
+let matchesCache = null; // matches/tournaments tab
+let matchesLoading = false;
 
 function defaultFilters() {
   // eventId: 'active' resolves to the currently active event on first
   // render; '' means "Gesamt, alle Events". from/to are an OPTIONAL extra
   // narrowing on top of whichever event is selected (e.g. "just Saturday
-  // night of this LAN") — null until the user explicitly applies one.
+  // night of this LAN"), only meaningful for the Spielzeit tab — Matches &
+  // Turniere always queries the whole selected event.
   return { eventId: 'active', from: null, to: null, concurrencyGameId: null, bucketMinutes: 60 };
 }
 let filters = defaultFilters();
@@ -43,7 +55,7 @@ function selectedEventRange() {
   return { from: to - 3 * 24 * 60 * 60 * 1000, to };
 }
 
-async function loadData(ctx) {
+async function loadPlaytimeData(ctx) {
   loading = true;
   ctx.rerender();
   try {
@@ -100,6 +112,33 @@ async function loadData(ctx) {
   }
 }
 
+const FORMAT_LABELS = {
+  single_elimination: '🏆 K.O.-Turnier',
+  round_robin: '🔁 Liga',
+  group_knockout: '👥 Gruppenphase + K.O.',
+};
+
+async function loadMatchesData(ctx) {
+  matchesLoading = true;
+  ctx.rerender();
+  try {
+    resolveEventSelection();
+    const params = filters.eventId ? { eventId: filters.eventId } : {};
+    matchesCache = await api.analytics.gamesTournaments(params);
+  } catch (err) {
+    showToast(err.message, { error: true });
+    matchesCache = {
+      matches: { total: 0, byGame: [] },
+      tournaments: { total: 0, completed: 0, active: 0, byFormat: [], byGame: [] },
+      draws: { total: 0, byGame: [], seatConflictRatePercent: null },
+      fun: { biggestRivalry: null, bestDuo: null, biggestUnderdogWin: null },
+    };
+  } finally {
+    matchesLoading = false;
+    ctx.rerender();
+  }
+}
+
 function renderEventOptions() {
   const sorted = [...state.events].sort((a, b) => b.starts_at - a.starts_at);
   const options = sorted
@@ -112,53 +151,80 @@ function renderEventOptions() {
 }
 
 export function renderAnalytics(container, ctx) {
-  if (cache === null && !loading) {
-    loadData(ctx);
-  }
   resolveEventSelection();
+  if (activeTab === 'playtime' && cache === null && !loading) {
+    loadPlaytimeData(ctx);
+  }
+  if (activeTab === 'matches' && matchesCache === null && !matchesLoading) {
+    loadMatchesData(ctx);
+  }
   const displayRange = filters.from && filters.to ? { from: filters.from, to: filters.to } : selectedEventRange();
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
-    <h1 class="view-title">🕒 Spielzeit-Auswertungen</h1>
+    <h1 class="view-title">📊 Auswertungen</h1>
+    <div class="tabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+      <button type="button" class="btn btn-sm ${activeTab === 'playtime' ? 'btn-primary' : ''}" data-an-tab="playtime">🕒 Spielzeit</button>
+      <button type="button" class="btn btn-sm ${activeTab === 'matches' ? 'btn-primary' : ''}" data-an-tab="matches">🎲 Matches & Turniere</button>
+    </div>
     <div class="card stack">
       <select id="an-event">${renderEventOptions()}</select>
-      <div class="field-row">
-        <div>${dateTimeFieldHtml('an-from', displayRange.from, { clearable: true })}</div>
-        <div>${dateTimeFieldHtml('an-to', displayRange.to, { clearable: true })}</div>
-      </div>
-      <button type="button" class="btn btn-primary btn-block" id="an-apply">Zeitraum zusätzlich eingrenzen</button>
-      <div class="muted" style="font-size:0.75rem;">Event wählen zeigt genau dessen Daten. Die Felder darüber grenzen innerhalb des Events optional weiter ein (z.B. nur Samstagnacht).</div>
+      ${
+        activeTab === 'playtime'
+          ? `<div class="field-row">
+               <div>${dateTimeFieldHtml('an-from', displayRange.from, { clearable: true })}</div>
+               <div>${dateTimeFieldHtml('an-to', displayRange.to, { clearable: true })}</div>
+             </div>
+             <button type="button" class="btn btn-primary btn-block" id="an-apply">Zeitraum zusätzlich eingrenzen</button>
+             <div class="muted" style="font-size:0.75rem;">Event wählen zeigt genau dessen Daten. Die Felder darüber grenzen innerhalb des Events optional weiter ein (z.B. nur Samstagnacht).</div>`
+          : `<div class="muted" style="font-size:0.75rem;">Event wählen zeigt genau dessen Daten.</div>`
+      }
     </div>
-    <div id="an-content">${loading || !cache ? `<div class="empty-state">Lädt…</div>` : renderContent()}</div>
+    <div id="an-content">${renderActiveTabContent()}</div>
   `;
 
-  wireDateTimeField(container, 'an-from');
-  wireDateTimeField(container, 'an-to');
+  if (activeTab === 'playtime') {
+    wireDateTimeField(container, 'an-from');
+    wireDateTimeField(container, 'an-to');
+    container.querySelector('#an-apply').addEventListener('click', () => {
+      const fromVal = container.querySelector('#an-from').value;
+      const toVal = container.querySelector('#an-to').value;
+      filters.from = fromVal ? new Date(fromVal).getTime() : null;
+      filters.to = toVal ? new Date(toVal).getTime() : null;
+      cache = null;
+      ctx.rerender();
+    });
+  }
+
+  container.querySelectorAll('[data-an-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      activeTab = btn.dataset.anTab;
+      ctx.rerender();
+    });
+  });
 
   container.querySelector('#an-event').addEventListener('change', (e) => {
     filters.eventId = e.target.value; // '' selects "Gesamt (alle Events)"
     filters.from = null;
     filters.to = null;
     cache = null;
+    matchesCache = null;
     ctx.rerender();
   });
 
-  container.querySelector('#an-apply').addEventListener('click', () => {
-    const fromVal = container.querySelector('#an-from').value;
-    const toVal = container.querySelector('#an-to').value;
-    filters.from = fromVal ? new Date(fromVal).getTime() : null;
-    filters.to = toVal ? new Date(toVal).getTime() : null;
-    cache = null;
-    ctx.rerender();
-  });
-
-  if (!loading && cache) {
-    wireContent(container, ctx);
+  if (activeTab === 'playtime' && !loading && cache) {
+    wirePlaytimeContent(container, ctx);
   }
 }
 
-function renderContent() {
+function renderActiveTabContent() {
+  if (activeTab === 'matches') {
+    return matchesLoading || !matchesCache ? `<div class="empty-state">Lädt…</div>` : renderMatchesContent();
+  }
+  return loading || !cache ? `<div class="empty-state">Lädt…</div>` : renderPlaytimeContent();
+}
+
+function renderPlaytimeContent() {
   const awards = cache.awards?.awards || [];
   const overview = cache.overview || {
     longestSessionsPerGame: [],
@@ -303,7 +369,7 @@ function renderConcurrencyChart(concurrency) {
     <div class="muted" style="font-size:0.75rem;">Höhe = Anzahl Spieler gleichzeitig · zum Wert hovern/antippen · nach rechts = neuer</div>`;
 }
 
-function wireContent(container, ctx) {
+function wirePlaytimeContent(container, ctx) {
   // The chart can span many buckets (e.g. 72 for a 3-day range at hourly
   // resolution) and scrolls horizontally — default to showing the most
   // recent end rather than leaving it looking empty at scrollLeft=0 if all
@@ -319,4 +385,126 @@ function wireContent(container, ctx) {
       ctx.rerender();
     });
   }
+}
+
+function playerChip(p) {
+  return `${avatarHtml(state.players.find((pl) => pl.id === p.id) || { color: p.color }, 20)} ${escapeHtml(p.name)}`;
+}
+
+function renderMatchesContent() {
+  const matches = matchesCache.matches;
+  const tournaments = matchesCache.tournaments;
+  const draws = matchesCache.draws;
+  const fun = matchesCache.fun;
+
+  const matchRows = matches.byGame.length
+    ? matches.byGame
+        .map(
+          (g) => `
+        <div class="lb-row">
+          ${gameBadgeHtml({ id: g.gameId, icon: g.gameIcon }, 24)}
+          <span style="flex:1;">
+            ${escapeHtml(g.gameName)}
+            <div class="muted" style="font-size:0.75rem;">${g.decided} entschieden${g.undecided ? ` · ${g.undecided} ohne Sieger/Unentschieden` : ''}</div>
+          </span>
+          <span class="lb-points">${g.count}×</span>
+        </div>`
+        )
+        .join('')
+    : `<div class="empty-state" style="padding:20px;">Noch keine Ergebnisse eingetragen.</div>`;
+
+  const tournamentByGameRows = tournaments.byGame.length
+    ? tournaments.byGame
+        .map(
+          (g) => `
+        <div class="lb-row">
+          ${gameBadgeHtml({ id: g.gameId, icon: g.gameIcon }, 24)}
+          <span style="flex:1;">${escapeHtml(g.gameName)}</span>
+          <span class="lb-points">${g.count}×</span>
+        </div>`
+        )
+        .join('')
+    : `<div class="empty-state" style="padding:20px;">Noch keine Turniere.</div>`;
+
+  const formatRows = tournaments.byFormat.length
+    ? tournaments.byFormat
+        .map(
+          (f) => `
+        <div class="lb-row">
+          <span style="flex:1;">${FORMAT_LABELS[f.format] || escapeHtml(f.format)}</span>
+          <span class="lb-points">${f.count}×</span>
+        </div>`
+        )
+        .join('')
+    : '';
+
+  const drawRows = draws.byGame.length
+    ? draws.byGame
+        .map(
+          (g) => `
+        <div class="lb-row">
+          ${gameBadgeHtml({ id: g.gameId, icon: g.gameIcon }, 24)}
+          <span style="flex:1;">${escapeHtml(g.gameName)}</span>
+          <span class="lb-points">${g.count}×</span>
+        </div>`
+        )
+        .join('')
+    : `<div class="empty-state" style="padding:20px;">Noch keine Teams ausgelost.</div>`;
+
+  const funCards = [];
+  if (fun.biggestRivalry) {
+    funCards.push(`
+      <div class="card">
+        <div class="row-between"><span style="font-size:1.4rem;">🥊</span><span class="lb-points">${fun.biggestRivalry.count}×</span></div>
+        <div class="player-name">Größte Rivalität</div>
+        <div class="muted" style="font-size:0.8rem;">Sind sich am häufigsten als Gegner begegnet.</div>
+        <div class="stack" style="margin-top:6px;gap:4px;">
+          <div class="row">${playerChip(fun.biggestRivalry.playerA)}</div>
+          <div class="row">${playerChip(fun.biggestRivalry.playerB)}</div>
+        </div>
+      </div>`);
+  }
+  if (fun.bestDuo) {
+    const winRate = fun.bestDuo.gamesTogether > 0 ? Math.round((fun.bestDuo.winsTogether / fun.bestDuo.gamesTogether) * 100) : 0;
+    funCards.push(`
+      <div class="card">
+        <div class="row-between"><span style="font-size:1.4rem;">🤝</span><span class="lb-points">${winRate}%</span></div>
+        <div class="player-name">Bestes Duo</div>
+        <div class="muted" style="font-size:0.8rem;">${fun.bestDuo.gamesTogether}× zusammen im Team, ${fun.bestDuo.winsTogether}× gewonnen.</div>
+        <div class="stack" style="margin-top:6px;gap:4px;">
+          <div class="row">${playerChip(fun.bestDuo.playerA)}</div>
+          <div class="row">${playerChip(fun.bestDuo.playerB)}</div>
+        </div>
+      </div>`);
+  }
+  if (fun.biggestUnderdogWin) {
+    const u = fun.biggestUnderdogWin;
+    funCards.push(`
+      <div class="card">
+        <div class="row-between"><span style="font-size:1.4rem;">😱</span><span class="lb-points">${u.winnerAvgRating} vs ${u.loserAvgRating}</span></div>
+        <div class="player-name">Krasseste Überraschung</div>
+        <div class="muted" style="font-size:0.8rem;">${gameBadgeHtml({ id: u.gameId, icon: u.gameIcon }, 16)} ${escapeHtml(u.gameName)} — als klarer Außenseiter gewonnen (Skill-Wertung).</div>
+        <div class="stack" style="margin-top:6px;gap:4px;">
+          ${u.winners.map((w) => `<div class="row">${playerChip(w)}</div>`).join('')}
+        </div>
+      </div>`);
+  }
+  const funHtml = funCards.length
+    ? `<div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));">${funCards.join('')}</div>`
+    : `<div class="empty-state" style="padding:20px;"><span class="emoji">🎉</span>Noch nicht genug Ergebnisse für witzige Rekorde.</div>`;
+
+  return `
+    <div class="section-title">🎲 Ergebnisse pro Spiel <span class="muted" style="font-weight:400;">(${matches.total} insgesamt)</span></div>
+    <div class="card">${matchRows}</div>
+
+    <div class="section-title">🏆 Turniere <span class="muted" style="font-weight:400;">(${tournaments.total} insgesamt · ${tournaments.completed} beendet · ${tournaments.active} laufend)</span></div>
+    ${formatRows ? `<div class="card" style="margin-bottom:10px;">${formatRows}</div>` : ''}
+    <div class="card">${tournamentByGameRows}</div>
+
+    <div class="section-title">⚖️ Team-Auslosungen <span class="muted" style="font-weight:400;">(${draws.total} insgesamt${draws.seatConflictRatePercent !== null ? ` · ${draws.seatConflictRatePercent}% Sitznachbarn mussten gegeneinander` : ''})</span></div>
+    <div class="card">${drawRows}</div>
+
+    <div class="section-title">🎉 Witzige Rekorde</div>
+    ${funHtml}
+  `;
 }

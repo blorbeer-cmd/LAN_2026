@@ -21,7 +21,6 @@ import { renderArrivals, invalidateArrivals } from './views/arrivals.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
-import { renderGameStats } from './views/gameStats.js';
 import { renderProfile } from './views/profile.js';
 import { renderTournaments, invalidateTournaments, focusTournament } from './views/tournament.js';
 import { renderHallOfFame } from './views/hallOfFame.js';
@@ -38,7 +37,6 @@ const VIEWS = {
   leaderboard: renderLeaderboard,
   settings: renderSettings,
   analytics: renderAnalytics,
-  gameStats: renderGameStats,
   profile: renderProfile,
   tournaments: renderTournaments,
   hallOfFame: renderHallOfFame,

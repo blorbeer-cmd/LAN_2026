@@ -178,6 +178,11 @@ test('Auswertungen (via Mehr) shows a real award and a visible, auto-scrolled co
     },
     { timeout: 5000 }
   );
+
+  // The "Matches & Turniere" tab (merged in from the old separate Spiele &
+  // Turniere view) shares this same event filter and renders alongside it.
+  await page.click('[data-an-tab="matches"]');
+  await page.waitForSelector('text=Ergebnisse pro Spiel');
 });
 
 test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statistiken reachable', async () => {
