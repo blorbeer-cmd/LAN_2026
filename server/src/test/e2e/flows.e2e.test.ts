@@ -37,9 +37,11 @@ before(async () => {
     stdio: 'ignore',
   });
   await waitForServer(`${BASE_URL}/api/health`);
-  // Use the browser pre-installed in this environment instead of triggering
-  // a download (see PLAYWRIGHT_BROWSERS_PATH in the environment docs).
-  browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  // Let Playwright resolve its own installed browser (via `npx playwright
+  // install chromium`, run before `npm run test:e2e`) instead of a fixed
+  // path — a hardcoded path only worked in one specific pre-provisioned
+  // environment and broke everywhere else, including CI.
+  browser = await chromium.launch();
   page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   // Native confirm() dialogs (vote cancel, game delete, tracking start) —
   // accept them so click-through tests don't hang.
