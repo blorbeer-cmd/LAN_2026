@@ -6,13 +6,21 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
+import { escapeHtml, avatarHtml, formatDateTime, toDatetimeLocal } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 
 let cache = null;
 let loading = false;
+
+// Which closed orders are expanded. Module-level rather than read off the
+// DOM: any mutation clears `cache` before calling ctx.rerender(), which
+// synchronously re-renders once with an empty list (cache still null) and
+// only picks up the reload's result on a second, later rerender — reading
+// "current DOM state" at render time would see nothing on that second pass,
+// since the first pass already wiped the <details> elements out.
+const expandedClosedOrderIds = new Set();
 
 async function load(ctx) {
   loading = true;
@@ -93,6 +101,21 @@ function renderItems(order, myId) {
     .join('');
 }
 
+// "Geht raus um ..." line shown on both open and closed orders, with an
+// edit affordance — the deadline is metadata people commonly get wrong or
+// need to shift ("doch erst um 21 Uhr"), so it stays correctable even after
+// the order closed, unlike the items themselves.
+function renderSendAt(order) {
+  const label = order.sendAt
+    ? `🕒 Geht raus um ${formatDateTime(order.sendAt)} Uhr`
+    : '🕒 Kein Zeitpunkt festgelegt';
+  return `
+    <div class="row-between">
+      <span class="muted" style="font-size:0.82rem;">${label}</span>
+      <button type="button" class="btn btn-sm" data-edit-sendat="${order.id}">${order.sendAt ? 'Ändern' : '+ Zeitpunkt'}</button>
+    </div>`;
+}
+
 function renderOpenOrder(order, myId) {
   return `
     <div class="card stack" data-order-card="${order.id}">
@@ -103,6 +126,7 @@ function renderOpenOrder(order, myId) {
       <div class="muted" style="font-size:0.78rem;margin-top:-6px;">
         von ${escapeHtml(order.createdByName)} · ${formatDateTime(order.createdAt)}
       </div>
+      ${renderSendAt(order)}
       <div>${renderItems(order, myId)}</div>
       ${order.totalCents > 0 ? `<div class="row-between"><strong>Summe</strong><strong>${formatCents(order.totalCents)}</strong></div>` : ''}
       ${
@@ -120,11 +144,12 @@ function renderOpenOrder(order, myId) {
 
 function renderClosedOrder(order) {
   return `
-    <details class="card" style="margin-bottom:12px;">
+    <details class="card" style="margin-bottom:12px;" data-closed-order="${order.id}" ${expandedClosedOrderIds.has(order.id) ? 'open' : ''}>
       <summary style="cursor:pointer;" class="row-between">
         <span><strong>${escapeHtml(order.title)}</strong> <span class="muted" style="font-size:0.8rem;">· ${order.items.length} Position(en)${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}</span></span>
         <span class="badge badge-offline">Geschlossen</span>
       </summary>
+      <div style="margin-top:10px;">${renderSendAt(order)}</div>
       <div style="margin-top:10px;">${renderItems(order, null)}</div>
     </details>`;
 }
@@ -135,8 +160,13 @@ function openNewOrderForm(ctx, myId) {
     `
       <form id="order-form" class="stack">
         <input type="text" id="order-title" maxlength="80" required autofocus placeholder="z.B. Pizza bei Luigi's" />
+        <div>
+          <label for="order-sendat" class="field-label">Geht raus um (optional)</label>
+          <input type="datetime-local" id="order-sendat" />
+        </div>
         <p class="muted" style="font-size:0.8rem;margin:0;">
-          Alle bekommen eine Benachrichtigung und können sich dann selbst eintragen.
+          Alle bekommen eine Benachrichtigung und können sich dann selbst eintragen. Der Zeitpunkt
+          lässt sich später jederzeit ändern.
         </p>
         <button type="submit" class="btn btn-primary btn-block">Bestellung öffnen</button>
       </form>
@@ -147,8 +177,10 @@ function openNewOrderForm(ctx, myId) {
           e.preventDefault();
           const title = el.querySelector('#order-title').value.trim();
           if (!title) return;
+          const sendAtRaw = el.querySelector('#order-sendat').value;
+          const sendAt = sendAtRaw ? new Date(sendAtRaw).getTime() : undefined;
           try {
-            await api.foodOrders.create(myId, title);
+            await api.foodOrders.create(myId, title, sendAt);
             close();
             cache = null;
             showToast('Bestellung geöffnet – alle wurden benachrichtigt.');
@@ -157,6 +189,54 @@ function openNewOrderForm(ctx, myId) {
             showToast(err.message, { error: true });
           }
         });
+      },
+    }
+  );
+}
+
+function openSendAtForm(ctx, order) {
+  const { close } = openModal(
+    'Zeitpunkt festlegen',
+    `
+      <form id="sendat-form" class="stack">
+        <div>
+          <label for="sendat-input" class="field-label">Geht raus um</label>
+          <input type="datetime-local" id="sendat-input" value="${order.sendAt ? toDatetimeLocal(order.sendAt) : ''}" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Speichern</button>
+        ${order.sendAt ? `<button type="button" class="btn btn-danger btn-block" id="sendat-clear">Zeitpunkt entfernen</button>` : ''}
+      </form>
+    `,
+    {
+      onMount: (el) => {
+        el.querySelector('#sendat-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const raw = el.querySelector('#sendat-input').value;
+          if (!raw) return showToast('Bitte einen Zeitpunkt wählen (oder „Entfernen" nutzen).', { error: true });
+          try {
+            await api.foodOrders.setSendAt(order.id, new Date(raw).getTime());
+            close();
+            cache = null;
+            showToast('Zeitpunkt gespeichert.');
+            ctx.rerender();
+          } catch (err) {
+            showToast(err.message, { error: true });
+          }
+        });
+        const clearBtn = el.querySelector('#sendat-clear');
+        if (clearBtn) {
+          clearBtn.addEventListener('click', async () => {
+            try {
+              await api.foodOrders.setSendAt(order.id, null);
+              close();
+              cache = null;
+              showToast('Zeitpunkt entfernt.');
+              ctx.rerender();
+            } catch (err) {
+              showToast(err.message, { error: true });
+            }
+          });
+        }
       },
     }
   );
@@ -257,6 +337,20 @@ export function renderFoodOrders(container, ctx) {
       } catch (err) {
         showToast(err.message, { error: true });
       }
+    });
+  });
+
+  container.querySelectorAll('[data-closed-order]').forEach((details) => {
+    details.addEventListener('toggle', () => {
+      if (details.open) expandedClosedOrderIds.add(details.dataset.closedOrder);
+      else expandedClosedOrderIds.delete(details.dataset.closedOrder);
+    });
+  });
+
+  container.querySelectorAll('[data-edit-sendat]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const order = orders.find((o) => o.id === btn.dataset.editSendat);
+      if (order) openSendAtForm(ctx, order);
     });
   });
 

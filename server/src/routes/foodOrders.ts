@@ -28,6 +28,18 @@ interface OrderRow {
   created_by: string;
   created_at: number;
   closed_at: number | null;
+  send_at: number | null;
+}
+
+// Epoch-ms bounds a "wann geht's raus" timestamp must fall within — loose on
+// purpose (just catches fat-fingered garbage, e.g. a year-1970 value from a
+// blank/parsed-wrong datetime-local field), not a "must be in the future"
+// rule: correcting a passed deadline after the fact is a legitimate edit.
+const MIN_SEND_AT = Date.UTC(2000, 0, 1);
+const MAX_SEND_AT = Date.UTC(2100, 0, 1);
+
+function isValidSendAt(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= MIN_SEND_AT && value <= MAX_SEND_AT;
 }
 
 interface ItemRow {
@@ -62,6 +74,7 @@ function serializeOrder(row: OrderRow) {
     createdByName: creator?.name ?? '?',
     createdAt: row.created_at,
     closedAt: row.closed_at,
+    sendAt: row.send_at,
     open: row.closed_at === null,
     items,
     totalCents,
@@ -85,15 +98,20 @@ foodOrdersRouter.get('/', (_req, res) => {
   res.json(buildList());
 });
 
-// POST /api/food-orders - body: { playerId, title }. Multiple open orders
-// are allowed (drinks run + pizza run can overlap) — no single-open guard.
+// POST /api/food-orders - body: { playerId, title, sendAt? }. Multiple open
+// orders are allowed (drinks run + pizza run can overlap) — no single-open
+// guard. sendAt is optional: when this order will actually be placed/picked
+// up, so everyone knows the cutoff for adding items instead of guessing.
 foodOrdersRouter.post('/', (req, res) => {
-  const { playerId, title } = req.body ?? {};
+  const { playerId, title, sendAt } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
   if (!isNonEmptyString(title, MAX_TITLE_LENGTH)) {
     return res.status(400).json({ error: `Titel ist erforderlich (1-${MAX_TITLE_LENGTH} Zeichen), z.B. "Pizza bei Luigi's".` });
+  }
+  if (sendAt !== undefined && sendAt !== null && !isValidSendAt(sendAt)) {
+    return res.status(400).json({ error: 'sendAt muss ein gültiger Zeitpunkt sein.' });
   }
   const player = db.prepare('SELECT id, name FROM players WHERE id = ?').get(playerId) as
     | { id: string; name: string }
@@ -107,27 +125,48 @@ foodOrdersRouter.post('/', (req, res) => {
     created_by: playerId,
     created_at: Date.now(),
     closed_at: null,
+    send_at: sendAt ?? null,
   };
   db.prepare(
-    'INSERT INTO food_orders (id, event_id, title, created_by, created_at, closed_at) VALUES (?, ?, ?, ?, ?, NULL)'
-  ).run(row.id, row.event_id, row.title, row.created_by, row.created_at);
+    'INSERT INTO food_orders (id, event_id, title, created_by, created_at, closed_at, send_at) VALUES (?, ?, ?, ?, ?, NULL, ?)'
+  ).run(row.id, row.event_id, row.title, row.created_by, row.created_at, row.send_at);
+
+  const sendAtNote = row.send_at ? ` (geht raus um ${new Date(row.send_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})` : '';
 
   // Same notify pattern as pings: the socket payload carries a toast for
   // everyone except the creator (they just tapped the button themselves).
   broadcast(Events.foodOrdersChanged, {
     notify: {
-      message: `🍕 Neue Sammelbestellung: ${row.title} – jetzt eintragen!`,
+      message: `🍕 Neue Sammelbestellung: ${row.title}${sendAtNote} – jetzt eintragen!`,
       excludePlayerId: playerId,
     },
   });
   const allPlayerIds = (db.prepare('SELECT id FROM players').all() as Array<{ id: string }>).map((p) => p.id);
   notifyPlayers(allPlayerIds, {
     title: '🍕 Neue Sammelbestellung',
-    body: `${row.title} (von ${player.name}) – jetzt eintragen!`,
+    body: `${row.title}${sendAtNote} (von ${player.name}) – jetzt eintragen!`,
     url: '/',
   });
 
   res.status(201).json(serializeOrder(row));
+});
+
+// PATCH /api/food-orders/:id - body: { sendAt }. Only the "wann geht's
+// raus" metadata is editable this way (not title/items) — correcting a
+// mis-typed or shifted deadline is legitimate even after the order closed,
+// so this isn't gated on open/closed like items are.
+foodOrdersRouter.patch('/:id', (req, res) => {
+  const order = getOrder(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
+
+  const { sendAt } = req.body ?? {};
+  if (sendAt !== null && !isValidSendAt(sendAt)) {
+    return res.status(400).json({ error: 'sendAt muss ein gültiger Zeitpunkt sein (oder null zum Entfernen).' });
+  }
+
+  db.prepare('UPDATE food_orders SET send_at = ? WHERE id = ?').run(sendAt, order.id);
+  broadcast(Events.foodOrdersChanged, null);
+  res.json(serializeOrder({ ...order, send_at: sendAt }));
 });
 
 // POST /api/food-orders/:id/items - body: { playerId, description, priceCents? }
