@@ -59,34 +59,35 @@ test('POST /api/votes rejects an unknown player or game', async () => {
   assert.equal(badGame.status, 404);
 });
 
-test('players vote and the tally updates live', async () => {
+test('while a round is open, per-game votes/points/score are withheld — only total participation shows', async () => {
   await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameCs2 });
   await request(app).post('/api/votes').send({ playerId: playerB, gameId: gameCs2 });
 
   const res = await request(app).get('/api/votes');
-  assert.equal(res.body.totalVotes, 2);
+  assert.equal(res.body.open, true);
+  assert.equal(res.body.totalVotes, 2); // aggregate participation is fine to show
   const cs2Result = res.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
-  assert.equal(cs2Result.votes, 2);
+  assert.equal(cs2Result.votes, undefined, 'per-game vote count must not leak while open');
+  assert.equal(cs2Result.points, undefined);
+  assert.equal(cs2Result.score, undefined);
 });
 
-test('re-voting changes the player\'s previous choice instead of adding a second vote', async () => {
+test('re-voting changes the player\'s previous choice instead of adding a second vote (verified after close)', async () => {
   await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameRl });
 
-  const res = await request(app).get('/api/votes');
-  assert.equal(res.body.totalVotes, 2); // still 2 voters total, not 3
-  const cs2Result = res.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
-  const rlResult = res.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
-  assert.equal(cs2Result.votes, 1);
-  assert.equal(rlResult.votes, 1);
-});
+  const stillOpen = await request(app).get('/api/votes');
+  assert.equal(stillOpen.body.totalVotes, 2); // still 2 voters total, not 3
 
-test('POST /api/votes/close reports the winner(s)', async () => {
-  // Currently tied 1-1 (CS2 vs Rocket League) after the re-vote above.
-  await request(app).post('/api/votes').send({ playerId: playerB, gameId: gameRl }); // RL now leads 2-0... wait CS2 has 0 now
+  // The re-vote's effect (A now on RL, not CS2) only becomes visible once
+  // the round closes — that's the whole point.
+  await request(app).post('/api/votes').send({ playerId: playerB, gameId: gameRl });
   const res = await request(app).post('/api/votes/close');
   assert.equal(res.status, 200);
-  assert.equal(res.body.open, false);
   assert.deepEqual(res.body.winnerGameIds, [gameRl]);
+  const cs2Result = res.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
+  const rlResult = res.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
+  assert.equal(cs2Result.votes, 0);
+  assert.equal(rlResult.votes, 2);
 });
 
 test('a new round starts fresh (previous votes do not carry over)', async () => {
@@ -121,6 +122,28 @@ test('GET /api/votes/history lists closed rounds, newest first, with their winne
     entry.winners.map((w: { gameId: string }) => w.gameId),
     [gameRl]
   );
+});
+
+test('GET /api/votes/history/:round reopens a past round with the full per-game breakdown', async () => {
+  const res = await request(app).get('/api/votes/history/1');
+  assert.equal(res.status, 200);
+  assert.equal(res.body.round, 1);
+  assert.equal(res.body.mode, 'single');
+  assert.deepEqual(res.body.winnerGameIds, [gameRl]);
+  const cs2Result = res.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
+  const rlResult = res.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
+  assert.equal(cs2Result.votes, 0);
+  assert.equal(rlResult.votes, 2);
+  assert.equal(res.body.totalVotes, 2);
+  assert.equal(res.body.totalVoters, 2);
+});
+
+test('GET /api/votes/history/:round 404s for a round that never happened, and rejects garbage', async () => {
+  const notFound = await request(app).get('/api/votes/history/999');
+  assert.equal(notFound.status, 404);
+
+  const garbage = await request(app).get('/api/votes/history/not-a-number');
+  assert.equal(garbage.status, 400);
 });
 
 test('GET /api/votes/history still lists a round nobody voted in', async () => {
@@ -231,15 +254,18 @@ test('points mode: start, cast, and close a round', async () => {
     .send({ playerId: playerB, entries: [{ gameId: 'ghost', points: 5 }] });
   assert.equal(unknownGame.status, 404);
 
-  const res = await request(app).get('/api/votes');
-  const cs2Result = res.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
-  const rlResult = res.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
-  assert.equal(cs2Result.points, 3); // player A's replaced entry
-  assert.equal(rlResult.points, 8); // only player B still has RL
+  // Still open: the running points tally is withheld, same as vote counts.
+  const stillOpen = await request(app).get('/api/votes');
+  const openCs2 = stillOpen.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
+  assert.equal(openCs2.points, undefined);
 
   const closed = await request(app).post('/api/votes/close');
   assert.equal(closed.status, 200);
   assert.deepEqual(closed.body.winnerGameIds, [gameRl]);
+  const cs2Result = closed.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
+  const rlResult = closed.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
+  assert.equal(cs2Result.points, 3); // player A's replaced entry
+  assert.equal(rlResult.points, 8); // only player B still has RL
 
   const history = await request(app).get('/api/votes/history');
   const entry = history.body.history.find((h: { round: number }) => h.round === closed.body.round);
