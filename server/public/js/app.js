@@ -25,6 +25,7 @@ import { renderHallOfFame } from './views/hallOfFame.js';
 import { renderSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
 import { renderMore } from './views/more.js';
+import { renderAdmin } from './views/admin.js';
 
 const VIEWS = {
   live: renderLive,
@@ -44,6 +45,7 @@ const VIEWS = {
   broadcast: renderBroadcast,
   infoBoard: renderInfoBoard,
   foodOrders: renderFoodOrders,
+  admin: renderAdmin,
 };
 
 let currentView = 'live';
