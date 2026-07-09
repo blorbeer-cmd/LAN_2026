@@ -145,9 +145,10 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
    | `APP_ADMIN_PIN` | eigene PIN fürs Admin-Freischalten |
 
 4. **`Provision Hetzner Server`-Workflow manuell starten** (Actions-Tab → Workflow auswählen →
-   "Run workflow"). Legt SSH-Key + Firewall (nur Port 22 offen) + einen `cx22`-Server in Hetzner an,
-   installiert Docker via Cloud-Init und startet App + `cloudflared` direkt beim ersten Boot. Läuft
-   **einmalig** – ein zweiter Lauf überspringt die Server-Erstellung, wenn `lan2026` schon existiert.
+   "Run workflow"). Legt SSH-Key + Firewall (nur Port 22 offen) + einen `cx23`-Server in Helsinki
+   (`hel1`) in Hetzner an, installiert Docker via Cloud-Init und startet App + `cloudflared` direkt
+   beim ersten Boot. Läuft **einmalig** – ein zweiter Lauf überspringt die Server-Erstellung, wenn
+   `lan2026` schon existiert.
 5. Die im Job-Summary ausgegebene **Server-IP als Secret `HETZNER_HOST`** anlegen.
 6. Push nach `main` → `CI/CD`-Workflow baut, testet, baut das Docker-Image, pusht es (öffentlich)
    nach GHCR und deployt per SSH. Ab hier ist jeder weitere Push nach `main` ein normaler Deploy.
