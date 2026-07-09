@@ -64,6 +64,10 @@ Gruppiert nach Feature-Bereich (vollständiges Schema in `server/src/db.ts`):
   (History der „Teams auslosen"-Ergebnisse).
 - **Turniere:** `tournaments` (K.O., Liga/Round-Robin, Gruppenphase+K.O.), `tournament_teams`,
   `tournament_matches` (Bracket-Struktur über `round`/`slot`, siehe `tournament.ts`).
+- **Orga & Kommunikation:** `drafts` (Captain-Draft: genau einer aktiv, Snake-Pick-Reihenfolge,
+  fertige Teams landen zusätzlich in `matchmaking_draws`), `broadcasts` (Durchsagen an alle),
+  `info_entries` (Info-Board: WLAN, Links, Server-IPs), `food_orders` / `food_order_items`
+  (Sammelbestellungen: offen → jeder trägt selbst ein → schließen friert ein).
 - **Sonstiges:** `push_subscriptions` (Web-Push-Opt-in), `app_state` (einfache Key/Value-Ablage,
   z. B. laufende Vote-Runde).
 

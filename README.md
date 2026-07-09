@@ -15,9 +15,10 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 | 📡 **Live-Status** | Sieht automatisch, wer gerade welche(s) Spiel(e) offen hat (via kleinem Agent auf jedem PC) – auch mehrere gleichzeitig, inkl. Erkennung welches Fenster gerade wirklich im Vordergrund ist. Manuelles Pausieren („Pause/Essen"), spontanes „Jetzt zocken?"-Pingen wer Lust auf eine Runde hat, und ein persönliches Digest („was steht für mich gerade an") direkt auf der Startseite. |
 | ⚔️ **Turniere** | K.O.-Baum, Liga „jeder gegen jeden" (optional mit Hin-/Rückspielen) oder Gruppenphase + K.O. – Teams werden skill-balanciert vorgeschlagen, Ergebnisse (mit oder ohne Punktestand) direkt im Turnierbaum eintragbar, der sich automatisch weiterentwickelt. Bei neuem/anstehendem Match gibt's einen Push-Hinweis an die Beteiligten. |
 | ⚖️ **Teams auslosen** | Für ein Spiel automatisch faire Teams aus den anwesenden Spielern auslosen (skill-basiert), optional unter Berücksichtigung der Sitznachbarn (nicht gegeneinander). Ergebnis lässt sich direkt als Match-Ergebnis übernehmen. |
+| 👑 **Captain-Draft** | Die soziale Alternative zum Auslosen: 2–4 Captains picken abwechselnd (Snake-Reihenfolge) live aus dem Pool – jeder verfolgt den Draft auf dem eigenen Handy, nur der Captain am Zug kann picken. Ergebnis landet in der Team-Historie und lässt sich direkt als Match eintragen. |
 | 🗳️ **Abstimmung** | „Was zocken wir als Nächstes?" – live abstimmen. Zeigt an, was zuletzt dran war/wie oft. Historie vergangener Runden. |
 | 🏆 **Rangliste** | Match-Ergebnisse eintragen (auch Frei-für-alle ohne Teams), Punkte übers ganze Wochenende, Gesamtsieger der LAN, Spielzeit pro Spieler und pro Spiel. |
-| ☰ **Mehr** | Sammelstelle für die selteneren, aber mächtigen Ansichten: Spieler-Verwaltung, Spielzeit-Auswertungen, Spiele-&-Turnier-Statistiken, Hall of Fame, Sitzplan. |
+| ☰ **Mehr** | Sammelstelle für alles Weitere: Info-Board, Essensbestellung, Durchsage, Spieler-Verwaltung, Spielzeit-Auswertungen, Spiele-&-Turnier-Statistiken, Hall of Fame, Sitzplan. |
 
 ### Auswertungen & Erinnerungsstücke
 
@@ -33,6 +34,9 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 
 | Feature | Beschreibung |
 |---|---|
+| 📢 **Durchsage** | Eine Nachricht an alle auf einmal („Essen ist da!"): Toast auf jedem offenen Gerät, großes Banner auf dem Kiosk-Bildschirm, Push-Benachrichtigung an alle Opt-ins – immer mit Absender-Name. |
+| 📌 **Info-Board** | WLAN-Passwort, Discord-Link, Gameserver-IPs, Hausregeln: die Dinge, die sonst fünfmal pro Abend gefragt werden, als gepinnte Einträge mit Kopieren-Knopf. Jeder darf pflegen. |
+| 🍕 **Essen bestellen** | Sammelbestellung öffnen („Pizza bei Luigi's"), jeder trägt seine Positionen (mit optionalem Preis) vom eigenen Handy ein, Schließen friert die Liste ein – gruppiert pro Person mit Summen, bereit zum Vorlesen am Telefon. |
 | 👤 **Selbst-Onboarding** | Neue Geräte landen automatisch auf der Profil-Seite statt auf dem Live-Board: Name (eindeutig), Profilbild, Skill-Ratings und der eigene Agent-Download richten sich alle selbst ein. |
 | 🎪 **Events** | Mehrere LAN-Termine können nebeneinander in derselben Installation existieren; nur eines „trackt" gleichzeitig (Live-Status/Spielzeit). Was außerhalb eines getrackten Events passiert, läuft normal unter „Außerhalb von Events". |
 | 🔗 **Einladungslink & QR-Code** | Ein Link (trägt bei Bedarf das Zugangs-Token) führt neue Leute direkt zur Profil-Erstellung – auch als QR-Code zum Aushängen, serverseitig gerendert statt über einen Drittanbieter. |

@@ -268,4 +268,39 @@ export const api = {
     download: (playerId, trackActivity) =>
       fetchBlob(`/api/agent-download?playerId=${encodeURIComponent(playerId)}${trackActivity ? '&trackActivity=1' : ''}`),
   },
+
+  draft: {
+    get: () => apiFetch('/api/draft'),
+    start: (data) => apiFetch('/api/draft/start', { method: 'POST', body: JSON.stringify(data) }),
+    pick: (playerId, pickPlayerId) =>
+      apiFetch('/api/draft/pick', { method: 'POST', body: JSON.stringify({ playerId, pickPlayerId }) }),
+    cancel: () => apiFetch('/api/draft/cancel', { method: 'POST' }),
+  },
+
+  broadcasts: {
+    list: () => apiFetch('/api/broadcasts'),
+    send: (playerId, message) =>
+      apiFetch('/api/broadcasts', { method: 'POST', body: JSON.stringify({ playerId, message }) }),
+  },
+
+  info: {
+    list: () => apiFetch('/api/info'),
+    create: (data) => apiFetch('/api/info', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id, data) => apiFetch(`/api/info/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    remove: (id) => apiFetch(`/api/info/${id}`, { method: 'DELETE' }),
+  },
+
+  foodOrders: {
+    list: () => apiFetch('/api/food-orders'),
+    create: (playerId, title) =>
+      apiFetch('/api/food-orders', { method: 'POST', body: JSON.stringify({ playerId, title }) }),
+    addItem: (orderId, data) =>
+      apiFetch(`/api/food-orders/${orderId}/items`, { method: 'POST', body: JSON.stringify(data) }),
+    removeItem: (orderId, itemId, playerId) =>
+      apiFetch(`/api/food-orders/${orderId}/items/${itemId}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ playerId }),
+      }),
+    close: (orderId) => apiFetch(`/api/food-orders/${orderId}/close`, { method: 'POST' }),
+  },
 };

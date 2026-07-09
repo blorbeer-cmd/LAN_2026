@@ -11,7 +11,10 @@ import { getMyId } from './whoami.js';
 import { renderLive, invalidatePings, invalidateDigest } from './views/live.js';
 import { renderPlayers } from './views/players.js';
 import { renderGames } from './views/games.js';
-import { renderMatchmaking, invalidateMatchmakingHistory } from './views/matchmaking.js';
+import { renderMatchmaking, invalidateMatchmakingHistory, setDraftState } from './views/matchmaking.js';
+import { renderBroadcast, invalidateBroadcasts } from './views/broadcast.js';
+import { renderInfoBoard, invalidateInfoBoard } from './views/infoBoard.js';
+import { renderFoodOrders, invalidateFoodOrders } from './views/foodOrders.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
@@ -38,6 +41,9 @@ const VIEWS = {
   seating: renderSeating,
   myStats: renderMyStats,
   more: renderMore,
+  broadcast: renderBroadcast,
+  infoBoard: renderInfoBoard,
+  foodOrders: renderFoodOrders,
 };
 
 let currentView = 'live';
@@ -241,6 +247,47 @@ function wireSocket() {
       showToast(payload.notify.message, {
         duration: 4500,
         onClick: () => switchView('live'),
+      });
+    }
+  });
+
+  // Captain draft: the payload carries the full fresh state, so the Teams
+  // view can re-render without a round trip. A newly started draft nudges
+  // everyone who isn't already watching.
+  socket.on('draft:changed', (payload) => {
+    setDraftState(payload);
+    if (currentView === 'matchmaking') renderCurrent();
+    if (payload?.started && getMyId() && currentView !== 'matchmaking') {
+      showToast('👑 Captain-Draft gestartet – tippen zum Zusehen', {
+        duration: 5000,
+        onClick: () => switchView('matchmaking'),
+      });
+    }
+  });
+
+  // Durchsagen land as a toast on every device — except the sender's, who
+  // already got a "gesendet" confirmation from the form itself.
+  socket.on('broadcast:new', (payload) => {
+    invalidateBroadcasts();
+    if (currentView === 'broadcast') renderCurrent();
+    if (payload && payload.playerId !== getMyId()) {
+      showToast(`📢 ${payload.playerName}: ${payload.message}`, { duration: 8000 });
+    }
+  });
+
+  socket.on('info:changed', () => {
+    invalidateInfoBoard();
+    if (currentView === 'infoBoard') renderCurrent();
+  });
+
+  socket.on('foodOrders:changed', (payload) => {
+    invalidateFoodOrders();
+    if (currentView === 'foodOrders') renderCurrent();
+    const myId = getMyId();
+    if (payload?.notify && myId && myId !== payload.notify.excludePlayerId && currentView !== 'foodOrders') {
+      showToast(payload.notify.message, {
+        duration: 5000,
+        onClick: () => switchView('foodOrders'),
       });
     }
   });

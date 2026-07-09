@@ -124,6 +124,68 @@ test('conflicting simultaneous tournament reports: one result, one leaderboard m
   assert.equal(final.teamAId, decided.winnerTeamId);
 });
 
+test('simultaneous draft starts: exactly one draft opens', async () => {
+  const results = await Promise.all(
+    Array.from({ length: 6 }, () =>
+      request(app)
+        .post('/api/draft/start')
+        .send({ gameId: gameIds[1], captainIds: [playerIds[0], playerIds[1]], poolPlayerIds: [playerIds[2], playerIds[3]] })
+    )
+  );
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[201], 1, JSON.stringify(counts));
+  assert.equal(counts[409], 5, JSON.stringify(counts));
+});
+
+test('simultaneous draft picks: turn and pool are enforced, board stays consistent', async () => {
+  // Captain A is on turn; A double-taps a pick while B tries to pick out of
+  // turn at the same moment — exactly one pick lands.
+  const results = await Promise.all([
+    request(app).post('/api/draft/pick').send({ playerId: playerIds[0], pickPlayerId: playerIds[2] }),
+    request(app).post('/api/draft/pick').send({ playerId: playerIds[0], pickPlayerId: playerIds[2] }),
+    request(app).post('/api/draft/pick').send({ playerId: playerIds[1], pickPlayerId: playerIds[3] }),
+  ]);
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[200], 1, JSON.stringify(counts));
+
+  const state = await request(app).get('/api/draft');
+  // One pick happened; with one pool player left it was auto-assigned, so
+  // the draft is complete and every player is on exactly one team.
+  assert.equal(state.body.draft.status, 'completed');
+  const allIds = state.body.draft.teams.flatMap((t: { players: Array<{ id: string }> }) =>
+    t.players.map((p) => p.id)
+  );
+  assert.equal(new Set(allIds).size, allIds.length);
+  assert.equal(allIds.length, 4);
+});
+
+test('closing a food order while others still add items: stragglers get a clean 409', async () => {
+  const create = await request(app)
+    .post('/api/food-orders')
+    .send({ playerId: playerIds[0], title: 'Race-Pizza' });
+  assert.equal(create.status, 201);
+  const orderId = create.body.id;
+
+  const results = await Promise.all([
+    request(app).post(`/api/food-orders/${orderId}/close`),
+    request(app).post(`/api/food-orders/${orderId}/close`),
+    request(app).post(`/api/food-orders/${orderId}/items`).send({ playerId: playerIds[1], description: 'Salami' }),
+    request(app).post(`/api/food-orders/${orderId}/items`).send({ playerId: playerIds[2], description: 'Funghi' }),
+  ]);
+  const closeCounts = statusCounts(results.slice(0, 2).map((r) => r.status));
+  assert.equal(closeCounts[200], 1, JSON.stringify(closeCounts));
+  assert.equal(closeCounts[409], 1, JSON.stringify(closeCounts));
+  // Each item either made it in before the close (201) or was rejected
+  // (409) — never silently appended to a closed order.
+  assert.ok(results.slice(2).every((r) => r.status === 201 || r.status === 409));
+
+  const list = await request(app).get('/api/food-orders');
+  const order = list.body.orders.find((o: { id: string }) => o.id === orderId);
+  assert.equal(order.open, false);
+  const accepted = results.slice(2).filter((r) => r.status === 201).length;
+  assert.equal(order.items.length, accepted);
+});
+
 test('two events starting tracking simultaneously: exactly one wins', async () => {
   const now = Date.now();
   const events = await Promise.all(
