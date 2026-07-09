@@ -423,3 +423,28 @@ test('Captain-Draft: pick captains, run the live draft to completion', async () 
   // result offers the usual "Ergebnis eintragen" follow-up.
   await page.waitForSelector('#draft-record-result');
 });
+
+test('the device back button steps back through in-app views instead of leaving the tool', async () => {
+  // Land on a known view, then navigate through two more — each deliberate
+  // tab switch should push a history entry (see switchView in app.js).
+  await page.click('[data-view="live"]');
+  await page.waitForSelector('.view-title');
+  await page.click('[data-view="votes"]');
+  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent?.includes('Nächstes'));
+  await page.click('[data-view="leaderboard"]');
+  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Rangliste');
+
+  // Back should undo the last switch (leaderboard -> votes), not leave the
+  // single-page app (there is nowhere else to navigate to in this test, so
+  // if this fell through to real browser navigation the page would end up
+  // blank/erroring instead of showing the votes view).
+  await page.goBack();
+  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent?.includes('Nächstes'));
+
+  await page.goBack();
+  await page.waitForSelector('text=Live-Status');
+
+  // Forward should redo the same steps.
+  await page.goForward();
+  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent?.includes('Nächstes'));
+});

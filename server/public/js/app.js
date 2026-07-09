@@ -81,7 +81,16 @@ function renderCurrent() {
   if (renderFn) renderFn(viewContainer, ctx);
 }
 
-function switchView(view) {
+// Every deliberate tab switch pushes a browser history entry (see main()'s
+// initial replaceState + the popstate listener below) — without this, the
+// device's back button has no in-app navigation to undo and just leaves the
+// tool entirely instead of jumping to whatever view was open before.
+// `fromHistory` is set only when popstate itself calls this, so we render
+// the view popstate already navigated the browser to instead of pushing
+// another (identical) entry on top of it, which would trap back/forward in
+// a loop between the same two states.
+function switchView(view, { fromHistory = false } = {}) {
+  const changed = view !== currentView;
   currentView = view;
   document.querySelectorAll('.nav-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.view === view);
@@ -98,6 +107,9 @@ function switchView(view) {
   document.getElementById('profile-btn').classList.toggle('needs-setup', !getMyId());
   renderCurrent();
   viewContainer.scrollTop = 0;
+  if (!fromHistory && changed) {
+    history.pushState({ view }, '');
+  }
 }
 
 async function tokenWorks(candidate) {
@@ -165,6 +177,15 @@ function wireNav() {
   viewContainer.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-navigate]');
     if (btn) switchView(btn.dataset.navigate);
+  });
+
+  // Back/forward: jump to whichever view is recorded on the popped entry
+  // instead of re-pushing it (see switchView's fromHistory param). No
+  // recorded state (extremely old entry, or a browser that fired this
+  // without one) falls back to today's usual landing view.
+  window.addEventListener('popstate', (e) => {
+    const view = e.state?.view || (getMyId() ? 'live' : 'profile');
+    switchView(view, { fromHistory: true });
   });
 }
 
@@ -346,7 +367,12 @@ async function main() {
   // phone, …) — send them straight into self-onboarding instead of the Live
   // board, so setting up name/avatar/skills/agent-key is the first thing
   // they see, not something they have to go looking for.
-  switchView(getMyId() ? 'live' : 'profile');
+  const initialView = getMyId() ? 'live' : 'profile';
+  // Establishes the base history entry the very first popstate can land on
+  // (replace, not push — this page load shouldn't cost an extra back-step)
+  // before any tab switch starts pushing entries on top of it.
+  history.replaceState({ view: initialView }, '');
+  switchView(initialView, { fromHistory: true });
 }
 
 main().catch((err) => {
