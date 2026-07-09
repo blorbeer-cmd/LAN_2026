@@ -395,8 +395,11 @@ export function renderProfile(container, ctx) {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(async () => {
         try {
+          // No ctx.refresh() here: the 'preferences:changed' broadcast this
+          // triggers (see app.js) already patches state and re-sorts the
+          // Votes view for every connected client, including this one — a
+          // full reload here would just be slower and redundant.
           await api.preferences.set(myId, gameId, parseInt(slider.value, 10));
-          await ctx.refresh();
         } catch (err) {
           showToast(err.message, { error: true });
         }
