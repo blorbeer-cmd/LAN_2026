@@ -103,14 +103,30 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
 
   // Voting: start a round and cast a vote. The device identity was already
   // set during onboarding, so no "who am I" picker appears — voting is one
-  // tap, which is exactly the intended flow.
+  // tap, which is exactly the intended flow. While the round is open, no
+  // per-game distribution (bars/counts) may be visible anywhere — only
+  // total participation and the voter's own pick.
   await page.click('[data-view="votes"]');
   await page.waitForSelector('text=Du bist E2E Alice');
   await page.click('#votes-start');
+  await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
+  assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars while the round is open');
   await page.click('[data-vote-game] >> nth=0');
   await page.waitForFunction(() => document.body.textContent?.includes('1 Stimme'));
+  await page.waitForSelector('text=✓ Deine Stimme'); // the voter's own pick, not the aggregate
+  assert.equal(await page.locator('.vote-bar-track').count(), 0, 'still no bars after casting, before closing');
+
   await page.click('#votes-close');
   await page.waitForSelector('#votes-start');
+  // Closing reveals the full breakdown at last.
+  await page.waitForSelector('.vote-bar-track');
+
+  // The just-closed round can be reopened from the history list for the
+  // same detailed breakdown.
+  await page.click('[data-open-history-round]');
+  await page.waitForSelector('text=Abstimmung Runde 1');
+  await page.waitForSelector('.modal .vote-bar-track');
+  await page.click('[data-close]');
 
   // Leaderboard: record a match and see it reflected.
   await page.click('[data-view="leaderboard"]');

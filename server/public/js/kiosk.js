@@ -57,24 +57,24 @@ function renderLive(players) {
     .join('')}</div>`;
 }
 
+// While a round is open, the server withholds the per-game distribution
+// (see votes.ts) so nobody — including everyone glancing at this shared
+// screen — can see a leader emerge and bandwagon onto it. Just show that
+// it's running and how many have participated so far; the full breakdown
+// only ever appears once a round is closed (results.votes/points/score come
+// back once that happens, but by then this card would need re-fetching
+// mid-close to catch it, so we keep this simple: presence only, no bars).
 function renderVotes(votes) {
   if (!votes || !votes.open) {
     return `<div class="empty-state">Keine offene Abstimmung.</div>`;
   }
-  const maxVotes = Math.max(1, ...votes.results.map((r) => r.votes));
-  const top = [...votes.results].sort((a, b) => b.votes - a.votes).slice(0, 6);
-  return `<div class="stack" style="gap:8px;">${top
-    .map(
-      (r) => `
-      <div class="vote-row">
-        <div class="row-between">
-          <span>${escapeHtml(r.icon)} <strong>${escapeHtml(r.gameName)}</strong></span>
-          <span class="muted">${r.votes} Stimme(n)</span>
-        </div>
-        <div class="vote-bar-track"><div class="vote-bar-fill" style="width:${(r.votes / maxVotes) * 100}%"></div></div>
-      </div>`
-    )
-    .join('')}</div>`;
+  const label = votes.mode === 'points' ? `${votes.totalVoters} Teilnehmer bisher` : `${votes.totalVoters} Stimme(n) bisher`;
+  return `
+    <div class="empty-state">
+      <span class="emoji">🗳️</span>
+      Abstimmung läuft${votes.mode === 'points' ? ' (Punkte-Modus)' : ''}.<br />
+      <span class="muted">${label} – Ergebnis erst nach dem Ende.</span>
+    </div>`;
 }
 
 function renderLeaderboard(standings) {
