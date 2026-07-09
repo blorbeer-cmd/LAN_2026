@@ -15,6 +15,28 @@ test('GET /api/games returns the seeded default games with process names', async
   const cs2 = res.body.find((g: { name: string }) => g.name === 'Counter-Strike 2');
   assert.ok(cs2);
   assert.ok(cs2.processNames.includes('cs2.exe'));
+  assert.equal(cs2.isSuggestion, false);
+});
+
+test('GET /api/games also includes the seeded catalog pool (platform/trailer, no process names)', async () => {
+  const res = await request(app).get('/api/games');
+  const csgo = res.body.find((g: { name: string }) => g.name === 'CS GO');
+  assert.ok(csgo);
+  assert.equal(csgo.isSuggestion, false);
+  assert.match(csgo.platform_url, /store\.steampowered\.com/);
+  assert.match(csgo.trailer_url, /youtube\.com/);
+  assert.deepEqual(csgo.processNames, []);
+});
+
+test('GET /api/games merges a catalog title that collides with a tracked game onto the same row', async () => {
+  // "Rocket League" is both one of seedGames()'s tracked defaults and one of
+  // the seeded catalog titles — after the merge it must be exactly one row
+  // with both the process name and the catalog platform/trailer info.
+  const res = await request(app).get('/api/games');
+  const rocketLeague = res.body.filter((g: { name: string }) => g.name === 'Rocket League');
+  assert.equal(rocketLeague.length, 1);
+  assert.ok(rocketLeague[0].processNames.includes('rocketleague.exe'));
+  assert.ok(rocketLeague[0].platform);
 });
 
 test('POST /api/games rejects min team size greater than max', async () => {
@@ -123,4 +145,55 @@ test('DELETE /api/games/:id removes the game', async () => {
 
   const after = await request(app).get(`/api/games/${createdId}`);
   assert.equal(after.status, 404);
+});
+
+let suggesterId: string;
+let suggestionId: string;
+
+test('setup: a player to suggest games', async () => {
+  const res = await request(app).post('/api/players').send({ name: 'Suggester Sam' });
+  assert.equal(res.status, 201);
+  suggesterId = res.body.id;
+});
+
+test('POST /api/games with status "suggestion" creates a player-submitted proposal', async () => {
+  const res = await request(app).post('/api/games').send({
+    name: 'LAN Test Racer',
+    status: 'suggestion',
+    platform: 'Steam',
+    platformUrl: 'https://store.steampowered.com/search/?term=LAN%20Test%20Racer',
+    trailerUrl: 'https://example.test/trailer',
+    playerId: suggesterId,
+  });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.isSuggestion, true);
+  assert.equal(res.body.status, 'suggestion');
+  assert.equal(res.body.platform, 'Steam');
+  assert.equal(res.body.created_by, suggesterId);
+  suggestionId = res.body.id;
+});
+
+test('POST /api/games rejects a malformed trailer link', async () => {
+  const res = await request(app).post('/api/games').send({ name: 'Bad Trailer Game', trailerUrl: 'ftp://example.test' });
+  assert.equal(res.status, 400);
+});
+
+test('POST /api/games rejects an unknown playerId as suggester', async () => {
+  const res = await request(app).post('/api/games').send({ name: 'Orphan Suggestion', status: 'suggestion', playerId: 'nope' });
+  assert.equal(res.status, 404);
+});
+
+test('POST /api/games/:id/promote moves a suggestion into the catalog', async () => {
+  const res = await request(app).post(`/api/games/${suggestionId}/promote`).send();
+  assert.equal(res.status, 200);
+  assert.equal(res.body.isSuggestion, false);
+  assert.equal(res.body.status, 'catalog');
+
+  const again = await request(app).post(`/api/games/${suggestionId}/promote`).send();
+  assert.equal(again.status, 409);
+});
+
+test('POST /api/games/:id/promote 404s for an unknown id', async () => {
+  const res = await request(app).post('/api/games/nope/promote').send();
+  assert.equal(res.status, 404);
 });

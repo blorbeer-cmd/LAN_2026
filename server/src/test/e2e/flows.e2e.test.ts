@@ -69,9 +69,11 @@ test('fresh device lands on self-onboarding and creates its profile there', asyn
   await page.click('#profile-new-form button[type="submit"]');
 
   // Creating the profile switches into the full profile editor for the new
-  // identity (name field prefilled, skill sliders section, agent download).
+  // identity (name field prefilled, agent download, an onboarding nudge
+  // toward the Spiele view since nothing's rated yet).
   await page.waitForSelector('#profile-name');
   assert.equal(await page.inputValue('#profile-name'), 'E2E Alice');
+  await page.waitForSelector('text=Bock & Skill eintragen');
 });
 
 test('full click-through: players, matchmaking, voting, leaderboard, live pause', async () => {
@@ -192,6 +194,11 @@ test('Auswertungen (via Mehr) shows a real award and a visible, auto-scrolled co
     },
     { timeout: 5000 }
   );
+
+  // The "Matches & Turniere" tab (merged in from the old separate Spiele &
+  // Turniere view) shares this same event filter and renders alongside it.
+  await page.click('[data-an-tab="matches"]');
+  await page.waitForSelector('text=Ergebnisse pro Spiel');
 });
 
 test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statistiken reachable', async () => {
@@ -217,9 +224,10 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
     return el?.value === 'E2E Alice Pro';
   });
 
-  // Self-service skill rating renders, and the personal stats dashboard is
-  // one tap away (it moved to its own view, myStats).
-  assert.ok((await page.locator('.skill-row').count()) > 0);
+  // Bock/Skill-Ratings live in the Spiele view now, reachable from here via
+  // the onboarding nudge; the personal stats dashboard is one tap away too
+  // (it moved to its own view, myStats).
+  await page.waitForSelector('text=Bock & Skill eintragen');
   await page.click('[data-navigate="myStats"]');
   await page.waitForSelector('text=Meine Statistiken');
   await page.waitForSelector('#my-stats-event');
@@ -233,21 +241,71 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
   await page.selectOption('#profile-whoami', { label: 'E2E Alice Pro' });
 });
 
-test('Spiele verwalten: create a game, and a duplicate name is rejected with a clear error', async () => {
-  await page.click('#settings-btn');
-  await page.click('#add-game-btn');
-  await page.fill('#new-game-name', 'E2E Partyspiel');
-  await page.click('#add-game-form button[type="submit"]');
+test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bock/Skill inline', async () => {
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="gameCatalog"]');
+  await page.waitForSelector('#suggest-new');
+
+  await page.click('#suggest-new');
+  await page.fill('#suggest-title', 'E2E Partyspiel');
+  await page.click('#suggest-form button[type="submit"]');
   await page.waitForSelector('text=E2E Partyspiel');
+  await page.waitForSelector('button[data-tab="suggestions"].btn-primary');
 
   // Same name again (different case): server must refuse — otherwise votes,
   // skills and results would silently split across two identical entries.
-  await page.click('#add-game-btn');
-  await page.fill('#new-game-name', 'e2e partyspiel');
-  await page.click('#add-game-form button[type="submit"]');
+  await page.click('#suggest-new');
+  await page.fill('#suggest-title', 'e2e partyspiel');
+  await page.click('#suggest-form button[type="submit"]');
   await page.waitForSelector('.toast-error');
   await page.waitForSelector('text=gibt es schon');
   await page.click('[data-close]');
+
+  // Promote the suggestion into the catalog, then rate it right in the row —
+  // no detour through a separate profile page needed.
+  await page.click('[data-promote]');
+  await page.waitForSelector('button[data-tab="catalog"].btn-primary');
+  const partyspielCard = page.locator('.game-card', { hasText: 'E2E Partyspiel' });
+  await partyspielCard.waitFor();
+  const bockSlider = partyspielCard.locator('.skill-row[data-kind="bock"] input[type="range"]');
+  await bockSlider.fill('8');
+  await page.waitForFunction(() => {
+    const cards = Array.from(document.querySelectorAll('.game-card'));
+    const card = cards.find((c) => c.textContent?.includes('E2E Partyspiel'));
+    return card?.querySelector('[data-kind="bock"] .skill-value')?.textContent === '8';
+  });
+});
+
+test('Spiele: a skill suggestion chip appears after enough recorded results and can be applied', async () => {
+  const playersRes = await page.request.get(`${BASE_URL}/api/players`);
+  const players = (await playersRes.json()) as Array<{ id: string; name: string }>;
+  const alice = players.find((p) => p.name === 'E2E Alice Pro')!;
+  const bob = players.find((p) => p.name === 'E2E Bob')!;
+  const gamesRes = await page.request.get(`${BASE_URL}/api/games`);
+  const games = (await gamesRes.json()) as Array<{ id: string; name: string }>;
+  const cs2 = games.find((g) => g.name === 'Counter-Strike 2')!;
+
+  for (let i = 0; i < 3; i++) {
+    const res = await page.request.post(`${BASE_URL}/api/matches`, {
+      data: { gameId: cs2.id, teams: [{ playerIds: [alice.id] }, { playerIds: [bob.id] }], winnerTeamIndex: 0 },
+    });
+    assert.equal(res.status(), 201);
+  }
+
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="gameCatalog"]');
+  const cs2Card = page.locator('.game-card', { hasText: 'Counter-Strike 2' });
+  await cs2Card.waitFor();
+  const chip = cs2Card.locator('[data-apply-suggestion]');
+  await chip.waitFor();
+
+  await chip.click();
+  await page.waitForFunction(() => {
+    const cards = Array.from(document.querySelectorAll('.game-card'));
+    const card = cards.find((c) => c.textContent?.includes('Counter-Strike 2'));
+    const value = card?.querySelector('[data-kind="skill"] .skill-value')?.textContent;
+    return value && value !== '–';
+  });
 });
 
 test('Turnier: create a K.O. bracket from proposed teams and play it to a champion', async () => {
@@ -320,6 +378,77 @@ test('Essensbestellung: open an order with a send time, edit it, add a priced it
   await page.fill('#sendat-input', '2026-12-24T22:00');
   await page.click('#sendat-form button[type="submit"]');
   await page.waitForSelector('text=Geht raus um 24.12., 22:00 Uhr');
+});
+
+test('Arcade: open a quiz lobby, see it listed, then close it again', async () => {
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="arcade"]');
+  await page.waitForSelector('#quiz-create-lobby');
+  await page.click('#quiz-create-lobby');
+
+  // The host sees their own lobby with a "Schließen" button instead of a
+  // join button/"Drin" badge - closing was previously impossible (the only
+  // way to get rid of a lobby was to disconnect the socket, e.g. by closing
+  // the tab), leaving abandoned lobbies listed forever.
+  await page.waitForSelector('[data-close-lobby]');
+  await page.click('[data-close-lobby]');
+  await page.waitForSelector('text=Keine offene Quiz-Lobby.');
+
+  // Closed - the create button is enabled again.
+  await page.waitForSelector('#quiz-create-lobby:not([disabled])');
+});
+
+test('An- & Abreise: carpool marks the driver, enforces seats, driver can only delete', async () => {
+  // A third roster player to later demonstrate a full carpool.
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="players"]');
+  await page.click('#add-player-btn');
+  await page.fill('#new-player-name', 'E2E Carol');
+  await page.click('#add-player-form button[type="submit"]');
+  await page.waitForSelector('text=E2E Carol');
+
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="arrivals"]');
+  await page.waitForSelector('[data-new-carpool="arrival"]');
+
+  // Current identity is still "E2E Alice Pro" - she creates the carpool and
+  // becomes its driver, with just 1 free passenger seat.
+  await page.click('[data-new-carpool="arrival"]');
+  await page.fill('#carpool-label', 'Auto Alice');
+  await page.fill('#carpool-location', 'Hamburg');
+  await page.fill('#carpool-seats', '1');
+  await page.click('#carpool-form button[type="submit"]');
+  await page.waitForSelector('text=🚗 E2E Alice Pro fährt');
+  await page.waitForSelector('text=1/1 frei');
+  // The driver only ever gets Bearbeiten/Löschen, never a "Raus" button.
+  await page.waitForSelector('[data-edit-carpool]');
+  await page.waitForSelector('[data-remove-carpool]');
+  assert.equal(await page.locator('[data-leave-carpool]').count(), 0);
+
+  // Switch identity to Bob: he joins, taking the last seat.
+  await page.click('[data-whoami-change]');
+  await page.selectOption('#arrivals-whoami', { label: 'E2E Bob' });
+  await page.waitForSelector('[data-join-carpool]');
+  await page.click('[data-join-carpool]');
+  await page.waitForSelector('text=0/1 frei');
+  await page.waitForSelector('[data-leave-carpool]');
+
+  // A third player finds the carpool full and can't join.
+  await page.click('[data-whoami-change]');
+  await page.selectOption('#arrivals-whoami', { label: 'E2E Carol' });
+  await page.waitForSelector('text=Voll');
+  assert.equal(await page.locator('[data-join-carpool]').count(), 0);
+
+  // Bob leaves, freeing the seat back up; the driver deletes the group.
+  await page.click('[data-whoami-change]');
+  await page.selectOption('#arrivals-whoami', { label: 'E2E Bob' });
+  await page.click('[data-leave-carpool]');
+  await page.waitForSelector('text=1/1 frei');
+
+  await page.click('[data-whoami-change]');
+  await page.selectOption('#arrivals-whoami', { label: 'E2E Alice Pro' });
+  await page.click('[data-remove-carpool]');
+  await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
 });
 
 test('Durchsage: send a broadcast, see it in the history', async () => {

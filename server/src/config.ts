@@ -32,4 +32,11 @@ export const config = {
   // many milliseconds. Keeps the board honest when an agent crashes or a PC
   // is shut down without a clean stop message.
   offlineTimeoutMs: intFromEnv('OFFLINE_TIMEOUT_MS', 60_000),
+
+  // Optional PIN that unlocks admin mode (bulk-create test users, grant admin,
+  // moderate). Empty = dev/open mode: unlocking always succeeds, so local
+  // testing needs no secret. Set it in the live deployment to keep admin
+  // actions to whoever knows the PIN. Deliberately separate from the shared
+  // ACCESS_TOKEN (that gates the whole UI; this gates the admin-only extras).
+  adminPin: process.env.ADMIN_PIN ?? '',
 } as const;

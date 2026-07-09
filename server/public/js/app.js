@@ -10,21 +10,24 @@ import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
 import { renderLive, invalidatePings, invalidateDigest } from './views/live.js';
 import { renderPlayers } from './views/players.js';
-import { renderGames } from './views/games.js';
+import { renderSettings } from './views/games.js';
 import { renderMatchmaking, invalidateMatchmakingHistory, setDraftState } from './views/matchmaking.js';
 import { renderBroadcast, invalidateBroadcasts } from './views/broadcast.js';
 import { renderInfoBoard, invalidateInfoBoard } from './views/infoBoard.js';
 import { renderFoodOrders, invalidateFoodOrders } from './views/foodOrders.js';
+import { renderArcade } from './views/arcade.js';
+import { renderGameCatalog, invalidateSkillSuggestions } from './views/gameCatalog.js';
+import { renderArrivals, invalidateArrivals } from './views/arrivals.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
-import { renderGameStats } from './views/gameStats.js';
 import { renderProfile } from './views/profile.js';
 import { renderTournaments, invalidateTournaments, focusTournament } from './views/tournament.js';
 import { renderHallOfFame } from './views/hallOfFame.js';
 import { renderSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
 import { renderMore } from './views/more.js';
+import { renderAdmin } from './views/admin.js';
 
 const VIEWS = {
   live: renderLive,
@@ -32,9 +35,8 @@ const VIEWS = {
   matchmaking: renderMatchmaking,
   votes: renderVotes,
   leaderboard: renderLeaderboard,
-  settings: renderGames,
+  settings: renderSettings,
   analytics: renderAnalytics,
-  gameStats: renderGameStats,
   profile: renderProfile,
   tournaments: renderTournaments,
   hallOfFame: renderHallOfFame,
@@ -44,6 +46,10 @@ const VIEWS = {
   broadcast: renderBroadcast,
   infoBoard: renderInfoBoard,
   foodOrders: renderFoodOrders,
+  arcade: renderArcade,
+  gameCatalog: renderGameCatalog,
+  arrivals: renderArrivals,
+  admin: renderAdmin,
 };
 
 let currentView = 'live';
@@ -193,13 +199,16 @@ function wireSocket() {
     'players:changed',
     'games:changed',
     'skills:changed',
-    'preferences:changed',
     'leaderboard:changed',
     'events:changed',
   ];
   fullReloadEvents.forEach((event) =>
     socket.on(event, () => {
       invalidateDigest();
+      // Cheap enough to invalidate on every one of these (not just
+      // leaderboard:changed, the only one that actually changes match
+      // history) — the next time the Spiele view opens it just refetches.
+      invalidateSkillSuggestions();
       ctx.refresh();
     })
   );
@@ -232,6 +241,32 @@ function wireSocket() {
         onClick: () => switchView('votes'),
       });
     }
+  });
+  // Carries the changed row directly (see routes/preferences.ts) so it can be
+  // patched into state.preferences without a round trip. Preferences drive
+  // the voting view's sort order/display (see votes.js) and the Spiele
+  // view's "Bock" numbers (see gameCatalog.js), but aren't part of the votes
+  // payload, so that one tally is refetched too — cheap compared to a full
+  // reload, and makes a slider change on one device show up everywhere else
+  // immediately instead of only after some other event happens to reload.
+  socket.on('preferences:changed', async (payload) => {
+    if (payload) {
+      const { playerId, gameId, rating } = payload;
+      const existing = state.preferences.find((p) => p.player_id === playerId && p.game_id === gameId);
+      if (rating === null) {
+        state.preferences = state.preferences.filter((p) => !(p.player_id === playerId && p.game_id === gameId));
+      } else if (existing) {
+        existing.rating = rating;
+      } else {
+        state.preferences.push({ player_id: playerId, game_id: gameId, rating });
+      }
+    }
+    try {
+      state.votes = await api.votes.get();
+    } catch {
+      // transient failure - keep the last known votes state, not worth surfacing
+    }
+    if (currentView === 'votes' || currentView === 'gameCatalog') renderCurrent();
   });
   socket.on('matchmaking:generated', (payload) => {
     state.lastMatchmaking = payload;
@@ -311,6 +346,11 @@ function wireSocket() {
         onClick: () => switchView('foodOrders'),
       });
     }
+  });
+
+  socket.on('arrivals:changed', () => {
+    invalidateArrivals();
+    if (currentView === 'arrivals') renderCurrent();
   });
 }
 

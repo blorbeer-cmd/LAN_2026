@@ -27,6 +27,10 @@ import { draftRouter } from './draft';
 import { broadcastsRouter } from './broadcasts';
 import { infoBoardRouter } from './infoBoard';
 import { foodOrdersRouter } from './foodOrders';
+import { quizRouter } from './quiz';
+import { arcadeRouter } from './arcade';
+import { arrivalsRouter } from './arrivals';
+import { adminRouter } from './admin';
 
 export const apiRouter = Router();
 
@@ -60,3 +64,7 @@ apiRouter.use('/draft', draftRouter);
 apiRouter.use('/broadcasts', broadcastsRouter);
 apiRouter.use('/info', infoBoardRouter);
 apiRouter.use('/food-orders', foodOrdersRouter);
+apiRouter.use('/quiz', quizRouter);
+apiRouter.use('/arcade', arcadeRouter);
+apiRouter.use('/arrivals', arrivalsRouter);
+apiRouter.use('/admin', adminRouter);

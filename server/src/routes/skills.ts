@@ -5,6 +5,7 @@ import { Router } from 'express';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isIntInRange } from '../validation';
+import { computeSkillSuggestionsForGame, MIN_RESULTS_FOR_SUGGESTION, type SkillSuggestionMatch } from '../skillSuggestion';
 
 export const skillsRouter = Router();
 
@@ -32,6 +33,40 @@ skillsRouter.get('/', (req, res) => {
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const rows = db.prepare(`SELECT * FROM skills ${where}`).all(...params) as SkillRow[];
   res.json(rows);
+});
+
+// GET /api/skills/suggestions - read-only skill hints derived from recorded
+// match results (see skillSuggestion.ts), one row per (game, player) that
+// has enough decided results in that game. Computed fresh on every request
+// rather than cached/stored: at this project's scale (a LAN's worth of
+// matches) that's cheap, and it means the suggestion is always exactly
+// consistent with the current match history, including edits/deletes.
+skillsRouter.get('/suggestions', (_req, res) => {
+  const games = db.prepare('SELECT id FROM games').all() as Array<{ id: string }>;
+  const suggestions: Array<{
+    gameId: string;
+    playerId: string;
+    rating: number;
+    matchCount: number;
+    gamesPlayed: number;
+    wins: number;
+  }> = [];
+
+  for (const game of games) {
+    const rows = db
+      .prepare('SELECT result, played_at FROM matches WHERE game_id = ?')
+      .all(game.id) as Array<{ result: string; played_at: number }>;
+    const decided: SkillSuggestionMatch[] = rows
+      .map((r) => ({ ...(JSON.parse(r.result) as Omit<SkillSuggestionMatch, 'playedAt'>), playedAt: r.played_at }))
+      .filter((m) => m.winnerTeamIndex !== null);
+    if (decided.length < MIN_RESULTS_FOR_SUGGESTION) continue;
+
+    for (const s of computeSkillSuggestionsForGame(decided)) {
+      suggestions.push({ gameId: game.id, playerId: s.playerId, rating: s.rating, matchCount: decided.length, gamesPlayed: s.gamesPlayed, wins: s.wins });
+    }
+  }
+
+  res.json({ suggestions });
 });
 
 // PUT /api/skills - upsert a single rating. Idempotent by design so the

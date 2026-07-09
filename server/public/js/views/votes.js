@@ -14,9 +14,10 @@
 //
 // Two modes (chosen when a round starts, see server/src/routes/votes.ts):
 // - 'single': one tap picks a game, tapping another replaces it.
-// - 'points': distribute 1-10 points across up to 5 games; changing your
-//   mind just re-saves the whole set (same fire-and-forget pattern as the
-//   skill/preference sliders in profile.js).
+// - 'points': one slider per game, 0-10 points, 0 meaning "not rated" — as
+//   many games as you like. Changing your mind just re-saves the whole set
+//   (same fire-and-forget pattern as the skill/preference sliders in
+//   profile.js).
 // Either way, closed-round results are also sorted by each game's aggregate
 // "Bock" rating (state.preferences, maintained per-player in profile.js)
 // whenever the round's own score is tied.
@@ -27,8 +28,6 @@ import { escapeHtml, formatDate, formatDateTime, gameBadgeHtml } from '../format
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
-
-const MAX_POINT_GAMES = 5;
 
 // Cached separately from `state` (like analytics.js does) since it's fetched
 // from its own endpoint, not part of the main loadAll() round-trip.
@@ -81,7 +80,7 @@ async function loadMine(round, playerId, ctx) {
 }
 
 async function savePointsDraft(playerId) {
-  if (!mineCache || mineCache.size === 0) return; // nothing valid to save yet
+  if (!mineCache) return; // draft not loaded yet, nothing to save
   const entries = [...mineCache.entries()].map(([gameId, points]) => ({ gameId, points }));
   try {
     await api.votes.castPoints(playerId, entries);
@@ -107,28 +106,21 @@ function renderOpenRows(votes, myId, mine, mineReady) {
   return votes.results
     .map((r) => {
       let action = '';
+      let pointsSliderRow = '';
       if (votes.mode === 'single') {
         const isMine = mineReady && mine.has(r.gameId);
         action = `<button type="button" class="btn btn-sm ${isMine ? 'btn-primary' : ''}" data-vote-game="${r.gameId}">${isMine ? '✓ Deine Stimme' : 'Abstimmen'}</button>`;
+      } else if (!mineReady) {
+        pointsSliderRow = `<div class="muted" style="font-size:0.78rem;padding:4px 0 0;">Lädt deine Punkte…</div>`;
       } else {
-        if (!mineReady) {
-          action = `<span class="muted" style="font-size:0.78rem;">Lädt…</span>`;
-        } else {
-          const checked = mine.has(r.gameId);
-          const pointsVal = checked ? mine.get(r.gameId) : 5;
-          action = `
-            <span class="row" style="gap:8px;align-items:center;">
-              <label class="row" style="gap:6px;align-items:center;">
-                <input type="checkbox" data-points-game="${r.gameId}" ${checked ? 'checked' : ''} />
-                <span class="muted" style="font-size:0.78rem;">dabei</span>
-              </label>
-              ${
-                checked
-                  ? `<input type="number" min="1" max="10" step="1" data-points-value="${r.gameId}" value="${pointsVal}" style="width:52px;" />`
-                  : ''
-              }
-            </span>`;
-        }
+        const pointsVal = mine.get(r.gameId) ?? 0;
+        pointsSliderRow = `
+          <div class="skill-row" data-points-row="${r.gameId}" style="padding:4px 0 0;">
+            <span class="muted" style="font-size:0.78rem;">Punkte</span>
+            <span class="skill-value">${pointsVal}</span>
+            <input type="range" class="skill-row-slider" min="0" max="10" step="1"
+                   data-points-slider="${r.gameId}" value="${pointsVal}" />
+          </div>`;
       }
 
       return `
@@ -143,6 +135,7 @@ function renderOpenRows(votes, myId, mine, mineReady) {
               ${preferenceChipHtml(r)}
             </span>
           </div>
+          ${pointsSliderRow}
         </div>`;
     })
     .join('');
@@ -270,7 +263,7 @@ export function renderVotes(container, ctx) {
         </label>
         <label class="check-row">
           <input type="radio" name="vote-mode" value="points" />
-          <span style="flex:1;">🔢 Punkte-Modus – bis zu ${MAX_POINT_GAMES} Spiele mit 1-10 Punkten bewerten</span>
+          <span style="flex:1;">🔢 Punkte-Modus – jedes Spiel mit 0-10 Punkten bewerten</span>
         </label>
         <button type="button" class="btn btn-primary btn-block" id="votes-start">Abstimmung starten</button>
       </div>`;
@@ -283,7 +276,7 @@ export function renderVotes(container, ctx) {
 
   const draftHint =
     votes.open && votes.mode === 'points' && mineReady
-      ? `<div class="muted" style="font-size:0.78rem;margin-top:4px;">${mineCache.size}/${MAX_POINT_GAMES} Spiele ausgewählt – Änderungen speichern automatisch.</div>`
+      ? `<div class="muted" style="font-size:0.78rem;margin-top:4px;">${mineCache.size} Spiel(e) bewertet – Änderungen speichern automatisch.</div>`
       : '';
 
   container.innerHTML = `
@@ -319,36 +312,17 @@ export function renderVotes(container, ctx) {
     });
   });
 
-  container.querySelectorAll('[data-points-game]').forEach((cb) => {
-    cb.addEventListener('change', () => {
-      const playerId = getMyId();
-      if (!playerId) {
-        cb.checked = false;
-        return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
-      }
-      const gameId = cb.dataset.pointsGame;
-      if (cb.checked) {
-        if (mineCache.size >= MAX_POINT_GAMES) {
-          cb.checked = false;
-          return showToast(`Maximal ${MAX_POINT_GAMES} Spiele auswählen.`, { error: true });
-        }
-        mineCache.set(gameId, 5);
-      } else {
-        mineCache.delete(gameId);
-      }
-      ctx.rerender(); // show/hide the points input for this row
-      savePointsDraft(playerId);
-    });
-  });
-
-  container.querySelectorAll('[data-points-value]').forEach((input) => {
+  container.querySelectorAll('[data-points-slider]').forEach((slider) => {
+    const gameId = slider.dataset.pointsSlider;
+    const valueEl = slider.closest('[data-points-row]').querySelector('.skill-value');
     let debounceTimer = null;
-    input.addEventListener('input', () => {
+    slider.addEventListener('input', () => {
       const playerId = getMyId();
       if (!playerId) return;
-      const gameId = input.dataset.pointsValue;
-      const value = Math.min(10, Math.max(1, parseInt(input.value, 10) || 1));
-      mineCache.set(gameId, value);
+      valueEl.textContent = slider.value;
+      const value = parseInt(slider.value, 10);
+      if (value > 0) mineCache.set(gameId, value);
+      else mineCache.delete(gameId); // 0 = not rating this game
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => savePointsDraft(playerId), 300);
     });
