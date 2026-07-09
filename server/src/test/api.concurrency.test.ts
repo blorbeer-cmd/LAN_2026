@@ -85,6 +85,21 @@ test('simultaneous creates with the same name: exactly one player/game wins', as
   assert.equal(gCounts[409], 5, JSON.stringify(gCounts));
 });
 
+test('simultaneous promotes of the same suggestion: exactly one wins', async () => {
+  const created = await request(app).post('/api/games').send({ name: 'Race Suggestion', status: 'suggestion' });
+  assert.equal(created.status, 201);
+
+  const results = await Promise.all(
+    Array.from({ length: 6 }, () => request(app).post(`/api/games/${created.body.id}/promote`))
+  );
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[200], 1, JSON.stringify(counts));
+  assert.equal(counts[409], 5, JSON.stringify(counts));
+
+  const after = await request(app).get(`/api/games/${created.body.id}`);
+  assert.equal(after.body.status, 'catalog');
+});
+
 test('conflicting simultaneous tournament reports: one result, one leaderboard match, consistent bracket', async () => {
   const create = await request(app)
     .post('/api/tournaments')

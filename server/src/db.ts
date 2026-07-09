@@ -70,6 +70,12 @@ db.exec(`
     PRIMARY KEY (event_id, player_id)
   );
 
+  -- Every game the group could play lives here — from a bare tracked entry
+  -- (name + process names, for the agent) to a full catalog entry (platform,
+  -- trailer) to a player-submitted suggestion, all as one lifecycle instead
+  -- of two separate tables. status distinguishes "vorgeschlagen" from
+  -- "im Katalog" — whether a game additionally counts as "getrackt" is never
+  -- stored, just derived from whether it has any game_process_names.
   CREATE TABLE IF NOT EXISTS games (
     id            TEXT PRIMARY KEY,
     name          TEXT NOT NULL,
@@ -77,6 +83,11 @@ db.exec(`
     icon_image    TEXT,    -- optional data: URL (self-uploaded box art/logo), takes over from icon when set
     min_team_size INTEGER NOT NULL DEFAULT 1,
     max_team_size INTEGER NOT NULL DEFAULT 5,
+    platform      TEXT,
+    platform_url  TEXT,
+    trailer_url   TEXT,
+    status        TEXT NOT NULL DEFAULT 'catalog' CHECK (status IN ('suggestion', 'catalog')),
+    created_by    TEXT REFERENCES players(id) ON DELETE SET NULL,
     created_at    INTEGER NOT NULL
   );
 
@@ -108,36 +119,6 @@ db.exec(`
     game_id   TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
     rating    INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 10),
     PRIMARY KEY (player_id, game_id)
-  );
-
-  -- Combined game catalog: a broader "what could we play?" list, deliberately
-  -- separate from games above (which are the tracked games with process names).
-  -- This is the shared LAN fundus with platform/install hints and per-player
-  -- "Bock" interest taps.
-  CREATE TABLE IF NOT EXISTS game_catalog (
-    id          TEXT PRIMARY KEY,
-    title       TEXT NOT NULL,
-    platform    TEXT,
-    platform_url TEXT,
-    upload_done INTEGER NOT NULL DEFAULT 0,
-    play_rate   TEXT,
-    trailer_url TEXT,
-    is_suggestion INTEGER NOT NULL DEFAULT 0,
-    created_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
-    created_at  INTEGER NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS game_catalog_interest (
-    catalog_id TEXT NOT NULL REFERENCES game_catalog(id) ON DELETE CASCADE,
-    player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-    PRIMARY KEY (catalog_id, player_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS game_catalog_ratings (
-    catalog_id TEXT NOT NULL REFERENCES game_catalog(id) ON DELETE CASCADE,
-    player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-    rating     INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
-    PRIMARY KEY (catalog_id, player_id)
   );
 
   -- Per-player live meta: when the agent last reported and an optional manual
@@ -495,9 +476,6 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_skills_game ON skills(game_id);
   CREATE INDEX IF NOT EXISTS idx_preferences_game ON preferences(game_id);
-  CREATE INDEX IF NOT EXISTS idx_game_catalog_title ON game_catalog(title);
-  CREATE INDEX IF NOT EXISTS idx_game_catalog_interest_player ON game_catalog_interest(player_id);
-  CREATE INDEX IF NOT EXISTS idx_game_catalog_ratings_player ON game_catalog_ratings(player_id);
   CREATE INDEX IF NOT EXISTS idx_live_status_games_game ON live_status_games(game_id);
   CREATE INDEX IF NOT EXISTS idx_votes_round ON votes(round);
   CREATE INDEX IF NOT EXISTS idx_votes_event ON votes(event_id);
@@ -552,13 +530,98 @@ function migrateGameIconImageColumn(): void {
 }
 migrateGameIconImageColumn();
 
-function migrateGameCatalogColumns(): void {
-  const columns = db.prepare('PRAGMA table_info(game_catalog)').all() as Array<{ name: string }>;
+// Migration: older databases predate the games/game_catalog merge (see
+// server/CLAUDE.md games reorg) — games itself needs the catalog columns
+// added, and if a standalone game_catalog table still exists from before the
+// merge, its rows get folded into games (and its old 1-5 ratings into
+// preferences, ×2 onto the shared 1-10 scale) before the legacy tables are
+// dropped. A brand-new database gets both already via the schema above and
+// never creates game_catalog in the first place, so this is a no-op there.
+function migrateGamesCatalogMergeColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(games)').all() as Array<{ name: string }>;
   const has = (name: string) => columns.some((c) => c.name === name);
-  if (!has('platform_url')) db.exec('ALTER TABLE game_catalog ADD COLUMN platform_url TEXT');
-  if (!has('is_suggestion')) db.exec('ALTER TABLE game_catalog ADD COLUMN is_suggestion INTEGER NOT NULL DEFAULT 0');
+  if (!has('platform')) db.exec('ALTER TABLE games ADD COLUMN platform TEXT');
+  if (!has('platform_url')) db.exec('ALTER TABLE games ADD COLUMN platform_url TEXT');
+  if (!has('trailer_url')) db.exec('ALTER TABLE games ADD COLUMN trailer_url TEXT');
+  if (!has('status')) db.exec("ALTER TABLE games ADD COLUMN status TEXT NOT NULL DEFAULT 'catalog'");
+  if (!has('created_by')) db.exec('ALTER TABLE games ADD COLUMN created_by TEXT REFERENCES players(id) ON DELETE SET NULL');
 }
-migrateGameCatalogColumns();
+migrateGamesCatalogMergeColumns();
+
+function migrateLegacyGameCatalogIntoGames(): void {
+  const catalogTableExists = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'game_catalog'`)
+    .get();
+  if (!catalogTableExists) return;
+
+  interface LegacyCatalogRow {
+    id: string;
+    title: string;
+    platform: string | null;
+    platform_url: string | null;
+    trailer_url: string | null;
+    is_suggestion: number;
+    created_by: string | null;
+    created_at: number;
+  }
+  const catalogRows = db.prepare('SELECT * FROM game_catalog').all() as LegacyCatalogRow[];
+  const findGameByName = db.prepare('SELECT id FROM games WHERE name = ? COLLATE NOCASE');
+  // COALESCE: a title that already exists as a game (e.g. "Rocket League" was
+  // both a tracked game and a catalog entry before the merge) only gets its
+  // blank catalog fields filled in — the tracked row's own data always wins.
+  const fillMissing = db.prepare(
+    `UPDATE games SET platform = COALESCE(platform, ?), platform_url = COALESCE(platform_url, ?), trailer_url = COALESCE(trailer_url, ?) WHERE id = ?`
+  );
+  const insertGame = db.prepare(
+    `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at, platform, platform_url, trailer_url, status, created_by)
+     VALUES (?, ?, '🎮', 1, 5, ?, ?, ?, ?, ?, ?)`
+  );
+
+  // catalog_id -> the games.id its ratings should be re-homed to.
+  const resolvedGameId = new Map<string, string>();
+
+  db.transaction(() => {
+    for (const row of catalogRows) {
+      const existing = findGameByName.get(row.title) as { id: string } | undefined;
+      if (existing) {
+        fillMissing.run(row.platform, row.platform_url, row.trailer_url, existing.id);
+        resolvedGameId.set(row.id, existing.id);
+      } else {
+        insertGame.run(
+          row.id,
+          row.title,
+          row.created_at,
+          row.platform,
+          row.platform_url,
+          row.trailer_url,
+          row.is_suggestion ? 'suggestion' : 'catalog',
+          row.created_by
+        );
+        resolvedGameId.set(row.id, row.id);
+      }
+    }
+
+    const ratingRows = db.prepare('SELECT catalog_id, player_id, rating FROM game_catalog_ratings').all() as Array<{
+      catalog_id: string;
+      player_id: string;
+      rating: number;
+    }>;
+    // Never overwrites a preference the player already has on the merged
+    // game — the 1-10 "Bock" scale (changeable on a whim throughout the LAN)
+    // is more current than a one-time 1-5 catalog rating from before the merge.
+    const insertPreference = db.prepare('INSERT OR IGNORE INTO preferences (player_id, game_id, rating) VALUES (?, ?, ?)');
+    for (const r of ratingRows) {
+      const gameId = resolvedGameId.get(r.catalog_id);
+      if (!gameId) continue;
+      insertPreference.run(r.player_id, gameId, Math.min(10, r.rating * 2));
+    }
+
+    db.exec('DROP TABLE game_catalog_ratings');
+    db.exec('DROP TABLE game_catalog_interest');
+    db.exec('DROP TABLE game_catalog');
+  })();
+}
+migrateLegacyGameCatalogIntoGames();
 
 // Migration: older databases predate the optional "wann geht's raus"
 // send_at field on food orders.
@@ -832,12 +895,12 @@ function seedQuizQuestions(): void {
   })();
 }
 
-// Seed the broader "could we play this?" catalog from the shared planning
-// sheet. Kept independent from seedGames(): some catalog entries are install
-// candidates only and should not become tracked games/process mappings.
-function seedGameCatalog(): void {
-  const count = (db.prepare('SELECT COUNT(*) AS n FROM game_catalog').get() as { n: number }).n;
-
+// Seed the broader "could we play this?" pool directly into games (status
+// 'catalog') from the shared planning sheet. Runs every start, not just on an
+// empty database, since it also fills in platform/trailer for a title that
+// already exists as a tracked game (e.g. "Rocket League") — COALESCE below
+// only touches still-blank fields, so an admin's own edit is never reverted.
+function seedCatalogGames(): void {
   const now = Date.now();
   const trailer = (title: string) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${title} gameplay trailer`)}`;
   const defaults: Array<{ title: string; platform: string; platformUrl: string | null }> = [
@@ -878,31 +941,29 @@ function seedGameCatalog(): void {
     { title: 'Wreckfest', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/228380/Wreckfest/' },
   ];
 
-  const insert = db.prepare(
-    `INSERT INTO game_catalog (id, title, platform, platform_url, upload_done, play_rate, trailer_url, is_suggestion, created_by, created_at)
-     VALUES (?, ?, ?, ?, 0, NULL, ?, 0, NULL, ?)`
+  const findByName = db.prepare('SELECT id FROM games WHERE name = ? COLLATE NOCASE');
+  const insertGame = db.prepare(
+    `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at, platform, platform_url, trailer_url, status)
+     VALUES (?, ?, '🎮', 1, 5, ?, ?, ?, ?, 'catalog')`
   );
-  const update = db.prepare(
-    `UPDATE game_catalog
-     SET platform = ?, platform_url = ?, trailer_url = ?, is_suggestion = 0
-     WHERE title = ?`
+  const fillMissing = db.prepare(
+    `UPDATE games SET platform = COALESCE(platform, ?), platform_url = COALESCE(platform_url, ?), trailer_url = COALESCE(trailer_url, ?) WHERE id = ?`
   );
 
   db.transaction(() => {
-    if (count === 0) {
-      for (const g of defaults) {
-        insert.run(nanoid(), g.title, g.platform, g.platformUrl, trailer(g.title), now);
-      }
-      return;
-    }
     for (const g of defaults) {
-      update.run(g.platform, g.platformUrl, trailer(g.title), g.title);
+      const existing = findByName.get(g.title) as { id: string } | undefined;
+      if (existing) {
+        fillMissing.run(g.platform, g.platformUrl, trailer(g.title), existing.id);
+      } else {
+        insertGame.run(nanoid(), g.title, now, g.platform, g.platformUrl, trailer(g.title));
+      }
     }
   })();
 }
 
 seedQuizQuestions();
-seedGameCatalog();
+seedCatalogGames();
 
 // Seed the permanent "außerhalb von Events" sentinel, once. This is the ONLY
 // place that ever creates it: events.ts's getTrackingEventId() is a pure

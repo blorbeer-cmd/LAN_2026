@@ -1,15 +1,13 @@
-// Settings view (FR-07, FR-10, FR-30): event management, the invite link,
-// and the game catalog + process-name mappings the agent uses to recognize
-// what's running. Reached via the ⚙️ icon, not the main bottom nav — this is
-// setup work, not something people touch during actual play.
+// Settings view (FR-30): event management and the invite link. Reached via
+// the ⚙️ icon, not the main bottom nav — this is setup work, not something
+// people touch during actual play. Game management (including the
+// process-name mappings the agent uses) lives in the Spiele view now — see
+// server/CLAUDE.md games reorg.
 
 import { api, getToken } from '../api.js';
-import { state, gameById } from '../state.js';
-import { escapeHtml, gameBadgeHtml } from '../format.js';
-import { openModal } from '../modal.js';
+import { state } from '../state.js';
+import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
-import { resizeImageFile } from '../imageUtils.js';
-import { suggestProcessNames } from '../gameProcessSuggestions.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 
 // The invite link is the shared access token, not tied to any one event —
@@ -328,34 +326,12 @@ function openParticipantsForm(ctx, event) {
   );
 }
 
-export function renderGames(container, ctx) {
-  const rows = state.games
-    .map(
-      (g) => `
-      <button type="button" class="card row list-row" data-game="${g.id}">
-        ${gameBadgeHtml(g, 36)}
-        <span style="flex:1;">
-          <div class="player-name">${escapeHtml(g.name)}</div>
-          <div class="muted" style="font-size:0.8rem;">Team: ${g.min_team_size}-${g.max_team_size} · ${g.processNames.length} Prozess(e)</div>
-        </span>
-        <span class="muted">›</span>
-      </button>`
-    )
-    .join('');
 
+export function renderSettings(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Einstellungen</h1>
     ${renderEventSection()}
     ${renderInviteSection()}
-    <div class="row-between" style="margin-top:20px;">
-      <div class="section-title" style="margin:0 0 8px;">🎮 Spiele verwalten</div>
-      <button type="button" class="btn btn-primary btn-sm" id="add-game-btn">+ Spiel</button>
-    </div>
-    ${
-      state.games.length === 0
-        ? `<div class="empty-state"><span class="emoji">🎮</span>Noch keine Spiele.</div>`
-        : `<div class="card-grid">${rows}</div>`
-    }
   `;
 
   container.querySelectorAll('[data-export-event]').forEach((btn) => {
@@ -419,256 +395,4 @@ export function renderGames(container, ctx) {
       }
     });
   });
-
-  container.querySelector('#add-game-btn').addEventListener('click', () => openGameForm(ctx));
-  container.querySelectorAll('[data-game]').forEach((btn) => {
-    btn.addEventListener('click', () => openGameDetail(btn.dataset.game, ctx));
-  });
-}
-
-function openGameForm(ctx) {
-  const { close } = openModal(
-    'Spiel hinzufügen',
-    `
-      <form id="add-game-form" class="stack">
-        <input type="text" id="new-game-icon" placeholder="Icon (Emoji)" maxlength="8" value="🎮" />
-        <input type="text" id="new-game-name" placeholder="Name" maxlength="60" required autofocus />
-        <p class="muted" id="new-game-process-hint" style="font-size:0.78rem;margin-top:-6px;" hidden></p>
-        <div class="row" style="align-items:flex-start;">
-          <div style="flex:1;">
-            <label for="new-game-min" class="field-label">Min. Teamgröße</label>
-            <input type="number" id="new-game-min" min="1" max="20" value="1" />
-          </div>
-          <div style="flex:1;">
-            <label for="new-game-max" class="field-label">Max. Teamgröße</label>
-            <input type="number" id="new-game-max" min="1" max="20" value="5" />
-          </div>
-        </div>
-        <p class="muted" style="font-size:0.78rem;margin-top:-6px;">
-          Wie groß darf ein Team bei diesem Spiel sein? Wird beim „Teams auslosen" verwendet –
-          z. B. 1-1 für 1-gegen-1, 1-5 für Squads bis zu fünft.
-        </p>
-        <button type="submit" class="btn btn-primary btn-block">Anlegen</button>
-      </form>
-    `,
-    {
-      onMount: (el) => {
-        const nameInput = el.querySelector('#new-game-name');
-        const hint = el.querySelector('#new-game-process-hint');
-        nameInput.addEventListener('input', () => {
-          const suggested = suggestProcessNames(nameInput.value);
-          hint.hidden = suggested.length === 0;
-          hint.textContent = suggested.length
-            ? `💡 Bekannter Prozessname wird automatisch ergänzt: ${suggested.join(', ')}`
-            : '';
-        });
-
-        el.querySelector('#add-game-form').addEventListener('submit', async (e) => {
-          e.preventDefault();
-          const name = el.querySelector('#new-game-name').value.trim();
-          const icon = el.querySelector('#new-game-icon').value.trim() || '🎮';
-          const minTeamSize = parseInt(el.querySelector('#new-game-min').value, 10) || 1;
-          const maxTeamSize = parseInt(el.querySelector('#new-game-max').value, 10) || 5;
-          if (!name) return;
-          try {
-            const game = await api.games.create({ name, icon, minTeamSize, maxTeamSize });
-            // Best-effort only: a suggested name might already be taken by
-            // another game (e.g. shared engine process) — that must never
-            // block or cast doubt on the game that just got created fine.
-            const suggested = suggestProcessNames(name);
-            const added = [];
-            for (const processName of suggested) {
-              try {
-                await api.games.addProcess(game.id, processName);
-                added.push(processName);
-              } catch {
-                // ignore, admin can still add it manually in the game details
-              }
-            }
-            close();
-            await ctx.refresh();
-            showToast(
-              added.length
-                ? `${name} wurde hinzugefügt, inkl. Prozessname ${added.join(', ')} (in den Spieldetails anpassbar).`
-                : `${name} wurde hinzugefügt.`
-            );
-          } catch (err) {
-            showToast(err.message, { error: true });
-          }
-        });
-      },
-    }
-  );
-}
-
-function openGameDetail(gameId, ctx) {
-  const game = gameById(gameId);
-  if (!game) return;
-
-  const processChips = game.processNames
-    .map(
-      (pn) => `
-      <span class="chip">${escapeHtml(pn)} <button type="button" class="icon-btn" data-remove-proc="${escapeHtml(pn)}" aria-label="Entfernen" style="font-size:0.8rem;padding:0 2px;">✕</button></span>`
-    )
-    .join('');
-
-  // Only offer the suggestion for games created before this feature existed
-  // (or renamed since) — once at least one process name is set, the admin
-  // has already handled it themselves.
-  const suggestedProcessNames =
-    game.processNames.length === 0 ? suggestProcessNames(game.name) : [];
-
-  const { close } = openModal(
-    escapeHtml(game.name),
-    `
-      <div class="stack">
-        <div class="row" style="align-items:center;">
-          <label for="edit-icon-image-input" style="cursor:pointer;" title="Eigenes Icon/Logo hochladen">
-            ${gameBadgeHtml(game, 56)}
-          </label>
-          <input type="file" id="edit-icon-image-input" accept="image/*" hidden />
-          <input type="text" id="edit-icon" value="${escapeHtml(game.icon)}" maxlength="8" style="width:56px;" title="Emoji-Icon (Fallback ohne eigenes Bild)" />
-          <input type="text" id="edit-name" value="${escapeHtml(game.name)}" maxlength="60" style="flex:1;" />
-        </div>
-        ${
-          game.icon_image
-            ? `<button type="button" class="btn btn-sm" id="edit-icon-image-remove" style="align-self:flex-start;">🗑️ Eigenes Icon entfernen</button>`
-            : `<p class="muted" style="font-size:0.78rem;margin-top:-4px;">Tipp: Badge antippen, um ein eigenes Icon/Logo hochzuladen (z. B. Spiel-Artwork).</p>`
-        }
-        <div class="row" style="align-items:flex-start;">
-          <div style="flex:1;">
-            <label for="edit-min" class="field-label">Min. Teamgröße</label>
-            <input type="number" id="edit-min" min="1" max="20" value="${game.min_team_size}" />
-          </div>
-          <div style="flex:1;">
-            <label for="edit-max" class="field-label">Max. Teamgröße</label>
-            <input type="number" id="edit-max" min="1" max="20" value="${game.max_team_size}" />
-          </div>
-        </div>
-        <p class="muted" style="font-size:0.78rem;margin-top:-6px;">
-          Wie groß darf ein Team bei diesem Spiel sein? Wird beim „Teams auslosen" verwendet –
-          z. B. 1-1 für 1-gegen-1, 1-5 für Squads bis zu fünft.
-        </p>
-        <button type="button" class="btn btn-primary" id="edit-save">Speichern</button>
-
-        <div class="section-title">Prozessnamen (für den Agent)</div>
-        <div class="chip-list">${processChips || '<span class="muted">Noch keine.</span>'}</div>
-        ${
-          suggestedProcessNames.length
-            ? `<button type="button" class="btn btn-sm" id="use-suggested-process" style="align-self:flex-start;">💡 Vorschlag übernehmen: ${escapeHtml(suggestedProcessNames.join(', '))}</button>`
-            : ''
-        }
-        <div class="row">
-          <input type="text" id="new-process" placeholder="z.B. cs2.exe" style="flex:1;" />
-          <button type="button" class="btn btn-sm" id="add-process">+</button>
-        </div>
-
-        <button type="button" class="btn btn-danger btn-block" id="edit-delete">Spiel löschen</button>
-      </div>
-    `,
-    {
-      onMount: (el) => {
-        el.querySelector('#edit-icon-image-input').addEventListener('change', async (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-          try {
-            const iconImage = await resizeImageFile(file, 128);
-            await api.games.update(gameId, { iconImage });
-            close();
-            await ctx.refresh();
-            showToast('Icon aktualisiert.');
-            openGameDetail(gameId, ctx);
-          } catch (err) {
-            showToast(err.message, { error: true });
-          }
-        });
-
-        const removeIconBtn = el.querySelector('#edit-icon-image-remove');
-        if (removeIconBtn) {
-          removeIconBtn.addEventListener('click', async () => {
-            try {
-              await api.games.update(gameId, { iconImage: null });
-              close();
-              await ctx.refresh();
-              showToast('Eigenes Icon entfernt.');
-              openGameDetail(gameId, ctx);
-            } catch (err) {
-              showToast(err.message, { error: true });
-            }
-          });
-        }
-
-        el.querySelector('#edit-save').addEventListener('click', async () => {
-          const name = el.querySelector('#edit-name').value.trim();
-          const icon = el.querySelector('#edit-icon').value.trim() || '🎮';
-          const minTeamSize = parseInt(el.querySelector('#edit-min').value, 10);
-          const maxTeamSize = parseInt(el.querySelector('#edit-max').value, 10);
-          try {
-            await api.games.update(gameId, { name, icon, minTeamSize, maxTeamSize });
-            close();
-            await ctx.refresh();
-            showToast('Gespeichert.');
-          } catch (err) {
-            showToast(err.message, { error: true });
-          }
-        });
-
-        el.querySelector('#add-process').addEventListener('click', async () => {
-          const input = el.querySelector('#new-process');
-          const value = input.value.trim();
-          if (!value) return;
-          try {
-            await api.games.addProcess(gameId, value);
-            input.value = '';
-            close();
-            await ctx.refresh();
-            openGameDetail(gameId, ctx);
-          } catch (err) {
-            showToast(err.message, { error: true });
-          }
-        });
-
-        const suggestBtn = el.querySelector('#use-suggested-process');
-        if (suggestBtn) {
-          suggestBtn.addEventListener('click', async () => {
-            try {
-              for (const processName of suggestedProcessNames) {
-                await api.games.addProcess(gameId, processName);
-              }
-              close();
-              await ctx.refresh();
-              openGameDetail(gameId, ctx);
-            } catch (err) {
-              showToast(err.message, { error: true });
-            }
-          });
-        }
-
-        el.querySelectorAll('[data-remove-proc]').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            try {
-              await api.games.removeProcess(gameId, btn.dataset.removeProc);
-              close();
-              await ctx.refresh();
-              openGameDetail(gameId, ctx);
-            } catch (err) {
-              showToast(err.message, { error: true });
-            }
-          });
-        });
-
-        el.querySelector('#edit-delete').addEventListener('click', async () => {
-          if (!confirm(`${game.name} wirklich löschen? Skill-Ratings und Ergebnisse dazu gehen verloren.`)) return;
-          try {
-            await api.games.remove(gameId);
-            close();
-            await ctx.refresh();
-            showToast('Spiel gelöscht.');
-          } catch (err) {
-            showToast(err.message, { error: true });
-          }
-        });
-      },
-    }
-  );
 }

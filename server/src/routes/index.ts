@@ -29,7 +29,6 @@ import { infoBoardRouter } from './infoBoard';
 import { foodOrdersRouter } from './foodOrders';
 import { quizRouter } from './quiz';
 import { arcadeRouter } from './arcade';
-import { gameCatalogRouter } from './gameCatalog';
 import { arrivalsRouter } from './arrivals';
 import { adminRouter } from './admin';
 
@@ -67,6 +66,5 @@ apiRouter.use('/info', infoBoardRouter);
 apiRouter.use('/food-orders', foodOrdersRouter);
 apiRouter.use('/quiz', quizRouter);
 apiRouter.use('/arcade', arcadeRouter);
-apiRouter.use('/game-catalog', gameCatalogRouter);
 apiRouter.use('/arrivals', arrivalsRouter);
 apiRouter.use('/admin', adminRouter);

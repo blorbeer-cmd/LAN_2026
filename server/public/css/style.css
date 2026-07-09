@@ -867,109 +867,19 @@ button.card {
     transform: translateY(0) scale(1);
   }
 }
-.catalog-card {
+/* Spiele view (gameCatalog.js): one card per game instead of a wide table —
+   the old .catalog-table needed horizontal scroll on a phone, a card stack
+   doesn't. Reuses .skill-row for the Bock/Skill sliders (same component
+   profile.js used to own) so editing looks identical everywhere it appears. */
+.game-card {
   overflow: hidden;
 }
-.catalog-table-wrap {
-  overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-.catalog-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.catalog-table th,
-.catalog-table td {
-  padding: 10px 12px;
-  text-align: left;
-  vertical-align: middle;
-  border-bottom: 1px solid var(--border);
-}
-.catalog-table th {
-  font-size: 0.74rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  background: rgba(15, 20, 32, 0.38);
-  white-space: nowrap;
-}
-.catalog-table tr:last-child td {
-  border-bottom: none;
-}
-.catalog-title-cell {
-  min-width: 180px;
-}
-.catalog-actions {
-  width: 1%;
-  white-space: nowrap;
-}
-.catalog-actions .btn + .btn {
-  margin-left: 6px;
+.game-avg-note {
+  font-size: 0.75rem;
+  font-weight: 400;
 }
 .catalog-sort-btn {
   padding: 6px 10px;
-}
-.catalog-text-link {
-  color: var(--text);
-  text-decoration: none;
-  border-bottom: 1px solid rgba(139, 147, 167, 0.42);
-}
-.catalog-text-link:hover {
-  color: var(--accent);
-  border-bottom-color: currentColor;
-}
-.catalog-rating-cell {
-  min-width: 210px;
-}
-.catalog-rating-line {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  white-space: nowrap;
-}
-.catalog-rating-bar {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  width: 140px;
-  height: 32px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
-}
-.catalog-rating-bar button {
-  border: none;
-  border-right: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-.catalog-rating-bar button:last-child {
-  border-right: none;
-}
-.catalog-rating-bar button.is-active {
-  color: var(--accent-text);
-}
-.catalog-rating-bar button.is-active[data-level='1'] {
-  background: #7657e8;
-}
-.catalog-rating-bar button.is-active[data-level='2'] {
-  background: #8364f0;
-}
-.catalog-rating-bar button.is-active[data-level='3'] {
-  background: linear-gradient(135deg, #5b8cff 0%, #9163f5 100%);
-}
-.catalog-rating-bar button.is-active[data-level='4'] {
-  background: #b656d8;
-}
-.catalog-rating-bar button.is-active[data-level='5'] {
-  background: #ef5da8;
-}
-.catalog-rating-meta {
-  font-size: 0.75rem;
 }
 .arrivals-layout {
   display: flex;

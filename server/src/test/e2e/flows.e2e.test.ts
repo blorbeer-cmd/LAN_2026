@@ -217,21 +217,39 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
   await page.selectOption('#profile-whoami', { label: 'E2E Alice Pro' });
 });
 
-test('Spiele verwalten: create a game, and a duplicate name is rejected with a clear error', async () => {
-  await page.click('#settings-btn');
-  await page.click('#add-game-btn');
-  await page.fill('#new-game-name', 'E2E Partyspiel');
-  await page.click('#add-game-form button[type="submit"]');
+test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bock/Skill inline', async () => {
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="gameCatalog"]');
+  await page.waitForSelector('#suggest-new');
+
+  await page.click('#suggest-new');
+  await page.fill('#suggest-title', 'E2E Partyspiel');
+  await page.click('#suggest-form button[type="submit"]');
   await page.waitForSelector('text=E2E Partyspiel');
+  await page.waitForSelector('button[data-tab="suggestions"].btn-primary');
 
   // Same name again (different case): server must refuse — otherwise votes,
   // skills and results would silently split across two identical entries.
-  await page.click('#add-game-btn');
-  await page.fill('#new-game-name', 'e2e partyspiel');
-  await page.click('#add-game-form button[type="submit"]');
+  await page.click('#suggest-new');
+  await page.fill('#suggest-title', 'e2e partyspiel');
+  await page.click('#suggest-form button[type="submit"]');
   await page.waitForSelector('.toast-error');
   await page.waitForSelector('text=gibt es schon');
   await page.click('[data-close]');
+
+  // Promote the suggestion into the catalog, then rate it right in the row —
+  // no detour through a separate profile page needed.
+  await page.click('[data-promote]');
+  await page.waitForSelector('button[data-tab="catalog"].btn-primary');
+  const partyspielCard = page.locator('.game-card', { hasText: 'E2E Partyspiel' });
+  await partyspielCard.waitFor();
+  const bockSlider = partyspielCard.locator('.skill-row[data-kind="bock"] input[type="range"]');
+  await bockSlider.fill('8');
+  await page.waitForFunction(() => {
+    const cards = Array.from(document.querySelectorAll('.game-card'));
+    const card = cards.find((c) => c.textContent?.includes('E2E Partyspiel'));
+    return card?.querySelector('[data-kind="bock"] .skill-value')?.textContent === '8';
+  });
 });
 
 test('Turnier: create a K.O. bracket from proposed teams and play it to a champion', async () => {
