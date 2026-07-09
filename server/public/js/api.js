@@ -16,6 +16,11 @@ export async function apiFetch(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   const token = getToken();
   if (token) headers['x-access-token'] = token;
+  // Attach the admin PIN (set once on admin unlock) so admin-gated writes —
+  // e.g. granting admin — pass the server's requireAdmin check. Absent in
+  // open/dev mode, where the server allows it anyway.
+  const adminPin = localStorage.getItem('lan2026_admin_pin');
+  if (adminPin) headers['x-admin-pin'] = adminPin;
 
   const res = await fetch(path, { ...options, headers });
 
@@ -288,6 +293,11 @@ export const api = {
     create: (data) => apiFetch('/api/info', { method: 'POST', body: JSON.stringify(data) }),
     update: (id, data) => apiFetch(`/api/info/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     remove: (id) => apiFetch(`/api/info/${id}`, { method: 'DELETE' }),
+  },
+
+  admin: {
+    status: () => apiFetch('/api/admin/status'),
+    unlock: (pin) => apiFetch('/api/admin/unlock', { method: 'POST', body: JSON.stringify({ pin }) }),
   },
 
   foodOrders: {

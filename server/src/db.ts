@@ -29,6 +29,7 @@ db.exec(`
     avatar          TEXT,
     api_key         TEXT NOT NULL UNIQUE,
     tracking_paused INTEGER NOT NULL DEFAULT 0, -- player-side opt-out; agent reports for this player are dropped
+    is_admin        INTEGER NOT NULL DEFAULT 0, -- moderation role; can be granted via PATCH /api/players/:id
     created_at      INTEGER NOT NULL
   );
 
@@ -432,6 +433,14 @@ function migrateAvatarColumn(): void {
   db.exec('ALTER TABLE players ADD COLUMN avatar TEXT');
 }
 migrateAvatarColumn();
+
+// Migration: older databases predate the is_admin moderation flag.
+function migrateAdminColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'is_admin')) return;
+  db.exec('ALTER TABLE players ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0');
+}
+migrateAdminColumn();
 
 function migrateGameIconImageColumn(): void {
   const columns = db.prepare('PRAGMA table_info(games)').all() as Array<{ name: string }>;
