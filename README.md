@@ -143,22 +143,22 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
    | `CF_TUNNEL_TOKEN` | Token aus Schritt 2 |
    | `APP_ACCESS_TOKEN` | starkes Zufallstoken, z. B. `openssl rand -hex 24` |
    | `APP_ADMIN_PIN` | eigene PIN fürs Admin-Freischalten |
+   | `GHCR_PULL_TOKEN` | GitHub → Settings → Developer settings → **Fine-grained tokens** → nur dieses Repo, Permission **Contents: Read** + **Packages: Read** (kein Ablaufdatum "No expiration", oder erinnern, es vor Ablauf zu erneuern). **Bewusst kein Fix "Package auf public stellen"** – das Image bleibt privat, der Server authentifiziert sich stattdessen selbst beim Pullen. |
 
 4. **`Provision Hetzner Server`-Workflow manuell starten** (Actions-Tab → Workflow auswählen →
    "Run workflow"). Legt SSH-Key + Firewall (nur Port 22 offen) + einen `cx23`-Server in Helsinki
-   (`hel1`) in Hetzner an, installiert Docker via Cloud-Init und startet App + `cloudflared` direkt
-   beim ersten Boot. Läuft **einmalig** – ein zweiter Lauf überspringt die Server-Erstellung, wenn
-   `lan2026` schon existiert.
+   (`hel1`) in Hetzner an, installiert Docker via Cloud-Init, loggt sich per `GHCR_PULL_TOKEN` bei
+   GHCR ein und startet `cloudflared` direkt beim ersten Boot. Läuft **einmalig** – ein zweiter Lauf
+   überspringt die Server-Erstellung, wenn `lan2026` schon existiert.
+
+   Der `app`-Container startet bei diesem allerersten Boot noch **nicht** – es gibt ja noch kein
+   gepushtes Image (das entsteht erst in Schritt 6). Das ist erwartet und kein Fehler; `cloudflared`
+   läuft trotzdem schon (`lan.dbehnke.dev` zeigt bis Schritt 6 kurz einen Cloudflare-Fehler wie
+   `502`/`523`, weil noch nichts hinter dem Tunnel lauscht).
 5. Die im Job-Summary ausgegebene **Server-IP als Secret `HETZNER_HOST`** anlegen.
-6. Push nach `main` → `CI/CD`-Workflow baut, testet, baut das Docker-Image und pusht es nach GHCR.
-7. **Einmalig, direkt nach diesem ersten Push:** GitHub-Pakete sind standardmäßig **privat**, auch
-   wenn sie per `GITHUB_TOKEN` gepusht wurden – der Server hat aber keine Registry-Zugangsdaten. Der
-   Deploy-Job schlägt beim allerersten Lauf deshalb erwartungsgemäß mit `401`/`403` beim
-   `docker compose pull` fehl. Fix: GitHub → dein Profil/Org → **Packages** → `lan_2026` →
-   **Package settings** → **Change visibility** → **Public** (und "Connect Repository" draufzeigen
-   lassen, falls nicht schon verknüpft) – danach den fehlgeschlagenen `deploy`-Job im Actions-Tab
-   erneut ausführen ("Re-run failed jobs"). Ab hier ist jeder weitere Push nach `main` ein normaler,
-   durchlaufender Deploy.
+6. Push nach `main` → `CI/CD`-Workflow baut, testet, baut das Docker-Image, pusht es (privat) nach
+   GHCR und deployt per SSH – die Anmeldedaten aus Schritt 4 sind schon da, dieser erste Deploy
+   läuft direkt durch. Ab hier ist jeder weitere Push nach `main` ein normaler Deploy.
 
 ### Alltag
 
@@ -168,6 +168,10 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
   ausführen – pinnt das Docker-Image auf einen früheren, bereits gebauten Stand.
 - **Backups:** noch nicht eingerichtet (siehe Security-Review) – für echte Daten vor der ersten
   "richtigen" LAN auf dem neuen Server unbedingt einen Cron-Job mit `sqlite3 .backup` ergänzen.
+- **`GHCR_PULL_TOKEN` erneuern** (Fine-grained Tokens laufen ggf. ab): neuen Token erzeugen, das
+  GitHub-Secret aktualisieren, dann auf dem Server (`ssh deploy@<HETZNER_HOST>`) die Zeile in
+  `/opt/lan2026/.env` von Hand ersetzen und `/opt/lan2026/docker-login.sh` erneut ausführen –
+  `provision.yml` läuft nach dem ersten Mal nicht automatisch nochmal.
 
 ### Lokale Entwicklung / manuelles Hosting (unverändert möglich)
 

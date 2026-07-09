@@ -7,7 +7,7 @@
 #
 # Placeholders substituted by the workflow (its envsubst whitelist), never
 # committed with real values: SSH_PUBLIC_KEY, CF_TUNNEL_TOKEN,
-# APP_ACCESS_TOKEN, APP_ADMIN_PIN, INITIAL_IMAGE — that last one exists only
+# APP_ACCESS_TOKEN, APP_ADMIN_PIN, GHCR_PULL_TOKEN, INITIAL_IMAGE — that last one exists only
 # to seed .env's IMAGE= line once at boot. The app service's own "image:"
 # line below is deliberately NOT one of those names (it stays the literal
 # 4-character string image-colon-dollar-brace-I-M-A-G-E, unresolved by this
@@ -59,8 +59,9 @@ write_files:
           command: tunnel run
           environment:
             - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
-          depends_on:
-            - app
+          # No depends_on: cloudflared must come up even before the app
+          # image has ever been pushed (see runcmd below) — it retries the
+          # connection to app:3000 on its own once that exists.
 
   - path: /opt/lan2026/.env
     permissions: '0600'
@@ -68,6 +69,7 @@ write_files:
       ACCESS_TOKEN=$APP_ACCESS_TOKEN
       ADMIN_PIN=$APP_ADMIN_PIN
       CF_TUNNEL_TOKEN=$CF_TUNNEL_TOKEN
+      GHCR_PULL_TOKEN=$GHCR_PULL_TOKEN
       IMAGE=$INITIAL_IMAGE
 
   - path: /opt/lan2026/rollback.sh
@@ -86,6 +88,21 @@ write_files:
       docker compose pull app
       docker compose up -d app
 
+  - path: /opt/lan2026/docker-login.sh
+    permissions: '0700'
+    content: |
+      #!/usr/bin/env bash
+      # GHCR package stays private (not everyone with repo read access
+      # should be able to pull it) — this box authenticates instead, via a
+      # PAT with read:packages scope. Reads the token from .env rather than
+      # taking it as an argument so it never appears in shell history or a
+      # process list. Re-run manually if GHCR_PULL_TOKEN is ever rotated.
+      set -euo pipefail
+      cd /opt/lan2026
+      # shellcheck disable=SC1091
+      source .env
+      echo "$GHCR_PULL_TOKEN" | docker login ghcr.io -u blorbeer-cmd --password-stdin
+
 runcmd:
   - apt-get update
   - apt-get install -y --no-install-recommends ufw fail2ban unattended-upgrades
@@ -98,4 +115,15 @@ runcmd:
   - ufw allow OpenSSH
   - ufw --force enable
   - systemctl enable --now fail2ban
-  - bash -c 'cd /opt/lan2026 && docker compose pull && docker compose up -d'
+  # Everything docker-related runs as "deploy" (not root) from here on, so
+  # the login this seeds is the same one deploy.yml's SSH deploys reuse —
+  # `su - deploy` starts a fresh session that already sees the docker group
+  # added above via usermod.
+  - su - deploy -c '/opt/lan2026/docker-login.sh'
+  # cloudflared always comes up (public image, no auth needed). The app
+  # image does NOT exist in GHCR yet on a brand-new repo — nothing has ever
+  # been pushed to main — so this pull is expected to fail on a virgin box;
+  # `|| true` keeps that from blocking the rest of boot. deploy.yml's first
+  # real run (see README step 6) pulls and starts it for real.
+  - su - deploy -c 'cd /opt/lan2026 && docker compose up -d cloudflared'
+  - su - deploy -c 'cd /opt/lan2026 && (docker compose pull app && docker compose up -d app || true)'

@@ -24,5 +24,6 @@ services:
     command: tunnel run
     environment:
       - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
-    depends_on:
-      - app
+    # No depends_on: must be able to come up before the app image has ever
+    # been pushed (a brand-new box's first boot) — it retries the connection
+    # to app:3000 on its own once that exists.
