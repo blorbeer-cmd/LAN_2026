@@ -5,9 +5,10 @@
 //
 // Two modes (chosen when a round starts, see server/src/routes/votes.ts):
 // - 'single': one tap picks a game, tapping another replaces it.
-// - 'points': distribute 1-10 points across up to 5 games; changing your
-//   mind just re-saves the whole set (same fire-and-forget pattern as the
-//   skill/preference sliders in profile.js).
+// - 'points': one slider per game, 0-10 points, 0 meaning "not rated" — as
+//   many games as you like. Changing your mind just re-saves the whole set
+//   (same fire-and-forget pattern as the skill/preference sliders in
+//   profile.js).
 // Either way, results are also sorted by each game's aggregate "Bock" rating
 // (state.preferences, maintained per-player in profile.js) whenever the
 // round's own score is tied — most visibly before anyone has voted yet, so
@@ -18,8 +19,6 @@ import { state } from '../state.js';
 import { escapeHtml, formatDate, formatDateTime, gameBadgeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
-
-const MAX_POINT_GAMES = 5;
 
 // Cached separately from `state` (like analytics.js does) since it's fetched
 // from its own endpoint, not part of the main loadAll() round-trip.
@@ -69,7 +68,7 @@ async function loadPointsDraft(round, playerId, ctx) {
 }
 
 async function savePointsDraft(playerId) {
-  if (!pointsDraft || pointsDraft.size === 0) return; // nothing valid to save yet
+  if (!pointsDraft) return; // draft not loaded yet, nothing to save
   const entries = [...pointsDraft.entries()].map(([gameId, points]) => ({ gameId, points }));
   try {
     await api.votes.castPoints(playerId, entries);
@@ -149,26 +148,21 @@ export function renderVotes(container, ctx) {
         votes.mode === 'points' ? `${r.points} Punkt(e)${r.votes ? ` · ${r.votes} Spieler` : ''}` : `${r.votes} Stimme(n)`;
 
       let action = '';
+      let pointsSliderRow = '';
       if (votes.open && votes.mode === 'single') {
         action = `<button type="button" class="btn btn-sm" data-vote-game="${r.gameId}">Abstimmen</button>`;
       } else if (votes.open && votes.mode === 'points') {
         if (!draftReady) {
-          action = `<span class="muted" style="font-size:0.78rem;">Lädt…</span>`;
+          pointsSliderRow = `<div class="muted" style="font-size:0.78rem;padding:4px 0 0;">Lädt deine Punkte…</div>`;
         } else {
-          const checked = pointsDraft.has(r.gameId);
-          const pointsVal = checked ? pointsDraft.get(r.gameId) : 5;
-          action = `
-            <span class="row" style="gap:8px;align-items:center;">
-              <label class="row" style="gap:6px;align-items:center;">
-                <input type="checkbox" data-points-game="${r.gameId}" ${checked ? 'checked' : ''} />
-                <span class="muted" style="font-size:0.78rem;">dabei</span>
-              </label>
-              ${
-                checked
-                  ? `<input type="number" min="1" max="10" step="1" data-points-value="${r.gameId}" value="${pointsVal}" style="width:52px;" />`
-                  : ''
-              }
-            </span>`;
+          const pointsVal = pointsDraft.get(r.gameId) ?? 0;
+          pointsSliderRow = `
+            <div class="skill-row" data-points-row="${r.gameId}" style="padding:4px 0 0;">
+              <span class="muted" style="font-size:0.78rem;">Punkte</span>
+              <span class="skill-value">${pointsVal}</span>
+              <input type="range" class="skill-row-slider" min="0" max="10" step="1"
+                     data-points-slider="${r.gameId}" value="${pointsVal}" />
+            </div>`;
         }
       }
 
@@ -186,6 +180,7 @@ export function renderVotes(container, ctx) {
             </span>
             ${action}
           </div>
+          ${pointsSliderRow}
         </div>`;
     })
     .join('');
@@ -205,7 +200,7 @@ export function renderVotes(container, ctx) {
         </label>
         <label class="check-row">
           <input type="radio" name="vote-mode" value="points" />
-          <span style="flex:1;">🔢 Punkte-Modus – bis zu ${MAX_POINT_GAMES} Spiele mit 1-10 Punkten bewerten</span>
+          <span style="flex:1;">🔢 Punkte-Modus – jedes Spiel mit 0-10 Punkten bewerten</span>
         </label>
         <button type="button" class="btn btn-primary btn-block" id="votes-start">Abstimmung starten</button>
       </div>`;
@@ -218,7 +213,7 @@ export function renderVotes(container, ctx) {
 
   const draftHint =
     pointsModeActive && myId && draftReady
-      ? `<div class="muted" style="font-size:0.78rem;margin-top:4px;">${pointsDraft.size}/${MAX_POINT_GAMES} Spiele ausgewählt – Änderungen speichern automatisch.</div>`
+      ? `<div class="muted" style="font-size:0.78rem;margin-top:4px;">${pointsDraft.size} Spiel(e) bewertet – Änderungen speichern automatisch.</div>`
       : '';
 
   container.innerHTML = `
@@ -251,36 +246,17 @@ export function renderVotes(container, ctx) {
     });
   });
 
-  container.querySelectorAll('[data-points-game]').forEach((cb) => {
-    cb.addEventListener('change', () => {
-      const playerId = getMyId();
-      if (!playerId) {
-        cb.checked = false;
-        return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
-      }
-      const gameId = cb.dataset.pointsGame;
-      if (cb.checked) {
-        if (pointsDraft.size >= MAX_POINT_GAMES) {
-          cb.checked = false;
-          return showToast(`Maximal ${MAX_POINT_GAMES} Spiele auswählen.`, { error: true });
-        }
-        pointsDraft.set(gameId, 5);
-      } else {
-        pointsDraft.delete(gameId);
-      }
-      ctx.rerender(); // show/hide the points input for this row
-      savePointsDraft(playerId);
-    });
-  });
-
-  container.querySelectorAll('[data-points-value]').forEach((input) => {
+  container.querySelectorAll('[data-points-slider]').forEach((slider) => {
+    const gameId = slider.dataset.pointsSlider;
+    const valueEl = slider.closest('[data-points-row]').querySelector('.skill-value');
     let debounceTimer = null;
-    input.addEventListener('input', () => {
+    slider.addEventListener('input', () => {
       const playerId = getMyId();
       if (!playerId) return;
-      const gameId = input.dataset.pointsValue;
-      const value = Math.min(10, Math.max(1, parseInt(input.value, 10) || 1));
-      pointsDraft.set(gameId, value);
+      valueEl.textContent = slider.value;
+      const value = parseInt(slider.value, 10);
+      if (value > 0) pointsDraft.set(gameId, value);
+      else pointsDraft.delete(gameId); // 0 = not rating this game
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => savePointsDraft(playerId), 300);
     });

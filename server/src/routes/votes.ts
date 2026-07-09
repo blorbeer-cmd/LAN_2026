@@ -8,8 +8,9 @@
 // Two modes, chosen when a round is started:
 // - 'single' (default): each player picks exactly one game; changing your
 //   pick replaces the previous one.
-// - 'points': each player distributes 1-10 points across up to 5 games;
-//   resubmitting replaces the player's whole set for the round.
+// - 'points': each player distributes 1-10 points across as many games as
+//   they like (a game with 0 points is simply left out); resubmitting
+//   replaces the player's whole set for the round.
 // Both modes rank games by a "score" (vote count for 'single', point sum for
 // 'points'); ties (including the all-zero state before anyone has voted)
 // fall back to the games' aggregate "Bock" rating (preferences table) so the
@@ -31,7 +32,6 @@ const STARTED_AT_KEY = 'vote_started_at';
 const MODE_KEY = 'vote_mode';
 
 type VoteMode = 'single' | 'points';
-const MAX_POINT_GAMES = 5;
 
 interface RoundState {
   round: number;
@@ -166,7 +166,7 @@ votesRouter.post('/start', (req, res) => {
     title: '🗳️ Neue Abstimmung',
     body:
       nextMode === 'points'
-        ? 'Was zocken wir als Nächstes? Bis zu 5 Spiele mit Punkten bewerten.'
+        ? 'Was zocken wir als Nächstes? Spiele mit Punkten bewerten.'
         : 'Was zocken wir als Nächstes? Jetzt abstimmen.',
     url: '/',
   });
@@ -212,8 +212,9 @@ votesRouter.post('/', (req, res) => {
 
 // POST /api/votes/points - cast or replace a player's points in the current
 // round ('points' mode only). Body: { playerId, entries: [{ gameId, points }] },
-// 1-5 entries, distinct games, 1-10 points each. Resubmitting replaces the
-// player's whole previous set so they can change their mind any time.
+// any number of distinct games (including none, to clear your points
+// entirely), 1-10 points each. Resubmitting replaces the player's whole
+// previous set so they can change their mind any time.
 votesRouter.post('/points', (req, res) => {
   const state = readRoundState();
   if (!state.open) {
@@ -230,8 +231,8 @@ votesRouter.post('/points', (req, res) => {
   const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
-  if (!Array.isArray(entries) || entries.length === 0 || entries.length > MAX_POINT_GAMES) {
-    return res.status(400).json({ error: `Bitte 1 bis ${MAX_POINT_GAMES} Spiele mit je 1-10 Punkten angeben.` });
+  if (!Array.isArray(entries)) {
+    return res.status(400).json({ error: 'entries muss ein Array sein.' });
   }
 
   const seen = new Set<string>();

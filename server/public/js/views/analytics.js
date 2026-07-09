@@ -9,8 +9,9 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, formatDateTime, avatarHtml, gameBadgeHtml, toDatetimeLocal } from '../format.js';
+import { escapeHtml, formatDateTime, avatarHtml, gameBadgeHtml } from '../format.js';
 import { showToast } from '../toast.js';
+import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 
 let cache = null;
 let loading = false;
@@ -122,15 +123,18 @@ export function renderAnalytics(container, ctx) {
     <h1 class="view-title">🕒 Spielzeit-Auswertungen</h1>
     <div class="card stack">
       <select id="an-event">${renderEventOptions()}</select>
-      <div class="row">
-        <input type="datetime-local" id="an-from" value="${toDatetimeLocal(displayRange.from)}" style="flex:1;" />
-        <input type="datetime-local" id="an-to" value="${toDatetimeLocal(displayRange.to)}" style="flex:1;" />
+      <div class="field-row">
+        <div>${dateTimeFieldHtml('an-from', displayRange.from, { clearable: true })}</div>
+        <div>${dateTimeFieldHtml('an-to', displayRange.to, { clearable: true })}</div>
       </div>
       <button type="button" class="btn btn-primary btn-block" id="an-apply">Zeitraum zusätzlich eingrenzen</button>
       <div class="muted" style="font-size:0.75rem;">Event wählen zeigt genau dessen Daten. Die Felder darüber grenzen innerhalb des Events optional weiter ein (z.B. nur Samstagnacht).</div>
     </div>
     <div id="an-content">${loading || !cache ? `<div class="empty-state">Lädt…</div>` : renderContent()}</div>
   `;
+
+  wireDateTimeField(container, 'an-from');
+  wireDateTimeField(container, 'an-to');
 
   container.querySelector('#an-event').addEventListener('change', (e) => {
     filters.eventId = e.target.value; // '' selects "Gesamt (alle Events)"

@@ -172,10 +172,16 @@ test('points mode: start, cast, and close a round', async () => {
   const wrongMode = await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameCs2 });
   assert.equal(wrongMode.status, 409);
 
-  const tooMany = await request(app)
+  // No cap on how many games a player can rate - every seeded game at once is fine.
+  const allGames = await request(app).get('/api/games');
+  const noCap = await request(app)
     .post('/api/votes/points')
-    .send({ playerId: playerA, entries: Array.from({ length: 6 }, () => ({ gameId: gameCs2, points: 1 })) });
-  assert.equal(tooMany.status, 400);
+    .send({
+      playerId: playerA,
+      entries: allGames.body.map((g: { id: string }) => ({ gameId: g.id, points: 1 })),
+    });
+  assert.equal(noCap.status, 200);
+  assert.equal(noCap.body.results.filter((r: { points: number }) => r.points > 0).length, allGames.body.length);
 
   const duplicateGame = await request(app)
     .post('/api/votes/points')
@@ -245,6 +251,25 @@ test('points mode: start, cast, and close a round', async () => {
   const entry = history.body.history.find((h: { round: number }) => h.round === closed.body.round);
   assert.ok(entry);
   assert.equal(entry.mode, 'points');
+});
+
+test('points mode: submitting an empty entries array clears a player\'s previous points', async () => {
+  await request(app).post('/api/votes/start').send({ mode: 'points' });
+  await request(app)
+    .post('/api/votes/points')
+    .send({ playerId: playerA, entries: [{ gameId: gameCs2, points: 7 }] });
+
+  const cleared = await request(app).post('/api/votes/points').send({ playerId: playerA, entries: [] });
+  assert.equal(cleared.status, 200);
+
+  const mine = await request(app).get(`/api/votes/mine?playerId=${playerA}`);
+  assert.deepEqual(mine.body.entries, []);
+
+  const res = await request(app).get('/api/votes');
+  const cs2Result = res.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
+  assert.equal(cs2Result.points, 0);
+
+  await request(app).post('/api/votes/cancel');
 });
 
 test('points endpoint is rejected while a round is in single mode', async () => {

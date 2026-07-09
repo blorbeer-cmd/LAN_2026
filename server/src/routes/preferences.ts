@@ -62,18 +62,20 @@ preferencesRouter.put('/', (req, res) => {
      ON CONFLICT(player_id, game_id) DO UPDATE SET rating = excluded.rating`
   ).run(playerId, gameId, rating);
 
-  broadcast(Events.preferencesChanged, null);
+  // Carries the changed row directly (rather than just a "something changed"
+  // null, like skills.ts does) so the frontend can patch its local state and
+  // re-sort the voting view instantly instead of waiting on a full reload.
+  broadcast(Events.preferencesChanged, { playerId, gameId, rating });
   res.json({ playerId, gameId, rating });
 });
 
 // DELETE /api/preferences/:playerId/:gameId - clear a rating.
 preferencesRouter.delete('/:playerId/:gameId', (req, res) => {
-  const result = db
-    .prepare('DELETE FROM preferences WHERE player_id = ? AND game_id = ?')
-    .run(req.params.playerId, req.params.gameId);
+  const { playerId, gameId } = req.params;
+  const result = db.prepare('DELETE FROM preferences WHERE player_id = ? AND game_id = ?').run(playerId, gameId);
   if (result.changes === 0) {
     return res.status(404).json({ error: 'Rating nicht gefunden.' });
   }
-  broadcast(Events.preferencesChanged, null);
+  broadcast(Events.preferencesChanged, { playerId, gameId, rating: null });
   res.status(204).end();
 });
