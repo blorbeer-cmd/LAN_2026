@@ -1,43 +1,83 @@
+// "Spiele" view: the one place for everything about a game — suggest it, see
+// who's how much "Bock" hat and how skilled the group rates itself, and (via
+// the "Verwaltung" section in the detail modal) the admin-side setup that
+// used to live in a separate Einstellungen page (process names, team size).
+// Bock/Skill are edited right in the row, same slider component profile.js
+// used to own — so "was ist mein Bock/Skill, was ist der Schnitt" is visible
+// without a detour through the profile. See server/CLAUDE.md games reorg.
+
 import { api } from '../api.js';
-import { escapeHtml } from '../format.js';
+import { state } from '../state.js';
+import { escapeHtml, gameBadgeHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
+import { resizeImageFile } from '../imageUtils.js';
+import { suggestProcessNames } from '../gameProcessSuggestions.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 
-let cache = null;
-let loading = false;
-let activeTab = 'catalog';
-let sortKey = 'title';
-let sortDir = 'asc';
+let activeTab = 'catalog'; // 'catalog' | 'suggestions'
+let sortKey = 'avgBock';
+let sortDir = 'desc';
 
-export function invalidateGameCatalog() {
-  cache = null;
+// No dedicated fetch/cache here on purpose for games/skills/preferences:
+// they're all already part of the app-wide loadAll() round trip (see
+// data.js) and kept fresh via the existing games:changed/skills:changed/
+// preferences:changed socket handlers in app.js — this view just reads
+// straight from `state`. Skill suggestions (derived from match results,
+// see skillSuggestion.ts) are their own read-only fetch since they aren't
+// part of loadAll() — cheap to recompute, but no realtime push exists for
+// them, so a stale suggestion just self-corrects next time this view opens.
+let suggestionsCache = null;
+let suggestionsLoading = false;
+
+// Called from app.js whenever a leaderboard:changed event reports a match
+// result was recorded/edited/deleted — the suggestion is derived from match
+// history, so a stale cache would keep showing yesterday's numbers.
+export function invalidateSkillSuggestions() {
+  suggestionsCache = null;
 }
 
-async function load(ctx) {
-  if (loading) return;
-  loading = true;
+async function loadSuggestions(ctx) {
+  suggestionsLoading = true;
   try {
-    cache = await api.gameCatalog.list();
-  } catch (err) {
-    showToast(err.message, { error: true });
-    cache = { items: [] };
+    const res = await api.skills.suggestions();
+    suggestionsCache = res.suggestions;
+  } catch {
+    suggestionsCache = [];
   } finally {
-    loading = false;
+    suggestionsLoading = false;
     ctx.rerender();
   }
 }
 
-function sortValue(item, key) {
-  if (key === 'rating') return item.ratingAverage ?? 0;
-  if (key === 'platform') return item.platform ?? '';
-  return item.title ?? '';
+function suggestionFor(gameId, playerId) {
+  if (!playerId) return null;
+  return (suggestionsCache || []).find((s) => s.gameId === gameId && s.playerId === playerId) ?? null;
 }
 
-function sortedItems(items) {
-  return [...items].sort((a, b) => {
-    const av = sortValue(a, sortKey);
-    const bv = sortValue(b, sortKey);
+function ratingStats(rows, gameId) {
+  const matching = rows.filter((r) => r.game_id === gameId);
+  if (matching.length === 0) return { avg: null, count: 0 };
+  const avg = matching.reduce((sum, r) => sum + r.rating, 0) / matching.length;
+  return { avg, count: matching.length };
+}
+
+function myRating(rows, playerId, gameId) {
+  const entry = rows.find((r) => r.player_id === playerId && r.game_id === gameId);
+  return entry ? entry.rating : null;
+}
+
+function sortValue(game, key, myId) {
+  if (key === 'avgBock') return ratingStats(state.preferences, game.id).avg ?? -1;
+  if (key === 'avgSkill') return ratingStats(state.skills, game.id).avg ?? -1;
+  if (key === 'myBock') return myRating(state.preferences, myId, game.id) ?? -1;
+  return game.name;
+}
+
+function sortedGames(games, myId) {
+  return [...games].sort((a, b) => {
+    const av = sortValue(a, sortKey, myId);
+    const bv = sortValue(b, sortKey, myId);
     const diff = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv), 'de');
     return sortDir === 'asc' ? diff : -diff;
   });
@@ -48,124 +88,357 @@ function sortButton(key, label) {
   return `<button type="button" class="btn btn-sm catalog-sort-btn" data-sort="${key}">${label}${mark}</button>`;
 }
 
-function linkButton(url, label) {
-  if (!url) return `<span class="muted">-</span>`;
-  return `<a class="catalog-text-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">${label}</a>`;
+function statusBadgeHtml(game) {
+  if (game.isSuggestion) return `<span class="badge badge-paused">💡 Vorschlag</span>`;
+  if (game.processNames.length > 0) return `<span class="badge badge-playing">🟢 getrackt</span>`;
+  return `<span class="badge badge-offline">📚 Katalog</span>`;
 }
 
-function platformHtml(item) {
-  return item.platformUrl ? linkButton(item.platformUrl, item.platform || 'Plattform') : `<span>${escapeHtml(item.platform || '-')}</span>`;
-}
-
-function trailerHtml(item) {
-  return item.trailerUrl ? linkButton(item.trailerUrl, 'YouTube') : `<span class="muted">offen</span>`;
-}
-
-function ratingHtml(item) {
-  const avg = item.ratingAverage === null ? '-' : item.ratingAverage.toFixed(1);
+// The 🧠 suggestion chip: only rendered once there's actually a suggestion
+// for this player+game (see suggestionFor/loadSuggestions above). Highlighted
+// when it diverges from the player's own self-rating by 2+ points — a gentle
+// nudge to reconsider, not a claim that the derived number is "more right".
+function suggestionChipHtml(gameId, suggestion, mine) {
+  if (!suggestion) return '';
+  const diverges = mine !== null && Math.abs(suggestion.rating - mine) >= 2;
+  const winRatePercent = suggestion.gamesPlayed > 0 ? Math.round((suggestion.wins / suggestion.gamesPlayed) * 100) : 0;
   return `
-    <div class="catalog-rating-line">
-      ${ratingButtons(item)}
-      <span class="muted catalog-rating-meta">Ø ${avg} · ${item.ratingCount}</span>
+    <button
+      type="button"
+      class="chip chip-suggestion ${diverges ? 'chip-suggestion-diverges' : ''}"
+      data-apply-suggestion="${gameId}"
+      data-suggested-rating="${suggestion.rating}"
+      title="Aus ${suggestion.matchCount} Ergebnissen (${winRatePercent}% Siege) – antippen zum Übernehmen"
+    >🧠 ${suggestion.rating}</button>`;
+}
+
+function ratingRowHtml({ label, accentClass, mine, avg, count, gameId, kind, disabled, suggestionHtml }) {
+  const avgText = avg === null ? '– noch keine Wertung' : `Ø ${avg.toFixed(1)} (${count})`;
+  const sliderValue = mine ?? 5;
+  return `
+    <div class="skill-row" data-game="${gameId}" data-kind="${kind}">
+      <span class="row" style="gap:6px;flex-wrap:wrap;">
+        ${label} <span class="muted game-avg-note">${avgText}</span> ${suggestionHtml || ''}
+      </span>
+      <span class="skill-value">${mine ?? '–'}</span>
+      <input type="range" class="skill-row-slider ${accentClass}" min="1" max="10" step="1" value="${sliderValue}" ${disabled ? 'disabled' : ''} />
     </div>`;
 }
 
-function catalogRows() {
-  const rows = sortedItems((cache?.items ?? []).filter((item) => !item.isSuggestion));
-  if (rows.length === 0) return `<tr><td colspan="5" class="muted">Keine Spiele im Katalog.</td></tr>`;
-  return rows
-    .map((item) => {
-      return `
-        <tr>
-          <td class="catalog-title-cell"><strong>${escapeHtml(item.title)}</strong></td>
-          <td>${platformHtml(item)}</td>
-          <td>${trailerHtml(item)}</td>
-          <td class="catalog-rating-cell">${ratingHtml(item)}</td>
-          <td class="catalog-actions">
-            <button type="button" class="btn btn-sm" data-edit="${item.id}">Bearbeiten</button>
-          </td>
-        </tr>`;
-    })
-    .join('');
+function gameCardHtml(game, myId) {
+  const bockStats = ratingStats(state.preferences, game.id);
+  const skillStats = ratingStats(state.skills, game.id);
+  const myBock = myId ? myRating(state.preferences, myId, game.id) : null;
+  const mySkill = myId ? myRating(state.skills, myId, game.id) : null;
+  const meta = [game.platform, game.min_team_size && game.max_team_size ? `Team: ${game.min_team_size}-${game.max_team_size}` : null]
+    .filter(Boolean)
+    .join(' · ');
+
+  return `
+    <div class="card stack game-card" style="gap:10px;">
+      <div class="row" style="align-items:center;gap:10px;">
+        ${gameBadgeHtml(game, 40)}
+        <span style="flex:1;min-width:0;">
+          <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;">
+            <strong>${escapeHtml(game.name)}</strong>
+            ${statusBadgeHtml(game)}
+          </div>
+          ${meta ? `<div class="muted" style="font-size:0.78rem;">${escapeHtml(meta)}</div>` : ''}
+        </span>
+        <button type="button" class="btn btn-sm" data-detail="${game.id}">Details</button>
+      </div>
+
+      ${ratingRowHtml({
+        label: '🔥 Bock',
+        accentClass: 'preference-row-slider',
+        mine: myBock,
+        avg: bockStats.avg,
+        count: bockStats.count,
+        gameId: game.id,
+        kind: 'bock',
+        disabled: !myId,
+      })}
+      ${
+        game.isSuggestion
+          ? ''
+          : ratingRowHtml({
+              label: '💪 Skill',
+              accentClass: '',
+              mine: mySkill,
+              avg: skillStats.avg,
+              count: skillStats.count,
+              gameId: game.id,
+              kind: 'skill',
+              disabled: !myId,
+              suggestionHtml: suggestionChipHtml(game.id, suggestionFor(game.id, myId), mySkill),
+            })
+      }
+
+      ${
+        game.isSuggestion
+          ? `<div class="row" style="gap:8px;flex-wrap:wrap;">
+               <button type="button" class="btn btn-sm btn-primary" data-promote="${game.id}">In Katalog übernehmen</button>
+               <button type="button" class="btn btn-sm btn-danger" data-delete="${game.id}">Löschen</button>
+             </div>`
+          : ''
+      }
+    </div>`;
 }
 
-function ratingButtons(item) {
+function openSuggestForm(ctx) {
   const myId = getMyId();
-  const mine = item.ratings.find((r) => r.id === myId)?.rating ?? 0;
-  return `
-    <div class="catalog-rating-bar" aria-label="Bock von 1 bis 5">
-      ${[1, 2, 3, 4, 5]
-        .map(
-          (rating) =>
-            `<button type="button" class="${mine >= rating ? 'is-active' : ''}" data-rate="${item.id}" data-rating="${rating}" data-level="${rating}" title="Bock ${rating}/5">${rating}</button>`
-        )
-        .join('')}
-    </div>`;
-}
+  if (!myId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
 
-function suggestionRows() {
-  const rows = sortedItems((cache?.items ?? []).filter((item) => item.isSuggestion));
-  if (rows.length === 0) return `<tr><td colspan="5" class="muted">Noch keine vorgeschlagenen Spiele.</td></tr>`;
-  return rows
-    .map((item) => {
-      return `
-        <tr>
-          <td class="catalog-title-cell">
-            <strong>${escapeHtml(item.title)}</strong>
-          </td>
-          <td>${platformHtml(item)}</td>
-          <td>${trailerHtml(item)}</td>
-          <td class="catalog-rating-cell">${ratingHtml(item)}</td>
-          <td class="catalog-actions">
-            <button type="button" class="btn btn-sm btn-primary" data-promote="${item.id}">In Katalog</button>
-            <button type="button" class="btn btn-sm" data-edit="${item.id}">Bearbeiten</button>
-            <button type="button" class="btn btn-sm btn-danger" data-delete="${item.id}">Löschen</button>
-          </td>
-        </tr>`;
-    })
-    .join('');
-}
-
-function openCatalogForm(ctx, item = null) {
   const { close } = openModal(
-    item ? 'Spiel bearbeiten' : 'Spiel vorschlagen',
+    'Spiel vorschlagen',
     `
-      <form id="catalog-form" class="stack">
+      <form id="suggest-form" class="stack">
         <div>
-          <label class="field-label" for="catalog-title">Titel</label>
-          <input type="text" id="catalog-title" maxlength="80" required value="${escapeHtml(item?.title ?? '')}" />
+          <label class="field-label" for="suggest-title">Titel</label>
+          <input type="text" id="suggest-title" maxlength="60" required autofocus />
         </div>
         <div>
-          <label class="field-label" for="catalog-platform">Plattform</label>
-          <input type="text" id="catalog-platform" maxlength="80" value="${escapeHtml(item?.platform ?? '')}" placeholder="Steam, Epic, Battle.net…" />
+          <label class="field-label" for="suggest-platform">Plattform</label>
+          <input type="text" id="suggest-platform" maxlength="80" placeholder="Steam, Epic, Battle.net…" />
         </div>
         <div>
-          <label class="field-label" for="catalog-platform-url">Plattform-Link</label>
-          <input type="url" id="catalog-platform-url" maxlength="500" value="${escapeHtml(item?.platformUrl ?? '')}" placeholder="https://…" />
+          <label class="field-label" for="suggest-trailer">Gameplay-Trailer</label>
+          <input type="url" id="suggest-trailer" maxlength="500" placeholder="https://…" />
         </div>
-        <div>
-          <label class="field-label" for="catalog-trailer">Gameplay-Trailer</label>
-          <input type="url" id="catalog-trailer" maxlength="500" value="${escapeHtml(item?.trailerUrl ?? '')}" placeholder="https://…" />
-        </div>
-        <button type="submit" class="btn btn-primary btn-block">${item ? 'Speichern' : 'Vorschlagen'}</button>
+        <button type="submit" class="btn btn-primary btn-block">Vorschlagen</button>
       </form>
     `,
     {
-      onMount: (modalEl) => {
-        modalEl.querySelector('#catalog-form').addEventListener('submit', async (e) => {
+      onMount: (el) => {
+        el.querySelector('#suggest-form').addEventListener('submit', async (e) => {
           e.preventDefault();
-          const payload = {
-            title: modalEl.querySelector('#catalog-title').value.trim(),
-            platform: modalEl.querySelector('#catalog-platform').value.trim() || null,
-            platformUrl: modalEl.querySelector('#catalog-platform-url').value.trim() || null,
-            trailerUrl: modalEl.querySelector('#catalog-trailer').value.trim() || null,
-          };
-          if (!item) payload.playerId = getMyId() || null;
+          const name = el.querySelector('#suggest-title').value.trim();
+          if (!name) return;
           try {
-            cache = item ? await api.gameCatalog.update(item.id, payload) : await api.gameCatalog.create(payload);
+            await api.games.create({
+              name,
+              status: 'suggestion',
+              platform: el.querySelector('#suggest-platform').value.trim() || null,
+              trailerUrl: el.querySelector('#suggest-trailer').value.trim() || null,
+              playerId: myId,
+            });
             close();
+            await ctx.refresh();
+            activeTab = 'suggestions';
             ctx.rerender();
-            showToast(item ? 'Spiel aktualisiert.' : 'Vorschlag eingetragen.');
+            showToast('Vorschlag eingetragen.');
+          } catch (err) {
+            showToast(err.message, { error: true });
+          }
+        });
+      },
+    }
+  );
+}
+
+function openGameDetail(gameId, ctx) {
+  const game = state.games.find((g) => g.id === gameId);
+  if (!game) return;
+
+  const processChips = game.processNames
+    .map(
+      (pn) => `
+      <span class="chip">${escapeHtml(pn)} <button type="button" class="icon-btn" data-remove-proc="${escapeHtml(pn)}" aria-label="Entfernen" style="font-size:0.8rem;padding:0 2px;">✕</button></span>`
+    )
+    .join('');
+  const suggestedProcessNames = game.processNames.length === 0 ? suggestProcessNames(game.name) : [];
+
+  const { close } = openModal(
+    escapeHtml(game.name),
+    `
+      <div class="stack">
+        <div class="row" style="align-items:center;">
+          <label for="edit-icon-image-input" style="cursor:pointer;" title="Eigenes Icon/Logo hochladen">
+            ${gameBadgeHtml(game, 56)}
+          </label>
+          <input type="file" id="edit-icon-image-input" accept="image/*" hidden />
+          <input type="text" id="edit-icon" value="${escapeHtml(game.icon)}" maxlength="8" style="width:56px;" title="Emoji-Icon (Fallback ohne eigenes Bild)" />
+          <input type="text" id="edit-name" value="${escapeHtml(game.name)}" maxlength="60" style="flex:1;" />
+        </div>
+        ${
+          game.icon_image
+            ? `<button type="button" class="btn btn-sm" id="edit-icon-image-remove" style="align-self:flex-start;">🗑️ Eigenes Icon entfernen</button>`
+            : `<p class="muted" style="font-size:0.78rem;margin-top:-4px;">Tipp: Badge antippen, um ein eigenes Icon/Logo hochzuladen.</p>`
+        }
+        <div>
+          <label class="field-label" for="edit-platform">Plattform</label>
+          <input type="text" id="edit-platform" maxlength="80" value="${escapeHtml(game.platform ?? '')}" placeholder="Steam, Epic, Battle.net…" />
+        </div>
+        <div>
+          <label class="field-label" for="edit-platform-url">Plattform-Link</label>
+          <input type="url" id="edit-platform-url" maxlength="500" value="${escapeHtml(game.platform_url ?? '')}" placeholder="https://…" />
+        </div>
+        <div>
+          <label class="field-label" for="edit-trailer">Gameplay-Trailer</label>
+          <input type="url" id="edit-trailer" maxlength="500" value="${escapeHtml(game.trailer_url ?? '')}" placeholder="https://…" />
+        </div>
+        <div class="row" style="align-items:flex-start;">
+          <div style="flex:1;">
+            <label for="edit-min" class="field-label">Min. Teamgröße</label>
+            <input type="number" id="edit-min" min="1" max="20" value="${game.min_team_size}" />
+          </div>
+          <div style="flex:1;">
+            <label for="edit-max" class="field-label">Max. Teamgröße</label>
+            <input type="number" id="edit-max" min="1" max="20" value="${game.max_team_size}" />
+          </div>
+        </div>
+        <p class="muted" style="font-size:0.78rem;margin-top:-6px;">
+          Team-Größe wird beim „Teams auslosen" verwendet – z. B. 1-1 für 1-gegen-1, 1-5 für Squads.
+        </p>
+        <button type="button" class="btn btn-primary" id="edit-save">Speichern</button>
+
+        ${
+          game.isSuggestion
+            ? `<button type="button" class="btn btn-primary btn-block" id="edit-promote">In Katalog übernehmen</button>`
+            : ''
+        }
+
+        <div class="section-title">Prozessnamen (für den Agent)</div>
+        <p class="muted" style="font-size:0.78rem;margin-top:-6px;">
+          Sobald mindestens ein Prozessname hinterlegt ist, gilt das Spiel als „getrackt" – der Agent
+          erkennt es dann automatisch im Live-Status.
+        </p>
+        <div class="chip-list">${processChips || '<span class="muted">Noch keine.</span>'}</div>
+        ${
+          suggestedProcessNames.length
+            ? `<button type="button" class="btn btn-sm" id="use-suggested-process" style="align-self:flex-start;">💡 Vorschlag übernehmen: ${escapeHtml(suggestedProcessNames.join(', '))}</button>`
+            : ''
+        }
+        <div class="row">
+          <input type="text" id="new-process" placeholder="z.B. cs2.exe" style="flex:1;" />
+          <button type="button" class="btn btn-sm" id="add-process">+</button>
+        </div>
+
+        <button type="button" class="btn btn-danger btn-block" id="edit-delete">Spiel löschen</button>
+      </div>
+    `,
+    {
+      onMount: (el) => {
+        el.querySelector('#edit-icon-image-input').addEventListener('change', async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          try {
+            const iconImage = await resizeImageFile(file, 128);
+            await api.games.update(gameId, { iconImage });
+            close();
+            await ctx.refresh();
+            showToast('Icon aktualisiert.');
+            openGameDetail(gameId, ctx);
+          } catch (err) {
+            showToast(err.message, { error: true });
+          }
+        });
+
+        const removeIconBtn = el.querySelector('#edit-icon-image-remove');
+        if (removeIconBtn) {
+          removeIconBtn.addEventListener('click', async () => {
+            try {
+              await api.games.update(gameId, { iconImage: null });
+              close();
+              await ctx.refresh();
+              showToast('Eigenes Icon entfernt.');
+              openGameDetail(gameId, ctx);
+            } catch (err) {
+              showToast(err.message, { error: true });
+            }
+          });
+        }
+
+        el.querySelector('#edit-save').addEventListener('click', async () => {
+          const name = el.querySelector('#edit-name').value.trim();
+          const icon = el.querySelector('#edit-icon').value.trim() || '🎮';
+          const minTeamSize = parseInt(el.querySelector('#edit-min').value, 10);
+          const maxTeamSize = parseInt(el.querySelector('#edit-max').value, 10);
+          const platform = el.querySelector('#edit-platform').value.trim();
+          const platformUrl = el.querySelector('#edit-platform-url').value.trim();
+          const trailerUrl = el.querySelector('#edit-trailer').value.trim();
+          try {
+            await api.games.update(gameId, {
+              name,
+              icon,
+              minTeamSize,
+              maxTeamSize,
+              platform: platform || null,
+              platformUrl: platformUrl || null,
+              trailerUrl: trailerUrl || null,
+            });
+            close();
+            await ctx.refresh();
+            showToast('Gespeichert.');
+          } catch (err) {
+            showToast(err.message, { error: true });
+          }
+        });
+
+        el.querySelector('#edit-promote')?.addEventListener('click', async () => {
+          try {
+            await api.games.promote(gameId);
+            close();
+            await ctx.refresh();
+            activeTab = 'catalog';
+            ctx.rerender();
+            showToast('Spiel in den Katalog übernommen.');
+          } catch (err) {
+            showToast(err.message, { error: true });
+          }
+        });
+
+        el.querySelector('#add-process').addEventListener('click', async () => {
+          const input = el.querySelector('#new-process');
+          const value = input.value.trim();
+          if (!value) return;
+          try {
+            await api.games.addProcess(gameId, value);
+            input.value = '';
+            close();
+            await ctx.refresh();
+            openGameDetail(gameId, ctx);
+          } catch (err) {
+            showToast(err.message, { error: true });
+          }
+        });
+
+        const suggestBtn = el.querySelector('#use-suggested-process');
+        if (suggestBtn) {
+          suggestBtn.addEventListener('click', async () => {
+            try {
+              for (const processName of suggestedProcessNames) {
+                await api.games.addProcess(gameId, processName);
+              }
+              close();
+              await ctx.refresh();
+              openGameDetail(gameId, ctx);
+            } catch (err) {
+              showToast(err.message, { error: true });
+            }
+          });
+        }
+
+        el.querySelectorAll('[data-remove-proc]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            try {
+              await api.games.removeProcess(gameId, btn.dataset.removeProc);
+              close();
+              await ctx.refresh();
+              openGameDetail(gameId, ctx);
+            } catch (err) {
+              showToast(err.message, { error: true });
+            }
+          });
+        });
+
+        el.querySelector('#edit-delete').addEventListener('click', async () => {
+          if (!confirm(`${game.name} wirklich löschen? Skill-/Bock-Wertungen und Ergebnisse dazu gehen verloren.`)) return;
+          try {
+            await api.games.remove(gameId);
+            close();
+            await ctx.refresh();
+            showToast('Spiel gelöscht.');
           } catch (err) {
             showToast(err.message, { error: true });
           }
@@ -176,38 +449,33 @@ function openCatalogForm(ctx, item = null) {
 }
 
 export function renderGameCatalog(container, ctx) {
-  if (!cache && !loading) load(ctx);
+  if (suggestionsCache === null && !suggestionsLoading) loadSuggestions(ctx);
+
+  const myId = getMyId();
+  const games = state.games.filter((g) => (activeTab === 'suggestions' ? g.isSuggestion : !g.isSuggestion));
+  const rows = sortedGames(games, myId);
 
   container.innerHTML = `
-    <h1 class="view-title">Spiele-Liste</h1>
+    <h1 class="view-title">🎮 Spiele</h1>
     ${whoAmICardHtml('whoami')}
     <div class="row-between" style="margin-top:12px;gap:10px;align-items:center;">
       <div class="tabs" style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button type="button" class="btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}" data-tab="catalog">Katalog</button>
+        <button type="button" class="btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}" data-tab="catalog">Alle</button>
         <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
       </div>
-      <div class="row" style="gap:8px;flex-wrap:wrap;justify-content:flex-end;">
-        <button type="button" class="btn btn-primary btn-sm" id="catalog-new">+ Vorschlag</button>
-      </div>
+      <button type="button" class="btn btn-primary btn-sm" id="suggest-new">+ Spiel vorschlagen</button>
     </div>
-    <div class="card stack catalog-card" style="margin-top:12px;gap:10px;">
-      <div class="row" style="gap:8px;flex-wrap:wrap;">
-        ${sortButton('title', 'Name')}
-        ${sortButton('rating', 'Bock')}
-        ${sortButton('platform', 'Plattform')}
-      </div>
+    <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px;">
+      ${sortButton('avgBock', 'Ø Bock')}
+      ${sortButton('name', 'Name')}
+      ${sortButton('myBock', 'Mein Bock')}
+      ${activeTab === 'catalog' ? sortButton('avgSkill', 'Ø Skill') : ''}
+    </div>
+    <div class="card-grid" style="margin-top:12px;">
       ${
-        loading && !cache
-          ? `<div class="empty-state">Lädt…</div>`
-          : `
-            <div class="catalog-table-wrap">
-              <table class="catalog-table" style="min-width:${activeTab === 'catalog' ? '820px' : '940px'};">
-                <thead>
-                  <tr><th>Name</th><th>Plattform</th><th>YouTube</th><th>Bock</th><th></th></tr>
-                </thead>
-                <tbody>${activeTab === 'catalog' ? catalogRows() : suggestionRows()}</tbody>
-              </table>
-            </div>`
+        rows.length === 0
+          ? `<div class="empty-state"><span class="emoji">🎮</span>${activeTab === 'suggestions' ? 'Noch keine vorgeschlagenen Spiele.' : 'Noch keine Spiele im Katalog.'}</div>`
+          : rows.map((g) => gameCardHtml(g, myId)).join('')
       }
     </div>
   `;
@@ -217,8 +485,6 @@ export function renderGameCatalog(container, ctx) {
   container.querySelectorAll('[data-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {
       activeTab = btn.dataset.tab;
-      sortKey = activeTab === 'catalog' ? 'title' : 'rating';
-      sortDir = activeTab === 'catalog' ? 'asc' : 'desc';
       ctx.rerender();
     });
   });
@@ -229,42 +495,68 @@ export function renderGameCatalog(container, ctx) {
         sortDir = sortDir === 'asc' ? 'desc' : 'asc';
       } else {
         sortKey = btn.dataset.sort;
-        sortDir = sortKey === 'rating' ? 'desc' : 'asc';
+        sortDir = sortKey === 'name' ? 'asc' : 'desc';
       }
       ctx.rerender();
     });
   });
 
-  container.querySelector('#catalog-new')?.addEventListener('click', () => openCatalogForm(ctx));
+  container.querySelector('#suggest-new').addEventListener('click', () => openSuggestForm(ctx));
 
-  container.querySelectorAll('[data-rate]').forEach((btn) => {
+  container.querySelectorAll('[data-detail]').forEach((btn) => {
+    btn.addEventListener('click', () => openGameDetail(btn.dataset.detail, ctx));
+  });
+
+  container.querySelectorAll('.skill-row').forEach((row) => {
+    const gameId = row.dataset.game;
+    const kind = row.dataset.kind;
+    const slider = row.querySelector('input[type="range"]');
+    const valueEl = row.querySelector('.skill-value');
+    let debounceTimer = null;
+    slider.addEventListener('input', () => {
+      valueEl.textContent = slider.value;
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(async () => {
+        try {
+          if (kind === 'bock') {
+            // No ctx.refresh(): the 'preferences:changed' broadcast this
+            // triggers (see app.js) already patches state for every
+            // connected client, including this one.
+            await api.preferences.set(myId, gameId, parseInt(slider.value, 10));
+          } else {
+            await api.skills.set(myId, gameId, parseInt(slider.value, 10));
+            await ctx.refresh();
+          }
+        } catch (err) {
+          showToast(err.message, { error: true });
+        }
+      }, 250);
+    });
+  });
+
+  container.querySelectorAll('[data-promote]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const playerId = getMyId();
-      if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+      const game = state.games.find((g) => g.id === btn.dataset.promote);
+      if (!game || !confirm(`"${game.name}" in den Katalog übernehmen?`)) return;
       try {
-        cache = await api.gameCatalog.rate(btn.dataset.rate, playerId, Number(btn.dataset.rating));
+        await api.games.promote(game.id);
+        await ctx.refresh();
+        activeTab = 'catalog';
         ctx.rerender();
+        showToast('Spiel in den Katalog übernommen.');
       } catch (err) {
         showToast(err.message, { error: true });
       }
     });
   });
 
-  container.querySelectorAll('[data-edit]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const item = cache.items.find((i) => i.id === btn.dataset.edit);
-      if (item) openCatalogForm(ctx, item);
-    });
-  });
-
   container.querySelectorAll('[data-delete]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const item = cache.items.find((i) => i.id === btn.dataset.delete);
-      if (!item || !confirm(`"${item.title}" wirklich löschen?`)) return;
+      const game = state.games.find((g) => g.id === btn.dataset.delete);
+      if (!game || !confirm(`"${game.name}" wirklich löschen?`)) return;
       try {
-        await api.gameCatalog.remove(item.id);
-        cache = await api.gameCatalog.list();
-        ctx.rerender();
+        await api.games.remove(game.id);
+        await ctx.refresh();
         showToast('Spiel gelöscht.');
       } catch (err) {
         showToast(err.message, { error: true });
@@ -272,17 +564,14 @@ export function renderGameCatalog(container, ctx) {
     });
   });
 
-  container.querySelectorAll('[data-promote]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const item = cache.items.find((i) => i.id === btn.dataset.promote);
-      if (!item || !confirm(`"${item.title}" in den normalen Katalog übernehmen?`)) return;
+  container.querySelectorAll('[data-apply-suggestion]').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!myId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
       try {
-        cache = await api.gameCatalog.promote(item.id);
-        activeTab = 'catalog';
-        sortKey = 'title';
-        sortDir = 'asc';
-        ctx.rerender();
-        showToast('Spiel in den Katalog übernommen.');
+        await api.skills.set(myId, btn.dataset.applySuggestion, parseInt(btn.dataset.suggestedRating, 10));
+        await ctx.refresh();
+        showToast('Skill-Vorschlag übernommen.');
       } catch (err) {
         showToast(err.message, { error: true });
       }

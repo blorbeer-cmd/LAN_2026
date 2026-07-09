@@ -69,9 +69,11 @@ test('fresh device lands on self-onboarding and creates its profile there', asyn
   await page.click('#profile-new-form button[type="submit"]');
 
   // Creating the profile switches into the full profile editor for the new
-  // identity (name field prefilled, skill sliders section, agent download).
+  // identity (name field prefilled, agent download, an onboarding nudge
+  // toward the Spiele view since nothing's rated yet).
   await page.waitForSelector('#profile-name');
   assert.equal(await page.inputValue('#profile-name'), 'E2E Alice');
+  await page.waitForSelector('text=Bock & Skill eintragen');
 });
 
 test('full click-through: players, matchmaking, voting, leaderboard, live pause', async () => {
@@ -176,6 +178,11 @@ test('Auswertungen (via Mehr) shows a real award and a visible, auto-scrolled co
     },
     { timeout: 5000 }
   );
+
+  // The "Matches & Turniere" tab (merged in from the old separate Spiele &
+  // Turniere view) shares this same event filter and renders alongside it.
+  await page.click('[data-an-tab="matches"]');
+  await page.waitForSelector('text=Ergebnisse pro Spiel');
 });
 
 test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statistiken reachable', async () => {
@@ -201,9 +208,10 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
     return el?.value === 'E2E Alice Pro';
   });
 
-  // Self-service skill rating renders, and the personal stats dashboard is
-  // one tap away (it moved to its own view, myStats).
-  assert.ok((await page.locator('.skill-row').count()) > 0);
+  // Bock/Skill-Ratings live in the Spiele view now, reachable from here via
+  // the onboarding nudge; the personal stats dashboard is one tap away too
+  // (it moved to its own view, myStats).
+  await page.waitForSelector('text=Bock & Skill eintragen');
   await page.click('[data-navigate="myStats"]');
   await page.waitForSelector('text=Meine Statistiken');
   await page.waitForSelector('#my-stats-event');
@@ -217,21 +225,71 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
   await page.selectOption('#profile-whoami', { label: 'E2E Alice Pro' });
 });
 
-test('Spiele verwalten: create a game, and a duplicate name is rejected with a clear error', async () => {
-  await page.click('#settings-btn');
-  await page.click('#add-game-btn');
-  await page.fill('#new-game-name', 'E2E Partyspiel');
-  await page.click('#add-game-form button[type="submit"]');
+test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bock/Skill inline', async () => {
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="gameCatalog"]');
+  await page.waitForSelector('#suggest-new');
+
+  await page.click('#suggest-new');
+  await page.fill('#suggest-title', 'E2E Partyspiel');
+  await page.click('#suggest-form button[type="submit"]');
   await page.waitForSelector('text=E2E Partyspiel');
+  await page.waitForSelector('button[data-tab="suggestions"].btn-primary');
 
   // Same name again (different case): server must refuse — otherwise votes,
   // skills and results would silently split across two identical entries.
-  await page.click('#add-game-btn');
-  await page.fill('#new-game-name', 'e2e partyspiel');
-  await page.click('#add-game-form button[type="submit"]');
+  await page.click('#suggest-new');
+  await page.fill('#suggest-title', 'e2e partyspiel');
+  await page.click('#suggest-form button[type="submit"]');
   await page.waitForSelector('.toast-error');
   await page.waitForSelector('text=gibt es schon');
   await page.click('[data-close]');
+
+  // Promote the suggestion into the catalog, then rate it right in the row —
+  // no detour through a separate profile page needed.
+  await page.click('[data-promote]');
+  await page.waitForSelector('button[data-tab="catalog"].btn-primary');
+  const partyspielCard = page.locator('.game-card', { hasText: 'E2E Partyspiel' });
+  await partyspielCard.waitFor();
+  const bockSlider = partyspielCard.locator('.skill-row[data-kind="bock"] input[type="range"]');
+  await bockSlider.fill('8');
+  await page.waitForFunction(() => {
+    const cards = Array.from(document.querySelectorAll('.game-card'));
+    const card = cards.find((c) => c.textContent?.includes('E2E Partyspiel'));
+    return card?.querySelector('[data-kind="bock"] .skill-value')?.textContent === '8';
+  });
+});
+
+test('Spiele: a skill suggestion chip appears after enough recorded results and can be applied', async () => {
+  const playersRes = await page.request.get(`${BASE_URL}/api/players`);
+  const players = (await playersRes.json()) as Array<{ id: string; name: string }>;
+  const alice = players.find((p) => p.name === 'E2E Alice Pro')!;
+  const bob = players.find((p) => p.name === 'E2E Bob')!;
+  const gamesRes = await page.request.get(`${BASE_URL}/api/games`);
+  const games = (await gamesRes.json()) as Array<{ id: string; name: string }>;
+  const cs2 = games.find((g) => g.name === 'Counter-Strike 2')!;
+
+  for (let i = 0; i < 3; i++) {
+    const res = await page.request.post(`${BASE_URL}/api/matches`, {
+      data: { gameId: cs2.id, teams: [{ playerIds: [alice.id] }, { playerIds: [bob.id] }], winnerTeamIndex: 0 },
+    });
+    assert.equal(res.status(), 201);
+  }
+
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="gameCatalog"]');
+  const cs2Card = page.locator('.game-card', { hasText: 'Counter-Strike 2' });
+  await cs2Card.waitFor();
+  const chip = cs2Card.locator('[data-apply-suggestion]');
+  await chip.waitFor();
+
+  await chip.click();
+  await page.waitForFunction(() => {
+    const cards = Array.from(document.querySelectorAll('.game-card'));
+    const card = cards.find((c) => c.textContent?.includes('Counter-Strike 2'));
+    const value = card?.querySelector('[data-kind="skill"] .skill-value')?.textContent;
+    return value && value !== '–';
+  });
 });
 
 test('Turnier: create a K.O. bracket from proposed teams and play it to a champion', async () => {
