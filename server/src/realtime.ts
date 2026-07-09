@@ -21,6 +21,7 @@ export const Events = {
   playersChanged: 'players:changed',
   gamesChanged: 'games:changed',
   skillsChanged: 'skills:changed',
+  preferencesChanged: 'preferences:changed',
   liveStatusChanged: 'live:changed',
   votesChanged: 'votes:changed',
   leaderboardChanged: 'leaderboard:changed',

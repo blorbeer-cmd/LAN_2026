@@ -40,6 +40,7 @@ Tool für eine LAN-Party mit ~15 Leuten. Kein Enterprise-Overkill, aber solide Q
 - `games` – Spiele (id, name, min/max team size, icon).
 - `game_process_names` – Zuordnung Prozessname → Spiel (für den Agent-Scan).
 - `skills` – Skill-Rating pro (player, game), 1–10.
+- `preferences` – „Bock"-Rating pro (player, game), 1–10 (wie sehr will ich das *gerade* spielen).
 - `live_status` – aktueller Zustand pro Spieler (welches Spiel, seit wann, last_seen).
 - `votes` – laufende Abstimmung „nächstes Spiel".
 - `matches` / `match_results` – gespielte Matches + Ergebnisse fürs Leaderboard.

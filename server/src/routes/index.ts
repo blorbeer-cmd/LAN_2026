@@ -5,6 +5,7 @@ import { Router } from 'express';
 import { playersRouter } from './players';
 import { gamesRouter } from './games';
 import { skillsRouter } from './skills';
+import { preferencesRouter } from './preferences';
 import { liveRouter } from './live';
 import { matchmakingRouter } from './matchmaking';
 import { votesRouter } from './votes';
@@ -33,6 +34,7 @@ apiRouter.get('/health', (_req, res) => {
 apiRouter.use('/players', playersRouter);
 apiRouter.use('/games', gamesRouter);
 apiRouter.use('/skills', skillsRouter);
+apiRouter.use('/preferences', preferencesRouter);
 apiRouter.use('/live', liveRouter);
 apiRouter.use('/matchmaking', matchmakingRouter);
 apiRouter.use('/votes', votesRouter);
