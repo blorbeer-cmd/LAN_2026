@@ -5,8 +5,18 @@
 # this to the *existing* server only if you delete/recreate it — day-to-day
 # code deploys go through deploy.yml instead (see README "Deployment").
 #
-# Placeholders (substituted by the workflow, never committed with real
-# values): $SSH_PUBLIC_KEY $CF_TUNNEL_TOKEN $APP_ACCESS_TOKEN $APP_ADMIN_PIN $IMAGE
+# Placeholders substituted by the workflow (its envsubst whitelist), never
+# committed with real values: SSH_PUBLIC_KEY, CF_TUNNEL_TOKEN,
+# APP_ACCESS_TOKEN, APP_ADMIN_PIN, INITIAL_IMAGE — that last one exists only
+# to seed .env's IMAGE= line once at boot. The app service's own "image:"
+# line below is deliberately NOT one of those names (it stays the literal
+# 4-character string image-colon-dollar-brace-I-M-A-G-E, unresolved by this
+# render step) so `docker compose` re-reads it from .env fresh on every
+# future deploy/rollback instead of it being frozen at first boot. Do not
+# add that name to the workflow's envsubst whitelist, and do not wrap any of
+# the other names above in "$$" hoping it means literal-dollar — envsubst
+# has no such escape; a whitelisted name inside $${...} still gets rewritten
+# to a literal "$" followed by its value, not left as "${...}".
 
 package_update: true
 package_upgrade: true
@@ -29,11 +39,11 @@ write_files:
   # Keep in sync with docker-compose.yml at the repo root — this is a copy
   # because the box has no working copy of the repo, only the built image.
   - path: /opt/lan2026/docker-compose.yml
-    permissions: '0644'
+    permissions: '0600'
     content: |
       services:
         app:
-          image: $IMAGE
+          image: ${IMAGE}
           restart: unless-stopped
           env_file: .env
           environment:
@@ -48,7 +58,7 @@ write_files:
           restart: unless-stopped
           command: tunnel run
           environment:
-            - TUNNEL_TOKEN=$${CF_TUNNEL_TOKEN}
+            - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
           depends_on:
             - app
 
@@ -58,7 +68,7 @@ write_files:
       ACCESS_TOKEN=$APP_ACCESS_TOKEN
       ADMIN_PIN=$APP_ADMIN_PIN
       CF_TUNNEL_TOKEN=$CF_TUNNEL_TOKEN
-      IMAGE=$IMAGE
+      IMAGE=$INITIAL_IMAGE
 
   - path: /opt/lan2026/rollback.sh
     permissions: '0755'
@@ -67,12 +77,12 @@ write_files:
       # One-command revert to a previously built image, e.g. after a bad
       # deploy: ./rollback.sh <git-sha>  (sha must exist as a ghcr.io tag).
       set -euo pipefail
-      if [ -z "$${1:-}" ]; then
+      if [ -z "${1:-}" ]; then
         echo "usage: rollback.sh <git-sha>"
         exit 1
       fi
       cd /opt/lan2026
-      sed -i "s#^IMAGE=.*#IMAGE=ghcr.io/blorbeer-cmd/lan_2026:$${1}#" .env
+      sed -i "s#^IMAGE=.*#IMAGE=ghcr.io/blorbeer-cmd/lan_2026:${1}#" .env
       docker compose pull app
       docker compose up -d app
 

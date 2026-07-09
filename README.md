@@ -150,8 +150,15 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
    beim ersten Boot. Läuft **einmalig** – ein zweiter Lauf überspringt die Server-Erstellung, wenn
    `lan2026` schon existiert.
 5. Die im Job-Summary ausgegebene **Server-IP als Secret `HETZNER_HOST`** anlegen.
-6. Push nach `main` → `CI/CD`-Workflow baut, testet, baut das Docker-Image, pusht es (öffentlich)
-   nach GHCR und deployt per SSH. Ab hier ist jeder weitere Push nach `main` ein normaler Deploy.
+6. Push nach `main` → `CI/CD`-Workflow baut, testet, baut das Docker-Image und pusht es nach GHCR.
+7. **Einmalig, direkt nach diesem ersten Push:** GitHub-Pakete sind standardmäßig **privat**, auch
+   wenn sie per `GITHUB_TOKEN` gepusht wurden – der Server hat aber keine Registry-Zugangsdaten. Der
+   Deploy-Job schlägt beim allerersten Lauf deshalb erwartungsgemäß mit `401`/`403` beim
+   `docker compose pull` fehl. Fix: GitHub → dein Profil/Org → **Packages** → `lan_2026` →
+   **Package settings** → **Change visibility** → **Public** (und "Connect Repository" draufzeigen
+   lassen, falls nicht schon verknüpft) – danach den fehlgeschlagenen `deploy`-Job im Actions-Tab
+   erneut ausführen ("Re-run failed jobs"). Ab hier ist jeder weitere Push nach `main` ein normaler,
+   durchlaufender Deploy.
 
 ### Alltag
 

@@ -45,13 +45,17 @@ jobs:
 
       - name: Render cloud-init from template
         run: |
+          # INITIAL_IMAGE seeds .env's IMAGE= line only. The compose file's
+          # `image: ${IMAGE}` stays a literal, unsubstituted token — it must
+          # NOT be in the envsubst whitelist below, so docker compose (not
+          # envsubst) resolves it fresh from .env on every future deploy.
           IMAGE_LOWER=$(echo "ghcr.io/${{ github.repository }}:latest" | tr '[:upper:]' '[:lower:]')
           SSH_PUBLIC_KEY="${{ secrets.HETZNER_SSH_PUBLIC_KEY }}" \
           CF_TUNNEL_TOKEN="${{ secrets.CF_TUNNEL_TOKEN }}" \
           APP_ACCESS_TOKEN="${{ secrets.APP_ACCESS_TOKEN }}" \
           APP_ADMIN_PIN="${{ secrets.APP_ADMIN_PIN }}" \
-          IMAGE="$IMAGE_LOWER" \
-            envsubst '$SSH_PUBLIC_KEY $CF_TUNNEL_TOKEN $APP_ACCESS_TOKEN $APP_ADMIN_PIN $IMAGE' \
+          INITIAL_IMAGE="$IMAGE_LOWER" \
+            envsubst '$SSH_PUBLIC_KEY $CF_TUNNEL_TOKEN $APP_ACCESS_TOKEN $APP_ADMIN_PIN $INITIAL_IMAGE' \
             < infra/cloud-init.yaml.tpl > /tmp/cloud-init.yaml
 
       - name: Create server (no-op if it already exists)
