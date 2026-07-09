@@ -3,6 +3,7 @@
 // supertest, while index.ts wires it into an HTTP server + realtime + timers.
 
 import express from 'express';
+import helmet from 'helmet';
 import path from 'path';
 
 import { requireAccess, accessProtectionEnabled } from './auth';
@@ -11,6 +12,13 @@ import { agentRouter } from './routes/agent';
 
 export function createApp(): express.Express {
   const app = express();
+
+  // Baseline security headers (X-Frame-Options, X-Content-Type-Options,
+  // Referrer-Policy, etc). CSP left off: the frontend is vanilla JS served
+  // from server/public without a build step, and a default CSP is more
+  // likely to silently break a view than to add real protection here —
+  // enabling it needs a dedicated pass over the actual markup first.
+  app.use(helmet({ contentSecurityPolicy: false }));
 
   app.use(express.json());
 
