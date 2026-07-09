@@ -113,6 +113,15 @@ export const api = {
       apiFetch(`/api/games/${id}/processes/${encodeURIComponent(processName)}`, { method: 'DELETE' }),
   },
 
+  gameCatalog: {
+    list: () => apiFetch('/api/game-catalog'),
+    create: (data) => apiFetch('/api/game-catalog', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id, data) => apiFetch(`/api/game-catalog/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    remove: (id) => apiFetch(`/api/game-catalog/${id}`, { method: 'DELETE' }),
+    toggleInterest: (id, playerId) =>
+      apiFetch(`/api/game-catalog/${id}/interest`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+  },
+
   skills: {
     list: (params = {}) => {
       const qs = new URLSearchParams(params).toString();

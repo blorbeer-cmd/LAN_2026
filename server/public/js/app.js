@@ -15,6 +15,7 @@ import { renderMatchmaking, invalidateMatchmakingHistory, setDraftState } from '
 import { renderBroadcast, invalidateBroadcasts } from './views/broadcast.js';
 import { renderInfoBoard, invalidateInfoBoard } from './views/infoBoard.js';
 import { renderFoodOrders, invalidateFoodOrders } from './views/foodOrders.js';
+import { renderGameCatalog, invalidateGameCatalog } from './views/gameCatalog.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
@@ -44,6 +45,7 @@ const VIEWS = {
   broadcast: renderBroadcast,
   infoBoard: renderInfoBoard,
   foodOrders: renderFoodOrders,
+  gameCatalog: renderGameCatalog,
 };
 
 let currentView = 'live';
@@ -290,6 +292,11 @@ function wireSocket() {
         onClick: () => switchView('foodOrders'),
       });
     }
+  });
+
+  socket.on('gameCatalog:changed', () => {
+    invalidateGameCatalog();
+    if (currentView === 'gameCatalog') renderCurrent();
   });
 }
 

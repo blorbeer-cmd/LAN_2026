@@ -108,6 +108,28 @@ db.exec(`
     PRIMARY KEY (player_id, game_id)
   );
 
+  -- Combined game catalog: a broader "what could we play?" list, deliberately
+  -- separate from games above (which are the tracked games with process names).
+  -- This is the shared LAN fundus with platform/install hints and per-player
+  -- "Bock" interest taps.
+  CREATE TABLE IF NOT EXISTS game_catalog (
+    id          TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    platform    TEXT,
+    upload_done INTEGER NOT NULL DEFAULT 0,
+    play_rate   TEXT,
+    price_cents INTEGER,
+    trailer_url TEXT,
+    created_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
+    created_at  INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS game_catalog_interest (
+    catalog_id TEXT NOT NULL REFERENCES game_catalog(id) ON DELETE CASCADE,
+    player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    PRIMARY KEY (catalog_id, player_id)
+  );
+
   -- Per-player live meta: when the agent last reported and an optional manual
   -- override (e.g. "Pause/Essen"). Which games are currently running lives in
   -- live_status_games below, since a PC can run several games at once
@@ -398,6 +420,8 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_skills_game ON skills(game_id);
   CREATE INDEX IF NOT EXISTS idx_preferences_game ON preferences(game_id);
+  CREATE INDEX IF NOT EXISTS idx_game_catalog_title ON game_catalog(title);
+  CREATE INDEX IF NOT EXISTS idx_game_catalog_interest_player ON game_catalog_interest(player_id);
   CREATE INDEX IF NOT EXISTS idx_live_status_games_game ON live_status_games(game_id);
   CREATE INDEX IF NOT EXISTS idx_votes_round ON votes(round);
   CREATE INDEX IF NOT EXISTS idx_votes_event ON votes(event_id);
@@ -675,6 +699,65 @@ function seedGames(): void {
 }
 
 seedGames();
+
+// Seed the broader "could we play this?" catalog from the shared planning
+// sheet. Kept independent from seedGames(): some catalog entries are install
+// candidates only and should not become tracked games/process mappings.
+function seedGameCatalog(): void {
+  const count = (db.prepare('SELECT COUNT(*) AS n FROM game_catalog').get() as { n: number }).n;
+  if (count > 0) return;
+
+  const now = Date.now();
+  const insert = db.prepare(
+    `INSERT INTO game_catalog (id, title, platform, upload_done, play_rate, price_cents, trailer_url, created_by, created_at)
+     VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, ?)`
+  );
+  const defaults: Array<{ title: string; platform: string; uploadDone: boolean; playRate: string }> = [
+    { title: 'Age of Empires 2', platform: 'Steam/Gamepass', uploadDone: false, playRate: 'mittel' },
+    { title: 'Age of Empires 4', platform: 'Gamepass', uploadDone: false, playRate: 'niedrig' },
+    { title: 'Among Us', platform: 'Steam', uploadDone: false, playRate: 'niedrig' },
+    { title: 'Back 4 Blood', platform: 'Gamepass', uploadDone: false, playRate: 'niedrig' },
+    { title: 'C&C Generals', platform: 'Origin', uploadDone: false, playRate: 'niedrig' },
+    { title: 'Call of Duty 4 - Modern Warfare', platform: 'NAS', uploadDone: true, playRate: 'mittel' },
+    { title: 'Call of Duty II', platform: 'NAS', uploadDone: true, playRate: 'mittel' },
+    { title: 'Chivalry 2', platform: 'Steam/Epic', uploadDone: false, playRate: 'hoch' },
+    { title: 'CS 1.5', platform: 'Steam', uploadDone: false, playRate: 'niedrig' },
+    { title: 'CS 1.6', platform: 'NAS', uploadDone: true, playRate: 'niedrig' },
+    { title: 'CS GO', platform: 'Steam', uploadDone: false, playRate: 'hoch' },
+    { title: 'Dawn of War', platform: 'Steam', uploadDone: false, playRate: 'niedrig' },
+    { title: 'DOTA 2', platform: 'Steam', uploadDone: false, playRate: 'niedrig' },
+    { title: 'Fall Guys', platform: 'Steam', uploadDone: false, playRate: 'mittel' },
+    { title: 'Golf with your Friends', platform: 'Steam', uploadDone: false, playRate: 'hoch' },
+    { title: 'GRID', platform: 'Steam', uploadDone: false, playRate: 'niedrig' },
+    { title: 'Halo Infinite', platform: 'Gamepass', uploadDone: false, playRate: 'niedrig' },
+    { title: 'Hot Wheels Unleashed', platform: 'NAS', uploadDone: true, playRate: 'niedrig' },
+    { title: 'Iron Harvest', platform: 'Gamepass', uploadDone: false, playRate: 'niedrig' },
+    { title: 'Jedi Knight II', platform: 'NAS', uploadDone: true, playRate: 'mittel' },
+    { title: 'League of Legends', platform: 'Riot', uploadDone: false, playRate: 'hoch' },
+    { title: 'Rocket League', platform: 'Steam/Epic', uploadDone: false, playRate: 'hoch' },
+    { title: 'Sea of Thieves', platform: 'Gamepass', uploadDone: false, playRate: 'niedrig' },
+    { title: 'Splitgate', platform: 'Steam', uploadDone: false, playRate: 'niedrig' },
+    { title: 'Star Wars Battlefront', platform: 'Epic', uploadDone: false, playRate: 'niedrig' },
+    { title: 'Starcraft 2', platform: 'Battlenet', uploadDone: false, playRate: 'niedrig' },
+    { title: 'Team Fortress 2', platform: 'Steam', uploadDone: false, playRate: 'mittel' },
+    { title: 'Trackmania', platform: 'Epic', uploadDone: false, playRate: 'mittel' },
+    { title: 'Tricky Towers', platform: 'Steam', uploadDone: false, playRate: 'niedrig' },
+    { title: 'Ultimate Chicken Horse', platform: 'Steam', uploadDone: false, playRate: 'niedrig' },
+    { title: 'UT2003', platform: 'NAS', uploadDone: true, playRate: 'mittel' },
+    { title: 'UT2004', platform: 'NAS', uploadDone: true, playRate: 'mittel' },
+    { title: 'Warcraft 3', platform: 'Battlenet/NAS', uploadDone: true, playRate: 'mittel' },
+    { title: 'Worms', platform: 'Gamepass', uploadDone: false, playRate: 'niedrig' },
+    { title: 'Wreckfest', platform: 'Gamepass', uploadDone: false, playRate: 'mittel' },
+  ];
+
+  db.transaction(() => {
+    for (const g of defaults) {
+      insert.run(nanoid(), g.title, g.platform, g.uploadDone ? 1 : 0, g.playRate, now);
+    }
+  })();
+}
+
+seedGameCatalog();
 
 // Seed the permanent "außerhalb von Events" sentinel, once. This is the ONLY
 // place that ever creates it: events.ts's getTrackingEventId() is a pure
