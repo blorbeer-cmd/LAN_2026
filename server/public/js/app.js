@@ -15,6 +15,7 @@ import { renderMatchmaking, invalidateMatchmakingHistory, setDraftState } from '
 import { renderBroadcast, invalidateBroadcasts } from './views/broadcast.js';
 import { renderInfoBoard, invalidateInfoBoard } from './views/infoBoard.js';
 import { renderFoodOrders, invalidateFoodOrders } from './views/foodOrders.js';
+import { renderArcade } from './views/arcade.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
@@ -44,6 +45,7 @@ const VIEWS = {
   broadcast: renderBroadcast,
   infoBoard: renderInfoBoard,
   foodOrders: renderFoodOrders,
+  arcade: renderArcade,
 };
 
 let currentView = 'live';

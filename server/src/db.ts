@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { nanoid } from 'nanoid';
 import { config } from './config';
+import { DEFAULT_QUIZ_QUESTIONS } from './arcade/quizQuestions';
 
 // Ensure the data directory exists before opening a file-based DB. Skipped for
 // the in-memory database used in tests.
@@ -362,6 +363,23 @@ db.exec(`
     created_at INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS quiz_questions (
+    id         TEXT PRIMARY KEY,
+    question   TEXT NOT NULL,
+    answers    TEXT NOT NULL,
+    category   TEXT,
+    difficulty TEXT,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS quiz_seen (
+    question_id TEXT NOT NULL REFERENCES quiz_questions(id) ON DELETE CASCADE,
+    player_id   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    seen_at     INTEGER NOT NULL,
+    was_correct INTEGER,
+    PRIMARY KEY (question_id, player_id)
+  );
+
   -- Info-Board: the answers to the questions everyone asks five times per
   -- evening (WLAN password, Discord link, game-server IPs, house rules).
   -- Plain title+content entries, editable by anyone (LAN trust model).
@@ -418,6 +436,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_push_subscriptions_player ON push_subscriptions(player_id);
   CREATE INDEX IF NOT EXISTS idx_drafts_status ON drafts(status);
   CREATE INDEX IF NOT EXISTS idx_broadcasts_created ON broadcasts(created_at);
+  CREATE INDEX IF NOT EXISTS idx_quiz_seen_player ON quiz_seen(player_id);
   CREATE INDEX IF NOT EXISTS idx_food_orders_event ON food_orders(event_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_food_order_items_order ON food_order_items(order_id);
 `);
@@ -675,6 +694,23 @@ function seedGames(): void {
 }
 
 seedGames();
+
+function seedQuizQuestions(): void {
+  const count = (db.prepare('SELECT COUNT(*) AS n FROM quiz_questions').get() as { n: number }).n;
+  if (count > 0) return;
+
+  const now = Date.now();
+  const insert = db.prepare(
+    'INSERT INTO quiz_questions (id, question, answers, category, difficulty, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  );
+  db.transaction(() => {
+    for (const q of DEFAULT_QUIZ_QUESTIONS) {
+      insert.run(nanoid(), q.question, JSON.stringify(q.answers), q.category, q.difficulty, now);
+    }
+  })();
+}
+
+seedQuizQuestions();
 
 // Seed the permanent "außerhalb von Events" sentinel, once. This is the ONLY
 // place that ever creates it: events.ts's getTrackingEventId() is a pure
