@@ -243,13 +243,27 @@ input {
 }
 
 .icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
+  color: var(--text);
   font-size: 1.15rem;
   cursor: pointer;
   padding: 6px;
   line-height: 1;
   border-radius: var(--radius-sm);
+  text-decoration: none;
+}
+.github-icon-btn {
+  width: 36px;
+  height: 36px;
+}
+.github-icon {
+  width: 24px;
+  height: 24px;
+  display: block;
 }
 .icon-btn.needs-setup {
   position: relative;
@@ -440,6 +454,7 @@ input {
 input[type='text'],
 input[type='password'],
 input[type='number'],
+input[type='url'],
 input[type='datetime-local'],
 select,
 textarea {
@@ -466,6 +481,7 @@ textarea {
 input[type='text']:focus,
 input[type='password']:focus,
 input[type='number']:focus,
+input[type='url']:focus,
 input[type='datetime-local']:focus,
 select:focus,
 textarea:focus {
@@ -541,6 +557,126 @@ input[type='number']::-webkit-inner-spin-button {
   justify-content: space-between;
   gap: var(--space-3);
 }
+
+/* A pair of labeled fields side by side (arrival/departure, event start/end,
+   analytics date range). Native datetime-local controls have a wide,
+   non-shrinkable intrinsic content width — a plain `.row` with `flex:1`
+   children can't shrink them below that, so on a narrow phone the second
+   field gets pushed past the card edge. flex-wrap plus a sane min-width lets
+   the pair drop to one field per line instead of overflowing. */
+.field-row {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.field-row > div {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+/* ---------- Custom date/time field (server/public/js/dateTimeField.js) ----------
+   Replaces <input type="datetime-local">: the native control's closed-state
+   segments and popup calendar are drawn by the browser/OS, not themeable to
+   match the rest of the app (they stay a generic light "Windows" widget
+   regardless of dark mode). This is a themed trigger + hour/minute selects +
+   a calendar popover built from the same card/button classes as everywhere
+   else in the app. */
+.dt-field {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.dt-date-btn {
+  flex: 1 1 140px;
+  display: flex;
+  align-items: center;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 11px 12px;
+  font-size: 0.95rem;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.dt-date-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.dt-time-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+.dt-time-select {
+  width: 62px;
+  padding: 11px 22px 11px 10px;
+  background-position: right 6px center;
+}
+.dt-time-sep {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.dt-clear-btn {
+  color: var(--text-muted);
+}
+
+.dt-popover {
+  width: 280px;
+  max-width: calc(100vw - 16px);
+  z-index: 80;
+  box-shadow: var(--shadow);
+}
+.dt-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+.dt-calendar {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.dt-calendar th {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding-bottom: 6px;
+}
+.dt-calendar td {
+  text-align: center;
+  padding: 2px;
+}
+.dt-day {
+  width: 100%;
+  aspect-ratio: 1;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .dt-day:hover {
+    background: var(--bg-elevated-2);
+  }
+}
+.dt-day-today {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.dt-day-selected {
+  background: var(--accent-gradient);
+  color: var(--accent-text);
+  font-weight: 700;
+}
+.dt-popover .btn-block {
+  margin-top: var(--space-2);
+}
+
 .stack {
   display: flex;
   flex-direction: column;
@@ -730,6 +866,192 @@ button.card {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+.catalog-card {
+  overflow: hidden;
+}
+.catalog-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.catalog-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.catalog-table th,
+.catalog-table td {
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border);
+}
+.catalog-table th {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: rgba(15, 20, 32, 0.38);
+  white-space: nowrap;
+}
+.catalog-table tr:last-child td {
+  border-bottom: none;
+}
+.catalog-title-cell {
+  min-width: 180px;
+}
+.catalog-actions {
+  width: 1%;
+  white-space: nowrap;
+}
+.catalog-actions .btn + .btn {
+  margin-left: 6px;
+}
+.catalog-sort-btn {
+  padding: 6px 10px;
+}
+.catalog-text-link {
+  color: var(--text);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(139, 147, 167, 0.42);
+}
+.catalog-text-link:hover {
+  color: var(--accent);
+  border-bottom-color: currentColor;
+}
+.catalog-rating-cell {
+  min-width: 210px;
+}
+.catalog-rating-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+.catalog-rating-bar {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  width: 140px;
+  height: 32px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.catalog-rating-bar button {
+  border: none;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.catalog-rating-bar button:last-child {
+  border-right: none;
+}
+.catalog-rating-bar button.is-active {
+  color: var(--accent-text);
+}
+.catalog-rating-bar button.is-active[data-level='1'] {
+  background: #7657e8;
+}
+.catalog-rating-bar button.is-active[data-level='2'] {
+  background: #8364f0;
+}
+.catalog-rating-bar button.is-active[data-level='3'] {
+  background: linear-gradient(135deg, #5b8cff 0%, #9163f5 100%);
+}
+.catalog-rating-bar button.is-active[data-level='4'] {
+  background: #b656d8;
+}
+.catalog-rating-bar button.is-active[data-level='5'] {
+  background: #ef5da8;
+}
+.catalog-rating-meta {
+  font-size: 0.75rem;
+}
+.arrivals-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.arrivals-block > .section-title {
+  margin-top: 0;
+}
+.arrivals-chip-row {
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.arrivals-carpool-card {
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.arrivals-carpool-section {
+  display: grid;
+  gap: var(--space-2);
+  padding: 12px;
+}
+.arrivals-carpool-section + .arrivals-carpool-section {
+  border-top: 1px solid var(--border);
+}
+.arrivals-carpool-row {
+  display: grid;
+  gap: var(--space-2);
+  padding: 10px 0 0;
+  border-top: 1px solid rgba(122, 141, 195, 0.13);
+}
+.arrivals-carpool-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.arrivals-carpool-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.arrivals-carpool-empty {
+  font-size: 0.85rem;
+}
+.arrivals-people-card {
+  padding: 0;
+  overflow: hidden;
+}
+.arrivals-person-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.arrivals-person-row:last-child {
+  border-bottom: none;
+}
+.arrivals-person-main {
+  min-width: 0;
+}
+.arrivals-time-line {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 6px;
+  align-items: baseline;
+  font-size: 0.82rem;
+}
+.arrivals-time-line span {
+  color: var(--text-muted);
+}
+.arrivals-time-line strong {
+  font-weight: 600;
+}
+.arrivals-note {
+  font-size: 0.78rem;
+  margin-top: 3px;
 }
 
 /* The QR code SVG already draws its own white background (needed for

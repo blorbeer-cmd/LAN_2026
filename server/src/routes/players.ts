@@ -6,6 +6,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString, isHexColor, isValidAvatar } from '../validation';
+import { adminUnlockValid } from '../auth';
 import { getTrackingEventId } from '../events';
 import { formatDurationMs, computePlaytime, type PlaySession } from '../playtime';
 import {
@@ -26,6 +27,7 @@ interface PlayerRow {
   avatar: string | null;
   api_key: string;
   tracking_paused: number;
+  is_admin: number;
   created_at: number;
 }
 
@@ -89,12 +91,13 @@ playersRouter.post('/', (req, res) => {
     avatar: avatar ?? null,
     api_key: nanoid(24),
     tracking_paused: 0,
+    is_admin: 0,
     created_at: Date.now(),
   };
 
   db.prepare(
-    'INSERT INTO players (id, name, color, avatar, api_key, tracking_paused, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(row.id, row.name, row.color, row.avatar, row.api_key, row.tracking_paused, row.created_at);
+    'INSERT INTO players (id, name, color, avatar, api_key, tracking_paused, is_admin, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(row.id, row.name, row.color, row.avatar, row.api_key, row.tracking_paused, row.is_admin, row.created_at);
 
   broadcast(Events.playersChanged, null);
   res.status(201).json(row);
@@ -113,7 +116,7 @@ playersRouter.patch('/:id', (req, res) => {
     | undefined;
   if (!existing) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
-  const { name, color, avatar, trackingPaused } = req.body ?? {};
+  const { name, color, avatar, trackingPaused, isAdmin } = req.body ?? {};
   if (name !== undefined && !isNonEmptyString(name)) {
     return res.status(400).json({ error: 'Name muss 1-60 Zeichen lang sein.' });
   }
@@ -126,6 +129,15 @@ playersRouter.patch('/:id', (req, res) => {
   if (trackingPaused !== undefined && typeof trackingPaused !== 'boolean') {
     return res.status(400).json({ error: 'trackingPaused muss ein Boolean sein.' });
   }
+  if (isAdmin !== undefined && typeof isAdmin !== 'boolean') {
+    return res.status(400).json({ error: 'isAdmin muss ein Boolean sein.' });
+  }
+  // Self-service fields (name/color/avatar/tracking) stay open in the LAN
+  // trust model, but granting/revoking admin is an admin-only action: when a
+  // PIN is configured it must be supplied. Open mode (no PIN) allows it.
+  if (isAdmin !== undefined && !adminUnlockValid(req.header('x-admin-pin'))) {
+    return res.status(403).json({ error: 'Admin-Rechte ändern ist nur Admins erlaubt.' });
+  }
 
   const nextName = name !== undefined ? name.trim() : existing.name;
   if (name !== undefined && nameTaken(nextName, existing.id)) {
@@ -134,17 +146,26 @@ playersRouter.patch('/:id', (req, res) => {
   const nextColor = color !== undefined ? color : existing.color;
   const nextAvatar = avatar !== undefined ? avatar : existing.avatar;
   const nextTrackingPaused = trackingPaused !== undefined ? (trackingPaused ? 1 : 0) : existing.tracking_paused;
+  const nextIsAdmin = isAdmin !== undefined ? (isAdmin ? 1 : 0) : existing.is_admin;
 
-  db.prepare('UPDATE players SET name = ?, color = ?, avatar = ?, tracking_paused = ? WHERE id = ?').run(
+  db.prepare('UPDATE players SET name = ?, color = ?, avatar = ?, tracking_paused = ?, is_admin = ? WHERE id = ?').run(
     nextName,
     nextColor,
     nextAvatar,
     nextTrackingPaused,
+    nextIsAdmin,
     existing.id
   );
 
   broadcast(Events.playersChanged, null);
-  res.json({ ...existing, name: nextName, color: nextColor, avatar: nextAvatar, tracking_paused: nextTrackingPaused });
+  res.json({
+    ...existing,
+    name: nextName,
+    color: nextColor,
+    avatar: nextAvatar,
+    tracking_paused: nextTrackingPaused,
+    is_admin: nextIsAdmin,
+  });
 });
 
 // DELETE /api/players/:id - removes the player and cascades to their skills/

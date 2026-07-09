@@ -16,6 +16,11 @@ export async function apiFetch(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   const token = getToken();
   if (token) headers['x-access-token'] = token;
+  // Attach the admin PIN (set once on admin unlock) so admin-gated writes —
+  // e.g. granting admin — pass the server's requireAdmin check. Absent in
+  // open/dev mode, where the server allows it anyway.
+  const adminPin = localStorage.getItem('lan2026_admin_pin');
+  if (adminPin) headers['x-admin-pin'] = adminPin;
 
   const res = await fetch(path, { ...options, headers });
 
@@ -111,6 +116,18 @@ export const api = {
       apiFetch(`/api/games/${id}/processes`, { method: 'POST', body: JSON.stringify({ processName }) }),
     removeProcess: (id, processName) =>
       apiFetch(`/api/games/${id}/processes/${encodeURIComponent(processName)}`, { method: 'DELETE' }),
+  },
+
+  gameCatalog: {
+    list: () => apiFetch('/api/game-catalog'),
+    create: (data) => apiFetch('/api/game-catalog', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id, data) => apiFetch(`/api/game-catalog/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    remove: (id) => apiFetch(`/api/game-catalog/${id}`, { method: 'DELETE' }),
+    toggleInterest: (id, playerId) =>
+      apiFetch(`/api/game-catalog/${id}/interest`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    rate: (id, playerId, rating) =>
+      apiFetch(`/api/game-catalog/${id}/rating`, { method: 'PUT', body: JSON.stringify({ playerId, rating }) }),
+    promote: (id) => apiFetch(`/api/game-catalog/${id}/promote`, { method: 'POST' }),
   },
 
   skills: {
@@ -301,10 +318,17 @@ export const api = {
     remove: (id) => apiFetch(`/api/info/${id}`, { method: 'DELETE' }),
   },
 
+  admin: {
+    status: () => apiFetch('/api/admin/status'),
+    unlock: (pin) => apiFetch('/api/admin/unlock', { method: 'POST', body: JSON.stringify({ pin }) }),
+  },
+
   foodOrders: {
     list: () => apiFetch('/api/food-orders'),
-    create: (playerId, title) =>
-      apiFetch('/api/food-orders', { method: 'POST', body: JSON.stringify({ playerId, title }) }),
+    create: (playerId, title, sendAt) =>
+      apiFetch('/api/food-orders', { method: 'POST', body: JSON.stringify({ playerId, title, sendAt }) }),
+    setSendAt: (orderId, sendAt) =>
+      apiFetch(`/api/food-orders/${orderId}`, { method: 'PATCH', body: JSON.stringify({ sendAt }) }),
     addItem: (orderId, data) =>
       apiFetch(`/api/food-orders/${orderId}/items`, { method: 'POST', body: JSON.stringify(data) }),
     removeItem: (orderId, itemId, playerId) =>
@@ -313,5 +337,17 @@ export const api = {
         body: JSON.stringify({ playerId }),
       }),
     close: (orderId) => apiFetch(`/api/food-orders/${orderId}/close`, { method: 'POST' }),
+  },
+
+  arrivals: {
+    list: () => apiFetch('/api/arrivals'),
+    saveMine: (data) => apiFetch('/api/arrivals/mine', { method: 'PUT', body: JSON.stringify(data) }),
+    createCarpool: (data) => apiFetch('/api/arrivals/carpools', { method: 'POST', body: JSON.stringify(data) }),
+    joinCarpool: (id, playerId) =>
+      apiFetch(`/api/arrivals/carpools/${id}/join`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    leaveCarpool: (id, playerId) =>
+      apiFetch(`/api/arrivals/carpools/${id}/leave`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    removeCarpool: (id, playerId) =>
+      apiFetch(`/api/arrivals/carpools/${id}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
   },
 };

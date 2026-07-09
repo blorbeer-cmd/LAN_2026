@@ -16,6 +16,8 @@ import { renderBroadcast, invalidateBroadcasts } from './views/broadcast.js';
 import { renderInfoBoard, invalidateInfoBoard } from './views/infoBoard.js';
 import { renderFoodOrders, invalidateFoodOrders } from './views/foodOrders.js';
 import { renderArcade } from './views/arcade.js';
+import { renderGameCatalog, invalidateGameCatalog } from './views/gameCatalog.js';
+import { renderArrivals, invalidateArrivals } from './views/arrivals.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
@@ -26,6 +28,7 @@ import { renderHallOfFame } from './views/hallOfFame.js';
 import { renderSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
 import { renderMore } from './views/more.js';
+import { renderAdmin } from './views/admin.js';
 
 const VIEWS = {
   live: renderLive,
@@ -46,6 +49,9 @@ const VIEWS = {
   infoBoard: renderInfoBoard,
   foodOrders: renderFoodOrders,
   arcade: renderArcade,
+  gameCatalog: renderGameCatalog,
+  arrivals: renderArrivals,
+  admin: renderAdmin,
 };
 
 let currentView = 'live';
@@ -174,7 +180,6 @@ function wireSocket() {
     'players:changed',
     'games:changed',
     'skills:changed',
-    'preferences:changed',
     'leaderboard:changed',
     'events:changed',
   ];
@@ -213,6 +218,31 @@ function wireSocket() {
         onClick: () => switchView('votes'),
       });
     }
+  });
+  // Carries the changed row directly (see routes/preferences.ts) so it can be
+  // patched into state.preferences without a round trip. Preferences drive
+  // the voting view's sort order/display (see votes.js) but aren't part of
+  // its payload, so that one tally is refetched too — cheap compared to a
+  // full reload, and makes a slider change on Profile show up on Votes
+  // immediately instead of only after some other event happens to reload.
+  socket.on('preferences:changed', async (payload) => {
+    if (payload) {
+      const { playerId, gameId, rating } = payload;
+      const existing = state.preferences.find((p) => p.player_id === playerId && p.game_id === gameId);
+      if (rating === null) {
+        state.preferences = state.preferences.filter((p) => !(p.player_id === playerId && p.game_id === gameId));
+      } else if (existing) {
+        existing.rating = rating;
+      } else {
+        state.preferences.push({ player_id: playerId, game_id: gameId, rating });
+      }
+    }
+    try {
+      state.votes = await api.votes.get();
+    } catch {
+      // transient failure - keep the last known votes state, not worth surfacing
+    }
+    if (currentView === 'votes') renderCurrent();
   });
   socket.on('matchmaking:generated', (payload) => {
     state.lastMatchmaking = payload;
@@ -292,6 +322,16 @@ function wireSocket() {
         onClick: () => switchView('foodOrders'),
       });
     }
+  });
+
+  socket.on('gameCatalog:changed', () => {
+    invalidateGameCatalog();
+    if (currentView === 'gameCatalog') renderCurrent();
+  });
+
+  socket.on('arrivals:changed', () => {
+    invalidateArrivals();
+    if (currentView === 'arrivals') renderCurrent();
   });
 }
 
