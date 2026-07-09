@@ -49,14 +49,21 @@ jobs:
           # `image: ${IMAGE}` stays a literal, unsubstituted token — it must
           # NOT be in the envsubst whitelist below, so docker compose (not
           # envsubst) resolves it fresh from .env on every future deploy.
+          # GHCR_PULL_USERNAME is deliberately not a secret: it's just
+          # github.actor (whoever clicks "Run workflow"), which must be the
+          # same account GHCR_PULL_TOKEN was created under — a repo owner's
+          # username here would be wrong if you're a collaborator, not the
+          # owner, on the target repo (fine-grained PATs can't even see
+          # repos you don't own, and classic PATs auth as your own account).
           IMAGE_LOWER=$(echo "ghcr.io/${{ github.repository }}:latest" | tr '[:upper:]' '[:lower:]')
           SSH_PUBLIC_KEY="${{ secrets.HETZNER_SSH_PUBLIC_KEY }}" \
           CF_TUNNEL_TOKEN="${{ secrets.CF_TUNNEL_TOKEN }}" \
           APP_ACCESS_TOKEN="${{ secrets.APP_ACCESS_TOKEN }}" \
           APP_ADMIN_PIN="${{ secrets.APP_ADMIN_PIN }}" \
           GHCR_PULL_TOKEN="${{ secrets.GHCR_PULL_TOKEN }}" \
+          GHCR_PULL_USERNAME="${{ github.actor }}" \
           INITIAL_IMAGE="$IMAGE_LOWER" \
-            envsubst '$SSH_PUBLIC_KEY $CF_TUNNEL_TOKEN $APP_ACCESS_TOKEN $APP_ADMIN_PIN $GHCR_PULL_TOKEN $INITIAL_IMAGE' \
+            envsubst '$SSH_PUBLIC_KEY $CF_TUNNEL_TOKEN $APP_ACCESS_TOKEN $APP_ADMIN_PIN $GHCR_PULL_TOKEN $GHCR_PULL_USERNAME $INITIAL_IMAGE' \
             < infra/cloud-init.yaml.tpl > /tmp/cloud-init.yaml
 
       - name: Create server (no-op if it already exists)

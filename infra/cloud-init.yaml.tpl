@@ -7,7 +7,10 @@
 #
 # Placeholders substituted by the workflow (its envsubst whitelist), never
 # committed with real values: SSH_PUBLIC_KEY, CF_TUNNEL_TOKEN,
-# APP_ACCESS_TOKEN, APP_ADMIN_PIN, GHCR_PULL_TOKEN, INITIAL_IMAGE — that last one exists only
+# APP_ACCESS_TOKEN, APP_ADMIN_PIN, GHCR_PULL_TOKEN, GHCR_PULL_USERNAME,
+# INITIAL_IMAGE — GHCR_PULL_USERNAME isn't secret (it's just github.actor,
+# whoever ran the provision workflow — not a repo owner or a new secret),
+# and INITIAL_IMAGE exists only
 # to seed .env's IMAGE= line once at boot. The app service's own "image:"
 # line below is deliberately NOT one of those names (it stays the literal
 # 4-character string image-colon-dollar-brace-I-M-A-G-E, unresolved by this
@@ -70,6 +73,7 @@ write_files:
       ADMIN_PIN=$APP_ADMIN_PIN
       CF_TUNNEL_TOKEN=$CF_TUNNEL_TOKEN
       GHCR_PULL_TOKEN=$GHCR_PULL_TOKEN
+      GHCR_PULL_USERNAME=$GHCR_PULL_USERNAME
       IMAGE=$INITIAL_IMAGE
 
   - path: /opt/lan2026/rollback.sh
@@ -101,7 +105,7 @@ write_files:
       cd /opt/lan2026
       # shellcheck disable=SC1091
       source .env
-      echo "$GHCR_PULL_TOKEN" | docker login ghcr.io -u blorbeer-cmd --password-stdin
+      echo "$GHCR_PULL_TOKEN" | docker login ghcr.io -u "$GHCR_PULL_USERNAME" --password-stdin
 
 runcmd:
   - apt-get update
