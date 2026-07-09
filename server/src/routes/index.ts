@@ -23,6 +23,10 @@ import { pingsRouter } from './pings';
 import { digestRouter } from './digest';
 import { pushRouter } from './push';
 import { agentDownloadRouter } from './agentDownload';
+import { draftRouter } from './draft';
+import { broadcastsRouter } from './broadcasts';
+import { infoBoardRouter } from './infoBoard';
+import { foodOrdersRouter } from './foodOrders';
 
 export const apiRouter = Router();
 
@@ -52,3 +56,7 @@ apiRouter.use('/pings', pingsRouter);
 apiRouter.use('/digest', digestRouter);
 apiRouter.use('/push', pushRouter);
 apiRouter.use('/agent-download', agentDownloadRouter);
+apiRouter.use('/draft', draftRouter);
+apiRouter.use('/broadcasts', broadcastsRouter);
+apiRouter.use('/info', infoBoardRouter);
+apiRouter.use('/food-orders', foodOrdersRouter);

@@ -333,6 +333,69 @@ db.exec(`
     created_at INTEGER NOT NULL
   );
 
+  -- Captain draft: the social alternative to auto-balanced matchmaking.
+  -- Exactly one draft can be running at a time (like a vote round), so this
+  -- is a single row with JSON columns rather than a family of tables —
+  -- captains/pool/picks are snapshots of a short-lived live event, not
+  -- entities other features join against. Completed/cancelled drafts stay
+  -- as rows only until the next draft starts (the completed teams also get
+  -- logged into matchmaking_draws so Team-Historie shows them).
+  CREATE TABLE IF NOT EXISTS drafts (
+    id          TEXT PRIMARY KEY,
+    event_id    TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    game_id     TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    status      TEXT NOT NULL,          -- 'active' | 'completed' | 'cancelled'
+    captain_ids TEXT NOT NULL,          -- JSON: [playerId, ...] (one per team, in seat order)
+    pool_ids    TEXT NOT NULL,          -- JSON: remaining un-picked player ids
+    picks       TEXT NOT NULL,          -- JSON: [{ captainIndex, playerId, pickedAt }, ...]
+    created_at  INTEGER NOT NULL
+  );
+
+  -- Durchsagen ("Essen ist da!"): broadcast to every device as a toast +
+  -- kiosk banner + push notification. Kept as rows (not fire-and-forget) so
+  -- the Durchsage view can show the recent history and late joiners still
+  -- see what they missed.
+  CREATE TABLE IF NOT EXISTS broadcasts (
+    id         TEXT PRIMARY KEY,
+    player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    message    TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
+  -- Info-Board: the answers to the questions everyone asks five times per
+  -- evening (WLAN password, Discord link, game-server IPs, house rules).
+  -- Plain title+content entries, editable by anyone (LAN trust model).
+  CREATE TABLE IF NOT EXISTS info_entries (
+    id         TEXT PRIMARY KEY,
+    title      TEXT NOT NULL,
+    content    TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  -- Sammelbestellungen ("wer will was von Luigi's"): one order is opened,
+  -- everyone adds their own items while it's open, closing freezes the list
+  -- for reading out to the phone/delivery app. price_cents is optional —
+  -- splitting the bill is the usual pain, but forcing prices would slow
+  -- down the common "just write what you want" case.
+  CREATE TABLE IF NOT EXISTS food_orders (
+    id         TEXT PRIMARY KEY,
+    event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    title      TEXT NOT NULL,
+    created_by TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    closed_at  INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS food_order_items (
+    id          TEXT PRIMARY KEY,
+    order_id    TEXT NOT NULL REFERENCES food_orders(id) ON DELETE CASCADE,
+    player_id   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    description TEXT NOT NULL,
+    price_cents INTEGER,
+    created_at  INTEGER NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_skills_game ON skills(game_id);
   CREATE INDEX IF NOT EXISTS idx_preferences_game ON preferences(game_id);
   CREATE INDEX IF NOT EXISTS idx_live_status_games_game ON live_status_games(game_id);
@@ -353,6 +416,10 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_play_sessions_open ON play_sessions(ended_at);
   CREATE INDEX IF NOT EXISTS idx_play_sessions_event ON play_sessions(event_id);
   CREATE INDEX IF NOT EXISTS idx_push_subscriptions_player ON push_subscriptions(player_id);
+  CREATE INDEX IF NOT EXISTS idx_drafts_status ON drafts(status);
+  CREATE INDEX IF NOT EXISTS idx_broadcasts_created ON broadcasts(created_at);
+  CREATE INDEX IF NOT EXISTS idx_food_orders_event ON food_orders(event_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_food_order_items_order ON food_order_items(order_id);
 `);
 
 // Migration: older databases were created before the `avatar` column existed.
