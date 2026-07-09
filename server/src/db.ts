@@ -29,6 +29,7 @@ db.exec(`
     avatar          TEXT,
     api_key         TEXT NOT NULL UNIQUE,
     tracking_paused INTEGER NOT NULL DEFAULT 0, -- player-side opt-out; agent reports for this player are dropped
+    is_admin        INTEGER NOT NULL DEFAULT 0, -- moderation role; can be granted via PATCH /api/players/:id
     created_at      INTEGER NOT NULL
   );
 
@@ -384,7 +385,8 @@ db.exec(`
     title      TEXT NOT NULL,
     created_by TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     created_at INTEGER NOT NULL,
-    closed_at  INTEGER
+    closed_at  INTEGER,
+    send_at    INTEGER  -- optional, editable: when the order will actually be placed/picked up
   );
 
   CREATE TABLE IF NOT EXISTS food_order_items (
@@ -463,12 +465,29 @@ function migrateAvatarColumn(): void {
 }
 migrateAvatarColumn();
 
+// Migration: older databases predate the is_admin moderation flag.
+function migrateAdminColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'is_admin')) return;
+  db.exec('ALTER TABLE players ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0');
+}
+migrateAdminColumn();
+
 function migrateGameIconImageColumn(): void {
   const columns = db.prepare('PRAGMA table_info(games)').all() as Array<{ name: string }>;
   if (columns.some((c) => c.name === 'icon_image')) return;
   db.exec('ALTER TABLE games ADD COLUMN icon_image TEXT');
 }
 migrateGameIconImageColumn();
+
+// Migration: older databases predate the optional "wann geht's raus"
+// send_at field on food orders.
+function migrateFoodOrderSendAtColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(food_orders)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'send_at')) return;
+  db.exec('ALTER TABLE food_orders ADD COLUMN send_at INTEGER');
+}
+migrateFoodOrderSendAtColumn();
 
 // Migration: older databases predate the group-knockout format and score
 // tracking (both added together) — add the columns they need if missing.
