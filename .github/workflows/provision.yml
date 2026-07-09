@@ -1,0 +1,79 @@
+name: Provision Hetzner Server
+
+# One-time (or deliberate re-run after deleting the box). Everyday code
+# deploys go through deploy.yml, not this. See README "Deployment" for the
+# full runbook and the exact list of secrets this needs.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    env:
+      HCLOUD_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
+      SERVER_NAME: lan2026
+      SERVER_TYPE: cx22
+      SERVER_LOCATION: nbg1
+      SERVER_IMAGE: debian-12
+      FIREWALL_NAME: lan2026-ssh-only
+      SSH_KEY_NAME: lan2026-deploy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install hcloud CLI + envsubst
+        run: |
+          curl -sSL https://github.com/hetznercloud/cli/releases/latest/download/hcloud-linux-amd64.tar.gz \
+            | tar -xz hcloud
+          sudo mv hcloud /usr/local/bin/hcloud
+          sudo apt-get update -qq && sudo apt-get install -y -qq gettext-base
+
+      - name: Ensure deploy SSH key exists in the Hetzner project
+        run: |
+          if ! hcloud ssh-key describe "$SSH_KEY_NAME" >/dev/null 2>&1; then
+            echo "${{ secrets.HETZNER_SSH_PUBLIC_KEY }}" > /tmp/deploy.pub
+            hcloud ssh-key create --name "$SSH_KEY_NAME" --public-key-from-file /tmp/deploy.pub
+          fi
+
+      - name: Ensure firewall exists (inbound SSH only, everything else closed)
+        run: |
+          if ! hcloud firewall describe "$FIREWALL_NAME" >/dev/null 2>&1; then
+            hcloud firewall create --name "$FIREWALL_NAME"
+            hcloud firewall add-rule "$FIREWALL_NAME" \
+              --direction in --protocol tcp --port 22 \
+              --source-ips 0.0.0.0/0 --source-ips ::/0
+          fi
+
+      - name: Render cloud-init from template
+        run: |
+          IMAGE_LOWER=$(echo "ghcr.io/${{ github.repository }}:latest" | tr '[:upper:]' '[:lower:]')
+          SSH_PUBLIC_KEY="${{ secrets.HETZNER_SSH_PUBLIC_KEY }}" \
+          CF_TUNNEL_TOKEN="${{ secrets.CF_TUNNEL_TOKEN }}" \
+          APP_ACCESS_TOKEN="${{ secrets.APP_ACCESS_TOKEN }}" \
+          APP_ADMIN_PIN="${{ secrets.APP_ADMIN_PIN }}" \
+          IMAGE="$IMAGE_LOWER" \
+            envsubst '$SSH_PUBLIC_KEY $CF_TUNNEL_TOKEN $APP_ACCESS_TOKEN $APP_ADMIN_PIN $IMAGE' \
+            < infra/cloud-init.yaml.tpl > /tmp/cloud-init.yaml
+
+      - name: Create server (no-op if it already exists)
+        run: |
+          if hcloud server describe "$SERVER_NAME" >/dev/null 2>&1; then
+            echo "::notice::Server '$SERVER_NAME' already exists — provisioning only runs once. Delete it in the Hetzner console first if you really want to recreate it from scratch."
+            exit 0
+          fi
+          hcloud server create \
+            --name "$SERVER_NAME" \
+            --type "$SERVER_TYPE" \
+            --location "$SERVER_LOCATION" \
+            --image "$SERVER_IMAGE" \
+            --ssh-key "$SSH_KEY_NAME" \
+            --firewall "$FIREWALL_NAME" \
+            --user-data-from-file /tmp/cloud-init.yaml
+
+      - name: Print server IP
+        run: |
+          IP=$(hcloud server ip "$SERVER_NAME")
+          {
+            echo "### Server IP: $IP"
+            echo ""
+            echo "Add this as the repo secret \`HETZNER_HOST\`, then push to \`main\` to run the first deploy."
+          } >> "$GITHUB_STEP_SUMMARY"

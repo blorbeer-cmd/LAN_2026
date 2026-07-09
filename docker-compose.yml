@@ -1,0 +1,28 @@
+# Production compose file, deployed to /opt/lan2026 on the Hetzner box by
+# infra/cloud-init.yaml.tpl and re-pulled by .github/workflows/deploy.yml on
+# every push to main. Not used for local development (use `npm run dev` in
+# server/ instead) — this expects the .env this repo does NOT ship (see
+# infra/cloud-init.yaml.tpl and README's Deployment section).
+#
+# The app container has no published ports: cloudflared is the only way in,
+# reaching it over the internal compose network by service name.
+services:
+  app:
+    image: ${IMAGE:-ghcr.io/blorbeer-cmd/lan_2026:latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+    expose:
+      - '3000'
+    volumes:
+      - ./data:/app/data
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+    depends_on:
+      - app

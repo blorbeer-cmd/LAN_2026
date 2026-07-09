@@ -40,3 +40,18 @@ export const config = {
   // ACCESS_TOKEN (that gates the whole UI; this gates the admin-only extras).
   adminPin: process.env.ADMIN_PIN ?? '',
 } as const;
+
+// In production (the public-internet deploy) an empty ACCESS_TOKEN/ADMIN_PIN
+// silently means "no protection" — fine for a LAN party run by hand, a
+// launch-blocking footgun for a 24/7 public host. Pure so index.ts's boot
+// check is directly unit-testable without spawning a real process.
+export function productionConfigError(
+  cfg: Pick<typeof config, 'accessToken' | 'adminPin'> = config
+): string | null {
+  const missing = [
+    !cfg.accessToken && 'ACCESS_TOKEN',
+    !cfg.adminPin && 'ADMIN_PIN',
+  ].filter((v): v is string => Boolean(v));
+  if (missing.length === 0) return null;
+  return `NODE_ENV=production erfordert ${missing.join(' und ')}. Server wird nicht gestartet.`;
+}

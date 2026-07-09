@@ -110,27 +110,62 @@ npm start
 
 Danach im Browser `http://localhost:3000` öffnen.
 
-## Deployment (Server in der Cloud)
+## Deployment (24/7 auf `lan.dbehnke.dev`)
 
-Der Server ist ein normaler Node.js-Prozess mit einer SQLite-Datei – läuft auf so ziemlich jedem
-kleinen Linux-Server/VPS.
+Läuft dauerhaft auf einem Hetzner-VPS, containerisiert per Docker, per GitHub Actions deployt,
+per Cloudflare Tunnel ans Internet gehängt. Threat model bewusst schlank: kein Fremder greift in
+eine laufende LAN-Session ein, Ziel ist nur "kein leichtes Opfer für Zufallsfunde/Bots" – siehe
+`CLAUDE.md` für die volle Begründung.
 
-1. **Repo auf den Server bringen** (klonen oder per Deploy-Workflow) und ins `server/`-Verzeichnis
-   wechseln.
-2. **Bauen:**
+**Architektur:** `lan.dbehnke.dev` → Cloudflare (TLS, DNS, DDoS/WAF) → Cloudflare Tunnel
+(`cloudflared`, Origin hat **keinen offenen Port 80/443**) → `app`-Container (kein published Port,
+nur intern im Docker-Netz erreichbar) → SQLite-Datei auf einem Bind-Mount, überlebt jedes Redeploy.
+SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
+
+### Einmalige Vorbereitung (bevor der erste Deploy läuft)
+
+1. **Deploy-Keypair erzeugen** (lokal, einmalig):
    ```bash
-   npm install
-   npm run build
+   ssh-keygen -t ed25519 -f lan2026-deploy -N "" -C "lan2026-deploy"
    ```
-3. **Umgebungsvariablen setzen** (siehe Tabelle unten), dann starten:
-   ```bash
-   npm start
-   ```
-4. Den Prozess dauerhaft am Laufen halten (empfohlen: [`pm2`](https://pm2.keymetrics.io/),
-   `systemd`-Service oder das Init-System deines Hosters), damit er einen Server-Neustart übersteht.
-5. Firewall/Reverse-Proxy: Port (Standard `3000`) für die LAN-Party-Teilnehmer erreichbar machen,
-   idealerweise per HTTPS (z. B. hinter Caddy/nginx), da das Zugangs-Token sonst im Klartext über
-   die Leitung geht.
+2. **Cloudflare Tunnel anlegen** (einmalig, im [Zero Trust Dashboard](https://one.dash.cloudflare.com/)
+   → Networks → Tunnels → Create a tunnel → "Cloudflared"): Name z. B. `lan2026`, Public Hostname
+   `lan.dbehnke.dev` → Service `HTTP` → `app:3000` (der Service-Name `app` ist der Compose-Service,
+   nicht die Server-IP). Den angezeigten **Tunnel-Token** kopieren.
+3. **GitHub Secrets anlegen** (Repo → Settings → Secrets and variables → Actions → *Secrets*, bewusst
+   keine *Variables* – die wären für alle mit Schreibzugriff auf das Repo lesbar, Secrets nicht):
+
+   | Secret | Wert |
+   |---|---|
+   | `HETZNER_API_TOKEN` | Hetzner Cloud Projekt → Security → API Tokens (Read & Write) |
+   | `HETZNER_SSH_PUBLIC_KEY` | Inhalt von `lan2026-deploy.pub` |
+   | `SSH_PRIVATE_KEY` | Inhalt von `lan2026-deploy` (**ohne** `.pub`) |
+   | `CF_TUNNEL_TOKEN` | Token aus Schritt 2 |
+   | `APP_ACCESS_TOKEN` | starkes Zufallstoken, z. B. `openssl rand -hex 24` |
+   | `APP_ADMIN_PIN` | eigene PIN fürs Admin-Freischalten |
+
+4. **`Provision Hetzner Server`-Workflow manuell starten** (Actions-Tab → Workflow auswählen →
+   "Run workflow"). Legt SSH-Key + Firewall (nur Port 22 offen) + einen `cx22`-Server in Hetzner an,
+   installiert Docker via Cloud-Init und startet App + `cloudflared` direkt beim ersten Boot. Läuft
+   **einmalig** – ein zweiter Lauf überspringt die Server-Erstellung, wenn `lan2026` schon existiert.
+5. Die im Job-Summary ausgegebene **Server-IP als Secret `HETZNER_HOST`** anlegen.
+6. Push nach `main` → `CI/CD`-Workflow baut, testet, baut das Docker-Image, pusht es (öffentlich)
+   nach GHCR und deployt per SSH. Ab hier ist jeder weitere Push nach `main` ein normaler Deploy.
+
+### Alltag
+
+- **Deploy:** einfach nach `main` pushen. Tests (Unit + Integration + E2E) müssen grün sein, sonst
+  wird nicht gebaut/deployt.
+- **Rollback:** auf dem Server (`ssh deploy@<HETZNER_HOST>`) `/opt/lan2026/rollback.sh <git-sha>`
+  ausführen – pinnt das Docker-Image auf einen früheren, bereits gebauten Stand.
+- **Backups:** noch nicht eingerichtet (siehe Security-Review) – für echte Daten vor der ersten
+  "richtigen" LAN auf dem neuen Server unbedingt einen Cron-Job mit `sqlite3 .backup` ergänzen.
+
+### Lokale Entwicklung / manuelles Hosting (unverändert möglich)
+
+Der Server ist weiterhin ein normaler Node.js-Prozess mit einer SQLite-Datei und läuft genauso gut
+auf jedem beliebigen kleinen Linux-Server/VPS ohne Docker – für die LAN-Party selbst reicht wie
+bisher `npm install && npm run build && npm start` auf einem Laptop im WLAN.
 
 ### Umgebungsvariablen
 
@@ -139,7 +174,9 @@ kleinen Linux-Server/VPS.
 | `PORT` | `3000` | Port, auf dem der Server lauscht. |
 | `DB_FILE` | `server/data/lan.db` | Pfad zur SQLite-Datei. Wird beim ersten Start angelegt. |
 | `ACCESS_TOKEN` | *(leer = kein Schutz)* | Geteiltes Zugangs-Token für die Web-Oberfläche. **Für den Live-Betrieb unbedingt setzen**, sonst ist das Tool für jeden im Internet offen. |
+| `ADMIN_PIN` | *(leer = offener Admin-Modus)* | PIN fürs Freischalten von Admin-Aktionen. **Für den Live-Betrieb unbedingt setzen.** |
 | `OFFLINE_TIMEOUT_MS` | `60000` | Nach wie vielen ms ohne Agent-Meldung ein Spieler als „offline" gilt. |
+| `NODE_ENV` | *(leer)* | Auf `production` gesetzt (macht der Docker-Container automatisch): verweigert den Start, wenn `ACCESS_TOKEN`/`ADMIN_PIN` leer sind, und beendet den Prozess statt weiterzulaufen, wenn ein unerwarteter Fehler durchschlägt (Docker startet ihn dann per `restart: unless-stopped` sofort neu). Für die LAN-Party selbst (kein Supervisor) bewusst **nicht** setzen. |
 
 Beispiel:
 

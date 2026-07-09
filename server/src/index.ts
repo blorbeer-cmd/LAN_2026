@@ -4,7 +4,7 @@
 import http from 'http';
 import { Server } from 'socket.io';
 
-import { config } from './config';
+import { config, productionConfigError } from './config';
 import './db'; // side-effect: open DB, create schema, seed defaults
 import { createApp } from './app';
 import { setIo } from './realtime';
@@ -12,10 +12,21 @@ import { accessProtectionEnabled } from './auth';
 import { startOfflineSweeper } from './liveStatus';
 import { registerArcadeSockets } from './arcade/arcade';
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 // Boots the full runtime: HTTP server + Socket.IO + offline sweeper + listen.
 // Wrapped in a function guarded by require.main so importing this file (e.g.
 // from a test) never binds a port or starts timers.
 function start(): void {
+  if (isProduction) {
+    const error = productionConfigError();
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error(`FATAL: ${error}`);
+      process.exit(1);
+    }
+  }
+
   const app = createApp();
   const server = http.createServer(app);
   const io = new Server(server);
@@ -38,15 +49,20 @@ function start(): void {
   // Periodically flip stale players to offline.
   startOfflineSweeper(io);
 
-  // Guard against unexpected crashes: log instead of letting the process die,
-  // so the LAN keeps running even if something slips through a handler.
+  // Guard against unexpected crashes. On a friend's PC during a LAN party
+  // there's no supervisor watching the process, so we log and keep going —
+  // a dead server ends the party. In production the box runs the app under
+  // Docker's restart policy, so exiting is the safer choice: a process stuck
+  // after a partially-handled error is worse than a few seconds of restart.
   process.on('uncaughtException', (err) => {
     // eslint-disable-next-line no-console
     console.error('Uncaught exception:', err);
+    if (isProduction) process.exit(1);
   });
   process.on('unhandledRejection', (reason) => {
     // eslint-disable-next-line no-console
     console.error('Unhandled rejection:', reason);
+    if (isProduction) process.exit(1);
   });
 
   server.listen(config.port, () => {
