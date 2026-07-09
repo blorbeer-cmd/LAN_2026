@@ -226,6 +226,21 @@ async function main() {
   ['live:changed', 'votes:changed', 'leaderboard:changed', 'tournaments:changed', 'matchmaking:generated'].forEach(
     (event) => socket.on(event, refreshAll)
   );
+
+  // Durchsagen: a big banner across the top of the shared screen — the whole
+  // point of announcing on the kiosk is that people look up from their own
+  // machines. Stays up for a few minutes, newest message wins.
+  let broadcastTimer = null;
+  socket.on('broadcast:new', (payload) => {
+    if (!payload) return;
+    const banner = document.getElementById('kiosk-broadcast');
+    banner.textContent = `📢 ${payload.playerName}: ${payload.message}`;
+    banner.hidden = false;
+    clearTimeout(broadcastTimer);
+    broadcastTimer = setTimeout(() => {
+      banner.hidden = true;
+    }, 3 * 60 * 1000);
+  });
 }
 
 main().catch((err) => {

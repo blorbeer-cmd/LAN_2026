@@ -85,3 +85,25 @@
     min-height: 260px;
   }
 }
+
+/* Durchsage banner: full-width, impossible to miss — the whole point of a
+   kiosk announcement is that people look up from their own screens. Uses
+   the brand gradient so it reads as "the system speaks", pulses briefly. */
+.kiosk-broadcast {
+  margin: 14px 24px 0;
+  padding: 16px 22px;
+  border-radius: var(--radius);
+  background: var(--accent-gradient);
+  color: var(--accent-text);
+  font-size: 1.35rem;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 4px 24px rgba(91, 140, 255, 0.45);
+  animation: kiosk-broadcast-in 0.4s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@keyframes kiosk-broadcast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.98);
+  }
+}

@@ -44,6 +44,12 @@ before(async () => {
   // Native confirm() dialogs (vote cancel, game delete, tracking start) —
   // accept them so click-through tests don't hang.
   page.on('dialog', (d) => void d.accept());
+  // Surface frontend errors in the test output — a silent JS error otherwise
+  // just shows up as an unexplained selector timeout.
+  page.on('pageerror', (err) => console.error('[pageerror]', err.message));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') console.error('[console.error]', msg.text());
+  });
 });
 
 after(async () => {
@@ -253,4 +259,81 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
     await page.waitForTimeout(300);
   }
   await page.waitForSelector('text=Beendet', { timeout: 5000 });
+});
+
+test('Info-Board: create an entry, see it rendered', async () => {
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="infoBoard"]');
+  await page.waitForSelector('#info-new-btn');
+  await page.click('#info-new-btn');
+  await page.fill('#info-title', 'WLAN');
+  await page.fill('#info-content', 'Netz: LAN2026\nPasswort: kartoffel');
+  await page.click('#info-form button[type="submit"]');
+  await page.waitForSelector('text=kartoffel');
+});
+
+test('Essensbestellung: open an order, add a priced item, close it', async () => {
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="foodOrders"]');
+  await page.waitForSelector('#order-new-btn');
+  await page.click('#order-new-btn');
+  await page.fill('#order-title', "Pizza bei Luigi's");
+  await page.click('#order-form button[type="submit"]');
+  await page.waitForSelector('text=Pizza bei Luigi');
+
+  await page.fill('[data-item-desc]', '1x Margherita groß');
+  await page.fill('[data-item-price]', '9,50');
+  await page.click('[data-add-item-form] button[type="submit"]');
+  await page.waitForSelector('text=Margherita');
+  await page.waitForSelector('text=9,50 €');
+
+  await page.click('[data-close-order]'); // confirm auto-accepted
+  await page.waitForSelector('.badge-offline >> text=Geschlossen');
+});
+
+test('Durchsage: send a broadcast, see it in the history', async () => {
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="broadcast"]');
+  await page.waitForSelector('#broadcast-message');
+  await page.fill('#broadcast-message', 'Essen ist da!');
+  await page.click('#broadcast-form button[type="submit"]');
+  // Wait for the durable signal (the entry in "Letzte Durchsagen"), not the
+  // 2.6s confirmation toast — too short-lived to assert on reliably.
+  try {
+    await page.waitForSelector('.lb-row >> text=Essen ist da!', { timeout: 8000 });
+  } catch (err) {
+    console.error('[debug] view:', (await page.innerText('#view-container')).slice(0, 500));
+    console.error('[debug] toasts:', await page.innerText('#toast-container'));
+    const apiState = await page.request.get(`${BASE_URL}/api/broadcasts`);
+    console.error('[debug] api:', JSON.stringify(await apiState.json()).slice(0, 300));
+    throw err;
+  }
+});
+
+test('Captain-Draft: pick captains, run the live draft to completion', async () => {
+  await page.click('[data-view="matchmaking"]');
+  await page.waitForSelector('[data-captain-toggle]');
+
+  // The device identity ("E2E Alice Pro") must be a captain so this page is
+  // allowed to pick; E2E Bob is the second captain, everyone else is pool.
+  await page.click('button[data-captain-toggle]:has-text("E2E Alice Pro")');
+  await page.click('button[data-captain-toggle]:has-text("E2E Bob")');
+  await page.waitForSelector('#draft-start:not([disabled])');
+  await page.click('#draft-start');
+
+  // Live board appears; it's Alice's turn (first captain). Keep picking
+  // until the pool is empty — the last player is auto-assigned server-side.
+  await page.waitForSelector('text=Captain-Draft läuft');
+  for (let i = 0; i < 8; i++) {
+    if (await page.locator('text=Draft-Ergebnis').count()) break;
+    const pick = page.locator('button[data-draft-pick]').first();
+    if ((await pick.count()) === 0) break;
+    await pick.click();
+    await page.waitForTimeout(300);
+  }
+  await page.waitForSelector('text=Draft-Ergebnis', { timeout: 5000 });
+
+  // The finished draft also landed in the shared Team-Historie, and the
+  // result offers the usual "Ergebnis eintragen" follow-up.
+  await page.waitForSelector('#draft-record-result');
 });

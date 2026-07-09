@@ -5,6 +5,9 @@
 // since everyone self-onboards through their profile).
 
 const ITEMS = [
+  { view: 'infoBoard', icon: '📌', title: 'Info-Board', desc: 'WLAN, Discord, Server-IPs, Hausregeln – alles Wichtige an einem Ort.' },
+  { view: 'foodOrders', icon: '🍕', title: 'Essen bestellen', desc: 'Sammelbestellung öffnen, jeder trägt sich selbst ein.' },
+  { view: 'broadcast', icon: '📢', title: 'Durchsage', desc: 'Eine Nachricht an alle Geräte, den Kiosk und als Push.' },
   { view: 'players', icon: '👥', title: 'Spieler', desc: 'Alle Teilnehmer: anlegen, umbenennen, Agent-Keys nachschlagen.' },
   { view: 'analytics', icon: '🕒', title: 'Spielzeit-Auswertungen', desc: 'Awards, Spielzeiten, beliebteste Spiele, wer wann was gespielt hat.' },
   { view: 'gameStats', icon: '📊', title: 'Spiele & Turniere', desc: 'Match- und Turnier-Statistiken, Rivalitäten, Duos, Underdog-Siege.' },
