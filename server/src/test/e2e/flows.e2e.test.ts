@@ -306,6 +306,24 @@ test('Essensbestellung: open an order with a send time, edit it, add a priced it
   await page.waitForSelector('text=Geht raus um 24.12., 22:00 Uhr');
 });
 
+test('Arcade: open a quiz lobby, see it listed, then close it again', async () => {
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="arcade"]');
+  await page.waitForSelector('#quiz-create-lobby');
+  await page.click('#quiz-create-lobby');
+
+  // The host sees their own lobby with a "Schließen" button instead of a
+  // join button/"Drin" badge - closing was previously impossible (the only
+  // way to get rid of a lobby was to disconnect the socket, e.g. by closing
+  // the tab), leaving abandoned lobbies listed forever.
+  await page.waitForSelector('[data-close-lobby]');
+  await page.click('[data-close-lobby]');
+  await page.waitForSelector('text=Keine offene Quiz-Lobby.');
+
+  // Closed - the create button is enabled again.
+  await page.waitForSelector('#quiz-create-lobby:not([disabled])');
+});
+
 test('Durchsage: send a broadcast, see it in the history', async () => {
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="broadcast"]');
