@@ -292,8 +292,10 @@ export const api = {
 
   foodOrders: {
     list: () => apiFetch('/api/food-orders'),
-    create: (playerId, title) =>
-      apiFetch('/api/food-orders', { method: 'POST', body: JSON.stringify({ playerId, title }) }),
+    create: (playerId, title, sendAt) =>
+      apiFetch('/api/food-orders', { method: 'POST', body: JSON.stringify({ playerId, title, sendAt }) }),
+    setSendAt: (orderId, sendAt) =>
+      apiFetch(`/api/food-orders/${orderId}`, { method: 'PATCH', body: JSON.stringify({ sendAt }) }),
     addItem: (orderId, data) =>
       apiFetch(`/api/food-orders/${orderId}/items`, { method: 'POST', body: JSON.stringify(data) }),
     removeItem: (orderId, itemId, playerId) =>

@@ -384,7 +384,8 @@ db.exec(`
     title      TEXT NOT NULL,
     created_by TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     created_at INTEGER NOT NULL,
-    closed_at  INTEGER
+    closed_at  INTEGER,
+    send_at    INTEGER  -- optional, editable: when the order will actually be placed/picked up
   );
 
   CREATE TABLE IF NOT EXISTS food_order_items (
@@ -439,6 +440,15 @@ function migrateGameIconImageColumn(): void {
   db.exec('ALTER TABLE games ADD COLUMN icon_image TEXT');
 }
 migrateGameIconImageColumn();
+
+// Migration: older databases predate the optional "wann geht's raus"
+// send_at field on food orders.
+function migrateFoodOrderSendAtColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(food_orders)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'send_at')) return;
+  db.exec('ALTER TABLE food_orders ADD COLUMN send_at INTEGER');
+}
+migrateFoodOrderSendAtColumn();
 
 // Migration: older databases predate the group-knockout format and score
 // tracking (both added together) — add the columns they need if missing.
