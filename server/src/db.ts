@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { nanoid } from 'nanoid';
 import { config } from './config';
+import { DEFAULT_QUIZ_QUESTIONS } from './arcade/quizQuestions';
 
 // Ensure the data directory exists before opening a file-based DB. Skipped for
 // the in-memory database used in tests.
@@ -393,6 +394,34 @@ db.exec(`
     created_at INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS quiz_questions (
+    id         TEXT PRIMARY KEY,
+    question   TEXT NOT NULL,
+    answers    TEXT NOT NULL,
+    category   TEXT,
+    difficulty TEXT,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS quiz_seen (
+    question_id TEXT NOT NULL REFERENCES quiz_questions(id) ON DELETE CASCADE,
+    player_id   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    seen_at     INTEGER NOT NULL,
+    was_correct INTEGER,
+    PRIMARY KEY (question_id, player_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS arcade_results (
+    id          TEXT PRIMARY KEY,
+    game_type   TEXT NOT NULL,
+    winner_id   TEXT REFERENCES players(id) ON DELETE SET NULL,
+    players     TEXT NOT NULL,
+    scores      TEXT NOT NULL,
+    reason      TEXT NOT NULL,
+    started_at  INTEGER NOT NULL,
+    ended_at    INTEGER NOT NULL
+  );
+
   -- Info-Board: the answers to the questions everyone asks five times per
   -- evening (WLAN password, Discord link, game-server IPs, house rules).
   -- Plain title+content entries, editable by anyone (LAN trust model).
@@ -480,6 +509,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_push_subscriptions_player ON push_subscriptions(player_id);
   CREATE INDEX IF NOT EXISTS idx_drafts_status ON drafts(status);
   CREATE INDEX IF NOT EXISTS idx_broadcasts_created ON broadcasts(created_at);
+  CREATE INDEX IF NOT EXISTS idx_quiz_seen_player ON quiz_seen(player_id);
   CREATE INDEX IF NOT EXISTS idx_food_orders_event ON food_orders(event_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_food_order_items_order ON food_order_items(order_id);
   CREATE INDEX IF NOT EXISTS idx_arrivals_event ON arrivals(event_id, arrival_at, departure_at);
@@ -766,6 +796,21 @@ function seedGames(): void {
 
 seedGames();
 
+function seedQuizQuestions(): void {
+  const count = (db.prepare('SELECT COUNT(*) AS n FROM quiz_questions').get() as { n: number }).n;
+  if (count > 0) return;
+
+  const now = Date.now();
+  const insert = db.prepare(
+    'INSERT INTO quiz_questions (id, question, answers, category, difficulty, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  );
+  db.transaction(() => {
+    for (const q of DEFAULT_QUIZ_QUESTIONS) {
+      insert.run(nanoid(), q.question, JSON.stringify(q.answers), q.category, q.difficulty, now);
+    }
+  })();
+}
+
 // Seed the broader "could we play this?" catalog from the shared planning
 // sheet. Kept independent from seedGames(): some catalog entries are install
 // candidates only and should not become tracked games/process mappings.
@@ -835,6 +880,7 @@ function seedGameCatalog(): void {
   })();
 }
 
+seedQuizQuestions();
 seedGameCatalog();
 
 // Seed the permanent "außerhalb von Events" sentinel, once. This is the ONLY

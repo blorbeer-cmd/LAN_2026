@@ -249,6 +249,17 @@ export const api = {
     svg: (text) => fetchText(`/api/qrcode?text=${encodeURIComponent(text)}`),
   },
 
+  quiz: {
+    questions: () => apiFetch('/api/quiz/questions'),
+    createQuestion: (data) => apiFetch('/api/quiz/questions', { method: 'POST', body: JSON.stringify(data) }),
+    updateQuestion: (id, data) => apiFetch(`/api/quiz/questions/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    removeQuestion: (id) => apiFetch(`/api/quiz/questions/${id}`, { method: 'DELETE' }),
+  },
+
+  arcade: {
+    stats: () => apiFetch('/api/arcade/stats'),
+  },
+
   export: {
     snapshot: (eventId) => apiFetch(`/api/export${eventId ? `?eventId=${eventId}` : ''}`),
     pdf: (eventId) => fetchBlob(`/api/export/pdf${eventId ? `?eventId=${eventId}` : ''}`),

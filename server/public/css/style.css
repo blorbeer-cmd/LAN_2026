@@ -790,6 +790,83 @@ button.card {
   font-size: 0.8rem;
 }
 
+.arcade-stat-game {
+  display: grid;
+  gap: var(--space-2);
+}
+.arcade-stat-game + .arcade-stat-game {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.arcade-winner-card {
+  position: relative;
+  display: grid;
+  gap: var(--space-3);
+  justify-items: center;
+  text-align: center;
+  margin-top: 12px;
+  overflow: hidden;
+}
+.arcade-winner-burst {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.arcade-winner-burst span {
+  position: absolute;
+  left: 50%;
+  top: 36px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 2px solid rgba(91, 140, 255, 0.35);
+  transform: translate(-50%, -50%) scale(0.4);
+  animation: arcade-winner-ring 1.6s ease-out infinite;
+}
+.arcade-winner-burst span:nth-child(2) {
+  animation-delay: 0.28s;
+  border-color: rgba(34, 197, 94, 0.35);
+}
+.arcade-winner-burst span:nth-child(3) {
+  animation-delay: 0.56s;
+  border-color: rgba(239, 93, 168, 0.32);
+}
+.arcade-winner-crown {
+  position: relative;
+  z-index: 1;
+  font-size: 2rem;
+  animation: arcade-winner-pop 0.9s ease-out both;
+}
+.arcade-winner-label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 2px;
+}
+@keyframes arcade-winner-ring {
+  0% {
+    opacity: 0.95;
+    transform: translate(-50%, -50%) scale(0.35);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(5);
+  }
+}
+@keyframes arcade-winner-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.7);
+  }
+  70% {
+    transform: translateY(-2px) scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
 .catalog-card {
   overflow: hidden;
 }

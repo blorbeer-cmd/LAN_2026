@@ -15,6 +15,7 @@ import { renderMatchmaking, invalidateMatchmakingHistory, setDraftState } from '
 import { renderBroadcast, invalidateBroadcasts } from './views/broadcast.js';
 import { renderInfoBoard, invalidateInfoBoard } from './views/infoBoard.js';
 import { renderFoodOrders, invalidateFoodOrders } from './views/foodOrders.js';
+import { renderArcade } from './views/arcade.js';
 import { renderGameCatalog, invalidateGameCatalog } from './views/gameCatalog.js';
 import { renderArrivals, invalidateArrivals } from './views/arrivals.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
@@ -47,6 +48,7 @@ const VIEWS = {
   broadcast: renderBroadcast,
   infoBoard: renderInfoBoard,
   foodOrders: renderFoodOrders,
+  arcade: renderArcade,
   gameCatalog: renderGameCatalog,
   arrivals: renderArrivals,
   admin: renderAdmin,
