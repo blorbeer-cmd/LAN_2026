@@ -7,7 +7,7 @@
 const ITEMS = [
   { view: 'infoBoard', icon: '📌', title: 'Info-Board', desc: 'WLAN, Discord, Server-IPs, Hausregeln – alles Wichtige an einem Ort.' },
   { view: 'foodOrders', icon: '🍕', title: 'Essen bestellen', desc: 'Sammelbestellung öffnen, jeder trägt sich selbst ein.' },
-  { view: 'gameCatalog', icon: '🎲', title: 'Spiele-Liste', desc: 'Was könnten wir zocken? Plattform, Upload-Status, Bock.' },
+  { view: 'gameCatalog', icon: '🎲', title: 'Spiele-Liste', desc: 'Was könnten wir zocken? Plattform, Trailer, Bock.' },
   { view: 'broadcast', icon: '📢', title: 'Durchsage', desc: 'Eine Nachricht an alle Geräte, den Kiosk und als Push.' },
   { view: 'players', icon: '👥', title: 'Spieler', desc: 'Alle Teilnehmer: anlegen, umbenennen, Agent-Keys nachschlagen.' },
   { view: 'analytics', icon: '🕒', title: 'Spielzeit-Auswertungen', desc: 'Awards, Spielzeiten, beliebteste Spiele, wer wann was gespielt hat.' },

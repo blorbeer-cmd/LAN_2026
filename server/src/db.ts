@@ -116,10 +116,11 @@ db.exec(`
     id          TEXT PRIMARY KEY,
     title       TEXT NOT NULL,
     platform    TEXT,
+    platform_url TEXT,
     upload_done INTEGER NOT NULL DEFAULT 0,
     play_rate   TEXT,
-    price_cents INTEGER,
     trailer_url TEXT,
+    is_suggestion INTEGER NOT NULL DEFAULT 0,
     created_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
     created_at  INTEGER NOT NULL
   );
@@ -127,6 +128,13 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS game_catalog_interest (
     catalog_id TEXT NOT NULL REFERENCES game_catalog(id) ON DELETE CASCADE,
     player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    PRIMARY KEY (catalog_id, player_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS game_catalog_ratings (
+    catalog_id TEXT NOT NULL REFERENCES game_catalog(id) ON DELETE CASCADE,
+    player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    rating     INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
     PRIMARY KEY (catalog_id, player_id)
   );
 
@@ -422,6 +430,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_preferences_game ON preferences(game_id);
   CREATE INDEX IF NOT EXISTS idx_game_catalog_title ON game_catalog(title);
   CREATE INDEX IF NOT EXISTS idx_game_catalog_interest_player ON game_catalog_interest(player_id);
+  CREATE INDEX IF NOT EXISTS idx_game_catalog_ratings_player ON game_catalog_ratings(player_id);
   CREATE INDEX IF NOT EXISTS idx_live_status_games_game ON live_status_games(game_id);
   CREATE INDEX IF NOT EXISTS idx_votes_round ON votes(round);
   CREATE INDEX IF NOT EXISTS idx_votes_event ON votes(event_id);
@@ -463,6 +472,14 @@ function migrateGameIconImageColumn(): void {
   db.exec('ALTER TABLE games ADD COLUMN icon_image TEXT');
 }
 migrateGameIconImageColumn();
+
+function migrateGameCatalogColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(game_catalog)').all() as Array<{ name: string }>;
+  const has = (name: string) => columns.some((c) => c.name === name);
+  if (!has('platform_url')) db.exec('ALTER TABLE game_catalog ADD COLUMN platform_url TEXT');
+  if (!has('is_suggestion')) db.exec('ALTER TABLE game_catalog ADD COLUMN is_suggestion INTEGER NOT NULL DEFAULT 0');
+}
+migrateGameCatalogColumns();
 
 // Migration: older databases predate the group-knockout format and score
 // tracking (both added together) — add the columns they need if missing.
@@ -705,54 +722,66 @@ seedGames();
 // candidates only and should not become tracked games/process mappings.
 function seedGameCatalog(): void {
   const count = (db.prepare('SELECT COUNT(*) AS n FROM game_catalog').get() as { n: number }).n;
-  if (count > 0) return;
 
   const now = Date.now();
-  const insert = db.prepare(
-    `INSERT INTO game_catalog (id, title, platform, upload_done, play_rate, price_cents, trailer_url, created_by, created_at)
-     VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, ?)`
-  );
-  const defaults: Array<{ title: string; platform: string; uploadDone: boolean; playRate: string }> = [
-    { title: 'Age of Empires 2', platform: 'Steam/Gamepass', uploadDone: false, playRate: 'mittel' },
-    { title: 'Age of Empires 4', platform: 'Gamepass', uploadDone: false, playRate: 'niedrig' },
-    { title: 'Among Us', platform: 'Steam', uploadDone: false, playRate: 'niedrig' },
-    { title: 'Back 4 Blood', platform: 'Gamepass', uploadDone: false, playRate: 'niedrig' },
-    { title: 'C&C Generals', platform: 'Origin', uploadDone: false, playRate: 'niedrig' },
-    { title: 'Call of Duty 4 - Modern Warfare', platform: 'NAS', uploadDone: true, playRate: 'mittel' },
-    { title: 'Call of Duty II', platform: 'NAS', uploadDone: true, playRate: 'mittel' },
-    { title: 'Chivalry 2', platform: 'Steam/Epic', uploadDone: false, playRate: 'hoch' },
-    { title: 'CS 1.5', platform: 'Steam', uploadDone: false, playRate: 'niedrig' },
-    { title: 'CS 1.6', platform: 'NAS', uploadDone: true, playRate: 'niedrig' },
-    { title: 'CS GO', platform: 'Steam', uploadDone: false, playRate: 'hoch' },
-    { title: 'Dawn of War', platform: 'Steam', uploadDone: false, playRate: 'niedrig' },
-    { title: 'DOTA 2', platform: 'Steam', uploadDone: false, playRate: 'niedrig' },
-    { title: 'Fall Guys', platform: 'Steam', uploadDone: false, playRate: 'mittel' },
-    { title: 'Golf with your Friends', platform: 'Steam', uploadDone: false, playRate: 'hoch' },
-    { title: 'GRID', platform: 'Steam', uploadDone: false, playRate: 'niedrig' },
-    { title: 'Halo Infinite', platform: 'Gamepass', uploadDone: false, playRate: 'niedrig' },
-    { title: 'Hot Wheels Unleashed', platform: 'NAS', uploadDone: true, playRate: 'niedrig' },
-    { title: 'Iron Harvest', platform: 'Gamepass', uploadDone: false, playRate: 'niedrig' },
-    { title: 'Jedi Knight II', platform: 'NAS', uploadDone: true, playRate: 'mittel' },
-    { title: 'League of Legends', platform: 'Riot', uploadDone: false, playRate: 'hoch' },
-    { title: 'Rocket League', platform: 'Steam/Epic', uploadDone: false, playRate: 'hoch' },
-    { title: 'Sea of Thieves', platform: 'Gamepass', uploadDone: false, playRate: 'niedrig' },
-    { title: 'Splitgate', platform: 'Steam', uploadDone: false, playRate: 'niedrig' },
-    { title: 'Star Wars Battlefront', platform: 'Epic', uploadDone: false, playRate: 'niedrig' },
-    { title: 'Starcraft 2', platform: 'Battlenet', uploadDone: false, playRate: 'niedrig' },
-    { title: 'Team Fortress 2', platform: 'Steam', uploadDone: false, playRate: 'mittel' },
-    { title: 'Trackmania', platform: 'Epic', uploadDone: false, playRate: 'mittel' },
-    { title: 'Tricky Towers', platform: 'Steam', uploadDone: false, playRate: 'niedrig' },
-    { title: 'Ultimate Chicken Horse', platform: 'Steam', uploadDone: false, playRate: 'niedrig' },
-    { title: 'UT2003', platform: 'NAS', uploadDone: true, playRate: 'mittel' },
-    { title: 'UT2004', platform: 'NAS', uploadDone: true, playRate: 'mittel' },
-    { title: 'Warcraft 3', platform: 'Battlenet/NAS', uploadDone: true, playRate: 'mittel' },
-    { title: 'Worms', platform: 'Gamepass', uploadDone: false, playRate: 'niedrig' },
-    { title: 'Wreckfest', platform: 'Gamepass', uploadDone: false, playRate: 'mittel' },
+  const trailer = (title: string) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${title} gameplay trailer`)}`;
+  const defaults: Array<{ title: string; platform: string; platformUrl: string | null }> = [
+    { title: 'Age of Empires 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/813780/Age_of_Empires_II_Definitive_Edition/' },
+    { title: 'Age of Empires 4', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1466860/Age_of_Empires_IV_Anniversary_Edition/' },
+    { title: 'Among Us', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/945360/Among_Us/' },
+    { title: 'Back 4 Blood', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/924970/Back_4_Blood/' },
+    { title: 'C&C Generals', platform: 'EA', platformUrl: 'https://www.ea.com/games/command-and-conquer/command-and-conquer-generals' },
+    { title: 'Call of Duty 4 - Modern Warfare', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/7940/Call_of_Duty_4_Modern_Warfare_2007/' },
+    { title: 'Call of Duty II', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/2630/Call_of_Duty_2/' },
+    { title: 'Chivalry 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1824220/Chivalry_2/' },
+    { title: 'CS 1.5', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/10/CounterStrike/' },
+    { title: 'CS 1.6', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/10/CounterStrike/' },
+    { title: 'CS GO', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/730/CounterStrike_2/' },
+    { title: 'Dawn of War', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/4570/Warhammer_40000_Dawn_of_War__Game_of_the_Year_Edition/' },
+    { title: 'DOTA 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/570/Dota_2/' },
+    { title: 'Fall Guys', platform: 'Epic', platformUrl: 'https://store.epicgames.com/p/fall-guys' },
+    { title: 'Golf with your Friends', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/431240/Golf_With_Your_Friends/' },
+    { title: 'GRID', platform: 'Steam', platformUrl: 'https://store.steampowered.com/search/?term=GRID' },
+    { title: 'Halo Infinite', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1240440/Halo_Infinite/' },
+    { title: 'Hot Wheels Unleashed', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1271700/HOT_WHEELS_UNLEASHED/' },
+    { title: 'Iron Harvest', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/826630/Iron_Harvest/' },
+    { title: 'Jedi Knight II', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/6030/STAR_WARS_Jedi_Knight_II_Jedi_Outcast/' },
+    { title: 'League of Legends', platform: 'Riot', platformUrl: 'https://www.leagueoflegends.com/' },
+    { title: 'Rocket League', platform: 'Epic', platformUrl: 'https://store.epicgames.com/p/rocket-league' },
+    { title: 'Sea of Thieves', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1172620/Sea_of_Thieves_2024_Edition/' },
+    { title: 'Splitgate', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/677620/Splitgate/' },
+    { title: 'Star Wars Battlefront', platform: 'Steam', platformUrl: 'https://store.steampowered.com/search/?term=Star%20Wars%20Battlefront' },
+    { title: 'Starcraft 2', platform: 'Battle.net', platformUrl: 'https://starcraft2.blizzard.com/' },
+    { title: 'Team Fortress 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/440/Team_Fortress_2/' },
+    { title: 'Trackmania', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/2225070/Trackmania/' },
+    { title: 'Tricky Towers', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/437920/Tricky_Towers/' },
+    { title: 'Ultimate Chicken Horse', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/386940/Ultimate_Chicken_Horse/' },
+    { title: 'UT2003', platform: 'NAS', platformUrl: null },
+    { title: 'UT2004', platform: 'NAS', platformUrl: null },
+    { title: 'Warcraft 3', platform: 'NAS', platformUrl: null },
+    { title: 'Worms', platform: 'Steam', platformUrl: 'https://store.steampowered.com/search/?term=Worms' },
+    { title: 'Wreckfest', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/228380/Wreckfest/' },
   ];
 
+  const insert = db.prepare(
+    `INSERT INTO game_catalog (id, title, platform, platform_url, upload_done, play_rate, trailer_url, is_suggestion, created_by, created_at)
+     VALUES (?, ?, ?, ?, 0, NULL, ?, 0, NULL, ?)`
+  );
+  const update = db.prepare(
+    `UPDATE game_catalog
+     SET platform = ?, platform_url = ?, trailer_url = ?, is_suggestion = 0
+     WHERE title = ?`
+  );
+
   db.transaction(() => {
+    if (count === 0) {
+      for (const g of defaults) {
+        insert.run(nanoid(), g.title, g.platform, g.platformUrl, trailer(g.title), now);
+      }
+      return;
+    }
     for (const g of defaults) {
-      insert.run(nanoid(), g.title, g.platform, g.uploadDone ? 1 : 0, g.playRate, now);
+      update.run(g.platform, g.platformUrl, trailer(g.title), g.title);
     }
   })();
 }

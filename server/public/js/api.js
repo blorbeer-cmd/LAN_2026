@@ -120,6 +120,9 @@ export const api = {
     remove: (id) => apiFetch(`/api/game-catalog/${id}`, { method: 'DELETE' }),
     toggleInterest: (id, playerId) =>
       apiFetch(`/api/game-catalog/${id}/interest`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    rate: (id, playerId, rating) =>
+      apiFetch(`/api/game-catalog/${id}/rating`, { method: 'PUT', body: JSON.stringify({ playerId, rating }) }),
+    promote: (id) => apiFetch(`/api/game-catalog/${id}/promote`, { method: 'POST' }),
   },
 
   skills: {
