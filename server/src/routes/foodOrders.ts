@@ -11,7 +11,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getTrackingEventId } from '../events';
-import { isNonEmptyString } from '../validation';
+import { isNonEmptyString, isValidUrl } from '../validation';
 import { notifyPlayers } from '../push';
 
 export const foodOrdersRouter = Router();
@@ -19,6 +19,8 @@ export const foodOrdersRouter = Router();
 const MAX_TITLE_LENGTH = 80;
 const MAX_ITEM_LENGTH = 120;
 const MAX_PRICE_CENTS = 500_00; // nobody orders a 500€ pizza
+const MAX_NOTES_LENGTH = 500;
+const MAX_LINK_LENGTH = 300;
 const HISTORY_LIMIT = 10;
 
 interface OrderRow {
@@ -29,6 +31,8 @@ interface OrderRow {
   created_at: number;
   closed_at: number | null;
   send_at: number | null;
+  notes: string | null;
+  link: string | null;
 }
 
 // Epoch-ms bounds a "wann geht's raus" timestamp must fall within — loose on
@@ -40,6 +44,17 @@ const MAX_SEND_AT = Date.UTC(2100, 0, 1);
 
 function isValidSendAt(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= MIN_SEND_AT && value <= MAX_SEND_AT;
+}
+
+// notes/link are both optional metadata: valid values are either absent
+// (undefined - "don't touch it" on PATCH), null (explicit clear), or a
+// string within bounds. Never required, unlike title/description.
+function isValidNotes(value: unknown): boolean {
+  return value === null || isNonEmptyString(value, MAX_NOTES_LENGTH);
+}
+
+function isValidLink(value: unknown): boolean {
+  return value === null || isValidUrl(value, MAX_LINK_LENGTH);
 }
 
 interface ItemRow {
@@ -75,6 +90,8 @@ function serializeOrder(row: OrderRow) {
     createdAt: row.created_at,
     closedAt: row.closed_at,
     sendAt: row.send_at,
+    notes: row.notes,
+    link: row.link,
     open: row.closed_at === null,
     items,
     totalCents,
@@ -98,12 +115,14 @@ foodOrdersRouter.get('/', (_req, res) => {
   res.json(buildList());
 });
 
-// POST /api/food-orders - body: { playerId, title, sendAt? }. Multiple open
-// orders are allowed (drinks run + pizza run can overlap) — no single-open
-// guard. sendAt is optional: when this order will actually be placed/picked
-// up, so everyone knows the cutoff for adding items instead of guessing.
+// POST /api/food-orders - body: { playerId, title, sendAt?, notes?, link? }.
+// Multiple open orders are allowed (drinks run + pizza run can overlap) — no
+// single-open guard. sendAt is optional: when this order will actually be
+// placed/picked up, so everyone knows the cutoff for adding items instead of
+// guessing. notes/link are optional too: free-text info (e.g. Mindestbestell-
+// wert, "bar zahlen") and a link to the menu/delivery service.
 foodOrdersRouter.post('/', (req, res) => {
-  const { playerId, title, sendAt } = req.body ?? {};
+  const { playerId, title, sendAt, notes, link } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
@@ -112,6 +131,12 @@ foodOrdersRouter.post('/', (req, res) => {
   }
   if (sendAt !== undefined && sendAt !== null && !isValidSendAt(sendAt)) {
     return res.status(400).json({ error: 'sendAt muss ein gültiger Zeitpunkt sein.' });
+  }
+  if (notes !== undefined && notes !== null && !isValidNotes(notes)) {
+    return res.status(400).json({ error: `Infos dürfen höchstens ${MAX_NOTES_LENGTH} Zeichen lang sein.` });
+  }
+  if (link !== undefined && link !== null && !isValidLink(link)) {
+    return res.status(400).json({ error: 'Link muss eine gültige http(s)-URL sein.' });
   }
   const player = db.prepare('SELECT id, name FROM players WHERE id = ?').get(playerId) as
     | { id: string; name: string }
@@ -126,10 +151,12 @@ foodOrdersRouter.post('/', (req, res) => {
     created_at: Date.now(),
     closed_at: null,
     send_at: sendAt ?? null,
+    notes: notes ? notes.trim() : null,
+    link: link ? link.trim() : null,
   };
   db.prepare(
-    'INSERT INTO food_orders (id, event_id, title, created_by, created_at, closed_at, send_at) VALUES (?, ?, ?, ?, ?, NULL, ?)'
-  ).run(row.id, row.event_id, row.title, row.created_by, row.created_at, row.send_at);
+    'INSERT INTO food_orders (id, event_id, title, created_by, created_at, closed_at, send_at, notes, link) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)'
+  ).run(row.id, row.event_id, row.title, row.created_by, row.created_at, row.send_at, row.notes, row.link);
 
   const sendAtNote = row.send_at ? ` (geht raus um ${new Date(row.send_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})` : '';
 
@@ -151,22 +178,40 @@ foodOrdersRouter.post('/', (req, res) => {
   res.status(201).json(serializeOrder(row));
 });
 
-// PATCH /api/food-orders/:id - body: { sendAt }. Only the "wann geht's
-// raus" metadata is editable this way (not title/items) — correcting a
-// mis-typed or shifted deadline is legitimate even after the order closed,
-// so this isn't gated on open/closed like items are.
+// PATCH /api/food-orders/:id - body: { sendAt?, notes?, link? }. Only this
+// metadata is editable this way (not title/items) — correcting a mis-typed
+// or shifted deadline, a typo in the notes, or a wrong link is legitimate
+// even after the order closed, so none of this is gated on open/closed like
+// items are. Each field is independent: omit a field to leave it as-is,
+// pass null to clear it.
 foodOrdersRouter.patch('/:id', (req, res) => {
   const order = getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
 
-  const { sendAt } = req.body ?? {};
-  if (sendAt !== null && !isValidSendAt(sendAt)) {
+  const { sendAt, notes, link } = req.body ?? {};
+  if (sendAt !== undefined && sendAt !== null && !isValidSendAt(sendAt)) {
     return res.status(400).json({ error: 'sendAt muss ein gültiger Zeitpunkt sein (oder null zum Entfernen).' });
   }
+  if (notes !== undefined && !isValidNotes(notes)) {
+    return res.status(400).json({ error: `Infos dürfen höchstens ${MAX_NOTES_LENGTH} Zeichen lang sein (oder null zum Entfernen).` });
+  }
+  if (link !== undefined && !isValidLink(link)) {
+    return res.status(400).json({ error: 'Link muss eine gültige http(s)-URL sein (oder null zum Entfernen).' });
+  }
 
-  db.prepare('UPDATE food_orders SET send_at = ? WHERE id = ?').run(sendAt, order.id);
+  const next = {
+    send_at: sendAt !== undefined ? sendAt : order.send_at,
+    notes: notes !== undefined ? (notes ? notes.trim() : null) : order.notes,
+    link: link !== undefined ? (link ? link.trim() : null) : order.link,
+  };
+  db.prepare('UPDATE food_orders SET send_at = ?, notes = ?, link = ? WHERE id = ?').run(
+    next.send_at,
+    next.notes,
+    next.link,
+    order.id
+  );
   broadcast(Events.foodOrdersChanged, null);
-  res.json(serializeOrder({ ...order, send_at: sendAt }));
+  res.json(serializeOrder({ ...order, ...next }));
 });
 
 // POST /api/food-orders/:id/items - body: { playerId, description, priceCents? }

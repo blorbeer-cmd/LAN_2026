@@ -15,6 +15,23 @@ export function isIntInRange(value: unknown, min: number, max: number): value is
   return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max;
 }
 
+// Links to a menu/delivery service (food orders' "Link zu Karte/Lieferdienst").
+// Only http(s) is accepted — this gets rendered as a clickable link, so
+// javascript: and similar schemes must never pass.
+const HTTP_URL_RE = /^https?:\/\//i;
+
+export function isValidUrl(value: unknown, maxLength = 300): value is string {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > maxLength || !HTTP_URL_RE.test(trimmed)) return false;
+  try {
+    new URL(trimmed);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Profile pictures are stored inline as data: URLs (no separate file storage
 // needed for ~15 people). Capped well above what a client-side-resized
 // thumbnail needs, to keep the SQLite file small.

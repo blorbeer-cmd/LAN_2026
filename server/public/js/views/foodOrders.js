@@ -101,18 +101,24 @@ function renderItems(order, myId) {
     .join('');
 }
 
-// "Geht raus um ..." line shown on both open and closed orders, with an
-// edit affordance — the deadline is metadata people commonly get wrong or
-// need to shift ("doch erst um 21 Uhr"), so it stays correctable even after
-// the order closed, unlike the items themselves.
-function renderSendAt(order) {
-  const label = order.sendAt
+// Metadata block (send time / notes / link) shown on both open and closed
+// orders, with a single edit affordance — all three are things people
+// commonly get wrong or need to correct ("doch erst um 21 Uhr", "Link war
+// falsch"), so they stay editable even after the order closed, unlike the
+// items themselves.
+function renderDetails(order) {
+  const sendAtLabel = order.sendAt
     ? `🕒 Geht raus um ${formatDateTime(order.sendAt)} Uhr`
     : '🕒 Kein Zeitpunkt festgelegt';
+  const hasDetails = Boolean(order.sendAt || order.notes || order.link);
   return `
-    <div class="row-between">
-      <span class="muted" style="font-size:0.82rem;">${label}</span>
-      <button type="button" class="btn btn-sm" data-edit-sendat="${order.id}">${order.sendAt ? 'Ändern' : '+ Zeitpunkt'}</button>
+    <div class="stack" style="gap:4px;">
+      <div class="row-between">
+        <span class="muted" style="font-size:0.82rem;">${sendAtLabel}</span>
+        <button type="button" class="btn btn-sm" data-edit-details="${order.id}">${hasDetails ? 'Bearbeiten' : '+ Infos & Link'}</button>
+      </div>
+      ${order.notes ? `<div class="muted" style="font-size:0.85rem;white-space:pre-wrap;word-break:break-word;">${escapeHtml(order.notes)}</div>` : ''}
+      ${order.link ? `<a href="${escapeHtml(order.link)}" target="_blank" rel="noopener" style="font-size:0.85rem;">🔗 Zur Karte / Lieferdienst</a>` : ''}
     </div>`;
 }
 
@@ -126,7 +132,7 @@ function renderOpenOrder(order, myId) {
       <div class="muted" style="font-size:0.78rem;margin-top:-6px;">
         von ${escapeHtml(order.createdByName)} · ${formatDateTime(order.createdAt)}
       </div>
-      ${renderSendAt(order)}
+      ${renderDetails(order)}
       <div>${renderItems(order, myId)}</div>
       ${order.totalCents > 0 ? `<div class="row-between"><strong>Summe</strong><strong>${formatCents(order.totalCents)}</strong></div>` : ''}
       ${
@@ -149,7 +155,7 @@ function renderClosedOrder(order) {
         <span><strong>${escapeHtml(order.title)}</strong> <span class="muted" style="font-size:0.8rem;">· ${order.items.length} Position(en)${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}</span></span>
         <span class="badge badge-offline">Geschlossen</span>
       </summary>
-      <div style="margin-top:10px;">${renderSendAt(order)}</div>
+      <div style="margin-top:10px;">${renderDetails(order)}</div>
       <div style="margin-top:10px;">${renderItems(order, null)}</div>
     </details>`;
 }
@@ -164,9 +170,17 @@ function openNewOrderForm(ctx, myId) {
           <label for="order-sendat" class="field-label">Geht raus um (optional)</label>
           <input type="datetime-local" id="order-sendat" />
         </div>
+        <div>
+          <label for="order-notes" class="field-label">Infos (optional)</label>
+          <textarea id="order-notes" rows="2" maxlength="500" placeholder="z.B. Mindestbestellwert 15€, bar zahlen"></textarea>
+        </div>
+        <div>
+          <label for="order-link" class="field-label">Link zu Karte / Lieferdienst (optional)</label>
+          <input type="url" id="order-link" maxlength="300" placeholder="https://…" />
+        </div>
         <p class="muted" style="font-size:0.8rem;margin:0;">
-          Alle bekommen eine Benachrichtigung und können sich dann selbst eintragen. Der Zeitpunkt
-          lässt sich später jederzeit ändern.
+          Alle bekommen eine Benachrichtigung und können sich dann selbst eintragen. Alles lässt
+          sich später jederzeit ändern.
         </p>
         <button type="submit" class="btn btn-primary btn-block">Bestellung öffnen</button>
       </form>
@@ -179,8 +193,14 @@ function openNewOrderForm(ctx, myId) {
           if (!title) return;
           const sendAtRaw = el.querySelector('#order-sendat').value;
           const sendAt = sendAtRaw ? new Date(sendAtRaw).getTime() : undefined;
+          const notes = el.querySelector('#order-notes').value.trim() || undefined;
+          const linkRaw = el.querySelector('#order-link').value.trim();
+          if (linkRaw && !/^https?:\/\//i.test(linkRaw)) {
+            return showToast('Link muss mit http:// oder https:// beginnen.', { error: true });
+          }
+          const link = linkRaw || undefined;
           try {
-            await api.foodOrders.create(myId, title, sendAt);
+            await api.foodOrders.create(myId, title, { sendAt, notes, link });
             close();
             cache = null;
             showToast('Bestellung geöffnet – alle wurden benachrichtigt.');
@@ -194,49 +214,49 @@ function openNewOrderForm(ctx, myId) {
   );
 }
 
-function openSendAtForm(ctx, order) {
+function openDetailsForm(ctx, order) {
   const { close } = openModal(
-    'Zeitpunkt festlegen',
+    'Infos & Link bearbeiten',
     `
-      <form id="sendat-form" class="stack">
+      <form id="details-form" class="stack">
         <div>
           <label for="sendat-input" class="field-label">Geht raus um</label>
           <input type="datetime-local" id="sendat-input" value="${order.sendAt ? toDatetimeLocal(order.sendAt) : ''}" />
         </div>
+        <div>
+          <label for="notes-input" class="field-label">Infos</label>
+          <textarea id="notes-input" rows="3" maxlength="500" placeholder="z.B. Mindestbestellwert 15€, bar zahlen">${escapeHtml(order.notes ?? '')}</textarea>
+        </div>
+        <div>
+          <label for="link-input" class="field-label">Link zu Karte / Lieferdienst</label>
+          <input type="url" id="link-input" maxlength="300" placeholder="https://…" value="${escapeHtml(order.link ?? '')}" />
+        </div>
+        <p class="muted" style="font-size:0.8rem;margin:0;">Leer lassen entfernt das jeweilige Feld.</p>
         <button type="submit" class="btn btn-primary btn-block">Speichern</button>
-        ${order.sendAt ? `<button type="button" class="btn btn-danger btn-block" id="sendat-clear">Zeitpunkt entfernen</button>` : ''}
       </form>
     `,
     {
       onMount: (el) => {
-        el.querySelector('#sendat-form').addEventListener('submit', async (e) => {
+        el.querySelector('#details-form').addEventListener('submit', async (e) => {
           e.preventDefault();
-          const raw = el.querySelector('#sendat-input').value;
-          if (!raw) return showToast('Bitte einen Zeitpunkt wählen (oder „Entfernen" nutzen).', { error: true });
+          const sendAtRaw = el.querySelector('#sendat-input').value;
+          const sendAt = sendAtRaw ? new Date(sendAtRaw).getTime() : null;
+          const notes = el.querySelector('#notes-input').value.trim() || null;
+          const linkRaw = el.querySelector('#link-input').value.trim();
+          if (linkRaw && !/^https?:\/\//i.test(linkRaw)) {
+            return showToast('Link muss mit http:// oder https:// beginnen.', { error: true });
+          }
+          const link = linkRaw || null;
           try {
-            await api.foodOrders.setSendAt(order.id, new Date(raw).getTime());
+            await api.foodOrders.updateDetails(order.id, { sendAt, notes, link });
             close();
             cache = null;
-            showToast('Zeitpunkt gespeichert.');
+            showToast('Gespeichert.');
             ctx.rerender();
           } catch (err) {
             showToast(err.message, { error: true });
           }
         });
-        const clearBtn = el.querySelector('#sendat-clear');
-        if (clearBtn) {
-          clearBtn.addEventListener('click', async () => {
-            try {
-              await api.foodOrders.setSendAt(order.id, null);
-              close();
-              cache = null;
-              showToast('Zeitpunkt entfernt.');
-              ctx.rerender();
-            } catch (err) {
-              showToast(err.message, { error: true });
-            }
-          });
-        }
       },
     }
   );
@@ -347,10 +367,10 @@ export function renderFoodOrders(container, ctx) {
     });
   });
 
-  container.querySelectorAll('[data-edit-sendat]').forEach((btn) => {
+  container.querySelectorAll('[data-edit-details]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const order = orders.find((o) => o.id === btn.dataset.editSendat);
-      if (order) openSendAtForm(ctx, order);
+      const order = orders.find((o) => o.id === btn.dataset.editDetails);
+      if (order) openDetailsForm(ctx, order);
     });
   });
 

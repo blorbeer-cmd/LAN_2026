@@ -426,7 +426,9 @@ db.exec(`
     created_by TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     created_at INTEGER NOT NULL,
     closed_at  INTEGER,
-    send_at    INTEGER  -- optional, editable: when the order will actually be placed/picked up
+    send_at    INTEGER, -- optional, editable: when the order will actually be placed/picked up
+    notes      TEXT,    -- optional, editable: free-text info (e.g. "bar zahlen", "Mindestbestellwert 15€")
+    link       TEXT     -- optional, editable: URL to the menu/delivery service
   );
 
   CREATE TABLE IF NOT EXISTS food_order_items (
@@ -631,6 +633,16 @@ function migrateFoodOrderSendAtColumn(): void {
   db.exec('ALTER TABLE food_orders ADD COLUMN send_at INTEGER');
 }
 migrateFoodOrderSendAtColumn();
+
+// Migration: older databases predate the optional notes/link fields on food
+// orders (free-text info + link to the menu/delivery service).
+function migrateFoodOrderNotesLinkColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(food_orders)').all() as Array<{ name: string }>;
+  const has = (name: string) => columns.some((c) => c.name === name);
+  if (!has('notes')) db.exec('ALTER TABLE food_orders ADD COLUMN notes TEXT');
+  if (!has('link')) db.exec('ALTER TABLE food_orders ADD COLUMN link TEXT');
+}
+migrateFoodOrderNotesLinkColumns();
 
 // Migration: older databases predate the carpool driver plan (when/where
 // they start, ETA, seat count).
