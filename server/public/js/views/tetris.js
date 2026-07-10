@@ -1,16 +1,22 @@
-// Tetris 1v1 "Battle" — the Arcade's realtime game view.
+// Tetris 1v1 "Battle" — the Arcade's realtime duel.
 //
 // The server (src/arcade/tetris.ts) is authoritative: it owns both boards and
-// pushes full `tetris:state` snapshots. This view only sends intents
+// pushes full `tetris:state` snapshots. This module only sends intents
 // (left/right/rotate/drop) and paints whatever comes back. Because the board is
 // a discrete grid, snapshots redraw the two <canvas> boards directly instead of
-// rebuilding the DOM — a full ctx.rerender() only runs on phase changes (lobby
-// <-> match <-> result), never per frame, so the canvases never flicker.
+// rebuilding the DOM — a full rerender only runs on phase changes, never per
+// frame, so the canvases never flicker.
+//
+// The LOBBY (open/join/start) renders inline inside the Arcade view via the
+// exported render/wire helpers, exactly like the quiz lobby — one "Lobby öffnen"
+// click, and the host can start as soon as an opponent is in. Only the live
+// match takes over the dedicated full-screen `tetris` view; the app switches to
+// it automatically when the match starts and back to Arcade when it ends.
 
 import { getToken } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
-import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { getMyId } from '../whoami.js';
 
 const COLS = 10;
 const ROWS = 20;
@@ -29,7 +35,6 @@ const COLORS = {
 };
 
 let socket = null;
-let ctxRef = null;
 let lobbies = [];
 let match = null; // { matchId, host, players, beginsAt, running, paused, ended, winner }
 let latestState = null; // last tetris:state payload
@@ -40,12 +45,26 @@ function myId() {
   return getMyId();
 }
 
+// Nudge whichever view is currently mounted to re-render, and switch views,
+// without this module needing a handle on app.js — both are thin CustomEvent
+// hooks app.js listens for.
+function rerender() {
+  window.dispatchEvent(new CustomEvent('lan:rerender'));
+}
+function navigate(view) {
+  window.dispatchEvent(new CustomEvent('lan:navigate', { detail: view }));
+}
+
 function amPlayer() {
   return Boolean(match && match.players?.some((p) => p.id === myId()));
 }
 
-function myLobby() {
+export function myTetrisLobby() {
   return lobbies.find((l) => l.players.some((p) => p.id === myId())) ?? null;
+}
+
+export function hasTetrisMatch() {
+  return Boolean(match);
 }
 
 function stopCountdown() {
@@ -53,21 +72,21 @@ function stopCountdown() {
   countdownTimer = null;
 }
 
-function ensureSocket() {
+export function ensureTetrisSocket() {
   if (socket) return socket;
   socket = io({ auth: { token: getToken() } });
 
   socket.on('tetris:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
-    // Only rebuild the DOM while we're in the lobby phase; never interrupt a
-    // running match's canvases.
-    if (!match) ctxRef?.rerender();
+    // Only refresh the lobby UI while no match is running — never interrupt a
+    // live match's canvases with a full rebuild.
+    if (!match) rerender();
   });
 
   socket.on('tetris:match:start', (payload) => {
     match = { ...payload, running: false, paused: false, ended: false, winner: null };
     latestState = null;
-    ctxRef?.rerender();
+    navigate('tetris'); // hand over to the full-screen board view
     startCountdown();
   });
 
@@ -77,12 +96,9 @@ function ensureSocket() {
       match.running = payload.running;
       match.paused = payload.paused;
     }
-    // Fast path: if the game shell is already mounted, repaint directly.
-    if (document.querySelector('#tetris-boards')) {
-      paint();
-    } else {
-      ctxRef?.rerender();
-    }
+    // Fast path: repaint the mounted canvases directly, no DOM rebuild.
+    if (document.querySelector('#tetris-boards')) paint();
+    else rerender();
   });
 
   socket.on('tetris:match:paused', () => {
@@ -102,12 +118,11 @@ function ensureSocket() {
     match.winner = payload.winner ?? null;
     match.endScores = payload.scores ?? null;
     stopCountdown();
-    ctxRef?.rerender();
+    rerender();
   });
 
   socket.on('tetris:opponent-left', () => {
-    if (!match) return;
-    showToast('Gegner hat das Match verlassen.', { error: true });
+    if (match) showToast('Gegner hat das Match verlassen.', { error: true });
   });
 
   bindKeyboard();
@@ -125,7 +140,7 @@ function sendInput(action) {
   socket.emit('tetris:input', { matchId: match.matchId, playerId: myId(), action });
 }
 
-// A single global keydown listener, gated on the game shell being mounted so it
+// A single global keydown listener, gated on the board view being mounted so it
 // never hijacks keys on other views. Arrows/space are prevented from scrolling.
 function bindKeyboard() {
   if (inputBound) return;
@@ -159,7 +174,7 @@ function secondsUntilStart() {
 
 function startCountdown() {
   stopCountdown();
-  paintOverlay();
+  rerender();
   countdownTimer = setInterval(() => {
     paintOverlay();
     if (secondsUntilStart() <= 0) stopCountdown();
@@ -174,7 +189,6 @@ function drawBoard(canvas, playerState) {
   const cx = canvas.getContext('2d');
   cx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Background + faint grid.
   cx.fillStyle = 'rgba(15, 20, 32, 0.9)';
   cx.fillRect(0, 0, canvas.width, canvas.height);
   cx.strokeStyle = 'rgba(122, 141, 195, 0.10)';
@@ -212,7 +226,6 @@ function drawBoard(canvas, playerState) {
     }
   }
 
-  // Dim a dead board so it's obvious who topped out.
   if (!playerState.alive) {
     cx.fillStyle = 'rgba(6, 9, 18, 0.55)';
     cx.fillRect(0, 0, canvas.width, canvas.height);
@@ -236,7 +249,6 @@ function paint() {
   if (!latestState) return;
   const me = latestState.players.find((p) => p.playerId === myId());
   const opp = latestState.players.find((p) => p.playerId !== myId());
-  // Spectators (neither player) still get a sensible left/right split.
   const left = me ?? latestState.players[0];
   const right = me ? opp : latestState.players[1];
   drawBoard(document.querySelector('#tetris-mine'), left);
@@ -264,10 +276,10 @@ function paintOverlay() {
   overlay.innerHTML = '';
 }
 
-// ---------- DOM rendering (phase changes only) ----------
+// ---------- Lobby card (rendered inline inside the Arcade view) ----------
 
 function renderLobbyList() {
-  const mine = myLobby();
+  const mine = myTetrisLobby();
   if (lobbies.length === 0) return `<div class="empty-state" style="padding:14px;">Keine offene Tetris-Lobby.</div>`;
   return lobbies
     .map((l) => {
@@ -283,43 +295,68 @@ function renderLobbyList() {
           ${
             joined
               ? `<span class="badge badge-playing">Drin</span>`
-              : `<button type="button" class="btn btn-sm btn-primary" data-join-lobby="${l.id}" ${mine || full ? 'disabled' : ''}>Beitreten</button>`
+              : `<button type="button" class="btn btn-sm btn-primary" data-tetris-join="${l.id}" ${mine || full ? 'disabled' : ''}>Beitreten</button>`
           }
         </div>`;
     })
     .join('');
 }
 
-function lobbyHostControls() {
-  const lobby = myLobby();
+function hostStartHtml() {
+  const lobby = myTetrisLobby();
   if (!lobby || lobby.host.id !== myId()) return '';
   const ready = lobby.players.length === 2;
   return `
-    <div class="card stack" style="margin-top:12px;">
-      <strong>Deine Lobby</strong>
-      <div class="muted" style="font-size:0.8rem;">${ready ? 'Bereit — beide Spieler da.' : 'Warte auf einen zweiten Spieler…'}</div>
+    <div class="stack" style="gap:6px;border-top:1px solid var(--border);padding-top:10px;">
+      <div class="muted" style="font-size:0.8rem;">${ready ? 'Bereit — Gegner ist da.' : 'Warte auf einen Gegner…'}</div>
       <button type="button" class="btn btn-primary btn-block" id="tetris-start" ${ready ? '' : 'disabled'}>Battle starten</button>
     </div>`;
 }
 
-function renderLobbyPhase() {
-  const lobby = myLobby();
+// The Arcade view embeds this whole card in place of a separate sub-view.
+export function renderTetrisLobbyCard() {
+  const lobby = myTetrisLobby();
   return `
-    <button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button>
-    <h1 class="view-title">🧩 Tetris Battle</h1>
-    ${whoAmICardHtml('tetris-whoami')}
-    <div class="card stack" style="margin-top:12px;">
+    <div class="card stack">
       <div class="row-between" style="gap:10px;">
         <div>
-          <strong>1 gegen 1</strong>
-          <div class="muted" style="font-size:0.8rem;">Gleiche Steine für beide. 2+ Reihen schicken Müll rüber. Wer oben rausbaut, verliert.</div>
+          <strong>Tetris-Lobby</strong>
+          <div class="muted" style="font-size:0.8rem;">1 gegen 1, gleiche Steine für beide. 2+ Reihen schicken Müll rüber.</div>
         </div>
-        <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${lobby ? 'disabled' : ''}>Lobby öffnen</button>
+        <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${lobby || match ? 'disabled' : ''}>Lobby öffnen</button>
       </div>
       ${renderLobbyList()}
-    </div>
-    ${lobbyHostControls()}`;
+      ${hostStartHtml()}
+    </div>`;
 }
+
+export function wireTetrisLobbyCard(container) {
+  container.querySelector('#tetris-create')?.addEventListener('click', async () => {
+    const playerId = myId();
+    if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+    const res = await emitWithAck('tetris:lobby:create', { playerId });
+    if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
+    showToast('Tetris-Lobby geöffnet.');
+  });
+
+  container.querySelectorAll('[data-tetris-join]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const playerId = myId();
+      if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+      const res = await emitWithAck('tetris:lobby:join', { lobbyId: btn.dataset.tetrisJoin, playerId });
+      if (!res?.ok) showToast(res?.error || 'Beitritt fehlgeschlagen.', { error: true });
+    });
+  });
+
+  container.querySelector('#tetris-start')?.addEventListener('click', async () => {
+    const lobby = myTetrisLobby();
+    if (!lobby) return;
+    const res = await emitWithAck('tetris:lobby:start', { lobbyId: lobby.id, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Start fehlgeschlagen.', { error: true });
+  });
+}
+
+// ---------- Full-screen match view (the dedicated `tetris` view) ----------
 
 function endResultHtml() {
   if (!match?.ended) return '';
@@ -338,18 +375,16 @@ function endResultHtml() {
         <strong>${label}</strong>
       </div>
       <div class="chip-list">${scores}</div>
-      <button type="button" class="btn btn-primary" id="tetris-back">Zurück zur Lobby</button>
+      <button type="button" class="btn btn-primary" id="tetris-back">Zurück zum Arcade</button>
     </div>`;
 }
 
 function boardColumn(prefix, size, label) {
-  const w = size;
-  const h = size * 2;
   return `
     <div class="tetris-board-col">
       <div class="tetris-board-label">${label}</div>
       <div class="tetris-canvas-wrap">
-        <canvas id="${prefix}" width="${w}" height="${h}" class="tetris-canvas"></canvas>
+        <canvas id="${prefix}" width="${size}" height="${size * 2}" class="tetris-canvas"></canvas>
         ${prefix === 'tetris-mine' ? `<div id="tetris-overlay" class="tetris-overlay" hidden></div>` : ''}
         <div id="${prefix}-incoming" class="tetris-incoming"></div>
       </div>
@@ -382,11 +417,20 @@ function matchControls() {
     </div>`;
 }
 
-function renderMatchPhase() {
+export function renderTetris(container, ctx) {
+  ensureTetrisSocket();
+  if (!match) {
+    // The play view is only for live matches; anything else belongs in Arcade.
+    container.innerHTML = `
+      <button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button>
+      <div class="empty-state" style="margin-top:16px;">Kein laufendes Tetris-Match.</div>`;
+    return;
+  }
+
   const opponent = match.players.find((p) => p.id !== myId());
   const oppLabel = amPlayer() ? escapeHtml(opponent?.name ?? 'Gegner') : escapeHtml(match.players[1]?.name ?? 'Spieler 2');
   const meLabel = amPlayer() ? 'Du' : escapeHtml(match.players[0]?.name ?? 'Spieler 1');
-  return `
+  container.innerHTML = `
     <h1 class="view-title">🧩 Tetris Battle</h1>
     <div id="tetris-game">
       <div id="tetris-boards" class="tetris-boards">
@@ -398,54 +442,13 @@ function renderMatchPhase() {
       ${endResultHtml()}
       <div class="muted tetris-help">Steuerung: ◀ ▶ bewegen · ⟳ (Pfeil hoch) drehen · ▼ schneller · Leertaste fallen lassen</div>
     </div>`;
-}
-
-export function renderTetris(container, ctx) {
-  ctxRef = ctx;
-  ensureSocket();
-
-  if (match) {
-    container.innerHTML = renderMatchPhase();
-    // Paint immediately from the latest snapshot (canvas is freshly mounted).
-    paint();
-    wireMatch(container);
-  } else {
-    container.innerHTML = renderLobbyPhase();
-    wireWhoAmICard(container, 'tetris-whoami', ctx);
-    wireLobby(container);
-  }
-}
-
-function wireLobby(container) {
-  container.querySelector('#tetris-create')?.addEventListener('click', async () => {
-    const playerId = myId();
-    if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
-    const res = await emitWithAck('tetris:lobby:create', { playerId });
-    if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
-    showToast('Tetris-Lobby geöffnet.');
-  });
-
-  container.querySelectorAll('[data-join-lobby]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const playerId = myId();
-      if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
-      const res = await emitWithAck('tetris:lobby:join', { lobbyId: btn.dataset.joinLobby, playerId });
-      if (!res?.ok) showToast(res?.error || 'Beitritt fehlgeschlagen.', { error: true });
-    });
-  });
-
-  container.querySelector('#tetris-start')?.addEventListener('click', async () => {
-    const lobby = myLobby();
-    if (!lobby) return;
-    const res = await emitWithAck('tetris:lobby:start', { lobbyId: lobby.id, playerId: myId() });
-    if (!res?.ok) showToast(res?.error || 'Start fehlgeschlagen.', { error: true });
-  });
+  paint();
+  wireMatch(container);
 }
 
 function wireMatch(container) {
   container.querySelectorAll('[data-action]').forEach((btn) => {
-    // Use pointerdown so mobile taps register instantly without the 300ms
-    // click delay, and so holding repeats feel responsive.
+    // pointerdown so mobile taps register instantly, without the click delay.
     btn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       sendInput(btn.dataset.action);
@@ -470,6 +473,6 @@ function wireMatch(container) {
     match = null;
     latestState = null;
     stopCountdown();
-    ctxRef?.rerender();
+    navigate('arcade');
   });
 }

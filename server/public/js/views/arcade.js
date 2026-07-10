@@ -2,6 +2,7 @@ import { api, getToken } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { ensureTetrisSocket, renderTetrisLobbyCard, wireTetrisLobbyCard } from './tetris.js';
 
 let socket = null;
 let lobbies = [];
@@ -284,6 +285,7 @@ function renderMatch() {
 
 export function renderArcade(container, ctx) {
   ensureSocket(ctx);
+  ensureTetrisSocket();
   if (!stats && !statsLoading) loadStats(ctx);
   const lobby = myLobby();
 
@@ -302,15 +304,7 @@ export function renderArcade(container, ctx) {
       ${renderLobbyList()}
     </div>
     <div class="section-title">🧩 Tetris Battle</div>
-    <div class="card">
-      <div class="row-between" style="gap:10px;">
-        <div>
-          <strong>1 gegen 1</strong>
-          <div class="muted" style="font-size:0.8rem;">Gleiche Steine für beide, volle Reihen schicken Müll rüber. Wer oben rausbaut, verliert.</div>
-        </div>
-        <button type="button" class="btn btn-primary btn-sm" data-navigate="tetris">Öffnen</button>
-      </div>
-    </div>
+    ${renderTetrisLobbyCard()}
     <div class="section-title">📊 Arcade-Statistiken</div>
     <div class="card stack">${arcadeStatsHtml()}</div>
     ${targetControls(lobby)}
@@ -318,6 +312,7 @@ export function renderArcade(container, ctx) {
   `;
 
   wireWhoAmICard(container, 'whoami', ctx);
+  wireTetrisLobbyCard(container);
 
   container.querySelectorAll('[data-stats-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {

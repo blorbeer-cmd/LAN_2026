@@ -162,6 +162,13 @@ function wireNav() {
     const btn = e.target.closest('[data-navigate]');
     if (btn) switchView(btn.dataset.navigate);
   });
+
+  // Programmatic hooks for view modules that must drive navigation/redraws
+  // from outside a click (e.g. the Tetris module jumping to the board view
+  // when a realtime match starts, or refreshing its inline lobby on a socket
+  // update). Kept as plain CustomEvents so modules stay decoupled from app.js.
+  window.addEventListener('lan:navigate', (e) => switchView(e.detail));
+  window.addEventListener('lan:rerender', () => renderCurrent());
 }
 
 function wireSocket() {
