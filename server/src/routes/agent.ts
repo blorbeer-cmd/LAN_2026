@@ -33,7 +33,7 @@ interface PlayerRow {
 
 // POST /api/agent/report
 // Headers: x-api-key: <player's api key>
-// Body: { processNames: string[], foregroundProcessName?: string|null, idleSeconds?: number|null }
+// Body: { processNames: string[], agentVersion?: string|null, foregroundProcessName?: string|null, idleSeconds?: number|null }
 agentRouter.post('/report', (req, res) => {
   const apiKey = req.header('x-api-key');
   if (!apiKey) {
@@ -47,28 +47,7 @@ agentRouter.post('/report', (req, res) => {
     return res.status(401).json({ error: 'Ungültiger API-Key.' });
   }
 
-  // Player-side opt-out always wins. Otherwise: if a specific event is
-  // currently tracking, only its roster gets recorded — everyone else stays
-  // untracked while that event's window is active (see events.ts). No event
-  // tracking ("außerhalb von Events") has no roster restriction.
-  //
-  // trackingPaused on the response is always the player's own opt-out flag
-  // specifically (not the combined tracked/untracked outcome) — the agent
-  // mirrors it into its local control panel, so pausing/resuming via the web
-  // profile shows up there too. It deliberately does NOT reflect roster
-  // gating, which is event-specific and not something the player asked for.
-  const trackingEventId = getTrackingEventId();
-  if (player.tracking_paused || (trackingEventId !== OUTSIDE_EVENTS_ID && !isParticipant(trackingEventId, player.id))) {
-    return res.json({
-      ok: true,
-      playerId: player.id,
-      gameIds: [],
-      tracked: false,
-      trackingPaused: Boolean(player.tracking_paused),
-    });
-  }
-
-  const { processNames, foregroundProcessName, idleSeconds } = req.body ?? {};
+  const { processNames, agentVersion, foregroundProcessName, idleSeconds } = req.body ?? {};
   if (!Array.isArray(processNames) || !processNames.every((p) => typeof p === 'string')) {
     return res.status(400).json({ error: 'processNames muss ein String-Array sein.' });
   }
@@ -78,8 +57,12 @@ agentRouter.post('/report', (req, res) => {
   if (idleSeconds !== undefined && idleSeconds !== null && typeof idleSeconds !== 'number') {
     return res.status(400).json({ error: 'idleSeconds muss eine Zahl oder null sein.' });
   }
+  if (agentVersion !== undefined && agentVersion !== null && (typeof agentVersion !== 'string' || agentVersion.length > 64)) {
+    return res.status(400).json({ error: 'agentVersion muss ein kurzer String oder null sein.' });
+  }
 
   const normalized = [...new Set(processNames.map((p) => p.trim().toLowerCase()).filter(Boolean))];
+  const normalizedVersion = typeof agentVersion === 'string' && agentVersion.trim() ? agentVersion.trim() : null;
   const normalizedForeground =
     typeof foregroundProcessName === 'string' && foregroundProcessName.trim()
       ? foregroundProcessName.trim().toLowerCase()
@@ -90,6 +73,33 @@ agentRouter.post('/report', (req, res) => {
   // normalizedForeground being null, which can also mean "tracking is on but
   // nothing recognized is focused right now".
   const activityTracked = foregroundProcessName !== undefined;
+  const now = Date.now();
+
+  // This technical heartbeat is deliberately recorded before gameplay
+  // tracking gates. Admins still need diagnostics when the user paused
+  // tracking or is outside the active event roster.
+  db.prepare(
+    `INSERT INTO agent_diagnostics (player_id, agent_version, last_report_at, process_names)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(player_id) DO UPDATE SET
+       agent_version = excluded.agent_version,
+       last_report_at = excluded.last_report_at,
+       process_names = excluded.process_names`
+  ).run(player.id, normalizedVersion, now, JSON.stringify(normalized));
+
+  // Player-side opt-out always wins. Otherwise: if a specific event is
+  // currently tracking, only its roster gets recorded — everyone else stays
+  // untracked while that event's window is active (see events.ts).
+  const trackingEventId = getTrackingEventId();
+  if (player.tracking_paused || (trackingEventId !== OUTSIDE_EVENTS_ID && !isParticipant(trackingEventId, player.id))) {
+    return res.json({
+      ok: true,
+      playerId: player.id,
+      gameIds: [],
+      tracked: false,
+      trackingPaused: Boolean(player.tracking_paused),
+    });
+  }
 
   // A report can match several distinct games at once (e.g. cs2.exe AND
   // rocketleague.exe both running).
@@ -124,8 +134,6 @@ agentRouter.post('/report', (req, res) => {
       }
     }
   }
-
-  const now = Date.now();
 
   const sync = db.transaction(() => {
     const previous = db.prepare('SELECT last_seen FROM live_status WHERE player_id = ?').get(player.id) as

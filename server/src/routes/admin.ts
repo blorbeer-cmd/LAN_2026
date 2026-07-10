@@ -8,6 +8,9 @@
 
 import { Router } from 'express';
 import { adminUnlockValid, adminPinRequired } from '../auth';
+import { requireAdmin } from '../auth';
+import { db } from '../db';
+import { config } from '../config';
 
 export const adminRouter = Router();
 
@@ -25,4 +28,41 @@ adminRouter.post('/unlock', (req, res) => {
     return res.status(403).json({ error: 'Falscher Admin-PIN.' });
   }
   res.json({ ok: true });
+});
+
+// GET /api/admin/agent-diagnostics — one compact troubleshooting row per
+// player, including players that never installed/reported from an agent.
+adminRouter.get('/agent-diagnostics', requireAdmin, (_req, res) => {
+  const now = Date.now();
+  const rows = db.prepare(
+    `SELECT p.id AS player_id, p.name,
+            d.agent_version, d.last_report_at, d.process_names
+     FROM players p
+     LEFT JOIN agent_diagnostics d ON d.player_id = p.id
+     ORDER BY p.name COLLATE NOCASE`
+  ).all() as Array<{
+    player_id: string;
+    name: string;
+    agent_version: string | null;
+    last_report_at: number | null;
+    process_names: string | null;
+  }>;
+
+  res.json(rows.map((row) => {
+    let processNames: string[] = [];
+    try {
+      const parsed = JSON.parse(row.process_names ?? '[]');
+      if (Array.isArray(parsed)) processNames = parsed.filter((value): value is string => typeof value === 'string');
+    } catch {
+      processNames = [];
+    }
+    return {
+      playerId: row.player_id,
+      name: row.name,
+      agentVersion: row.agent_version,
+      lastReportAt: row.last_report_at,
+      online: row.last_report_at !== null && now - row.last_report_at <= config.offlineTimeoutMs,
+      processNames,
+    };
+  }));
 });

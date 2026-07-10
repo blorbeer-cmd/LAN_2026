@@ -31,7 +31,7 @@ test('reportToServer posts processNames and the api key header to /api/agent/rep
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, 'http://x/api/agent/report');
   assert.equal(calls[0].options.headers['x-api-key'], 'key123');
-  assert.deepEqual(JSON.parse(calls[0].options.body), { processNames: ['cs2.exe'] });
+  assert.deepEqual(JSON.parse(calls[0].options.body), { processNames: ['cs2.exe'], agentVersion: '1.0.0' });
   assert.deepEqual(result, { ok: true, gameIds: ['g1'], tracked: true, trackingPaused: false });
 });
 
@@ -44,6 +44,7 @@ test('reportToServer includes the activity snapshot fields when given one', asyn
   );
   assert.deepEqual(JSON.parse(calls[0].options.body), {
     processNames: ['cs2.exe'],
+    agentVersion: '1.0.0',
     foregroundProcessName: 'cs2.exe',
     idleSeconds: 3,
   });

@@ -1559,6 +1559,17 @@ button.card {
 
 /* ---------- Blobby Volley ---------- */
 
+.agent-diagnostic-row {
+  display: grid;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.agent-diagnostic-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
 .arcade-game-shell {
   width: min(100%, 960px);
   margin-inline: auto;

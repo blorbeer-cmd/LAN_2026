@@ -54,9 +54,20 @@ test('POST /api/agent/report matches a known process to its game', async () => {
   const res = await request(app)
     .post('/api/agent/report')
     .set('x-api-key', apiKey)
-    .send({ processNames: ['explorer.exe', 'CS2.EXE'] });
+    .send({ processNames: ['explorer.exe', 'CS2.EXE'], agentVersion: '1.0.0' });
   assert.equal(res.status, 200);
   assert.deepEqual(res.body.gameIds, [cs2GameId]);
+});
+
+test('GET /api/admin/agent-diagnostics exposes the latest agent heartbeat', async () => {
+  const res = await request(app).get('/api/admin/agent-diagnostics');
+  assert.equal(res.status, 200);
+  const entry = res.body.find((row: { playerId: string }) => row.playerId === playerId);
+  assert.ok(entry);
+  assert.equal(entry.agentVersion, '1.0.0');
+  assert.ok(entry.lastReportAt);
+  assert.deepEqual(entry.processNames, ['explorer.exe', 'cs2.exe']);
+  assert.equal(entry.online, true);
 });
 
 test('GET /api/live shows the player as playing exactly CS2', async () => {

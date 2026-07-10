@@ -16,6 +16,22 @@ import { AVATAR_PALETTE } from '../avatarPalette.js';
 // Whether the server requires a PIN — fetched once so the unlock screen knows
 // whether to prompt for one or just offer a button.
 let pinRequired = null;
+let agentDiagnostics = null;
+let diagnosticsLoading = false;
+
+async function loadAgentDiagnostics(ctx, force = false) {
+  if (diagnosticsLoading || (agentDiagnostics && !force)) return;
+  diagnosticsLoading = true;
+  try {
+    agentDiagnostics = await api.admin.agentDiagnostics();
+  } catch (err) {
+    showToast(err.message, { error: true });
+    agentDiagnostics = [];
+  } finally {
+    diagnosticsLoading = false;
+    ctx.rerender();
+  }
+}
 
 async function loadStatus(ctx) {
   try {
@@ -102,6 +118,7 @@ function renderUnlock(container, ctx) {
 
 function renderPanel(container, ctx) {
   const players = state.players || [];
+  if (agentDiagnostics === null && !diagnosticsLoading) loadAgentDiagnostics(ctx);
   const rows = players
     .map(
       (p) => `
@@ -119,6 +136,29 @@ function renderPanel(container, ctx) {
     )
     .join('');
 
+  const diagnosticRows = (agentDiagnostics || [])
+    .map((entry) => {
+      const lastReport = entry.lastReportAt
+        ? new Date(entry.lastReportAt).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        : 'Noch nie';
+      const processes = entry.processNames.length
+        ? entry.processNames.map((name) => `<span class="chip">${escapeHtml(name)}</span>`).join('')
+        : '<span class="muted">Keine Prozesse gemeldet.</span>';
+      return `
+        <div class="agent-diagnostic-row">
+          <div class="row-between" style="gap:var(--space-2);">
+            <strong>${escapeHtml(entry.name)}</strong>
+            <span class="row" style="gap:var(--space-2);">
+              <span class="badge ${entry.online ? 'badge-playing' : 'badge-offline'}">${entry.online ? 'Agent online' : 'Agent offline'}</span>
+              <span class="badge">v${escapeHtml(entry.agentVersion || 'unbekannt')}</span>
+            </span>
+          </div>
+          <div class="muted" style="font-size:var(--font-size-xs);">Letzter Report: ${escapeHtml(lastReport)}</div>
+          <div class="chip-list">${processes}</div>
+        </div>`;
+    })
+    .join('');
+
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <div class="row-between">
@@ -134,6 +174,14 @@ function renderPanel(container, ctx) {
 
     <div class="section-title">Spieler (${players.length})</div>
     <div class="card">${rows || '<span class="muted">Noch keine Spieler.</span>'}</div>
+
+    <div class="row-between" style="margin-top:var(--space-5);">
+      <div class="section-title" style="margin:0;">Agent-Diagnose</div>
+      <button type="button" class="btn btn-sm" id="agent-diagnostics-refresh">Aktualisieren</button>
+    </div>
+    <div class="card stack" style="margin-top:var(--space-2);">
+      ${diagnosticsLoading && agentDiagnostics === null ? '<div class="muted">Diagnose laden…</div>' : diagnosticRows || '<span class="muted">Noch keine Spieler.</span>'}
+    </div>
   `;
 
   container.querySelector('#admin-leave').addEventListener('click', () => {
@@ -146,6 +194,8 @@ function renderPanel(container, ctx) {
     const count = Math.min(20, Math.max(1, parseInt(container.querySelector('#admin-count').value, 10) || 5));
     bulkCreate(count, ctx);
   });
+
+  container.querySelector('#agent-diagnostics-refresh').addEventListener('click', () => loadAgentDiagnostics(ctx, true));
 
   container.querySelectorAll('[data-toggle-admin]').forEach((btn) => {
     btn.addEventListener('click', () => {

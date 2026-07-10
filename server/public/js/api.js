@@ -313,6 +313,7 @@ export const api = {
   admin: {
     status: () => apiFetch('/api/admin/status'),
     unlock: (pin) => apiFetch('/api/admin/unlock', { method: 'POST', body: JSON.stringify({ pin }) }),
+    agentDiagnostics: () => apiFetch('/api/admin/agent-diagnostics'),
   },
 
   foodOrders: {
