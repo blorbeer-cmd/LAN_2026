@@ -111,3 +111,24 @@ test('GET /api/arcade/stats summarizes completed scribble results under their ow
   assert.equal(scribble.matches, 1);
   assert.equal(scribble.leader.name, 'Arcade Carla');
 });
+
+test('GET /api/arcade/stats labels Blobby Volley results', async () => {
+  const eve = await request(app).post('/api/players').send({ name: 'Blobby Eve' });
+  const finn = await request(app).post('/api/players').send({ name: 'Blobby Finn' });
+  const now = Date.now();
+  const scores = [
+    { playerId: eve.body.id, name: eve.body.name, score: 7 },
+    { playerId: finn.body.id, name: finn.body.name, score: 4 },
+  ];
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run('arcade-test-blobby-result', 'blobby', eve.body.id, JSON.stringify(scores), JSON.stringify(scores), 'completed', now - 1000, now);
+
+  const res = await request(app).get('/api/arcade/stats');
+  const blobby = res.body.games.find((game: { gameType: string }) => game.gameType === 'blobby');
+  assert.equal(blobby.title, 'Blobby Volley');
+  assert.equal(blobby.matches, 1);
+  assert.equal(blobby.leader.name, 'Blobby Eve');
+  assert.equal(blobby.players[0].best, 7);
+});

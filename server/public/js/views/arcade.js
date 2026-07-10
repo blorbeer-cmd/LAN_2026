@@ -11,6 +11,7 @@ import {
   myScribbleLobby,
   hasScribbleMatch,
 } from './arcadeScribble.js';
+import { ensureBlobbySocket, renderBlobbyLobbyCard, wireBlobbyLobbyCard, myBlobbyLobby, hasBlobbyMatch } from './blobby.js';
 import { confirmDialog } from '../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 
@@ -22,7 +23,7 @@ const GAMES = [
   { id: 'tetris', icon: '🧩', name: 'Tetris' },
   { id: 'scribble', icon: icon('pencil'), name: 'Scribble' },
   { id: 'pong', icon: icon('gitCommitVertical'), name: 'Pong', soon: true },
-  { id: 'blobby', icon: icon('volleyball'), name: 'Blobby Volley', soon: true },
+  { id: 'blobby', icon: icon('volleyball'), name: 'Blobby Volley' },
   { id: 'snake', icon: '🐍', name: 'Snake', soon: true },
 ];
 
@@ -332,6 +333,7 @@ function currentGame() {
   if (match || myLobby()) return 'quiz';
   if (myTetrisLobby()) return 'tetris';
   if (myScribbleLobby() || hasScribbleMatch()) return 'scribble';
+  if (myBlobbyLobby() || hasBlobbyMatch()) return 'blobby';
   return activeGame;
 }
 
@@ -365,6 +367,7 @@ function activeGameHtml() {
   if (game === 'scribble') {
     return `<div style="margin-top:var(--space-3);">${renderScribbleLobbyCard()}</div>`;
   }
+  if (game === 'blobby') return `<div style="margin-top:var(--space-3);">${renderBlobbyLobbyCard()}</div>`;
   return '';
 }
 
@@ -372,6 +375,7 @@ export function renderArcade(container, ctx) {
   ensureSocket(ctx);
   ensureTetrisSocket();
   ensureScribbleSocket();
+  ensureBlobbySocket();
   if (!stats && !statsLoading) loadStats(ctx);
   const lobby = myLobby();
 
@@ -391,6 +395,7 @@ export function renderArcade(container, ctx) {
   wireWhoAmICard(container, 'whoami', ctx);
   wireTetrisLobbyCard(container);
   wireScribbleLobbyCard(container);
+  wireBlobbyLobbyCard(container);
 
   container.querySelectorAll('[data-game]').forEach((btn) => {
     btn.addEventListener('click', () => {

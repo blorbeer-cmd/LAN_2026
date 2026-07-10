@@ -9,6 +9,7 @@ const ARCADE_TITLES: Record<string, string> = {
   quiz: 'Gaming-Quiz',
   tetris: 'Tetris Battle',
   scribble: 'Scribble',
+  blobby: 'Blobby Volley',
 };
 
 interface ArcadeResultRow {
