@@ -41,6 +41,7 @@ interface WordRow {
 }
 
 export interface StrokeBatch {
+  strokeId: string;
   color: string;
   size: number;
   erase: boolean;
@@ -454,10 +455,19 @@ export function registerScribbleSocketHandlers(io: Server, socket: Socket): void
 
   socket.on(
     'arcade:scribble:stroke',
-    (payload: { matchId?: string; playerId?: string; color?: string; size?: number; erase?: boolean; points?: number[][] }) => {
+    (payload: {
+      matchId?: string;
+      playerId?: string;
+      strokeId?: string;
+      color?: string;
+      size?: number;
+      erase?: boolean;
+      points?: number[][];
+    }) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
       if (!match || match.phase !== 'drawing' || match.paused) return;
       if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
+      if (typeof payload.strokeId !== 'string' || !payload.strokeId || payload.strokeId.length > 40) return;
       if (!Array.isArray(payload.points) || payload.points.length === 0 || payload.points.length > 200) return;
       const points = payload.points.filter(
         (p) => Array.isArray(p) && p.length === 2 && typeof p[0] === 'number' && typeof p[1] === 'number'
@@ -465,7 +475,7 @@ export function registerScribbleSocketHandlers(io: Server, socket: Socket): void
       if (points.length === 0) return;
       const size = typeof payload.size === 'number' && payload.size > 0 && payload.size <= 40 ? payload.size : 4;
       const color = typeof payload.color === 'string' && payload.color.length <= 20 ? payload.color : '#111111';
-      const batch: StrokeBatch = { color, size, erase: !!payload.erase, points };
+      const batch: StrokeBatch = { strokeId: payload.strokeId, color, size, erase: !!payload.erase, points };
       if (match.strokes.length < MAX_STROKE_BATCHES) match.strokes.push(batch);
       socket.to(match.room).emit('arcade:scribble:stroke', { matchId: match.id, ...batch });
     }
@@ -477,6 +487,23 @@ export function registerScribbleSocketHandlers(io: Server, socket: Socket): void
     if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
     match.strokes = [];
     io.to(match.room).emit('arcade:scribble:clear', { matchId: match.id });
+  });
+
+  // Removes the whole last pen stroke (every batch sharing its strokeId),
+  // not just the most recent network batch — a single visible pen stroke is
+  // split into many small batches by the client's per-frame flush, so
+  // popping only the last array entry would just nibble a fragment off the
+  // end of the line instead of undoing it. Broadcasts the reduced canonical
+  // stroke list so every client redraws from the same authoritative state
+  // rather than trying to "erase" (which can't correctly undo overlaps).
+  socket.on('arcade:scribble:undo', (payload: { matchId?: string; playerId?: string }) => {
+    const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+    if (!match || match.phase !== 'drawing' || match.paused) return;
+    if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
+    if (match.strokes.length === 0) return;
+    const lastStrokeId = match.strokes[match.strokes.length - 1].strokeId;
+    match.strokes = match.strokes.filter((s) => s.strokeId !== lastStrokeId);
+    io.to(match.room).emit('arcade:scribble:redraw', { matchId: match.id, strokes: match.strokes });
   });
 
   socket.on(

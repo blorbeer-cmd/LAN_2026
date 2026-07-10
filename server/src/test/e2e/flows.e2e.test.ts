@@ -490,6 +490,67 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
       return false;
     });
 
+    const countPainted = (p: typeof page) =>
+      p.evaluate(() => {
+        const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement;
+        const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++;
+        return n;
+      });
+    const guesserPaintedAfterStroke1 = await countPainted(guesserPage);
+
+    // A second, separate pen stroke (well clear of the first, kept inside
+    // the small viewport used here) - Rückgängig must undo this whole
+    // stroke, not just a fragment of it (a visible stroke is split into many
+    // small network batches, see scribble.ts's strokeId grouping). Re-queries
+    // the canvas position fresh rather than reusing `box`, in case anything
+    // shifted the layout since the first stroke.
+    const box2 = await page.locator('#scribble-canvas').boundingBox();
+    await page.mouse.move(box2!.x + 200, box2!.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(box2!.x + 260, box2!.y + 60, { steps: 8 });
+    await page.mouse.up();
+    await guesserPage.waitForFunction(
+      (before) => {
+        const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement | null;
+        if (!c) return false;
+        const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++;
+        return n > before;
+      },
+      guesserPaintedAfterStroke1
+    );
+    const guesserPaintedAfterStroke2 = await countPainted(guesserPage);
+    const hostPaintedAfterStroke2 = await countPainted(page);
+
+    await page.click('#scribble-undo');
+    await page.waitForFunction(
+      (before) => {
+        const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement;
+        const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++;
+        return n < before;
+      },
+      hostPaintedAfterStroke2
+    );
+    await guesserPage.waitForFunction(
+      (before) => {
+        const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement;
+        const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++;
+        return n < before;
+      },
+      guesserPaintedAfterStroke2
+    );
+    // Undo removed the whole second stroke on both sides - what's left
+    // should be (roughly) just the first stroke again, not an empty canvas.
+    assert.ok((await countPainted(page)) > 0, 'undo must not wipe the whole canvas');
+    assert.ok((await countPainted(guesserPage)) > 0, 'undo must not wipe the whole canvas for the guesser either');
+
     await guesserPage.fill('#scribble-guess-input', chosenWord);
     await guesserPage.click('#scribble-guess-form button[type="submit"]');
 

@@ -39,6 +39,7 @@ export function createScribbleController(ctx) {
 
   let drawingPointerId = null;
   let lastLocalPoint = null;
+  let currentStrokeId = null;
   let pendingPoints = [];
   let flushScheduled = false;
   // Set only right after a rejoin sync, consumed once by the next canvas
@@ -159,6 +160,7 @@ export function createScribbleController(ctx) {
     socket?.emit('arcade:scribble:stroke', {
       matchId: match.matchId,
       playerId: getMyId(),
+      strokeId: currentStrokeId,
       color: tool.color,
       size: tool.size,
       erase: tool.erase,
@@ -170,6 +172,7 @@ export function createScribbleController(ctx) {
     if (!isDrawer() || turn?.phase !== 'drawing' || paused) return;
     canvasEl.setPointerCapture(e.pointerId);
     drawingPointerId = e.pointerId;
+    currentStrokeId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const p = pointFromEvent(e);
     lastLocalPoint = p;
     pendingPoints = [p];
@@ -187,6 +190,7 @@ export function createScribbleController(ctx) {
 
   function endStroke(e) {
     if (drawingPointerId !== e.pointerId) return;
+    if (canvasEl?.hasPointerCapture?.(e.pointerId)) canvasEl.releasePointerCapture(e.pointerId);
     drawingPointerId = null;
     lastLocalPoint = null;
     flush();
@@ -217,6 +221,7 @@ export function createScribbleController(ctx) {
         <span style="width:1px;height:20px;background:var(--border);"></span>
         ${sizes}
         <button type="button" class="btn btn-sm ${tool.erase ? 'btn-primary' : ''}" id="scribble-erase">Radierer</button>
+        <button type="button" class="btn btn-sm" id="scribble-undo">Rückgängig</button>
         <button type="button" class="btn btn-sm btn-danger" id="scribble-clear">Alles löschen</button>
       </div>`;
   }
@@ -359,6 +364,9 @@ export function createScribbleController(ctx) {
       tool = { ...tool, erase: !tool.erase };
       ctx.rerender();
     });
+    container.querySelector('#scribble-undo')?.addEventListener('click', () => {
+      socket.emit('arcade:scribble:undo', { matchId: match.matchId, playerId: getMyId() });
+    });
     container.querySelector('#scribble-clear')?.addEventListener('click', () => {
       socket.emit('arcade:scribble:clear', { matchId: match.matchId, playerId: getMyId() });
     });
@@ -456,6 +464,15 @@ export function createScribbleController(ctx) {
     socket.on('arcade:scribble:clear', (payload) => {
       if (!match || payload.matchId !== match.matchId) return;
       if (canvas2d && canvasEl) canvas2d.clearRect(0, 0, canvasEl.width, canvasEl.height);
+    });
+
+    // Undo replaces the whole canvas from the server's authoritative reduced
+    // stroke list — unlike a live stroke broadcast, this must also apply to
+    // the drawer themself (their own canvas already shows the now-undone
+    // stroke from local real-time drawing).
+    socket.on('arcade:scribble:redraw', (payload) => {
+      if (!match || payload.matchId !== match.matchId) return;
+      replayStrokes(payload.strokes ?? []);
     });
 
     socket.on('arcade:scribble:hint', (payload) => {
