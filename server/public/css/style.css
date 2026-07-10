@@ -1731,7 +1731,8 @@ input[type='number'].bracket-score-input {
 .countdown-num {
   font-size: clamp(4rem, 22vw, 8rem);
   font-weight: 800;
-  font-style: italic;
+  /* Deliberately NOT italic: SF Pro's italic terminals are sheared at an
+     angle (top of "L", "!"), which reads as the glyphs being clipped. */
   letter-spacing: -0.03em;
   white-space: nowrap;
 }
