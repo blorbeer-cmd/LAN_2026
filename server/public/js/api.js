@@ -316,10 +316,10 @@ export const api = {
 
   foodOrders: {
     list: () => apiFetch('/api/food-orders'),
-    create: (playerId, title, sendAt) =>
-      apiFetch('/api/food-orders', { method: 'POST', body: JSON.stringify({ playerId, title, sendAt }) }),
-    setSendAt: (orderId, sendAt) =>
-      apiFetch(`/api/food-orders/${orderId}`, { method: 'PATCH', body: JSON.stringify({ sendAt }) }),
+    create: (playerId, title, { sendAt, notes, link } = {}) =>
+      apiFetch('/api/food-orders', { method: 'POST', body: JSON.stringify({ playerId, title, sendAt, notes, link }) }),
+    updateDetails: (orderId, { sendAt, notes, link }) =>
+      apiFetch(`/api/food-orders/${orderId}`, { method: 'PATCH', body: JSON.stringify({ sendAt, notes, link }) }),
     addItem: (orderId, data) =>
       apiFetch(`/api/food-orders/${orderId}/items`, { method: 'POST', body: JSON.stringify(data) }),
     removeItem: (orderId, itemId, playerId) =>

@@ -20,7 +20,7 @@ test('setup: two players', async () => {
   bob = (await request(app).post('/api/players').send({ name: 'Hungriger Bob' })).body;
 });
 
-test('POST /api/food-orders validates title, player, and sendAt', async () => {
+test('POST /api/food-orders validates title, player, sendAt, notes, and link', async () => {
   const noTitle = await request(app).post('/api/food-orders').send({ playerId: alice.id });
   assert.equal(noTitle.status, 400);
   const ghost = await request(app).post('/api/food-orders').send({ playerId: 'ghost', title: 'Pizza' });
@@ -29,25 +29,43 @@ test('POST /api/food-orders validates title, player, and sendAt', async () => {
     .post('/api/food-orders')
     .send({ playerId: alice.id, title: 'Pizza', sendAt: 'not-a-timestamp' });
   assert.equal(badSendAt.status, 400);
+  const badLink = await request(app)
+    .post('/api/food-orders')
+    .send({ playerId: alice.id, title: 'Pizza', link: 'javascript:alert(1)' });
+  assert.equal(badLink.status, 400);
+  const tooLongNotes = await request(app)
+    .post('/api/food-orders')
+    .send({ playerId: alice.id, title: 'Pizza', notes: 'x'.repeat(501) });
+  assert.equal(tooLongNotes.status, 400);
 });
 
-test('POST /api/food-orders opens an order, optionally with a send time', async () => {
+test('POST /api/food-orders opens an order, optionally with a send time, notes, and link', async () => {
   const res = await request(app).post('/api/food-orders').send({ playerId: alice.id, title: "Pizza bei Luigi's" });
   assert.equal(res.status, 201);
   assert.equal(res.body.open, true);
   assert.equal(res.body.createdByName, 'Hungrige Alice');
   assert.equal(res.body.sendAt, null);
+  assert.equal(res.body.notes, null);
+  assert.equal(res.body.link, null);
   orderId = res.body.id;
 
   const sendAt = Date.now() + 3600_000;
   const withTime = await request(app)
     .post('/api/food-orders')
-    .send({ playerId: alice.id, title: 'Drinks-Run', sendAt });
+    .send({
+      playerId: alice.id,
+      title: 'Drinks-Run',
+      sendAt,
+      notes: 'Mindestbestellwert 15€, bar zahlen',
+      link: 'https://luigis-pizza.example/karte',
+    });
   assert.equal(withTime.status, 201);
   assert.equal(withTime.body.sendAt, sendAt);
+  assert.equal(withTime.body.notes, 'Mindestbestellwert 15€, bar zahlen');
+  assert.equal(withTime.body.link, 'https://luigis-pizza.example/karte');
 });
 
-test('PATCH /api/food-orders/:id sets, updates and clears the send time', async () => {
+test('PATCH /api/food-orders/:id sets, updates and clears send time, notes, and link independently', async () => {
   const sendAt = Date.now() + 1800_000;
   const set = await request(app).patch(`/api/food-orders/${orderId}`).send({ sendAt });
   assert.equal(set.status, 200);
@@ -58,12 +76,28 @@ test('PATCH /api/food-orders/:id sets, updates and clears the send time', async 
   assert.equal(changed.status, 200);
   assert.equal(changed.body.sendAt, laterSendAt);
 
-  const cleared = await request(app).patch(`/api/food-orders/${orderId}`).send({ sendAt: null });
+  const withNotesAndLink = await request(app)
+    .patch(`/api/food-orders/${orderId}`)
+    .send({ notes: 'Bitte bar mitbringen', link: 'https://luigis-pizza.example' });
+  assert.equal(withNotesAndLink.status, 200);
+  assert.equal(withNotesAndLink.body.notes, 'Bitte bar mitbringen');
+  assert.equal(withNotesAndLink.body.link, 'https://luigis-pizza.example');
+  // sendAt untouched by a request that only mentions notes/link.
+  assert.equal(withNotesAndLink.body.sendAt, laterSendAt);
+
+  const cleared = await request(app)
+    .patch(`/api/food-orders/${orderId}`)
+    .send({ sendAt: null, notes: null, link: null });
   assert.equal(cleared.status, 200);
   assert.equal(cleared.body.sendAt, null);
+  assert.equal(cleared.body.notes, null);
+  assert.equal(cleared.body.link, null);
 
-  const invalid = await request(app).patch(`/api/food-orders/${orderId}`).send({ sendAt: 'garbage' });
-  assert.equal(invalid.status, 400);
+  const invalidSendAt = await request(app).patch(`/api/food-orders/${orderId}`).send({ sendAt: 'garbage' });
+  assert.equal(invalidSendAt.status, 400);
+
+  const invalidLink = await request(app).patch(`/api/food-orders/${orderId}`).send({ link: 'not-a-url' });
+  assert.equal(invalidLink.status, 400);
 
   const missing = await request(app).patch('/api/food-orders/nope').send({ sendAt });
   assert.equal(missing.status, 404);
@@ -127,11 +161,15 @@ test('closing freezes the order: no more items, no second close', async () => {
   assert.equal(secondClose.status, 409);
 });
 
-test('the send time stays editable after the order is closed (only items are frozen)', async () => {
+test('the send time, notes, and link stay editable after the order is closed (only items are frozen)', async () => {
   const sendAt = Date.now() + 600_000;
-  const res = await request(app).patch(`/api/food-orders/${orderId}`).send({ sendAt });
+  const res = await request(app)
+    .patch(`/api/food-orders/${orderId}`)
+    .send({ sendAt, notes: 'Doch erst um 22 Uhr', link: 'https://luigis-pizza.example/neu' });
   assert.equal(res.status, 200);
   assert.equal(res.body.sendAt, sendAt);
+  assert.equal(res.body.notes, 'Doch erst um 22 Uhr');
+  assert.equal(res.body.link, 'https://luigis-pizza.example/neu');
   assert.equal(res.body.open, false);
 });
 

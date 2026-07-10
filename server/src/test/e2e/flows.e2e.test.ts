@@ -348,22 +348,28 @@ test('Info-Board: create an entry, see it rendered', async () => {
   await page.waitForSelector('text=kartoffel');
 });
 
-test('Essensbestellung: open an order with a send time, edit it, add a priced item, close it', async () => {
+test('Essensbestellung: open an order with a send time/notes/link, edit them, add a priced item, close it', async () => {
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="foodOrders"]');
   await page.waitForSelector('#order-new-btn');
   await page.click('#order-new-btn');
   await page.fill('#order-title', "Pizza bei Luigi's");
   await page.fill('#order-sendat', '2026-12-24T20:00');
+  await page.fill('#order-notes', 'Mindestbestellwert 15€, bar zahlen');
+  await page.fill('#order-link', 'https://luigis-pizza.example/karte');
   await page.click('#order-form button[type="submit"]');
   await page.waitForSelector('text=Pizza bei Luigi');
   await page.waitForSelector('text=Geht raus um 24.12., 20:00 Uhr');
+  await page.waitForSelector('text=Mindestbestellwert 15€, bar zahlen');
+  await page.waitForSelector('a[href="https://luigis-pizza.example/karte"]');
 
-  // The send time is editable after the fact (independent of closing).
-  await page.click('[data-edit-sendat]');
+  // The send time / notes / link are editable after the fact (independent of closing).
+  await page.click('[data-edit-details]');
   await page.fill('#sendat-input', '2026-12-24T21:30');
-  await page.click('#sendat-form button[type="submit"]');
+  await page.fill('#notes-input', 'Doch Kartenzahlung möglich');
+  await page.click('#details-form button[type="submit"]');
   await page.waitForSelector('text=Geht raus um 24.12., 21:30 Uhr');
+  await page.waitForSelector('text=Doch Kartenzahlung möglich');
 
   await page.fill('[data-item-desc]', '1x Margherita groß');
   await page.fill('[data-item-price]', '9,50');
@@ -374,11 +380,11 @@ test('Essensbestellung: open an order with a send time, edit it, add a priced it
   await page.click('[data-close-order]'); // confirm auto-accepted
   await page.waitForSelector('.badge-offline >> text=Geschlossen');
 
-  // Closing only freezes items — the send time stays correctable afterward.
+  // Closing only freezes items — the details stay correctable afterward.
   await page.click('details summary'); // expand the now-closed order
-  await page.click('[data-edit-sendat]');
+  await page.click('[data-edit-details]');
   await page.fill('#sendat-input', '2026-12-24T22:00');
-  await page.click('#sendat-form button[type="submit"]');
+  await page.click('#details-form button[type="submit"]');
   await page.waitForSelector('text=Geht raus um 24.12., 22:00 Uhr');
 });
 
