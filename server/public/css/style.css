@@ -1735,10 +1735,19 @@ input[type='number'].bracket-score-input {
    engine we've tested — fine for a plain rectangle of glyphs, but a visible
    cut wherever the actual ink (an italic ascender, the "!") pokes past it.
    A plain solid-colour blurred copy behind a crisp gradient-clipped copy on
-   top has no such interaction and glows cleanly on every edge. */
+   top has no such interaction and glows cleanly on every edge.
+   The glow box itself also needs to be bigger than its text: engines size
+   the `filter` paint region to the element's own box, so a box sized exactly
+   to the glyphs (`inset: 0`) still clips the blur right where it would
+   otherwise bleed outward — worst on the italic top-right (ascender, "!").
+   Generous negative inset plus flex-centering gives the blur room without
+   moving the glow off the fill layer underneath it. */
 .countdown-num-glow {
   position: absolute;
-  inset: 0;
+  inset: -3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--accent-2);
   filter: blur(16px);
   opacity: 0.85;
