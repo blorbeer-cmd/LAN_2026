@@ -95,6 +95,8 @@ Guard **plus** einen Test in `server/src/test/api.concurrency.test.ts` (parallel
 
 ## Design-System (Frontend)
 
+- **UI-Symbole:** Für neue oder geänderte UI-Symbole ausschließlich den lokalen Lucide-Style-Icon-Helper in `server/public/js/icons.js` verwenden (`icon(...)` bzw. passende spezialisierte Helfer). Keine Emoji, Unicode-Piktogramme oder externen Icon-CDNs in UI-Chrome, Überschriften, Buttons, Status-Badges, Chips, Empty States oder Toasts. Das RespawnHQ-Logo ist die einzige bewusste Ausnahme. Bestehende freie Nutzerinhalte (z. B. Spielnamen und Bestelltexte) dürfen Emoji enthalten.
+
 - **Spacing-Skala:** `--space-1` … `--space-6` in `style.css` statt einzelner Pixel-Werte für
   Card-Padding, Row-/Stack-/Grid-Abstände, Section-Titel. Neue Komponenten daraus ableiten, keine
   neuen Magic Numbers einführen.
