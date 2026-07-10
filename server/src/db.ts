@@ -230,6 +230,19 @@ db.exec(`
     PRIMARY KEY (event_id, player_id, neighbor_id)
   );
 
+  -- Shared physical table plan for an event. assignments is JSON so the
+  -- layout can move players between seats without a join table for every
+  -- drag operation; each entry is { side, seat, playerId }.
+  CREATE TABLE IF NOT EXISTS seating_layouts (
+    event_id     TEXT PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,
+    top_seats    INTEGER NOT NULL DEFAULT 2,
+    right_seats  INTEGER NOT NULL DEFAULT 2,
+    bottom_seats INTEGER NOT NULL DEFAULT 2,
+    left_seats   INTEGER NOT NULL DEFAULT 2,
+    assignments  TEXT NOT NULL DEFAULT '[]',
+    updated_at   INTEGER NOT NULL
+  );
+
   -- Recorded matches for the leaderboard. Result details are stored as JSON to
   -- stay flexible while the scoring rules are still being decided.
   CREATE TABLE IF NOT EXISTS matches (

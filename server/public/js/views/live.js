@@ -7,6 +7,7 @@ import { escapeHtml, formatSince, stateLabel, avatarHtml, gameBadgeHtml, gameChi
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
+import { renderSeatingPlan } from './seating.js';
 
 const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
 
@@ -15,6 +16,33 @@ const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
 let pingsCache = null;
 let pingsLoading = false;
 let pingFormOpen = false;
+let seatingCache = null;
+let seatingLoading = false;
+
+window.addEventListener('seating:changed', () => {
+  seatingCache = null;
+});
+
+async function loadSeating(ctx) {
+  seatingLoading = true;
+  try {
+    seatingCache = await api.seating.layout();
+  } catch {
+    seatingCache = null;
+  } finally {
+    seatingLoading = false;
+    ctx.rerender();
+  }
+}
+
+function renderLiveSeating(ctx) {
+  if (seatingCache === null && !seatingLoading) loadSeating(ctx);
+  return `<section class="live-seating">
+    ${seatingLoading || seatingCache === null
+      ? '<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>'
+      : renderSeatingPlan(seatingCache.layout, seatingCache.players)}
+  </section>`;
+}
 
 async function loadPings(ctx) {
   pingsLoading = true;
@@ -247,6 +275,7 @@ export function renderLive(container, ctx) {
     ${renderPings(myId)}
     ${renderActiveGroups(players)}
     <div class="card-grid">${cards}</div>
+    ${renderLiveSeating(ctx)}
   `;
 
   wireWhoAmICard(container, 'live-whoami', ctx);
