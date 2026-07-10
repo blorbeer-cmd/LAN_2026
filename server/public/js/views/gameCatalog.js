@@ -16,8 +16,8 @@ import { suggestProcessNames } from '../gameProcessSuggestions.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 
 let activeTab = 'catalog'; // 'catalog' | 'suggestions'
-let sortKey = 'avgBock';
-let sortDir = 'desc';
+let sortKey = 'name';
+let sortDir = 'asc';
 
 // No dedicated fetch/cache here on purpose for games/skills/preferences:
 // they're all already part of the app-wide loadAll() round trip (see
@@ -127,8 +127,8 @@ function ratingRowHtml({ label, accentClass, mine, avg, count, gameId, kind, dis
 
 function gameLinksHtml(game) {
   const links = [
-    game.platform_url ? { href: game.platform_url, label: `🔗 ${game.platform || 'Plattform'}` } : null,
-    game.trailer_url ? { href: game.trailer_url, label: '🎬 Trailer' } : null,
+    game.platform_url ? { href: game.platform_url, label: `${icon('squareArrowOutUpRight')} ${game.platform || 'Plattform'}` } : null,
+    game.trailer_url ? { href: game.trailer_url, label: `${icon('tvMinimalPlay')} Trailer` } : null,
   ].filter(Boolean);
   if (links.length === 0) return '';
   return `
@@ -136,7 +136,7 @@ function gameLinksHtml(game) {
       ${links
         .map(
           (l) =>
-            `<a class="chip" href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(l.label)}</a>`
+            `<a class="chip" href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer">${l.label}</a>`
         )
         .join('')}
     </div>`;
@@ -167,7 +167,7 @@ function gameCardHtml(game, myId) {
       ${gameLinksHtml(game)}
 
       ${ratingRowHtml({
-        label: '🔥 Bock',
+        label: `${icon('flame')} Bock`,
         accentClass: 'preference-row-slider',
         mine: myBock,
         avg: bockStats.avg,
@@ -443,8 +443,8 @@ export function renderGameCatalog(container, ctx) {
       <button type="button" class="btn btn-primary btn-sm" id="suggest-new">+ Spiel vorschlagen</button>
     </div>
     <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px;">
-      ${sortButton('avgBock', 'Ø Bock')}
       ${sortButton('name', 'Name')}
+      ${sortButton('avgBock', 'Ø Bock')}
       ${sortButton('myBock', 'Mein Bock')}
       ${activeTab === 'catalog' ? sortButton('avgSkill', 'Ø Skill') : ''}
     </div>
@@ -489,9 +489,14 @@ export function renderGameCatalog(container, ctx) {
     const kind = row.dataset.kind;
     const slider = row.querySelector('input[type="range"]');
     const valueEl = row.querySelector('.skill-value');
+    const updateSliderTone = () => {
+      slider.style.setProperty('--slider-pct', `${((Number(slider.value) - 1) / 9) * 100}%`);
+    };
+    updateSliderTone();
     let debounceTimer = null;
     slider.addEventListener('input', () => {
       valueEl.textContent = slider.value;
+      updateSliderTone();
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(async () => {
         try {

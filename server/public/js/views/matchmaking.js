@@ -4,6 +4,7 @@
 // draw, not just whoever clicked the button.
 
 import { api } from '../api.js';
+import { icon } from '../icons.js';
 import { confirmDialog } from '../modal.js';
 import { state, gameById } from '../state.js';
 import { escapeHtml, avatarHtml, gameBadgeHtml, formatDateTime } from '../format.js';
@@ -290,7 +291,7 @@ export function renderMatchmaking(container, ctx) {
       <div class="muted" style="font-size:0.78rem;margin-top:-6px;">Anzahl Teams leer lassen für automatisch (Standard: 2)</div>
       <label class="check-row">
         <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
-        <span>🪑 Sitznachbarn nicht gegeneinander auslosen</span>
+        <span>${icon('users')} Sitznachbarn nicht gegeneinander auslosen</span>
       </label>
 
       <div class="section-title" style="margin:8px 0 0;">👑 Oder: Captain-Draft</div>
@@ -414,8 +415,8 @@ function renderResult(result) {
 
   const seatingNote = result.seatPairsConsidered
     ? result.seatConflicts > 0
-      ? `<div class="muted" style="font-size:0.78rem;margin-top:8px;">🪑 ${result.seatConflicts} von ${result.seatPairsConsidered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten (sonst wäre es zu unfair geworden).</div>`
-      : `<div class="muted" style="font-size:0.78rem;margin-top:8px;">🪑 Alle Sitznachbarn sind im selben Team.</div>`
+      ? `<div class="muted" style="font-size:0.78rem;margin-top:8px;">${icon('users')} ${result.seatConflicts} von ${result.seatPairsConsidered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten (sonst wäre es zu unfair geworden).</div>`
+      : `<div class="muted" style="font-size:0.78rem;margin-top:8px;">${icon('users')} Alle Sitznachbarn sind im selben Team.</div>`
     : '';
 
   return `

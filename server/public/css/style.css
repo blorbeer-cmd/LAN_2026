@@ -1437,6 +1437,35 @@ input[type='range'] {
 }
 .skill-row-slider {
   grid-column: 1 / -1;
+  --slider-low: #c08be6;
+  --slider-high: #c24bd8;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--slider-low) 0%, var(--slider-high) var(--slider-pct, 50%), #39415a var(--slider-pct, 50%), #39415a 100%);
+}
+.skill-row-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--slider-high);
+  box-shadow: 0 1px 3px #0008;
+  cursor: pointer;
+}
+.skill-row-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--slider-high);
+  box-shadow: 0 1px 3px #0008;
+  cursor: pointer;
+}
+.skill-row-slider:not(.preference-row-slider) {
+  --slider-low: #9bb7f5;
+  --slider-high: #536dff;
 }
 .skill-value {
   font-variant-numeric: tabular-nums;

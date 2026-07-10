@@ -27,7 +27,7 @@ function renderInviteLinkBody() {
       <input type="text" id="invite-link" readonly value="${escapeHtml(inviteUrl())}" style="flex:1;font-family:monospace;font-size:0.8rem;" />
       <button type="button" class="btn btn-sm" id="invite-copy">Kopieren</button>
     </div>
-    <button type="button" class="btn btn-sm" id="invite-qr-toggle">📱 QR-Code anzeigen</button>
+    <button type="button" class="btn btn-sm" id="invite-qr-toggle">${icon('scanQrCode')} QR-Code anzeigen</button>
     <div id="invite-qr" style="text-align:center;" hidden></div>
   `;
 }
@@ -49,10 +49,10 @@ function wireInviteLinkBody(root) {
     const qrEl = root.querySelector('#invite-qr');
     if (!qrEl.hidden) {
       qrEl.hidden = true;
-      e.target.textContent = '📱 QR-Code anzeigen';
+      e.target.innerHTML = `${icon('scanQrCode')} QR-Code anzeigen`;
       return;
     }
-    e.target.textContent = '📱 QR-Code ausblenden';
+    e.target.innerHTML = `${icon('scanQrCode')} QR-Code ausblenden`;
     qrEl.hidden = false;
     if (!qrEl.dataset.loaded) {
       const url = root.querySelector('#invite-link').value;

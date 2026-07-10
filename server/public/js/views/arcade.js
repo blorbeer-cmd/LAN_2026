@@ -11,10 +11,10 @@ import { showCountdown, cancelCountdown } from '../countdown.js';
 // reveals that game's lobby below. Quiz and Tetris are live; the rest are
 // placeholders for games still to come.
 const GAMES = [
-  { id: 'quiz', icon: '⚡', name: 'Gaming-Quiz' },
+  { id: 'quiz', icon: icon('brain'), name: 'Gaming-Quiz' },
   { id: 'tetris', icon: '🧩', name: 'Tetris' },
-  { id: 'pong', icon: '🏓', name: 'Pong', soon: true },
-  { id: 'blobby', icon: '🏐', name: 'Blobby Volley', soon: true },
+  { id: 'pong', icon: icon('gitCommitVertical'), name: 'Pong', soon: true },
+  { id: 'blobby', icon: icon('volleyball'), name: 'Blobby Volley', soon: true },
   { id: 'snake', icon: '🐍', name: 'Snake', soon: true },
 ];
 
@@ -444,7 +444,7 @@ export function renderQuizRoom(container, ctx) {
     return;
   }
   container.innerHTML = `
-    <h1 class="view-title">⚡ Gaming-Quiz</h1>
+    <h1 class="view-title">${icon('brain')} Gaming-Quiz</h1>
     ${renderMatch()}
     ${match.ended ? `<button type="button" class="btn btn-primary btn-block" id="quiz-back" style="margin-top:14px;">Zurück zum Arcade</button>` : ''}
   `;
