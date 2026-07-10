@@ -5,7 +5,7 @@
 
 import { Router } from 'express';
 import { db } from '../db';
-import { getVapidPublicKey, isValidSubscription, saveSubscription, removeSubscription } from '../push';
+import { getVapidPublicKey, isValidSubscription, saveSubscription, removeSubscription, getLastPushLogEntry } from '../push';
 
 export const pushRouter = Router();
 
@@ -13,6 +13,13 @@ export const pushRouter = Router();
 // call pushManager.subscribe().
 pushRouter.get('/vapid-public-key', (_req, res) => {
   res.json({ publicKey: getVapidPublicKey() });
+});
+
+// GET /api/push/last - the most recent notification sent via notifyPlayers()
+// (Durchsage, neue Bestellung, Arcade-Lobby, Ping, Abstimmung, Turnier, ...),
+// for the Kiosk screen. null once no push was ever sent.
+pushRouter.get('/last', (_req, res) => {
+  res.json({ entry: getLastPushLogEntry() });
 });
 
 // POST /api/push/subscribe - register (or re-point) a browser subscription

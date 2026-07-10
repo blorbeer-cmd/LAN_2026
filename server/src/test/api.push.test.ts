@@ -67,6 +67,26 @@ test('starting a new vote round pushes to subscribed players', async (t) => {
   assert.match(payload.title, /Abstimmung/);
 });
 
+test('GET /api/push/last reflects the most recently sent notification, regardless of feature', async () => {
+  await request(app).post('/api/votes/start');
+  await request(app).post('/api/votes/cancel');
+
+  const afterVotes = await request(app).get('/api/push/last');
+  assert.equal(afterVotes.status, 200);
+  assert.match(afterVotes.body.entry.title, /Abstimmung/);
+
+  // A different feature's notifyPlayers() call (Durchsage) becomes the new
+  // "last" entry — the log isn't scoped to one feature.
+  const durchsage = await request(app).post('/api/broadcasts').send({ playerId, message: 'Pizza ist da!' });
+  assert.equal(durchsage.status, 201);
+
+  const afterBroadcast = await request(app).get('/api/push/last');
+  assert.equal(afterBroadcast.status, 200);
+  assert.match(afterBroadcast.body.entry.title, /📢/);
+  assert.match(afterBroadcast.body.entry.body, /Pizza ist da!/);
+  assert.ok(afterBroadcast.body.entry.createdAt > 0);
+});
+
 test('a subscription that comes back as gone (410) is pruned', async (t) => {
   t.mock.method(pushTransport, 'send', async () => {
     const err = new Error('gone') as Error & { statusCode: number };

@@ -31,11 +31,6 @@
   font-size: 1.3rem;
   color: var(--text-muted);
 }
-.kiosk-header .conn-dot {
-  width: 14px;
-  height: 14px;
-}
-
 .kiosk-grid {
   flex: 1;
   display: grid;
@@ -105,5 +100,31 @@
   from {
     opacity: 0;
     transform: translateY(-12px) scale(0.98);
+  }
+}
+.kiosk-broadcast-time {
+  font-weight: 400;
+  opacity: 0.85;
+  font-size: 0.85em;
+}
+
+/* Food-order banner: same width/placement as the Durchsage banner but a
+   quieter card style — it's ambient status, not an urgent announcement. */
+.kiosk-food-banner {
+  margin: 14px 24px 0;
+  padding: 10px 22px;
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  font-size: 1.1rem;
+  text-align: center;
+}
+.kiosk-food-banner a {
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kiosk-broadcast {
+    animation: none;
   }
 }

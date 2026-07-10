@@ -9,11 +9,12 @@ import { confirmDialog } from '../modal.js';
 import { state, gameById } from '../state.js';
 import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
 import { showToast } from '../toast.js';
+import { icon } from '../icons.js';
 
 const FORMAT_LABELS = {
-  single_elimination: '🏆 K.O.-Turnier',
-  round_robin: '🔁 Liga (jeder gegen jeden)',
-  group_knockout: '👥 Gruppenphase + K.O.',
+  single_elimination: 'K.O.-Turnier',
+  round_robin: 'Liga (jeder gegen jeden)',
+  group_knockout: 'Gruppenphase + K.O.',
 };
 
 // ---------- module state ----------
@@ -102,7 +103,7 @@ function renderList(container, ctx) {
     listLoading || listCache === null
       ? `<div class="empty-state">Lädt…</div>`
       : listCache.length === 0
-        ? `<div class="empty-state"><span class="emoji">🏆</span>Noch keine Turniere.</div>`
+        ? `<div class="empty-state"><span class="empty-state-icon">${icon('swords')}</span><br />Noch keine Turniere.</div>`
         : `<div class="card-grid">${listCache
             .map(
               (t) => `
@@ -119,7 +120,7 @@ function renderList(container, ctx) {
 
   container.innerHTML = `
     <div class="row-between">
-      <h1 class="view-title">Turniere</h1>
+      <h1 class="view-title">${icon('swords')} Turniere</h1>
       <button type="button" class="btn btn-primary btn-sm" id="tourn-new-btn">+ Turnier</button>
     </div>
     <div id="tourn-create"></div>
@@ -591,9 +592,9 @@ function renderGroupKnockout(t, ctx) {
   const knockoutMatches = t.matches.filter((m) => m.stage === 'knockout');
   const knockoutHtml =
     knockoutMatches.length === 0
-      ? `<div class="section-title" style="margin-top:14px;">🏆 K.O.-Runde</div>
+      ? `<div class="section-title" style="margin-top:14px;">K.O.-Runde</div>
          <div class="empty-state">Startet automatisch, sobald alle Gruppenspiele entschieden sind.</div>`
-      : `<div class="section-title" style="margin-top:14px;">🏆 K.O.-Runde</div>${renderBracket(t, ctx, knockoutMatches)}`;
+      : `<div class="section-title" style="margin-top:14px;">K.O.-Runde</div>${renderBracket(t, ctx, knockoutMatches)}`;
 
   return `${groupBlocks}${knockoutHtml}`;
 }

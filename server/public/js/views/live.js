@@ -6,6 +6,7 @@ import { state } from '../state.js';
 import { escapeHtml, formatSince, stateLabel, avatarHtml, gameBadgeHtml, gameChipsHtml } from '../format.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { showToast } from '../toast.js';
+import { icon } from '../icons.js';
 
 const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
 
@@ -64,19 +65,19 @@ function renderDigest(myId) {
   if (digestCache.openVote) {
     items.push(`
       <div class="chip" data-navigate="votes" style="cursor:pointer;">
-        🗳️ Abstimmung läuft – du hast noch nicht abgestimmt
+        ${icon('vote')} Abstimmung läuft – du hast noch nicht abgestimmt
       </div>`);
   }
   for (const m of digestCache.readyMatches) {
     items.push(`
       <div class="chip" data-navigate="tournaments" style="cursor:pointer;">
-        🏆 ${gameBadgeHtml({ id: m.gameId, icon: m.gameIcon }, 20)} Dein Match ist bereit: ${escapeHtml(m.myTeamName)} vs. ${escapeHtml(m.opponentTeamName)}
+        ${icon('trophy')} ${gameBadgeHtml({ id: m.gameId, icon: m.gameIcon }, 20)} Dein Match ist bereit: ${escapeHtml(m.myTeamName)} vs. ${escapeHtml(m.opponentTeamName)}
       </div>`);
   }
   for (const g of digestCache.missingSkills) {
     items.push(`
       <div class="chip" data-navigate="profile" style="cursor:pointer;">
-        ⭐ ${gameBadgeHtml(g, 20)} Bewerte deinen Skill für ${escapeHtml(g.name)} – wird gerade gespielt
+        ${icon('star')} ${gameBadgeHtml(g, 20)} Bewerte deinen Skill für ${escapeHtml(g.name)} – wird gerade gespielt
       </div>`);
   }
   if (items.length === 0) return '';

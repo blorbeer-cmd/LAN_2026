@@ -10,6 +10,7 @@ import { state } from '../state.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { isAdmin, getAdminPin, setAdmin } from '../admin.js';
+import { icon } from '../icons.js';
 
 const TEST_COLORS = ['#4f9dff', '#ef5da8', '#22c55e', '#f59e0b', '#9163f5', '#06b6d4', '#f43f5e', '#84cc16'];
 
@@ -75,7 +76,7 @@ function renderUnlock(container, ctx) {
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
-    <h1 class="view-title">🔑 Admin</h1>
+    <h1 class="view-title">${icon('shield')} Admin</h1>
     <div class="card stack">
       <p class="muted">${
         pinRequired
@@ -122,7 +123,7 @@ function renderPanel(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <div class="row-between">
-      <h1 class="view-title">🔑 Admin</h1>
+      <h1 class="view-title">${icon('shield')} Admin</h1>
       <button type="button" class="btn btn-sm" id="admin-leave">Modus verlassen</button>
     </div>
 

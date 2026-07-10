@@ -10,6 +10,7 @@ import { escapeHtml, avatarHtml, formatDateTime, toDatetimeLocal } from '../form
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { icon } from '../icons.js';
 
 let cache = null;
 let loading = false;
@@ -82,7 +83,7 @@ function renderItems(order, myId) {
             ${i.priceCents !== null ? `<span class="muted" style="font-variant-numeric:tabular-nums;">${formatCents(i.priceCents)}</span>` : ''}
             ${
               order.open && i.playerId === myId
-                ? `<button type="button" class="icon-btn" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen" style="font-size:0.8rem;padding:0 4px;">✕</button>`
+                ? `<button type="button" class="icon-btn" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen" style="font-size:0.8rem;padding:0 4px;">${icon('x')}</button>`
                 : ''
             }
           </div>`
@@ -108,8 +109,8 @@ function renderItems(order, myId) {
 // items themselves.
 function renderDetails(order) {
   const sendAtLabel = order.sendAt
-    ? `🕒 Geht raus um ${formatDateTime(order.sendAt)} Uhr`
-    : '🕒 Kein Zeitpunkt festgelegt';
+    ? `${icon('timer')} Geht raus um ${formatDateTime(order.sendAt)} Uhr`
+    : `${icon('timer')} Kein Zeitpunkt festgelegt`;
   const hasDetails = Boolean(order.sendAt || order.notes || order.link);
   return `
     <div class="stack" style="gap:4px;">
@@ -118,7 +119,7 @@ function renderDetails(order) {
         <button type="button" class="btn btn-sm" data-edit-details="${order.id}">${hasDetails ? 'Bearbeiten' : '+ Infos & Link'}</button>
       </div>
       ${order.notes ? `<div class="muted" style="font-size:0.85rem;white-space:pre-wrap;word-break:break-word;">${escapeHtml(order.notes)}</div>` : ''}
-      ${order.link ? `<a href="${escapeHtml(order.link)}" target="_blank" rel="noopener" style="font-size:0.85rem;">🔗 Zur Karte / Lieferdienst</a>` : ''}
+      ${order.link ? `<a href="${escapeHtml(order.link)}" target="_blank" rel="noopener" style="font-size:0.85rem;">${icon('link')} Zur Karte / Lieferdienst</a>` : ''}
     </div>`;
 }
 
@@ -126,7 +127,7 @@ function renderOpenOrder(order, myId) {
   return `
     <div class="card stack" data-order-card="${order.id}">
       <div class="row-between">
-        <strong>🍕 ${escapeHtml(order.title)}</strong>
+        <strong>${icon('hamburger')} ${escapeHtml(order.title)}</strong>
         <span class="badge badge-playing">Offen</span>
       </div>
       <div class="muted" style="font-size:0.78rem;margin-top:-6px;">
@@ -144,7 +145,7 @@ function renderOpenOrder(order, myId) {
              </form>`
           : `<div class="muted" style="font-size:0.85rem;">Wähle oben, wer du bist, um dich einzutragen.</div>`
       }
-      <button type="button" class="btn btn-sm" data-close-order="${order.id}">✅ Bestellung schließen</button>
+      <button type="button" class="btn btn-sm" data-close-order="${order.id}">${icon('check')} Bestellung schließen</button>
     </div>`;
 }
 
@@ -289,19 +290,19 @@ export function renderFoodOrders(container, ctx) {
     loading || cache === null
       ? `<div class="empty-state">Lädt…</div>`
       : openOrders.length === 0
-        ? `<div class="empty-state"><span class="emoji">🍕</span>Gerade keine offene Bestellung.<br />
+        ? `<div class="empty-state"><span class="empty-state-icon">${icon('hamburger')}</span><br />Gerade keine offene Bestellung.<br />
            <span class="muted" style="font-size:0.85rem;">Starte eine, wenn ihr was bestellen wollt – alle können sich dann selbst eintragen.</span></div>`
         : `<div class="stack">${openOrders.map((o) => renderOpenOrder(o, myId)).join('')}</div>`;
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <div class="row-between">
-      <h1 class="view-title">🍕 Essen bestellen</h1>
+      <h1 class="view-title">${icon('hamburger')} Essen bestellen</h1>
       <button type="button" class="btn btn-primary btn-sm" id="order-new-btn" ${myId ? '' : 'disabled'}>+ Bestellung</button>
     </div>
     ${whoAmICardHtml('food-whoami', { marginBottom: '12px' })}
     ${openHtml}
-    ${closedOrders.length ? `<div class="section-title">🕓 Frühere Bestellungen</div>${closedOrders.map(renderClosedOrder).join('')}` : ''}
+    ${closedOrders.length ? `<div class="section-title">${icon('timer')} Frühere Bestellungen</div>${closedOrders.map(renderClosedOrder).join('')}` : ''}
   `;
 
   wireWhoAmICard(container, 'food-whoami', ctx);

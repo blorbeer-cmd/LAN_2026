@@ -375,6 +375,20 @@ db.exec(`
     created_at INTEGER NOT NULL
   );
 
+  -- Every real push notification sent via notifyPlayers() (Durchsagen, neue
+  -- Sammelbestellung, Abstimmung offen, Arcade-Lobby, "Jetzt zocken?"-Ping,
+  -- Turnier/Draft-Events, ...), so a shared screen (Kiosk) can always show
+  -- "was zuletzt an alle rausging" without caring which feature triggered
+  -- it. No player_id/target list on purpose - this is a title/body/when
+  -- log, not a per-recipient delivery record (push_subscriptions handles
+  -- the actual delivery targets).
+  CREATE TABLE IF NOT EXISTS push_log (
+    id         TEXT PRIMARY KEY,
+    title      TEXT NOT NULL,
+    body       TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS quiz_questions (
     id         TEXT PRIMARY KEY,
     question   TEXT NOT NULL,
@@ -498,6 +512,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_push_subscriptions_player ON push_subscriptions(player_id);
   CREATE INDEX IF NOT EXISTS idx_drafts_status ON drafts(status);
   CREATE INDEX IF NOT EXISTS idx_broadcasts_created ON broadcasts(created_at);
+  CREATE INDEX IF NOT EXISTS idx_push_log_created ON push_log(created_at);
   CREATE INDEX IF NOT EXISTS idx_quiz_seen_player ON quiz_seen(player_id);
   CREATE INDEX IF NOT EXISTS idx_food_orders_event ON food_orders(event_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_food_order_items_order ON food_order_items(order_id);

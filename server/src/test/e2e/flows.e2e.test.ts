@@ -65,7 +65,7 @@ test('fresh device lands on self-onboarding and creates its profile there', asyn
 
   // No identity stored on this device yet -> the app must route straight to
   // the profile/onboarding view, not the Live board.
-  assert.equal(await page.textContent('.view-title'), '👋 Willkommen bei RespawnHQ');
+  assert.equal((await page.textContent('.view-title'))?.trim(), 'Willkommen bei RespawnHQ');
 
   await page.fill('#profile-new-name', 'E2E Alice');
   await page.click('#profile-new-form button[type="submit"]');
@@ -103,28 +103,38 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   const teamCards = await page.locator('.team-card').count();
   assert.ok(teamCards >= 2, 'expected at least 2 team cards');
 
-  // Voting: start a round and cast a vote. The device identity was already
-  // set during onboarding, so no "who am I" picker appears — voting is one
-  // tap, which is exactly the intended flow. While the round is open, no
-  // per-game distribution (bars/counts) may be visible anywhere — only
-  // total participation and the voter's own pick.
+  // Voting: start a round, pick a game, and submit. The device identity was
+  // already set during onboarding, so no "who am I" picker appears. Picking
+  // a game only stages a local draft — it must not count as a vote until the
+  // submit button is pressed. While the round is open, no per-game
+  // distribution (bars/counts) may be visible anywhere — only total
+  // participation and the voter's own pick.
   await page.click('[data-view="votes"]');
   await page.waitForSelector('text=Du bist E2E Alice');
   await page.click('#votes-start');
   await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
   assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars while the round is open');
-  await page.click('[data-vote-game] >> nth=0');
-  await page.waitForFunction(() => document.body.textContent?.includes('1 Stimme'));
-  await page.waitForSelector('text=✓ Deine Stimme'); // the voter's own pick, not the aggregate
+  await page.click('[data-vote-select] >> nth=0');
+  await page.waitForSelector('text=Ausgewählt'); // staged locally
+  assert.equal(
+    await page.locator('text=0 von 2 haben abgestimmt').count(),
+    1,
+    'selecting a game must not submit it by itself'
+  );
+  await page.click('#votes-submit');
+  await page.waitForFunction(() => document.body.textContent?.includes('1 von 2'));
   assert.equal(await page.locator('.vote-bar-track').count(), 0, 'still no bars after casting, before closing');
 
   await page.click('#votes-close');
   await page.waitForSelector('#votes-start');
-  // Closing reveals the full breakdown at last.
-  await page.waitForSelector('.vote-bar-track');
+  // Closing reveals the winner in the "Letztes Ergebnis" summary at the top
+  // of the page — the full per-game breakdown only appears in the history
+  // detail modal, not on the main page.
+  await page.waitForSelector('text=Letztes Ergebnis');
+  assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars on the main page, even after closing');
 
   // The just-closed round can be reopened from the history list for the
-  // same detailed breakdown.
+  // full detailed breakdown.
   await page.click('[data-open-history-round]');
   await page.waitForSelector('text=Abstimmung Runde 1');
   await page.waitForSelector('.modal .vote-bar-track');
@@ -188,7 +198,7 @@ test('Auswertungen (via Mehr) shows a real award and a visible, auto-scrolled co
   // Switch the concurrency chart to CS2 and confirm at least one bar has a
   // real height (regression check for the auto-scroll/empty-looking-chart
   // bug: bars must be reachable/visible, not scrolled off-screen).
-  await page.selectOption('#an-concurrency-game', { label: `${cs2.icon} ${cs2.name}` });
+  await page.selectOption('#an-concurrency-game', { label: cs2.name });
   await page.waitForFunction(
     () => {
       const bars = Array.from(document.querySelectorAll<HTMLElement>('#an-concurrency-chart > div'));
@@ -204,6 +214,14 @@ test('Auswertungen (via Mehr) shows a real award and a visible, auto-scrolled co
 });
 
 test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statistiken reachable', async () => {
+  // Keep this test deterministic even if the preceding click-through test
+  // changes its setup data or a future test order is introduced.
+  const playersRes = await page.request.get(`${BASE_URL}/api/players`);
+  const players = (await playersRes.json()) as Array<{ name: string }>;
+  if (!players.some((p) => p.name === 'E2E Bob')) {
+    const createRes = await page.request.post(`${BASE_URL}/api/players`, { data: { name: 'E2E Bob' } });
+    assert.equal(createRes.status(), 201);
+  }
   await page.click('#profile-btn');
 
   // The device identity is still "E2E Alice" from onboarding, so this view
@@ -214,9 +232,12 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
   // Renaming to a name someone else already has must be rejected, not
   // silently accepted or crash the view.
   await page.fill('#profile-name', 'E2E Bob');
+  const conflict = page.waitForResponse(
+    (response) => response.url().includes('/api/players/') && response.request().method() === 'PATCH' && response.status() === 409
+  );
   await page.click('#profile-save');
-  await page.waitForSelector('.toast-error');
-  await page.waitForSelector('text=vergeben');
+  await conflict;
+  assert.equal(await page.inputValue('#profile-name'), 'E2E Bob');
 
   // A genuinely free name should save fine.
   await page.fill('#profile-name', 'E2E Alice Pro');
@@ -426,7 +447,7 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
   await page.fill('#carpool-location', 'Hamburg');
   await page.fill('#carpool-seats', '1');
   await page.click('#carpool-form button[type="submit"]');
-  await page.waitForSelector('text=🚗 E2E Alice Pro fährt');
+  await page.waitForSelector('text=E2E Alice Pro fährt');
   await page.waitForSelector('text=1/1 frei');
   // The driver only ever gets Bearbeiten/Löschen, never a "Raus" button.
   await page.waitForSelector('[data-edit-carpool]');
@@ -529,4 +550,34 @@ test('the device back button steps back through in-app views instead of leaving 
   // Forward should redo the same steps.
   await page.goForward();
   await page.waitForFunction(() => document.querySelector('.view-title')?.textContent?.includes('Nächstes'));
+});
+
+test('Kiosk: shows an open food order (when/where only), and the last-push banner picks up any feature, not just Durchsagen', async () => {
+  const playersRes = await page.request.get(`${BASE_URL}/api/players`);
+  const [{ id: playerId }] = await playersRes.json();
+
+  // Send a Durchsage first, then trigger a different feature's push (opening
+  // a food order) — the banner must show the *food order's* push afterward,
+  // proving it reflects any notifyPlayers() call, not only Durchsagen.
+  await page.request.post(`${BASE_URL}/api/broadcasts`, {
+    data: { playerId, message: 'Kiosk-Test-Durchsage' },
+  });
+  const sendAt = Date.now() + 3600_000;
+  await page.request.post(`${BASE_URL}/api/food-orders`, {
+    data: { playerId, title: 'Kiosk-Test-Pizza', sendAt, link: 'https://kiosk-test.example/karte' },
+  });
+
+  await page.goto(`${BASE_URL}/kiosk.html`);
+
+  // The food banner shows only the when/where (send time + menu link) — the
+  // items themselves stay on everyone's own phone, never on the shared screen.
+  await page.waitForSelector('#kiosk-food-banner:not([hidden]) >> text=Kiosk-Test-Pizza');
+  await page.waitForSelector('a[href="https://kiosk-test.example/karte"]');
+
+  // The last-push banner shows the food order's own push (title "🍕 Neue
+  // Sammelbestellung"), not the earlier Durchsage — with a timestamp, and
+  // it stays up permanently rather than auto-hiding after a few minutes.
+  await page.waitForSelector('#kiosk-broadcast:not([hidden]) >> text=Neue Sammelbestellung');
+  await page.waitForSelector('#kiosk-broadcast >> text=Kiosk-Test-Pizza');
+  await page.waitForSelector('.kiosk-broadcast-time');
 });

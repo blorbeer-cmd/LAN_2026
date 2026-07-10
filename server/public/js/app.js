@@ -29,6 +29,9 @@ import { renderSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
 import { renderMore } from './views/more.js';
 import { renderAdmin } from './views/admin.js';
+import { installIconReplacement } from './icons.js';
+
+installIconReplacement();
 
 const VIEWS = {
   live: renderLive,
@@ -199,9 +202,6 @@ function wireNav() {
 
 function wireSocket() {
   const socket = connectSocket();
-  const dot = document.getElementById('conn-dot');
-  socket.on('connect', () => dot.classList.add('connected'));
-  socket.on('disconnect', () => dot.classList.remove('connected'));
 
   // These events carry no payload (or aren't worth special-casing) — just
   // reload everything. Infrequent (admin-type actions), so this is cheap.
