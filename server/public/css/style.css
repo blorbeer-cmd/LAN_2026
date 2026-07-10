@@ -1721,6 +1721,12 @@ input[type='number'].bracket-score-input {
 .countdown-num-wrap {
   position: relative;
   display: inline-block;
+  /* Blur headroom must live INSIDE this box: with GPU compositing (real
+     browsers, Retina — not headless test runners) both Blink and Gecko cut
+     the glow child off at the wrap's own bounds, no matter how far the
+     child's box extends beyond it. Symmetric padding keeps the text
+     centered and gives the 16px blur (3σ ≈ 48px) room on every side. */
+  padding: 4.5rem;
 }
 .countdown-num {
   font-size: clamp(4rem, 22vw, 8rem);
@@ -1735,16 +1741,12 @@ input[type='number'].bracket-score-input {
    engine we've tested — fine for a plain rectangle of glyphs, but a visible
    cut wherever the actual ink (an italic ascender, the "!") pokes past it.
    A plain solid-colour blurred copy behind a crisp gradient-clipped copy on
-   top has no such interaction and glows cleanly on every edge.
-   The glow box itself also needs to be bigger than its text: engines size
-   the `filter` paint region to the element's own box, so a box sized exactly
-   to the glyphs (`inset: 0`) still clips the blur right where it would
-   otherwise bleed outward — worst on the italic top-right (ascender, "!").
-   Generous negative inset plus flex-centering gives the blur room without
-   moving the glow off the fill layer underneath it. */
+   top has no such interaction and glows cleanly on every edge. The room the
+   blur needs comes from the wrap's padding (see above) — the glow layer
+   itself must NOT reach outside the wrap, or GPU compositing clips it. */
 .countdown-num-glow {
   position: absolute;
-  inset: -3rem;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
