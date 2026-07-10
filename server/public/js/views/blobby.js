@@ -41,7 +41,9 @@ export function ensureBlobbySocket() {
     match = { ...payload, ended: false, winner: null };
     previous = latest = null;
     navigate('blobby');
-    showCountdown(payload.beginsAt);
+    // Let the dedicated game view mount first. This keeps the global overlay
+    // reliably above the canvas even when the socket event lands mid-render.
+    requestAnimationFrame(() => showCountdown(payload.beginsAt));
   });
   socket.on('blobby:state', (payload) => {
     previous = latest;
@@ -89,26 +91,39 @@ function bindKeyboard() {
 }
 
 function lobbyList() {
-  if (!lobbies.length) return '<div class="empty-state">Noch keine Blobby-Volley-Lobby.</div>';
+  const mine = myBlobbyLobby();
+  if (!lobbies.length) return '<div class="empty-state" style="padding:var(--space-4);">Keine offene Blobby-Volley-Lobby.</div>';
   return lobbies.map((l) => {
+    const isHost = l.host.id === myId();
     const joined = l.players.some((p) => p.id === myId());
-    const host = l.host.id === myId();
-    return `<div class="lb-row"><div><strong>${escapeHtml(l.host.name)}</strong><div class="muted">${l.players.map((p) => escapeHtml(p.name)).join(' vs. ')}</div></div><div class="row">
-      ${!joined && l.players.length < 2 ? `<button class="btn btn-sm" data-blobby-join="${l.id}">Beitreten</button>` : ''}
-      ${host ? `<button class="btn btn-sm" data-blobby-close="${l.id}">Schließen</button>` : joined ? `<button class="btn btn-sm" data-blobby-leave="${l.id}">Verlassen</button>` : ''}
-    </div></div>`;
+    const full = l.players.length >= 2 && !joined;
+    const action = isHost
+      ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-blobby-close="${l.id}">Schließen</button>`
+      : joined
+        ? `<button type="button" class="btn btn-sm btn-equal" data-blobby-leave="${l.id}">Verlassen</button>`
+        : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-blobby-join="${l.id}" ${mine || full ? 'disabled' : ''}>Beitreten</button>`;
+    return `<div class="lb-row" style="align-items:flex-start;">
+      <div class="stack" style="gap:var(--space-2);flex:1;">
+        <strong>${escapeHtml(l.host.name)}s Blobby-Volley-Lobby</strong>
+        <div class="chip-list">${l.players.map((p) => `<span class="chip">${escapeHtml(p.name)}</span>`).join('')}</div>
+        <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length}/2 Spieler${full ? ' · voll' : ''}</div>
+      </div>${action}</div>`;
   }).join('');
 }
 function hostStart() {
   const lobby = myBlobbyLobby();
   if (!lobby || lobby.host.id !== myId()) return '';
-  return `<button class="btn btn-primary btn-block" id="blobby-start" ${lobby.players.length === 2 ? '' : 'disabled'}>Match starten</button>`;
+  const ready = lobby.players.length === 2;
+  return `<div class="stack" style="gap:var(--space-2);border-top:1px solid var(--border);padding-top:var(--space-3);">
+    <div class="muted" style="font-size:var(--font-size-xs);">${ready ? 'Bereit — Gegner ist da.' : 'Warte auf einen Gegner…'}</div>
+    <button type="button" class="btn btn-primary btn-block" id="blobby-start" ${ready ? '' : 'disabled'}>Match starten</button>
+  </div>`;
 }
 export function renderBlobbyLobbyCard() {
   const lobby = myBlobbyLobby(); const noMe = !myId();
-  return `<div class="card stack"><div class="row-between"><strong>Blobby-Volley-Lobby</strong>
-    <button class="btn btn-primary btn-sm btn-equal" id="blobby-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div>
-    ${noMe ? '<div class="muted">Wähle oben zuerst aus, wer du bist.</div>' : ''}${lobbyList()}${hostStart()}</div>`;
+  return `<div class="card stack"><div class="row-between" style="gap:var(--space-3);"><strong>Blobby-Volley-Lobby</strong>
+    <button type="button" class="btn btn-primary btn-sm btn-equal" id="blobby-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div>
+    ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}${lobbyList()}${hostStart()}</div>`;
 }
 export function wireBlobbyLobbyCard(container) {
   container.querySelector('#blobby-create')?.addEventListener('click', async () => {
