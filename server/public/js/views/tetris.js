@@ -20,6 +20,10 @@ import { getMyId } from '../whoami.js';
 
 const COLS = 10;
 const ROWS = 20;
+// Fixed internal canvas resolution; CSS scales both boards to equal display
+// size via flex, so the two fields are always the same size and stay crisp.
+const BOARD_W = 240;
+const BOARD_H = 480;
 
 // Per-cell colours: 1-7 tetrominoes, 8 = garbage. Distinct hues so a busy
 // board stays readable at a glance, tuned to sit on the app's dark canvas.
@@ -38,6 +42,7 @@ let socket = null;
 let lobbies = [];
 let match = null; // { matchId, host, players, beginsAt, running, paused, ended, winner }
 let latestState = null; // last tetris:state payload
+let prevLines = {}; // playerId -> last seen line count, to detect fresh clears for FX
 let countdownTimer = null;
 let inputBound = false;
 
@@ -86,6 +91,7 @@ export function ensureTetrisSocket() {
   socket.on('tetris:match:start', (payload) => {
     match = { ...payload, running: false, paused: false, ended: false, winner: null };
     latestState = null;
+    prevLines = {};
     navigate('tetris'); // hand over to the full-screen board view
     startCountdown();
   });
@@ -118,6 +124,9 @@ export function ensureTetrisSocket() {
     match.winner = payload.winner ?? null;
     match.endScores = payload.scores ?? null;
     stopCountdown();
+    // A finished match adds a new highscore row — let the Arcade view know its
+    // cached stats are stale so they refresh when the player heads back.
+    window.dispatchEvent(new CustomEvent('lan:arcade-stats-dirty'));
     rerender();
   });
 
@@ -206,23 +215,30 @@ function drawBoard(canvas, playerState) {
     cx.stroke();
   }
 
-  const paintCell = (x, y, color) => {
+  // Neon-glow blocks (the "Tetris Effect" look): each cell casts a soft glow
+  // in its own colour, with a bright top edge for a bevelled sheen.
+  const paintCell = (x, y, color, glow) => {
+    cx.shadowColor = color;
+    cx.shadowBlur = glow;
     cx.fillStyle = color;
     cx.fillRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2);
-    cx.fillStyle = 'rgba(255,255,255,0.18)';
+    cx.shadowBlur = 0;
+    cx.fillStyle = 'rgba(255,255,255,0.22)';
     cx.fillRect(x * cell + 1, y * cell + 1, cell - 2, 3);
   };
 
+  const stackGlow = cell * 0.28;
   for (let y = 0; y < ROWS; y++) {
     for (let x = 0; x < COLS; x++) {
       const v = playerState.board[y]?.[x];
-      if (v) paintCell(x, y, COLORS[v] || '#888');
+      if (v) paintCell(x, y, COLORS[v] || '#888', stackGlow);
     }
   }
   if (playerState.current) {
     const color = COLORS[playerState.current.color] || '#fff';
+    // The falling piece glows brighter so the eye tracks it.
     for (const [x, y] of playerState.current.cells) {
-      if (y >= 0) paintCell(x, y, color);
+      if (y >= 0) paintCell(x, y, color, cell * 0.75);
     }
   }
 
@@ -230,6 +246,82 @@ function drawBoard(canvas, playerState) {
     cx.fillStyle = 'rgba(6, 9, 18, 0.55)';
     cx.fillRect(0, 0, canvas.width, canvas.height);
   }
+}
+
+// ---------- Effects (line-clear juice) ----------
+
+function reducedMotion() {
+  return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+// A short particle burst on the given board's overlay canvas.
+function spawnBurst(fx, colors, count) {
+  if (!fx) return;
+  const cx = fx.getContext('2d');
+  const W = fx.width;
+  const H = fx.height;
+  const parts = [];
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = 2 + Math.random() * 6;
+    parts.push({
+      x: W / 2,
+      y: H * 0.42,
+      vx: Math.cos(ang) * spd,
+      vy: Math.sin(ang) * spd - 2.5,
+      life: 1,
+      color: colors[i % colors.length],
+      size: 2 + Math.random() * 3.5,
+    });
+  }
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(50, now - last) / 16.67;
+    last = now;
+    cx.clearRect(0, 0, W, H);
+    let alive = false;
+    for (const p of parts) {
+      if (p.life <= 0) continue;
+      p.life -= 0.022 * dt;
+      p.vy += 0.28 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      if (p.life > 0) {
+        alive = true;
+        cx.globalAlpha = Math.max(0, p.life);
+        cx.fillStyle = p.color;
+        cx.shadowColor = p.color;
+        cx.shadowBlur = 10;
+        cx.fillRect(p.x, p.y, p.size, p.size);
+      }
+    }
+    cx.globalAlpha = 1;
+    cx.shadowBlur = 0;
+    if (alive) requestAnimationFrame(frame);
+    else cx.clearRect(0, 0, W, H);
+  }
+  requestAnimationFrame(frame);
+}
+
+// Restart a one-shot CSS animation class (flash / shake).
+function pulseClass(el, cls, ms) {
+  if (!el) return;
+  el.classList.remove(cls);
+  void el.offsetWidth; // reflow so the animation re-triggers
+  el.classList.add(cls);
+  setTimeout(() => el.classList.remove(cls), ms);
+}
+
+function triggerClearFx(prefix, cleared) {
+  if (reducedMotion()) return;
+  const wrap = document.querySelector(`#${prefix}-wrap`);
+  const tetris = cleared >= 4;
+  pulseClass(wrap, tetris ? 'tetris-flash-big' : 'tetris-flash', 500);
+  pulseClass(document.querySelector(`#${prefix}-wrap`)?.closest('.tetris-board-col'), 'tetris-shake', 350);
+  const colors = tetris
+    ? ['#ffd166', '#ffffff', '#22d3ee', '#ef5da8']
+    : ['#22d3ee', '#a855f7', '#ffffff', '#5b8cff'];
+  spawnBurst(document.querySelector(`#${prefix}-fx`), colors, tetris ? 46 : 22);
 }
 
 function updateStatLine(prefix, playerState) {
@@ -245,6 +337,16 @@ function updateStatLine(prefix, playerState) {
   }
 }
 
+// Fire the clear FX when a board's line count jumps between snapshots.
+function checkClearFx(prefix, playerState) {
+  if (!playerState) return;
+  const prev = prevLines[playerState.playerId];
+  prevLines[playerState.playerId] = playerState.lines;
+  if (prev !== undefined && playerState.lines > prev) {
+    triggerClearFx(prefix, playerState.lines - prev);
+  }
+}
+
 function paint() {
   if (!latestState) return;
   const me = latestState.players.find((p) => p.playerId === myId());
@@ -255,6 +357,8 @@ function paint() {
   drawBoard(document.querySelector('#tetris-opponent'), right);
   updateStatLine('tetris-mine', left);
   updateStatLine('tetris-opponent', right);
+  checkClearFx('tetris-mine', left);
+  checkClearFx('tetris-opponent', right);
   paintOverlay();
 }
 
@@ -381,28 +485,19 @@ function endResultHtml() {
     </div>`;
 }
 
-function boardColumn(prefix, size, label) {
+// Both boards use the same fixed internal resolution; CSS scales them to equal
+// display size. An extra overlay canvas carries the particle effects.
+function boardColumn(prefix, label) {
   return `
     <div class="tetris-board-col">
       <div class="tetris-board-label">${label}</div>
-      <div class="tetris-canvas-wrap">
-        <canvas id="${prefix}" width="${size}" height="${size * 2}" class="tetris-canvas"></canvas>
+      <div id="${prefix}-wrap" class="tetris-canvas-wrap">
+        <canvas id="${prefix}" width="${BOARD_W}" height="${BOARD_H}" class="tetris-canvas"></canvas>
+        <canvas id="${prefix}-fx" width="${BOARD_W}" height="${BOARD_H}" class="tetris-fx" aria-hidden="true"></canvas>
         ${prefix === 'tetris-mine' ? `<div id="tetris-overlay" class="tetris-overlay" hidden></div>` : ''}
         <div id="${prefix}-incoming" class="tetris-incoming"></div>
       </div>
       <div id="${prefix}-stats" class="muted tetris-stats-line"></div>
-    </div>`;
-}
-
-function touchControls() {
-  if (!amPlayer()) return '';
-  return `
-    <div class="tetris-controls">
-      <button type="button" class="btn tetris-ctrl" data-action="left" aria-label="Links">◀</button>
-      <button type="button" class="btn tetris-ctrl" data-action="rotate" aria-label="Drehen">⟳</button>
-      <button type="button" class="btn tetris-ctrl" data-action="right" aria-label="Rechts">▶</button>
-      <button type="button" class="btn tetris-ctrl" data-action="soft" aria-label="Runter">▼</button>
-      <button type="button" class="btn tetris-ctrl tetris-ctrl-drop" data-action="hard" aria-label="Fallen lassen">⤓</button>
     </div>`;
 }
 
@@ -436,26 +531,18 @@ export function renderTetris(container, ctx) {
     <h1 class="view-title">🧩 Tetris Battle</h1>
     <div id="tetris-game">
       <div id="tetris-boards" class="tetris-boards">
-        ${boardColumn('tetris-mine', 220, meLabel)}
-        ${boardColumn('tetris-opponent', 150, oppLabel)}
+        ${boardColumn('tetris-mine', meLabel)}
+        ${boardColumn('tetris-opponent', oppLabel)}
       </div>
-      ${touchControls()}
       ${matchControls()}
       ${endResultHtml()}
-      <div class="muted tetris-help">Steuerung: ◀ ▶ bewegen · ⟳ (Pfeil hoch) drehen · ▼ schneller · Leertaste fallen lassen</div>
     </div>`;
   paint();
   wireMatch(container);
 }
 
 function wireMatch(container) {
-  container.querySelectorAll('[data-action]').forEach((btn) => {
-    // pointerdown so mobile taps register instantly, without the click delay.
-    btn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      sendInput(btn.dataset.action);
-    });
-  });
+  bindTouchGestures(container.querySelector('#tetris-mine'));
 
   container.querySelector('#tetris-pause')?.addEventListener('click', async () => {
     const res = await emitWithAck('tetris:match:pause', { matchId: match?.matchId, playerId: myId() });
@@ -476,5 +563,60 @@ function wireMatch(container) {
     latestState = null;
     stopCountdown();
     navigate('arcade');
+  });
+}
+
+// Touch controls without on-screen buttons: drag left/right across your board
+// to move the piece cell by cell, tap to rotate, swipe down to hard-drop.
+// (Keyboard remains the way to play on a laptop.)
+function bindTouchGestures(canvas) {
+  if (!canvas) return;
+  const cellPx = () => canvas.clientWidth / COLS || 22;
+  let sx = 0;
+  let sy = 0;
+  let stepAnchorX = 0;
+  let startAt = 0;
+  let moved = false;
+  let active = false;
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!amPlayer()) return;
+    active = true;
+    moved = false;
+    sx = e.clientX;
+    sy = e.clientY;
+    stepAnchorX = e.clientX;
+    startAt = performance.now();
+    canvas.setPointerCapture?.(e.pointerId);
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!active) return;
+    const c = cellPx();
+    let dx = e.clientX - stepAnchorX;
+    while (Math.abs(dx) >= c) {
+      sendInput(dx > 0 ? 'right' : 'left');
+      stepAnchorX += dx > 0 ? c : -c;
+      dx = e.clientX - stepAnchorX;
+      moved = true;
+    }
+  });
+
+  const finish = (e) => {
+    if (!active) return;
+    active = false;
+    const dt = performance.now() - startAt;
+    const totalDx = e.clientX - sx;
+    const totalDy = e.clientY - sy;
+    const c = cellPx();
+    if (!moved && Math.abs(totalDx) < c && Math.abs(totalDy) < c && dt < 300) {
+      sendInput('rotate'); // tap
+    } else if (totalDy > c * 2 && totalDy > Math.abs(totalDx)) {
+      sendInput('hard'); // swipe down = hard drop
+    }
+  };
+  canvas.addEventListener('pointerup', finish);
+  canvas.addEventListener('pointercancel', () => {
+    active = false;
   });
 }

@@ -27,6 +27,12 @@ let lastResult = null;
 let countdownInterval = null;
 let customTarget = '';
 
+// The Tetris view lives in its own module; when one of its matches finishes it
+// fires this so our cached highscores refetch the next time Arcade renders.
+window.addEventListener('lan:arcade-stats-dirty', () => {
+  stats = null;
+});
+
 function stopCountdown() {
   if (countdownInterval) clearInterval(countdownInterval);
   countdownInterval = null;
@@ -163,13 +169,14 @@ function arcadeStatsHtml() {
       : '';
 
   const game = games.find((g) => g.gameType === activeStatsGame);
+  const medals = ['🥇', '🥈', '🥉'];
   const rows = game.players
-    .slice(0, 4)
+    .slice(0, 5)
     .map(
-      (p) => `
+      (p, i) => `
         <div class="lb-row">
-          <span>${escapeHtml(p.name)}</span>
-          <span class="muted">${p.wins} Sieg(e) · ${p.points} Punkte</span>
+          <span>${medals[i] ?? `${i + 1}.`} ${escapeHtml(p.name)}</span>
+          <span class="muted" style="font-variant-numeric:tabular-nums;">${p.best} Pkt</span>
         </div>`
     )
     .join('');
@@ -177,10 +184,9 @@ function arcadeStatsHtml() {
     ${tabs}
     <div class="arcade-stat-game">
       <div class="row-between">
-        <strong>${escapeHtml(game.title)}</strong>
+        <strong>${escapeHtml(game.title)} · Highscores</strong>
         <span class="badge">${game.matches} Match(es)</span>
       </div>
-      <div class="muted" style="font-size:0.8rem;">Top: ${escapeHtml(game.leader?.name ?? '-')}</div>
       ${rows}
     </div>`;
 }

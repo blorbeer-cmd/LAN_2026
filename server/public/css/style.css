@@ -785,15 +785,32 @@ button.card {
 }
 
 /* ---------- Tetris Battle (views/tetris.js) ---------- */
+/* Both boards are equal-sized: each column takes half the row and the canvas
+   scales to fill it (its 1:2 pixel resolution is fixed in JS), capped on wide
+   screens so they don't become giant. A soft pulsing glow sits behind them. */
 .tetris-boards {
+  position: relative;
   display: flex;
-  gap: var(--space-4);
+  gap: var(--space-3);
   justify-content: center;
   align-items: flex-start;
-  flex-wrap: wrap;
-  margin-top: var(--space-2);
+  max-width: 540px;
+  margin: var(--space-2) auto 0;
+}
+.tetris-boards::before {
+  content: '';
+  position: absolute;
+  inset: -24px;
+  background: radial-gradient(58% 60% at 50% 42%, rgba(91, 140, 255, 0.14), transparent 70%);
+  animation: tetris-bg-pulse 4s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
 }
 .tetris-board-col {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -806,13 +823,26 @@ button.card {
 }
 .tetris-canvas-wrap {
   position: relative;
+  width: 100%;
   line-height: 0;
 }
 .tetris-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: rgba(15, 20, 32, 0.9);
-  touch-action: none; /* stop the board from scrolling the page on touch */
+  touch-action: none; /* drag/tap gestures drive the piece, don't scroll */
+}
+/* Particle overlay for line-clear bursts; never intercepts touches. */
+.tetris-fx {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
 }
 .tetris-stats-line {
   font-size: 0.72rem;
@@ -823,6 +853,7 @@ button.card {
   position: absolute;
   top: 4px;
   right: 4px;
+  z-index: 3;
   font-size: 0.72rem;
   font-weight: 700;
   color: var(--state-paused);
@@ -834,6 +865,7 @@ button.card {
 .tetris-overlay {
   position: absolute;
   inset: 0;
+  z-index: 4;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -860,34 +892,56 @@ button.card {
     transform: scale(1);
   }
 }
-.tetris-controls {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: var(--space-2);
-  max-width: 420px;
-  margin: var(--space-4) auto 0;
+@keyframes tetris-bg-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
 }
-.tetris-ctrl {
-  font-size: 1.3rem;
-  padding: 14px 0;
-  user-select: none;
-  -webkit-user-select: none;
+/* Line-clear juice: a white flash (gold for a Tetris) plus a quick shake. */
+.tetris-canvas-wrap.tetris-flash::after,
+.tetris-canvas-wrap.tetris-flash-big::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  z-index: 3;
+  animation: tetris-flash-fade 0.5s ease-out forwards;
 }
-.tetris-ctrl-drop {
-  background: var(--accent-gradient);
-  color: var(--accent-text);
+.tetris-canvas-wrap.tetris-flash::after {
+  background: rgba(255, 255, 255, 0.55);
 }
-.tetris-help {
-  text-align: center;
-  font-size: 0.75rem;
-  margin-top: var(--space-3);
+.tetris-canvas-wrap.tetris-flash-big::after {
+  background: rgba(255, 209, 102, 0.65);
 }
-/* On a laptop the on-screen buttons aren't needed (keyboard is better), but
-   keep them for touch; hide the hint text's keyboard part is fine as-is. */
-@media (hover: hover) and (pointer: fine) {
-  .tetris-controls {
-    max-width: 320px;
-    opacity: 0.85;
+@keyframes tetris-flash-fade {
+  to {
+    opacity: 0;
+  }
+}
+.tetris-board-col.tetris-shake {
+  animation: tetris-shake 0.35s ease-in-out;
+}
+@keyframes tetris-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-4px);
+  }
+  40% {
+    transform: translateX(4px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(3px);
   }
 }
 
