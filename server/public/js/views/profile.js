@@ -166,7 +166,7 @@ export function renderProfile(container, ctx) {
           ${avatarHtml(me, 64)}
         </label>
         <input type="file" id="profile-avatar-input" accept="image/*" hidden />
-        <div class="stack" style="flex:1;gap:6px;">
+        <div class="stack" style="flex:1;gap:var(--space-2);">
           <div class="row">
             <input type="color" id="profile-color" value="${me.color}" />
             <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" style="flex:1;" />
@@ -201,7 +201,7 @@ export function renderProfile(container, ctx) {
         <input type="checkbox" id="tracking-paused" ${me.tracking_paused ? 'checked' : ''} />
         <span style="flex:1;">🚫 Tracking pausieren</span>
       </label>
-      <p class="muted" style="font-size:var(--font-size-xs);margin-top:-4px;">
+      <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-1) * -1);">
         Dein Agent darf weiterlaufen und meldet sich weiter beim Server, aber nichts davon wird
         gespeichert – kein Live-Status, keine Spielzeit. Dasselbe Pausieren geht auch direkt am PC
         über die Steuerungs-Oberfläche des Agents – beide Wege zeigen denselben Stand.
@@ -210,7 +210,7 @@ export function renderProfile(container, ctx) {
         <input type="checkbox" id="agent-track-activity" />
         <span style="flex:1;">Erweitertes Aktivitäts-Tracking</span>
       </label>
-      <p class="muted" style="font-size:var(--font-size-xs);margin-top:-4px;">
+      <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-1) * -1);">
         Aus (Standard): der Server weiß nur „läuft Spiel X gerade". An: zusätzlich, ob das
         Spielfenster wirklich im Vordergrund ist statt nur im Hintergrund zu laufen – zeigt sich z. B.
         als „davon aktiv gespielt" in deiner Statistik. Das hier ist nur der Startwert für den
@@ -231,7 +231,7 @@ export function renderProfile(container, ctx) {
           <input type="text" id="profile-apikey" readonly value="Laden…" style="flex:1;font-family:monospace;" />
           <button type="button" class="btn btn-sm" id="profile-copy-key">Kopieren</button>
         </div>
-        <p class="muted" style="font-size:var(--font-size-xs);margin-top:6px;">
+        <p class="muted" style="font-size:var(--font-size-xs);margin-top:var(--space-2);">
           Diesen Key in die Config des Agenten (<code>agent/</code>-Ordner im Repo, mit Node.js
           gestartet) eintragen – siehe <code>agent/README.md</code>.
         </p>
@@ -246,7 +246,7 @@ export function renderProfile(container, ctx) {
       <button type="button" class="btn btn-sm" data-navigate="seating">Sitzplan ansehen</button>
     </div>
     <div class="card">${renderNeighbors(myId)}</div>
-    <p class="muted" style="font-size:var(--font-size-xs);margin-top:6px;">
+    <p class="muted" style="font-size:var(--font-size-xs);margin-top:var(--space-2);">
       Wen hast du bei dieser LAN neben dir sitzen? Wird beim Teams-Auslosen berücksichtigt, wenn
       das für das jeweilige Spiel wichtig ist (in den Spiel-Einstellungen einstellbar).
     </p>

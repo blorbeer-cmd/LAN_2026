@@ -110,7 +110,7 @@ function renderPanel(container, ctx) {
           <span class="player-name">${escapeHtml(p.name)}</span>
           ${p.is_admin ? '<span class="badge badge-playing">Admin</span>' : ''}
         </span>
-        <span class="row" style="gap:6px;">
+        <span class="row" style="gap:var(--space-2);">
           <button type="button" class="btn btn-sm" data-toggle-admin="${p.id}">${p.is_admin ? 'Admin entziehen' : 'Admin machen'}</button>
           <button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">Löschen</button>
         </span>

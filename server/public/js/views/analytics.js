@@ -261,7 +261,7 @@ function renderPlaytimeContent() {
           </div>
           <div class="player-name">${escapeHtml(a.title)}</div>
           <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(a.description)}</div>
-          <div class="row" style="margin-top:6px;">
+          <div class="row" style="margin-top:var(--space-2);">
             ${avatarHtml(state.players.find((p) => p.id === a.playerId) || { color: a.playerColor }, 20)}
             <span>${escapeHtml(a.playerName)}</span>
           </div>
@@ -276,7 +276,7 @@ function renderPlaytimeContent() {
           (r) => `
         <div class="lb-row">
           ${avatarHtml(state.players.find((p) => p.id === r.playerId) || { color: r.playerColor }, 20)}
-          <span class="row" style="flex:1;gap:6px;">${gameBadgeHtml({ id: r.gameId, icon: r.gameIcon }, 20)} ${escapeHtml(r.gameName)} — ${escapeHtml(r.playerName)}</span>
+          <span class="row" style="flex:1;gap:var(--space-2);">${gameBadgeHtml({ id: r.gameId, icon: r.gameIcon }, 20)} ${escapeHtml(r.gameName)} — ${escapeHtml(r.playerName)}</span>
           <span class="lb-points">${escapeHtml(r.formatted)}</span>
         </div>`
         )
@@ -345,6 +345,10 @@ function renderPlaytimeContent() {
   `;
 }
 
+// design-token-ok: the 2px bar-corner radius, bar gap and bottom padding
+// below are sized against this chart's own thin bars, not the general
+// spacing/radius scale — see "When a value genuinely doesn't fit" in
+// DESIGN_SYSTEM.md.
 function renderConcurrencyChart(concurrency) {
   if (!concurrency || concurrency.buckets.length === 0) {
     return `<div class="empty-state" style="padding:var(--space-4);">Keine Daten für dieses Spiel im Zeitraum.</div>`;
@@ -458,7 +462,7 @@ function renderMatchesContent() {
         <div class="row-between"><span style="font-size:var(--font-size-xl);">🥊</span><span class="lb-points">${fun.biggestRivalry.count}×</span></div>
         <div class="player-name">Größte Rivalität</div>
         <div class="muted" style="font-size:var(--font-size-xs);">Sind sich am häufigsten als Gegner begegnet.</div>
-        <div class="stack" style="margin-top:6px;gap:var(--space-1);">
+        <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
           <div class="row">${playerChip(fun.biggestRivalry.playerA)}</div>
           <div class="row">${playerChip(fun.biggestRivalry.playerB)}</div>
         </div>
@@ -471,7 +475,7 @@ function renderMatchesContent() {
         <div class="row-between"><span style="font-size:var(--font-size-xl);">🤝</span><span class="lb-points">${winRate}%</span></div>
         <div class="player-name">Bestes Duo</div>
         <div class="muted" style="font-size:var(--font-size-xs);">${fun.bestDuo.gamesTogether}× zusammen im Team, ${fun.bestDuo.winsTogether}× gewonnen.</div>
-        <div class="stack" style="margin-top:6px;gap:var(--space-1);">
+        <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
           <div class="row">${playerChip(fun.bestDuo.playerA)}</div>
           <div class="row">${playerChip(fun.bestDuo.playerB)}</div>
         </div>
@@ -484,7 +488,7 @@ function renderMatchesContent() {
         <div class="row-between"><span style="font-size:var(--font-size-xl);">😱</span><span class="lb-points">${u.winnerAvgRating} vs ${u.loserAvgRating}</span></div>
         <div class="player-name">Krasseste Überraschung</div>
         <div class="muted" style="font-size:var(--font-size-xs);">${gameBadgeHtml({ id: u.gameId, icon: u.gameIcon }, 16)} ${escapeHtml(u.gameName)} — als klarer Außenseiter gewonnen (Skill-Wertung).</div>
-        <div class="stack" style="margin-top:6px;gap:var(--space-1);">
+        <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
           ${u.winners.map((w) => `<div class="row">${playerChip(w)}</div>`).join('')}
         </div>
       </div>`);
@@ -494,14 +498,14 @@ function renderMatchesContent() {
     : `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">🎉</span>Noch nicht genug Ergebnisse für witzige Rekorde.</div>`;
 
   return `
-    <div class="section-title">🎲 Ergebnisse pro Spiel <span class="muted" style="font-weight:400;">(${matches.total} insgesamt)</span></div>
+    <div class="section-title">🎲 Ergebnisse pro Spiel <span class="muted" style="font-weight:var(--font-weight-regular);">(${matches.total} insgesamt)</span></div>
     <div class="card">${matchRows}</div>
 
-    <div class="section-title">🏆 Turniere <span class="muted" style="font-weight:400;">(${tournaments.total} insgesamt · ${tournaments.completed} beendet · ${tournaments.active} laufend)</span></div>
-    ${formatRows ? `<div class="card" style="margin-bottom:10px;">${formatRows}</div>` : ''}
+    <div class="section-title">🏆 Turniere <span class="muted" style="font-weight:var(--font-weight-regular);">(${tournaments.total} insgesamt · ${tournaments.completed} beendet · ${tournaments.active} laufend)</span></div>
+    ${formatRows ? `<div class="card" style="margin-bottom:var(--space-3);">${formatRows}</div>` : ''}
     <div class="card">${tournamentByGameRows}</div>
 
-    <div class="section-title">⚖️ Team-Auslosungen <span class="muted" style="font-weight:400;">(${draws.total} insgesamt${draws.seatConflictRatePercent !== null ? ` · ${draws.seatConflictRatePercent}% Sitznachbarn mussten gegeneinander` : ''})</span></div>
+    <div class="section-title">⚖️ Team-Auslosungen <span class="muted" style="font-weight:var(--font-weight-regular);">(${draws.total} insgesamt${draws.seatConflictRatePercent !== null ? ` · ${draws.seatConflictRatePercent}% Sitznachbarn mussten gegeneinander` : ''})</span></div>
     <div class="card">${drawRows}</div>
 
     <div class="section-title">🎉 Witzige Rekorde</div>

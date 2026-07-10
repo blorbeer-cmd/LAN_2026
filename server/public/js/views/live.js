@@ -83,7 +83,7 @@ function renderDigest(myId) {
   if (items.length === 0) return '';
   return `
     <div class="section-title">Was steht an?</div>
-    <div class="stack" style="gap:6px;margin-bottom:var(--space-4);">${items.join('')}</div>
+    <div class="stack" style="gap:var(--space-2);margin-bottom:var(--space-4);">${items.join('')}</div>
   `;
 }
 
@@ -100,7 +100,7 @@ function renderPingForm() {
   if (!pingFormOpen) return '';
   const options = state.games.map((g) => `<option value="${g.id}">${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`).join('');
   return `
-    <div class="stack" style="margin-top:10px;gap:var(--space-2);">
+    <div class="stack" style="margin-top:var(--space-3);gap:var(--space-2);">
       <select id="ping-game">${options}</select>
       <input type="text" id="ping-message" placeholder="Nachricht (optional)" maxlength="140" />
       <button type="button" class="btn btn-primary btn-block" id="ping-submit">Ping senden</button>
@@ -119,7 +119,7 @@ function renderPings(myId) {
       const isCreator = p.playerId === myId;
       const amInterested = myId && p.interested.some((i) => i.id === myId);
       const interestedAvatars = p.interested.length
-        ? `<div class="row" style="gap:var(--space-1);margin-top:6px;">${p.interested.map((i) => avatarHtml(i, 24)).join('')}</div>`
+        ? `<div class="row" style="gap:var(--space-1);margin-top:var(--space-2);">${p.interested.map((i) => avatarHtml(i, 24)).join('')}</div>`
         : '';
       const joinBtn =
         myId && !isCreator
@@ -168,7 +168,7 @@ function renderActiveGroups(players) {
 
   return `
     <div class="section-title">Gerade aktiv</div>
-    <div class="stack" style="gap:6px;margin-bottom:var(--space-4);">${groups}</div>
+    <div class="stack" style="gap:var(--space-2);margin-bottom:var(--space-4);">${groups}</div>
   `;
 }
 

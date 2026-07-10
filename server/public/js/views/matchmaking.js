@@ -91,7 +91,7 @@ function renderHistory() {
         )
         .join('');
       return `
-        <div class="card stack" style="margin-bottom:10px;">
+        <div class="card stack" style="margin-bottom:var(--space-3);">
           <div class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(draw.generatedAt)}</div>
           <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));">${teamsHtml}</div>
         </div>`;
@@ -268,7 +268,7 @@ export function renderMatchmaking(container, ctx) {
     .map((p) => {
       const isCaptain = draftCaptainIds.has(p.id);
       return `<button type="button" class="chip" data-captain-toggle="${p.id}"
-        style="cursor:pointer;${isCaptain ? 'border-color:var(--accent);color:var(--accent);font-weight:700;' : ''}">
+        style="cursor:pointer;${isCaptain ? 'border-color:var(--accent);color:var(--accent);font-weight:var(--font-weight-bold);' : ''}">
         ${isCaptain ? '👑 ' : ''}${escapeHtml(p.name)}
       </button>`;
     })
@@ -286,7 +286,7 @@ export function renderMatchmaking(container, ctx) {
         <input type="number" id="mm-teamcount" placeholder="Teams" min="2" style="width:90px;flex-shrink:0;" />
         <button type="button" class="btn btn-primary" id="mm-generate" style="flex:1;">Teams auslosen</button>
       </div>
-      <div class="muted" style="font-size:var(--font-size-xs);margin-top:-6px;">Anzahl Teams leer lassen für automatisch (Standard: 2)</div>
+      <div class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">Anzahl Teams leer lassen für automatisch (Standard: 2)</div>
       <label class="check-row">
         <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
         <span>🪑 Sitznachbarn nicht gegeneinander auslosen</span>
@@ -421,6 +421,6 @@ function renderResult(result) {
     <div class="section-title row" style="gap:var(--space-2);">${gameBadgeHtml(gameById(result.gameId), 22)} ${escapeHtml(result.gameName)} — Ergebnis</div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));">${teamsHtml}</div>
     ${seatingNote}
-    <button type="button" class="btn btn-primary btn-block" id="mm-record-result" style="margin-top:10px;">✅ Ergebnis eintragen</button>
+    <button type="button" class="btn btn-primary btn-block" id="mm-record-result" style="margin-top:var(--space-3);">✅ Ergebnis eintragen</button>
   `;
 }

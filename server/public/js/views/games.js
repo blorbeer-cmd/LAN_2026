@@ -140,7 +140,7 @@ function renderEventCard(e) {
         <strong>${escapeHtml(e.name)}</strong>
         ${eventStatusBadge(e)}
       </div>
-      <div class="stack" style="gap:5px;">
+      <div class="stack" style="gap:var(--space-1);">
         ${e.location ? `<div class="muted" style="font-size:var(--font-size-sm);">📍 ${escapeHtml(e.location)}</div>` : ''}
         <div class="muted" style="font-size:var(--font-size-sm);">🗓️ ${dateRange} · 👥 ${participantCount} Teilnehmer</div>
         ${e.description ? `<div class="muted" style="font-size:var(--font-size-sm);">${escapeHtml(e.description)}</div>` : ''}

@@ -36,9 +36,9 @@ export function renderSeating(container, ctx) {
           : cache.groups
               .map(
                 (group, i) => `
-              <div class="card" style="margin-bottom:10px;">
+              <div class="card" style="margin-bottom:var(--space-3);">
                 <div class="section-title" style="margin-top:0;">Sitzgruppe ${i + 1}</div>
-                <div class="stack" style="gap:6px;">
+                <div class="stack" style="gap:var(--space-2);">
                   ${group.map((p) => `<div class="row">${avatarHtml(p, 26)} <span class="player-name">${escapeHtml(p.name)}</span></div>`).join('')}
                 </div>
               </div>`
@@ -59,7 +59,7 @@ export function renderSeating(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="profile">‹ Zurück zum Profil</button>
     <h1 class="view-title">🪑 Sitzplan</h1>
-    <p class="muted" style="margin-top:-10px;">
+    <p class="muted" style="margin-top:calc(var(--space-3) * -1);">
       Wer neben wem sitzt, so wie es alle selbst in ihrem Profil unter „Sitznachbarn" eingetragen haben.
     </p>
     ${body}

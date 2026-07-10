@@ -17,7 +17,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 28px;
+  padding: var(--space-5) var(--space-7);
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
   font-size: var(--font-size-xl);
@@ -36,8 +36,8 @@
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   grid-template-rows: repeat(2, 1fr);
-  gap: 18px;
-  padding: 18px;
+  gap: var(--space-5);
+  padding: var(--space-5);
   min-height: 0;
 }
 
@@ -45,14 +45,14 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 16px 20px;
+  padding: var(--space-4) var(--space-5);
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
 }
 .kiosk-card h2 {
-  margin: 0 0 10px;
+  margin: 0 0 var(--space-3);
   font-size: var(--font-size-lg);
   flex-shrink: 0;
 }
@@ -88,8 +88,8 @@
    kiosk announcement is that people look up from their own screens. Uses
    the brand gradient so it reads as "the system speaks", pulses briefly. */
 .kiosk-broadcast {
-  margin: 14px 24px 0;
-  padding: 16px 22px;
+  margin: var(--space-4) var(--space-6) 0;
+  padding: var(--space-4) var(--space-6);
   border-radius: var(--radius);
   background: var(--accent-gradient);
   color: var(--accent-text);
@@ -114,8 +114,8 @@
 /* Food-order banner: same width/placement as the Durchsage banner but a
    quieter card style — it's ambient status, not an urgent announcement. */
 .kiosk-food-banner {
-  margin: 14px 24px 0;
-  padding: 10px 22px;
+  margin: var(--space-4) var(--space-6) 0;
+  padding: var(--space-3) var(--space-6);
   border-radius: var(--radius);
   background: var(--bg-elevated);
   border: 1px solid var(--border);

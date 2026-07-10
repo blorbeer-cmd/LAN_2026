@@ -41,7 +41,7 @@ function renderHistory() {
     .map(
       (b) => `
       <div class="lb-row" style="align-items:flex-start;">
-        <div class="stack" style="gap:2px;flex:1;">
+        <div class="stack" style="gap:var(--space-1);flex:1;">
           <div><strong>${escapeHtml(b.playerName)}</strong>: ${escapeHtml(b.message)}</div>
           <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(b.createdAt)}</span>
         </div>

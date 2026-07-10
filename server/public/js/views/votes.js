@@ -115,13 +115,13 @@ function winCountChipHtml(r) {
 function statsRowHtml(r) {
   return `
     <div class="row-between">
-      <span class="row" style="gap:10px;flex-wrap:wrap;">
+      <span class="row" style="gap:var(--space-3);flex-wrap:wrap;">
         <span class="muted" style="font-size:var(--font-size-xs);">${lastPlayedHtml(r)}</span>
         ${preferenceChipHtml(r)}
       </span>
     </div>
     <div class="row-between">
-      <span class="row" style="gap:10px;flex-wrap:wrap;">
+      <span class="row" style="gap:var(--space-3);flex-wrap:wrap;">
         ${playtimeChipHtml(r)}
         ${winCountChipHtml(r)}
       </span>
@@ -236,7 +236,7 @@ function renderLastResult() {
         .join('')
     : `<span class="muted">Niemand hat abgestimmt</span>`;
   return `
-    <div class="stack" style="gap:6px;padding:var(--space-1) 0;">
+    <div class="stack" style="gap:var(--space-2);padding:var(--space-1) 0;">
       <div class="chip-list">${winners}</div>
       <span class="muted" style="font-size:var(--font-size-xs);">
         ${formatDateTime(h.closedAt)} · ${h.mode === 'points' ? 'Punkte-Modus' : 'Einzel-Wahl'} · ${h.totalVotes} Stimme(n)
@@ -284,7 +284,7 @@ async function openHistoryRoundDetail(round) {
     const bodyEl = el.querySelector('.modal-body');
     if (bodyEl) {
       bodyEl.innerHTML = `
-        <div class="muted" style="font-size:var(--font-size-xs);margin-bottom:10px;">
+        <div class="muted" style="font-size:var(--font-size-xs);margin-bottom:var(--space-3);">
           ${formatDateTime(detail.closedAt)} · ${detail.mode === 'points' ? 'Punkte-Modus' : 'Einzel-Wahl'} ·
           ${detail.mode === 'points' ? `${detail.totalPoints} Punkt(e)` : `${detail.totalVotes} Stimme(n)`}
           von ${detail.totalVoters} Teilnehmer(n)
@@ -375,7 +375,7 @@ export function renderVotes(container, ctx) {
     ${openSectionHtml}
 
     <div class="section-title">🕓 Vote-Historie</div>
-    <p class="muted" style="font-size:var(--font-size-xs);margin:-4px 0 8px;">Antippen für die genaue Punkteverteilung dieser Runde.</p>
+    <p class="muted" style="font-size:var(--font-size-xs);margin:calc(var(--space-1) * -1) 0 var(--space-2);">Antippen für die genaue Punkteverteilung dieser Runde.</p>
     <div class="card">${renderHistory()}</div>
   `;
 

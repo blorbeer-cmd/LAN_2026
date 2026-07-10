@@ -180,10 +180,10 @@ function targetControls(lobby) {
     <div class="card stack" style="margin-top:var(--space-3);">
       <strong>Lobby starten</strong>
       <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
-        <label class="check-row" style="padding:8px 10px;"><input type="radio" name="target-score" value="5" checked />5</label>
-        <label class="check-row" style="padding:8px 10px;"><input type="radio" name="target-score" value="10" />10</label>
-        <label class="check-row" style="padding:8px 10px;"><input type="radio" name="target-score" value="20" />20</label>
-        <label class="row" style="gap:6px;align-items:center;">
+        <label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="target-score" value="5" checked />5</label>
+        <label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="target-score" value="10" />10</label>
+        <label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="target-score" value="20" />20</label>
+        <label class="row" style="gap:var(--space-2);align-items:center;">
           <input type="radio" name="target-score" value="custom" />
           <input type="number" id="target-custom" min="1" max="100" value="${escapeHtml(customTarget)}" placeholder="frei" style="width:78px;" />
         </label>
@@ -206,7 +206,7 @@ function renderLobbyList() {
           : `<button type="button" class="btn btn-sm btn-primary" data-join-lobby="${l.id}" ${mine ? 'disabled' : ''}>Beitreten</button>`;
       return `
         <div class="lb-row" style="align-items:flex-start;">
-          <div class="stack" style="gap:6px;flex:1;">
+          <div class="stack" style="gap:var(--space-2);flex:1;">
             <strong>${escapeHtml(l.host.name)}s Quiz-Lobby</strong>
             <div class="chip-list">${l.players.map((p) => `<span class="chip">${escapeHtml(p.name)}</span>`).join('')}</div>
             <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length} Spieler · Host startet, wenn alle bereit sind</div>
@@ -226,7 +226,7 @@ function secondsLeft() {
 function matchControlsHtml() {
   if (!match || match.ended || match.host?.id !== getMyId()) return '';
   return `
-    <div class="row" style="gap:var(--space-2);flex-wrap:wrap;margin-top:10px;">
+    <div class="row" style="gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3);">
       ${
         match.paused
           ? `<button type="button" class="btn btn-sm btn-primary" id="quiz-resume">Fortsetzen</button>`
@@ -299,7 +299,7 @@ export function renderArcade(container, ctx) {
     ${whoAmICardHtml('whoami')}
     <div class="section-title">${icon('brain')} Gaming-Quiz</div>
     <div class="card stack">
-      <div class="row-between" style="gap:10px;">
+      <div class="row-between" style="gap:var(--space-3);">
         <div>
           <strong>Quiz-Lobby</strong>
           <div class="muted" style="font-size:var(--font-size-xs);">Mehrspieler, 20 Sekunden pro Frage, beliebig viele Antwortversuche.</div>

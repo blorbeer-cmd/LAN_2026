@@ -115,7 +115,7 @@ function renderTournament(t) {
         </div>`
       )
       .join('');
-    return `<div class="muted" style="margin-bottom:6px;">${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)} — Liga</div>${rows}`;
+    return `<div class="muted" style="margin-bottom:var(--space-2);">${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)} — Liga</div>${rows}`;
   }
 
   // group_knockout has two distinct phases mixed into one `matches` list
@@ -138,10 +138,10 @@ function renderTournament(t) {
             </div>`
           )
           .join('');
-        return `<div class="muted" style="margin:6px 0 2px;">Gruppe ${g.groupIndex + 1}</div>${rows}`;
+        return `<div class="muted" style="margin:var(--space-2) 0 var(--space-1);">Gruppe ${g.groupIndex + 1}</div>${rows}`;
       })
       .join('');
-    return `<div class="muted" style="margin-bottom:6px;">${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)} — Gruppenphase</div>${groupBlocks}`;
+    return `<div class="muted" style="margin-bottom:var(--space-2);">${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)} — Gruppenphase</div>${groupBlocks}`;
   }
   const bracketMatches = t.format === 'group_knockout' ? knockoutMatches : t.matches;
 
@@ -169,7 +169,7 @@ function renderTournament(t) {
         </div>`;
     })
     .join('');
-  return `<div class="muted" style="margin-bottom:6px;">${escapeHtml(t.gameName)} — Runde ${currentRound}/${totalRounds}${t.status === 'completed' ? ' · Beendet 🏆' : ''}</div>${rows}`;
+  return `<div class="muted" style="margin-bottom:var(--space-2);">${escapeHtml(t.gameName)} — Runde ${currentRound}/${totalRounds}${t.status === 'completed' ? ' · Beendet 🏆' : ''}</div>${rows}`;
 }
 
 // Food-order banner: just enough for someone glancing at the shared screen

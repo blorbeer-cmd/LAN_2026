@@ -67,7 +67,7 @@ function itemsGroupedByPlayer(order) {
 
 function renderItems(order, myId) {
   if (order.items.length === 0) {
-    return `<div class="muted" style="font-size:var(--font-size-sm);padding:6px 0;">Noch nichts eingetragen.</div>`;
+    return `<div class="muted" style="font-size:var(--font-size-sm);padding:var(--space-2) 0;">Noch nichts eingetragen.</div>`;
   }
   const grouped = itemsGroupedByPlayer(order);
   return [...grouped.entries()]
@@ -78,7 +78,7 @@ function renderItems(order, myId) {
       const rows = items
         .map(
           (i) => `
-          <div class="row" style="padding:2px 0;">
+          <div class="row" style="padding:var(--space-1) 0;">
             <span style="flex:1;">${escapeHtml(i.description)}</span>
             ${i.priceCents !== null ? `<span class="muted" style="font-variant-numeric:tabular-nums;">${formatCents(i.priceCents)}</span>` : ''}
             ${
@@ -90,7 +90,7 @@ function renderItems(order, myId) {
         )
         .join('');
       return `
-        <div class="stack" style="gap:2px;padding:var(--space-2) 0;border-bottom:1px solid var(--border);">
+        <div class="stack" style="gap:var(--space-1);padding:var(--space-2) 0;border-bottom:1px solid var(--border);">
           <div class="row" style="gap:var(--space-2);">
             ${avatarHtml(player, 20)}
             <strong style="flex:1;">${escapeHtml(first.playerName)}</strong>
@@ -130,7 +130,7 @@ function renderOpenOrder(order, myId) {
         <strong>${icon('hamburger')} ${escapeHtml(order.title)}</strong>
         <span class="badge badge-playing">Offen</span>
       </div>
-      <div class="muted" style="font-size:var(--font-size-xs);margin-top:-6px;">
+      <div class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
         von ${escapeHtml(order.createdByName)} · ${formatDateTime(order.createdAt)}
       </div>
       ${renderDetails(order)}
@@ -156,8 +156,8 @@ function renderClosedOrder(order) {
         <span><strong>${escapeHtml(order.title)}</strong> <span class="muted" style="font-size:var(--font-size-xs);">· ${order.items.length} Position(en)${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}</span></span>
         <span class="badge badge-offline">Geschlossen</span>
       </summary>
-      <div style="margin-top:10px;">${renderDetails(order)}</div>
-      <div style="margin-top:10px;">${renderItems(order, null)}</div>
+      <div style="margin-top:var(--space-3);">${renderDetails(order)}</div>
+      <div style="margin-top:var(--space-3);">${renderItems(order, null)}</div>
     </details>`;
 }
 

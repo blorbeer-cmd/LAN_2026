@@ -215,12 +215,32 @@ const color = AVATAR_PALETTE[i % AVATAR_PALETTE.length];
 ## When a value genuinely doesn't fit
 
 Not every raw number is a bug. A value stays as a documented one-off when it's
-tied to something specific that a shared token would distort — a chart bar's
-corner radius scaled to its own height, a splash-screen glow sized for a much
-bigger logo than the token set's normal icon, an avatar deliberately larger or
-smaller than the three standard sizes for its specific context. When in
-doubt: if reusing the nearest token would look wrong, leave a short comment
-explaining why instead of forcing it.
+tied to something specific that a shared token would distort. When in doubt:
+if reusing the nearest token would look wrong, leave a short comment
+containing `design-token-ok` and a reason instead of forcing it (see
+"Automated check" below — that comment is also what tells the pre-commit
+check this line is intentional).
+
+The current, complete list of such exceptions in `server/public`:
+
+- **`analytics.js`'s concurrency chart** (`renderConcurrencyChart`) — the 2px
+  bar gap/corner-radius/bottom-padding are sized against the chart's own thin
+  bars, not the spacing/radius scale.
+- **`.bracket-score-input`** (`style.css`) — its 4px/2px padding is tuned to
+  fit two digits inside the input's fixed 34px width.
+- **`.dt-time-select`** and the native `select` chevron padding (`style.css`)
+  — the wider side clears each element's own chevron icon; the 11px vertical
+  rhythm matches the other inputs' `11px var(--space-3)` padding exactly, it's
+  just not itself a token value.
+- **Avatar sizes at `avatarHtml()` call sites** — real, intentional variety
+  (18px inline chips up to 64px on the profile hero); see "Avatar sizes"
+  above.
+- **Three glow shadows** (topbar logo icon, the login-screen logo splash, the
+  active nav icon) — each tuned to a different blur/alpha for a
+  different-sized element; see "Shadows" above.
+
+Everything else that was off-scale (values like 6px, 10px, 14px sitting
+between two spacing steps) has been rounded onto the scale.
 
 ## Automated check (pre-commit)
 
