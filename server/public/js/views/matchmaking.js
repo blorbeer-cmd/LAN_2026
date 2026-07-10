@@ -21,11 +21,12 @@ let avoidAdjacentOpponents = false;
 // GET /api/draft or the draft:changed socket event. A running draft takes
 // over the whole view on every device (that's the point — it's a live event
 // everyone watches), so it lives here in the Teams view rather than in its
-// own tab.
+// own tab. A *finished* draft doesn't get any special treatment here beyond
+// that — its teams already landed in matchmaking_draws (see draft.ts), so
+// they show up in Team-Historie below like any other draw.
 let draftCache = null; // { draft: {...} | null }
 let draftLoading = false;
 let draftCaptainIds = new Set(); // captains chosen in the start form
-let dismissedDraftId = null; // completed-draft result the user closed
 
 async function loadDraft(ctx) {
   draftLoading = true;
@@ -67,11 +68,104 @@ async function loadHistory(gameId, ctx) {
   }
 }
 
-// Called from app.js whenever a matchmaking:generated event arrives, so a
-// freshly drawn set of teams shows up in the history next render instead of
-// whatever the last fetch happened to see.
+// Called from app.js whenever a matchmaking:generated or
+// matchmaking:draws-changed event arrives, so history is never more than one
+// re-render stale.
 export function invalidateMatchmakingHistory() {
   historyForGameId = null;
+}
+
+// A draw currently on screen either comes from the freshly-generated result
+// (state.lastMatchmaking) or from the history list — both use the same
+// shape (see parseDrawRow on the server), so lookups/updates work uniformly.
+function findDrawById(id) {
+  if (state.lastMatchmaking?.id === id) return state.lastMatchmaking;
+  return historyCache?.find((d) => d.id === id) ?? null;
+}
+
+// One drawn/recorded lineup: team cards plus, for a still-unrecorded draw,
+// per-player "move to another team" selects (Feinschliff) and the button to
+// record a result — which is what turns this into an Ergebnis-Historie entry.
+function renderDrawCard(draw, { editable }) {
+  const teamsHtml = draw.teams
+    .map(
+      (t, i) => `
+      <div class="team-card">
+        <div class="team-card-header"><span>Team ${i + 1}</span><span>Score ${t.totalRating}</span></div>
+        ${t.players
+          .map(
+            (p) => `
+          <div class="team-player">
+            ${avatarHtml(p, 18)}
+            <span style="flex:1;">${escapeHtml(p.name)}</span>
+            ${p.rating != null ? `<span class="rating">${p.rating}</span>` : ''}
+            ${
+              editable && draw.teams.length > 1
+                ? `<select class="team-move-select" data-move-draw="${draw.id}" data-move-player="${p.id}" aria-label="Team ändern">
+                    ${draw.teams.map((_, ti) => `<option value="${ti}" ${ti === i ? 'selected' : ''}>Team ${ti + 1}</option>`).join('')}
+                  </select>`
+                : ''
+            }
+          </div>`
+          )
+          .join('')}
+      </div>`
+    )
+    .join('');
+
+  const seatingNote = draw.seatPairsConsidered
+    ? draw.seatConflicts > 0
+      ? `<div class="muted" style="font-size:var(--font-size-xs);">${icon('armchair')} ${draw.seatConflicts} von ${draw.seatPairsConsidered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten (sonst wäre es zu unfair geworden).</div>`
+      : `<div class="muted" style="font-size:var(--font-size-xs);">${icon('armchair')} Alle Sitznachbarn sind im selben Team.</div>`
+    : '';
+
+  return `
+    <div class="card stack" style="margin-bottom:var(--space-3);" data-draw-card="${draw.id}">
+      <div class="row-between">
+        <div class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(draw.generatedAt)}</div>
+        ${draw.matchId ? `<span class="badge badge-offline">✅ Ergebnis erfasst</span>` : ''}
+      </div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));">${teamsHtml}</div>
+      ${seatingNote}
+      ${editable ? `<button type="button" class="btn btn-primary btn-sm" data-record-draw="${draw.id}">✅ Ergebnis eintragen</button>` : ''}
+    </div>`;
+}
+
+// Wires the "move player" selects and "Ergebnis eintragen" buttons for every
+// draw card currently in the DOM — shared between the just-generated result
+// and the Team-Historie list, since both render the same card markup.
+function wireDrawCards(container, ctx) {
+  container.querySelectorAll('[data-move-draw]').forEach((sel) => {
+    sel.addEventListener('change', async () => {
+      const drawId = sel.dataset.moveDraw;
+      const playerId = sel.dataset.movePlayer;
+      const toTeamIndex = parseInt(sel.value, 10);
+      try {
+        const updated = await api.matchmaking.moveDrawPlayer(drawId, playerId, toTeamIndex);
+        if (state.lastMatchmaking?.id === drawId) state.lastMatchmaking = updated;
+        if (historyCache) {
+          const idx = historyCache.findIndex((d) => d.id === drawId);
+          if (idx !== -1) historyCache[idx] = updated;
+        }
+        ctx.rerender();
+      } catch (err) {
+        showToast(err.message, { error: true });
+        ctx.rerender(); // reset the select back to its actual team
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-record-draw]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const draw = findDrawById(btn.dataset.recordDraw);
+      if (!draw) return;
+      openMatchForm(ctx, {
+        presetGameId: draw.gameId,
+        presetTeams: draw.teams.map((t) => ({ playerIds: t.players.map((p) => p.id) })),
+        presetDrawId: draw.id,
+      });
+    });
+  });
 }
 
 function renderHistory() {
@@ -79,26 +173,30 @@ function renderHistory() {
     return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   if (historyCache.length === 0) {
-    return `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">⚖️</span>Noch keine Auslosungen für dieses Spiel.</div>`;
+    return `<div class="section-title">🕓 Team-Historie</div>
+      <div class="empty-state" style="padding:var(--space-4);"><span class="emoji">⚖️</span>Noch keine Auslosungen für dieses Spiel.</div>`;
   }
-  return historyCache
-    .map((draw) => {
-      const teamsHtml = draw.teams
-        .map(
-          (t, i) => `
-          <div class="team-card">
-            <div class="team-card-header"><span>Team ${i + 1}</span><span>Score ${t.totalRating}</span></div>
-            ${t.players.map((p) => `<div class="team-player">${avatarHtml(p, 18)} ${escapeHtml(p.name)}<span class="rating">${p.rating}</span></div>`).join('')}
-          </div>`
-        )
-        .join('');
-      return `
-        <div class="card stack" style="margin-bottom:var(--space-3);">
-          <div class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(draw.generatedAt)}</div>
-          <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));">${teamsHtml}</div>
-        </div>`;
-    })
-    .join('');
+
+  // Ergebnis-Historie (ein Ergebnis wurde eingetragen) kommt vor die
+  // Team-Historie (noch offene Zusammenstellungen) — sobald ein Ergebnis
+  // erfasst wird, wandert der Eintrag von unten nach oben.
+  const resultHistory = historyCache.filter((d) => d.matchId);
+  const teamHistory = historyCache.filter((d) => !d.matchId);
+
+  const resultSection = resultHistory.length
+    ? `<div class="section-title">🏆 Ergebnis-Historie</div>${resultHistory.map((d) => renderDrawCard(d, { editable: false })).join('')}`
+    : '';
+
+  const teamSection = `
+    <div class="section-title">🕓 Team-Historie</div>
+    ${
+      teamHistory.length
+        ? teamHistory.map((d) => renderDrawCard(d, { editable: true })).join('')
+        : `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">⚖️</span>Noch keine offenen Auslosungen.</div>`
+    }
+  `;
+
+  return resultSection + teamSection;
 }
 
 // ---------- captain draft: live board ----------
@@ -143,28 +241,7 @@ function renderDraftBoard(draft, ctx) {
     </div>`;
 }
 
-function renderDraftResult(draft) {
-  const teamsHtml = draft.teams
-    .map(
-      (t) => `
-      <div class="team-card">
-        <div class="team-card-header"><span>👑 Team ${escapeHtml(t.captain.name)}</span></div>
-        ${t.players.map((p) => `<div class="team-player">${avatarHtml(p, 20)} ${escapeHtml(p.name)}</div>`).join('')}
-      </div>`
-    )
-    .join('');
-  return `
-    <div class="card stack">
-      <div class="row-between">
-        <strong>👑 Draft-Ergebnis: ${escapeHtml(draft.gameName)}</strong>
-        <button type="button" class="icon-btn" id="draft-dismiss" aria-label="Ausblenden">✕</button>
-      </div>
-      <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));">${teamsHtml}</div>
-      <button type="button" class="btn btn-primary btn-block" id="draft-record-result">✅ Ergebnis eintragen</button>
-    </div>`;
-}
-
-function wireDraftBoard(container, ctx, draft) {
+function wireDraftBoard(container, ctx) {
   const cancelBtn = container.querySelector('#draft-cancel');
   if (cancelBtn) {
     cancelBtn.addEventListener('click', async () => {
@@ -188,24 +265,6 @@ function wireDraftBoard(container, ctx, draft) {
       }
     });
   });
-
-  const dismissBtn = container.querySelector('#draft-dismiss');
-  if (dismissBtn) {
-    dismissBtn.addEventListener('click', () => {
-      dismissedDraftId = draft.id;
-      ctx.rerender();
-    });
-  }
-
-  const recordBtn = container.querySelector('#draft-record-result');
-  if (recordBtn) {
-    recordBtn.addEventListener('click', () => {
-      openMatchForm(ctx, {
-        presetGameId: draft.gameId,
-        presetTeams: draft.teams.map((t) => ({ playerIds: t.players.map((p) => p.id) })),
-      });
-    });
-  }
 }
 
 export function renderMatchmaking(container, ctx) {
@@ -221,16 +280,17 @@ export function renderMatchmaking(container, ctx) {
   }
 
   // A running draft takes over the view on every device — it's a shared live
-  // event, and mixing it with the regular draw form would just distract.
+  // event, and mixing it with the regular draw form would just distract. A
+  // finished draft gets no special treatment here — its teams already sit in
+  // Team-Historie below (see draft.ts), same as any other draw.
   const draft = draftCache?.draft;
   if (draft && draft.status === 'active') {
     container.innerHTML = `
       <h1 class="view-title">Teams auslosen</h1>
       ${renderDraftBoard(draft, ctx)}`;
-    wireDraftBoard(container, ctx, draft);
+    wireDraftBoard(container, ctx);
     return;
   }
-  const showDraftResult = draft && draft.status === 'completed' && draft.id !== dismissedDraftId;
 
   if (checkedIds === null) {
     // First render: default to whoever is currently shown as playing.
@@ -280,7 +340,6 @@ export function renderMatchmaking(container, ctx) {
 
   container.innerHTML = `
     <h1 class="view-title">Teams auslosen</h1>
-    ${showDraftResult ? renderDraftResult(draft) : ''}
     <div class="card stack">
       <select id="mm-game">${gameOptions}</select>
       <div>${playerRows}</div>
@@ -291,7 +350,7 @@ export function renderMatchmaking(container, ctx) {
       <div class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">Anzahl Teams leer lassen für automatisch (Standard: 2)</div>
       <label class="check-row">
         <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
-        <span>${icon('users')} Sitznachbarn nicht gegeneinander auslosen</span>
+        <span>${icon('armchair')} Sitznachbarn nicht gegeneinander auslosen</span>
       </label>
 
       <div class="section-title" style="margin:var(--space-2) 0 0;">👑 Oder: Captain-Draft</div>
@@ -304,13 +363,12 @@ export function renderMatchmaking(container, ctx) {
     </div>
     <div id="mm-result">${renderResult(state.lastMatchmaking)}</div>
 
-    <div class="section-title">🕓 Team-Historie</div>
     ${renderHistory()}
   `;
 
-  if (showDraftResult) wireDraftBoard(container, ctx, draft);
-
   if (prevTeamCount) container.querySelector('#mm-teamcount').value = prevTeamCount;
+
+  wireDrawCards(container, ctx);
 
   container.querySelectorAll('[data-captain-toggle]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -379,50 +437,12 @@ export function renderMatchmaking(container, ctx) {
       showToast(err.message, { error: true });
     }
   });
-
-  const recordBtn = container.querySelector('#mm-record-result');
-  if (recordBtn) {
-    recordBtn.addEventListener('click', () => {
-      const result = state.lastMatchmaking;
-      openMatchForm(ctx, {
-        presetGameId: result.gameId,
-        presetTeams: result.teams.map((t) => ({ playerIds: t.players.map((p) => p.id) })),
-      });
-    });
-  }
 }
 
 function renderResult(result) {
   if (!result) return '';
-  const teamsHtml = result.teams
-    .map(
-      (t, i) => `
-      <div class="team-card">
-        <div class="team-card-header"><span>Team ${i + 1}</span><span>Score ${t.totalRating}</span></div>
-        ${t.players
-          .map(
-            (p) => `
-          <div class="team-player">
-            ${avatarHtml(p, 20)}
-            ${escapeHtml(p.name)}
-            <span class="rating">${p.rating}</span>
-          </div>`
-          )
-          .join('')}
-      </div>`
-    )
-    .join('');
-
-  const seatingNote = result.seatPairsConsidered
-    ? result.seatConflicts > 0
-      ? `<div class="muted" style="font-size:var(--font-size-xs);margin-top:var(--space-2);">${icon('users')} ${result.seatConflicts} von ${result.seatPairsConsidered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten (sonst wäre es zu unfair geworden).</div>`
-      : `<div class="muted" style="font-size:var(--font-size-xs);margin-top:var(--space-2);">${icon('users')} Alle Sitznachbarn sind im selben Team.</div>`
-    : '';
-
   return `
-    <div class="section-title row" style="gap:var(--space-2);">${gameBadgeHtml(gameById(result.gameId), 22)} ${escapeHtml(result.gameName)} — Ergebnis</div>
-    <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));">${teamsHtml}</div>
-    ${seatingNote}
-    <button type="button" class="btn btn-primary btn-block" id="mm-record-result" style="margin-top:var(--space-3);">✅ Ergebnis eintragen</button>
+    <div class="section-title row" style="gap:var(--space-2);">${gameBadgeHtml(gameById(result.gameId), 22)} ${escapeHtml(result.gameName)} — gerade ausgelost</div>
+    ${renderDrawCard(result, { editable: !result.matchId })}
   `;
 }

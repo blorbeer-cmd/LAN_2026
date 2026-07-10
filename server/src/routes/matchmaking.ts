@@ -122,13 +122,16 @@ matchmakingRouter.post('/', (req, res) => {
     };
   });
 
+  const drawId = nanoid();
   const result = {
+    id: drawId,
     gameId,
     gameName: game.name,
     teams,
     seatConflicts,
     seatPairsConsidered: avoidPairs.length,
     generatedAt: Date.now(),
+    matchId: null as string | null,
   };
 
   // Logged for the history view (every draw, including re-rolls — see the
@@ -137,7 +140,7 @@ matchmakingRouter.post('/', (req, res) => {
   db.prepare(
     `INSERT INTO matchmaking_draws (id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(nanoid(), gameId, getTrackingEventId(), JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt);
+  ).run(drawId, gameId, getTrackingEventId(), JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt);
 
   broadcast(Events.matchmakingGenerated, result);
   res.json(result);
@@ -152,10 +155,28 @@ interface DrawRow {
   seatConflicts: number;
   seatPairsConsidered: number;
   generatedAt: number;
+  matchId: string | null;
+}
+
+function parseDrawRow(r: DrawRow) {
+  return {
+    id: r.id,
+    gameId: r.gameId,
+    gameName: r.gameName,
+    gameIcon: r.gameIcon,
+    teams: JSON.parse(r.teamsJson),
+    seatConflicts: r.seatConflicts,
+    seatPairsConsidered: r.seatPairsConsidered,
+    generatedAt: r.generatedAt,
+    matchId: r.matchId,
+  };
 }
 
 // GET /api/matchmaking/history - past draws for the active event (or an
 // explicit ?eventId=), newest first, optionally narrowed to one ?gameId=.
+// Includes both still-unrecorded draws (Team-Historie) and draws a result was
+// already entered for (Ergebnis-Historie, matchId set) — the frontend splits
+// them by matchId.
 matchmakingRouter.get('/history', (req, res) => {
   const { eventId, gameId, limit } = req.query;
   const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
@@ -172,7 +193,8 @@ matchmakingRouter.get('/history', (req, res) => {
     .prepare(
       `SELECT md.id AS id, md.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
               md.teams AS teamsJson, md.seat_conflicts AS seatConflicts,
-              md.seat_pairs_considered AS seatPairsConsidered, md.generated_at AS generatedAt
+              md.seat_pairs_considered AS seatPairsConsidered, md.generated_at AS generatedAt,
+              md.match_id AS matchId
        FROM matchmaking_draws md
        JOIN games g ON g.id = md.game_id
        WHERE ${clauses.join(' AND ')}
@@ -181,16 +203,64 @@ matchmakingRouter.get('/history', (req, res) => {
     )
     .all(...params, limitNum) as DrawRow[];
 
-  const history = rows.map((r) => ({
-    id: r.id,
-    gameId: r.gameId,
-    gameName: r.gameName,
-    gameIcon: r.gameIcon,
-    teams: JSON.parse(r.teamsJson),
-    seatConflicts: r.seatConflicts,
-    seatPairsConsidered: r.seatPairsConsidered,
-    generatedAt: r.generatedAt,
-  }));
+  res.json({ history: rows.map(parseDrawRow) });
+});
 
-  res.json({ history });
+// PATCH /api/matchmaking/draws/:id/move - Feinschliff: move one player to a
+// different team of a still-unrecorded draw. Recomputes totalRating for both
+// affected teams; a draw with an already-recorded result is frozen (the
+// result was entered for the team lineup as it stood then).
+matchmakingRouter.patch('/draws/:id/move', (req, res) => {
+  const { playerId, toTeamIndex } = req.body ?? {};
+  if (typeof playerId !== 'string' || !playerId) {
+    return res.status(400).json({ error: 'playerId ist erforderlich.' });
+  }
+  if (!Number.isInteger(toTeamIndex) || toTeamIndex < 0) {
+    return res.status(400).json({ error: 'toTeamIndex ist ungültig.' });
+  }
+
+  const row = db.prepare('SELECT * FROM matchmaking_draws WHERE id = ?').get(req.params.id) as
+    | { id: string; game_id: string; teams: string; match_id: string | null }
+    | undefined;
+  if (!row) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
+  if (row.match_id) {
+    return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
+  }
+
+  const teams = JSON.parse(row.teams) as Array<{ players: Array<{ id: string; rating: number | null }>; totalRating: number }>;
+  if (toTeamIndex >= teams.length) {
+    return res.status(400).json({ error: 'toTeamIndex ist ungültig.' });
+  }
+
+  const fromTeamIndex = teams.findIndex((t) => t.players.some((p) => p.id === playerId));
+  if (fromTeamIndex === -1) {
+    return res.status(404).json({ error: 'Spieler ist in keinem Team dieser Auslosung.' });
+  }
+
+  if (fromTeamIndex !== toTeamIndex) {
+    const [player] = teams[fromTeamIndex].players.splice(
+      teams[fromTeamIndex].players.findIndex((p) => p.id === playerId),
+      1
+    );
+    teams[toTeamIndex].players.push(player);
+    for (const t of [teams[fromTeamIndex], teams[toTeamIndex]]) {
+      t.totalRating = t.players.reduce((sum, p) => sum + (p.rating ?? 0), 0);
+    }
+  }
+
+  db.prepare('UPDATE matchmaking_draws SET teams = ? WHERE id = ?').run(JSON.stringify(teams), row.id);
+
+  const updated = db
+    .prepare(
+      `SELECT md.id AS id, md.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
+              md.teams AS teamsJson, md.seat_conflicts AS seatConflicts,
+              md.seat_pairs_considered AS seatPairsConsidered, md.generated_at AS generatedAt,
+              md.match_id AS matchId
+       FROM matchmaking_draws md JOIN games g ON g.id = md.game_id WHERE md.id = ?`
+    )
+    .get(row.id) as DrawRow;
+
+  const draw = parseDrawRow(updated);
+  broadcast(Events.matchmakingDrawsChanged, draw);
+  res.json(draw);
 });

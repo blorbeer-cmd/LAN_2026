@@ -287,6 +287,13 @@ function wireSocket() {
     invalidateMatchmakingHistory();
     if (currentView === 'matchmaking') renderCurrent();
   });
+  // A draw's teams were fine-tuned (player moved) or a result was just
+  // entered for it (Team-Historie -> Ergebnis-Historie) — refetch so
+  // everyone's history view stays in sync.
+  socket.on('matchmaking:draws-changed', () => {
+    invalidateMatchmakingHistory();
+    if (currentView === 'matchmaking') renderCurrent();
+  });
   socket.on('tournaments:changed', (payload) => {
     invalidateTournaments();
     invalidateDigest();
@@ -323,12 +330,21 @@ function wireSocket() {
 
   // Captain draft: the payload carries the full fresh state, so the Teams
   // view can re-render without a round trip. A newly started draft nudges
-  // everyone who isn't already watching.
+  // everyone who isn't already watching; a finished draft's teams land in
+  // Team-Historie (see draft.ts), so just point people there instead of
+  // pinning the result to the top of the page.
   socket.on('draft:changed', (payload) => {
     setDraftState(payload);
+    invalidateMatchmakingHistory();
     if (currentView === 'matchmaking') renderCurrent();
     if (payload?.started && getMyId() && currentView !== 'matchmaking') {
       showToast('👑 Captain-Draft gestartet – tippen zum Zusehen', {
+        duration: 5000,
+        onClick: () => switchView('matchmaking'),
+      });
+    }
+    if (payload?.completed) {
+      showToast('👑 Draft abgeschlossen – Teams stehen in der Team-Historie', {
         duration: 5000,
         onClick: () => switchView('matchmaking'),
       });
