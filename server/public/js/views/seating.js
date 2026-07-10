@@ -58,7 +58,7 @@ export function renderSeating(container, ctx) {
     `;
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="profile">‹ Zurück zum Profil</button>
+    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <h1 class="view-title">${icon('tableRowsSplit')} Sitzplan</h1>
     <p class="muted" style="margin-top:calc(var(--space-3) * -1);">
       Wer neben wem sitzt, so wie es alle selbst in ihrem Profil unter „Sitznachbarn" eingetragen haben.

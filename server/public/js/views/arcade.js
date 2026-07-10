@@ -377,6 +377,7 @@ export function renderArcade(container, ctx) {
 
   const cg = currentGame();
   container.innerHTML = `
+    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <h1 class="view-title">Arcade</h1>
     ${whoAmICardHtml('whoami')}
     <div class="section-title">🎮 Spiele</div>
