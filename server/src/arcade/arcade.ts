@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
+import { notifyPlayers } from '../push';
 import { matchesAnswer, pickQuestion } from './quizLogic';
 
 const DEFAULT_TARGET_SCORE = 5;
@@ -221,6 +222,28 @@ export function registerArcadeSockets(io: Server): void {
       lobbies.set(lobby.id, lobby);
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
+
+      // Nobody has the Arcade view open to see the toast-on-connect above,
+      // so a real push is the only way the rest of the LAN finds out a lobby
+      // is waiting for them.
+      const otherPlayerIds = (db.prepare('SELECT id FROM players WHERE id != ?').all(player.id) as Array<{ id: string }>).map(
+        (p) => p.id
+      );
+      notifyPlayers(otherPlayerIds, {
+        title: '🕹️ Neue Quiz-Lobby',
+        body: `${player.name} hat eine Quiz-Lobby geöffnet – jetzt beitreten!`,
+        url: '/',
+      });
+    });
+
+    socket.on('arcade:lobby:close', (payload: { lobbyId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+      const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
+      if (!lobby) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
+      if (payload?.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann die Lobby schließen.' });
+
+      lobbies.delete(lobby.id);
+      emitLobbies(io);
+      ack?.({ ok: true });
     });
 
     socket.on('arcade:lobby:join', (payload: { lobbyId?: string; playerId?: string }, ack?: (res: unknown) => void) => {

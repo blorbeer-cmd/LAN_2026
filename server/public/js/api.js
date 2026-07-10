@@ -16,6 +16,11 @@ export async function apiFetch(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   const token = getToken();
   if (token) headers['x-access-token'] = token;
+  // Attach the admin PIN (set once on admin unlock) so admin-gated writes —
+  // e.g. granting admin — pass the server's requireAdmin check. Absent in
+  // open/dev mode, where the server allows it anyway.
+  const adminPin = localStorage.getItem('lan2026_admin_pin');
+  if (adminPin) headers['x-admin-pin'] = adminPin;
 
   const res = await fetch(path, { ...options, headers });
 
@@ -107,6 +112,7 @@ export const api = {
     create: (data) => apiFetch('/api/games', { method: 'POST', body: JSON.stringify(data) }),
     update: (id, data) => apiFetch(`/api/games/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     remove: (id) => apiFetch(`/api/games/${id}`, { method: 'DELETE' }),
+    promote: (id) => apiFetch(`/api/games/${id}/promote`, { method: 'POST' }),
     addProcess: (id, processName) =>
       apiFetch(`/api/games/${id}/processes`, { method: 'POST', body: JSON.stringify({ processName }) }),
     removeProcess: (id, processName) =>
@@ -120,6 +126,7 @@ export const api = {
     },
     set: (playerId, gameId, rating) =>
       apiFetch('/api/skills', { method: 'PUT', body: JSON.stringify({ playerId, gameId, rating }) }),
+    suggestions: () => apiFetch('/api/skills/suggestions'),
   },
 
   preferences: {
@@ -146,6 +153,7 @@ export const api = {
     get: () => apiFetch('/api/votes'),
     mine: (playerId) => apiFetch(`/api/votes/mine?playerId=${encodeURIComponent(playerId)}`),
     history: () => apiFetch('/api/votes/history'),
+    historyRound: (round) => apiFetch(`/api/votes/history/${round}`),
     start: (mode) => apiFetch('/api/votes/start', { method: 'POST', body: JSON.stringify(mode ? { mode } : {}) }),
     cast: (playerId, gameId) =>
       apiFetch('/api/votes', { method: 'POST', body: JSON.stringify({ playerId, gameId }) }),
@@ -301,10 +309,17 @@ export const api = {
     remove: (id) => apiFetch(`/api/info/${id}`, { method: 'DELETE' }),
   },
 
+  admin: {
+    status: () => apiFetch('/api/admin/status'),
+    unlock: (pin) => apiFetch('/api/admin/unlock', { method: 'POST', body: JSON.stringify({ pin }) }),
+  },
+
   foodOrders: {
     list: () => apiFetch('/api/food-orders'),
-    create: (playerId, title) =>
-      apiFetch('/api/food-orders', { method: 'POST', body: JSON.stringify({ playerId, title }) }),
+    create: (playerId, title, { sendAt, notes, link } = {}) =>
+      apiFetch('/api/food-orders', { method: 'POST', body: JSON.stringify({ playerId, title, sendAt, notes, link }) }),
+    updateDetails: (orderId, { sendAt, notes, link }) =>
+      apiFetch(`/api/food-orders/${orderId}`, { method: 'PATCH', body: JSON.stringify({ sendAt, notes, link }) }),
     addItem: (orderId, data) =>
       apiFetch(`/api/food-orders/${orderId}/items`, { method: 'POST', body: JSON.stringify(data) }),
     removeItem: (orderId, itemId, playerId) =>
@@ -313,5 +328,18 @@ export const api = {
         body: JSON.stringify({ playerId }),
       }),
     close: (orderId) => apiFetch(`/api/food-orders/${orderId}/close`, { method: 'POST' }),
+  },
+
+  arrivals: {
+    list: () => apiFetch('/api/arrivals'),
+    saveMine: (data) => apiFetch('/api/arrivals/mine', { method: 'PUT', body: JSON.stringify(data) }),
+    createCarpool: (data) => apiFetch('/api/arrivals/carpools', { method: 'POST', body: JSON.stringify(data) }),
+    editCarpool: (id, data) => apiFetch(`/api/arrivals/carpools/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    joinCarpool: (id, playerId) =>
+      apiFetch(`/api/arrivals/carpools/${id}/join`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    leaveCarpool: (id, playerId) =>
+      apiFetch(`/api/arrivals/carpools/${id}/leave`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    removeCarpool: (id, playerId) =>
+      apiFetch(`/api/arrivals/carpools/${id}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
   },
 };

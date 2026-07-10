@@ -3,23 +3,31 @@
 // each phone remembers "who I am" locally so casting a vote is a single tap,
 // not a form every time.
 //
+// While a round is open, nobody sees how votes/points are distributed across
+// games yet — only the server-side final tally, once closed, may influence
+// anyone (no watching a leader emerge and piling onto it). The view only
+// shows: the list of games to vote/rate, your own already-cast pick(s) (your
+// own choice, not the aggregate), and how many people have participated so
+// far (momentum, not a per-game breakdown). Full bars/rankings appear the
+// moment the round closes, and past rounds stay inspectable afterwards via
+// the history list.
+//
 // Two modes (chosen when a round starts, see server/src/routes/votes.ts):
 // - 'single': one tap picks a game, tapping another replaces it.
-// - 'points': distribute 1-10 points across up to 5 games; changing your
-//   mind just re-saves the whole set (same fire-and-forget pattern as the
-//   skill/preference sliders in profile.js).
-// Either way, results are also sorted by each game's aggregate "Bock" rating
-// (state.preferences, maintained per-player in profile.js) whenever the
-// round's own score is tied — most visibly before anyone has voted yet, so
-// the list starts out popularity-sorted instead of alphabetical.
+// - 'points': one slider per game, 0-10 points, 0 meaning "not rated" — as
+//   many games as you like. Changing your mind just re-saves the whole set
+//   (same fire-and-forget pattern as the skill/preference sliders in
+//   profile.js).
+// Either way, closed-round results are also sorted by each game's aggregate
+// "Bock" rating (state.preferences, maintained per-player in profile.js)
+// whenever the round's own score is tied.
 
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, formatDate, formatDateTime, gameBadgeHtml } from '../format.js';
+import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
-
-const MAX_POINT_GAMES = 5;
 
 // Cached separately from `state` (like analytics.js does) since it's fetched
 // from its own endpoint, not part of the main loadAll() round-trip.
@@ -46,37 +54,121 @@ export function invalidateVoteHistory() {
   historyCache = null;
 }
 
-// The current player's own in-progress 'points' mode picks: Map<gameId,
-// points>. Loaded once per (round, player) from the server (so switching
-// devices or reopening the tab still shows what you already picked), then
-// edited locally and fire-and-forget saved on every change.
-let pointsDraft = null;
-let pointsDraftKey = null;
-let pointsDraftLoading = false;
+// The current player's own entries in the running round — for 'points' mode
+// this reconstructs the multi-select UI (which games, how many points each);
+// for 'single' mode it's just "did I already vote, and for what" so tapping
+// a different game reads as changing your mind rather than a fresh pick with
+// no feedback. Either way this is the player's OWN submission, not the
+// aggregate, so showing it while the round is open doesn't leak anything
+// about how the vote is trending.
+let mineCache = null; // Map<gameId, points|null>
+let mineCacheKey = null; // `${round}:${playerId}`
+let mineLoading = false;
 
-async function loadPointsDraft(round, playerId, ctx) {
-  pointsDraftLoading = true;
+async function loadMine(round, playerId, ctx) {
+  mineLoading = true;
   try {
     const mine = await api.votes.mine(playerId);
-    pointsDraft = new Map(mine.entries.map((e) => [e.gameId, e.points]));
+    mineCache = new Map(mine.entries.map((e) => [e.gameId, e.points]));
   } catch {
-    pointsDraft = new Map();
+    mineCache = new Map();
   } finally {
-    pointsDraftKey = `${round}:${playerId}`;
-    pointsDraftLoading = false;
+    mineCacheKey = `${round}:${playerId}`;
+    mineLoading = false;
     ctx.rerender();
   }
 }
 
 async function savePointsDraft(playerId) {
-  if (!pointsDraft || pointsDraft.size === 0) return; // nothing valid to save yet
-  const entries = [...pointsDraft.entries()].map(([gameId, points]) => ({ gameId, points }));
+  if (!mineCache) return; // draft not loaded yet, nothing to save
+  const entries = [...mineCache.entries()].map(([gameId, points]) => ({ gameId, points }));
   try {
     await api.votes.castPoints(playerId, entries);
   } catch (err) {
     showToast(err.message, { error: true });
   }
 }
+
+function preferenceChipHtml(r) {
+  if (!r.preferenceCount) {
+    return `<span class="muted" style="font-size:0.78rem;">🔥 –</span>`;
+  }
+  return `<span class="muted" style="font-size:0.78rem;">🔥 Ø ${r.avgPreference.toFixed(1)} (${r.preferenceCount})</span>`;
+}
+
+function lastPlayedHtml(r) {
+  return r.playCount > 0 ? `zuletzt gespielt: ${formatDate(r.lastPlayedAt)} · ${r.playCount}× gespielt` : 'noch nie gespielt';
+}
+
+// ---------- open round: cast your vote, no distribution shown ----------
+
+function renderOpenRows(votes, myId, mine, mineReady) {
+  return votes.results
+    .map((r) => {
+      let action = '';
+      let pointsSliderRow = '';
+      if (votes.mode === 'single') {
+        const isMine = mineReady && mine.has(r.gameId);
+        action = `<button type="button" class="btn btn-sm ${isMine ? 'btn-primary' : ''}" data-vote-game="${r.gameId}">${isMine ? '✓ Deine Stimme' : 'Abstimmen'}</button>`;
+      } else if (!mineReady) {
+        pointsSliderRow = `<div class="muted" style="font-size:0.78rem;padding:4px 0 0;">Lädt deine Punkte…</div>`;
+      } else {
+        const pointsVal = mine.get(r.gameId) ?? 0;
+        pointsSliderRow = `
+          <div class="skill-row" data-points-row="${r.gameId}" style="padding:4px 0 0;">
+            <span class="muted" style="font-size:0.78rem;">Punkte</span>
+            <span class="skill-value">${pointsVal}</span>
+            <input type="range" class="skill-row-slider" min="0" max="10" step="1"
+                   data-points-slider="${r.gameId}" value="${pointsVal}" />
+          </div>`;
+      }
+
+      return `
+        <div class="vote-row">
+          <div class="row-between">
+            <span class="row" style="gap:8px;">${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 24)} ${escapeHtml(r.gameName)}</span>
+            ${action}
+          </div>
+          <div class="row-between">
+            <span class="row" style="gap:10px;">
+              <span class="muted" style="font-size:0.78rem;">${lastPlayedHtml(r)}</span>
+              ${preferenceChipHtml(r)}
+            </span>
+          </div>
+          ${pointsSliderRow}
+        </div>`;
+    })
+    .join('');
+}
+
+// ---------- closed round (current or reopened from history): full bars ----------
+
+function renderClosedRows(results, mode, winnerGameIds) {
+  const maxScore = Math.max(1, ...results.map((r) => r.score));
+  return results
+    .map((r) => {
+      const isWinner = winnerGameIds ? winnerGameIds.includes(r.gameId) : r.score > 0 && r.score === maxScore;
+      const scoreLabel =
+        mode === 'points' ? `${r.points} Punkt(e)${r.votes ? ` · ${r.votes} Spieler` : ''}` : `${r.votes} Stimme(n)`;
+      return `
+        <div class="vote-row ${isWinner ? 'is-winner' : ''}">
+          <div class="row-between">
+            <span class="row" style="gap:8px;">${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 24)} ${escapeHtml(r.gameName)}</span>
+            <span class="muted">${scoreLabel}</span>
+          </div>
+          <div class="vote-bar-track"><div class="vote-bar-fill" style="width:${(r.score / maxScore) * 100}%"></div></div>
+          <div class="row-between">
+            <span class="row" style="gap:10px;">
+              <span class="muted" style="font-size:0.78rem;">${lastPlayedHtml(r)}</span>
+              ${preferenceChipHtml(r)}
+            </span>
+          </div>
+        </div>`;
+    })
+    .join('');
+}
+
+// ---------- history: list + reopen a past round's full detail ----------
 
 function renderHistory() {
   if (historyLoading || historyCache === null) {
@@ -96,22 +188,38 @@ function renderHistory() {
             .join('')
         : `<span class="muted">Niemand hat abgestimmt</span>`;
       return `
-        <div class="lb-row" style="align-items:flex-start;">
+        <button type="button" class="lb-row" style="align-items:flex-start;width:100%;text-align:left;background:none;border:none;cursor:pointer;" data-open-history-round="${h.round}">
           <div class="stack" style="gap:4px;flex:1;">
             <div class="chip-list">${winners}</div>
             <span class="muted" style="font-size:0.75rem;">${formatDateTime(h.closedAt)} · ${h.mode === 'points' ? 'Punkte-Modus' : 'Einzel-Wahl'}</span>
           </div>
-          <span class="muted" style="font-size:0.8rem;flex-shrink:0;">${h.totalVotes} Stimme(n)</span>
-        </div>`;
+          <span class="muted" style="font-size:0.8rem;flex-shrink:0;">${h.totalVotes} Stimme(n) ›</span>
+        </button>`;
     })
     .join('');
 }
 
-function preferenceChipHtml(r) {
-  if (!r.preferenceCount) {
-    return `<span class="muted" style="font-size:0.78rem;">🔥 –</span>`;
+async function openHistoryRoundDetail(round) {
+  const { el } = openModal('Lädt…', `<div class="empty-state">Lädt…</div>`);
+  try {
+    const detail = await api.votes.historyRound(round);
+    const titleEl = el.querySelector('.modal-header h2');
+    if (titleEl) titleEl.textContent = `🗳️ Abstimmung Runde ${detail.round}`;
+    const bodyEl = el.querySelector('.modal-body');
+    if (bodyEl) {
+      bodyEl.innerHTML = `
+        <div class="muted" style="font-size:0.8rem;margin-bottom:10px;">
+          ${formatDateTime(detail.closedAt)} · ${detail.mode === 'points' ? 'Punkte-Modus' : 'Einzel-Wahl'} ·
+          ${detail.mode === 'points' ? `${detail.totalPoints} Punkt(e)` : `${detail.totalVotes} Stimme(n)`}
+          von ${detail.totalVoters} Teilnehmer(n)
+        </div>
+        ${renderClosedRows(detail.results, detail.mode, detail.winnerGameIds)}
+      `;
+    }
+  } catch (err) {
+    const bodyEl = el.querySelector('.modal-body');
+    if (bodyEl) bodyEl.innerHTML = `<div class="empty-state">${escapeHtml(err.message)}</div>`;
   }
-  return `<span class="muted" style="font-size:0.78rem;">🔥 Ø ${r.avgPreference.toFixed(1)} (${r.preferenceCount})</span>`;
 }
 
 export function renderVotes(container, ctx) {
@@ -126,69 +234,19 @@ export function renderVotes(container, ctx) {
   }
 
   const myId = getMyId();
-  const pointsModeActive = votes.open && votes.mode === 'points';
-  if (pointsModeActive && myId) {
+  if (votes.open && myId) {
     const key = `${votes.round}:${myId}`;
-    if (pointsDraftKey !== key && !pointsDraftLoading) {
-      loadPointsDraft(votes.round, myId, ctx);
+    if (mineCacheKey !== key && !mineLoading) {
+      loadMine(votes.round, myId, ctx);
     }
   }
-  const draftReady = pointsModeActive && myId && pointsDraftKey === `${votes.round}:${myId}` && pointsDraft;
+  const mineReady = votes.open && myId && mineCacheKey === `${votes.round}:${myId}` && mineCache;
 
   const whoAmI = whoAmICardHtml('whoami');
 
-  const maxScore = Math.max(1, ...votes.results.map((r) => r.score));
-  const rows = votes.results
-    .map((r) => {
-      const isTop = r.score > 0 && r.score === maxScore;
-      const history =
-        r.playCount > 0
-          ? `zuletzt gespielt: ${formatDate(r.lastPlayedAt)} · ${r.playCount}× gespielt`
-          : 'noch nie gespielt';
-      const scoreLabel =
-        votes.mode === 'points' ? `${r.points} Punkt(e)${r.votes ? ` · ${r.votes} Spieler` : ''}` : `${r.votes} Stimme(n)`;
-
-      let action = '';
-      if (votes.open && votes.mode === 'single') {
-        action = `<button type="button" class="btn btn-sm" data-vote-game="${r.gameId}">Abstimmen</button>`;
-      } else if (votes.open && votes.mode === 'points') {
-        if (!draftReady) {
-          action = `<span class="muted" style="font-size:0.78rem;">Lädt…</span>`;
-        } else {
-          const checked = pointsDraft.has(r.gameId);
-          const pointsVal = checked ? pointsDraft.get(r.gameId) : 5;
-          action = `
-            <span class="row" style="gap:8px;align-items:center;">
-              <label class="row" style="gap:6px;align-items:center;">
-                <input type="checkbox" data-points-game="${r.gameId}" ${checked ? 'checked' : ''} />
-                <span class="muted" style="font-size:0.78rem;">dabei</span>
-              </label>
-              ${
-                checked
-                  ? `<input type="number" min="1" max="10" step="1" data-points-value="${r.gameId}" value="${pointsVal}" style="width:52px;" />`
-                  : ''
-              }
-            </span>`;
-        }
-      }
-
-      return `
-        <div class="vote-row ${isTop ? 'is-winner' : ''}">
-          <div class="row-between">
-            <span class="row" style="gap:8px;">${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 24)} ${escapeHtml(r.gameName)}</span>
-            <span class="muted">${scoreLabel}</span>
-          </div>
-          <div class="vote-bar-track"><div class="vote-bar-fill" style="width:${(r.score / maxScore) * 100}%"></div></div>
-          <div class="row-between">
-            <span class="row" style="gap:10px;">
-              <span class="muted" style="font-size:0.78rem;">${history}</span>
-              ${preferenceChipHtml(r)}
-            </span>
-            ${action}
-          </div>
-        </div>`;
-    })
-    .join('');
+  const rows = votes.open
+    ? renderOpenRows(votes, myId, mineReady ? mineCache : new Map(), Boolean(mineReady))
+    : renderClosedRows(votes.results, votes.mode, votes.winnerGameIds);
 
   const controls = votes.open
     ? `
@@ -205,20 +263,20 @@ export function renderVotes(container, ctx) {
         </label>
         <label class="check-row">
           <input type="radio" name="vote-mode" value="points" />
-          <span style="flex:1;">🔢 Punkte-Modus – bis zu ${MAX_POINT_GAMES} Spiele mit 1-10 Punkten bewerten</span>
+          <span style="flex:1;">🔢 Punkte-Modus – jedes Spiel mit 0-10 Punkten bewerten</span>
         </label>
         <button type="button" class="btn btn-primary btn-block" id="votes-start">Abstimmung starten</button>
       </div>`;
 
   const summary = votes.open
     ? votes.mode === 'points'
-      ? `🟢 Abstimmung läuft (Punkte-Modus) · ${votes.totalPoints} Punkt(e) von ${votes.totalVoters} Teilnehmer(n)`
-      : `🟢 Abstimmung läuft (Einzel-Wahl) · Gesamt: ${votes.totalVotes} Stimme(n)`
+      ? `🟢 Abstimmung läuft (Punkte-Modus) · ${votes.totalVoters} Teilnehmer bisher – Verteilung gibt's erst nach dem Ende`
+      : `🟢 Abstimmung läuft (Einzel-Wahl) · ${votes.totalVoters} Stimme(n) bisher – Ergebnis gibt's erst nach dem Ende`
     : '⚪ Keine offene Abstimmung';
 
   const draftHint =
-    pointsModeActive && myId && draftReady
-      ? `<div class="muted" style="font-size:0.78rem;margin-top:4px;">${pointsDraft.size}/${MAX_POINT_GAMES} Spiele ausgewählt – Änderungen speichern automatisch.</div>`
+    votes.open && votes.mode === 'points' && mineReady
+      ? `<div class="muted" style="font-size:0.78rem;margin-top:4px;">${mineCache.size} Spiel(e) bewertet – Änderungen speichern automatisch.</div>`
       : '';
 
   container.innerHTML = `
@@ -232,6 +290,7 @@ export function renderVotes(container, ctx) {
     <div style="margin-top:12px;">${controls}</div>
 
     <div class="section-title">🕓 Vote-Historie</div>
+    <p class="muted" style="font-size:0.78rem;margin:-4px 0 8px;">Antippen für die genaue Punkteverteilung dieser Runde.</p>
     <div class="card">${renderHistory()}</div>
   `;
 
@@ -243,6 +302,8 @@ export function renderVotes(container, ctx) {
       if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
       try {
         await api.votes.cast(playerId, btn.dataset.voteGame);
+        mineCache = null; // force a reload so the "✓ Deine Stimme" state reflects the new pick
+        mineCacheKey = null;
         await ctx.refresh();
         showToast('Stimme gezählt.');
       } catch (err) {
@@ -251,39 +312,24 @@ export function renderVotes(container, ctx) {
     });
   });
 
-  container.querySelectorAll('[data-points-game]').forEach((cb) => {
-    cb.addEventListener('change', () => {
-      const playerId = getMyId();
-      if (!playerId) {
-        cb.checked = false;
-        return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
-      }
-      const gameId = cb.dataset.pointsGame;
-      if (cb.checked) {
-        if (pointsDraft.size >= MAX_POINT_GAMES) {
-          cb.checked = false;
-          return showToast(`Maximal ${MAX_POINT_GAMES} Spiele auswählen.`, { error: true });
-        }
-        pointsDraft.set(gameId, 5);
-      } else {
-        pointsDraft.delete(gameId);
-      }
-      ctx.rerender(); // show/hide the points input for this row
-      savePointsDraft(playerId);
-    });
-  });
-
-  container.querySelectorAll('[data-points-value]').forEach((input) => {
+  container.querySelectorAll('[data-points-slider]').forEach((slider) => {
+    const gameId = slider.dataset.pointsSlider;
+    const valueEl = slider.closest('[data-points-row]').querySelector('.skill-value');
     let debounceTimer = null;
-    input.addEventListener('input', () => {
+    slider.addEventListener('input', () => {
       const playerId = getMyId();
       if (!playerId) return;
-      const gameId = input.dataset.pointsValue;
-      const value = Math.min(10, Math.max(1, parseInt(input.value, 10) || 1));
-      pointsDraft.set(gameId, value);
+      valueEl.textContent = slider.value;
+      const value = parseInt(slider.value, 10);
+      if (value > 0) mineCache.set(gameId, value);
+      else mineCache.delete(gameId); // 0 = not rating this game
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => savePointsDraft(playerId), 300);
     });
+  });
+
+  container.querySelectorAll('[data-open-history-round]').forEach((btn) => {
+    btn.addEventListener('click', () => openHistoryRoundDetail(btn.dataset.openHistoryRound));
   });
 
   const startBtn = container.querySelector('#votes-start');

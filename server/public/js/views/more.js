@@ -6,14 +6,16 @@
 
 const ITEMS = [
   { view: 'infoBoard', icon: '📌', title: 'Info-Board', desc: 'WLAN, Discord, Server-IPs, Hausregeln – alles Wichtige an einem Ort.' },
+  { view: 'gameCatalog', icon: '🎮', title: 'Spiele', desc: 'Alle Spiele: Bock & Skill eintragen, vorschlagen, verwalten.' },
   { view: 'foodOrders', icon: '🍕', title: 'Essen bestellen', desc: 'Sammelbestellung öffnen, jeder trägt sich selbst ein.' },
   { view: 'arcade', icon: '🕹️', title: 'Arcade', desc: 'Mini-Games starten, aktuell mit Mehrspieler-Gaming-Quiz.' },
+  { view: 'arrivals', icon: '🚗', title: 'An- & Abreise', desc: 'Wann kommst/gehst du, plus Fahrgemeinschaften.' },
   { view: 'broadcast', icon: '📢', title: 'Durchsage', desc: 'Eine Nachricht an alle Geräte, den Kiosk und als Push.' },
   { view: 'players', icon: '👥', title: 'Spieler', desc: 'Alle Teilnehmer: anlegen, umbenennen, Agent-Keys nachschlagen.' },
-  { view: 'analytics', icon: '🕒', title: 'Spielzeit-Auswertungen', desc: 'Awards, Spielzeiten, beliebteste Spiele, wer wann was gespielt hat.' },
-  { view: 'gameStats', icon: '📊', title: 'Spiele & Turniere', desc: 'Match- und Turnier-Statistiken, Rivalitäten, Duos, Underdog-Siege.' },
+  { view: 'analytics', icon: '📊', title: 'Auswertungen', desc: 'Spielzeit, Awards und Match-/Turnier-Statistiken, Rivalitäten, Duos.' },
   { view: 'hallOfFame', icon: '🏛️', title: 'Hall of Fame', desc: 'Champions über alle LAN-Partys hinweg.' },
   { view: 'seating', icon: '🪑', title: 'Sitzplan', desc: 'Wer neben wem sitzt, gruppiert aus den Profilangaben.' },
+  { view: 'admin', icon: '🔑', title: 'Admin', desc: 'Test-Spieler anlegen, Admin vergeben, moderieren.' },
 ];
 
 export function renderMore(container) {

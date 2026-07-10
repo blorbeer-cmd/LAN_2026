@@ -215,7 +215,13 @@ function renderLobbyList() {
   if (lobbies.length === 0) return `<div class="empty-state" style="padding:14px;">Keine offene Quiz-Lobby.</div>`;
   return lobbies
     .map((l) => {
+      const isHost = l.host.id === getMyId();
       const joined = l.players.some((p) => p.id === getMyId());
+      const action = isHost
+        ? `<button type="button" class="btn btn-sm btn-danger" data-close-lobby="${l.id}">Schließen</button>`
+        : joined
+          ? `<span class="badge badge-playing">Drin</span>`
+          : `<button type="button" class="btn btn-sm btn-primary" data-join-lobby="${l.id}" ${mine ? 'disabled' : ''}>Beitreten</button>`;
       return `
         <div class="lb-row" style="align-items:flex-start;">
           <div class="stack" style="gap:6px;flex:1;">
@@ -223,7 +229,7 @@ function renderLobbyList() {
             <div class="chip-list">${l.players.map((p) => `<span class="chip">${escapeHtml(p.name)}</span>`).join('')}</div>
             <div class="muted" style="font-size:0.78rem;">${l.players.length} Spieler · Host startet, wenn alle bereit sind</div>
           </div>
-          ${joined ? `<span class="badge badge-playing">Drin</span>` : `<button type="button" class="btn btn-sm btn-primary" data-join-lobby="${l.id}" ${mine ? 'disabled' : ''}>Beitreten</button>`}
+          ${action}
         </div>`;
     })
     .join('');
@@ -386,6 +392,14 @@ export function renderArcade(container, ctx) {
     const res = await emitWithAck('arcade:lobby:create', { gameType: 'quiz', playerId });
     if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
     showToast('Quiz-Lobby geöffnet.');
+  });
+
+  container.querySelectorAll('[data-close-lobby]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const playerId = getMyId();
+      const res = await emitWithAck('arcade:lobby:close', { lobbyId: btn.dataset.closeLobby, playerId });
+      if (!res?.ok) showToast(res?.error || 'Schließen fehlgeschlagen.', { error: true });
+    });
   });
 
   container.querySelectorAll('[data-join-lobby]').forEach((btn) => {

@@ -16,7 +16,7 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 | ⚔️ **Turniere** | K.O.-Baum, Liga „jeder gegen jeden" (optional mit Hin-/Rückspielen) oder Gruppenphase + K.O. – Teams werden skill-balanciert vorgeschlagen, Ergebnisse (mit oder ohne Punktestand) direkt im Turnierbaum eintragbar, der sich automatisch weiterentwickelt. Bei neuem/anstehendem Match gibt's einen Push-Hinweis an die Beteiligten. |
 | ⚖️ **Teams auslosen** | Für ein Spiel automatisch faire Teams aus den anwesenden Spielern auslosen (skill-basiert), optional unter Berücksichtigung der Sitznachbarn (nicht gegeneinander). Ergebnis lässt sich direkt als Match-Ergebnis übernehmen. |
 | 👑 **Captain-Draft** | Die soziale Alternative zum Auslosen: 2–4 Captains picken abwechselnd (Snake-Reihenfolge) live aus dem Pool – jeder verfolgt den Draft auf dem eigenen Handy, nur der Captain am Zug kann picken. Ergebnis landet in der Team-Historie und lässt sich direkt als Match eintragen. |
-| 🗳️ **Abstimmung** | „Was zocken wir als Nächstes?" – live abstimmen. Zeigt an, was zuletzt dran war/wie oft. Historie vergangener Runden. |
+| 🗳️ **Abstimmung** | „Was zocken wir als Nächstes?" – jeder gibt seine Stimme/Punkte ab, sieht dabei aber nur die eigene Wahl, nicht den Zwischenstand (kein Bandwagon-Voting). Die volle Punkteverteilung gibt's erst nach Rundenende. Historie vergangener Runden lässt sich jederzeit erneut öffnen, um das Detail-Ergebnis einer Runde nachträglich anzusehen. |
 | 🏆 **Rangliste** | Match-Ergebnisse eintragen (auch Frei-für-alle ohne Teams), Punkte übers ganze Wochenende, Gesamtsieger der LAN, Spielzeit pro Spieler und pro Spiel. |
 | ☰ **Mehr** | Sammelstelle für alles Weitere: Info-Board, Essensbestellung, Durchsage, Spieler-Verwaltung, Spielzeit-Auswertungen, Spiele-&-Turnier-Statistiken, Hall of Fame, Sitzplan. |
 
@@ -36,7 +36,7 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 |---|---|
 | 📢 **Durchsage** | Eine Nachricht an alle auf einmal („Essen ist da!"): Toast auf jedem offenen Gerät, großes Banner auf dem Kiosk-Bildschirm, Push-Benachrichtigung an alle Opt-ins – immer mit Absender-Name. |
 | 📌 **Info-Board** | WLAN-Passwort, Discord-Link, Gameserver-IPs, Hausregeln: die Dinge, die sonst fünfmal pro Abend gefragt werden, als gepinnte Einträge mit Kopieren-Knopf. Jeder darf pflegen. |
-| 🍕 **Essen bestellen** | Sammelbestellung öffnen („Pizza bei Luigi's"), jeder trägt seine Positionen (mit optionalem Preis) vom eigenen Handy ein, Schließen friert die Liste ein – gruppiert pro Person mit Summen, bereit zum Vorlesen am Telefon. |
+| 🍕 **Essen bestellen** | Sammelbestellung öffnen („Pizza bei Luigi's"), optional mit Zeitpunkt „geht raus um …" (später jederzeit änderbar, auch nach dem Schließen), jeder trägt seine Positionen (mit optionalem Preis) vom eigenen Handy ein, Schließen friert die Liste ein – gruppiert pro Person mit Summen, bereit zum Vorlesen am Telefon. |
 | 👤 **Selbst-Onboarding** | Neue Geräte landen automatisch auf der Profil-Seite statt auf dem Live-Board: Name (eindeutig), Profilbild, Skill-Ratings und der eigene Agent-Download richten sich alle selbst ein. |
 | 🎪 **Events** | Mehrere LAN-Termine können nebeneinander in derselben Installation existieren; nur eines „trackt" gleichzeitig (Live-Status/Spielzeit). Was außerhalb eines getrackten Events passiert, läuft normal unter „Außerhalb von Events". |
 | 🔗 **Einladungslink & QR-Code** | Ein Link (trägt bei Bedarf das Zugangs-Token) führt neue Leute direkt zur Profil-Erstellung – auch als QR-Code zum Aushängen, serverseitig gerendert statt über einen Drittanbieter. |
@@ -110,27 +110,74 @@ npm start
 
 Danach im Browser `http://localhost:3000` öffnen.
 
-## Deployment (Server in der Cloud)
+## Deployment (24/7 auf `lan.dbehnke.dev`)
 
-Der Server ist ein normaler Node.js-Prozess mit einer SQLite-Datei – läuft auf so ziemlich jedem
-kleinen Linux-Server/VPS.
+Läuft dauerhaft auf einem Hetzner-VPS, containerisiert per Docker, per GitHub Actions deployt,
+per Cloudflare Tunnel ans Internet gehängt. Threat model bewusst schlank: kein Fremder greift in
+eine laufende LAN-Session ein, Ziel ist nur "kein leichtes Opfer für Zufallsfunde/Bots" – siehe
+`CLAUDE.md` für die volle Begründung.
 
-1. **Repo auf den Server bringen** (klonen oder per Deploy-Workflow) und ins `server/`-Verzeichnis
-   wechseln.
-2. **Bauen:**
+**Architektur:** `lan.dbehnke.dev` → Cloudflare (TLS, DNS, DDoS/WAF) → Cloudflare Tunnel
+(`cloudflared`, Origin hat **keinen offenen Port 80/443**) → `app`-Container (kein published Port,
+nur intern im Docker-Netz erreichbar) → SQLite-Datei auf einem Bind-Mount, überlebt jedes Redeploy.
+SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
+
+### Einmalige Vorbereitung (bevor der erste Deploy läuft)
+
+1. **Deploy-Keypair erzeugen** (lokal, einmalig):
    ```bash
-   npm install
-   npm run build
+   ssh-keygen -t ed25519 -f lan2026-deploy -N "" -C "lan2026-deploy"
    ```
-3. **Umgebungsvariablen setzen** (siehe Tabelle unten), dann starten:
-   ```bash
-   npm start
-   ```
-4. Den Prozess dauerhaft am Laufen halten (empfohlen: [`pm2`](https://pm2.keymetrics.io/),
-   `systemd`-Service oder das Init-System deines Hosters), damit er einen Server-Neustart übersteht.
-5. Firewall/Reverse-Proxy: Port (Standard `3000`) für die LAN-Party-Teilnehmer erreichbar machen,
-   idealerweise per HTTPS (z. B. hinter Caddy/nginx), da das Zugangs-Token sonst im Klartext über
-   die Leitung geht.
+2. **Cloudflare Tunnel anlegen** (einmalig, im [Zero Trust Dashboard](https://one.dash.cloudflare.com/)
+   → Networks → Tunnels → Create a tunnel → "Cloudflared"): Name z. B. `lan2026`, Public Hostname
+   `lan.dbehnke.dev` → Service `HTTP` → `app:3000` (der Service-Name `app` ist der Compose-Service,
+   nicht die Server-IP). Den angezeigten **Tunnel-Token** kopieren.
+3. **GitHub Secrets anlegen** (Repo → Settings → Secrets and variables → Actions → *Secrets*, bewusst
+   keine *Variables* – die wären für alle mit Schreibzugriff auf das Repo lesbar, Secrets nicht):
+
+   | Secret | Wert |
+   |---|---|
+   | `HETZNER_API_TOKEN` | Hetzner Cloud Projekt → Security → API Tokens (Read & Write) |
+   | `HETZNER_SSH_PUBLIC_KEY` | Inhalt von `lan2026-deploy.pub` |
+   | `SSH_PRIVATE_KEY` | Inhalt von `lan2026-deploy` (**ohne** `.pub`) |
+   | `CF_TUNNEL_TOKEN` | Token aus Schritt 2 |
+   | `APP_ACCESS_TOKEN` | starkes Zufallstoken, z. B. `openssl rand -hex 24` |
+   | `APP_ADMIN_PIN` | eigene PIN fürs Admin-Freischalten |
+   | `GHCR_PULL_TOKEN` | GitHub → Settings → Developer settings → **Tokens (classic)** (fine-grained Tokens haben **kein** Packages-Permission – GitHub-seitige Lücke, nicht behebbar; und da das Repo nicht dir gehört, tauchte es dort im Repo-Auswahldialog ohnehin nicht auf). Scopes: `read:packages` + `repo` (`repo` sorgt dafür, dass GitHub deine bestehenden Collaborator-Rechte auf dem privaten Repo für das Package durchreicht). Ablaufdatum setzen und dir merken, das Secret + `.env` auf dem Server (siehe "Alltag" unten) danach zu erneuern. **Bewusst kein Fix "Package auf public stellen"** – das Image bleibt privat, der Server authentifiziert sich stattdessen selbst beim Pullen. |
+
+4. **`Provision Hetzner Server`-Workflow manuell starten** (Actions-Tab → Workflow auswählen →
+   "Run workflow"). Legt SSH-Key + Firewall (nur Port 22 offen) + einen `cx23`-Server in Helsinki
+   (`hel1`) in Hetzner an, installiert Docker via Cloud-Init, loggt sich per `GHCR_PULL_TOKEN` bei
+   GHCR ein und startet `cloudflared` direkt beim ersten Boot. Läuft **einmalig** – ein zweiter Lauf
+   überspringt die Server-Erstellung, wenn `lan2026` schon existiert.
+
+   Der `app`-Container startet bei diesem allerersten Boot noch **nicht** – es gibt ja noch kein
+   gepushtes Image (das entsteht erst in Schritt 6). Das ist erwartet und kein Fehler; `cloudflared`
+   läuft trotzdem schon (`lan.dbehnke.dev` zeigt bis Schritt 6 kurz einen Cloudflare-Fehler wie
+   `502`/`523`, weil noch nichts hinter dem Tunnel lauscht).
+5. Die im Job-Summary ausgegebene **Server-IP als Secret `HETZNER_HOST`** anlegen.
+6. Push nach `main` → `CI/CD`-Workflow baut, testet, baut das Docker-Image, pusht es (privat) nach
+   GHCR und deployt per SSH – die Anmeldedaten aus Schritt 4 sind schon da, dieser erste Deploy
+   läuft direkt durch. Ab hier ist jeder weitere Push nach `main` ein normaler Deploy.
+
+### Alltag
+
+- **Deploy:** einfach nach `main` pushen. Tests (Unit + Integration + E2E) müssen grün sein, sonst
+  wird nicht gebaut/deployt.
+- **Rollback:** auf dem Server (`ssh deploy@<HETZNER_HOST>`) `/opt/lan2026/rollback.sh <git-sha>`
+  ausführen – pinnt das Docker-Image auf einen früheren, bereits gebauten Stand.
+- **Backups:** noch nicht eingerichtet (siehe Security-Review) – für echte Daten vor der ersten
+  "richtigen" LAN auf dem neuen Server unbedingt einen Cron-Job mit `sqlite3 .backup` ergänzen.
+- **`GHCR_PULL_TOKEN` erneuern** (Fine-grained Tokens laufen ggf. ab): neuen Token erzeugen, das
+  GitHub-Secret aktualisieren, dann auf dem Server (`ssh deploy@<HETZNER_HOST>`) die Zeile in
+  `/opt/lan2026/.env` von Hand ersetzen und `/opt/lan2026/docker-login.sh` erneut ausführen –
+  `provision.yml` läuft nach dem ersten Mal nicht automatisch nochmal.
+
+### Lokale Entwicklung / manuelles Hosting (unverändert möglich)
+
+Der Server ist weiterhin ein normaler Node.js-Prozess mit einer SQLite-Datei und läuft genauso gut
+auf jedem beliebigen kleinen Linux-Server/VPS ohne Docker – für die LAN-Party selbst reicht wie
+bisher `npm install && npm run build && npm start` auf einem Laptop im WLAN.
 
 ### Umgebungsvariablen
 
@@ -139,7 +186,9 @@ kleinen Linux-Server/VPS.
 | `PORT` | `3000` | Port, auf dem der Server lauscht. |
 | `DB_FILE` | `server/data/lan.db` | Pfad zur SQLite-Datei. Wird beim ersten Start angelegt. |
 | `ACCESS_TOKEN` | *(leer = kein Schutz)* | Geteiltes Zugangs-Token für die Web-Oberfläche. **Für den Live-Betrieb unbedingt setzen**, sonst ist das Tool für jeden im Internet offen. |
+| `ADMIN_PIN` | *(leer = offener Admin-Modus)* | PIN fürs Freischalten von Admin-Aktionen. **Für den Live-Betrieb unbedingt setzen.** |
 | `OFFLINE_TIMEOUT_MS` | `60000` | Nach wie vielen ms ohne Agent-Meldung ein Spieler als „offline" gilt. |
+| `NODE_ENV` | *(leer)* | Auf `production` gesetzt (macht der Docker-Container automatisch): verweigert den Start, wenn `ACCESS_TOKEN`/`ADMIN_PIN` leer sind, und beendet den Prozess statt weiterzulaufen, wenn ein unerwarteter Fehler durchschlägt (Docker startet ihn dann per `restart: unless-stopped` sofort neu). Für die LAN-Party selbst (kein Supervisor) bewusst **nicht** setzen. |
 
 Beispiel:
 

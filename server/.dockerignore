@@ -1,0 +1,7 @@
+node_modules
+dist
+dist-test
+data
+*.db
+*.db-journal
+npm-debug.log

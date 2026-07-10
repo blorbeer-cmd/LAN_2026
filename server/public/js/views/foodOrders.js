@@ -6,13 +6,21 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
+import { escapeHtml, avatarHtml, formatDateTime, toDatetimeLocal } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 
 let cache = null;
 let loading = false;
+
+// Which closed orders are expanded. Module-level rather than read off the
+// DOM: any mutation clears `cache` before calling ctx.rerender(), which
+// synchronously re-renders once with an empty list (cache still null) and
+// only picks up the reload's result on a second, later rerender — reading
+// "current DOM state" at render time would see nothing on that second pass,
+// since the first pass already wiped the <details> elements out.
+const expandedClosedOrderIds = new Set();
 
 async function load(ctx) {
   loading = true;
@@ -93,6 +101,27 @@ function renderItems(order, myId) {
     .join('');
 }
 
+// Metadata block (send time / notes / link) shown on both open and closed
+// orders, with a single edit affordance — all three are things people
+// commonly get wrong or need to correct ("doch erst um 21 Uhr", "Link war
+// falsch"), so they stay editable even after the order closed, unlike the
+// items themselves.
+function renderDetails(order) {
+  const sendAtLabel = order.sendAt
+    ? `🕒 Geht raus um ${formatDateTime(order.sendAt)} Uhr`
+    : '🕒 Kein Zeitpunkt festgelegt';
+  const hasDetails = Boolean(order.sendAt || order.notes || order.link);
+  return `
+    <div class="stack" style="gap:4px;">
+      <div class="row-between">
+        <span class="muted" style="font-size:0.82rem;">${sendAtLabel}</span>
+        <button type="button" class="btn btn-sm" data-edit-details="${order.id}">${hasDetails ? 'Bearbeiten' : '+ Infos & Link'}</button>
+      </div>
+      ${order.notes ? `<div class="muted" style="font-size:0.85rem;white-space:pre-wrap;word-break:break-word;">${escapeHtml(order.notes)}</div>` : ''}
+      ${order.link ? `<a href="${escapeHtml(order.link)}" target="_blank" rel="noopener" style="font-size:0.85rem;">🔗 Zur Karte / Lieferdienst</a>` : ''}
+    </div>`;
+}
+
 function renderOpenOrder(order, myId) {
   return `
     <div class="card stack" data-order-card="${order.id}">
@@ -103,6 +132,7 @@ function renderOpenOrder(order, myId) {
       <div class="muted" style="font-size:0.78rem;margin-top:-6px;">
         von ${escapeHtml(order.createdByName)} · ${formatDateTime(order.createdAt)}
       </div>
+      ${renderDetails(order)}
       <div>${renderItems(order, myId)}</div>
       ${order.totalCents > 0 ? `<div class="row-between"><strong>Summe</strong><strong>${formatCents(order.totalCents)}</strong></div>` : ''}
       ${
@@ -120,11 +150,12 @@ function renderOpenOrder(order, myId) {
 
 function renderClosedOrder(order) {
   return `
-    <details class="card" style="margin-bottom:12px;">
+    <details class="card" style="margin-bottom:12px;" data-closed-order="${order.id}" ${expandedClosedOrderIds.has(order.id) ? 'open' : ''}>
       <summary style="cursor:pointer;" class="row-between">
         <span><strong>${escapeHtml(order.title)}</strong> <span class="muted" style="font-size:0.8rem;">· ${order.items.length} Position(en)${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}</span></span>
         <span class="badge badge-offline">Geschlossen</span>
       </summary>
+      <div style="margin-top:10px;">${renderDetails(order)}</div>
       <div style="margin-top:10px;">${renderItems(order, null)}</div>
     </details>`;
 }
@@ -135,8 +166,21 @@ function openNewOrderForm(ctx, myId) {
     `
       <form id="order-form" class="stack">
         <input type="text" id="order-title" maxlength="80" required autofocus placeholder="z.B. Pizza bei Luigi's" />
+        <div>
+          <label for="order-sendat" class="field-label">Geht raus um (optional)</label>
+          <input type="datetime-local" id="order-sendat" />
+        </div>
+        <div>
+          <label for="order-notes" class="field-label">Infos (optional)</label>
+          <textarea id="order-notes" rows="2" maxlength="500" placeholder="z.B. Mindestbestellwert 15€, bar zahlen"></textarea>
+        </div>
+        <div>
+          <label for="order-link" class="field-label">Link zu Karte / Lieferdienst (optional)</label>
+          <input type="url" id="order-link" maxlength="300" placeholder="https://…" />
+        </div>
         <p class="muted" style="font-size:0.8rem;margin:0;">
-          Alle bekommen eine Benachrichtigung und können sich dann selbst eintragen.
+          Alle bekommen eine Benachrichtigung und können sich dann selbst eintragen. Alles lässt
+          sich später jederzeit ändern.
         </p>
         <button type="submit" class="btn btn-primary btn-block">Bestellung öffnen</button>
       </form>
@@ -147,11 +191,67 @@ function openNewOrderForm(ctx, myId) {
           e.preventDefault();
           const title = el.querySelector('#order-title').value.trim();
           if (!title) return;
+          const sendAtRaw = el.querySelector('#order-sendat').value;
+          const sendAt = sendAtRaw ? new Date(sendAtRaw).getTime() : undefined;
+          const notes = el.querySelector('#order-notes').value.trim() || undefined;
+          const linkRaw = el.querySelector('#order-link').value.trim();
+          if (linkRaw && !/^https?:\/\//i.test(linkRaw)) {
+            return showToast('Link muss mit http:// oder https:// beginnen.', { error: true });
+          }
+          const link = linkRaw || undefined;
           try {
-            await api.foodOrders.create(myId, title);
+            await api.foodOrders.create(myId, title, { sendAt, notes, link });
             close();
             cache = null;
             showToast('Bestellung geöffnet – alle wurden benachrichtigt.');
+            ctx.rerender();
+          } catch (err) {
+            showToast(err.message, { error: true });
+          }
+        });
+      },
+    }
+  );
+}
+
+function openDetailsForm(ctx, order) {
+  const { close } = openModal(
+    'Infos & Link bearbeiten',
+    `
+      <form id="details-form" class="stack">
+        <div>
+          <label for="sendat-input" class="field-label">Geht raus um</label>
+          <input type="datetime-local" id="sendat-input" value="${order.sendAt ? toDatetimeLocal(order.sendAt) : ''}" />
+        </div>
+        <div>
+          <label for="notes-input" class="field-label">Infos</label>
+          <textarea id="notes-input" rows="3" maxlength="500" placeholder="z.B. Mindestbestellwert 15€, bar zahlen">${escapeHtml(order.notes ?? '')}</textarea>
+        </div>
+        <div>
+          <label for="link-input" class="field-label">Link zu Karte / Lieferdienst</label>
+          <input type="url" id="link-input" maxlength="300" placeholder="https://…" value="${escapeHtml(order.link ?? '')}" />
+        </div>
+        <p class="muted" style="font-size:0.8rem;margin:0;">Leer lassen entfernt das jeweilige Feld.</p>
+        <button type="submit" class="btn btn-primary btn-block">Speichern</button>
+      </form>
+    `,
+    {
+      onMount: (el) => {
+        el.querySelector('#details-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const sendAtRaw = el.querySelector('#sendat-input').value;
+          const sendAt = sendAtRaw ? new Date(sendAtRaw).getTime() : null;
+          const notes = el.querySelector('#notes-input').value.trim() || null;
+          const linkRaw = el.querySelector('#link-input').value.trim();
+          if (linkRaw && !/^https?:\/\//i.test(linkRaw)) {
+            return showToast('Link muss mit http:// oder https:// beginnen.', { error: true });
+          }
+          const link = linkRaw || null;
+          try {
+            await api.foodOrders.updateDetails(order.id, { sendAt, notes, link });
+            close();
+            cache = null;
+            showToast('Gespeichert.');
             ctx.rerender();
           } catch (err) {
             showToast(err.message, { error: true });
@@ -257,6 +357,20 @@ export function renderFoodOrders(container, ctx) {
       } catch (err) {
         showToast(err.message, { error: true });
       }
+    });
+  });
+
+  container.querySelectorAll('[data-closed-order]').forEach((details) => {
+    details.addEventListener('toggle', () => {
+      if (details.open) expandedClosedOrderIds.add(details.dataset.closedOrder);
+      else expandedClosedOrderIds.delete(details.dataset.closedOrder);
+    });
+  });
+
+  container.querySelectorAll('[data-edit-details]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const order = orders.find((o) => o.id === btn.dataset.editDetails);
+      if (order) openDetailsForm(ctx, order);
     });
   });
 

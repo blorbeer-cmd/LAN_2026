@@ -30,6 +30,7 @@ db.exec(`
     avatar          TEXT,
     api_key         TEXT NOT NULL UNIQUE,
     tracking_paused INTEGER NOT NULL DEFAULT 0, -- player-side opt-out; agent reports for this player are dropped
+    is_admin        INTEGER NOT NULL DEFAULT 0, -- moderation role; can be granted via PATCH /api/players/:id
     created_at      INTEGER NOT NULL
   );
 
@@ -69,6 +70,12 @@ db.exec(`
     PRIMARY KEY (event_id, player_id)
   );
 
+  -- Every game the group could play lives here — from a bare tracked entry
+  -- (name + process names, for the agent) to a full catalog entry (platform,
+  -- trailer) to a player-submitted suggestion, all as one lifecycle instead
+  -- of two separate tables. status distinguishes "vorgeschlagen" from
+  -- "im Katalog" — whether a game additionally counts as "getrackt" is never
+  -- stored, just derived from whether it has any game_process_names.
   CREATE TABLE IF NOT EXISTS games (
     id            TEXT PRIMARY KEY,
     name          TEXT NOT NULL,
@@ -76,6 +83,11 @@ db.exec(`
     icon_image    TEXT,    -- optional data: URL (self-uploaded box art/logo), takes over from icon when set
     min_team_size INTEGER NOT NULL DEFAULT 1,
     max_team_size INTEGER NOT NULL DEFAULT 5,
+    platform      TEXT,
+    platform_url  TEXT,
+    trailer_url   TEXT,
+    status        TEXT NOT NULL DEFAULT 'catalog' CHECK (status IN ('suggestion', 'catalog')),
+    created_by    TEXT REFERENCES players(id) ON DELETE SET NULL,
     created_at    INTEGER NOT NULL
   );
 
@@ -413,7 +425,10 @@ db.exec(`
     title      TEXT NOT NULL,
     created_by TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     created_at INTEGER NOT NULL,
-    closed_at  INTEGER
+    closed_at  INTEGER,
+    send_at    INTEGER, -- optional, editable: when the order will actually be placed/picked up
+    notes      TEXT,    -- optional, editable: free-text info (e.g. "bar zahlen", "Mindestbestellwert 15€")
+    link       TEXT     -- optional, editable: URL to the menu/delivery service
   );
 
   CREATE TABLE IF NOT EXISTS food_order_items (
@@ -423,6 +438,42 @@ db.exec(`
     description TEXT NOT NULL,
     price_cents INTEGER,
     created_at  INTEGER NOT NULL
+  );
+
+  -- An-/Abreise: one self-service row per player/event, plus separate
+  -- arrival/departure carpool groups that players can join/leave.
+  CREATE TABLE IF NOT EXISTS arrivals (
+    event_id     TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    player_id    TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    arrival_at   INTEGER,
+    departure_at INTEGER,
+    note         TEXT,
+    updated_at   INTEGER NOT NULL,
+    PRIMARY KEY (event_id, player_id)
+  );
+
+  -- created_by is always the driver (enforced in arrivals.ts: can't leave,
+  -- only delete the whole group) - start_at/start_location/eta_at are the
+  -- driver's plan (when/where they set off, and when they expect to
+  -- arrive), seats_total caps how many others (not counting the driver) can
+  -- join via carpool_members.
+  CREATE TABLE IF NOT EXISTS carpools (
+    id             TEXT PRIMARY KEY,
+    event_id       TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    direction      TEXT NOT NULL,
+    label          TEXT NOT NULL,
+    start_at       INTEGER,
+    start_location TEXT,
+    eta_at         INTEGER,
+    seats_total    INTEGER NOT NULL DEFAULT 3,
+    created_by     TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    created_at     INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS carpool_members (
+    carpool_id TEXT NOT NULL REFERENCES carpools(id) ON DELETE CASCADE,
+    player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    PRIMARY KEY (carpool_id, player_id)
   );
 
   CREATE INDEX IF NOT EXISTS idx_skills_game ON skills(game_id);
@@ -450,6 +501,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_quiz_seen_player ON quiz_seen(player_id);
   CREATE INDEX IF NOT EXISTS idx_food_orders_event ON food_orders(event_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_food_order_items_order ON food_order_items(order_id);
+  CREATE INDEX IF NOT EXISTS idx_arrivals_event ON arrivals(event_id, arrival_at, departure_at);
+  CREATE INDEX IF NOT EXISTS idx_carpools_event ON carpools(event_id, direction, created_at);
+  CREATE INDEX IF NOT EXISTS idx_carpool_members_carpool ON carpool_members(carpool_id);
 `);
 
 // Migration: older databases were created before the `avatar` column existed.
@@ -463,12 +517,144 @@ function migrateAvatarColumn(): void {
 }
 migrateAvatarColumn();
 
+// Migration: older databases predate the is_admin moderation flag.
+function migrateAdminColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'is_admin')) return;
+  db.exec('ALTER TABLE players ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0');
+}
+migrateAdminColumn();
+
 function migrateGameIconImageColumn(): void {
   const columns = db.prepare('PRAGMA table_info(games)').all() as Array<{ name: string }>;
   if (columns.some((c) => c.name === 'icon_image')) return;
   db.exec('ALTER TABLE games ADD COLUMN icon_image TEXT');
 }
 migrateGameIconImageColumn();
+
+// Migration: older databases predate the games/game_catalog merge (see
+// server/CLAUDE.md games reorg) — games itself needs the catalog columns
+// added, and if a standalone game_catalog table still exists from before the
+// merge, its rows get folded into games (and its old 1-5 ratings into
+// preferences, ×2 onto the shared 1-10 scale) before the legacy tables are
+// dropped. A brand-new database gets both already via the schema above and
+// never creates game_catalog in the first place, so this is a no-op there.
+function migrateGamesCatalogMergeColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(games)').all() as Array<{ name: string }>;
+  const has = (name: string) => columns.some((c) => c.name === name);
+  if (!has('platform')) db.exec('ALTER TABLE games ADD COLUMN platform TEXT');
+  if (!has('platform_url')) db.exec('ALTER TABLE games ADD COLUMN platform_url TEXT');
+  if (!has('trailer_url')) db.exec('ALTER TABLE games ADD COLUMN trailer_url TEXT');
+  if (!has('status')) db.exec("ALTER TABLE games ADD COLUMN status TEXT NOT NULL DEFAULT 'catalog'");
+  if (!has('created_by')) db.exec('ALTER TABLE games ADD COLUMN created_by TEXT REFERENCES players(id) ON DELETE SET NULL');
+}
+migrateGamesCatalogMergeColumns();
+
+function migrateLegacyGameCatalogIntoGames(): void {
+  const catalogTableExists = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'game_catalog'`)
+    .get();
+  if (!catalogTableExists) return;
+
+  interface LegacyCatalogRow {
+    id: string;
+    title: string;
+    platform: string | null;
+    platform_url: string | null;
+    trailer_url: string | null;
+    is_suggestion: number;
+    created_by: string | null;
+    created_at: number;
+  }
+  const catalogRows = db.prepare('SELECT * FROM game_catalog').all() as LegacyCatalogRow[];
+  const findGameByName = db.prepare('SELECT id FROM games WHERE name = ? COLLATE NOCASE');
+  // COALESCE: a title that already exists as a game (e.g. "Rocket League" was
+  // both a tracked game and a catalog entry before the merge) only gets its
+  // blank catalog fields filled in — the tracked row's own data always wins.
+  const fillMissing = db.prepare(
+    `UPDATE games SET platform = COALESCE(platform, ?), platform_url = COALESCE(platform_url, ?), trailer_url = COALESCE(trailer_url, ?) WHERE id = ?`
+  );
+  const insertGame = db.prepare(
+    `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at, platform, platform_url, trailer_url, status, created_by)
+     VALUES (?, ?, '🎮', 1, 5, ?, ?, ?, ?, ?, ?)`
+  );
+
+  // catalog_id -> the games.id its ratings should be re-homed to.
+  const resolvedGameId = new Map<string, string>();
+
+  db.transaction(() => {
+    for (const row of catalogRows) {
+      const existing = findGameByName.get(row.title) as { id: string } | undefined;
+      if (existing) {
+        fillMissing.run(row.platform, row.platform_url, row.trailer_url, existing.id);
+        resolvedGameId.set(row.id, existing.id);
+      } else {
+        insertGame.run(
+          row.id,
+          row.title,
+          row.created_at,
+          row.platform,
+          row.platform_url,
+          row.trailer_url,
+          row.is_suggestion ? 'suggestion' : 'catalog',
+          row.created_by
+        );
+        resolvedGameId.set(row.id, row.id);
+      }
+    }
+
+    const ratingRows = db.prepare('SELECT catalog_id, player_id, rating FROM game_catalog_ratings').all() as Array<{
+      catalog_id: string;
+      player_id: string;
+      rating: number;
+    }>;
+    // Never overwrites a preference the player already has on the merged
+    // game — the 1-10 "Bock" scale (changeable on a whim throughout the LAN)
+    // is more current than a one-time 1-5 catalog rating from before the merge.
+    const insertPreference = db.prepare('INSERT OR IGNORE INTO preferences (player_id, game_id, rating) VALUES (?, ?, ?)');
+    for (const r of ratingRows) {
+      const gameId = resolvedGameId.get(r.catalog_id);
+      if (!gameId) continue;
+      insertPreference.run(r.player_id, gameId, Math.min(10, r.rating * 2));
+    }
+
+    db.exec('DROP TABLE game_catalog_ratings');
+    db.exec('DROP TABLE game_catalog_interest');
+    db.exec('DROP TABLE game_catalog');
+  })();
+}
+migrateLegacyGameCatalogIntoGames();
+
+// Migration: older databases predate the optional "wann geht's raus"
+// send_at field on food orders.
+function migrateFoodOrderSendAtColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(food_orders)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'send_at')) return;
+  db.exec('ALTER TABLE food_orders ADD COLUMN send_at INTEGER');
+}
+migrateFoodOrderSendAtColumn();
+
+// Migration: older databases predate the optional notes/link fields on food
+// orders (free-text info + link to the menu/delivery service).
+function migrateFoodOrderNotesLinkColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(food_orders)').all() as Array<{ name: string }>;
+  const has = (name: string) => columns.some((c) => c.name === name);
+  if (!has('notes')) db.exec('ALTER TABLE food_orders ADD COLUMN notes TEXT');
+  if (!has('link')) db.exec('ALTER TABLE food_orders ADD COLUMN link TEXT');
+}
+migrateFoodOrderNotesLinkColumns();
+
+// Migration: older databases predate the carpool driver plan (when/where
+// they start, ETA, seat count).
+function migrateCarpoolPlanColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(carpools)').all() as Array<{ name: string }>;
+  const has = (name: string) => columns.some((c) => c.name === name);
+  if (!has('start_at')) db.exec('ALTER TABLE carpools ADD COLUMN start_at INTEGER');
+  if (!has('start_location')) db.exec('ALTER TABLE carpools ADD COLUMN start_location TEXT');
+  if (!has('eta_at')) db.exec('ALTER TABLE carpools ADD COLUMN eta_at INTEGER');
+  if (!has('seats_total')) db.exec('ALTER TABLE carpools ADD COLUMN seats_total INTEGER NOT NULL DEFAULT 3');
+}
+migrateCarpoolPlanColumns();
 
 // Migration: older databases predate the group-knockout format and score
 // tracking (both added together) — add the columns they need if missing.
@@ -721,7 +907,75 @@ function seedQuizQuestions(): void {
   })();
 }
 
+// Seed the broader "could we play this?" pool directly into games (status
+// 'catalog') from the shared planning sheet. Runs every start, not just on an
+// empty database, since it also fills in platform/trailer for a title that
+// already exists as a tracked game (e.g. "Rocket League") — COALESCE below
+// only touches still-blank fields, so an admin's own edit is never reverted.
+function seedCatalogGames(): void {
+  const now = Date.now();
+  const trailer = (title: string) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${title} gameplay trailer`)}`;
+  const defaults: Array<{ title: string; platform: string; platformUrl: string | null }> = [
+    { title: 'Age of Empires 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/813780/Age_of_Empires_II_Definitive_Edition/' },
+    { title: 'Age of Empires 4', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1466860/Age_of_Empires_IV_Anniversary_Edition/' },
+    { title: 'Among Us', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/945360/Among_Us/' },
+    { title: 'Back 4 Blood', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/924970/Back_4_Blood/' },
+    { title: 'C&C Generals', platform: 'EA', platformUrl: 'https://www.ea.com/games/command-and-conquer/command-and-conquer-generals' },
+    { title: 'Call of Duty 4 - Modern Warfare', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/7940/Call_of_Duty_4_Modern_Warfare_2007/' },
+    { title: 'Call of Duty II', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/2630/Call_of_Duty_2/' },
+    { title: 'Chivalry 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1824220/Chivalry_2/' },
+    { title: 'CS 1.5', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/10/CounterStrike/' },
+    { title: 'CS 1.6', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/10/CounterStrike/' },
+    { title: 'CS GO', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/730/CounterStrike_2/' },
+    { title: 'Dawn of War', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/4570/Warhammer_40000_Dawn_of_War__Game_of_the_Year_Edition/' },
+    { title: 'DOTA 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/570/Dota_2/' },
+    { title: 'Fall Guys', platform: 'Epic', platformUrl: 'https://store.epicgames.com/p/fall-guys' },
+    { title: 'Golf with your Friends', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/431240/Golf_With_Your_Friends/' },
+    { title: 'GRID', platform: 'Steam', platformUrl: 'https://store.steampowered.com/search/?term=GRID' },
+    { title: 'Halo Infinite', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1240440/Halo_Infinite/' },
+    { title: 'Hot Wheels Unleashed', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1271700/HOT_WHEELS_UNLEASHED/' },
+    { title: 'Iron Harvest', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/826630/Iron_Harvest/' },
+    { title: 'Jedi Knight II', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/6030/STAR_WARS_Jedi_Knight_II_Jedi_Outcast/' },
+    { title: 'League of Legends', platform: 'Riot', platformUrl: 'https://www.leagueoflegends.com/' },
+    { title: 'Rocket League', platform: 'Epic', platformUrl: 'https://store.epicgames.com/p/rocket-league' },
+    { title: 'Sea of Thieves', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1172620/Sea_of_Thieves_2024_Edition/' },
+    { title: 'Splitgate', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/677620/Splitgate/' },
+    { title: 'Star Wars Battlefront', platform: 'Steam', platformUrl: 'https://store.steampowered.com/search/?term=Star%20Wars%20Battlefront' },
+    { title: 'Starcraft 2', platform: 'Battle.net', platformUrl: 'https://starcraft2.blizzard.com/' },
+    { title: 'Team Fortress 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/440/Team_Fortress_2/' },
+    { title: 'Trackmania', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/2225070/Trackmania/' },
+    { title: 'Tricky Towers', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/437920/Tricky_Towers/' },
+    { title: 'Ultimate Chicken Horse', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/386940/Ultimate_Chicken_Horse/' },
+    { title: 'UT2003', platform: 'NAS', platformUrl: null },
+    { title: 'UT2004', platform: 'NAS', platformUrl: null },
+    { title: 'Warcraft 3', platform: 'NAS', platformUrl: null },
+    { title: 'Worms', platform: 'Steam', platformUrl: 'https://store.steampowered.com/search/?term=Worms' },
+    { title: 'Wreckfest', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/228380/Wreckfest/' },
+  ];
+
+  const findByName = db.prepare('SELECT id FROM games WHERE name = ? COLLATE NOCASE');
+  const insertGame = db.prepare(
+    `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at, platform, platform_url, trailer_url, status)
+     VALUES (?, ?, '🎮', 1, 5, ?, ?, ?, ?, 'catalog')`
+  );
+  const fillMissing = db.prepare(
+    `UPDATE games SET platform = COALESCE(platform, ?), platform_url = COALESCE(platform_url, ?), trailer_url = COALESCE(trailer_url, ?) WHERE id = ?`
+  );
+
+  db.transaction(() => {
+    for (const g of defaults) {
+      const existing = findByName.get(g.title) as { id: string } | undefined;
+      if (existing) {
+        fillMissing.run(g.platform, g.platformUrl, trailer(g.title), existing.id);
+      } else {
+        insertGame.run(nanoid(), g.title, now, g.platform, g.platformUrl, trailer(g.title));
+      }
+    }
+  })();
+}
+
 seedQuizQuestions();
+seedCatalogGames();
 
 // Seed the permanent "außerhalb von Events" sentinel, once. This is the ONLY
 // place that ever creates it: events.ts's getTrackingEventId() is a pure

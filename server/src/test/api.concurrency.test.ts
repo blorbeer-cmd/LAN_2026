@@ -85,6 +85,21 @@ test('simultaneous creates with the same name: exactly one player/game wins', as
   assert.equal(gCounts[409], 5, JSON.stringify(gCounts));
 });
 
+test('simultaneous promotes of the same suggestion: exactly one wins', async () => {
+  const created = await request(app).post('/api/games').send({ name: 'Race Suggestion', status: 'suggestion' });
+  assert.equal(created.status, 201);
+
+  const results = await Promise.all(
+    Array.from({ length: 6 }, () => request(app).post(`/api/games/${created.body.id}/promote`))
+  );
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[200], 1, JSON.stringify(counts));
+  assert.equal(counts[409], 5, JSON.stringify(counts));
+
+  const after = await request(app).get(`/api/games/${created.body.id}`);
+  assert.equal(after.body.status, 'catalog');
+});
+
 test('conflicting simultaneous tournament reports: one result, one leaderboard match, consistent bracket', async () => {
   const create = await request(app)
     .post('/api/tournaments')
@@ -184,6 +199,34 @@ test('closing a food order while others still add items: stragglers get a clean 
   assert.equal(order.open, false);
   const accepted = results.slice(2).filter((r) => r.status === 201).length;
   assert.equal(order.items.length, accepted);
+});
+
+test('simultaneous carpool joins: exactly seatsTotal of them win', async () => {
+  const driver = playerIds[0];
+  const created = await request(app)
+    .post('/api/arrivals/carpools')
+    .send({ playerId: driver, direction: 'arrival', label: 'Race-Carpool', seatsTotal: 2 });
+  assert.equal(created.status, 201);
+  const carpoolId = created.body.id;
+
+  // Reuse the setup players plus a couple more so there are clearly more
+  // joiners than free seats (2).
+  const extra = await Promise.all(
+    ['Race E', 'Race F'].map((name) => request(app).post('/api/players').send({ name }))
+  );
+  const joiners = [...playerIds.slice(1), ...extra.map((r) => r.body.id)];
+
+  const results = await Promise.all(
+    joiners.map((playerId) => request(app).post(`/api/arrivals/carpools/${carpoolId}/join`).send({ playerId }))
+  );
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[200], 2, JSON.stringify(counts));
+  assert.equal(counts[409], joiners.length - 2, JSON.stringify(counts));
+
+  const list = await request(app).get('/api/arrivals');
+  const carpool = list.body.carpools.arrival.find((c: { id: string }) => c.id === carpoolId);
+  assert.equal(carpool.members.length, 3); // driver + 2 passengers
+  assert.equal(carpool.seatsFree, 0);
 });
 
 test('two events starting tracking simultaneously: exactly one wins', async () => {

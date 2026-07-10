@@ -3,14 +3,17 @@
 // and by Votes for casting a vote — this tool has no real per-person login,
 // just a shared access token, so "who am I" is a convenience the browser
 // remembers locally, not a security boundary), then can maintain their own
-// gamer name (unique across everyone), a profile picture, their own skill
-// ratings and seat neighbors. Personal playtime/awards stats live on their
-// own view (myStats.js) — kept separate so this setup page doesn't turn into
-// an ever-longer scroll mixing one-time setup with an open-ended dashboard.
+// gamer name (unique across everyone), a profile picture and seat neighbors.
+// Bock/Skill-Ratings moved to the Spiele view (see server/CLAUDE.md games
+// reorg) — that's where the group averages live too, so this page just
+// points there instead of duplicating the sliders. Personal playtime/awards
+// stats live on their own view (myStats.js) — kept separate so this setup
+// page doesn't turn into an ever-longer scroll mixing one-time setup with an
+// open-ended dashboard.
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
+import { escapeHtml, avatarHtml } from '../format.js';
 import { getMyId, setMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { getPushSubscriptionState, enablePush, disablePush } from '../push.js';
@@ -71,16 +74,6 @@ function renderIdentityPicker(container, ctx) {
       showToast(err.message, { error: true });
     }
   });
-}
-
-function ratingFor(playerId, gameId) {
-  const entry = state.skills.find((s) => s.player_id === playerId && s.game_id === gameId);
-  return entry ? entry.rating : 5;
-}
-
-function preferenceFor(playerId, gameId) {
-  const entry = state.preferences.find((p) => p.player_id === playerId && p.game_id === gameId);
-  return entry ? entry.rating : 5;
 }
 
 async function loadNeighbors(playerId, ctx) {
@@ -155,29 +148,11 @@ export function renderProfile(container, ctx) {
     loadPushState(ctx);
   }
 
-  const skillRows = state.games
-    .map((g) => {
-      const rating = ratingFor(myId, g.id);
-      return `
-        <div class="skill-row" data-game="${g.id}">
-          <span class="row" style="gap:8px;">${gameBadgeHtml(g, 24)} ${escapeHtml(g.name)}</span>
-          <span class="skill-value">${rating}</span>
-          <input type="range" class="skill-row-slider" min="1" max="10" step="1" value="${rating}" />
-        </div>`;
-    })
-    .join('');
-
-  const preferenceRows = state.games
-    .map((g) => {
-      const rating = preferenceFor(myId, g.id);
-      return `
-        <div class="skill-row" data-game="${g.id}">
-          <span class="row" style="gap:8px;">${gameBadgeHtml(g, 24)} ${escapeHtml(g.name)}</span>
-          <span class="skill-value">${rating}</span>
-          <input type="range" class="skill-row-slider preference-row-slider" min="1" max="10" step="1" value="${rating}" />
-        </div>`;
-    })
-    .join('');
+  // A brand-new player has rated nothing yet — nudge them to the Spiele
+  // view once, prominently. Once at least one rating exists, a plain link
+  // further down (next to "Meine Statistiken") is enough.
+  const hasAnyRating =
+    state.skills.some((s) => s.player_id === myId) || state.preferences.some((p) => p.player_id === myId);
 
   container.innerHTML = `
     <div class="row-between">
@@ -201,6 +176,24 @@ export function renderProfile(container, ctx) {
       </div>
       <div class="muted" style="font-size:0.8rem;">Bild antippen zum Ändern. Name muss über alle Spieler eindeutig sein.</div>
     </div>
+
+    ${
+      state.games.length === 0
+        ? ''
+        : hasAnyRating
+          ? ''
+          : `<div class="card stack" style="border-color:rgba(91,140,255,0.55);">
+               <div class="row" style="gap:8px;align-items:center;">
+                 <span style="font-size:1.4rem;">🎮</span>
+                 <strong>Bock & Skill eintragen</strong>
+               </div>
+               <p class="muted" style="font-size:0.8rem;margin:0;">
+                 Worauf hast du Lust, was kannst du gut? Trag das kurz in der Spiele-Liste ein – dauert
+                 eine Minute und hilft beim Voting und beim Teams-Auslosen.
+               </p>
+               <button type="button" class="btn btn-primary btn-block" data-navigate="gameCatalog">Zu den Spielen</button>
+             </div>`
+    }
 
     <div class="section-title">🖥️ Live-Status-Agent</div>
     <div class="card stack">
@@ -248,19 +241,6 @@ export function renderProfile(container, ctx) {
     <div class="section-title">🔔 Push-Benachrichtigungen</div>
     <div class="card">${renderPushSection()}</div>
 
-    ${state.games.length > 0 ? `<div class="section-title">Skill-Ratings</div><div class="card" id="skill-ratings-list">${skillRows}</div>` : ''}
-
-    ${
-      state.games.length > 0
-        ? `<div class="section-title">🔥 Bock-Level</div>
-           <p class="muted" style="font-size:0.8rem;margin-top:-4px;">
-             Worauf hast du gerade am meisten Lust? Kannst du jederzeit ändern – fließt live in die
-             Sortierung der Abstimmung mit ein.
-           </p>
-           <div class="card" id="preference-ratings-list">${preferenceRows}</div>`
-        : ''
-    }
-
     <div class="row-between">
       <div class="section-title" style="margin-bottom:8px;">🪑 Sitznachbarn</div>
       <button type="button" class="btn btn-sm" data-navigate="seating">Sitzplan ansehen</button>
@@ -271,6 +251,14 @@ export function renderProfile(container, ctx) {
       das für das jeweilige Spiel wichtig ist (in den Spiel-Einstellungen einstellbar).
     </p>
 
+    ${
+      hasAnyRating
+        ? `<div class="card row-between">
+             <span>🎮 <strong>Bock & Skill</strong></span>
+             <button type="button" class="btn btn-sm" data-navigate="gameCatalog">Zu den Spielen</button>
+           </div>`
+        : ''
+    }
     <div class="card row-between">
       <span>📊 <strong>Meine Statistiken</strong></span>
       <button type="button" class="btn btn-sm" data-navigate="myStats">Ansehen</button>
@@ -364,44 +352,6 @@ export function renderProfile(container, ctx) {
     } catch (err) {
       showToast(err.message, { error: true });
     }
-  });
-
-  container.querySelectorAll('#skill-ratings-list .skill-row').forEach((row) => {
-    const gameId = row.dataset.game;
-    const slider = row.querySelector('input[type="range"]');
-    const valueEl = row.querySelector('.skill-value');
-    let debounceTimer = null;
-    slider.addEventListener('input', () => {
-      valueEl.textContent = slider.value;
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(async () => {
-        try {
-          await api.skills.set(myId, gameId, parseInt(slider.value, 10));
-          await ctx.refresh();
-        } catch (err) {
-          showToast(err.message, { error: true });
-        }
-      }, 250);
-    });
-  });
-
-  container.querySelectorAll('#preference-ratings-list .skill-row').forEach((row) => {
-    const gameId = row.dataset.game;
-    const slider = row.querySelector('input[type="range"]');
-    const valueEl = row.querySelector('.skill-value');
-    let debounceTimer = null;
-    slider.addEventListener('input', () => {
-      valueEl.textContent = slider.value;
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(async () => {
-        try {
-          await api.preferences.set(myId, gameId, parseInt(slider.value, 10));
-          await ctx.refresh();
-        } catch (err) {
-          showToast(err.message, { error: true });
-        }
-      }, 250);
-    });
   });
 
   container.querySelectorAll('[data-neighbor]').forEach((cb) => {

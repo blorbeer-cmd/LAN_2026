@@ -10,23 +10,25 @@ import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
 import { renderLive, invalidatePings, invalidateDigest } from './views/live.js';
 import { renderPlayers } from './views/players.js';
-import { renderGames } from './views/games.js';
+import { renderSettings } from './views/games.js';
 import { renderMatchmaking, invalidateMatchmakingHistory, setDraftState } from './views/matchmaking.js';
 import { renderBroadcast, invalidateBroadcasts } from './views/broadcast.js';
 import { renderInfoBoard, invalidateInfoBoard } from './views/infoBoard.js';
 import { renderFoodOrders, invalidateFoodOrders } from './views/foodOrders.js';
 import { renderArcade } from './views/arcade.js';
 import { renderTetris } from './views/tetris.js';
+import { renderGameCatalog, invalidateSkillSuggestions } from './views/gameCatalog.js';
+import { renderArrivals, invalidateArrivals } from './views/arrivals.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
-import { renderGameStats } from './views/gameStats.js';
 import { renderProfile } from './views/profile.js';
 import { renderTournaments, invalidateTournaments, focusTournament } from './views/tournament.js';
 import { renderHallOfFame } from './views/hallOfFame.js';
 import { renderSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
 import { renderMore } from './views/more.js';
+import { renderAdmin } from './views/admin.js';
 
 const VIEWS = {
   live: renderLive,
@@ -34,9 +36,8 @@ const VIEWS = {
   matchmaking: renderMatchmaking,
   votes: renderVotes,
   leaderboard: renderLeaderboard,
-  settings: renderGames,
+  settings: renderSettings,
   analytics: renderAnalytics,
-  gameStats: renderGameStats,
   profile: renderProfile,
   tournaments: renderTournaments,
   hallOfFame: renderHallOfFame,
@@ -48,6 +49,9 @@ const VIEWS = {
   foodOrders: renderFoodOrders,
   arcade: renderArcade,
   tetris: renderTetris,
+  gameCatalog: renderGameCatalog,
+  arrivals: renderArrivals,
+  admin: renderAdmin,
 };
 
 let currentView = 'live';
@@ -77,7 +81,16 @@ function renderCurrent() {
   if (renderFn) renderFn(viewContainer, ctx);
 }
 
-function switchView(view) {
+// Every deliberate tab switch pushes a browser history entry (see main()'s
+// initial replaceState + the popstate listener below) — without this, the
+// device's back button has no in-app navigation to undo and just leaves the
+// tool entirely instead of jumping to whatever view was open before.
+// `fromHistory` is set only when popstate itself calls this, so we render
+// the view popstate already navigated the browser to instead of pushing
+// another (identical) entry on top of it, which would trap back/forward in
+// a loop between the same two states.
+function switchView(view, { fromHistory = false } = {}) {
+  const changed = view !== currentView;
   currentView = view;
   document.querySelectorAll('.nav-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.view === view);
@@ -94,6 +107,9 @@ function switchView(view) {
   document.getElementById('profile-btn').classList.toggle('needs-setup', !getMyId());
   renderCurrent();
   viewContainer.scrollTop = 0;
+  if (!fromHistory && changed) {
+    history.pushState({ view }, '');
+  }
 }
 
 async function tokenWorks(candidate) {
@@ -169,6 +185,15 @@ function wireNav() {
   // update). Kept as plain CustomEvents so modules stay decoupled from app.js.
   window.addEventListener('lan:navigate', (e) => switchView(e.detail));
   window.addEventListener('lan:rerender', () => renderCurrent());
+
+  // Back/forward: jump to whichever view is recorded on the popped entry
+  // instead of re-pushing it (see switchView's fromHistory param). No
+  // recorded state (extremely old entry, or a browser that fired this
+  // without one) falls back to today's usual landing view.
+  window.addEventListener('popstate', (e) => {
+    const view = e.state?.view || (getMyId() ? 'live' : 'profile');
+    switchView(view, { fromHistory: true });
+  });
 }
 
 function wireSocket() {
@@ -183,13 +208,16 @@ function wireSocket() {
     'players:changed',
     'games:changed',
     'skills:changed',
-    'preferences:changed',
     'leaderboard:changed',
     'events:changed',
   ];
   fullReloadEvents.forEach((event) =>
     socket.on(event, () => {
       invalidateDigest();
+      // Cheap enough to invalidate on every one of these (not just
+      // leaderboard:changed, the only one that actually changes match
+      // history) — the next time the Spiele view opens it just refetches.
+      invalidateSkillSuggestions();
       ctx.refresh();
     })
   );
@@ -222,6 +250,32 @@ function wireSocket() {
         onClick: () => switchView('votes'),
       });
     }
+  });
+  // Carries the changed row directly (see routes/preferences.ts) so it can be
+  // patched into state.preferences without a round trip. Preferences drive
+  // the voting view's sort order/display (see votes.js) and the Spiele
+  // view's "Bock" numbers (see gameCatalog.js), but aren't part of the votes
+  // payload, so that one tally is refetched too — cheap compared to a full
+  // reload, and makes a slider change on one device show up everywhere else
+  // immediately instead of only after some other event happens to reload.
+  socket.on('preferences:changed', async (payload) => {
+    if (payload) {
+      const { playerId, gameId, rating } = payload;
+      const existing = state.preferences.find((p) => p.player_id === playerId && p.game_id === gameId);
+      if (rating === null) {
+        state.preferences = state.preferences.filter((p) => !(p.player_id === playerId && p.game_id === gameId));
+      } else if (existing) {
+        existing.rating = rating;
+      } else {
+        state.preferences.push({ player_id: playerId, game_id: gameId, rating });
+      }
+    }
+    try {
+      state.votes = await api.votes.get();
+    } catch {
+      // transient failure - keep the last known votes state, not worth surfacing
+    }
+    if (currentView === 'votes' || currentView === 'gameCatalog') renderCurrent();
   });
   socket.on('matchmaking:generated', (payload) => {
     state.lastMatchmaking = payload;
@@ -302,6 +356,11 @@ function wireSocket() {
       });
     }
   });
+
+  socket.on('arrivals:changed', () => {
+    invalidateArrivals();
+    if (currentView === 'arrivals') renderCurrent();
+  });
 }
 
 async function main() {
@@ -315,7 +374,12 @@ async function main() {
   // phone, …) — send them straight into self-onboarding instead of the Live
   // board, so setting up name/avatar/skills/agent-key is the first thing
   // they see, not something they have to go looking for.
-  switchView(getMyId() ? 'live' : 'profile');
+  const initialView = getMyId() ? 'live' : 'profile';
+  // Establishes the base history entry the very first popstate can land on
+  // (replace, not push — this page load shouldn't cost an extra back-step)
+  // before any tab switch starts pushing entries on top of it.
+  history.replaceState({ view: initialView }, '');
+  switchView(initialView, { fromHistory: true });
 }
 
 main().catch((err) => {

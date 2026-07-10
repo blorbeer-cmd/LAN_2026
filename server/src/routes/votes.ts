@@ -8,8 +8,9 @@
 // Two modes, chosen when a round is started:
 // - 'single' (default): each player picks exactly one game; changing your
 //   pick replaces the previous one.
-// - 'points': each player distributes 1-10 points across up to 5 games;
-//   resubmitting replaces the player's whole set for the round.
+// - 'points': each player distributes 1-10 points across as many games as
+//   they like (a game with 0 points is simply left out); resubmitting
+//   replaces the player's whole set for the round.
 // Both modes rank games by a "score" (vote count for 'single', point sum for
 // 'points'); ties (including the all-zero state before anyone has voted)
 // fall back to the games' aggregate "Bock" rating (preferences table) so the
@@ -31,7 +32,6 @@ const STARTED_AT_KEY = 'vote_started_at';
 const MODE_KEY = 'vote_mode';
 
 type VoteMode = 'single' | 'points';
-const MAX_POINT_GAMES = 5;
 
 interface RoundState {
   round: number;
@@ -99,16 +99,36 @@ function buildResults(round: number, mode: VoteMode): ResultRow[] {
   return results;
 }
 
+// While a round is open, nobody — not even the person about to close it —
+// sees how votes/points are distributed across games yet: only the final
+// picture, once closed, should influence anyone (no bandwagoning towards
+// whatever's currently ahead). Total participation (how many people/points
+// have been cast so far) is still shown — that's not a per-game distribution
+// and is a useful "is it worth waiting a bit longer" signal — but each
+// game's own votes/points/score are stripped, and the list is re-sorted by
+// long-term "Bock" popularity only, since the current round's own ranking
+// would otherwise leak through the ordering even without the numbers.
+function redactOpenRoundResults(results: ResultRow[]): Array<Omit<ResultRow, 'votes' | 'points' | 'score'>> {
+  const sorted = [...results].sort((a, b) => {
+    const aPref = a.avgPreference ?? -1;
+    const bPref = b.avgPreference ?? -1;
+    if (bPref !== aPref) return bPref - aPref;
+    return a.gameName.localeCompare(b.gameName, 'de');
+  });
+  return sorted.map(({ votes: _votes, points: _points, score: _score, ...rest }) => rest);
+}
+
 function buildPayload(extra: Record<string, unknown> = {}) {
   const state = readRoundState();
-  const results = buildResults(state.round, state.mode);
-  const totalVotes = results.reduce((sum, r) => sum + r.votes, 0);
-  const totalPoints = results.reduce((sum, r) => sum + r.points, 0);
+  const fullResults = buildResults(state.round, state.mode);
+  const totalVotes = fullResults.reduce((sum, r) => sum + r.votes, 0);
+  const totalPoints = fullResults.reduce((sum, r) => sum + r.points, 0);
   const totalVoters = (
     db.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM votes WHERE round = ?').get(state.round) as {
       n: number;
     }
   ).n;
+  const results = state.open ? redactOpenRoundResults(fullResults) : fullResults;
   return { ...state, results, totalVotes, totalPoints, totalVoters, ...extra };
 }
 
@@ -166,7 +186,7 @@ votesRouter.post('/start', (req, res) => {
     title: '🗳️ Neue Abstimmung',
     body:
       nextMode === 'points'
-        ? 'Was zocken wir als Nächstes? Bis zu 5 Spiele mit Punkten bewerten.'
+        ? 'Was zocken wir als Nächstes? Spiele mit Punkten bewerten.'
         : 'Was zocken wir als Nächstes? Jetzt abstimmen.',
     url: '/',
   });
@@ -212,8 +232,9 @@ votesRouter.post('/', (req, res) => {
 
 // POST /api/votes/points - cast or replace a player's points in the current
 // round ('points' mode only). Body: { playerId, entries: [{ gameId, points }] },
-// 1-5 entries, distinct games, 1-10 points each. Resubmitting replaces the
-// player's whole previous set so they can change their mind any time.
+// any number of distinct games (including none, to clear your points
+// entirely), 1-10 points each. Resubmitting replaces the player's whole
+// previous set so they can change their mind any time.
 votesRouter.post('/points', (req, res) => {
   const state = readRoundState();
   if (!state.open) {
@@ -230,8 +251,8 @@ votesRouter.post('/points', (req, res) => {
   const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
-  if (!Array.isArray(entries) || entries.length === 0 || entries.length > MAX_POINT_GAMES) {
-    return res.status(400).json({ error: `Bitte 1 bis ${MAX_POINT_GAMES} Spiele mit je 1-10 Punkten angeben.` });
+  if (!Array.isArray(entries)) {
+    return res.status(400).json({ error: 'entries muss ein Array sein.' });
   }
 
   const seen = new Set<string>();
@@ -364,4 +385,53 @@ votesRouter.get('/history', (req, res) => {
   });
 
   res.json({ history });
+});
+
+// GET /api/votes/history/:round - full per-game breakdown for one past
+// (closed) round, so a round can be reopened from the history list to
+// inspect exactly how the points/votes ended up distributed — the detail
+// nobody got to see while it was still running.
+votesRouter.get('/history/:round', (req, res) => {
+  const round = parseInt(req.params.round, 10);
+  if (!Number.isInteger(round) || round < 1) {
+    return res.status(400).json({ error: 'round muss eine positive Ganzzahl sein.' });
+  }
+
+  const row = db
+    .prepare(
+      `SELECT vr.round AS round, vr.event_id AS eventId, e.name AS eventName,
+              vr.started_at AS startedAt, vr.closed_at AS closedAt, vr.mode AS mode,
+              vr.winner_game_ids AS winnerGameIdsJson
+       FROM vote_rounds vr
+       JOIN events e ON e.id = vr.event_id
+       WHERE vr.round = ?`
+    )
+    .get(round) as VoteRoundRow | undefined;
+  if (!row || row.closedAt === null) {
+    return res.status(404).json({ error: 'Abgeschlossene Abstimmungsrunde nicht gefunden.' });
+  }
+
+  const results = buildResults(row.round, row.mode);
+  const totalVotes = results.reduce((sum, r) => sum + r.votes, 0);
+  const totalPoints = results.reduce((sum, r) => sum + r.points, 0);
+  const totalVoters = (
+    db.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM votes WHERE round = ?').get(row.round) as {
+      n: number;
+    }
+  ).n;
+  const winnerGameIds: string[] = row.winnerGameIdsJson ? JSON.parse(row.winnerGameIdsJson) : [];
+
+  res.json({
+    round: row.round,
+    eventId: row.eventId,
+    eventName: row.eventName,
+    startedAt: row.startedAt,
+    closedAt: row.closedAt,
+    mode: row.mode,
+    results,
+    totalVotes,
+    totalPoints,
+    totalVoters,
+    winnerGameIds,
+  });
 });
