@@ -14,6 +14,7 @@ interface Match {
   id: string; room: string; host: PlayerRef; players: PlayerRef[]; socketIds: Map<string, string>;
   world: BlobbyWorld; inputs: Map<string, BlobbyInput>; scores: Map<string, number>;
   loop: NodeJS.Timeout | null; running: boolean; paused: boolean; lastTick: number; lastSnapshot: number; startedAt: number;
+  rallyResumeAt: number;
 }
 
 const lobbies = new Map<string, Lobby>();
@@ -58,6 +59,10 @@ function startLoop(io: Server, match: Match) {
     const dt = (now - match.lastTick) / 1000;
     match.lastTick = now;
     if (!match.running || match.paused) return;
+    if (now < match.rallyResumeAt) {
+      if (now - match.lastSnapshot >= SNAPSHOT_MS) { match.lastSnapshot = now; snapshot(io, match); }
+      return;
+    }
     const landed = stepWorld(match.world, match.players.map((p) => match.inputs.get(p.id) ?? idle()) as [BlobbyInput, BlobbyInput], dt);
     // Jump is an edge-triggered action; movement remains held until key-up.
     for (const input of match.inputs.values()) input.jump = false;
@@ -69,6 +74,7 @@ function startLoop(io: Server, match: Match) {
       io.to(match.room).emit('blobby:point', { scorer, scores: scorePayload(match) });
       if (next >= TARGET_SCORE) return finish(io, match, scorer, 'completed');
       resetRally(match, scorerIndex === 0 ? 'left' : 'right');
+      match.rallyResumeAt = now + 1000;
     }
     if (now - match.lastSnapshot >= SNAPSHOT_MS) {
       match.lastSnapshot = now;
@@ -126,7 +132,7 @@ export function registerBlobbySockets(io: Server): void {
       const match: Match = {
         id, room, host: lobby.host, players: lobby.players, socketIds: new Map(lobby.socketIds), world: createWorld(),
         inputs: new Map(lobby.players.map((p) => [p.id, idle()])), scores: new Map(lobby.players.map((p) => [p.id, 0])),
-        loop: null, running: false, paused: false, lastTick: Date.now(), lastSnapshot: 0, startedAt: Date.now(),
+        loop: null, running: false, paused: false, lastTick: Date.now(), lastSnapshot: 0, startedAt: Date.now(), rallyResumeAt: 0,
       };
       matches.set(id, match); lobbies.delete(lobby.id); emitLobbies(io);
       const beginsAt = Date.now() + COUNTDOWN_MS;

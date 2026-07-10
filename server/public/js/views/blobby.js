@@ -150,17 +150,18 @@ function avatarImage(player) {
   return image?.complete ? image : null;
 }
 function drawBlob(ctx, blob, color, player) {
-  ctx.fillStyle = color;
-  ctx.beginPath(); ctx.arc(blob.x, blob.y, 44, Math.PI, 0); ctx.lineTo(blob.x + 44, blob.y + 38); ctx.arc(blob.x, blob.y + 38, 44, 0, Math.PI); ctx.closePath(); ctx.fill();
   const image = avatarImage(player);
   if (image) {
     ctx.save();
-    ctx.beginPath(); ctx.arc(blob.x, blob.y, 35, 0, Math.PI * 2); ctx.clip();
-    ctx.drawImage(image, blob.x - 35, blob.y - 35, 70, 70);
+    ctx.beginPath(); ctx.arc(blob.x, blob.y, 44, 0, Math.PI * 2); ctx.clip();
+    ctx.drawImage(image, blob.x - 44, blob.y - 44, 88, 88);
     ctx.restore();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(blob.x, blob.y, 35, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(blob.x, blob.y, 44, 0, Math.PI * 2); ctx.stroke();
   } else {
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(blob.x + (blob.side === 'left' ? 12 : -12), blob.y - 5, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = player?.color || color;
+    ctx.beginPath(); ctx.arc(blob.x, blob.y, 44, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = '700 32px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText((player?.name || '?').slice(0, 1).toUpperCase(), blob.x, blob.y + 1);
   }
 }
 function paint() {
