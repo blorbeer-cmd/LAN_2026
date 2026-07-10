@@ -552,16 +552,19 @@ test('the device back button steps back through in-app views instead of leaving 
   await page.waitForFunction(() => document.querySelector('.view-title')?.textContent?.includes('Nächstes'));
 });
 
-test('Kiosk: shows an open food order (when/where only) and the last Durchsage with a timestamp', async () => {
+test('Kiosk: shows an open food order (when/where only), and the last-push banner picks up any feature, not just Durchsagen', async () => {
   const playersRes = await page.request.get(`${BASE_URL}/api/players`);
   const [{ id: playerId }] = await playersRes.json();
 
+  // Send a Durchsage first, then trigger a different feature's push (opening
+  // a food order) — the banner must show the *food order's* push afterward,
+  // proving it reflects any notifyPlayers() call, not only Durchsagen.
+  await page.request.post(`${BASE_URL}/api/broadcasts`, {
+    data: { playerId, message: 'Kiosk-Test-Durchsage' },
+  });
   const sendAt = Date.now() + 3600_000;
   await page.request.post(`${BASE_URL}/api/food-orders`, {
     data: { playerId, title: 'Kiosk-Test-Pizza', sendAt, link: 'https://kiosk-test.example/karte' },
-  });
-  await page.request.post(`${BASE_URL}/api/broadcasts`, {
-    data: { playerId, message: 'Kiosk-Test-Durchsage' },
   });
 
   await page.goto(`${BASE_URL}/kiosk.html`);
@@ -571,8 +574,10 @@ test('Kiosk: shows an open food order (when/where only) and the last Durchsage w
   await page.waitForSelector('#kiosk-food-banner:not([hidden]) >> text=Kiosk-Test-Pizza');
   await page.waitForSelector('a[href="https://kiosk-test.example/karte"]');
 
-  // The Durchsage banner shows the last message with a timestamp, and stays
-  // up permanently rather than auto-hiding after a few minutes.
-  await page.waitForSelector('#kiosk-broadcast:not([hidden]) >> text=Kiosk-Test-Durchsage');
+  // The last-push banner shows the food order's own push (title "🍕 Neue
+  // Sammelbestellung"), not the earlier Durchsage — with a timestamp, and
+  // it stays up permanently rather than auto-hiding after a few minutes.
+  await page.waitForSelector('#kiosk-broadcast:not([hidden]) >> text=Neue Sammelbestellung');
+  await page.waitForSelector('#kiosk-broadcast >> text=Kiosk-Test-Pizza');
   await page.waitForSelector('.kiosk-broadcast-time');
 });

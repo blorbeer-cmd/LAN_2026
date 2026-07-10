@@ -195,35 +195,38 @@ function renderFoodBanner(orders) {
   el.hidden = false;
 }
 
-// Durchsage/Push banner: unlike the food banner this always shows the very
-// last message ever sent (with timestamp) rather than only "currently
-// active" ones — a kiosk screen someone glances at minutes later should
-// still see what was last announced, not go blank.
-function renderBroadcastBanner(b) {
+// Last-push banner: shows whatever was most recently sent to (almost)
+// everyone — a manual Durchsage, but just as much a new Sammelbestellung, an
+// Arcade-Lobby opening, a "Jetzt zocken?"-Ping, a new vote round, a
+// tournament update, ... (every notifyPlayers() call is logged server-side,
+// see push.ts). Always shows the last one, with timestamp, rather than only
+// "currently active" ones — a kiosk screen someone glances at minutes later
+// should still see what was last announced, not go blank.
+function renderBroadcastBanner(entry) {
   const el = document.getElementById('kiosk-broadcast');
-  if (!b) {
+  if (!entry) {
     el.hidden = true;
     return;
   }
-  el.innerHTML = `📢 <strong>${escapeHtml(b.playerName)}</strong>: ${escapeHtml(b.message)} <span class="kiosk-broadcast-time">· ${formatDateTime(b.createdAt)} Uhr</span>`;
+  el.innerHTML = `<strong>${escapeHtml(entry.title)}</strong> ${escapeHtml(entry.body)} <span class="kiosk-broadcast-time">· ${formatDateTime(entry.createdAt)} Uhr</span>`;
   el.hidden = false;
 }
 
 async function refreshAll() {
   try {
-    const [live, votes, leaderboard, tournaments, foodOrders, broadcasts] = await Promise.all([
+    const [live, votes, leaderboard, tournaments, foodOrders, lastPush] = await Promise.all([
       api.live.board(),
       api.votes.get(),
       api.leaderboard.get(),
       api.tournaments.list(),
       api.foodOrders.list(),
-      api.broadcasts.list(),
+      api.push.last(),
     ]);
     document.getElementById('kiosk-live').innerHTML = renderLive(live);
     document.getElementById('kiosk-votes').innerHTML = renderVotes(votes);
     document.getElementById('kiosk-leaderboard').innerHTML = renderLeaderboard(leaderboard.standings);
     renderFoodBanner(foodOrders.orders);
-    renderBroadcastBanner(broadcasts.broadcasts[0] ?? null);
+    renderBroadcastBanner(lastPush.entry);
 
     const active = tournaments.find((t) => t.status === 'active') || tournaments[0] || null;
     document.getElementById('kiosk-tournament-title').innerHTML = `${icon('swords')} ${active ? escapeHtml(active.name) : 'Turnier'}`;
@@ -273,11 +276,11 @@ async function main() {
     'foodOrders:changed',
   ].forEach((event) => socket.on(event, refreshAll));
 
-  // Durchsagen: a big banner across the top of the shared screen — the whole
-  // point of announcing on the kiosk is that people look up from their own
-  // machines. Stays up permanently (newest message replaces it) rather than
-  // auto-hiding, so it still reads correctly minutes later.
-  socket.on('broadcast:new', (payload) => renderBroadcastBanner(payload));
+  // Last-push banner: a big banner across the top of the shared screen — the
+  // whole point of putting it on the kiosk is that people look up from their
+  // own machines. Stays up permanently (newest message replaces it) rather
+  // than auto-hiding, so it still reads correctly minutes later.
+  socket.on('push:sent', (payload) => renderBroadcastBanner(payload));
 }
 
 main().catch((err) => {
