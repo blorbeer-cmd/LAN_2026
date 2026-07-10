@@ -15,6 +15,7 @@
 import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
+import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import {
   Board,
   Piece,
@@ -57,6 +58,7 @@ interface TetrisLobby {
   host: PlayerRef;
   players: PlayerRef[];
   socketIds: Map<string, string>;
+  ready: Set<string>;
   createdAt: number;
 }
 
@@ -99,7 +101,12 @@ function playerById(playerId: unknown): PlayerRef | null {
 }
 
 function publicLobbies() {
-  return [...lobbies.values()].map((l) => ({ id: l.id, host: l.host, players: l.players, createdAt: l.createdAt }));
+  return [...lobbies.values()].map((l) => ({
+    id: l.id,
+    host: l.host,
+    players: l.players.map((p) => ({ ...p, ready: isLobbyReady(l, p.id) })),
+    createdAt: l.createdAt,
+  }));
 }
 
 function emitLobbies(io: Server) {
@@ -332,6 +339,7 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
       lobbies.delete(id);
     } else {
       lobby.socketIds.delete(entry[0]);
+      lobby.ready.delete(entry[0]);
       lobby.players = lobby.players.filter((p) => p.id !== entry[0]);
     }
     changed = true;
@@ -356,6 +364,7 @@ export function registerTetrisSockets(io: Server): void {
         host: player,
         players: [player],
         socketIds: new Map([[player.id, socket.id]]),
+        ready: new Set(),
         createdAt: Date.now(),
       };
       lobbies.set(lobby.id, lobby);
@@ -384,7 +393,17 @@ export function registerTetrisSockets(io: Server): void {
         lobbies.delete(lobby.id);
       } else {
         lobby.socketIds.delete(payload.playerId);
+        lobby.ready.delete(payload.playerId);
         lobby.players = lobby.players.filter((p) => p.id !== payload.playerId);
+      }
+      emitLobbies(io);
+      ack?.({ ok: true });
+    });
+
+    socket.on('tetris:lobby:ready', (payload: { lobbyId?: string; playerId?: string; ready?: boolean }, ack?: (res: unknown) => void) => {
+      const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
+      if (!lobby || !setLobbyReady(lobby, payload?.playerId, payload?.ready)) {
+        return ack?.({ ok: false, error: 'Bereit-Status konnte nicht gesetzt werden.' });
       }
       emitLobbies(io);
       ack?.({ ok: true });
