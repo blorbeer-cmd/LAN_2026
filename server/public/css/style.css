@@ -1102,6 +1102,15 @@ button.card {
   border-radius: 999px;
   padding: 4px 10px;
   font-size: 0.82rem;
+  /* Some chips render as <a> (external links) rather than <span> — without
+     this they'd pick up the browser's default blue/underlined link style. */
+  color: inherit;
+  text-decoration: none;
+}
+@media (hover: hover) {
+  a.chip:hover {
+    filter: brightness(1.12);
+  }
 }
 
 .chip-list {
