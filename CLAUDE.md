@@ -95,7 +95,22 @@ Guard **plus** einen Test in `server/src/test/api.concurrency.test.ts` (parallel
 
 ## Design-System (Frontend)
 
-- **Spacing-Skala:** `--space-1` … `--space-6` in `style.css` statt einzelner Pixel-Werte für
+- **Single Source of Truth:** Alle Design-Tokens (Farben, Spacing, Typografie,
+  Radius, Schatten, Avatar-Größen, Breakpoints) sind als CSS-Custom-Properties
+  im `:root`-Block von `server/public/css/style.css` definiert und in
+  **[`server/DESIGN_SYSTEM.md`](server/DESIGN_SYSTEM.md)** vollständig
+  dokumentiert (Tabellen, Verwendungsbeispiele, Do/Don't). UI-Änderungen
+  laufen ausschließlich über diese Tokens bzw. die dort beschriebenen
+  Basis-Komponenten (`.btn`, `.card`, `.badge`, `.chip`, `.list-row`, …) –
+  keine neuen hartcodierten Hex-Farben, Pixel-Werte oder Font-Größen im Code.
+  Fehlt ein Token für einen neuen Fall, wird es zuerst in `style.css`
+  ergänzt (mit kurzem Kommentar, wofür), nicht am Verwendungsort neu erfunden.
+  Ausnahmen (ein Wert passt bewusst zu keinem Token) werden mit einem
+  Kommentar begründet statt stillschweigend hartcodiert – siehe „When a value
+  genuinely doesn't fit" in `DESIGN_SYSTEM.md`.
+- **UI-Symbole:** Für neue oder geänderte UI-Symbole ausschließlich den lokalen Lucide-Style-Icon-Helper in `server/public/js/icons.js` verwenden (`icon(...)` bzw. passende spezialisierte Helfer). Keine Emoji, Unicode-Piktogramme oder externen Icon-CDNs in UI-Chrome, Überschriften, Buttons, Status-Badges, Chips, Empty States oder Toasts. Das RespawnHQ-Logo ist die einzige bewusste Ausnahme. Bestehende freie Nutzerinhalte (z. B. Spielnamen und Bestelltexte) dürfen Emoji enthalten.
+
+- **Spacing-Skala:** `--space-1` … `--space-8` in `style.css` statt einzelner Pixel-Werte für
   Card-Padding, Row-/Stack-/Grid-Abstände, Section-Titel. Neue Komponenten daraus ableiten, keine
   neuen Magic Numbers einführen.
 - **Listen-Zeilen:** Spieler-/Spiele-/Turniere-Liste und der „Mehr"-Hub teilen sich `.list-row`
@@ -139,6 +154,8 @@ Guard **plus** einen Test in `server/src/test/api.concurrency.test.ts` (parallel
   geändert hat.
 - [ ] Bedienung getestet: Feature ist ohne Erklärung auffindbar und in wenigen Klicks nutzbar.
 - [ ] Nichts Geheimes (Keys, DB-Dateien) landet im Repo.
+- [ ] Neue/geänderte UI nutzt ausschließlich Tokens aus `server/DESIGN_SYSTEM.md` (keine neuen
+  hartcodierten Hex-Farben, Pixel- oder Font-Größen-Werte) – echte Ausnahmen sind kommentiert.
 
 ## Branch & Workflow
 

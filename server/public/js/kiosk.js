@@ -6,7 +6,7 @@
 
 import { api, getToken, setToken } from './api.js';
 import { connectSocket } from './socket.js';
-import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml } from './format.js';
+import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml, formatDateTime } from './format.js';
 import { installIconReplacement, icon } from './icons.js';
 
 installIconReplacement();
@@ -42,7 +42,7 @@ function renderLive(players) {
     const rankDiff = STATE_RANK[a.state] - STATE_RANK[b.state];
     return rankDiff !== 0 ? rankDiff : a.name.localeCompare(b.name, 'de');
   });
-  return `<div class="stack" style="gap:8px;">${sorted
+  return `<div class="stack" style="gap:var(--space-2);">${sorted
     .map((p) => {
       const games = gameChipsHtml(p.games, p.activity_tracked, 18);
       return `
@@ -115,7 +115,7 @@ function renderTournament(t) {
         </div>`
       )
       .join('');
-    return `<div class="muted" style="margin-bottom:6px;">${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)} — Liga</div>${rows}`;
+    return `<div class="muted" style="margin-bottom:var(--space-2);">${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)} — Liga</div>${rows}`;
   }
 
   // group_knockout has two distinct phases mixed into one `matches` list
@@ -138,10 +138,10 @@ function renderTournament(t) {
             </div>`
           )
           .join('');
-        return `<div class="muted" style="margin:6px 0 2px;">Gruppe ${g.groupIndex + 1}</div>${rows}`;
+        return `<div class="muted" style="margin:var(--space-2) 0 var(--space-1);">Gruppe ${g.groupIndex + 1}</div>${rows}`;
       })
       .join('');
-    return `<div class="muted" style="margin-bottom:6px;">${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)} — Gruppenphase</div>${groupBlocks}`;
+    return `<div class="muted" style="margin-bottom:var(--space-2);">${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)} — Gruppenphase</div>${groupBlocks}`;
   }
   const bracketMatches = t.format === 'group_knockout' ? knockoutMatches : t.matches;
 
@@ -169,20 +169,64 @@ function renderTournament(t) {
         </div>`;
     })
     .join('');
-  return `<div class="muted" style="margin-bottom:6px;">${escapeHtml(t.gameName)} — Runde ${currentRound}/${totalRounds}${t.status === 'completed' ? ' · Beendet 🏆' : ''}</div>${rows}`;
+  return `<div class="muted" style="margin-bottom:var(--space-2);">${escapeHtml(t.gameName)} — Runde ${currentRound}/${totalRounds}${t.status === 'completed' ? ' · Beendet 🏆' : ''}</div>${rows}`;
+}
+
+// Food-order banner: just enough for someone glancing at the shared screen
+// to know an order is running and how to get in on it — when it goes out
+// and where the menu/delivery link is. Never the item list or who ordered
+// what (that's on everyone's own phone, in the Essen-bestellen view).
+function renderFoodBanner(orders) {
+  const open = (orders || []).filter((o) => o.open);
+  const el = document.getElementById('kiosk-food-banner');
+  if (open.length === 0) {
+    el.hidden = true;
+    return;
+  }
+  el.innerHTML = open
+    .map((o) => {
+      const when = o.sendAt ? `🕒 geht raus um ${formatDateTime(o.sendAt)} Uhr` : '🕒 Zeitpunkt noch offen';
+      const where = o.link
+        ? ` · <a href="${escapeHtml(o.link)}" target="_blank" rel="noopener">🔗 Zur Karte/Lieferdienst</a>`
+        : '';
+      return `<div>🍕 Sammelbestellung „${escapeHtml(o.title)}" läuft – ${when}${where}</div>`;
+    })
+    .join('');
+  el.hidden = false;
+}
+
+// Last-push banner: shows whatever was most recently sent to (almost)
+// everyone — a manual Durchsage, but just as much a new Sammelbestellung, an
+// Arcade-Lobby opening, a "Jetzt zocken?"-Ping, a new vote round, a
+// tournament update, ... (every notifyPlayers() call is logged server-side,
+// see push.ts). Always shows the last one, with timestamp, rather than only
+// "currently active" ones — a kiosk screen someone glances at minutes later
+// should still see what was last announced, not go blank.
+function renderBroadcastBanner(entry) {
+  const el = document.getElementById('kiosk-broadcast');
+  if (!entry) {
+    el.hidden = true;
+    return;
+  }
+  el.innerHTML = `<strong>${escapeHtml(entry.title)}</strong> ${escapeHtml(entry.body)} <span class="kiosk-broadcast-time">· ${formatDateTime(entry.createdAt)} Uhr</span>`;
+  el.hidden = false;
 }
 
 async function refreshAll() {
   try {
-    const [live, votes, leaderboard, tournaments] = await Promise.all([
+    const [live, votes, leaderboard, tournaments, foodOrders, lastPush] = await Promise.all([
       api.live.board(),
       api.votes.get(),
       api.leaderboard.get(),
       api.tournaments.list(),
+      api.foodOrders.list(),
+      api.push.last(),
     ]);
     document.getElementById('kiosk-live').innerHTML = renderLive(live);
     document.getElementById('kiosk-votes').innerHTML = renderVotes(votes);
     document.getElementById('kiosk-leaderboard').innerHTML = renderLeaderboard(leaderboard.standings);
+    renderFoodBanner(foodOrders.orders);
+    renderBroadcastBanner(lastPush.entry);
 
     const active = tournaments.find((t) => t.status === 'active') || tournaments[0] || null;
     document.getElementById('kiosk-tournament-title').innerHTML = `${icon('swords')} ${active ? escapeHtml(active.name) : 'Turnier'}`;
@@ -211,7 +255,7 @@ async function main() {
   const ok = await ensureAccess();
   if (!ok) {
     document.getElementById('kiosk-root').innerHTML = `
-      <div class="empty-state" style="padding:60px;font-size:1.2rem;">
+      <div class="empty-state" style="padding:var(--space-8);font-size:var(--font-size-lg);">
         Kein Zugriff — diese Seite mit <code>?token=…</code> öffnen (wie der Einladungslink).
       </div>`;
     return;
@@ -223,28 +267,24 @@ async function main() {
 
   const socket = connectSocket();
 
-  ['live:changed', 'votes:changed', 'leaderboard:changed', 'tournaments:changed', 'matchmaking:generated'].forEach(
-    (event) => socket.on(event, refreshAll)
-  );
+  [
+    'live:changed',
+    'votes:changed',
+    'leaderboard:changed',
+    'tournaments:changed',
+    'matchmaking:generated',
+    'foodOrders:changed',
+  ].forEach((event) => socket.on(event, refreshAll));
 
-  // Durchsagen: a big banner across the top of the shared screen — the whole
-  // point of announcing on the kiosk is that people look up from their own
-  // machines. Stays up for a few minutes, newest message wins.
-  let broadcastTimer = null;
-  socket.on('broadcast:new', (payload) => {
-    if (!payload) return;
-    const banner = document.getElementById('kiosk-broadcast');
-    banner.textContent = `📢 ${payload.playerName}: ${payload.message}`;
-    banner.hidden = false;
-    clearTimeout(broadcastTimer);
-    broadcastTimer = setTimeout(() => {
-      banner.hidden = true;
-    }, 3 * 60 * 1000);
-  });
+  // Last-push banner: a big banner across the top of the shared screen — the
+  // whole point of putting it on the kiosk is that people look up from their
+  // own machines. Stays up permanently (newest message replaces it) rather
+  // than auto-hiding, so it still reads correctly minutes later.
+  socket.on('push:sent', (payload) => renderBroadcastBanner(payload));
 }
 
 main().catch((err) => {
   // eslint-disable-next-line no-console
   console.error(err);
-  document.getElementById('kiosk-root').innerHTML = `<div class="empty-state" style="padding:60px;">Fehler beim Start: ${err.message}</div>`;
+  document.getElementById('kiosk-root').innerHTML = `<div class="empty-state" style="padding:var(--space-8);">Fehler beim Start: ${err.message}</div>`;
 });

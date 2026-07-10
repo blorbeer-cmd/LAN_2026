@@ -281,6 +281,7 @@ export const api = {
     subscribe: (playerId, subscription) =>
       apiFetch('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ playerId, subscription }) }),
     unsubscribe: (endpoint) => apiFetch('/api/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
+    last: () => apiFetch('/api/push/last'),
   },
 
   agent: {

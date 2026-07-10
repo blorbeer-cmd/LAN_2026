@@ -7,9 +7,10 @@
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime, toDatetimeLocal } from '../format.js';
-import { openModal } from '../modal.js';
+import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { icon } from '../icons.js';
 
 let cache = null;
 let loading = false;
@@ -66,7 +67,7 @@ function itemsGroupedByPlayer(order) {
 
 function renderItems(order, myId) {
   if (order.items.length === 0) {
-    return `<div class="muted" style="font-size:0.85rem;padding:6px 0;">Noch nichts eingetragen.</div>`;
+    return `<div class="muted" style="font-size:var(--font-size-sm);padding:var(--space-2) 0;">Noch nichts eingetragen.</div>`;
   }
   const grouped = itemsGroupedByPlayer(order);
   return [...grouped.entries()]
@@ -77,23 +78,23 @@ function renderItems(order, myId) {
       const rows = items
         .map(
           (i) => `
-          <div class="row" style="padding:2px 0;">
+          <div class="row" style="padding:var(--space-1) 0;">
             <span style="flex:1;">${escapeHtml(i.description)}</span>
             ${i.priceCents !== null ? `<span class="muted" style="font-variant-numeric:tabular-nums;">${formatCents(i.priceCents)}</span>` : ''}
             ${
               order.open && i.playerId === myId
-                ? `<button type="button" class="icon-btn" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen" style="font-size:0.8rem;padding:0 4px;">✕</button>`
+                ? `<button type="button" class="icon-btn" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen" style="font-size:var(--font-size-xs);padding:0 4px;">${icon('x')}</button>`
                 : ''
             }
           </div>`
         )
         .join('');
       return `
-        <div class="stack" style="gap:2px;padding:8px 0;border-bottom:1px solid var(--border);">
-          <div class="row" style="gap:8px;">
+        <div class="stack" style="gap:var(--space-1);padding:var(--space-2) 0;border-bottom:1px solid var(--border);">
+          <div class="row" style="gap:var(--space-2);">
             ${avatarHtml(player, 20)}
             <strong style="flex:1;">${escapeHtml(first.playerName)}</strong>
-            ${playerSum > 0 ? `<span class="muted" style="font-size:0.8rem;">${formatCents(playerSum)}</span>` : ''}
+            ${playerSum > 0 ? `<span class="muted" style="font-size:var(--font-size-xs);">${formatCents(playerSum)}</span>` : ''}
           </div>
           <div style="padding-left:28px;">${rows}</div>
         </div>`;
@@ -108,17 +109,17 @@ function renderItems(order, myId) {
 // items themselves.
 function renderDetails(order) {
   const sendAtLabel = order.sendAt
-    ? `🕒 Geht raus um ${formatDateTime(order.sendAt)} Uhr`
-    : '🕒 Kein Zeitpunkt festgelegt';
+    ? `${icon('timer')} Geht raus um ${formatDateTime(order.sendAt)} Uhr`
+    : `${icon('timer')} Kein Zeitpunkt festgelegt`;
   const hasDetails = Boolean(order.sendAt || order.notes || order.link);
   return `
-    <div class="stack" style="gap:4px;">
+    <div class="stack" style="gap:var(--space-1);">
       <div class="row-between">
-        <span class="muted" style="font-size:0.82rem;">${sendAtLabel}</span>
+        <span class="muted" style="font-size:var(--font-size-sm);">${sendAtLabel}</span>
         <button type="button" class="btn btn-sm" data-edit-details="${order.id}">${hasDetails ? 'Bearbeiten' : '+ Infos & Link'}</button>
       </div>
-      ${order.notes ? `<div class="muted" style="font-size:0.85rem;white-space:pre-wrap;word-break:break-word;">${escapeHtml(order.notes)}</div>` : ''}
-      ${order.link ? `<a href="${escapeHtml(order.link)}" target="_blank" rel="noopener" style="font-size:0.85rem;">🔗 Zur Karte / Lieferdienst</a>` : ''}
+      ${order.notes ? `<div class="muted" style="font-size:var(--font-size-sm);white-space:pre-wrap;word-break:break-word;">${escapeHtml(order.notes)}</div>` : ''}
+      ${order.link ? `<a href="${escapeHtml(order.link)}" target="_blank" rel="noopener" style="font-size:var(--font-size-sm);">${icon('link')} Zur Karte / Lieferdienst</a>` : ''}
     </div>`;
 }
 
@@ -126,10 +127,10 @@ function renderOpenOrder(order, myId) {
   return `
     <div class="card stack" data-order-card="${order.id}">
       <div class="row-between">
-        <strong>🍕 ${escapeHtml(order.title)}</strong>
+        <strong>${icon('hamburger')} ${escapeHtml(order.title)}</strong>
         <span class="badge badge-playing">Offen</span>
       </div>
-      <div class="muted" style="font-size:0.78rem;margin-top:-6px;">
+      <div class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
         von ${escapeHtml(order.createdByName)} · ${formatDateTime(order.createdAt)}
       </div>
       ${renderDetails(order)}
@@ -142,21 +143,21 @@ function renderOpenOrder(order, myId) {
                <input type="text" data-item-price placeholder="€" inputmode="decimal" style="width:70px;flex-shrink:0;" />
                <button type="submit" class="btn btn-primary btn-sm">+</button>
              </form>`
-          : `<div class="muted" style="font-size:0.85rem;">Wähle oben, wer du bist, um dich einzutragen.</div>`
+          : `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um dich einzutragen.</div>`
       }
-      <button type="button" class="btn btn-sm" data-close-order="${order.id}">✅ Bestellung schließen</button>
+      <button type="button" class="btn btn-sm" data-close-order="${order.id}">${icon('check')} Bestellung schließen</button>
     </div>`;
 }
 
 function renderClosedOrder(order) {
   return `
-    <details class="card" style="margin-bottom:12px;" data-closed-order="${order.id}" ${expandedClosedOrderIds.has(order.id) ? 'open' : ''}>
+    <details class="card" style="margin-bottom:var(--space-3);" data-closed-order="${order.id}" ${expandedClosedOrderIds.has(order.id) ? 'open' : ''}>
       <summary style="cursor:pointer;" class="row-between">
-        <span><strong>${escapeHtml(order.title)}</strong> <span class="muted" style="font-size:0.8rem;">· ${order.items.length} Position(en)${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}</span></span>
+        <span><strong>${escapeHtml(order.title)}</strong> <span class="muted" style="font-size:var(--font-size-xs);">· ${order.items.length} Position(en)${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}</span></span>
         <span class="badge badge-offline">Geschlossen</span>
       </summary>
-      <div style="margin-top:10px;">${renderDetails(order)}</div>
-      <div style="margin-top:10px;">${renderItems(order, null)}</div>
+      <div style="margin-top:var(--space-3);">${renderDetails(order)}</div>
+      <div style="margin-top:var(--space-3);">${renderItems(order, null)}</div>
     </details>`;
 }
 
@@ -178,7 +179,7 @@ function openNewOrderForm(ctx, myId) {
           <label for="order-link" class="field-label">Link zu Karte / Lieferdienst (optional)</label>
           <input type="url" id="order-link" maxlength="300" placeholder="https://…" />
         </div>
-        <p class="muted" style="font-size:0.8rem;margin:0;">
+        <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
           Alle bekommen eine Benachrichtigung und können sich dann selbst eintragen. Alles lässt
           sich später jederzeit ändern.
         </p>
@@ -231,7 +232,7 @@ function openDetailsForm(ctx, order) {
           <label for="link-input" class="field-label">Link zu Karte / Lieferdienst</label>
           <input type="url" id="link-input" maxlength="300" placeholder="https://…" value="${escapeHtml(order.link ?? '')}" />
         </div>
-        <p class="muted" style="font-size:0.8rem;margin:0;">Leer lassen entfernt das jeweilige Feld.</p>
+        <p class="muted" style="font-size:var(--font-size-xs);margin:0;">Leer lassen entfernt das jeweilige Feld.</p>
         <button type="submit" class="btn btn-primary btn-block">Speichern</button>
       </form>
     `,
@@ -289,19 +290,19 @@ export function renderFoodOrders(container, ctx) {
     loading || cache === null
       ? `<div class="empty-state">Lädt…</div>`
       : openOrders.length === 0
-        ? `<div class="empty-state"><span class="emoji">🍕</span>Gerade keine offene Bestellung.<br />
-           <span class="muted" style="font-size:0.85rem;">Starte eine, wenn ihr was bestellen wollt – alle können sich dann selbst eintragen.</span></div>`
+        ? `<div class="empty-state"><span class="empty-state-icon">${icon('hamburger')}</span><br />Gerade keine offene Bestellung.<br />
+           <span class="muted" style="font-size:var(--font-size-sm);">Starte eine, wenn ihr was bestellen wollt – alle können sich dann selbst eintragen.</span></div>`
         : `<div class="stack">${openOrders.map((o) => renderOpenOrder(o, myId)).join('')}</div>`;
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <div class="row-between">
-      <h1 class="view-title">🍕 Essen bestellen</h1>
+      <h1 class="view-title">${icon('hamburger')} Essen bestellen</h1>
       <button type="button" class="btn btn-primary btn-sm" id="order-new-btn" ${myId ? '' : 'disabled'}>+ Bestellung</button>
     </div>
     ${whoAmICardHtml('food-whoami', { marginBottom: '12px' })}
     ${openHtml}
-    ${closedOrders.length ? `<div class="section-title">🕓 Frühere Bestellungen</div>${closedOrders.map(renderClosedOrder).join('')}` : ''}
+    ${closedOrders.length ? `<div class="section-title">${icon('timer')} Frühere Bestellungen</div>${closedOrders.map(renderClosedOrder).join('')}` : ''}
   `;
 
   wireWhoAmICard(container, 'food-whoami', ctx);
@@ -376,7 +377,7 @@ export function renderFoodOrders(container, ctx) {
 
   container.querySelectorAll('[data-close-order]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      if (!confirm('Bestellung schließen? Danach kann niemand mehr etwas eintragen.')) return;
+      if (!(await confirmDialog('Bestellung schließen? Danach kann niemand mehr etwas eintragen.'))) return;
       try {
         await api.foodOrders.close(btn.dataset.closeOrder);
         cache = null;

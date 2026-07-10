@@ -33,7 +33,7 @@
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, formatDate, formatDateTime, gameBadgeHtml } from '../format.js';
-import { openModal } from '../modal.js';
+import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 
@@ -95,9 +95,9 @@ let draftKey = null; // `${round}:${playerId}` the current draft belongs to
 
 function preferenceChipHtml(r) {
   if (!r.preferenceCount) {
-    return `<span class="muted" style="font-size:0.78rem;">🔥 –</span>`;
+    return `<span class="muted" style="font-size:var(--font-size-xs);">🔥 –</span>`;
   }
-  return `<span class="muted" style="font-size:0.78rem;">🔥 Ø ${r.avgPreference.toFixed(1)} (${r.preferenceCount})</span>`;
+  return `<span class="muted" style="font-size:var(--font-size-xs);">🔥 Ø ${r.avgPreference.toFixed(1)} (${r.preferenceCount})</span>`;
 }
 
 function lastPlayedHtml(r) {
@@ -105,23 +105,23 @@ function lastPlayedHtml(r) {
 }
 
 function playtimeChipHtml(r) {
-  return `<span class="muted" style="font-size:0.78rem;">⏱️ ${r.totalPlaytimeMs > 0 ? r.totalPlaytimeFormatted : '–'}</span>`;
+  return `<span class="muted" style="font-size:var(--font-size-xs);">⏱️ ${r.totalPlaytimeMs > 0 ? r.totalPlaytimeFormatted : '–'}</span>`;
 }
 
 function winCountChipHtml(r) {
-  return `<span class="muted" style="font-size:0.78rem;">🏆 ${r.voteWinCount}× gewonnen</span>`;
+  return `<span class="muted" style="font-size:var(--font-size-xs);">🏆 ${r.voteWinCount}× gewonnen</span>`;
 }
 
 function statsRowHtml(r) {
   return `
     <div class="row-between">
-      <span class="row" style="gap:10px;flex-wrap:wrap;">
-        <span class="muted" style="font-size:0.78rem;">${lastPlayedHtml(r)}</span>
+      <span class="row" style="gap:var(--space-3);flex-wrap:wrap;">
+        <span class="muted" style="font-size:var(--font-size-xs);">${lastPlayedHtml(r)}</span>
         ${preferenceChipHtml(r)}
       </span>
     </div>
     <div class="row-between">
-      <span class="row" style="gap:10px;flex-wrap:wrap;">
+      <span class="row" style="gap:var(--space-3);flex-wrap:wrap;">
         ${playtimeChipHtml(r)}
         ${winCountChipHtml(r)}
       </span>
@@ -143,14 +143,14 @@ function topByPreference(results, n = 5) {
 function renderTop5(results) {
   const top5 = topByPreference(results, 5);
   if (top5.length === 0) {
-    return `<div class="empty-state" style="padding:16px;">Noch keine Spiele im Katalog.</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);">Noch keine Spiele im Katalog.</div>`;
   }
   return top5
     .map(
       (r) => `
         <div class="vote-row">
           <div class="row-between">
-            <span class="row" style="gap:8px;">${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 24)} ${escapeHtml(r.gameName)}</span>
+            <span class="row" style="gap:var(--space-2);">${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 24)} ${escapeHtml(r.gameName)}</span>
           </div>
           ${statsRowHtml(r)}
         </div>`
@@ -166,15 +166,15 @@ function renderOpenRows(votes, draftReady) {
       let action = '';
       let pointsSliderRow = '';
       if (!draftReady) {
-        pointsSliderRow = `<div class="muted" style="font-size:0.78rem;padding:4px 0 0;">Lädt deine Auswahl…</div>`;
+        pointsSliderRow = `<div class="muted" style="font-size:var(--font-size-xs);padding:var(--space-1) 0 0;">Lädt deine Auswahl…</div>`;
       } else if (votes.mode === 'single') {
         const isSelected = draftSingleGameId === r.gameId;
         action = `<button type="button" class="btn btn-sm ${isSelected ? 'btn-primary' : ''}" data-vote-select="${r.gameId}">${isSelected ? '✓ Ausgewählt' : 'Auswählen'}</button>`;
       } else {
         const pointsVal = draftPoints.get(r.gameId) ?? 0;
         pointsSliderRow = `
-          <div class="skill-row" data-points-row="${r.gameId}" style="padding:4px 0 0;">
-            <span class="muted" style="font-size:0.78rem;">Punkte</span>
+          <div class="skill-row" data-points-row="${r.gameId}" style="padding:var(--space-1) 0 0;">
+            <span class="muted" style="font-size:var(--font-size-xs);">Punkte</span>
             <span class="skill-value">${pointsVal}</span>
             <input type="range" class="skill-row-slider" min="0" max="10" step="1"
                    data-points-slider="${r.gameId}" value="${pointsVal}" />
@@ -184,7 +184,7 @@ function renderOpenRows(votes, draftReady) {
       return `
         <div class="vote-row">
           <div class="row-between">
-            <span class="row" style="gap:8px;">${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 24)} ${escapeHtml(r.gameName)}</span>
+            <span class="row" style="gap:var(--space-2);">${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 24)} ${escapeHtml(r.gameName)}</span>
             ${action}
           </div>
           ${statsRowHtml(r)}
@@ -206,7 +206,7 @@ function renderClosedRows(results, mode, winnerGameIds) {
       return `
         <div class="vote-row ${isWinner ? 'is-winner' : ''}">
           <div class="row-between">
-            <span class="row" style="gap:8px;">${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 24)} ${escapeHtml(r.gameName)}</span>
+            <span class="row" style="gap:var(--space-2);">${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 24)} ${escapeHtml(r.gameName)}</span>
             <span class="muted">${scoreLabel}</span>
           </div>
           <div class="vote-bar-track"><div class="vote-bar-fill" style="width:${(r.score / maxScore) * 100}%"></div></div>
@@ -220,10 +220,10 @@ function renderClosedRows(results, mode, winnerGameIds) {
 
 function renderLastResult() {
   if (historyLoading || historyCache === null) {
-    return `<div class="empty-state" style="padding:16px;">Lädt…</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   if (historyCache.length === 0) {
-    return `<div class="empty-state" style="padding:16px;"><span class="emoji">🗳️</span>Noch keine Abstimmung durchgeführt.</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">🗳️</span>Noch keine Abstimmung durchgeführt.</div>`;
   }
   const h = historyCache[0];
   const winners = h.winners.length
@@ -236,9 +236,9 @@ function renderLastResult() {
         .join('')
     : `<span class="muted">Niemand hat abgestimmt</span>`;
   return `
-    <div class="stack" style="gap:6px;padding:4px 0;">
+    <div class="stack" style="gap:var(--space-2);padding:var(--space-1) 0;">
       <div class="chip-list">${winners}</div>
-      <span class="muted" style="font-size:0.78rem;">
+      <span class="muted" style="font-size:var(--font-size-xs);">
         ${formatDateTime(h.closedAt)} · ${h.mode === 'points' ? 'Punkte-Modus' : 'Einzel-Wahl'} · ${h.totalVotes} Stimme(n)
       </span>
     </div>`;
@@ -248,10 +248,10 @@ function renderLastResult() {
 
 function renderHistory() {
   if (historyLoading || historyCache === null) {
-    return `<div class="empty-state" style="padding:16px;">Lädt…</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   if (historyCache.length === 0) {
-    return `<div class="empty-state" style="padding:16px;"><span class="emoji">🗳️</span>Noch keine vergangenen Abstimmungen.</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">🗳️</span>Noch keine vergangenen Abstimmungen.</div>`;
   }
   return historyCache
     .map((h) => {
@@ -265,11 +265,11 @@ function renderHistory() {
         : `<span class="muted">Niemand hat abgestimmt</span>`;
       return `
         <button type="button" class="lb-row" style="align-items:flex-start;width:100%;text-align:left;background:none;border:none;cursor:pointer;" data-open-history-round="${h.round}">
-          <div class="stack" style="gap:4px;flex:1;">
+          <div class="stack" style="gap:var(--space-1);flex:1;">
             <div class="chip-list">${winners}</div>
-            <span class="muted" style="font-size:0.75rem;">${formatDateTime(h.closedAt)} · ${h.mode === 'points' ? 'Punkte-Modus' : 'Einzel-Wahl'}</span>
+            <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(h.closedAt)} · ${h.mode === 'points' ? 'Punkte-Modus' : 'Einzel-Wahl'}</span>
           </div>
-          <span class="muted" style="font-size:0.8rem;flex-shrink:0;">${h.totalVotes} Stimme(n) ›</span>
+          <span class="muted" style="font-size:var(--font-size-xs);flex-shrink:0;">${h.totalVotes} Stimme(n) ›</span>
         </button>`;
     })
     .join('');
@@ -284,7 +284,7 @@ async function openHistoryRoundDetail(round) {
     const bodyEl = el.querySelector('.modal-body');
     if (bodyEl) {
       bodyEl.innerHTML = `
-        <div class="muted" style="font-size:0.8rem;margin-bottom:10px;">
+        <div class="muted" style="font-size:var(--font-size-xs);margin-bottom:var(--space-3);">
           ${formatDateTime(detail.closedAt)} · ${detail.mode === 'points' ? 'Punkte-Modus' : 'Einzel-Wahl'} ·
           ${detail.mode === 'points' ? `${detail.totalPoints} Punkt(e)` : `${detail.totalVotes} Stimme(n)`}
           von ${detail.totalVoters} Teilnehmer(n)
@@ -342,7 +342,7 @@ export function renderVotes(container, ctx) {
         ${rows}
         <button type="button" class="btn btn-primary btn-block" id="votes-submit" ${mineReady ? '' : 'disabled'}>${submitLabel}</button>
       </div>
-      <div class="row" style="margin-top:12px;">
+      <div class="row" style="margin-top:var(--space-3);">
         <button type="button" class="btn btn-primary" id="votes-close" style="flex:1;">Beenden &amp; Gewinner küren</button>
         <button type="button" class="btn btn-danger" id="votes-cancel">Abbrechen</button>
       </div>`;
@@ -375,7 +375,7 @@ export function renderVotes(container, ctx) {
     ${openSectionHtml}
 
     <div class="section-title">🕓 Vote-Historie</div>
-    <p class="muted" style="font-size:0.78rem;margin:-4px 0 8px;">Antippen für die genaue Punkteverteilung dieser Runde.</p>
+    <p class="muted" style="font-size:var(--font-size-xs);margin:calc(var(--space-1) * -1) 0 var(--space-2);">Antippen für die genaue Punkteverteilung dieser Runde.</p>
     <div class="card">${renderHistory()}</div>
   `;
 
@@ -457,7 +457,7 @@ export function renderVotes(container, ctx) {
   const cancelBtn = container.querySelector('#votes-cancel');
   if (cancelBtn) {
     cancelBtn.addEventListener('click', async () => {
-      if (!confirm('Abstimmung wirklich abbrechen? Alle Stimmen gehen verloren.')) return;
+      if (!(await confirmDialog('Abstimmung wirklich abbrechen? Alle Stimmen gehen verloren.'))) return;
       try {
         await api.votes.cancel();
         await ctx.refresh();

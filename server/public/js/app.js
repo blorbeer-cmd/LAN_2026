@@ -15,7 +15,9 @@ import { renderMatchmaking, invalidateMatchmakingHistory, setDraftState } from '
 import { renderBroadcast, invalidateBroadcasts } from './views/broadcast.js';
 import { renderInfoBoard, invalidateInfoBoard } from './views/infoBoard.js';
 import { renderFoodOrders, invalidateFoodOrders } from './views/foodOrders.js';
-import { renderArcade } from './views/arcade.js';
+import { renderArcade, renderQuizRoom } from './views/arcade.js';
+import { renderTetris } from './views/tetris.js';
+import { renderScribbleRoom } from './views/arcadeScribble.js';
 import { renderGameCatalog, invalidateSkillSuggestions } from './views/gameCatalog.js';
 import { renderArrivals, invalidateArrivals } from './views/arrivals.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
@@ -50,6 +52,9 @@ const VIEWS = {
   infoBoard: renderInfoBoard,
   foodOrders: renderFoodOrders,
   arcade: renderArcade,
+  quizRoom: renderQuizRoom,
+  tetris: renderTetris,
+  scribbleRoom: renderScribbleRoom,
   gameCatalog: renderGameCatalog,
   arrivals: renderArrivals,
   admin: renderAdmin,
@@ -179,6 +184,13 @@ function wireNav() {
     const btn = e.target.closest('[data-navigate]');
     if (btn) switchView(btn.dataset.navigate);
   });
+
+  // Programmatic hooks for view modules that must drive navigation/redraws
+  // from outside a click (e.g. the Tetris module jumping to the board view
+  // when a realtime match starts, or refreshing its inline lobby on a socket
+  // update). Kept as plain CustomEvents so modules stay decoupled from app.js.
+  window.addEventListener('lan:navigate', (e) => switchView(e.detail));
+  window.addEventListener('lan:rerender', () => renderCurrent());
 
   // Back/forward: jump to whichever view is recorded on the popped entry
   // instead of re-pushing it (see switchView's fromHistory param). No

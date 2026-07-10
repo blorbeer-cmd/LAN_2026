@@ -4,6 +4,7 @@
 // draw, not just whoever clicked the button.
 
 import { api } from '../api.js';
+import { confirmDialog } from '../modal.js';
 import { state, gameById } from '../state.js';
 import { escapeHtml, avatarHtml, gameBadgeHtml, formatDateTime } from '../format.js';
 import { showToast } from '../toast.js';
@@ -74,10 +75,10 @@ export function invalidateMatchmakingHistory() {
 
 function renderHistory() {
   if (historyLoading || historyCache === null) {
-    return `<div class="empty-state" style="padding:16px;">Lädt…</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   if (historyCache.length === 0) {
-    return `<div class="empty-state" style="padding:16px;"><span class="emoji">⚖️</span>Noch keine Auslosungen für dieses Spiel.</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">⚖️</span>Noch keine Auslosungen für dieses Spiel.</div>`;
   }
   return historyCache
     .map((draw) => {
@@ -91,8 +92,8 @@ function renderHistory() {
         )
         .join('');
       return `
-        <div class="card stack" style="margin-bottom:10px;">
-          <div class="muted" style="font-size:0.75rem;">${formatDateTime(draw.generatedAt)}</div>
+        <div class="card stack" style="margin-bottom:var(--space-3);">
+          <div class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(draw.generatedAt)}</div>
           <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));">${teamsHtml}</div>
         </div>`;
     })
@@ -130,11 +131,11 @@ function renderDraftBoard(draft, ctx) {
         <strong>👑 Captain-Draft läuft</strong>
         <span class="badge badge-playing">Live</span>
       </div>
-      <div class="row" style="gap:8px;">${gameBadgeHtml(gameById(draft.gameId) || { id: draft.gameId, icon: draft.gameIcon }, 24)} ${escapeHtml(draft.gameName)}</div>
+      <div class="row" style="gap:var(--space-2);">${gameBadgeHtml(gameById(draft.gameId) || { id: draft.gameId, icon: draft.gameIcon }, 24)} ${escapeHtml(draft.gameName)}</div>
       <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));">${teamsHtml}</div>
-      <div class="section-title" style="margin:8px 0 0;">Pool</div>
+      <div class="section-title" style="margin:var(--space-2) 0 0;">Pool</div>
       <div class="chip-list">${poolHtml}</div>
-      <div class="muted" style="font-size:0.85rem;">
+      <div class="muted" style="font-size:var(--font-size-sm);">
         ${isMyTurn ? '🫵 Du bist am Zug – tippe einen Spieler an!' : `Warten auf <strong>${escapeHtml(turnCaptain?.name ?? '?')}</strong>…`}
       </div>
       <button type="button" class="btn btn-danger btn-sm" id="draft-cancel">Draft abbrechen</button>
@@ -166,7 +167,7 @@ function wireDraftBoard(container, ctx, draft) {
   const cancelBtn = container.querySelector('#draft-cancel');
   if (cancelBtn) {
     cancelBtn.addEventListener('click', async () => {
-      if (!confirm('Draft wirklich abbrechen?')) return;
+      if (!(await confirmDialog('Draft wirklich abbrechen?'))) return;
       try {
         draftCache = await api.draft.cancel();
         ctx.rerender();
@@ -268,7 +269,7 @@ export function renderMatchmaking(container, ctx) {
     .map((p) => {
       const isCaptain = draftCaptainIds.has(p.id);
       return `<button type="button" class="chip" data-captain-toggle="${p.id}"
-        style="cursor:pointer;${isCaptain ? 'border-color:var(--accent);color:var(--accent);font-weight:700;' : ''}">
+        style="cursor:pointer;${isCaptain ? 'border-color:var(--accent);color:var(--accent);font-weight:var(--font-weight-bold);' : ''}">
         ${isCaptain ? '👑 ' : ''}${escapeHtml(p.name)}
       </button>`;
     })
@@ -286,18 +287,18 @@ export function renderMatchmaking(container, ctx) {
         <input type="number" id="mm-teamcount" placeholder="Teams" min="2" style="width:90px;flex-shrink:0;" />
         <button type="button" class="btn btn-primary" id="mm-generate" style="flex:1;">Teams auslosen</button>
       </div>
-      <div class="muted" style="font-size:0.78rem;margin-top:-6px;">Anzahl Teams leer lassen für automatisch (Standard: 2)</div>
+      <div class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">Anzahl Teams leer lassen für automatisch (Standard: 2)</div>
       <label class="check-row">
         <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
         <span>🪑 Sitznachbarn nicht gegeneinander auslosen</span>
       </label>
 
-      <div class="section-title" style="margin:8px 0 0;">👑 Oder: Captain-Draft</div>
-      <div class="muted" style="font-size:0.78rem;">
+      <div class="section-title" style="margin:var(--space-2) 0 0;">👑 Oder: Captain-Draft</div>
+      <div class="muted" style="font-size:var(--font-size-xs);">
         2-4 Captains antippen – sie picken dann abwechselnd live aus den übrigen angehakten
         Spielern. Alle können auf ihrem Handy zusehen.
       </div>
-      <div class="chip-list">${captainChips || '<span class="muted" style="font-size:0.85rem;">Oben Spieler anhaken, dann hier Captains wählen.</span>'}</div>
+      <div class="chip-list">${captainChips || '<span class="muted" style="font-size:var(--font-size-sm);">Oben Spieler anhaken, dann hier Captains wählen.</span>'}</div>
       <button type="button" class="btn" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten${draftReady ? ` (${draftCaptainIds.size} Captains, ${draftPoolSize} im Pool)` : ''}</button>
     </div>
     <div id="mm-result">${renderResult(state.lastMatchmaking)}</div>
@@ -413,14 +414,14 @@ function renderResult(result) {
 
   const seatingNote = result.seatPairsConsidered
     ? result.seatConflicts > 0
-      ? `<div class="muted" style="font-size:0.78rem;margin-top:8px;">🪑 ${result.seatConflicts} von ${result.seatPairsConsidered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten (sonst wäre es zu unfair geworden).</div>`
-      : `<div class="muted" style="font-size:0.78rem;margin-top:8px;">🪑 Alle Sitznachbarn sind im selben Team.</div>`
+      ? `<div class="muted" style="font-size:var(--font-size-xs);margin-top:var(--space-2);">🪑 ${result.seatConflicts} von ${result.seatPairsConsidered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten (sonst wäre es zu unfair geworden).</div>`
+      : `<div class="muted" style="font-size:var(--font-size-xs);margin-top:var(--space-2);">🪑 Alle Sitznachbarn sind im selben Team.</div>`
     : '';
 
   return `
-    <div class="section-title row" style="gap:8px;">${gameBadgeHtml(gameById(result.gameId), 22)} ${escapeHtml(result.gameName)} — Ergebnis</div>
+    <div class="section-title row" style="gap:var(--space-2);">${gameBadgeHtml(gameById(result.gameId), 22)} ${escapeHtml(result.gameName)} — Ergebnis</div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));">${teamsHtml}</div>
     ${seatingNote}
-    <button type="button" class="btn btn-primary btn-block" id="mm-record-result" style="margin-top:10px;">✅ Ergebnis eintragen</button>
+    <button type="button" class="btn btn-primary btn-block" id="mm-record-result" style="margin-top:var(--space-3);">✅ Ergebnis eintragen</button>
   `;
 }

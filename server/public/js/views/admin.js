@@ -5,13 +5,13 @@
 // extra role for testing and moderation.
 
 import { api } from '../api.js';
+import { confirmDialog } from '../modal.js';
 import { state } from '../state.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { isAdmin, getAdminPin, setAdmin } from '../admin.js';
 import { icon } from '../icons.js';
-
-const TEST_COLORS = ['#4f9dff', '#ef5da8', '#22c55e', '#f59e0b', '#9163f5', '#06b6d4', '#f43f5e', '#84cc16'];
+import { AVATAR_PALETTE } from '../avatarPalette.js';
 
 // Whether the server requires a PIN — fetched once so the unlock screen knows
 // whether to prompt for one or just offer a button.
@@ -30,7 +30,7 @@ async function loadStatus(ctx) {
 async function bulkCreate(count, ctx) {
   let created = 0;
   for (let i = 0; i < count; i++) {
-    const color = TEST_COLORS[(state.players.length + i) % TEST_COLORS.length];
+    const color = AVATAR_PALETTE[(state.players.length + i) % AVATAR_PALETTE.length];
     // Suffix keeps names unique across repeated runs (server enforces unique
     // names); a short random tail avoids clashing with an earlier batch.
     const name = `Test ${state.players.length + i + 1}-${Math.random().toString(36).slice(2, 5)}`;
@@ -56,7 +56,7 @@ async function toggleAdmin(player, ctx) {
 }
 
 async function deletePlayer(player, ctx) {
-  if (!confirm(`Spieler "${player.name}" wirklich löschen?`)) return;
+  if (!(await confirmDialog(`Spieler "${player.name}" wirklich löschen?`))) return;
   try {
     await api.players.remove(player.id);
     showToast('Spieler gelöscht.');
@@ -105,13 +105,13 @@ function renderPanel(container, ctx) {
   const rows = players
     .map(
       (p) => `
-      <div class="row-between" style="padding:8px 0;border-bottom:1px solid var(--border);">
-        <span class="row" style="gap:8px;">
+      <div class="row-between" style="padding:var(--space-2) 0;border-bottom:1px solid var(--border);">
+        <span class="row" style="gap:var(--space-2);">
           <span class="avatar-dot" style="background:${escapeHtml(p.color)};"></span>
           <span class="player-name">${escapeHtml(p.name)}</span>
           ${p.is_admin ? '<span class="badge badge-playing">Admin</span>' : ''}
         </span>
-        <span class="row" style="gap:6px;">
+        <span class="row" style="gap:var(--space-2);">
           <button type="button" class="btn btn-sm" data-toggle-admin="${p.id}">${p.is_admin ? 'Admin entziehen' : 'Admin machen'}</button>
           <button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">Löschen</button>
         </span>
@@ -127,7 +127,7 @@ function renderPanel(container, ctx) {
     </div>
 
     <div class="section-title">Test-Spieler anlegen</div>
-    <div class="card row" style="gap:8px;">
+    <div class="card row" style="gap:var(--space-2);">
       <input type="number" id="admin-count" value="5" min="1" max="20" style="max-width:90px;" />
       <button type="button" class="btn btn-primary" id="admin-bulk" style="flex:1;">Test-Spieler anlegen</button>
     </div>

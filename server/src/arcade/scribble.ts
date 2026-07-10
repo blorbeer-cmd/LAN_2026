@@ -1,13 +1,19 @@
-// Stateful part of the Scribble (skribbl.io-style draw & guess) arcade game.
-// Mirrors the shape of the quiz game in arcade.ts (in-memory match state per
-// Node process, one Socket.IO room per match) but needs its own richer state
-// machine: word choice -> drawing (with hints ticking in) -> reveal -> next
-// turn, rotating who draws. See scribbleLogic.ts for the pure rules this
-// leans on (scoring, hint timing, word choice, drawer rotation).
+// Scribble (skribbl.io-style draw & guess) — server-authoritative realtime
+// game over Socket.IO. Kept fully separate from arcade.ts (the quiz) and
+// tetris.ts, each with its own `scribble:*` event namespace and lobby list —
+// the only thing all three share is the arcade_results table, so completed
+// Scribble matches show up automatically in the Arcade stats alongside quiz
+// and Tetris.
+//
+// State machine per turn: word choice -> drawing (with hints ticking in and
+// a countdown before the first turn) -> reveal -> next turn, rotating who
+// draws. See scribbleLogic.ts for the pure rules this leans on (scoring,
+// hint timing, word choice, drawer rotation).
 
 import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
+import { notifyPlayers } from '../push';
 import { matchesAnswer } from './quizLogic';
 import {
   buildHintSchedule,
@@ -20,10 +26,10 @@ import {
   pointsForGuess,
   wordMask,
 } from './scribbleLogic';
-import { recordArcadeResult } from './arcadeResults';
 
 const CHOICE_MS = 15_000;
 const REVEAL_MS = 3_000;
+const COUNTDOWN_MS = 3000; // "3, 2, 1" before the first turn's word choice
 const DEFAULT_ROUNDS = 2;
 const DEFAULT_TURN_MS = 60_000;
 const MIN_TURN_MS = 20_000;
@@ -33,6 +39,14 @@ const MAX_STROKE_BATCHES = 4000; // guards memory if a client sends nonstop for 
 interface PlayerRef {
   id: string;
   name: string;
+}
+
+interface ScribbleLobby {
+  id: string;
+  host: PlayerRef;
+  players: PlayerRef[];
+  socketIds: Map<string, string>;
+  createdAt: number;
 }
 
 interface WordRow {
@@ -93,20 +107,52 @@ interface ScribbleMatchState {
   pausedElapsedMs: number | null;
   hintTimers: NodeJS.Timeout[];
   nextTurnTimer: NodeJS.Timeout | null;
+  startTimer: NodeJS.Timeout | null; // the pre-first-turn "3, 2, 1" delay
   paused: boolean;
   startedAt: number;
 }
 
+const lobbies = new Map<string, ScribbleLobby>();
 const matches = new Map<string, ScribbleMatchState>();
 
-export function roundsValue(value: unknown): number | null {
+function playerById(playerId: unknown): PlayerRef | null {
+  if (typeof playerId !== 'string' || !playerId) return null;
+  const row = db.prepare('SELECT id, name FROM players WHERE id = ?').get(playerId) as PlayerRef | undefined;
+  return row ?? null;
+}
+
+function roundsValue(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isInteger(value)) return null;
   return value >= 1 && value <= 5 ? value : null;
 }
 
-export function turnDurationValue(value: unknown): number | null {
+function turnDurationValue(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isInteger(value)) return null;
   return value >= MIN_TURN_MS && value <= MAX_TURN_MS ? value : null;
+}
+
+function publicLobbies() {
+  return [...lobbies.values()].map((l) => ({ id: l.id, host: l.host, players: l.players, createdAt: l.createdAt }));
+}
+
+function emitLobbies(io: Server) {
+  io.emit('scribble:lobbies', { lobbies: publicLobbies() });
+}
+
+function removeFromOpenLobbies(io: Server, socketId: string) {
+  let changed = false;
+  for (const [id, lobby] of lobbies) {
+    const entry = [...lobby.socketIds.entries()].find(([, sid]) => sid === socketId);
+    if (!entry) continue;
+    if (lobby.host.id === entry[0]) {
+      lobbies.delete(id);
+    } else {
+      lobby.socketIds.delete(entry[0]);
+      lobby.players = lobby.players.filter((p) => p.id !== entry[0]);
+    }
+    changed = true;
+  }
+  if (changed) emitLobbies(io);
 }
 
 function scorePayload(match: ScribbleMatchState) {
@@ -130,10 +176,12 @@ function clearAllTimers(match: ScribbleMatchState): void {
   if (match.choiceTimer) clearTimeout(match.choiceTimer);
   if (match.turnTimer) clearTimeout(match.turnTimer);
   if (match.nextTurnTimer) clearTimeout(match.nextTurnTimer);
+  if (match.startTimer) clearTimeout(match.startTimer);
   match.hintTimers.forEach(clearTimeout);
   match.choiceTimer = null;
   match.turnTimer = null;
   match.nextTurnTimer = null;
+  match.startTimer = null;
   match.hintTimers = [];
 }
 
@@ -161,22 +209,19 @@ function markWordSeen(wordId: string, playerIds: string[]): void {
   for (const id of playerIds) stmt.run(wordId, id, now);
 }
 
-function finishMatch(io: Server, match: ScribbleMatchState, reason: string): void {
+function finishMatch(io: Server, match: ScribbleMatchState, winner: PlayerRef | null, reason: string): void {
   clearAllTimers(match);
   const scores = scorePayload(match);
-  const winner = scores.reduce<typeof scores[number] | null>((best, s) => (!best || s.score > best.score ? s : best), null);
-  recordArcadeResult({
-    gameType: 'scribble',
-    winnerId: winner?.playerId ?? null,
-    players: match.players,
-    scores,
-    reason,
-    startedAt: match.startedAt,
-    endedAt: Date.now(),
-  });
-  io.to(match.room).emit('arcade:match:end', {
+  const bestScore = scores.reduce<(typeof scores)[number] | null>((best, s) => (!best || s.score > best.score ? s : best), null);
+  const winnerId = winner?.id ?? bestScore?.playerId ?? null;
+  const resolvedWinner = winnerId ? match.players.find((p) => p.id === winnerId) ?? null : null;
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(nanoid(), 'scribble', winnerId, JSON.stringify(match.players), JSON.stringify(scores), reason, match.startedAt, Date.now());
+  io.to(match.room).emit('scribble:match:end', {
     matchId: match.id,
-    winner: winner ? match.players.find((p) => p.id === winner.playerId) ?? null : null,
+    winner: resolvedWinner,
     reason,
     scores,
   });
@@ -197,7 +242,7 @@ function fireHint(io: Server, match: ScribbleMatchState, hint: HintStep): void {
   if (!match.pendingHints.includes(hint)) return;
   match.pendingHints = match.pendingHints.filter((h) => h !== hint);
   match.revealedIndices.add(hint.index);
-  io.to(match.room).emit('arcade:scribble:hint', {
+  io.to(match.room).emit('scribble:hint', {
     matchId: match.id,
     mask: wordMask(match.currentWord ?? '', match.revealedIndices),
   });
@@ -205,11 +250,11 @@ function fireHint(io: Server, match: ScribbleMatchState, hint: HintStep): void {
 
 function startNextTurn(io: Server, match: ScribbleMatchState): void {
   if (isMatchComplete(match.turnsPlayed, match.rounds, match.players.length)) {
-    return finishMatch(io, match, 'completed');
+    return finishMatch(io, match, null, 'completed');
   }
   const order = match.players.map((p) => p.id);
   const nextIndex = nextDrawerIndex(order, match.drawIndex, match.online);
-  if (nextIndex === null) return finishMatch(io, match, 'player-left');
+  if (nextIndex === null) return finishMatch(io, match, null, 'player-left');
 
   match.drawIndex = nextIndex;
   match.phase = 'choosing';
@@ -229,7 +274,7 @@ function startNextTurn(io: Server, match: ScribbleMatchState): void {
   );
   match.wordOptions = optionIds.map((id) => pool.find((w) => w.id === id)!).filter(Boolean);
 
-  if (match.wordOptions.length === 0) return finishMatch(io, match, 'no-words');
+  if (match.wordOptions.length === 0) return finishMatch(io, match, null, 'no-words');
 
   const drawer = match.players[match.drawIndex];
   match.choiceExpiresAt = Date.now() + CHOICE_MS;
@@ -237,14 +282,14 @@ function startNextTurn(io: Server, match: ScribbleMatchState): void {
 
   const drawerSocketId = match.socketIds.get(drawer.id);
   if (drawerSocketId) {
-    io.to(drawerSocketId).emit('arcade:scribble:choose', {
+    io.to(drawerSocketId).emit('scribble:choose', {
       matchId: match.id,
       options: match.wordOptions.map((w) => ({ id: w.id, word: w.word })),
       expiresAt: match.choiceExpiresAt,
     });
   }
 
-  io.to(match.room).emit('arcade:scribble:turn', {
+  io.to(match.room).emit('scribble:turn', {
     matchId: match.id,
     phase: 'choosing',
     drawer,
@@ -274,7 +319,7 @@ function chooseWord(io: Server, match: ScribbleMatchState, wordId: string): void
   match.pendingHints = buildHintSchedule(option.word, match.turnDurationMs);
 
   const drawer = match.players[match.drawIndex];
-  io.to(match.room).emit('arcade:scribble:turn', {
+  io.to(match.room).emit('scribble:turn', {
     matchId: match.id,
     phase: 'drawing',
     drawer,
@@ -293,7 +338,7 @@ function chooseWord(io: Server, match: ScribbleMatchState, wordId: string): void
   // on a choice timeout.
   const drawerSocketId = match.socketIds.get(drawer.id);
   if (drawerSocketId) {
-    io.to(drawerSocketId).emit('arcade:scribble:word-chosen', { matchId: match.id, word: option.word });
+    io.to(drawerSocketId).emit('scribble:word-chosen', { matchId: match.id, word: option.word });
   }
 
   startTurnTimers(io, match, match.turnDurationMs, 0);
@@ -309,11 +354,14 @@ function endTurn(io: Server, match: ScribbleMatchState, reason: string): void {
     const eligible = eligibleGuesserIds(match).length;
     const drawerPoints = pointsForDrawer(match.guessedPlayerIds.size, eligible);
     if (drawerPoints > 0) match.scores.set(drawer.id, (match.scores.get(drawer.id) ?? 0) + drawerPoints);
-    markWordSeen(match.currentWordId!, match.players.map((p) => p.id));
+    markWordSeen(
+      match.currentWordId!,
+      match.players.map((p) => p.id)
+    );
   }
 
   match.turnsPlayed += 1;
-  io.to(match.room).emit('arcade:scribble:turn-end', {
+  io.to(match.room).emit('scribble:turn-end', {
     matchId: match.id,
     word: match.currentWord,
     reason,
@@ -325,297 +373,367 @@ function endTurn(io: Server, match: ScribbleMatchState, reason: string): void {
   }, REVEAL_MS);
 }
 
-export function createScribbleMatch(
-  io: Server,
-  lobby: { id: string; host: PlayerRef; players: PlayerRef[]; socketIds: Map<string, string> },
-  options: { rounds?: number; turnDurationMs?: number }
-): ScribbleMatchState {
-  const rounds = roundsValue(options.rounds) ?? DEFAULT_ROUNDS;
-  const turnDurationMs = turnDurationValue(options.turnDurationMs) ?? DEFAULT_TURN_MS;
-  const room = `arcade:${nanoid()}`;
-  for (const socketId of lobby.socketIds.values()) {
-    io.sockets.sockets.get(socketId)?.join(room);
-  }
+export function registerScribbleSockets(io: Server): void {
+  io.on('connection', (socket: Socket) => {
+    socket.emit('scribble:lobbies', { lobbies: publicLobbies() });
 
-  const match: ScribbleMatchState = {
-    id: nanoid(),
-    room,
-    host: lobby.host,
-    players: lobby.players,
-    socketIds: new Map(lobby.socketIds),
-    online: new Set(lobby.players.map((p) => p.id)),
-    scores: new Map(lobby.players.map((p) => [p.id, 0])),
-    rounds,
-    turnDurationMs,
-    turnsPlayed: 0,
-    drawIndex: -1,
-    phase: 'choosing',
-    currentWord: null,
-    currentWordId: null,
-    wordOptions: null,
-    guessedPlayerIds: new Set(),
-    revealedIndices: new Set(),
-    pendingHints: [],
-    strokes: [],
-    choiceTimer: null,
-    choiceExpiresAt: null,
-    turnTimer: null,
-    turnExpiresAt: null,
-    turnRemainingMs: null,
-    pausedElapsedMs: null,
-    hintTimers: [],
-    nextTurnTimer: null,
-    paused: false,
-    startedAt: Date.now(),
-  };
-  matches.set(match.id, match);
+    socket.on('scribble:lobbies:get', () => {
+      socket.emit('scribble:lobbies', { lobbies: publicLobbies() });
+    });
 
-  io.to(room).emit('arcade:match:start', {
-    matchId: match.id,
-    gameType: 'scribble',
-    host: match.host,
-    players: match.players,
-    rounds,
-    turnDurationMs,
-  });
+    socket.on('scribble:lobby:create', (payload: { playerId?: string }, ack?: (res: unknown) => void) => {
+      const player = playerById(payload?.playerId);
+      if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
 
-  startNextTurn(io, match);
-  return match;
-}
+      removeFromOpenLobbies(io, socket.id);
+      const lobby: ScribbleLobby = {
+        id: nanoid(),
+        host: player,
+        players: [player],
+        socketIds: new Map([[player.id, socket.id]]),
+        createdAt: Date.now(),
+      };
+      lobbies.set(lobby.id, lobby);
+      emitLobbies(io);
+      ack?.({ ok: true, lobbyId: lobby.id });
 
-export function hasScribbleMatch(matchId: string): boolean {
-  return matches.has(matchId);
-}
-
-export function pauseScribbleMatch(io: Server, matchId: string, playerId: string): { ok: boolean; error?: string } {
-  const match = matches.get(matchId);
-  if (!match) return { ok: false, error: 'Match nicht gefunden.' };
-  if (playerId !== match.host.id) return { ok: false, error: 'Nur der Host kann pausieren.' };
-  if (match.phase !== 'drawing' || match.paused) return { ok: true };
-
-  const remainingMs = Math.max(1, (match.turnExpiresAt ?? Date.now()) - Date.now());
-  match.pausedElapsedMs = match.turnDurationMs - remainingMs;
-  match.turnRemainingMs = remainingMs;
-  if (match.turnTimer) clearTimeout(match.turnTimer);
-  match.hintTimers.forEach(clearTimeout);
-  match.turnTimer = null;
-  match.turnExpiresAt = null;
-  match.hintTimers = [];
-  match.paused = true;
-  io.to(match.room).emit('arcade:match:paused', { matchId: match.id, remainingMs, scores: scorePayload(match) });
-  return { ok: true };
-}
-
-export function resumeScribbleMatch(io: Server, matchId: string, playerId: string): { ok: boolean; error?: string } {
-  const match = matches.get(matchId);
-  if (!match) return { ok: false, error: 'Match nicht gefunden.' };
-  if (playerId !== match.host.id) return { ok: false, error: 'Nur der Host kann fortsetzen.' };
-  if (match.phase !== 'drawing' || !match.paused) return { ok: true };
-
-  const remainingMs = match.turnRemainingMs ?? match.turnDurationMs;
-  const elapsedMs = match.pausedElapsedMs ?? 0;
-  match.turnRemainingMs = null;
-  match.pausedElapsedMs = null;
-  match.paused = false;
-  startTurnTimers(io, match, remainingMs, elapsedMs);
-  io.to(match.room).emit('arcade:match:resumed', { matchId: match.id, expiresAt: match.turnExpiresAt, scores: scorePayload(match) });
-  return { ok: true };
-}
-
-export function finishScribbleMatch(io: Server, matchId: string, playerId: string): { ok: boolean; error?: string } {
-  const match = matches.get(matchId);
-  if (!match) return { ok: false, error: 'Match nicht gefunden.' };
-  if (playerId !== match.host.id) return { ok: false, error: 'Nur der Host kann beenden.' };
-  finishMatch(io, match, 'ended-by-host');
-  return { ok: true };
-}
-
-export function handleScribbleDisconnect(io: Server, socketId: string): void {
-  for (const match of matches.values()) {
-    const entry = [...match.socketIds.entries()].find(([, sid]) => sid === socketId);
-    if (!entry) continue;
-    const [playerId] = entry;
-    match.online.delete(playerId);
-    io.to(match.room).emit('arcade:scribble:presence', { matchId: match.id, playerId, online: false });
-
-    if (match.online.size < 2) {
-      finishMatch(io, match, 'player-left');
-      continue;
-    }
-
-    const isDrawer = match.phase !== 'choosing' ? match.players[match.drawIndex]?.id === playerId : false;
-    if (match.phase === 'choosing' && match.players[match.drawIndex]?.id === playerId) {
-      if (match.choiceTimer) clearTimeout(match.choiceTimer);
-      match.choiceTimer = null;
-      startNextTurn(io, match);
-    } else if (isDrawer) {
-      endTurn(io, match, 'drawer-left');
-    } else if (match.phase === 'drawing' && allEligibleGuessed(match)) {
-      // The last remaining un-guessed rater just left — nothing left to wait for.
-      endTurn(io, match, 'all-guessed');
-    }
-  }
-}
-
-export function registerScribbleSocketHandlers(io: Server, socket: Socket): void {
-  socket.on(
-    'arcade:scribble:word',
-    (payload: { matchId?: string; playerId?: string; wordId?: string }, ack?: (res: unknown) => void) => {
-      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-      if (!match || match.phase !== 'choosing') return ack?.({ ok: false, error: 'Wortauswahl nicht möglich.' });
-      if (match.players[match.drawIndex]?.id !== payload?.playerId) return ack?.({ ok: false, error: 'Nur der Zeichner wählt.' });
-      if (typeof payload?.wordId !== 'string') return ack?.({ ok: false, error: 'Ungültiges Wort.' });
-      chooseWord(io, match, payload.wordId);
-      ack?.({ ok: true });
-    }
-  );
-
-  socket.on(
-    'arcade:scribble:stroke',
-    (payload: {
-      matchId?: string;
-      playerId?: string;
-      strokeId?: string;
-      color?: string;
-      size?: number;
-      erase?: boolean;
-      points?: number[][];
-    }) => {
-      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-      if (!match || match.phase !== 'drawing' || match.paused) return;
-      if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
-      if (typeof payload.strokeId !== 'string' || !payload.strokeId || payload.strokeId.length > 40) return;
-      if (!Array.isArray(payload.points) || payload.points.length === 0 || payload.points.length > 200) return;
-      const points = payload.points.filter(
-        (p) => Array.isArray(p) && p.length === 2 && typeof p[0] === 'number' && typeof p[1] === 'number'
+      // Nobody has the Arcade view open to see the toast-on-connect above,
+      // so a real push is the only way the rest of the LAN finds out a lobby
+      // is waiting for them.
+      const otherPlayerIds = (db.prepare('SELECT id FROM players WHERE id != ?').all(player.id) as Array<{ id: string }>).map(
+        (p) => p.id
       );
-      if (points.length === 0) return;
-      const size = typeof payload.size === 'number' && payload.size > 0 && payload.size <= 40 ? payload.size : 4;
-      const color = typeof payload.color === 'string' && payload.color.length <= 20 ? payload.color : '#111111';
-      const batch: StrokeBatch = { type: 'stroke', strokeId: payload.strokeId, color, size, erase: !!payload.erase, points };
-      if (match.strokes.length < MAX_STROKE_BATCHES) match.strokes.push(batch);
-      socket.to(match.room).emit('arcade:scribble:stroke', { matchId: match.id, ...batch });
-    }
-  );
+      notifyPlayers(otherPlayerIds, {
+        title: '✏️ Neue Scribble-Lobby',
+        body: `${player.name} hat eine Scribble-Lobby geöffnet – jetzt beitreten!`,
+        url: '/',
+      });
+    });
 
-  socket.on(
-    'arcade:scribble:fill',
-    (payload: { matchId?: string; playerId?: string; strokeId?: string; x?: number; y?: number; color?: string }) => {
+    socket.on('scribble:lobby:join', (payload: { lobbyId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+      const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
+      const player = playerById(payload?.playerId);
+      if (!lobby || !player) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
+
+      removeFromOpenLobbies(io, socket.id);
+      if (!lobby.players.some((p) => p.id === player.id)) lobby.players.push(player);
+      lobby.socketIds.set(player.id, socket.id);
+      emitLobbies(io);
+      ack?.({ ok: true, lobbyId: lobby.id });
+    });
+
+    socket.on('scribble:lobby:leave', (payload: { lobbyId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+      const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
+      if (!lobby || typeof payload?.playerId !== 'string') return ack?.({ ok: true });
+      if (lobby.host.id === payload.playerId) {
+        lobbies.delete(lobby.id);
+      } else {
+        lobby.socketIds.delete(payload.playerId);
+        lobby.players = lobby.players.filter((p) => p.id !== payload.playerId);
+      }
+      emitLobbies(io);
+      ack?.({ ok: true });
+    });
+
+    socket.on(
+      'scribble:lobby:start',
+      (payload: { lobbyId?: string; playerId?: string; rounds?: number; turnDurationMs?: number }, ack?: (res: unknown) => void) => {
+        const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
+        if (!lobby) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
+        if (payload?.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' });
+        if (lobby.players.length < 2) return ack?.({ ok: false, error: 'Mindestens zwei Spieler werden gebraucht.' });
+
+        const rounds = roundsValue(payload?.rounds) ?? DEFAULT_ROUNDS;
+        const turnDurationMs = turnDurationValue(payload?.turnDurationMs) ?? DEFAULT_TURN_MS;
+        const room = `scribble:${nanoid()}`;
+        for (const socketId of lobby.socketIds.values()) {
+          io.sockets.sockets.get(socketId)?.join(room);
+        }
+
+        const match: ScribbleMatchState = {
+          id: nanoid(),
+          room,
+          host: lobby.host,
+          players: lobby.players,
+          socketIds: new Map(lobby.socketIds),
+          online: new Set(lobby.players.map((p) => p.id)),
+          scores: new Map(lobby.players.map((p) => [p.id, 0])),
+          rounds,
+          turnDurationMs,
+          turnsPlayed: 0,
+          drawIndex: -1,
+          phase: 'choosing',
+          currentWord: null,
+          currentWordId: null,
+          wordOptions: null,
+          guessedPlayerIds: new Set(),
+          revealedIndices: new Set(),
+          pendingHints: [],
+          strokes: [],
+          choiceTimer: null,
+          choiceExpiresAt: null,
+          turnTimer: null,
+          turnExpiresAt: null,
+          turnRemainingMs: null,
+          pausedElapsedMs: null,
+          hintTimers: [],
+          nextTurnTimer: null,
+          startTimer: null,
+          paused: false,
+          startedAt: Date.now(),
+        };
+        matches.set(match.id, match);
+        lobbies.delete(lobby.id);
+        emitLobbies(io);
+
+        const beginsAt = Date.now() + COUNTDOWN_MS;
+        io.to(room).emit('scribble:match:start', {
+          matchId: match.id,
+          host: match.host,
+          players: match.players,
+          rounds,
+          turnDurationMs,
+          beginsAt,
+        });
+        ack?.({ ok: true, matchId: match.id });
+
+        // Give everyone a "3, 2, 1" before the first word choice appears.
+        match.startTimer = setTimeout(() => {
+          if (matches.get(match.id) === match) startNextTurn(io, match);
+        }, COUNTDOWN_MS);
+      }
+    );
+
+    socket.on(
+      'scribble:word',
+      (payload: { matchId?: string; playerId?: string; wordId?: string }, ack?: (res: unknown) => void) => {
+        const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+        if (!match || match.phase !== 'choosing') return ack?.({ ok: false, error: 'Wortauswahl nicht möglich.' });
+        if (match.players[match.drawIndex]?.id !== payload?.playerId) return ack?.({ ok: false, error: 'Nur der Zeichner wählt.' });
+        if (typeof payload?.wordId !== 'string') return ack?.({ ok: false, error: 'Ungültiges Wort.' });
+        chooseWord(io, match, payload.wordId);
+        ack?.({ ok: true });
+      }
+    );
+
+    socket.on(
+      'scribble:stroke',
+      (payload: {
+        matchId?: string;
+        playerId?: string;
+        strokeId?: string;
+        color?: string;
+        size?: number;
+        erase?: boolean;
+        points?: number[][];
+      }) => {
+        const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+        if (!match || match.phase !== 'drawing' || match.paused) return;
+        if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
+        if (typeof payload.strokeId !== 'string' || !payload.strokeId || payload.strokeId.length > 40) return;
+        if (!Array.isArray(payload.points) || payload.points.length === 0 || payload.points.length > 200) return;
+        const points = payload.points.filter(
+          (p) => Array.isArray(p) && p.length === 2 && typeof p[0] === 'number' && typeof p[1] === 'number'
+        );
+        if (points.length === 0) return;
+        const size = typeof payload.size === 'number' && payload.size > 0 && payload.size <= 40 ? payload.size : 4;
+        const color = typeof payload.color === 'string' && payload.color.length <= 20 ? payload.color : '#111111';
+        const batch: StrokeBatch = { type: 'stroke', strokeId: payload.strokeId, color, size, erase: !!payload.erase, points };
+        if (match.strokes.length < MAX_STROKE_BATCHES) match.strokes.push(batch);
+        socket.to(match.room).emit('scribble:stroke', { matchId: match.id, ...batch });
+      }
+    );
+
+    socket.on(
+      'scribble:fill',
+      (payload: { matchId?: string; playerId?: string; strokeId?: string; x?: number; y?: number; color?: string }) => {
+        const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+        if (!match || match.phase !== 'drawing' || match.paused) return;
+        if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
+        if (typeof payload.strokeId !== 'string' || !payload.strokeId || payload.strokeId.length > 40) return;
+        if (typeof payload.x !== 'number' || typeof payload.y !== 'number') return;
+        if (payload.x < 0 || payload.x > 1 || payload.y < 0 || payload.y > 1) return;
+        const color = typeof payload.color === 'string' && payload.color.length <= 20 ? payload.color : '#111111';
+        const fill: FillOp = { type: 'fill', strokeId: payload.strokeId, x: payload.x, y: payload.y, color };
+        if (match.strokes.length < MAX_STROKE_BATCHES) match.strokes.push(fill);
+        socket.to(match.room).emit('scribble:fill', { matchId: match.id, x: fill.x, y: fill.y, color: fill.color });
+      }
+    );
+
+    socket.on('scribble:clear', (payload: { matchId?: string; playerId?: string }) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
       if (!match || match.phase !== 'drawing' || match.paused) return;
       if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
-      if (typeof payload.strokeId !== 'string' || !payload.strokeId || payload.strokeId.length > 40) return;
-      if (typeof payload.x !== 'number' || typeof payload.y !== 'number') return;
-      if (payload.x < 0 || payload.x > 1 || payload.y < 0 || payload.y > 1) return;
-      const color = typeof payload.color === 'string' && payload.color.length <= 20 ? payload.color : '#111111';
-      const fill: FillOp = { type: 'fill', strokeId: payload.strokeId, x: payload.x, y: payload.y, color };
-      if (match.strokes.length < MAX_STROKE_BATCHES) match.strokes.push(fill);
-      socket.to(match.room).emit('arcade:scribble:fill', { matchId: match.id, x: fill.x, y: fill.y, color: fill.color });
-    }
-  );
+      match.strokes = [];
+      io.to(match.room).emit('scribble:clear', { matchId: match.id });
+    });
 
-  socket.on('arcade:scribble:clear', (payload: { matchId?: string; playerId?: string }) => {
-    const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-    if (!match || match.phase !== 'drawing' || match.paused) return;
-    if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
-    match.strokes = [];
-    io.to(match.room).emit('arcade:scribble:clear', { matchId: match.id });
-  });
+    // Removes the whole last pen stroke (every batch sharing its strokeId),
+    // not just the most recent network batch — a single visible pen stroke is
+    // split into many small batches by the client's per-frame flush, so
+    // popping only the last array entry would just nibble a fragment off the
+    // end of the line instead of undoing it. Broadcasts the reduced canonical
+    // stroke list so every client redraws from the same authoritative state
+    // rather than trying to "erase" (which can't correctly undo overlaps).
+    socket.on('scribble:undo', (payload: { matchId?: string; playerId?: string }) => {
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match || match.phase !== 'drawing' || match.paused) return;
+      if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
+      if (match.strokes.length === 0) return;
+      const lastStrokeId = match.strokes[match.strokes.length - 1].strokeId;
+      match.strokes = match.strokes.filter((s) => s.strokeId !== lastStrokeId);
+      io.to(match.room).emit('scribble:redraw', { matchId: match.id, strokes: match.strokes });
+    });
 
-  // Removes the whole last pen stroke (every batch sharing its strokeId),
-  // not just the most recent network batch — a single visible pen stroke is
-  // split into many small batches by the client's per-frame flush, so
-  // popping only the last array entry would just nibble a fragment off the
-  // end of the line instead of undoing it. Broadcasts the reduced canonical
-  // stroke list so every client redraws from the same authoritative state
-  // rather than trying to "erase" (which can't correctly undo overlaps).
-  socket.on('arcade:scribble:undo', (payload: { matchId?: string; playerId?: string }) => {
-    const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-    if (!match || match.phase !== 'drawing' || match.paused) return;
-    if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
-    if (match.strokes.length === 0) return;
-    const lastStrokeId = match.strokes[match.strokes.length - 1].strokeId;
-    match.strokes = match.strokes.filter((s) => s.strokeId !== lastStrokeId);
-    io.to(match.room).emit('arcade:scribble:redraw', { matchId: match.id, strokes: match.strokes });
-  });
+    socket.on(
+      'scribble:guess',
+      (payload: { matchId?: string; playerId?: string; text?: string }, ack?: (res: unknown) => void) => {
+        const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+        const player = match?.players.find((p) => p.id === payload?.playerId);
+        if (!match || !player || typeof payload?.text !== 'string' || !payload.text.trim()) {
+          return ack?.({ ok: false, error: 'Tipp nicht angenommen.' });
+        }
+        if (match.phase !== 'drawing' || match.paused) return ack?.({ ok: true, correct: false });
+        if (match.players[match.drawIndex]?.id === player.id) return ack?.({ ok: false, error: 'Der Zeichner rät nicht mit.' });
+        if (match.guessedPlayerIds.has(player.id)) return ack?.({ ok: true, correct: true });
 
-  socket.on(
-    'arcade:scribble:guess',
-    (payload: { matchId?: string; playerId?: string; text?: string }, ack?: (res: unknown) => void) => {
+        const text = payload.text.trim().slice(0, 80);
+        if (!match.currentWord || !matchesAnswer(text, [match.currentWord])) {
+          io.to(match.room).emit('scribble:chat', { matchId: match.id, playerId: player.id, name: player.name, text });
+          // "Knapp dran" is only ever sent back to this one guesser via the
+          // ack, never broadcast - anyone else seeing it would effectively
+          // learn the word is nearly spelled out.
+          const close = !!match.currentWord && isCloseGuess(text, match.currentWord);
+          return ack?.({ ok: true, correct: false, close });
+        }
+
+        const remainingMs = Math.max(0, (match.turnExpiresAt ?? Date.now()) - Date.now());
+        const points = pointsForGuess(remainingMs, match.turnDurationMs);
+        match.scores.set(player.id, (match.scores.get(player.id) ?? 0) + points);
+        match.guessedPlayerIds.add(player.id);
+        io.to(match.room).emit('scribble:chat', {
+          matchId: match.id,
+          playerId: player.id,
+          name: player.name,
+          correct: true,
+          points,
+        });
+        io.to(match.room).emit('scribble:scores', { matchId: match.id, scores: scorePayload(match) });
+        ack?.({ ok: true, correct: true, points });
+
+        if (allEligibleGuessed(match)) {
+          endTurn(io, match, 'all-guessed');
+        }
+      }
+    );
+
+    socket.on('scribble:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
+      if (match.phase !== 'drawing' || match.paused) return ack?.({ ok: true });
+
+      const remainingMs = Math.max(1, (match.turnExpiresAt ?? Date.now()) - Date.now());
+      match.pausedElapsedMs = match.turnDurationMs - remainingMs;
+      match.turnRemainingMs = remainingMs;
+      if (match.turnTimer) clearTimeout(match.turnTimer);
+      match.hintTimers.forEach(clearTimeout);
+      match.turnTimer = null;
+      match.turnExpiresAt = null;
+      match.hintTimers = [];
+      match.paused = true;
+      io.to(match.room).emit('scribble:match:paused', { matchId: match.id, remainingMs, scores: scorePayload(match) });
+      ack?.({ ok: true });
+    });
+
+    socket.on('scribble:match:resume', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann fortsetzen.' });
+      if (match.phase !== 'drawing' || !match.paused) return ack?.({ ok: true });
+
+      const remainingMs = match.turnRemainingMs ?? match.turnDurationMs;
+      const elapsedMs = match.pausedElapsedMs ?? 0;
+      match.turnRemainingMs = null;
+      match.pausedElapsedMs = null;
+      match.paused = false;
+      startTurnTimers(io, match, remainingMs, elapsedMs);
+      io.to(match.room).emit('scribble:match:resumed', { matchId: match.id, expiresAt: match.turnExpiresAt, scores: scorePayload(match) });
+      ack?.({ ok: true });
+    });
+
+    socket.on('scribble:match:finish', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann beenden.' });
+      finishMatch(io, match, null, 'ended-by-host');
+      ack?.({ ok: true });
+    });
+
+    socket.on('scribble:rejoin', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
       const player = match?.players.find((p) => p.id === payload?.playerId);
-      if (!match || !player || typeof payload?.text !== 'string' || !payload.text.trim()) {
-        return ack?.({ ok: false, error: 'Tipp nicht angenommen.' });
-      }
-      if (match.phase !== 'drawing' || match.paused) return ack?.({ ok: true, correct: false });
-      if (match.players[match.drawIndex]?.id === player.id) return ack?.({ ok: false, error: 'Der Zeichner rät nicht mit.' });
-      if (match.guessedPlayerIds.has(player.id)) return ack?.({ ok: true, correct: true });
+      if (!match || !player) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
 
-      const text = payload.text.trim().slice(0, 80);
-      if (!match.currentWord || !matchesAnswer(text, [match.currentWord])) {
-        io.to(match.room).emit('arcade:scribble:chat', { matchId: match.id, playerId: player.id, name: player.name, text });
-        // "Knapp dran" is only ever sent back to this one guesser via the
-        // ack, never broadcast - anyone else seeing it would effectively
-        // learn the word is nearly spelled out.
-        const close = !!match.currentWord && isCloseGuess(text, match.currentWord);
-        return ack?.({ ok: true, correct: false, close });
-      }
+      match.socketIds.set(player.id, socket.id);
+      match.online.add(player.id);
+      socket.join(match.room);
+      io.to(match.room).emit('scribble:presence', { matchId: match.id, playerId: player.id, online: true });
 
-      const remainingMs = Math.max(0, (match.turnExpiresAt ?? Date.now()) - Date.now());
-      const points = pointsForGuess(remainingMs, match.turnDurationMs);
-      match.scores.set(player.id, (match.scores.get(player.id) ?? 0) + points);
-      match.guessedPlayerIds.add(player.id);
-      io.to(match.room).emit('arcade:scribble:chat', {
-        matchId: match.id,
-        playerId: player.id,
-        name: player.name,
-        correct: true,
-        points,
+      ack?.({
+        ok: true,
+        sync: {
+          matchId: match.id,
+          host: match.host,
+          players: match.players,
+          rounds: match.rounds,
+          turnDurationMs: match.turnDurationMs,
+          phase: match.phase,
+          round: Math.floor(match.turnsPlayed / match.players.length) + 1,
+          drawer: match.drawIndex >= 0 ? match.players[match.drawIndex] : null,
+          isDrawer: match.drawIndex >= 0 && match.players[match.drawIndex]?.id === player.id,
+          mask: match.currentWord ? wordMask(match.currentWord, match.revealedIndices) : null,
+          // Only ever the real word for the drawer themself — everyone else
+          // (including this same payload's `mask` field) must stay masked.
+          word: match.currentWord && match.players[match.drawIndex]?.id === player.id ? match.currentWord : null,
+          expiresAt: match.phase === 'choosing' ? match.choiceExpiresAt : match.turnExpiresAt,
+          paused: match.paused,
+          scores: scorePayload(match),
+          strokes: match.strokes,
+          wordOptions:
+            match.phase === 'choosing' && match.players[match.drawIndex]?.id === player.id
+              ? match.wordOptions?.map((w) => ({ id: w.id, word: w.word })) ?? null
+              : null,
+        },
       });
-      io.to(match.room).emit('arcade:scribble:scores', { matchId: match.id, scores: scorePayload(match) });
-      ack?.({ ok: true, correct: true, points });
+    });
 
-      if (allEligibleGuessed(match)) {
-        endTurn(io, match, 'all-guessed');
+    socket.on('disconnect', () => {
+      removeFromOpenLobbies(io, socket.id);
+      for (const match of matches.values()) {
+        const entry = [...match.socketIds.entries()].find(([, sid]) => sid === socket.id);
+        if (!entry) continue;
+        const [playerId] = entry;
+        match.online.delete(playerId);
+        io.to(match.room).emit('scribble:presence', { matchId: match.id, playerId, online: false });
+
+        if (match.online.size < 2) {
+          finishMatch(io, match, null, 'player-left');
+          continue;
+        }
+
+        const isDrawer = match.phase !== 'choosing' ? match.players[match.drawIndex]?.id === playerId : false;
+        if (match.phase === 'choosing' && match.players[match.drawIndex]?.id === playerId) {
+          if (match.choiceTimer) clearTimeout(match.choiceTimer);
+          match.choiceTimer = null;
+          startNextTurn(io, match);
+        } else if (isDrawer) {
+          endTurn(io, match, 'drawer-left');
+        } else if (match.phase === 'drawing' && allEligibleGuessed(match)) {
+          // The last remaining un-guessed rater just left — nothing left to wait for.
+          endTurn(io, match, 'all-guessed');
+        }
       }
-    }
-  );
-
-  socket.on('arcade:scribble:rejoin', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
-    const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-    const player = match?.players.find((p) => p.id === payload?.playerId);
-    if (!match || !player) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
-
-    match.socketIds.set(player.id, socket.id);
-    match.online.add(player.id);
-    socket.join(match.room);
-    io.to(match.room).emit('arcade:scribble:presence', { matchId: match.id, playerId: player.id, online: true });
-
-    ack?.({
-      ok: true,
-      sync: {
-        matchId: match.id,
-        host: match.host,
-        players: match.players,
-        rounds: match.rounds,
-        turnDurationMs: match.turnDurationMs,
-        phase: match.phase,
-        round: Math.floor(match.turnsPlayed / match.players.length) + 1,
-        drawer: match.drawIndex >= 0 ? match.players[match.drawIndex] : null,
-        isDrawer: match.drawIndex >= 0 && match.players[match.drawIndex]?.id === player.id,
-        mask: match.currentWord ? wordMask(match.currentWord, match.revealedIndices) : null,
-        // Only ever the real word for the drawer themself — everyone else
-        // (including this same payload's `mask` field) must stay masked.
-        word: match.currentWord && match.players[match.drawIndex]?.id === player.id ? match.currentWord : null,
-        expiresAt: match.phase === 'choosing' ? match.choiceExpiresAt : match.turnExpiresAt,
-        paused: match.paused,
-        scores: scorePayload(match),
-        strokes: match.strokes,
-        wordOptions:
-          match.phase === 'choosing' && match.players[match.drawIndex]?.id === player.id
-            ? match.wordOptions?.map((w) => ({ id: w.id, word: w.word })) ?? null
-            : null,
-      },
     });
   });
 }

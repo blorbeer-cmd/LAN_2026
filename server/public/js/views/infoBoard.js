@@ -5,7 +5,7 @@
 
 import { api } from '../api.js';
 import { escapeHtml } from '../format.js';
-import { openModal } from '../modal.js';
+import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 
 let cache = null;
@@ -81,20 +81,20 @@ export function renderInfoBoard(container, ctx) {
       ? `<div class="empty-state">Lädt…</div>`
       : cache.length === 0
         ? `<div class="empty-state"><span class="emoji">📌</span>Noch keine Einträge.<br />
-           <span class="muted" style="font-size:0.85rem;">Gut aufgehoben hier: WLAN-Passwort, Discord-Link, Server-IPs, Hausregeln.</span></div>`
+           <span class="muted" style="font-size:var(--font-size-sm);">Gut aufgehoben hier: WLAN-Passwort, Discord-Link, Server-IPs, Hausregeln.</span></div>`
         : `<div class="card-grid">${cache
             .map(
               (e) => `
-            <div class="card stack" style="gap:8px;">
+            <div class="card stack" style="gap:var(--space-2);">
               <div class="row-between">
                 <strong>${escapeHtml(e.title)}</strong>
-                <span class="row" style="gap:4px;">
+                <span class="row" style="gap:var(--space-1);">
                   <button type="button" class="icon-btn" data-copy-entry="${e.id}" title="Inhalt kopieren" aria-label="Inhalt kopieren">📋</button>
                   <button type="button" class="icon-btn" data-edit-entry="${e.id}" title="Bearbeiten" aria-label="Bearbeiten">✏️</button>
                   <button type="button" class="icon-btn" data-delete-entry="${e.id}" title="Löschen" aria-label="Löschen">🗑️</button>
                 </span>
               </div>
-              <div style="white-space:pre-wrap;word-break:break-word;font-size:0.92rem;">${linkify(escapeHtml(e.content))}</div>
+              <div style="white-space:pre-wrap;word-break:break-word;font-size:var(--font-size-md);">${linkify(escapeHtml(e.content))}</div>
             </div>`
             )
             .join('')}</div>`;
@@ -134,7 +134,7 @@ export function renderInfoBoard(container, ctx) {
     btn.addEventListener('click', async () => {
       const entry = (cache || []).find((e) => e.id === btn.dataset.deleteEntry);
       if (!entry) return;
-      if (!confirm(`Eintrag "${entry.title}" wirklich löschen?`)) return;
+      if (!(await confirmDialog(`Eintrag "${entry.title}" wirklich löschen?`))) return;
       try {
         await api.info.remove(entry.id);
         cache = null;

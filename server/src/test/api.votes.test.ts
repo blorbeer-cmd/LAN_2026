@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
+import { voteNotificationPlayerIds } from '../routes/votes';
 
 const app = createApp();
 let playerA: string;
@@ -337,4 +338,18 @@ test('each result row reports total all-time playtime, growing as sessions are t
   const after = await request(app).get('/api/votes');
   const cs2After = after.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
   assert.ok(cs2After.totalPlaytimeMs > 0, 'expected the tracked session to count towards total playtime');
+});
+
+test('vote notifications target only the active event roster', async () => {
+  const event = await request(app)
+    .post('/api/events')
+    .send({ name: 'Vote roster', startsAt: Date.now(), endsAt: Date.now() + 60_000 });
+  assert.equal(event.status, 201);
+
+  const roster = await request(app).put(`/api/events/${event.body.id}/participants`).send({ playerIds: [playerA] });
+  assert.equal(roster.status, 200);
+  const started = await request(app).post(`/api/events/${event.body.id}/tracking/start`).send({});
+  assert.equal(started.status, 200);
+
+  assert.deepEqual(voteNotificationPlayerIds(), [playerA]);
 });

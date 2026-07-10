@@ -3,34 +3,19 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { notifyPlayers } from '../push';
 import { matchesAnswer, pickQuestion } from './quizLogic';
-import { recordArcadeResult } from './arcadeResults';
-import {
-  createScribbleMatch,
-  finishScribbleMatch,
-  handleScribbleDisconnect,
-  hasScribbleMatch,
-  pauseScribbleMatch,
-  registerScribbleSocketHandlers,
-  resumeScribbleMatch,
-} from './scribble';
 
 const DEFAULT_TARGET_SCORE = 5;
 const QUESTION_MS = 20_000;
+const COUNTDOWN_MS = 3000; // "3, 2, 1" intro before the first question
 
 interface PlayerRef {
   id: string;
   name: string;
 }
 
-type GameType = 'quiz' | 'scribble';
-
-function isGameType(value: unknown): value is GameType {
-  return value === 'quiz' || value === 'scribble';
-}
-
 interface Lobby {
   id: string;
-  gameType: GameType;
+  gameType: 'quiz';
   host: PlayerRef;
   players: PlayerRef[];
   socketIds: Map<string, string>;
@@ -139,15 +124,19 @@ function markSeen(match: MatchState, winnerId: string | null) {
 
 function finishMatch(io: Server, match: MatchState, winner: PlayerRef | null, reason = 'completed') {
   clearQuestionTimer(match);
-  recordArcadeResult({
-    gameType: 'quiz',
-    winnerId: winner?.id ?? null,
-    players: match.players,
-    scores: scorePayload(match),
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    nanoid(),
+    'quiz',
+    winner?.id ?? null,
+    JSON.stringify(match.players),
+    JSON.stringify(scorePayload(match)),
     reason,
-    startedAt: match.startedAt,
-    endedAt: Date.now(),
-  });
+    match.startedAt,
+    Date.now()
+  );
   io.to(match.room).emit('arcade:match:end', { matchId: match.id, winner, reason, scores: scorePayload(match) });
   matches.delete(match.id);
 }
@@ -220,12 +209,12 @@ export function registerArcadeSockets(io: Server): void {
 
     socket.on('arcade:lobby:create', (payload: { gameType?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const player = playerById(payload?.playerId);
-      if (!player || !isGameType(payload?.gameType)) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
+      if (!player || payload?.gameType !== 'quiz') return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
 
       removeFromOpenLobbies(io, socket.id);
       const lobby: Lobby = {
         id: nanoid(),
-        gameType: payload.gameType,
+        gameType: 'quiz',
         host: player,
         players: [player],
         socketIds: new Map([[player.id, socket.id]]),
@@ -241,10 +230,9 @@ export function registerArcadeSockets(io: Server): void {
       const otherPlayerIds = (db.prepare('SELECT id FROM players WHERE id != ?').all(player.id) as Array<{ id: string }>).map(
         (p) => p.id
       );
-      const gameLabel = lobby.gameType === 'scribble' ? 'Scribble' : 'Quiz';
       notifyPlayers(otherPlayerIds, {
-        title: `🕹️ Neue ${gameLabel}-Lobby`,
-        body: `${player.name} hat eine ${gameLabel}-Lobby geöffnet – jetzt beitreten!`,
+        title: '🕹️ Neue Quiz-Lobby',
+        body: `${player.name} hat eine Quiz-Lobby geöffnet – jetzt beitreten!`,
         url: '/',
       });
     });
@@ -271,58 +259,51 @@ export function registerArcadeSockets(io: Server): void {
       ack?.({ ok: true, lobbyId: lobby.id });
     });
 
-    socket.on(
-      'arcade:lobby:start',
-      (
-        payload: { lobbyId?: string; playerId?: string; targetScore?: number; rounds?: number; turnDurationMs?: number },
-        ack?: (res: unknown) => void
-      ) => {
-        const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
-        if (!lobby) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
-        if (payload?.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' });
-        if (lobby.players.length < 2) return ack?.({ ok: false, error: 'Mindestens zwei Spieler werden gebraucht.' });
+    socket.on('arcade:lobby:start', (payload: { lobbyId?: string; playerId?: string; targetScore?: number }, ack?: (res: unknown) => void) => {
+      const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
+      const score = targetScore(payload?.targetScore) ?? DEFAULT_TARGET_SCORE;
+      if (!lobby) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
+      if (payload?.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' });
+      if (lobby.players.length < 2) return ack?.({ ok: false, error: 'Mindestens zwei Spieler werden gebraucht.' });
 
-        lobbies.delete(lobby.id);
-        emitLobbies(io);
-
-        if (lobby.gameType === 'scribble') {
-          const match = createScribbleMatch(io, lobby, { rounds: payload?.rounds, turnDurationMs: payload?.turnDurationMs });
-          return ack?.({ ok: true, matchId: match.id });
-        }
-
-        const score = targetScore(payload?.targetScore) ?? DEFAULT_TARGET_SCORE;
-        const room = `arcade:${nanoid()}`;
-        for (const socketId of lobby.socketIds.values()) {
-          io.sockets.sockets.get(socketId)?.join(room);
-        }
-        const match: MatchState = {
-          id: nanoid(),
-          room,
-          host: lobby.host,
-          players: lobby.players,
-          socketIds: new Map(lobby.socketIds),
-          scores: new Map(lobby.players.map((p) => [p.id, 0])),
-          targetScore: score,
-          currentQuestion: null,
-          questionTimer: null,
-          questionExpiresAt: null,
-          questionRemainingMs: null,
-          paused: false,
-          answered: false,
-          startedAt: Date.now(),
-        };
-        matches.set(match.id, match);
-        io.to(room).emit('arcade:match:start', {
-          matchId: match.id,
-          gameType: 'quiz',
-          host: match.host,
-          players: match.players,
-          targetScore: score,
-        });
-        ack?.({ ok: true, matchId: match.id });
-        sendQuestion(io, match);
+      const room = `arcade:${nanoid()}`;
+      for (const socketId of lobby.socketIds.values()) {
+        io.sockets.sockets.get(socketId)?.join(room);
       }
-    );
+      const match: MatchState = {
+        id: nanoid(),
+        room,
+        host: lobby.host,
+        players: lobby.players,
+        socketIds: new Map(lobby.socketIds),
+        scores: new Map(lobby.players.map((p) => [p.id, 0])),
+        targetScore: score,
+        currentQuestion: null,
+        questionTimer: null,
+        questionExpiresAt: null,
+        questionRemainingMs: null,
+        paused: false,
+        answered: false,
+        startedAt: Date.now(),
+      };
+      matches.set(match.id, match);
+      lobbies.delete(lobby.id);
+      emitLobbies(io);
+      const beginsAt = Date.now() + COUNTDOWN_MS;
+      io.to(room).emit('arcade:match:start', {
+        matchId: match.id,
+        gameType: 'quiz',
+        host: match.host,
+        players: match.players,
+        targetScore: score,
+        beginsAt,
+      });
+      ack?.({ ok: true, matchId: match.id });
+      // Hold the first question until the shared 3-2-1 countdown finishes.
+      setTimeout(() => {
+        if (matches.get(match.id) === match) sendQuestion(io, match);
+      }, COUNTDOWN_MS);
+    });
 
     socket.on('arcade:quiz:answer', (payload: { matchId?: string; playerId?: string; text?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
@@ -356,11 +337,7 @@ export function registerArcadeSockets(io: Server): void {
     });
 
     socket.on('arcade:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
-      const matchId = payload?.matchId;
-      if (typeof matchId !== 'string') return ack?.({ ok: false, error: 'Match nicht gefunden.' });
-      if (hasScribbleMatch(matchId)) return ack?.(pauseScribbleMatch(io, matchId, payload?.playerId ?? ''));
-
-      const match = matches.get(matchId);
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
       if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
       if (!match.currentQuestion || match.answered || match.paused) return ack?.({ ok: true });
@@ -379,11 +356,7 @@ export function registerArcadeSockets(io: Server): void {
     });
 
     socket.on('arcade:match:resume', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
-      const matchId = payload?.matchId;
-      if (typeof matchId !== 'string') return ack?.({ ok: false, error: 'Match nicht gefunden.' });
-      if (hasScribbleMatch(matchId)) return ack?.(resumeScribbleMatch(io, matchId, payload?.playerId ?? ''));
-
-      const match = matches.get(matchId);
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
       if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann fortsetzen.' });
       if (!match.currentQuestion || match.answered || !match.paused) return ack?.({ ok: true });
@@ -402,18 +375,12 @@ export function registerArcadeSockets(io: Server): void {
     });
 
     socket.on('arcade:match:finish', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
-      const matchId = payload?.matchId;
-      if (typeof matchId !== 'string') return ack?.({ ok: false, error: 'Match nicht gefunden.' });
-      if (hasScribbleMatch(matchId)) return ack?.(finishScribbleMatch(io, matchId, payload?.playerId ?? ''));
-
-      const match = matches.get(matchId);
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
       if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann beenden.' });
       finishMatch(io, match, null, 'ended-by-host');
       ack?.({ ok: true });
     });
-
-    registerScribbleSocketHandlers(io, socket);
 
     socket.on('disconnect', () => {
       removeFromOpenLobbies(io, socket.id);
@@ -423,7 +390,6 @@ export function registerArcadeSockets(io: Server): void {
         io.to(match.room).emit('arcade:match:opponent-left', { matchId: id, playerId: player[0] });
         finishMatch(io, match, null, 'player-left');
       }
-      handleScribbleDisconnect(io, socket.id);
     });
   });
 }

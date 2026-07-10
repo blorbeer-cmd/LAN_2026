@@ -64,10 +64,8 @@ test('fresh device lands on self-onboarding and creates its profile there', asyn
   await page.waitForSelector('#app:not([hidden])');
 
   // No identity stored on this device yet -> the app must route straight to
-  // the profile/onboarding view, not the Live board. The leading emoji is
-  // swapped for an inline icon SVG by icons.js's replaceEmojiIcons, so it's
-  // no longer part of the text node — match on the text portion only.
-  assert.match((await page.textContent('.view-title')) ?? '', /Willkommen bei RespawnHQ/);
+  // the profile/onboarding view, not the Live board.
+  assert.equal((await page.textContent('.view-title'))?.trim(), 'Willkommen bei RespawnHQ');
 
   await page.fill('#profile-new-name', 'E2E Alice');
   await page.click('#profile-new-form button[type="submit"]');
@@ -117,9 +115,6 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
   assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars while the round is open');
   await page.click('[data-vote-select] >> nth=0');
-  // The leading checkmark is swapped for an inline icon SVG by icons.js's
-  // replaceEmojiIcons, so it's no longer part of the text node - match on
-  // the text portion only.
   await page.waitForSelector('text=Ausgewählt'); // staged locally
   assert.equal(
     await page.locator('text=0 von 2 haben abgestimmt').count(),
@@ -203,7 +198,7 @@ test('Auswertungen (via Mehr) shows a real award and a visible, auto-scrolled co
   // Switch the concurrency chart to CS2 and confirm at least one bar has a
   // real height (regression check for the auto-scroll/empty-looking-chart
   // bug: bars must be reachable/visible, not scrolled off-screen).
-  await page.selectOption('#an-concurrency-game', { label: `${cs2.icon} ${cs2.name}` });
+  await page.selectOption('#an-concurrency-game', { label: cs2.name });
   await page.waitForFunction(
     () => {
       const bars = Array.from(document.querySelectorAll<HTMLElement>('#an-concurrency-chart > div'));
@@ -219,6 +214,14 @@ test('Auswertungen (via Mehr) shows a real award and a visible, auto-scrolled co
 });
 
 test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statistiken reachable', async () => {
+  // Keep this test deterministic even if the preceding click-through test
+  // changes its setup data or a future test order is introduced.
+  const playersRes = await page.request.get(`${BASE_URL}/api/players`);
+  const players = (await playersRes.json()) as Array<{ name: string }>;
+  if (!players.some((p) => p.name === 'E2E Bob')) {
+    const createRes = await page.request.post(`${BASE_URL}/api/players`, { data: { name: 'E2E Bob' } });
+    assert.equal(createRes.status(), 201);
+  }
   await page.click('#profile-btn');
 
   // The device identity is still "E2E Alice" from onboarding, so this view
@@ -229,9 +232,13 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
   // Renaming to a name someone else already has must be rejected, not
   // silently accepted or crash the view.
   await page.fill('#profile-name', 'E2E Bob');
-  await page.click('#profile-save');
-  await page.waitForSelector('.toast-error');
-  await page.waitForSelector('text=vergeben');
+  await Promise.all([
+    page.waitForResponse(
+      (response) => response.url().includes('/api/players/') && response.request().method() === 'PATCH' && response.status() === 409
+    ),
+    page.click('#profile-save'),
+  ]);
+  assert.equal(await page.inputValue('#profile-name'), 'E2E Bob');
 
   // A genuinely free name should save fine.
   await page.fill('#profile-name', 'E2E Alice Pro');
@@ -281,6 +288,7 @@ test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bo
   // Promote the suggestion into the catalog, then rate it right in the row —
   // no detour through a separate profile page needed.
   await page.click('[data-promote]');
+  await page.click('[data-confirm]');
   await page.waitForSelector('button[data-tab="catalog"].btn-primary');
   const partyspielCard = page.locator('.game-card', { hasText: 'E2E Partyspiel' });
   await partyspielCard.waitFor();
@@ -392,7 +400,9 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.waitForSelector('text=Margherita');
   await page.waitForSelector('text=9,50 €');
 
-  await page.click('[data-close-order]'); // confirm auto-accepted
+  await page.click('[data-close-order]');
+  // confirmDialog is an in-app modal (not a native browser dialog).
+  await page.click('[data-confirm]');
   await page.waitForSelector('.badge-offline >> text=Geschlossen');
 
   // Closing only freezes items — the details stay correctable afterward.
@@ -406,6 +416,9 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
 test('Arcade: open a quiz lobby, see it listed, then close it again', async () => {
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="arcade"]');
+  // Arcade is a launcher; select the quiz tile before its lobby controls
+  // become visible (module state is intentionally reset on a fresh run).
+  await page.click('[data-game="quiz"]');
   await page.waitForSelector('#quiz-create-lobby');
   await page.click('#quiz-create-lobby');
 
@@ -415,7 +428,7 @@ test('Arcade: open a quiz lobby, see it listed, then close it again', async () =
   // the tab), leaving abandoned lobbies listed forever.
   await page.waitForSelector('[data-close-lobby]');
   await page.click('[data-close-lobby]');
-  await page.waitForSelector('text=Keine offene Lobby.');
+  await page.waitForSelector('text=Keine offene Quiz-Lobby.');
 
   // Closed - the create button is enabled again.
   await page.waitForSelector('#quiz-create-lobby:not([disabled])');
@@ -445,20 +458,22 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     await guesserPage.waitForSelector('.nav-btn[data-view="more"]');
     await guesserPage.click('[data-view="more"]');
     await guesserPage.click('[data-navigate="arcade"]');
+    await guesserPage.click('[data-game="scribble"]');
 
     // Host (the shared device driving `page` through this whole suite) opens
     // the lobby — draw order is lobby join order, so the host always draws
     // first, keeping this test deterministic about who does what.
     await page.click('[data-view="more"]');
     await page.click('[data-navigate="arcade"]');
-    await page.waitForSelector('#scribble-create-lobby:not([disabled])');
-    await page.click('#scribble-create-lobby');
+    await page.click('[data-game="scribble"]');
+    await page.waitForSelector('#scribble-create:not([disabled])');
+    await page.click('#scribble-create');
 
-    await guesserPage.waitForSelector('[data-join-lobby]');
-    await guesserPage.click('[data-join-lobby]');
+    await guesserPage.waitForSelector('[data-scribble-join]');
+    await guesserPage.click('[data-scribble-join]');
 
-    await page.waitForSelector('#scribble-start-lobby:not([disabled])');
-    await page.click('#scribble-start-lobby');
+    await page.waitForSelector('#scribble-start:not([disabled])');
+    await page.click('#scribble-start');
 
     // Host picks a word — the actual text is only ever shown to the drawer,
     // never sent to the guesser (see scribble.ts), so capture it from the
@@ -633,8 +648,6 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
   await page.fill('#carpool-location', 'Hamburg');
   await page.fill('#carpool-seats', '1');
   await page.click('#carpool-form button[type="submit"]');
-  // Same icon-replacement note as above: the leading emoji is not part of
-  // the text node anymore.
   await page.waitForSelector('text=E2E Alice Pro fährt');
   await page.waitForSelector('text=1/1 frei');
   // The driver only ever gets Bearbeiten/Löschen, never a "Raus" button.
@@ -665,6 +678,7 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
   await page.click('[data-whoami-change]');
   await page.selectOption('#arrivals-whoami', { label: 'E2E Alice Pro' });
   await page.click('[data-remove-carpool]');
+  await page.click('[data-confirm]');
   await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
 });
 
@@ -738,4 +752,34 @@ test('the device back button steps back through in-app views instead of leaving 
   // Forward should redo the same steps.
   await page.goForward();
   await page.waitForFunction(() => document.querySelector('.view-title')?.textContent?.includes('Nächstes'));
+});
+
+test('Kiosk: shows an open food order (when/where only), and the last-push banner picks up any feature, not just Durchsagen', async () => {
+  const playersRes = await page.request.get(`${BASE_URL}/api/players`);
+  const [{ id: playerId }] = await playersRes.json();
+
+  // Send a Durchsage first, then trigger a different feature's push (opening
+  // a food order) — the banner must show the *food order's* push afterward,
+  // proving it reflects any notifyPlayers() call, not only Durchsagen.
+  await page.request.post(`${BASE_URL}/api/broadcasts`, {
+    data: { playerId, message: 'Kiosk-Test-Durchsage' },
+  });
+  const sendAt = Date.now() + 3600_000;
+  await page.request.post(`${BASE_URL}/api/food-orders`, {
+    data: { playerId, title: 'Kiosk-Test-Pizza', sendAt, link: 'https://kiosk-test.example/karte' },
+  });
+
+  await page.goto(`${BASE_URL}/kiosk.html`);
+
+  // The food banner shows only the when/where (send time + menu link) — the
+  // items themselves stay on everyone's own phone, never on the shared screen.
+  await page.waitForSelector('#kiosk-food-banner:not([hidden]) >> text=Kiosk-Test-Pizza');
+  await page.waitForSelector('a[href="https://kiosk-test.example/karte"]');
+
+  // The last-push banner shows the food order's own push (title "🍕 Neue
+  // Sammelbestellung"), not the earlier Durchsage — with a timestamp, and
+  // it stays up permanently rather than auto-hiding after a few minutes.
+  await page.waitForSelector('#kiosk-broadcast:not([hidden]) >> text=Neue Sammelbestellung');
+  await page.waitForSelector('#kiosk-broadcast >> text=Kiosk-Test-Pizza');
+  await page.waitForSelector('.kiosk-broadcast-time');
 });
