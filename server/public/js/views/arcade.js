@@ -2,13 +2,25 @@ import { api, getToken } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
-import { ensureTetrisSocket, renderTetrisLobbyCard, wireTetrisLobbyCard } from './tetris.js';
+import { ensureTetrisSocket, renderTetrisLobbyCard, wireTetrisLobbyCard, myTetrisLobby } from './tetris.js';
+
+// The Arcade opens as a launcher: a compact grid of game tiles. Picking one
+// reveals that game's lobby below. Quiz and Tetris are live; the rest are
+// placeholders for games still to come.
+const GAMES = [
+  { id: 'quiz', icon: '⚡', name: 'Gaming-Quiz' },
+  { id: 'tetris', icon: '🧩', name: 'Tetris' },
+  { id: 'pong', icon: '🏓', name: 'Pong', soon: true },
+  { id: 'blobby', icon: '🏐', name: 'Blobby Volley', soon: true },
+  { id: 'snake', icon: '🐍', name: 'Snake', soon: true },
+];
 
 let socket = null;
 let lobbies = [];
 let stats = null;
 let statsLoading = false;
 let activeStatsGame = null;
+let activeGame = null; // which game tile is expanded
 let match = null;
 let currentQuestion = null;
 let lastResult = null;
@@ -283,36 +295,77 @@ function renderMatch() {
   `;
 }
 
+// The game the launcher should currently expand: forced to the game the player
+// is actually engaged in (a live quiz match/lobby, or a tetris lobby), else
+// whatever tile they last tapped.
+function currentGame() {
+  if (match || myLobby()) return 'quiz';
+  if (myTetrisLobby()) return 'tetris';
+  return activeGame;
+}
+
+function gameTileHtml(game, active) {
+  return `
+    <button type="button" class="card arcade-tile ${active === game.id ? 'is-active' : ''} ${game.soon ? 'is-soon' : ''}" data-game="${game.id}">
+      ${game.soon ? `<span class="arcade-tile-soon">Bald</span>` : ''}
+      <span class="arcade-tile-icon" aria-hidden="true">${game.icon}</span>
+      <span class="arcade-tile-name">${escapeHtml(game.name)}</span>
+    </button>`;
+}
+
+// The lobby/match UI for the currently selected game, shown under the tiles.
+function activeGameHtml() {
+  const game = currentGame();
+  if (game === 'quiz') {
+    const lobby = myLobby();
+    return `
+      <div class="card stack" style="margin-top:12px;">
+        <div class="row-between" style="gap:10px;">
+          <strong>Quiz-Lobby</strong>
+          <button type="button" class="btn btn-primary btn-sm" id="quiz-create-lobby" ${lobby || match ? 'disabled' : ''}>Lobby öffnen</button>
+        </div>
+        ${renderLobbyList()}
+      </div>
+      ${targetControls(lobby)}
+      ${renderMatch()}`;
+  }
+  if (game === 'tetris') {
+    return `<div style="margin-top:12px;">${renderTetrisLobbyCard()}</div>`;
+  }
+  return '';
+}
+
 export function renderArcade(container, ctx) {
   ensureSocket(ctx);
   ensureTetrisSocket();
   if (!stats && !statsLoading) loadStats(ctx);
   const lobby = myLobby();
 
+  const cg = currentGame();
   container.innerHTML = `
     <h1 class="view-title">Arcade</h1>
     ${whoAmICardHtml('whoami')}
-    <div class="section-title">⚡ Gaming-Quiz</div>
-    <div class="card stack">
-      <div class="row-between" style="gap:10px;">
-        <div>
-          <strong>Quiz-Lobby</strong>
-          <div class="muted" style="font-size:0.8rem;">Mehrspieler, 20 Sekunden pro Frage, beliebig viele Antwortversuche.</div>
-        </div>
-        <button type="button" class="btn btn-primary btn-sm" id="quiz-create-lobby" ${lobby || match ? 'disabled' : ''}>Lobby öffnen</button>
-      </div>
-      ${renderLobbyList()}
+    <div class="section-title">🎮 Spiele</div>
+    <div class="arcade-tiles">
+      ${GAMES.map((g) => gameTileHtml(g, cg)).join('')}
     </div>
-    <div class="section-title">🧩 Tetris Battle</div>
-    ${renderTetrisLobbyCard()}
+    ${activeGameHtml()}
     <div class="section-title">📊 Arcade-Statistiken</div>
     <div class="card stack">${arcadeStatsHtml()}</div>
-    ${targetControls(lobby)}
-    ${renderMatch()}
   `;
 
   wireWhoAmICard(container, 'whoami', ctx);
   wireTetrisLobbyCard(container);
+
+  container.querySelectorAll('[data-game]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.game;
+      const def = GAMES.find((g) => g.id === id);
+      if (def?.soon) return showToast(`${def.name} kommt bald!`);
+      activeGame = activeGame === id ? null : id;
+      ctx.rerender();
+    });
+  });
 
   container.querySelectorAll('[data-stats-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {

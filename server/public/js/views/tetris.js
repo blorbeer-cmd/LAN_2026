@@ -323,10 +323,7 @@ export function renderTetrisLobbyCard() {
   return `
     <div class="card stack">
       <div class="row-between" style="gap:10px;">
-        <div>
-          <strong>Tetris-Lobby</strong>
-          <div class="muted" style="font-size:0.8rem;">1 gegen 1, gleiche Steine für beide. 2+ Reihen schicken Müll rüber.</div>
-        </div>
+        <strong>Tetris-Lobby</strong>
         <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
       </div>
       ${noMe ? `<div class="muted" style="font-size:0.8rem;">Wähle oben zuerst aus, wer du bist.</div>` : ''}
