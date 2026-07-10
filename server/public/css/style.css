@@ -1951,20 +1951,30 @@ input[type='number'].bracket-score-input {
   gap: var(--space-1);
   padding: var(--space-3) 0;
 }
+/* The gradient lives on the track itself (fixed left-to-right, full width)
+   rather than on the fill: a gradient set as the fill's own background would
+   get re-normalized to whatever narrow width that particular bar happens to
+   have, so short bars showed only the gradient's start color instead of a
+   consistent color scale across all rows. Instead, the "empty" remainder is
+   covered by an opaque mask growing in from the right, revealing more of the
+   same fixed gradient as the score grows. */
 .vote-bar-track {
+  position: relative;
   height: 8px;
   border-radius: var(--radius-full);
-  background: var(--bg-elevated-2);
+  background: var(--accent-gradient);
   overflow: hidden;
 }
-.vote-bar-fill {
-  height: 100%;
-  background: var(--accent-gradient);
-  border-radius: var(--radius-full);
-  transition: width 0.3s ease;
-}
-.vote-row.is-winner .vote-bar-fill {
+.vote-row.is-winner .vote-bar-track {
   background: var(--state-playing);
+}
+.vote-bar-mask {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-elevated-2);
+  transition: width 0.3s ease;
 }
 
 /* ---------- Leaderboard ---------- */

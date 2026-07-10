@@ -30,7 +30,7 @@ test('setup: players and games', async () => {
 
 test('simultaneous vote starts: exactly one round opens', async () => {
   const results = await Promise.all(
-    Array.from({ length: 10 }, () => request(app).post('/api/votes/start'))
+    Array.from({ length: 10 }, () => request(app).post('/api/votes/start').send({ mode: 'single' }))
   );
   const counts = statusCounts(results.map((r) => r.status));
   assert.equal(counts[201], 1, JSON.stringify(counts));

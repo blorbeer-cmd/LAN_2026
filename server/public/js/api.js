@@ -154,7 +154,7 @@ export const api = {
     mine: (playerId) => apiFetch(`/api/votes/mine?playerId=${encodeURIComponent(playerId)}`),
     history: () => apiFetch('/api/votes/history'),
     historyRound: (round) => apiFetch(`/api/votes/history/${round}`),
-    start: (mode) => apiFetch('/api/votes/start', { method: 'POST', body: JSON.stringify(mode ? { mode } : {}) }),
+    start: (options = {}) => apiFetch('/api/votes/start', { method: 'POST', body: JSON.stringify(options) }),
     cast: (playerId, gameId) =>
       apiFetch('/api/votes', { method: 'POST', body: JSON.stringify({ playerId, gameId }) }),
     castPoints: (playerId, entries) =>

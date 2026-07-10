@@ -43,7 +43,7 @@ test('digest starts with nothing to report', async () => {
 });
 
 test('an open vote round the player has not voted in shows up as openVote', async () => {
-  await request(app).post('/api/votes/start');
+  await request(app).post('/api/votes/start').send({ mode: 'single' });
   const res = await request(app).get(`/api/digest?playerId=${playerId}`);
   assert.ok(res.body.openVote);
   assert.equal(res.body.openVote.round, 1);

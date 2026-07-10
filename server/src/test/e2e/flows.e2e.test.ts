@@ -103,23 +103,27 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   const teamCards = await page.locator('.team-card').count();
   assert.ok(teamCards >= 2, 'expected at least 2 team cards');
 
-  // Voting: start a round, pick a game, and submit. The device identity was
-  // already set during onboarding, so no "who am I" picker appears. Picking
-  // a game only stages a local draft — it must not count as a vote until the
-  // submit button is pressed. While the round is open, no per-game
-  // distribution (bars/counts) may be visible anywhere — only total
-  // participation and the voter's own pick.
+  // Voting: start a round (points mode, the only mode offered when starting
+  // fresh), rate a game, and submit. The device identity was already set
+  // during onboarding, so no "who am I" picker appears. Moving a slider only
+  // stages a local draft — it must not count as a vote until the submit
+  // button is pressed. While the round is open, no per-game distribution
+  // (bars/counts) may be visible anywhere — only total participation and the
+  // voter's own pick.
   await page.click('[data-view="votes"]');
   await page.waitForSelector('text=Du bist E2E Alice');
   await page.click('#votes-start');
   await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
   assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars while the round is open');
-  await page.click('[data-vote-select] >> nth=0');
-  await page.waitForSelector('text=Ausgewählt'); // staged locally
+  await page.locator('[data-points-slider] >> nth=0').evaluate((el) => {
+    (el as HTMLInputElement).value = '5';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForSelector('.skill-value:text("5")'); // staged locally
   assert.equal(
     await page.locator('text=0 von 2 haben abgestimmt').count(),
     1,
-    'selecting a game must not submit it by itself'
+    'moving a slider must not submit it by itself'
   );
   await page.click('#votes-submit');
   await page.waitForFunction(() => document.body.textContent?.includes('1 von 2'));
