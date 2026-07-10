@@ -295,13 +295,14 @@ function renderMatch() {
   if (!match) return '';
   const celebration = winnerCelebrationHtml();
   const result = lastResult && !celebration
-    ? `<div class="card stack quiz-stage-card quiz-round-result" style="margin-top:var(--space-3);">
-        <h2>${escapeHtml(lastResult.correctAnswer ?? '')}</h2>
+    ? `<div class="card quiz-stage-card" style="margin-top:var(--space-3);">
+        <div class="quiz-stage-content quiz-round-result"><h2>${escapeHtml(lastResult.correctAnswer ?? '')}</h2></div>
       </div>`
     : '';
   const question = currentQuestion
     ? `
-      <form id="quiz-answer-form" class="card stack quiz-stage-card" style="margin-top:var(--space-3);">
+      <div class="card quiz-stage-card" style="margin-top:var(--space-3);">
+      <form id="quiz-answer-form" class="stack quiz-stage-content">
         <div class="row-between">
           <div class="muted">${escapeHtml(currentQuestion.category || 'Quiz')} · ${escapeHtml(currentQuestion.difficulty || 'offen')}</div>
           <span id="quiz-countdown" class="badge ${secondsLeft() <= 5 ? 'badge-paused' : 'badge-playing'}">${match.paused ? 'Pause' : `${secondsLeft()}s`}</span>
@@ -312,7 +313,7 @@ function renderMatch() {
           <button type="submit" class="btn btn-primary" ${match.paused ? 'disabled' : ''}>Senden</button>
         </div>
         ${match.paused ? `<div class="muted">Match pausiert.</div>` : ''}
-      </form>`
+      </form></div>`
     : match.ended
       ? `<div class="empty-state" style="margin-top:var(--space-3);">Match beendet.</div>`
       : `<div class="empty-state" style="margin-top:var(--space-3);">Nächste Frage kommt…</div>`;

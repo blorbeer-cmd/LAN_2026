@@ -1585,10 +1585,20 @@ button.card {
 .arcade-game-shell .quiz-stage-card {
   width: min(100%, 680px);
   height: 174px;
+  min-height: 174px;
+  max-height: 174px;
   margin-inline: auto;
+  box-sizing: border-box;
+  display: flex;
+}
+.arcade-game-shell .quiz-stage-content {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
   box-sizing: border-box;
 }
 .arcade-game-shell .quiz-round-result {
+  display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
