@@ -373,7 +373,6 @@ function wordChoiceHtml() {
   if (!wordOptions || turn?.phase !== 'choosing' || !isDrawer()) return '';
   return `
     <div class="card stack" style="margin-top:var(--space-3);">
-      <strong>Wähl ein Wort zum Zeichnen</strong>
       <div class="grid">
         ${wordOptions
           .map((w) => `<button type="button" class="btn btn-block scribble-word-choice-btn" data-word-id="${w.id}">${escapeHtml(w.word)}</button>`)
@@ -386,7 +385,7 @@ function matchControlsHtml() {
   if (!match || matchEnded || match.host.id !== myId()) return '';
   if (turn?.phase !== 'drawing') return '';
   return `
-    <div class="row" style="gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3);">
+    <div class="arcade-match-controls">
       ${
         paused
           ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="scribble-resume">Fortsetzen</button>`
@@ -408,15 +407,6 @@ function winnerCelebrationHtml() {
       </div>
       <div class="chip-list">${(matchEnded.scores ?? []).map((s) => `<span class="chip">${escapeHtml(s.name)} · ${s.score}</span>`).join('')}</div>
     </div>`;
-}
-
-function statusLineHtml() {
-  if (turn?.phase === 'choosing') {
-    return isDrawer()
-      ? `<div class="muted">Wähl ein Wort…</div>`
-      : `<div class="muted">${escapeHtml(turn.drawer.name)} wählt gerade ein Wort…</div>`;
-  }
-  return `<div class="muted">${isDrawer() ? 'Du zeichnest' : `${escapeHtml(turn?.drawer?.name ?? '')} zeichnet`} · Runde ${turn?.round ?? 1}/${turn?.rounds ?? match?.rounds ?? 1}</div>`;
 }
 
 function guessFormHtml() {
@@ -679,7 +669,7 @@ function hostStartHtml() {
           .join('')}
       </div>
       <div class="muted" style="font-size:var(--font-size-xs);">${ready ? 'Bereit — Start möglich.' : 'Warte auf weitere Spieler…'}</div>
-      <button type="button" class="btn btn-primary btn-block" id="scribble-start" ${ready ? '' : 'disabled'}>Scribble starten</button>
+      <button type="button" class="btn btn-primary btn-block" id="scribble-start" ${ready ? '' : 'disabled'}>Start</button>
     </div>`;
 }
 
@@ -776,17 +766,17 @@ export function renderScribbleRoom(container) {
   }
 
   container.innerHTML = `
-    <h1 class="view-title">✏️ Scribble</h1>
+    <div class="arcade-game-shell"><h1 class="view-title">✏️ Scribble</h1>
     <div class="row-between">
       <div class="chip-list">${scoreHtml()}</div>
       <span id="scribble-countdown" class="badge badge-playing">${secondsLeft()}s</span>
     </div>
-    ${statusLineHtml()}
-    ${matchControlsHtml()}
     ${lastTurnEnd ? `<div class="card stack" style="margin-top:var(--space-3);"><strong>Wort war: ${escapeHtml(lastTurnEnd.word ?? '–')}</strong></div>` : ''}
     ${wordChoiceHtml()}
     ${turn?.phase === 'drawing' ? drawingAreaHtml() : ''}
-  `;
+    <p class="arcade-game-help">Zeichnen oder raten · richtige Antworten bringen Punkte.</p>
+    ${matchControlsHtml()}
+    </div>`;
   wireRoom(container);
 }
 

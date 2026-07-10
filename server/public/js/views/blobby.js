@@ -22,6 +22,7 @@ let animation = null;
 let keys = { left: false, right: false };
 let keyboardBound = false;
 const avatarImages = new Map();
+let targetScore = 7;
 
 const myId = () => getMyId();
 const rerender = () => window.dispatchEvent(new CustomEvent('lan:rerender'));
@@ -56,6 +57,8 @@ export function ensureBlobbySocket() {
     if (match) match.scores = payload.scores;
     flashPoint(payload.scorer?.name);
   });
+  socket.on('blobby:match:paused', () => { if (match) match.paused = true; rerender(); });
+  socket.on('blobby:match:resumed', () => { if (match) match.paused = false; rerender(); });
   socket.on('blobby:match:end', (payload) => {
     if (!match) return;
     match.ended = true; match.running = false; match.winner = payload.winner ?? null; match.scores = payload.scores ?? [];
@@ -115,8 +118,12 @@ function hostStart() {
   if (!lobby || lobby.host.id !== myId()) return '';
   const ready = lobby.players.length === 2;
   return `<div class="stack" style="gap:var(--space-2);border-top:1px solid var(--border);padding-top:var(--space-3);">
+    <div class="field-label">Punkte bis Sieg</div>
+    <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
+      ${[5, 7, 10, 15].map((n) => `<label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="blobby-target" value="${n}" ${n === targetScore ? 'checked' : ''} />${n}</label>`).join('')}
+    </div>
     <div class="muted" style="font-size:var(--font-size-xs);">${ready ? 'Bereit — Gegner ist da.' : 'Warte auf einen Gegner…'}</div>
-    <button type="button" class="btn btn-primary btn-block" id="blobby-start" ${ready ? '' : 'disabled'}>Match starten</button>
+    <button type="button" class="btn btn-primary btn-block" id="blobby-start" ${ready ? '' : 'disabled'}>Start</button>
   </div>`;
 }
 export function renderBlobbyLobbyCard() {
@@ -126,6 +133,7 @@ export function renderBlobbyLobbyCard() {
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}${lobbyList()}${hostStart()}</div>`;
 }
 export function wireBlobbyLobbyCard(container) {
+  container.querySelectorAll('input[name="blobby-target"]').forEach((input) => input.addEventListener('change', () => { targetScore = Number(input.value); }));
   container.querySelector('#blobby-create')?.addEventListener('click', async () => {
     const res = await emitAck('blobby:lobby:create', { playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
@@ -139,7 +147,7 @@ export function wireBlobbyLobbyCard(container) {
   }
   container.querySelector('#blobby-start')?.addEventListener('click', async () => {
     const lobby = myBlobbyLobby();
-    const res = await emitAck('blobby:lobby:start', { lobbyId: lobby?.id, playerId: myId() });
+    const res = await emitAck('blobby:lobby:start', { lobbyId: lobby?.id, playerId: myId(), targetScore });
     if (!res?.ok) showToast(res?.error || 'Start fehlgeschlagen.', { error: true });
   });
 }
@@ -201,7 +209,8 @@ function flashPoint(name) {
   el.textContent = `Punkt für ${name || 'Spieler'}!`; el.hidden = false; setTimeout(() => { el.hidden = true; }, 900);
 }
 function scoreHtml() {
-  return (match?.scores ?? latest?.scores ?? []).map((s) => `<span class="chip"><strong>${escapeHtml(s.name)}</strong> ${s.score}</span>`).join('');
+  const goal = match?.targetScore ?? latest?.targetScore ?? targetScore;
+  return (match?.scores ?? latest?.scores ?? []).map((s) => `<span class="chip"><strong>${escapeHtml(s.name)}</strong> ${s.score}/${goal}</span>`).join('');
 }
 function resultHtml() {
   if (!match?.ended) return '';
@@ -212,10 +221,10 @@ export function renderBlobby(container) {
   ensureBlobbySocket();
   if (!match) { container.innerHTML = '<button class="btn btn-sm" data-navigate="arcade">‹ Arcade</button><div class="empty-state">Kein laufendes Blobby-Volley-Match.</div>'; return; }
   const host = match.host?.id === myId();
-  container.innerHTML = `<h1 class="view-title">Blobby Volley</h1><div class="chip-list blobby-score">${scoreHtml()}</div>
-    <div class="blobby-court"><canvas id="blobby-canvas" width="${W}" height="${H}"></canvas><div id="blobby-point" class="blobby-point" hidden></div></div>
+  container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Blobby Volley</h1><div class="chip-list blobby-score">${scoreHtml()}</div>
+    <div class="blobby-court"><canvas id="blobby-canvas" width="${W}" height="${H}"></canvas><div id="blobby-point" class="blobby-point" hidden></div>${match.paused ? '<div class="blobby-pause-overlay">Pause</div>' : ''}</div>
     <div class="blobby-controls"><button class="btn" data-move="left">←</button><button class="btn btn-primary" data-jump>Springen</button><button class="btn" data-move="right">→</button></div>
-    ${host && !match.ended ? '<button class="btn btn-sm btn-danger" id="blobby-finish">Beenden</button>' : ''}${resultHtml()}`;
+    ${host && !match.ended ? `<div class="arcade-match-controls">${match.paused ? '<button class="btn btn-sm btn-equal btn-primary" id="blobby-resume">Fortsetzen</button>' : '<button class="btn btn-sm btn-equal" id="blobby-pause">Pausieren</button>'}<button class="btn btn-sm btn-equal btn-danger" id="blobby-finish">Beenden</button></div>` : ''}${resultHtml()}</div>`;
   wireGame(container); startAnimation();
 }
 function wireGame(container) {
@@ -226,6 +235,14 @@ function wireGame(container) {
     b.addEventListener('pointerdown', down); b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
   });
   container.querySelector('[data-jump]')?.addEventListener('pointerdown', (e) => { e.preventDefault(); sendInput(true); });
+  container.querySelector('#blobby-pause')?.addEventListener('click', async () => {
+    const res = await emitAck('blobby:match:pause', { matchId: match.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
+  });
+  container.querySelector('#blobby-resume')?.addEventListener('click', async () => {
+    const res = await emitAck('blobby:match:resume', { matchId: match.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
+  });
   container.querySelector('#blobby-finish')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
     await emitAck('blobby:match:finish', { matchId: match.matchId, playerId: myId() });

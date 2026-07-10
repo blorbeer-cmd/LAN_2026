@@ -188,6 +188,7 @@ function arcadeStatsHtml() {
       : '';
 
   const game = games.find((g) => g.gameType === activeStatsGame);
+  const winLoss = game.rankingMode === 'winLoss';
   const medals = ['🥇', '🥈', '🥉'];
   const rows = game.players
     .slice(0, 5)
@@ -195,7 +196,7 @@ function arcadeStatsHtml() {
       (p, i) => `
         <div class="lb-row">
           <span>${medals[i] ?? `${i + 1}.`} ${escapeHtml(p.name)}</span>
-          <span class="muted" style="font-variant-numeric:tabular-nums;">${p.best} Pkt</span>
+          <span class="muted" style="font-variant-numeric:tabular-nums;">${winLoss ? `${p.wins}–${p.losses} · ${Math.round(p.winRate * 100)}%` : `${p.best} Pkt`}</span>
         </div>`
     )
     .join('');
@@ -203,7 +204,7 @@ function arcadeStatsHtml() {
     ${tabs}
     <div class="arcade-stat-game">
       <div class="row-between">
-        <strong>${escapeHtml(game.title)} · Highscores</strong>
+        <strong>${escapeHtml(game.title)} · ${winLoss ? 'W–L-Ratio' : 'Highscores'}</strong>
         <span class="badge">${game.matches} Match(es)</span>
       </div>
       ${rows}
@@ -263,7 +264,7 @@ function secondsLeft() {
 function matchControlsHtml() {
   if (!match || match.ended || match.host?.id !== getMyId()) return '';
   return `
-    <div class="row" style="gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3);">
+    <div class="arcade-match-controls">
       ${
         match.paused
           ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-resume">Fortsetzen</button>`
@@ -294,8 +295,8 @@ function renderMatch() {
   if (!match) return '';
   const celebration = winnerCelebrationHtml();
   const result = lastResult && !celebration
-    ? `<div class="card stack" style="margin-top:var(--space-3);">
-        <strong>${lastResult.timeout ? 'Zeit abgelaufen' : `${escapeHtml(lastResult.winner?.name ?? 'Niemand')} gewinnt die Runde`}</strong>
+    ? `<div class="card stack quiz-round-result" style="margin-top:var(--space-3);">
+        <strong>${lastResult.timeout ? 'Kein Punkt' : `Punkt für: ${escapeHtml(lastResult.winner?.name ?? 'Niemand')}`}</strong>
         <span class="muted">Antwort: ${escapeHtml(lastResult.correctAnswer ?? '')}</span>
       </div>`
     : '';
@@ -317,12 +318,12 @@ function renderMatch() {
       ? `<div class="empty-state" style="margin-top:var(--space-3);">Match beendet.</div>`
       : `<div class="empty-state" style="margin-top:var(--space-3);">Nächste Frage kommt…</div>`;
   return `
-    <div class="section-title">🎮 Laufendes Match</div>
-    <div class="chip-list">${scoreHtml()}</div>
-    ${matchControlsHtml()}
+    <div class="chip-list arcade-score-row">${scoreHtml()}</div>
     ${celebration}
     ${result}
     ${question}
+    <p class="arcade-game-help">Richtige Antwort eingeben</p>
+    ${matchControlsHtml()}
   `;
 }
 
@@ -463,10 +464,10 @@ export function renderQuizRoom(container, ctx) {
     return;
   }
   container.innerHTML = `
-    <h1 class="view-title">${icon('brain')} Gaming-Quiz</h1>
+    <div class="arcade-game-shell"><h1 class="view-title">${icon('brain')} Gaming-Quiz</h1>
     ${renderMatch()}
     ${match.ended ? `<button type="button" class="btn btn-primary btn-block" id="quiz-back" style="margin-top:var(--space-4);">Zurück zum Arcade</button>` : ''}
-  `;
+    </div>`;
   wireQuizMatch(container);
   if (currentQuestion && !match.paused) startCountdown();
   // Every socket update (new question, opponent's result, ...) rebuilds this

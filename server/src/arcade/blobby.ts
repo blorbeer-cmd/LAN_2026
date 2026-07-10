@@ -6,7 +6,7 @@ import { BlobbyInput, BlobbyWorld, createWorld, stepWorld } from './blobbyLogic'
 const TICK_MS = 1000 / 60;
 const SNAPSHOT_MS = 50;
 const COUNTDOWN_MS = 3000;
-const TARGET_SCORE = 7;
+const DEFAULT_TARGET_SCORE = 7;
 
 interface PlayerRef { id: string; name: string; avatar: string | null; color: string | null }
 interface Lobby { id: string; host: PlayerRef; players: PlayerRef[]; socketIds: Map<string, string>; createdAt: number }
@@ -15,6 +15,7 @@ interface Match {
   world: BlobbyWorld; inputs: Map<string, BlobbyInput>; scores: Map<string, number>;
   loop: NodeJS.Timeout | null; running: boolean; paused: boolean; lastTick: number; lastSnapshot: number; startedAt: number;
   rallyResumeAt: number;
+  targetScore: number;
 }
 
 const lobbies = new Map<string, Lobby>();
@@ -35,7 +36,7 @@ function scorePayload(match: Match) {
 function snapshot(io: Server, match: Match) {
   io.to(match.room).emit('blobby:state', {
     matchId: match.id, serverTime: Date.now(), running: match.running, paused: match.paused,
-    world: match.world, scores: scorePayload(match), targetScore: TARGET_SCORE,
+    world: match.world, scores: scorePayload(match), targetScore: match.targetScore,
   });
 }
 function finish(io: Server, match: Match, winner: PlayerRef | null, reason: string) {
@@ -72,7 +73,7 @@ function startLoop(io: Server, match: Match) {
       const next = (match.scores.get(scorer.id) ?? 0) + 1;
       match.scores.set(scorer.id, next);
       io.to(match.room).emit('blobby:point', { scorer, scores: scorePayload(match) });
-      if (next >= TARGET_SCORE) return finish(io, match, scorer, 'completed');
+      if (next >= match.targetScore) return finish(io, match, scorer, 'completed');
       resetRally(match, scorerIndex === 0 ? 'left' : 'right');
       match.rallyResumeAt = now + 1000;
     }
@@ -122,21 +123,23 @@ export function registerBlobbySockets(io: Server): void {
       else { lobby.players = lobby.players.filter((p) => p.id !== payload.playerId); lobby.socketIds.delete(payload.playerId); }
       emitLobbies(io); ack?.({ ok: true });
     });
-    socket.on('blobby:lobby:start', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => {
+    socket.on('blobby:lobby:start', (payload: { lobbyId?: string; playerId?: string; targetScore?: number }, ack?: (r: unknown) => void) => {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
       if (!lobby) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
       if (payload.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' });
       if (lobby.players.length !== 2) return ack?.({ ok: false, error: 'Blobby Volley ist genau 1 gegen 1.' });
+      const targetScore = payload.targetScore ?? DEFAULT_TARGET_SCORE;
+      if (!Number.isInteger(targetScore) || targetScore < 1 || targetScore > 30) return ack?.({ ok: false, error: 'Punkteziel muss zwischen 1 und 30 liegen.' });
       const id = nanoid(); const room = `blobby:${id}`;
       for (const sid of lobby.socketIds.values()) io.sockets.sockets.get(sid)?.join(room);
       const match: Match = {
         id, room, host: lobby.host, players: lobby.players, socketIds: new Map(lobby.socketIds), world: createWorld(),
         inputs: new Map(lobby.players.map((p) => [p.id, idle()])), scores: new Map(lobby.players.map((p) => [p.id, 0])),
-        loop: null, running: false, paused: false, lastTick: Date.now(), lastSnapshot: 0, startedAt: Date.now(), rallyResumeAt: 0,
+        loop: null, running: false, paused: false, lastTick: Date.now(), lastSnapshot: 0, startedAt: Date.now(), rallyResumeAt: 0, targetScore,
       };
       matches.set(id, match); lobbies.delete(lobby.id); emitLobbies(io);
       const beginsAt = Date.now() + COUNTDOWN_MS;
-      io.to(room).emit('blobby:match:start', { matchId: id, host: match.host, players: match.players, beginsAt, targetScore: TARGET_SCORE });
+      io.to(room).emit('blobby:match:start', { matchId: id, host: match.host, players: match.players, beginsAt, targetScore });
       snapshot(io, match); startLoop(io, match); ack?.({ ok: true, matchId: id });
       setTimeout(() => { if (matches.get(id) === match) { match.running = true; match.lastTick = Date.now(); } }, COUNTDOWN_MS);
     });
@@ -147,6 +150,22 @@ export function registerBlobbySockets(io: Server): void {
       input.left = payload.input?.left === true;
       input.right = payload.input?.right === true;
       if (payload.input?.jump === true) input.jump = true;
+    });
+    socket.on('blobby:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => {
+      const match = typeof payload.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
+      match.paused = true;
+      io.to(match.room).emit('blobby:match:paused', { matchId: match.id });
+      snapshot(io, match); ack?.({ ok: true });
+    });
+    socket.on('blobby:match:resume', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => {
+      const match = typeof payload.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann fortsetzen.' });
+      match.paused = false; match.lastTick = Date.now();
+      io.to(match.room).emit('blobby:match:resumed', { matchId: match.id });
+      snapshot(io, match); ack?.({ ok: true });
     });
     socket.on('blobby:match:finish', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => {
       const match = typeof payload.matchId === 'string' ? matches.get(payload.matchId) : null;

@@ -83,7 +83,7 @@ test('GET /api/arcade/stats labels and aggregates tetris results too', async () 
   const res = await request(app).get('/api/arcade/stats');
   assert.equal(res.status, 200);
   const tetris = res.body.games.find((game: { gameType: string }) => game.gameType === 'tetris');
-  assert.equal(tetris.title, 'Tetris Battle');
+  assert.equal(tetris.title, 'Tetris');
   assert.equal(tetris.matches, 1);
   assert.equal(tetris.leader.name, 'Tetris Cara');
   assert.equal(tetris.players[0].wins, 1);
@@ -128,7 +128,11 @@ test('GET /api/arcade/stats labels Blobby Volley results', async () => {
   const res = await request(app).get('/api/arcade/stats');
   const blobby = res.body.games.find((game: { gameType: string }) => game.gameType === 'blobby');
   assert.equal(blobby.title, 'Blobby Volley');
+  assert.equal(blobby.rankingMode, 'winLoss');
   assert.equal(blobby.matches, 1);
   assert.equal(blobby.leader.name, 'Blobby Eve');
   assert.equal(blobby.players[0].best, 7);
+  assert.equal(blobby.players[0].wins, 1);
+  assert.equal(blobby.players[0].losses, 0);
+  assert.equal(blobby.players[0].winRate, 1);
 });

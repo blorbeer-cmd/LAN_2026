@@ -397,7 +397,7 @@ function hostStartHtml() {
   return `
     <div class="stack" style="gap:var(--space-2);border-top:1px solid var(--border);padding-top:var(--space-3);">
       <div class="muted" style="font-size:var(--font-size-xs);">${ready ? 'Bereit — Gegner ist da.' : 'Warte auf einen Gegner…'}</div>
-      <button type="button" class="btn btn-primary btn-block" id="tetris-start" ${ready ? '' : 'disabled'}>Battle starten</button>
+      <button type="button" class="btn btn-primary btn-block" id="tetris-start" ${ready ? '' : 'disabled'}>Start</button>
     </div>`;
 }
 
@@ -498,7 +498,7 @@ function boardColumn(prefix, label) {
 function matchControls() {
   if (!match || match.ended || match.host?.id !== myId()) return '';
   return `
-    <div class="row" style="gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3);justify-content:center;">
+    <div class="arcade-match-controls">
       ${
         match.paused
           ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="tetris-resume">Fortsetzen</button>`
@@ -522,15 +522,16 @@ export function renderTetris(container, ctx) {
   const oppLabel = amPlayer() ? escapeHtml(opponent?.name ?? 'Gegner') : escapeHtml(match.players[1]?.name ?? 'Spieler 2');
   const meLabel = amPlayer() ? 'Du' : escapeHtml(match.players[0]?.name ?? 'Spieler 1');
   container.innerHTML = `
-    <h1 class="view-title">🧩 Tetris Battle</h1>
+    <div class="arcade-game-shell"><h1 class="view-title">🧩 Tetris</h1>
     <div id="tetris-game">
       <div id="tetris-boards" class="tetris-boards">
         ${boardColumn('tetris-mine', meLabel)}
         ${boardColumn('tetris-opponent', oppLabel)}
       </div>
+      <p class="arcade-game-help">Pfeile bewegen · ↑ dreht · Leertaste setzt ab.</p>
       ${matchControls()}
       ${endResultHtml()}
-    </div>`;
+    </div></div>`;
   paint();
   wireMatch(container);
 }
