@@ -10,6 +10,7 @@ const H = 600;
 const GROUND = 550;
 const NET_X = 500;
 const NET_TOP = 365;
+const BALL_RADIUS = 28;
 
 let socket = null;
 let lobbies = [];
@@ -20,6 +21,7 @@ let latestAt = 0;
 let animation = null;
 let keys = { left: false, right: false };
 let keyboardBound = false;
+const avatarImages = new Map();
 
 const myId = () => getMyId();
 const rerender = () => window.dispatchEvent(new CustomEvent('lan:rerender'));
@@ -137,10 +139,29 @@ function interpolatedWorld() {
     blobs: latest.world.blobs.map((b, i) => ({ x: lerp(previous.world.blobs[i].x, b.x, t), y: lerp(previous.world.blobs[i].y, b.y, t), side: b.side })),
   };
 }
-function drawBlob(ctx, blob, color) {
+function avatarImage(player) {
+  if (!player?.avatar) return null;
+  if (!avatarImages.has(player.id)) {
+    const image = new Image();
+    image.src = player.avatar;
+    avatarImages.set(player.id, image);
+  }
+  const image = avatarImages.get(player.id);
+  return image?.complete ? image : null;
+}
+function drawBlob(ctx, blob, color, player) {
   ctx.fillStyle = color;
   ctx.beginPath(); ctx.arc(blob.x, blob.y, 44, Math.PI, 0); ctx.lineTo(blob.x + 44, blob.y + 38); ctx.arc(blob.x, blob.y + 38, 44, 0, Math.PI); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(blob.x + (blob.side === 'left' ? 12 : -12), blob.y - 5, 8, 0, Math.PI * 2); ctx.fill();
+  const image = avatarImage(player);
+  if (image) {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(blob.x, blob.y, 35, 0, Math.PI * 2); ctx.clip();
+    ctx.drawImage(image, blob.x - 35, blob.y - 35, 70, 70);
+    ctx.restore();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(blob.x, blob.y, 35, 0, Math.PI * 2); ctx.stroke();
+  } else {
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(blob.x + (blob.side === 'left' ? 12 : -12), blob.y - 5, 8, 0, Math.PI * 2); ctx.fill();
+  }
 }
 function paint() {
   const canvas = document.querySelector('#blobby-canvas');
@@ -151,9 +172,9 @@ function paint() {
   ctx.fillStyle = '#36415f'; ctx.fillRect(0, GROUND, W, H - GROUND);
   ctx.fillStyle = '#dbe4ff'; ctx.fillRect(NET_X - 10, NET_TOP, 20, GROUND - NET_TOP); ctx.beginPath(); ctx.arc(NET_X, NET_TOP, 10, 0, Math.PI * 2); ctx.fill();
   if (world) {
-    drawBlob(ctx, world.blobs[0], '#5b8cff'); drawBlob(ctx, world.blobs[1], '#c24bd8');
-    ctx.fillStyle = '#fff4a8'; ctx.beginPath(); ctx.arc(world.ball.x, world.ball.y, 22, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#e6b84f'; ctx.lineWidth = 4; ctx.stroke();
+    drawBlob(ctx, world.blobs[0], '#5b8cff', match?.players?.[0]); drawBlob(ctx, world.blobs[1], '#c24bd8', match?.players?.[1]);
+    ctx.fillStyle = '#dbe4ff'; ctx.beginPath(); ctx.arc(world.ball.x, world.ball.y, BALL_RADIUS, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#aebddd'; ctx.lineWidth = 4; ctx.stroke();
   }
   animation = requestAnimationFrame(paint);
 }

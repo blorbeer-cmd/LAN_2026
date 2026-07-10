@@ -8,7 +8,7 @@ const SNAPSHOT_MS = 50;
 const COUNTDOWN_MS = 3000;
 const TARGET_SCORE = 7;
 
-interface PlayerRef { id: string; name: string }
+interface PlayerRef { id: string; name: string; avatar: string | null; color: string | null }
 interface Lobby { id: string; host: PlayerRef; players: PlayerRef[]; socketIds: Map<string, string>; createdAt: number }
 interface Match {
   id: string; room: string; host: PlayerRef; players: PlayerRef[]; socketIds: Map<string, string>;
@@ -22,7 +22,7 @@ const idle = (): BlobbyInput => ({ left: false, right: false, jump: false });
 
 function playerById(id: unknown): PlayerRef | null {
   if (typeof id !== 'string' || !id) return null;
-  return (db.prepare('SELECT id, name FROM players WHERE id = ?').get(id) as PlayerRef | undefined) ?? null;
+  return (db.prepare('SELECT id, name, avatar, color FROM players WHERE id = ?').get(id) as PlayerRef | undefined) ?? null;
 }
 function publicLobbies() {
   return [...lobbies.values()].map((l) => ({ id: l.id, host: l.host, players: l.players, createdAt: l.createdAt }));

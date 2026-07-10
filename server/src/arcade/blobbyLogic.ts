@@ -4,7 +4,7 @@ export const GROUND_Y = 550;
 export const NET_X = COURT_WIDTH / 2;
 export const NET_HEIGHT = 185;
 export const BLOB_RADIUS = 44;
-export const BALL_RADIUS = 22;
+export const BALL_RADIUS = 28;
 
 const MOVE_SPEED = 330;
 const JUMP_SPEED = 620;
