@@ -62,6 +62,11 @@ let drawingPointerId = null;
 let lastLocalPoint = null;
 let currentStrokeId = null;
 let pendingPoints = [];
+// Last point already flushed for the current stroke. Every follow-up batch
+// is prepended with it so receivers can draw each batch as a self-contained
+// polyline that still connects seamlessly to the previous one — without the
+// overlap, per-frame batches (often a single point) arrive as isolated dots.
+let lastFlushedPoint = null;
 let flushScheduled = false;
 // Set only right after a rejoin sync, consumed once by the next canvas
 // setup — a fresh turn always starts with a blank canvas server-side, so
@@ -171,6 +176,11 @@ function drawStroke(stroke) {
     if (i === 0) canvas2d.moveTo(px, py);
     else canvas2d.lineTo(px, py);
   });
+  // A lone point (a tap) would otherwise render nothing — a zero-length
+  // lineTo with round lineCap paints it as a dot.
+  if (stroke.points.length === 1) {
+    canvas2d.lineTo(stroke.points[0][0] * w, stroke.points[0][1] * h);
+  }
   canvas2d.stroke();
 }
 
@@ -261,7 +271,8 @@ function scheduleFlush() {
 function flush() {
   flushScheduled = false;
   if (pendingPoints.length === 0) return;
-  const points = pendingPoints;
+  const points = lastFlushedPoint ? [lastFlushedPoint, ...pendingPoints] : pendingPoints;
+  lastFlushedPoint = pendingPoints[pendingPoints.length - 1];
   pendingPoints = [];
   socket?.emit('scribble:stroke', {
     matchId: match.matchId,
@@ -298,6 +309,10 @@ function onPointerDown(e) {
   currentStrokeId = newOpId();
   lastLocalPoint = p;
   pendingPoints = [p];
+  lastFlushedPoint = null;
+  // Zero-length segment: with round lineCap this paints the tap-dot locally,
+  // matching what receivers render for a single-point batch.
+  drawLocalSegment(p, p);
   scheduleFlush();
 }
 
@@ -316,6 +331,7 @@ function endStroke(e) {
   drawingPointerId = null;
   lastLocalPoint = null;
   flush();
+  lastFlushedPoint = null;
 }
 
 function wireCanvas(el) {

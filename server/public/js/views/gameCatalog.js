@@ -433,6 +433,7 @@ export function renderGameCatalog(container, ctx) {
   const rows = sortedGames(games, myId);
 
   container.innerHTML = `
+    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <h1 class="view-title">🎮 Spiele</h1>
     ${whoAmICardHtml('whoami')}
     <div class="row-between" style="margin-top:var(--space-3);gap:var(--space-3);align-items:center;">
