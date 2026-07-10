@@ -68,7 +68,7 @@ function renderCarpool(c, direction, myId) {
       ? `<div class="row arrivals-chip-row">${c.members
           .map((m) => `<span class="chip">${avatarHtml(m, 18)} ${escapeHtml(m.name)}${m.id === c.driverId ? ' 🚗 Fahrer' : ''}</span>`)
           .join('')}</div>`
-      : `<div class="muted" style="font-size:0.85rem;">Noch niemand dabei.</div>`;
+      : `<div class="muted" style="font-size:var(--font-size-sm);">Noch niemand dabei.</div>`;
   const planLines = [
     c.startAt || c.startLocation
       ? `<div class="arrivals-time-line"><span>🕐</span><strong>${c.startAt ? formatDateTime(c.startAt) : 'Zeit offen'}${c.startLocation ? ` ab ${escapeHtml(c.startLocation)}` : ''}</strong></div>`
@@ -95,7 +95,7 @@ function renderCarpool(c, direction, myId) {
       <div class="arrivals-carpool-head">
         <div>
           <strong>${escapeHtml(c.label)}</strong>
-          <div class="muted" style="font-size:0.78rem;">🚗 ${escapeHtml(c.createdByName)} fährt · angelegt ${formatDateTime(c.createdAt)}</div>
+          <div class="muted" style="font-size:var(--font-size-xs);">🚗 ${escapeHtml(c.createdByName)} fährt · angelegt ${formatDateTime(c.createdAt)}</div>
         </div>
         <div class="arrivals-carpool-actions">
           ${joinAction}
@@ -105,7 +105,7 @@ function renderCarpool(c, direction, myId) {
       </div>
       ${planLines}
       ${memberHtml}
-      ${!myId ? `<div class="muted" style="font-size:0.85rem;">Wähle oben, wer du bist, um beizutreten.</div>` : ''}
+      ${!myId ? `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um beizutreten.</div>` : ''}
     </div>`;
 }
 
@@ -131,7 +131,7 @@ function renderCarpools(myId) {
         ${
           myId
             ? ''
-            : `<div class="muted" style="font-size:0.85rem;padding:0 12px 12px;">Wähle oben, wer du bist, um Fahrgemeinschaften anzulegen oder beizutreten.</div>`
+            : `<div class="muted" style="font-size:var(--font-size-sm);padding:0 12px 12px;">Wähle oben, wer du bist, um Fahrgemeinschaften anzulegen oder beizutreten.</div>`
         }
       </div>
     </div>`;

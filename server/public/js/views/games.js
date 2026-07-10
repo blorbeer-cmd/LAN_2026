@@ -23,7 +23,7 @@ function inviteUrl() {
 function renderInviteLinkBody() {
   return `
     <div class="row">
-      <input type="text" id="invite-link" readonly value="${escapeHtml(inviteUrl())}" style="flex:1;font-family:monospace;font-size:0.8rem;" />
+      <input type="text" id="invite-link" readonly value="${escapeHtml(inviteUrl())}" style="flex:1;font-family:monospace;font-size:var(--font-size-xs);" />
       <button type="button" class="btn btn-sm" id="invite-copy">Kopieren</button>
     </div>
     <button type="button" class="btn btn-sm" id="invite-qr-toggle">📱 QR-Code anzeigen</button>
@@ -79,7 +79,7 @@ function openShareLinkModal(eventName) {
     `
       <div class="stack">
         ${renderInviteLinkBody()}
-        <p class="muted" style="font-size:0.8rem;">
+        <p class="muted" style="font-size:var(--font-size-xs);">
           Diesen Link verschicken (oder den QR-Code zeigen/aushängen) – öffnet die Seite direkt
           eingeloggt und führt neue Leute direkt zur Profil-Erstellung. Name, Bild, Skills und der
           eigene Agent-Key richten sich alle selbst ein.
@@ -97,7 +97,7 @@ function renderInviteSection() {
     <div class="section-title">🔗 Einladungslink</div>
     <div class="card stack">
       ${renderInviteLinkBody()}
-      <p class="muted" style="font-size:0.8rem;">
+      <p class="muted" style="font-size:var(--font-size-xs);">
         Diesen Link verschicken (oder den QR-Code zeigen/aushängen) – öffnet die Seite direkt
         eingeloggt und führt neue Leute direkt zur Profil-Erstellung. Name, Bild, Skills und der
         eigene Agent-Key richten sich alle selbst ein.
@@ -107,7 +107,7 @@ function renderInviteSection() {
     <div class="section-title">🖥️ TV-/Kiosk-Ansicht</div>
     <div class="card stack">
       <a href="/kiosk.html${token ? `?token=${encodeURIComponent(token)}` : ''}" target="_blank" rel="noopener" class="btn btn-block">Kiosk-Ansicht öffnen</a>
-      <p class="muted" style="font-size:0.8rem;">
+      <p class="muted" style="font-size:var(--font-size-xs);">
         Für einen gemeinsamen Bildschirm/Beamer im Raum: Live-Status, Abstimmung, Rangliste und
         laufendes Turnier, aktualisiert sich von selbst. Keine Bedienung nötig.
       </p>
@@ -135,17 +135,17 @@ function renderEventCard(e) {
     : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${e.id}">🏁 Beenden</button>`;
 
   return `
-    <div class="card stack" style="gap:12px;">
+    <div class="card stack" style="gap:var(--space-3);">
       <div class="row-between">
         <strong>${escapeHtml(e.name)}</strong>
         ${eventStatusBadge(e)}
       </div>
       <div class="stack" style="gap:5px;">
-        ${e.location ? `<div class="muted" style="font-size:0.82rem;">📍 ${escapeHtml(e.location)}</div>` : ''}
-        <div class="muted" style="font-size:0.82rem;">🗓️ ${dateRange} · 👥 ${participantCount} Teilnehmer</div>
-        ${e.description ? `<div class="muted" style="font-size:0.82rem;">${escapeHtml(e.description)}</div>` : ''}
+        ${e.location ? `<div class="muted" style="font-size:var(--font-size-sm);">📍 ${escapeHtml(e.location)}</div>` : ''}
+        <div class="muted" style="font-size:var(--font-size-sm);">🗓️ ${dateRange} · 👥 ${participantCount} Teilnehmer</div>
+        ${e.description ? `<div class="muted" style="font-size:var(--font-size-sm);">${escapeHtml(e.description)}</div>` : ''}
       </div>
-      <div class="row event-card-actions" style="gap:8px;flex-wrap:wrap;">
+      <div class="row event-card-actions" style="gap:var(--space-2);flex-wrap:wrap;">
         ${trackingBtn}
         ${endBtn}
         <button type="button" class="btn btn-sm" data-participants-event="${e.id}">👥 Teilnehmer</button>
@@ -161,11 +161,11 @@ function renderEventSection() {
   const cards = realEvents.map(renderEventCard).join('');
 
   return `
-    <div class="row-between" style="margin-top:20px;">
+    <div class="row-between" style="margin-top:var(--space-5);">
       <div class="section-title" style="margin:0 0 8px;">🎪 Events</div>
       <button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>
     </div>
-    <p class="muted" style="font-size:0.8rem;margin:0 0 14px;">
+    <p class="muted" style="font-size:var(--font-size-xs);margin:0 0 14px;">
       Mehrere Events können nebeneinander bestehen, aber nur eines gleichzeitig „tracken" (Live-Status
       und Spielzeit automatisch erfassen). Was außerhalb eines getrackten Events passiert, läuft unter
       „Außerhalb von Events" – ganz normal nutzbar, nur ohne festes Event zugeordnet.
@@ -173,7 +173,7 @@ function renderEventSection() {
     ${
       realEvents.length === 0
         ? `<div class="empty-state"><span class="emoji">🎪</span>Noch keine Events angelegt.</div>`
-        : `<div class="card-grid" style="gap:16px;">${cards}</div>`
+        : `<div class="card-grid" style="gap:var(--space-4);">${cards}</div>`
     }
   `;
 }
@@ -234,7 +234,7 @@ function openEventForm(ctx, existing) {
         </div>
         ${
           !isEdit
-            ? `<p class="muted" style="font-size:0.78rem;">Legt das Event an, aber startet noch kein Tracking – das machst du danach gezielt über „▶️ Tracking starten".</p>`
+            ? `<p class="muted" style="font-size:var(--font-size-xs);">Legt das Event an, aber startet noch kein Tracking – das machst du danach gezielt über „▶️ Tracking starten".</p>`
             : ''
         }
         <button type="submit" class="btn btn-primary btn-block">${isEdit ? 'Speichern' : 'Event anlegen'}</button>
@@ -302,7 +302,7 @@ function openParticipantsForm(ctx, event) {
     `👥 Teilnehmer – ${escapeHtml(event.name)}`,
     `
       <div class="stack">
-        <p class="muted" style="font-size:0.8rem;">
+        <p class="muted" style="font-size:var(--font-size-xs);">
           Nur diese Spieler werden getrackt, sobald dieses Event Tracking aktiv hat.
         </p>
         ${state.players.length === 0 ? `<div class="empty-state">Noch keine Spieler.</div>` : rows}

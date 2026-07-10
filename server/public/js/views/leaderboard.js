@@ -29,7 +29,7 @@ export function renderLeaderboard(container, ctx) {
           <span class="lb-rank">${i + 1}</span>
           ${avatarHtml(player || { color }, 24)}
           <span style="flex:1;">${escapeHtml(name)}</span>
-          <span class="muted" style="font-size:0.8rem;" title="${s.wins} Siege von ${s.matchesPlayed} Matches">${s.wins}S / ${s.matchesPlayed}M</span>
+          <span class="muted" style="font-size:var(--font-size-xs);" title="${s.wins} Siege von ${s.matchesPlayed} Matches">${s.wins}S / ${s.matchesPlayed}M</span>
           <span class="lb-points" title="${s.points} Punkte">${s.points} P</span>
         </div>`;
     })
@@ -46,7 +46,7 @@ export function renderLeaderboard(container, ctx) {
   // otherwise rows with the hint were visibly taller than rows without it.
   const activeHint = (activeMs, totalMs, activeFormatted) => {
     const show = activeMs > 0 && activeMs < totalMs;
-    return `<div class="muted" style="font-size:0.75rem;${show ? '' : 'visibility:hidden;'}">davon aktiv gespielt: ${escapeHtml(activeFormatted || '0m')}</div>`;
+    return `<div class="muted" style="font-size:var(--font-size-xs);${show ? '' : 'visibility:hidden;'}">davon aktiv gespielt: ${escapeHtml(activeFormatted || '0m')}</div>`;
   };
 
   const playtime = state.playtime?.totals || [];
@@ -86,19 +86,19 @@ export function renderLeaderboard(container, ctx) {
       <h1 class="view-title">Rangliste</h1>
       <button type="button" class="btn btn-primary btn-sm" id="add-match-btn">+ Ergebnis</button>
     </div>
-    <select id="lb-filter" style="margin-bottom:12px;">${gameOptions}</select>
+    <select id="lb-filter" style="margin-bottom:var(--space-3);">${gameOptions}</select>
     <div class="card">
       ${standings.length === 0 ? `<div class="empty-state"><span class="emoji">🏆</span>Noch keine Ergebnisse.</div>` : rows}
     </div>
 
     <div class="section-title">${icon('timer')} Spielzeit</div>
     <div class="card">
-      ${playtime.length === 0 ? `<div class="empty-state" style="padding:20px;"><span class="emoji">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeRows}
+      ${playtime.length === 0 ? `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeRows}
     </div>
 
     <div class="section-title">${icon('timer')} Spielzeit pro Spiel (alle zusammen)</div>
     <div class="card">
-      ${playtimeByGame.length === 0 ? `<div class="empty-state" style="padding:20px;"><span class="emoji">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeByGameRows}
+      ${playtimeByGame.length === 0 ? `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeByGameRows}
     </div>
   `;
 
@@ -166,7 +166,7 @@ export function openMatchForm(ctx, options = {}) {
           const playersHtml = state.players
             .map(
               (p) => `
-              <div class="row" style="padding:4px 0;">
+              <div class="row" style="padding:var(--space-1) 0;">
                 ${avatarHtml(p, 20)}
                 <span style="flex:1;">${escapeHtml(p.name)}</span>
                 <select data-team-for="${p.id}">

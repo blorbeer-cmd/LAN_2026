@@ -83,7 +83,7 @@ function renderDigest(myId) {
   if (items.length === 0) return '';
   return `
     <div class="section-title">Was steht an?</div>
-    <div class="stack" style="gap:6px;margin-bottom:16px;">${items.join('')}</div>
+    <div class="stack" style="gap:6px;margin-bottom:var(--space-4);">${items.join('')}</div>
   `;
 }
 
@@ -100,7 +100,7 @@ function renderPingForm() {
   if (!pingFormOpen) return '';
   const options = state.games.map((g) => `<option value="${g.id}">${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`).join('');
   return `
-    <div class="stack" style="margin-top:10px;gap:8px;">
+    <div class="stack" style="margin-top:10px;gap:var(--space-2);">
       <select id="ping-game">${options}</select>
       <input type="text" id="ping-message" placeholder="Nachricht (optional)" maxlength="140" />
       <button type="button" class="btn btn-primary btn-block" id="ping-submit">Ping senden</button>
@@ -109,33 +109,33 @@ function renderPingForm() {
 
 function renderPings(myId) {
   if (pingsLoading || pingsCache === null) {
-    return `<div class="empty-state" style="padding:16px;">Lädt…</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   if (pingsCache.length === 0) {
-    return `<div class="empty-state" style="padding:16px;"><span class="emoji">🎮</span>Gerade will niemand spontan spielen.</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">🎮</span>Gerade will niemand spontan spielen.</div>`;
   }
   return pingsCache
     .map((p) => {
       const isCreator = p.playerId === myId;
       const amInterested = myId && p.interested.some((i) => i.id === myId);
       const interestedAvatars = p.interested.length
-        ? `<div class="row" style="gap:4px;margin-top:6px;">${p.interested.map((i) => avatarHtml(i, 24)).join('')}</div>`
+        ? `<div class="row" style="gap:var(--space-1);margin-top:6px;">${p.interested.map((i) => avatarHtml(i, 24)).join('')}</div>`
         : '';
       const joinBtn =
         myId && !isCreator
           ? `<button type="button" class="btn btn-sm ${amInterested ? '' : 'btn-primary'}" data-ping-join="${p.id}">${amInterested ? 'Bin raus' : 'Ich bin dabei'}</button>`
           : '';
       return `
-        <div class="card" style="margin-bottom:8px;">
+        <div class="card" style="margin-bottom:var(--space-2);">
           <div class="row-between">
-            <span class="row" style="gap:8px;">${gameBadgeHtml({ id: p.gameId, icon: p.gameIcon }, 24)} <strong>${escapeHtml(p.gameName)}</strong></span>
+            <span class="row" style="gap:var(--space-2);">${gameBadgeHtml({ id: p.gameId, icon: p.gameIcon }, 24)} <strong>${escapeHtml(p.gameName)}</strong></span>
             <button type="button" class="btn btn-sm btn-danger" data-ping-cancel="${p.id}" title="Ping beenden">✕</button>
           </div>
-          <div class="muted" style="font-size:0.85rem;margin-top:4px;">
+          <div class="muted" style="font-size:var(--font-size-sm);margin-top:var(--space-1);">
             ${avatarHtml({ color: p.playerColor, avatar: p.playerAvatar }, 18)} ${escapeHtml(p.playerName)}${p.message ? ` – „${escapeHtml(p.message)}"` : ''}
           </div>
-          <div class="row-between" style="margin-top:8px;">
-            <span class="muted" style="font-size:0.78rem;">${formatExpiresIn(p.expiresAt)}</span>
+          <div class="row-between" style="margin-top:var(--space-2);">
+            <span class="muted" style="font-size:var(--font-size-xs);">${formatExpiresIn(p.expiresAt)}</span>
             ${joinBtn}
           </div>
           ${interestedAvatars}
@@ -168,7 +168,7 @@ function renderActiveGroups(players) {
 
   return `
     <div class="section-title">Gerade aktiv</div>
-    <div class="stack" style="gap:6px;margin-bottom:16px;">${groups}</div>
+    <div class="stack" style="gap:6px;margin-bottom:var(--space-4);">${groups}</div>
   `;
 }
 
@@ -185,7 +185,7 @@ export function renderLive(container, ctx) {
       <div class="empty-state">
         <img src="/img/mascot.svg" alt="" width="72" height="66" class="mascot" />
         Noch keine Spieler angelegt.<br />
-        <button type="button" class="btn btn-primary btn-sm" data-navigate="profile" style="margin-top:12px;">👤 Eigenes Profil anlegen</button>
+        <button type="button" class="btn btn-primary btn-sm" data-navigate="profile" style="margin-top:var(--space-3);">👤 Eigenes Profil anlegen</button>
       </div>`;
     return;
   }
@@ -207,12 +207,12 @@ export function renderLive(container, ctx) {
 
       const noteLine =
         p.state === 'paused' && p.manual_note
-          ? `<div class="muted" style="margin-top:4px;font-size:0.85rem;">${escapeHtml(p.manual_note)}</div>`
+          ? `<div class="muted" style="margin-top:var(--space-1);font-size:var(--font-size-sm);">${escapeHtml(p.manual_note)}</div>`
           : '';
 
       const isMe = p.player_id === myId;
       const pauseToggle = isMe
-        ? `<button type="button" class="btn btn-sm" data-toggle-pause="${p.player_id}" data-paused="${p.state === 'paused' ? '1' : '0'}" style="margin-top:8px;">
+        ? `<button type="button" class="btn btn-sm" data-toggle-pause="${p.player_id}" data-paused="${p.state === 'paused' ? '1' : '0'}" style="margin-top:var(--space-2);">
             ${p.state === 'paused' ? '▶️ Bin wieder da' : '⏸️ Pause / Essen'}
           </button>`
         : '';
@@ -237,12 +237,12 @@ export function renderLive(container, ctx) {
     <h1 class="view-title">Live-Status</h1>
     ${whoAmI}
     ${renderDigest(myId)}
-    <div class="card" style="margin-bottom:16px;">
+    <div class="card" style="margin-bottom:var(--space-4);">
       <div class="row-between">
         <strong>🎮 Jetzt zocken?</strong>
         ${myId ? `<button type="button" class="btn btn-sm ${pingFormOpen ? '' : 'btn-primary'}" id="ping-toggle">${pingFormOpen ? 'Abbrechen' : '+ Ping'}</button>` : ''}
       </div>
-      ${myId ? renderPingForm() : `<div class="muted" style="font-size:0.85rem;margin-top:4px;">Wähle oben, wer du bist, um zu pingen.</div>`}
+      ${myId ? renderPingForm() : `<div class="muted" style="font-size:var(--font-size-sm);margin-top:var(--space-1);">Wähle oben, wer du bist, um zu pingen.</div>`}
     </div>
     ${renderPings(myId)}
     ${renderActiveGroups(players)}

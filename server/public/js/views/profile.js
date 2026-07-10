@@ -42,7 +42,7 @@ function renderIdentityPicker(container, ctx) {
         <input type="text" id="profile-new-name" placeholder="Dein Gamer-Name" maxlength="60" style="flex:1;" required autofocus />
         <button type="submit" class="btn btn-primary btn-sm">Los geht's</button>
       </form>
-      <div class="muted" style="font-size:0.8rem;">Profilbild, Skills und dein Agent-Key richtest du direkt im Anschluss ein.</div>
+      <div class="muted" style="font-size:var(--font-size-xs);">Profilbild, Skills und dein Agent-Key richtest du direkt im Anschluss ein.</div>
     </div>
 
     <div class="section-title">Schon dabei?</div>
@@ -93,10 +93,10 @@ async function loadNeighbors(playerId, ctx) {
 function renderNeighbors(myId) {
   const others = state.players.filter((p) => p.id !== myId);
   if (others.length === 0) {
-    return `<div class="empty-state" style="padding:16px;">Noch keine anderen Spieler da.</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);">Noch keine anderen Spieler da.</div>`;
   }
   if (neighborsLoading || neighborsCache === null) {
-    return `<div class="empty-state" style="padding:16px;">Lädt…</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   const checked = new Set(neighborsCache.neighborIds);
   return others
@@ -118,15 +118,15 @@ async function loadPushState(ctx) {
 
 function renderPushSection() {
   if (pushState === 'unsupported') {
-    return `<div class="muted" style="font-size:0.85rem;">Dieser Browser unterstützt keine Push-Benachrichtigungen.</div>`;
+    return `<div class="muted" style="font-size:var(--font-size-sm);">Dieser Browser unterstützt keine Push-Benachrichtigungen.</div>`;
   }
   if (pushState === 'denied') {
-    return `<div class="muted" style="font-size:0.85rem;">Berechtigung wurde blockiert – in den Browser-Einstellungen für diese Seite wieder erlauben.</div>`;
+    return `<div class="muted" style="font-size:var(--font-size-sm);">Berechtigung wurde blockiert – in den Browser-Einstellungen für diese Seite wieder erlauben.</div>`;
   }
   const subscribed = pushState === 'subscribed';
   return `
     <div class="row-between">
-      <span class="muted" style="font-size:0.85rem;">${subscribed ? 'Aktiv auf diesem Gerät.' : 'Erhalte einen Hinweis auch, wenn die App nicht offen ist.'}</span>
+      <span class="muted" style="font-size:var(--font-size-sm);">${subscribed ? 'Aktiv auf diesem Gerät.' : 'Erhalte einen Hinweis auch, wenn die App nicht offen ist.'}</span>
       <button type="button" class="btn btn-sm ${subscribed ? 'btn-danger' : 'btn-primary'}" id="push-toggle" ${pushBusy ? 'disabled' : ''}>
         ${pushBusy ? 'Einen Moment…' : subscribed ? 'Deaktivieren' : 'Aktivieren'}
       </button>
@@ -174,7 +174,7 @@ export function renderProfile(container, ctx) {
           <button type="button" class="btn btn-primary btn-sm" id="profile-save">Speichern</button>
         </div>
       </div>
-      <div class="muted" style="font-size:0.8rem;">Bild antippen zum Ändern. Name muss über alle Spieler eindeutig sein.</div>
+      <div class="muted" style="font-size:var(--font-size-xs);">Bild antippen zum Ändern. Name muss über alle Spieler eindeutig sein.</div>
     </div>
 
     ${
@@ -183,11 +183,11 @@ export function renderProfile(container, ctx) {
         : hasAnyRating
           ? ''
           : `<div class="card stack" style="border-color:rgba(91,140,255,0.55);">
-               <div class="row" style="gap:8px;align-items:center;">
-                 <span style="font-size:1.4rem;">🎮</span>
+               <div class="row" style="gap:var(--space-2);align-items:center;">
+                 <span style="font-size:var(--font-size-xl);">🎮</span>
                  <strong>Bock & Skill eintragen</strong>
                </div>
-               <p class="muted" style="font-size:0.8rem;margin:0;">
+               <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
                  Worauf hast du Lust, was kannst du gut? Trag das kurz in der Spiele-Liste ein – dauert
                  eine Minute und hilft beim Voting und beim Teams-Auslosen.
                </p>
@@ -201,7 +201,7 @@ export function renderProfile(container, ctx) {
         <input type="checkbox" id="tracking-paused" ${me.tracking_paused ? 'checked' : ''} />
         <span style="flex:1;">🚫 Tracking pausieren</span>
       </label>
-      <p class="muted" style="font-size:0.8rem;margin-top:-4px;">
+      <p class="muted" style="font-size:var(--font-size-xs);margin-top:-4px;">
         Dein Agent darf weiterlaufen und meldet sich weiter beim Server, aber nichts davon wird
         gespeichert – kein Live-Status, keine Spielzeit. Dasselbe Pausieren geht auch direkt am PC
         über die Steuerungs-Oberfläche des Agents – beide Wege zeigen denselben Stand.
@@ -210,7 +210,7 @@ export function renderProfile(container, ctx) {
         <input type="checkbox" id="agent-track-activity" />
         <span style="flex:1;">Erweitertes Aktivitäts-Tracking</span>
       </label>
-      <p class="muted" style="font-size:0.8rem;margin-top:-4px;">
+      <p class="muted" style="font-size:var(--font-size-xs);margin-top:-4px;">
         Aus (Standard): der Server weiß nur „läuft Spiel X gerade". An: zusätzlich, ob das
         Spielfenster wirklich im Vordergrund ist statt nur im Hintergrund zu laufen – zeigt sich z. B.
         als „davon aktiv gespielt" in deiner Statistik. Das hier ist nur der Startwert für den
@@ -218,7 +218,7 @@ export function renderProfile(container, ctx) {
         (Desktop-Verknüpfung „RespawnHQ-Agent Steuerung") umschalten, ohne neu herunterzuladen.
       </p>
       <button type="button" class="btn btn-primary btn-block" id="agent-download">📥 Agent für Windows herunterladen</button>
-      <p class="muted" style="font-size:0.8rem;">
+      <p class="muted" style="font-size:var(--font-size-xs);">
         ZIP entpacken, <code>install.bat</code> doppelklicken – Server-Adresse und dein API-Key sind
         schon eingetragen. Der Agent startet danach automatisch bei jedem Windows-Login und erkennt,
         welches Spiel du gerade spielst. Im selben ZIP liegt auch <code>uninstall.bat</code>, falls du
@@ -226,12 +226,12 @@ export function renderProfile(container, ctx) {
         die Option oben).
       </p>
       <details>
-        <summary class="muted" style="font-size:0.8rem;cursor:pointer;">Kein Windows / manuelle Einrichtung</summary>
-        <div class="row" style="margin-top:8px;">
+        <summary class="muted" style="font-size:var(--font-size-xs);cursor:pointer;">Kein Windows / manuelle Einrichtung</summary>
+        <div class="row" style="margin-top:var(--space-2);">
           <input type="text" id="profile-apikey" readonly value="Laden…" style="flex:1;font-family:monospace;" />
           <button type="button" class="btn btn-sm" id="profile-copy-key">Kopieren</button>
         </div>
-        <p class="muted" style="font-size:0.8rem;margin-top:6px;">
+        <p class="muted" style="font-size:var(--font-size-xs);margin-top:6px;">
           Diesen Key in die Config des Agenten (<code>agent/</code>-Ordner im Repo, mit Node.js
           gestartet) eintragen – siehe <code>agent/README.md</code>.
         </p>
@@ -242,11 +242,11 @@ export function renderProfile(container, ctx) {
     <div class="card">${renderPushSection()}</div>
 
     <div class="row-between">
-      <div class="section-title" style="margin-bottom:8px;">🪑 Sitznachbarn</div>
+      <div class="section-title" style="margin-bottom:var(--space-2);">🪑 Sitznachbarn</div>
       <button type="button" class="btn btn-sm" data-navigate="seating">Sitzplan ansehen</button>
     </div>
     <div class="card">${renderNeighbors(myId)}</div>
-    <p class="muted" style="font-size:0.8rem;margin-top:6px;">
+    <p class="muted" style="font-size:var(--font-size-xs);margin-top:6px;">
       Wen hast du bei dieser LAN neben dir sitzen? Wird beim Teams-Auslosen berücksichtigt, wenn
       das für das jeweilige Spiel wichtig ist (in den Spiel-Einstellungen einstellbar).
     </p>

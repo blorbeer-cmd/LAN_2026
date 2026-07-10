@@ -158,7 +158,7 @@ html {
 }
 ::-webkit-scrollbar-thumb {
   background: rgba(139, 147, 167, 0.3);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   /* Transparent outer edge shrinks the visible thumb without shrinking the
      grab/tap target. */
   border: 2px solid transparent;
@@ -185,7 +185,7 @@ input {
 
 .error-text {
   color: var(--danger);
-  font-size: 0.9rem;
+  font-size: var(--font-size-sm);
 }
 
 /* ---------- App shell ---------- */
@@ -240,7 +240,7 @@ input {
 }
 
 .topbar-title {
-  font-size: 1.2rem;
+  font-size: var(--font-size-lg);
   display: flex;
   align-items: center;
   gap: 9px;
@@ -248,14 +248,14 @@ input {
 
 .topbar-logo {
   display: block;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   filter: drop-shadow(0 0 6px rgba(145, 99, 245, 0.5));
 }
 
 .login-logo {
   display: block;
   margin: 0 auto;
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow), 0 0 52px rgba(145, 99, 245, 0.45);
 }
 
@@ -265,7 +265,7 @@ input {
    else (buttons, the topbar stripe) so it doesn't introduce a new color. */
 .brand-title {
   display: inline-block;
-  font-weight: 800;
+  font-weight: var(--font-weight-black);
   letter-spacing: -0.02em;
   font-style: italic;
   transform: skewX(-4deg);
@@ -274,7 +274,7 @@ input {
   background-clip: text;
   color: transparent;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 14px rgba(145, 99, 245, 0.5));
+  filter: drop-shadow(var(--shadow-glow-brand));
 }
 
 .topbar-actions {
@@ -290,10 +290,10 @@ input {
   background: none;
   border: none;
   color: var(--text);
-  font-size: 1.15rem;
+  font-size: var(--font-size-lg);
   cursor: pointer;
   padding: 6px;
-  line-height: 1;
+  line-height: var(--line-height-tight);
   border-radius: var(--radius-sm);
   text-decoration: none;
 }
@@ -347,12 +347,12 @@ input {
    the bottom nav intentionally does NOT follow this (see .bottom-nav-inner
    below), so navigation stays a tight, thumb/click-friendly cluster instead
    of spreading thin across a wide window. */
-@media (min-width: 860px) {
+@media (min-width: 860px) { /* --bp-lg */
   :root {
     --content-max-width: 1080px;
   }
 }
-@media (min-width: 1280px) {
+@media (min-width: 1280px) { /* --bp-xl */
   :root {
     --content-max-width: 1320px;
   }
@@ -396,7 +396,7 @@ input {
   justify-content: center;
   gap: 3px;
   color: var(--text-muted);
-  font-size: 0.7rem;
+  font-size: var(--font-size-2xs);
   border-radius: var(--radius-sm);
   position: relative;
   transition: color 0.15s ease;
@@ -467,7 +467,7 @@ input {
   left: 50%;
   width: 46px;
   height: 27px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: rgba(91, 140, 255, 0.17);
   opacity: 0;
   transform: translateX(-50%) scale(0.55);
@@ -486,7 +486,7 @@ input {
   filter: drop-shadow(0 0 6px rgba(91, 140, 255, 0.55));
 }
 .nav-btn.active .nav-label {
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
 }
 
 /* ---------- Buttons & inputs ---------- */
@@ -494,9 +494,9 @@ input {
 .btn {
   border: none;
   border-radius: var(--radius-sm);
-  padding: 12px 18px;
-  font-size: 0.95rem;
-  font-weight: 600;
+  padding: var(--space-3) 18px;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
   background: var(--bg-elevated-2);
   color: var(--text);
@@ -509,7 +509,7 @@ input {
     filter: brightness(1.12);
   }
   .btn-primary:hover:not(:disabled) {
-    box-shadow: 0 4px 20px rgba(91, 140, 255, 0.42);
+    box-shadow: var(--shadow-glow-accent);
   }
   .icon-btn:hover {
     background: var(--bg-elevated-2);
@@ -541,8 +541,8 @@ input {
   width: 100%;
 }
 .btn-sm {
-  padding: 8px 12px;
-  font-size: 0.85rem;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
 }
 
 input[type='text'],
@@ -555,8 +555,8 @@ textarea {
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 11px 12px;
-  font-size: 0.95rem;
+  padding: 11px var(--space-3);
+  font-size: var(--font-size-md);
   color: var(--text);
   width: 100%;
   /* Flex items default to min-width:auto, i.e. never shrink past their
@@ -633,7 +633,7 @@ input[type='number']::-webkit-inner-spin-button {
    value, so its placeholder text never actually becomes visible). */
 .field-label {
   display: block;
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   margin: 0 0 4px 2px;
 }
@@ -688,8 +688,8 @@ input[type='number']::-webkit-inner-spin-button {
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 11px 12px;
-  font-size: 0.95rem;
+  padding: 11px var(--space-3);
+  font-size: var(--font-size-md);
   color: var(--text);
   text-align: left;
   cursor: pointer;
@@ -711,7 +711,7 @@ input[type='number']::-webkit-inner-spin-button {
 }
 .dt-time-sep {
   color: var(--text-muted);
-  font-weight: 600;
+  font-weight: var(--font-weight-medium);
 }
 .dt-clear-btn {
   color: var(--text-muted);
@@ -735,9 +735,9 @@ input[type='number']::-webkit-inner-spin-button {
   table-layout: fixed;
 }
 .dt-calendar th {
-  font-size: 0.7rem;
+  font-size: var(--font-size-2xs);
   color: var(--text-muted);
-  font-weight: 600;
+  font-weight: var(--font-weight-medium);
   padding-bottom: 6px;
 }
 .dt-calendar td {
@@ -751,7 +751,7 @@ input[type='number']::-webkit-inner-spin-button {
   border: none;
   border-radius: var(--radius-sm);
   color: var(--text);
-  font-size: 0.85rem;
+  font-size: var(--font-size-sm);
   cursor: pointer;
 }
 @media (hover: hover) {
@@ -765,7 +765,7 @@ input[type='number']::-webkit-inner-spin-button {
 .dt-day-selected {
   background: var(--accent-gradient);
   color: var(--accent-text);
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
 }
 .dt-popover .btn-block {
   margin-top: var(--space-2);
@@ -793,21 +793,21 @@ input[type='number']::-webkit-inner-spin-button {
   gap: var(--space-3);
   grid-template-columns: 1fr;
 }
-@media (min-width: 640px) {
+@media (min-width: 640px) { /* --bp-md */
   .card-grid {
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   }
 }
 
 .view-title {
-  font-size: 1.3rem;
-  font-weight: 800;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-black);
   margin: var(--space-1) 0 var(--space-4);
 }
 
 .section-title {
-  font-size: 0.95rem;
-  font-weight: 700;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -868,8 +868,8 @@ button.card {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.5rem;
-  line-height: 1;
+  font-size: var(--font-size-2xl);
+  line-height: var(--line-height-tight);
 }
 /* Reserves space for a 2-line description regardless of whether this
    particular row's text actually wraps that far, so a list of otherwise
@@ -881,7 +881,7 @@ button.card {
   -webkit-box-orient: vertical;
   overflow: hidden;
   min-height: 2.4em;
-  font-size: 0.8rem;
+  font-size: var(--font-size-xs);
 }
 
 .arcade-stat-game {
@@ -912,7 +912,7 @@ button.card {
   top: 36px;
   width: 28px;
   height: 28px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   border: 2px solid rgba(91, 140, 255, 0.35);
   transform: translate(-50%, -50%) scale(0.4);
   animation: arcade-winner-ring 1.6s ease-out infinite;
@@ -928,12 +928,12 @@ button.card {
 .arcade-winner-crown {
   position: relative;
   z-index: 1;
-  font-size: 2rem;
+  font-size: var(--font-size-3xl);
   animation: arcade-winner-pop 0.9s ease-out both;
 }
 .arcade-winner-label {
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs);
   text-transform: uppercase;
   letter-spacing: 0.03em;
   margin-bottom: 2px;
@@ -969,25 +969,22 @@ button.card {
   overflow: hidden;
 }
 .game-avg-note {
-  font-size: 0.75rem;
-  font-weight: 400;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
 }
 /* Skill-Vorschlag chip (derived from match results, see skillSuggestion.ts):
    a tappable button, not just a label — clicking applies it. Highlighted
    when it diverges 2+ points from the player's own self-rating. */
 .chip-suggestion {
   cursor: pointer;
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs);
   padding: 2px 8px;
 }
 .chip-suggestion-diverges {
   color: var(--state-playing);
   background: var(--state-playing-bg);
   border-color: var(--state-playing);
-  font-weight: 600;
-}
-.catalog-sort-btn {
-  padding: 6px 10px;
+  font-weight: var(--font-weight-medium);
 }
 .arrivals-layout {
   display: flex;
@@ -1034,7 +1031,7 @@ button.card {
   justify-content: flex-end;
 }
 .arrivals-carpool-empty {
-  font-size: 0.85rem;
+  font-size: var(--font-size-sm);
 }
 .arrivals-people-card {
   padding: 0;
@@ -1059,16 +1056,16 @@ button.card {
   grid-template-columns: 28px minmax(0, 1fr);
   gap: 6px;
   align-items: baseline;
-  font-size: 0.82rem;
+  font-size: var(--font-size-sm);
 }
 .arrivals-time-line span {
   color: var(--text-muted);
 }
 .arrivals-time-line strong {
-  font-weight: 600;
+  font-weight: var(--font-weight-medium);
 }
 .arrivals-note {
-  font-size: 0.78rem;
+  font-size: var(--font-size-xs);
   margin-top: 3px;
 }
 
@@ -1090,7 +1087,7 @@ button.card {
   color: var(--text-muted);
 }
 .empty-state .emoji {
-  font-size: 2.2rem;
+  font-size: var(--font-size-3xl);
   display: block;
   margin-bottom: 8px;
 }
@@ -1139,7 +1136,7 @@ button.card {
 }
 
 .player-name {
-  font-weight: 600;
+  font-weight: var(--font-weight-medium);
 }
 
 /* ---------- Game badge (small per-game visual identity) ---------- */
@@ -1148,9 +1145,9 @@ button.card {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   flex-shrink: 0;
-  line-height: 1;
+  line-height: var(--line-height-tight);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 .game-badge-img {
@@ -1170,9 +1167,9 @@ button.card {
   align-items: center;
   gap: 5px;
   padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 700;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
 }
 .badge-playing {
   background: var(--state-playing-bg);
@@ -1193,9 +1190,9 @@ button.card {
   gap: 6px;
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 0.82rem;
+  border-radius: var(--radius-full);
+  padding: var(--space-1) 10px;
+  font-size: var(--font-size-sm);
   /* Some chips render as <a> (external links) rather than <span> — without
      this they'd pick up the browser's default blue/underlined link style. */
   color: inherit;
@@ -1246,7 +1243,7 @@ button.card {
   color: var(--state-playing);
   background: var(--state-playing-bg);
   border-color: var(--state-playing);
-  font-weight: 600;
+  font-weight: var(--font-weight-medium);
 }
 .player-card-games .chip.chip-background {
   opacity: 0.6;
@@ -1271,7 +1268,7 @@ input[type='range'] {
 }
 .skill-value {
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
   min-width: 1.6em;
   text-align: right;
 }
@@ -1296,7 +1293,7 @@ input[type='range'].preference-row-slider {
 .team-card-header {
   display: flex;
   justify-content: space-between;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
   margin-bottom: 8px;
 }
 .team-player {
@@ -1346,8 +1343,8 @@ input[type='range'].preference-row-slider {
   width: var(--bracket-match-w);
   flex-shrink: 0;
   text-align: center;
-  font-size: 0.78rem;
-  font-weight: 700;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -1426,7 +1423,7 @@ input[type='range'].preference-row-slider {
   border: none;
   background: none;
   color: var(--text);
-  font-size: 0.88rem;
+  font-size: var(--font-size-sm);
   text-align: left;
   cursor: default;
   width: 100%;
@@ -1450,7 +1447,7 @@ button.bracket-team-row {
   }
 }
 .bracket-team-row.is-winner {
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
   color: var(--state-playing);
 }
 .bracket-team-row.is-tbd {
@@ -1459,7 +1456,7 @@ button.bracket-team-row {
 }
 .bracket-score {
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
   flex-shrink: 0;
 }
 /* input[type='number'] (below) sets width:100% at specificity (0,1,1) — an
@@ -1471,7 +1468,7 @@ input[type='number'].bracket-score-input {
   flex-shrink: 0;
   padding: 4px 2px;
   text-align: center;
-  font-size: 0.85rem;
+  font-size: var(--font-size-sm);
 }
 .bracket-score-submit {
   position: absolute;
@@ -1513,14 +1510,14 @@ input[type='number'].bracket-score-input {
 }
 .vote-bar-track {
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--bg-elevated-2);
   overflow: hidden;
 }
 .vote-bar-fill {
   height: 100%;
   background: var(--accent-gradient);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   transition: width 0.3s ease;
 }
 .vote-row.is-winner .vote-bar-fill {
@@ -1540,7 +1537,7 @@ input[type='number'].bracket-score-input {
   border-bottom: none;
 }
 .lb-rank {
-  font-weight: 800;
+  font-weight: var(--font-weight-black);
   color: var(--text-muted);
   width: 1.6em;
   text-align: center;
@@ -1550,7 +1547,7 @@ input[type='number'].bracket-score-input {
 }
 .lb-points {
   margin-left: auto;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
 }
 
 /* ---------- Login screen ---------- */
@@ -1576,11 +1573,11 @@ input[type='number'].bracket-score-input {
   gap: 12px;
 }
 .login-icon {
-  font-size: 2.2rem;
+  font-size: var(--font-size-3xl);
 }
 .login-card h1 {
   margin: 4px 0 0;
-  font-size: 1.9rem;
+  font-size: var(--font-size-3xl);
 }
 
 /* ---------- Toasts ---------- */
@@ -1603,7 +1600,7 @@ input[type='number'].bracket-score-input {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 10px 14px;
-  font-size: 0.88rem;
+  font-size: var(--font-size-sm);
   box-shadow: var(--shadow);
   text-align: center;
   animation: toast-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
@@ -1637,7 +1634,7 @@ input[type='number'].bracket-score-input {
   z-index: 50;
   animation: backdrop-in 0.18s ease;
 }
-@media (min-width: 640px) {
+@media (min-width: 640px) { /* --bp-md */
   .modal-backdrop {
     align-items: center;
   }
@@ -1654,7 +1651,7 @@ input[type='number'].bracket-score-input {
   /* Bottom sheet slides up on phones… */
   animation: sheet-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
-@media (min-width: 640px) {
+@media (min-width: 640px) { /* --bp-md */
   .modal {
     border-radius: var(--radius-lg);
     /* …and gently scales in as a centered dialog on wider screens. */
@@ -1687,11 +1684,11 @@ input[type='number'].bracket-score-input {
 }
 .modal-header h2 {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: var(--font-size-lg);
 }
 
-@media (min-width: 480px) {
+@media (min-width: 480px) { /* --bp-sm */
   .view-title {
-    font-size: 1.5rem;
+    font-size: var(--font-size-2xl);
   }
 }

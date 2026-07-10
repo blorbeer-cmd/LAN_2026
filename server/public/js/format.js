@@ -50,7 +50,7 @@ export function stateLabel(state) {
 // optionally `avatar`; accepts a partial object so callers with only an
 // enriched (playerColor-style) payload can pass `{ color: p.playerColor }`.
 export function avatarHtml(player, size = 32) {
-  const color = escapeHtml((player && player.color) || '#999999');
+  const color = escapeHtml((player && player.color) || 'var(--text-muted)');
   if (player && player.avatar) {
     return `<img class="avatar-img" src="${escapeHtml(player.avatar)}" alt="" style="width:${size}px;height:${size}px;" />`;
   }

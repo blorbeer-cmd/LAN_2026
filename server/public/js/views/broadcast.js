@@ -32,7 +32,7 @@ export function invalidateBroadcasts() {
 
 function renderHistory() {
   if (historyLoading || historyCache === null) {
-    return `<div class="empty-state" style="padding:16px;">Lädt…</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   if (historyCache.length === 0) {
     return `<div class="empty-state"><span class="emoji">📢</span>Noch keine Durchsagen.</div>`;
@@ -43,7 +43,7 @@ function renderHistory() {
       <div class="lb-row" style="align-items:flex-start;">
         <div class="stack" style="gap:2px;flex:1;">
           <div><strong>${escapeHtml(b.playerName)}</strong>: ${escapeHtml(b.message)}</div>
-          <span class="muted" style="font-size:0.75rem;">${formatDateTime(b.createdAt)}</span>
+          <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(b.createdAt)}</span>
         </div>
       </div>`
     )
@@ -71,7 +71,7 @@ export function renderBroadcast(container, ctx) {
         <input type="text" id="broadcast-message" placeholder="z.B. Essen ist da!" maxlength="200" style="flex:1;" ${myId ? '' : 'disabled'} />
         <button type="submit" class="btn btn-primary" ${myId ? '' : 'disabled'}>Senden</button>
       </form>
-      <p class="muted" style="font-size:0.8rem;margin:0;">
+      <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
         Erscheint sofort auf allen offenen Geräten, auf dem Kiosk-Bildschirm und als
         Push-Benachrichtigung bei allen, die Push aktiviert haben.
       </p>

@@ -42,7 +42,7 @@ function renderLive(players) {
     const rankDiff = STATE_RANK[a.state] - STATE_RANK[b.state];
     return rankDiff !== 0 ? rankDiff : a.name.localeCompare(b.name, 'de');
   });
-  return `<div class="stack" style="gap:8px;">${sorted
+  return `<div class="stack" style="gap:var(--space-2);">${sorted
     .map((p) => {
       const games = gameChipsHtml(p.games, p.activity_tracked, 18);
       return `
@@ -255,7 +255,7 @@ async function main() {
   const ok = await ensureAccess();
   if (!ok) {
     document.getElementById('kiosk-root').innerHTML = `
-      <div class="empty-state" style="padding:60px;font-size:1.2rem;">
+      <div class="empty-state" style="padding:var(--space-8);font-size:var(--font-size-lg);">
         Kein Zugriff — diese Seite mit <code>?token=…</code> öffnen (wie der Einladungslink).
       </div>`;
     return;
@@ -286,5 +286,5 @@ async function main() {
 main().catch((err) => {
   // eslint-disable-next-line no-console
   console.error(err);
-  document.getElementById('kiosk-root').innerHTML = `<div class="empty-state" style="padding:60px;">Fehler beim Start: ${err.message}</div>`;
+  document.getElementById('kiosk-root').innerHTML = `<div class="empty-state" style="padding:var(--space-8);">Fehler beim Start: ${err.message}</div>`;
 });
