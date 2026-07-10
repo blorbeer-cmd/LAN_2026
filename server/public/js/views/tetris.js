@@ -109,12 +109,15 @@ export function ensureTetrisSocket() {
 
   socket.on('tetris:match:paused', () => {
     if (match) match.paused = true;
-    paintOverlay();
+    // Rerender (not just the overlay) so the host's button flips to
+    // "Fortsetzen" — otherwise it stays "Pausieren" and re-clicking just
+    // re-sends pause, leaving you stuck.
+    rerender();
   });
 
   socket.on('tetris:match:resumed', () => {
     if (match) match.paused = false;
-    paintOverlay();
+    rerender();
   });
 
   socket.on('tetris:match:end', (payload) => {
@@ -387,8 +390,15 @@ function renderLobbyList() {
   if (lobbies.length === 0) return `<div class="empty-state" style="padding:14px;">Keine offene Tetris-Lobby.</div>`;
   return lobbies
     .map((l) => {
+      const isHost = l.host.id === myId();
       const joined = l.players.some((p) => p.id === myId());
       const full = l.players.length >= 2 && !joined;
+      // Host can close their lobby; a joined guest can leave; otherwise join.
+      const action = isHost
+        ? `<button type="button" class="btn btn-sm btn-danger" data-tetris-close="${l.id}">Schließen</button>`
+        : joined
+          ? `<button type="button" class="btn btn-sm" data-tetris-leave="${l.id}">Verlassen</button>`
+          : `<button type="button" class="btn btn-sm btn-primary" data-tetris-join="${l.id}" ${mine || full ? 'disabled' : ''}>Beitreten</button>`;
       return `
         <div class="lb-row" style="align-items:flex-start;">
           <div class="stack" style="gap:6px;flex:1;">
@@ -396,11 +406,7 @@ function renderLobbyList() {
             <div class="chip-list">${l.players.map((p) => `<span class="chip">${escapeHtml(p.name)}</span>`).join('')}</div>
             <div class="muted" style="font-size:0.78rem;">${l.players.length}/2 Spieler${full ? ' · voll' : ''}</div>
           </div>
-          ${
-            joined
-              ? `<span class="badge badge-playing">Drin</span>`
-              : `<button type="button" class="btn btn-sm btn-primary" data-tetris-join="${l.id}" ${mine || full ? 'disabled' : ''}>Beitreten</button>`
-          }
+          ${action}
         </div>`;
     })
     .join('');
@@ -453,6 +459,16 @@ export function wireTetrisLobbyCard(container) {
       if (!res?.ok) showToast(res?.error || 'Beitritt fehlgeschlagen.', { error: true });
     });
   });
+
+  // Host closes the lobby, or a joined guest leaves it — both go through the
+  // server's leave handler (host leaving deletes the whole lobby).
+  const leaveHandler = (dataAttr) => (btn) =>
+    btn.addEventListener('click', async () => {
+      const res = await emitWithAck('tetris:lobby:leave', { lobbyId: btn.dataset[dataAttr], playerId: myId() });
+      if (!res?.ok) showToast(res?.error || 'Aktion fehlgeschlagen.', { error: true });
+    });
+  container.querySelectorAll('[data-tetris-close]').forEach(leaveHandler('tetrisClose'));
+  container.querySelectorAll('[data-tetris-leave]').forEach(leaveHandler('tetrisLeave'));
 
   container.querySelector('#tetris-start')?.addEventListener('click', async () => {
     const lobby = myTetrisLobby();
