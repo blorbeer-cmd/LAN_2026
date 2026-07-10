@@ -434,6 +434,200 @@ test('Arcade: open a quiz lobby, see it listed, then close it again', async () =
   await page.waitForSelector('#quiz-create-lobby:not([disabled])');
 });
 
+test('Arcade: Scribble - host draws, a second device guesses correctly, both see the reveal', async () => {
+  // Unlike the quiz/draft flows above, Scribble strictly gates who may act
+  // (only the current drawer can choose a word/draw, only raters may guess —
+  // enforced both client- and server-side), so a single shared-identity page
+  // can't drive both sides. A second real browser context, logged in as a
+  // second player, is the only way to exercise the actual guess path.
+  // Reuses "E2E Bob" (added by the earlier click-through test) rather than
+  // adding a fresh roster player — the Captain-Draft test later in this
+  // suite has a hardcoded pick-loop bound tied to the pool size, so growing
+  // the roster here would silently break it.
+  const players = (await (await fetch(`${BASE_URL}/api/players`)).json()) as Array<{ id: string; name: string }>;
+  const guesser = players.find((p) => p.name === 'E2E Bob');
+  assert.ok(guesser, 'expected "E2E Bob" (added by an earlier test) to exist');
+
+  const guesserContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const guesserPage = await guesserContext.newPage();
+  guesserPage.on('pageerror', (err) => console.error('[guesser pageerror]', err.message));
+  try {
+    await guesserPage.goto(BASE_URL);
+    await guesserPage.evaluate((id) => localStorage.setItem('lan2026_my_player_id', id), guesser!.id);
+    await guesserPage.reload();
+    await guesserPage.waitForSelector('.nav-btn[data-view="more"]');
+    await guesserPage.click('[data-view="more"]');
+    await guesserPage.click('[data-navigate="arcade"]');
+    await guesserPage.click('[data-game="scribble"]');
+
+    // Host (the shared device driving `page` through this whole suite) opens
+    // the lobby — draw order is lobby join order, so the host always draws
+    // first, keeping this test deterministic about who does what.
+    await page.click('[data-view="more"]');
+    await page.click('[data-navigate="arcade"]');
+    await page.click('[data-game="scribble"]');
+    await page.waitForSelector('#scribble-create:not([disabled])');
+    await page.click('#scribble-create');
+
+    await guesserPage.waitForSelector('[data-scribble-join]');
+    await guesserPage.click('[data-scribble-join]');
+
+    await page.waitForSelector('#scribble-start:not([disabled])');
+    await page.click('#scribble-start');
+
+    // Host picks a word — the actual text is only ever shown to the drawer,
+    // never sent to the guesser (see scribble.ts), so capture it from the
+    // button label before it disappears.
+    await page.waitForSelector('.scribble-word-choice-btn');
+    const wordBtn = page.locator('.scribble-word-choice-btn').first();
+    const chosenWord = (await wordBtn.textContent())!.trim();
+    await wordBtn.click();
+
+    // The guesser must never see the plain word, only the underscore mask.
+    await guesserPage.waitForSelector('.scribble-word-mask');
+    const guesserMask = await guesserPage.locator('.scribble-word-mask').textContent();
+    assert.ok(!guesserMask?.includes(chosenWord), 'the guesser must not see the real word before guessing');
+
+    await page.waitForSelector('#scribble-canvas');
+    const box = await page.locator('#scribble-canvas').boundingBox();
+    await page.mouse.move(box!.x + 20, box!.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + 120, box!.y + 90, { steps: 8 });
+    await page.mouse.up();
+
+    // The stroke must reach the guesser's canvas too (streamed over
+    // Socket.IO, not part of the initial render).
+    await guesserPage.waitForFunction(() => {
+      const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement | null;
+      if (!c) return false;
+      const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+      for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) return true;
+      return false;
+    });
+
+    const countPainted = (p: typeof page) =>
+      p.evaluate(() => {
+        const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement;
+        const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++;
+        return n;
+      });
+    const guesserPaintedAfterStroke1 = await countPainted(guesserPage);
+
+    // A second, separate pen stroke (well clear of the first, kept inside
+    // the small viewport used here) - Rückgängig must undo this whole
+    // stroke, not just a fragment of it (a visible stroke is split into many
+    // small network batches, see scribble.ts's strokeId grouping). Re-queries
+    // the canvas position fresh rather than reusing `box`, in case anything
+    // shifted the layout since the first stroke.
+    const box2 = await page.locator('#scribble-canvas').boundingBox();
+    await page.mouse.move(box2!.x + 200, box2!.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(box2!.x + 260, box2!.y + 60, { steps: 8 });
+    await page.mouse.up();
+    await guesserPage.waitForFunction(
+      (before) => {
+        const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement | null;
+        if (!c) return false;
+        const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++;
+        return n > before;
+      },
+      guesserPaintedAfterStroke1
+    );
+    const guesserPaintedAfterStroke2 = await countPainted(guesserPage);
+    const hostPaintedAfterStroke2 = await countPainted(page);
+
+    await page.click('#scribble-undo');
+    await page.waitForFunction(
+      (before) => {
+        const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement;
+        const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++;
+        return n < before;
+      },
+      hostPaintedAfterStroke2
+    );
+    await guesserPage.waitForFunction(
+      (before) => {
+        const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement;
+        const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++;
+        return n < before;
+      },
+      guesserPaintedAfterStroke2
+    );
+    // Undo removed the whole second stroke on both sides - what's left
+    // should be (roughly) just the first stroke again, not an empty canvas.
+    const hostPaintedAfterUndo = await countPainted(page);
+    const guesserPaintedAfterUndo = await countPainted(guesserPage);
+    assert.ok(hostPaintedAfterUndo > 0, 'undo must not wipe the whole canvas');
+    assert.ok(guesserPaintedAfterUndo > 0, 'undo must not wipe the whole canvas for the guesser either');
+
+    // Füllen (paint bucket): most of the canvas is still empty, so filling
+    // from any point there floods a large connected area - re-queries the
+    // canvas position fresh since clicking the toolbar (below the canvas)
+    // can auto-scroll the page and shift it.
+    await page.click('[data-color="#e03131"]');
+    await page.click('#scribble-fill');
+    const box3 = await page.locator('#scribble-canvas').boundingBox();
+    await page.mouse.click(box3!.x + 280, box3!.y + 20);
+    await guesserPage.waitForFunction((before) => {
+      const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement | null;
+      if (!c) return false;
+      const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++;
+      return n > before;
+    }, guesserPaintedAfterUndo);
+    const hostPaintedAfterFill = await countPainted(page);
+    assert.ok(hostPaintedAfterFill > hostPaintedAfterUndo + 1000, 'fill must flood a large area, not just paint a single pixel');
+
+    await page.click('#scribble-undo');
+    await page.waitForFunction(
+      (before) => {
+        const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement;
+        const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++;
+        return n < before;
+      },
+      hostPaintedAfterFill
+    );
+    assert.ok((await countPainted(page)) > 0, 'undoing the fill must not wipe the whole canvas either');
+
+    // "Knapp dran": a wrong guess one edit away from the word gets private
+    // feedback (via the socket ack, never broadcast) - only the guesser
+    // should ever see it, not the drawer.
+    if (chosenWord.length >= 4) {
+      const mid = Math.floor(chosenWord.length / 2);
+      const closeTypo = chosenWord.slice(0, mid) + chosenWord.slice(mid + 1);
+      await guesserPage.fill('#scribble-guess-input', closeTypo);
+      await guesserPage.click('#scribble-guess-form button[type="submit"]');
+      await guesserPage.waitForSelector('text=Knapp dran!');
+      assert.equal(
+        await page.locator('#toast-container .toast', { hasText: 'Knapp dran' }).count(),
+        0,
+        'the drawer must never see the close-guess hint meant for the guesser'
+      );
+    }
+
+    await guesserPage.fill('#scribble-guess-input', chosenWord);
+    await guesserPage.click('#scribble-guess-form button[type="submit"]');
+
+    // Correct guess ends the turn immediately (both raters already guessed —
+    // there's only one) and reveals the word to everyone.
+    await page.waitForSelector(`text=Wort war: ${chosenWord}`);
+    await guesserPage.waitForSelector(`text=Wort war: ${chosenWord}`);
+  } finally {
+    await guesserContext.close();
+  }
+});
+
 test('An- & Abreise: carpool marks the driver, enforces seats, driver can only delete', async () => {
   // A third roster player to later demonstrate a full carpool.
   await page.click('[data-view="more"]');

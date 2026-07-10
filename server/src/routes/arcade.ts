@@ -8,6 +8,7 @@ export const arcadeRouter = Router();
 const ARCADE_TITLES: Record<string, string> = {
   quiz: 'Gaming-Quiz',
   tetris: 'Tetris Battle',
+  scribble: 'Scribble',
 };
 
 interface ArcadeResultRow {

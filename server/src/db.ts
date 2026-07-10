@@ -8,6 +8,7 @@ import path from 'path';
 import { nanoid } from 'nanoid';
 import { config } from './config';
 import { DEFAULT_QUIZ_QUESTIONS } from './arcade/quizQuestions';
+import { DEFAULT_SCRIBBLE_WORDS } from './arcade/scribbleWords';
 
 // Ensure the data directory exists before opening a file-based DB. Skipped for
 // the in-memory database used in tests.
@@ -406,6 +407,20 @@ db.exec(`
     PRIMARY KEY (question_id, player_id)
   );
 
+  CREATE TABLE IF NOT EXISTS scribble_words (
+    id         TEXT PRIMARY KEY,
+    word       TEXT NOT NULL,
+    difficulty TEXT,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS scribble_seen (
+    word_id     TEXT NOT NULL REFERENCES scribble_words(id) ON DELETE CASCADE,
+    player_id   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    seen_at     INTEGER NOT NULL,
+    PRIMARY KEY (word_id, player_id)
+  );
+
   CREATE TABLE IF NOT EXISTS arcade_results (
     id          TEXT PRIMARY KEY,
     game_type   TEXT NOT NULL,
@@ -514,6 +529,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_broadcasts_created ON broadcasts(created_at);
   CREATE INDEX IF NOT EXISTS idx_push_log_created ON push_log(created_at);
   CREATE INDEX IF NOT EXISTS idx_quiz_seen_player ON quiz_seen(player_id);
+  CREATE INDEX IF NOT EXISTS idx_scribble_seen_player ON scribble_seen(player_id);
   CREATE INDEX IF NOT EXISTS idx_food_orders_event ON food_orders(event_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_food_order_items_order ON food_order_items(order_id);
   CREATE INDEX IF NOT EXISTS idx_arrivals_event ON arrivals(event_id, arrival_at, departure_at);
@@ -989,7 +1005,21 @@ function seedCatalogGames(): void {
   })();
 }
 
+function seedScribbleWords(): void {
+  const count = (db.prepare('SELECT COUNT(*) AS n FROM scribble_words').get() as { n: number }).n;
+  if (count > 0) return;
+
+  const now = Date.now();
+  const insert = db.prepare('INSERT INTO scribble_words (id, word, difficulty, created_at) VALUES (?, ?, ?, ?)');
+  db.transaction(() => {
+    for (const w of DEFAULT_SCRIBBLE_WORDS) {
+      insert.run(nanoid(), w.word, w.difficulty, now);
+    }
+  })();
+}
+
 seedQuizQuestions();
+seedScribbleWords();
 seedCatalogGames();
 
 // Seed the permanent "außerhalb von Events" sentinel, once. This is the ONLY

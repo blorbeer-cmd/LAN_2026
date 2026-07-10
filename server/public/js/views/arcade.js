@@ -4,15 +4,23 @@ import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { ensureTetrisSocket, renderTetrisLobbyCard, wireTetrisLobbyCard, myTetrisLobby } from './tetris.js';
+import {
+  ensureScribbleSocket,
+  renderScribbleLobbyCard,
+  wireScribbleLobbyCard,
+  myScribbleLobby,
+  hasScribbleMatch,
+} from './arcadeScribble.js';
 import { confirmDialog } from '../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 
 // The Arcade opens as a launcher: a compact grid of game tiles. Picking one
-// reveals that game's lobby below. Quiz and Tetris are live; the rest are
-// placeholders for games still to come.
+// reveals that game's lobby below. Quiz, Tetris and Scribble are live; the
+// rest are placeholders for games still to come.
 const GAMES = [
   { id: 'quiz', icon: '⚡', name: 'Gaming-Quiz' },
   { id: 'tetris', icon: '🧩', name: 'Tetris' },
+  { id: 'scribble', icon: '✏️', name: 'Scribble' },
   { id: 'pong', icon: '🏓', name: 'Pong', soon: true },
   { id: 'blobby', icon: '🏐', name: 'Blobby Volley', soon: true },
   { id: 'snake', icon: '🐍', name: 'Snake', soon: true },
@@ -318,11 +326,12 @@ function renderMatch() {
 }
 
 // The game the launcher should currently expand: forced to the game the player
-// is actually engaged in (a live quiz match/lobby, or a tetris lobby), else
-// whatever tile they last tapped.
+// is actually engaged in (a live quiz match/lobby, a tetris lobby, or a
+// scribble lobby/match), else whatever tile they last tapped.
 function currentGame() {
   if (match || myLobby()) return 'quiz';
   if (myTetrisLobby()) return 'tetris';
+  if (myScribbleLobby() || hasScribbleMatch()) return 'scribble';
   return activeGame;
 }
 
@@ -353,12 +362,16 @@ function activeGameHtml() {
   if (game === 'tetris') {
     return `<div style="margin-top:var(--space-3);">${renderTetrisLobbyCard()}</div>`;
   }
+  if (game === 'scribble') {
+    return `<div style="margin-top:var(--space-3);">${renderScribbleLobbyCard()}</div>`;
+  }
   return '';
 }
 
 export function renderArcade(container, ctx) {
   ensureSocket(ctx);
   ensureTetrisSocket();
+  ensureScribbleSocket();
   if (!stats && !statsLoading) loadStats(ctx);
   const lobby = myLobby();
 
@@ -377,6 +390,7 @@ export function renderArcade(container, ctx) {
 
   wireWhoAmICard(container, 'whoami', ctx);
   wireTetrisLobbyCard(container);
+  wireScribbleLobbyCard(container);
 
   container.querySelectorAll('[data-game]').forEach((btn) => {
     btn.addEventListener('click', () => {
