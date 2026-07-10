@@ -109,9 +109,12 @@ matchesRouter.get('/', (req, res) => {
 });
 
 // POST /api/matches - record a new result.
-// Body: { gameId, teams: [{ playerIds }], winnerTeamIndex?, playedAt? }
+// Body: { gameId, teams: [{ playerIds }], winnerTeamIndex?, playedAt?, drawId? }
+// drawId links back to the matchmaking_draws row this result came from (a
+// "Teams auslosen" / draft lineup), moving it from Team-Historie to
+// Ergebnis-Historie — optional since results can also be entered ad-hoc.
 matchesRouter.post('/', (req, res) => {
-  const { gameId, teams, winnerTeamIndex, playedAt } = req.body ?? {};
+  const { gameId, teams, winnerTeamIndex, playedAt, drawId } = req.body ?? {};
 
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
@@ -129,6 +132,16 @@ matchesRouter.post('/', (req, res) => {
   if (playedAt !== undefined && (typeof playedAt !== 'number' || !Number.isFinite(playedAt))) {
     return res.status(400).json({ error: 'playedAt muss ein Zeitstempel (ms) sein.' });
   }
+  if (drawId !== undefined && (typeof drawId !== 'string' || !drawId)) {
+    return res.status(400).json({ error: 'drawId ist ungültig.' });
+  }
+  if (drawId) {
+    const draw = db.prepare('SELECT id, match_id FROM matchmaking_draws WHERE id = ?').get(drawId) as
+      | { id: string; match_id: string | null }
+      | undefined;
+    if (!draw) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
+    if (draw.match_id) return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
+  }
 
   const row: MatchRow = {
     id: nanoid(),
@@ -144,6 +157,15 @@ matchesRouter.post('/', (req, res) => {
     row.played_at,
     row.result
   );
+
+  if (drawId) {
+    // Race-safe: only claims the draw if it's still unrecorded, so two
+    // simultaneous submissions for the same draw can't both "win" it.
+    const claimed = db
+      .prepare('UPDATE matchmaking_draws SET match_id = ? WHERE id = ? AND match_id IS NULL')
+      .run(row.id, drawId);
+    if (claimed.changes > 0) broadcast(Events.matchmakingDrawsChanged, { id: drawId, matchId: row.id });
+  }
 
   broadcast(Events.leaderboardChanged, null);
   res.status(201).json(parseMatch(row));

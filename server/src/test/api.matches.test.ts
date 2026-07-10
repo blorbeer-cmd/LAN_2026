@@ -114,3 +114,51 @@ test('GET /api/leaderboard without gameId aggregates across all games', async ()
   const a = res.body.standings.find((s: { playerId: string }) => s.playerId === playerA);
   assert.ok(a.points > 0);
 });
+
+test('POST /api/matches with a drawId links the draw to the new match (Team-Historie -> Ergebnis-Historie)', async () => {
+  const draw = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId, playerIds: [playerA, playerB], teamCount: 2 });
+
+  const match = await request(app)
+    .post('/api/matches')
+    .send({
+      gameId,
+      teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }],
+      drawId: draw.body.id,
+    });
+  assert.equal(match.status, 201);
+
+  const history = await request(app).get(`/api/matchmaking/history?gameId=${gameId}`);
+  const linked = history.body.history.find((h: { id: string }) => h.id === draw.body.id);
+  assert.equal(linked.matchId, match.body.id);
+});
+
+test('POST /api/matches 404s for an unknown drawId', async () => {
+  const res = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }], drawId: 'nope' });
+  assert.equal(res.status, 404);
+});
+
+test('POST /api/matches rejects a drawId that already has a result', async () => {
+  const draw = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId, playerIds: [playerA, playerB], teamCount: 2 });
+  await request(app)
+    .post('/api/matches')
+    .send({
+      gameId,
+      teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }],
+      drawId: draw.body.id,
+    });
+
+  const second = await request(app)
+    .post('/api/matches')
+    .send({
+      gameId,
+      teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }],
+      drawId: draw.body.id,
+    });
+  assert.equal(second.status, 409);
+});

@@ -251,7 +251,12 @@ db.exec(`
     teams                 TEXT NOT NULL,  -- JSON: [{ players: [{id,name,color,avatar,rating}], totalRating }]
     seat_conflicts        INTEGER NOT NULL DEFAULT 0,
     seat_pairs_considered INTEGER NOT NULL DEFAULT 0,
-    generated_at          INTEGER NOT NULL
+    generated_at          INTEGER NOT NULL,
+    match_id              TEXT REFERENCES matches(id) ON DELETE SET NULL
+    -- Set once someone enters a result for this exact draw (Team-Historie ->
+    -- Ergebnis-Historie). ON DELETE SET NULL mirrors tournament_matches.match_id:
+    -- correcting/removing that leaderboard entry moves the draw back to
+    -- Team-Historie instead of deleting the draw itself.
   );
 
   -- Tournaments (FR-33): a single-elimination bracket ("Turnierbaum"), a
@@ -719,6 +724,16 @@ function migrateTournamentColumns(): void {
   if (!hasMatchCol('score_b')) db.exec('ALTER TABLE tournament_matches ADD COLUMN score_b INTEGER');
 }
 migrateTournamentColumns();
+
+// Migration: older databases predate linking a matchmaking draw to the match
+// result eventually recorded for it (Team-Historie -> Ergebnis-Historie).
+function migrateMatchmakingDrawsColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(matchmaking_draws)').all() as Array<{ name: string }>;
+  if (!columns.some((c) => c.name === 'match_id')) {
+    db.exec('ALTER TABLE matchmaking_draws ADD COLUMN match_id TEXT REFERENCES matches(id) ON DELETE SET NULL');
+  }
+}
+migrateMatchmakingDrawsColumns();
 
 // Migration: older databases predate the foreground-game tracking columns
 // (which game of possibly several is actually focused right now).

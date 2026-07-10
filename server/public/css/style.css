@@ -1750,6 +1750,16 @@ input[type='range'].preference-row-slider {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
+.team-move-select {
+  width: auto;
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: var(--space-1) 26px var(--space-1) var(--space-2);
+  font-size: var(--font-size-xs);
+}
+.team-player .rating + .team-move-select {
+  margin-left: var(--space-2);
+}
 
 /* ---------- Tournament bracket ----------
    Rendered as a recursively nested tree (see buildBracketNode in

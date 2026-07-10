@@ -179,3 +179,78 @@ test('GET /api/matchmaking/history does not leak draws from other games', async 
   assert.equal(res.status, 200);
   assert.ok(res.body.history.every((h: { gameId: string }) => h.gameId === gameId));
 });
+
+test('POST /api/matchmaking returns a draw id and null matchId', async () => {
+  const res = await request(app).post('/api/matchmaking').send({ gameId, playerIds, teamCount: 2 });
+  assert.equal(res.status, 200);
+  assert.ok(res.body.id);
+  assert.equal(res.body.matchId, null);
+});
+
+test('PATCH /api/matchmaking/draws/:id/move moves a player and recomputes totals', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Move Test Game' });
+  const names = ['MoveA', 'MoveB', 'MoveC', 'MoveD'];
+  const ratings = [10, 1, 8, 3];
+  const ids: string[] = [];
+  for (let i = 0; i < names.length; i++) {
+    const p = await request(app).post('/api/players').send({ name: names[i] });
+    ids.push(p.body.id);
+    await request(app).put('/api/skills').send({ playerId: p.body.id, gameId: game.body.id, rating: ratings[i] });
+  }
+
+  const draw = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: ids, teamCount: 2 });
+  const drawId = draw.body.id;
+  const teamOf = (teams: Array<{ players: { id: string }[] }>, id: string) =>
+    teams.findIndex((t) => t.players.some((p) => p.id === id));
+
+  const fromTeam = teamOf(draw.body.teams, ids[0]);
+  const toTeam = fromTeam === 0 ? 1 : 0;
+
+  const moved = await request(app)
+    .patch(`/api/matchmaking/draws/${drawId}/move`)
+    .send({ playerId: ids[0], toTeamIndex: toTeam });
+  assert.equal(moved.status, 200);
+  assert.equal(teamOf(moved.body.teams, ids[0]), toTeam);
+  for (const team of moved.body.teams) {
+    assert.equal(
+      team.totalRating,
+      team.players.reduce((sum: number, p: { rating: number | null }) => sum + (p.rating ?? 0), 0)
+    );
+  }
+
+  const history = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}`);
+  assert.equal(teamOf(history.body.history[0].teams, ids[0]), toTeam);
+});
+
+test('PATCH /api/matchmaking/draws/:id/move 404s for an unknown draw', async () => {
+  const res = await request(app)
+    .patch('/api/matchmaking/draws/nope/move')
+    .send({ playerId: playerIds[0], toTeamIndex: 0 });
+  assert.equal(res.status, 404);
+});
+
+test('PATCH /api/matchmaking/draws/:id/move rejects once a result was recorded for the draw', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Frozen Draw Test Game' });
+  const p1 = await request(app).post('/api/players').send({ name: 'FrozenA' });
+  const p2 = await request(app).post('/api/players').send({ name: 'FrozenB' });
+  const ids = [p1.body.id, p2.body.id];
+
+  const draw = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: ids, teamCount: 2 });
+
+  await request(app)
+    .post('/api/matches')
+    .send({
+      gameId: game.body.id,
+      teams: [{ playerIds: [ids[0]] }, { playerIds: [ids[1]] }],
+      drawId: draw.body.id,
+    });
+
+  const moved = await request(app)
+    .patch(`/api/matchmaking/draws/${draw.body.id}/move`)
+    .send({ playerId: ids[0], toTeamIndex: 1 });
+  assert.equal(moved.status, 409);
+});

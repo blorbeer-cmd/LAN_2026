@@ -175,8 +175,8 @@ function renderCreateForm(el, ctx) {
   const seatingNote =
     createSeatConflicts && createSeatConflicts.considered
       ? createSeatConflicts.conflicts > 0
-        ? `<div class="muted" style="font-size:var(--font-size-xs);">🪑 ${createSeatConflicts.conflicts} von ${createSeatConflicts.considered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten (sonst wäre es zu unfair geworden).</div>`
-        : `<div class="muted" style="font-size:var(--font-size-xs);">🪑 Alle Sitznachbarn sind im selben Team.</div>`
+        ? `<div class="muted" style="font-size:var(--font-size-xs);">${icon('armchair')} ${createSeatConflicts.conflicts} von ${createSeatConflicts.considered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten (sonst wäre es zu unfair geworden).</div>`
+        : `<div class="muted" style="font-size:var(--font-size-xs);">${icon('armchair')} Alle Sitznachbarn sind im selben Team.</div>`
       : '';
 
   const teamsPreview = createProposedTeams
@@ -212,7 +212,7 @@ function renderCreateForm(el, ctx) {
       <input type="number" id="tourn-teamcount" placeholder="Anzahl Teams" min="2" style="width:140px;" />
       <label class="check-row">
         <input type="checkbox" id="tourn-avoid-adjacent" ${createAvoidAdjacent ? 'checked' : ''} />
-        <span>🪑 Sitznachbarn nicht gegeneinander auslosen (kommen bevorzugt ins selbe Team)</span>
+        <span>${icon('armchair')} Sitznachbarn nicht gegeneinander auslosen (kommen bevorzugt ins selbe Team)</span>
       </label>
       <button type="button" class="btn" id="tourn-propose">Teams vorschlagen</button>
 

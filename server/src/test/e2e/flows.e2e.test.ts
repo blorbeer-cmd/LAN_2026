@@ -731,20 +731,23 @@ test('Captain-Draft: pick captains, run the live draft to completion', async () 
   await page.click('#draft-start');
 
   // Live board appears; it's Alice's turn (first captain). Keep picking
-  // until the pool is empty — the last player is auto-assigned server-side.
+  // until the pool is empty — the last player is auto-assigned server-side,
+  // which ends the draft and returns the view to the regular Teams-auslosen
+  // page (no pinned "draft result" card — see matchmaking.js).
   await page.waitForSelector('text=Captain-Draft läuft');
   for (let i = 0; i < 8; i++) {
-    if (await page.locator('text=Draft-Ergebnis').count()) break;
+    if ((await page.locator('text=Captain-Draft läuft').count()) === 0) break;
     const pick = page.locator('button[data-draft-pick]').first();
     if ((await pick.count()) === 0) break;
     await pick.click();
     await page.waitForTimeout(300);
   }
-  await page.waitForSelector('text=Draft-Ergebnis', { timeout: 5000 });
+  await page.waitForSelector('text=Captain-Draft läuft', { state: 'detached', timeout: 5000 });
 
-  // The finished draft also landed in the shared Team-Historie, and the
-  // result offers the usual "Ergebnis eintragen" follow-up.
-  await page.waitForSelector('#draft-record-result');
+  // The finished draft landed in the shared Team-Historie (not pinned to the
+  // page top) with the usual "Ergebnis eintragen" follow-up available there.
+  await page.waitForSelector('.section-title:has-text("Team-Historie")');
+  await page.waitForSelector('[data-record-draw]');
 });
 
 test('the device back button steps back through in-app views instead of leaving the tool', async () => {

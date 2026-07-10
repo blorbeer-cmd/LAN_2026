@@ -243,3 +243,29 @@ test('two events starting tracking simultaneously: exactly one wins', async () =
   assert.equal(counts[200], 1, JSON.stringify(counts));
   assert.equal(counts[409], 1, JSON.stringify(counts));
 });
+
+test('two results submitted for the same draw at once: exactly one is recorded and claims the draw', async () => {
+  const draw = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId: gameIds[0], playerIds: playerIds.slice(0, 2), teamCount: 2 });
+
+  const results = await Promise.all(
+    Array.from({ length: 2 }, () =>
+      request(app)
+        .post('/api/matches')
+        .send({
+          gameId: gameIds[0],
+          teams: [{ playerIds: [playerIds[0]] }, { playerIds: [playerIds[1]] }],
+          drawId: draw.body.id,
+        })
+    )
+  );
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[201], 1, JSON.stringify(counts));
+  assert.equal(counts[409], 1, JSON.stringify(counts));
+
+  const winner = results.find((r) => r.status === 201)!;
+  const history = await request(app).get(`/api/matchmaking/history?gameId=${gameIds[0]}`);
+  const linked = history.body.history.find((h: { id: string }) => h.id === draw.body.id);
+  assert.equal(linked.matchId, winner.body.id);
+});

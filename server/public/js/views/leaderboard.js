@@ -117,7 +117,9 @@ export function renderLeaderboard(container, ctx) {
 
 // Also called from matchmaking.js (with presetGameId/presetTeams) so a
 // freshly drawn set of teams can go straight into "Ergebnis eintragen"
-// without re-picking every player by hand.
+// without re-picking every player by hand. presetDrawId additionally links
+// the saved match back to that matchmaking_draws row, moving it from
+// Team-Historie to Ergebnis-Historie.
 export function openMatchForm(ctx, options = {}) {
   if (state.games.length === 0 || state.players.length === 0) {
     return showToast('Dafür braucht es mindestens ein Spiel und 2 Spieler.', { error: true });
@@ -307,7 +309,12 @@ export function openMatchForm(ctx, options = {}) {
           }
 
           try {
-            await api.matches.create({ gameId, teams: nonEmptyTeams, winnerTeamIndex });
+            await api.matches.create({
+              gameId,
+              teams: nonEmptyTeams,
+              winnerTeamIndex,
+              ...(options.presetDrawId ? { drawId: options.presetDrawId } : {}),
+            });
             close();
             await ctx.refresh();
             showToast('Ergebnis gespeichert.');

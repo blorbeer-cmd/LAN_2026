@@ -26,6 +26,7 @@ export const Events = {
   votesChanged: 'votes:changed',
   leaderboardChanged: 'leaderboard:changed',
   matchmakingGenerated: 'matchmaking:generated',
+  matchmakingDrawsChanged: 'matchmaking:draws-changed',
   eventsChanged: 'events:changed',
   tournamentsChanged: 'tournaments:changed',
   pingsChanged: 'pings:changed',
