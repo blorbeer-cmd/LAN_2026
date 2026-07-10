@@ -287,6 +287,7 @@ test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bo
   // Promote the suggestion into the catalog, then rate it right in the row —
   // no detour through a separate profile page needed.
   await page.click('[data-promote]');
+  await page.click('[data-confirm]');
   await page.waitForSelector('button[data-tab="catalog"].btn-primary');
   const partyspielCard = page.locator('.game-card', { hasText: 'E2E Partyspiel' });
   await partyspielCard.waitFor();
