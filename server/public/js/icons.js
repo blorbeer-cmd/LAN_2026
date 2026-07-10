@@ -74,6 +74,7 @@ const EMOJI_ICONS = new Map([
   ['🟢', 'radioTower'], ['🔴', 'radioTower'], ['⚪', 'circleCheck'], ['⏸', 'pause'], ['⏸️', 'pause'], ['▶️', 'activity'],
   ['🚫', 'pause'], ['🫵', 'user'], ['☰', 'library'], ['⚙️', 'library'], ['✕', 'x'], ['❌', 'x'],
   ['›', 'chevronRight'], ['‹', 'chevronLeft'], ['▶️', 'play'], ['🔫', 'crosshair'], ['🛡️', 'shield'], ['⛳', 'flag'],
+  ['🧩', 'blocks'], ['🏓', 'paddle'], ['🏐', 'volleyball'], ['🐍', 'snake'],
 ]);
 
 const EMOJI_PATTERN = /(?:🧑‍🤝‍🧑|[›‹]|[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}])\uFE0F?/gu;

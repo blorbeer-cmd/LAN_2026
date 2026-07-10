@@ -492,6 +492,13 @@ input {
   padding: 8px 12px;
   font-size: 0.85rem;
 }
+/* Uniform-width buttons so a set of them (lobby actions, in-game controls)
+   reads as a tidy group instead of a jumble of different widths. Wide enough
+   that the longest current label ("Lobby öffnen") fits without growing past
+   it, so every such button ends up the same size. */
+.btn-equal {
+  min-width: 7.5rem;
+}
 
 input[type='text'],
 input[type='password'],
@@ -832,6 +839,58 @@ button.card {
   font-size: 0.8rem;
 }
 
+/* Arcade launcher: a compact row of game tiles instead of full-width cards.
+   Fixed 5 columns so all games sit side by side; minmax(0,1fr) lets them
+   shrink on a phone rather than overflow, and the name clamps to two lines so
+   tiles stay the same height regardless of label length. */
+.arcade-tiles {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.arcade-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  min-height: 88px;
+  padding: 12px 4px 10px;
+  cursor: pointer;
+  text-align: center;
+}
+.arcade-tile-icon {
+  font-size: 1.7rem;
+  line-height: 1;
+}
+.arcade-tile-name {
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.15;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.arcade-tile.is-active {
+  border-color: rgba(91, 140, 255, 0.7);
+  background: var(--bg-elevated-2);
+}
+.arcade-tile.is-soon {
+  opacity: 0.5;
+}
+.arcade-tile-soon {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  font-size: 0.55rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
 .arcade-stat-game {
   display: grid;
   gap: var(--space-2);
@@ -1018,6 +1077,167 @@ button.card {
 .arrivals-note {
   font-size: 0.78rem;
   margin-top: 3px;
+}
+
+/* ---------- Tetris Battle (views/tetris.js) ---------- */
+/* Both boards are equal-sized: each column takes half the row and the canvas
+   scales to fill it (its 1:2 pixel resolution is fixed in JS), capped on wide
+   screens so they don't become giant. A soft pulsing glow sits behind them. */
+.tetris-boards {
+  position: relative;
+  display: flex;
+  gap: var(--space-3);
+  justify-content: center;
+  align-items: flex-start;
+  max-width: 540px;
+  margin: var(--space-2) auto 0;
+}
+.tetris-boards::before {
+  content: '';
+  position: absolute;
+  inset: -24px;
+  background: radial-gradient(58% 60% at 50% 42%, rgba(91, 140, 255, 0.14), transparent 70%);
+  animation: tetris-bg-pulse 4s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+.tetris-board-col {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.tetris-board-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.tetris-canvas-wrap {
+  position: relative;
+  width: 100%;
+  line-height: 0;
+}
+.tetris-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(15, 20, 32, 0.9);
+  touch-action: none; /* drag/tap gestures drive the piece, don't scroll */
+}
+/* Particle overlay for line-clear bursts; never intercepts touches. */
+.tetris-fx {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+.tetris-stats-line {
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+/* Incoming-garbage warning, pinned to the top-right of a board. */
+.tetris-incoming {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 3;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--state-paused);
+}
+.tetris-incoming-hot {
+  color: var(--danger);
+}
+/* Countdown / pause overlay centred over the player's own board. */
+.tetris-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 9, 18, 0.55);
+  border-radius: var(--radius-sm);
+}
+.tetris-overlay-text {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--text);
+}
+.tetris-countdown {
+  font-size: 3rem;
+  color: var(--accent);
+  animation: tetris-count 1s ease-out;
+}
+@keyframes tetris-count {
+  from {
+    opacity: 0.3;
+    transform: scale(1.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes tetris-bg-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+/* Line-clear juice: a white flash (gold for a Tetris) plus a quick shake. */
+.tetris-canvas-wrap.tetris-flash::after,
+.tetris-canvas-wrap.tetris-flash-big::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  z-index: 3;
+  animation: tetris-flash-fade 0.5s ease-out forwards;
+}
+.tetris-canvas-wrap.tetris-flash::after {
+  background: rgba(255, 255, 255, 0.55);
+}
+.tetris-canvas-wrap.tetris-flash-big::after {
+  background: rgba(255, 209, 102, 0.65);
+}
+@keyframes tetris-flash-fade {
+  to {
+    opacity: 0;
+  }
+}
+.tetris-board-col.tetris-shake {
+  animation: tetris-shake 0.35s ease-in-out;
+}
+@keyframes tetris-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-4px);
+  }
+  40% {
+    transform: translateX(4px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(3px);
+  }
 }
 
 /* The QR code SVG already draws its own white background (needed for
@@ -1532,6 +1752,84 @@ input[type='number'].bracket-score-input {
 }
 
 /* ---------- Toasts ---------- */
+
+/* ---------- Countdown overlay (public/js/countdown.js) ----------
+   Shared "3 · 2 · 1 · Los!" intro for every arcade game. Full-screen, with a
+   dim blurred backdrop so the board behind stays faintly visible, and a big
+   gradient number in the brand style that pops in per second. */
+.countdown-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 9, 18, 0.62);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+.countdown-num-wrap {
+  position: relative;
+  display: inline-block;
+  /* Blur headroom must live INSIDE this box: with GPU compositing (real
+     browsers, Retina — not headless test runners) both Blink and Gecko cut
+     the glow child off at the wrap's own bounds, no matter how far the
+     child's box extends beyond it. Symmetric padding keeps the text
+     centered and gives the 16px blur (3σ ≈ 48px) room on every side. */
+  padding: 4.5rem;
+}
+.countdown-num {
+  font-size: clamp(4rem, 22vw, 8rem);
+  font-weight: 800;
+  /* Deliberately NOT italic: SF Pro's italic terminals are sheared at an
+     angle (top of "L", "!"), which reads as the glyphs being clipped. */
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+/* Two stacked copies of the same text instead of one element trying to be
+   both glowing AND gradient-filled: any `filter`/`text-shadow` on an element
+   that also has `background-clip: text` gets clipped to a hard box in every
+   engine we've tested — fine for a plain rectangle of glyphs, but a visible
+   cut wherever the actual ink (an italic ascender, the "!") pokes past it.
+   A plain solid-colour blurred copy behind a crisp gradient-clipped copy on
+   top has no such interaction and glows cleanly on every edge. The room the
+   blur needs comes from the wrap's padding (see above) — the glow layer
+   itself must NOT reach outside the wrap, or GPU compositing clips it. */
+.countdown-num-glow {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-2);
+  filter: blur(16px);
+  opacity: 0.85;
+}
+.countdown-num-fill {
+  position: relative;
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.countdown-pop {
+  animation: countdown-pop 0.85s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@keyframes countdown-pop {
+  0% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.92;
+    transform: scale(1);
+  }
+}
 
 .toast-container {
   position: fixed;

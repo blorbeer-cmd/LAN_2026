@@ -5,6 +5,7 @@
 // extra role for testing and moderation.
 
 import { api } from '../api.js';
+import { confirmDialog } from '../modal.js';
 import { state } from '../state.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
@@ -56,7 +57,7 @@ async function toggleAdmin(player, ctx) {
 }
 
 async function deletePlayer(player, ctx) {
-  if (!confirm(`Spieler "${player.name}" wirklich löschen?`)) return;
+  if (!(await confirmDialog(`Spieler "${player.name}" wirklich löschen?`))) return;
   try {
     await api.players.remove(player.id);
     showToast('Spieler gelöscht.');

@@ -6,6 +6,7 @@ import { matchesAnswer, pickQuestion } from './quizLogic';
 
 const DEFAULT_TARGET_SCORE = 5;
 const QUESTION_MS = 20_000;
+const COUNTDOWN_MS = 3000; // "3, 2, 1" intro before the first question
 
 interface PlayerRef {
   id: string;
@@ -288,15 +289,20 @@ export function registerArcadeSockets(io: Server): void {
       matches.set(match.id, match);
       lobbies.delete(lobby.id);
       emitLobbies(io);
+      const beginsAt = Date.now() + COUNTDOWN_MS;
       io.to(room).emit('arcade:match:start', {
         matchId: match.id,
         gameType: 'quiz',
         host: match.host,
         players: match.players,
         targetScore: score,
+        beginsAt,
       });
       ack?.({ ok: true, matchId: match.id });
-      sendQuestion(io, match);
+      // Hold the first question until the shared 3-2-1 countdown finishes.
+      setTimeout(() => {
+        if (matches.get(match.id) === match) sendQuestion(io, match);
+      }, COUNTDOWN_MS);
     });
 
     socket.on('arcade:quiz:answer', (payload: { matchId?: string; playerId?: string; text?: string }, ack?: (res: unknown) => void) => {

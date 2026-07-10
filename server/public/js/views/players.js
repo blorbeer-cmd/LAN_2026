@@ -5,7 +5,7 @@
 import { api } from '../api.js';
 import { state, playerById } from '../state.js';
 import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
-import { openModal } from '../modal.js';
+import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 
 const PALETTE = ['#5b8cff', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899', '#84cc16'];
@@ -176,7 +176,7 @@ function openPlayerDetail(playerId, ctx) {
         });
 
         el.querySelector('#detail-delete').addEventListener('click', async () => {
-          if (!confirm(`${player.name} wirklich löschen?`)) return;
+          if (!(await confirmDialog(`${player.name} wirklich löschen?`))) return;
           try {
             await api.players.remove(playerId);
             close();

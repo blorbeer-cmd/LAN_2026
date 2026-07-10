@@ -3,6 +3,13 @@ import { db } from '../db';
 
 export const arcadeRouter = Router();
 
+// Display names per arcade game_type, so the stats view labels each tab
+// nicely instead of showing the raw internal key.
+const ARCADE_TITLES: Record<string, string> = {
+  quiz: 'Gaming-Quiz',
+  tetris: 'Tetris Battle',
+};
+
 interface ArcadeResultRow {
   game_type: string;
   winner_id: string | null;
@@ -25,7 +32,10 @@ arcadeRouter.get('/stats', (_req, res) => {
     )
     .all() as ArcadeResultRow[];
 
-  const games = new Map<string, { gameType: string; matches: number; players: Map<string, { playerId: string; name: string; matches: number; wins: number; points: number }> }>();
+  const games = new Map<
+    string,
+    { gameType: string; matches: number; players: Map<string, { playerId: string; name: string; matches: number; wins: number; points: number; best: number }> }
+  >();
 
   for (const row of rows) {
     const game = games.get(row.game_type) ?? { gameType: row.game_type, matches: 0, players: new Map() };
@@ -38,9 +48,11 @@ arcadeRouter.get('/stats', (_req, res) => {
         matches: 0,
         wins: 0,
         points: 0,
+        best: 0,
       };
       current.matches += 1;
       current.points += score.score;
+      current.best = Math.max(current.best, score.score); // single-game highscore
       if (row.winner_id === score.playerId) current.wins += 1;
       game.players.set(score.playerId, current);
     }
@@ -49,10 +61,14 @@ arcadeRouter.get('/stats', (_req, res) => {
 
   res.json({
     games: [...games.values()].map((game) => {
-      const players = [...game.players.values()].sort((a, b) => b.wins - a.wins || b.points - a.points || a.name.localeCompare(b.name, 'de'));
+      // A real highscore board: rank by best single-game score, not by how
+      // many duels someone won.
+      const players = [...game.players.values()].sort(
+        (a, b) => b.best - a.best || b.points - a.points || a.name.localeCompare(b.name, 'de')
+      );
       return {
         gameType: game.gameType,
-        title: game.gameType === 'quiz' ? 'Gaming-Quiz' : game.gameType,
+        title: ARCADE_TITLES[game.gameType] ?? game.gameType,
         matches: game.matches,
         leader: players[0] ?? null,
         players,

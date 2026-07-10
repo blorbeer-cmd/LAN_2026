@@ -5,7 +5,7 @@
 
 import { api } from '../api.js';
 import { escapeHtml } from '../format.js';
-import { openModal } from '../modal.js';
+import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 
 let cache = null;
@@ -134,7 +134,7 @@ export function renderInfoBoard(container, ctx) {
     btn.addEventListener('click', async () => {
       const entry = (cache || []).find((e) => e.id === btn.dataset.deleteEntry);
       if (!entry) return;
-      if (!confirm(`Eintrag "${entry.title}" wirklich löschen?`)) return;
+      if (!(await confirmDialog(`Eintrag "${entry.title}" wirklich löschen?`))) return;
       try {
         await api.info.remove(entry.id);
         cache = null;

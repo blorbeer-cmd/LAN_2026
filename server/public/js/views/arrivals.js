@@ -5,7 +5,7 @@
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
-import { openModal } from '../modal.js';
+import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
@@ -326,7 +326,7 @@ export function renderArrivals(container, ctx) {
 
   container.querySelectorAll('[data-remove-carpool]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      if (!confirm('Fahrgemeinschaft löschen?')) return;
+      if (!(await confirmDialog('Fahrgemeinschaft löschen?'))) return;
       try {
         await api.arrivals.removeCarpool(btn.dataset.removeCarpool, myId);
         cache = null;
