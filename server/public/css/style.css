@@ -230,18 +230,6 @@ input {
   gap: 12px;
 }
 
-.conn-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--state-offline);
-  transition: background-color 0.2s ease;
-}
-.conn-dot.connected {
-  background: var(--state-playing);
-  box-shadow: 0 0 0 3px var(--state-playing-bg);
-}
-
 .icon-btn {
   display: inline-flex;
   align-items: center;
@@ -361,8 +349,61 @@ input {
   transition: color 0.15s ease;
 }
 .nav-icon {
-  font-size: 1.3rem;
+  display: grid;
+  place-items: center;
   transition: transform 0.18s ease;
+}
+.ui-icon {
+  display: inline-block;
+  width: 1.2em;
+  height: 1.2em;
+  flex: 0 0 auto;
+  vertical-align: -0.18em;
+}
+.inline-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+  vertical-align: -0.18em;
+}
+.inline-icon + .inline-icon {
+  margin-left: 2px;
+}
+.empty-state-icon {
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+  color: var(--text-muted);
+}
+.empty-state-icon .ui-icon {
+  width: 42px;
+  height: 42px;
+}
+.list-row-icon .ui-icon {
+  width: 24px;
+  height: 24px;
+}
+.game-badge .ui-icon {
+  width: 58%;
+  height: 58%;
+  color: #fff;
+}
+.nav-icon .ui-icon {
+  width: 22px;
+  height: 22px;
+}
+.icon-btn .ui-icon {
+  width: 20px;
+  height: 20px;
+}
+.badge .ui-icon,
+.chip .ui-icon {
+  width: 15px;
+  height: 15px;
 }
 /* Soft pill behind the active tab's icon (Material/iOS-style) — scales in
    instead of popping, so switching tabs feels alive. */

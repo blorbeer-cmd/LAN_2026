@@ -6,6 +6,7 @@
 
 import { api, getToken } from '../api.js';
 import { state } from '../state.js';
+import { icon } from '../icons.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
@@ -115,9 +116,9 @@ function renderInviteSection() {
 }
 
 function eventStatusBadge(e) {
-  if (e.isEnded) return `<span class="badge badge-offline">✅ Beendet</span>`;
-  if (e.trackingEnabled) return `<span class="badge badge-playing">🔴 Trackt gerade</span>`;
-  return `<span class="badge badge-paused">⏸ Nicht aktiv</span>`;
+  if (e.isEnded) return `<span class="badge badge-offline">${icon('circleCheck')} Beendet</span>`;
+  if (e.trackingEnabled) return `<span class="badge badge-playing">${icon('radioTower')} Trackt gerade</span>`;
+  return `<span class="badge badge-paused">${icon('pause')} Nicht aktiv</span>`;
 }
 
 function renderEventCard(e) {

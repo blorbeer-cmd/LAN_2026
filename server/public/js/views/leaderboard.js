@@ -10,6 +10,7 @@ import { state } from '../state.js';
 import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
+import { icon } from '../icons.js';
 
 export function renderLeaderboard(container, ctx) {
   const filterGameId = state.selectedGameId || '';
@@ -90,14 +91,14 @@ export function renderLeaderboard(container, ctx) {
       ${standings.length === 0 ? `<div class="empty-state"><span class="emoji">🏆</span>Noch keine Ergebnisse.</div>` : rows}
     </div>
 
-    <div class="section-title">⏱️ Spielzeit</div>
+    <div class="section-title">${icon('timer')} Spielzeit</div>
     <div class="card">
-      ${playtime.length === 0 ? `<div class="empty-state" style="padding:20px;"><span class="emoji">⏱️</span>Noch keine erfasste Spielzeit.</div>` : playtimeRows}
+      ${playtime.length === 0 ? `<div class="empty-state" style="padding:20px;"><span class="emoji">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeRows}
     </div>
 
-    <div class="section-title">🕒 Spielzeit pro Spiel (alle zusammen)</div>
+    <div class="section-title">${icon('timer')} Spielzeit pro Spiel (alle zusammen)</div>
     <div class="card">
-      ${playtimeByGame.length === 0 ? `<div class="empty-state" style="padding:20px;"><span class="emoji">🕒</span>Noch keine erfasste Spielzeit.</div>` : playtimeByGameRows}
+      ${playtimeByGame.length === 0 ? `<div class="empty-state" style="padding:20px;"><span class="emoji">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeByGameRows}
     </div>
   `;
 
