@@ -65,7 +65,7 @@ test('fresh device lands on self-onboarding and creates its profile there', asyn
 
   // No identity stored on this device yet -> the app must route straight to
   // the profile/onboarding view, not the Live board.
-  assert.equal(await page.textContent('.view-title'), '👋 Willkommen bei RespawnHQ');
+  assert.equal((await page.textContent('.view-title'))?.trim(), 'Willkommen bei RespawnHQ');
 
   await page.fill('#profile-new-name', 'E2E Alice');
   await page.click('#profile-new-form button[type="submit"]');
@@ -115,7 +115,7 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
   assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars while the round is open');
   await page.click('[data-vote-select] >> nth=0');
-  await page.waitForSelector('text=✓ Ausgewählt'); // staged locally
+  await page.waitForSelector('text=Ausgewählt'); // staged locally
   assert.equal(
     await page.locator('text=0 von 2 haben abgestimmt').count(),
     1,
@@ -198,7 +198,7 @@ test('Auswertungen (via Mehr) shows a real award and a visible, auto-scrolled co
   // Switch the concurrency chart to CS2 and confirm at least one bar has a
   // real height (regression check for the auto-scroll/empty-looking-chart
   // bug: bars must be reachable/visible, not scrolled off-screen).
-  await page.selectOption('#an-concurrency-game', { label: `${cs2.icon} ${cs2.name}` });
+  await page.selectOption('#an-concurrency-game', { label: cs2.name });
   await page.waitForFunction(
     () => {
       const bars = Array.from(document.querySelectorAll<HTMLElement>('#an-concurrency-chart > div'));
@@ -436,7 +436,7 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
   await page.fill('#carpool-location', 'Hamburg');
   await page.fill('#carpool-seats', '1');
   await page.click('#carpool-form button[type="submit"]');
-  await page.waitForSelector('text=🚗 E2E Alice Pro fährt');
+  await page.waitForSelector('text=E2E Alice Pro fährt');
   await page.waitForSelector('text=1/1 frei');
   // The driver only ever gets Bearbeiten/Löschen, never a "Raus" button.
   await page.waitForSelector('[data-edit-carpool]');
