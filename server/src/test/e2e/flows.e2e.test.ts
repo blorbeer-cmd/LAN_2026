@@ -232,11 +232,12 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
   // Renaming to a name someone else already has must be rejected, not
   // silently accepted or crash the view.
   await page.fill('#profile-name', 'E2E Bob');
-  const conflict = page.waitForResponse(
-    (response) => response.url().includes('/api/players/') && response.request().method() === 'PATCH' && response.status() === 409
-  );
-  await page.click('#profile-save');
-  await conflict;
+  await Promise.all([
+    page.waitForResponse(
+      (response) => response.url().includes('/api/players/') && response.request().method() === 'PATCH' && response.status() === 409
+    ),
+    page.click('#profile-save'),
+  ]);
   assert.equal(await page.inputValue('#profile-name'), 'E2E Bob');
 
   // A genuinely free name should save fine.
