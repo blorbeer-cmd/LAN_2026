@@ -218,10 +218,10 @@ function renderLobbyList() {
       const isHost = l.host.id === getMyId();
       const joined = l.players.some((p) => p.id === getMyId());
       const action = isHost
-        ? `<button type="button" class="btn btn-sm btn-danger" data-close-lobby="${l.id}">Schließen</button>`
+        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-close-lobby="${l.id}">Schließen</button>`
         : joined
           ? `<span class="badge badge-playing">Drin</span>`
-          : `<button type="button" class="btn btn-sm btn-primary" data-join-lobby="${l.id}" ${mine ? 'disabled' : ''}>Beitreten</button>`;
+          : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-join-lobby="${l.id}" ${mine ? 'disabled' : ''}>Beitreten</button>`;
       return `
         <div class="lb-row" style="align-items:flex-start;">
           <div class="stack" style="gap:6px;flex:1;">
@@ -247,10 +247,10 @@ function matchControlsHtml() {
     <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px;">
       ${
         match.paused
-          ? `<button type="button" class="btn btn-sm btn-primary" id="quiz-resume">Fortsetzen</button>`
-          : `<button type="button" class="btn btn-sm" id="quiz-pause">Pausieren</button>`
+          ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-resume">Fortsetzen</button>`
+          : `<button type="button" class="btn btn-sm btn-equal" id="quiz-pause">Pausieren</button>`
       }
-      <button type="button" class="btn btn-sm btn-danger" id="quiz-finish">Beenden</button>
+      <button type="button" class="btn btn-sm btn-equal btn-danger" id="quiz-finish">Beenden</button>
     </div>`;
 }
 
@@ -334,7 +334,7 @@ function activeGameHtml() {
       <div class="card stack" style="margin-top:12px;">
         <div class="row-between" style="gap:10px;">
           <strong>Quiz-Lobby</strong>
-          <button type="button" class="btn btn-primary btn-sm" id="quiz-create-lobby" ${lobby || match ? 'disabled' : ''}>Lobby öffnen</button>
+          <button type="button" class="btn btn-primary btn-sm btn-equal" id="quiz-create-lobby" ${lobby || match ? 'disabled' : ''}>Lobby öffnen</button>
         </div>
         ${renderLobbyList()}
       </div>

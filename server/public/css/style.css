@@ -450,6 +450,13 @@ input {
   padding: 8px 12px;
   font-size: 0.85rem;
 }
+/* Uniform-width buttons so a set of them (lobby actions, in-game controls)
+   reads as a tidy group instead of a jumble of different widths. Wide enough
+   that the longest current label ("Lobby öffnen") fits without growing past
+   it, so every such button ends up the same size. */
+.btn-equal {
+  min-width: 7.5rem;
+}
 
 input[type='text'],
 input[type='password'],

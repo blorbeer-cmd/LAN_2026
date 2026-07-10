@@ -395,10 +395,10 @@ function renderLobbyList() {
       const full = l.players.length >= 2 && !joined;
       // Host can close their lobby; a joined guest can leave; otherwise join.
       const action = isHost
-        ? `<button type="button" class="btn btn-sm btn-danger" data-tetris-close="${l.id}">Schließen</button>`
+        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-tetris-close="${l.id}">Schließen</button>`
         : joined
-          ? `<button type="button" class="btn btn-sm" data-tetris-leave="${l.id}">Verlassen</button>`
-          : `<button type="button" class="btn btn-sm btn-primary" data-tetris-join="${l.id}" ${mine || full ? 'disabled' : ''}>Beitreten</button>`;
+          ? `<button type="button" class="btn btn-sm btn-equal" data-tetris-leave="${l.id}">Verlassen</button>`
+          : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-tetris-join="${l.id}" ${mine || full ? 'disabled' : ''}>Beitreten</button>`;
       return `
         <div class="lb-row" style="align-items:flex-start;">
           <div class="stack" style="gap:6px;flex:1;">
@@ -434,7 +434,7 @@ export function renderTetrisLobbyCard() {
     <div class="card stack">
       <div class="row-between" style="gap:10px;">
         <strong>Tetris-Lobby</strong>
-        <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+        <button type="button" class="btn btn-primary btn-sm btn-equal" id="tetris-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
       </div>
       ${noMe ? `<div class="muted" style="font-size:0.8rem;">Wähle oben zuerst aus, wer du bist.</div>` : ''}
       ${renderLobbyList()}
@@ -523,10 +523,10 @@ function matchControls() {
     <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px;justify-content:center;">
       ${
         match.paused
-          ? `<button type="button" class="btn btn-sm btn-primary" id="tetris-resume">Fortsetzen</button>`
-          : `<button type="button" class="btn btn-sm" id="tetris-pause">Pausieren</button>`
+          ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="tetris-resume">Fortsetzen</button>`
+          : `<button type="button" class="btn btn-sm btn-equal" id="tetris-pause">Pausieren</button>`
       }
-      <button type="button" class="btn btn-sm btn-danger" id="tetris-finish">Beenden</button>
+      <button type="button" class="btn btn-sm btn-equal btn-danger" id="tetris-finish">Beenden</button>
     </div>`;
 }
 
