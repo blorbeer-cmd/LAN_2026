@@ -399,7 +399,9 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.waitForSelector('text=Margherita');
   await page.waitForSelector('text=9,50 €');
 
-  await page.click('[data-close-order]'); // confirm auto-accepted
+  await page.click('[data-close-order]');
+  // confirmDialog is an in-app modal (not a native browser dialog).
+  await page.click('[data-confirm]');
   await page.waitForSelector('.badge-offline >> text=Geschlossen');
 
   // Closing only freezes items — the details stay correctable afterward.
@@ -478,6 +480,7 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
   await page.click('[data-whoami-change]');
   await page.selectOption('#arrivals-whoami', { label: 'E2E Alice Pro' });
   await page.click('[data-remove-carpool]');
+  await page.click('[data-confirm]');
   await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
 });
 
