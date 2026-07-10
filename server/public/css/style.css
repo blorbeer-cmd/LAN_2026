@@ -245,9 +245,10 @@ input {
   border-radius: var(--radius-sm);
   text-decoration: none;
 }
-.github-icon-btn {
-  width: 36px;
-  height: 36px;
+.topbar .icon-btn {
+  width: 44px;
+  height: 44px;
+  padding: 10px;
 }
 .github-icon {
   width: 24px;

@@ -20,7 +20,7 @@ import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db, getState, setState } from '../db';
 import { broadcast, Events } from '../realtime';
-import { getTrackingEventId } from '../events';
+import { getTrackingEventId, OUTSIDE_EVENTS_ID } from '../events';
 import { notifyPlayers } from '../push';
 import { isIntInRange } from '../validation';
 import { formatDurationMs } from '../playtime';
@@ -31,6 +31,16 @@ const ROUND_KEY = 'vote_round';
 const OPEN_KEY = 'vote_open';
 const STARTED_AT_KEY = 'vote_started_at';
 const MODE_KEY = 'vote_mode';
+
+export function voteNotificationPlayerIds(): string[] {
+  const eventId = getTrackingEventId();
+  if (eventId === OUTSIDE_EVENTS_ID) {
+    return (db.prepare('SELECT id FROM players').all() as Array<{ id: string }>).map((player) => player.id);
+  }
+  return (db.prepare('SELECT player_id AS id FROM event_participants WHERE event_id = ?').all(eventId) as Array<{ id: string }>).map(
+    (player) => player.id
+  );
+}
 
 type VoteMode = 'single' | 'points';
 
@@ -212,8 +222,7 @@ votesRouter.post('/start', (req, res) => {
   const payload = buildPayload();
   broadcast(Events.votesChanged, payload);
 
-  const allPlayerIds = (db.prepare('SELECT id FROM players').all() as Array<{ id: string }>).map((p) => p.id);
-  notifyPlayers(allPlayerIds, {
+  notifyPlayers(voteNotificationPlayerIds(), {
     title: '🗳️ Neue Abstimmung',
     body:
       nextMode === 'points'
