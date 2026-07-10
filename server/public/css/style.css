@@ -17,6 +17,7 @@
   --accent-3: #ef5da8;
   --accent-gradient: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 55%, var(--accent-3) 100%);
   --accent-text: #ffffff;
+  --rank-1-gold: #ffd166;
   --danger: #ef4444;
   --danger-bg: rgba(239, 68, 68, 0.15);
   --state-playing: #22c55e;
@@ -1493,7 +1494,7 @@ input[type='number'].bracket-score-input {
   text-align: center;
 }
 .lb-row.rank-1 .lb-rank {
-  color: #ffd166;
+  color: var(--rank-1-gold);
 }
 .lb-points {
   margin-left: auto;
