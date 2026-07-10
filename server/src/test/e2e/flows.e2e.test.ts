@@ -64,8 +64,10 @@ test('fresh device lands on self-onboarding and creates its profile there', asyn
   await page.waitForSelector('#app:not([hidden])');
 
   // No identity stored on this device yet -> the app must route straight to
-  // the profile/onboarding view, not the Live board.
-  assert.equal(await page.textContent('.view-title'), '👋 Willkommen bei RespawnHQ');
+  // the profile/onboarding view, not the Live board. The leading emoji is
+  // swapped for an inline icon SVG by icons.js's replaceEmojiIcons, so it's
+  // no longer part of the text node — match on the text portion only.
+  assert.match((await page.textContent('.view-title')) ?? '', /Willkommen bei RespawnHQ/);
 
   await page.fill('#profile-new-name', 'E2E Alice');
   await page.click('#profile-new-form button[type="submit"]');
@@ -115,7 +117,10 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
   assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars while the round is open');
   await page.click('[data-vote-select] >> nth=0');
-  await page.waitForSelector('text=✓ Ausgewählt'); // staged locally
+  // The leading checkmark is swapped for an inline icon SVG by icons.js's
+  // replaceEmojiIcons, so it's no longer part of the text node - match on
+  // the text portion only.
+  await page.waitForSelector('text=Ausgewählt'); // staged locally
   assert.equal(
     await page.locator('text=0 von 2 haben abgestimmt').count(),
     1,
@@ -416,6 +421,87 @@ test('Arcade: open a quiz lobby, see it listed, then close it again', async () =
   await page.waitForSelector('#quiz-create-lobby:not([disabled])');
 });
 
+test('Arcade: Scribble - host draws, a second device guesses correctly, both see the reveal', async () => {
+  // Unlike the quiz/draft flows above, Scribble strictly gates who may act
+  // (only the current drawer can choose a word/draw, only raters may guess —
+  // enforced both client- and server-side), so a single shared-identity page
+  // can't drive both sides. A second real browser context, logged in as a
+  // second player, is the only way to exercise the actual guess path.
+  // Reuses "E2E Bob" (added by the earlier click-through test) rather than
+  // adding a fresh roster player — the Captain-Draft test later in this
+  // suite has a hardcoded pick-loop bound tied to the pool size, so growing
+  // the roster here would silently break it.
+  const players = (await (await fetch(`${BASE_URL}/api/players`)).json()) as Array<{ id: string; name: string }>;
+  const guesser = players.find((p) => p.name === 'E2E Bob');
+  assert.ok(guesser, 'expected "E2E Bob" (added by an earlier test) to exist');
+
+  const guesserContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const guesserPage = await guesserContext.newPage();
+  guesserPage.on('pageerror', (err) => console.error('[guesser pageerror]', err.message));
+  try {
+    await guesserPage.goto(BASE_URL);
+    await guesserPage.evaluate((id) => localStorage.setItem('lan2026_my_player_id', id), guesser!.id);
+    await guesserPage.reload();
+    await guesserPage.waitForSelector('.nav-btn[data-view="more"]');
+    await guesserPage.click('[data-view="more"]');
+    await guesserPage.click('[data-navigate="arcade"]');
+
+    // Host (the shared device driving `page` through this whole suite) opens
+    // the lobby — draw order is lobby join order, so the host always draws
+    // first, keeping this test deterministic about who does what.
+    await page.click('[data-view="more"]');
+    await page.click('[data-navigate="arcade"]');
+    await page.waitForSelector('#scribble-create-lobby:not([disabled])');
+    await page.click('#scribble-create-lobby');
+
+    await guesserPage.waitForSelector('[data-join-lobby]');
+    await guesserPage.click('[data-join-lobby]');
+
+    await page.waitForSelector('#scribble-start-lobby:not([disabled])');
+    await page.click('#scribble-start-lobby');
+
+    // Host picks a word — the actual text is only ever shown to the drawer,
+    // never sent to the guesser (see scribble.ts), so capture it from the
+    // button label before it disappears.
+    await page.waitForSelector('.scribble-word-choice-btn');
+    const wordBtn = page.locator('.scribble-word-choice-btn').first();
+    const chosenWord = (await wordBtn.textContent())!.trim();
+    await wordBtn.click();
+
+    // The guesser must never see the plain word, only the underscore mask.
+    await guesserPage.waitForSelector('.scribble-word-mask');
+    const guesserMask = await guesserPage.locator('.scribble-word-mask').textContent();
+    assert.ok(!guesserMask?.includes(chosenWord), 'the guesser must not see the real word before guessing');
+
+    await page.waitForSelector('#scribble-canvas');
+    const box = await page.locator('#scribble-canvas').boundingBox();
+    await page.mouse.move(box!.x + 20, box!.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + 120, box!.y + 90, { steps: 8 });
+    await page.mouse.up();
+
+    // The stroke must reach the guesser's canvas too (streamed over
+    // Socket.IO, not part of the initial render).
+    await guesserPage.waitForFunction(() => {
+      const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement | null;
+      if (!c) return false;
+      const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+      for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) return true;
+      return false;
+    });
+
+    await guesserPage.fill('#scribble-guess-input', chosenWord);
+    await guesserPage.click('#scribble-guess-form button[type="submit"]');
+
+    // Correct guess ends the turn immediately (both raters already guessed —
+    // there's only one) and reveals the word to everyone.
+    await page.waitForSelector(`text=Wort war: ${chosenWord}`);
+    await guesserPage.waitForSelector(`text=Wort war: ${chosenWord}`);
+  } finally {
+    await guesserContext.close();
+  }
+});
+
 test('An- & Abreise: carpool marks the driver, enforces seats, driver can only delete', async () => {
   // A third roster player to later demonstrate a full carpool.
   await page.click('[data-view="more"]');
@@ -436,7 +522,9 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
   await page.fill('#carpool-location', 'Hamburg');
   await page.fill('#carpool-seats', '1');
   await page.click('#carpool-form button[type="submit"]');
-  await page.waitForSelector('text=🚗 E2E Alice Pro fährt');
+  // Same icon-replacement note as above: the leading emoji is not part of
+  // the text node anymore.
+  await page.waitForSelector('text=E2E Alice Pro fährt');
   await page.waitForSelector('text=1/1 frei');
   // The driver only ever gets Bearbeiten/Löschen, never a "Raus" button.
   await page.waitForSelector('[data-edit-carpool]');
