@@ -513,6 +513,24 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
         for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++;
         return n;
       });
+    // The guesser must receive the whole stroke, not just fragments. Both
+    // pages use the same viewport (and thus canvas size), so the painted
+    // areas are directly comparable — a regression that drops the connecting
+    // segments between the per-frame network batches (leaving isolated dots)
+    // paints an order of magnitude less than the drawer's own canvas. Waits
+    // (instead of asserting a snapshot) because the batches stream in over
+    // several socket messages after the first pixel appears.
+    const hostPaintedAfterStroke1 = await countPainted(page);
+    await guesserPage.waitForFunction(
+      (hostPainted) => {
+        const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement;
+        const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++;
+        return n >= hostPainted * 0.5;
+      },
+      hostPaintedAfterStroke1
+    );
     const guesserPaintedAfterStroke1 = await countPainted(guesserPage);
 
     // A second, separate pen stroke (well clear of the first, kept inside
