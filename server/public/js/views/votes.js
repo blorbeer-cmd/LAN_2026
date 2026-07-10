@@ -20,10 +20,11 @@
 // per-game breakdown). Full bars/rankings appear the moment the round
 // closes, and past rounds stay inspectable afterwards via the history list.
 //
-// Two modes (chosen when a round starts, see server/src/routes/votes.ts):
-// - 'single': pick one game, tap another to change your mind.
-// - 'points': one slider per game, 0-10 points, 0 meaning "not rated" — as
-//   many games as you like.
+// Every regular round runs in 'points' mode: one slider per game, 0-10
+// points, 0 meaning "not rated" — as many games as you like. 'single' mode
+// (pick exactly one game) still exists server-side, but only ever gets used
+// for a runoff between tied winners (see the "Stichwahl" button below) — it
+// is not offered as a choice when starting a fresh round.
 // Either mode requires an explicit "Abstimmung abschicken" tap — selecting a
 // game or moving a slider only stages a local draft, it does not hit the
 // server until submitted. Closed-round results are sorted by each game's
@@ -141,6 +142,19 @@ function topByPreference(results, n = 5) {
     .slice(0, n);
 }
 
+function topMetaHtml(r) {
+  const parts = [
+    r.playCount > 0 ? `zuletzt ${formatDate(r.lastPlayedAt)}` : 'noch nie gespielt',
+    r.totalPlaytimeMs > 0 ? r.totalPlaytimeFormatted : null,
+    r.voteWinCount > 0 ? `🏆 ${r.voteWinCount}×` : null,
+  ].filter(Boolean);
+  return parts.join(' · ');
+}
+
+// Reuses the leaderboard's .lb-row (icon-led, single line, rank + a value
+// pinned right) instead of the old full .vote-row block — a "Bock" ranking
+// doesn't need its own two-line stats block per game to be useful at a
+// glance.
 function renderTop5(results) {
   const top5 = topByPreference(results, 5);
   if (top5.length === 0) {
@@ -148,12 +162,15 @@ function renderTop5(results) {
   }
   return top5
     .map(
-      (r) => `
-        <div class="vote-row">
-          <div class="row-between">
-            <span class="row" style="gap:var(--space-2);">${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 24)} ${escapeHtml(r.gameName)}</span>
-          </div>
-          ${statsRowHtml(r)}
+      (r, i) => `
+        <div class="lb-row">
+          <span class="lb-rank">${i + 1}</span>
+          ${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 28)}
+          <span style="flex:1;min-width:0;">
+            <div class="player-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.gameName)}</div>
+            <div class="muted" style="font-size:var(--font-size-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${topMetaHtml(r)}</div>
+          </span>
+          <span class="lb-points">${r.preferenceCount ? `🔥 ${r.avgPreference.toFixed(1)}` : '🔥 –'}</span>
         </div>`
     )
     .join('');
@@ -210,7 +227,7 @@ function renderClosedRows(results, mode, winnerGameIds) {
             <span class="row" style="gap:var(--space-2);">${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 24)} ${escapeHtml(r.gameName)}</span>
             <span class="muted">${scoreLabel}</span>
           </div>
-          <div class="vote-bar-track"><div class="vote-bar-fill" style="width:${(r.score / maxScore) * 100}%"></div></div>
+          <div class="vote-bar-track"><div class="vote-bar-mask" style="width:${100 - (r.score / maxScore) * 100}%"></div></div>
           ${statsRowHtml(r)}
         </div>`;
     })
@@ -238,9 +255,10 @@ function renderLastResult() {
     : `<span class="muted">Niemand hat abgestimmt</span>`;
   return `
     <div class="stack" style="gap:var(--space-2);padding:var(--space-1) 0;">
+      ${h.title ? `<div class="player-name">${escapeHtml(h.title)}</div>` : ''}
       <div class="chip-list">${winners}</div>
       <span class="muted" style="font-size:var(--font-size-xs);">
-        ${formatDateTime(h.closedAt)} · ${h.mode === 'points' ? 'Punkte-Modus' : 'Einzel-Wahl'} · ${h.totalVotes} Stimme(n)
+        ${formatDateTime(h.closedAt)} · ${h.mode === 'points' ? 'Punkte-Modus' : 'Stichwahl'} · ${h.totalVotes} Stimme(n)
       </span>
     </div>`;
 }
@@ -267,8 +285,9 @@ function renderHistory() {
       return `
         <button type="button" class="lb-row" style="align-items:flex-start;width:100%;text-align:left;background:none;border:none;cursor:pointer;" data-open-history-round="${h.round}">
           <div class="stack" style="gap:var(--space-1);flex:1;">
+            ${h.title ? `<div class="player-name">${escapeHtml(h.title)}</div>` : ''}
             <div class="chip-list">${winners}</div>
-            <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(h.closedAt)} · ${h.mode === 'points' ? 'Punkte-Modus' : 'Einzel-Wahl'}</span>
+            <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(h.closedAt)} · ${h.mode === 'points' ? 'Punkte-Modus' : 'Stichwahl'}</span>
           </div>
           <span class="muted" style="font-size:var(--font-size-xs);flex-shrink:0;">${h.totalVotes} Stimme(n) ›</span>
         </button>`;
@@ -281,15 +300,16 @@ async function openHistoryRoundDetail(round) {
   try {
     const detail = await api.votes.historyRound(round);
     const titleEl = el.querySelector('.modal-header h2');
-    if (titleEl) titleEl.textContent = `🗳️ Abstimmung Runde ${detail.round}`;
+    if (titleEl) titleEl.textContent = detail.title ? `🗳️ ${detail.title}` : `🗳️ Abstimmung Runde ${detail.round}`;
     const bodyEl = el.querySelector('.modal-body');
     if (bodyEl) {
       bodyEl.innerHTML = `
         <div class="muted" style="font-size:var(--font-size-xs);margin-bottom:var(--space-3);">
-          ${formatDateTime(detail.closedAt)} · ${detail.mode === 'points' ? 'Punkte-Modus' : 'Einzel-Wahl'} ·
+          ${formatDateTime(detail.closedAt)} · ${detail.mode === 'points' ? 'Punkte-Modus' : 'Stichwahl'} ·
           ${detail.mode === 'points' ? `${detail.totalPoints} Punkt(e)` : `${detail.totalVotes} Stimme(n)`}
           von ${detail.totalVoters} Teilnehmer(n)
         </div>
+        ${detail.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0 0 var(--space-3);">${escapeHtml(detail.info)}</p>` : ''}
         ${renderClosedRows(detail.results, detail.mode, detail.winnerGameIds)}
       `;
     }
@@ -329,17 +349,19 @@ export function renderVotes(container, ctx) {
   const totalPlayers = state.players.length;
 
   let openSectionHtml = '';
+  let runoffSectionHtml = '';
   if (votes.open) {
     const summary =
       votes.mode === 'points'
         ? `🟢 Abstimmung läuft (Punkte-Modus) · ${votes.totalVoters} von ${totalPlayers} haben abgestimmt – Verteilung gibt's erst nach dem Ende`
-        : `🟢 Abstimmung läuft (Einzel-Wahl) · ${votes.totalVoters} von ${totalPlayers} haben abgestimmt – Ergebnis gibt's erst nach dem Ende`;
+        : `🟢 Stichwahl läuft · ${votes.totalVoters} von ${totalPlayers} haben abgestimmt – Ergebnis gibt's erst nach dem Ende`;
     const rows = renderOpenRows(votes, mineReady);
     const submitLabel = votes.mode === 'points' ? 'Bewertung abschicken' : 'Stimme abschicken';
     openSectionHtml = `
-      <div class="section-title">🗳️ Abstimmung</div>
+      <div class="section-title">🗳️ ${votes.title ? escapeHtml(votes.title) : 'Abstimmung'}</div>
       <div class="card stack">
         <div class="muted">${summary}</div>
+        ${votes.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0;">${escapeHtml(votes.info)}</p>` : ''}
         ${rows}
         <button type="button" class="btn btn-primary btn-block" id="votes-submit" ${mineReady ? '' : 'disabled'}>${submitLabel}</button>
       </div>
@@ -348,17 +370,52 @@ export function renderVotes(container, ctx) {
         <button type="button" class="btn btn-danger" id="votes-cancel">Abbrechen</button>
       </div>`;
   } else {
+    // Only offered right after a round closed in a tie (several games sharing
+    // top score) — a one-tap way to settle it instead of manually starting
+    // a fresh round and re-picking the games by hand.
+    const lastClosed = historyCache && historyCache.length ? historyCache[0] : null;
+    if (lastClosed && lastClosed.winners.length > 1) {
+      const tiedChips = lastClosed.winners
+        .map((w) => `<span class="chip">${gameBadgeHtml({ id: w.gameId, icon: w.icon }, 24)} ${escapeHtml(w.gameName)}</span>`)
+        .join('');
+      runoffSectionHtml = `
+        <div class="card stack">
+          <div class="section-title" style="margin-bottom:0;">🤝 Unentschieden</div>
+          <div class="chip-list">${tiedChips}</div>
+          <button type="button" class="btn btn-primary btn-block" id="votes-runoff">Stichwahl starten</button>
+        </div>`;
+    }
+
+    const gameCheckboxes = state.games
+      .map(
+        (g) => `
+        <label class="check-row">
+          <input type="checkbox" data-vote-game-checkbox value="${g.id}" checked />
+          <span class="row" style="flex:1;gap:var(--space-2);">${gameBadgeHtml(g, 24)} ${escapeHtml(g.name)}</span>
+        </label>`
+      )
+      .join('');
     openSectionHtml = `
       <div class="card stack">
         <div class="section-title" style="margin-bottom:0;">Neue Abstimmung starten</div>
-        <label class="check-row">
-          <input type="radio" name="vote-mode" value="single" checked />
-          <span style="flex:1;">🗳️ Einzel-Wahl – eine Stimme pro Person</span>
+        <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
+          🔢 Jede:r verteilt 0–10 Punkte auf beliebig viele Spiele. Nach dem Beenden gewinnt die höchste Punktzahl.
+        </p>
+        <label class="stack" style="gap:var(--space-1);">
+          <span class="muted" style="font-size:var(--font-size-xs);">Titel (optional)</span>
+          <input type="text" id="votes-title" maxlength="80" placeholder="z.B. Samstagabend" />
         </label>
-        <label class="check-row">
-          <input type="radio" name="vote-mode" value="points" />
-          <span style="flex:1;">🔢 Punkte-Modus – jedes Spiel mit 0-10 Punkten bewerten</span>
+        <label class="stack" style="gap:var(--space-1);">
+          <span class="muted" style="font-size:var(--font-size-xs);">Info (optional)</span>
+          <textarea id="votes-info" maxlength="500" rows="2" placeholder="z.B. Nur Spiele für 4 Leute"></textarea>
         </label>
+        <div class="stack" style="gap:var(--space-1);">
+          <div class="row-between">
+            <span class="muted" style="font-size:var(--font-size-xs);">Welche Spiele stehen zur Wahl?</span>
+            <button type="button" class="btn btn-sm" id="votes-select-toggle">Alle abwählen</button>
+          </div>
+          <div id="votes-game-select">${gameCheckboxes}</div>
+        </div>
         <button type="button" class="btn btn-primary btn-block" id="votes-start">Abstimmung starten</button>
       </div>`;
   }
@@ -373,6 +430,7 @@ export function renderVotes(container, ctx) {
     <div class="section-title">🔥 Top 5 nach Bock-Level</div>
     <div class="card">${renderTop5(votes.results)}</div>
 
+    ${runoffSectionHtml}
     ${openSectionHtml}
 
     <div class="section-title">${icon('timer')} Vote-Historie</div>
@@ -429,13 +487,49 @@ export function renderVotes(container, ctx) {
     });
   }
 
+  const toggleBtn = container.querySelector('#votes-select-toggle');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const boxes = [...container.querySelectorAll('[data-vote-game-checkbox]')];
+      const allChecked = boxes.every((b) => b.checked);
+      boxes.forEach((b) => (b.checked = !allChecked));
+      toggleBtn.textContent = allChecked ? 'Alle auswählen' : 'Alle abwählen';
+    });
+  }
+
   const startBtn = container.querySelector('#votes-start');
   if (startBtn) {
     startBtn.addEventListener('click', async () => {
-      const mode = container.querySelector('input[name="vote-mode"]:checked')?.value || 'single';
+      const checkboxes = [...container.querySelectorAll('[data-vote-game-checkbox]')];
+      const checked = checkboxes.filter((b) => b.checked).map((b) => b.value);
+      if (checked.length === 0) {
+        return showToast('Bitte mindestens ein Spiel auswählen.', { error: true });
+      }
+      const title = container.querySelector('#votes-title')?.value.trim() || undefined;
+      const info = container.querySelector('#votes-info')?.value.trim() || undefined;
+      const gameIds = checked.length === checkboxes.length ? undefined : checked;
       try {
-        await api.votes.start(mode);
+        await api.votes.start({ mode: 'points', title, info, gameIds });
         await ctx.refresh();
+      } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  }
+
+  const runoffBtn = container.querySelector('#votes-runoff');
+  if (runoffBtn) {
+    runoffBtn.addEventListener('click', async () => {
+      const lastClosed = historyCache && historyCache[0];
+      if (!lastClosed) return;
+      try {
+        await api.votes.start({
+          mode: 'single',
+          title: lastClosed.title ? `Stichwahl: ${lastClosed.title}` : 'Stichwahl',
+          gameIds: lastClosed.winners.map((w) => w.gameId),
+        });
+        await ctx.refresh();
+        showToast('Stichwahl gestartet.');
       } catch (err) {
         showToast(err.message, { error: true });
       }

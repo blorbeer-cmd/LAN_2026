@@ -206,12 +206,15 @@ db.exec(`
   -- mirroring the votes rows themselves being deleted on cancel. mode is
   -- fixed for the round's whole lifetime ('single' | 'points').
   CREATE TABLE IF NOT EXISTS vote_rounds (
-    round           INTEGER PRIMARY KEY,
-    event_id        TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-    started_at      INTEGER NOT NULL,
-    closed_at       INTEGER,
-    winner_game_ids TEXT,   -- JSON array of game ids, set on close
-    mode            TEXT NOT NULL DEFAULT 'single'
+    round             INTEGER PRIMARY KEY,
+    event_id          TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    started_at        INTEGER NOT NULL,
+    closed_at         INTEGER,
+    winner_game_ids   TEXT,   -- JSON array of game ids, set on close
+    mode              TEXT NOT NULL DEFAULT 'single',
+    title             TEXT,   -- optional, freely chosen name for the round
+    info              TEXT,   -- optional free-text note shown to voters
+    selected_game_ids TEXT    -- JSON array of game ids the round is limited to, NULL = all games
   );
 
   -- Physical seating declared per event (FR-18 extension): "player_id sits
@@ -787,6 +790,18 @@ function migrateVotesPointsMode(): void {
   })();
 }
 migrateVotesPointsMode();
+
+// Migration: older databases predate the round title/info/selected-games
+// fields (a round used to be identified only by its number and mode).
+function migrateVoteRoundsMetaColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(vote_rounds)').all() as Array<{ name: string }>;
+  if (!columns.some((c) => c.name === 'title')) db.exec('ALTER TABLE vote_rounds ADD COLUMN title TEXT');
+  if (!columns.some((c) => c.name === 'info')) db.exec('ALTER TABLE vote_rounds ADD COLUMN info TEXT');
+  if (!columns.some((c) => c.name === 'selected_game_ids')) {
+    db.exec('ALTER TABLE vote_rounds ADD COLUMN selected_game_ids TEXT');
+  }
+}
+migrateVoteRoundsMetaColumns();
 
 // Migration: older databases predate the optional location/description
 // event fields.

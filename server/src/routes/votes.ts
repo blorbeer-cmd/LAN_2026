@@ -32,6 +32,20 @@ const OPEN_KEY = 'vote_open';
 const STARTED_AT_KEY = 'vote_started_at';
 const MODE_KEY = 'vote_mode';
 
+const MAX_TITLE_LENGTH = 80;
+const MAX_INFO_LENGTH = 500;
+
+// Same shape as games.ts's optionalText: undefined means "invalid" (caller
+// should 400), null means "explicitly cleared/absent", a string means a
+// validated, trimmed value.
+function optionalText(value: unknown, maxLength: number): string | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.length <= maxLength ? trimmed : undefined;
+}
+
 export function voteNotificationPlayerIds(): string[] {
   const eventId = getTrackingEventId();
   if (eventId === OUTSIDE_EVENTS_ID) {
@@ -58,6 +72,29 @@ function readRoundState(): RoundState {
     open: getState(OPEN_KEY) === '1',
     startedAt: getState(STARTED_AT_KEY) ? parseInt(getState(STARTED_AT_KEY)!, 10) : null,
     mode: storedMode === 'points' ? 'points' : 'single',
+  };
+}
+
+interface RoundMeta {
+  title: string | null;
+  info: string | null;
+  selectedGameIds: string[] | null; // null = every game in the catalog
+}
+
+// A round's title/info/game-selection live in vote_rounds (set once on
+// /start, immutable afterwards), unlike round/open/mode which are mirrored
+// into app_state for cheap access — this is only read a handful of times per
+// request, so a small extra query is fine.
+function getRoundMeta(round: number): RoundMeta {
+  if (round < 1) return { title: null, info: null, selectedGameIds: null };
+  const row = db.prepare('SELECT title, info, selected_game_ids AS selectedGameIdsJson FROM vote_rounds WHERE round = ?').get(round) as
+    | { title: string | null; info: string | null; selectedGameIdsJson: string | null }
+    | undefined;
+  if (!row) return { title: null, info: null, selectedGameIds: null };
+  return {
+    title: row.title,
+    info: row.info,
+    selectedGameIds: row.selectedGameIdsJson ? JSON.parse(row.selectedGameIdsJson) : null,
   };
 }
 
@@ -92,8 +129,9 @@ function voteWinCountsByGame(): Map<string, number> {
   return counts;
 }
 
-function buildResults(round: number, mode: VoteMode): ResultRow[] {
+function buildResults(round: number, mode: VoteMode, selectedGameIds: string[] | null = null): ResultRow[] {
   const now = Date.now();
+  const allowed = selectedGameIds ? new Set(selectedGameIds) : null;
   const rows = db
     .prepare(
       `SELECT g.id AS gameId, g.name AS gameName, g.icon AS icon,
@@ -120,8 +158,10 @@ function buildResults(round: number, mode: VoteMode): ResultRow[] {
     )
     .all(round, now) as Array<Omit<ResultRow, 'score' | 'totalPlaytimeFormatted' | 'voteWinCount'>>;
 
+  const filteredRows = allowed ? rows.filter((r) => allowed.has(r.gameId)) : rows;
+
   const winCounts = voteWinCountsByGame();
-  const results: ResultRow[] = rows.map((r) => ({
+  const results: ResultRow[] = filteredRows.map((r) => ({
     ...r,
     score: mode === 'points' ? r.points : r.votes,
     totalPlaytimeFormatted: formatDurationMs(r.totalPlaytimeMs),
@@ -161,7 +201,8 @@ function redactOpenRoundResults(results: ResultRow[]): Array<Omit<ResultRow, 'vo
 
 function buildPayload(extra: Record<string, unknown> = {}) {
   const state = readRoundState();
-  const fullResults = buildResults(state.round, state.mode);
+  const meta = getRoundMeta(state.round);
+  const fullResults = buildResults(state.round, state.mode, meta.selectedGameIds);
   const totalVotes = fullResults.reduce((sum, r) => sum + r.votes, 0);
   const totalPoints = fullResults.reduce((sum, r) => sum + r.points, 0);
   const totalVoters = (
@@ -170,7 +211,7 @@ function buildPayload(extra: Record<string, unknown> = {}) {
     }
   ).n;
   const results = state.open ? redactOpenRoundResults(fullResults) : fullResults;
-  return { ...state, results, totalVotes, totalPoints, totalVoters, ...extra };
+  return { ...state, ...meta, results, totalVotes, totalPoints, totalVoters, ...extra };
 }
 
 // GET /api/votes - current round's state and tally.
@@ -195,18 +236,47 @@ votesRouter.get('/mine', (req, res) => {
 });
 
 // POST /api/votes/start - begins a new round. Fails if one is already open.
-// Body: { mode? } - 'single' (default) or 'points'.
+// Body: { mode?, title?, info?, gameIds? }
+// - mode: 'points' (default, the normal voting mode) or 'single' — 'single'
+//   is only meant for a runoff between tied winners (see /close), it's not
+//   offered as a choice when starting a fresh round.
+// - title/info: optional free text shown to voters.
+// - gameIds: optional preselection of which games this round covers; omit
+//   for "every game in the catalog".
 votesRouter.post('/start', (req, res) => {
   const state = readRoundState();
   if (state.open) {
     return res.status(409).json({ error: 'Es läuft bereits eine Abstimmung.' });
   }
 
-  const { mode } = req.body ?? {};
+  const { mode, title, info, gameIds } = req.body ?? {};
   if (mode !== undefined && mode !== 'single' && mode !== 'points') {
     return res.status(400).json({ error: 'mode muss "single" oder "points" sein.' });
   }
-  const nextMode: VoteMode = mode === 'points' ? 'points' : 'single';
+  const nextMode: VoteMode = mode === 'single' ? 'single' : 'points';
+
+  const cleanTitle = optionalText(title, MAX_TITLE_LENGTH);
+  if (cleanTitle === undefined) {
+    return res.status(400).json({ error: `Titel darf höchstens ${MAX_TITLE_LENGTH} Zeichen lang sein.` });
+  }
+  const cleanInfo = optionalText(info, MAX_INFO_LENGTH);
+  if (cleanInfo === undefined) {
+    return res.status(400).json({ error: `Info darf höchstens ${MAX_INFO_LENGTH} Zeichen lang sein.` });
+  }
+
+  let selectedGameIds: string[] | null = null;
+  if (gameIds !== undefined) {
+    if (!Array.isArray(gameIds) || gameIds.length === 0) {
+      return res.status(400).json({ error: 'Mindestens ein Spiel muss ausgewählt sein.' });
+    }
+    const uniqueIds = [...new Set(gameIds)];
+    for (const id of uniqueIds) {
+      if (typeof id !== 'string' || !id) return res.status(400).json({ error: 'Ungültige gameId.' });
+      const game = db.prepare('SELECT id FROM games WHERE id = ?').get(id);
+      if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+    }
+    selectedGameIds = uniqueIds as string[];
+  }
 
   const nextRound = state.round + 1;
   const now = Date.now();
@@ -216,18 +286,18 @@ votesRouter.post('/start', (req, res) => {
   setState(MODE_KEY, nextMode);
 
   db.prepare(
-    'INSERT INTO vote_rounds (round, event_id, started_at, closed_at, winner_game_ids, mode) VALUES (?, ?, ?, NULL, NULL, ?)'
-  ).run(nextRound, getTrackingEventId(), now, nextMode);
+    'INSERT INTO vote_rounds (round, event_id, started_at, closed_at, winner_game_ids, mode, title, info, selected_game_ids) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?)'
+  ).run(nextRound, getTrackingEventId(), now, nextMode, cleanTitle, cleanInfo, selectedGameIds ? JSON.stringify(selectedGameIds) : null);
 
   const payload = buildPayload();
   broadcast(Events.votesChanged, payload);
 
   notifyPlayers(voteNotificationPlayerIds(), {
-    title: '🗳️ Neue Abstimmung',
+    title: cleanTitle ? `🗳️ ${cleanTitle}` : '🗳️ Neue Abstimmung',
     body:
-      nextMode === 'points'
-        ? 'Was zocken wir als Nächstes? Spiele mit Punkten bewerten.'
-        : 'Was zocken wir als Nächstes? Jetzt abstimmen.',
+      nextMode === 'single'
+        ? 'Stichwahl: jetzt für einen der Gewinner abstimmen.'
+        : 'Was zocken wir als Nächstes? Spiele mit Punkten bewerten.',
     url: '/',
   });
 
@@ -256,6 +326,10 @@ votesRouter.post('/', (req, res) => {
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   const game = db.prepare('SELECT id FROM games WHERE id = ?').get(gameId);
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+  const meta = getRoundMeta(state.round);
+  if (meta.selectedGameIds && !meta.selectedGameIds.includes(gameId)) {
+    return res.status(400).json({ error: 'Dieses Spiel ist in dieser Abstimmung nicht auswählbar.' });
+  }
 
   const castVote = db.transaction(() => {
     db.prepare('DELETE FROM votes WHERE player_id = ? AND round = ?').run(playerId, state.round);
@@ -295,6 +369,7 @@ votesRouter.post('/points', (req, res) => {
     return res.status(400).json({ error: 'entries muss ein Array sein.' });
   }
 
+  const meta = getRoundMeta(state.round);
   const seen = new Set<string>();
   const clean: Array<{ gameId: string; points: number }> = [];
   for (const entry of entries) {
@@ -311,6 +386,9 @@ votesRouter.post('/points', (req, res) => {
     }
     const game = db.prepare('SELECT id FROM games WHERE id = ?').get(gameId);
     if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+    if (meta.selectedGameIds && !meta.selectedGameIds.includes(gameId)) {
+      return res.status(400).json({ error: 'Dieses Spiel ist in dieser Abstimmung nicht auswählbar.' });
+    }
     clean.push({ gameId, points });
   }
 
@@ -341,7 +419,8 @@ votesRouter.post('/close', (_req, res) => {
   }
   setState(OPEN_KEY, '0');
 
-  const results = buildResults(state.round, state.mode);
+  const meta = getRoundMeta(state.round);
+  const results = buildResults(state.round, state.mode, meta.selectedGameIds);
   const topScore = results[0]?.score ?? 0;
   const winnerGameIds = topScore > 0 ? results.filter((r) => r.score === topScore).map((r) => r.gameId) : [];
 
@@ -381,6 +460,9 @@ interface VoteRoundRow {
   closedAt: number;
   mode: VoteMode;
   winnerGameIdsJson: string | null;
+  title: string | null;
+  info: string | null;
+  selectedGameIdsJson: string | null;
 }
 
 // GET /api/votes/history - past (closed) rounds for the active event, newest
@@ -396,7 +478,8 @@ votesRouter.get('/history', (req, res) => {
     .prepare(
       `SELECT vr.round AS round, vr.event_id AS eventId, e.name AS eventName,
               vr.started_at AS startedAt, vr.closed_at AS closedAt, vr.mode AS mode,
-              vr.winner_game_ids AS winnerGameIdsJson
+              vr.winner_game_ids AS winnerGameIdsJson, vr.title AS title, vr.info AS info,
+              vr.selected_game_ids AS selectedGameIdsJson
        FROM vote_rounds vr
        JOIN events e ON e.id = vr.event_id
        WHERE vr.closed_at IS NOT NULL AND vr.event_id = ?
@@ -407,7 +490,8 @@ votesRouter.get('/history', (req, res) => {
 
   const history = rows.map((r) => {
     const winnerIds: string[] = r.winnerGameIdsJson ? JSON.parse(r.winnerGameIdsJson) : [];
-    const results = buildResults(r.round, r.mode);
+    const selectedGameIds: string[] | null = r.selectedGameIdsJson ? JSON.parse(r.selectedGameIdsJson) : null;
+    const results = buildResults(r.round, r.mode, selectedGameIds);
     const totalVotes = results.reduce((sum, x) => sum + x.votes, 0);
     const winners = results
       .filter((x) => winnerIds.includes(x.gameId))
@@ -419,6 +503,8 @@ votesRouter.get('/history', (req, res) => {
       startedAt: r.startedAt,
       closedAt: r.closedAt,
       mode: r.mode,
+      title: r.title,
+      info: r.info,
       totalVotes,
       winners,
     };
@@ -441,7 +527,8 @@ votesRouter.get('/history/:round', (req, res) => {
     .prepare(
       `SELECT vr.round AS round, vr.event_id AS eventId, e.name AS eventName,
               vr.started_at AS startedAt, vr.closed_at AS closedAt, vr.mode AS mode,
-              vr.winner_game_ids AS winnerGameIdsJson
+              vr.winner_game_ids AS winnerGameIdsJson, vr.title AS title, vr.info AS info,
+              vr.selected_game_ids AS selectedGameIdsJson
        FROM vote_rounds vr
        JOIN events e ON e.id = vr.event_id
        WHERE vr.round = ?`
@@ -451,7 +538,8 @@ votesRouter.get('/history/:round', (req, res) => {
     return res.status(404).json({ error: 'Abgeschlossene Abstimmungsrunde nicht gefunden.' });
   }
 
-  const results = buildResults(row.round, row.mode);
+  const selectedGameIds: string[] | null = row.selectedGameIdsJson ? JSON.parse(row.selectedGameIdsJson) : null;
+  const results = buildResults(row.round, row.mode, selectedGameIds);
   const totalVotes = results.reduce((sum, r) => sum + r.votes, 0);
   const totalPoints = results.reduce((sum, r) => sum + r.points, 0);
   const totalVoters = (
@@ -468,6 +556,8 @@ votesRouter.get('/history/:round', (req, res) => {
     startedAt: row.startedAt,
     closedAt: row.closedAt,
     mode: row.mode,
+    title: row.title,
+    info: row.info,
     results,
     totalVotes,
     totalPoints,

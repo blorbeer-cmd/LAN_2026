@@ -42,7 +42,7 @@ test('POST /api/votes/close rejects closing when nothing is open', async () => {
 });
 
 test('POST /api/votes/start opens a round', async () => {
-  const res = await request(app).post('/api/votes/start');
+  const res = await request(app).post('/api/votes/start').send({ mode: 'single' });
   assert.equal(res.status, 201);
   assert.equal(res.body.open, true);
   assert.equal(res.body.round, 1);
@@ -92,7 +92,7 @@ test('re-voting changes the player\'s previous choice instead of adding a second
 });
 
 test('a new round starts fresh (previous votes do not carry over)', async () => {
-  const started = await request(app).post('/api/votes/start');
+  const started = await request(app).post('/api/votes/start').send({ mode: 'single' });
   assert.equal(started.body.round, 2);
   assert.equal(started.body.totalVotes, 0);
 });
@@ -306,7 +306,7 @@ test('points mode: submitting an empty entries array clears a player\'s previous
 });
 
 test('points endpoint is rejected while a round is in single mode', async () => {
-  await request(app).post('/api/votes/start');
+  await request(app).post('/api/votes/start').send({ mode: 'single' });
   const res = await request(app)
     .post('/api/votes/points')
     .send({ playerId: playerA, entries: [{ gameId: gameCs2, points: 5 }] });
@@ -352,4 +352,73 @@ test('vote notifications target only the active event roster', async () => {
   assert.equal(started.status, 200);
 
   assert.deepEqual(voteNotificationPlayerIds(), [playerA]);
+});
+
+test('a round can carry a title/info and a preselection of games', async () => {
+  const allGames = await request(app).get('/api/games');
+  const otherGame = allGames.body.find((g: { id: string }) => g.id !== gameCs2 && g.id !== gameRl).id;
+
+  const started = await request(app)
+    .post('/api/votes/start')
+    .send({ mode: 'points', title: 'Samstagabend', info: 'Nur Koop-Spiele', gameIds: [gameCs2, gameRl] });
+  assert.equal(started.status, 201);
+  assert.equal(started.body.title, 'Samstagabend');
+  assert.equal(started.body.info, 'Nur Koop-Spiele');
+  assert.deepEqual(
+    started.body.results.map((r: { gameId: string }) => r.gameId).sort(),
+    [gameCs2, gameRl].sort()
+  );
+
+  const rejected = await request(app)
+    .post('/api/votes/points')
+    .send({ playerId: playerA, entries: [{ gameId: otherGame, points: 5 }] });
+  assert.equal(rejected.status, 400);
+
+  const accepted = await request(app)
+    .post('/api/votes/points')
+    .send({ playerId: playerA, entries: [{ gameId: gameCs2, points: 5 }] });
+  assert.equal(accepted.status, 200);
+
+  const closed = await request(app).post('/api/votes/close');
+  assert.equal(closed.status, 200);
+  assert.equal(closed.body.results.length, 2);
+
+  const history = await request(app).get(`/api/votes/history/${closed.body.round}`);
+  assert.equal(history.body.title, 'Samstagabend');
+  assert.equal(history.body.info, 'Nur Koop-Spiele');
+});
+
+test('POST /api/votes/start rejects an empty or invalid game preselection', async () => {
+  const empty = await request(app).post('/api/votes/start').send({ gameIds: [] });
+  assert.equal(empty.status, 400);
+
+  const unknown = await request(app).post('/api/votes/start').send({ gameIds: ['ghost'] });
+  assert.equal(unknown.status, 404);
+});
+
+test('a runoff round restricted to the tied winners lets voters pick only among them', async () => {
+  // Tie CS2 and RL for first place in a points round.
+  await request(app).post('/api/votes/start').send({ mode: 'points', gameIds: [gameCs2, gameRl] });
+  await request(app).post('/api/votes/points').send({ playerId: playerA, entries: [{ gameId: gameCs2, points: 5 }] });
+  await request(app).post('/api/votes/points').send({ playerId: playerB, entries: [{ gameId: gameRl, points: 5 }] });
+  const closed = await request(app).post('/api/votes/close');
+  assert.deepEqual(closed.body.winnerGameIds.sort(), [gameCs2, gameRl].sort());
+
+  // Start a single-mode runoff limited to just the tied games.
+  const runoff = await request(app)
+    .post('/api/votes/start')
+    .send({ mode: 'single', title: 'Stichwahl', gameIds: closed.body.winnerGameIds });
+  assert.equal(runoff.status, 201);
+  assert.equal(runoff.body.mode, 'single');
+  assert.equal(runoff.body.results.length, 2);
+
+  const allGames = await request(app).get('/api/games');
+  const outsideGame = allGames.body.find((g: { id: string }) => g.id !== gameCs2 && g.id !== gameRl).id;
+  const outsideVote = await request(app).post('/api/votes').send({ playerId: playerA, gameId: outsideGame });
+  assert.equal(outsideVote.status, 400);
+
+  await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameCs2 });
+  await request(app).post('/api/votes').send({ playerId: playerB, gameId: gameCs2 });
+  const runoffClosed = await request(app).post('/api/votes/close');
+  assert.deepEqual(runoffClosed.body.winnerGameIds, [gameCs2]);
 });
