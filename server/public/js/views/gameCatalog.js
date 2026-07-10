@@ -9,7 +9,7 @@
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, gameBadgeHtml } from '../format.js';
-import { openModal } from '../modal.js';
+import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { resizeImageFile } from '../imageUtils.js';
 import { suggestProcessNames } from '../gameProcessSuggestions.js';
@@ -433,7 +433,7 @@ function openGameDetail(gameId, ctx) {
         });
 
         el.querySelector('#edit-delete').addEventListener('click', async () => {
-          if (!confirm(`${game.name} wirklich löschen? Skill-/Bock-Wertungen und Ergebnisse dazu gehen verloren.`)) return;
+          if (!(await confirmDialog(`${game.name} wirklich löschen? Skill-/Bock-Wertungen und Ergebnisse dazu gehen verloren.`))) return;
           try {
             await api.games.remove(gameId);
             close();
@@ -537,7 +537,7 @@ export function renderGameCatalog(container, ctx) {
   container.querySelectorAll('[data-promote]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const game = state.games.find((g) => g.id === btn.dataset.promote);
-      if (!game || !confirm(`"${game.name}" in den Katalog übernehmen?`)) return;
+      if (!game || !(await confirmDialog(`"${game.name}" in den Katalog übernehmen?`))) return;
       try {
         await api.games.promote(game.id);
         await ctx.refresh();
@@ -553,7 +553,7 @@ export function renderGameCatalog(container, ctx) {
   container.querySelectorAll('[data-delete]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const game = state.games.find((g) => g.id === btn.dataset.delete);
-      if (!game || !confirm(`"${game.name}" wirklich löschen?`)) return;
+      if (!game || !(await confirmDialog(`"${game.name}" wirklich löschen?`))) return;
       try {
         await api.games.remove(game.id);
         await ctx.refresh();

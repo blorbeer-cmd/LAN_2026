@@ -25,7 +25,7 @@
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, formatDate, formatDateTime, gameBadgeHtml } from '../format.js';
-import { openModal } from '../modal.js';
+import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 
@@ -361,7 +361,7 @@ export function renderVotes(container, ctx) {
   const cancelBtn = container.querySelector('#votes-cancel');
   if (cancelBtn) {
     cancelBtn.addEventListener('click', async () => {
-      if (!confirm('Abstimmung wirklich abbrechen? Alle Stimmen gehen verloren.')) return;
+      if (!(await confirmDialog('Abstimmung wirklich abbrechen? Alle Stimmen gehen verloren.'))) return;
       try {
         await api.votes.cancel();
         await ctx.refresh();

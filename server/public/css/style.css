@@ -1702,6 +1702,51 @@ input[type='number'].bracket-score-input {
 
 /* ---------- Toasts ---------- */
 
+/* ---------- Countdown overlay (public/js/countdown.js) ----------
+   Shared "3 · 2 · 1 · Los!" intro for every arcade game. Full-screen, with a
+   dim blurred backdrop so the board behind stays faintly visible, and a big
+   gradient number in the brand style that pops in per second. */
+.countdown-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 9, 18, 0.62);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+.countdown-num {
+  font-size: clamp(4rem, 22vw, 8rem);
+  font-weight: 800;
+  font-style: italic;
+  letter-spacing: -0.03em;
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 26px rgba(145, 99, 245, 0.55));
+}
+.countdown-pop {
+  animation: countdown-pop 0.85s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@keyframes countdown-pop {
+  0% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.92;
+    transform: scale(1);
+  }
+}
+
 .toast-container {
   position: fixed;
   bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + 12px);

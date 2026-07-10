@@ -15,7 +15,7 @@ import { renderMatchmaking, invalidateMatchmakingHistory, setDraftState } from '
 import { renderBroadcast, invalidateBroadcasts } from './views/broadcast.js';
 import { renderInfoBoard, invalidateInfoBoard } from './views/infoBoard.js';
 import { renderFoodOrders, invalidateFoodOrders } from './views/foodOrders.js';
-import { renderArcade } from './views/arcade.js';
+import { renderArcade, renderQuizRoom } from './views/arcade.js';
 import { renderTetris } from './views/tetris.js';
 import { renderGameCatalog, invalidateSkillSuggestions } from './views/gameCatalog.js';
 import { renderArrivals, invalidateArrivals } from './views/arrivals.js';
@@ -48,6 +48,7 @@ const VIEWS = {
   infoBoard: renderInfoBoard,
   foodOrders: renderFoodOrders,
   arcade: renderArcade,
+  quizRoom: renderQuizRoom,
   tetris: renderTetris,
   gameCatalog: renderGameCatalog,
   arrivals: renderArrivals,

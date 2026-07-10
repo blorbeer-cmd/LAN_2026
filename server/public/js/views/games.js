@@ -5,6 +5,7 @@
 // server/CLAUDE.md games reorg.
 
 import { api, getToken } from '../api.js';
+import { confirmDialog } from '../modal.js';
 import { state } from '../state.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
@@ -357,7 +358,7 @@ export function renderSettings(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.events || []).find((e) => e.id === btn.dataset.startTracking);
       if (!event) return;
-      if (!confirm(`Tracking für „${event.name}" starten? Live-Status und Spielzeit werden ab jetzt für die Teilnehmer erfasst.`)) return;
+      if (!(await confirmDialog(`Tracking für „${event.name}" starten? Live-Status und Spielzeit werden ab jetzt für die Teilnehmer erfasst.`))) return;
       try {
         await api.events.startTracking(event.id);
         await ctx.refresh();
@@ -371,7 +372,7 @@ export function renderSettings(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.events || []).find((e) => e.id === btn.dataset.stopTracking);
       if (!event) return;
-      if (!confirm(`Tracking für „${event.name}" stoppen? Es läuft dann wieder alles unter „Außerhalb von Events".`)) return;
+      if (!(await confirmDialog(`Tracking für „${event.name}" stoppen? Es läuft dann wieder alles unter „Außerhalb von Events".`))) return;
       try {
         await api.events.stopTracking(event.id);
         await ctx.refresh();
@@ -385,7 +386,7 @@ export function renderSettings(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.events || []).find((e) => e.id === btn.dataset.endEvent);
       if (!event) return;
-      if (!confirm(`Event „${event.name}" endgültig beenden? Das lässt sich nicht rückgängig machen.`)) return;
+      if (!(await confirmDialog(`Event „${event.name}" endgültig beenden? Das lässt sich nicht rückgängig machen.`))) return;
       try {
         await api.events.end(event.id);
         await ctx.refresh();

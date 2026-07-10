@@ -7,7 +7,7 @@
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime, toDatetimeLocal } from '../format.js';
-import { openModal } from '../modal.js';
+import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 
@@ -376,7 +376,7 @@ export function renderFoodOrders(container, ctx) {
 
   container.querySelectorAll('[data-close-order]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      if (!confirm('Bestellung schließen? Danach kann niemand mehr etwas eintragen.')) return;
+      if (!(await confirmDialog('Bestellung schließen? Danach kann niemand mehr etwas eintragen.'))) return;
       try {
         await api.foodOrders.close(btn.dataset.closeOrder);
         cache = null;

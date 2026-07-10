@@ -5,6 +5,7 @@
 // "Teams auslosen" (api.matchmaking.generate) rather than reinventing it.
 
 import { api } from '../api.js';
+import { confirmDialog } from '../modal.js';
 import { state, gameById } from '../state.js';
 import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
 import { showToast } from '../toast.js';
@@ -647,7 +648,7 @@ function renderDetail(container, ctx) {
   });
 
   container.querySelector('#tourn-delete').addEventListener('click', async () => {
-    if (!confirm(`Turnier "${t.name}" wirklich löschen?`)) return;
+    if (!(await confirmDialog(`Turnier "${t.name}" wirklich löschen?`))) return;
     try {
       await api.tournaments.remove(t.id);
       currentTournamentId = null;

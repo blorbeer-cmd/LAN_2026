@@ -17,6 +17,8 @@ import { getToken } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
+import { showCountdown, cancelCountdown } from '../countdown.js';
+import { confirmDialog } from '../modal.js';
 
 const COLS = 10;
 const ROWS = 20;
@@ -43,7 +45,6 @@ let lobbies = [];
 let match = null; // { matchId, host, players, beginsAt, running, paused, ended, winner }
 let latestState = null; // last tetris:state payload
 let prevLines = {}; // playerId -> last seen line count, to detect fresh clears for FX
-let countdownTimer = null;
 let inputBound = false;
 
 function myId() {
@@ -72,11 +73,6 @@ export function hasTetrisMatch() {
   return Boolean(match);
 }
 
-function stopCountdown() {
-  if (countdownTimer) clearInterval(countdownTimer);
-  countdownTimer = null;
-}
-
 export function ensureTetrisSocket() {
   if (socket) return socket;
   socket = io({ auth: { token: getToken() } });
@@ -93,7 +89,7 @@ export function ensureTetrisSocket() {
     latestState = null;
     prevLines = {};
     navigate('tetris'); // hand over to the full-screen board view
-    startCountdown();
+    showCountdown(match.beginsAt);
   });
 
   socket.on('tetris:state', (payload) => {
@@ -126,7 +122,7 @@ export function ensureTetrisSocket() {
     match.running = false;
     match.winner = payload.winner ?? null;
     match.endScores = payload.scores ?? null;
-    stopCountdown();
+    cancelCountdown();
     // A finished match adds a new highscore row — let the Arcade view know its
     // cached stats are stale so they refresh when the player heads back.
     window.dispatchEvent(new CustomEvent('lan:arcade-stats-dirty'));
@@ -177,20 +173,6 @@ function bindKeyboard() {
     e.preventDefault();
     sendInput(action);
   });
-}
-
-function secondsUntilStart() {
-  if (!match?.beginsAt) return 0;
-  return Math.max(0, Math.ceil((match.beginsAt - Date.now()) / 1000));
-}
-
-function startCountdown() {
-  stopCountdown();
-  rerender();
-  countdownTimer = setInterval(() => {
-    paintOverlay();
-    if (secondsUntilStart() <= 0) stopCountdown();
-  }, 200);
 }
 
 // ---------- Canvas painting ----------
@@ -365,18 +347,14 @@ function paint() {
   paintOverlay();
 }
 
+// The board overlay now only carries the pause state; the start countdown is
+// the shared full-screen overlay (countdown.js).
 function paintOverlay() {
   const overlay = document.querySelector('#tetris-overlay');
   if (!overlay) return;
   if (match?.paused) {
     overlay.hidden = false;
     overlay.innerHTML = `<div class="tetris-overlay-text">Pause</div>`;
-    return;
-  }
-  const left = secondsUntilStart();
-  if (match && !match.running && left > 0) {
-    overlay.hidden = false;
-    overlay.innerHTML = `<div class="tetris-overlay-text tetris-countdown">${left}</div>`;
     return;
   }
   overlay.hidden = true;
@@ -569,7 +547,7 @@ function wireMatch(container) {
     if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
   });
   container.querySelector('#tetris-finish')?.addEventListener('click', async () => {
-    if (!confirm('Match wirklich beenden?')) return;
+    if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
     const res = await emitWithAck('tetris:match:finish', { matchId: match?.matchId, playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'Beenden fehlgeschlagen.', { error: true });
   });
@@ -577,7 +555,7 @@ function wireMatch(container) {
   container.querySelector('#tetris-back')?.addEventListener('click', () => {
     match = null;
     latestState = null;
-    stopCountdown();
+    cancelCountdown();
     navigate('arcade');
   });
 }

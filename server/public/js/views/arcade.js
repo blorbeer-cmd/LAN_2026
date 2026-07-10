@@ -3,6 +3,8 @@ import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { ensureTetrisSocket, renderTetrisLobbyCard, wireTetrisLobbyCard, myTetrisLobby } from './tetris.js';
+import { confirmDialog } from '../modal.js';
+import { showCountdown, cancelCountdown } from '../countdown.js';
 
 // The Arcade opens as a launcher: a compact grid of game tiles. Picking one
 // reveals that game's lobby below. Quiz and Tetris are live; the rest are
@@ -79,7 +81,8 @@ function ensureSocket(ctx) {
     currentQuestion = null;
     lastResult = null;
     stopCountdown();
-    ctx.rerender();
+    navigate('quizRoom'); // hand over to the dedicated match view
+    showCountdown(payload.beginsAt);
   });
   socket.on('arcade:quiz:question', (payload) => {
     currentQuestion = payload;
@@ -107,6 +110,7 @@ function ensureSocket(ctx) {
     if (payload.scores) match = { ...(match ?? {}), scores: payload.scores, ended: true, winner: payload.winner };
     currentQuestion = null;
     stopCountdown();
+    cancelCountdown();
     stats = null;
     loadStats(ctx);
     ctx.rerender();
@@ -128,9 +132,14 @@ function ensureSocket(ctx) {
     currentQuestion = null;
     lastResult = null;
     stopCountdown();
-    ctx.rerender();
+    cancelCountdown();
+    navigate('arcade');
   });
   return socket;
+}
+
+function navigate(view) {
+  window.dispatchEvent(new CustomEvent('lan:navigate', { detail: view }));
 }
 
 function emitWithAck(event, payload) {
@@ -338,8 +347,7 @@ function activeGameHtml() {
         </div>
         ${renderLobbyList()}
       </div>
-      ${targetControls(lobby)}
-      ${renderMatch()}`;
+      ${targetControls(lobby)}`;
   }
   if (game === 'tetris') {
     return `<div style="margin-top:12px;">${renderTetrisLobbyCard()}</div>`;
@@ -422,7 +430,28 @@ export function renderArcade(container, ctx) {
     const res = await emitWithAck('arcade:lobby:start', { lobbyId: lobby.id, playerId, targetScore });
     if (!res?.ok) showToast(res?.error || 'Start fehlgeschlagen.', { error: true });
   });
+}
 
+// The live quiz match runs in its own view (like Tetris), so the Arcade page
+// stays a clean launcher. app.js maps the `quizRoom` view here.
+export function renderQuizRoom(container, ctx) {
+  ensureSocket(ctx);
+  if (!match) {
+    container.innerHTML = `
+      <button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button>
+      <div class="empty-state" style="margin-top:16px;">Kein laufendes Quiz-Match.</div>`;
+    return;
+  }
+  container.innerHTML = `
+    <h1 class="view-title">⚡ Gaming-Quiz</h1>
+    ${renderMatch()}
+    ${match.ended ? `<button type="button" class="btn btn-primary btn-block" id="quiz-back" style="margin-top:14px;">Zurück zum Arcade</button>` : ''}
+  `;
+  wireQuizMatch(container);
+  if (currentQuestion && !match.paused) startCountdown();
+}
+
+function wireQuizMatch(container) {
   container.querySelector('#quiz-answer-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const playerId = getMyId();
@@ -447,8 +476,16 @@ export function renderArcade(container, ctx) {
   });
 
   container.querySelector('#quiz-finish')?.addEventListener('click', async () => {
-    if (!confirm('Match wirklich beenden?')) return;
+    if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
     const res = await emitWithAck('arcade:match:finish', { matchId: match?.matchId, playerId: getMyId() });
     if (!res?.ok) showToast(res?.error || 'Beenden fehlgeschlagen.', { error: true });
+  });
+
+  container.querySelector('#quiz-back')?.addEventListener('click', () => {
+    match = null;
+    currentQuestion = null;
+    lastResult = null;
+    stopCountdown();
+    navigate('arcade');
   });
 }
