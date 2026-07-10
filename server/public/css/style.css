@@ -38,19 +38,71 @@
   /* Spacing scale — every card/row/section gap and padding in this file
      pulls from here instead of one-off pixel values, so the same kind of
      element (a card, a list row, a section gap) is exactly the same size
-     everywhere it appears instead of drifting per-view. */
+     everywhere it appears instead of drifting per-view. No in-between value
+     (6px, 10px, 14px, ...) is allowed outside this scale — round up or down
+     to the nearest step instead of introducing a new one. */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 48px;
   --card-padding: var(--space-4) var(--space-4);
   /* Minimum height for a single-line, icon-led list row (players, games,
      tournaments, the "Mehr" hub) — keeps every such row the same height
      regardless of how much subtext it happens to have. */
   --row-min-h: 68px;
   --row-icon-size: 36px;
+
+  /* Avatar sizes — the one scale every avatar/color-dot rendering (see
+     avatarHtml in format.js) should size itself from, instead of each call
+     site picking its own pixel value. */
+  --avatar-size-sm: 24px;
+  --avatar-size-md: 32px;
+  --avatar-size-lg: 48px;
+
+  /* Typography scale — every font-size in this file (and in the JS views,
+     which build HTML as template strings and can't rely on element
+     defaults) pulls from here. Named by role, not by raw value, so a future
+     re-tune only touches this block. */
+  --font-size-2xs: 0.7rem;
+  --font-size-xs: 0.78rem;
+  --font-size-sm: 0.85rem;
+  --font-size-md: 0.95rem;
+  --font-size-lg: 1.15rem;
+  --font-size-xl: 1.3rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 2rem;
+  --font-weight-regular: 400;
+  --font-weight-medium: 600;
+  --font-weight-bold: 700;
+  --font-weight-black: 800;
+  --line-height-tight: 1;
+
+  /* Breakpoints — documented here as the single source of truth for the
+     literal pixel values used in @media rules throughout this file. CSS
+     custom properties can't be read inside a @media condition itself (a
+     browser/spec limitation, not something a build step would fix without
+     introducing one), so every @media below repeats the literal value but
+     references the matching token name in a comment — keep both in sync by
+     hand when a breakpoint changes. */
+  --bp-sm: 480px;
+  --bp-md: 640px;
+  --bp-lg: 860px;
+  --bp-xl: 1280px;
+
+  /* "Pill" radius — already the de-facto shape for badges, chips, the nav
+     pill and vote bars; naming it stops future pill-shaped elements from
+     reinventing 999px (or a slightly different, wrong, almost-pill value). */
+  --radius-full: 999px;
+
+  /* Glow shadows — the two recurring accent-colored glows (buttons/active
+     states in app blue, logo/wordmark in brand purple), previously each
+     re-declared with slightly different blur/alpha per element. */
+  --shadow-glow-accent: 0 4px 20px rgba(91, 140, 255, 0.42);
+  --shadow-glow-brand: 0 0 14px rgba(145, 99, 245, 0.5);
 }
 
 * {
