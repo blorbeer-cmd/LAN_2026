@@ -103,28 +103,38 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   const teamCards = await page.locator('.team-card').count();
   assert.ok(teamCards >= 2, 'expected at least 2 team cards');
 
-  // Voting: start a round and cast a vote. The device identity was already
-  // set during onboarding, so no "who am I" picker appears — voting is one
-  // tap, which is exactly the intended flow. While the round is open, no
-  // per-game distribution (bars/counts) may be visible anywhere — only
-  // total participation and the voter's own pick.
+  // Voting: start a round, pick a game, and submit. The device identity was
+  // already set during onboarding, so no "who am I" picker appears. Picking
+  // a game only stages a local draft — it must not count as a vote until the
+  // submit button is pressed. While the round is open, no per-game
+  // distribution (bars/counts) may be visible anywhere — only total
+  // participation and the voter's own pick.
   await page.click('[data-view="votes"]');
   await page.waitForSelector('text=Du bist E2E Alice');
   await page.click('#votes-start');
   await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
   assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars while the round is open');
-  await page.click('[data-vote-game] >> nth=0');
-  await page.waitForFunction(() => document.body.textContent?.includes('1 Stimme'));
-  await page.waitForSelector('text=✓ Deine Stimme'); // the voter's own pick, not the aggregate
+  await page.click('[data-vote-select] >> nth=0');
+  await page.waitForSelector('text=✓ Ausgewählt'); // staged locally
+  assert.equal(
+    await page.locator('text=0 von 2 haben abgestimmt').count(),
+    1,
+    'selecting a game must not submit it by itself'
+  );
+  await page.click('#votes-submit');
+  await page.waitForFunction(() => document.body.textContent?.includes('1 von 2'));
   assert.equal(await page.locator('.vote-bar-track').count(), 0, 'still no bars after casting, before closing');
 
   await page.click('#votes-close');
   await page.waitForSelector('#votes-start');
-  // Closing reveals the full breakdown at last.
-  await page.waitForSelector('.vote-bar-track');
+  // Closing reveals the winner in the "Letztes Ergebnis" summary at the top
+  // of the page — the full per-game breakdown only appears in the history
+  // detail modal, not on the main page.
+  await page.waitForSelector('text=Letztes Ergebnis');
+  assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars on the main page, even after closing');
 
   // The just-closed round can be reopened from the history list for the
-  // same detailed breakdown.
+  // full detailed breakdown.
   await page.click('[data-open-history-round]');
   await page.waitForSelector('text=Abstimmung Runde 1');
   await page.waitForSelector('.modal .vote-bar-track');

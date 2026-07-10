@@ -23,6 +23,7 @@ import { broadcast, Events } from '../realtime';
 import { getTrackingEventId } from '../events';
 import { notifyPlayers } from '../push';
 import { isIntInRange } from '../validation';
+import { formatDurationMs } from '../playtime';
 
 export const votesRouter = Router();
 
@@ -61,16 +62,36 @@ interface ResultRow {
   playCount: number;
   avgPreference: number | null; // aggregate "Bock" rating across all players, null if nobody has rated it
   preferenceCount: number;
+  totalPlaytimeMs: number; // all-time wall-clock playtime across all players/sessions
+  totalPlaytimeFormatted: string;
+  voteWinCount: number; // how often this game has won a (closed) vote round, all-time
+}
+
+// How often each game has won a closed vote round, all-time — read once per
+// buildResults call from vote_rounds.winner_game_ids (a small JSON array per
+// row), not worth a dedicated join since round counts stay tiny at LAN scale.
+function voteWinCountsByGame(): Map<string, number> {
+  const rows = db
+    .prepare("SELECT winner_game_ids AS winnerGameIdsJson FROM vote_rounds WHERE closed_at IS NOT NULL AND winner_game_ids IS NOT NULL")
+    .all() as Array<{ winnerGameIdsJson: string }>;
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const ids: string[] = JSON.parse(row.winnerGameIdsJson);
+    for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return counts;
 }
 
 function buildResults(round: number, mode: VoteMode): ResultRow[] {
+  const now = Date.now();
   const rows = db
     .prepare(
       `SELECT g.id AS gameId, g.name AS gameName, g.icon AS icon,
               COUNT(v.player_id) AS votes,
               COALESCE(SUM(v.points), 0) AS points,
               m.lastPlayedAt AS lastPlayedAt, COALESCE(m.playCount, 0) AS playCount,
-              p.avgPreference AS avgPreference, COALESCE(p.preferenceCount, 0) AS preferenceCount
+              p.avgPreference AS avgPreference, COALESCE(p.preferenceCount, 0) AS preferenceCount,
+              COALESCE(ps.totalPlaytimeMs, 0) AS totalPlaytimeMs
        FROM games g
        LEFT JOIN votes v ON v.game_id = g.id AND v.round = ?
        LEFT JOIN (
@@ -81,11 +102,21 @@ function buildResults(round: number, mode: VoteMode): ResultRow[] {
          SELECT game_id, AVG(rating) AS avgPreference, COUNT(*) AS preferenceCount
          FROM preferences GROUP BY game_id
        ) p ON p.game_id = g.id
+       LEFT JOIN (
+         SELECT game_id, SUM(MAX(0, COALESCE(ended_at, ?) - started_at)) AS totalPlaytimeMs
+         FROM play_sessions GROUP BY game_id
+       ) ps ON ps.game_id = g.id
        GROUP BY g.id`
     )
-    .all(round) as Array<Omit<ResultRow, 'score'>>;
+    .all(round, now) as Array<Omit<ResultRow, 'score' | 'totalPlaytimeFormatted' | 'voteWinCount'>>;
 
-  const results: ResultRow[] = rows.map((r) => ({ ...r, score: mode === 'points' ? r.points : r.votes }));
+  const winCounts = voteWinCountsByGame();
+  const results: ResultRow[] = rows.map((r) => ({
+    ...r,
+    score: mode === 'points' ? r.points : r.votes,
+    totalPlaytimeFormatted: formatDurationMs(r.totalPlaytimeMs),
+    voteWinCount: winCounts.get(r.gameId) ?? 0,
+  }));
 
   // Sort by this round's score first, then by aggregate popularity (so the
   // list starts out popularity-sorted before anyone has voted), then name.
