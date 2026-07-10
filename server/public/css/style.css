@@ -1582,10 +1582,20 @@ button.card {
   flex-wrap: wrap;
   margin-top: var(--space-3);
 }
-.arcade-game-shell #quiz-answer-form,
-.arcade-game-shell .quiz-round-result {
+.arcade-game-shell .quiz-stage-card {
   width: min(100%, 680px);
+  height: 174px;
   margin-inline: auto;
+  box-sizing: border-box;
+}
+.arcade-game-shell .quiz-round-result {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.arcade-game-shell .quiz-round-result h2 {
+  margin: 0;
+  font-size: var(--font-size-lg);
 }
 
 .blobby-score {
@@ -1629,18 +1639,6 @@ button.card {
   color: var(--text);
   font-size: var(--font-size-xl);
   font-weight: 800;
-}
-.blobby-controls {
-  display: grid;
-  grid-template-columns: 1fr 1.3fr 1fr;
-  gap: var(--space-2);
-  width: min(100%, 520px);
-  margin: var(--space-3) auto;
-}
-.blobby-controls .btn {
-  min-height: 52px;
-  touch-action: none;
-  user-select: none;
 }
 
 input[type='range'] {

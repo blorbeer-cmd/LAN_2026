@@ -51,10 +51,12 @@ export function ensureBlobbySocket() {
     latest = payload;
     latestAt = performance.now();
     if (match) { match.running = payload.running; match.paused = payload.paused; match.scores = payload.scores; }
+    updateScoreDisplay();
     if (!document.querySelector('#blobby-canvas')) rerender();
   });
   socket.on('blobby:point', (payload) => {
     if (match) match.scores = payload.scores;
+    updateScoreDisplay();
     flashPoint(payload.scorer?.name);
   });
   socket.on('blobby:match:paused', () => { if (match) match.paused = true; rerender(); });
@@ -212,6 +214,10 @@ function scoreHtml() {
   const goal = match?.targetScore ?? latest?.targetScore ?? targetScore;
   return (match?.scores ?? latest?.scores ?? []).map((s) => `<span class="chip"><strong>${escapeHtml(s.name)}</strong> ${s.score}/${goal}</span>`).join('');
 }
+function updateScoreDisplay() {
+  const score = document.querySelector('#blobby-score');
+  if (score) score.innerHTML = scoreHtml();
+}
 function resultHtml() {
   if (!match?.ended) return '';
   const label = match.winner ? (match.winner.id === myId() ? 'Du gewinnst!' : `${escapeHtml(match.winner.name)} gewinnt`) : 'Match beendet';
@@ -221,20 +227,13 @@ export function renderBlobby(container) {
   ensureBlobbySocket();
   if (!match) { container.innerHTML = '<button class="btn btn-sm" data-navigate="arcade">‹ Arcade</button><div class="empty-state">Kein laufendes Blobby-Volley-Match.</div>'; return; }
   const host = match.host?.id === myId();
-  container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Blobby Volley</h1><div class="chip-list blobby-score">${scoreHtml()}</div>
+  container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Blobby Volley</h1><div id="blobby-score" class="chip-list blobby-score">${scoreHtml()}</div>
     <div class="blobby-court"><canvas id="blobby-canvas" width="${W}" height="${H}"></canvas><div id="blobby-point" class="blobby-point" hidden></div>${match.paused ? '<div class="blobby-pause-overlay">Pause</div>' : ''}</div>
-    <div class="blobby-controls"><button class="btn" data-move="left">←</button><button class="btn btn-primary" data-jump>Springen</button><button class="btn" data-move="right">→</button></div>
     ${host && !match.ended ? `<div class="arcade-match-controls">${match.paused ? '<button class="btn btn-sm btn-equal btn-primary" id="blobby-resume">Fortsetzen</button>' : '<button class="btn btn-sm btn-equal" id="blobby-pause">Pausieren</button>'}<button class="btn btn-sm btn-equal btn-danger" id="blobby-finish">Beenden</button></div>` : ''}${resultHtml()}</div>`;
   wireGame(container); startAnimation();
 }
 function wireGame(container) {
-  container.querySelectorAll('[data-move]').forEach((b) => {
-    const side = b.dataset.move;
-    const down = (e) => { e.preventDefault(); keys[side] = true; sendInput(false); };
-    const up = (e) => { e.preventDefault(); keys[side] = false; sendInput(false); };
-    b.addEventListener('pointerdown', down); b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
-  });
-  container.querySelector('[data-jump]')?.addEventListener('pointerdown', (e) => { e.preventDefault(); sendInput(true); });
+  wireCanvasControls(container.querySelector('#blobby-canvas'));
   container.querySelector('#blobby-pause')?.addEventListener('click', async () => {
     const res = await emitAck('blobby:match:pause', { matchId: match.matchId, playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
@@ -248,4 +247,26 @@ function wireGame(container) {
     await emitAck('blobby:match:finish', { matchId: match.matchId, playerId: myId() });
   });
   container.querySelector('#blobby-back')?.addEventListener('click', () => { match = null; previous = latest = null; stopAnimation(); navigate('arcade'); });
+}
+function wireCanvasControls(canvas) {
+  if (!canvas) return;
+  let startX = 0; let startY = 0; let moving = false;
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); startX = e.clientX; startY = e.clientY; moving = false; canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!canvas.hasPointerCapture(e.pointerId)) return;
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) < 18) return;
+    moving = true; keys.left = dx < 0; keys.right = dx > 0; sendInput(false);
+  });
+  const finish = (e) => {
+    if (!canvas.hasPointerCapture(e.pointerId)) return;
+    const dy = e.clientY - startY;
+    keys.left = false; keys.right = false; sendInput(false);
+    if (!moving || dy < -24) sendInput(true);
+    canvas.releasePointerCapture(e.pointerId);
+  };
+  canvas.addEventListener('pointerup', finish);
+  canvas.addEventListener('pointercancel', finish);
 }

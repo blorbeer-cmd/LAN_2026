@@ -295,14 +295,13 @@ function renderMatch() {
   if (!match) return '';
   const celebration = winnerCelebrationHtml();
   const result = lastResult && !celebration
-    ? `<div class="card stack quiz-round-result" style="margin-top:var(--space-3);">
-        <strong>${lastResult.timeout ? 'Kein Punkt' : `Punkt für: ${escapeHtml(lastResult.winner?.name ?? 'Niemand')}`}</strong>
-        <span class="muted">Antwort: ${escapeHtml(lastResult.correctAnswer ?? '')}</span>
+    ? `<div class="card stack quiz-stage-card quiz-round-result" style="margin-top:var(--space-3);">
+        <h2>${escapeHtml(lastResult.correctAnswer ?? '')}</h2>
       </div>`
     : '';
   const question = currentQuestion
     ? `
-      <form id="quiz-answer-form" class="card stack" style="margin-top:var(--space-3);">
+      <form id="quiz-answer-form" class="card stack quiz-stage-card" style="margin-top:var(--space-3);">
         <div class="row-between">
           <div class="muted">${escapeHtml(currentQuestion.category || 'Quiz')} · ${escapeHtml(currentQuestion.difficulty || 'offen')}</div>
           <span id="quiz-countdown" class="badge ${secondsLeft() <= 5 ? 'badge-paused' : 'badge-playing'}">${match.paused ? 'Pause' : `${secondsLeft()}s`}</span>
