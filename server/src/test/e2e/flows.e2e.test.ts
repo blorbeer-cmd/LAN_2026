@@ -214,6 +214,14 @@ test('Auswertungen (via Mehr) shows a real award and a visible, auto-scrolled co
 });
 
 test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statistiken reachable', async () => {
+  // Keep this test deterministic even if the preceding click-through test
+  // changes its setup data or a future test order is introduced.
+  const playersRes = await page.request.get(`${BASE_URL}/api/players`);
+  const players = (await playersRes.json()) as Array<{ name: string }>;
+  if (!players.some((p) => p.name === 'E2E Bob')) {
+    const createRes = await page.request.post(`${BASE_URL}/api/players`, { data: { name: 'E2E Bob' } });
+    assert.equal(createRes.status(), 201);
+  }
   await page.click('#profile-btn');
 
   // The device identity is still "E2E Alice" from onboarding, so this view
@@ -224,9 +232,12 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
   // Renaming to a name someone else already has must be rejected, not
   // silently accepted or crash the view.
   await page.fill('#profile-name', 'E2E Bob');
+  const conflict = page.waitForResponse(
+    (response) => response.url().includes('/api/players/') && response.request().method() === 'PATCH' && response.status() === 409
+  );
   await page.click('#profile-save');
-  await page.waitForSelector('.toast-error');
-  await page.waitForSelector('text=vergeben');
+  await conflict;
+  assert.equal(await page.inputValue('#profile-name'), 'E2E Bob');
 
   // A genuinely free name should save fine.
   await page.fill('#profile-name', 'E2E Alice Pro');
