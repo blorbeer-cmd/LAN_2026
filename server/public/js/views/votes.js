@@ -1,26 +1,34 @@
 // "What's next?" voting view (FR-19..21). Voting needs to know WHO is voting;
 // since the tool has no per-person login (just the shared access token),
-// each phone remembers "who I am" locally so casting a vote is a single tap,
-// not a form every time.
+// each phone remembers "who I am" locally so casting a vote takes no form.
+//
+// Layout, top to bottom:
+// 1. The last (closed) round's result, pulled straight from the history —
+//    always visible, so you see what just got decided without digging.
+// 2. The current Top 5 by aggregate "Bock" rating — always visible,
+//    read-only (no vote controls), so there's always something useful on
+//    screen even with no vote running.
+// 3. Either "start a new round" controls (idle), or the full interactive
+//    game list plus a submit button (round open) — the rest of the catalog
+//    only appears once a round is actually running.
 //
 // While a round is open, nobody sees how votes/points are distributed across
 // games yet — only the server-side final tally, once closed, may influence
 // anyone (no watching a leader emerge and piling onto it). The view only
-// shows: the list of games to vote/rate, your own already-cast pick(s) (your
-// own choice, not the aggregate), and how many people have participated so
-// far (momentum, not a per-game breakdown). Full bars/rankings appear the
-// moment the round closes, and past rounds stay inspectable afterwards via
-// the history list.
+// shows: the list of games to vote/rate, your own local (not-yet-submitted)
+// picks, and how many people have already submitted (momentum, not a
+// per-game breakdown). Full bars/rankings appear the moment the round
+// closes, and past rounds stay inspectable afterwards via the history list.
 //
 // Two modes (chosen when a round starts, see server/src/routes/votes.ts):
-// - 'single': one tap picks a game, tapping another replaces it.
+// - 'single': pick one game, tap another to change your mind.
 // - 'points': one slider per game, 0-10 points, 0 meaning "not rated" — as
-//   many games as you like. Changing your mind just re-saves the whole set
-//   (same fire-and-forget pattern as the skill/preference sliders in
-//   profile.js).
-// Either way, closed-round results are also sorted by each game's aggregate
-// "Bock" rating (state.preferences, maintained per-player in profile.js)
-// whenever the round's own score is tied.
+//   many games as you like.
+// Either mode requires an explicit "Abstimmung abschicken" tap — selecting a
+// game or moving a slider only stages a local draft, it does not hit the
+// server until submitted. Closed-round results are sorted by each game's
+// aggregate "Bock" rating (state.preferences, maintained per-player in
+// profile.js) whenever the round's own score is tied.
 
 import { api } from '../api.js';
 import { state } from '../state.js';
@@ -54,13 +62,10 @@ export function invalidateVoteHistory() {
   historyCache = null;
 }
 
-// The current player's own entries in the running round — for 'points' mode
-// this reconstructs the multi-select UI (which games, how many points each);
-// for 'single' mode it's just "did I already vote, and for what" so tapping
-// a different game reads as changing your mind rather than a fresh pick with
-// no feedback. Either way this is the player's OWN submission, not the
-// aggregate, so showing it while the round is open doesn't leak anything
-// about how the vote is trending.
+// The current player's own already-submitted entries in the running round —
+// for 'points' mode this is which games, how many points each; for 'single'
+// mode it's just "did I already vote, and for what". Used only to seed the
+// local draft (see below) once per round/player, not rendered directly.
 let mineCache = null; // Map<gameId, points|null>
 let mineCacheKey = null; // `${round}:${playerId}`
 let mineLoading = false;
@@ -79,15 +84,14 @@ async function loadMine(round, playerId, ctx) {
   }
 }
 
-async function savePointsDraft(playerId) {
-  if (!mineCache) return; // draft not loaded yet, nothing to save
-  const entries = [...mineCache.entries()].map(([gameId, points]) => ({ gameId, points }));
-  try {
-    await api.votes.castPoints(playerId, entries);
-  } catch (err) {
-    showToast(err.message, { error: true });
-  }
-}
+// Local, not-yet-submitted picks. Tapping a game or dragging a slider only
+// changes this draft; nothing reaches the server until the submit button is
+// pressed. Reseeded from mineCache once per round/player (draftKey tracks
+// that so a fresh round or a "Nicht du?" identity switch starts blank/fresh
+// rather than carrying over a stale draft).
+let draftSingleGameId = null;
+let draftPoints = null; // Map<gameId, points>
+let draftKey = null; // `${round}:${playerId}` the current draft belongs to
 
 function preferenceChipHtml(r) {
   if (!r.preferenceCount) {
@@ -100,20 +104,74 @@ function lastPlayedHtml(r) {
   return r.playCount > 0 ? `zuletzt gespielt: ${formatDate(r.lastPlayedAt)} · ${r.playCount}× gespielt` : 'noch nie gespielt';
 }
 
-// ---------- open round: cast your vote, no distribution shown ----------
+function playtimeChipHtml(r) {
+  return `<span class="muted" style="font-size:0.78rem;">⏱️ ${r.totalPlaytimeMs > 0 ? r.totalPlaytimeFormatted : '–'}</span>`;
+}
 
-function renderOpenRows(votes, myId, mine, mineReady) {
+function winCountChipHtml(r) {
+  return `<span class="muted" style="font-size:0.78rem;">🏆 ${r.voteWinCount}× gewonnen</span>`;
+}
+
+function statsRowHtml(r) {
+  return `
+    <div class="row-between">
+      <span class="row" style="gap:10px;flex-wrap:wrap;">
+        <span class="muted" style="font-size:0.78rem;">${lastPlayedHtml(r)}</span>
+        ${preferenceChipHtml(r)}
+      </span>
+    </div>
+    <div class="row-between">
+      <span class="row" style="gap:10px;flex-wrap:wrap;">
+        ${playtimeChipHtml(r)}
+        ${winCountChipHtml(r)}
+      </span>
+    </div>`;
+}
+
+// ---------- Top 5 by aggregate "Bock" rating: always visible, read-only ----------
+
+function topByPreference(results, n = 5) {
+  return [...results]
+    .sort((a, b) => {
+      const diff = (b.avgPreference ?? -1) - (a.avgPreference ?? -1);
+      if (diff !== 0) return diff;
+      return a.gameName.localeCompare(b.gameName, 'de');
+    })
+    .slice(0, n);
+}
+
+function renderTop5(results) {
+  const top5 = topByPreference(results, 5);
+  if (top5.length === 0) {
+    return `<div class="empty-state" style="padding:16px;">Noch keine Spiele im Katalog.</div>`;
+  }
+  return top5
+    .map(
+      (r) => `
+        <div class="vote-row">
+          <div class="row-between">
+            <span class="row" style="gap:8px;">${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 24)} ${escapeHtml(r.gameName)}</span>
+          </div>
+          ${statsRowHtml(r)}
+        </div>`
+    )
+    .join('');
+}
+
+// ---------- open round: stage a local draft, submit explicitly ----------
+
+function renderOpenRows(votes, draftReady) {
   return votes.results
     .map((r) => {
       let action = '';
       let pointsSliderRow = '';
-      if (votes.mode === 'single') {
-        const isMine = mineReady && mine.has(r.gameId);
-        action = `<button type="button" class="btn btn-sm ${isMine ? 'btn-primary' : ''}" data-vote-game="${r.gameId}">${isMine ? '✓ Deine Stimme' : 'Abstimmen'}</button>`;
-      } else if (!mineReady) {
-        pointsSliderRow = `<div class="muted" style="font-size:0.78rem;padding:4px 0 0;">Lädt deine Punkte…</div>`;
+      if (!draftReady) {
+        pointsSliderRow = `<div class="muted" style="font-size:0.78rem;padding:4px 0 0;">Lädt deine Auswahl…</div>`;
+      } else if (votes.mode === 'single') {
+        const isSelected = draftSingleGameId === r.gameId;
+        action = `<button type="button" class="btn btn-sm ${isSelected ? 'btn-primary' : ''}" data-vote-select="${r.gameId}">${isSelected ? '✓ Ausgewählt' : 'Auswählen'}</button>`;
       } else {
-        const pointsVal = mine.get(r.gameId) ?? 0;
+        const pointsVal = draftPoints.get(r.gameId) ?? 0;
         pointsSliderRow = `
           <div class="skill-row" data-points-row="${r.gameId}" style="padding:4px 0 0;">
             <span class="muted" style="font-size:0.78rem;">Punkte</span>
@@ -129,12 +187,7 @@ function renderOpenRows(votes, myId, mine, mineReady) {
             <span class="row" style="gap:8px;">${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 24)} ${escapeHtml(r.gameName)}</span>
             ${action}
           </div>
-          <div class="row-between">
-            <span class="row" style="gap:10px;">
-              <span class="muted" style="font-size:0.78rem;">${lastPlayedHtml(r)}</span>
-              ${preferenceChipHtml(r)}
-            </span>
-          </div>
+          ${statsRowHtml(r)}
           ${pointsSliderRow}
         </div>`;
     })
@@ -157,15 +210,38 @@ function renderClosedRows(results, mode, winnerGameIds) {
             <span class="muted">${scoreLabel}</span>
           </div>
           <div class="vote-bar-track"><div class="vote-bar-fill" style="width:${(r.score / maxScore) * 100}%"></div></div>
-          <div class="row-between">
-            <span class="row" style="gap:10px;">
-              <span class="muted" style="font-size:0.78rem;">${lastPlayedHtml(r)}</span>
-              ${preferenceChipHtml(r)}
-            </span>
-          </div>
+          ${statsRowHtml(r)}
         </div>`;
     })
     .join('');
+}
+
+// ---------- last result: the most recent closed round, straight from history ----------
+
+function renderLastResult() {
+  if (historyLoading || historyCache === null) {
+    return `<div class="empty-state" style="padding:16px;">Lädt…</div>`;
+  }
+  if (historyCache.length === 0) {
+    return `<div class="empty-state" style="padding:16px;"><span class="emoji">🗳️</span>Noch keine Abstimmung durchgeführt.</div>`;
+  }
+  const h = historyCache[0];
+  const winners = h.winners.length
+    ? h.winners
+        .map((w) => {
+          const points = h.mode === 'points' && w.points > 0 ? ` · ${w.points} Pkt.` : '';
+          const voteCount = h.mode !== 'points' && w.votes > 0 ? ` · ${w.votes} Stimme(n)` : '';
+          return `<span class="chip">${gameBadgeHtml({ id: w.gameId, icon: w.icon }, 24)} ${escapeHtml(w.gameName)}${points}${voteCount}</span>`;
+        })
+        .join('')
+    : `<span class="muted">Niemand hat abgestimmt</span>`;
+  return `
+    <div class="stack" style="gap:6px;padding:4px 0;">
+      <div class="chip-list">${winners}</div>
+      <span class="muted" style="font-size:0.78rem;">
+        ${formatDateTime(h.closedAt)} · ${h.mode === 'points' ? 'Punkte-Modus' : 'Einzel-Wahl'} · ${h.totalVotes} Stimme(n)
+      </span>
+    </div>`;
 }
 
 // ---------- history: list + reopen a past round's full detail ----------
@@ -242,19 +318,36 @@ export function renderVotes(container, ctx) {
   }
   const mineReady = votes.open && myId && mineCacheKey === `${votes.round}:${myId}` && mineCache;
 
+  if (mineReady && draftKey !== mineCacheKey) {
+    draftSingleGameId = votes.mode === 'single' ? [...mineCache.keys()][0] ?? null : null;
+    draftPoints = new Map(mineCache);
+    draftKey = mineCacheKey;
+  }
+
   const whoAmI = whoAmICardHtml('whoami');
+  const totalPlayers = state.players.length;
 
-  const rows = votes.open
-    ? renderOpenRows(votes, myId, mineReady ? mineCache : new Map(), Boolean(mineReady))
-    : renderClosedRows(votes.results, votes.mode, votes.winnerGameIds);
-
-  const controls = votes.open
-    ? `
-      <div class="row">
+  let openSectionHtml = '';
+  if (votes.open) {
+    const summary =
+      votes.mode === 'points'
+        ? `🟢 Abstimmung läuft (Punkte-Modus) · ${votes.totalVoters} von ${totalPlayers} haben abgestimmt – Verteilung gibt's erst nach dem Ende`
+        : `🟢 Abstimmung läuft (Einzel-Wahl) · ${votes.totalVoters} von ${totalPlayers} haben abgestimmt – Ergebnis gibt's erst nach dem Ende`;
+    const rows = renderOpenRows(votes, mineReady);
+    const submitLabel = votes.mode === 'points' ? 'Bewertung abschicken' : 'Stimme abschicken';
+    openSectionHtml = `
+      <div class="section-title">🗳️ Abstimmung</div>
+      <div class="card stack">
+        <div class="muted">${summary}</div>
+        ${rows}
+        <button type="button" class="btn btn-primary btn-block" id="votes-submit" ${mineReady ? '' : 'disabled'}>${submitLabel}</button>
+      </div>
+      <div class="row" style="margin-top:12px;">
         <button type="button" class="btn btn-primary" id="votes-close" style="flex:1;">Beenden &amp; Gewinner küren</button>
         <button type="button" class="btn btn-danger" id="votes-cancel">Abbrechen</button>
-      </div>`
-    : `
+      </div>`;
+  } else {
+    openSectionHtml = `
       <div class="card stack">
         <div class="section-title" style="margin-bottom:0;">Neue Abstimmung starten</div>
         <label class="check-row">
@@ -267,27 +360,19 @@ export function renderVotes(container, ctx) {
         </label>
         <button type="button" class="btn btn-primary btn-block" id="votes-start">Abstimmung starten</button>
       </div>`;
-
-  const summary = votes.open
-    ? votes.mode === 'points'
-      ? `🟢 Abstimmung läuft (Punkte-Modus) · ${votes.totalVoters} Teilnehmer bisher – Verteilung gibt's erst nach dem Ende`
-      : `🟢 Abstimmung läuft (Einzel-Wahl) · ${votes.totalVoters} Stimme(n) bisher – Ergebnis gibt's erst nach dem Ende`
-    : '⚪ Keine offene Abstimmung';
-
-  const draftHint =
-    votes.open && votes.mode === 'points' && mineReady
-      ? `<div class="muted" style="font-size:0.78rem;margin-top:4px;">${mineCache.size} Spiel(e) bewertet – Änderungen speichern automatisch.</div>`
-      : '';
+  }
 
   container.innerHTML = `
     <h1 class="view-title">Was zocken wir als Nächstes?</h1>
     ${whoAmI}
-    <div class="card stack" style="margin-top:12px;">
-      <div class="muted">${summary}</div>
-      ${draftHint}
-      ${rows}
-    </div>
-    <div style="margin-top:12px;">${controls}</div>
+
+    <div class="section-title">🏆 Letztes Ergebnis</div>
+    <div class="card">${renderLastResult()}</div>
+
+    <div class="section-title">🔥 Top 5 nach Bock-Level</div>
+    <div class="card">${renderTop5(votes.results)}</div>
+
+    ${openSectionHtml}
 
     <div class="section-title">🕓 Vote-Historie</div>
     <p class="muted" style="font-size:0.78rem;margin:-4px 0 8px;">Antippen für die genaue Punkteverteilung dieser Runde.</p>
@@ -296,41 +381,52 @@ export function renderVotes(container, ctx) {
 
   wireWhoAmICard(container, 'whoami', ctx);
 
-  container.querySelectorAll('[data-vote-game]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const playerId = getMyId();
-      if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
-      try {
-        await api.votes.cast(playerId, btn.dataset.voteGame);
-        mineCache = null; // force a reload so the "✓ Deine Stimme" state reflects the new pick
-        mineCacheKey = null;
-        await ctx.refresh();
-        showToast('Stimme gezählt.');
-      } catch (err) {
-        showToast(err.message, { error: true });
-      }
+  container.querySelectorAll('[data-vote-select]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      draftSingleGameId = btn.dataset.voteSelect;
+      ctx.rerender();
     });
   });
 
   container.querySelectorAll('[data-points-slider]').forEach((slider) => {
     const gameId = slider.dataset.pointsSlider;
     const valueEl = slider.closest('[data-points-row]').querySelector('.skill-value');
-    let debounceTimer = null;
     slider.addEventListener('input', () => {
-      const playerId = getMyId();
-      if (!playerId) return;
       valueEl.textContent = slider.value;
       const value = parseInt(slider.value, 10);
-      if (value > 0) mineCache.set(gameId, value);
-      else mineCache.delete(gameId); // 0 = not rating this game
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => savePointsDraft(playerId), 300);
+      if (value > 0) draftPoints.set(gameId, value);
+      else draftPoints.delete(gameId);
     });
   });
 
   container.querySelectorAll('[data-open-history-round]').forEach((btn) => {
     btn.addEventListener('click', () => openHistoryRoundDetail(btn.dataset.openHistoryRound));
   });
+
+  const submitBtn = container.querySelector('#votes-submit');
+  if (submitBtn) {
+    submitBtn.addEventListener('click', async () => {
+      const playerId = getMyId();
+      if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+      if (votes.mode === 'single' && !draftSingleGameId) {
+        return showToast('Bitte zuerst ein Spiel auswählen.', { error: true });
+      }
+      try {
+        if (votes.mode === 'single') {
+          await api.votes.cast(playerId, draftSingleGameId);
+        } else {
+          const entries = [...draftPoints.entries()].map(([gameId, points]) => ({ gameId, points }));
+          await api.votes.castPoints(playerId, entries);
+        }
+        mineCache = null; // force a reload so the draft re-syncs with what the server now has
+        mineCacheKey = null;
+        await ctx.refresh();
+        showToast('Deine Stimme wurde gezählt.');
+      } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  }
 
   const startBtn = container.querySelector('#votes-start');
   if (startBtn) {

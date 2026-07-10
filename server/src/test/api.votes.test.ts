@@ -312,3 +312,29 @@ test('points endpoint is rejected while a round is in single mode', async () => 
   assert.equal(res.status, 409);
   await request(app).post('/api/votes/cancel');
 });
+
+test('each result row reports its all-time vote win count', async () => {
+  // Rocket League has won two closed rounds so far in this file (the single-
+  // mode re-vote test, and the points-mode test); CS2 has never won.
+  const res = await request(app).get('/api/votes');
+  const cs2Result = res.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
+  const rlResult = res.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
+  assert.equal(rlResult.voteWinCount, 2);
+  assert.equal(cs2Result.voteWinCount, 0);
+});
+
+test('each result row reports total all-time playtime, growing as sessions are tracked', async () => {
+  const before = await request(app).get('/api/votes');
+  const cs2Before = before.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
+  assert.equal(cs2Before.totalPlaytimeMs, 0);
+  assert.equal(cs2Before.totalPlaytimeFormatted, '0m');
+
+  const player = await request(app).post('/api/players').send({ name: 'Playtime Voter' });
+  await request(app).post('/api/agent/report').set('x-api-key', player.body.api_key).send({ processNames: ['cs2.exe'] });
+  await new Promise((r) => setTimeout(r, 50));
+  await request(app).post('/api/agent/report').set('x-api-key', player.body.api_key).send({ processNames: [] });
+
+  const after = await request(app).get('/api/votes');
+  const cs2After = after.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
+  assert.ok(cs2After.totalPlaytimeMs > 0, 'expected the tracked session to count towards total playtime');
+});
