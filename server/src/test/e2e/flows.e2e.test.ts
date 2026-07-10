@@ -416,6 +416,9 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
 test('Arcade: open a quiz lobby, see it listed, then close it again', async () => {
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="arcade"]');
+  // Arcade is a launcher; select the quiz tile before its lobby controls
+  // become visible (module state is intentionally reset on a fresh run).
+  await page.click('[data-game="quiz"]');
   await page.waitForSelector('#quiz-create-lobby');
   await page.click('#quiz-create-lobby');
 
