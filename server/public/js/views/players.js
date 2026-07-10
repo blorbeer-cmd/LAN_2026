@@ -5,7 +5,7 @@
 import { api } from '../api.js';
 import { state, playerById } from '../state.js';
 import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
-import { openModal } from '../modal.js';
+import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { AVATAR_PALETTE } from '../avatarPalette.js';
 
@@ -175,7 +175,7 @@ function openPlayerDetail(playerId, ctx) {
         });
 
         el.querySelector('#detail-delete').addEventListener('click', async () => {
-          if (!confirm(`${player.name} wirklich löschen?`)) return;
+          if (!(await confirmDialog(`${player.name} wirklich löschen?`))) return;
           try {
             await api.players.remove(playerId);
             close();

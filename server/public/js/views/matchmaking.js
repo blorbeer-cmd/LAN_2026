@@ -4,6 +4,7 @@
 // draw, not just whoever clicked the button.
 
 import { api } from '../api.js';
+import { confirmDialog } from '../modal.js';
 import { state, gameById } from '../state.js';
 import { escapeHtml, avatarHtml, gameBadgeHtml, formatDateTime } from '../format.js';
 import { showToast } from '../toast.js';
@@ -166,7 +167,7 @@ function wireDraftBoard(container, ctx, draft) {
   const cancelBtn = container.querySelector('#draft-cancel');
   if (cancelBtn) {
     cancelBtn.addEventListener('click', async () => {
-      if (!confirm('Draft wirklich abbrechen?')) return;
+      if (!(await confirmDialog('Draft wirklich abbrechen?'))) return;
       try {
         draftCache = await api.draft.cancel();
         ctx.rerender();

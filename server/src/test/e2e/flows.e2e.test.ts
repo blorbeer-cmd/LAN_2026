@@ -232,11 +232,12 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
   // Renaming to a name someone else already has must be rejected, not
   // silently accepted or crash the view.
   await page.fill('#profile-name', 'E2E Bob');
-  const conflict = page.waitForResponse(
-    (response) => response.url().includes('/api/players/') && response.request().method() === 'PATCH' && response.status() === 409
-  );
-  await page.click('#profile-save');
-  await conflict;
+  await Promise.all([
+    page.waitForResponse(
+      (response) => response.url().includes('/api/players/') && response.request().method() === 'PATCH' && response.status() === 409
+    ),
+    page.click('#profile-save'),
+  ]);
   assert.equal(await page.inputValue('#profile-name'), 'E2E Bob');
 
   // A genuinely free name should save fine.
@@ -287,6 +288,7 @@ test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bo
   // Promote the suggestion into the catalog, then rate it right in the row —
   // no detour through a separate profile page needed.
   await page.click('[data-promote]');
+  await page.click('[data-confirm]');
   await page.waitForSelector('button[data-tab="catalog"].btn-primary');
   const partyspielCard = page.locator('.game-card', { hasText: 'E2E Partyspiel' });
   await partyspielCard.waitFor();
@@ -398,7 +400,9 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.waitForSelector('text=Margherita');
   await page.waitForSelector('text=9,50 €');
 
-  await page.click('[data-close-order]'); // confirm auto-accepted
+  await page.click('[data-close-order]');
+  // confirmDialog is an in-app modal (not a native browser dialog).
+  await page.click('[data-confirm]');
   await page.waitForSelector('.badge-offline >> text=Geschlossen');
 
   // Closing only freezes items — the details stay correctable afterward.
@@ -412,6 +416,9 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
 test('Arcade: open a quiz lobby, see it listed, then close it again', async () => {
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="arcade"]');
+  // Arcade is a launcher; select the quiz tile before its lobby controls
+  // become visible (module state is intentionally reset on a fresh run).
+  await page.click('[data-game="quiz"]');
   await page.waitForSelector('#quiz-create-lobby');
   await page.click('#quiz-create-lobby');
 
@@ -477,6 +484,7 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
   await page.click('[data-whoami-change]');
   await page.selectOption('#arrivals-whoami', { label: 'E2E Alice Pro' });
   await page.click('[data-remove-carpool]');
+  await page.click('[data-confirm]');
   await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
 });
 

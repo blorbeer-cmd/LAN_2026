@@ -11,6 +11,7 @@ import { setIo } from './realtime';
 import { accessProtectionEnabled } from './auth';
 import { startOfflineSweeper } from './liveStatus';
 import { registerArcadeSockets } from './arcade/arcade';
+import { registerTetrisSockets } from './arcade/tetris';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -45,6 +46,7 @@ function start(): void {
   });
 
   registerArcadeSockets(io);
+  registerTetrisSockets(io);
 
   // Periodically flip stale players to offline.
   startOfflineSweeper(io);

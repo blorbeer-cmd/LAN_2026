@@ -25,3 +25,61 @@ export function openModal(title, bodyHtml, { onMount } = {}) {
   if (onMount) onMount(backdrop, close);
   return { el: backdrop, close };
 }
+
+// Themed replacement for the browser's native confirm() — the same dark
+// bottom-sheet/dialog as every other modal, so "are you sure?" prompts stop
+// looking like a jarring OS pop-up. Resolves true if confirmed, false otherwise
+// (cancel button, ✕, backdrop tap, or Escape).
+export function confirmDialog(message, { title = 'Bestätigen', confirmText = 'OK', cancelText = 'Abbrechen', danger = false } = {}) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal" role="alertdialog" aria-modal="true" aria-label="${escapeAttr(title)}">
+        <div class="modal-header">
+          <h2>${escapeHtml(title)}</h2>
+          <button type="button" class="icon-btn" data-cancel aria-label="Schließen">✕</button>
+        </div>
+        <div class="modal-body">
+          <p style="margin:0 0 var(--space-4);">${escapeHtml(message)}</p>
+          <div class="row" style="gap:var(--space-2);justify-content:flex-end;">
+            <button type="button" class="btn btn-sm btn-equal" data-cancel>${escapeHtml(cancelText)}</button>
+            <button type="button" class="btn btn-sm btn-equal ${danger ? 'btn-danger' : 'btn-primary'}" data-confirm>${escapeHtml(confirmText)}</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(backdrop);
+
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener('keydown', onKey);
+      backdrop.remove();
+      resolve(result);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') finish(false);
+      if (e.key === 'Enter') finish(true);
+    };
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) finish(false);
+    });
+    backdrop.querySelectorAll('[data-cancel]').forEach((b) => b.addEventListener('click', () => finish(false)));
+    backdrop.querySelector('[data-confirm]').addEventListener('click', () => finish(true));
+    document.addEventListener('keydown', onKey);
+    backdrop.querySelector('[data-confirm]').focus();
+  });
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+function escapeAttr(value) {
+  return escapeHtml(value);
+}
