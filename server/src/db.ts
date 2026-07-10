@@ -137,6 +137,16 @@ db.exec(`
     activity_tracked INTEGER NOT NULL DEFAULT 0
   );
 
+  -- Technical heartbeat metadata for the admin diagnosis view. Kept apart
+  -- from live_status because these are troubleshooting details, not gameplay
+  -- state, and must still update while tracking is paused or roster-gated.
+  CREATE TABLE IF NOT EXISTS agent_diagnostics (
+    player_id       TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+    agent_version   TEXT,
+    last_report_at  INTEGER NOT NULL,
+    process_names   TEXT NOT NULL DEFAULT '[]'
+  );
+
   -- One row per game currently detected as running for a player. Rows are
   -- added/removed on every agent report to match what's actually running.
   -- is_foreground: whether this is the one game (of possibly several running
