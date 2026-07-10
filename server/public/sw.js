@@ -14,8 +14,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title || 'RespawnHQ', {
       body: data.body || '',
-      icon: '/img/logo.svg',
-      badge: '/img/logo.svg',
+      icon: '/img/logo-192.png',
+      badge: '/img/logo-badge-96.png',
       data: { url: data.url || '/' },
     })
   );
