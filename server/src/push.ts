@@ -8,6 +8,12 @@
 import { nanoid } from 'nanoid';
 import webpush from 'web-push';
 import { db, getState, setState } from './db';
+import { broadcast, Events } from './realtime';
+
+// Only the most recent entries matter (a shared Kiosk screen only ever shows
+// the latest one) - trimmed on every insert so this never grows unbounded
+// over a multi-day LAN party.
+const PUSH_LOG_LIMIT = 50;
 
 const VAPID_PUBLIC_KEY = 'vapid_public_key';
 const VAPID_PRIVATE_KEY = 'vapid_private_key';
@@ -76,6 +82,20 @@ interface SubscriptionRow {
   auth: string;
 }
 
+interface PushLogEntry {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: number;
+}
+
+export function getLastPushLogEntry(): PushLogEntry | null {
+  const row = db.prepare('SELECT id, title, body, created_at AS createdAt FROM push_log ORDER BY created_at DESC LIMIT 1').get() as
+    | PushLogEntry
+    | undefined;
+  return row ?? null;
+}
+
 // Fire-and-forget by design (never awaited by callers): a request handler
 // shouldn't wait on delivery to a third-party push service, and a slow or
 // failing one must never block or crash the response. Subscriptions that
@@ -83,6 +103,22 @@ interface SubscriptionRow {
 // etc.) are pruned so they stop being retried forever.
 export function notifyPlayers(playerIds: string[], payload: PushPayload): void {
   if (playerIds.length === 0) return;
+
+  // Logged regardless of how many subscriptions actually exist: this is a
+  // record of "the app told these players something", for the Kiosk banner,
+  // not a delivery receipt.
+  const entry: PushLogEntry = { id: nanoid(), title: payload.title, body: payload.body, createdAt: Date.now() };
+  db.prepare('INSERT INTO push_log (id, title, body, created_at) VALUES (?, ?, ?, ?)').run(
+    entry.id,
+    entry.title,
+    entry.body,
+    entry.createdAt
+  );
+  db.prepare(
+    `DELETE FROM push_log WHERE id NOT IN (SELECT id FROM push_log ORDER BY created_at DESC LIMIT ${PUSH_LOG_LIMIT})`
+  ).run();
+  broadcast(Events.pushSent, entry);
+
   const placeholders = playerIds.map(() => '?').join(',');
   const rows = db
     .prepare(`SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE player_id IN (${placeholders})`)
