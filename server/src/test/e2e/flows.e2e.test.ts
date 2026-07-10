@@ -410,7 +410,7 @@ test('Arcade: open a quiz lobby, see it listed, then close it again', async () =
   // the tab), leaving abandoned lobbies listed forever.
   await page.waitForSelector('[data-close-lobby]');
   await page.click('[data-close-lobby]');
-  await page.waitForSelector('text=Keine offene Quiz-Lobby.');
+  await page.waitForSelector('text=Keine offene Lobby.');
 
   // Closed - the create button is enabled again.
   await page.waitForSelector('#quiz-create-lobby:not([disabled])');
