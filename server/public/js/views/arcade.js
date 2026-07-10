@@ -3,8 +3,10 @@ import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { createScribbleController } from './arcadeScribble.js';
 
 let socket = null;
+let scribble = null;
 let lobbies = [];
 let stats = null;
 let statsLoading = false;
@@ -14,6 +16,8 @@ let currentQuestion = null;
 let lastResult = null;
 let countdownInterval = null;
 let customTarget = '';
+let scribbleRounds = 2;
+let scribbleTurnSeconds = 60;
 
 function stopCountdown() {
   if (countdownInterval) clearInterval(countdownInterval);
@@ -52,11 +56,18 @@ async function loadStats(ctx) {
 function ensureSocket(ctx) {
   if (socket) return socket;
   socket = io({ auth: { token: getToken() } });
+  scribble = createScribbleController(ctx);
+  scribble.registerSocket(socket);
+
   socket.on('arcade:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
     ctx.rerender();
   });
+  // Shared start event for both game types — the scribble controller (wired
+  // above) handles its own gameType === 'scribble' case independently, this
+  // handler only ever touches quiz state.
   socket.on('arcade:match:start', (payload) => {
+    if (payload.gameType !== 'quiz') return;
     match = { ...payload, scores: payload.players.map((p) => ({ playerId: p.id, name: p.name, score: 0 })), paused: false };
     currentQuestion = null;
     lastResult = null;
@@ -84,9 +95,14 @@ function ensureSocket(ctx) {
     stopCountdown();
     ctx.rerender();
   });
+  // These three events are shared with scribble matches too — always check
+  // they're actually about *our* quiz match before touching quiz state,
+  // otherwise a scribble match ending would corrupt the quiz view (and
+  // vice versa) since both listeners sit on the same socket.
   socket.on('arcade:match:end', (payload) => {
+    if (!match || payload.matchId !== match.matchId) return;
     lastResult = payload.winner ? { winner: payload.winner, correctAnswer: 'Match beendet' } : lastResult;
-    if (payload.scores) match = { ...(match ?? {}), scores: payload.scores, ended: true, winner: payload.winner };
+    match = { ...match, scores: payload.scores, ended: true, winner: payload.winner };
     currentQuestion = null;
     stopCountdown();
     stats = null;
@@ -94,17 +110,20 @@ function ensureSocket(ctx) {
     ctx.rerender();
   });
   socket.on('arcade:match:paused', (payload) => {
-    if (payload.scores) match = { ...(match ?? {}), scores: payload.scores, paused: true, remainingMs: payload.remainingMs };
+    if (!match || payload.matchId !== match.matchId) return;
+    match = { ...match, scores: payload.scores, paused: true, remainingMs: payload.remainingMs };
     stopCountdown();
     ctx.rerender();
   });
   socket.on('arcade:match:resumed', (payload) => {
-    if (payload.scores) match = { ...(match ?? {}), scores: payload.scores, paused: false, remainingMs: null };
+    if (!match || payload.matchId !== match.matchId) return;
+    match = { ...match, scores: payload.scores, paused: false, remainingMs: null };
     if (currentQuestion && payload.expiresAt) currentQuestion = { ...currentQuestion, expiresAt: payload.expiresAt };
     startCountdown();
     ctx.rerender();
   });
-  socket.on('arcade:match:opponent-left', () => {
+  socket.on('arcade:match:opponent-left', (payload) => {
+    if (!match || payload.matchId !== match.matchId) return;
     showToast('Ein Spieler hat das Match verlassen.', { error: true });
     match = null;
     currentQuestion = null;
@@ -124,6 +143,10 @@ function emitWithAck(event, payload) {
 function myLobby() {
   const myId = getMyId();
   return lobbies.find((l) => l.players.some((p) => p.id === myId)) ?? null;
+}
+
+function anyActiveMatch() {
+  return !!match || !!scribble?.hasMatch();
 }
 
 function scoreHtml() {
@@ -173,12 +196,12 @@ function arcadeStatsHtml() {
     </div>`;
 }
 
-function targetControls(lobby) {
+function quizStartControlsHtml(lobby) {
   const myId = getMyId();
-  if (!lobby || lobby.host.id !== myId) return '';
+  if (!lobby || lobby.gameType !== 'quiz' || lobby.host.id !== myId) return '';
   return `
     <div class="card stack" style="margin-top:12px;">
-      <strong>Lobby starten</strong>
+      <strong>Quiz-Lobby starten</strong>
       <div class="row" style="gap:8px;flex-wrap:wrap;">
         <label class="check-row" style="padding:8px 10px;"><input type="radio" name="target-score" value="5" checked />5</label>
         <label class="check-row" style="padding:8px 10px;"><input type="radio" name="target-score" value="10" />10</label>
@@ -192,9 +215,38 @@ function targetControls(lobby) {
     </div>`;
 }
 
+function scribbleStartControlsHtml(lobby) {
+  const myId = getMyId();
+  if (!lobby || lobby.gameType !== 'scribble' || lobby.host.id !== myId) return '';
+  return `
+    <div class="card stack" style="margin-top:12px;">
+      <strong>Scribble-Lobby starten</strong>
+      <div class="field-label">Runden</div>
+      <div class="row" style="gap:8px;flex-wrap:wrap;">
+        ${[1, 2, 3]
+          .map((n) => `<label class="check-row" style="padding:8px 10px;"><input type="radio" name="scribble-rounds" value="${n}" ${n === scribbleRounds ? 'checked' : ''} />${n}</label>`)
+          .join('')}
+      </div>
+      <div class="field-label">Zeit pro Runde</div>
+      <div class="row" style="gap:8px;flex-wrap:wrap;">
+        ${[40, 60, 80]
+          .map(
+            (n) =>
+              `<label class="check-row" style="padding:8px 10px;"><input type="radio" name="scribble-turn-seconds" value="${n}" ${n === scribbleTurnSeconds ? 'checked' : ''} />${n}s</label>`
+          )
+          .join('')}
+      </div>
+      <button type="button" class="btn btn-primary btn-block" id="scribble-start-lobby" ${lobby.players.length < 2 ? 'disabled' : ''}>Start</button>
+    </div>`;
+}
+
+function lobbyGameLabel(gameType) {
+  return gameType === 'scribble' ? 'Scribble' : 'Quiz';
+}
+
 function renderLobbyList() {
   const mine = myLobby();
-  if (lobbies.length === 0) return `<div class="empty-state" style="padding:14px;">Keine offene Quiz-Lobby.</div>`;
+  if (lobbies.length === 0) return `<div class="empty-state" style="padding:14px;">Keine offene Lobby.</div>`;
   return lobbies
     .map((l) => {
       const isHost = l.host.id === getMyId();
@@ -207,7 +259,7 @@ function renderLobbyList() {
       return `
         <div class="lb-row" style="align-items:flex-start;">
           <div class="stack" style="gap:6px;flex:1;">
-            <strong>${escapeHtml(l.host.name)}s Quiz-Lobby</strong>
+            <strong>${escapeHtml(l.host.name)}s ${lobbyGameLabel(l.gameType)}-Lobby</strong>
             <div class="chip-list">${l.players.map((p) => `<span class="chip">${escapeHtml(p.name)}</span>`).join('')}</div>
             <div class="muted" style="font-size:0.78rem;">${l.players.length} Spieler · Host startet, wenn alle bereit sind</div>
           </div>
@@ -253,7 +305,7 @@ function winnerCelebrationHtml() {
     </div>`;
 }
 
-function renderMatch() {
+function renderQuizMatch() {
   if (!match) return '';
   const celebration = winnerCelebrationHtml();
   const result = lastResult && !celebration
@@ -293,6 +345,7 @@ export function renderArcade(container, ctx) {
   ensureSocket(ctx);
   if (!stats && !statsLoading) loadStats(ctx);
   const lobby = myLobby();
+  const lobbyOrMatchActive = !!lobby || anyActiveMatch();
 
   container.innerHTML = `
     <h1 class="view-title">Arcade</h1>
@@ -304,17 +357,31 @@ export function renderArcade(container, ctx) {
           <strong>Quiz-Lobby</strong>
           <div class="muted" style="font-size:0.8rem;">Mehrspieler, 20 Sekunden pro Frage, beliebig viele Antwortversuche.</div>
         </div>
-        <button type="button" class="btn btn-primary btn-sm" id="quiz-create-lobby" ${lobby || match ? 'disabled' : ''}>Lobby öffnen</button>
+        <button type="button" class="btn btn-primary btn-sm" id="quiz-create-lobby" ${lobbyOrMatchActive ? 'disabled' : ''}>Lobby öffnen</button>
       </div>
-      ${renderLobbyList()}
     </div>
+    <div class="section-title">✏️ Scribble</div>
+    <div class="card stack">
+      <div class="row-between" style="gap:10px;">
+        <div>
+          <strong>Scribble-Lobby</strong>
+          <div class="muted" style="font-size:0.8rem;">Einer zeichnet, alle anderen raten den Begriff.</div>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" id="scribble-create-lobby" ${lobbyOrMatchActive ? 'disabled' : ''}>Lobby öffnen</button>
+      </div>
+    </div>
+    <div class="section-title">🕹️ Offene Lobbys</div>
+    <div class="card stack">${renderLobbyList()}</div>
     <div class="section-title">📊 Arcade-Statistiken</div>
     <div class="card stack">${arcadeStatsHtml()}</div>
-    ${targetControls(lobby)}
-    ${renderMatch()}
+    ${quizStartControlsHtml(lobby)}
+    ${scribbleStartControlsHtml(lobby)}
+    ${renderQuizMatch()}
+    ${scribble.renderMatch()}
   `;
 
   wireWhoAmICard(container, 'whoami', ctx);
+  scribble.wireMatch(container);
 
   container.querySelectorAll('[data-stats-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -329,6 +396,14 @@ export function renderArcade(container, ctx) {
     const res = await emitWithAck('arcade:lobby:create', { gameType: 'quiz', playerId });
     if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
     showToast('Quiz-Lobby geöffnet.');
+  });
+
+  container.querySelector('#scribble-create-lobby')?.addEventListener('click', async () => {
+    const playerId = getMyId();
+    if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+    const res = await emitWithAck('arcade:lobby:create', { gameType: 'scribble', playerId });
+    if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
+    showToast('Scribble-Lobby geöffnet.');
   });
 
   container.querySelectorAll('[data-close-lobby]').forEach((btn) => {
@@ -357,6 +432,27 @@ export function renderArcade(container, ctx) {
     const selected = container.querySelector('input[name="target-score"]:checked')?.value ?? '5';
     const targetScore = selected === 'custom' ? Number(container.querySelector('#target-custom').value) : Number(selected);
     const res = await emitWithAck('arcade:lobby:start', { lobbyId: lobby.id, playerId, targetScore });
+    if (!res?.ok) showToast(res?.error || 'Start fehlgeschlagen.', { error: true });
+  });
+
+  container.querySelectorAll('input[name="scribble-rounds"]').forEach((el) => {
+    el.addEventListener('change', () => {
+      scribbleRounds = Number(el.value);
+    });
+  });
+  container.querySelectorAll('input[name="scribble-turn-seconds"]').forEach((el) => {
+    el.addEventListener('change', () => {
+      scribbleTurnSeconds = Number(el.value);
+    });
+  });
+  container.querySelector('#scribble-start-lobby')?.addEventListener('click', async () => {
+    const playerId = getMyId();
+    const res = await emitWithAck('arcade:lobby:start', {
+      lobbyId: lobby.id,
+      playerId,
+      rounds: scribbleRounds,
+      turnDurationMs: scribbleTurnSeconds * 1000,
+    });
     if (!res?.ok) showToast(res?.error || 'Start fehlgeschlagen.', { error: true });
   });
 

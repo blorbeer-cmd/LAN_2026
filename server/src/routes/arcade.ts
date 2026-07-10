@@ -52,7 +52,7 @@ arcadeRouter.get('/stats', (_req, res) => {
       const players = [...game.players.values()].sort((a, b) => b.wins - a.wins || b.points - a.points || a.name.localeCompare(b.name, 'de'));
       return {
         gameType: game.gameType,
-        title: game.gameType === 'quiz' ? 'Gaming-Quiz' : game.gameType,
+        title: game.gameType === 'quiz' ? 'Gaming-Quiz' : game.gameType === 'scribble' ? 'Scribble' : game.gameType,
         matches: game.matches,
         leader: players[0] ?? null,
         players,

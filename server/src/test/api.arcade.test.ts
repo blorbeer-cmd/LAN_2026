@@ -29,3 +29,25 @@ test('GET /api/arcade/stats summarizes completed quiz results', async () => {
   assert.equal(quiz.players[0].wins, 1);
   assert.equal(quiz.players[0].points, 5);
 });
+
+test('GET /api/arcade/stats summarizes completed scribble results under their own title', async () => {
+  const carla = await request(app).post('/api/players').send({ name: 'Arcade Carla' });
+  const dave = await request(app).post('/api/players').send({ name: 'Arcade Dave' });
+  const now = Date.now();
+  const scores = [
+    { playerId: carla.body.id, name: carla.body.name, score: 210 },
+    { playerId: dave.body.id, name: dave.body.name, score: 90 },
+  ];
+
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run('arcade-test-scribble-result', 'scribble', carla.body.id, JSON.stringify(scores), JSON.stringify(scores), 'completed', now - 1000, now);
+
+  const res = await request(app).get('/api/arcade/stats');
+  assert.equal(res.status, 200);
+  const scribble = res.body.games.find((game: { gameType: string }) => game.gameType === 'scribble');
+  assert.equal(scribble.title, 'Scribble');
+  assert.equal(scribble.matches, 1);
+  assert.equal(scribble.leader.name, 'Arcade Carla');
+});
