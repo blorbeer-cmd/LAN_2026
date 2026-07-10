@@ -1718,24 +1718,38 @@ input[type='number'].bracket-score-input {
   backdrop-filter: blur(2px);
   pointer-events: none;
 }
+.countdown-num-wrap {
+  position: relative;
+  display: inline-block;
+}
 .countdown-num {
   font-size: clamp(4rem, 22vw, 8rem);
   font-weight: 800;
   font-style: italic;
   letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+/* Two stacked copies of the same text instead of one element trying to be
+   both glowing AND gradient-filled: any `filter`/`text-shadow` on an element
+   that also has `background-clip: text` gets clipped to a hard box in every
+   engine we've tested — fine for a plain rectangle of glyphs, but a visible
+   cut wherever the actual ink (an italic ascender, the "!") pokes past it.
+   A plain solid-colour blurred copy behind a crisp gradient-clipped copy on
+   top has no such interaction and glows cleanly on every edge. */
+.countdown-num-glow {
+  position: absolute;
+  inset: 0;
+  color: var(--accent-2);
+  filter: blur(16px);
+  opacity: 0.85;
+}
+.countdown-num-fill {
+  position: relative;
   background: var(--accent-gradient);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   -webkit-text-fill-color: transparent;
-  /* A `filter: drop-shadow` here would get clipped to the element's tight
-     layout box in Chromium once background-clip:text is in play — the glow
-     (and with it the top/right of italic glyphs like "Los!") gets a hard
-     rectangular cutoff instead of fading out. text-shadow paints per-glyph
-     instead of through a box-bound filter, so it doesn't have that problem. */
-  text-shadow:
-    0 0 22px rgba(145, 99, 245, 0.6),
-    0 0 48px rgba(91, 140, 255, 0.4);
 }
 .countdown-pop {
   animation: countdown-pop 0.85s cubic-bezier(0.2, 0.9, 0.3, 1);
