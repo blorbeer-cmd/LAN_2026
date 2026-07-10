@@ -125,6 +125,23 @@ function ratingRowHtml({ label, accentClass, mine, avg, count, gameId, kind, dis
     </div>`;
 }
 
+function gameLinksHtml(game) {
+  const links = [
+    game.platform_url ? { href: game.platform_url, label: `🔗 ${game.platform || 'Plattform'}` } : null,
+    game.trailer_url ? { href: game.trailer_url, label: '🎬 Trailer' } : null,
+  ].filter(Boolean);
+  if (links.length === 0) return '';
+  return `
+    <div class="row" style="gap:8px;flex-wrap:wrap;">
+      ${links
+        .map(
+          (l) =>
+            `<a class="chip" href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(l.label)}</a>`
+        )
+        .join('')}
+    </div>`;
+}
+
 function gameCardHtml(game, myId) {
   const bockStats = ratingStats(state.preferences, game.id);
   const skillStats = ratingStats(state.skills, game.id);
@@ -147,6 +164,7 @@ function gameCardHtml(game, myId) {
         </span>
         <button type="button" class="btn btn-sm" data-detail="${game.id}">Details</button>
       </div>
+      ${gameLinksHtml(game)}
 
       ${ratingRowHtml({
         label: '🔥 Bock',
