@@ -83,7 +83,7 @@ test('GET /api/arcade/stats labels and aggregates tetris results too', async () 
   const res = await request(app).get('/api/arcade/stats');
   assert.equal(res.status, 200);
   const tetris = res.body.games.find((game: { gameType: string }) => game.gameType === 'tetris');
-  assert.equal(tetris.title, 'Tetris Battle');
+  assert.equal(tetris.title, 'Tetris');
   assert.equal(tetris.matches, 1);
   assert.equal(tetris.leader.name, 'Tetris Cara');
   assert.equal(tetris.players[0].wins, 1);
@@ -110,4 +110,29 @@ test('GET /api/arcade/stats summarizes completed scribble results under their ow
   assert.equal(scribble.title, 'Scribble');
   assert.equal(scribble.matches, 1);
   assert.equal(scribble.leader.name, 'Arcade Carla');
+});
+
+test('GET /api/arcade/stats labels Blobby Volley results', async () => {
+  const eve = await request(app).post('/api/players').send({ name: 'Blobby Eve' });
+  const finn = await request(app).post('/api/players').send({ name: 'Blobby Finn' });
+  const now = Date.now();
+  const scores = [
+    { playerId: eve.body.id, name: eve.body.name, score: 7 },
+    { playerId: finn.body.id, name: finn.body.name, score: 4 },
+  ];
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run('arcade-test-blobby-result', 'blobby', eve.body.id, JSON.stringify(scores), JSON.stringify(scores), 'completed', now - 1000, now);
+
+  const res = await request(app).get('/api/arcade/stats');
+  const blobby = res.body.games.find((game: { gameType: string }) => game.gameType === 'blobby');
+  assert.equal(blobby.title, 'Blobby Volley');
+  assert.equal(blobby.rankingMode, 'winLoss');
+  assert.equal(blobby.matches, 1);
+  assert.equal(blobby.leader.name, 'Blobby Eve');
+  assert.equal(blobby.players[0].best, 7);
+  assert.equal(blobby.players[0].wins, 1);
+  assert.equal(blobby.players[0].losses, 0);
+  assert.equal(blobby.players[0].winRate, 1);
 });

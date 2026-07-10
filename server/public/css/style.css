@@ -1557,6 +1557,100 @@ button.card {
 
 /* ---------- Sliders (skill ratings) ---------- */
 
+/* ---------- Blobby Volley ---------- */
+
+.arcade-game-shell {
+  width: min(100%, 960px);
+  margin-inline: auto;
+}
+.arcade-game-shell > .view-title {
+  text-align: center;
+}
+.arcade-score-row {
+  justify-content: center;
+}
+.arcade-game-help {
+  margin: var(--space-3) auto 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-align: center;
+}
+.arcade-match-controls {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+}
+.arcade-game-shell .quiz-stage-card {
+  width: min(100%, 680px);
+  height: 174px;
+  min-height: 174px;
+  max-height: 174px;
+  margin-inline: auto;
+  box-sizing: border-box;
+  display: flex;
+}
+.arcade-game-shell .quiz-stage-content {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.arcade-game-shell .quiz-round-result {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.arcade-game-shell .quiz-round-result h2 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+.blobby-score {
+  justify-content: center;
+  margin-bottom: var(--space-3);
+}
+.blobby-court {
+  position: relative;
+  width: min(100%, 960px);
+  margin: 0 auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  background: var(--bg-elevated);
+}
+.blobby-court canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 5 / 3;
+  touch-action: none;
+}
+.blobby-point {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-pill);
+  background: var(--accent-gradient);
+  color: var(--accent-text);
+  font-weight: 800;
+  box-shadow: var(--shadow-card);
+}
+.blobby-pause-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  color: var(--text);
+  font-size: var(--font-size-xl);
+  font-weight: 800;
+}
+
 input[type='range'] {
   width: 100%;
   accent-color: var(--accent);

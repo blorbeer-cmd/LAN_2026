@@ -7,9 +7,11 @@ export const arcadeRouter = Router();
 // nicely instead of showing the raw internal key.
 const ARCADE_TITLES: Record<string, string> = {
   quiz: 'Gaming-Quiz',
-  tetris: 'Tetris Battle',
+  tetris: 'Tetris',
   scribble: 'Scribble',
+  blobby: 'Blobby Volley',
 };
+const WIN_LOSS_GAMES = new Set(['blobby']);
 
 interface ArcadeResultRow {
   game_type: string;
@@ -65,14 +67,21 @@ arcadeRouter.get('/stats', (_req, res) => {
       // A real highscore board: rank by best single-game score, not by how
       // many duels someone won.
       const players = [...game.players.values()].sort(
-        (a, b) => b.best - a.best || b.points - a.points || a.name.localeCompare(b.name, 'de')
+        WIN_LOSS_GAMES.has(game.gameType)
+          ? (a, b) => b.wins / b.matches - a.wins / a.matches || b.wins - a.wins || a.name.localeCompare(b.name, 'de')
+          : (a, b) => b.best - a.best || b.points - a.points || a.name.localeCompare(b.name, 'de')
       );
       return {
         gameType: game.gameType,
         title: ARCADE_TITLES[game.gameType] ?? game.gameType,
         matches: game.matches,
+        rankingMode: WIN_LOSS_GAMES.has(game.gameType) ? 'winLoss' : 'highscore',
         leader: players[0] ?? null,
-        players,
+        players: players.map((player) => ({
+          ...player,
+          losses: player.matches - player.wins,
+          winRate: player.matches > 0 ? player.wins / player.matches : 0,
+        })),
       };
     }),
   });

@@ -11,6 +11,7 @@ import {
   myScribbleLobby,
   hasScribbleMatch,
 } from './arcadeScribble.js';
+import { ensureBlobbySocket, renderBlobbyLobbyCard, wireBlobbyLobbyCard, myBlobbyLobby, hasBlobbyMatch } from './blobby.js';
 import { confirmDialog } from '../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 
@@ -22,7 +23,7 @@ const GAMES = [
   { id: 'tetris', icon: '🧩', name: 'Tetris' },
   { id: 'scribble', icon: icon('pencil'), name: 'Scribble' },
   { id: 'pong', icon: icon('gitCommitVertical'), name: 'Pong', soon: true },
-  { id: 'blobby', icon: icon('volleyball'), name: 'Blobby Volley', soon: true },
+  { id: 'blobby', icon: icon('volleyball'), name: 'Blobby Volley' },
   { id: 'snake', icon: '🐍', name: 'Snake', soon: true },
 ];
 
@@ -187,6 +188,7 @@ function arcadeStatsHtml() {
       : '';
 
   const game = games.find((g) => g.gameType === activeStatsGame);
+  const winLoss = game.rankingMode === 'winLoss';
   const medals = ['🥇', '🥈', '🥉'];
   const rows = game.players
     .slice(0, 5)
@@ -194,7 +196,7 @@ function arcadeStatsHtml() {
       (p, i) => `
         <div class="lb-row">
           <span>${medals[i] ?? `${i + 1}.`} ${escapeHtml(p.name)}</span>
-          <span class="muted" style="font-variant-numeric:tabular-nums;">${p.best} Pkt</span>
+          <span class="muted" style="font-variant-numeric:tabular-nums;">${winLoss ? `${p.wins}–${p.losses} · ${Math.round(p.winRate * 100)}%` : `${p.best} Pkt`}</span>
         </div>`
     )
     .join('');
@@ -202,7 +204,7 @@ function arcadeStatsHtml() {
     ${tabs}
     <div class="arcade-stat-game">
       <div class="row-between">
-        <strong>${escapeHtml(game.title)} · Highscores</strong>
+        <strong>${escapeHtml(game.title)} · ${winLoss ? 'W–L-Ratio' : 'Highscores'}</strong>
         <span class="badge">${game.matches} Match(es)</span>
       </div>
       ${rows}
@@ -262,7 +264,7 @@ function secondsLeft() {
 function matchControlsHtml() {
   if (!match || match.ended || match.host?.id !== getMyId()) return '';
   return `
-    <div class="row" style="gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3);">
+    <div class="arcade-match-controls">
       ${
         match.paused
           ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-resume">Fortsetzen</button>`
@@ -293,14 +295,14 @@ function renderMatch() {
   if (!match) return '';
   const celebration = winnerCelebrationHtml();
   const result = lastResult && !celebration
-    ? `<div class="card stack" style="margin-top:var(--space-3);">
-        <strong>${lastResult.timeout ? 'Zeit abgelaufen' : `${escapeHtml(lastResult.winner?.name ?? 'Niemand')} gewinnt die Runde`}</strong>
-        <span class="muted">Antwort: ${escapeHtml(lastResult.correctAnswer ?? '')}</span>
+    ? `<div class="card quiz-stage-card" style="margin-top:var(--space-3);">
+        <div class="quiz-stage-content quiz-round-result"><h2>${escapeHtml(lastResult.correctAnswer ?? '')}</h2></div>
       </div>`
     : '';
   const question = currentQuestion
     ? `
-      <form id="quiz-answer-form" class="card stack" style="margin-top:var(--space-3);">
+      <div class="card quiz-stage-card" style="margin-top:var(--space-3);">
+      <form id="quiz-answer-form" class="stack quiz-stage-content">
         <div class="row-between">
           <div class="muted">${escapeHtml(currentQuestion.category || 'Quiz')} · ${escapeHtml(currentQuestion.difficulty || 'offen')}</div>
           <span id="quiz-countdown" class="badge ${secondsLeft() <= 5 ? 'badge-paused' : 'badge-playing'}">${match.paused ? 'Pause' : `${secondsLeft()}s`}</span>
@@ -311,17 +313,17 @@ function renderMatch() {
           <button type="submit" class="btn btn-primary" ${match.paused ? 'disabled' : ''}>Senden</button>
         </div>
         ${match.paused ? `<div class="muted">Match pausiert.</div>` : ''}
-      </form>`
+      </form></div>`
     : match.ended
       ? `<div class="empty-state" style="margin-top:var(--space-3);">Match beendet.</div>`
       : `<div class="empty-state" style="margin-top:var(--space-3);">Nächste Frage kommt…</div>`;
   return `
-    <div class="section-title">🎮 Laufendes Match</div>
-    <div class="chip-list">${scoreHtml()}</div>
-    ${matchControlsHtml()}
+    <div class="chip-list arcade-score-row">${scoreHtml()}</div>
     ${celebration}
     ${result}
     ${question}
+    <p class="arcade-game-help">Richtige Antwort eingeben</p>
+    ${matchControlsHtml()}
   `;
 }
 
@@ -332,6 +334,7 @@ function currentGame() {
   if (match || myLobby()) return 'quiz';
   if (myTetrisLobby()) return 'tetris';
   if (myScribbleLobby() || hasScribbleMatch()) return 'scribble';
+  if (myBlobbyLobby() || hasBlobbyMatch()) return 'blobby';
   return activeGame;
 }
 
@@ -365,6 +368,7 @@ function activeGameHtml() {
   if (game === 'scribble') {
     return `<div style="margin-top:var(--space-3);">${renderScribbleLobbyCard()}</div>`;
   }
+  if (game === 'blobby') return `<div style="margin-top:var(--space-3);">${renderBlobbyLobbyCard()}</div>`;
   return '';
 }
 
@@ -372,6 +376,7 @@ export function renderArcade(container, ctx) {
   ensureSocket(ctx);
   ensureTetrisSocket();
   ensureScribbleSocket();
+  ensureBlobbySocket();
   if (!stats && !statsLoading) loadStats(ctx);
   const lobby = myLobby();
 
@@ -391,6 +396,7 @@ export function renderArcade(container, ctx) {
   wireWhoAmICard(container, 'whoami', ctx);
   wireTetrisLobbyCard(container);
   wireScribbleLobbyCard(container);
+  wireBlobbyLobbyCard(container);
 
   container.querySelectorAll('[data-game]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -458,10 +464,10 @@ export function renderQuizRoom(container, ctx) {
     return;
   }
   container.innerHTML = `
-    <h1 class="view-title">${icon('brain')} Gaming-Quiz</h1>
+    <div class="arcade-game-shell"><h1 class="view-title">${icon('brain')} Gaming-Quiz</h1>
     ${renderMatch()}
     ${match.ended ? `<button type="button" class="btn btn-primary btn-block" id="quiz-back" style="margin-top:var(--space-4);">Zurück zum Arcade</button>` : ''}
-  `;
+    </div>`;
   wireQuizMatch(container);
   if (currentQuestion && !match.paused) startCountdown();
   // Every socket update (new question, opponent's result, ...) rebuilds this

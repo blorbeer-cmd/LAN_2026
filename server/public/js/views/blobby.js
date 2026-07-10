@@ -1,0 +1,272 @@
+import { getToken } from '../api.js';
+import { escapeHtml } from '../format.js';
+import { showToast } from '../toast.js';
+import { getMyId } from '../whoami.js';
+import { showCountdown, cancelCountdown } from '../countdown.js';
+import { confirmDialog } from '../modal.js';
+
+const W = 1000;
+const H = 600;
+const GROUND = 550;
+const NET_X = 500;
+const NET_TOP = 365;
+const BALL_RADIUS = 28;
+
+let socket = null;
+let lobbies = [];
+let match = null;
+let previous = null;
+let latest = null;
+let latestAt = 0;
+let animation = null;
+let keys = { left: false, right: false };
+let keyboardBound = false;
+const avatarImages = new Map();
+let targetScore = 7;
+
+const myId = () => getMyId();
+const rerender = () => window.dispatchEvent(new CustomEvent('lan:rerender'));
+const navigate = (view) => window.dispatchEvent(new CustomEvent('lan:navigate', { detail: view }));
+const emitAck = (event, payload) => new Promise((resolve) => socket.emit(event, payload, resolve));
+
+export function myBlobbyLobby() {
+  return lobbies.find((l) => l.players.some((p) => p.id === myId())) ?? null;
+}
+export function hasBlobbyMatch() { return Boolean(match); }
+
+export function ensureBlobbySocket() {
+  if (socket) return socket;
+  socket = io({ auth: { token: getToken() } });
+  socket.on('blobby:lobbies', (payload) => { lobbies = payload?.lobbies ?? []; if (!match) rerender(); });
+  socket.on('blobby:match:start', (payload) => {
+    match = { ...payload, ended: false, winner: null };
+    previous = latest = null;
+    navigate('blobby');
+    // Let the dedicated game view mount first. This keeps the global overlay
+    // reliably above the canvas even when the socket event lands mid-render.
+    requestAnimationFrame(() => showCountdown(payload.beginsAt));
+  });
+  socket.on('blobby:state', (payload) => {
+    previous = latest;
+    latest = payload;
+    latestAt = performance.now();
+    if (match) { match.running = payload.running; match.paused = payload.paused; match.scores = payload.scores; }
+    updateScoreDisplay();
+    if (!document.querySelector('#blobby-canvas')) rerender();
+  });
+  socket.on('blobby:point', (payload) => {
+    if (match) match.scores = payload.scores;
+    updateScoreDisplay();
+    flashPoint(payload.scorer?.name);
+  });
+  socket.on('blobby:match:paused', () => { if (match) match.paused = true; rerender(); });
+  socket.on('blobby:match:resumed', () => { if (match) match.paused = false; rerender(); });
+  socket.on('blobby:match:end', (payload) => {
+    if (!match) return;
+    match.ended = true; match.running = false; match.winner = payload.winner ?? null; match.scores = payload.scores ?? [];
+    cancelCountdown();
+    window.dispatchEvent(new CustomEvent('lan:arcade-stats-dirty'));
+    stopAnimation(); rerender();
+  });
+  bindKeyboard();
+  return socket;
+}
+
+function sendInput(jump = false) {
+  if (!socket || !match?.matchId || match.ended) return;
+  socket.emit('blobby:input', { matchId: match.matchId, playerId: myId(), input: { ...keys, jump } });
+}
+function bindKeyboard() {
+  if (keyboardBound) return;
+  keyboardBound = true;
+  window.addEventListener('keydown', (e) => {
+    if (!document.querySelector('#blobby-canvas')) return;
+    if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') keys.left = true;
+    else if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') keys.right = true;
+    else if ((e.key === 'ArrowUp' || e.key === ' ') && !e.repeat) sendInput(true);
+    else return;
+    e.preventDefault(); sendInput(false);
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') keys.left = false;
+    else if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') keys.right = false;
+    else return;
+    sendInput(false);
+  });
+}
+
+function lobbyList() {
+  const mine = myBlobbyLobby();
+  if (!lobbies.length) return '<div class="empty-state" style="padding:var(--space-4);">Keine offene Blobby-Volley-Lobby.</div>';
+  return lobbies.map((l) => {
+    const isHost = l.host.id === myId();
+    const joined = l.players.some((p) => p.id === myId());
+    const full = l.players.length >= 2 && !joined;
+    const action = isHost
+      ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-blobby-close="${l.id}">Schließen</button>`
+      : joined
+        ? `<button type="button" class="btn btn-sm btn-equal" data-blobby-leave="${l.id}">Verlassen</button>`
+        : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-blobby-join="${l.id}" ${mine || full ? 'disabled' : ''}>Beitreten</button>`;
+    return `<div class="lb-row" style="align-items:flex-start;">
+      <div class="stack" style="gap:var(--space-2);flex:1;">
+        <strong>${escapeHtml(l.host.name)}s Blobby-Volley-Lobby</strong>
+        <div class="chip-list">${l.players.map((p) => `<span class="chip">${escapeHtml(p.name)}</span>`).join('')}</div>
+        <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length}/2 Spieler${full ? ' · voll' : ''}</div>
+      </div>${action}</div>`;
+  }).join('');
+}
+function hostStart() {
+  const lobby = myBlobbyLobby();
+  if (!lobby || lobby.host.id !== myId()) return '';
+  const ready = lobby.players.length === 2;
+  return `<div class="stack" style="gap:var(--space-2);border-top:1px solid var(--border);padding-top:var(--space-3);">
+    <div class="field-label">Punkte bis Sieg</div>
+    <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
+      ${[5, 7, 10, 15].map((n) => `<label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="blobby-target" value="${n}" ${n === targetScore ? 'checked' : ''} />${n}</label>`).join('')}
+    </div>
+    <div class="muted" style="font-size:var(--font-size-xs);">${ready ? 'Bereit — Gegner ist da.' : 'Warte auf einen Gegner…'}</div>
+    <button type="button" class="btn btn-primary btn-block" id="blobby-start" ${ready ? '' : 'disabled'}>Start</button>
+  </div>`;
+}
+export function renderBlobbyLobbyCard() {
+  const lobby = myBlobbyLobby(); const noMe = !myId();
+  return `<div class="card stack"><div class="row-between" style="gap:var(--space-3);"><strong>Blobby-Volley-Lobby</strong>
+    <button type="button" class="btn btn-primary btn-sm btn-equal" id="blobby-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div>
+    ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}${lobbyList()}${hostStart()}</div>`;
+}
+export function wireBlobbyLobbyCard(container) {
+  container.querySelectorAll('input[name="blobby-target"]').forEach((input) => input.addEventListener('change', () => { targetScore = Number(input.value); }));
+  container.querySelector('#blobby-create')?.addEventListener('click', async () => {
+    const res = await emitAck('blobby:lobby:create', { playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
+  });
+  container.querySelectorAll('[data-blobby-join]').forEach((b) => b.addEventListener('click', async () => {
+    const res = await emitAck('blobby:lobby:join', { lobbyId: b.dataset.blobbyJoin, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Beitritt fehlgeschlagen.', { error: true });
+  }));
+  for (const [selector, attr] of [['[data-blobby-close]', 'blobbyClose'], ['[data-blobby-leave]', 'blobbyLeave']]) {
+    container.querySelectorAll(selector).forEach((b) => b.addEventListener('click', () => emitAck('blobby:lobby:leave', { lobbyId: b.dataset[attr], playerId: myId() })));
+  }
+  container.querySelector('#blobby-start')?.addEventListener('click', async () => {
+    const lobby = myBlobbyLobby();
+    const res = await emitAck('blobby:lobby:start', { lobbyId: lobby?.id, playerId: myId(), targetScore });
+    if (!res?.ok) showToast(res?.error || 'Start fehlgeschlagen.', { error: true });
+  });
+}
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function interpolatedWorld() {
+  if (!latest?.world) return null;
+  if (!previous?.world) return latest.world;
+  const t = Math.min(1, (performance.now() - latestAt + 50) / 100);
+  return {
+    ball: { x: lerp(previous.world.ball.x, latest.world.ball.x, t), y: lerp(previous.world.ball.y, latest.world.ball.y, t) },
+    blobs: latest.world.blobs.map((b, i) => ({ x: lerp(previous.world.blobs[i].x, b.x, t), y: lerp(previous.world.blobs[i].y, b.y, t), side: b.side })),
+  };
+}
+function avatarImage(player) {
+  if (!player?.avatar) return null;
+  if (!avatarImages.has(player.id)) {
+    const image = new Image();
+    image.src = player.avatar;
+    avatarImages.set(player.id, image);
+  }
+  const image = avatarImages.get(player.id);
+  return image?.complete ? image : null;
+}
+function drawBlob(ctx, blob, color, player) {
+  const image = avatarImage(player);
+  if (image) {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(blob.x, blob.y, 44, 0, Math.PI * 2); ctx.clip();
+    ctx.drawImage(image, blob.x - 44, blob.y - 44, 88, 88);
+    ctx.restore();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(blob.x, blob.y, 44, 0, Math.PI * 2); ctx.stroke();
+  } else {
+    ctx.fillStyle = player?.color || color;
+    ctx.beginPath(); ctx.arc(blob.x, blob.y, 44, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = '700 32px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText((player?.name || '?').slice(0, 1).toUpperCase(), blob.x, blob.y + 1);
+  }
+}
+function paint() {
+  const canvas = document.querySelector('#blobby-canvas');
+  if (!canvas) return stopAnimation();
+  const ctx = canvas.getContext('2d'); const world = interpolatedWorld();
+  ctx.clearRect(0, 0, W, H);
+  const sky = ctx.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, '#17203a'); sky.addColorStop(1, '#252f50'); ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#36415f'; ctx.fillRect(0, GROUND, W, H - GROUND);
+  ctx.fillStyle = '#dbe4ff'; ctx.fillRect(NET_X - 10, NET_TOP, 20, GROUND - NET_TOP); ctx.beginPath(); ctx.arc(NET_X, NET_TOP, 10, 0, Math.PI * 2); ctx.fill();
+  if (world) {
+    drawBlob(ctx, world.blobs[0], '#5b8cff', match?.players?.[0]); drawBlob(ctx, world.blobs[1], '#c24bd8', match?.players?.[1]);
+    ctx.fillStyle = '#dbe4ff'; ctx.beginPath(); ctx.arc(world.ball.x, world.ball.y, BALL_RADIUS, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#aebddd'; ctx.lineWidth = 4; ctx.stroke();
+  }
+  animation = requestAnimationFrame(paint);
+}
+function startAnimation() { if (!animation) animation = requestAnimationFrame(paint); }
+function stopAnimation() { if (animation) cancelAnimationFrame(animation); animation = null; }
+function flashPoint(name) {
+  const el = document.querySelector('#blobby-point'); if (!el) return;
+  el.textContent = `Punkt für ${name || 'Spieler'}!`; el.hidden = false; setTimeout(() => { el.hidden = true; }, 900);
+}
+function scoreHtml() {
+  const goal = match?.targetScore ?? latest?.targetScore ?? targetScore;
+  return (match?.scores ?? latest?.scores ?? []).map((s) => `<span class="chip"><strong>${escapeHtml(s.name)}</strong> ${s.score}/${goal}</span>`).join('');
+}
+function updateScoreDisplay() {
+  const score = document.querySelector('#blobby-score');
+  if (score) score.innerHTML = scoreHtml();
+}
+function resultHtml() {
+  if (!match?.ended) return '';
+  const label = match.winner ? (match.winner.id === myId() ? 'Du gewinnst!' : `${escapeHtml(match.winner.name)} gewinnt`) : 'Match beendet';
+  return `<div class="card arcade-winner-card"><strong>${label}</strong><button class="btn btn-primary" id="blobby-back">Zurück zum Arcade</button></div>`;
+}
+export function renderBlobby(container) {
+  ensureBlobbySocket();
+  if (!match) { container.innerHTML = '<button class="btn btn-sm" data-navigate="arcade">‹ Arcade</button><div class="empty-state">Kein laufendes Blobby-Volley-Match.</div>'; return; }
+  const host = match.host?.id === myId();
+  container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Blobby Volley</h1><div id="blobby-score" class="chip-list blobby-score">${scoreHtml()}</div>
+    <div class="blobby-court"><canvas id="blobby-canvas" width="${W}" height="${H}"></canvas><div id="blobby-point" class="blobby-point" hidden></div>${match.paused ? '<div class="blobby-pause-overlay">Pause</div>' : ''}</div>
+    ${host && !match.ended ? `<div class="arcade-match-controls">${match.paused ? '<button class="btn btn-sm btn-equal btn-primary" id="blobby-resume">Fortsetzen</button>' : '<button class="btn btn-sm btn-equal" id="blobby-pause">Pausieren</button>'}<button class="btn btn-sm btn-equal btn-danger" id="blobby-finish">Beenden</button></div>` : ''}${resultHtml()}</div>`;
+  wireGame(container); startAnimation();
+}
+function wireGame(container) {
+  wireCanvasControls(container.querySelector('#blobby-canvas'));
+  container.querySelector('#blobby-pause')?.addEventListener('click', async () => {
+    const res = await emitAck('blobby:match:pause', { matchId: match.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
+  });
+  container.querySelector('#blobby-resume')?.addEventListener('click', async () => {
+    const res = await emitAck('blobby:match:resume', { matchId: match.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
+  });
+  container.querySelector('#blobby-finish')?.addEventListener('click', async () => {
+    if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
+    await emitAck('blobby:match:finish', { matchId: match.matchId, playerId: myId() });
+  });
+  container.querySelector('#blobby-back')?.addEventListener('click', () => { match = null; previous = latest = null; stopAnimation(); navigate('arcade'); });
+}
+function wireCanvasControls(canvas) {
+  if (!canvas) return;
+  let startX = 0; let startY = 0; let moving = false;
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); startX = e.clientX; startY = e.clientY; moving = false; canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!canvas.hasPointerCapture(e.pointerId)) return;
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) < 18) return;
+    moving = true; keys.left = dx < 0; keys.right = dx > 0; sendInput(false);
+  });
+  const finish = (e) => {
+    if (!canvas.hasPointerCapture(e.pointerId)) return;
+    const dy = e.clientY - startY;
+    keys.left = false; keys.right = false; sendInput(false);
+    if (!moving || dy < -24) sendInput(true);
+    canvas.releasePointerCapture(e.pointerId);
+  };
+  canvas.addEventListener('pointerup', finish);
+  canvas.addEventListener('pointercancel', finish);
+}
