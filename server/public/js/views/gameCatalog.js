@@ -85,7 +85,7 @@ function sortedGames(games, myId) {
 
 function sortButton(key, label) {
   const mark = sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
-  return `<button type="button" class="btn btn-sm catalog-sort-btn" data-sort="${key}">${label}${mark}</button>`;
+  return `<button type="button" class="btn btn-sm" data-sort="${key}">${label}${mark}</button>`;
 }
 
 function statusBadgeHtml(game) {
@@ -117,7 +117,7 @@ function ratingRowHtml({ label, accentClass, mine, avg, count, gameId, kind, dis
   const sliderValue = mine ?? 5;
   return `
     <div class="skill-row" data-game="${gameId}" data-kind="${kind}">
-      <span class="row" style="gap:6px;flex-wrap:wrap;">
+      <span class="row" style="gap:var(--space-2);flex-wrap:wrap;">
         ${label} <span class="muted game-avg-note">${avgText}</span> ${suggestionHtml || ''}
       </span>
       <span class="skill-value">${mine ?? '–'}</span>
@@ -132,7 +132,7 @@ function gameLinksHtml(game) {
   ].filter(Boolean);
   if (links.length === 0) return '';
   return `
-    <div class="row" style="gap:8px;flex-wrap:wrap;">
+    <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
       ${links
         .map(
           (l) =>
@@ -152,15 +152,15 @@ function gameCardHtml(game, myId) {
     .join(' · ');
 
   return `
-    <div class="card stack game-card" style="gap:10px;">
-      <div class="row" style="align-items:center;gap:10px;">
+    <div class="card stack game-card" style="gap:var(--space-3);">
+      <div class="row" style="align-items:center;gap:var(--space-3);">
         ${gameBadgeHtml(game, 40)}
         <span style="flex:1;min-width:0;">
-          <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;">
+          <div class="row" style="gap:var(--space-2);flex-wrap:wrap;align-items:center;">
             <strong>${escapeHtml(game.name)}</strong>
             ${statusBadgeHtml(game)}
           </div>
-          ${meta ? `<div class="muted" style="font-size:0.78rem;">${escapeHtml(meta)}</div>` : ''}
+          ${meta ? `<div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(meta)}</div>` : ''}
         </span>
         <button type="button" class="btn btn-sm" data-detail="${game.id}">Details</button>
       </div>
@@ -194,7 +194,7 @@ function gameCardHtml(game, myId) {
 
       ${
         game.isSuggestion
-          ? `<div class="row" style="gap:8px;flex-wrap:wrap;">
+          ? `<div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
                <button type="button" class="btn btn-sm btn-primary" data-promote="${game.id}">In Katalog übernehmen</button>
                <button type="button" class="btn btn-sm btn-danger" data-delete="${game.id}">Löschen</button>
              </div>`
@@ -261,7 +261,7 @@ function openGameDetail(gameId, ctx) {
   const processChips = game.processNames
     .map(
       (pn) => `
-      <span class="chip">${escapeHtml(pn)} <button type="button" class="icon-btn" data-remove-proc="${escapeHtml(pn)}" aria-label="Entfernen" style="font-size:0.8rem;padding:0 2px;">✕</button></span>`
+      <span class="chip">${escapeHtml(pn)} <button type="button" class="icon-btn" data-remove-proc="${escapeHtml(pn)}" aria-label="Entfernen" style="font-size:var(--font-size-xs);padding:0 2px;">✕</button></span>`
     )
     .join('');
   const suggestedProcessNames = game.processNames.length === 0 ? suggestProcessNames(game.name) : [];
@@ -296,7 +296,7 @@ function openGameDetail(gameId, ctx) {
             <input type="number" id="edit-max" min="1" max="20" value="${game.max_team_size}" />
           </div>
         </div>
-        <p class="muted" style="font-size:0.78rem;margin-top:-6px;">
+        <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
           Team-Größe wird beim „Teams auslosen" verwendet – z. B. 1-1 für 1-gegen-1, 1-5 für Squads.
         </p>
         <button type="button" class="btn btn-primary" id="edit-save">Speichern</button>
@@ -308,7 +308,7 @@ function openGameDetail(gameId, ctx) {
         }
 
         <div class="section-title">Prozessnamen (für den Agent)</div>
-        <p class="muted" style="font-size:0.78rem;margin-top:-6px;">
+        <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
           Sobald mindestens ein Prozessname hinterlegt ist, gilt das Spiel als „getrackt" – der Agent
           erkennt es dann automatisch im Live-Status.
         </p>
@@ -435,20 +435,20 @@ export function renderGameCatalog(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">🎮 Spiele</h1>
     ${whoAmICardHtml('whoami')}
-    <div class="row-between" style="margin-top:12px;gap:10px;align-items:center;">
-      <div class="tabs" style="display:flex;gap:8px;flex-wrap:wrap;">
+    <div class="row-between" style="margin-top:var(--space-3);gap:var(--space-3);align-items:center;">
+      <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
         <button type="button" class="btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}" data-tab="catalog">Alle</button>
         <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
       </div>
       <button type="button" class="btn btn-primary btn-sm" id="suggest-new">+ Spiel vorschlagen</button>
     </div>
-    <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px;">
+    <div class="row" style="gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3);">
       ${sortButton('avgBock', 'Ø Bock')}
       ${sortButton('name', 'Name')}
       ${sortButton('myBock', 'Mein Bock')}
       ${activeTab === 'catalog' ? sortButton('avgSkill', 'Ø Skill') : ''}
     </div>
-    <div class="card-grid" style="margin-top:12px;">
+    <div class="card-grid" style="margin-top:var(--space-3);">
       ${
         rows.length === 0
           ? `<div class="empty-state"><span class="emoji">🎮</span>${activeTab === 'suggestions' ? 'Noch keine vorgeschlagenen Spiele.' : 'Noch keine Spiele im Katalog.'}</div>`

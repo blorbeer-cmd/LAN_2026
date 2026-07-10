@@ -17,18 +17,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 28px;
+  padding: var(--space-5) var(--space-7);
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
-  font-size: 1.3rem;
-  font-weight: 700;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
 }
 .kiosk-header .topbar-title {
-  font-size: 1.3rem;
+  font-size: var(--font-size-xl);
 }
 .kiosk-clock {
   font-variant-numeric: tabular-nums;
-  font-size: 1.3rem;
+  font-size: var(--font-size-xl);
   color: var(--text-muted);
 }
 .kiosk-grid {
@@ -36,8 +36,8 @@
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   grid-template-rows: repeat(2, 1fr);
-  gap: 18px;
-  padding: 18px;
+  gap: var(--space-5);
+  padding: var(--space-5);
   min-height: 0;
 }
 
@@ -45,15 +45,15 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 16px 20px;
+  padding: var(--space-4) var(--space-5);
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
 }
 .kiosk-card h2 {
-  margin: 0 0 10px;
-  font-size: 1.15rem;
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-lg);
   flex-shrink: 0;
 }
 .kiosk-card > div {
@@ -64,12 +64,15 @@
 .kiosk-card .player-card,
 .kiosk-card .lb-row,
 .kiosk-card .vote-row {
-  font-size: 1.05rem;
+  font-size: var(--font-size-lg);
 }
 
 /* Narrower/portrait screens (a TV in portrait mode, or a smaller monitor):
    stack the cards in one column and let the page scroll instead of
    squeezing everything into a fixed 2x2 grid. */
+/* 900px is intentionally its own value, not --bp-lg (860px) — the kiosk
+   dashboard targets a TV/monitor, not the phone/laptop breakpoints below it
+   applies to. */
 @media (max-width: 900px) {
   .kiosk-grid {
     grid-template-columns: 1fr;
@@ -85,13 +88,13 @@
    kiosk announcement is that people look up from their own screens. Uses
    the brand gradient so it reads as "the system speaks", pulses briefly. */
 .kiosk-broadcast {
-  margin: 14px 24px 0;
-  padding: 16px 22px;
+  margin: var(--space-4) var(--space-6) 0;
+  padding: var(--space-4) var(--space-6);
   border-radius: var(--radius);
   background: var(--accent-gradient);
   color: var(--accent-text);
-  font-size: 1.35rem;
-  font-weight: 700;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
   text-align: center;
   box-shadow: 0 4px 24px rgba(91, 140, 255, 0.45);
   animation: kiosk-broadcast-in 0.4s cubic-bezier(0.2, 0.9, 0.3, 1);
@@ -103,7 +106,7 @@
   }
 }
 .kiosk-broadcast-time {
-  font-weight: 400;
+  font-weight: var(--font-weight-regular);
   opacity: 0.85;
   font-size: 0.85em;
 }
@@ -111,12 +114,12 @@
 /* Food-order banner: same width/placement as the Durchsage banner but a
    quieter card style — it's ambient status, not an urgent announcement. */
 .kiosk-food-banner {
-  margin: 14px 24px 0;
-  padding: 10px 22px;
+  margin: var(--space-4) var(--space-6) 0;
+  padding: var(--space-3) var(--space-6);
   border-radius: var(--radius);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  font-size: 1.1rem;
+  font-size: var(--font-size-lg);
   text-align: center;
 }
 .kiosk-food-banner a {

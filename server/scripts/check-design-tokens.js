@@ -1,0 +1,106 @@
+#!/usr/bin/env node
+// Pre-commit guard for the design system (see server/DESIGN_SYSTEM.md).
+//
+// Only looks at the ADDED lines of the staged diff under server/public — not
+// the whole file, and not the whole repo. That's deliberate: the codebase
+// still has a known, documented set of off-scale spacing values and other
+// intentional exceptions (see DESIGN_SYSTEM.md, "When a value genuinely
+// doesn't fit"); re-checking every existing line on every commit would mean
+// either fixing all of those right now or maintaining a baseline/allowlist
+// file that drifts out of sync with the code. Checking only new lines avoids
+// both — it enforces the rule going forward without touching existing debt.
+//
+// A new line that's a genuine, deliberate exception (not an oversight) can
+// still pass by adding a `design-token-ok` comment on the same source line,
+// e.g. `border-radius:2px; /* design-token-ok: scaled to bar height */` —
+// mirroring the "leave a short comment explaining why" guidance in
+// DESIGN_SYSTEM.md instead of silently bypassing the check.
+
+const { execSync } = require('child_process');
+
+const SCOPE = 'server/public';
+const EXEMPT_FILES = new Set([
+  // Single source of truth for the avatar swatch palette — hex values here
+  // ARE the token definitions, not a bypass of them.
+  'server/public/js/avatarPalette.js',
+]);
+
+const RULES = [
+  {
+    name: 'hardcoded hex color',
+    test: (line) => /#[0-9a-fA-F]{3,8}\b/.test(line),
+    exempt: (line, file) => {
+      // Defining a new token in :root (`--foo-color: #112233;`) is how you're
+      // supposed to introduce a color — that's not a bypass.
+      if (/^\+\s*--[\w-]+\s*:\s*#/.test(line)) return true;
+      // <meta name="theme-color"> can't consume a CSS custom property; this
+      // is a documented, unavoidable duplicate of --bg (see DESIGN_SYSTEM.md).
+      if (/theme-color/.test(line)) return true;
+      return false;
+    },
+  },
+  {
+    name: 'hardcoded font-size/font-weight',
+    test: (line) => /font-(size|weight):\s*[0-9]/.test(line),
+  },
+  {
+    name: 'hardcoded spacing (gap/padding/margin)',
+    test: (line) => /(gap|padding|margin(-top|-bottom|-left|-right)?):\s*-?[0-9.]+px/.test(line),
+  },
+  {
+    name: 'hardcoded border-radius',
+    test: (line) => /border-radius:\s*[0-9.]+px/.test(line),
+  },
+];
+
+function stagedFiles() {
+  const out = execSync('git diff --cached --name-only --diff-filter=ACM', { encoding: 'utf8' });
+  return out
+    .split('\n')
+    .map((f) => f.trim())
+    .filter((f) => f.startsWith(SCOPE + '/') && /\.(css|js)$/.test(f))
+    .filter((f) => !EXEMPT_FILES.has(f));
+}
+
+function addedLines(file) {
+  // -U0: no context lines, only the actual diff hunks — keeps this to just
+  // what's genuinely new in this commit.
+  const diff = execSync(`git diff --cached -U0 -- "${file}"`, { encoding: 'utf8' });
+  return diff.split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++'));
+}
+
+function main() {
+  const files = stagedFiles();
+  const violations = [];
+
+  for (const file of files) {
+    for (const line of addedLines(file)) {
+      if (line.includes('design-token-ok')) continue;
+      for (const rule of RULES) {
+        if (rule.test(line) && !(rule.exempt && rule.exempt(line, file))) {
+          violations.push({ file, rule: rule.name, line: line.slice(1).trim() });
+        }
+      }
+    }
+  }
+
+  if (violations.length === 0) {
+    process.exit(0);
+  }
+
+  console.error('\n✗ Design-token check failed — hardcoded value(s) found in staged changes:\n');
+  for (const v of violations) {
+    console.error(`  ${v.file} [${v.rule}]`);
+    console.error(`    ${v.line}`);
+  }
+  console.error(
+    '\nUse an existing token from server/DESIGN_SYSTEM.md instead (var(--space-N), var(--font-size-*), ...).'
+  );
+  console.error(
+    'If this is a genuine, deliberate exception, add a same-line comment containing "design-token-ok"\n' +
+      'plus a short reason (see "When a value genuinely doesn\'t fit" in DESIGN_SYSTEM.md).\n'
+  );
+  process.exit(1);
+}
+
+main();

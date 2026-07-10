@@ -47,34 +47,34 @@ function renderEventOptions() {
 
 function renderStats() {
   if (statsLoading || !statsCache) {
-    return `<div class="empty-state" style="padding:20px;">Lädt…</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   const s = statsCache;
 
   const activeHint =
     s.activePercent !== null
-      ? `<div class="muted" style="font-size:0.8rem;">davon aktiv gespielt: ${escapeHtml(s.activeFormatted)} (${s.activePercent}%)</div>`
+      ? `<div class="muted" style="font-size:var(--font-size-xs);">davon aktiv gespielt: ${escapeHtml(s.activeFormatted)} (${s.activePercent}%)</div>`
       : '';
 
   const kpis = `
     <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));">
       <div class="card">
-        <div class="muted" style="font-size:0.8rem;">Gesamtspielzeit</div>
+        <div class="muted" style="font-size:var(--font-size-xs);">Gesamtspielzeit</div>
         <div class="lb-points">${escapeHtml(s.formatted)}</div>
         ${activeHint}
       </div>
       <div class="card">
-        <div class="muted" style="font-size:0.8rem;">Sessions</div>
+        <div class="muted" style="font-size:var(--font-size-xs);">Sessions</div>
         <div class="lb-points">${s.sessionCount}</div>
       </div>
       <div class="card">
-        <div class="muted" style="font-size:0.8rem;">Verschiedene Spiele</div>
+        <div class="muted" style="font-size:var(--font-size-xs);">Verschiedene Spiele</div>
         <div class="lb-points">${s.distinctGamesCount}</div>
       </div>
       <div class="card">
-        <div class="muted" style="font-size:0.8rem;">Mehrere Spiele gleichzeitig</div>
+        <div class="muted" style="font-size:var(--font-size-xs);">Mehrere Spiele gleichzeitig</div>
         <div class="lb-points">${escapeHtml(s.simultaneous.multiGameFormatted)}</div>
-        ${s.simultaneous.maxSimultaneous > 0 ? `<div class="muted" style="font-size:0.8rem;">max. ${s.simultaneous.maxSimultaneous} gleichzeitig</div>` : ''}
+        ${s.simultaneous.maxSimultaneous > 0 ? `<div class="muted" style="font-size:var(--font-size-xs);">max. ${s.simultaneous.maxSimultaneous} gleichzeitig</div>` : ''}
       </div>
     </div>
   `;
@@ -86,16 +86,16 @@ function renderStats() {
             (a) => `
           <div class="card">
             <div class="row-between">
-              <span style="font-size:1.4rem;">${escapeHtml(a.emoji)}</span>
+              <span style="font-size:var(--font-size-xl);">${escapeHtml(a.emoji)}</span>
               <span class="lb-points">${escapeHtml(a.value)}</span>
             </div>
             <div class="player-name">${escapeHtml(a.title)}</div>
-            <div class="muted" style="font-size:0.8rem;">${escapeHtml(a.description)}</div>
+            <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(a.description)}</div>
           </div>`
           )
           .join('')}
       </div>`
-    : `<div class="empty-state" style="padding:20px;"><span class="emoji">🏅</span>Noch keine eigenen Awards.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">🏅</span>Noch keine eigenen Awards.</div>`;
 
   const gamesHtml = s.games.length
     ? s.games
@@ -105,13 +105,13 @@ function renderStats() {
           <span>${escapeHtml(g.gameIcon)}</span>
           <span style="flex:1;">
             ${escapeHtml(g.gameName)}
-            ${g.activeMs > 0 && g.activeMs < g.totalMs ? `<div class="muted" style="font-size:0.75rem;">davon aktiv: ${escapeHtml(g.activeFormatted)}</div>` : ''}
+            ${g.activeMs > 0 && g.activeMs < g.totalMs ? `<div class="muted" style="font-size:var(--font-size-xs);">davon aktiv: ${escapeHtml(g.activeFormatted)}</div>` : ''}
           </span>
           <span class="lb-points">${escapeHtml(g.formatted)}</span>
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:20px;">Noch keine Spielzeit erfasst.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Spielzeit erfasst.</div>`;
 
   const eventsHtml = s.events.length
     ? s.events
@@ -123,7 +123,7 @@ function renderStats() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:20px;">Noch keine Events mit Spielzeit.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Events mit Spielzeit.</div>`;
 
   const longestHtml = s.longestSessions.length
     ? s.longestSessions
@@ -132,13 +132,13 @@ function renderStats() {
         <div class="lb-row">
           <span style="flex:1;">
             ${escapeHtml(l.gameIcon)} ${escapeHtml(l.gameName)}
-            <div class="muted" style="font-size:0.75rem;">${formatDateTime(l.startedAt)} – ${l.endedAt ? formatDateTime(l.endedAt) : 'läuft noch'}</div>
+            <div class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(l.startedAt)} – ${l.endedAt ? formatDateTime(l.endedAt) : 'läuft noch'}</div>
           </span>
           <span class="lb-points">${escapeHtml(l.formatted)}</span>
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:20px;">Noch keine Sessions.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Sessions.</div>`;
 
   return `
     <div class="card stack">
@@ -166,7 +166,7 @@ export function renderMyStats(container, ctx) {
   if (!me) {
     container.innerHTML = `
       <button type="button" class="btn btn-sm" data-navigate="profile">‹ Zurück zum Profil</button>
-      <div class="empty-state" style="margin-top:16px;"><span class="emoji">👤</span>Bitte erst dein Profil einrichten.</div>
+      <div class="empty-state" style="margin-top:var(--space-4);"><span class="emoji">👤</span>Bitte erst dein Profil einrichten.</div>
     `;
     return;
   }

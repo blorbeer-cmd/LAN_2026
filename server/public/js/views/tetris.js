@@ -30,14 +30,14 @@ const BOARD_H = 480;
 // Per-cell colours: 1-7 tetrominoes, 8 = garbage. Distinct hues so a busy
 // board stays readable at a glance, tuned to sit on the app's dark canvas.
 const COLORS = {
-  1: '#22d3ee', // I
-  2: '#eab308', // O
-  3: '#22c55e', // S
-  4: '#ef4444', // Z
-  5: '#3b82f6', // J
-  6: '#a855f7', // T
-  7: '#f97316', // L
-  8: '#5b6577', // garbage
+  1: '#22d3ee', // I — design-token-ok: classic tetromino hue, not app UI color
+  2: '#eab308', // O — design-token-ok: classic tetromino hue, not app UI color
+  3: '#22c55e', // S — design-token-ok: classic tetromino hue, not app UI color
+  4: '#ef4444', // Z — design-token-ok: classic tetromino hue, not app UI color
+  5: '#3b82f6', // J — design-token-ok: classic tetromino hue, not app UI color
+  6: '#a855f7', // T — design-token-ok: classic tetromino hue, not app UI color
+  7: '#f97316', // L — design-token-ok: classic tetromino hue, not app UI color
+  8: '#5b6577', // garbage — design-token-ok: classic tetromino hue, not app UI color
 };
 
 let socket = null;
@@ -216,11 +216,11 @@ function drawBoard(canvas, playerState) {
   for (let y = 0; y < ROWS; y++) {
     for (let x = 0; x < COLS; x++) {
       const v = playerState.board[y]?.[x];
-      if (v) paintCell(x, y, COLORS[v] || '#888', stackGlow);
+      if (v) paintCell(x, y, COLORS[v] || 'var(--text-muted)', stackGlow);
     }
   }
   if (playerState.current) {
-    const color = COLORS[playerState.current.color] || '#fff';
+    const color = COLORS[playerState.current.color] || 'var(--text)';
     // The falling piece glows brighter so the eye tracks it.
     for (const [x, y] of playerState.current.cells) {
       if (y >= 0) paintCell(x, y, color, cell * 0.75);
@@ -303,9 +303,9 @@ function triggerClearFx(prefix, cleared) {
   const tetris = cleared >= 4;
   pulseClass(wrap, tetris ? 'tetris-flash-big' : 'tetris-flash', 500);
   pulseClass(document.querySelector(`#${prefix}-wrap`)?.closest('.tetris-board-col'), 'tetris-shake', 350);
-  const colors = tetris
-    ? ['#ffd166', '#ffffff', '#22d3ee', '#ef5da8']
-    : ['#22d3ee', '#a855f7', '#ffffff', '#5b8cff'];
+  const colors = tetris // design-token-ok: particle-burst confetti colors, a visual effect not app UI chrome
+    ? ['#ffd166', '#ffffff', '#22d3ee', '#ef5da8'] // design-token-ok: confetti colors
+    : ['#22d3ee', '#a855f7', '#ffffff', '#5b8cff']; // design-token-ok: confetti colors
   spawnBurst(document.querySelector(`#${prefix}-fx`), colors, tetris ? 46 : 22);
 }
 
@@ -365,7 +365,7 @@ function paintOverlay() {
 
 function renderLobbyList() {
   const mine = myTetrisLobby();
-  if (lobbies.length === 0) return `<div class="empty-state" style="padding:14px;">Keine offene Tetris-Lobby.</div>`;
+  if (lobbies.length === 0) return `<div class="empty-state" style="padding:var(--space-4);">Keine offene Tetris-Lobby.</div>`;
   return lobbies
     .map((l) => {
       const isHost = l.host.id === myId();
@@ -379,10 +379,10 @@ function renderLobbyList() {
           : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-tetris-join="${l.id}" ${mine || full ? 'disabled' : ''}>Beitreten</button>`;
       return `
         <div class="lb-row" style="align-items:flex-start;">
-          <div class="stack" style="gap:6px;flex:1;">
+          <div class="stack" style="gap:var(--space-2);flex:1;">
             <strong>${escapeHtml(l.host.name)}s Tetris-Lobby</strong>
             <div class="chip-list">${l.players.map((p) => `<span class="chip">${escapeHtml(p.name)}</span>`).join('')}</div>
-            <div class="muted" style="font-size:0.78rem;">${l.players.length}/2 Spieler${full ? ' · voll' : ''}</div>
+            <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length}/2 Spieler${full ? ' · voll' : ''}</div>
           </div>
           ${action}
         </div>`;
@@ -395,8 +395,8 @@ function hostStartHtml() {
   if (!lobby || lobby.host.id !== myId()) return '';
   const ready = lobby.players.length === 2;
   return `
-    <div class="stack" style="gap:6px;border-top:1px solid var(--border);padding-top:10px;">
-      <div class="muted" style="font-size:0.8rem;">${ready ? 'Bereit — Gegner ist da.' : 'Warte auf einen Gegner…'}</div>
+    <div class="stack" style="gap:var(--space-2);border-top:1px solid var(--border);padding-top:var(--space-3);">
+      <div class="muted" style="font-size:var(--font-size-xs);">${ready ? 'Bereit — Gegner ist da.' : 'Warte auf einen Gegner…'}</div>
       <button type="button" class="btn btn-primary btn-block" id="tetris-start" ${ready ? '' : 'disabled'}>Battle starten</button>
     </div>`;
 }
@@ -410,11 +410,11 @@ export function renderTetrisLobbyCard() {
   const noMe = !myId();
   return `
     <div class="card stack">
-      <div class="row-between" style="gap:10px;">
+      <div class="row-between" style="gap:var(--space-3);">
         <strong>Tetris-Lobby</strong>
         <button type="button" class="btn btn-primary btn-sm btn-equal" id="tetris-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
       </div>
-      ${noMe ? `<div class="muted" style="font-size:0.8rem;">Wähle oben zuerst aus, wer du bist.</div>` : ''}
+      ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
       ${renderLobbyList()}
       ${hostStartHtml()}
     </div>`;
@@ -467,7 +467,7 @@ function endResultHtml() {
     .map((s) => `<span class="chip">${escapeHtml(s.name)} · ${s.score} Pkt · ${s.lines} Z</span>`)
     .join('');
   return `
-    <div class="card arcade-winner-card" style="margin-top:12px;">
+    <div class="card arcade-winner-card" style="margin-top:var(--space-3);">
       <div class="arcade-winner-burst" aria-hidden="true"><span></span><span></span><span></span></div>
       <div class="arcade-winner-crown">🏆</div>
       <div>
@@ -498,7 +498,7 @@ function boardColumn(prefix, label) {
 function matchControls() {
   if (!match || match.ended || match.host?.id !== myId()) return '';
   return `
-    <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px;justify-content:center;">
+    <div class="row" style="gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3);justify-content:center;">
       ${
         match.paused
           ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="tetris-resume">Fortsetzen</button>`
@@ -514,7 +514,7 @@ export function renderTetris(container, ctx) {
     // The play view is only for live matches; anything else belongs in Arcade.
     container.innerHTML = `
       <button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button>
-      <div class="empty-state" style="margin-top:16px;">Kein laufendes Tetris-Match.</div>`;
+      <div class="empty-state" style="margin-top:var(--space-4);">Kein laufendes Tetris-Match.</div>`;
     return;
   }
 

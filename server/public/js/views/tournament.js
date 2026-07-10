@@ -111,7 +111,7 @@ function renderList(container, ctx) {
               ${gameBadgeHtml({ id: t.gameId, icon: t.gameIcon }, 36)}
               <span style="flex:1;">
                 <div class="player-name">${escapeHtml(t.name)}</div>
-                <div class="muted" style="font-size:0.8rem;">${FORMAT_LABELS[t.format]} · ${t.teamCount} Teams</div>
+                <div class="muted" style="font-size:var(--font-size-xs);">${FORMAT_LABELS[t.format]} · ${t.teamCount} Teams</div>
               </span>
               <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
             </button>`
@@ -146,7 +146,7 @@ function renderList(container, ctx) {
 
 function renderCreateForm(el, ctx) {
   if (state.games.length === 0 || state.players.length < 2) {
-    el.innerHTML = `<div class="empty-state" style="padding:16px;">Dafür braucht es mindestens ein Spiel und 2 Spieler.</div>`;
+    el.innerHTML = `<div class="empty-state" style="padding:var(--space-4);">Dafür braucht es mindestens ein Spiel und 2 Spieler.</div>`;
     return;
   }
 
@@ -175,8 +175,8 @@ function renderCreateForm(el, ctx) {
   const seatingNote =
     createSeatConflicts && createSeatConflicts.considered
       ? createSeatConflicts.conflicts > 0
-        ? `<div class="muted" style="font-size:0.78rem;">🪑 ${createSeatConflicts.conflicts} von ${createSeatConflicts.considered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten (sonst wäre es zu unfair geworden).</div>`
-        : `<div class="muted" style="font-size:0.78rem;">🪑 Alle Sitznachbarn sind im selben Team.</div>`
+        ? `<div class="muted" style="font-size:var(--font-size-xs);">🪑 ${createSeatConflicts.conflicts} von ${createSeatConflicts.considered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten (sonst wäre es zu unfair geworden).</div>`
+        : `<div class="muted" style="font-size:var(--font-size-xs);">🪑 Alle Sitznachbarn sind im selben Team.</div>`
       : '';
 
   const teamsPreview = createProposedTeams
@@ -187,8 +187,8 @@ function renderCreateForm(el, ctx) {
           .map(
             (t, i) => `
           <div class="team-card">
-            <input type="text" data-team-name="${i}" value="${escapeHtml(t.name)}" maxlength="60" style="margin-bottom:2px;font-weight:700;" />
-            <div class="muted" style="font-size:0.78rem;margin-bottom:6px;">Score ${t.totalRating}</div>
+            <input type="text" data-team-name="${i}" value="${escapeHtml(t.name)}" maxlength="60" style="margin-bottom:var(--space-1);font-weight:var(--font-weight-bold);" />
+            <div class="muted" style="font-size:var(--font-size-xs);margin-bottom:var(--space-2);">Score ${t.totalRating}</div>
             ${t.players.map((p) => `<div class="team-player">${avatarHtml(p, 18)} ${escapeHtml(p.name)}</div>`).join('')}
           </div>`
           )
@@ -202,7 +202,7 @@ function renderCreateForm(el, ctx) {
     : '';
 
   el.innerHTML = `
-    <div class="card stack" style="margin-bottom:16px;">
+    <div class="card stack" style="margin-bottom:var(--space-4);">
       <div class="row-between">
         <div class="section-title" style="margin:0;">Neues Turnier</div>
         <button type="button" class="icon-btn" id="tourn-create-close" aria-label="Schließen">✕</button>
@@ -233,7 +233,7 @@ function renderCreateForm(el, ctx) {
                  <input type="number" id="tourn-advancers" min="1" value="${createAdvancersPerGroup}" />
                </div>
              </div>
-             <p class="muted" style="font-size:0.78rem;margin-top:-6px;">
+             <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
                Die Teams spielen zuerst in Gruppen jeder gegen jeden, danach ziehen die besten
                Teams je Gruppe automatisch in ein K.O.-Turnier ein.
              </p>`
@@ -530,18 +530,18 @@ function renderRoundRobinBoard(t, teamsById, matches, standings) {
             return `
               <div class="lb-row">
                 <span style="flex:1;">${nameA} <span class="muted">vs</span> ${nameB}</span>
-                <span class="muted" style="font-size:0.8rem;">${resultText}</span>
+                <span class="muted" style="font-size:var(--font-size-xs);">${resultText}</span>
               </div>`;
           }
           if (t.trackScore) {
             return `
-              <div class="lb-row" style="flex-wrap:wrap;gap:6px;">
+              <div class="lb-row" style="flex-wrap:wrap;gap:var(--space-2);">
                 <span style="flex:1 1 100%;">${nameA} <span class="muted">vs</span> ${nameB}</span>
                 ${renderScoreForm(m)}
               </div>`;
           }
           return `
-            <div class="lb-row" style="flex-wrap:wrap;gap:6px;">
+            <div class="lb-row" style="flex-wrap:wrap;gap:var(--space-2);">
               <span style="flex:1 1 100%;">${nameA} <span class="muted">vs</span> ${nameB}</span>
               <button type="button" class="btn btn-sm" data-match="${m.id}" data-winner="${m.teamAId}">${nameA}</button>
               <button type="button" class="btn btn-sm" data-match="${m.id}" data-winner="${m.teamBId}">${nameB}</button>
@@ -549,7 +549,7 @@ function renderRoundRobinBoard(t, teamsById, matches, standings) {
             </div>`;
         })
         .join('');
-      return `<div class="section-title" style="margin-top:14px;">Runde ${round}</div><div class="card">${rows}</div>`;
+      return `<div class="section-title" style="margin-top:var(--space-4);">Runde ${round}</div><div class="card">${rows}</div>`;
     })
     .join('');
 
@@ -559,7 +559,7 @@ function renderRoundRobinBoard(t, teamsById, matches, standings) {
       <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
         <span class="lb-rank">${i + 1}</span>
         <span style="flex:1;">${teamLabel(teamsById, s.teamId)}</span>
-        <span class="muted" style="font-size:0.8rem;" title="${s.wins} Siege, ${s.draws} Unentschieden, ${s.losses} Niederlagen">${s.wins}S/${s.draws}U/${s.losses}N</span>
+        <span class="muted" style="font-size:var(--font-size-xs);" title="${s.wins} Siege, ${s.draws} Unentschieden, ${s.losses} Niederlagen">${s.wins}S/${s.draws}U/${s.losses}N</span>
         <span class="lb-points" title="${s.points} Punkte">${s.points} P</span>
       </div>`
     )
@@ -592,9 +592,9 @@ function renderGroupKnockout(t, ctx) {
   const knockoutMatches = t.matches.filter((m) => m.stage === 'knockout');
   const knockoutHtml =
     knockoutMatches.length === 0
-      ? `<div class="section-title" style="margin-top:14px;">K.O.-Runde</div>
+      ? `<div class="section-title" style="margin-top:var(--space-4);">K.O.-Runde</div>
          <div class="empty-state">Startet automatisch, sobald alle Gruppenspiele entschieden sind.</div>`
-      : `<div class="section-title" style="margin-top:14px;">K.O.-Runde</div>${renderBracket(t, ctx, knockoutMatches)}`;
+      : `<div class="section-title" style="margin-top:var(--space-4);">K.O.-Runde</div>${renderBracket(t, ctx, knockoutMatches)}`;
 
   return `${groupBlocks}${knockoutHtml}`;
 }
@@ -635,8 +635,8 @@ function renderDetail(container, ctx) {
       <button type="button" class="btn btn-sm" id="tourn-back">‹ Zurück</button>
       <button type="button" class="btn btn-sm btn-danger" id="tourn-delete">Löschen</button>
     </div>
-    <h1 class="view-title row" style="gap:8px;">${gameBadgeHtml({ id: t.gameId, icon: t.gameIcon }, 26)} ${escapeHtml(t.name)}</h1>
-    <div class="muted" style="margin-top:-10px;margin-bottom:12px;">
+    <h1 class="view-title row" style="gap:var(--space-2);">${gameBadgeHtml({ id: t.gameId, icon: t.gameIcon }, 26)} ${escapeHtml(t.name)}</h1>
+    <div class="muted" style="margin-top:calc(var(--space-3) * -1);margin-bottom:var(--space-3);">
       ${FORMAT_LABELS[t.format]}${formatMeta ? ` · ${formatMeta}` : ''} ·
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
     </div>

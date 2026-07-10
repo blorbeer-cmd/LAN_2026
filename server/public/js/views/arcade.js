@@ -163,14 +163,14 @@ function scoreHtml() {
 
 function arcadeStatsHtml() {
   if (!stats && !statsLoading) return '';
-  if (statsLoading && !stats) return `<div class="empty-state" style="padding:14px;">Statistiken laden…</div>`;
+  if (statsLoading && !stats) return `<div class="empty-state" style="padding:var(--space-4);">Statistiken laden…</div>`;
   const games = stats?.games ?? [];
-  if (!games.length) return `<div class="empty-state" style="padding:14px;">Noch keine abgeschlossenen Arcade-Runden.</div>`;
+  if (!games.length) return `<div class="empty-state" style="padding:var(--space-4);">Noch keine abgeschlossenen Arcade-Runden.</div>`;
   if (!games.some((g) => g.gameType === activeStatsGame)) activeStatsGame = games[0].gameType;
 
   const tabs =
     games.length > 1
-      ? `<div class="row" style="gap:8px;flex-wrap:wrap;">${games
+      ? `<div class="row" style="gap:var(--space-2);flex-wrap:wrap;">${games
           .map(
             (g) =>
               `<button type="button" class="btn btn-sm ${g.gameType === activeStatsGame ? 'btn-primary' : ''}" data-stats-tab="${g.gameType}">${escapeHtml(g.title)}</button>`
@@ -205,13 +205,13 @@ function targetControls(lobby) {
   const myId = getMyId();
   if (!lobby || lobby.host.id !== myId) return '';
   return `
-    <div class="card stack" style="margin-top:12px;">
+    <div class="card stack" style="margin-top:var(--space-3);">
       <strong>Lobby starten</strong>
-      <div class="row" style="gap:8px;flex-wrap:wrap;">
-        <label class="check-row" style="padding:8px 10px;"><input type="radio" name="target-score" value="5" checked />5</label>
-        <label class="check-row" style="padding:8px 10px;"><input type="radio" name="target-score" value="10" />10</label>
-        <label class="check-row" style="padding:8px 10px;"><input type="radio" name="target-score" value="20" />20</label>
-        <label class="row" style="gap:6px;align-items:center;">
+      <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
+        <label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="target-score" value="5" checked />5</label>
+        <label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="target-score" value="10" />10</label>
+        <label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="target-score" value="20" />20</label>
+        <label class="row" style="gap:var(--space-2);align-items:center;">
           <input type="radio" name="target-score" value="custom" />
           <input type="number" id="target-custom" min="1" max="100" value="${escapeHtml(customTarget)}" placeholder="frei" style="width:78px;" />
         </label>
@@ -222,7 +222,7 @@ function targetControls(lobby) {
 
 function renderLobbyList() {
   const mine = myLobby();
-  if (lobbies.length === 0) return `<div class="empty-state" style="padding:14px;">Keine offene Quiz-Lobby.</div>`;
+  if (lobbies.length === 0) return `<div class="empty-state" style="padding:var(--space-4);">Keine offene Quiz-Lobby.</div>`;
   return lobbies
     .map((l) => {
       const isHost = l.host.id === getMyId();
@@ -234,10 +234,10 @@ function renderLobbyList() {
           : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-join-lobby="${l.id}" ${mine ? 'disabled' : ''}>Beitreten</button>`;
       return `
         <div class="lb-row" style="align-items:flex-start;">
-          <div class="stack" style="gap:6px;flex:1;">
+          <div class="stack" style="gap:var(--space-2);flex:1;">
             <strong>${escapeHtml(l.host.name)}s Quiz-Lobby</strong>
             <div class="chip-list">${l.players.map((p) => `<span class="chip">${escapeHtml(p.name)}</span>`).join('')}</div>
-            <div class="muted" style="font-size:0.78rem;">${l.players.length} Spieler · Host startet, wenn alle bereit sind</div>
+            <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length} Spieler · Host startet, wenn alle bereit sind</div>
           </div>
           ${action}
         </div>`;
@@ -254,7 +254,7 @@ function secondsLeft() {
 function matchControlsHtml() {
   if (!match || match.ended || match.host?.id !== getMyId()) return '';
   return `
-    <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px;">
+    <div class="row" style="gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3);">
       ${
         match.paused
           ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-resume">Fortsetzen</button>`
@@ -285,19 +285,19 @@ function renderMatch() {
   if (!match) return '';
   const celebration = winnerCelebrationHtml();
   const result = lastResult && !celebration
-    ? `<div class="card stack" style="margin-top:12px;">
+    ? `<div class="card stack" style="margin-top:var(--space-3);">
         <strong>${lastResult.timeout ? 'Zeit abgelaufen' : `${escapeHtml(lastResult.winner?.name ?? 'Niemand')} gewinnt die Runde`}</strong>
         <span class="muted">Antwort: ${escapeHtml(lastResult.correctAnswer ?? '')}</span>
       </div>`
     : '';
   const question = currentQuestion
     ? `
-      <form id="quiz-answer-form" class="card stack" style="margin-top:12px;">
+      <form id="quiz-answer-form" class="card stack" style="margin-top:var(--space-3);">
         <div class="row-between">
           <div class="muted">${escapeHtml(currentQuestion.category || 'Quiz')} · ${escapeHtml(currentQuestion.difficulty || 'offen')}</div>
           <span id="quiz-countdown" class="badge ${secondsLeft() <= 5 ? 'badge-paused' : 'badge-playing'}">${match.paused ? 'Pause' : `${secondsLeft()}s`}</span>
         </div>
-        <h2 style="font-size:1.15rem;margin:0;">${escapeHtml(currentQuestion.question)}</h2>
+        <h2 style="font-size:var(--font-size-lg);margin:0;">${escapeHtml(currentQuestion.question)}</h2>
         <div class="row">
           <input type="text" id="quiz-answer" autocomplete="off" placeholder="Antwort" style="flex:1;" ${match.paused ? 'disabled' : ''} />
           <button type="submit" class="btn btn-primary" ${match.paused ? 'disabled' : ''}>Senden</button>
@@ -305,8 +305,8 @@ function renderMatch() {
         ${match.paused ? `<div class="muted">Match pausiert.</div>` : ''}
       </form>`
     : match.ended
-      ? `<div class="empty-state" style="margin-top:12px;">Match beendet.</div>`
-      : `<div class="empty-state" style="margin-top:12px;">Nächste Frage kommt…</div>`;
+      ? `<div class="empty-state" style="margin-top:var(--space-3);">Match beendet.</div>`
+      : `<div class="empty-state" style="margin-top:var(--space-3);">Nächste Frage kommt…</div>`;
   return `
     <div class="section-title">🎮 Laufendes Match</div>
     <div class="chip-list">${scoreHtml()}</div>
@@ -341,8 +341,8 @@ function activeGameHtml() {
   if (game === 'quiz') {
     const lobby = myLobby();
     return `
-      <div class="card stack" style="margin-top:12px;">
-        <div class="row-between" style="gap:10px;">
+      <div class="card stack" style="margin-top:var(--space-3);">
+        <div class="row-between" style="gap:var(--space-3);">
           <strong>Quiz-Lobby</strong>
           <button type="button" class="btn btn-primary btn-sm btn-equal" id="quiz-create-lobby" ${lobby || match ? 'disabled' : ''}>Lobby öffnen</button>
         </div>
@@ -351,7 +351,7 @@ function activeGameHtml() {
       ${targetControls(lobby)}`;
   }
   if (game === 'tetris') {
-    return `<div style="margin-top:12px;">${renderTetrisLobbyCard()}</div>`;
+    return `<div style="margin-top:var(--space-3);">${renderTetrisLobbyCard()}</div>`;
   }
   return '';
 }
@@ -440,13 +440,13 @@ export function renderQuizRoom(container, ctx) {
   if (!match) {
     container.innerHTML = `
       <button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button>
-      <div class="empty-state" style="margin-top:16px;">Kein laufendes Quiz-Match.</div>`;
+      <div class="empty-state" style="margin-top:var(--space-4);">Kein laufendes Quiz-Match.</div>`;
     return;
   }
   container.innerHTML = `
     <h1 class="view-title">⚡ Gaming-Quiz</h1>
     ${renderMatch()}
-    ${match.ended ? `<button type="button" class="btn btn-primary btn-block" id="quiz-back" style="margin-top:14px;">Zurück zum Arcade</button>` : ''}
+    ${match.ended ? `<button type="button" class="btn btn-primary btn-block" id="quiz-back" style="margin-top:var(--space-4);">Zurück zum Arcade</button>` : ''}
   `;
   wireQuizMatch(container);
   if (currentQuestion && !match.paused) startCountdown();

@@ -38,19 +38,71 @@
   /* Spacing scale — every card/row/section gap and padding in this file
      pulls from here instead of one-off pixel values, so the same kind of
      element (a card, a list row, a section gap) is exactly the same size
-     everywhere it appears instead of drifting per-view. */
+     everywhere it appears instead of drifting per-view. No in-between value
+     (6px, 10px, 14px, ...) is allowed outside this scale — round up or down
+     to the nearest step instead of introducing a new one. */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 48px;
   --card-padding: var(--space-4) var(--space-4);
   /* Minimum height for a single-line, icon-led list row (players, games,
      tournaments, the "Mehr" hub) — keeps every such row the same height
      regardless of how much subtext it happens to have. */
   --row-min-h: 68px;
   --row-icon-size: 36px;
+
+  /* Avatar sizes — the one scale every avatar/color-dot rendering (see
+     avatarHtml in format.js) should size itself from, instead of each call
+     site picking its own pixel value. */
+  --avatar-size-sm: 24px;
+  --avatar-size-md: 32px;
+  --avatar-size-lg: 48px;
+
+  /* Typography scale — every font-size in this file (and in the JS views,
+     which build HTML as template strings and can't rely on element
+     defaults) pulls from here. Named by role, not by raw value, so a future
+     re-tune only touches this block. */
+  --font-size-2xs: 0.7rem;
+  --font-size-xs: 0.78rem;
+  --font-size-sm: 0.85rem;
+  --font-size-md: 0.95rem;
+  --font-size-lg: 1.15rem;
+  --font-size-xl: 1.3rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 2rem;
+  --font-weight-regular: 400;
+  --font-weight-medium: 600;
+  --font-weight-bold: 700;
+  --font-weight-black: 800;
+  --line-height-tight: 1;
+
+  /* Breakpoints — documented here as the single source of truth for the
+     literal pixel values used in @media rules throughout this file. CSS
+     custom properties can't be read inside a @media condition itself (a
+     browser/spec limitation, not something a build step would fix without
+     introducing one), so every @media below repeats the literal value but
+     references the matching token name in a comment — keep both in sync by
+     hand when a breakpoint changes. */
+  --bp-sm: 480px;
+  --bp-md: 640px;
+  --bp-lg: 860px;
+  --bp-xl: 1280px;
+
+  /* "Pill" radius — already the de-facto shape for badges, chips, the nav
+     pill and vote bars; naming it stops future pill-shaped elements from
+     reinventing 999px (or a slightly different, wrong, almost-pill value). */
+  --radius-full: 999px;
+
+  /* Glow shadows — the two recurring accent-colored glows (buttons/active
+     states in app blue, logo/wordmark in brand purple), previously each
+     re-declared with slightly different blur/alpha per element. */
+  --shadow-glow-accent: 0 4px 20px rgba(91, 140, 255, 0.42);
+  --shadow-glow-brand: 0 0 14px rgba(145, 99, 245, 0.5);
 }
 
 * {
@@ -106,7 +158,7 @@ html {
 }
 ::-webkit-scrollbar-thumb {
   background: rgba(139, 147, 167, 0.3);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   /* Transparent outer edge shrinks the visible thumb without shrinking the
      grab/tap target. */
   border: 2px solid transparent;
@@ -133,7 +185,7 @@ input {
 
 .error-text {
   color: var(--danger);
-  font-size: 0.9rem;
+  font-size: var(--font-size-sm);
 }
 
 /* ---------- App shell ---------- */
@@ -188,22 +240,22 @@ input {
 }
 
 .topbar-title {
-  font-size: 1.2rem;
+  font-size: var(--font-size-lg);
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--space-2);
 }
 
 .topbar-logo {
   display: block;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   filter: drop-shadow(0 0 6px rgba(145, 99, 245, 0.5));
 }
 
 .login-logo {
   display: block;
   margin: 0 auto;
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow), 0 0 52px rgba(145, 99, 245, 0.45);
 }
 
@@ -213,7 +265,7 @@ input {
    else (buttons, the topbar stripe) so it doesn't introduce a new color. */
 .brand-title {
   display: inline-block;
-  font-weight: 800;
+  font-weight: var(--font-weight-black);
   letter-spacing: -0.02em;
   font-style: italic;
   transform: skewX(-4deg);
@@ -222,13 +274,13 @@ input {
   background-clip: text;
   color: transparent;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 14px rgba(145, 99, 245, 0.5));
+  filter: drop-shadow(var(--shadow-glow-brand));
 }
 
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .icon-btn {
@@ -238,17 +290,17 @@ input {
   background: none;
   border: none;
   color: var(--text);
-  font-size: 1.15rem;
+  font-size: var(--font-size-lg);
   cursor: pointer;
-  padding: 6px;
-  line-height: 1;
+  padding: var(--space-2);
+  line-height: var(--line-height-tight);
   border-radius: var(--radius-sm);
   text-decoration: none;
 }
 .topbar .icon-btn {
   width: 44px;
   height: 44px;
-  padding: 10px;
+  padding: var(--space-3);
 }
 .github-icon {
   width: 24px;
@@ -274,7 +326,7 @@ input {
   flex: 1;
   min-height: 0; /* allow this flex item to actually shrink and scroll internally, see .app */
   overflow-y: auto;
-  padding: 16px 16px calc(var(--nav-height) + 24px);
+  padding: var(--space-4) var(--space-4) calc(var(--nav-height) + var(--space-6));
   max-width: var(--content-max-width);
   width: 100%;
   margin: 0 auto;
@@ -296,12 +348,12 @@ input {
    the bottom nav intentionally does NOT follow this (see .bottom-nav-inner
    below), so navigation stays a tight, thumb/click-friendly cluster instead
    of spreading thin across a wide window. */
-@media (min-width: 860px) {
+@media (min-width: 860px) { /* --bp-lg */
   :root {
     --content-max-width: 1080px;
   }
 }
-@media (min-width: 1280px) {
+@media (min-width: 1280px) { /* --bp-xl */
   :root {
     --content-max-width: 1320px;
   }
@@ -343,9 +395,9 @@ input {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: var(--space-1);
   color: var(--text-muted);
-  font-size: 0.7rem;
+  font-size: var(--font-size-2xs);
   border-radius: var(--radius-sm);
   position: relative;
   transition: color 0.15s ease;
@@ -370,7 +422,7 @@ input {
   vertical-align: -0.18em;
 }
 .inline-icon + .inline-icon {
-  margin-left: 2px;
+  margin-left: var(--space-1);
 }
 .empty-state-icon {
   display: inline-flex;
@@ -378,7 +430,7 @@ input {
   height: 42px;
   align-items: center;
   justify-content: center;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-2);
   color: var(--text-muted);
 }
 .empty-state-icon .ui-icon {
@@ -416,7 +468,7 @@ input {
   left: 50%;
   width: 46px;
   height: 27px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: rgba(91, 140, 255, 0.17);
   opacity: 0;
   transform: translateX(-50%) scale(0.55);
@@ -435,7 +487,7 @@ input {
   filter: drop-shadow(0 0 6px rgba(91, 140, 255, 0.55));
 }
 .nav-btn.active .nav-label {
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
 }
 
 /* ---------- Buttons & inputs ---------- */
@@ -443,9 +495,9 @@ input {
 .btn {
   border: none;
   border-radius: var(--radius-sm);
-  padding: 12px 18px;
-  font-size: 0.95rem;
-  font-weight: 600;
+  padding: var(--space-3) 18px;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
   background: var(--bg-elevated-2);
   color: var(--text);
@@ -458,7 +510,7 @@ input {
     filter: brightness(1.12);
   }
   .btn-primary:hover:not(:disabled) {
-    box-shadow: 0 4px 20px rgba(91, 140, 255, 0.42);
+    box-shadow: var(--shadow-glow-accent);
   }
   .icon-btn:hover {
     background: var(--bg-elevated-2);
@@ -490,8 +542,8 @@ input {
   width: 100%;
 }
 .btn-sm {
-  padding: 8px 12px;
-  font-size: 0.85rem;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
 }
 /* Uniform-width buttons so a set of them (lobby actions, in-game controls)
    reads as a tidy group instead of a jumble of different widths. Wide enough
@@ -511,8 +563,8 @@ textarea {
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 11px 12px;
-  font-size: 0.95rem;
+  padding: 11px var(--space-3);
+  font-size: var(--font-size-md);
   color: var(--text);
   width: 100%;
   /* Flex items default to min-width:auto, i.e. never shrink past their
@@ -589,7 +641,7 @@ input[type='number']::-webkit-inner-spin-button {
    value, so its placeholder text never actually becomes visible). */
 .field-label {
   display: block;
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   margin: 0 0 4px 2px;
 }
@@ -644,8 +696,8 @@ input[type='number']::-webkit-inner-spin-button {
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 11px 12px;
-  font-size: 0.95rem;
+  padding: 11px var(--space-3);
+  font-size: var(--font-size-md);
   color: var(--text);
   text-align: left;
   cursor: pointer;
@@ -657,17 +709,17 @@ input[type='number']::-webkit-inner-spin-button {
 .dt-time-group {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   flex: 0 0 auto;
 }
 .dt-time-select {
   width: 62px;
-  padding: 11px 22px 11px 10px;
+  padding: 11px 22px 11px 10px; /* design-token-ok: vertical padding matches the shared 11px input rhythm; wider right side clears this select's own chevron icon */
   background-position: right 6px center;
 }
 .dt-time-sep {
   color: var(--text-muted);
-  font-weight: 600;
+  font-weight: var(--font-weight-medium);
 }
 .dt-clear-btn {
   color: var(--text-muted);
@@ -691,14 +743,14 @@ input[type='number']::-webkit-inner-spin-button {
   table-layout: fixed;
 }
 .dt-calendar th {
-  font-size: 0.7rem;
+  font-size: var(--font-size-2xs);
   color: var(--text-muted);
-  font-weight: 600;
-  padding-bottom: 6px;
+  font-weight: var(--font-weight-medium);
+  padding-bottom: var(--space-2);
 }
 .dt-calendar td {
   text-align: center;
-  padding: 2px;
+  padding: var(--space-1);
 }
 .dt-day {
   width: 100%;
@@ -707,7 +759,7 @@ input[type='number']::-webkit-inner-spin-button {
   border: none;
   border-radius: var(--radius-sm);
   color: var(--text);
-  font-size: 0.85rem;
+  font-size: var(--font-size-sm);
   cursor: pointer;
 }
 @media (hover: hover) {
@@ -721,7 +773,7 @@ input[type='number']::-webkit-inner-spin-button {
 .dt-day-selected {
   background: var(--accent-gradient);
   color: var(--accent-text);
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
 }
 .dt-popover .btn-block {
   margin-top: var(--space-2);
@@ -749,21 +801,21 @@ input[type='number']::-webkit-inner-spin-button {
   gap: var(--space-3);
   grid-template-columns: 1fr;
 }
-@media (min-width: 640px) {
+@media (min-width: 640px) { /* --bp-md */
   .card-grid {
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   }
 }
 
 .view-title {
-  font-size: 1.3rem;
-  font-weight: 800;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-black);
   margin: var(--space-1) 0 var(--space-4);
 }
 
 .section-title {
-  font-size: 0.95rem;
-  font-weight: 700;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -824,8 +876,8 @@ button.card {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.5rem;
-  line-height: 1;
+  font-size: var(--font-size-2xl);
+  line-height: var(--line-height-tight);
 }
 /* Reserves space for a 2-line description regardless of whether this
    particular row's text actually wraps that far, so a list of otherwise
@@ -837,7 +889,7 @@ button.card {
   -webkit-box-orient: vertical;
   overflow: hidden;
   min-height: 2.4em;
-  font-size: 0.8rem;
+  font-size: var(--font-size-xs);
 }
 
 /* Arcade launcher: a compact row of game tiles instead of full-width cards.
@@ -855,19 +907,19 @@ button.card {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  gap: 6px;
+  gap: var(--space-2);
   min-height: 88px;
-  padding: 12px 4px 10px;
+  padding: var(--space-3) var(--space-1) var(--space-3);
   cursor: pointer;
   text-align: center;
 }
 .arcade-tile-icon {
-  font-size: 1.7rem;
+  font-size: var(--font-size-2xl);
   line-height: 1;
 }
 .arcade-tile-name {
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-bold);
   line-height: 1.15;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -885,8 +937,8 @@ button.card {
   position: absolute;
   top: 5px;
   right: 5px;
-  font-size: 0.55rem;
-  font-weight: 700;
+  font-size: 0.55rem; /* design-token-ok: smaller than the smallest text token so a "SOON" ribbon doesn't crowd the tile */
+  font-weight: var(--font-weight-bold);
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--text-muted);
@@ -906,7 +958,7 @@ button.card {
   gap: var(--space-3);
   justify-items: center;
   text-align: center;
-  margin-top: 12px;
+  margin-top: var(--space-3);
   overflow: hidden;
 }
 .arcade-winner-burst {
@@ -920,7 +972,7 @@ button.card {
   top: 36px;
   width: 28px;
   height: 28px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   border: 2px solid rgba(91, 140, 255, 0.35);
   transform: translate(-50%, -50%) scale(0.4);
   animation: arcade-winner-ring 1.6s ease-out infinite;
@@ -936,15 +988,15 @@ button.card {
 .arcade-winner-crown {
   position: relative;
   z-index: 1;
-  font-size: 2rem;
+  font-size: var(--font-size-3xl);
   animation: arcade-winner-pop 0.9s ease-out both;
 }
 .arcade-winner-label {
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs);
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  margin-bottom: 2px;
+  margin-bottom: var(--space-1);
 }
 @keyframes arcade-winner-ring {
   0% {
@@ -977,25 +1029,22 @@ button.card {
   overflow: hidden;
 }
 .game-avg-note {
-  font-size: 0.75rem;
-  font-weight: 400;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
 }
 /* Skill-Vorschlag chip (derived from match results, see skillSuggestion.ts):
    a tappable button, not just a label — clicking applies it. Highlighted
    when it diverges 2+ points from the player's own self-rating. */
 .chip-suggestion {
   cursor: pointer;
-  font-size: 0.75rem;
-  padding: 2px 8px;
+  font-size: var(--font-size-xs);
+  padding: var(--space-1) var(--space-2);
 }
 .chip-suggestion-diverges {
   color: var(--state-playing);
   background: var(--state-playing-bg);
   border-color: var(--state-playing);
-  font-weight: 600;
-}
-.catalog-sort-btn {
-  padding: 6px 10px;
+  font-weight: var(--font-weight-medium);
 }
 .arrivals-layout {
   display: flex;
@@ -1007,7 +1056,7 @@ button.card {
   margin-top: 0;
 }
 .arrivals-chip-row {
-  gap: 4px;
+  gap: var(--space-1);
   flex-wrap: wrap;
 }
 .arrivals-carpool-card {
@@ -1018,7 +1067,7 @@ button.card {
 .arrivals-carpool-section {
   display: grid;
   gap: var(--space-2);
-  padding: 12px;
+  padding: var(--space-3);
 }
 .arrivals-carpool-section + .arrivals-carpool-section {
   border-top: 1px solid var(--border);
@@ -1026,7 +1075,7 @@ button.card {
 .arrivals-carpool-row {
   display: grid;
   gap: var(--space-2);
-  padding: 10px 0 0;
+  padding: var(--space-3) 0 0;
   border-top: 1px solid rgba(122, 141, 195, 0.13);
 }
 .arrivals-carpool-head {
@@ -1042,7 +1091,7 @@ button.card {
   justify-content: flex-end;
 }
 .arrivals-carpool-empty {
-  font-size: 0.85rem;
+  font-size: var(--font-size-sm);
 }
 .arrivals-people-card {
   padding: 0;
@@ -1051,9 +1100,9 @@ button.card {
 .arrivals-person-row {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
-  gap: 10px;
+  gap: var(--space-3);
   align-items: start;
-  padding: 10px 12px;
+  padding: var(--space-3) var(--space-3);
   border-bottom: 1px solid var(--border);
 }
 .arrivals-person-row:last-child {
@@ -1065,19 +1114,19 @@ button.card {
 .arrivals-time-line {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
-  gap: 6px;
+  gap: var(--space-2);
   align-items: baseline;
-  font-size: 0.82rem;
+  font-size: var(--font-size-sm);
 }
 .arrivals-time-line span {
   color: var(--text-muted);
 }
 .arrivals-time-line strong {
-  font-weight: 600;
+  font-weight: var(--font-weight-medium);
 }
 .arrivals-note {
-  font-size: 0.78rem;
-  margin-top: 3px;
+  font-size: var(--font-size-xs);
+  margin-top: var(--space-1);
 }
 
 /* ---------- Tetris Battle (views/tetris.js) ---------- */
@@ -1110,11 +1159,11 @@ button.card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
 }
 .tetris-board-label {
-  font-size: 0.85rem;
-  font-weight: 700;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
   color: var(--text-muted);
 }
 .tetris-canvas-wrap {
@@ -1141,7 +1190,7 @@ button.card {
   z-index: 2;
 }
 .tetris-stats-line {
-  font-size: 0.72rem;
+  font-size: var(--font-size-2xs);
   font-variant-numeric: tabular-nums;
 }
 /* Incoming-garbage warning, pinned to the top-right of a board. */
@@ -1150,8 +1199,8 @@ button.card {
   top: 4px;
   right: 4px;
   z-index: 3;
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-bold);
   color: var(--state-paused);
 }
 .tetris-incoming-hot {
@@ -1169,12 +1218,12 @@ button.card {
   border-radius: var(--radius-sm);
 }
 .tetris-overlay-text {
-  font-size: 1.4rem;
-  font-weight: 800;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-black);
   color: var(--text);
 }
 .tetris-countdown {
-  font-size: 3rem;
+  font-size: 3rem; /* design-token-ok: a full-board countdown number, deliberately far larger than any normal UI text token */
   color: var(--accent);
   animation: tetris-count 1s ease-out;
 }
@@ -1249,19 +1298,19 @@ button.card {
   overflow: hidden;
   max-width: 100%;
   height: auto;
-  padding: 12px;
+  padding: var(--space-3);
   background: #ffffff;
 }
 
 .empty-state {
   text-align: center;
-  padding: 40px 16px;
+  padding: var(--space-8) var(--space-4);
   color: var(--text-muted);
 }
 .empty-state .emoji {
-  font-size: 2.2rem;
+  font-size: var(--font-size-3xl);
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 .mascot {
   display: block;
@@ -1308,7 +1357,7 @@ button.card {
 }
 
 .player-name {
-  font-weight: 600;
+  font-weight: var(--font-weight-medium);
 }
 
 /* ---------- Game badge (small per-game visual identity) ---------- */
@@ -1317,9 +1366,9 @@ button.card {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   flex-shrink: 0;
-  line-height: 1;
+  line-height: var(--line-height-tight);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 .game-badge-img {
@@ -1337,11 +1386,11 @@ button.card {
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 700;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
 }
 .badge-playing {
   background: var(--state-playing-bg);
@@ -1359,12 +1408,12 @@ button.card {
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 0.82rem;
+  border-radius: var(--radius-full);
+  padding: var(--space-1) 10px;
+  font-size: var(--font-size-sm);
   /* Some chips render as <a> (external links) rather than <span> — without
      this they'd pick up the browser's default blue/underlined link style. */
   color: inherit;
@@ -1379,14 +1428,14 @@ button.card {
 .chip-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 /* Divider between an event card's info block and its action buttons — keeps
    the buttons from reading as glued to the text right above them, especially
    once they wrap onto a second line. */
 .event-card-actions {
-  padding-top: 12px;
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
 
@@ -1395,15 +1444,15 @@ button.card {
 .player-card {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px;
+  gap: var(--space-3);
+  padding: var(--space-4);
 }
 .player-card-main {
   flex: 1;
   min-width: 0;
 }
 .player-card-games {
-  margin-top: 6px;
+  margin-top: var(--space-2);
 }
 .player-card-games .chip {
   color: var(--text-muted);
@@ -1415,7 +1464,7 @@ button.card {
   color: var(--state-playing);
   background: var(--state-playing-bg);
   border-color: var(--state-playing);
-  font-weight: 600;
+  font-weight: var(--font-weight-medium);
 }
 .player-card-games .chip.chip-background {
   opacity: 0.6;
@@ -1432,15 +1481,15 @@ input[type='range'] {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
-  gap: 10px;
-  padding: 8px 0;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
 }
 .skill-row-slider {
   grid-column: 1 / -1;
 }
 .skill-value {
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
   min-width: 1.6em;
   text-align: right;
 }
@@ -1459,20 +1508,20 @@ input[type='range'].preference-row-slider {
 .team-card {
   border-radius: var(--radius);
   border: 1px solid var(--border);
-  padding: 12px 14px;
+  padding: var(--space-3) var(--space-4);
   background: var(--bg-elevated);
 }
 .team-card-header {
   display: flex;
   justify-content: space-between;
-  font-weight: 700;
-  margin-bottom: 8px;
+  font-weight: var(--font-weight-bold);
+  margin-bottom: var(--space-2);
 }
 .team-player {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 0;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
 }
 .team-player .rating {
   margin-left: auto;
@@ -1502,7 +1551,7 @@ input[type='range'].preference-row-slider {
 .bracket-tree-wrap {
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 4px 16px 20px;
+  padding: var(--space-1) var(--space-4) var(--space-5);
   margin: 0 -16px;
 }
 .bracket-round-titles {
@@ -1515,8 +1564,8 @@ input[type='range'].preference-row-slider {
   width: var(--bracket-match-w);
   flex-shrink: 0;
   text-align: center;
-  font-size: 0.78rem;
-  font-weight: 700;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -1590,12 +1639,12 @@ input[type='range'].preference-row-slider {
   min-height: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   padding: 0 10px;
   border: none;
   background: none;
   color: var(--text);
-  font-size: 0.88rem;
+  font-size: var(--font-size-sm);
   text-align: left;
   cursor: default;
   width: 100%;
@@ -1619,7 +1668,7 @@ button.bracket-team-row {
   }
 }
 .bracket-team-row.is-winner {
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
   color: var(--state-playing);
 }
 .bracket-team-row.is-tbd {
@@ -1628,7 +1677,7 @@ button.bracket-team-row {
 }
 .bracket-score {
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
   flex-shrink: 0;
 }
 /* input[type='number'] (below) sets width:100% at specificity (0,1,1) — an
@@ -1638,9 +1687,9 @@ button.bracket-team-row {
 input[type='number'].bracket-score-input {
   width: 34px;
   flex-shrink: 0;
-  padding: 4px 2px;
+  padding: 4px 2px; /* design-token-ok: tuned to fit two digits inside this input's fixed 34px width */
   text-align: center;
-  font-size: 0.85rem;
+  font-size: var(--font-size-sm);
 }
 .bracket-score-submit {
   position: absolute;
@@ -1659,8 +1708,8 @@ input[type='number'].bracket-score-input {
 .check-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 4px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-1);
   border-bottom: 1px solid var(--border);
 }
 .check-row:last-child {
@@ -1677,19 +1726,19 @@ input[type='number'].bracket-score-input {
 .vote-row {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 10px 0;
+  gap: var(--space-1);
+  padding: var(--space-3) 0;
 }
 .vote-bar-track {
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--bg-elevated-2);
   overflow: hidden;
 }
 .vote-bar-fill {
   height: 100%;
   background: var(--accent-gradient);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   transition: width 0.3s ease;
 }
 .vote-row.is-winner .vote-bar-fill {
@@ -1701,15 +1750,15 @@ input[type='number'].bracket-score-input {
 .lb-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 0;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
   border-bottom: 1px solid var(--border);
 }
 .lb-row:last-child {
   border-bottom: none;
 }
 .lb-rank {
-  font-weight: 800;
+  font-weight: var(--font-weight-black);
   color: var(--text-muted);
   width: 1.6em;
   text-align: center;
@@ -1719,7 +1768,7 @@ input[type='number'].bracket-score-input {
 }
 .lb-points {
   margin-left: auto;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
 }
 
 /* ---------- Login screen ---------- */
@@ -1729,7 +1778,7 @@ input[type='number'].bracket-score-input {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: var(--space-6);
 }
 .login-card {
   width: 100%;
@@ -1737,19 +1786,19 @@ input[type='number'].bracket-score-input {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 28px 24px;
+  padding: var(--space-6) var(--space-6);
   text-align: center;
   box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .login-icon {
-  font-size: 2.2rem;
+  font-size: var(--font-size-3xl);
 }
 .login-card h1 {
-  margin: 4px 0 0;
-  font-size: 1.9rem;
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-3xl);
 }
 
 /* ---------- Toasts ---------- */
@@ -1782,7 +1831,7 @@ input[type='number'].bracket-score-input {
 }
 .countdown-num {
   font-size: clamp(4rem, 22vw, 8rem);
-  font-weight: 800;
+  font-weight: var(--font-weight-black);
   /* Deliberately NOT italic: SF Pro's italic terminals are sheared at an
      angle (top of "L", "!"), which reads as the glyphs being clipped. */
   letter-spacing: -0.03em;
@@ -1840,7 +1889,7 @@ input[type='number'].bracket-score-input {
   z-index: 100;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   width: calc(100% - 32px);
   max-width: 420px;
   pointer-events: none;
@@ -1849,8 +1898,8 @@ input[type='number'].bracket-score-input {
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 10px 14px;
-  font-size: 0.88rem;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--font-size-sm);
   box-shadow: var(--shadow);
   text-align: center;
   animation: toast-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
@@ -1884,7 +1933,7 @@ input[type='number'].bracket-score-input {
   z-index: 50;
   animation: backdrop-in 0.18s ease;
 }
-@media (min-width: 640px) {
+@media (min-width: 640px) { /* --bp-md */
   .modal-backdrop {
     align-items: center;
   }
@@ -1893,7 +1942,7 @@ input[type='number'].bracket-score-input {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  padding: 20px;
+  padding: var(--space-5);
   width: 100%;
   max-width: 480px;
   max-height: 85dvh;
@@ -1901,7 +1950,7 @@ input[type='number'].bracket-score-input {
   /* Bottom sheet slides up on phones… */
   animation: sheet-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
-@media (min-width: 640px) {
+@media (min-width: 640px) { /* --bp-md */
   .modal {
     border-radius: var(--radius-lg);
     /* …and gently scales in as a centered dialog on wider screens. */
@@ -1930,15 +1979,15 @@ input[type='number'].bracket-score-input {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 14px;
+  margin-bottom: var(--space-4);
 }
 .modal-header h2 {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: var(--font-size-lg);
 }
 
-@media (min-width: 480px) {
+@media (min-width: 480px) { /* --bp-sm */
   .view-title {
-    font-size: 1.5rem;
+    font-size: var(--font-size-2xl);
   }
 }

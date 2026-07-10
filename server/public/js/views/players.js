@@ -7,11 +7,10 @@ import { state, playerById } from '../state.js';
 import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
-
-const PALETTE = ['#5b8cff', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899', '#84cc16'];
+import { AVATAR_PALETTE } from '../avatarPalette.js';
 
 function randomColor() {
-  return PALETTE[Math.floor(Math.random() * PALETTE.length)];
+  return AVATAR_PALETTE[Math.floor(Math.random() * AVATAR_PALETTE.length)];
 }
 
 function ratingFor(playerId, gameId) {
@@ -93,7 +92,7 @@ function openPlayerDetail(playerId, ctx) {
       const rating = ratingFor(playerId, g.id);
       return `
         <div class="skill-row" data-game="${g.id}">
-          <span class="row" style="gap:8px;">${gameBadgeHtml(g, 24)} ${escapeHtml(g.name)}</span>
+          <span class="row" style="gap:var(--space-2);">${gameBadgeHtml(g, 24)} ${escapeHtml(g.name)}</span>
           <span class="skill-value">${rating}</span>
           <input type="range" class="skill-row-slider" min="1" max="10" step="1" value="${rating}" />
         </div>`;
@@ -115,7 +114,7 @@ function openPlayerDetail(playerId, ctx) {
           <input type="text" id="detail-apikey" readonly value="Laden…" style="flex:1;font-family:monospace;" />
           <button type="button" class="btn btn-sm" id="detail-copy-key">Kopieren</button>
         </div>
-        <p class="muted" style="font-size:0.8rem;">Diesen Key in die Config des Agenten auf dem PC des Spielers eintragen.</p>
+        <p class="muted" style="font-size:var(--font-size-xs);">Diesen Key in die Config des Agenten auf dem PC des Spielers eintragen.</p>
 
         ${state.games.length > 0 ? `<div class="section-title">Skill-Ratings</div>${skillRows}` : ''}
 

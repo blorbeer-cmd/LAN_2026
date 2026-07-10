@@ -46,7 +46,7 @@ export function whoAmICardHtml(selectId, { marginBottom } = {}) {
         </select>
       </div>
       <div class="row-between">
-        <span class="muted" style="font-size:0.8rem;">Noch nicht dabei?</span>
+        <span class="muted" style="font-size:var(--font-size-xs);">Noch nicht dabei?</span>
         <button type="button" class="btn btn-sm" data-navigate="profile">+ Profil anlegen</button>
       </div>
     </div>

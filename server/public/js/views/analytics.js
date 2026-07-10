@@ -163,7 +163,7 @@ export function renderAnalytics(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <h1 class="view-title">📊 Auswertungen</h1>
-    <div class="tabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+    <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-3);">
       <button type="button" class="btn btn-sm ${activeTab === 'playtime' ? 'btn-primary' : ''}" data-an-tab="playtime">🕒 Spielzeit</button>
       <button type="button" class="btn btn-sm ${activeTab === 'matches' ? 'btn-primary' : ''}" data-an-tab="matches">🎲 Matches & Turniere</button>
     </div>
@@ -176,8 +176,8 @@ export function renderAnalytics(container, ctx) {
                <div>${dateTimeFieldHtml('an-to', displayRange.to, { clearable: true })}</div>
              </div>
              <button type="button" class="btn btn-primary btn-block" id="an-apply">Zeitraum zusätzlich eingrenzen</button>
-             <div class="muted" style="font-size:0.75rem;">Event wählen zeigt genau dessen Daten. Die Felder darüber grenzen innerhalb des Events optional weiter ein (z.B. nur Samstagnacht).</div>`
-          : `<div class="muted" style="font-size:0.75rem;">Event wählen zeigt genau dessen Daten.</div>`
+             <div class="muted" style="font-size:var(--font-size-xs);">Event wählen zeigt genau dessen Daten. Die Felder darüber grenzen innerhalb des Events optional weiter ein (z.B. nur Samstagnacht).</div>`
+          : `<div class="muted" style="font-size:var(--font-size-xs);">Event wählen zeigt genau dessen Daten.</div>`
       }
     </div>
     <div id="an-content">${renderActiveTabContent()}</div>
@@ -242,13 +242,13 @@ function renderPlaytimeContent() {
           ${gameBadgeHtml({ id: g.gameId, icon: g.gameIcon }, 24)}
           <span style="flex:1;">
             ${escapeHtml(g.gameName)}
-            <div class="muted" style="font-size:0.75rem;">${g.playerCount} Spieler · ${g.sessionCount} Session(s)</div>
+            <div class="muted" style="font-size:var(--font-size-xs);">${g.playerCount} Spieler · ${g.sessionCount} Session(s)</div>
           </span>
           <span class="lb-points">${escapeHtml(g.totalFormatted)}</span>
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:20px;">Keine Sessions in diesem Zeitraum.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions in diesem Zeitraum.</div>`;
 
   const awardsHtml = awards.length
     ? awards
@@ -256,19 +256,19 @@ function renderPlaytimeContent() {
           (a) => `
         <div class="card">
           <div class="row-between">
-            <span style="font-size:1.4rem;">${escapeHtml(a.emoji)}</span>
+            <span style="font-size:var(--font-size-xl);">${escapeHtml(a.emoji)}</span>
             <span class="lb-points">${escapeHtml(a.value)}</span>
           </div>
           <div class="player-name">${escapeHtml(a.title)}</div>
-          <div class="muted" style="font-size:0.8rem;">${escapeHtml(a.description)}</div>
-          <div class="row" style="margin-top:6px;">
+          <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(a.description)}</div>
+          <div class="row" style="margin-top:var(--space-2);">
             ${avatarHtml(state.players.find((p) => p.id === a.playerId) || { color: a.playerColor }, 20)}
             <span>${escapeHtml(a.playerName)}</span>
           </div>
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:20px;"><span class="emoji">🏅</span>Noch keine Awards in diesem Zeitraum.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">🏅</span>Noch keine Awards in diesem Zeitraum.</div>`;
 
   const longestPerGameHtml = overview.longestSessionsPerGame.length
     ? overview.longestSessionsPerGame
@@ -276,12 +276,12 @@ function renderPlaytimeContent() {
           (r) => `
         <div class="lb-row">
           ${avatarHtml(state.players.find((p) => p.id === r.playerId) || { color: r.playerColor }, 20)}
-          <span class="row" style="flex:1;gap:6px;">${gameBadgeHtml({ id: r.gameId, icon: r.gameIcon }, 20)} ${escapeHtml(r.gameName)} — ${escapeHtml(r.playerName)}</span>
+          <span class="row" style="flex:1;gap:var(--space-2);">${gameBadgeHtml({ id: r.gameId, icon: r.gameIcon }, 20)} ${escapeHtml(r.gameName)} — ${escapeHtml(r.playerName)}</span>
           <span class="lb-points">${escapeHtml(r.formatted)}</span>
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:20px;">Keine Sessions in diesem Zeitraum.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions in diesem Zeitraum.</div>`;
 
   const multitaskingHtml = overview.simultaneousGameTime.length
     ? overview.simultaneousGameTime
@@ -289,12 +289,12 @@ function renderPlaytimeContent() {
           (r) => `
         <div class="lb-row">
           ${avatarHtml(state.players.find((p) => p.id === r.playerId) || { color: r.playerColor }, 20)}
-          <span style="flex:1;">${escapeHtml(r.playerName)} <span class="muted" style="font-size:0.78rem;">(max. ${r.maxSimultaneous} gleichzeitig)</span></span>
+          <span style="flex:1;">${escapeHtml(r.playerName)} <span class="muted" style="font-size:var(--font-size-xs);">(max. ${r.maxSimultaneous} gleichzeitig)</span></span>
           <span class="lb-points">${escapeHtml(r.multiGameFormatted)}</span>
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:20px;">Niemand hatte mehrere Spiele gleichzeitig offen.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);">Niemand hatte mehrere Spiele gleichzeitig offen.</div>`;
 
   const gameOptions = state.games
     .map(
@@ -312,7 +312,7 @@ function renderPlaytimeContent() {
         ${avatarHtml(state.players.find((p) => p.id === s.playerId) || { color: s.playerColor }, 20)}
         <span style="flex:1;">
           ${escapeHtml(s.playerName)} — ${gameBadgeHtml({ id: s.gameId, icon: s.gameIcon }, 18)} ${escapeHtml(s.gameName)}
-          <div class="muted" style="font-size:0.75rem;">${formatDateTime(s.startedAt)} – ${s.endedAt ? formatDateTime(s.endedAt) : 'läuft noch'}</div>
+          <div class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(s.startedAt)} – ${s.endedAt ? formatDateTime(s.endedAt) : 'läuft noch'}</div>
         </span>
         <span class="lb-points">${escapeHtml(s.formatted)}</span>
       </div>`
@@ -340,14 +340,18 @@ function renderPlaytimeContent() {
 
     <div class="section-title">🕒 Wer hat wann was gespielt</div>
     <div class="card">
-      ${sessionRows || `<div class="empty-state" style="padding:20px;">Keine Sessions in diesem Zeitraum.</div>`}
+      ${sessionRows || `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions in diesem Zeitraum.</div>`}
     </div>
   `;
 }
 
+// design-token-ok: the 2px bar-corner radius, bar gap and bottom padding
+// below are sized against this chart's own thin bars, not the general
+// spacing/radius scale — see "When a value genuinely doesn't fit" in
+// DESIGN_SYSTEM.md.
 function renderConcurrencyChart(concurrency) {
   if (!concurrency || concurrency.buckets.length === 0) {
-    return `<div class="empty-state" style="padding:20px;">Keine Daten für dieses Spiel im Zeitraum.</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);">Keine Daten für dieses Spiel im Zeitraum.</div>`;
   }
   // Plain reduce, not Math.max(...arr): a wide "Gesamt" range can produce
   // thousands of buckets, and spreading that many args into Math.max blows
@@ -366,7 +370,7 @@ function renderConcurrencyChart(concurrency) {
     })
     .join('');
   return `<div id="an-concurrency-chart" style="display:flex;align-items:flex-end;gap:2px;height:100px;overflow-x:auto;padding-bottom:2px;">${bars}</div>
-    <div class="muted" style="font-size:0.75rem;">Höhe = Anzahl Spieler gleichzeitig · zum Wert hovern/antippen · nach rechts = neuer</div>`;
+    <div class="muted" style="font-size:var(--font-size-xs);">Höhe = Anzahl Spieler gleichzeitig · zum Wert hovern/antippen · nach rechts = neuer</div>`;
 }
 
 function wirePlaytimeContent(container, ctx) {
@@ -405,13 +409,13 @@ function renderMatchesContent() {
           ${gameBadgeHtml({ id: g.gameId, icon: g.gameIcon }, 24)}
           <span style="flex:1;">
             ${escapeHtml(g.gameName)}
-            <div class="muted" style="font-size:0.75rem;">${g.decided} entschieden${g.undecided ? ` · ${g.undecided} ohne Sieger/Unentschieden` : ''}</div>
+            <div class="muted" style="font-size:var(--font-size-xs);">${g.decided} entschieden${g.undecided ? ` · ${g.undecided} ohne Sieger/Unentschieden` : ''}</div>
           </span>
           <span class="lb-points">${g.count}×</span>
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:20px;">Noch keine Ergebnisse eingetragen.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Ergebnisse eingetragen.</div>`;
 
   const tournamentByGameRows = tournaments.byGame.length
     ? tournaments.byGame
@@ -424,7 +428,7 @@ function renderMatchesContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:20px;">Noch keine Turniere.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Turniere.</div>`;
 
   const formatRows = tournaments.byFormat.length
     ? tournaments.byFormat
@@ -449,16 +453,16 @@ function renderMatchesContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:20px;">Noch keine Teams ausgelost.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Teams ausgelost.</div>`;
 
   const funCards = [];
   if (fun.biggestRivalry) {
     funCards.push(`
       <div class="card">
-        <div class="row-between"><span style="font-size:1.4rem;">🥊</span><span class="lb-points">${fun.biggestRivalry.count}×</span></div>
+        <div class="row-between"><span style="font-size:var(--font-size-xl);">🥊</span><span class="lb-points">${fun.biggestRivalry.count}×</span></div>
         <div class="player-name">Größte Rivalität</div>
-        <div class="muted" style="font-size:0.8rem;">Sind sich am häufigsten als Gegner begegnet.</div>
-        <div class="stack" style="margin-top:6px;gap:4px;">
+        <div class="muted" style="font-size:var(--font-size-xs);">Sind sich am häufigsten als Gegner begegnet.</div>
+        <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
           <div class="row">${playerChip(fun.biggestRivalry.playerA)}</div>
           <div class="row">${playerChip(fun.biggestRivalry.playerB)}</div>
         </div>
@@ -468,10 +472,10 @@ function renderMatchesContent() {
     const winRate = fun.bestDuo.gamesTogether > 0 ? Math.round((fun.bestDuo.winsTogether / fun.bestDuo.gamesTogether) * 100) : 0;
     funCards.push(`
       <div class="card">
-        <div class="row-between"><span style="font-size:1.4rem;">🤝</span><span class="lb-points">${winRate}%</span></div>
+        <div class="row-between"><span style="font-size:var(--font-size-xl);">🤝</span><span class="lb-points">${winRate}%</span></div>
         <div class="player-name">Bestes Duo</div>
-        <div class="muted" style="font-size:0.8rem;">${fun.bestDuo.gamesTogether}× zusammen im Team, ${fun.bestDuo.winsTogether}× gewonnen.</div>
-        <div class="stack" style="margin-top:6px;gap:4px;">
+        <div class="muted" style="font-size:var(--font-size-xs);">${fun.bestDuo.gamesTogether}× zusammen im Team, ${fun.bestDuo.winsTogether}× gewonnen.</div>
+        <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
           <div class="row">${playerChip(fun.bestDuo.playerA)}</div>
           <div class="row">${playerChip(fun.bestDuo.playerB)}</div>
         </div>
@@ -481,27 +485,27 @@ function renderMatchesContent() {
     const u = fun.biggestUnderdogWin;
     funCards.push(`
       <div class="card">
-        <div class="row-between"><span style="font-size:1.4rem;">😱</span><span class="lb-points">${u.winnerAvgRating} vs ${u.loserAvgRating}</span></div>
+        <div class="row-between"><span style="font-size:var(--font-size-xl);">😱</span><span class="lb-points">${u.winnerAvgRating} vs ${u.loserAvgRating}</span></div>
         <div class="player-name">Krasseste Überraschung</div>
-        <div class="muted" style="font-size:0.8rem;">${gameBadgeHtml({ id: u.gameId, icon: u.gameIcon }, 16)} ${escapeHtml(u.gameName)} — als klarer Außenseiter gewonnen (Skill-Wertung).</div>
-        <div class="stack" style="margin-top:6px;gap:4px;">
+        <div class="muted" style="font-size:var(--font-size-xs);">${gameBadgeHtml({ id: u.gameId, icon: u.gameIcon }, 16)} ${escapeHtml(u.gameName)} — als klarer Außenseiter gewonnen (Skill-Wertung).</div>
+        <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
           ${u.winners.map((w) => `<div class="row">${playerChip(w)}</div>`).join('')}
         </div>
       </div>`);
   }
   const funHtml = funCards.length
     ? `<div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));">${funCards.join('')}</div>`
-    : `<div class="empty-state" style="padding:20px;"><span class="emoji">🎉</span>Noch nicht genug Ergebnisse für witzige Rekorde.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">🎉</span>Noch nicht genug Ergebnisse für witzige Rekorde.</div>`;
 
   return `
-    <div class="section-title">🎲 Ergebnisse pro Spiel <span class="muted" style="font-weight:400;">(${matches.total} insgesamt)</span></div>
+    <div class="section-title">🎲 Ergebnisse pro Spiel <span class="muted" style="font-weight:var(--font-weight-regular);">(${matches.total} insgesamt)</span></div>
     <div class="card">${matchRows}</div>
 
-    <div class="section-title">🏆 Turniere <span class="muted" style="font-weight:400;">(${tournaments.total} insgesamt · ${tournaments.completed} beendet · ${tournaments.active} laufend)</span></div>
-    ${formatRows ? `<div class="card" style="margin-bottom:10px;">${formatRows}</div>` : ''}
+    <div class="section-title">🏆 Turniere <span class="muted" style="font-weight:var(--font-weight-regular);">(${tournaments.total} insgesamt · ${tournaments.completed} beendet · ${tournaments.active} laufend)</span></div>
+    ${formatRows ? `<div class="card" style="margin-bottom:var(--space-3);">${formatRows}</div>` : ''}
     <div class="card">${tournamentByGameRows}</div>
 
-    <div class="section-title">⚖️ Team-Auslosungen <span class="muted" style="font-weight:400;">(${draws.total} insgesamt${draws.seatConflictRatePercent !== null ? ` · ${draws.seatConflictRatePercent}% Sitznachbarn mussten gegeneinander` : ''})</span></div>
+    <div class="section-title">⚖️ Team-Auslosungen <span class="muted" style="font-weight:var(--font-weight-regular);">(${draws.total} insgesamt${draws.seatConflictRatePercent !== null ? ` · ${draws.seatConflictRatePercent}% Sitznachbarn mussten gegeneinander` : ''})</span></div>
     <div class="card">${drawRows}</div>
 
     <div class="section-title">🎉 Witzige Rekorde</div>
