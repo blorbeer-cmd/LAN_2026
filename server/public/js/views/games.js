@@ -334,6 +334,11 @@ export function renderSettings(container, ctx) {
     <h1 class="view-title">Einstellungen</h1>
     ${renderEventSection()}
     ${renderInviteSection()}
+    <div class="section-title">${icon('tableRowsSplit')} Sitzplan</div>
+    <div class="card row-between">
+      <span class="muted">Tisch, Plätze und Sitzordnung gemeinsam festlegen.</span>
+      <button type="button" class="btn btn-sm" data-navigate="seating">Sitzplan öffnen</button>
+    </div>
   `;
 
   container.querySelectorAll('[data-export-event]').forEach((btn) => {

@@ -267,6 +267,8 @@ export const api = {
 
   seating: {
     get: () => apiFetch('/api/seating'),
+    layout: () => apiFetch('/api/seating/layout'),
+    saveLayout: (layout) => apiFetch('/api/seating/layout', { method: 'PUT', body: JSON.stringify(layout) }),
   },
 
   pings: {

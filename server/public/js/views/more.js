@@ -16,7 +16,6 @@ const ITEMS = [
   { view: 'players', icon: 'users', title: 'Spieler', desc: 'Alle Teilnehmer: anlegen, umbenennen, Agent-Keys nachschlagen.' },
   { view: 'analytics', icon: 'chart', title: 'Auswertungen', desc: 'Spielzeit, Awards und Match-/Turnier-Statistiken, Rivalitäten, Duos.' },
   { view: 'hallOfFame', icon: 'landmark', title: 'Hall of Fame', desc: 'Champions über alle LAN-Partys hinweg.' },
-  { view: 'seating', icon: 'tableRowsSplit', title: 'Sitzplan', desc: 'Wer neben wem sitzt, gruppiert aus den Profilangaben.' },
   { view: 'admin', icon: 'shield', title: 'Admin', desc: 'Test-Spieler anlegen, Admin vergeben, moderieren.' },
 ];
 

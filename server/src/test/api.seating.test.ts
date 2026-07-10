@@ -53,3 +53,39 @@ test('GET /api/seating dedupes a pair declared from both directions', async () =
   );
   assert.equal(bcPairs.length, 1);
 });
+
+test('GET /api/seating/layout returns a four-sided default table', async () => {
+  const res = await request(app).get('/api/seating/layout');
+  assert.equal(res.status, 200);
+  assert.deepEqual(
+    [res.body.layout.topSeats, res.body.layout.rightSeats, res.body.layout.bottomSeats, res.body.layout.leftSeats],
+    [2, 2, 2, 2]
+  );
+  assert.deepEqual(res.body.layout.assignments, []);
+});
+
+test('PUT /api/seating/layout saves side sizes and player assignments', async () => {
+  const res = await request(app).put('/api/seating/layout').send({
+    topSeats: 3,
+    rightSeats: 1,
+    bottomSeats: 0,
+    leftSeats: 2,
+    assignments: [
+      { side: 'top', seat: 0, playerId: a },
+      { side: 'left', seat: 1, playerId: b },
+      { side: 'right', seat: 1, playerId: c }, // dropped: right side only has one seat
+      { side: 'top', seat: 0, playerId: d }, // dropped: seat already occupied
+    ],
+  });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.layout.assignments, [
+    { side: 'top', seat: 0, playerId: a },
+    { side: 'left', seat: 1, playerId: b },
+  ]);
+  assert.equal((await request(app).get('/api/seating/layout')).body.layout.rightSeats, 1);
+});
+
+test('PUT /api/seating/layout rejects invalid side sizes', async () => {
+  const res = await request(app).put('/api/seating/layout').send({ topSeats: 13, rightSeats: 2, bottomSeats: 2, leftSeats: 2, assignments: [] });
+  assert.equal(res.status, 400);
+});
