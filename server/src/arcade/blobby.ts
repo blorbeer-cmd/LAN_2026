@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { BlobbyInput, BlobbyWorld, createWorld, stepWorld } from './blobbyLogic';
+import { isLobbyReady, setLobbyReady } from './lobbyReady';
 
 const TICK_MS = 1000 / 60;
 const SNAPSHOT_MS = 50;
@@ -9,7 +10,7 @@ const COUNTDOWN_MS = 3000;
 const DEFAULT_TARGET_SCORE = 7;
 
 interface PlayerRef { id: string; name: string; avatar: string | null; color: string | null }
-interface Lobby { id: string; host: PlayerRef; players: PlayerRef[]; socketIds: Map<string, string>; createdAt: number }
+interface Lobby { id: string; host: PlayerRef; players: PlayerRef[]; socketIds: Map<string, string>; ready: Set<string>; createdAt: number }
 interface Match {
   id: string; room: string; host: PlayerRef; players: PlayerRef[]; socketIds: Map<string, string>;
   world: BlobbyWorld; inputs: Map<string, BlobbyInput>; scores: Map<string, number>;
@@ -27,7 +28,12 @@ function playerById(id: unknown): PlayerRef | null {
   return (db.prepare('SELECT id, name, avatar, color FROM players WHERE id = ?').get(id) as PlayerRef | undefined) ?? null;
 }
 function publicLobbies() {
-  return [...lobbies.values()].map((l) => ({ id: l.id, host: l.host, players: l.players, createdAt: l.createdAt }));
+  return [...lobbies.values()].map((l) => ({
+    id: l.id,
+    host: l.host,
+    players: l.players.map((p) => ({ ...p, ready: isLobbyReady(l, p.id) })),
+    createdAt: l.createdAt,
+  }));
 }
 function emitLobbies(io: Server) { io.emit('blobby:lobbies', { lobbies: publicLobbies() }); }
 function scorePayload(match: Match) {
@@ -89,7 +95,7 @@ function removeFromLobbies(io: Server, socketId: string) {
     const entry = [...lobby.socketIds].find(([, sid]) => sid === socketId);
     if (!entry) continue;
     if (entry[0] === lobby.host.id) lobbies.delete(id);
-    else { lobby.socketIds.delete(entry[0]); lobby.players = lobby.players.filter((p) => p.id !== entry[0]); }
+    else { lobby.socketIds.delete(entry[0]); lobby.ready.delete(entry[0]); lobby.players = lobby.players.filter((p) => p.id !== entry[0]); }
     changed = true;
   }
   if (changed) emitLobbies(io);
@@ -103,7 +109,7 @@ export function registerBlobbySockets(io: Server): void {
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
       removeFromLobbies(io, socket.id);
-      const lobby: Lobby = { id: nanoid(), host: player, players: [player], socketIds: new Map([[player.id, socket.id]]), createdAt: Date.now() };
+      const lobby: Lobby = { id: nanoid(), host: player, players: [player], socketIds: new Map([[player.id, socket.id]]), ready: new Set(), createdAt: Date.now() };
       lobbies.set(lobby.id, lobby); emitLobbies(io); ack?.({ ok: true, lobbyId: lobby.id });
     });
     socket.on('blobby:lobby:join', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => {
@@ -120,7 +126,14 @@ export function registerBlobbySockets(io: Server): void {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
       if (!lobby || typeof payload.playerId !== 'string') return ack?.({ ok: true });
       if (lobby.host.id === payload.playerId) lobbies.delete(lobby.id);
-      else { lobby.players = lobby.players.filter((p) => p.id !== payload.playerId); lobby.socketIds.delete(payload.playerId); }
+      else { lobby.players = lobby.players.filter((p) => p.id !== payload.playerId); lobby.socketIds.delete(payload.playerId); lobby.ready.delete(payload.playerId); }
+      emitLobbies(io); ack?.({ ok: true });
+    });
+    socket.on('blobby:lobby:ready', (payload: { lobbyId?: string; playerId?: string; ready?: boolean }, ack?: (r: unknown) => void) => {
+      const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
+      if (!lobby || !setLobbyReady(lobby, payload?.playerId, payload?.ready)) {
+        return ack?.({ ok: false, error: 'Bereit-Status konnte nicht gesetzt werden.' });
+      }
       emitLobbies(io); ack?.({ ok: true });
     });
     socket.on('blobby:lobby:start', (payload: { lobbyId?: string; playerId?: string; targetScore?: number }, ack?: (r: unknown) => void) => {

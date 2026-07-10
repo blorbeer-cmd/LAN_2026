@@ -17,6 +17,7 @@ import { getMyId } from '../whoami.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { getToken } from '../api.js';
+import { lobbyPlayerChipsHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 
 const SWATCHES = [
   '#1a1a1a',
@@ -645,14 +646,17 @@ function renderLobbyList() {
       const action = isHost
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-close="${l.id}">Schließen</button>`
         : joined
-          ? `<button type="button" class="btn btn-sm btn-equal" data-scribble-leave="${l.id}">Verlassen</button>`
+          ? `<div class="stack" style="gap:var(--space-2);">
+              ${readyToggleHtml(l, myId(), 'scribble-ready')}
+              <button type="button" class="btn btn-sm btn-equal" data-scribble-leave="${l.id}">Verlassen</button>
+            </div>`
           : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-scribble-join="${l.id}" ${mine ? 'disabled' : ''}>Beitreten</button>`;
       return `
         <div class="lb-row" style="align-items:flex-start;">
           <div class="stack" style="gap:var(--space-2);flex:1;">
             <strong>${escapeHtml(l.host.name)}s Scribble-Lobby</strong>
-            <div class="chip-list">${l.players.map((p) => `<span class="chip">${escapeHtml(p.name)}</span>`).join('')}</div>
-            <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length} Spieler · Host startet, wenn alle bereit sind</div>
+            <div class="chip-list">${lobbyPlayerChipsHtml(l)}</div>
+            <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length} Spieler · ${readySummaryText(l)} · Host startet</div>
           </div>
           ${action}
         </div>`;
@@ -684,7 +688,7 @@ function hostStartHtml() {
           )
           .join('')}
       </div>
-      <div class="muted" style="font-size:var(--font-size-xs);">${ready ? 'Bereit — Start möglich.' : 'Warte auf weitere Spieler…'}</div>
+      <div class="muted" style="font-size:var(--font-size-xs);">${ready ? `${readySummaryText(lobby)} — Start möglich.` : 'Warte auf weitere Spieler…'}</div>
       <button type="button" class="btn btn-primary btn-block" id="scribble-start" ${ready ? '' : 'disabled'}>Start</button>
     </div>`;
 }
@@ -732,6 +736,11 @@ export function wireScribbleLobbyCard(container) {
     });
   container.querySelectorAll('[data-scribble-close]').forEach(leaveHandler('scribbleClose'));
   container.querySelectorAll('[data-scribble-leave]').forEach(leaveHandler('scribbleLeave'));
+
+  wireReadyToggle(container, 'scribble-ready', async (lobbyId, ready) => {
+    const res = await emitWithAck('scribble:lobby:ready', { lobbyId, playerId: myId(), ready });
+    if (!res?.ok) showToast(res?.error || 'Bereit-Status konnte nicht gesetzt werden.', { error: true });
+  });
 
   container.querySelectorAll('input[name="scribble-rounds"]').forEach((el) => {
     el.addEventListener('change', () => {

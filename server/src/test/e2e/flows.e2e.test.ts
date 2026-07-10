@@ -434,6 +434,54 @@ test('Arcade: open a quiz lobby, see it listed, then close it again', async () =
   await page.waitForSelector('#quiz-create-lobby:not([disabled])');
 });
 
+test('Arcade: a lobby guest flags themselves ready and the host sees it', async () => {
+  // Reuses "E2E Bob" (added earlier) as the guest on a second device — see
+  // the Scribble test below for why the roster must not grow here.
+  const players = (await (await fetch(`${BASE_URL}/api/players`)).json()) as Array<{ id: string; name: string }>;
+  const guest = players.find((p) => p.name === 'E2E Bob');
+  assert.ok(guest, 'expected "E2E Bob" (added by an earlier test) to exist');
+
+  const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const guestPage = await guestContext.newPage();
+  guestPage.on('pageerror', (err) => console.error('[guest pageerror]', err.message));
+  try {
+    await guestPage.goto(BASE_URL);
+    await guestPage.evaluate((id) => localStorage.setItem('lan2026_my_player_id', id), guest!.id);
+    await guestPage.reload();
+    await guestPage.waitForSelector('.nav-btn[data-view="more"]');
+    await guestPage.click('[data-view="more"]');
+    await guestPage.click('[data-navigate="arcade"]');
+    await guestPage.click('[data-game="quiz"]');
+
+    // Host opens the lobby, guest joins. The quiz tile is a toggle and the
+    // previous test left its panel expanded — only click it if it's closed.
+    if ((await page.locator('#quiz-create-lobby').count()) === 0) await page.click('[data-game="quiz"]');
+    await page.waitForSelector('#quiz-create-lobby:not([disabled])');
+    await page.click('#quiz-create-lobby');
+    await guestPage.waitForSelector('[data-join-lobby]');
+    await guestPage.click('[data-join-lobby]');
+
+    // Freshly joined guests are not ready; only the host counts as ready.
+    await page.waitForSelector('text=1/2 bereit');
+
+    // Guest flags ready -> host sees the summary flip and the green chip.
+    await guestPage.waitForSelector('[data-quiz-ready][data-ready="1"]');
+    await guestPage.click('[data-quiz-ready][data-ready="1"]');
+    await page.waitForSelector('text=2/2 bereit');
+    await page.waitForSelector('.chip-ready >> text=E2E Bob');
+
+    // The toggle works both ways: un-ready shows up at the host again.
+    await guestPage.waitForSelector('[data-quiz-ready][data-ready="0"]');
+    await guestPage.click('[data-quiz-ready][data-ready="0"]');
+    await page.waitForSelector('text=1/2 bereit');
+  } finally {
+    // Leave no lobby behind for the tests that follow.
+    await page.click('[data-close-lobby]');
+    await page.waitForSelector('text=Keine offene Quiz-Lobby.');
+    await guestContext.close();
+  }
+});
+
 test('Arcade: Scribble - host draws, a second device guesses correctly, both see the reveal', async () => {
   // Unlike the quiz/draft flows above, Scribble strictly gates who may act
   // (only the current drawer can choose a word/draw, only raters may guess —

@@ -14,6 +14,7 @@ import {
 import { ensureBlobbySocket, renderBlobbyLobbyCard, wireBlobbyLobbyCard, myBlobbyLobby, hasBlobbyMatch } from './blobby.js';
 import { confirmDialog } from '../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
+import { lobbyPlayerChipsHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 
 // The Arcade opens as a launcher: a compact grid of game tiles. Picking one
 // reveals that game's lobby below. Quiz, Tetris and Scribble are live; the
@@ -226,6 +227,7 @@ function targetControls(lobby) {
           <input type="number" id="target-custom" min="1" max="100" value="${escapeHtml(customTarget)}" placeholder="frei" style="width:78px;" />
         </label>
       </div>
+      <div class="muted" style="font-size:var(--font-size-xs);">${readySummaryText(lobby)}</div>
       <button type="button" class="btn btn-primary btn-block" id="quiz-start-lobby" ${lobby.players.length < 2 ? 'disabled' : ''}>Start</button>
     </div>`;
 }
@@ -240,14 +242,14 @@ function renderLobbyList() {
       const action = isHost
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-close-lobby="${l.id}">Schließen</button>`
         : joined
-          ? `<span class="badge badge-playing">Drin</span>`
+          ? readyToggleHtml(l, getMyId(), 'quiz-ready')
           : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-join-lobby="${l.id}" ${mine ? 'disabled' : ''}>Beitreten</button>`;
       return `
         <div class="lb-row" style="align-items:flex-start;">
           <div class="stack" style="gap:var(--space-2);flex:1;">
             <strong>${escapeHtml(l.host.name)}s Quiz-Lobby</strong>
-            <div class="chip-list">${l.players.map((p) => `<span class="chip">${escapeHtml(p.name)}</span>`).join('')}</div>
-            <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length} Spieler · Host startet, wenn alle bereit sind</div>
+            <div class="chip-list">${lobbyPlayerChipsHtml(l)}</div>
+            <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length} Spieler · ${readySummaryText(l)} · Host startet</div>
           </div>
           ${action}
         </div>`;
@@ -439,6 +441,11 @@ export function renderArcade(container, ctx) {
       const res = await emitWithAck('arcade:lobby:join', { lobbyId: btn.dataset.joinLobby, playerId });
       if (!res?.ok) showToast(res?.error || 'Beitritt fehlgeschlagen.', { error: true });
     });
+  });
+
+  wireReadyToggle(container, 'quiz-ready', async (lobbyId, ready) => {
+    const res = await emitWithAck('arcade:lobby:ready', { lobbyId, playerId: getMyId(), ready });
+    if (!res?.ok) showToast(res?.error || 'Bereit-Status konnte nicht gesetzt werden.', { error: true });
   });
 
   container.querySelector('#target-custom')?.addEventListener('input', (e) => {

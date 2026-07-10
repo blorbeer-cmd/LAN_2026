@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { notifyPlayers } from '../push';
 import { matchesAnswer, pickQuestion } from './quizLogic';
+import { isLobbyReady, setLobbyReady } from './lobbyReady';
 
 const DEFAULT_TARGET_SCORE = 5;
 const QUESTION_MS = 20_000;
@@ -19,6 +20,7 @@ interface Lobby {
   host: PlayerRef;
   players: PlayerRef[];
   socketIds: Map<string, string>;
+  ready: Set<string>;
   createdAt: number;
 }
 
@@ -66,7 +68,7 @@ function publicLobbies() {
     id: l.id,
     gameType: l.gameType,
     host: l.host,
-    players: l.players,
+    players: l.players.map((p) => ({ ...p, ready: isLobbyReady(l, p.id) })),
     createdAt: l.createdAt,
   }));
 }
@@ -192,6 +194,7 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
       lobbies.delete(id);
     } else {
       lobby.socketIds.delete(player[0]);
+      lobby.ready.delete(player[0]);
       lobby.players = lobby.players.filter((p) => p.id !== player[0]);
     }
     changed = true;
@@ -218,6 +221,7 @@ export function registerArcadeSockets(io: Server): void {
         host: player,
         players: [player],
         socketIds: new Map([[player.id, socket.id]]),
+        ready: new Set(),
         createdAt: Date.now(),
       };
       lobbies.set(lobby.id, lobby);
@@ -257,6 +261,15 @@ export function registerArcadeSockets(io: Server): void {
       lobby.socketIds.set(player.id, socket.id);
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
+    });
+
+    socket.on('arcade:lobby:ready', (payload: { lobbyId?: string; playerId?: string; ready?: boolean }, ack?: (res: unknown) => void) => {
+      const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
+      if (!lobby || !setLobbyReady(lobby, payload?.playerId, payload?.ready)) {
+        return ack?.({ ok: false, error: 'Bereit-Status konnte nicht gesetzt werden.' });
+      }
+      emitLobbies(io);
+      ack?.({ ok: true });
     });
 
     socket.on('arcade:lobby:start', (payload: { lobbyId?: string; playerId?: string; targetScore?: number }, ack?: (res: unknown) => void) => {

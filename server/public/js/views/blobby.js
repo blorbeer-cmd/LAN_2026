@@ -4,6 +4,7 @@ import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
+import { allLobbyReady, lobbyPlayerChipsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 
 const W = 1000;
 const H = 600;
@@ -105,12 +106,15 @@ function lobbyList() {
     const action = isHost
       ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-blobby-close="${l.id}">Schließen</button>`
       : joined
-        ? `<button type="button" class="btn btn-sm btn-equal" data-blobby-leave="${l.id}">Verlassen</button>`
+        ? `<div class="stack" style="gap:var(--space-2);">
+            ${readyToggleHtml(l, myId(), 'blobby-ready')}
+            <button type="button" class="btn btn-sm btn-equal" data-blobby-leave="${l.id}">Verlassen</button>
+          </div>`
         : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-blobby-join="${l.id}" ${mine || full ? 'disabled' : ''}>Beitreten</button>`;
     return `<div class="lb-row" style="align-items:flex-start;">
       <div class="stack" style="gap:var(--space-2);flex:1;">
         <strong>${escapeHtml(l.host.name)}s Blobby-Volley-Lobby</strong>
-        <div class="chip-list">${l.players.map((p) => `<span class="chip">${escapeHtml(p.name)}</span>`).join('')}</div>
+        <div class="chip-list">${lobbyPlayerChipsHtml(l)}</div>
         <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length}/2 Spieler${full ? ' · voll' : ''}</div>
       </div>${action}</div>`;
   }).join('');
@@ -119,12 +123,13 @@ function hostStart() {
   const lobby = myBlobbyLobby();
   if (!lobby || lobby.host.id !== myId()) return '';
   const ready = lobby.players.length === 2;
+  const hint = !ready ? 'Warte auf einen Gegner…' : allLobbyReady(lobby) ? 'Gegner ist bereit.' : 'Gegner ist da — noch nicht bereit.';
   return `<div class="stack" style="gap:var(--space-2);border-top:1px solid var(--border);padding-top:var(--space-3);">
     <div class="field-label">Punkte bis Sieg</div>
     <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
       ${[5, 7, 10, 15].map((n) => `<label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="blobby-target" value="${n}" ${n === targetScore ? 'checked' : ''} />${n}</label>`).join('')}
     </div>
-    <div class="muted" style="font-size:var(--font-size-xs);">${ready ? 'Bereit — Gegner ist da.' : 'Warte auf einen Gegner…'}</div>
+    <div class="muted" style="font-size:var(--font-size-xs);">${hint}</div>
     <button type="button" class="btn btn-primary btn-block" id="blobby-start" ${ready ? '' : 'disabled'}>Start</button>
   </div>`;
 }
@@ -147,6 +152,10 @@ export function wireBlobbyLobbyCard(container) {
   for (const [selector, attr] of [['[data-blobby-close]', 'blobbyClose'], ['[data-blobby-leave]', 'blobbyLeave']]) {
     container.querySelectorAll(selector).forEach((b) => b.addEventListener('click', () => emitAck('blobby:lobby:leave', { lobbyId: b.dataset[attr], playerId: myId() })));
   }
+  wireReadyToggle(container, 'blobby-ready', async (lobbyId, ready) => {
+    const res = await emitAck('blobby:lobby:ready', { lobbyId, playerId: myId(), ready });
+    if (!res?.ok) showToast(res?.error || 'Bereit-Status konnte nicht gesetzt werden.', { error: true });
+  });
   container.querySelector('#blobby-start')?.addEventListener('click', async () => {
     const lobby = myBlobbyLobby();
     const res = await emitAck('blobby:lobby:start', { lobbyId: lobby?.id, playerId: myId(), targetScore });

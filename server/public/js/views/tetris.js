@@ -19,6 +19,7 @@ import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
+import { allLobbyReady, lobbyPlayerChipsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 
 const COLS = 10;
 const ROWS = 20;
@@ -375,13 +376,16 @@ function renderLobbyList() {
       const action = isHost
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-tetris-close="${l.id}">Schließen</button>`
         : joined
-          ? `<button type="button" class="btn btn-sm btn-equal" data-tetris-leave="${l.id}">Verlassen</button>`
+          ? `<div class="stack" style="gap:var(--space-2);">
+              ${readyToggleHtml(l, myId(), 'tetris-ready')}
+              <button type="button" class="btn btn-sm btn-equal" data-tetris-leave="${l.id}">Verlassen</button>
+            </div>`
           : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-tetris-join="${l.id}" ${mine || full ? 'disabled' : ''}>Beitreten</button>`;
       return `
         <div class="lb-row" style="align-items:flex-start;">
           <div class="stack" style="gap:var(--space-2);flex:1;">
             <strong>${escapeHtml(l.host.name)}s Tetris-Lobby</strong>
-            <div class="chip-list">${l.players.map((p) => `<span class="chip">${escapeHtml(p.name)}</span>`).join('')}</div>
+            <div class="chip-list">${lobbyPlayerChipsHtml(l)}</div>
             <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length}/2 Spieler${full ? ' · voll' : ''}</div>
           </div>
           ${action}
@@ -394,9 +398,14 @@ function hostStartHtml() {
   const lobby = myTetrisLobby();
   if (!lobby || lobby.host.id !== myId()) return '';
   const ready = lobby.players.length === 2;
+  const hint = !ready
+    ? 'Warte auf einen Gegner…'
+    : allLobbyReady(lobby)
+      ? 'Gegner ist bereit.'
+      : 'Gegner ist da — noch nicht bereit.';
   return `
     <div class="stack" style="gap:var(--space-2);border-top:1px solid var(--border);padding-top:var(--space-3);">
-      <div class="muted" style="font-size:var(--font-size-xs);">${ready ? 'Bereit — Gegner ist da.' : 'Warte auf einen Gegner…'}</div>
+      <div class="muted" style="font-size:var(--font-size-xs);">${hint}</div>
       <button type="button" class="btn btn-primary btn-block" id="tetris-start" ${ready ? '' : 'disabled'}>Start</button>
     </div>`;
 }
@@ -447,6 +456,11 @@ export function wireTetrisLobbyCard(container) {
     });
   container.querySelectorAll('[data-tetris-close]').forEach(leaveHandler('tetrisClose'));
   container.querySelectorAll('[data-tetris-leave]').forEach(leaveHandler('tetrisLeave'));
+
+  wireReadyToggle(container, 'tetris-ready', async (lobbyId, ready) => {
+    const res = await emitWithAck('tetris:lobby:ready', { lobbyId, playerId: myId(), ready });
+    if (!res?.ok) showToast(res?.error || 'Bereit-Status konnte nicht gesetzt werden.', { error: true });
+  });
 
   container.querySelector('#tetris-start')?.addEventListener('click', async () => {
     const lobby = myTetrisLobby();

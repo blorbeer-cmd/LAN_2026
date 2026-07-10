@@ -1510,6 +1510,19 @@ button.card {
   }
 }
 
+/* Arcade lobby "Bereit"-status: reuses the live-status green so "ready" reads
+   the same as "playing" elsewhere. .btn-ready is the pressed state of the
+   guest's ready toggle (see lobbyReady.js). */
+.chip-ready {
+  color: var(--state-playing);
+  background: var(--state-playing-bg);
+  border-color: var(--state-playing);
+}
+.btn-ready {
+  background: var(--state-playing-bg);
+  color: var(--state-playing);
+}
+
 .chip-list {
   display: flex;
   flex-wrap: wrap;
