@@ -1,6 +1,8 @@
 // Pure, unit-testable rules for the Scribble (skribbl.io-style) arcade game.
 // No DB/socket access here on purpose — see scribble.ts for the stateful part.
 
+import { normalizeAnswer } from './quizLogic';
+
 export function shuffle<T>(items: T[], rng: () => number = Math.random): T[] {
   const copy = items.slice();
   for (let i = copy.length - 1; i > 0; i--) {
@@ -96,4 +98,35 @@ export function nextDrawerIndex(order: string[], fromIndex: number, onlineIds: R
 export function isMatchComplete(turnsPlayed: number, rounds: number, playerCount: number): boolean {
   if (playerCount <= 0) return true;
   return turnsPlayed >= rounds * playerCount;
+}
+
+// Classic edit distance (insert/delete/substitute), single-row DP to avoid
+// allocating a full m*n matrix for what's only ever called on short words.
+export function levenshteinDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  const curr = new Array<number>(b.length + 1);
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    prev = curr.slice();
+  }
+  return prev[b.length];
+}
+
+// "Knapp dran" feedback: a wrong guess just one typo away from the word,
+// after the same case/diacritic/punctuation normalization guesses are
+// matched against — shown only to the guesser themself (see scribble.ts),
+// never broadcast, so it can't spoil the word for anyone else.
+export function isCloseGuess(guess: string, word: string, maxDistance = 1): boolean {
+  const a = normalizeAnswer(guess);
+  const b = normalizeAnswer(word);
+  if (!a || !b || a === b) return false;
+  return levenshteinDistance(a, b) <= maxDistance;
 }

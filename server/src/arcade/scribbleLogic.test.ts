@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {
   buildHintSchedule,
   hintCount,
+  isCloseGuess,
   isMatchComplete,
+  levenshteinDistance,
   nextDrawerIndex,
   pickWordChoices,
   pointsForDrawer,
@@ -83,4 +85,27 @@ test('isMatchComplete compares turns played against rounds * player count', () =
   assert.equal(isMatchComplete(5, 2, 3), false);
   assert.equal(isMatchComplete(6, 2, 3), true);
   assert.equal(isMatchComplete(0, 1, 0), true);
+});
+
+test('levenshteinDistance counts single-character edits', () => {
+  assert.equal(levenshteinDistance('katze', 'katze'), 0);
+  assert.equal(levenshteinDistance('katze', 'katza'), 1); // substitution
+  assert.equal(levenshteinDistance('katze', 'katz'), 1); // deletion
+  assert.equal(levenshteinDistance('katz', 'katze'), 1); // insertion
+  assert.equal(levenshteinDistance('', 'abc'), 3);
+  assert.equal(levenshteinDistance('abc', ''), 3);
+  assert.equal(levenshteinDistance('kitten', 'sitting'), 3);
+});
+
+test('isCloseGuess accepts a single typo after normalization, ignoring case/diacritics/punctuation', () => {
+  assert.equal(isCloseGuess('Repawn', 'Respawn'), true); // missing letter
+  assert.equal(isCloseGuess('Respawn!!', 'respawn'), false); // identical once normalized -> exact match, not "close"
+  assert.equal(isCloseGuess('Löven', 'Loewe'), false); // two edits apart -> not close enough
+  assert.equal(isCloseGuess('katze', 'hund'), false); // far off
+});
+
+test('isCloseGuess rejects an exact match (that path is handled elsewhere) and empty input', () => {
+  assert.equal(isCloseGuess('Respawn', 'Respawn'), false);
+  assert.equal(isCloseGuess('', 'Respawn'), false);
+  assert.equal(isCloseGuess('   ', 'Respawn'), false);
 });

@@ -12,6 +12,7 @@ import { matchesAnswer } from './quizLogic';
 import {
   buildHintSchedule,
   HintStep,
+  isCloseGuess,
   isMatchComplete,
   nextDrawerIndex,
   pickWordChoices,
@@ -553,7 +554,11 @@ export function registerScribbleSocketHandlers(io: Server, socket: Socket): void
       const text = payload.text.trim().slice(0, 80);
       if (!match.currentWord || !matchesAnswer(text, [match.currentWord])) {
         io.to(match.room).emit('arcade:scribble:chat', { matchId: match.id, playerId: player.id, name: player.name, text });
-        return ack?.({ ok: true, correct: false });
+        // "Knapp dran" is only ever sent back to this one guesser via the
+        // ack, never broadcast - anyone else seeing it would effectively
+        // learn the word is nearly spelled out.
+        const close = !!match.currentWord && isCloseGuess(text, match.currentWord);
+        return ack?.({ ok: true, correct: false, close });
       }
 
       const remainingMs = Math.max(0, (match.turnExpiresAt ?? Date.now()) - Date.now());

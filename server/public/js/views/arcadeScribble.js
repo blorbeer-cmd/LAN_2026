@@ -481,7 +481,11 @@ export function createScribbleController(ctx) {
       const text = input.value.trim();
       if (!text) return;
       socket.emit('arcade:scribble:guess', { matchId: match.matchId, playerId: getMyId(), text }, (res) => {
-        if (!res?.ok) showToast(res?.error || 'Tipp nicht angenommen.', { error: true });
+        if (!res?.ok) return showToast(res?.error || 'Tipp nicht angenommen.', { error: true });
+        // Shown only to this guesser (the server never broadcasts it) - a
+        // wrong-but-close guess is otherwise indistinguishable from any
+        // other wrong guess in the shared chat log.
+        if (res.close) showToast('Knapp dran!');
       });
       input.value = '';
       input.focus();

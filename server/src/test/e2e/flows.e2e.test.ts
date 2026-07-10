@@ -585,6 +585,22 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     );
     assert.ok((await countPainted(page)) > 0, 'undoing the fill must not wipe the whole canvas either');
 
+    // "Knapp dran": a wrong guess one edit away from the word gets private
+    // feedback (via the socket ack, never broadcast) - only the guesser
+    // should ever see it, not the drawer.
+    if (chosenWord.length >= 4) {
+      const mid = Math.floor(chosenWord.length / 2);
+      const closeTypo = chosenWord.slice(0, mid) + chosenWord.slice(mid + 1);
+      await guesserPage.fill('#scribble-guess-input', closeTypo);
+      await guesserPage.click('#scribble-guess-form button[type="submit"]');
+      await guesserPage.waitForSelector('text=Knapp dran!');
+      assert.equal(
+        await page.locator('#toast-container .toast', { hasText: 'Knapp dran' }).count(),
+        0,
+        'the drawer must never see the close-guess hint meant for the guesser'
+      );
+    }
+
     await guesserPage.fill('#scribble-guess-input', chosenWord);
     await guesserPage.click('#scribble-guess-form button[type="submit"]');
 
