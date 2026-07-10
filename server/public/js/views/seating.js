@@ -6,6 +6,7 @@
 import { api } from '../api.js';
 import { escapeHtml, avatarHtml } from '../format.js';
 import { showToast } from '../toast.js';
+import { icon } from '../icons.js';
 
 let cache = null;
 let loading = false;
@@ -32,7 +33,7 @@ export function renderSeating(container, ctx) {
       : `
       ${
         cache.groups.length === 0
-          ? `<div class="empty-state"><span class="emoji">🪑</span>Noch niemand hat Sitznachbarn eingetragen.</div>`
+          ? `<div class="empty-state">${icon('tableRowsSplit')}Noch niemand hat Sitznachbarn eingetragen.</div>`
           : cache.groups
               .map(
                 (group, i) => `
@@ -58,7 +59,7 @@ export function renderSeating(container, ctx) {
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="profile">‹ Zurück zum Profil</button>
-    <h1 class="view-title">🪑 Sitzplan</h1>
+    <h1 class="view-title">${icon('tableRowsSplit')} Sitzplan</h1>
     <p class="muted" style="margin-top:calc(var(--space-3) * -1);">
       Wer neben wem sitzt, so wie es alle selbst in ihrem Profil unter „Sitznachbarn" eingetragen haben.
     </p>

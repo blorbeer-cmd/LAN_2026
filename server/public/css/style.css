@@ -1571,6 +1571,38 @@ input[type='range'] {
 }
 .skill-row-slider {
   grid-column: 1 / -1;
+  /* Slider-local gradient endpoints; Bock (preference) sliders run purple,
+     the skill variant overrides them to blue below. */
+  --slider-low: #c08be6;
+  --slider-high: #c24bd8;
+  --slider-track: #39415a; /* unfilled rest of the track, lighter than --bg-elevated-2 so it stays visible */
+  appearance: none;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, var(--slider-low) 0%, var(--slider-high) var(--slider-pct, 50%), var(--slider-track) var(--slider-pct, 50%), var(--slider-track) 100%);
+}
+.skill-row-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--accent-text);
+  background: var(--slider-high);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+.skill-row-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--accent-text);
+  background: var(--slider-high);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+.skill-row-slider:not(.preference-row-slider) {
+  --slider-low: #9bb7f5;
+  --slider-high: #536dff;
 }
 .skill-value {
   font-variant-numeric: tabular-nums;

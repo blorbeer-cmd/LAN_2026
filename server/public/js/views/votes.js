@@ -31,6 +31,7 @@
 // profile.js) whenever the round's own score is tied.
 
 import { api } from '../api.js';
+import { icon } from '../icons.js';
 import { state } from '../state.js';
 import { escapeHtml, formatDate, formatDateTime, gameBadgeHtml } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
@@ -105,7 +106,7 @@ function lastPlayedHtml(r) {
 }
 
 function playtimeChipHtml(r) {
-  return `<span class="muted" style="font-size:var(--font-size-xs);">⏱️ ${r.totalPlaytimeMs > 0 ? r.totalPlaytimeFormatted : '–'}</span>`;
+  return `<span class="muted" style="font-size:var(--font-size-xs);">${icon('timer')} ${r.totalPlaytimeMs > 0 ? r.totalPlaytimeFormatted : '–'}</span>`;
 }
 
 function winCountChipHtml(r) {
@@ -374,7 +375,7 @@ export function renderVotes(container, ctx) {
 
     ${openSectionHtml}
 
-    <div class="section-title">🕓 Vote-Historie</div>
+    <div class="section-title">${icon('timer')} Vote-Historie</div>
     <p class="muted" style="font-size:var(--font-size-xs);margin:calc(var(--space-1) * -1) 0 var(--space-2);">Antippen für die genaue Punkteverteilung dieser Runde.</p>
     <div class="card">${renderHistory()}</div>
   `;
