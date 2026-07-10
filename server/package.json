@@ -6,7 +6,7 @@
   "type": "commonjs",
   "main": "dist/index.js",
   "scripts": {
-    "prepare": "node scripts/setup-git-hooks.js",
+    "prepare": "node scripts/setup-git-hooks.js || true",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
