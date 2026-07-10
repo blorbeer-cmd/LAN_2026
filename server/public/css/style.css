@@ -1728,7 +1728,14 @@ input[type='number'].bracket-score-input {
   background-clip: text;
   color: transparent;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 26px rgba(145, 99, 245, 0.55));
+  /* A `filter: drop-shadow` here would get clipped to the element's tight
+     layout box in Chromium once background-clip:text is in play — the glow
+     (and with it the top/right of italic glyphs like "Los!") gets a hard
+     rectangular cutoff instead of fading out. text-shadow paints per-glyph
+     instead of through a box-bound filter, so it doesn't have that problem. */
+  text-shadow:
+    0 0 22px rgba(145, 99, 245, 0.6),
+    0 0 48px rgba(91, 140, 255, 0.4);
 }
 .countdown-pop {
   animation: countdown-pop 0.85s cubic-bezier(0.2, 0.9, 0.3, 1);

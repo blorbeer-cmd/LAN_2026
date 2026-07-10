@@ -449,6 +449,11 @@ export function renderQuizRoom(container, ctx) {
   `;
   wireQuizMatch(container);
   if (currentQuestion && !match.paused) startCountdown();
+  // Every socket update (new question, opponent's result, ...) rebuilds this
+  // view's DOM from scratch, which otherwise drops focus and forces a click
+  // back into the box before typing again — keep the cursor there so players
+  // can just keep typing across questions.
+  container.querySelector('#quiz-answer:not(:disabled)')?.focus();
 }
 
 function wireQuizMatch(container) {
