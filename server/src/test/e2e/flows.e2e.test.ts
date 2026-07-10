@@ -548,8 +548,42 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     );
     // Undo removed the whole second stroke on both sides - what's left
     // should be (roughly) just the first stroke again, not an empty canvas.
-    assert.ok((await countPainted(page)) > 0, 'undo must not wipe the whole canvas');
-    assert.ok((await countPainted(guesserPage)) > 0, 'undo must not wipe the whole canvas for the guesser either');
+    const hostPaintedAfterUndo = await countPainted(page);
+    const guesserPaintedAfterUndo = await countPainted(guesserPage);
+    assert.ok(hostPaintedAfterUndo > 0, 'undo must not wipe the whole canvas');
+    assert.ok(guesserPaintedAfterUndo > 0, 'undo must not wipe the whole canvas for the guesser either');
+
+    // Füllen (paint bucket): most of the canvas is still empty, so filling
+    // from any point there floods a large connected area - re-queries the
+    // canvas position fresh since clicking the toolbar (below the canvas)
+    // can auto-scroll the page and shift it.
+    await page.click('[data-color="#e03131"]');
+    await page.click('#scribble-fill');
+    const box3 = await page.locator('#scribble-canvas').boundingBox();
+    await page.mouse.click(box3!.x + 280, box3!.y + 20);
+    await guesserPage.waitForFunction((before) => {
+      const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement | null;
+      if (!c) return false;
+      const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++;
+      return n > before;
+    }, guesserPaintedAfterUndo);
+    const hostPaintedAfterFill = await countPainted(page);
+    assert.ok(hostPaintedAfterFill > hostPaintedAfterUndo + 1000, 'fill must flood a large area, not just paint a single pixel');
+
+    await page.click('#scribble-undo');
+    await page.waitForFunction(
+      (before) => {
+        const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement;
+        const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++;
+        return n < before;
+      },
+      hostPaintedAfterFill
+    );
+    assert.ok((await countPainted(page)) > 0, 'undoing the fill must not wipe the whole canvas either');
 
     await guesserPage.fill('#scribble-guess-input', chosenWord);
     await guesserPage.click('#scribble-guess-form button[type="submit"]');

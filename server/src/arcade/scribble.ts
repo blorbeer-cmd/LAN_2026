@@ -41,12 +41,28 @@ interface WordRow {
 }
 
 export interface StrokeBatch {
+  type: 'stroke';
   strokeId: string;
   color: string;
   size: number;
   erase: boolean;
   points: number[][];
 }
+
+// A paint-bucket fill: unlike a stroke, this is a single atomic action (one
+// click, not a drag split into batches), replayed by flood-filling from
+// (x, y) on each client's own canvas rather than by transmitting pixels —
+// see arcadeScribble.js's floodFill, which every client runs independently
+// against whatever it has locally rendered so far.
+export interface FillOp {
+  type: 'fill';
+  strokeId: string;
+  x: number;
+  y: number;
+  color: string;
+}
+
+export type DrawOp = StrokeBatch | FillOp;
 
 interface ScribbleMatchState {
   id: string;
@@ -67,7 +83,7 @@ interface ScribbleMatchState {
   guessedPlayerIds: Set<string>;
   revealedIndices: Set<number>;
   pendingHints: HintStep[];
-  strokes: StrokeBatch[];
+  strokes: DrawOp[];
   choiceTimer: NodeJS.Timeout | null;
   choiceExpiresAt: number | null;
   turnTimer: NodeJS.Timeout | null;
@@ -475,9 +491,25 @@ export function registerScribbleSocketHandlers(io: Server, socket: Socket): void
       if (points.length === 0) return;
       const size = typeof payload.size === 'number' && payload.size > 0 && payload.size <= 40 ? payload.size : 4;
       const color = typeof payload.color === 'string' && payload.color.length <= 20 ? payload.color : '#111111';
-      const batch: StrokeBatch = { strokeId: payload.strokeId, color, size, erase: !!payload.erase, points };
+      const batch: StrokeBatch = { type: 'stroke', strokeId: payload.strokeId, color, size, erase: !!payload.erase, points };
       if (match.strokes.length < MAX_STROKE_BATCHES) match.strokes.push(batch);
       socket.to(match.room).emit('arcade:scribble:stroke', { matchId: match.id, ...batch });
+    }
+  );
+
+  socket.on(
+    'arcade:scribble:fill',
+    (payload: { matchId?: string; playerId?: string; strokeId?: string; x?: number; y?: number; color?: string }) => {
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match || match.phase !== 'drawing' || match.paused) return;
+      if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
+      if (typeof payload.strokeId !== 'string' || !payload.strokeId || payload.strokeId.length > 40) return;
+      if (typeof payload.x !== 'number' || typeof payload.y !== 'number') return;
+      if (payload.x < 0 || payload.x > 1 || payload.y < 0 || payload.y > 1) return;
+      const color = typeof payload.color === 'string' && payload.color.length <= 20 ? payload.color : '#111111';
+      const fill: FillOp = { type: 'fill', strokeId: payload.strokeId, x: payload.x, y: payload.y, color };
+      if (match.strokes.length < MAX_STROKE_BATCHES) match.strokes.push(fill);
+      socket.to(match.room).emit('arcade:scribble:fill', { matchId: match.id, x: fill.x, y: fill.y, color: fill.color });
     }
   );
 

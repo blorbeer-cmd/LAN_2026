@@ -26,7 +26,7 @@ export function createScribbleController(ctx) {
   let lastTurnEnd = null; // { word, reason } shown briefly during 'reveal'
   let matchEnded = null; // { winner, scores } once finished
 
-  let tool = { color: SWATCHES[0], size: SIZES[1], erase: false };
+  let tool = { color: SWATCHES[0], size: SIZES[1], mode: 'pen' }; // mode: 'pen' | 'erase' | 'fill'
   let countdownInterval = null;
 
   // DOM refs captured after each render of the match area, used for
@@ -36,6 +36,7 @@ export function createScribbleController(ctx) {
   let maskEl = null;
   let chatLogEl = null;
   let countdownEl = null;
+  let toolbarEl = null;
 
   let drawingPointerId = null;
   let lastLocalPoint = null;
@@ -114,7 +115,9 @@ export function createScribbleController(ctx) {
   }
 
   function drawStroke(stroke) {
-    if (!canvas2d || !canvasEl || !stroke?.points?.length) return;
+    if (!canvas2d || !canvasEl) return;
+    if (stroke?.type === 'fill') return floodFill(stroke.x, stroke.y, stroke.color);
+    if (!stroke?.points?.length) return;
     const w = canvasEl.width;
     const h = canvasEl.height;
     canvas2d.strokeStyle = stroke.erase ? '#ffffff' : stroke.color;
@@ -131,12 +134,73 @@ export function createScribbleController(ctx) {
 
   function drawLocalSegment(from, to) {
     if (!canvas2d || !canvasEl) return;
-    canvas2d.strokeStyle = tool.erase ? '#ffffff' : tool.color;
+    canvas2d.strokeStyle = tool.mode === 'erase' ? '#ffffff' : tool.color;
     canvas2d.lineWidth = tool.size;
     canvas2d.beginPath();
     canvas2d.moveTo(from[0] * canvasEl.width, from[1] * canvasEl.height);
     canvas2d.lineTo(to[0] * canvasEl.width, to[1] * canvasEl.height);
     canvas2d.stroke();
+  }
+
+  function hexToRgba(hex) {
+    const clean = (hex || '#000000').replace('#', '');
+    return [parseInt(clean.slice(0, 2), 16) || 0, parseInt(clean.slice(2, 4), 16) || 0, parseInt(clean.slice(4, 6), 16) || 0, 255];
+  }
+
+  // Paint-bucket fill, run independently by every client against its own
+  // rendered canvas (see the FillOp comment in scribble.ts for why we don't
+  // transmit pixels). Iterative stack-based 4-connected fill with a color
+  // tolerance, since stroke edges are anti-aliased rather than flat colors.
+  function floodFill(xFrac, yFrac, colorHex) {
+    if (!canvas2d || !canvasEl) return;
+    const w = canvasEl.width;
+    const h = canvasEl.height;
+    if (w === 0 || h === 0) return;
+    const startX = Math.min(w - 1, Math.max(0, Math.round(xFrac * w)));
+    const startY = Math.min(h - 1, Math.max(0, Math.round(yFrac * h)));
+    const imageData = canvas2d.getImageData(0, 0, w, h);
+    const data = imageData.data;
+    const startIdx = (startY * w + startX) * 4;
+    const target = [data[startIdx], data[startIdx + 1], data[startIdx + 2], data[startIdx + 3]];
+    const fillColor = hexToRgba(colorHex);
+    const TOLERANCE = 40;
+    const matches = (idx) =>
+      Math.abs(data[idx] - target[0]) <= TOLERANCE &&
+      Math.abs(data[idx + 1] - target[1]) <= TOLERANCE &&
+      Math.abs(data[idx + 2] - target[2]) <= TOLERANCE &&
+      Math.abs(data[idx + 3] - target[3]) <= TOLERANCE;
+    const targetIsFillColor =
+      Math.abs(target[0] - fillColor[0]) <= TOLERANCE &&
+      Math.abs(target[1] - fillColor[1]) <= TOLERANCE &&
+      Math.abs(target[2] - fillColor[2]) <= TOLERANCE &&
+      Math.abs(target[3] - fillColor[3]) <= TOLERANCE;
+    if (targetIsFillColor) return;
+
+    const visited = new Uint8Array(w * h);
+    const stack = [];
+    const visit = (x, y) => {
+      if (x < 0 || x >= w || y < 0 || y >= h) return;
+      const pos = y * w + x;
+      if (visited[pos]) return;
+      const idx = pos * 4;
+      if (!matches(idx)) return;
+      visited[pos] = 1;
+      data[idx] = fillColor[0];
+      data[idx + 1] = fillColor[1];
+      data[idx + 2] = fillColor[2];
+      data[idx + 3] = fillColor[3];
+      stack.push(x, y);
+    };
+    visit(startX, startY);
+    while (stack.length) {
+      const y = stack.pop();
+      const x = stack.pop();
+      visit(x + 1, y);
+      visit(x - 1, y);
+      visit(x, y + 1);
+      visit(x, y - 1);
+    }
+    canvas2d.putImageData(imageData, 0, 0);
   }
 
   function pointFromEvent(e) {
@@ -163,17 +227,33 @@ export function createScribbleController(ctx) {
       strokeId: currentStrokeId,
       color: tool.color,
       size: tool.size,
-      erase: tool.erase,
+      erase: tool.mode === 'erase',
       points,
     });
   }
 
+  function newOpId() {
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
   function onPointerDown(e) {
     if (!isDrawer() || turn?.phase !== 'drawing' || paused) return;
+    const p = pointFromEvent(e);
+    if (tool.mode === 'fill') {
+      floodFill(p[0], p[1], tool.color);
+      socket?.emit('arcade:scribble:fill', {
+        matchId: match.matchId,
+        playerId: getMyId(),
+        strokeId: newOpId(),
+        x: p[0],
+        y: p[1],
+        color: tool.color,
+      });
+      return;
+    }
     canvasEl.setPointerCapture(e.pointerId);
     drawingPointerId = e.pointerId;
-    currentStrokeId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const p = pointFromEvent(e);
+    currentStrokeId = newOpId();
     lastLocalPoint = p;
     pendingPoints = [p];
     scheduleFlush();
@@ -209,18 +289,19 @@ export function createScribbleController(ctx) {
     if (!isDrawer() || turn?.phase !== 'drawing') return '';
     const swatches = SWATCHES.map(
       (color) =>
-        `<button type="button" class="scribble-swatch ${!tool.erase && tool.color === color ? 'scribble-swatch-active' : ''}" style="background:${color};" data-color="${color}" title="Farbe"></button>`
+        `<button type="button" class="scribble-swatch ${tool.mode !== 'erase' && tool.color === color ? 'scribble-swatch-active' : ''}" style="background:${color};" data-color="${color}" title="Farbe"></button>`
     ).join('');
     const sizes = SIZES.map(
       (size) =>
-        `<button type="button" class="btn btn-sm scribble-size-btn ${!tool.erase && tool.size === size ? 'btn-primary' : ''}" data-size="${size}" title="Stiftgröße"><span style="width:${Math.round(size * 0.8)}px;height:${Math.round(size * 0.8)}px;"></span></button>`
+        `<button type="button" class="btn btn-sm scribble-size-btn ${tool.mode !== 'erase' && tool.size === size ? 'btn-primary' : ''}" data-size="${size}" title="Stiftgröße"><span style="width:${Math.round(size * 0.8)}px;height:${Math.round(size * 0.8)}px;"></span></button>`
     ).join('');
     return `
       <div class="scribble-toolbar">
         ${swatches}
         <span style="width:1px;height:20px;background:var(--border);"></span>
         ${sizes}
-        <button type="button" class="btn btn-sm ${tool.erase ? 'btn-primary' : ''}" id="scribble-erase">Radierer</button>
+        <button type="button" class="btn btn-sm ${tool.mode === 'erase' ? 'btn-primary' : ''}" id="scribble-erase">Radierer</button>
+        <button type="button" class="btn btn-sm ${tool.mode === 'fill' ? 'btn-primary' : ''}" id="scribble-fill">Füllen</button>
         <button type="button" class="btn btn-sm" id="scribble-undo">Rückgängig</button>
         <button type="button" class="btn btn-sm btn-danger" id="scribble-clear">Alles löschen</button>
       </div>`;
@@ -327,6 +408,23 @@ export function createScribbleController(ctx) {
     `;
   }
 
+  // Toolbar clicks (color/size/eraser/fill) must never go through
+  // ctx.rerender() - that rebuilds the whole container, recreating (and
+  // blanking, see setupCanvas) the canvas, since the client has no local
+  // record of already-confirmed strokes to replay outside of a rejoin sync.
+  // Just toggle the pressed-state classes directly instead.
+  function updateToolbarUI() {
+    if (!toolbarEl) return;
+    toolbarEl.querySelectorAll('[data-color]').forEach((btn) => {
+      btn.classList.toggle('scribble-swatch-active', tool.mode !== 'erase' && tool.color === btn.dataset.color);
+    });
+    toolbarEl.querySelectorAll('[data-size]').forEach((btn) => {
+      btn.classList.toggle('btn-primary', tool.mode !== 'erase' && tool.size === Number(btn.dataset.size));
+    });
+    toolbarEl.querySelector('#scribble-erase')?.classList.toggle('btn-primary', tool.mode === 'erase');
+    toolbarEl.querySelector('#scribble-fill')?.classList.toggle('btn-primary', tool.mode === 'fill');
+  }
+
   function wireMatch(container) {
     if (!match || matchEnded) return;
     countdownEl = container.querySelector('#scribble-countdown');
@@ -334,9 +432,11 @@ export function createScribbleController(ctx) {
       wireCanvas(container.querySelector('#scribble-canvas'));
       maskEl = container.querySelector('.scribble-word-mask');
       chatLogEl = container.querySelector('#scribble-chat-log');
+      toolbarEl = container.querySelector('.scribble-toolbar');
     } else {
       canvasEl = null;
       canvas2d = null;
+      toolbarEl = null;
     }
     startCountdown();
 
@@ -350,19 +450,23 @@ export function createScribbleController(ctx) {
 
     container.querySelectorAll('[data-color]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        tool = { ...tool, color: btn.dataset.color, erase: false };
-        ctx.rerender();
+        tool = { ...tool, color: btn.dataset.color, mode: tool.mode === 'erase' ? 'pen' : tool.mode };
+        updateToolbarUI();
       });
     });
     container.querySelectorAll('[data-size]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        tool = { ...tool, size: Number(btn.dataset.size), erase: false };
-        ctx.rerender();
+        tool = { ...tool, size: Number(btn.dataset.size), mode: tool.mode === 'erase' ? 'pen' : tool.mode };
+        updateToolbarUI();
       });
     });
     container.querySelector('#scribble-erase')?.addEventListener('click', () => {
-      tool = { ...tool, erase: !tool.erase };
-      ctx.rerender();
+      tool = { ...tool, mode: tool.mode === 'erase' ? 'pen' : 'erase' };
+      updateToolbarUI();
+    });
+    container.querySelector('#scribble-fill')?.addEventListener('click', () => {
+      tool = { ...tool, mode: tool.mode === 'fill' ? 'pen' : 'fill' };
+      updateToolbarUI();
     });
     container.querySelector('#scribble-undo')?.addEventListener('click', () => {
       socket.emit('arcade:scribble:undo', { matchId: match.matchId, playerId: getMyId() });
@@ -464,6 +568,11 @@ export function createScribbleController(ctx) {
     socket.on('arcade:scribble:clear', (payload) => {
       if (!match || payload.matchId !== match.matchId) return;
       if (canvas2d && canvasEl) canvas2d.clearRect(0, 0, canvasEl.width, canvasEl.height);
+    });
+
+    socket.on('arcade:scribble:fill', (payload) => {
+      if (!match || payload.matchId !== match.matchId || isDrawer()) return;
+      floodFill(payload.x, payload.y, payload.color);
     });
 
     // Undo replaces the whole canvas from the server's authoritative reduced
