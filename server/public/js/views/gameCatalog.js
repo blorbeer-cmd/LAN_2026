@@ -8,10 +8,10 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
+import { icon } from '../icons.js';
 import { escapeHtml, gameBadgeHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
-import { resizeImageFile } from '../imageUtils.js';
 import { suggestProcessNames } from '../gameProcessSuggestions.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 
@@ -89,9 +89,9 @@ function sortButton(key, label) {
 }
 
 function statusBadgeHtml(game) {
-  if (game.isSuggestion) return `<span class="badge badge-paused">💡 Vorschlag</span>`;
-  if (game.processNames.length > 0) return `<span class="badge badge-playing">🟢 getrackt</span>`;
-  return `<span class="badge badge-offline">📚 Katalog</span>`;
+  if (game.isSuggestion) return `<span class="badge badge-paused">${icon('lightbulb')} Vorschlag</span>`;
+  if (game.processNames.length > 0) return `<span class="badge badge-playing">getrackt</span>`;
+  return `<span class="badge badge-offline">${icon('library')} Katalog</span>`;
 }
 
 // The 🧠 suggestion chip: only rendered once there's actually a suggestion
@@ -271,18 +271,9 @@ function openGameDetail(gameId, ctx) {
     `
       <div class="stack">
         <div class="row" style="align-items:center;">
-          <label for="edit-icon-image-input" style="cursor:pointer;" title="Eigenes Icon/Logo hochladen">
-            ${gameBadgeHtml(game, 56)}
-          </label>
-          <input type="file" id="edit-icon-image-input" accept="image/*" hidden />
-          <input type="text" id="edit-icon" value="${escapeHtml(game.icon)}" maxlength="8" style="width:56px;" title="Emoji-Icon (Fallback ohne eigenes Bild)" />
+          ${gameBadgeHtml(game, 56)}
           <input type="text" id="edit-name" value="${escapeHtml(game.name)}" maxlength="60" style="flex:1;" />
         </div>
-        ${
-          game.icon_image
-            ? `<button type="button" class="btn btn-sm" id="edit-icon-image-remove" style="align-self:flex-start;">🗑️ Eigenes Icon entfernen</button>`
-            : `<p class="muted" style="font-size:0.78rem;margin-top:-4px;">Tipp: Badge antippen, um ein eigenes Icon/Logo hochzuladen.</p>`
-        }
         <div>
           <label class="field-label" for="edit-platform">Plattform</label>
           <input type="text" id="edit-platform" maxlength="80" value="${escapeHtml(game.platform ?? '')}" placeholder="Steam, Epic, Battle.net…" />
@@ -337,39 +328,8 @@ function openGameDetail(gameId, ctx) {
     `,
     {
       onMount: (el) => {
-        el.querySelector('#edit-icon-image-input').addEventListener('change', async (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-          try {
-            const iconImage = await resizeImageFile(file, 128);
-            await api.games.update(gameId, { iconImage });
-            close();
-            await ctx.refresh();
-            showToast('Icon aktualisiert.');
-            openGameDetail(gameId, ctx);
-          } catch (err) {
-            showToast(err.message, { error: true });
-          }
-        });
-
-        const removeIconBtn = el.querySelector('#edit-icon-image-remove');
-        if (removeIconBtn) {
-          removeIconBtn.addEventListener('click', async () => {
-            try {
-              await api.games.update(gameId, { iconImage: null });
-              close();
-              await ctx.refresh();
-              showToast('Eigenes Icon entfernt.');
-              openGameDetail(gameId, ctx);
-            } catch (err) {
-              showToast(err.message, { error: true });
-            }
-          });
-        }
-
         el.querySelector('#edit-save').addEventListener('click', async () => {
           const name = el.querySelector('#edit-name').value.trim();
-          const icon = el.querySelector('#edit-icon').value.trim() || '🎮';
           const minTeamSize = parseInt(el.querySelector('#edit-min').value, 10);
           const maxTeamSize = parseInt(el.querySelector('#edit-max').value, 10);
           const platform = el.querySelector('#edit-platform').value.trim();
@@ -378,7 +338,6 @@ function openGameDetail(gameId, ctx) {
           try {
             await api.games.update(gameId, {
               name,
-              icon,
               minTeamSize,
               maxTeamSize,
               platform: platform || null,

@@ -7,6 +7,9 @@
 import { api, getToken, setToken } from './api.js';
 import { connectSocket } from './socket.js';
 import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml } from './format.js';
+import { installIconReplacement, icon } from './icons.js';
+
+installIconReplacement();
 
 const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
 
@@ -166,7 +169,7 @@ function renderTournament(t) {
         </div>`;
     })
     .join('');
-  return `<div class="muted" style="margin-bottom:6px;">${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)} — Runde ${currentRound}/${totalRounds}${t.status === 'completed' ? ' · Beendet 🏆' : ''}</div>${rows}`;
+  return `<div class="muted" style="margin-bottom:6px;">${escapeHtml(t.gameName)} — Runde ${currentRound}/${totalRounds}${t.status === 'completed' ? ' · Beendet 🏆' : ''}</div>${rows}`;
 }
 
 async function refreshAll() {
@@ -182,7 +185,7 @@ async function refreshAll() {
     document.getElementById('kiosk-leaderboard').innerHTML = renderLeaderboard(leaderboard.standings);
 
     const active = tournaments.find((t) => t.status === 'active') || tournaments[0] || null;
-    document.getElementById('kiosk-tournament-title').textContent = active ? `🏟️ ${active.name}` : '🏟️ Turnier';
+    document.getElementById('kiosk-tournament-title').innerHTML = `${icon('swords')} ${active ? escapeHtml(active.name) : 'Turnier'}`;
     if (active) {
       const detail = await api.tournaments.get(active.id);
       document.getElementById('kiosk-tournament').innerHTML = renderTournament(detail);
@@ -219,9 +222,6 @@ async function main() {
   await refreshAll();
 
   const socket = connectSocket();
-  const dot = document.getElementById('kiosk-conn-dot');
-  socket.on('connect', () => dot.classList.add('connected'));
-  socket.on('disconnect', () => dot.classList.remove('connected'));
 
   ['live:changed', 'votes:changed', 'leaderboard:changed', 'tournaments:changed', 'matchmaking:generated'].forEach(
     (event) => socket.on(event, refreshAll)

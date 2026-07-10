@@ -1,7 +1,5 @@
 // Small formatting/escaping helpers shared by every view.
 
-import { state } from './state.js';
-
 export function escapeHtml(value) {
   const s = String(value ?? '');
   return s
@@ -59,37 +57,11 @@ export function avatarHtml(player, size = 32) {
   return `<span class="avatar-dot" style="background:${color};width:${size}px;height:${size}px;"></span>`;
 }
 
-// Deterministic accent color per game (hashed from its id), so every game
-// gets a stable little visual identity across the app without anyone having
-// to pick a color by hand.
-export function gameColor(gameId) {
-  let hash = 0;
-  const s = String(gameId ?? '');
-  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
-  return `hsl(${hash % 360} 70% 45%)`;
-}
-
-// Small round badge carrying a game's icon (or, if the organizer uploaded
-// one, its actual box art/logo) on a tinted background — the "little design
-// that fits the game" reused in every list/chip that mentions one.
-//
-// Looked up fresh from state.games by id rather than trusting whatever
-// fields the caller happened to have on hand (many API payloads only carry
-// a flattened { id, icon } pair, not the full game row) — this way a custom
-// icon_image shows up everywhere a badge appears without having to thread
-// it through every endpoint that mentions a game.
+// Game artwork and emoji are deliberately omitted from the UI. There are not
+// enough semantically strong line icons to give every title a useful symbol,
+// and repeating a generic gamepad adds noise without adding information.
 export function gameBadgeHtml(game, size = 28) {
-  if (!game) return '';
-  const full = state.games.find((g) => g.id === game.id);
-  const iconImage = full ? full.icon_image : null;
-  const icon = (full && full.icon) || game.icon;
-
-  if (iconImage) {
-    return `<span class="game-badge game-badge-img" style="width:${size}px;height:${size}px;"><img src="${escapeHtml(iconImage)}" alt="" /></span>`;
-  }
-  const color = gameColor(game.id);
-  const fontSize = Math.round(size * 0.55);
-  return `<span class="game-badge" style="background:${color};width:${size}px;height:${size}px;font-size:${fontSize}px;">${escapeHtml(icon)}</span>`;
+  return '';
 }
 
 // Renders the "currently running games" chip list for one live-board entry

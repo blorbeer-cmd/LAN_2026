@@ -1,6 +1,7 @@
 import { api, getToken } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
+import { icon } from '../icons.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 
 let socket = null;
@@ -296,7 +297,7 @@ export function renderArcade(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Arcade</h1>
     ${whoAmICardHtml('whoami')}
-    <div class="section-title">⚡ Gaming-Quiz</div>
+    <div class="section-title">${icon('brain')} Gaming-Quiz</div>
     <div class="card stack">
       <div class="row-between" style="gap:10px;">
         <div>

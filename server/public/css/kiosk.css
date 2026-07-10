@@ -31,11 +31,6 @@
   font-size: 1.3rem;
   color: var(--text-muted);
 }
-.kiosk-header .conn-dot {
-  width: 14px;
-  height: 14px;
-}
-
 .kiosk-grid {
   flex: 1;
   display: grid;
