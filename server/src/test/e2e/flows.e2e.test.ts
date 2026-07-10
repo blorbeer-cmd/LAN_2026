@@ -551,3 +551,28 @@ test('the device back button steps back through in-app views instead of leaving 
   await page.goForward();
   await page.waitForFunction(() => document.querySelector('.view-title')?.textContent?.includes('Nächstes'));
 });
+
+test('Kiosk: shows an open food order (when/where only) and the last Durchsage with a timestamp', async () => {
+  const playersRes = await page.request.get(`${BASE_URL}/api/players`);
+  const [{ id: playerId }] = await playersRes.json();
+
+  const sendAt = Date.now() + 3600_000;
+  await page.request.post(`${BASE_URL}/api/food-orders`, {
+    data: { playerId, title: 'Kiosk-Test-Pizza', sendAt, link: 'https://kiosk-test.example/karte' },
+  });
+  await page.request.post(`${BASE_URL}/api/broadcasts`, {
+    data: { playerId, message: 'Kiosk-Test-Durchsage' },
+  });
+
+  await page.goto(`${BASE_URL}/kiosk.html`);
+
+  // The food banner shows only the when/where (send time + menu link) — the
+  // items themselves stay on everyone's own phone, never on the shared screen.
+  await page.waitForSelector('#kiosk-food-banner:not([hidden]) >> text=Kiosk-Test-Pizza');
+  await page.waitForSelector('a[href="https://kiosk-test.example/karte"]');
+
+  // The Durchsage banner shows the last message with a timestamp, and stays
+  // up permanently rather than auto-hiding after a few minutes.
+  await page.waitForSelector('#kiosk-broadcast:not([hidden]) >> text=Kiosk-Test-Durchsage');
+  await page.waitForSelector('.kiosk-broadcast-time');
+});
