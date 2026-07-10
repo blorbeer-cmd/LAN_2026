@@ -1,0 +1,7 @@
+#!/bin/sh
+# Installed automatically via `npm install` in server/ (see
+# server/scripts/setup-git-hooks.js). Blocks commits that introduce
+# hardcoded colors/spacing/font-sizes/radii in server/public instead of
+# using the tokens in server/DESIGN_SYSTEM.md.
+
+node server/scripts/check-design-tokens.js

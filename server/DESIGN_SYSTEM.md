@@ -221,3 +221,33 @@ bigger logo than the token set's normal icon, an avatar deliberately larger or
 smaller than the three standard sizes for its specific context. When in
 doubt: if reusing the nearest token would look wrong, leave a short comment
 explaining why instead of forcing it.
+
+## Automated check (pre-commit)
+
+`server/scripts/check-design-tokens.js` runs automatically on every commit
+(installed via `npm install` → the `prepare` script wires git to
+`.githooks/pre-commit`). It only looks at the **added lines** of the staged
+diff under `server/public/**/*.{css,js}` — not the whole codebase — so it
+enforces the rule going forward without requiring every existing off-scale
+value to be fixed or allowlisted first.
+
+It blocks a commit that introduces:
+- a hardcoded hex color outside a `--token: #...` definition itself,
+- a hardcoded `font-size`/`font-weight`,
+- a hardcoded `gap`/`padding`/`margin`,
+- a hardcoded `border-radius`,
+
+unless the value already exists as a `var(--...)` reference.
+
+For a genuine, deliberate exception (see above), add a comment containing
+`design-token-ok` on the same line, e.g.:
+
+```css
+border-radius: 2px; /* design-token-ok: scaled to this bar's own height */
+```
+
+Run it manually any time with `npm run check:tokens` (from `server/`). It
+does **not** check colors/spacing outside `server/public` (e.g. `agent/`),
+and it does not check `box-shadow` or breakpoint values — those needed either
+too much judgment (glows are legitimately different sizes for different
+elements) or too much false-positive risk to check mechanically.
