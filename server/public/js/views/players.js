@@ -18,6 +18,20 @@ function ratingFor(playerId, gameId) {
   return entry ? entry.rating : 5;
 }
 
+function preferenceFor(playerId, gameId) {
+  const entry = state.preferences.find((p) => p.player_id === playerId && p.game_id === gameId);
+  return entry ? entry.rating : 5;
+}
+
+function lastSeenLabel(timestamp) {
+  if (!timestamp) return 'Noch kein Agent-Report';
+  const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
+  if (minutes < 1) return 'gerade eben';
+  if (minutes < 60) return `vor ${minutes} Min.`;
+  const hours = Math.floor(minutes / 60);
+  return `vor ${hours} Std.${minutes % 60 ? ` ${minutes % 60} Min.` : ''}`;
+}
+
 export function renderPlayers(container, ctx) {
   const rows = state.players
     .map(
@@ -87,14 +101,14 @@ function openPlayerDetail(playerId, ctx) {
   const player = playerById(playerId);
   if (!player) return;
 
-  const skillRows = state.games
+  const ratingRows = (kind) => state.games
     .map((g) => {
-      const rating = ratingFor(playerId, g.id);
+      const rating = kind === 'bock' ? preferenceFor(playerId, g.id) : ratingFor(playerId, g.id);
       return `
-        <div class="skill-row" data-game="${g.id}">
+        <div class="skill-row" data-game="${g.id}" data-rating-kind="${kind}">
           <span class="row" style="gap:var(--space-2);">${gameBadgeHtml(g, 24)} ${escapeHtml(g.name)}</span>
           <span class="skill-value">${rating}</span>
-          <input type="range" class="skill-row-slider" min="1" max="10" step="1" value="${rating}" />
+          <input type="range" class="skill-row-slider ${kind === 'bock' ? 'preference-row-slider' : ''}" min="1" max="10" step="1" value="${rating}" />
         </div>`;
     })
     .join('');
@@ -115,8 +129,9 @@ function openPlayerDetail(playerId, ctx) {
           <button type="button" class="btn btn-sm" id="detail-copy-key">Kopieren</button>
         </div>
         <p class="muted" style="font-size:var(--font-size-xs);">Diesen Key in die Config des Agenten auf dem PC des Spielers eintragen.</p>
+        <div class="muted" id="detail-agent-last-seen" style="font-size:var(--font-size-xs);">Agent zuletzt gesehen: Lädt…</div>
 
-        ${state.games.length > 0 ? `<div class="section-title">Skill-Ratings</div>${skillRows}` : ''}
+        ${state.games.length > 0 ? `<div class="section-title">Bock-o-Meter</div>${ratingRows('bock')}<div class="section-title">Skill-Ratings</div>${ratingRows('skill')}` : ''}
 
         <button type="button" class="btn btn-danger btn-block" id="detail-delete">Spieler löschen</button>
       </div>
@@ -127,8 +142,10 @@ function openPlayerDetail(playerId, ctx) {
         try {
           const full = await api.players.get(playerId);
           el.querySelector('#detail-apikey').value = full.api_key;
+          el.querySelector('#detail-agent-last-seen').textContent = `Agent zuletzt gesehen: ${lastSeenLabel(full.agent_last_seen)}`;
         } catch {
           el.querySelector('#detail-apikey').value = 'Fehler beim Laden';
+          el.querySelector('#detail-agent-last-seen').textContent = 'Agent zuletzt gesehen: Fehler beim Laden';
         }
 
         el.querySelector('#detail-copy-key').addEventListener('click', async () => {
@@ -157,15 +174,22 @@ function openPlayerDetail(playerId, ctx) {
 
         el.querySelectorAll('.skill-row').forEach((row) => {
           const gameId = row.dataset.game;
+          const kind = row.dataset.ratingKind;
           const slider = row.querySelector('input[type="range"]');
           const valueEl = row.querySelector('.skill-value');
+          const updateSliderTone = () => {
+            slider.style.setProperty('--slider-pct', `${((Number(slider.value) - 1) / 9) * 100}%`);
+          };
+          updateSliderTone();
           let debounceTimer = null;
           slider.addEventListener('input', () => {
             valueEl.textContent = slider.value;
+            updateSliderTone();
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(async () => {
               try {
-                await api.skills.set(playerId, gameId, parseInt(slider.value, 10));
+                if (kind === 'bock') await api.preferences.set(playerId, gameId, parseInt(slider.value, 10));
+                else await api.skills.set(playerId, gameId, parseInt(slider.value, 10));
                 await ctx.refresh();
               } catch (err) {
                 showToast(err.message, { error: true });

@@ -4,13 +4,14 @@ export const GROUND_Y = 550;
 export const NET_X = COURT_WIDTH / 2;
 export const NET_HEIGHT = 185;
 export const BLOB_RADIUS = 44;
-export const BALL_RADIUS = 28;
+export const BALL_RADIUS = 24;
 
-const MOVE_SPEED = 330;
-const JUMP_SPEED = 620;
+const MOVE_SPEED = 400;
+const JUMP_SPEED = 670;
 const GRAVITY = 1550;
-const BALL_GRAVITY = 720;
-const BALL_BOUNCE = 0.9;
+const BALL_GRAVITY = 560;
+const BALL_BOUNCE = 0.82;
+const MAX_BALL_SPEED = 620;
 
 export interface Vec { x: number; y: number }
 export interface BlobState extends Vec { vx: number; vy: number; side: 'left' | 'right'; grounded: boolean }
@@ -95,6 +96,14 @@ function collideBallWithNet(ball: BallState) {
   ball.vx = side * Math.max(150, Math.abs(ball.vx)) * 0.82;
 }
 
+function capBallSpeed(ball: BallState) {
+  const speed = Math.hypot(ball.vx, ball.vy);
+  if (speed <= MAX_BALL_SPEED) return;
+  const factor = MAX_BALL_SPEED / speed;
+  ball.vx *= factor;
+  ball.vy *= factor;
+}
+
 // Returns the side on which the ball touched the floor, otherwise null.
 export function stepWorld(world: BlobbyWorld, inputs: [BlobbyInput, BlobbyInput], dtSeconds: number): 'left' | 'right' | null {
   const dt = Math.min(0.05, Math.max(0, dtSeconds));
@@ -121,6 +130,7 @@ export function stepWorld(world: BlobbyWorld, inputs: [BlobbyInput, BlobbyInput]
   collideBallWithNet(ball);
   collideBallWithBlob(ball, world.blobs[0]);
   collideBallWithBlob(ball, world.blobs[1]);
+  capBallSpeed(ball);
 
   if (ball.y + BALL_RADIUS >= GROUND_Y) return ball.x < NET_X ? 'left' : 'right';
   return null;

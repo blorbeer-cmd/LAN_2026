@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
+import { db } from '../db';
 
 const app = createApp();
 let createdId: string;
@@ -43,6 +44,14 @@ test('GET /api/players/:id returns the single player WITH api_key', async () => 
   const res = await request(app).get(`/api/players/${createdId}`);
   assert.equal(res.status, 200);
   assert.ok(res.body.api_key);
+});
+
+test('GET /api/players/:id includes the most recent agent report time', async () => {
+  const lastSeen = Date.now() - 90_000;
+  db.prepare('INSERT INTO live_status (player_id, last_seen, manual_note) VALUES (?, ?, NULL)').run(createdId, lastSeen);
+  const res = await request(app).get(`/api/players/${createdId}`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.agent_last_seen, lastSeen);
 });
 
 test('GET /api/players/:id 404s for an unknown id', async () => {

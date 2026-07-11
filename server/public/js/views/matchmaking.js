@@ -143,6 +143,7 @@ function renderDrawCard(draw, { editable }) {
       <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));">${teamsHtml}</div>
       ${seatingNote}
       ${editable ? `<button type="button" class="btn btn-primary btn-sm" data-record-draw="${draw.id}">✅ Ergebnis eintragen</button>` : ''}
+      ${!editable ? `<button type="button" class="btn btn-primary btn-sm" data-rematch-draw="${draw.id}">${icon('shuffle')} Rematch</button>` : ''}
     </div>`;
 }
 
@@ -178,6 +179,17 @@ function wireDrawCards(container, ctx) {
         presetGameId: draw.gameId,
         presetTeams: draw.teams.map((t) => ({ playerIds: t.players.map((p) => p.id) })),
         presetDrawId: draw.id,
+      });
+    });
+  });
+
+  container.querySelectorAll('[data-rematch-draw]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const draw = findDrawById(btn.dataset.rematchDraw);
+      if (!draw) return;
+      openMatchForm(ctx, {
+        presetGameId: draw.gameId,
+        presetTeams: draw.teams.map((t) => ({ playerIds: t.players.map((p) => p.id) })),
       });
     });
   });

@@ -36,3 +36,13 @@ test('floor contact reports the landing side', () => {
   world.ball.vy = 100;
   assert.equal(stepWorld(world, [idle, idle], 1 / 30), 'left');
 });
+
+test('ball speed is capped after a strong collision', () => {
+  const world = createWorld();
+  world.ball.x = world.blobs[0].x + 40;
+  world.ball.y = world.blobs[0].y;
+  world.ball.vx = -2000;
+  world.ball.vy = 0;
+  stepWorld(world, [idle, idle], 1 / 60);
+  assert.ok(Math.hypot(world.ball.vx, world.ball.vy) <= 620.01);
+});

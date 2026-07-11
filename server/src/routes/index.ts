@@ -31,6 +31,7 @@ import { quizRouter } from './quiz';
 import { arcadeRouter } from './arcade';
 import { arrivalsRouter } from './arrivals';
 import { adminRouter } from './admin';
+import { backupRouter } from './backup';
 
 export const apiRouter = Router();
 
@@ -68,3 +69,4 @@ apiRouter.use('/quiz', quizRouter);
 apiRouter.use('/arcade', arcadeRouter);
 apiRouter.use('/arrivals', arrivalsRouter);
 apiRouter.use('/admin', adminRouter);
+apiRouter.use('/backup', backupRouter);
