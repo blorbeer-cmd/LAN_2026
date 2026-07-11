@@ -195,7 +195,7 @@ function gameRowIconsHtml(game) {
         `<a class="game-icon-btn" href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(l.label)}" aria-label="${escapeHtml(l.label)}">${icon(l.name)}</a>`
     )
     .join('');
-  return detailBtn + linkIcons;
+  return `<span class="game-row-links">${detailBtn}${linkIcons}</span>`;
 }
 
 function gameRowHtml(game, myId) {

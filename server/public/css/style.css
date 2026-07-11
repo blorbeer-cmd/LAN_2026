@@ -1168,14 +1168,22 @@ button.card {
    plain inline icon link would look bigger or smaller depending on the
    icon's own bounding box (e.g. tvMinimalPlay's rect sits shorter than
    squareArrowOutUpRight's diagonal glyph), which read as inconsistent
-   button sizes even though the font-size was the same. */
+   button sizes even though the font-size was the same. Held in its own
+   .game-row-links wrapper so it can sit a bit further from the title than
+   .game-row-name's own flex gap alone would put it. */
+.game-row-links {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: var(--space-2);
+}
 .game-icon-btn {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: var(--space-7);
-  height: var(--space-7);
+  width: var(--space-6);
+  height: var(--space-6);
   border-radius: var(--radius-sm);
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
