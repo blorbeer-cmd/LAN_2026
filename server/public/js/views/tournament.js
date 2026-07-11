@@ -35,6 +35,7 @@ let createAvoidAdjacent = false;
 let createTrackScore = false;
 let createGroupCount = 2;
 let createAdvancersPerGroup = 2;
+let createTeamCount = ''; // persisted across re-rolls, so "Teams vorschlagen" acts as reroll
 let createLobbyName = '';
 let createLobbyPassword = '';
 let createProposedTeams = null; // [{ name, playerIds, players (for display), totalRating }]
@@ -92,6 +93,7 @@ function resetCreateForm() {
   createTrackScore = false;
   createGroupCount = 2;
   createAdvancersPerGroup = 2;
+  createTeamCount = '';
   createLobbyName = '';
   createLobbyPassword = '';
   createProposedTeams = null;
@@ -214,9 +216,6 @@ function renderCreateForm(el, ctx) {
           .join('')}
       </div>
       ${seatingNote}
-      <div class="row">
-        <button type="button" class="btn btn-sm" id="tourn-reroll" style="flex:1;">🎲 Nochmal auslosen</button>
-      </div>
     `
     : '';
 
@@ -228,7 +227,7 @@ function renderCreateForm(el, ctx) {
       </div>
       <select id="tourn-game">${gameOptions}</select>
       <div>${playerRows}</div>
-      <input type="number" id="tourn-teamcount" placeholder="Anzahl Teams" min="2" style="width:140px;" />
+      <input type="number" id="tourn-teamcount" placeholder="Anzahl Teams" min="2" value="${escapeHtml(createTeamCount)}" style="width:140px;" />
       <label class="check-row">
         <input type="checkbox" id="tourn-avoid-adjacent" ${createAvoidAdjacent ? 'checked' : ''} />
         <span>${icon('armchair')} Sitznachbarn nicht gegeneinander auslosen (kommen bevorzugt ins selbe Team)</span>
@@ -318,6 +317,10 @@ function renderCreateForm(el, ctx) {
     });
   }
 
+  el.querySelector('#tourn-teamcount').addEventListener('input', (e) => {
+    createTeamCount = e.target.value;
+  });
+
   el.querySelector('#tourn-avoid-adjacent').addEventListener('change', (e) => {
     createAvoidAdjacent = e.target.checked;
   });
@@ -352,9 +355,8 @@ function renderCreateForm(el, ctx) {
     if (playerIds.length < 2) {
       return showToast('Mindestens 2 Spieler auswählen.', { error: true });
     }
-    const teamCountRaw = el.querySelector('#tourn-teamcount').value;
     const body = { gameId, playerIds, avoidAdjacentOpponents: createAvoidAdjacent };
-    if (teamCountRaw) body.teamCount = parseInt(teamCountRaw, 10);
+    if (createTeamCount) body.teamCount = parseInt(createTeamCount, 10);
     try {
       const result = await api.matchmaking.generate(body);
       createProposedTeams = result.teams.map((t, i) => ({
@@ -373,8 +375,6 @@ function renderCreateForm(el, ctx) {
   }
 
   el.querySelector('#tourn-propose').addEventListener('click', proposeTeams);
-  const rerollBtn = el.querySelector('#tourn-reroll');
-  if (rerollBtn) rerollBtn.addEventListener('click', proposeTeams);
 
   el.querySelectorAll('[data-team-name]').forEach((input) => {
     input.addEventListener('input', () => {
