@@ -1131,12 +1131,88 @@ button.card {
   padding: var(--space-3);
 }
 
-/* Spiele view (gameCatalog.js): one card per game instead of a wide table —
-   the old .catalog-table needed horizontal scroll on a phone, a card stack
-   doesn't. Reuses .skill-row for the Bock/Skill sliders (same component
-   profile.js used to own) so editing looks identical everywhere it appears. */
-.game-card {
+/* Spiele view (gameCatalog.js): one compact table-like row per game. A real
+   <table> would need horizontal scroll on a phone (the lesson from the old
+   .catalog-table), so it's a CSS grid: name/Bock/Skill/Details as columns on
+   wide screens, on a phone the two sliders wrap into a second line via
+   display:contents on the .game-row-sliders wrapper. Reuses .skill-row for
+   the Bock/Skill sliders so editing looks identical everywhere it appears. */
+.game-table {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.game-table-row {
+  display: grid;
+  grid-template-areas:
+    'name actions'
+    'sliders sliders';
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-4);
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
   overflow: hidden;
+}
+.game-row-name {
+  grid-area: name;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.game-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.game-link-icon {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1);
+  color: var(--text-muted);
+}
+@media (hover: hover) {
+  .game-link-icon:hover {
+    color: var(--text);
+  }
+}
+.game-row-sliders {
+  grid-area: sliders;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: var(--space-4);
+  align-items: center;
+}
+.game-row-actions {
+  grid-area: actions;
+  justify-self: end;
+}
+/* On a phone the Ø note gets its own always-reserved line inside each slider
+   cell — inline it would wrap only when present, and rows in the same list
+   must never end up with different heights (see CLAUDE.md list rules). */
+@media (max-width: 639px) {
+  .game-table-row .game-avg-note {
+    display: block;
+    width: 100%;
+    min-height: 1.1rem;
+  }
+}
+@media (min-width: 640px) {
+  .game-table-row {
+    grid-template-areas: 'name bock skill actions';
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  }
+  .game-row-sliders {
+    display: contents;
+  }
+  .game-row-bock {
+    grid-area: bock;
+    min-width: 0;
+  }
+  .game-row-skill {
+    grid-area: skill;
+    min-width: 0;
+  }
 }
 .game-avg-note {
   font-size: var(--font-size-xs);

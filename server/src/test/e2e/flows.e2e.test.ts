@@ -294,12 +294,12 @@ test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bo
   await page.click('[data-promote]');
   await page.click('[data-confirm]');
   await page.waitForSelector('button[data-tab="catalog"].btn-primary');
-  const partyspielCard = page.locator('.game-card', { hasText: 'E2E Partyspiel' });
-  await partyspielCard.waitFor();
-  const bockSlider = partyspielCard.locator('.skill-row[data-kind="bock"] input[type="range"]');
+  const partyspielRow = page.locator('.game-table-row', { hasText: 'E2E Partyspiel' });
+  await partyspielRow.waitFor();
+  const bockSlider = partyspielRow.locator('.skill-row[data-kind="bock"] input[type="range"]');
   await bockSlider.fill('8');
   await page.waitForFunction(() => {
-    const cards = Array.from(document.querySelectorAll('.game-card'));
+    const cards = Array.from(document.querySelectorAll('.game-table-row'));
     const card = cards.find((c) => c.textContent?.includes('E2E Partyspiel'));
     return card?.querySelector('[data-kind="bock"] .skill-value')?.textContent === '8';
   });
@@ -323,14 +323,14 @@ test('Spiele: a skill suggestion chip appears after enough recorded results and 
 
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="gameCatalog"]');
-  const cs2Card = page.locator('.game-card', { hasText: 'Counter-Strike 2' });
-  await cs2Card.waitFor();
-  const chip = cs2Card.locator('[data-apply-suggestion]');
+  const cs2Row = page.locator('.game-table-row', { hasText: 'Counter-Strike 2' });
+  await cs2Row.waitFor();
+  const chip = cs2Row.locator('[data-apply-suggestion]');
   await chip.waitFor();
 
   await chip.click();
   await page.waitForFunction(() => {
-    const cards = Array.from(document.querySelectorAll('.game-card'));
+    const cards = Array.from(document.querySelectorAll('.game-table-row'));
     const card = cards.find((c) => c.textContent?.includes('Counter-Strike 2'));
     const value = card?.querySelector('[data-kind="skill"] .skill-value')?.textContent;
     return value && value !== '–';

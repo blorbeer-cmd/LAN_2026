@@ -20,12 +20,36 @@ test('GET /api/games returns the seeded default games with process names', async
 
 test('GET /api/games also includes the seeded catalog pool (platform/trailer, no process names)', async () => {
   const res = await request(app).get('/api/games');
-  const csgo = res.body.find((g: { name: string }) => g.name === 'CS GO');
-  assert.ok(csgo);
-  assert.equal(csgo.isSuggestion, false);
-  assert.match(csgo.platform_url, /store\.steampowered\.com/);
-  assert.match(csgo.trailer_url, /youtube\.com/);
-  assert.deepEqual(csgo.processNames, []);
+  const dota = res.body.find((g: { name: string }) => g.name === 'DOTA 2');
+  assert.ok(dota);
+  assert.equal(dota.isSuggestion, false);
+  assert.match(dota.platform_url, /store\.steampowered\.com/);
+  assert.match(dota.trailer_url, /youtube\.com/);
+  assert.deepEqual(dota.processNames, []);
+});
+
+test('GET /api/games reflects the July 2026 catalog revision', async () => {
+  const res = await request(app).get('/api/games');
+  const names = res.body.map((g: { name: string }) => g.name);
+
+  for (const removed of ['CS 1.5', 'CS 1.6', 'CS GO', 'Iron Harvest', 'Splitgate', 'Worms', 'Warcraft 3']) {
+    assert.ok(!names.includes(removed), `${removed} should be gone from the catalog`);
+  }
+
+  const battlefront = res.body.find((g: { name: string }) => g.name === 'Star Wars Battlefront 2');
+  assert.ok(battlefront);
+  assert.match(battlefront.platform_url, /app\/1237950/);
+
+  const trackmania = res.body.find((g: { name: string }) => g.name === 'TrackMania Nations Forever');
+  assert.ok(trackmania);
+  assert.match(trackmania.platform_url, /app\/11020/);
+
+  // Exactly one Warcraft entry: the tracked classic TFT install from the NAS.
+  const warcraft = res.body.filter((g: { name: string }) => g.name.toLowerCase().startsWith('warcraft'));
+  assert.equal(warcraft.length, 1);
+  assert.equal(warcraft[0].name, 'Warcraft III');
+  assert.equal(warcraft[0].platform, 'NAS');
+  assert.match(warcraft[0].trailer_url, /Frozen%20Throne/);
 });
 
 test('GET /api/games merges a catalog title that collides with a tracked game onto the same row', async () => {

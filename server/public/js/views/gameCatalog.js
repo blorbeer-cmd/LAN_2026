@@ -109,18 +109,18 @@ function suggestionChipHtml(gameId, suggestion, mine) {
       data-apply-suggestion="${gameId}"
       data-suggested-rating="${suggestion.rating}"
       title="Aus ${suggestion.matchCount} Ergebnissen (${winRatePercent}% Siege) – antippen zum Übernehmen"
-    >🧠 ${suggestion.rating}</button>`;
+    >${icon('brain')} ${suggestion.rating}</button>`;
 }
 
 function ratingRowHtml({ label, accentClass, mine, avg, count, gameId, kind, disabled, suggestionHtml }) {
-  const avgText = avg === null ? '– noch keine Wertung' : `Ø ${avg.toFixed(1)} (${count})`;
+  const avgText = avg === null ? '' : `Ø ${avg.toFixed(1)} (${count})`;
   const sliderValue = mine ?? 5;
   return `
     <div class="skill-row" data-game="${gameId}" data-kind="${kind}">
       <span class="row" style="gap:var(--space-2);flex-wrap:wrap;">
         ${label} <span class="muted game-avg-note">${avgText}</span> ${suggestionHtml || ''}
       </span>
-      <span class="skill-value">${mine ?? '–'}</span>
+      <span class="skill-value">${mine ?? ''}</span>
       <input type="range" class="skill-row-slider ${accentClass}" min="1" max="10" step="1" value="${sliderValue}" ${disabled ? 'disabled' : ''} />
     </div>`;
 }
@@ -142,64 +142,73 @@ function gameLinksHtml(game) {
     </div>`;
 }
 
-function gameCardHtml(game, myId) {
+// Icon-only quick links (store page, trailer) right in the row — the full
+// labelled chips live in the detail modal (gameLinksHtml below).
+function gameLinkIconsHtml(game) {
+  const links = [
+    game.platform_url
+      ? { href: game.platform_url, label: `${game.platform || 'Plattform'}-Link öffnen`, name: 'squareArrowOutUpRight' }
+      : null,
+    game.trailer_url ? { href: game.trailer_url, label: 'Trailer ansehen', name: 'tvMinimalPlay' } : null,
+  ].filter(Boolean);
+  return links
+    .map(
+      (l) =>
+        `<a class="game-link-icon" href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(l.label)}" aria-label="${escapeHtml(l.label)}">${icon(l.name)}</a>`
+    )
+    .join('');
+}
+
+function gameRowHtml(game, myId) {
   const bockStats = ratingStats(state.preferences, game.id);
   const skillStats = ratingStats(state.skills, game.id);
   const myBock = myId ? myRating(state.preferences, myId, game.id) : null;
   const mySkill = myId ? myRating(state.skills, myId, game.id) : null;
-  const meta = [game.platform, game.min_team_size && game.max_team_size ? `Team: ${game.min_team_size}-${game.max_team_size}` : null]
-    .filter(Boolean)
-    .join(' · ');
 
   return `
-    <div class="card stack game-card" style="gap:var(--space-3);">
-      <div class="row" style="align-items:center;gap:var(--space-3);">
-        ${gameBadgeHtml(game, 40)}
-        <span style="flex:1;min-width:0;">
-          <div class="row" style="gap:var(--space-2);flex-wrap:wrap;align-items:center;">
-            <strong>${escapeHtml(game.name)}</strong>
-            ${statusBadgeHtml(game)}
-          </div>
-          ${meta ? `<div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(meta)}</div>` : ''}
-        </span>
+    <div class="card game-table-row">
+      <div class="game-row-name">
+        ${gameBadgeHtml(game, 28)}
+        <strong class="game-row-title">${escapeHtml(game.name)}</strong>
+        ${gameLinkIconsHtml(game)}
+      </div>
+      <div class="game-row-sliders">
+        <div class="game-row-bock">
+          ${ratingRowHtml({
+            label: `${icon('flame')} Bock`,
+            accentClass: 'preference-row-slider',
+            mine: myBock,
+            avg: bockStats.avg,
+            count: bockStats.count,
+            gameId: game.id,
+            kind: 'bock',
+            disabled: !myId,
+          })}
+        </div>
+        <div class="game-row-skill">
+          ${
+            game.isSuggestion
+              ? `<div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
+                   <button type="button" class="btn btn-sm btn-primary" data-promote="${game.id}">In Katalog übernehmen</button>
+                   <button type="button" class="btn btn-sm btn-danger" data-delete="${game.id}">Löschen</button>
+                 </div>`
+              : ratingRowHtml({
+                  label: `${icon('swords')} Skill`,
+                  accentClass: '',
+                  mine: mySkill,
+                  avg: skillStats.avg,
+                  count: skillStats.count,
+                  gameId: game.id,
+                  kind: 'skill',
+                  disabled: !myId,
+                  suggestionHtml: suggestionChipHtml(game.id, suggestionFor(game.id, myId), mySkill),
+                })
+          }
+        </div>
+      </div>
+      <div class="game-row-actions">
         <button type="button" class="btn btn-sm" data-detail="${game.id}">Details</button>
       </div>
-      ${gameLinksHtml(game)}
-
-      ${ratingRowHtml({
-        label: `${icon('flame')} Bock`,
-        accentClass: 'preference-row-slider',
-        mine: myBock,
-        avg: bockStats.avg,
-        count: bockStats.count,
-        gameId: game.id,
-        kind: 'bock',
-        disabled: !myId,
-      })}
-      ${
-        game.isSuggestion
-          ? ''
-          : ratingRowHtml({
-              label: '💪 Skill',
-              accentClass: '',
-              mine: mySkill,
-              avg: skillStats.avg,
-              count: skillStats.count,
-              gameId: game.id,
-              kind: 'skill',
-              disabled: !myId,
-              suggestionHtml: suggestionChipHtml(game.id, suggestionFor(game.id, myId), mySkill),
-            })
-      }
-
-      ${
-        game.isSuggestion
-          ? `<div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
-               <button type="button" class="btn btn-sm btn-primary" data-promote="${game.id}">In Katalog übernehmen</button>
-               <button type="button" class="btn btn-sm btn-danger" data-delete="${game.id}">Löschen</button>
-             </div>`
-          : ''
-      }
     </div>`;
 }
 
@@ -274,6 +283,10 @@ function openGameDetail(gameId, ctx) {
           ${gameBadgeHtml(game, 56)}
           <input type="text" id="edit-name" value="${escapeHtml(game.name)}" maxlength="60" style="flex:1;" />
         </div>
+        <div class="row" style="gap:var(--space-2);flex-wrap:wrap;align-items:center;">
+          ${statusBadgeHtml(game)}
+        </div>
+        ${gameLinksHtml(game)}
         <div>
           <label class="field-label" for="edit-platform">Plattform</label>
           <input type="text" id="edit-platform" maxlength="80" value="${escapeHtml(game.platform ?? '')}" placeholder="Steam, Epic, Battle.net…" />
@@ -296,9 +309,6 @@ function openGameDetail(gameId, ctx) {
             <input type="number" id="edit-max" min="1" max="20" value="${game.max_team_size}" />
           </div>
         </div>
-        <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
-          Team-Größe wird beim „Teams auslosen" verwendet – z. B. 1-1 für 1-gegen-1, 1-5 für Squads.
-        </p>
         <button type="button" class="btn btn-primary" id="edit-save">Speichern</button>
 
         ${
@@ -307,20 +317,16 @@ function openGameDetail(gameId, ctx) {
             : ''
         }
 
-        <div class="section-title">Prozessnamen (für den Agent)</div>
-        <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
-          Sobald mindestens ein Prozessname hinterlegt ist, gilt das Spiel als „getrackt" – der Agent
-          erkennt es dann automatisch im Live-Status.
-        </p>
+        <div class="section-title">Prozessname</div>
         <div class="chip-list">${processChips || '<span class="muted">Noch keine.</span>'}</div>
         ${
           suggestedProcessNames.length
             ? `<button type="button" class="btn btn-sm" id="use-suggested-process" style="align-self:flex-start;">💡 Vorschlag übernehmen: ${escapeHtml(suggestedProcessNames.join(', '))}</button>`
             : ''
         }
-        <div class="row">
+        <div class="row" style="align-items:stretch;">
           <input type="text" id="new-process" placeholder="z.B. cs2.exe" style="flex:1;" />
-          <button type="button" class="btn btn-sm" id="add-process">+</button>
+          <button type="button" class="btn" id="add-process">+</button>
         </div>
 
         <button type="button" class="btn btn-danger btn-block" id="edit-delete">Spiel löschen</button>
@@ -445,15 +451,15 @@ export function renderGameCatalog(container, ctx) {
     </div>
     <div class="row" style="gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3);">
       ${sortButton('name', 'Name')}
-      ${sortButton('avgBock', 'Ø Bock')}
       ${sortButton('myBock', 'Mein Bock')}
+      ${sortButton('avgBock', 'Ø Bock')}
       ${activeTab === 'catalog' ? sortButton('avgSkill', 'Ø Skill') : ''}
     </div>
-    <div class="card-grid" style="margin-top:var(--space-3);">
+    <div class="game-table" style="margin-top:var(--space-3);">
       ${
         rows.length === 0
           ? `<div class="empty-state"><span class="emoji">🎮</span>${activeTab === 'suggestions' ? 'Noch keine vorgeschlagenen Spiele.' : 'Noch keine Spiele im Katalog.'}</div>`
-          : rows.map((g) => gameCardHtml(g, myId)).join('')
+          : rows.map((g) => gameRowHtml(g, myId)).join('')
       }
     </div>
   `;
