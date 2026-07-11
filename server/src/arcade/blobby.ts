@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
+import { adminUnlockValid } from '../auth';
 import { BlobbyInput, BlobbyWorld, createWorld, stepWorld } from './blobbyLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 
@@ -8,6 +9,8 @@ const TICK_MS = 1000 / 60;
 const SNAPSHOT_MS = 50;
 const COUNTDOWN_MS = 3000;
 const DEFAULT_TARGET_SCORE = 7;
+const BOT_ID = 'blobby-bot';
+const BOT = { id: BOT_ID, name: 'Blobby-Bot', avatar: null, color: '#c24bd8' };
 
 interface PlayerRef { id: string; name: string; avatar: string | null; color: string | null }
 interface Lobby { id: string; host: PlayerRef; players: PlayerRef[]; socketIds: Map<string, string>; ready: Set<string>; createdAt: number }
@@ -60,7 +63,7 @@ function finish(io: Server, match: Match, winner: PlayerRef | null, reason: stri
   match.loop = null;
   db.prepare(`INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    nanoid(), 'blobby', winner?.id ?? null, JSON.stringify(match.players), JSON.stringify(scorePayload(match)), reason, match.startedAt, Date.now()
+    nanoid(), 'blobby', winner?.id === BOT_ID ? null : winner?.id ?? null, JSON.stringify(match.players), JSON.stringify(scorePayload(match)), reason, match.startedAt, Date.now()
   );
   io.to(match.room).emit('blobby:match:end', { matchId: match.id, winner, reason, scores: scorePayload(match) });
   matches.delete(match.id);
@@ -79,6 +82,15 @@ function startLoop(io: Server, match: Match) {
     if (now < match.rallyResumeAt) {
       if (now - match.lastSnapshot >= SNAPSHOT_MS) { match.lastSnapshot = now; snapshot(io, match); }
       return;
+    }
+    const botIndex = match.players.findIndex((player) => player.id === BOT_ID);
+    if (botIndex >= 0) {
+      const bot = match.world.blobs[botIndex];
+      const input = match.inputs.get(BOT_ID)!;
+      const targetX = Math.max(botIndex === 0 ? 60 : 540, Math.min(botIndex === 0 ? 460 : 940, match.world.ball.x));
+      input.left = targetX < bot.x - 16;
+      input.right = targetX > bot.x + 16;
+      if (bot.grounded && match.world.ball.y < bot.y - 34 && Math.abs(match.world.ball.x - bot.x) < 150) input.jump = true;
     }
     const landed = stepWorld(match.world, match.players.map((p) => match.inputs.get(p.id) ?? idle()) as [BlobbyInput, BlobbyInput], dt);
     // Jump is an edge-triggered action; movement remains held until key-up.
@@ -120,6 +132,14 @@ export function registerBlobbySockets(io: Server): void {
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
       removeFromLobbies(io, socket.id);
       const lobby: Lobby = { id: nanoid(), host: player, players: [player], socketIds: new Map([[player.id, socket.id]]), ready: new Set(), createdAt: Date.now() };
+      lobbies.set(lobby.id, lobby); emitLobbies(io); ack?.({ ok: true, lobbyId: lobby.id });
+    });
+    socket.on('blobby:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (r: unknown) => void) => {
+      if (!adminUnlockValid(payload?.adminPin)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
+      const player = playerById(payload?.playerId);
+      if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
+      removeFromLobbies(io, socket.id);
+      const lobby: Lobby = { id: nanoid(), host: player, players: [player, BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now() };
       lobbies.set(lobby.id, lobby); emitLobbies(io); ack?.({ ok: true, lobbyId: lobby.id });
     });
     socket.on('blobby:lobby:join', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => {
@@ -169,7 +189,7 @@ export function registerBlobbySockets(io: Server): void {
     socket.on('blobby:input', (payload: { matchId?: string; playerId?: string; input?: Partial<BlobbyInput> }) => {
       const match = typeof payload.matchId === 'string' ? matches.get(payload.matchId) : null;
       const input = typeof payload.playerId === 'string' ? match?.inputs.get(payload.playerId) : null;
-      if (!match || !input || match.paused || !match.running) return;
+      if (!match || !input || payload.playerId === BOT_ID || match.paused || !match.running) return;
       input.left = payload.input?.left === true;
       input.right = payload.input?.right === true;
       if (payload.input?.jump === true) input.jump = true;

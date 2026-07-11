@@ -15,6 +15,7 @@
 import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
+import { adminUnlockValid } from '../auth';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import {
   Board,
@@ -39,12 +40,15 @@ import {
   stringToSeed,
   nextBag,
   BOARD_WIDTH,
+  BOARD_HEIGHT,
 } from './tetrisLogic';
 
 const TICK_MS = 40; // gravity/loop resolution
 const COUNTDOWN_MS = 3000; // "3, 2, 1" before the first piece falls
 const LOCK_STEP_BONUS = 1; // soft-drop point per row
 const HARD_DROP_BONUS = 2; // hard-drop points per row
+const BOT_ID = 'tetris-bot';
+const BOT = { id: BOT_ID, name: 'Tetris-Bot' };
 
 type InputAction = 'left' | 'right' | 'rotate' | 'rotateCcw' | 'soft' | 'hard';
 
@@ -88,6 +92,9 @@ interface TetrisMatch {
   running: boolean;
   paused: boolean;
   lastTick: number;
+  nextBotMoveAt: number;
+  botPlan: InputAction[];
+  botPlanKey: string | null;
   startedAt: number;
 }
 
@@ -173,6 +180,80 @@ function scorePayload(match: TetrisMatch) {
   });
 }
 
+function pieceKey(piece: Piece): string {
+  return `${piece.x}:${piece.y}:${piece.rotation}`;
+}
+
+function evaluateBoard(board: Board, cleared: number): number {
+  let aggregateHeight = 0;
+  let holes = 0;
+  let bumpiness = 0;
+  let previousHeight = 0;
+
+  for (let x = 0; x < BOARD_WIDTH; x++) {
+    let y = 0;
+    while (y < BOARD_HEIGHT && board[y][x] === 0) y += 1;
+    const columnHeight = BOARD_HEIGHT - y;
+    aggregateHeight += columnHeight;
+    if (x > 0) bumpiness += Math.abs(columnHeight - previousHeight);
+    previousHeight = columnHeight;
+
+    let filled = false;
+    for (; y < BOARD_HEIGHT; y++) {
+      if (board[y][x] !== 0) filled = true;
+      else if (filled) holes += 1;
+    }
+  }
+
+  return cleared * 900 - aggregateHeight * 7 - holes * 55 - bumpiness * 14;
+}
+
+function planBotPath(board: Board, start: Piece, targetRotation: number, targetX: number): InputAction[] {
+  type Node = { piece: Piece; path: InputAction[] };
+  const queue: Node[] = [{ piece: start, path: [] }];
+  const seen = new Set([pieceKey(start)]);
+  const directions: Array<{ action: InputAction; next: (piece: Piece) => Piece | null }> = [
+    { action: 'left', next: (piece) => tryMove(board, piece, -1, 0) },
+    { action: 'right', next: (piece) => tryMove(board, piece, 1, 0) },
+    { action: 'rotate', next: (piece) => tryRotate(board, piece, 1) },
+    { action: 'rotateCcw', next: (piece) => tryRotate(board, piece, -1) },
+  ];
+
+  while (queue.length) {
+    const node = queue.shift()!;
+    if (node.piece.rotation === targetRotation && node.piece.x === targetX) return [...node.path, 'hard'];
+    if (node.path.length >= 18) continue;
+    for (const step of directions) {
+      const next = step.next(node.piece);
+      if (!next) continue;
+      const key = pieceKey(next);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      queue.push({ piece: next, path: [...node.path, step.action] });
+    }
+  }
+  return ['hard'];
+}
+
+function chooseBotTarget(match: TetrisMatch, state: PlayerState): { rotation: number; x: number } | null {
+  if (!state.current) return null;
+  let best: { rotation: number; x: number; score: number } | null = null;
+  for (let rotation = 0; rotation < 4; rotation++) {
+    for (let x = -2; x < BOARD_WIDTH + 2; x++) {
+      const candidate = { ...state.current, rotation, x };
+      if (collides(state.board, candidate)) continue;
+      const landing = { ...candidate, y: candidate.y + dropDistance(state.board, candidate) };
+      const locked = lockPiece(state.board, landing);
+      const { board: clearedBoard, cleared } = clearLines(locked);
+      const score = evaluateBoard(clearedBoard, cleared);
+      const centerBonus = 40 - Math.abs(x - 3.5) * 6;
+      const total = score + centerBonus;
+      if (!best || total > best.score) best = { rotation, x, score: total };
+    }
+  }
+  return best ? { rotation: best.rotation, x: best.x } : null;
+}
+
 function finishMatch(io: Server, match: TetrisMatch, winner: PlayerRef | null, reason: string) {
   if (match.loop) clearInterval(match.loop);
   match.loop = null;
@@ -183,7 +264,7 @@ function finishMatch(io: Server, match: TetrisMatch, winner: PlayerRef | null, r
   ).run(
     nanoid(),
     'tetris',
-    winner?.id ?? null,
+    winner?.id === BOT_ID ? null : winner?.id ?? null,
     JSON.stringify(match.players),
     JSON.stringify(scorePayload(match)),
     reason,
@@ -320,8 +401,25 @@ function startLoop(io: Server, match: TetrisMatch) {
     const now = Date.now();
     const dt = now - match.lastTick;
     match.lastTick = now;
-
     let changed = false;
+
+    const bot = match.states.get(BOT_ID);
+    if (bot?.alive && bot.current) {
+      const key = String(bot.pieceIndex);
+      if (match.botPlanKey !== key || match.botPlan.length === 0) {
+        const target = chooseBotTarget(match, bot);
+        match.botPlan = target ? planBotPath(bot.board, bot.current, target.rotation, target.x) : ['hard'];
+        match.botPlanKey = key;
+        match.nextBotMoveAt = now + 120;
+      }
+      if (now >= match.nextBotMoveAt && match.botPlan.length > 0) {
+        const action = match.botPlan.shift()!;
+        const acted = applyInput(match, bot, action);
+        match.nextBotMoveAt = now + (action === 'hard' ? 0 : 55);
+        changed = changed || acted;
+      }
+    }
+
     for (const p of match.players) {
       const state = match.states.get(p.id)!;
       if (!state.alive || !state.current) continue;
@@ -380,6 +478,14 @@ export function registerTetrisSockets(io: Server): void {
       lobbies.set(lobby.id, lobby);
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
+    });
+    socket.on('tetris:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (res: unknown) => void) => {
+      if (!adminUnlockValid(payload?.adminPin)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
+      const player = playerById(payload?.playerId);
+      if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
+      removeFromOpenLobbies(io, socket.id);
+      const lobby: TetrisLobby = { id: nanoid(), host: player, players: [player, BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now() };
+      lobbies.set(lobby.id, lobby); emitLobbies(io); ack?.({ ok: true, lobbyId: lobby.id });
     });
 
     socket.on('tetris:lobby:join', (payload: { lobbyId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
@@ -443,6 +549,9 @@ export function registerTetrisSockets(io: Server): void {
         running: false,
         paused: false,
         lastTick: Date.now(),
+        nextBotMoveAt: Date.now(),
+        botPlan: [],
+        botPlanKey: null,
         startedAt: Date.now(),
       };
       for (const p of lobby.players) {
@@ -489,7 +598,7 @@ export function registerTetrisSockets(io: Server): void {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
       if (!match || !match.running || match.paused) return ack?.({ ok: false });
       const state = typeof payload?.playerId === 'string' ? match.states.get(payload.playerId) : null;
-      if (!state || !state.alive) return ack?.({ ok: false });
+      if (!state || state.ref.id === BOT_ID || !state.alive) return ack?.({ ok: false });
       const valid: InputAction[] = ['left', 'right', 'rotate', 'rotateCcw', 'soft', 'hard'];
       if (!payload?.action || !valid.includes(payload.action)) return ack?.({ ok: false });
 

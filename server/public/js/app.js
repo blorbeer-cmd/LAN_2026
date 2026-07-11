@@ -21,6 +21,7 @@ import { renderArcade, renderQuizRoom } from './views/arcade.js';
 import { renderTetris } from './views/tetris.js';
 import { renderScribbleRoom } from './views/arcadeScribble.js';
 import { renderBlobby } from './views/blobby.js';
+import { renderSnake } from './views/snake.js';
 import { renderGameCatalog, invalidateSkillSuggestions } from './views/gameCatalog.js';
 import { renderArrivals, invalidateArrivals } from './views/arrivals.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
@@ -59,6 +60,7 @@ const VIEWS = {
   tetris: renderTetris,
   scribbleRoom: renderScribbleRoom,
   blobby: renderBlobby,
+  snake: renderSnake,
   gameCatalog: renderGameCatalog,
   arrivals: renderArrivals,
   admin: renderAdmin,

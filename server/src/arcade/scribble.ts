@@ -13,6 +13,7 @@
 import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
+import { adminUnlockValid } from '../auth';
 import { notifyPlayers } from '../push';
 import { matchesAnswer } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
@@ -36,6 +37,8 @@ const DEFAULT_TURN_MS = 60_000;
 const MIN_TURN_MS = 20_000;
 const MAX_TURN_MS = 120_000;
 const MAX_STROKE_BATCHES = 4000; // guards memory if a client sends nonstop for a whole turn
+const BOT_ID = 'scribble-bot';
+const BOT = { id: BOT_ID, name: 'Scribble-Bot' };
 
 interface PlayerRef {
   id: string;
@@ -110,6 +113,7 @@ interface ScribbleMatchState {
   hintTimers: NodeJS.Timeout[];
   nextTurnTimer: NodeJS.Timeout | null;
   startTimer: NodeJS.Timeout | null; // the pre-first-turn "3, 2, 1" delay
+  botTimer: NodeJS.Timeout | null;
   paused: boolean;
   startedAt: number;
 }
@@ -195,11 +199,13 @@ function clearAllTimers(match: ScribbleMatchState): void {
   if (match.turnTimer) clearTimeout(match.turnTimer);
   if (match.nextTurnTimer) clearTimeout(match.nextTurnTimer);
   if (match.startTimer) clearTimeout(match.startTimer);
+  if (match.botTimer) clearTimeout(match.botTimer);
   match.hintTimers.forEach(clearTimeout);
   match.choiceTimer = null;
   match.turnTimer = null;
   match.nextTurnTimer = null;
   match.startTimer = null;
+  match.botTimer = null;
   match.hintTimers = [];
 }
 
@@ -208,6 +214,7 @@ function loadWordPool(): WordRow[] {
 }
 
 function seenWordIds(playerIds: string[]): Set<string> {
+  playerIds = playerIds.filter((id) => id !== BOT_ID);
   if (playerIds.length === 0) return new Set();
   const rows = db
     .prepare(
@@ -224,14 +231,15 @@ function markWordSeen(wordId: string, playerIds: string[]): void {
     `INSERT INTO scribble_seen (word_id, player_id, seen_at) VALUES (?, ?, ?)
      ON CONFLICT(word_id, player_id) DO UPDATE SET seen_at = excluded.seen_at`
   );
-  for (const id of playerIds) stmt.run(wordId, id, now);
+  for (const id of playerIds) if (id !== BOT_ID) stmt.run(wordId, id, now);
 }
 
 function finishMatch(io: Server, match: ScribbleMatchState, winner: PlayerRef | null, reason: string): void {
   clearAllTimers(match);
   const scores = scorePayload(match);
   const bestScore = scores.reduce<(typeof scores)[number] | null>((best, s) => (!best || s.score > best.score ? s : best), null);
-  const winnerId = winner?.id ?? bestScore?.playerId ?? null;
+  const candidateWinnerId = winner?.id ?? bestScore?.playerId ?? null;
+  const winnerId = candidateWinnerId === BOT_ID ? null : candidateWinnerId;
   const resolvedWinner = winnerId ? match.players.find((p) => p.id === winnerId) ?? null : null;
   db.prepare(
     `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
@@ -271,7 +279,12 @@ function startNextTurn(io: Server, match: ScribbleMatchState): void {
     return finishMatch(io, match, null, 'completed');
   }
   const order = match.players.map((p) => p.id);
-  const nextIndex = nextDrawerIndex(order, match.drawIndex, match.online);
+  let nextIndex = nextDrawerIndex(order, match.drawIndex, match.online);
+  // The test bot is a fast rater, not a fake canvas artist. Keep the human
+  // as drawer so every bot round stays useful and understandable.
+  if (nextIndex !== null && match.players[nextIndex]?.id === BOT_ID) {
+    nextIndex = nextDrawerIndex(order, nextIndex, new Set([...match.online].filter((id) => id !== BOT_ID)));
+  }
   if (nextIndex === null) return finishMatch(io, match, null, 'player-left');
 
   match.drawIndex = nextIndex;
@@ -360,6 +373,20 @@ function chooseWord(io: Server, match: ScribbleMatchState, wordId: string): void
   }
 
   startTurnTimers(io, match, match.turnDurationMs, 0);
+  if (match.players.some((player) => player.id === BOT_ID)) {
+    match.botTimer = setTimeout(() => {
+      if (!matches.has(match.id) || match.phase !== 'drawing' || match.paused || !match.currentWord) return;
+      const bot = match.players.find((player) => player.id === BOT_ID)!;
+      if (match.guessedPlayerIds.has(bot.id)) return;
+      const remainingMs = Math.max(0, (match.turnExpiresAt ?? Date.now()) - Date.now());
+      const points = pointsForGuess(remainingMs, match.turnDurationMs);
+      match.scores.set(bot.id, (match.scores.get(bot.id) ?? 0) + points);
+      match.guessedPlayerIds.add(bot.id);
+      io.to(match.room).emit('scribble:chat', { matchId: match.id, playerId: bot.id, name: bot.name, correct: true, points });
+      io.to(match.room).emit('scribble:scores', { matchId: match.id, scores: scorePayload(match) });
+      if (allEligibleGuessed(match)) endTurn(io, match, 'all-guessed');
+    }, 4500 + Math.floor(Math.random() * 2500));
+  }
 }
 
 function endTurn(io: Server, match: ScribbleMatchState, reason: string): void {
@@ -427,6 +454,14 @@ export function registerScribbleSockets(io: Server): void {
         body: `${player.name} hat eine Scribble-Lobby geöffnet – jetzt beitreten!`,
         url: '/#arcade',
       });
+    });
+    socket.on('scribble:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (res: unknown) => void) => {
+      if (!adminUnlockValid(payload?.adminPin)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
+      const player = playerById(payload?.playerId);
+      if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
+      removeFromOpenLobbies(io, socket.id);
+      const lobby: ScribbleLobby = { id: nanoid(), host: player, players: [player, BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now() };
+      lobbies.set(lobby.id, lobby); emitLobbies(io); ack?.({ ok: true, lobbyId: lobby.id });
     });
 
     socket.on('scribble:lobby:join', (payload: { lobbyId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
@@ -508,6 +543,7 @@ export function registerScribbleSockets(io: Server): void {
           hintTimers: [],
           nextTurnTimer: null,
           startTimer: null,
+          botTimer: null,
           paused: false,
           startedAt: Date.now(),
         };
@@ -539,6 +575,7 @@ export function registerScribbleSockets(io: Server): void {
         const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
         if (!match || match.phase !== 'choosing') return ack?.({ ok: false, error: 'Wortauswahl nicht möglich.' });
         if (match.players[match.drawIndex]?.id !== payload?.playerId) return ack?.({ ok: false, error: 'Nur der Zeichner wählt.' });
+        if (payload?.playerId === BOT_ID) return ack?.({ ok: false, error: 'Wortauswahl nicht möglich.' });
         if (typeof payload?.wordId !== 'string') return ack?.({ ok: false, error: 'Ungültiges Wort.' });
         chooseWord(io, match, payload.wordId);
         ack?.({ ok: true });
@@ -559,6 +596,7 @@ export function registerScribbleSockets(io: Server): void {
         const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
         if (!match || match.phase !== 'drawing' || match.paused) return;
         if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
+        if (payload?.playerId === BOT_ID) return;
         if (typeof payload.strokeId !== 'string' || !payload.strokeId || payload.strokeId.length > 40) return;
         if (!Array.isArray(payload.points) || payload.points.length === 0 || payload.points.length > 200) return;
         const points = payload.points.filter(
@@ -579,6 +617,7 @@ export function registerScribbleSockets(io: Server): void {
         const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
         if (!match || match.phase !== 'drawing' || match.paused) return;
         if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
+        if (payload?.playerId === BOT_ID) return;
         if (typeof payload.strokeId !== 'string' || !payload.strokeId || payload.strokeId.length > 40) return;
         if (typeof payload.x !== 'number' || typeof payload.y !== 'number') return;
         if (payload.x < 0 || payload.x > 1 || payload.y < 0 || payload.y > 1) return;
@@ -593,6 +632,7 @@ export function registerScribbleSockets(io: Server): void {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
       if (!match || match.phase !== 'drawing' || match.paused) return;
       if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
+      if (payload?.playerId === BOT_ID) return;
       match.strokes = [];
       io.to(match.room).emit('scribble:clear', { matchId: match.id });
     });
@@ -622,6 +662,7 @@ export function registerScribbleSockets(io: Server): void {
         if (!match || !player || typeof payload?.text !== 'string' || !payload.text.trim()) {
           return ack?.({ ok: false, error: 'Tipp nicht angenommen.' });
         }
+        if (player.id === BOT_ID) return ack?.({ ok: false, error: 'Tipp nicht angenommen.' });
         if (match.phase !== 'drawing' || match.paused) return ack?.({ ok: true, correct: false });
         if (match.players[match.drawIndex]?.id === player.id) return ack?.({ ok: false, error: 'Der Zeichner rät nicht mit.' });
         if (match.guessedPlayerIds.has(player.id)) return ack?.({ ok: true, correct: true });

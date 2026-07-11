@@ -3,6 +3,7 @@ import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { getAdminPin, isAdmin } from '../admin.js';
 import { ensureTetrisSocket, renderTetrisLobbyCard, wireTetrisLobbyCard, myTetrisLobby } from './tetris.js';
 import {
   ensureScribbleSocket,
@@ -12,6 +13,8 @@ import {
   hasScribbleMatch,
 } from './arcadeScribble.js';
 import { ensureBlobbySocket, renderBlobbyLobbyCard, wireBlobbyLobbyCard, myBlobbyLobby, hasBlobbyMatch } from './blobby.js';
+import { ensureSnakeSocket, renderSnakeLobbyCard, wireSnakeLobbyCard, mySnakeLobby, hasSnakeMatch } from './snake.js';
+import { arcadeInfoGridHtml, matchRosterHtml } from './arcadeUi.js';
 import { confirmDialog } from '../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { lobbyPlayerChipsHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
@@ -25,7 +28,7 @@ const GAMES = [
   { id: 'scribble', icon: icon('pencil'), name: 'Scribble' },
   { id: 'pong', icon: icon('gitCommitVertical'), name: 'Pong', soon: true },
   { id: 'blobby', icon: icon('volleyball'), name: 'Blobby Volley' },
-  { id: 'snake', icon: '🐍', name: 'Snake', soon: true },
+  { id: 'snake', icon: icon('snake'), name: 'Snake' },
 ];
 
 let socket = null;
@@ -164,13 +167,6 @@ function myLobby() {
   return lobbies.find((l) => l.players.some((p) => p.id === myId)) ?? null;
 }
 
-function scoreHtml() {
-  if (!match?.scores) return '';
-  return match.scores
-    .map((s) => `<span class="chip">${escapeHtml(s.name)} · ${s.score}/${match.targetScore ?? 5}</span>`)
-    .join('');
-}
-
 function arcadeStatsHtml() {
   if (!stats && !statsLoading) return '';
   if (statsLoading && !stats) return `<div class="empty-state" style="padding:var(--space-4);">Statistiken laden…</div>`;
@@ -217,7 +213,7 @@ function targetControls(lobby) {
   if (!lobby || lobby.host.id !== myId) return '';
   return `
     <div class="card stack" style="margin-top:var(--space-3);">
-      <strong>Lobby starten</strong>
+      <strong>Start</strong>
       <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
         <label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="target-score" value="5" checked />5</label>
         <label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="target-score" value="10" />10</label>
@@ -249,7 +245,7 @@ function renderLobbyList() {
           <div class="stack" style="gap:var(--space-2);flex:1;">
             <strong>${escapeHtml(l.host.name)}s Quiz-Lobby</strong>
             <div class="chip-list">${lobbyPlayerChipsHtml(l)}</div>
-            <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length} Spieler · ${readySummaryText(l)} · Host startet</div>
+            <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length} Spieler · ${readySummaryText(l)}</div>
           </div>
           ${action}
         </div>`;
@@ -276,27 +272,17 @@ function matchControlsHtml() {
     </div>`;
 }
 
-function winnerCelebrationHtml() {
-  const winner = match?.winner ?? lastResult?.winner;
-  if (!match?.ended || !winner) return '';
-  return `
-    <div class="card arcade-winner-card">
-      <div class="arcade-winner-burst" aria-hidden="true">
-        <span></span><span></span><span></span>
-      </div>
-      <div class="arcade-winner-crown">🏆</div>
-      <div>
-        <div class="arcade-winner-label">Gewinner</div>
-        <strong>${escapeHtml(winner.name)}</strong>
-      </div>
-      <div class="chip-list">${scoreHtml()}</div>
-    </div>`;
-}
-
 function renderMatch() {
   if (!match) return '';
-  const celebration = winnerCelebrationHtml();
-  const result = lastResult && !celebration
+  const winnerId = match.winner?.id ?? lastResult?.winner?.id ?? null;
+  const roster = matchRosterHtml(match.players, {
+    winnerId,
+    scoreFor: (player) => {
+      const score = match.scores?.find((s) => s.playerId === player.id)?.score ?? 0;
+      return `${score}/${match.targetScore ?? 5}`;
+    },
+  });
+  const result = lastResult && !match.ended
     ? `<div class="card quiz-stage-card" style="margin-top:var(--space-3);">
         <div class="quiz-stage-content quiz-round-result"><h2>${escapeHtml(lastResult.correctAnswer ?? '')}</h2></div>
       </div>`
@@ -314,17 +300,14 @@ function renderMatch() {
           <input type="text" id="quiz-answer" autocomplete="off" placeholder="Antwort" style="flex:1;" ${match.paused ? 'disabled' : ''} />
           <button type="submit" class="btn btn-primary" ${match.paused ? 'disabled' : ''}>Senden</button>
         </div>
-        ${match.paused ? `<div class="muted">Match pausiert.</div>` : ''}
       </form></div>`
     : match.ended
       ? `<div class="empty-state" style="margin-top:var(--space-3);">Match beendet.</div>`
       : `<div class="empty-state" style="margin-top:var(--space-3);">Nächste Frage kommt…</div>`;
   return `
-    <div class="chip-list arcade-score-row">${scoreHtml()}</div>
-    ${celebration}
+    ${roster}
     ${result}
     ${question}
-    <p class="arcade-game-help">Richtige Antwort eingeben</p>
     ${matchControlsHtml()}
   `;
 }
@@ -337,6 +320,7 @@ function currentGame() {
   if (myTetrisLobby()) return 'tetris';
   if (myScribbleLobby() || hasScribbleMatch()) return 'scribble';
   if (myBlobbyLobby() || hasBlobbyMatch()) return 'blobby';
+  if (mySnakeLobby() || hasSnakeMatch()) return 'snake';
   return activeGame;
 }
 
@@ -358,8 +342,12 @@ function activeGameHtml() {
       <div class="card stack" style="margin-top:var(--space-3);">
         <div class="row-between" style="gap:var(--space-3);">
           <strong>Quiz-Lobby</strong>
-          <button type="button" class="btn btn-primary btn-sm btn-equal" id="quiz-create-lobby" ${lobby || match ? 'disabled' : ''}>Lobby öffnen</button>
+          <div class="row" style="gap:var(--space-2);">${isAdmin() ? `<button type="button" class="btn btn-sm btn-equal" id="quiz-bot" ${lobby || match ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="quiz-create-lobby" ${lobby || match ? 'disabled' : ''}>Lobby öffnen</button></div>
         </div>
+        ${arcadeInfoGridHtml([
+          { label: 'Ziel', text: 'Richtige Antworten sammeln.' },
+          { label: 'Steuerung', text: 'Antwort tippen und senden.' },
+        ])}
         ${renderLobbyList()}
       </div>
       ${targetControls(lobby)}`;
@@ -371,6 +359,7 @@ function activeGameHtml() {
     return `<div style="margin-top:var(--space-3);">${renderScribbleLobbyCard()}</div>`;
   }
   if (game === 'blobby') return `<div style="margin-top:var(--space-3);">${renderBlobbyLobbyCard()}</div>`;
+  if (game === 'snake') return `<div style="margin-top:var(--space-3);">${renderSnakeLobbyCard()}</div>`;
   return '';
 }
 
@@ -379,6 +368,7 @@ export function renderArcade(container, ctx) {
   ensureTetrisSocket();
   ensureScribbleSocket();
   ensureBlobbySocket();
+  ensureSnakeSocket();
   if (!stats && !statsLoading) loadStats(ctx);
   const lobby = myLobby();
 
@@ -400,6 +390,7 @@ export function renderArcade(container, ctx) {
   wireTetrisLobbyCard(container);
   wireScribbleLobbyCard(container);
   wireBlobbyLobbyCard(container);
+  wireSnakeLobbyCard(container);
 
   container.querySelectorAll('[data-game]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -424,6 +415,12 @@ export function renderArcade(container, ctx) {
     const res = await emitWithAck('arcade:lobby:create', { gameType: 'quiz', playerId });
     if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
     showToast('Quiz-Lobby geöffnet.');
+  });
+
+  container.querySelector('#quiz-bot')?.addEventListener('click', async () => {
+    const playerId = getMyId();
+    const res = await emitWithAck('arcade:lobby:bot', { playerId, adminPin: getAdminPin() });
+    if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
 
   container.querySelectorAll('[data-close-lobby]').forEach((btn) => {
@@ -472,7 +469,7 @@ export function renderQuizRoom(container, ctx) {
     return;
   }
   container.innerHTML = `
-    <div class="arcade-game-shell"><h1 class="view-title">${icon('brain')} Gaming-Quiz</h1>
+    <div class="arcade-game-shell"><h1 class="view-title">Gaming-Quiz</h1>
     ${renderMatch()}
     ${match.ended ? `<button type="button" class="btn btn-primary btn-block" id="quiz-back" style="margin-top:var(--space-4);">Zurück zum Arcade</button>` : ''}
     </div>`;
