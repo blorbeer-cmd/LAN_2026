@@ -1191,6 +1191,12 @@ button.card {
   color: var(--text-muted);
   cursor: pointer;
 }
+/* Compensates the info glyph's circular outline reading smaller/thinner
+   than the other two icons' rectilinear glyphs at the same nominal size. */
+.game-icon-info {
+  width: 1.35em;
+  height: 1.35em;
+}
 @media (hover: hover) {
   .game-icon-btn:hover {
     color: var(--text);

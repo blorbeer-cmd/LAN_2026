@@ -188,7 +188,12 @@ function gameRowIconsHtml(game) {
       : null,
     game.trailer_url ? { href: game.trailer_url, label: 'Trailer ansehen', name: 'monitorPlay' } : null,
   ].filter(Boolean);
-  const detailBtn = `<button type="button" class="game-icon-btn" data-detail="${game.id}" title="Details" aria-label="Details">${icon('info')}</button>`;
+  // The info glyph is a circle, which reads visually smaller/thinner than
+  // the other two icons' rectilinear glyphs at an identical nominal size —
+  // a well-known optical effect with round shapes (same issue type design
+  // solves with "overshoot"). game-icon-info compensates with a small size
+  // bump so all three end up looking equally weighted.
+  const detailBtn = `<button type="button" class="game-icon-btn" data-detail="${game.id}" title="Details" aria-label="Details">${icon('info', { className: 'game-icon-info' })}</button>`;
   const linkIcons = links
     .map(
       (l) =>
@@ -345,7 +350,6 @@ function openGameDetail(gameId, ctx) {
             <input type="number" id="edit-max" min="1" max="20" value="${game.max_team_size}" />
           </div>
         </div>
-        <button type="button" class="btn btn-primary" id="edit-save">Speichern</button>
 
         ${
           game.isSuggestion
@@ -365,6 +369,7 @@ function openGameDetail(gameId, ctx) {
           <button type="button" class="btn" id="add-process">+</button>
         </div>
 
+        <button type="button" class="btn btn-primary btn-block" id="edit-save">Speichern</button>
         <button type="button" class="btn btn-danger btn-block" id="edit-delete">Spiel löschen</button>
       </div>
     `,
