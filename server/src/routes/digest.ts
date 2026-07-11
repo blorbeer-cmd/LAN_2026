@@ -33,7 +33,8 @@ digestRouter.get('/', (req, res) => {
       `SELECT DISTINCT g.id, g.name, g.icon
        FROM live_status_games lsg
        JOIN games g ON g.id = lsg.game_id
-       WHERE NOT EXISTS (SELECT 1 FROM skills s WHERE s.player_id = ? AND s.game_id = lsg.game_id)
+       WHERE g.arcade_key IS NULL
+         AND NOT EXISTS (SELECT 1 FROM skills s WHERE s.player_id = ? AND s.game_id = lsg.game_id)
        ORDER BY g.name COLLATE NOCASE`
     )
     .all(playerId) as GameRow[];

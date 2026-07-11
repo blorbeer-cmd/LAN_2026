@@ -66,7 +66,10 @@ export function createTestUsers(count: number): CreatedTestUser[] {
   const seed = db.transaction((): CreatedTestUser[] => {
     const now = Date.now();
     const eventId = getTrackingEventId();
-    const games = db.prepare('SELECT id FROM games').all() as GameRow[];
+    // Arcade titles (quiz/tetris/...) are excluded here just like in
+    // GET /api/games — they aren't skill-rated or vote-eligible, see
+    // routes/games.ts's arcade_key filter.
+    const games = db.prepare('SELECT id FROM games WHERE arcade_key IS NULL').all() as GameRow[];
     const takenNames = new Set(
       (db.prepare('SELECT name FROM players').all() as Array<{ name: string }>).map((r) => r.name.toLowerCase())
     );

@@ -10,6 +10,7 @@ import { createApp } from './app';
 import { setIo, createSocketAuthGuard } from './realtime';
 import { accessProtectionEnabled } from './auth';
 import { startOfflineSweeper } from './liveStatus';
+import { startArcadeHeartbeat } from './arcade/arcadeTracking';
 import { registerArcadeSockets } from './arcade/arcade';
 import { registerTetrisSockets } from './arcade/tetris';
 import { registerScribbleSockets } from './arcade/scribble';
@@ -48,6 +49,9 @@ function start(): void {
 
   // Periodically flip stale players to offline.
   startOfflineSweeper(io);
+  // Keeps players mid-arcade-match from being swept offline (arcade has no
+  // agent report to keep live_status fresh — see arcadeTracking.ts).
+  startArcadeHeartbeat();
 
   // Guard against unexpected crashes. On a friend's PC during a LAN party
   // there's no supervisor watching the process, so we log and keep going —

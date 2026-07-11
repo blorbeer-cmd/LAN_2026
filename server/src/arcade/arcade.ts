@@ -5,6 +5,7 @@ import { adminUnlockValid } from '../auth';
 import { notifyPlayers } from '../push';
 import { matchesAnswer, pickQuestion } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
+import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 
 const DEFAULT_TARGET_SCORE = 5;
 const QUESTION_MS = 20_000;
@@ -96,6 +97,10 @@ function scorePayload(match: MatchState) {
   return match.players.map((p) => ({ playerId: p.id, name: p.name, score: match.scores.get(p.id) ?? 0 }));
 }
 
+function realPlayerIds(players: PlayerRef[]): string[] {
+  return players.filter((p) => p.id !== QUIZ_BOT.id).map((p) => p.id);
+}
+
 function loadQuestionFor(match: MatchState): QuizQuestion | null {
   const questions = db
     .prepare('SELECT id, question, answers, category, difficulty FROM quiz_questions ORDER BY created_at')
@@ -143,6 +148,7 @@ function markSeen(match: MatchState, winnerId: string | null) {
 
 function finishMatch(io: Server, match: MatchState, winner: PlayerRef | null, reason = 'completed') {
   clearQuestionTimer(match);
+  endArcadeSession(realPlayerIds(match.players), 'quiz');
   db.prepare(
     `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
@@ -351,6 +357,7 @@ export function registerArcadeSockets(io: Server): void {
       matches.set(match.id, match);
       lobbies.delete(lobby.id);
       emitLobbies(io);
+      startArcadeSession(realPlayerIds(match.players), 'quiz');
       const beginsAt = Date.now() + COUNTDOWN_MS;
       io.to(room).emit('arcade:match:start', {
         matchId: match.id,

@@ -17,6 +17,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { adminUnlockValid } from '../auth';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
+import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import {
   Board,
   Piece,
@@ -180,6 +181,10 @@ function scorePayload(match: TetrisMatch) {
   });
 }
 
+function realPlayerIds(players: PlayerRef[]): string[] {
+  return players.filter((p) => p.id !== BOT_ID).map((p) => p.id);
+}
+
 function pieceKey(piece: Piece): string {
   return `${piece.x}:${piece.y}:${piece.rotation}`;
 }
@@ -258,6 +263,7 @@ function finishMatch(io: Server, match: TetrisMatch, winner: PlayerRef | null, r
   if (match.loop) clearInterval(match.loop);
   match.loop = null;
   match.running = false;
+  endArcadeSession(realPlayerIds(match.players), 'tetris');
   db.prepare(
     `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
@@ -573,6 +579,7 @@ export function registerTetrisSockets(io: Server): void {
       matches.set(matchId, match);
       lobbies.delete(lobby.id);
       emitLobbies(io);
+      startArcadeSession(realPlayerIds(match.players), 'tetris');
 
       const beginsAt = Date.now() + COUNTDOWN_MS;
       io.to(room).emit('tetris:match:start', {
