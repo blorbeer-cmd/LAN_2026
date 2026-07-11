@@ -276,6 +276,14 @@ test('a match-ready push names the lobby and its default host (the upper bracket
   assert.match(matchReady.body, /PW: geheim/);
   assert.match(matchReady.body, /HostTeam eröffnet die Lobby/);
 
+  // GET /api/push/last is the Kiosk's shared-screen banner - a personally-
+  // targeted push ("dein Match ist bereit", audience 'direct') would read as
+  // if it applied to everyone glancing at the screen, so it must be skipped
+  // in favor of the last 'all'-audience entry (this tournament's own
+  // creation push), even though the direct one is chronologically newer.
+  const last = await request(app).get('/api/push/last');
+  assert.match(last.body.entry.title, /Neues Turnier/);
+
   await request(app).post('/api/push/unsubscribe').send({ endpoint: 'https://push.example.com/sub-lobby' });
 });
 

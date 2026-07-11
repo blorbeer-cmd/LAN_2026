@@ -16,6 +16,11 @@ export function setMyId(id) {
   // Clears/sets the "you still need to set yourself up" dot on the profile
   // icon right away, without waiting for the next view switch to notice.
   document.getElementById('profile-btn')?.classList.toggle('needs-setup', !id);
+  // Global signal for modules outside the per-view render cycle (the header
+  // notification banner) that need to refetch "for the current identity"
+  // data right away instead of only picking up the change whenever some
+  // view next happens to render.
+  window.dispatchEvent(new CustomEvent('lan:identity-changed'));
 }
 
 // Compact "who's acting here" card reused by every view that needs an

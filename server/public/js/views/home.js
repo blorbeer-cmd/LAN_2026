@@ -1,10 +1,13 @@
 // Home (formerly "Live-Status"): the landing view and the page everyone
-// keeps coming back to during the party. Stacks, in order of urgency:
-// the personal "Was steht an?" digest, what's currently running (open vote /
-// active tournament / open food order — the kiosk content, but tappable),
-// the notification feed (recent pushes that concerned this player, each with
-// the same deep link the push itself would open), the realtime live board,
-// a leaderboard snapshot, and the seating plan.
+// keeps coming back to during the party. Stacks, in order of urgency: what's
+// currently running and needs you (open vote / active tournament / open food
+// order / waiting arcade lobby / an unrated skill for a currently-live game —
+// the kiosk content, but tappable and personalized), the realtime live board,
+// a leaderboard snapshot, the seating plan, and — at the very bottom, as a
+// history rather than something needing attention — the full notification
+// log. The single most recent notification is additionally always visible
+// in the app header (see notificationBanner.js), on every view, not just
+// this one.
 
 import { api } from '../api.js';
 import { state } from '../state.js';
@@ -13,6 +16,7 @@ import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { renderSeatingPlan } from './seating.js';
+import { feedLinkView, FEED_LINK_LABELS } from '../pushFeed.js';
 
 const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
 
@@ -52,58 +56,37 @@ function renderHomeSeating(ctx) {
   </section>`;
 }
 
-// "Was steht an?" personal digest (open vote / ready tournament match /
-// unrated live game). Keyed by which player it was loaded for, so switching
-// "who am I" on this device refetches instead of showing someone else's.
-let digestCache = null;
-let digestLoadedForId = null;
-let digestLoading = false;
+// "Missing skill rating" nudge (games currently live that this player
+// hasn't rated their own skill for yet) — folded into "Aktuell" below as
+// just another status card, rather than its own section. Used to also cover
+// an open vote not yet cast and a ready tournament match, but both of those
+// are already visible via the other "Aktuell" cards and the always-on
+// header notification banner (see notificationBanner.js), so keeping a
+// separate "Was steht an?" section around just duplicated them. Keyed by
+// which player it was loaded for, so switching "who am I" on this device
+// refetches instead of showing someone else's.
+let missingSkillsCache = null;
+let missingSkillsLoadedForId = null;
+let missingSkillsLoading = false;
 
-async function loadDigest(ctx, myId) {
-  digestLoading = true;
+async function loadMissingSkills(ctx, myId) {
+  missingSkillsLoading = true;
   try {
-    digestCache = await api.digest.get(myId);
-    digestLoadedForId = myId;
+    const res = await api.digest.get(myId);
+    missingSkillsCache = res.missingSkills;
+    missingSkillsLoadedForId = myId;
   } catch {
-    digestCache = null;
-    digestLoadedForId = null;
+    missingSkillsCache = null;
+    missingSkillsLoadedForId = null;
   } finally {
-    digestLoading = false;
+    missingSkillsLoading = false;
     ctx.rerender();
   }
 }
 
-export function invalidateDigest() {
-  digestCache = null;
-  digestLoadedForId = null;
-}
-
-function renderDigest(myId) {
-  if (!myId || digestLoading || !digestCache || digestLoadedForId !== myId) return '';
-  const items = [];
-  if (digestCache.openVote) {
-    items.push(`
-      <div class="chip" data-navigate="votes" style="cursor:pointer;">
-        ${icon('vote')} Abstimmung läuft – du hast noch nicht abgestimmt
-      </div>`);
-  }
-  for (const m of digestCache.readyMatches) {
-    items.push(`
-      <div class="chip" data-navigate="tournaments" style="cursor:pointer;">
-        ${icon('trophy')} ${gameBadgeHtml({ id: m.gameId, icon: m.gameIcon }, 20)} Dein Match ist bereit: ${escapeHtml(m.myTeamName)} vs. ${escapeHtml(m.opponentTeamName)}
-      </div>`);
-  }
-  for (const g of digestCache.missingSkills) {
-    items.push(`
-      <div class="chip" data-navigate="profile" style="cursor:pointer;">
-        ${icon('activity')} ${gameBadgeHtml(g, 20)} Bewerte deinen Skill für ${escapeHtml(g.name)} – wird gerade gespielt
-      </div>`);
-  }
-  if (items.length === 0) return '';
-  return `
-    <div class="section-title">Was steht an?</div>
-    <div class="stack" style="gap:var(--space-2);margin-bottom:var(--space-4);">${items.join('')}</div>
-  `;
+export function invalidateMissingSkills() {
+  missingSkillsCache = null;
+  missingSkillsLoadedForId = null;
 }
 
 // "Aktuell": the kiosk's status cards, but tappable — an open vote, active
@@ -145,85 +128,98 @@ const FORMAT_LABELS = {
   group_knockout: 'Gruppen + K.O.',
 };
 
-function statusCardHtml({ iconName, title, sub, navigate, action }) {
+// Compact single-line row (the "Mehr" hub's list-row component, see
+// more.js) instead of a full card with its own button: the prominent header
+// banner (notificationBanner.js) already covers the "look at me" job for
+// the single latest thing, so these just need to be scannable at a glance,
+// with the whole row (not a separate button) as the tap target.
+function statusRowHtml({ iconName, title, sub, navigate }) {
   return `
-    <div class="card row-between" style="gap:var(--space-3);">
-      <span class="row" style="gap:var(--space-2);min-width:0;">
-        <span class="list-row-icon">${icon(iconName)}</span>
-        <span style="min-width:0;">
-          <div class="player-name">${title}</div>
-          ${sub ? `<div class="muted" style="font-size:var(--font-size-sm);">${sub}</div>` : ''}
-        </span>
+    <button type="button" class="card row list-row" data-navigate="${navigate}">
+      <span class="list-row-icon">${icon(iconName)}</span>
+      <span style="flex:1;min-width:0;">
+        <div class="player-name">${title}</div>
+        ${sub ? `<div class="muted list-row-desc">${sub}</div>` : ''}
       </span>
-      <button type="button" class="btn btn-sm btn-primary" data-navigate="${navigate}" style="flex-shrink:0;">${action}</button>
-    </div>`;
+      <span class="muted">›</span>
+    </button>`;
 }
 
 function renderStatus() {
-  if (statusCache === null) return '';
-  const cards = [];
+  const rows = [];
+
+  // Personal nudge first — unlike the shared status rows below, nobody else
+  // would otherwise learn you still owe a rating for a game everyone can
+  // already see running on Home.
+  for (const g of missingSkillsCache ?? []) {
+    rows.push(
+      statusRowHtml({
+        iconName: 'star',
+        title: `Skill für ${escapeHtml(g.name)} bewerten`,
+        sub: 'Wird gerade gespielt',
+        navigate: 'gameCatalog',
+      })
+    );
+  }
 
   if (state.votes?.open) {
     const voters = state.votes.totalVoters ?? 0;
-    cards.push(
-      statusCardHtml({
+    rows.push(
+      statusRowHtml({
         iconName: 'vote',
         title: state.votes.title ? escapeHtml(state.votes.title) : 'Abstimmung läuft',
-        sub: `${voters} Teilnehmer bisher – Ergebnis nach dem Ende`,
+        sub: `${voters} Teilnehmer bisher`,
         navigate: 'votes',
-        action: 'Abstimmen',
       })
     );
   }
 
-  for (const t of statusCache.tournaments.filter((t) => t.status === 'active')) {
-    cards.push(
-      statusCardHtml({
+  for (const t of (statusCache?.tournaments ?? []).filter((t) => t.status === 'active')) {
+    rows.push(
+      statusRowHtml({
         iconName: 'swords',
         title: escapeHtml(t.name),
-        sub: `${escapeHtml(t.gameName)} · ${FORMAT_LABELS[t.format] ?? t.format} · ${t.teamCount} Teams`,
+        sub: `${escapeHtml(t.gameName)} · ${FORMAT_LABELS[t.format] ?? t.format}`,
         navigate: 'tournaments',
-        action: 'Zum Turnier',
       })
     );
   }
 
-  for (const o of statusCache.foodOrders.filter((o) => o.open)) {
-    cards.push(
-      statusCardHtml({
+  for (const o of (statusCache?.foodOrders ?? []).filter((o) => o.open)) {
+    rows.push(
+      statusRowHtml({
         iconName: 'hamburger',
         title: `Sammelbestellung „${escapeHtml(o.title)}"`,
         sub: o.sendAt ? `Geht raus um ${formatDateTime(o.sendAt)} Uhr` : 'Zeitpunkt noch offen',
         navigate: 'foodOrders',
-        action: 'Eintragen',
       })
     );
   }
 
-  for (const l of statusCache.arcadeLobbies) {
-    cards.push(
-      statusCardHtml({
+  for (const l of statusCache?.arcadeLobbies ?? []) {
+    rows.push(
+      statusRowHtml({
         iconName: 'joystick',
         title: `${escapeHtml(l.title)}-Lobby offen`,
-        sub: `Von ${escapeHtml(l.hostName)} · ${l.playerCount} ${l.playerCount === 1 ? 'Spieler wartet' : 'Spieler warten'}`,
+        sub: `Von ${escapeHtml(l.hostName)} · ${l.playerCount} ${l.playerCount === 1 ? 'wartet' : 'warten'}`,
         navigate: 'arcade',
-        action: 'Mitmachen',
       })
     );
   }
 
-  if (cards.length === 0) return '';
+  if (rows.length === 0) return '';
   return `
     <div class="section-title">Aktuell</div>
-    <div class="stack" style="gap:var(--space-2);margin-bottom:var(--space-4);">${cards.join('')}</div>
+    <div class="card-grid" style="margin-bottom:var(--space-4);">${rows.join('')}</div>
   `;
 }
 
-// "Mitteilungen": the recent push notifications that concerned this player
-// (Durchsagen, neue Abstimmung, Turnier-Events, Bestellungen, ...), straight
-// from the server's push log — so someone coming back from AFK sees what
-// they missed even if their phone never showed the push. Each entry links
-// into the same view the push notification itself would open.
+// "Mitteilungen": history of recent push notifications that concerned this
+// player (Durchsagen, neue Abstimmung, Turnier-Events, Bestellungen, ...),
+// straight from the server's push log. The single most recent one is always
+// visible up in the app header on every view (see notificationBanner.js);
+// this is the full recent history, further down the page since (once read)
+// it's a look-back, not something needing attention right now.
 let feedCache = null;
 let feedLoadedForId = null;
 let feedLoading = false;
@@ -249,23 +245,6 @@ async function loadFeed(ctx, myId) {
 }
 
 const FEED_LIMIT = 8;
-const FEED_LINK_LABELS = {
-  votes: 'Zur Abstimmung',
-  tournaments: 'Zum Turnier',
-  matchmaking: 'Zu den Teams',
-  foodOrders: 'Zur Bestellung',
-  arcade: 'Zur Arcade',
-  broadcast: 'Zu den Durchsagen',
-};
-
-// A push url like "/#votes" deep-links into a view; anything else (or a
-// hash we don't know) just gets no jump-off button.
-function feedLinkView(url) {
-  const hashIndex = (url || '').indexOf('#');
-  if (hashIndex === -1) return null;
-  const view = url.slice(hashIndex + 1);
-  return FEED_LINK_LABELS[view] ? view : null;
-}
 
 function renderFeed(myId) {
   if (!myId || feedLoading || feedCache === null || feedLoadedForId !== myId) return '';
@@ -369,8 +348,8 @@ export function renderHome(container, ctx) {
   const myId = getMyId();
   const whoAmI = whoAmICardHtml('home-whoami', { marginBottom: '16px' });
 
-  if (myId && digestLoadedForId !== myId && !digestLoading) {
-    loadDigest(ctx, myId);
+  if (myId && missingSkillsLoadedForId !== myId && !missingSkillsLoading) {
+    loadMissingSkills(ctx, myId);
   }
   if (myId && feedLoadedForId !== myId && !feedLoading) {
     loadFeed(ctx, myId);
@@ -415,14 +394,13 @@ export function renderHome(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Home</h1>
     ${whoAmI}
-    ${renderDigest(myId)}
     ${renderStatus()}
-    ${renderFeed(myId)}
     ${renderActiveGroups(players)}
     <div class="section-title">Live-Status</div>
     <div class="card-grid">${cards}</div>
     ${renderLeaderboardTop()}
     ${renderHomeSeating(ctx)}
+    ${renderFeed(myId)}
   `;
 
   wireWhoAmICard(container, 'home-whoami', ctx);
