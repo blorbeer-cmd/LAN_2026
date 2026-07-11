@@ -814,6 +814,7 @@ export function renderScribbleRoom(container) {
   container.innerHTML = `
     <div class="arcade-game-shell"><h1 class="view-title">Scribble</h1>
     <div id="scribble-roster">${rosterScoreHtml()}</div>
+    ${lastTurnEnd ? `<div class="card stack" style="margin-top:var(--space-3);"><strong>Wort war: ${escapeHtml(lastTurnEnd.word ?? '–')}</strong></div>` : ''}
     ${wordChoiceHtml()}
     ${turn?.phase === 'drawing' ? drawingAreaHtml() : ''}
     ${matchControlsHtml()}
