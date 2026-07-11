@@ -197,9 +197,9 @@ function renderFoodBanner(orders) {
 
 // Last-push banner: shows whatever was most recently sent to (almost)
 // everyone — a manual Durchsage, but just as much a new Sammelbestellung, an
-// Arcade-Lobby opening, a "Jetzt zocken?"-Ping, a new vote round, a
-// tournament update, ... (every notifyPlayers() call is logged server-side,
-// see push.ts). Always shows the last one, with timestamp, rather than only
+// Arcade-Lobby opening, a new vote round, a tournament update, ... (every
+// notifyPlayers() call is logged server-side, see push.ts). Always shows the
+// last one, with timestamp, rather than only
 // "currently active" ones — a kiosk screen someone glances at minutes later
 // should still see what was last announced, not go blank.
 function renderBroadcastBanner(entry) {

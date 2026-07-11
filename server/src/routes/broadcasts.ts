@@ -80,7 +80,7 @@ broadcastsRouter.post('/', (req, res) => {
   notifyPlayers(allPlayerIds, {
     title: `📢 ${player.name}`,
     body: row.message,
-    url: '/',
+    url: '/#broadcast',
   });
 
   res.status(201).json(payload);

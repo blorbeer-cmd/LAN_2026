@@ -275,14 +275,6 @@ export const api = {
     saveLayout: (layout) => apiFetch('/api/seating/layout', { method: 'PUT', body: JSON.stringify(layout) }),
   },
 
-  pings: {
-    list: () => apiFetch('/api/pings'),
-    create: (data) => apiFetch('/api/pings', { method: 'POST', body: JSON.stringify(data) }),
-    toggleInterested: (id, playerId) =>
-      apiFetch(`/api/pings/${id}/interested`, { method: 'POST', body: JSON.stringify({ playerId }) }),
-    remove: (id) => apiFetch(`/api/pings/${id}`, { method: 'DELETE' }),
-  },
-
   digest: {
     get: (playerId) => apiFetch(`/api/digest?playerId=${encodeURIComponent(playerId)}`),
   },
@@ -293,6 +285,7 @@ export const api = {
       apiFetch('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ playerId, subscription }) }),
     unsubscribe: (endpoint) => apiFetch('/api/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
     last: () => apiFetch('/api/push/last'),
+    log: (playerId) => apiFetch(`/api/push/log?playerId=${encodeURIComponent(playerId)}`),
   },
 
   agent: {

@@ -10,9 +10,9 @@ import webpush from 'web-push';
 import { db, getState, setState } from './db';
 import { broadcast, Events } from './realtime';
 
-// Only the most recent entries matter (a shared Kiosk screen only ever shows
-// the latest one) - trimmed on every insert so this never grows unbounded
-// over a multi-day LAN party.
+// Only recent entries matter (the Kiosk shows the latest one, the Home feed
+// the last handful per player) - trimmed on every insert so this never grows
+// unbounded over a multi-day LAN party.
 const PUSH_LOG_LIMIT = 50;
 
 const VAPID_PUBLIC_KEY = 'vapid_public_key';
@@ -82,18 +82,43 @@ interface SubscriptionRow {
   auth: string;
 }
 
+// 'all' = a group-wide announcement (Durchsage, new vote, new lobby, ...);
+// 'direct' = personally targeted (e.g. "dein Match ist bereit") — the Home
+// feed highlights these.
+export type PushAudience = 'all' | 'direct';
+
 interface PushLogEntry {
   id: string;
   title: string;
   body: string;
+  url: string | null;
+  audience: PushAudience;
   createdAt: number;
 }
 
 export function getLastPushLogEntry(): PushLogEntry | null {
-  const row = db.prepare('SELECT id, title, body, created_at AS createdAt FROM push_log ORDER BY created_at DESC LIMIT 1').get() as
-    | PushLogEntry
-    | undefined;
+  const row = db
+    .prepare('SELECT id, title, body, url, audience, created_at AS createdAt FROM push_log ORDER BY created_at DESC LIMIT 1')
+    .get() as PushLogEntry | undefined;
   return row ?? null;
+}
+
+// Recent log entries relevant to one player, newest first, for the Home
+// view's notification feed. "Relevant" = the player was on the recipient
+// list; rows from before recipients were recorded (player_ids NULL) show
+// for everyone. The recipient-list JSON is parsed in JS rather than matched
+// in SQL — the log is hard-capped at PUSH_LOG_LIMIT rows, so there's nothing
+// to gain from a LIKE-based filter that can false-match id substrings.
+export function getPushLogEntriesFor(playerId: string, limit = 20): PushLogEntry[] {
+  const rows = db
+    .prepare(
+      'SELECT id, title, body, url, audience, player_ids AS playerIds, created_at AS createdAt FROM push_log ORDER BY created_at DESC'
+    )
+    .all() as Array<PushLogEntry & { playerIds: string | null }>;
+  return rows
+    .filter((row) => row.playerIds === null || (JSON.parse(row.playerIds) as string[]).includes(playerId))
+    .slice(0, limit)
+    .map(({ playerIds: _playerIds, ...entry }) => entry);
 }
 
 // Fire-and-forget by design (never awaited by callers): a request handler
@@ -101,17 +126,27 @@ export function getLastPushLogEntry(): PushLogEntry | null {
 // failing one must never block or crash the response. Subscriptions that
 // come back as gone (404/410 - browser uninstalled, permission revoked,
 // etc.) are pruned so they stop being retried forever.
-export function notifyPlayers(playerIds: string[], payload: PushPayload): void {
+export function notifyPlayers(playerIds: string[], payload: PushPayload, audience: PushAudience = 'all'): void {
   if (playerIds.length === 0) return;
 
   // Logged regardless of how many subscriptions actually exist: this is a
-  // record of "the app told these players something", for the Kiosk banner,
-  // not a delivery receipt.
-  const entry: PushLogEntry = { id: nanoid(), title: payload.title, body: payload.body, createdAt: Date.now() };
-  db.prepare('INSERT INTO push_log (id, title, body, created_at) VALUES (?, ?, ?, ?)').run(
+  // record of "the app told these players something", for the Kiosk banner
+  // and the Home feed, not a delivery receipt.
+  const entry: PushLogEntry = {
+    id: nanoid(),
+    title: payload.title,
+    body: payload.body,
+    url: payload.url ?? null,
+    audience,
+    createdAt: Date.now(),
+  };
+  db.prepare('INSERT INTO push_log (id, title, body, url, audience, player_ids, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
     entry.id,
     entry.title,
     entry.body,
+    entry.url,
+    entry.audience,
+    JSON.stringify(playerIds),
     entry.createdAt
   );
   db.prepare(

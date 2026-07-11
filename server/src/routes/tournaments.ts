@@ -460,7 +460,7 @@ tournamentsRouter.post('/', (req, res) => {
       message: `🏆 Neues Turnier: ${tournamentName}`,
     },
   });
-  notifyPlayers(allPlayerIds, { title: '🏆 Neues Turnier', body: tournamentName, url: '/' });
+  notifyPlayers(allPlayerIds, { title: '🏆 Neues Turnier', body: tournamentName, url: '/#tournaments' });
   res.status(201).json(buildDetail(tournamentId));
 });
 
@@ -714,7 +714,11 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
       playerIds: [...JSON.parse(nextTeamA.player_ids), ...JSON.parse(nextTeamB.player_ids)],
       message: `⚔️ Dein nächstes Match steht an: ${nextTeamA.name} vs ${nextTeamB.name} — ${nextTeamA.name} eröffnet die Lobby${lobbyText}`,
     };
-    notifyPlayers(matchNotify.playerIds, { title: '⚔️ Dein Match ist bereit', body: matchNotify.message, url: '/' });
+    notifyPlayers(
+      matchNotify.playerIds,
+      { title: '⚔️ Dein Match ist bereit', body: matchNotify.message, url: '/#tournaments' },
+      'direct'
+    );
     return matchNotify;
   }
 
@@ -732,7 +736,7 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
       playerIds,
       message: `🏆 Gruppenphase von ${tournament!.name} beendet – die K.O.-Runde steht!`,
     };
-    notifyPlayers(playerIds, { title: '🏆 K.O.-Runde steht', body: knockoutNotify.message, url: '/' });
+    notifyPlayers(playerIds, { title: '🏆 K.O.-Runde steht', body: knockoutNotify.message, url: '/#tournaments' }, 'direct');
     return knockoutNotify;
   }
 

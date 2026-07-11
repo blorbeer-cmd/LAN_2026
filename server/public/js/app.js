@@ -8,7 +8,7 @@ import { state } from './state.js';
 import { loadAll } from './data.js';
 import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
-import { renderLive, invalidatePings, invalidateDigest } from './views/live.js';
+import { renderHome, invalidateDigest, invalidatePushFeed, invalidateHomeStatus } from './views/home.js';
 import { renderPlayers } from './views/players.js';
 import { renderSettings } from './views/games.js';
 import { renderMatchmaking, invalidateMatchmakingHistory, setDraftState } from './views/matchmaking.js';
@@ -36,7 +36,7 @@ import { installIconReplacement } from './icons.js';
 installIconReplacement();
 
 const VIEWS = {
-  live: renderLive,
+  home: renderHome,
   players: renderPlayers,
   matchmaking: renderMatchmaking,
   votes: renderVotes,
@@ -62,7 +62,7 @@ const VIEWS = {
   admin: renderAdmin,
 };
 
-let currentView = 'live';
+let currentView = 'home';
 const viewContainer = document.getElementById('view-container');
 
 // Tracks the last vote round we've seen, so the socket handler can tell a
@@ -199,9 +199,18 @@ function wireNav() {
   // recorded state (extremely old entry, or a browser that fired this
   // without one) falls back to today's usual landing view.
   window.addEventListener('popstate', (e) => {
-    const view = e.state?.view || (getMyId() ? 'live' : 'profile');
+    const view = e.state?.view || (getMyId() ? 'home' : 'profile');
     switchView(view, { fromHistory: true });
   });
+
+  // Tapping a push notification while the app is already open: the service
+  // worker focuses this window and posts the target view (see sw.js) instead
+  // of reloading the whole SPA just to change tabs.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data?.type === 'navigate' && VIEWS[e.data.view]) switchView(e.data.view);
+    });
+  }
 }
 
 function wireSocket() {
@@ -233,7 +242,7 @@ function wireSocket() {
   socket.on('live:changed', (payload) => {
     state.live = payload;
     invalidateDigest(); // a newly-running game may now need a skill rating
-    if (currentView === 'live') renderCurrent();
+    if (currentView === 'home') renderCurrent();
   });
   socket.on('votes:changed', (payload) => {
     const isNewRound = payload.open && payload.round !== lastVoteRound;
@@ -242,7 +251,8 @@ function wireSocket() {
 
     state.votes = payload;
     invalidateDigest();
-    if (currentView === 'votes') renderCurrent();
+    // Home shows an "Abstimmung läuft" status card driven by state.votes.
+    if (currentView === 'votes' || currentView === 'home') renderCurrent();
 
     // Anyone with an identity gets nudged that a new vote opened, even if
     // they're not currently looking at the Votes tab — otherwise the only
@@ -303,7 +313,8 @@ function wireSocket() {
   socket.on('tournaments:changed', (payload) => {
     invalidateTournaments();
     invalidateDigest();
-    if (currentView === 'tournaments') renderCurrent();
+    invalidateHomeStatus();
+    if (currentView === 'tournaments' || currentView === 'home') renderCurrent();
 
     // Same pattern as the vote nudge: only the players actually named in
     // this notification see it, and not if they're already looking at the
@@ -319,19 +330,11 @@ function wireSocket() {
       });
     }
   });
-  socket.on('pings:changed', (payload) => {
-    invalidatePings();
-    if (currentView === 'live') renderCurrent();
-
-    // Everyone except the pinger gets a nudge, same exclusion-based targeting
-    // the server already used for the toast message.
-    const myId = getMyId();
-    if (payload?.notify && myId && myId !== payload.notify.excludePlayerId && currentView !== 'live') {
-      showToast(payload.notify.message, {
-        duration: 4500,
-        onClick: () => switchView('live'),
-      });
-    }
+  // Every notifyPlayers() call on the server also lands here — refresh the
+  // Home view's "Mitteilungen" feed so new entries appear without a reload.
+  socket.on('push:sent', () => {
+    invalidatePushFeed();
+    if (currentView === 'home') renderCurrent();
   });
 
   // Captain draft: the payload carries the full fresh state, so the Teams
@@ -374,7 +377,8 @@ function wireSocket() {
 
   socket.on('foodOrders:changed', (payload) => {
     invalidateFoodOrders();
-    if (currentView === 'foodOrders') renderCurrent();
+    invalidateHomeStatus();
+    if (currentView === 'foodOrders' || currentView === 'home') renderCurrent();
     const myId = getMyId();
     if (payload?.notify && myId && myId !== payload.notify.excludePlayerId && currentView !== 'foodOrders') {
       showToast(payload.notify.message, {
@@ -398,10 +402,14 @@ async function main() {
   await loadAll();
   lastVoteRound = state.votes ? state.votes.round : null;
   // Nobody has set up "who am I" on this device yet (fresh invite link, new
-  // phone, …) — send them straight into self-onboarding instead of the Live
-  // board, so setting up name/avatar/skills/agent-key is the first thing
+  // phone, …) — send them straight into self-onboarding instead of the Home
+  // view, so setting up name/avatar/skills/agent-key is the first thing
   // they see, not something they have to go looking for.
-  const initialView = getMyId() ? 'live' : 'profile';
+  // A push notification's deep link (e.g. /#votes, opened by sw.js when no
+  // app window existed yet) overrides that default so the tap actually lands
+  // where the notification promised.
+  const hashView = location.hash.slice(1);
+  const initialView = VIEWS[hashView] ? hashView : getMyId() ? 'home' : 'profile';
   // Establishes the base history entry the very first popstate can land on
   // (replace, not push — this page load shouldn't cost an extra back-step)
   // before any tab switch starts pushing entries on top of it.

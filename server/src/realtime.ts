@@ -45,7 +45,6 @@ export const Events = {
   matchmakingDrawsChanged: 'matchmaking:draws-changed',
   eventsChanged: 'events:changed',
   tournamentsChanged: 'tournaments:changed',
-  pingsChanged: 'pings:changed',
   draftChanged: 'draft:changed',
   broadcastNew: 'broadcast:new',
   infoChanged: 'info:changed',
