@@ -142,9 +142,12 @@ function statusBadgeHtml(game) {
 }
 
 // The 🧠 suggestion chip: only rendered once there's actually a suggestion
-// for this player+game (see suggestionFor/loadSuggestions above). Highlighted
-// when it diverges from the player's own self-rating by 2+ points — a gentle
-// nudge to reconsider, not a claim that the derived number is "more right".
+// for this player+game (see suggestionFor/loadSuggestions above). Deliberately
+// plain — no pill background/border — so it reads as part of the label line
+// next to the Ø note instead of another button competing with the sliders;
+// see .skill-suggestion-chip. Highlighted when it diverges from the player's
+// own self-rating by 2+ points — a gentle nudge to reconsider, not a claim
+// that the derived number is "more right".
 function suggestionChipHtml(gameId, suggestion, mine) {
   if (!suggestion) return '';
   const diverges = mine !== null && Math.abs(suggestion.rating - mine) >= 2;
@@ -152,11 +155,11 @@ function suggestionChipHtml(gameId, suggestion, mine) {
   return `
     <button
       type="button"
-      class="chip chip-suggestion ${diverges ? 'chip-suggestion-diverges' : ''}"
+      class="skill-suggestion-chip ${diverges ? 'skill-suggestion-chip-diverges' : ''}"
       data-apply-suggestion="${gameId}"
       data-suggested-rating="${suggestion.rating}"
       title="Aus ${suggestion.matchCount} Ergebnissen (${winRatePercent}% Siege) – antippen zum Übernehmen"
-    >${icon('brain')} ${suggestion.rating}</button>`;
+    >${icon('brain', { className: 'skill-suggestion-icon' })} ${suggestion.rating}</button>`;
 }
 
 function ratingRowHtml({ label, accentClass, mine, avg, count, gameId, kind, disabled, suggestionHtml }) {
@@ -189,11 +192,12 @@ function gameLinksHtml(game) {
     </div>`;
 }
 
-// Icon-only quick actions right in the row: open details, jump to the store
-// page, watch the trailer. All rendered as identical square buttons (see
-// .game-icon-btn) so the group reads as one tidy unit regardless of which
-// icons happen to be present — the full labelled chip versions live in the
-// detail modal (gameLinksHtml below). The details button carries the same
+// Icon-only quick actions right in the row: a static "trackbar" marker (only
+// once a process name is mapped — the whole reason Live-Status works for
+// this game at all), open details, jump to the store page, watch the
+// trailer. All part of the same tight-knit cluster (see .game-row-links) so
+// the trackbar marker doesn't end up floating in a gap of its own between
+// the title and the rest of the icons. The details button carries the same
 // data-detail attribute the old standalone button used, so the existing
 // [data-detail] wiring in renderGameCatalog picks it up unchanged.
 function gameRowIconsHtml(game) {
@@ -203,6 +207,12 @@ function gameRowIconsHtml(game) {
       : null,
     game.trailer_url ? { href: game.trailer_url, label: 'Trailer ansehen', name: 'monitorPlay' } : null,
   ].filter(Boolean);
+  // Reuses the same green already used for "spielt"/"trackt gerade"
+  // elsewhere, so the color itself carries the meaning at a glance.
+  const trackIndicator =
+    game.processNames.length > 0
+      ? `<span class="game-track-indicator" title="Trackbar – Prozessname hinterlegt" aria-label="Trackbar">${icon('radioTower')}</span>`
+      : '';
   // The info glyph is a circle, which reads visually smaller/thinner than
   // the other two icons' rectilinear glyphs at an identical nominal size —
   // a well-known optical effect with round shapes (same issue type design
@@ -215,16 +225,7 @@ function gameRowIconsHtml(game) {
         `<a class="game-icon-btn" href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(l.label)}" aria-label="${escapeHtml(l.label)}">${icon(l.name)}</a>`
     )
     .join('');
-  return `<span class="game-row-links">${detailBtn}${linkIcons}</span>`;
-}
-
-// Shown right next to the title in the list row (not just buried in the
-// detail modal) so it's obvious at a glance which games the agent can
-// actually detect via a process-name mapping — the whole reason Live-Status
-// works for that game at all.
-function trackableIndicatorHtml(game) {
-  if (game.processNames.length === 0) return '';
-  return `<span class="game-track-indicator" title="Trackbar – Prozessname hinterlegt" aria-label="Trackbar">${icon('radioTower')}</span>`;
+  return `<span class="game-row-links">${trackIndicator}${detailBtn}${linkIcons}</span>`;
 }
 
 function gameRowHtml(game, myId) {
@@ -253,7 +254,7 @@ function gameRowHtml(game, myId) {
     : [
         bockRow,
         ratingRowHtml({
-          label: `${icon('swords')} Skill`,
+          label: `${icon('activity')} Skill`,
           accentClass: '',
           mine: mySkill,
           avg: skillStats.avg,
@@ -270,7 +271,6 @@ function gameRowHtml(game, myId) {
       <div class="game-row-name">
         ${gameBadgeHtml(game, 28)}
         <strong class="game-row-title">${escapeHtml(game.name)}</strong>
-        ${trackableIndicatorHtml(game)}
         ${gameRowIconsHtml(game)}
       </div>
       <div class="game-row-sliders">

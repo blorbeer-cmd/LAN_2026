@@ -88,7 +88,7 @@ function renderDigest(myId) {
   for (const g of digestCache.missingSkills) {
     items.push(`
       <div class="chip" data-navigate="profile" style="cursor:pointer;">
-        ${icon('star')} ${gameBadgeHtml(g, 20)} Bewerte deinen Skill für ${escapeHtml(g.name)} – wird gerade gespielt
+        ${icon('activity')} ${gameBadgeHtml(g, 20)} Bewerte deinen Skill für ${escapeHtml(g.name)} – wird gerade gespielt
       </div>`);
   }
   if (items.length === 0) return '';

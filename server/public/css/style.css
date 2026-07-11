@@ -1169,7 +1169,9 @@ button.card {
 }
 /* Static (non-interactive) marker for "agent can detect this game", reusing
    the same green already used for "spielt"/"trackt gerade" elsewhere so the
-   color itself carries the meaning at a glance. */
+   color itself carries the meaning at a glance. Sized to match the glyph
+   weight of the row's other icons (.game-icon-btn) instead of the smaller
+   default — otherwise it reads as a stray, oddly tiny mark next to them. */
 .game-track-indicator {
   display: inline-flex;
   flex: 0 0 auto;
@@ -1177,8 +1179,8 @@ button.card {
   color: var(--state-playing);
 }
 .game-track-indicator .ui-icon {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
 }
 /* Details/Plattform/Trailer as one group of plain icon buttons, same size and
    no background/border so they read as row chrome rather than as another
@@ -1264,18 +1266,43 @@ button.card {
   font-weight: var(--font-weight-regular);
 }
 /* Skill-Vorschlag chip (derived from match results, see skillSuggestion.ts):
-   a tappable button, not just a label — clicking applies it. Highlighted
-   when it diverges 2+ points from the player's own self-rating. */
-.chip-suggestion {
-  cursor: pointer;
+   tappable, not just a label — clicking applies it. No pill background/
+   border, unlike .chip — it sits inline in the Skill row's label line right
+   next to the Ø note, so a filled pill there reads as a second, competing
+   button rather than part of that line. The accent color plus icon carry
+   the "tap me" affordance instead. Highlighted when it diverges 2+ points
+   from the player's own self-rating — a gentle nudge to reconsider, not a
+   claim that the derived number is "more right". */
+.skill-suggestion-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: none;
+  border: none;
+  padding: 0;
   font-size: var(--font-size-xs);
-  padding: var(--space-1) var(--space-2);
-}
-.chip-suggestion-diverges {
-  color: var(--state-playing);
-  background: var(--state-playing-bg);
-  border-color: var(--state-playing);
   font-weight: var(--font-weight-medium);
+  color: var(--accent-3);
+  cursor: pointer;
+}
+.skill-suggestion-chip .ui-icon {
+  width: 14px;
+  height: 14px;
+}
+/* The brain glyph's own visual mass sits slightly above center within its
+   viewBox, so flex-centering the icon box alone still reads as a hair too
+   high next to the chip's number/the Ø note beside it. */
+.skill-suggestion-icon {
+  transform: translateY(1px);
+}
+@media (hover: hover) {
+  .skill-suggestion-chip:hover {
+    color: var(--accent);
+  }
+}
+.skill-suggestion-chip-diverges {
+  color: var(--state-playing);
+  font-weight: var(--font-weight-bold);
 }
 .arrivals-layout {
   display: flex;
