@@ -162,7 +162,7 @@ function gameLinksHtml(game) {
     game.platform_url ? { href: game.platform_url, label: `${icon('squareArrowOutUpRight')} ${game.platform || 'Plattform'}` } : null,
     game.trailer_url ? { href: game.trailer_url, label: `${icon('monitorPlay')} Trailer` } : null,
   ].filter(Boolean);
-  if (links.length === 0) return '';
+  if (links.length === 0) return `<span class="muted">Keine Links hinterlegt.</span>`;
   return `
     <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
       ${links
@@ -232,10 +232,7 @@ function gameRowHtml(game, myId) {
         <div class="game-row-skill">
           ${
             game.isSuggestion
-              ? `<div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
-                   <button type="button" class="btn btn-sm btn-primary" data-promote="${game.id}">In Katalog übernehmen</button>
-                   <button type="button" class="btn btn-sm btn-danger" data-delete="${game.id}">Löschen</button>
-                 </div>`
+              ? '' /* no skill rating for a suggestion yet — Promote/Delete live in the detail modal (via the info icon) instead */
               : ratingRowHtml({
                   label: `${icon('swords')} Skill`,
                   accentClass: '',
@@ -351,12 +348,6 @@ function openGameDetail(gameId, ctx) {
           </div>
         </div>
 
-        ${
-          game.isSuggestion
-            ? `<button type="button" class="btn btn-primary btn-block" id="edit-promote">In Katalog übernehmen</button>`
-            : ''
-        }
-
         <div class="section-title">Prozessname</div>
         <div class="chip-list">${processChips || '<span class="muted">Noch keine.</span>'}</div>
         ${
@@ -370,6 +361,11 @@ function openGameDetail(gameId, ctx) {
         </div>
 
         <button type="button" class="btn btn-primary btn-block" id="edit-save">Speichern</button>
+        ${
+          game.isSuggestion
+            ? `<button type="button" class="btn btn-primary btn-block" id="edit-promote">In Katalog übernehmen</button>`
+            : ''
+        }
         <button type="button" class="btn btn-danger btn-block" id="edit-delete">Spiel löschen</button>
       </div>
     `,
@@ -568,36 +564,6 @@ export function renderGameCatalog(container, ctx) {
           showToast(err.message, { error: true });
         }
       }, 250);
-    });
-  });
-
-  container.querySelectorAll('[data-promote]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const game = state.games.find((g) => g.id === btn.dataset.promote);
-      if (!game || !(await confirmDialog(`"${game.name}" in den Katalog übernehmen?`))) return;
-      try {
-        await api.games.promote(game.id);
-        await ctx.refresh();
-        activeTab = 'catalog';
-        ctx.rerender();
-        showToast('Spiel in den Katalog übernommen.');
-      } catch (err) {
-        showToast(err.message, { error: true });
-      }
-    });
-  });
-
-  container.querySelectorAll('[data-delete]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const game = state.games.find((g) => g.id === btn.dataset.delete);
-      if (!game || !(await confirmDialog(`"${game.name}" wirklich löschen?`))) return;
-      try {
-        await api.games.remove(game.id);
-        await ctx.refresh();
-        showToast('Spiel gelöscht.');
-      } catch (err) {
-        showToast(err.message, { error: true });
-      }
     });
   });
 

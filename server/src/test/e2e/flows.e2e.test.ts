@@ -289,10 +289,13 @@ test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bo
   await page.waitForSelector('text=gibt es schon');
   await page.click('[data-close]');
 
-  // Promote the suggestion into the catalog, then rate it right in the row —
-  // no detour through a separate profile page needed.
-  await page.click('[data-promote]');
-  await page.click('[data-confirm]');
+  // Promote the suggestion into the catalog via its detail modal (row-level
+  // actions live only in there now — the row itself just carries the info
+  // icon), then rate it right in the row — no detour through a separate
+  // profile page needed.
+  const suggestionRow = page.locator('.game-table-row', { hasText: 'E2E Partyspiel' });
+  await suggestionRow.locator('[data-detail]').click();
+  await page.click('#edit-promote');
   await page.waitForSelector('button[data-tab="catalog"].btn-primary');
   const partyspielRow = page.locator('.game-table-row', { hasText: 'E2E Partyspiel' });
   await partyspielRow.waitFor();
