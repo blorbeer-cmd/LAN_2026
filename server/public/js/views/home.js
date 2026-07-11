@@ -17,6 +17,7 @@ import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { renderSeatingPlan } from './seating.js';
 import { feedLinkView, FEED_LINK_LABELS } from '../pushFeed.js';
+import { ensureAktuellLoaded, aktuellItems } from '../aktuellStatus.js';
 
 const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
 
@@ -56,77 +57,13 @@ function renderHomeSeating(ctx) {
   </section>`;
 }
 
-// "Missing skill rating" nudge (games currently live that this player
-// hasn't rated their own skill for yet) — folded into "Aktuell" below as
-// just another status card, rather than its own section. Used to also cover
-// an open vote not yet cast and a ready tournament match, but both of those
-// are already visible via the other "Aktuell" cards and the always-on
-// header notification banner (see notificationBanner.js), so keeping a
-// separate "Was steht an?" section around just duplicated them. Keyed by
-// which player it was loaded for, so switching "who am I" on this device
-// refetches instead of showing someone else's.
-let missingSkillsCache = null;
-let missingSkillsLoadedForId = null;
-let missingSkillsLoading = false;
+// "Aktuell" and the missing-skills nudge now live in a shared module
+// (aktuellStatus.js) so this view and the always-on header banner
+// (notificationBanner.js) read from the same cache instead of each keeping
+// their own. This view just re-renders whenever that shared data changes.
+let lastCtx = null;
 
-async function loadMissingSkills(ctx, myId) {
-  missingSkillsLoading = true;
-  try {
-    const res = await api.digest.get(myId);
-    missingSkillsCache = res.missingSkills;
-    missingSkillsLoadedForId = myId;
-  } catch {
-    missingSkillsCache = null;
-    missingSkillsLoadedForId = null;
-  } finally {
-    missingSkillsLoading = false;
-    ctx.rerender();
-  }
-}
-
-export function invalidateMissingSkills() {
-  missingSkillsCache = null;
-  missingSkillsLoadedForId = null;
-}
-
-// "Aktuell": the kiosk's status cards, but tappable — an open vote, active
-// tournaments, open food orders, waiting arcade lobbies. None of these are
-// part of the preloaded shared state, so they live in their own cache (like
-// the seating plan), refreshed from app.js via invalidateHomeStatus() on
-// their socket events.
-let statusCache = null;
-let statusLoading = false;
-
-export function invalidateHomeStatus() {
-  statusCache = null;
-}
-
-async function loadStatus(ctx) {
-  statusLoading = true;
-  try {
-    const [tournaments, foodOrders, arcadeLobbies] = await Promise.all([
-      api.tournaments.list(),
-      api.foodOrders.list(),
-      api.arcade.lobbies(),
-    ]);
-    statusCache = {
-      tournaments,
-      foodOrders: foodOrders.orders ?? [],
-      arcadeLobbies: arcadeLobbies.lobbies ?? [],
-    };
-  } catch {
-    statusCache = { tournaments: [], foodOrders: [], arcadeLobbies: [] };
-  } finally {
-    statusLoading = false;
-    ctx.rerender();
-  }
-}
-
-const FORMAT_LABELS = {
-  single_elimination: 'K.O.-Turnier',
-  round_robin: 'Liga',
-  group_knockout: 'Gruppen + K.O.',
-};
+window.addEventListener('lan:aktuell-changed', () => lastCtx?.rerender());
 
 // Compact single-line row (the "Mehr" hub's list-row component, see
 // more.js) instead of a full card with its own button: the prominent header
@@ -146,66 +83,14 @@ function statusRowHtml({ iconName, title, sub, navigate }) {
 }
 
 function renderStatus() {
-  const rows = [];
-
-  // Personal nudge first — unlike the shared status rows below, nobody else
-  // would otherwise learn you still owe a rating for a game everyone can
-  // already see running on Home.
-  for (const g of missingSkillsCache ?? []) {
-    rows.push(
-      statusRowHtml({
-        iconName: 'star',
-        title: `Skill für ${escapeHtml(g.name)} bewerten`,
-        sub: 'Wird gerade gespielt',
-        navigate: 'gameCatalog',
-      })
-    );
-  }
-
-  if (state.votes?.open) {
-    const voters = state.votes.totalVoters ?? 0;
-    rows.push(
-      statusRowHtml({
-        iconName: 'vote',
-        title: state.votes.title ? escapeHtml(state.votes.title) : 'Abstimmung läuft',
-        sub: `${voters} Teilnehmer bisher`,
-        navigate: 'votes',
-      })
-    );
-  }
-
-  for (const t of (statusCache?.tournaments ?? []).filter((t) => t.status === 'active')) {
-    rows.push(
-      statusRowHtml({
-        iconName: 'swords',
-        title: escapeHtml(t.name),
-        sub: `${escapeHtml(t.gameName)} · ${FORMAT_LABELS[t.format] ?? t.format}`,
-        navigate: 'tournaments',
-      })
-    );
-  }
-
-  for (const o of (statusCache?.foodOrders ?? []).filter((o) => o.open)) {
-    rows.push(
-      statusRowHtml({
-        iconName: 'hamburger',
-        title: `Sammelbestellung „${escapeHtml(o.title)}"`,
-        sub: o.sendAt ? `Geht raus um ${formatDateTime(o.sendAt)} Uhr` : 'Zeitpunkt noch offen',
-        navigate: 'foodOrders',
-      })
-    );
-  }
-
-  for (const l of statusCache?.arcadeLobbies ?? []) {
-    rows.push(
-      statusRowHtml({
-        iconName: 'joystick',
-        title: `${escapeHtml(l.title)}-Lobby offen`,
-        sub: `Von ${escapeHtml(l.hostName)} · ${l.playerCount} ${l.playerCount === 1 ? 'wartet' : 'warten'}`,
-        navigate: 'arcade',
-      })
-    );
-  }
+  const rows = aktuellItems().map((item) =>
+    statusRowHtml({
+      iconName: item.iconName,
+      title: escapeHtml(item.title),
+      sub: item.sub ? escapeHtml(item.sub) : '',
+      navigate: item.navigate,
+    })
+  );
 
   if (rows.length === 0) return '';
   return `
@@ -352,6 +237,7 @@ function renderMyStatus(myId, players) {
 }
 
 export function renderHome(container, ctx) {
+  lastCtx = ctx;
   const players = [...state.live].sort((a, b) => {
     const rankDiff = STATE_RANK[a.state] - STATE_RANK[b.state];
     if (rankDiff !== 0) return rankDiff;
@@ -372,14 +258,9 @@ export function renderHome(container, ctx) {
   const myId = getMyId();
   const whoAmI = whoAmICardHtml('home-whoami', { marginBottom: '16px' });
 
-  if (myId && missingSkillsLoadedForId !== myId && !missingSkillsLoading) {
-    loadMissingSkills(ctx, myId);
-  }
+  ensureAktuellLoaded();
   if (myId && feedLoadedForId !== myId && !feedLoading) {
     loadFeed(ctx, myId);
-  }
-  if (statusCache === null && !statusLoading) {
-    loadStatus(ctx);
   }
 
   const cards = players

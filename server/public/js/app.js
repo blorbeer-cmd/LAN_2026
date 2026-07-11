@@ -10,8 +10,9 @@ import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
 import { isAdmin, setAdmin } from './admin.js';
 import { filterTestUsers } from './testFilter.js';
-import { renderHome, invalidateMissingSkills, invalidatePushFeed, invalidateHomeStatus, invalidateHomeSeating } from './views/home.js';
-import { initNotificationBanner, refreshNotificationBanner } from './notificationBanner.js';
+import { renderHome, invalidatePushFeed, invalidateHomeSeating } from './views/home.js';
+import { initNotificationBanner, refreshNotificationBanner, renderBanner } from './notificationBanner.js';
+import { invalidateMissingSkills, invalidateAktuellStatus } from './aktuellStatus.js';
 import { renderPlayers } from './views/players.js';
 import { renderSettings } from './views/games.js';
 import { renderMatchmaking, invalidateMatchmakingHistory, setDraftState } from './views/matchmaking.js';
@@ -285,8 +286,12 @@ function wireSocket() {
     lastVoteRound = payload.round;
 
     state.votes = payload;
-    // Home shows an "Abstimmung läuft" status card driven by state.votes.
+    // Home shows an "Abstimmung läuft" status card driven by state.votes,
+    // and the header banner shows the same thing as a chip — on every view,
+    // so it needs its own re-render here rather than piggybacking on
+    // renderCurrent(), which only touches the currently visible view.
     if (currentView === 'votes' || currentView === 'home') renderCurrent();
+    renderBanner();
 
     // Anyone with an identity gets nudged that a new vote opened, even if
     // they're not currently looking at the Votes tab — otherwise the only
@@ -346,7 +351,7 @@ function wireSocket() {
   });
   socket.on('tournaments:changed', (payload) => {
     invalidateTournaments();
-    invalidateHomeStatus();
+    invalidateAktuellStatus();
     if (currentView === 'tournaments' || currentView === 'home') renderCurrent();
 
     // Same pattern as the vote nudge: only the players actually named in
@@ -378,7 +383,7 @@ function wireSocket() {
   // different payload shapes.
   ['arcade:lobbies', 'tetris:lobbies', 'scribble:lobbies', 'pong:lobbies', 'blobby:lobbies', 'snake:lobbies'].forEach((event) =>
     socket.on(event, () => {
-      invalidateHomeStatus();
+      invalidateAktuellStatus();
       if (currentView === 'home') renderCurrent();
     })
   );
@@ -423,7 +428,7 @@ function wireSocket() {
 
   socket.on('foodOrders:changed', (payload) => {
     invalidateFoodOrders();
-    invalidateHomeStatus();
+    invalidateAktuellStatus();
     if (currentView === 'foodOrders' || currentView === 'home') renderCurrent();
     const myId = getMyId();
     if (payload?.notify && myId && myId !== payload.notify.excludePlayerId && currentView !== 'foodOrders') {
