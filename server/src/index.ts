@@ -7,7 +7,7 @@ import { Server } from 'socket.io';
 import { config, productionConfigError } from './config';
 import './db'; // side-effect: open DB, create schema, seed defaults
 import { createApp } from './app';
-import { setIo } from './realtime';
+import { setIo, createSocketAuthGuard } from './realtime';
 import { accessProtectionEnabled } from './auth';
 import { startOfflineSweeper } from './liveStatus';
 import { registerArcadeSockets } from './arcade/arcade';
@@ -35,17 +35,7 @@ function start(): void {
   const io = new Server(server);
   setIo(io);
 
-  // Socket.IO connections bypass Express middleware entirely, so the REST
-  // access-token gate (requireAccess) never sees them. Without this check,
-  // realtime data (live status, votes, leaderboard) would leak to anyone who
-  // opens a WebSocket, even with ACCESS_TOKEN set — enforce the same shared
-  // token here.
-  io.use((socket, next) => {
-    if (!config.accessToken) return next();
-    const token = socket.handshake.auth?.token ?? socket.handshake.query?.token;
-    if (token === config.accessToken) return next();
-    next(new Error('unauthorized'));
-  });
+  io.use(createSocketAuthGuard());
 
   registerArcadeSockets(io);
   registerTetrisSockets(io);

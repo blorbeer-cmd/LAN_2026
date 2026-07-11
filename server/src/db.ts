@@ -32,6 +32,7 @@ db.exec(`
     api_key         TEXT NOT NULL UNIQUE,
     tracking_paused INTEGER NOT NULL DEFAULT 0, -- player-side opt-out; agent reports for this player are dropped
     is_admin        INTEGER NOT NULL DEFAULT 0, -- moderation role; can be granted via PATCH /api/players/:id
+    is_test         INTEGER NOT NULL DEFAULT 0, -- admin-seeded test player; hidden outside admin mode (see testUsers.ts)
     created_at      INTEGER NOT NULL
   );
 
@@ -600,6 +601,15 @@ function migrateAdminColumn(): void {
 }
 migrateAdminColumn();
 
+// Migration: older databases predate the is_test flag for admin-seeded test
+// players (see testUsers.ts).
+function migrateTestColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'is_test')) return;
+  db.exec('ALTER TABLE players ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0');
+}
+migrateTestColumn();
+
 function migrateGameIconImageColumn(): void {
   const columns = db.prepare('PRAGMA table_info(games)').all() as Array<{ name: string }>;
   if (columns.some((c) => c.name === 'icon_image')) return;
@@ -1017,6 +1027,69 @@ function seedQuizQuestions(): void {
   })();
 }
 
+// Classic Warcraft III (The Frozen Throne) — deliberately not the generated
+// "<title> gameplay trailer" search, which surfaces Reforged material.
+const WARCRAFT3_TFT_TRAILER_URL =
+  'https://www.youtube.com/results?search_query=Warcraft%203%20The%20Frozen%20Throne%20gameplay';
+
+// One-time catalog revision (July 2026): seedCatalogGames() below only ever
+// fills blank fields, so removals/renames from the planning sheet never reach
+// a database that has already been seeded. This applies them once, guarded by
+// an app_state key. Must run BEFORE seedCatalogGames(), otherwise the seed
+// would insert the renamed titles as fresh rows next to the old ones.
+function cleanupCatalogGames(): void {
+  const KEY = 'catalog_cleanup_2026_07';
+  if (getState(KEY)) return;
+
+  const removedTitles = ['CS 1.5', 'CS 1.6', 'CS GO', 'Iron Harvest', 'Splitgate', 'Worms', 'Warcraft 3'];
+  const renames: Array<{ from: string; to: string; platformUrl: string; trailerUrl: string }> = [
+    {
+      from: 'Star Wars Battlefront',
+      to: 'Star Wars Battlefront 2',
+      platformUrl: 'https://store.steampowered.com/app/1237950/STAR_WARS_Battlefront_II/',
+      trailerUrl: 'https://www.youtube.com/results?search_query=Star%20Wars%20Battlefront%202%20gameplay%20trailer',
+    },
+    {
+      from: 'Trackmania',
+      to: 'TrackMania Nations Forever',
+      platformUrl: 'https://store.steampowered.com/app/11020/TrackMania_Nations_Forever/',
+      trailerUrl: 'https://www.youtube.com/results?search_query=TrackMania%20Nations%20Forever%20gameplay%20trailer',
+    },
+  ];
+
+  const findByName = db.prepare('SELECT id FROM games WHERE name = ? COLLATE NOCASE');
+  // Cascades to process names, skills, preferences, votes, matches via the
+  // schema's ON DELETE clauses (foreign_keys pragma is ON).
+  const deleteGame = db.prepare('DELETE FROM games WHERE name = ? COLLATE NOCASE');
+  const applyRename = db.prepare('UPDATE games SET name = ?, platform_url = ?, trailer_url = ? WHERE id = ?');
+
+  db.transaction(() => {
+    // "Warcraft 3" (the NAS catalog duplicate) goes away; the tracked
+    // "Warcraft III" row stays and gets the NAS platform + classic trailer.
+    for (const title of removedTitles) deleteGame.run(title);
+
+    for (const r of renames) {
+      const source = findByName.get(r.from) as { id: string } | undefined;
+      const target = findByName.get(r.to) as { id: string } | undefined;
+      // Skip if the old title is gone or the new one already exists — an
+      // admin got there first, and games.name must stay unique.
+      if (!source || target) continue;
+      applyRename.run(r.to, r.platformUrl, r.trailerUrl, source.id);
+    }
+
+    const warcraft = findByName.get('Warcraft III') as { id: string } | undefined;
+    if (warcraft) {
+      db.prepare('UPDATE games SET platform = ?, trailer_url = ? WHERE id = ?').run(
+        'NAS',
+        WARCRAFT3_TFT_TRAILER_URL,
+        warcraft.id
+      );
+    }
+
+    setState(KEY, String(Date.now()));
+  })();
+}
+
 // Seed the broader "could we play this?" pool directly into games (status
 // 'catalog') from the shared planning sheet. Runs every start, not just on an
 // empty database, since it also fills in platform/trailer for a title that
@@ -1025,7 +1098,7 @@ function seedQuizQuestions(): void {
 function seedCatalogGames(): void {
   const now = Date.now();
   const trailer = (title: string) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${title} gameplay trailer`)}`;
-  const defaults: Array<{ title: string; platform: string; platformUrl: string | null }> = [
+  const defaults: Array<{ title: string; platform: string; platformUrl: string | null; trailerUrl?: string }> = [
     { title: 'Age of Empires 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/813780/Age_of_Empires_II_Definitive_Edition/' },
     { title: 'Age of Empires 4', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1466860/Age_of_Empires_IV_Anniversary_Edition/' },
     { title: 'Among Us', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/945360/Among_Us/' },
@@ -1034,9 +1107,6 @@ function seedCatalogGames(): void {
     { title: 'Call of Duty 4 - Modern Warfare', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/7940/Call_of_Duty_4_Modern_Warfare_2007/' },
     { title: 'Call of Duty II', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/2630/Call_of_Duty_2/' },
     { title: 'Chivalry 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1824220/Chivalry_2/' },
-    { title: 'CS 1.5', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/10/CounterStrike/' },
-    { title: 'CS 1.6', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/10/CounterStrike/' },
-    { title: 'CS GO', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/730/CounterStrike_2/' },
     { title: 'Dawn of War', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/4570/Warhammer_40000_Dawn_of_War__Game_of_the_Year_Edition/' },
     { title: 'DOTA 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/570/Dota_2/' },
     { title: 'Fall Guys', platform: 'Epic', platformUrl: 'https://store.epicgames.com/p/fall-guys' },
@@ -1044,22 +1114,21 @@ function seedCatalogGames(): void {
     { title: 'GRID', platform: 'Steam', platformUrl: 'https://store.steampowered.com/search/?term=GRID' },
     { title: 'Halo Infinite', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1240440/Halo_Infinite/' },
     { title: 'Hot Wheels Unleashed', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1271700/HOT_WHEELS_UNLEASHED/' },
-    { title: 'Iron Harvest', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/826630/Iron_Harvest/' },
     { title: 'Jedi Knight II', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/6030/STAR_WARS_Jedi_Knight_II_Jedi_Outcast/' },
     { title: 'League of Legends', platform: 'Riot', platformUrl: 'https://www.leagueoflegends.com/' },
     { title: 'Rocket League', platform: 'Epic', platformUrl: 'https://store.epicgames.com/p/rocket-league' },
     { title: 'Sea of Thieves', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1172620/Sea_of_Thieves_2024_Edition/' },
-    { title: 'Splitgate', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/677620/Splitgate/' },
-    { title: 'Star Wars Battlefront', platform: 'Steam', platformUrl: 'https://store.steampowered.com/search/?term=Star%20Wars%20Battlefront' },
+    { title: 'Star Wars Battlefront 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1237950/STAR_WARS_Battlefront_II/' },
     { title: 'Starcraft 2', platform: 'Battle.net', platformUrl: 'https://starcraft2.blizzard.com/' },
     { title: 'Team Fortress 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/440/Team_Fortress_2/' },
-    { title: 'Trackmania', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/2225070/Trackmania/' },
+    { title: 'TrackMania Nations Forever', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/11020/TrackMania_Nations_Forever/' },
     { title: 'Tricky Towers', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/437920/Tricky_Towers/' },
     { title: 'Ultimate Chicken Horse', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/386940/Ultimate_Chicken_Horse/' },
     { title: 'UT2003', platform: 'NAS', platformUrl: null },
     { title: 'UT2004', platform: 'NAS', platformUrl: null },
-    { title: 'Warcraft 3', platform: 'NAS', platformUrl: null },
-    { title: 'Worms', platform: 'Steam', platformUrl: 'https://store.steampowered.com/search/?term=Worms' },
+    // The classic The Frozen Throne install from the NAS, not Reforged — hence
+    // the explicit trailer override instead of the generated title search.
+    { title: 'Warcraft III', platform: 'NAS', platformUrl: null, trailerUrl: WARCRAFT3_TFT_TRAILER_URL },
     { title: 'Wreckfest', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/228380/Wreckfest/' },
   ];
 
@@ -1074,11 +1143,12 @@ function seedCatalogGames(): void {
 
   db.transaction(() => {
     for (const g of defaults) {
+      const trailerUrl = g.trailerUrl ?? trailer(g.title);
       const existing = findByName.get(g.title) as { id: string } | undefined;
       if (existing) {
-        fillMissing.run(g.platform, g.platformUrl, trailer(g.title), existing.id);
+        fillMissing.run(g.platform, g.platformUrl, trailerUrl, existing.id);
       } else {
-        insertGame.run(nanoid(), g.title, now, g.platform, g.platformUrl, trailer(g.title));
+        insertGame.run(nanoid(), g.title, now, g.platform, g.platformUrl, trailerUrl);
       }
     }
   })();
@@ -1099,6 +1169,7 @@ function seedScribbleWords(): void {
 
 seedQuizQuestions();
 seedScribbleWords();
+cleanupCatalogGames();
 seedCatalogGames();
 
 // Seed the permanent "außerhalb von Events" sentinel, once. This is the ONLY

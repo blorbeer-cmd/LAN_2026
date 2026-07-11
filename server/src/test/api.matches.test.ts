@@ -229,3 +229,117 @@ test('PATCH /api/matches/:id can correct the score/rank', async () => {
   assert.equal(patched.body.teams[0].score, 10);
   assert.equal(patched.body.teams[1].score, 20);
 });
+
+test('POST /api/matches rejects a team without any players', async () => {
+  const res = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [] }, { playerIds: [playerB] }] });
+  assert.equal(res.status, 400);
+});
+
+test('POST /api/matches requires a gameId', async () => {
+  const res = await request(app)
+    .post('/api/matches')
+    .send({ teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }] });
+  assert.equal(res.status, 400);
+});
+
+test('POST /api/matches rejects a non-numeric playedAt', async () => {
+  const res = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }], playedAt: 'yesterday' });
+  assert.equal(res.status, 400);
+});
+
+test('POST /api/matches accepts a numeric playedAt override', async () => {
+  const playedAt = Date.now() - 86_400_000;
+  const res = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }], playedAt });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.playedAt, playedAt);
+});
+
+test('POST /api/matches rejects an empty-string drawId', async () => {
+  const res = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }], drawId: '' });
+  assert.equal(res.status, 400);
+});
+
+test('GET /api/matches filters by eventId', async () => {
+  const created = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }] });
+  const eventId = created.body.eventId;
+
+  const filtered = await request(app).get(`/api/matches?eventId=${eventId}`);
+  assert.equal(filtered.status, 200);
+  assert.ok(filtered.body.every((m: { eventId: string }) => m.eventId === eventId));
+  assert.ok(filtered.body.some((m: { id: string }) => m.id === created.body.id));
+
+  const noneForFakeEvent = await request(app).get('/api/matches?eventId=nonexistent-event');
+  assert.deepEqual(noneForFakeEvent.body, []);
+});
+
+test('PATCH /api/matches/:id rejects an invalid gameId', async () => {
+  const created = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }] });
+
+  const res = await request(app).patch(`/api/matches/${created.body.id}`).send({ gameId: '' });
+  assert.equal(res.status, 400);
+});
+
+test('PATCH /api/matches/:id 404s when the new gameId does not exist', async () => {
+  const created = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }] });
+
+  const res = await request(app).patch(`/api/matches/${created.body.id}`).send({ gameId: 'ghost-game' });
+  assert.equal(res.status, 404);
+});
+
+test('PATCH /api/matches/:id can move a match to a different existing game', async () => {
+  const otherGame = await request(app).post('/api/games').send({ name: 'Second Leaderboard Test Game' });
+  const created = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }] });
+
+  const res = await request(app)
+    .patch(`/api/matches/${created.body.id}`)
+    .send({ gameId: otherGame.body.id });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.gameId, otherGame.body.id);
+});
+
+test('PATCH /api/matches/:id 404s when the corrected teams include an unknown player', async () => {
+  const created = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }] });
+
+  const res = await request(app)
+    .patch(`/api/matches/${created.body.id}`)
+    .send({ teams: [{ playerIds: [playerA] }, { playerIds: ['ghost-player'] }] });
+  assert.equal(res.status, 404);
+});
+
+test('PATCH /api/matches/:id rejects a non-numeric playedAt', async () => {
+  const created = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }] });
+
+  const res = await request(app).patch(`/api/matches/${created.body.id}`).send({ playedAt: 'not a timestamp' });
+  assert.equal(res.status, 400);
+});
+
+test('PATCH /api/matches/:id can correct playedAt', async () => {
+  const created = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }] });
+
+  const newPlayedAt = Date.now() - 3600_000;
+  const res = await request(app).patch(`/api/matches/${created.body.id}`).send({ playedAt: newPlayedAt });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.playedAt, newPlayedAt);
+});

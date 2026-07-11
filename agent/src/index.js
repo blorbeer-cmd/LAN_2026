@@ -243,4 +243,8 @@ if (require.main === module) {
   start(process.argv[2]);
 }
 
-module.exports = { start };
+// tick/log/setUpLogFile are exported alongside start() so the core
+// report-and-log loop (the one piece of this agent that must never crash on
+// someone else's PC) can be unit-tested directly against a fake HTTP server,
+// without needing a real server process or a packaged .exe — see index.test.js.
+module.exports = { start, tick, log, setUpLogFile, formatLocalTime, LOG_FILE_MAX_BYTES };

@@ -6,25 +6,23 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { productionConfigError } from './config';
 
-test('productionConfigError: passes when both are set', () => {
+test('productionConfigError: passes when ACCESS_TOKEN is set', () => {
   assert.equal(
-    productionConfigError({ accessToken: 'tok', adminPin: '1234' }),
+    productionConfigError({ accessToken: 'tok', adminPin: '' }),
     null
   );
 });
 
 test('productionConfigError: fails when ACCESS_TOKEN is empty', () => {
-  const error = productionConfigError({ accessToken: '', adminPin: '1234' });
-  assert.match(error ?? '', /ACCESS_TOKEN/);
-});
-
-test('productionConfigError: fails when ADMIN_PIN is empty', () => {
-  const error = productionConfigError({ accessToken: 'tok', adminPin: '' });
-  assert.match(error ?? '', /ADMIN_PIN/);
-});
-
-test('productionConfigError: reports both when both are empty', () => {
   const error = productionConfigError({ accessToken: '', adminPin: '' });
   assert.match(error ?? '', /ACCESS_TOKEN/);
-  assert.match(error ?? '', /ADMIN_PIN/);
+});
+
+// The admin PIN is retired for now (one-tap admin mode, see
+// docs/KONZEPT-TEST-USER.md) — production must boot without it.
+test('productionConfigError: does not require ADMIN_PIN', () => {
+  assert.equal(
+    productionConfigError({ accessToken: 'tok', adminPin: '1234' }),
+    null
+  );
 });

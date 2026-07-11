@@ -239,6 +239,28 @@ input {
   opacity: 0.55;
 }
 
+/* Persistent "Admin-Modus aktiv" strip under the topbar (see app.js's
+   wireAdminMode) — reuses the paused/warn state colors so admin mode is
+   unmistakable without introducing a new hue. */
+.admin-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--state-paused-bg);
+  color: var(--state-paused);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.admin-banner-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .topbar-title {
   font-size: var(--font-size-lg);
   display: flex;
@@ -329,10 +351,13 @@ input {
   flex: 1;
   min-height: 0; /* allow this flex item to actually shrink and scroll internally, see .app */
   overflow-y: auto;
-  padding: var(--space-4) var(--space-4) calc(var(--nav-height) + var(--space-6));
-  max-width: var(--content-max-width);
+  /* Full-width scroll area with the content column centered via computed
+     side padding instead of max-width + auto margins — same visible column,
+     but the scrollbar parks at the window's right edge instead of floating
+     mid-screen at the column's edge on a wide display. */
+  padding: var(--space-4) max(var(--space-4), calc((100% - var(--content-max-width)) / 2))
+    calc(var(--nav-height) + var(--space-6));
   width: 100%;
-  margin: 0 auto;
 }
 /* Re-applied by switchView() on every tab change (and only there — realtime
    re-renders must not flash): the incoming view fades/slides in briefly. */
@@ -1109,12 +1134,117 @@ button.card {
   padding: var(--space-3);
 }
 
-/* Spiele view (gameCatalog.js): one card per game instead of a wide table —
-   the old .catalog-table needed horizontal scroll on a phone, a card stack
-   doesn't. Reuses .skill-row for the Bock/Skill sliders (same component
-   profile.js used to own) so editing looks identical everywhere it appears. */
-.game-card {
+/* Spiele view (gameCatalog.js): one compact table-like row per game. A real
+   <table> would need horizontal scroll on a phone (the lesson from the old
+   .catalog-table), so it's a CSS grid: name/Bock/Skill as columns on wide
+   screens, on a phone the two sliders wrap into a second line via
+   display:contents on the .game-row-sliders wrapper. Reuses .skill-row for
+   the Bock/Skill sliders so editing looks identical everywhere it appears. */
+.game-table {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.game-table-row {
+  display: grid;
+  grid-template-areas:
+    'name'
+    'sliders';
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
   overflow: hidden;
+}
+.game-row-name {
+  grid-area: name;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.game-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Details/Plattform/Trailer as one group of plain icon buttons, same size and
+   no background/border so they read as row chrome rather than as another
+   pill button competing with the sliders. Both trailer and Details use
+   icons whose own glyph fills a roughly square area (monitorPlay's monitor
+   frame, info's circle) so the tap targets stay visually even despite the
+   varying glyphs. Held in its own .game-row-links wrapper so it can sit a
+   bit further from the title than .game-row-name's own flex gap alone would
+   put it. */
+.game-row-links {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: var(--space-2);
+}
+.game-icon-btn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-6);
+  height: var(--space-6);
+  border-radius: var(--radius-sm);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+/* Compensates the info glyph's circular outline reading smaller/thinner
+   than the other two icons' rectilinear glyphs at the same nominal size. */
+.game-icon-info {
+  width: 1.35em;
+  height: 1.35em;
+}
+@media (hover: hover) {
+  .game-icon-btn:hover {
+    color: var(--text);
+  }
+}
+.game-row-sliders {
+  grid-area: sliders;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: var(--space-4);
+  align-items: center;
+}
+/* Extra breathing room between the two rating columns specifically (plain
+   column-gap above would space Bock from Skill exactly as tight as it
+   spaces Skill from whatever follows). */
+.game-row-skill {
+  padding-left: var(--space-3);
+}
+/* On a phone the Ø note gets its own always-reserved line inside each slider
+   cell — inline it would wrap only when present, and rows in the same list
+   must never end up with different heights (see CLAUDE.md list rules). */
+@media (max-width: 639px) {
+  .game-table-row .game-avg-note {
+    display: block;
+    width: 100%;
+    min-height: 1.1rem;
+  }
+}
+@media (min-width: 640px) {
+  .game-table-row {
+    grid-template-areas: 'name bock skill';
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--space-4);
+  }
+  .game-row-sliders {
+    display: contents;
+  }
+  .game-row-bock {
+    grid-area: bock;
+    min-width: 0;
+  }
+  .game-row-skill {
+    grid-area: skill;
+    min-width: 0;
+  }
 }
 .game-avg-note {
   font-size: var(--font-size-xs);
