@@ -410,11 +410,17 @@ export function renderVotes(container, ctx) {
           <textarea id="votes-info" maxlength="500" rows="2" placeholder="z.B. Nur Spiele für 4 Leute"></textarea>
         </label>
         <div class="stack" style="gap:var(--space-1);">
-          <div class="row-between">
-            <span class="muted" style="font-size:var(--font-size-xs);">Welche Spiele stehen zur Wahl?</span>
-            <button type="button" class="btn btn-sm" id="votes-select-toggle">Alle abwählen</button>
+          <label class="check-row">
+            <input type="checkbox" id="votes-limit-games" />
+            <span style="flex:1;">Nur bestimmte Spiele zur Wahl stellen</span>
+          </label>
+          <div id="votes-game-select-wrap" style="display:none;">
+            <div class="row-between">
+              <span class="muted" style="font-size:var(--font-size-xs);">Welche Spiele stehen zur Wahl?</span>
+              <button type="button" class="btn btn-sm" id="votes-select-toggle">Alle abwählen</button>
+            </div>
+            <div id="votes-game-select">${gameCheckboxes}</div>
           </div>
-          <div id="votes-game-select">${gameCheckboxes}</div>
         </div>
         <button type="button" class="btn btn-primary btn-block" id="votes-start">Abstimmung starten</button>
       </div>`;
@@ -487,6 +493,14 @@ export function renderVotes(container, ctx) {
     });
   }
 
+  const limitGamesCheckbox = container.querySelector('#votes-limit-games');
+  const gameSelectWrap = container.querySelector('#votes-game-select-wrap');
+  if (limitGamesCheckbox && gameSelectWrap) {
+    limitGamesCheckbox.addEventListener('change', () => {
+      gameSelectWrap.style.display = limitGamesCheckbox.checked ? '' : 'none';
+    });
+  }
+
   const toggleBtn = container.querySelector('#votes-select-toggle');
   if (toggleBtn) {
     toggleBtn.addEventListener('click', () => {
@@ -500,14 +514,17 @@ export function renderVotes(container, ctx) {
   const startBtn = container.querySelector('#votes-start');
   if (startBtn) {
     startBtn.addEventListener('click', async () => {
-      const checkboxes = [...container.querySelectorAll('[data-vote-game-checkbox]')];
-      const checked = checkboxes.filter((b) => b.checked).map((b) => b.value);
-      if (checked.length === 0) {
-        return showToast('Bitte mindestens ein Spiel auswählen.', { error: true });
-      }
       const title = container.querySelector('#votes-title')?.value.trim() || undefined;
       const info = container.querySelector('#votes-info')?.value.trim() || undefined;
-      const gameIds = checked.length === checkboxes.length ? undefined : checked;
+      let gameIds;
+      if (limitGamesCheckbox?.checked) {
+        const checkboxes = [...container.querySelectorAll('[data-vote-game-checkbox]')];
+        const checked = checkboxes.filter((b) => b.checked).map((b) => b.value);
+        if (checked.length === 0) {
+          return showToast('Bitte mindestens ein Spiel auswählen.', { error: true });
+        }
+        gameIds = checked;
+      }
       try {
         await api.votes.start({ mode: 'points', title, info, gameIds });
         await ctx.refresh();
