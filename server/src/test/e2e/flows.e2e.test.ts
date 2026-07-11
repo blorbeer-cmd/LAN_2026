@@ -417,7 +417,7 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.waitForSelector('text=Geht raus um 24.12., 22:00 Uhr');
 });
 
-test('Arcade: open a quiz lobby, see it listed, then close it again', async () => {
+test('Arcade: open a quiz lobby, see it listed and on Home, then close it again', async () => {
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="arcade"]');
   // Arcade is a launcher; select the quiz tile before its lobby controls
@@ -425,6 +425,14 @@ test('Arcade: open a quiz lobby, see it listed, then close it again', async () =
   await page.click('[data-game="quiz"]');
   await page.waitForSelector('#quiz-create-lobby');
   await page.click('#quiz-create-lobby');
+  await page.waitForSelector('[data-close-lobby]');
+
+  // The open lobby also shows up on Home as an "Aktuell" card whose
+  // "Mitmachen" button deep-links back into the Arcade. No tile click needed
+  // there: the launcher force-expands the game whose lobby you're in.
+  await page.click('[data-view="home"]');
+  await page.waitForSelector('text=Gaming-Quiz-Lobby offen');
+  await page.click('button:has-text("Mitmachen")');
 
   // The host sees their own lobby with a "Schließen" button instead of a
   // join button/"Drin" badge - closing was previously impossible (the only

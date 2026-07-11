@@ -146,6 +146,16 @@ function emitLobbies(io: Server) {
   io.emit('scribble:lobbies', { lobbies: publicLobbies() });
 }
 
+// Open-lobby summary for GET /api/arcade/lobbies — see arcade.ts.
+export function openLobbySummaries() {
+  return [...lobbies.values()].map((l) => ({
+    id: l.id,
+    hostName: l.host.name,
+    playerCount: l.players.length,
+    createdAt: l.createdAt,
+  }));
+}
+
 function removeFromOpenLobbies(io: Server, socketId: string) {
   let changed = false;
   for (const [id, lobby] of lobbies) {

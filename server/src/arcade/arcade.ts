@@ -77,6 +77,18 @@ function emitLobbies(io: Server) {
   io.emit('arcade:lobbies', { lobbies: publicLobbies() });
 }
 
+// Open-lobby summary for GET /api/arcade/lobbies (the Home view's "Aktuell"
+// card) — just enough to say "a lobby is waiting", less detail than the
+// socket payload the Arcade view itself uses.
+export function openLobbySummaries() {
+  return [...lobbies.values()].map((l) => ({
+    id: l.id,
+    hostName: l.host.name,
+    playerCount: l.players.length,
+    createdAt: l.createdAt,
+  }));
+}
+
 function scorePayload(match: MatchState) {
   return match.players.map((p) => ({ playerId: p.id, name: p.name, score: match.scores.get(p.id) ?? 0 }));
 }

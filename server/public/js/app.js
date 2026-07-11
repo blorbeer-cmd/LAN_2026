@@ -337,6 +337,17 @@ function wireSocket() {
     if (currentView === 'home') renderCurrent();
   });
 
+  // Arcade lobbies opening/closing update the Home "Aktuell" card. The
+  // Arcade views consume these payloads themselves; Home just refetches the
+  // cross-game summary (GET /api/arcade/lobbies) instead of tracking four
+  // different payload shapes.
+  ['arcade:lobbies', 'tetris:lobbies', 'scribble:lobbies', 'blobby:lobbies'].forEach((event) =>
+    socket.on(event, () => {
+      invalidateHomeStatus();
+      if (currentView === 'home') renderCurrent();
+    })
+  );
+
   // Captain draft: the payload carries the full fresh state, so the Teams
   // view can re-render without a round trip. A newly started draft nudges
   // everyone who isn't already watching; a finished draft's teams land in

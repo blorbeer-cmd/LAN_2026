@@ -99,10 +99,10 @@ function renderDigest(myId) {
 }
 
 // "Aktuell": the kiosk's status cards, but tappable — an open vote, active
-// tournaments, open food orders. Tournaments/food orders aren't part of the
-// preloaded shared state, so they live in their own cache (like the seating
-// plan), refreshed from app.js via invalidateHomeStatus() on their socket
-// events.
+// tournaments, open food orders, waiting arcade lobbies. None of these are
+// part of the preloaded shared state, so they live in their own cache (like
+// the seating plan), refreshed from app.js via invalidateHomeStatus() on
+// their socket events.
 let statusCache = null;
 let statusLoading = false;
 
@@ -113,10 +113,18 @@ export function invalidateHomeStatus() {
 async function loadStatus(ctx) {
   statusLoading = true;
   try {
-    const [tournaments, foodOrders] = await Promise.all([api.tournaments.list(), api.foodOrders.list()]);
-    statusCache = { tournaments, foodOrders: foodOrders.orders ?? [] };
+    const [tournaments, foodOrders, arcadeLobbies] = await Promise.all([
+      api.tournaments.list(),
+      api.foodOrders.list(),
+      api.arcade.lobbies(),
+    ]);
+    statusCache = {
+      tournaments,
+      foodOrders: foodOrders.orders ?? [],
+      arcadeLobbies: arcadeLobbies.lobbies ?? [],
+    };
   } catch {
-    statusCache = { tournaments: [], foodOrders: [] };
+    statusCache = { tournaments: [], foodOrders: [], arcadeLobbies: [] };
   } finally {
     statusLoading = false;
     ctx.rerender();
@@ -180,6 +188,18 @@ function renderStatus() {
         sub: o.sendAt ? `Geht raus um ${formatDateTime(o.sendAt)} Uhr` : 'Zeitpunkt noch offen',
         navigate: 'foodOrders',
         action: 'Eintragen',
+      })
+    );
+  }
+
+  for (const l of statusCache.arcadeLobbies) {
+    cards.push(
+      statusCardHtml({
+        iconName: 'joystick',
+        title: `${escapeHtml(l.title)}-Lobby offen`,
+        sub: `Von ${escapeHtml(l.hostName)} · ${l.playerCount} ${l.playerCount === 1 ? 'Spieler wartet' : 'Spieler warten'}`,
+        navigate: 'arcade',
+        action: 'Mitmachen',
       })
     );
   }

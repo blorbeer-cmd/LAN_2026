@@ -113,6 +113,16 @@ function emitLobbies(io: Server) {
   io.emit('tetris:lobbies', { lobbies: publicLobbies() });
 }
 
+// Open-lobby summary for GET /api/arcade/lobbies — see arcade.ts.
+export function openLobbySummaries() {
+  return [...lobbies.values()].map((l) => ({
+    id: l.id,
+    hostName: l.host.name,
+    playerCount: l.players.length,
+    createdAt: l.createdAt,
+  }));
+}
+
 // Pull the next piece from the shared stream, extending it a bag at a time so
 // both players draw identical pieces no matter how fast each one plays.
 function drawPieceType(match: TetrisMatch, state: PlayerState): PieceType {
