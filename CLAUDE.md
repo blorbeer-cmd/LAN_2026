@@ -46,7 +46,9 @@ Tool für eine LAN-Party mit ~15 Leuten. Kein Enterprise-Overkill, aber solide Q
 
 Gruppiert nach Feature-Bereich (vollständiges Schema in `server/src/db.ts`):
 
-- **Spieler & Events:** `players` (id, name, api_key, farbe, avatar, tracking_paused),
+- **Spieler & Events:** `players` (id, name, optionaler richtiger Name, api_key, farbe, avatar,
+  tracking_paused – der richtige Name wird, wo gesetzt, klein neben dem Gamer-Namen im Sitzplan
+  angezeigt),
   `events` (mehrere LAN-Termine parallel möglich, aber nur eines gleichzeitig „trackt"),
   `event_participants`.
 - **Spiele:** `games` (name, icon/eigenes Bild, min/max Teamgröße), `game_process_names`

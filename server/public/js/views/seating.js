@@ -19,6 +19,14 @@ let saving = false;
 // Tap-to-place selection: { playerId, source: {side, seat} | null (pool) }.
 let selected = null;
 
+// A player's name/real name/avatar can change (players:changed) while this
+// editor is already open with a cached layout — without this, the board
+// would keep showing the pre-change data for the rest of the session
+// instead of picking it up live (CLAUDE.md: realtime by default).
+export function invalidateSeating() {
+  cache = null;
+}
+
 function playerMap(players) {
   return new Map(players.map((player) => [player.id, player]));
 }
@@ -31,13 +39,27 @@ function assignmentAt(layout, side, seat) {
   return layout.assignments.find((a) => a.side === side && a.seat === seat);
 }
 
+// Gamer name plus, in small text right under it, the actual person's name
+// (if set — see profile.js's "Richtiger Name") — reserved as an always-
+// present (if empty, invisible) second line so seats stay a uniform height
+// regardless of which players happen to have one set (see CLAUDE.md's
+// list-row height rule).
+function seatNamesHtml(player) {
+  const realName = player.real_name;
+  return `<span class="seating-seat-names">
+    <span class="seating-seat-name">${escapeHtml(player.name)}</span>
+    <span class="seating-seat-realname"${realName ? '' : ' style="visibility:hidden;"'}>${escapeHtml(realName || ' ')}</span>
+  </span>`;
+}
+
 function seatHtml(layout, players, side, seat, editable) {
   const assignment = assignmentAt(layout, side, seat);
   const player = assignment ? playerMap(players).get(assignment.playerId) : null;
   const isSelected = editable && player && selected?.playerId === player.id;
+  const title = player ? `${player.name}${player.real_name ? ` (${player.real_name})` : ''}` : 'Freier Sitzplatz';
   return `<div class="seating-seat ${player ? 'is-occupied' : ''} ${isSelected ? 'is-selected' : ''}" data-seat-side="${side}" data-seat-index="${seat}" ${player ? `data-player-id="${player.id}"` : ''}
-      ${editable && player ? 'draggable="true"' : ''} title="${player ? escapeHtml(player.name) : 'Freier Sitzplatz'}">
-    ${player ? `${avatarHtml(player, 30)}<span>${escapeHtml(player.name)}</span>` : `<span class="seating-seat-number">${seat + 1}</span><span class="muted">frei</span>`}
+      ${editable && player ? 'draggable="true"' : ''} title="${escapeHtml(title)}">
+    ${player ? `${avatarHtml(player, 30)}${seatNamesHtml(player)}` : `<span class="seating-seat-number">${seat + 1}</span><span class="muted">frei</span>`}
   </div>`;
 }
 
@@ -79,7 +101,7 @@ function renderPool(layout, players) {
   return `<div class="seating-pool card">
     <div class="row-between"><div class="section-title" style="margin:0;">Spieler</div><span class="muted">${unassigned.length} frei</span></div>
     <div class="seating-player-pool" data-seat-pool>
-      ${unassigned.length ? unassigned.map((player) => `<div class="seating-pool-player ${selected?.playerId === player.id ? 'is-selected' : ''}" draggable="true" data-player-id="${player.id}">${avatarHtml(player, 28)}<span>${escapeHtml(player.name)}</span></div>`).join('') : '<span class="muted">Alle Spieler sitzen bereits am Tisch.</span>'}
+      ${unassigned.length ? unassigned.map((player) => `<div class="seating-pool-player ${selected?.playerId === player.id ? 'is-selected' : ''}" draggable="true" data-player-id="${player.id}">${avatarHtml(player, 28)}${seatNamesHtml(player)}</div>`).join('') : '<span class="muted">Alle Spieler sitzen bereits am Tisch.</span>'}
     </div>
   </div>`;
 }

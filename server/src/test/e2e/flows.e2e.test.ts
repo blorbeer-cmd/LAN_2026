@@ -269,6 +269,28 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
   await page.selectOption('#profile-whoami', { label: 'E2E Alice Pro' });
 });
 
+test('Sitzplan: the real name set in Mein Profil shows in small everywhere the seating plan renders', async () => {
+  await page.click('#profile-btn');
+  await page.waitForSelector('#profile-real-name');
+  await page.fill('#profile-real-name', 'Alice Musterfrau');
+  await page.click('#profile-save');
+  await page.waitForSelector('.toast:has-text("Gespeichert")');
+
+  // Seat her via the editor's tap-to-place path (select the pool chip, then
+  // tap an empty seat) rather than HTML5 drag & drop, which Playwright can't
+  // simulate reliably.
+  await page.click('[data-navigate="seating"]');
+  await page.waitForSelector('[data-seat-pool] [data-player-id]');
+  await page.locator('[data-seat-pool] [data-player-id]', { hasText: 'E2E Alice Pro' }).click();
+  await page.locator('[data-seat-side="top"][data-seat-index="0"]').click();
+  await page.waitForSelector('.seating-seat.is-occupied .seating-seat-realname:has-text("Alice Musterfrau")');
+
+  // Same shared renderSeatingPlan() component also feeds Home's read-only
+  // board - the real name must show up there too, unprompted.
+  await page.click('[data-view="home"]');
+  await page.waitForSelector('.seating-seat-realname:has-text("Alice Musterfrau")');
+});
+
 test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bock/Skill inline', async () => {
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="gameCatalog"]');

@@ -119,8 +119,9 @@ function openPlayerDetail(playerId, ctx) {
       <div class="stack">
         <div class="row">
           <input type="color" id="detail-color" value="${player.color}" />
-          <input type="text" id="detail-name" value="${escapeHtml(player.name)}" maxlength="60" style="flex:1;" />
+          <input type="text" id="detail-name" value="${escapeHtml(player.name)}" maxlength="60" style="flex:1;" placeholder="Gamer-Name" />
         </div>
+        <input type="text" id="detail-real-name" value="${escapeHtml(player.real_name || '')}" maxlength="60" placeholder="Richtiger Name (optional)" />
         <button type="button" class="btn btn-primary" id="detail-save">Speichern</button>
 
         <div class="section-title">Agent-API-Key</div>
@@ -160,10 +161,11 @@ function openPlayerDetail(playerId, ctx) {
 
         el.querySelector('#detail-save').addEventListener('click', async () => {
           const name = el.querySelector('#detail-name').value.trim();
+          const realName = el.querySelector('#detail-real-name').value.trim();
           const color = el.querySelector('#detail-color').value;
           if (!name) return showToast('Name darf nicht leer sein.', { error: true });
           try {
-            await api.players.update(playerId, { name, color });
+            await api.players.update(playerId, { name, realName: realName || null, color });
             close();
             await ctx.refresh();
             showToast('Gespeichert.');

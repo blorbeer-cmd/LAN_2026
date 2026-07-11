@@ -27,6 +27,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS players (
     id              TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
+    real_name       TEXT, -- optional actual person's name, shown alongside the (unique) gamer name in the seating plan
     color           TEXT NOT NULL DEFAULT '#4f9dff',
     avatar          TEXT,
     api_key         TEXT NOT NULL UNIQUE,
@@ -593,6 +594,16 @@ function migrateTestColumn(): void {
   db.exec('ALTER TABLE players ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0');
 }
 migrateTestColumn();
+
+// Migration: older databases predate the optional real_name column (the
+// actual person's name, shown in small next to the gamer name in the
+// seating plan).
+function migrateRealNameColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'real_name')) return;
+  db.exec('ALTER TABLE players ADD COLUMN real_name TEXT');
+}
+migrateRealNameColumn();
 
 function migrateGameIconImageColumn(): void {
   const columns = db.prepare('PRAGMA table_info(games)').all() as Array<{ name: string }>;

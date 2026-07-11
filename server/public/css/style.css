@@ -2463,7 +2463,7 @@ input[type='number'].bracket-score-input {
 }
 .seating-seat {
   min-width: 76px;
-  min-height: 48px;
+  min-height: 56px; /* fits the gamer name plus the small real-name line below it */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2481,6 +2481,26 @@ input[type='number'].bracket-score-input {
   border: 1px solid var(--border);
   background: var(--bg-elevated-2);
   color: var(--text);
+}
+/* Gamer name + small real-name line beneath it (see seatNamesHtml in
+   seating.js) — the real-name span is always rendered, just visibility:
+   hidden when unset, so every seat reserves the same two-line height. */
+.seating-seat-names {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+}
+.seating-seat-name,
+.seating-seat-realname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.seating-seat-realname {
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
 }
 .seating-seat.is-drag-target {
   border-color: var(--accent);
@@ -2571,8 +2591,8 @@ input[type='number'].bracket-score-input {
     grid-template-columns: minmax(52px, .6fr) minmax(130px, 1.5fr) minmax(52px, .6fr);
     padding: var(--space-2);
   }
-  .seating-seat { min-width: 0; min-height: 44px; flex-direction: column; }
-  .seating-seat span:last-child { max-width: 62px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .seating-seat { min-width: 0; min-height: 50px; flex-direction: column; }
+  .seating-seat-names { max-width: 62px; align-items: center; }
   .seating-control-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
