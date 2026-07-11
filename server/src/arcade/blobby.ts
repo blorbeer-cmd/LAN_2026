@@ -4,6 +4,7 @@ import { db } from '../db';
 import { adminUnlockValid } from '../auth';
 import { BlobbyInput, BlobbyWorld, createWorld, stepWorld } from './blobbyLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
+import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 
 const TICK_MS = 1000 / 60;
 const SNAPSHOT_MS = 50;
@@ -58,9 +59,13 @@ function snapshot(io: Server, match: Match) {
     world: match.world, scores: scorePayload(match), targetScore: match.targetScore,
   });
 }
+function realPlayerIds(players: PlayerRef[]): string[] {
+  return players.filter((p) => p.id !== BOT_ID).map((p) => p.id);
+}
 function finish(io: Server, match: Match, winner: PlayerRef | null, reason: string) {
   if (match.loop) clearInterval(match.loop);
   match.loop = null;
+  endArcadeSession(realPlayerIds(match.players), 'blobby');
   db.prepare(`INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
     nanoid(), 'blobby', winner?.id === BOT_ID ? null : winner?.id ?? null, JSON.stringify(match.players), JSON.stringify(scorePayload(match)), reason, match.startedAt, Date.now()
@@ -181,6 +186,7 @@ export function registerBlobbySockets(io: Server): void {
         loop: null, running: false, paused: false, lastTick: Date.now(), lastSnapshot: 0, startedAt: Date.now(), rallyResumeAt: 0, targetScore,
       };
       matches.set(id, match); lobbies.delete(lobby.id); emitLobbies(io);
+      startArcadeSession(realPlayerIds(match.players), 'blobby');
       const beginsAt = Date.now() + COUNTDOWN_MS;
       io.to(room).emit('blobby:match:start', { matchId: id, host: match.host, players: match.players, beginsAt, targetScore });
       snapshot(io, match); startLoop(io, match); ack?.({ ok: true, matchId: id });

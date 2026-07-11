@@ -86,9 +86,14 @@ function assertPlayer(playerId: unknown): string | null | undefined {
 }
 
 // GET /api/games - all games (suggestions, catalog and tracked alike),
-// including their process-name mappings.
+// including their process-name mappings. Excludes the 5 built-in Arcade
+// titles (quiz/tetris/scribble/blobby/snake, arcade_key IS NOT NULL) — they
+// aren't admin-managed here (see arcade/arcadeTracking.ts), and showing them
+// in this catalog would also leak them into every picker fed by this list
+// (votes, matchmaking, tournaments, captain draft), none of which make sense
+// for a lobby-based 1v1 minigame that's always instantly playable.
 gamesRouter.get('/', (_req, res) => {
-  const rows = db.prepare('SELECT * FROM games ORDER BY name COLLATE NOCASE').all() as GameRow[];
+  const rows = db.prepare('SELECT * FROM games WHERE arcade_key IS NULL ORDER BY name COLLATE NOCASE').all() as GameRow[];
   res.json(rows.map(withProcessNames));
 });
 
@@ -279,6 +284,12 @@ gamesRouter.post('/:id/promote', requireAdmin, (req, res) => {
 // DELETE /api/games/:id - cascades to process names, skills, preferences,
 // votes, matches; sets live_status.game_id to NULL for anyone currently on it.
 gamesRouter.delete('/:id', (req, res) => {
+  const existing = db.prepare('SELECT arcade_key FROM games WHERE id = ?').get(req.params.id) as
+    | { arcade_key: string | null }
+    | undefined;
+  if (existing?.arcade_key) {
+    return res.status(400).json({ error: 'Arcade-Spiele können nicht gelöscht werden.' });
+  }
   const result = db.prepare('DELETE FROM games WHERE id = ?').run(req.params.id);
   if (result.changes === 0) {
     return res.status(404).json({ error: 'Spiel nicht gefunden.' });

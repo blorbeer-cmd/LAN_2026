@@ -91,7 +91,14 @@ db.exec(`
     trailer_url   TEXT,
     status        TEXT NOT NULL DEFAULT 'catalog' CHECK (status IN ('suggestion', 'catalog')),
     created_by    TEXT REFERENCES players(id) ON DELETE SET NULL,
-    created_at    INTEGER NOT NULL
+    created_at    INTEGER NOT NULL,
+    -- Set only for the 5 built-in Arcade titles (quiz/tetris/scribble/blobby/
+    -- snake), so live_status_games/play_sessions (FR-29) can reuse the exact
+    -- same "who's playing"/playtime machinery the agent uses for PC games,
+    -- without polluting the catalog admins manage (votes/matchmaking/
+    -- tournaments/skills all treat these as absent — see routes/games.ts,
+    -- votes.ts, digest.ts). NULL for every normal catalog/suggestion game.
+    arcade_key    TEXT
   );
 
   -- Maps a running process name (lowercased, e.g. "cs2.exe") to a game so the
@@ -612,6 +619,13 @@ function migrateGameIconImageColumn(): void {
 }
 migrateGameIconImageColumn();
 
+function migrateGameArcadeKeyColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(games)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'arcade_key')) return;
+  db.exec('ALTER TABLE games ADD COLUMN arcade_key TEXT');
+}
+migrateGameArcadeKeyColumn();
+
 // Migration: older databases predate the games/game_catalog merge (see
 // server/CLAUDE.md games reorg) — games itself needs the catalog columns
 // added, and if a standalone game_catalog table still exists from before the
@@ -1038,6 +1052,37 @@ function seedGames(): void {
 }
 
 seedGames();
+
+// Seeds a games row for each built-in Arcade title so it can use the same
+// live_status_games/play_sessions machinery as agent-tracked PC games (see
+// arcade_key's comment on the games table above and arcade/arcadeTracking.ts).
+// Runs on every startup (not just on an empty DB, unlike seedGames) and is
+// idempotent per row via arcade_key, so it also backfills existing databases
+// created before this feature.
+export const ARCADE_GAME_DEFS = [
+  { key: 'quiz', name: 'Gaming-Quiz', icon: '🧠' },
+  { key: 'tetris', name: 'Tetris', icon: '🧩' },
+  { key: 'scribble', name: 'Scribble', icon: '✏️' },
+  { key: 'blobby', name: 'Blobby Volley', icon: '🏐' },
+  { key: 'snake', name: 'Snake', icon: '🐍' },
+] as const;
+
+function seedArcadeGames(): void {
+  const now = Date.now();
+  const existing = db.prepare('SELECT id FROM games WHERE arcade_key = ?');
+  const insertGame = db.prepare(
+    `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at, status, arcade_key)
+     VALUES (?, ?, ?, 2, 2, ?, 'catalog', ?)`
+  );
+  const seed = db.transaction(() => {
+    for (const g of ARCADE_GAME_DEFS) {
+      if (existing.get(g.key)) continue;
+      insertGame.run(nanoid(), g.name, g.icon, now, g.key);
+    }
+  });
+  seed();
+}
+seedArcadeGames();
 
 function seedQuizQuestions(): void {
   const count = (db.prepare('SELECT COUNT(*) AS n FROM quiz_questions').get() as { n: number }).n;

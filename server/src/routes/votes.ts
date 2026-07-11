@@ -154,6 +154,7 @@ function buildResults(round: number, mode: VoteMode, selectedGameIds: string[] |
          SELECT game_id, SUM(MAX(0, COALESCE(ended_at, ?) - started_at)) AS totalPlaytimeMs
          FROM play_sessions GROUP BY game_id
        ) ps ON ps.game_id = g.id
+       WHERE g.arcade_key IS NULL
        GROUP BY g.id`
     )
     .all(round, now) as Array<Omit<ResultRow, 'score' | 'totalPlaytimeFormatted' | 'voteWinCount'>>;

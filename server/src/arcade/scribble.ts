@@ -17,6 +17,7 @@ import { adminUnlockValid } from '../auth';
 import { notifyPlayers } from '../push';
 import { matchesAnswer } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
+import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import {
   buildHintSchedule,
   HintStep,
@@ -181,6 +182,10 @@ function scorePayload(match: ScribbleMatchState) {
   return match.players.map((p) => ({ playerId: p.id, name: p.name, score: match.scores.get(p.id) ?? 0 }));
 }
 
+function realPlayerIds(players: PlayerRef[]): string[] {
+  return players.filter((p) => p.id !== BOT_ID).map((p) => p.id);
+}
+
 function eligibleGuesserIds(match: ScribbleMatchState): string[] {
   const drawerId = match.players[match.drawIndex]?.id;
   return match.players.filter((p) => p.id !== drawerId && match.online.has(p.id)).map((p) => p.id);
@@ -236,6 +241,7 @@ function markWordSeen(wordId: string, playerIds: string[]): void {
 
 function finishMatch(io: Server, match: ScribbleMatchState, winner: PlayerRef | null, reason: string): void {
   clearAllTimers(match);
+  endArcadeSession(realPlayerIds(match.players), 'scribble');
   const scores = scorePayload(match);
   const bestScore = scores.reduce<(typeof scores)[number] | null>((best, s) => (!best || s.score > best.score ? s : best), null);
   const candidateWinnerId = winner?.id ?? bestScore?.playerId ?? null;
@@ -550,6 +556,7 @@ export function registerScribbleSockets(io: Server): void {
         matches.set(match.id, match);
         lobbies.delete(lobby.id);
         emitLobbies(io);
+        startArcadeSession(realPlayerIds(match.players), 'scribble');
 
         const beginsAt = Date.now() + COUNTDOWN_MS;
         io.to(room).emit('scribble:match:start', {

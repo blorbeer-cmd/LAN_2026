@@ -4,6 +4,7 @@ import { db } from '../db';
 import { adminUnlockValid } from '../auth';
 import { createWorld, Direction, setDirection, SnakeWorld, stepWorld, SNAKE_HEIGHT, SNAKE_WIDTH } from './snakeLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
+import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 
 const TICK_MS = 125;
 const COUNTDOWN_MS = 3000;
@@ -43,9 +44,13 @@ export function openLobbySummaries() {
 function snapshot(io: Server, match: Match) {
   io.to(match.room).emit('snake:state', { matchId: match.id, world: match.world, running: match.running, paused: match.paused, serverTime: Date.now() });
 }
+function realPlayerIds(players: Player[]): string[] {
+  return players.filter((p) => p.id !== BOT_ID).map((p) => p.id);
+}
 function finish(io: Server, match: Match, winner: Player | null, reason: string) {
   if (match.loop) clearInterval(match.loop);
   match.loop = null;
+  endArcadeSession(realPlayerIds(match.players), 'snake');
   const winnerId = winner && winner.id !== BOT_ID ? winner.id : null;
   db.prepare('INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
     nanoid(), 'snake', winnerId, JSON.stringify(match.players), JSON.stringify(match.world.snakes.map((snake) => snake.score)), reason, match.startedAt, Date.now()
@@ -102,6 +107,7 @@ function startMatch(io: Server, lobby: Lobby) {
   matches.set(id, match);
   lobbies.delete(lobby.id);
   emitLobbies(io);
+  startArcadeSession(realPlayerIds(match.players), 'snake');
   const beginsAt = Date.now() + COUNTDOWN_MS;
   io.to(room).emit('snake:match:start', { matchId: id, host: match.host, players: match.players, beginsAt });
   snapshot(io, match);
