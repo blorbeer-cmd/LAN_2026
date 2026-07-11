@@ -160,7 +160,7 @@ function ratingRowHtml({ label, accentClass, mine, avg, count, gameId, kind, dis
 function gameLinksHtml(game) {
   const links = [
     game.platform_url ? { href: game.platform_url, label: `${icon('squareArrowOutUpRight')} ${game.platform || 'Plattform'}` } : null,
-    game.trailer_url ? { href: game.trailer_url, label: `${icon('tvMinimalPlay')} Trailer` } : null,
+    game.trailer_url ? { href: game.trailer_url, label: `${icon('monitorPlay')} Trailer` } : null,
   ].filter(Boolean);
   if (links.length === 0) return '';
   return `
@@ -186,7 +186,7 @@ function gameRowIconsHtml(game) {
     game.platform_url
       ? { href: game.platform_url, label: `${game.platform || 'Plattform'}-Link öffnen`, name: 'squareArrowOutUpRight' }
       : null,
-    game.trailer_url ? { href: game.trailer_url, label: 'Trailer ansehen', name: 'tvMinimalPlay' } : null,
+    game.trailer_url ? { href: game.trailer_url, label: 'Trailer ansehen', name: 'monitorPlay' } : null,
   ].filter(Boolean);
   const detailBtn = `<button type="button" class="game-icon-btn" data-detail="${game.id}" title="Details" aria-label="Details">${icon('info')}</button>`;
   const linkIcons = links

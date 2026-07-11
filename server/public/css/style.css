@@ -1164,13 +1164,14 @@ button.card {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Details/Plattform/Trailer as one group of identical square buttons — a
-   plain inline icon link would look bigger or smaller depending on the
-   icon's own bounding box (e.g. tvMinimalPlay's rect sits shorter than
-   squareArrowOutUpRight's diagonal glyph), which read as inconsistent
-   button sizes even though the font-size was the same. Held in its own
-   .game-row-links wrapper so it can sit a bit further from the title than
-   .game-row-name's own flex gap alone would put it. */
+/* Details/Plattform/Trailer as one group of plain icon buttons, same size and
+   no background/border so they read as row chrome rather than as another
+   pill button competing with the sliders. Both trailer and Details use
+   icons whose own glyph fills a roughly square area (monitorPlay's monitor
+   frame, info's circle) so the tap targets stay visually even despite the
+   varying glyphs. Held in its own .game-row-links wrapper so it can sit a
+   bit further from the title than .game-row-name's own flex gap alone would
+   put it. */
 .game-row-links {
   display: inline-flex;
   align-items: center;
@@ -1185,14 +1186,14 @@ button.card {
   width: var(--space-6);
   height: var(--space-6);
   border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
-  border: 1px solid var(--border);
+  background: none;
+  border: none;
   color: var(--text-muted);
+  cursor: pointer;
 }
 @media (hover: hover) {
   .game-icon-btn:hover {
     color: var(--text);
-    filter: brightness(1.12);
   }
 }
 .game-row-sliders {
