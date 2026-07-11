@@ -179,9 +179,12 @@ playersRouter.delete('/:id', (req, res) => {
   res.status(204).end();
 });
 
-// GET /api/players/:id/neighbors - who this player says they sit next to,
-// for the given (or active) event. Self-service, so this is always scoped
-// to a single player, never a roster-wide listing.
+// GET /api/players/:id/neighbors - whose monitor this player says they can
+// see ("Sichtbare Monitore" in the UI), for the given (or active) event.
+// Includes both rows the seating-plan editor auto-derived from same-edge seat
+// adjacency and ones the player checked themselves — see seat_neighbors'
+// source column in db.ts. Self-service, so this is always scoped to a single
+// player, never a roster-wide listing.
 playersRouter.get('/:id/neighbors', (req, res) => {
   const player = db.prepare('SELECT id FROM players WHERE id = ?').get(req.params.id);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
@@ -196,9 +199,13 @@ playersRouter.get('/:id/neighbors', (req, res) => {
   res.json({ eventId: filterEventId, neighborIds: rows.map((r) => r.neighbor_id) });
 });
 
-// PUT /api/players/:id/neighbors - replace who this player sits next to for
-// an event, in one shot (like skills.set, meant to be called fire-and-forget
-// straight off a checkbox list). Body: { eventId?, neighborIds: string[] }
+// PUT /api/players/:id/neighbors - replace whose monitor this player says
+// they can see for an event, in one shot (like skills.set, meant to be called
+// fire-and-forget straight off a checkbox list). Always writes source =
+// 'manual', even for ids that were previously auto-derived from the seating
+// plan — once a player has touched their own list, it's an explicit
+// confirmation and the next seating-plan save won't override it. Body:
+// { eventId?, neighborIds: string[] }
 playersRouter.put('/:id/neighbors', (req, res) => {
   const player = db.prepare('SELECT id FROM players WHERE id = ?').get(req.params.id) as
     | { id: string }
@@ -228,7 +235,7 @@ playersRouter.put('/:id/neighbors', (req, res) => {
       player.id
     );
     const insert = db.prepare(
-      'INSERT INTO seat_neighbors (event_id, player_id, neighbor_id) VALUES (?, ?, ?)'
+      "INSERT INTO seat_neighbors (event_id, player_id, neighbor_id, source) VALUES (?, ?, ?, 'manual')"
     );
     for (const neighborId of validIds) {
       insert.run(filterEventId, player.id, neighborId);

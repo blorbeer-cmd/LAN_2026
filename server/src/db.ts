@@ -217,16 +217,23 @@ db.exec(`
     selected_game_ids TEXT    -- JSON array of game ids the round is limited to, NULL = all games
   );
 
-  -- Physical seating declared per event (FR-18 extension): "player_id sits
-  -- next to neighbor_id". Self-service, one row per direction a player
+  -- Whose monitor a player can see from their seat, per event (FR-18
+  -- extension, framed in the UI as "Sichtbare Monitore" rather than "seat
+  -- neighbors" since it's really about line-of-sight to a screen, not just
+  -- physical proximity). Self-service, one row per direction a player
   -- declares (so a player can update their own row without needing their
   -- neighbor to also confirm it) — matchmaking treats the pair as adjacent
   -- if either direction exists. Scoped per event since people sit somewhere
-  -- different at every LAN.
+  -- different at every LAN. source distinguishes rows the seating-plan editor
+  -- derived automatically from same-edge seat adjacency ('auto', see
+  -- seating.ts's syncAutoSeatNeighbors) from ones a player explicitly checked
+  -- themselves ('manual', written by players.ts's PUT /:id/neighbors) — the
+  -- auto-sync only ever adds/removes its own 'auto' rows, never a manual one.
   CREATE TABLE IF NOT EXISTS seat_neighbors (
     event_id    TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     player_id   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     neighbor_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    source      TEXT NOT NULL DEFAULT 'manual',
     PRIMARY KEY (event_id, player_id, neighbor_id)
   );
 
@@ -944,6 +951,13 @@ export function setState(key: string, value: string): void {
 // Needs app_state (just above) to exist first for its upgrade-continuity
 // backfill, which reads the old active_event_id key.
 migrateEventTrackingColumns();
+
+function migrateSeatNeighborsSourceColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(seat_neighbors)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'source')) return;
+  db.exec("ALTER TABLE seat_neighbors ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'");
+}
+migrateSeatNeighborsSourceColumn();
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.

@@ -2335,14 +2335,28 @@ input[type='number'].bracket-score-input {
   transition: border-color .15s ease, background .15s ease, transform .15s ease;
 }
 .seating-seat.is-occupied {
-  border-color: transparent;
-  background: transparent;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated-2);
   color: var(--text);
 }
 .seating-seat.is-drag-target {
   border-color: var(--accent);
   background: rgba(91, 140, 255, .2);
   transform: scale(1.04);
+}
+/* Tap-to-place: the picked-up player… */
+.seating-seat.is-selected,
+.seating-pool-player.is-selected {
+  border-color: var(--accent);
+  background: rgba(91, 140, 255, .2);
+}
+/* …and every seat they could land on (also used while dragging). */
+.seating-plan.is-moving .seating-seat:not(.is-occupied) {
+  border-color: var(--accent);
+}
+.seating-player-pool.is-drag-target {
+  border-color: var(--accent);
+  background: rgba(91, 140, 255, .12);
 }
 .seating-seat-number {
   display: inline-flex;
@@ -2354,12 +2368,23 @@ input[type='number'].bracket-score-input {
   background: var(--bg-surface);
   color: var(--text-muted);
 }
-.seating-plan.is-editable .seating-seat,
+.seating-plan.is-editable .seating-seat.is-occupied,
 .seating-pool-player {
   cursor: grab;
 }
-.seating-plan.is-editable .seating-seat:active,
+.seating-plan.is-editable .seating-seat.is-occupied:active,
 .seating-pool-player:active { cursor: grabbing; }
+.seating-plan.is-editable.is-moving .seating-seat { cursor: pointer; }
+@media (hover: hover) {
+  .seating-plan.is-editable .seating-seat.is-occupied:hover,
+  .seating-pool-player:hover {
+    border-color: var(--accent);
+  }
+}
+.seating-hint {
+  margin: 0;
+  font-size: var(--font-size-xs);
+}
 .seating-controls,
 .seating-pool { display: grid; gap: var(--space-3); }
 .seating-control-grid {
