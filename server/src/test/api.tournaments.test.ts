@@ -64,6 +64,13 @@ test('POST /api/tournaments rejects an unknown player', async () => {
   assert.equal(res.status, 404);
 });
 
+test('POST /api/tournaments rejects a too-long lobbyName', async () => {
+  const res = await request(app)
+    .post('/api/tournaments')
+    .send({ gameId, format: 'round_robin', lobbyName: 'x'.repeat(61), teams: soloTeams(playerIds) });
+  assert.equal(res.status, 400);
+});
+
 let bracketId: string;
 let bracketTeamIds: string[];
 let bracketMatches: Array<{ id: string; round: number; slot: number; teamAId: string | null; teamBId: string | null; isBye: boolean }>;
@@ -71,13 +78,21 @@ let bracketMatches: Array<{ id: string; round: number; slot: number; teamAId: st
 test('POST /api/tournaments creates a single-elimination bracket for 4 teams', async () => {
   const res = await request(app)
     .post('/api/tournaments')
-    .send({ gameId, format: 'single_elimination', teams: soloTeams(playerIds) });
+    .send({
+      gameId,
+      format: 'single_elimination',
+      lobbyName: 'LAN2026',
+      lobbyPassword: 'geheim',
+      teams: soloTeams(playerIds),
+    });
   assert.equal(res.status, 201);
   assert.equal(res.body.format, 'single_elimination');
   assert.equal(res.body.status, 'active');
   assert.equal(res.body.teams.length, 4);
   assert.equal(res.body.matches.length, 3); // 2 round-1 + 1 final
   assert.ok(res.body.matches.every((m: { isBye: boolean }) => !m.isBye));
+  assert.equal(res.body.lobbyName, 'LAN2026');
+  assert.equal(res.body.lobbyPassword, 'geheim');
 
   bracketId = res.body.id;
   bracketTeamIds = res.body.teams.map((t: { id: string }) => t.id);
