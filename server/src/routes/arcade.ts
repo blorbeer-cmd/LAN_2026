@@ -4,6 +4,7 @@ import { openLobbySummaries as quizLobbies } from '../arcade/arcade';
 import { openLobbySummaries as tetrisLobbies } from '../arcade/tetris';
 import { openLobbySummaries as scribbleLobbies } from '../arcade/scribble';
 import { openLobbySummaries as blobbyLobbies } from '../arcade/blobby';
+import { openLobbySummaries as snakeLobbies } from '../arcade/snake';
 
 export const arcadeRouter = Router();
 
@@ -14,6 +15,7 @@ const ARCADE_TITLES: Record<string, string> = {
   tetris: 'Tetris',
   scribble: 'Scribble',
   blobby: 'Blobby Volley',
+  snake: 'Snake',
 };
 const WIN_LOSS_GAMES = new Set(['blobby']);
 
@@ -39,6 +41,7 @@ arcadeRouter.get('/lobbies', (_req, res) => {
     ...tetrisLobbies().map((l) => ({ ...l, gameType: 'tetris' })),
     ...scribbleLobbies().map((l) => ({ ...l, gameType: 'scribble' })),
     ...blobbyLobbies().map((l) => ({ ...l, gameType: 'blobby' })),
+    ...snakeLobbies().map((l) => ({ ...l, gameType: 'snake' })),
   ]
     .map((l) => ({ ...l, title: ARCADE_TITLES[l.gameType] ?? l.gameType }))
     .sort((a, b) => b.createdAt - a.createdAt);

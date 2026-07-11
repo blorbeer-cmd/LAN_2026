@@ -30,6 +30,16 @@ function publicLobbies() {
   }));
 }
 function emitLobbies(io: Server) { io.emit('snake:lobbies', { lobbies: publicLobbies() }); }
+
+// Open-lobby summary for GET /api/arcade/lobbies — see arcade.ts.
+export function openLobbySummaries() {
+  return [...lobbies.values()].map((lobby) => ({
+    id: lobby.id,
+    hostName: lobby.host.name,
+    playerCount: lobby.players.length,
+    createdAt: lobby.createdAt,
+  }));
+}
 function snapshot(io: Server, match: Match) {
   io.to(match.room).emit('snake:state', { matchId: match.id, world: match.world, running: match.running, paused: match.paused, serverTime: Date.now() });
 }
