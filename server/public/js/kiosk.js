@@ -244,6 +244,47 @@ async function refreshAll() {
   }
 }
 
+// Kiosk screens are set up once (someone opens the browser, maybe clicks
+// through a fullscreen prompt) and then run unattended for days — there's
+// no guarantee of a later user gesture to satisfy the browser's autoplay
+// policy, so grab whatever the first interaction turns out to be and use
+// it to unlock/resume the AudioContext, just in case someone does touch
+// the screen before the first push comes in.
+let audioCtx = null;
+function ensureAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+['click', 'keydown'].forEach((evt) => document.addEventListener(evt, ensureAudioCtx, { once: true }));
+
+// Short two-note "ding-dong" chime, synthesized instead of shipped as an
+// audio file — no extra asset, no licensing to think about, same sound on
+// every kiosk. Wrapped in try/catch: a sound glitch (no audio device on the
+// display, autoplay still blocked, …) must never break the banner itself.
+function playPushSound() {
+  try {
+    const ctx = ensureAudioCtx();
+    const now = ctx.currentTime;
+    [660, 880].forEach((freq, i) => {
+      const start = now + i * 0.12;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.25, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.35);
+    });
+  } catch {
+    // see comment above — never let this take the kiosk down
+  }
+}
+
 function updateClock() {
   document.getElementById('kiosk-clock').textContent = new Date().toLocaleTimeString('de-DE', {
     hour: '2-digit',
@@ -280,7 +321,10 @@ async function main() {
   // whole point of putting it on the kiosk is that people look up from their
   // own machines. Stays up permanently (newest message replaces it) rather
   // than auto-hiding, so it still reads correctly minutes later.
-  socket.on('push:sent', (payload) => renderBroadcastBanner(payload));
+  socket.on('push:sent', (payload) => {
+    renderBroadcastBanner(payload);
+    playPushSound();
+  });
 }
 
 main().catch((err) => {
