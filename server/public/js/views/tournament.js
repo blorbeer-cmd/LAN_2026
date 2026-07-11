@@ -393,6 +393,15 @@ function renderCreateForm(el, ctx) {
       if (fromIndex === -1 || fromIndex === toIndex) return;
 
       const fromTeam = createProposedTeams[fromIndex];
+      // A team hitting zero players here would let a tournament get created
+      // with an empty team (the format generators/bracket assume every team
+      // has at least one player) — block the move and reset the dropdown.
+      if (fromTeam.players.length <= 1) {
+        showToast('Ein Team kann nicht komplett leer werden.', { error: true });
+        sel.value = String(fromIndex);
+        return;
+      }
+
       const [player] = fromTeam.players.splice(
         fromTeam.players.findIndex((p) => p.id === playerId),
         1
