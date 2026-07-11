@@ -147,6 +147,87 @@ matchmakingRouter.post('/', (req, res) => {
   res.json(result);
 });
 
+// POST /api/matchmaking/rematch - re-run the *same* team lineup (no
+// rebalancing) as a fresh draw, so entering a result for it lands in
+// Ergebnis-Historie like any other draw instead of only in the leaderboard.
+// Body: { gameId: string, teams: [{ playerIds: string[] }] } (same shape the
+// frontend already has lying around from the draw it's rematching).
+matchmakingRouter.post('/rematch', (req, res) => {
+  const { gameId, teams: teamsInput } = req.body ?? {};
+
+  if (typeof gameId !== 'string' || !gameId) {
+    return res.status(400).json({ error: 'gameId ist erforderlich.' });
+  }
+  if (!Array.isArray(teamsInput) || teamsInput.length < 2) {
+    return res.status(400).json({ error: 'teams muss ein Array mit mindestens 2 Teams sein.' });
+  }
+  const teamPlayerIdLists: string[][] = [];
+  const allIds: string[] = [];
+  for (const t of teamsInput as unknown[]) {
+    const playerIds = (t as { playerIds?: unknown }).playerIds;
+    if (!Array.isArray(playerIds) || playerIds.length === 0 || !playerIds.every((p) => typeof p === 'string')) {
+      return res.status(400).json({ error: 'Jedes Team braucht mindestens einen Spieler.' });
+    }
+    teamPlayerIdLists.push(playerIds);
+    allIds.push(...playerIds);
+  }
+  const uniqueIds = [...new Set(allIds)];
+  if (uniqueIds.length !== allIds.length) {
+    return res.status(400).json({ error: 'Ein Spieler ist in mehreren Teams.' });
+  }
+
+  const game = db.prepare('SELECT id, name, max_team_size FROM games WHERE id = ?').get(gameId) as
+    | GameRow
+    | undefined;
+  if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+
+  const placeholders = uniqueIds.map(() => '?').join(',');
+  const players = db
+    .prepare(`SELECT id, name, color, avatar FROM players WHERE id IN (${placeholders})`)
+    .all(...uniqueIds) as PlayerRow[];
+  if (players.length !== uniqueIds.length) {
+    return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
+  }
+
+  const ratingRows = db
+    .prepare(`SELECT player_id, rating FROM skills WHERE game_id = ? AND player_id IN (${placeholders})`)
+    .all(gameId, ...uniqueIds) as Array<{ player_id: string; rating: number }>;
+  const ratingByPlayer = new Map(ratingRows.map((r) => [r.player_id, r.rating]));
+  const playerById = new Map(players.map((p) => [p.id, p]));
+
+  const teams = teamPlayerIdLists.map((ids) => {
+    const teamPlayers = ids.map((id) => ({
+      ...playerById.get(id)!,
+      rating: ratingByPlayer.get(id) ?? DEFAULT_RATING,
+    }));
+    return {
+      players: teamPlayers,
+      totalRating: teamPlayers.reduce((sum, p) => sum + p.rating, 0),
+    };
+  });
+
+  const drawId = nanoid();
+  const result = {
+    id: drawId,
+    gameId,
+    gameName: game.name,
+    teams,
+    seatConflicts: 0,
+    seatPairsConsidered: 0,
+    generatedAt: Date.now(),
+    matchId: null as string | null,
+    source: 'rematch' as string | null,
+  };
+
+  db.prepare(
+    `INSERT INTO matchmaking_draws (id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source)
+     VALUES (?, ?, ?, ?, 0, 0, ?, 'rematch')`
+  ).run(drawId, gameId, getTrackingEventId(), JSON.stringify(teams), result.generatedAt);
+
+  broadcast(Events.matchmakingGenerated, result);
+  res.json(result);
+});
+
 interface DrawRow {
   id: string;
   gameId: string;

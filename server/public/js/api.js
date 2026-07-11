@@ -150,6 +150,7 @@ export const api = {
 
   matchmaking: {
     generate: (data) => apiFetch('/api/matchmaking', { method: 'POST', body: JSON.stringify(data) }),
+    rematch: (data) => apiFetch('/api/matchmaking/rematch', { method: 'POST', body: JSON.stringify(data) }),
     history: (gameId) => apiFetch(`/api/matchmaking/history${gameId ? `?gameId=${gameId}` : ''}`),
     moveDrawPlayer: (drawId, playerId, toTeamIndex) =>
       apiFetch(`/api/matchmaking/draws/${drawId}/move`, {

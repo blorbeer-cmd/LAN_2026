@@ -184,13 +184,26 @@ function wireDrawCards(container, ctx) {
   });
 
   container.querySelectorAll('[data-rematch-draw]').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const draw = findDrawById(btn.dataset.rematchDraw);
       if (!draw) return;
-      openMatchForm(ctx, {
-        presetGameId: draw.gameId,
-        presetTeams: draw.teams.map((t) => ({ playerIds: t.players.map((p) => p.id) })),
-      });
+      const teams = draw.teams.map((t) => ({ playerIds: t.players.map((p) => p.id) }));
+      try {
+        // Logs a fresh matchmaking_draws row for the same lineup (unlike a
+        // "Teams auslosen" re-roll, this keeps the exact teams) so the result
+        // entered below links back to it and lands in Ergebnis-Historie,
+        // same as any other draw — see the /rematch endpoint's comment.
+        const rematchDraw = await api.matchmaking.rematch({ gameId: draw.gameId, teams });
+        state.lastMatchmaking = rematchDraw;
+        ctx.rerender();
+        openMatchForm(ctx, {
+          presetGameId: rematchDraw.gameId,
+          presetTeams: teams,
+          presetDrawId: rematchDraw.id,
+        });
+      } catch (err) {
+        showToast(err.message, { error: true });
+      }
     });
   });
 }

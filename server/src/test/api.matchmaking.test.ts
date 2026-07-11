@@ -197,6 +197,73 @@ test('POST /api/matchmaking has a null source (only a Captain-Draft sets it)', a
   assert.equal(entry.source, null);
 });
 
+test('POST /api/matchmaking/rematch rejects fewer than 2 teams', async () => {
+  const res = await request(app)
+    .post('/api/matchmaking/rematch')
+    .send({ gameId, teams: [{ playerIds: [playerIds[0]] }] });
+  assert.equal(res.status, 400);
+});
+
+test('POST /api/matchmaking/rematch rejects a player in multiple teams', async () => {
+  const res = await request(app)
+    .post('/api/matchmaking/rematch')
+    .send({
+      gameId,
+      teams: [{ playerIds: [playerIds[0], playerIds[1]] }, { playerIds: [playerIds[1], playerIds[2]] }],
+    });
+  assert.equal(res.status, 400);
+});
+
+test('POST /api/matchmaking/rematch 404s for an unknown game', async () => {
+  const res = await request(app)
+    .post('/api/matchmaking/rematch')
+    .send({ gameId: 'nope', teams: [{ playerIds: [playerIds[0]] }, { playerIds: [playerIds[1]] }] });
+  assert.equal(res.status, 404);
+});
+
+test('POST /api/matchmaking/rematch keeps the exact team lineup (no rebalancing) and tags source', async () => {
+  const teams = [{ playerIds: [playerIds[0], playerIds[1]] }, { playerIds: [playerIds[2], playerIds[3]] }];
+  const res = await request(app).post('/api/matchmaking/rematch').send({ gameId, teams });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.source, 'rematch');
+  assert.equal(res.body.matchId, null);
+  assert.deepEqual(
+    res.body.teams.map((t: { players: { id: string }[] }) => t.players.map((p) => p.id).sort()),
+    teams.map((t) => [...t.playerIds].sort())
+  );
+});
+
+test('a rematch result links back to the new draw and shows up in Ergebnis-Historie', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Rematch History Game' });
+  const p1 = await request(app).post('/api/players').send({ name: 'RematchA' });
+  const p2 = await request(app).post('/api/players').send({ name: 'RematchB' });
+  const ids = [p1.body.id, p2.body.id];
+
+  const rematchDraw = await request(app)
+    .post('/api/matchmaking/rematch')
+    .send({ gameId: game.body.id, teams: [{ playerIds: [ids[0]] }, { playerIds: [ids[1]] }] });
+  assert.equal(rematchDraw.status, 200);
+
+  await request(app)
+    .post('/api/matches')
+    .send({
+      gameId: game.body.id,
+      teams: [
+        { playerIds: [ids[0]] },
+        { playerIds: [ids[1]] },
+      ],
+      winnerTeamIndex: 0,
+      drawId: rematchDraw.body.id,
+    });
+
+  const history = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}`);
+  const linked = history.body.history.find((h: { id: string }) => h.id === rematchDraw.body.id);
+  assert.ok(linked, 'rematch draw should appear in history');
+  assert.ok(linked.matchId, 'rematch draw should be linked to the recorded match');
+  assert.equal(linked.source, 'rematch');
+  assert.equal(linked.winnerTeamIndex, 0);
+});
+
 test('GET /api/matchmaking/history enriches a linked draw with the recorded score/rank/winner', async () => {
   const game = await request(app).post('/api/games').send({ name: 'Enrich Test Game' });
   const p1 = await request(app).post('/api/players').send({ name: 'EnrichA' });
