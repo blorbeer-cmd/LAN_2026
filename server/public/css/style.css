@@ -1133,8 +1133,8 @@ button.card {
 
 /* Spiele view (gameCatalog.js): one compact table-like row per game. A real
    <table> would need horizontal scroll on a phone (the lesson from the old
-   .catalog-table), so it's a CSS grid: name/Bock/Skill/Details as columns on
-   wide screens, on a phone the two sliders wrap into a second line via
+   .catalog-table), so it's a CSS grid: name/Bock/Skill as columns on wide
+   screens, on a phone the two sliders wrap into a second line via
    display:contents on the .game-row-sliders wrapper. Reuses .skill-row for
    the Bock/Skill sliders so editing looks identical everywhere it appears. */
 .game-table {
@@ -1145,10 +1145,9 @@ button.card {
 .game-table-row {
   display: grid;
   grid-template-areas:
-    'name actions'
-    'sliders sliders';
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: var(--space-4);
+    'name'
+    'sliders';
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   padding: var(--space-2) var(--space-4);
   overflow: hidden;
@@ -1165,15 +1164,27 @@ button.card {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.game-link-icon {
+/* Details/Plattform/Trailer as one group of identical square buttons — a
+   plain inline icon link would look bigger or smaller depending on the
+   icon's own bounding box (e.g. tvMinimalPlay's rect sits shorter than
+   squareArrowOutUpRight's diagonal glyph), which read as inconsistent
+   button sizes even though the font-size was the same. */
+.game-icon-btn {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
-  padding: var(--space-1);
+  justify-content: center;
+  width: var(--space-7);
+  height: var(--space-7);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
   color: var(--text-muted);
 }
 @media (hover: hover) {
-  .game-link-icon:hover {
+  .game-icon-btn:hover {
     color: var(--text);
+    filter: brightness(1.12);
   }
 }
 .game-row-sliders {
@@ -1183,9 +1194,11 @@ button.card {
   column-gap: var(--space-4);
   align-items: center;
 }
-.game-row-actions {
-  grid-area: actions;
-  justify-self: end;
+/* Extra breathing room between the two rating columns specifically (plain
+   column-gap above would space Bock from Skill exactly as tight as it
+   spaces Skill from whatever follows). */
+.game-row-skill {
+  padding-left: var(--space-3);
 }
 /* On a phone the Ø note gets its own always-reserved line inside each slider
    cell — inline it would wrap only when present, and rows in the same list
@@ -1199,8 +1212,9 @@ button.card {
 }
 @media (min-width: 640px) {
   .game-table-row {
-    grid-template-areas: 'name bock skill actions';
-    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-areas: 'name bock skill';
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--space-4);
   }
   .game-row-sliders {
     display: contents;

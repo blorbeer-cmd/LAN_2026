@@ -30,6 +30,38 @@ let sortDir = 'asc';
 let suggestionsCache = null;
 let suggestionsLoading = false;
 
+// Guards the Bock/Skill sliders against a socket-triggered re-render (e.g.
+// the very 'preferences:changed'/'skills:changed' broadcast a drag's own
+// debounced write causes) landing while the user is mid-drag:
+// renderGameCatalog replaces container.innerHTML wholesale, which destroys
+// the exact <input> the pointer is down on and silently drops the browser's
+// native pointer capture for that drag — the thumb then stops tracking the
+// mouse, even mid-screen, until released and re-grabbed. Skipping the render
+// while a drag is active keeps the live element intact; endDrag() below
+// catches up with a single no-network re-render once the drag actually ends.
+let sliderDragActive = false;
+let dragGuardInstalled = false;
+let lastCtx = null;
+
+function ensureDragGuardInstalled() {
+  if (dragGuardInstalled) return;
+  dragGuardInstalled = true;
+  const endDrag = () => {
+    if (!sliderDragActive) return;
+    sliderDragActive = false;
+    lastCtx?.rerender();
+  };
+  // Listening on document (not the slider) is what catches a release outside
+  // the slider's own box — a range input's native drag keeps tracking the
+  // pointer anywhere on screen once grabbed. pointerup/pointercancel cover
+  // mouse, pen and touch; mouseup/touchend are a fallback for browsers/edge
+  // cases without full Pointer Events support.
+  document.addEventListener('pointerup', endDrag);
+  document.addEventListener('pointercancel', endDrag);
+  document.addEventListener('mouseup', endDrag);
+  document.addEventListener('touchend', endDrag);
+}
+
 // Called from app.js whenever a leaderboard:changed event reports a match
 // result was recorded/edited/deleted — the suggestion is derived from match
 // history, so a stale cache would keep showing yesterday's numbers.
@@ -142,21 +174,28 @@ function gameLinksHtml(game) {
     </div>`;
 }
 
-// Icon-only quick links (store page, trailer) right in the row — the full
-// labelled chips live in the detail modal (gameLinksHtml below).
-function gameLinkIconsHtml(game) {
+// Icon-only quick actions right in the row: open details, jump to the store
+// page, watch the trailer. All rendered as identical square buttons (see
+// .game-icon-btn) so the group reads as one tidy unit regardless of which
+// icons happen to be present — the full labelled chip versions live in the
+// detail modal (gameLinksHtml below). The details button carries the same
+// data-detail attribute the old standalone button used, so the existing
+// [data-detail] wiring in renderGameCatalog picks it up unchanged.
+function gameRowIconsHtml(game) {
   const links = [
     game.platform_url
       ? { href: game.platform_url, label: `${game.platform || 'Plattform'}-Link öffnen`, name: 'squareArrowOutUpRight' }
       : null,
     game.trailer_url ? { href: game.trailer_url, label: 'Trailer ansehen', name: 'tvMinimalPlay' } : null,
   ].filter(Boolean);
-  return links
+  const detailBtn = `<button type="button" class="game-icon-btn" data-detail="${game.id}" title="Details" aria-label="Details">${icon('info')}</button>`;
+  const linkIcons = links
     .map(
       (l) =>
-        `<a class="game-link-icon" href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(l.label)}" aria-label="${escapeHtml(l.label)}">${icon(l.name)}</a>`
+        `<a class="game-icon-btn" href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(l.label)}" aria-label="${escapeHtml(l.label)}">${icon(l.name)}</a>`
     )
     .join('');
+  return detailBtn + linkIcons;
 }
 
 function gameRowHtml(game, myId) {
@@ -170,7 +209,7 @@ function gameRowHtml(game, myId) {
       <div class="game-row-name">
         ${gameBadgeHtml(game, 28)}
         <strong class="game-row-title">${escapeHtml(game.name)}</strong>
-        ${gameLinkIconsHtml(game)}
+        ${gameRowIconsHtml(game)}
       </div>
       <div class="game-row-sliders">
         <div class="game-row-bock">
@@ -205,9 +244,6 @@ function gameRowHtml(game, myId) {
                 })
           }
         </div>
-      </div>
-      <div class="game-row-actions">
-        <button type="button" class="btn btn-sm" data-detail="${game.id}">Details</button>
       </div>
     </div>`;
 }
@@ -432,6 +468,10 @@ function openGameDetail(gameId, ctx) {
 }
 
 export function renderGameCatalog(container, ctx) {
+  lastCtx = ctx;
+  ensureDragGuardInstalled();
+  if (sliderDragActive) return;
+
   if (suggestionsCache === null && !suggestionsLoading) loadSuggestions(ctx);
 
   const myId = getMyId();
@@ -500,6 +540,9 @@ export function renderGameCatalog(container, ctx) {
       slider.style.setProperty('--slider-pct', `${((Number(slider.value) - 1) / 9) * 100}%`);
     };
     updateSliderTone();
+    slider.addEventListener('pointerdown', () => {
+      sliderDragActive = true;
+    });
     let debounceTimer = null;
     slider.addEventListener('input', () => {
       valueEl.textContent = slider.value;
