@@ -140,6 +140,35 @@ test('POST /api/matchmaking keeps seat neighbors together when this draw asks fo
   assert.equal(teamOf(ids[0]), teamOf(ids[1]));
 });
 
+test('POST /api/matchmaking flags the specific players left as opponents despite a seat-neighbor pairing', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Seating Test Game C' });
+
+  // Same shape as balanceTeams' "leaves a seat conflict unresolved" unit
+  // test: a and b are by far the strongest, so forcing them together would
+  // blow the skill balance apart and the conflict is left unresolved.
+  const names = ['O', 'P', 'Q', 'R'];
+  const ratings = [10, 9, 1, 2];
+  const ids: string[] = [];
+  for (let i = 0; i < names.length; i++) {
+    const p = await request(app).post('/api/players').send({ name: names[i] });
+    ids.push(p.body.id);
+    await request(app).put('/api/skills').send({ playerId: p.body.id, gameId: game.body.id, rating: ratings[i] });
+  }
+  await request(app).put(`/api/players/${ids[0]}/neighbors`).send({ neighborIds: [ids[1]] });
+
+  const res = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: ids, teamCount: 2, avoidAdjacentOpponents: true });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.seatConflicts, 1);
+  const flagged = res.body.teams
+    .flatMap((t: { players: { id: string; seatConflict: boolean }[] }) => t.players)
+    .filter((p: { seatConflict: boolean }) => p.seatConflict)
+    .map((p: { id: string }) => p.id)
+    .sort();
+  assert.deepEqual(flagged, [ids[0], ids[1]].sort());
+});
+
 test('GET /api/matchmaking/history lists past draws for this game, newest first, with team scores', async () => {
   const game = await request(app).post('/api/games').send({ name: 'History Test Game' });
   const names = ['M', 'N'];
@@ -330,6 +359,47 @@ test('PATCH /api/matchmaking/draws/:id/move moves a player and recomputes totals
 
   const history = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}`);
   assert.equal(teamOf(history.body.history[0].teams, ids[0]), toTeam);
+});
+
+test('PATCH /api/matchmaking/draws/:id/move recomputes seat-conflict flags after a manual reassignment', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Move Seating Test Game' });
+  const names = ['MoveSeatA', 'MoveSeatB', 'MoveSeatC', 'MoveSeatD'];
+  const ratings = [8, 7, 6, 1];
+  const ids: string[] = [];
+  for (let i = 0; i < names.length; i++) {
+    const p = await request(app).post('/api/players').send({ name: names[i] });
+    ids.push(p.body.id);
+    await request(app).put('/api/skills').send({ playerId: p.body.id, gameId: game.body.id, rating: ratings[i] });
+  }
+  await request(app).put(`/api/players/${ids[0]}/neighbors`).send({ neighborIds: [ids[1]] });
+
+  // Balanced draft with avoidAdjacentOpponents on: the two neighbors start
+  // out on the same team (no unresolved conflict), see the sibling test
+  // above ("keeps seat neighbors together...") for the same ratings shape.
+  const draw = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: ids, teamCount: 2, avoidAdjacentOpponents: true });
+  assert.equal(draw.body.seatConflicts, 0);
+
+  const teamOf = (teams: Array<{ players: { id: string }[] }>, id: string) =>
+    teams.findIndex((t) => t.players.some((p) => p.id === id));
+  const neighborTeam = teamOf(draw.body.teams, ids[1]);
+  const otherTeam = neighborTeam === 0 ? 1 : 0;
+
+  // Manually pulling the first neighbor onto the other team creates a fresh,
+  // unresolved conflict — the move endpoint should flag it even though the
+  // original draw had none.
+  const moved = await request(app)
+    .patch(`/api/matchmaking/draws/${draw.body.id}/move`)
+    .send({ playerId: ids[0], toTeamIndex: otherTeam });
+  assert.equal(moved.status, 200);
+  assert.equal(moved.body.seatConflicts, 1);
+  const flagged = moved.body.teams
+    .flatMap((t: { players: { id: string; seatConflict: boolean }[] }) => t.players)
+    .filter((p: { seatConflict: boolean }) => p.seatConflict)
+    .map((p: { id: string }) => p.id)
+    .sort();
+  assert.deepEqual(flagged, [ids[0], ids[1]].sort());
 });
 
 test('PATCH /api/matchmaking/draws/:id/move 404s for an unknown draw', async () => {

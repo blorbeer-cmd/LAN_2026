@@ -110,6 +110,7 @@ function renderDrawCard(draw, { editable }) {
           <div class="team-player">
             ${avatarHtml(p, 18)}
             <span style="flex:1;">${escapeHtml(p.name)}</span>
+            ${p.seatConflict ? `<span title="Sitzt gegen Sitznachbar" style="color:var(--state-paused);">${icon('armchair')}</span>` : ''}
             ${p.rating != null ? `<span class="rating">${p.rating}</span>` : ''}
             ${
               editable && draw.teams.length > 1

@@ -8,7 +8,14 @@ import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
-import { balanceTeams, computeTeamCount, countSeatConflicts, type PlayerRating, type SeatPair } from '../matchmaking';
+import {
+  balanceTeams,
+  computeTeamCount,
+  countSeatConflicts,
+  seatConflictPlayerIds,
+  type PlayerRating,
+  type SeatPair,
+} from '../matchmaking';
 import { isIntInRange } from '../validation';
 import { getTrackingEventId } from '../events';
 
@@ -27,6 +34,28 @@ interface PlayerRow {
   name: string;
   color: string;
   avatar: string | null;
+}
+
+// Declared seat-neighbor pairs among a set of players, deduped (neighbors are
+// stored per-direction — see seat_neighbors' comment in db.ts). Shared by the
+// initial draw and by re-deriving conflicts after a manual Feinschliff move.
+function loadAvoidPairs(eventId: string, playerIds: string[]): SeatPair[] {
+  const placeholders = playerIds.map(() => '?').join(',');
+  const neighborRows = db
+    .prepare(
+      `SELECT player_id, neighbor_id FROM seat_neighbors
+       WHERE event_id = ? AND player_id IN (${placeholders}) AND neighbor_id IN (${placeholders})`
+    )
+    .all(eventId, ...playerIds, ...playerIds) as Array<{ player_id: string; neighbor_id: string }>;
+  const seen = new Set<string>();
+  const pairs: SeatPair[] = [];
+  for (const r of neighborRows) {
+    const key = [r.player_id, r.neighbor_id].sort().join('::');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    pairs.push([r.player_id, r.neighbor_id]);
+  }
+  return pairs;
 }
 
 // POST /api/matchmaking
@@ -84,37 +113,19 @@ matchmakingRouter.post('/', (req, res) => {
 
   // Seat neighbors only get looked up when this particular draw asked for
   // it (FR-18 extension) — skip the query entirely otherwise.
-  const avoidPairs: SeatPair[] = [];
-  if (avoidAdjacentOpponents) {
-    const neighborRows = db
-      .prepare(
-        `SELECT player_id, neighbor_id FROM seat_neighbors
-         WHERE event_id = ? AND player_id IN (${placeholders}) AND neighbor_id IN (${placeholders})`
-      )
-      .all(getTrackingEventId(), ...uniqueIds, ...uniqueIds) as Array<{
-      player_id: string;
-      neighbor_id: string;
-    }>;
-    // Neighbors are declared per-direction (see seat_neighbors' comment in
-    // db.ts) — dedupe A-B/B-A into a single pair so it isn't double-weighted.
-    const seen = new Set<string>();
-    for (const r of neighborRows) {
-      const key = [r.player_id, r.neighbor_id].sort().join('::');
-      if (seen.has(key)) continue;
-      seen.add(key);
-      avoidPairs.push([r.player_id, r.neighbor_id]);
-    }
-  }
+  const avoidPairs: SeatPair[] = avoidAdjacentOpponents ? loadAvoidPairs(getTrackingEventId(), uniqueIds) : [];
 
   const resolvedTeamCount = computeTeamCount(teamCount, players.length, game.max_team_size);
   const teamIdLists = balanceTeams(ratings, resolvedTeamCount, avoidPairs);
   const seatConflicts = countSeatConflicts(teamIdLists, avoidPairs);
+  const conflictIds = seatConflictPlayerIds(teamIdLists, avoidPairs);
 
   const playerById = new Map(players.map((p) => [p.id, p]));
   const teams = teamIdLists.map((ids) => {
     const teamPlayers = ids.map((id) => ({
       ...playerById.get(id)!,
       rating: ratingByPlayer.get(id) ?? DEFAULT_RATING,
+      seatConflict: conflictIds.has(id),
     }));
     return {
       players: teamPlayers,
@@ -130,6 +141,11 @@ matchmakingRouter.post('/', (req, res) => {
     teams,
     seatConflicts,
     seatPairsConsidered: avoidPairs.length,
+    // Only used client-side to re-derive per-player conflict flags after a
+    // manual Feinschliff move on an unsaved proposal (e.g. the tournament
+    // create form) — not persisted, the saved draw's `teams` already carries
+    // the flags baked in.
+    avoidPairs,
     generatedAt: Date.now(),
     matchId: null as string | null,
     source: null as string | null,
@@ -341,14 +357,17 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
   }
 
   const row = db.prepare('SELECT * FROM matchmaking_draws WHERE id = ?').get(req.params.id) as
-    | { id: string; game_id: string; teams: string; match_id: string | null }
+    | { id: string; game_id: string; event_id: string; teams: string; match_id: string | null; seat_pairs_considered: number }
     | undefined;
   if (!row) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
   if (row.match_id) {
     return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
   }
 
-  const teams = JSON.parse(row.teams) as Array<{ players: Array<{ id: string; rating: number | null }>; totalRating: number }>;
+  const teams = JSON.parse(row.teams) as Array<{
+    players: Array<{ id: string; rating: number | null; seatConflict?: boolean }>;
+    totalRating: number;
+  }>;
   if (toTeamIndex >= teams.length) {
     return res.status(400).json({ error: 'toTeamIndex ist ungültig.' });
   }
@@ -369,7 +388,26 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
     }
   }
 
-  db.prepare('UPDATE matchmaking_draws SET teams = ? WHERE id = ?').run(JSON.stringify(teams), row.id);
+  // The move can turn a resolved seat-neighbor pair into a conflict (or fix
+  // one) — only re-derive it when this draw actually considered seat
+  // neighbors in the first place (avoidAdjacentOpponents was on for it).
+  let seatConflicts = 0;
+  if (row.seat_pairs_considered > 0) {
+    const allIds = teams.flatMap((t) => t.players.map((p) => p.id));
+    const avoidPairs = loadAvoidPairs(row.event_id, allIds);
+    const teamIdLists = teams.map((t) => t.players.map((p) => p.id));
+    seatConflicts = countSeatConflicts(teamIdLists, avoidPairs);
+    const conflictIds = seatConflictPlayerIds(teamIdLists, avoidPairs);
+    for (const t of teams) {
+      for (const p of t.players) p.seatConflict = conflictIds.has(p.id);
+    }
+  }
+
+  db.prepare('UPDATE matchmaking_draws SET teams = ?, seat_conflicts = ? WHERE id = ?').run(
+    JSON.stringify(teams),
+    seatConflicts,
+    row.id
+  );
 
   const updated = db
     .prepare(
