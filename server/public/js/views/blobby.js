@@ -2,9 +2,11 @@ import { getToken } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
+import { getAdminPin, isAdmin } from '../admin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { allLobbyReady, lobbyPlayerChipsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeInfoGridHtml, matchRosterHtml } from './arcadeUi.js';
 
 const W = 1000;
 const H = 600;
@@ -138,7 +140,11 @@ function hostStart() {
 export function renderBlobbyLobbyCard() {
   const lobby = myBlobbyLobby(); const noMe = !myId();
   return `<div class="card stack"><div class="row-between" style="gap:var(--space-3);"><strong>Blobby-Volley-Lobby</strong>
-    <button type="button" class="btn btn-primary btn-sm btn-equal" id="blobby-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div>
+    <div class="row" style="gap:var(--space-2);">${isAdmin() ? `<button type="button" class="btn btn-sm btn-equal" id="blobby-bot" ${lobby || match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="blobby-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div></div>
+    ${arcadeInfoGridHtml([
+      { label: 'Ziel', text: 'Erreiche zuerst die Punktzahl.' },
+      { label: 'Steuerung', text: 'Pfeiltasten.' },
+    ])}
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}${lobbyList()}${hostStart()}</div>`;
 }
 export function wireBlobbyLobbyCard(container) {
@@ -146,6 +152,10 @@ export function wireBlobbyLobbyCard(container) {
   container.querySelector('#blobby-create')?.addEventListener('click', async () => {
     const res = await emitAck('blobby:lobby:create', { playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
+  });
+  container.querySelector('#blobby-bot')?.addEventListener('click', async () => {
+    const res = await emitAck('blobby:lobby:bot', { playerId: myId(), adminPin: getAdminPin() });
+    if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelectorAll('[data-blobby-join]').forEach((b) => b.addEventListener('click', async () => {
     const res = await emitAck('blobby:lobby:join', { lobbyId: b.dataset.blobbyJoin, playerId: myId() });
@@ -265,24 +275,33 @@ function flashPoint(name) {
   const el = document.querySelector('#blobby-point'); if (!el) return;
   el.textContent = `Punkt für ${name || 'Spieler'}!`; el.hidden = false; setTimeout(() => { el.hidden = true; }, 900);
 }
-function scoreHtml() {
-  const goal = match?.targetScore ?? latest?.targetScore ?? targetScore;
-  return (match?.scores ?? latest?.scores ?? []).map((s) => `<span class="chip"><strong>${escapeHtml(s.name)}</strong> ${s.score}/${goal}</span>`).join('');
-}
 function updateScoreDisplay() {
-  const score = document.querySelector('#blobby-score');
-  if (score) score.innerHTML = scoreHtml();
+  const roster = document.querySelector('#blobby-roster');
+  if (!roster || !match) return;
+  roster.innerHTML = matchRosterHtml(match.players, {
+    winnerId: match.winner?.id ?? null,
+    scoreFor: (player) => {
+      const score = (match?.scores ?? latest?.scores ?? []).find((s) => s.playerId === player.id)?.score ?? 0;
+      return `${score}/${match?.targetScore ?? latest?.targetScore ?? targetScore}`;
+    },
+  });
 }
 function resultHtml() {
   if (!match?.ended) return '';
-  const label = match.winner ? (match.winner.id === myId() ? 'Du gewinnst!' : `${escapeHtml(match.winner.name)} gewinnt`) : 'Match beendet';
-  return `<div class="card arcade-winner-card"><strong>${label}</strong><button class="btn btn-primary" id="blobby-back">Zurück zum Arcade</button></div>`;
+  return `<div class="card arcade-winner-card"><strong>Match beendet</strong><button class="btn btn-primary" id="blobby-back">Zur Arcade</button></div>`;
 }
 export function renderBlobby(container) {
   ensureBlobbySocket();
   if (!match) { container.innerHTML = '<button class="btn btn-sm" data-navigate="arcade">‹ Arcade</button><div class="empty-state">Kein laufendes Blobby-Volley-Match.</div>'; return; }
   const host = match.host?.id === myId();
-  container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Blobby Volley</h1><div id="blobby-score" class="chip-list blobby-score">${scoreHtml()}</div>
+  const roster = matchRosterHtml(match.players, {
+    winnerId: match.winner?.id ?? null,
+    scoreFor: (player) => {
+      const score = (match?.scores ?? latest?.scores ?? []).find((s) => s.playerId === player.id)?.score ?? 0;
+      return `${score}/${match?.targetScore ?? latest?.targetScore ?? targetScore}`;
+    },
+  });
+  container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Blobby Volley</h1><div id="blobby-roster">${roster}</div>
     <div class="blobby-court"><canvas id="blobby-canvas" width="${W}" height="${H}"></canvas><div id="blobby-point" class="blobby-point" hidden></div>${match.paused ? '<div class="blobby-pause-overlay">Pause</div>' : ''}</div>
     ${host && !match.ended ? `<div class="arcade-match-controls">${match.paused ? '<button class="btn btn-sm btn-equal btn-primary" id="blobby-resume">Fortsetzen</button>' : '<button class="btn btn-sm btn-equal" id="blobby-pause">Pausieren</button>'}<button class="btn btn-sm btn-equal btn-danger" id="blobby-finish">Beenden</button></div>` : ''}${resultHtml()}</div>`;
   wireGame(container); startAnimation();
