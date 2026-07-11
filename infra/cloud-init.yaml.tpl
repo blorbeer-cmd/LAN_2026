@@ -7,7 +7,7 @@
 #
 # Placeholders substituted by the workflow (its envsubst whitelist), never
 # committed with real values: SSH_PUBLIC_KEY, CF_TUNNEL_TOKEN,
-# APP_ACCESS_TOKEN, APP_ADMIN_PIN, GHCR_PULL_TOKEN, GHCR_PULL_USERNAME,
+# APP_ACCESS_TOKEN, GHCR_PULL_TOKEN, GHCR_PULL_USERNAME,
 # INITIAL_IMAGE — GHCR_PULL_USERNAME isn't secret (it's just github.actor,
 # whoever ran the provision workflow — not a repo owner or a new secret),
 # and INITIAL_IMAGE exists only
@@ -70,7 +70,6 @@ write_files:
     permissions: '0600'
     content: |
       ACCESS_TOKEN=$APP_ACCESS_TOKEN
-      ADMIN_PIN=$APP_ADMIN_PIN
       CF_TUNNEL_TOKEN=$CF_TUNNEL_TOKEN
       GHCR_PULL_TOKEN=$GHCR_PULL_TOKEN
       GHCR_PULL_USERNAME=$GHCR_PULL_USERNAME

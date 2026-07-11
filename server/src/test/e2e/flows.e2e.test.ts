@@ -856,3 +856,45 @@ test('Kiosk: shows an open food order (when/where only), and the last-push banne
   await page.waitForSelector('#kiosk-broadcast >> text=Kiosk-Test-Pizza');
   await page.waitForSelector('.kiosk-broadcast-time');
 });
+
+test('Admin: one-tap mode with banner, seeded test users visible only in admin mode', async () => {
+  await page.goto(BASE_URL);
+  await page.waitForSelector('#app:not([hidden])');
+
+  // Enter admin mode — no PIN prompt, one tap (see docs/KONZEPT-TEST-USER.md).
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="admin"]');
+  await page.click('#admin-activate');
+  await page.waitForSelector('#admin-banner:not([hidden]) >> text=Admin-Modus aktiv');
+
+  // Seed test users; the admin toggle triggers a refresh, so re-open the view.
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="admin"]');
+  await page.fill('#admin-count', '3');
+  await page.click('#admin-bulk');
+  await page.waitForSelector('text=3 Test-Spieler vorhanden');
+  await page.waitForSelector('.badge-paused >> text=Test');
+
+  // Visible on the roster (Mehr → Spieler) while in admin mode...
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="players"]');
+  await page.waitForSelector('text=Test Alex');
+
+  // ...gone everywhere once admin mode is left via the banner.
+  await page.click('#admin-banner-leave');
+  await page.waitForSelector('#admin-banner', { state: 'hidden' });
+  await page.waitForFunction(() => !document.body.textContent?.includes('Test Alex'));
+
+  // Back in admin mode, cleanup removes them and their data again.
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="admin"]');
+  await page.click('#admin-activate');
+  await page.waitForSelector('#admin-banner:not([hidden])');
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="admin"]');
+  await page.click('#admin-cleanup');
+  // confirmDialog is an in-app modal (not a native browser dialog).
+  await page.click('[data-confirm]');
+  await page.waitForSelector('text=0 Test-Spieler vorhanden');
+  await page.click('#admin-banner-leave');
+});
