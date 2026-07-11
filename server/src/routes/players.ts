@@ -22,6 +22,7 @@ const DEFAULT_COLOR = '#4f9dff';
 interface PlayerRow {
   id: string;
   name: string;
+  real_name: string | null;
   color: string;
   avatar: string | null;
   api_key: string;
@@ -29,6 +30,17 @@ interface PlayerRow {
   is_admin: number;
   created_at: number;
   agent_last_seen?: number | null;
+}
+
+// realName is optional and clearable (unlike the required gamer `name`): a
+// missing field leaves it untouched, null or an all-whitespace string clears
+// it, anything else must pass the same 1-60 char check as other free-text
+// names.
+function resolveRealName(realName: unknown, existing: string | null): string | null | { error: string } {
+  if (realName === undefined) return existing;
+  if (realName === null || (typeof realName === 'string' && realName.trim() === '')) return null;
+  if (!isNonEmptyString(realName)) return { error: 'Richtiger Name muss 1-60 Zeichen lang sein.' };
+  return realName.trim();
 }
 
 // Case-insensitive lookup used to give a friendly 409 instead of letting the
@@ -72,10 +84,14 @@ playersRouter.get('/:id', (req, res) => {
 // POST /api/players - create a player. Returns the API key once here (and via
 // the single-player GET) so the frontend can show/copy it.
 playersRouter.post('/', (req, res) => {
-  const { name, color, avatar } = req.body ?? {};
+  const { name, realName, color, avatar } = req.body ?? {};
 
   if (!isNonEmptyString(name)) {
     return res.status(400).json({ error: 'Name ist erforderlich (1-60 Zeichen).' });
+  }
+  const resolvedRealName = resolveRealName(realName, null);
+  if (resolvedRealName !== null && typeof resolvedRealName === 'object') {
+    return res.status(400).json(resolvedRealName);
   }
   if (color !== undefined && !isHexColor(color)) {
     return res.status(400).json({ error: 'Farbe muss ein Hex-Code sein, z.B. #4f9dff.' });
@@ -91,6 +107,7 @@ playersRouter.post('/', (req, res) => {
   const row: PlayerRow = {
     id: nanoid(),
     name: trimmedName,
+    real_name: resolvedRealName,
     color: color ?? DEFAULT_COLOR,
     avatar: avatar ?? null,
     api_key: nanoid(24),
@@ -103,8 +120,8 @@ playersRouter.post('/', (req, res) => {
   };
 
   db.prepare(
-    'INSERT INTO players (id, name, color, avatar, api_key, tracking_paused, is_admin, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(row.id, row.name, row.color, row.avatar, row.api_key, row.tracking_paused, row.is_admin, row.created_at);
+    'INSERT INTO players (id, name, real_name, color, avatar, api_key, tracking_paused, is_admin, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(row.id, row.name, row.real_name, row.color, row.avatar, row.api_key, row.tracking_paused, row.is_admin, row.created_at);
 
   broadcast(Events.playersChanged, null);
   res.status(201).json(row);
@@ -123,9 +140,13 @@ playersRouter.patch('/:id', (req, res) => {
     | undefined;
   if (!existing) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
-  const { name, color, avatar, trackingPaused, isAdmin } = req.body ?? {};
+  const { name, realName, color, avatar, trackingPaused, isAdmin } = req.body ?? {};
   if (name !== undefined && !isNonEmptyString(name)) {
     return res.status(400).json({ error: 'Name muss 1-60 Zeichen lang sein.' });
+  }
+  const nextRealName = resolveRealName(realName, existing.real_name);
+  if (nextRealName !== null && typeof nextRealName === 'object') {
+    return res.status(400).json(nextRealName);
   }
   if (color !== undefined && !isHexColor(color)) {
     return res.status(400).json({ error: 'Farbe muss ein Hex-Code sein, z.B. #4f9dff.' });
@@ -152,8 +173,9 @@ playersRouter.patch('/:id', (req, res) => {
   const nextTrackingPaused = trackingPaused !== undefined ? (trackingPaused ? 1 : 0) : existing.tracking_paused;
   const nextIsAdmin = isAdmin !== undefined ? (isAdmin ? 1 : 0) : existing.is_admin;
 
-  db.prepare('UPDATE players SET name = ?, color = ?, avatar = ?, tracking_paused = ?, is_admin = ? WHERE id = ?').run(
+  db.prepare('UPDATE players SET name = ?, real_name = ?, color = ?, avatar = ?, tracking_paused = ?, is_admin = ? WHERE id = ?').run(
     nextName,
+    nextRealName,
     nextColor,
     nextAvatar,
     nextTrackingPaused,
@@ -165,6 +187,7 @@ playersRouter.patch('/:id', (req, res) => {
   res.json({
     ...existing,
     name: nextName,
+    real_name: nextRealName,
     color: nextColor,
     avatar: nextAvatar,
     tracking_paused: nextTrackingPaused,

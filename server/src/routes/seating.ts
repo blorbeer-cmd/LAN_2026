@@ -22,13 +22,16 @@ export const seatingRouter = Router();
 interface PlayerRow {
   id: string;
   name: string;
+  real_name: string | null;
   color: string;
   avatar: string | null;
   is_test: number;
 }
 
 function getPlayers(): PlayerRow[] {
-  return db.prepare('SELECT id, name, color, avatar, is_test FROM players ORDER BY name COLLATE NOCASE').all() as PlayerRow[];
+  return db
+    .prepare('SELECT id, name, real_name, color, avatar, is_test FROM players ORDER BY name COLLATE NOCASE')
+    .all() as PlayerRow[];
 }
 
 function getLayoutResponse(eventId: string) {

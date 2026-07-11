@@ -10,7 +10,7 @@ import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
 import { isAdmin, setAdmin } from './admin.js';
 import { filterTestUsers } from './testFilter.js';
-import { renderHome, invalidateDigest, invalidatePushFeed, invalidateHomeStatus } from './views/home.js';
+import { renderHome, invalidateDigest, invalidatePushFeed, invalidateHomeStatus, invalidateHomeSeating } from './views/home.js';
 import { renderPlayers } from './views/players.js';
 import { renderSettings } from './views/games.js';
 import { renderMatchmaking, invalidateMatchmakingHistory, setDraftState } from './views/matchmaking.js';
@@ -30,7 +30,7 @@ import { renderAnalytics } from './views/analytics.js';
 import { renderProfile } from './views/profile.js';
 import { renderTournaments, invalidateTournaments, focusTournament } from './views/tournament.js';
 import { renderHallOfFame } from './views/hallOfFame.js';
-import { renderSeating } from './views/seating.js';
+import { renderSeating, invalidateSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
 import { renderMore } from './views/more.js';
 import { renderAdmin } from './views/admin.js';
@@ -256,6 +256,13 @@ function wireSocket() {
       // leaderboard:changed, the only one that actually changes match
       // history) — the next time the Spiele view opens it just refetches.
       invalidateSkillSuggestions();
+      // players:changed covers a renamed gamer/real name or new avatar —
+      // both the Home board and the Sitzplan editor embed a snapshot of
+      // player data alongside the layout, so they need the same treatment
+      // or they'd keep showing the old name for the rest of the session on
+      // any device that already has it cached.
+      invalidateHomeSeating();
+      invalidateSeating();
       ctx.refresh();
     })
   );

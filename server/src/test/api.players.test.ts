@@ -96,6 +96,49 @@ test('PATCH /api/players/:id rejects an invalid avatar value', async () => {
   assert.equal(res.status, 400);
 });
 
+test('POST /api/players accepts an optional realName', async () => {
+  const res = await request(app).post('/api/players').send({ name: 'RealName Rex', realName: 'Max Mustermann' });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.real_name, 'Max Mustermann');
+  await request(app).delete(`/api/players/${res.body.id}`);
+});
+
+test('POST /api/players rejects a too-long realName', async () => {
+  const res = await request(app)
+    .post('/api/players')
+    .send({ name: 'RealName Overflow', realName: 'x'.repeat(61) });
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /Richtiger Name/);
+});
+
+test('PATCH /api/players/:id sets, then clears, realName (null and empty string both clear it)', async () => {
+  const set = await request(app).patch(`/api/players/${createdId}`).send({ realName: 'Alexandra Musterfrau' });
+  assert.equal(set.status, 200);
+  assert.equal(set.body.real_name, 'Alexandra Musterfrau');
+
+  const stillSet = await request(app).get(`/api/players/${createdId}`);
+  assert.equal(stillSet.body.real_name, 'Alexandra Musterfrau');
+
+  // Omitting the field entirely leaves it untouched.
+  const untouched = await request(app).patch(`/api/players/${createdId}`).send({ color: '#123456' });
+  assert.equal(untouched.body.real_name, 'Alexandra Musterfrau');
+
+  const clearedByNull = await request(app).patch(`/api/players/${createdId}`).send({ realName: null });
+  assert.equal(clearedByNull.status, 200);
+  assert.equal(clearedByNull.body.real_name, null);
+
+  await request(app).patch(`/api/players/${createdId}`).send({ realName: 'Set again' });
+  const clearedByEmptyString = await request(app).patch(`/api/players/${createdId}`).send({ realName: '  ' });
+  assert.equal(clearedByEmptyString.status, 200);
+  assert.equal(clearedByEmptyString.body.real_name, null);
+});
+
+test('PATCH /api/players/:id rejects a too-long realName', async () => {
+  const res = await request(app).patch(`/api/players/${createdId}`).send({ realName: 'x'.repeat(61) });
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /Richtiger Name/);
+});
+
 test('PATCH /api/players/:id accepts and stores a valid avatar data URL', async () => {
   const avatar = 'data:image/png;base64,aGVsbG8=';
   const res = await request(app).patch(`/api/players/${createdId}`).send({ avatar });

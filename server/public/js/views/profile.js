@@ -179,12 +179,16 @@ export function renderProfile(container, ctx) {
         <div class="stack" style="flex:1;gap:var(--space-2);">
           <div class="row">
             <input type="color" id="profile-color" value="${me.color}" />
-            <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" style="flex:1;" />
+            <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" style="flex:1;" placeholder="Gamer-Name" />
           </div>
+          <input type="text" id="profile-real-name" value="${escapeHtml(me.real_name || '')}" maxlength="60" placeholder="Richtiger Name (optional)" />
           <button type="button" class="btn btn-primary btn-sm" id="profile-save">Speichern</button>
         </div>
       </div>
-      <div class="muted" style="font-size:var(--font-size-xs);">Bild antippen zum Ändern. Name muss über alle Spieler eindeutig sein.</div>
+      <div class="muted" style="font-size:var(--font-size-xs);">
+        Bild antippen zum Ändern. Gamer-Name muss über alle Spieler eindeutig sein. Der richtige Name ist
+        optional und wird klein im Sitzplan angezeigt – hilft Neulingen, dich am Tisch zu finden.
+      </div>
     </div>
 
     ${
@@ -342,10 +346,11 @@ export function renderProfile(container, ctx) {
 
   container.querySelector('#profile-save').addEventListener('click', async () => {
     const name = container.querySelector('#profile-name').value.trim();
+    const realName = container.querySelector('#profile-real-name').value.trim();
     const color = container.querySelector('#profile-color').value;
     if (!name) return showToast('Name darf nicht leer sein.', { error: true });
     try {
-      await api.players.update(myId, { name, color });
+      await api.players.update(myId, { name, realName: realName || null, color });
       await ctx.refresh();
       showToast('Gespeichert.');
     } catch (err) {

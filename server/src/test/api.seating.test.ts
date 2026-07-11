@@ -54,6 +54,16 @@ test('GET /api/seating dedupes a pair declared from both directions', async () =
   assert.equal(bcPairs.length, 1);
 });
 
+test('GET /api/seating/layout includes each player\'s optional real name', async () => {
+  await request(app).patch(`/api/players/${a}`).send({ realName: 'Anna Beispiel' });
+
+  const res = await request(app).get('/api/seating/layout');
+  const playerA = res.body.players.find((p: { id: string }) => p.id === a);
+  const playerB = res.body.players.find((p: { id: string }) => p.id === b);
+  assert.equal(playerA.real_name, 'Anna Beispiel');
+  assert.equal(playerB.real_name, null); // never set - stays null, not undefined/omitted
+});
+
 test('GET /api/seating/layout returns a four-sided default table', async () => {
   const res = await request(app).get('/api/seating/layout');
   assert.equal(res.status, 200);

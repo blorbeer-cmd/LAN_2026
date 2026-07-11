@@ -23,6 +23,14 @@ window.addEventListener('seating:changed', () => {
   seatingCache = null;
 });
 
+// A player's name/real name/avatar can change (players:changed) without the
+// seating layout itself changing — the cached board would otherwise keep
+// showing the old real name for the rest of the session on any device that
+// already loaded it (CLAUDE.md: realtime by default, no manual reload).
+export function invalidateHomeSeating() {
+  seatingCache = null;
+}
+
 async function loadSeating(ctx) {
   seatingLoading = true;
   try {
