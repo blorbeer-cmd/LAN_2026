@@ -956,73 +956,9 @@ button.card {
   border-top: 1px solid var(--border);
 }
 .arcade-winner-card {
-  position: relative;
   display: grid;
   gap: var(--space-3);
-  justify-items: center;
-  text-align: center;
   margin-top: var(--space-3);
-  overflow: hidden;
-}
-.arcade-winner-burst {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.arcade-winner-burst span {
-  position: absolute;
-  left: 50%;
-  top: 36px;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-full);
-  border: 2px solid rgba(91, 140, 255, 0.35);
-  transform: translate(-50%, -50%) scale(0.4);
-  animation: arcade-winner-ring 1.6s ease-out infinite;
-}
-.arcade-winner-burst span:nth-child(2) {
-  animation-delay: 0.28s;
-  border-color: rgba(34, 197, 94, 0.35);
-}
-.arcade-winner-burst span:nth-child(3) {
-  animation-delay: 0.56s;
-  border-color: rgba(239, 93, 168, 0.32);
-}
-.arcade-winner-crown {
-  position: relative;
-  z-index: 1;
-  font-size: var(--font-size-3xl);
-  animation: arcade-winner-pop 0.9s ease-out both;
-}
-.arcade-winner-label {
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  margin-bottom: var(--space-1);
-}
-@keyframes arcade-winner-ring {
-  0% {
-    opacity: 0.95;
-    transform: translate(-50%, -50%) scale(0.35);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(5);
-  }
-}
-@keyframes arcade-winner-pop {
-  0% {
-    opacity: 0;
-    transform: translateY(8px) scale(0.7);
-  }
-  70% {
-    transform: translateY(-2px) scale(1.08);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
 }
 
 /* ---------- Scribble (skribbl.io-style draw & guess arcade game) ---------- */
@@ -1047,6 +983,10 @@ button.card {
   height: 100%;
   display: block;
   cursor: crosshair;
+}
+.arcade-game-shell .scribble-stage-card {
+  width: min(100%, 820px);
+  margin-inline: auto;
 }
 .scribble-canvas-locked {
   cursor: default;
@@ -1593,21 +1533,60 @@ button.card {
 .arcade-game-shell > .view-title {
   text-align: center;
 }
-.arcade-score-row {
-  justify-content: center;
-}
-.arcade-game-help {
-  margin: var(--space-3) auto 0;
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  text-align: center;
-}
 .arcade-match-controls {
   display: flex;
   justify-content: center;
   gap: var(--space-2);
   flex-wrap: wrap;
   margin-top: var(--space-3);
+}
+.arcade-roster {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+.arcade-player-tile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 72px;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--bg-elevated), var(--bg-elevated-2));
+  box-shadow: var(--shadow-card);
+}
+.arcade-player-tile.is-winner {
+  border-color: rgba(91, 140, 255, 0.82);
+  background: linear-gradient(135deg, rgba(91, 140, 255, 0.18), rgba(239, 93, 168, 0.14));
+  box-shadow: 0 0 0 1px rgba(145, 99, 245, 0.22), 0 0 28px rgba(145, 99, 245, 0.24);
+}
+.arcade-player-tile-body {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+.arcade-player-tile-score,
+.arcade-player-tile-detail {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+.arcade-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.arcade-info-card {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+}
+.arcade-info-text {
+  color: var(--text);
+  font-size: var(--font-size-sm);
 }
 .arcade-game-shell .quiz-stage-card {
   width: min(100%, 680px);
@@ -2438,3 +2417,10 @@ input[type='number'].bracket-score-input {
     font-size: var(--font-size-2xl);
   }
 }
+
+.snake-lobby-row { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding:var(--space-2); border:1px solid var(--border); border-radius:var(--radius-md); }
+.snake-lobby-row small { display:block; color:var(--text-muted); }
+.snake-game { position:relative; width:min(100%, 720px); margin:0 auto; padding:var(--space-2); overflow:hidden; background:linear-gradient(135deg,rgba(91,140,255,.12),rgba(239,93,168,.1)); }
+#snake-canvas { display:block; width:100%; aspect-ratio:8/5; border-radius:var(--radius-md); box-shadow:0 0 30px rgba(145,99,245,.18); touch-action:none; }
+.snake-score { justify-content:center; gap:var(--space-2); margin-bottom:var(--space-3); }
+.snake-overlay { position:absolute; inset:0; display:grid; place-items:center; font-size:var(--font-size-xl); font-weight:var(--font-weight-bold); color:var(--text); background:rgba(10,13,27,.62); }

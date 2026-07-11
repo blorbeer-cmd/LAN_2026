@@ -17,9 +17,11 @@ import { getToken } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
+import { getAdminPin, isAdmin } from '../admin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { allLobbyReady, lobbyPlayerChipsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeInfoGridHtml, matchRosterHtml } from './arcadeUi.js';
 
 const COLS = 10;
 const ROWS = 20;
@@ -323,6 +325,18 @@ function updateStatLine(prefix, playerState) {
   }
 }
 
+function updateRosterDisplay() {
+  const roster = document.querySelector('#tetris-roster');
+  if (!roster || !match || !latestState) return;
+  roster.innerHTML = matchRosterHtml(match.players, {
+    winnerId: match.winner?.id ?? null,
+    scoreFor: (player) => {
+      const state = latestState.players.find((p) => p.playerId === player.id);
+      return state ? `${state.score} Pkt · ${state.lines} Z` : '0 Pkt';
+    },
+  });
+}
+
 // Fire the clear FX when a board's line count jumps between snapshots.
 function checkClearFx(prefix, playerState) {
   if (!playerState) return;
@@ -341,6 +355,7 @@ function paint() {
   const right = me ? opp : latestState.players[1];
   drawBoard(document.querySelector('#tetris-mine'), left);
   drawBoard(document.querySelector('#tetris-opponent'), right);
+  updateRosterDisplay();
   updateStatLine('tetris-mine', left);
   updateStatLine('tetris-opponent', right);
   checkClearFx('tetris-mine', left);
@@ -421,8 +436,12 @@ export function renderTetrisLobbyCard() {
     <div class="card stack">
       <div class="row-between" style="gap:var(--space-3);">
         <strong>Tetris-Lobby</strong>
-        <button type="button" class="btn btn-primary btn-sm btn-equal" id="tetris-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+        <div class="row" style="gap:var(--space-2);">${isAdmin() ? `<button type="button" class="btn btn-sm btn-equal" id="tetris-bot" ${lobby || match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="tetris-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div>
       </div>
+      ${arcadeInfoGridHtml([
+        { label: 'Ziel', text: 'Überleben.' },
+        { label: 'Steuerung', text: 'Pfeiltasten + Leertaste.' },
+      ])}
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
       ${renderLobbyList()}
       ${hostStartHtml()}
@@ -430,6 +449,10 @@ export function renderTetrisLobbyCard() {
 }
 
 export function wireTetrisLobbyCard(container) {
+  container.querySelector('#tetris-bot')?.addEventListener('click', async () => {
+    const res = await emitWithAck('tetris:lobby:bot', { playerId: myId(), adminPin: getAdminPin() });
+    if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
+  });
   container.querySelector('#tetris-create')?.addEventListener('click', async () => {
     const playerId = myId();
     if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
@@ -474,22 +497,10 @@ export function wireTetrisLobbyCard(container) {
 
 function endResultHtml() {
   if (!match?.ended) return '';
-  const winner = match.winner;
-  const iWon = winner && winner.id === myId();
-  const label = winner ? (iWon ? 'Du gewinnst! 🎉' : `${escapeHtml(winner.name)} gewinnt`) : 'Unentschieden';
-  const scores = (match.endScores ?? [])
-    .map((s) => `<span class="chip">${escapeHtml(s.name)} · ${s.score} Pkt · ${s.lines} Z</span>`)
-    .join('');
   return `
-    <div class="card arcade-winner-card" style="margin-top:var(--space-3);">
-      <div class="arcade-winner-burst" aria-hidden="true"><span></span><span></span><span></span></div>
-      <div class="arcade-winner-crown">🏆</div>
-      <div>
-        <div class="arcade-winner-label">Ergebnis</div>
-        <strong>${label}</strong>
-      </div>
-      <div class="chip-list">${scores}</div>
-      <button type="button" class="btn btn-primary" id="tetris-back">Zurück zum Arcade</button>
+    <div class="card arcade-winner-card">
+      <strong>Match beendet</strong>
+      <button type="button" class="btn btn-primary" id="tetris-back">Zur Arcade</button>
     </div>`;
 }
 
@@ -498,7 +509,6 @@ function endResultHtml() {
 function boardColumn(prefix, label) {
   return `
     <div class="tetris-board-col">
-      <div class="tetris-board-label">${label}</div>
       <div id="${prefix}-wrap" class="tetris-canvas-wrap">
         <canvas id="${prefix}" width="${BOARD_W}" height="${BOARD_H}" class="tetris-canvas"></canvas>
         <canvas id="${prefix}-fx" width="${BOARD_W}" height="${BOARD_H}" class="tetris-fx" aria-hidden="true"></canvas>
@@ -535,14 +545,23 @@ export function renderTetris(container, ctx) {
   const opponent = match.players.find((p) => p.id !== myId());
   const oppLabel = amPlayer() ? escapeHtml(opponent?.name ?? 'Gegner') : escapeHtml(match.players[1]?.name ?? 'Spieler 2');
   const meLabel = amPlayer() ? 'Du' : escapeHtml(match.players[0]?.name ?? 'Spieler 1');
+  const winnerId = match.winner?.id ?? null;
+  const roster = matchRosterHtml(match.players, {
+    winnerId,
+    scoreFor: (player) => {
+      const state = latestState?.players?.find((p) => p.playerId === player.id);
+      if (!state) return '0 Pkt';
+      return `${state.score} Pkt · ${state.lines} Z`;
+    },
+  });
   container.innerHTML = `
-    <div class="arcade-game-shell"><h1 class="view-title">🧩 Tetris</h1>
+    <div class="arcade-game-shell"><h1 class="view-title">Tetris</h1>
     <div id="tetris-game">
+      <div id="tetris-roster">${roster}</div>
       <div id="tetris-boards" class="tetris-boards">
         ${boardColumn('tetris-mine', meLabel)}
         ${boardColumn('tetris-opponent', oppLabel)}
       </div>
-      <p class="arcade-game-help">Pfeile bewegen · ↑ dreht · Leertaste setzt ab.</p>
       ${matchControls()}
       ${endResultHtml()}
     </div></div>`;

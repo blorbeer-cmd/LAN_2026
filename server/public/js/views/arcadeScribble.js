@@ -14,10 +14,12 @@
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
+import { getAdminPin, isAdmin } from '../admin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { getToken } from '../api.js';
 import { lobbyPlayerChipsHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeInfoGridHtml, matchRosterHtml } from './arcadeUi.js';
 
 const SWATCHES = [
   '#1a1a1a',
@@ -132,6 +134,7 @@ function secondsLeft() {
 
 function startCountdown() {
   stopCountdown();
+  if (!countdownEl) return;
   updateCountdownBadge();
   countdownInterval = setInterval(updateCountdownBadge, 1000);
 }
@@ -381,9 +384,17 @@ function toolbarHtml() {
     </div>`;
 }
 
-function scoreHtml() {
-  if (!turn?.scores) return '';
-  return turn.scores.map((s) => `<span class="chip">${escapeHtml(s.name)} · ${s.score}</span>`).join('');
+function rosterScoreHtml() {
+  return matchRosterHtml(match.players, {
+    winnerId: matchEnded?.winner?.id ?? null,
+    scoreFor: (player) => `${(turn?.scores ?? []).find((s) => s.playerId === player.id)?.score ?? 0} Pkt`,
+  });
+}
+
+function updateRosterDisplay() {
+  const roster = document.querySelector('#scribble-roster');
+  if (!roster || !match) return;
+  roster.innerHTML = rosterScoreHtml();
 }
 
 function wordChoiceHtml() {
@@ -413,16 +424,19 @@ function matchControlsHtml() {
 }
 
 function winnerCelebrationHtml() {
-  if (!matchEnded?.winner) return '';
+  if (!matchEnded) return '';
+  const roster = matchRosterHtml(match.players, {
+    winnerId: matchEnded.winner?.id ?? null,
+    scoreFor: (player) => {
+      const score = (matchEnded.scores ?? []).find((s) => s.playerId === player.id)?.score ?? 0;
+      return `${score} Pkt`;
+    },
+  });
   return `
     <div class="card arcade-winner-card" style="margin-top:var(--space-3);">
-      <div class="arcade-winner-burst" aria-hidden="true"><span></span><span></span><span></span></div>
-      <div class="arcade-winner-crown">🏆</div>
-      <div>
-        <div class="arcade-winner-label">Gewinner</div>
-        <strong>${escapeHtml(matchEnded.winner.name)}</strong>
-      </div>
-      <div class="chip-list">${(matchEnded.scores ?? []).map((s) => `<span class="chip">${escapeHtml(s.name)} · ${s.score}</span>`).join('')}</div>
+      <strong>Match beendet</strong>
+      ${roster}
+      <button type="button" class="btn btn-primary" id="scribble-back">Zur Arcade</button>
     </div>`;
 }
 
@@ -437,7 +451,7 @@ function guessFormHtml() {
 
 function drawingAreaHtml() {
   return `
-    <div class="card stack" style="margin-top:var(--space-3);">
+    <div class="card stack scribble-stage-card" style="margin-top:var(--space-3);">
       <div class="scribble-word-mask">${escapeHtml((isDrawer() ? turn.currentWord : mask) ?? mask ?? '')}</div>
       <div class="scribble-canvas-wrap ${!isDrawer() ? 'scribble-canvas-locked' : ''}">
         <canvas id="scribble-canvas"></canvas>
@@ -555,6 +569,7 @@ export function ensureScribbleSocket() {
   socket.on('scribble:scores', (payload) => {
     if (!match || payload.matchId !== match.matchId || !turn) return;
     turn = { ...turn, scores: payload.scores };
+    updateRosterDisplay();
   });
 
   socket.on('scribble:turn-end', (payload) => {
@@ -656,7 +671,7 @@ function renderLobbyList() {
           <div class="stack" style="gap:var(--space-2);flex:1;">
             <strong>${escapeHtml(l.host.name)}s Scribble-Lobby</strong>
             <div class="chip-list">${lobbyPlayerChipsHtml(l)}</div>
-            <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length} Spieler · ${readySummaryText(l)} · Host startet</div>
+            <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length} Spieler · ${readySummaryText(l)}</div>
           </div>
           ${action}
         </div>`;
@@ -701,8 +716,12 @@ export function renderScribbleLobbyCard() {
     <div class="card stack">
       <div class="row-between" style="gap:var(--space-3);">
         <strong>Scribble-Lobby</strong>
-        <button type="button" class="btn btn-primary btn-sm btn-equal" id="scribble-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+        <div class="row" style="gap:var(--space-2);">${isAdmin() ? `<button type="button" class="btn btn-sm btn-equal" id="scribble-bot" ${lobby || match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="scribble-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div>
       </div>
+      ${arcadeInfoGridHtml([
+        { label: 'Ziel', text: 'Wörter erraten und Punkte sammeln.' },
+        { label: 'Steuerung', text: 'Zeichnen + Tippen.' },
+      ])}
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
       ${renderLobbyList()}
       ${hostStartHtml()}
@@ -710,6 +729,10 @@ export function renderScribbleLobbyCard() {
 }
 
 export function wireScribbleLobbyCard(container) {
+  container.querySelector('#scribble-bot')?.addEventListener('click', async () => {
+    const res = await emitWithAck('scribble:lobby:bot', { playerId: myId(), adminPin: getAdminPin() });
+    if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
+  });
   container.querySelector('#scribble-create')?.addEventListener('click', async () => {
     const playerId = myId();
     if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
@@ -780,9 +803,7 @@ export function renderScribbleRoom(container) {
 
   if (matchEnded) {
     container.innerHTML = `
-      <h1 class="view-title">✏️ Scribble</h1>
-      ${winnerCelebrationHtml()}
-      <button type="button" class="btn btn-primary btn-block" id="scribble-back" style="margin-top:var(--space-4);">Zurück zum Arcade</button>`;
+      <div class="arcade-game-shell"><h1 class="view-title">Scribble</h1>${winnerCelebrationHtml()}</div>`;
     container.querySelector('#scribble-back')?.addEventListener('click', () => {
       resetMatchState();
       navigate('arcade');
@@ -791,15 +812,10 @@ export function renderScribbleRoom(container) {
   }
 
   container.innerHTML = `
-    <div class="arcade-game-shell"><h1 class="view-title">✏️ Scribble</h1>
-    <div class="row-between">
-      <div class="chip-list">${scoreHtml()}</div>
-      <span id="scribble-countdown" class="badge badge-playing">${secondsLeft()}s</span>
-    </div>
-    ${lastTurnEnd ? `<div class="card stack" style="margin-top:var(--space-3);"><strong>Wort war: ${escapeHtml(lastTurnEnd.word ?? '–')}</strong></div>` : ''}
+    <div class="arcade-game-shell"><h1 class="view-title">Scribble</h1>
+    <div id="scribble-roster">${rosterScoreHtml()}</div>
     ${wordChoiceHtml()}
     ${turn?.phase === 'drawing' ? drawingAreaHtml() : ''}
-    <p class="arcade-game-help">Zeichnen oder raten · richtige Antworten bringen Punkte.</p>
     ${matchControlsHtml()}
     </div>`;
   wireRoom(container);

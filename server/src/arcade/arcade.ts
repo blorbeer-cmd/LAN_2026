@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
+import { adminUnlockValid } from '../auth';
 import { notifyPlayers } from '../push';
 import { matchesAnswer, pickQuestion } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
@@ -8,6 +9,7 @@ import { isLobbyReady, setLobbyReady } from './lobbyReady';
 const DEFAULT_TARGET_SCORE = 5;
 const QUESTION_MS = 20_000;
 const COUNTDOWN_MS = 3000; // "3, 2, 1" intro before the first question
+const QUIZ_BOT = { id: 'quiz-bot', name: 'Quiz-Bot' };
 
 interface PlayerRef {
   id: string;
@@ -42,6 +44,7 @@ interface MatchState {
   targetScore: number;
   currentQuestion: QuizQuestion | null;
   questionTimer: NodeJS.Timeout | null;
+  botTimer: NodeJS.Timeout | null;
   questionExpiresAt: number | null;
   questionRemainingMs: number | null;
   paused: boolean;
@@ -103,7 +106,9 @@ function loadQuestionFor(match: MatchState): QuizQuestion | null {
 
 function clearQuestionTimer(match: MatchState) {
   if (match.questionTimer) clearTimeout(match.questionTimer);
+  if (match.botTimer) clearTimeout(match.botTimer);
   match.questionTimer = null;
+  match.botTimer = null;
   match.questionExpiresAt = null;
 }
 
@@ -119,7 +124,7 @@ function markSeen(match: MatchState, winnerId: string | null) {
      VALUES (?, ?, ?, ?)
      ON CONFLICT(question_id, player_id) DO UPDATE SET seen_at = excluded.seen_at, was_correct = excluded.was_correct`
   );
-  for (const p of match.players) {
+  for (const p of match.players.filter((player) => player.id !== QUIZ_BOT.id)) {
     stmt.run(match.currentQuestion.id, p.id, now, winnerId === null ? null : winnerId === p.id ? 1 : 0);
   }
 }
@@ -132,7 +137,7 @@ function finishMatch(io: Server, match: MatchState, winner: PlayerRef | null, re
   ).run(
     nanoid(),
     'quiz',
-    winner?.id ?? null,
+    winner?.id === QUIZ_BOT.id ? null : winner?.id ?? null,
     JSON.stringify(match.players),
     JSON.stringify(scorePayload(match)),
     reason,
@@ -183,6 +188,26 @@ function sendQuestion(io: Server, match: MatchState) {
   });
 
   scheduleQuestionTimeout(io, match, QUESTION_MS);
+  const bot = match.players.find((player) => player.id === QUIZ_BOT.id);
+  if (bot) {
+    match.botTimer = setTimeout(() => {
+      if (!matches.has(match.id) || match.answered || match.paused || !match.currentQuestion) return;
+      answerCorrect(io, match, bot);
+    }, 3500 + Math.floor(Math.random() * 2500));
+  }
+}
+
+function answerCorrect(io: Server, match: MatchState, player: PlayerRef) {
+  if (!match.currentQuestion || match.answered) return;
+  const accepted = JSON.parse(match.currentQuestion.answers) as string[];
+  clearQuestionTimer(match);
+  match.answered = true;
+  match.scores.set(player.id, (match.scores.get(player.id) ?? 0) + 1);
+  markSeen(match, player.id);
+  const scores = scorePayload(match);
+  io.to(match.room).emit('arcade:quiz:result', { matchId: match.id, winner: player, correctAnswer: accepted[0], scores });
+  if ((match.scores.get(player.id) ?? 0) >= match.targetScore) finishMatch(io, match, player);
+  else setTimeout(() => { if (matches.has(match.id)) sendQuestion(io, match); }, 1400);
 }
 
 function removeFromOpenLobbies(io: Server, socketId: string) {
@@ -241,6 +266,17 @@ export function registerArcadeSockets(io: Server): void {
       });
     });
 
+    socket.on('arcade:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (res: unknown) => void) => {
+      if (!adminUnlockValid(payload?.adminPin)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
+      const player = playerById(payload?.playerId);
+      if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
+      removeFromOpenLobbies(io, socket.id);
+      const lobby: Lobby = { id: nanoid(), gameType: 'quiz', host: player, players: [player, QUIZ_BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([QUIZ_BOT.id]), createdAt: Date.now() };
+      lobbies.set(lobby.id, lobby);
+      emitLobbies(io);
+      ack?.({ ok: true, lobbyId: lobby.id });
+    });
+
     socket.on('arcade:lobby:close', (payload: { lobbyId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
       if (!lobby) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
@@ -293,6 +329,7 @@ export function registerArcadeSockets(io: Server): void {
         targetScore: score,
         currentQuestion: null,
         questionTimer: null,
+        botTimer: null,
         questionExpiresAt: null,
         questionRemainingMs: null,
         paused: false,
@@ -321,31 +358,13 @@ export function registerArcadeSockets(io: Server): void {
     socket.on('arcade:quiz:answer', (payload: { matchId?: string; playerId?: string; text?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
       const player = match?.players.find((p) => p.id === payload?.playerId);
-      if (!match || !player || !match.currentQuestion || match.answered || match.paused || typeof payload?.text !== 'string') {
+      if (!match || !player || player.id === QUIZ_BOT.id || !match.currentQuestion || match.answered || match.paused || typeof payload?.text !== 'string') {
         return ack?.({ ok: false, error: 'Antwort nicht angenommen.' });
       }
       const accepted = JSON.parse(match.currentQuestion.answers) as string[];
       if (!matchesAnswer(payload.text, accepted)) return ack?.({ ok: true, correct: false });
 
-      clearQuestionTimer(match);
-      match.answered = true;
-      match.scores.set(player.id, (match.scores.get(player.id) ?? 0) + 1);
-      markSeen(match, player.id);
-      const scores = scorePayload(match);
-      io.to(match.room).emit('arcade:quiz:result', {
-        matchId: match.id,
-        winner: player,
-        correctAnswer: accepted[0],
-        scores,
-      });
-
-      if ((match.scores.get(player.id) ?? 0) >= match.targetScore) {
-        finishMatch(io, match, player);
-      } else {
-        setTimeout(() => {
-          if (matches.has(match.id)) sendQuestion(io, match);
-        }, 1400);
-      }
+      answerCorrect(io, match, player);
       ack?.({ ok: true, correct: true });
     });
 
