@@ -1,23 +1,20 @@
-// Admin panel: unlock admin mode (PIN or freely in open mode), then the
-// moderation tools — bulk-create test players to try features solo, grant/
-// revoke admin, and delete players. Deliberately minimal (the base of #33/#34);
-// most features stay open to everyone in the LAN trust model, this is just the
-// extra role for testing and moderation.
+// Admin panel: one-tap admin mode (no PIN for now — see
+// docs/KONZEPT-TEST-USER.md), seeded test players to try features solo,
+// grant/revoke admin, delete players, and agent diagnostics. Most features
+// stay open to everyone in the LAN trust model; this is just the extra role
+// for testing and moderation.
 
 import { api } from '../api.js';
 import { confirmDialog } from '../modal.js';
 import { state } from '../state.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
-import { isAdmin, getAdminPin, setAdmin } from '../admin.js';
+import { isAdmin, setAdmin } from '../admin.js';
 import { icon } from '../icons.js';
-import { AVATAR_PALETTE } from '../avatarPalette.js';
 
-// Whether the server requires a PIN — fetched once so the unlock screen knows
-// whether to prompt for one or just offer a button.
-let pinRequired = null;
 let agentDiagnostics = null;
 let diagnosticsLoading = false;
+let seedBusy = false;
 
 async function loadAgentDiagnostics(ctx, force = false) {
   if (diagnosticsLoading || (agentDiagnostics && !force)) return;
@@ -33,32 +30,29 @@ async function loadAgentDiagnostics(ctx, force = false) {
   }
 }
 
-async function loadStatus(ctx) {
+async function createTestUsers(count, ctx) {
+  if (seedBusy) return;
+  seedBusy = true;
   try {
-    const res = await api.admin.status();
-    pinRequired = res.pinRequired;
-  } catch {
-    pinRequired = true; // safest assumption if we can't tell
+    const res = await api.admin.createTestUsers(count);
+    showToast(`${res.created.length} Test-Spieler angelegt – mit Sitzplatz, Skills, Bock und Spielzeit.`);
+    await ctx.refresh();
+  } catch (err) {
+    showToast(err.message, { error: true });
+  } finally {
+    seedBusy = false;
   }
-  ctx.rerender();
 }
 
-async function bulkCreate(count, ctx) {
-  let created = 0;
-  for (let i = 0; i < count; i++) {
-    const color = AVATAR_PALETTE[(state.players.length + i) % AVATAR_PALETTE.length];
-    // Suffix keeps names unique across repeated runs (server enforces unique
-    // names); a short random tail avoids clashing with an earlier batch.
-    const name = `Test ${state.players.length + i + 1}-${Math.random().toString(36).slice(2, 5)}`;
-    try {
-      await api.players.create({ name, color });
-      created++;
-    } catch {
-      // skip a clash, keep going
-    }
+async function cleanupTestUsers(ctx) {
+  if (!(await confirmDialog('Alle Test-Spieler und ihre Daten (Sitzplätze, Skills, Spielzeit) löschen?'))) return;
+  try {
+    const res = await api.admin.cleanupTestUsers();
+    showToast(res.deleted > 0 ? `${res.deleted} Test-Spieler entfernt.` : 'Keine Test-Spieler vorhanden.');
+    await ctx.refresh();
+  } catch (err) {
+    showToast(err.message, { error: true });
   }
-  showToast(`${created} Test-Spieler angelegt.`);
-  await ctx.refresh();
 }
 
 async function toggleAdmin(player, ctx) {
@@ -82,42 +76,27 @@ async function deletePlayer(player, ctx) {
   }
 }
 
-function renderUnlock(container, ctx) {
-  if (pinRequired === null) {
-    loadStatus(ctx);
-    container.innerHTML = `<div class="empty-state">Lädt…</div>`;
-    return;
-  }
-
+function renderActivate(container) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <h1 class="view-title">${icon('shield')} Admin</h1>
     <div class="card stack">
-      <p class="muted">${
-        pinRequired
-          ? 'Gib den Admin-PIN ein, um Test-Spieler anzulegen und zu moderieren.'
-          : 'Kein PIN gesetzt (offener Modus) – Admin-Modus kann direkt aktiviert werden.'
-      }</p>
-      ${pinRequired ? `<input type="password" id="admin-pin" inputmode="numeric" placeholder="Admin-PIN" autofocus />` : ''}
-      <button type="button" class="btn btn-primary btn-block" id="admin-unlock">Admin-Modus aktivieren</button>
+      <p class="muted">Im Admin-Modus kannst du Test-Spieler mit fertigen Daten anlegen,
+      Admin-Rechte vergeben und Spieler löschen. Test-Spieler sind nur sichtbar,
+      solange der Admin-Modus aktiv ist.</p>
+      <button type="button" class="btn btn-primary btn-block" id="admin-activate">Admin-Modus aktivieren</button>
     </div>
   `;
 
-  container.querySelector('#admin-unlock').addEventListener('click', async () => {
-    const pin = pinRequired ? container.querySelector('#admin-pin').value.trim() : '';
-    try {
-      await api.admin.unlock(pin);
-      setAdmin(true, pin);
-      showToast('Admin-Modus aktiv.');
-      ctx.rerender();
-    } catch (err) {
-      showToast(err.message, { error: true });
-    }
+  container.querySelector('#admin-activate').addEventListener('click', () => {
+    setAdmin(true); // app.js reacts to lan:admin-changed: banner + refresh
+    showToast('Admin-Modus aktiv.');
   });
 }
 
 function renderPanel(container, ctx) {
   const players = state.players || [];
+  const testCount = players.filter((p) => p.is_test).length;
   if (agentDiagnostics === null && !diagnosticsLoading) loadAgentDiagnostics(ctx);
   const rows = players
     .map(
@@ -127,6 +106,7 @@ function renderPanel(container, ctx) {
           <span class="avatar-dot" style="background:${escapeHtml(p.color)};"></span>
           <span class="player-name">${escapeHtml(p.name)}</span>
           ${p.is_admin ? '<span class="badge badge-playing">Admin</span>' : ''}
+          ${p.is_test ? '<span class="badge badge-paused">Test</span>' : ''}
         </span>
         <span class="row" style="gap:var(--space-2);">
           <button type="button" class="btn btn-sm" data-toggle-admin="${p.id}">${p.is_admin ? 'Admin entziehen' : 'Admin machen'}</button>
@@ -166,10 +146,19 @@ function renderPanel(container, ctx) {
       <button type="button" class="btn btn-sm" id="admin-leave">Modus verlassen</button>
     </div>
 
-    <div class="section-title">Test-Spieler anlegen</div>
-    <div class="card row" style="gap:var(--space-2);">
-      <input type="number" id="admin-count" value="5" min="1" max="20" style="max-width:90px;" />
-      <button type="button" class="btn btn-primary" id="admin-bulk" style="flex:1;">Test-Spieler anlegen</button>
+    <div class="section-title">Test-Spieler</div>
+    <div class="card stack">
+      <p class="muted">Kommen fertig eingerichtet: Platz im Sitzplan samt sichtbarer Monitore,
+      Skill- und Bock-Werte pro Spiel, Spielzeit fürs aktive Event – zwei davon spielen gerade.
+      Nur im Admin-Modus sichtbar.</p>
+      <div class="row" style="gap:var(--space-2);">
+        <input type="number" id="admin-count" value="5" min="1" max="20" style="max-width:90px;" />
+        <button type="button" class="btn btn-primary" id="admin-bulk" style="flex:1;" ${seedBusy ? 'disabled' : ''}>Test-Spieler anlegen</button>
+      </div>
+      <div class="row-between">
+        <span class="muted">${testCount} Test-Spieler vorhanden</span>
+        <button type="button" class="btn btn-sm btn-danger" id="admin-cleanup" ${testCount === 0 ? 'disabled' : ''}>Test-Daten aufräumen</button>
+      </div>
     </div>
 
     <div class="section-title">Spieler (${players.length})</div>
@@ -185,15 +174,16 @@ function renderPanel(container, ctx) {
   `;
 
   container.querySelector('#admin-leave').addEventListener('click', () => {
-    setAdmin(false);
+    setAdmin(false); // app.js reacts: banner disappears, data refetched
     showToast('Admin-Modus verlassen.');
-    ctx.rerender();
   });
 
   container.querySelector('#admin-bulk').addEventListener('click', () => {
     const count = Math.min(20, Math.max(1, parseInt(container.querySelector('#admin-count').value, 10) || 5));
-    bulkCreate(count, ctx);
+    createTestUsers(count, ctx);
   });
+
+  container.querySelector('#admin-cleanup').addEventListener('click', () => cleanupTestUsers(ctx));
 
   container.querySelector('#agent-diagnostics-refresh').addEventListener('click', () => loadAgentDiagnostics(ctx, true));
 
@@ -214,5 +204,5 @@ function renderPanel(container, ctx) {
 
 export function renderAdmin(container, ctx) {
   if (isAdmin()) renderPanel(container, ctx);
-  else renderUnlock(container, ctx);
+  else renderActivate(container);
 }

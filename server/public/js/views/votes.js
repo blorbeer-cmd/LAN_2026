@@ -95,6 +95,32 @@ let draftSingleGameId = null;
 let draftPoints = null; // Map<gameId, points>
 let draftKey = null; // `${round}:${playerId}` the current draft belongs to
 
+// Guards the points sliders against a re-render landing mid-drag (another
+// player casting a vote, or a Bock rating changing elsewhere, both trigger a
+// renderCurrent() while this view is open) — see gameCatalog.js's identical
+// guard for why: replacing container.innerHTML destroys the exact <input>
+// the pointer is down on and silently drops the browser's native pointer
+// capture for that drag, so the thumb stops tracking the mouse until
+// released and re-grabbed. endDrag() catches up with a no-network re-render
+// once the drag actually ends.
+let sliderDragActive = false;
+let dragGuardInstalled = false;
+let lastCtx = null;
+
+function ensureDragGuardInstalled() {
+  if (dragGuardInstalled) return;
+  dragGuardInstalled = true;
+  const endDrag = () => {
+    if (!sliderDragActive) return;
+    sliderDragActive = false;
+    lastCtx?.rerender();
+  };
+  document.addEventListener('pointerup', endDrag);
+  document.addEventListener('pointercancel', endDrag);
+  document.addEventListener('mouseup', endDrag);
+  document.addEventListener('touchend', endDrag);
+}
+
 function preferenceChipHtml(r) {
   if (!r.preferenceCount) {
     return `<span class="muted" style="font-size:var(--font-size-xs);">🔥 –</span>`;
@@ -320,6 +346,10 @@ async function openHistoryRoundDetail(round) {
 }
 
 export function renderVotes(container, ctx) {
+  lastCtx = ctx;
+  ensureDragGuardInstalled();
+  if (sliderDragActive) return;
+
   const votes = state.votes;
   if (!votes) {
     container.innerHTML = `<h1 class="view-title">Abstimmung</h1><div class="empty-state">Lädt…</div>`;
@@ -460,6 +490,9 @@ export function renderVotes(container, ctx) {
       slider.style.setProperty('--slider-pct', `${(Number(slider.value) / 10) * 100}%`);
     };
     updateSliderTone();
+    slider.addEventListener('pointerdown', () => {
+      sliderDragActive = true;
+    });
     slider.addEventListener('input', () => {
       valueEl.textContent = slider.value;
       const value = parseInt(slider.value, 10);

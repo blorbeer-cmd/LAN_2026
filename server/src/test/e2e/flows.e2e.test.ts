@@ -289,17 +289,20 @@ test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bo
   await page.waitForSelector('text=gibt es schon');
   await page.click('[data-close]');
 
-  // Promote the suggestion into the catalog, then rate it right in the row —
-  // no detour through a separate profile page needed.
-  await page.click('[data-promote]');
-  await page.click('[data-confirm]');
+  // Promote the suggestion into the catalog via its detail modal (row-level
+  // actions live only in there now — the row itself just carries the info
+  // icon), then rate it right in the row — no detour through a separate
+  // profile page needed.
+  const suggestionRow = page.locator('.game-table-row', { hasText: 'E2E Partyspiel' });
+  await suggestionRow.locator('[data-detail]').click();
+  await page.click('#edit-promote');
   await page.waitForSelector('button[data-tab="catalog"].btn-primary');
-  const partyspielCard = page.locator('.game-card', { hasText: 'E2E Partyspiel' });
-  await partyspielCard.waitFor();
-  const bockSlider = partyspielCard.locator('.skill-row[data-kind="bock"] input[type="range"]');
+  const partyspielRow = page.locator('.game-table-row', { hasText: 'E2E Partyspiel' });
+  await partyspielRow.waitFor();
+  const bockSlider = partyspielRow.locator('.skill-row[data-kind="bock"] input[type="range"]');
   await bockSlider.fill('8');
   await page.waitForFunction(() => {
-    const cards = Array.from(document.querySelectorAll('.game-card'));
+    const cards = Array.from(document.querySelectorAll('.game-table-row'));
     const card = cards.find((c) => c.textContent?.includes('E2E Partyspiel'));
     return card?.querySelector('[data-kind="bock"] .skill-value')?.textContent === '8';
   });
@@ -323,14 +326,14 @@ test('Spiele: a skill suggestion chip appears after enough recorded results and 
 
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="gameCatalog"]');
-  const cs2Card = page.locator('.game-card', { hasText: 'Counter-Strike 2' });
-  await cs2Card.waitFor();
-  const chip = cs2Card.locator('[data-apply-suggestion]');
+  const cs2Row = page.locator('.game-table-row', { hasText: 'Counter-Strike 2' });
+  await cs2Row.waitFor();
+  const chip = cs2Row.locator('[data-apply-suggestion]');
   await chip.waitFor();
 
   await chip.click();
   await page.waitForFunction(() => {
-    const cards = Array.from(document.querySelectorAll('.game-card'));
+    const cards = Array.from(document.querySelectorAll('.game-table-row'));
     const card = cards.find((c) => c.textContent?.includes('Counter-Strike 2'));
     const value = card?.querySelector('[data-kind="skill"] .skill-value')?.textContent;
     return value && value !== '–';
@@ -871,4 +874,46 @@ test('Kiosk: shows an open food order (when/where only), and the last-push banne
   await page.waitForSelector('#kiosk-broadcast:not([hidden]) >> text=Neue Sammelbestellung');
   await page.waitForSelector('#kiosk-broadcast >> text=Kiosk-Test-Pizza');
   await page.waitForSelector('.kiosk-broadcast-time');
+});
+
+test('Admin: one-tap mode with banner, seeded test users visible only in admin mode', async () => {
+  await page.goto(BASE_URL);
+  await page.waitForSelector('#app:not([hidden])');
+
+  // Enter admin mode — no PIN prompt, one tap (see docs/KONZEPT-TEST-USER.md).
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="admin"]');
+  await page.click('#admin-activate');
+  await page.waitForSelector('#admin-banner:not([hidden]) >> text=Admin-Modus aktiv');
+
+  // Seed test users; the admin toggle triggers a refresh, so re-open the view.
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="admin"]');
+  await page.fill('#admin-count', '3');
+  await page.click('#admin-bulk');
+  await page.waitForSelector('text=3 Test-Spieler vorhanden');
+  await page.waitForSelector('.badge-paused >> text=Test');
+
+  // Visible on the roster (Mehr → Spieler) while in admin mode...
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="players"]');
+  await page.waitForSelector('text=Test Alex');
+
+  // ...gone everywhere once admin mode is left via the banner.
+  await page.click('#admin-banner-leave');
+  await page.waitForSelector('#admin-banner', { state: 'hidden' });
+  await page.waitForFunction(() => !document.body.textContent?.includes('Test Alex'));
+
+  // Back in admin mode, cleanup removes them and their data again.
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="admin"]');
+  await page.click('#admin-activate');
+  await page.waitForSelector('#admin-banner:not([hidden])');
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="admin"]');
+  await page.click('#admin-cleanup');
+  // confirmDialog is an in-app modal (not a native browser dialog).
+  await page.click('[data-confirm]');
+  await page.waitForSelector('text=0 Test-Spieler vorhanden');
+  await page.click('#admin-banner-leave');
 });

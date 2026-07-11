@@ -2,10 +2,20 @@
 // self-declared "who sits next to me" (see players.ts's /:id/neighbors)
 // turned into a shared picture — grouped into connected "Sitzgruppen"
 // (physical clusters), rather than each player only seeing their own list.
+// The layout/adjacency core lives in ../seatingLayout.ts, shared with the
+// admin test-user seeding.
 
 import { Router } from 'express';
 import { db } from '../db';
 import { getTrackingEventId } from '../events';
+import {
+  SIDES,
+  type Side,
+  MAX_SEATS_PER_SIDE,
+  type SeatingAssignment,
+  readLayout,
+  persistLayout,
+} from '../seatingLayout';
 
 export const seatingRouter = Router();
 
@@ -14,111 +24,16 @@ interface PlayerRow {
   name: string;
   color: string;
   avatar: string | null;
-}
-
-const SIDES = ['top', 'right', 'bottom', 'left'] as const;
-type Side = (typeof SIDES)[number];
-const DEFAULT_SEATS = 2;
-const MAX_SEATS_PER_SIDE = 12;
-
-interface SeatingAssignment {
-  side: Side;
-  seat: number;
-  playerId: string;
-}
-
-function readLayout(eventId: string, players: PlayerRow[]) {
-  const existing = db.prepare('SELECT * FROM seating_layouts WHERE event_id = ?').get(eventId) as
-    | { event_id: string; top_seats: number; right_seats: number; bottom_seats: number; left_seats: number; assignments: string }
-    | undefined;
-  const source = existing ?? {
-    event_id: eventId,
-    top_seats: DEFAULT_SEATS,
-    right_seats: DEFAULT_SEATS,
-    bottom_seats: DEFAULT_SEATS,
-    left_seats: DEFAULT_SEATS,
-    assignments: '[]',
-  };
-  const playerIds = new Set(players.map((p) => p.id));
-  const seen = new Set<string>();
-  let parsed: unknown = [];
-  try { parsed = JSON.parse(source.assignments); } catch { /* use empty layout */ }
-  const assignments = Array.isArray(parsed)
-    ? parsed.filter((a): a is SeatingAssignment => {
-        if (!a || typeof a !== 'object') return false;
-        const value = a as Partial<SeatingAssignment>;
-        const count = source[`${value.side}_seats` as keyof typeof source];
-        const key = `${value.side}:${value.seat}`;
-        if (!SIDES.includes(value.side as Side) || !Number.isInteger(value.seat) || typeof value.seat !== 'number' || value.seat < 0 ||
-          typeof count !== 'number' || value.seat >= count || typeof value.playerId !== 'string' || !playerIds.has(value.playerId) || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-    : [];
-  return {
-    topSeats: source.top_seats,
-    rightSeats: source.right_seats,
-    bottomSeats: source.bottom_seats,
-    leftSeats: source.left_seats,
-    assignments,
-  };
+  is_test: number;
 }
 
 function getPlayers(): PlayerRow[] {
-  return db.prepare('SELECT id, name, color, avatar FROM players ORDER BY name COLLATE NOCASE').all() as PlayerRow[];
-}
-
-// Pairs of players seated right next to each other along the same table edge
-// (adjacent seat indices on the same side). Corner pairs — last seat of one
-// side next to the first seat of the next — are deliberately excluded: you
-// normally can't see a corner neighbor's monitor the way you can see a
-// same-edge neighbor's, so they shouldn't be auto-declared as visible.
-function computeAdjacentPairs(counts: Record<Side, number>, assignments: SeatingAssignment[]): Array<[string, string]> {
-  const pairs: Array<[string, string]> = [];
-  for (const side of SIDES) {
-    const bySeat = new Map<number, string>();
-    for (const a of assignments) if (a.side === side) bySeat.set(a.seat, a.playerId);
-    for (let seat = 0; seat < counts[side] - 1; seat++) {
-      const playerA = bySeat.get(seat);
-      const playerB = bySeat.get(seat + 1);
-      if (playerA && playerB) pairs.push([playerA, playerB]);
-    }
-  }
-  return pairs;
-}
-
-// Keeps seat_neighbors in sync with the table plan: every pair seated next to
-// each other along an edge gets an 'auto' row in both directions (so it shows
-// up in either player's own "Sichtbare Monitore" checklist). Only ever
-// touches rows this function itself created — a player who has manually
-// confirmed or added to their own list (source = 'manual', see players.ts's
-// PUT /:id/neighbors) keeps that choice even if the table plan changes later.
-function syncAutoSeatNeighbors(eventId: string, pairs: Array<[string, string]>): void {
-  const newKeys = new Set(pairs.map(([x, y]) => [x, y].sort().join('::')));
-  const existingAuto = db
-    .prepare("SELECT player_id, neighbor_id FROM seat_neighbors WHERE event_id = ? AND source = 'auto'")
-    .all(eventId) as Array<{ player_id: string; neighbor_id: string }>;
-  const remove = db.prepare(
-    "DELETE FROM seat_neighbors WHERE event_id = ? AND player_id = ? AND neighbor_id = ? AND source = 'auto'"
-  );
-  for (const row of existingAuto) {
-    const key = [row.player_id, row.neighbor_id].sort().join('::');
-    if (!newKeys.has(key)) remove.run(eventId, row.player_id, row.neighbor_id);
-  }
-  // INSERT OR IGNORE: if a manual row already claims this direction, leave it
-  // as-is rather than downgrading it back to 'auto'.
-  const insert = db.prepare(
-    "INSERT OR IGNORE INTO seat_neighbors (event_id, player_id, neighbor_id, source) VALUES (?, ?, ?, 'auto')"
-  );
-  for (const [x, y] of pairs) {
-    insert.run(eventId, x, y);
-    insert.run(eventId, y, x);
-  }
+  return db.prepare('SELECT id, name, color, avatar, is_test FROM players ORDER BY name COLLATE NOCASE').all() as PlayerRow[];
 }
 
 function getLayoutResponse(eventId: string) {
   const players = getPlayers();
-  return { eventId, players, layout: readLayout(eventId, players) };
+  return { eventId, players, layout: readLayout(eventId, new Set(players.map((p) => p.id))) };
 }
 
 // GET /api/seating/layout - the editable shared table plan.
@@ -154,17 +69,29 @@ seatingRouter.put('/layout', (req, res) => {
     seenPlayers.add(assignment.playerId);
     validAssignments.push({ side, seat: assignment.seat, playerId: assignment.playerId });
   }
-  const adjacentPairs = computeAdjacentPairs(counts as Record<Side, number>, validAssignments);
-  const saveLayout = db.transaction(() => {
-    db.prepare(`INSERT INTO seating_layouts (event_id, top_seats, right_seats, bottom_seats, left_seats, assignments, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(event_id) DO UPDATE SET top_seats=excluded.top_seats,
-      right_seats=excluded.right_seats, bottom_seats=excluded.bottom_seats, left_seats=excluded.left_seats,
-      assignments=excluded.assignments, updated_at=excluded.updated_at`).run(
-      eventId, counts.top, counts.right, counts.bottom, counts.left, JSON.stringify(validAssignments), Date.now()
+  // A non-admin client never sees test players (they're filtered client-side,
+  // see public/js/testFilter.js), so its layout snapshot is missing their
+  // assignments — a plain replace would silently unseat every test user on
+  // any normal save. Carry their stored seats over unless the request comes
+  // from a device in admin mode, which does see (and may deliberately move
+  // or remove) them.
+  if (req.header('x-admin-mode') !== '1') {
+    const testIds = new Set(
+      (db.prepare('SELECT id FROM players WHERE is_test = 1').all() as Array<{ id: string }>).map((r) => r.id)
     );
-    syncAutoSeatNeighbors(eventId, adjacentPairs);
-  });
-  saveLayout();
+    const stored = readLayout(eventId, playerIds);
+    for (const assignment of stored.assignments) {
+      if (!testIds.has(assignment.playerId)) continue;
+      if (seenPlayers.has(assignment.playerId)) continue;
+      if (assignment.seat >= (counts[assignment.side] as number)) continue; // side shrank
+      const seatKey = `${assignment.side}:${assignment.seat}`;
+      if (seenSeats.has(seatKey)) continue; // a real player took the seat
+      seenSeats.add(seatKey);
+      seenPlayers.add(assignment.playerId);
+      validAssignments.push(assignment);
+    }
+  }
+  persistLayout(eventId, counts as Record<Side, number>, validAssignments);
   res.json(getLayoutResponse(eventId));
 });
 
@@ -179,7 +106,7 @@ seatingRouter.get('/', (req, res) => {
     .prepare('SELECT player_id, neighbor_id FROM seat_neighbors WHERE event_id = ?')
     .all(filterEventId) as Array<{ player_id: string; neighbor_id: string }>;
 
-  const players = db.prepare('SELECT id, name, color, avatar FROM players').all() as PlayerRow[];
+  const players = db.prepare('SELECT id, name, color, avatar, is_test FROM players').all() as PlayerRow[];
   const playerById = new Map(players.map((p) => [p.id, p]));
 
   // Neighbors are declared per-direction (A says B, independent of whether
