@@ -162,3 +162,70 @@ test('POST /api/matches rejects a drawId that already has a result', async () =>
     });
   assert.equal(second.status, 409);
 });
+
+test('POST /api/matches stores an optional score and rank per team', async () => {
+  const res = await request(app)
+    .post('/api/matches')
+    .send({
+      gameId,
+      teams: [
+        { playerIds: [playerA], score: 42, rank: 1 },
+        { playerIds: [playerB], score: 17, rank: 2 },
+      ],
+      winnerTeamIndex: 0,
+    });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.teams[0].score, 42);
+  assert.equal(res.body.teams[0].rank, 1);
+  assert.equal(res.body.teams[1].score, 17);
+  assert.equal(res.body.teams[1].rank, 2);
+
+  const fetched = await request(app).get(`/api/matches?gameId=${gameId}`);
+  const stored = fetched.body.find((m: { id: string }) => m.id === res.body.id);
+  assert.equal(stored.teams[0].score, 42);
+  assert.equal(stored.teams[0].rank, 1);
+});
+
+test('POST /api/matches allows score/rank without each other or without a winner', async () => {
+  const scoreOnly = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [playerA], score: 5 }, { playerIds: [playerB] }] });
+  assert.equal(scoreOnly.status, 201);
+  assert.equal(scoreOnly.body.teams[0].score, 5);
+  assert.equal(scoreOnly.body.teams[0].rank, null);
+  assert.equal(scoreOnly.body.winnerTeamIndex, null);
+
+  const rankOnly = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [playerA], rank: 2 }, { playerIds: [playerB], rank: 1 }] });
+  assert.equal(rankOnly.status, 201);
+  assert.equal(rankOnly.body.teams[0].rank, 2);
+  assert.equal(rankOnly.body.teams[0].score, null);
+});
+
+test('POST /api/matches rejects a non-numeric score', async () => {
+  const res = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [playerA], score: 'lots' }, { playerIds: [playerB] }] });
+  assert.equal(res.status, 400);
+});
+
+test('POST /api/matches rejects a rank below 1', async () => {
+  const res = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [playerA], rank: 0 }, { playerIds: [playerB] }] });
+  assert.equal(res.status, 400);
+});
+
+test('PATCH /api/matches/:id can correct the score/rank', async () => {
+  const created = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [playerA], score: 1 }, { playerIds: [playerB], score: 2 }] });
+
+  const patched = await request(app)
+    .patch(`/api/matches/${created.body.id}`)
+    .send({ teams: [{ playerIds: [playerA], score: 10 }, { playerIds: [playerB], score: 20 }] });
+  assert.equal(patched.status, 200);
+  assert.equal(patched.body.teams[0].score, 10);
+  assert.equal(patched.body.teams[1].score, 20);
+});
