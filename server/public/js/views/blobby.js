@@ -11,7 +11,7 @@ const H = 600;
 const GROUND = 550;
 const NET_X = 500;
 const NET_TOP = 365;
-const BALL_RADIUS = 28;
+const BALL_RADIUS = 24;
 
 let socket = null;
 let lobbies = [];
@@ -23,6 +23,8 @@ let animation = null;
 let keys = { left: false, right: false };
 let keyboardBound = false;
 const avatarImages = new Map();
+const courtBackground = new Image();
+courtBackground.src = '/img/blobby-beach-court.png';
 let targetScore = 7;
 
 const myId = () => getMyId();
@@ -198,18 +200,62 @@ function drawBlob(ctx, blob, color, player) {
     ctx.fillText((player?.name || '?').slice(0, 1).toUpperCase(), blob.x, blob.y + 1);
   }
 }
+
+function drawVolleyball(ctx, ball) {
+  const { x, y } = ball;
+  const r = BALL_RADIUS;
+  ctx.save();
+  ctx.shadowColor = 'rgba(9, 28, 58, 0.34)';
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 3;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  const fill = ctx.createRadialGradient(x - r * 0.35, y - r * 0.45, r * 0.12, x, y, r);
+  fill.addColorStop(0, '#fffdf4');
+  fill.addColorStop(0.68, '#f2e8c9');
+  fill.addColorStop(1, '#d8c68c');
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.clip();
+
+  // Variant 1: an off-white ball with understated purple/blue seams that
+  // picks up the RespawnHQ palette without fighting the beach background.
+  ctx.strokeStyle = '#9163f5';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(x - r * 0.78, y + r * 0.06, r * 1.04, -0.92, 0.9);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#5b8cff';
+  ctx.beginPath();
+  ctx.arc(x + r * 0.76, y - r * 0.16, r * 1.06, 2.22, 4.04);
+  ctx.arc(x - r * 0.08, y + r * 0.88, r * 1.08, 3.72, 5.66);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.strokeStyle = '#6f57c6';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
 function paint() {
   const canvas = document.querySelector('#blobby-canvas');
   if (!canvas) return stopAnimation();
   const ctx = canvas.getContext('2d'); const world = interpolatedWorld();
   ctx.clearRect(0, 0, W, H);
-  const sky = ctx.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, '#17203a'); sky.addColorStop(1, '#252f50'); ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#36415f'; ctx.fillRect(0, GROUND, W, H - GROUND);
+  if (courtBackground.complete && courtBackground.naturalWidth) {
+    ctx.drawImage(courtBackground, 0, 0, W, H);
+  } else {
+    const sky = ctx.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, '#17203a'); sky.addColorStop(1, '#252f50'); ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#36415f'; ctx.fillRect(0, GROUND, W, H - GROUND);
+  }
   ctx.fillStyle = '#dbe4ff'; ctx.fillRect(NET_X - 10, NET_TOP, 20, GROUND - NET_TOP); ctx.beginPath(); ctx.arc(NET_X, NET_TOP, 10, 0, Math.PI * 2); ctx.fill();
   if (world) {
     drawBlob(ctx, world.blobs[0], '#5b8cff', match?.players?.[0]); drawBlob(ctx, world.blobs[1], '#c24bd8', match?.players?.[1]);
-    ctx.fillStyle = '#dbe4ff'; ctx.beginPath(); ctx.arc(world.ball.x, world.ball.y, BALL_RADIUS, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#aebddd'; ctx.lineWidth = 4; ctx.stroke();
+    drawVolleyball(ctx, world.ball);
   }
   animation = requestAnimationFrame(paint);
 }

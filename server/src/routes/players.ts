@@ -29,6 +29,7 @@ interface PlayerRow {
   tracking_paused: number;
   is_admin: number;
   created_at: number;
+  agent_last_seen?: number | null;
 }
 
 // Case-insensitive lookup used to give a friendly 409 instead of letting the
@@ -58,7 +59,11 @@ playersRouter.get('/', (_req, res) => {
 
 // GET /api/players/:id - single player including their API key.
 playersRouter.get('/:id', (req, res) => {
-  const row = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id) as
+  const row = db.prepare(
+    `SELECT p.*, ls.last_seen AS agent_last_seen
+     FROM players p LEFT JOIN live_status ls ON ls.player_id = p.id
+     WHERE p.id = ?`
+  ).get(req.params.id) as
     | PlayerRow
     | undefined;
   if (!row) return res.status(404).json({ error: 'Spieler nicht gefunden.' });

@@ -261,6 +261,10 @@ export const api = {
     pdf: (eventId) => fetchBlob(`/api/export/pdf${eventId ? `?eventId=${eventId}` : ''}`),
   },
 
+  backup: {
+    download: () => fetchBlob('/api/backup'),
+  },
+
   hallOfFame: {
     get: () => apiFetch('/api/hall-of-fame'),
   },

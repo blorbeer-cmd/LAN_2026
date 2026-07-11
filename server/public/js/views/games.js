@@ -199,6 +199,23 @@ async function downloadExport(eventId) {
   }
 }
 
+async function downloadBackup() {
+  try {
+    const { blob, filename } = await api.backup.download();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast('Datenbank-Backup heruntergeladen.');
+  } catch (err) {
+    showToast(err.message, { error: true });
+  }
+}
+
 // existing === null: create a new (not-yet-tracking) event. existing !==
 // null: metadata-only edit of that event (any event, ended or not) — never
 // touches tracking state.
@@ -339,11 +356,17 @@ export function renderSettings(container, ctx) {
       <span class="muted">Tisch, Plätze und Sitzordnung gemeinsam festlegen.</span>
       <button type="button" class="btn btn-sm" data-navigate="seating">Sitzplan öffnen</button>
     </div>
+    <div class="section-title">${icon('download')} Backup</div>
+    <div class="card row-between">
+      <span class="muted">Sichert den aktuellen Stand als SQLite-Datei.</span>
+      <button type="button" class="btn btn-sm" id="download-backup">Backup laden</button>
+    </div>
   `;
 
   container.querySelectorAll('[data-export-event]').forEach((btn) => {
     btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent));
   });
+  container.querySelector('#download-backup').addEventListener('click', downloadBackup);
 
   wireInviteLinkBody(container);
 
