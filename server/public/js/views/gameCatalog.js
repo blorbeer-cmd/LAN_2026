@@ -209,6 +209,38 @@ function gameRowHtml(game, myId) {
   const myBock = myId ? myRating(state.preferences, myId, game.id) : null;
   const mySkill = myId ? myRating(state.skills, myId, game.id) : null;
 
+  const bockRow = ratingRowHtml({
+    label: `${icon('flame')} Bock`,
+    accentClass: 'preference-row-slider',
+    mine: myBock,
+    avg: bockStats.avg,
+    count: bockStats.count,
+    gameId: game.id,
+    kind: 'bock',
+    disabled: !myId,
+  });
+
+  // A suggestion has no skill rating yet (Promote/Delete live in the detail
+  // modal, via the info icon, instead) — with only one meter to show, it
+  // sits in the right-hand (skill) column instead of the left one, so it
+  // doesn't look stranded in the middle of an otherwise empty row.
+  const [bockCell, skillCell] = game.isSuggestion
+    ? ['', bockRow]
+    : [
+        bockRow,
+        ratingRowHtml({
+          label: `${icon('swords')} Skill`,
+          accentClass: '',
+          mine: mySkill,
+          avg: skillStats.avg,
+          count: skillStats.count,
+          gameId: game.id,
+          kind: 'skill',
+          disabled: !myId,
+          suggestionHtml: suggestionChipHtml(game.id, suggestionFor(game.id, myId), mySkill),
+        }),
+      ];
+
   return `
     <div class="card game-table-row">
       <div class="game-row-name">
@@ -217,35 +249,8 @@ function gameRowHtml(game, myId) {
         ${gameRowIconsHtml(game)}
       </div>
       <div class="game-row-sliders">
-        <div class="game-row-bock">
-          ${ratingRowHtml({
-            label: `${icon('flame')} Bock`,
-            accentClass: 'preference-row-slider',
-            mine: myBock,
-            avg: bockStats.avg,
-            count: bockStats.count,
-            gameId: game.id,
-            kind: 'bock',
-            disabled: !myId,
-          })}
-        </div>
-        <div class="game-row-skill">
-          ${
-            game.isSuggestion
-              ? '' /* no skill rating for a suggestion yet — Promote/Delete live in the detail modal (via the info icon) instead */
-              : ratingRowHtml({
-                  label: `${icon('swords')} Skill`,
-                  accentClass: '',
-                  mine: mySkill,
-                  avg: skillStats.avg,
-                  count: skillStats.count,
-                  gameId: game.id,
-                  kind: 'skill',
-                  disabled: !myId,
-                  suggestionHtml: suggestionChipHtml(game.id, suggestionFor(game.id, myId), mySkill),
-                })
-          }
-        </div>
+        <div class="game-row-bock">${bockCell}</div>
+        <div class="game-row-skill">${skillCell}</div>
       </div>
     </div>`;
 }
