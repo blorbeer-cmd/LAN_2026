@@ -159,9 +159,14 @@ function openPlayerDetail(playerId, ctx) {
           const gameId = row.dataset.game;
           const slider = row.querySelector('input[type="range"]');
           const valueEl = row.querySelector('.skill-value');
+          const updateSliderTone = () => {
+            slider.style.setProperty('--slider-pct', `${((Number(slider.value) - 1) / 9) * 100}%`);
+          };
+          updateSliderTone();
           let debounceTimer = null;
           slider.addEventListener('input', () => {
             valueEl.textContent = slider.value;
+            updateSliderTone();
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(async () => {
               try {
