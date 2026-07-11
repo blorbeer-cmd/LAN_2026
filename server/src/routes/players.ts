@@ -6,7 +6,6 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString, isHexColor, isValidAvatar } from '../validation';
-import { adminUnlockValid } from '../auth';
 import { getTrackingEventId } from '../events';
 import { formatDurationMs, computePlaytime, type PlaySession } from '../playtime';
 import {
@@ -96,7 +95,10 @@ playersRouter.post('/', (req, res) => {
     avatar: avatar ?? null,
     api_key: nanoid(24),
     tracking_paused: 0,
-    is_admin: 0,
+    // Everyone is an admin for now (PIN retired, self-moderating friend
+    // group — see the backfill in db.ts); the flag stays revocable per
+    // player through the admin panel.
+    is_admin: 1,
     created_at: Date.now(),
   };
 
@@ -137,12 +139,9 @@ playersRouter.patch('/:id', (req, res) => {
   if (isAdmin !== undefined && typeof isAdmin !== 'boolean') {
     return res.status(400).json({ error: 'isAdmin muss ein Boolean sein.' });
   }
-  // Self-service fields (name/color/avatar/tracking) stay open in the LAN
-  // trust model, but granting/revoking admin is an admin-only action: when a
-  // PIN is configured it must be supplied. Open mode (no PIN) allows it.
-  if (isAdmin !== undefined && !adminUnlockValid(req.header('x-admin-pin'))) {
-    return res.status(403).json({ error: 'Admin-Rechte ändern ist nur Admins erlaubt.' });
-  }
+  // Granting/revoking admin is as open as the other self-service fields
+  // while the admin PIN is retired (everyone is an admin anyway — see the
+  // backfill in db.ts); the former x-admin-pin check returns with the PIN.
 
   const nextName = name !== undefined ? name.trim() : existing.name;
   if (name !== undefined && nameTaken(nextName, existing.id)) {
