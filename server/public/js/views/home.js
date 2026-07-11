@@ -273,8 +273,9 @@ function renderFeed(myId) {
   `;
 }
 
-// Groups currently-playing players by game (FR-27): a quick glance at who's
-// in the same game right now, complementing the per-player list below.
+// Groups currently-playing players by game (FR-27): a quick glance at what's
+// running right now and how many/who — the player names sit in a tooltip so
+// the chip row stays compact even with a long roster on one game.
 function renderActiveGroups(players) {
   const byGame = new Map();
   for (const p of players) {
@@ -289,15 +290,17 @@ function renderActiveGroups(players) {
 
   const groups = [...byGame.values()]
     .sort((a, b) => b.players.length - a.players.length)
-    .map(
-      (g) => `
-      <div class="chip" style="flex-wrap:wrap;">${gameBadgeHtml(g, 20)} <strong style="white-space:nowrap;">${escapeHtml(g.name)}</strong>: ${g.players.map(escapeHtml).join(', ')}</div>`
-    )
+    .map((g) => {
+      const count = g.players.length;
+      const namesList = g.players.slice().sort((a, b) => a.localeCompare(b, 'de')).join(', ');
+      return `
+      <div class="chip" title="${escapeHtml(namesList)}">${gameBadgeHtml(g, 20)} <strong>${escapeHtml(g.name)}</strong> <span class="muted">· ${count} Spieler</span></div>`;
+    })
     .join('');
 
   return `
     <div class="section-title">Gerade aktiv</div>
-    <div class="stack" style="gap:var(--space-2);margin-bottom:var(--space-4);">${groups}</div>
+    <div class="chip-list" style="margin-bottom:var(--space-4);">${groups}</div>
   `;
 }
 
@@ -323,6 +326,27 @@ function renderLeaderboardTop() {
     <div class="card" style="margin-bottom:var(--space-4);">
       ${rows}
       <button type="button" class="btn btn-sm btn-block" data-navigate="leaderboard" style="margin-top:var(--space-3);">Ganze Rangliste ${icon('chevronRight')}</button>
+    </div>
+  `;
+}
+
+// "Dein Status": the pause/resume toggle lives here, not inside the player's
+// own tile — putting it in the tile made that one card taller than its
+// siblings, and since .card-grid stretches every card in a grid row to the
+// tallest one, toggling pause visibly resized the whole row.
+function renderMyStatus(myId, players) {
+  const me = players.find((p) => p.player_id === myId);
+  if (!me) return '';
+  const badgeClass = `badge-${me.state}`;
+  return `
+    <div class="card row-between" style="margin-bottom:var(--space-4);">
+      <span class="row" style="gap:var(--space-2);">
+        <span>Dein Status:</span>
+        <span class="badge ${badgeClass}">${stateLabel(me.state)}</span>
+      </span>
+      <button type="button" class="btn btn-sm" data-toggle-pause="${me.player_id}" data-paused="${me.state === 'paused' ? '1' : '0'}">
+        ${me.state === 'paused' ? `${icon('play')} Bin wieder da` : `${icon('pause')} Pause / Essen`}
+      </button>
     </div>
   `;
 }
@@ -369,11 +393,6 @@ export function renderHome(container, ctx) {
           : '';
 
       const isMe = p.player_id === myId;
-      const pauseToggle = isMe
-        ? `<button type="button" class="btn btn-sm" data-toggle-pause="${p.player_id}" data-paused="${p.state === 'paused' ? '1' : '0'}" style="margin-top:var(--space-2);">
-            ${p.state === 'paused' ? `${icon('play')} Bin wieder da` : `${icon('pause')} Pause / Essen`}
-          </button>`
-        : '';
 
       return `
         <div class="card player-card">
@@ -385,7 +404,6 @@ export function renderHome(container, ctx) {
             </div>
             ${games ? `<div class="player-card-games chip-list">${games}</div>` : ''}
             ${noteLine}
-            ${pauseToggle}
           </div>
         </div>`;
     })
@@ -394,6 +412,7 @@ export function renderHome(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Home</h1>
     ${whoAmI}
+    ${renderMyStatus(myId, players)}
     ${renderStatus()}
     ${renderActiveGroups(players)}
     <div class="section-title">Live-Status</div>

@@ -162,8 +162,9 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.waitForSelector('.player-card');
   assert.equal(await page.locator('.player-card').count(), 2);
 
-  // Manual pause override (FR-28): the pause toggle renders only on your own
-  // card. Toggle pause, see the badge flip, then toggle back.
+  // Manual pause override (FR-28): the pause toggle lives in the "Dein
+  // Status" bar, not on the player's own tile. Toggle pause, see the badge
+  // flip, then toggle back.
   await page.click('[data-toggle-pause]');
   await page.waitForSelector('.badge-paused');
   await page.click('[data-toggle-pause]');
