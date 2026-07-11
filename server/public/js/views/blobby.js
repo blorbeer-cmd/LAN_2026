@@ -38,6 +38,7 @@ export function myBlobbyLobby() {
   return lobbies.find((l) => l.players.some((p) => p.id === myId())) ?? null;
 }
 export function hasBlobbyMatch() { return Boolean(match); }
+export function blobbyLobbies() { return lobbies; }
 
 export function ensureBlobbySocket() {
   if (socket) return socket;

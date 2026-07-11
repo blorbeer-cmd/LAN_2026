@@ -76,6 +76,10 @@ export function hasTetrisMatch() {
   return Boolean(match);
 }
 
+export function tetrisLobbies() {
+  return lobbies;
+}
+
 export function ensureTetrisSocket() {
   if (socket) return socket;
   socket = io({ auth: { token: getToken() } });
