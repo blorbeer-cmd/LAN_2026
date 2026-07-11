@@ -184,7 +184,6 @@ function arcadeStatsHtml() {
       : '';
 
   const game = games.find((g) => g.gameType === activeStatsGame);
-  const winLoss = game.rankingMode === 'winLoss';
   const medals = ['🥇', '🥈', '🥉'];
   const rows = game.players
     .slice(0, 5)
@@ -192,7 +191,7 @@ function arcadeStatsHtml() {
       (p, i) => `
         <div class="lb-row">
           <span>${medals[i] ?? `${i + 1}.`} ${escapeHtml(p.name)}</span>
-          <span class="muted" style="font-variant-numeric:tabular-nums;">${winLoss ? `${p.wins}–${p.losses} · ${Math.round(p.winRate * 100)}%` : `${p.best} Pkt`}</span>
+          <span class="muted" style="font-variant-numeric:tabular-nums;">${p.wins}–${p.losses} · ${Math.round(p.winRate * 100)}%</span>
         </div>`
     )
     .join('');
@@ -200,7 +199,7 @@ function arcadeStatsHtml() {
     ${tabs}
     <div class="arcade-stat-game">
       <div class="row-between">
-        <strong>${escapeHtml(game.title)} · ${winLoss ? 'W–L-Ratio' : 'Highscores'}</strong>
+        <strong>${escapeHtml(game.title)} · W–L-Ratio</strong>
         <span class="badge">${game.matches} Match(es)</span>
       </div>
       ${rows}

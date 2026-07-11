@@ -47,8 +47,16 @@ function finish(io: Server, match: Match, winner: Player | null, reason: string)
   if (match.loop) clearInterval(match.loop);
   match.loop = null;
   const winnerId = winner && winner.id !== BOT_ID ? winner.id : null;
+  // Store per-player score entries (playerId/name/score), like every other
+  // arcade game, so the stats route can attribute results to players. The
+  // live emit below still sends the raw score array the client expects.
+  const scoreEntries = match.players.map((player, index) => ({
+    playerId: player.id,
+    name: player.name,
+    score: match.world.snakes[index]?.score ?? 0,
+  }));
   db.prepare('INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
-    nanoid(), 'snake', winnerId, JSON.stringify(match.players), JSON.stringify(match.world.snakes.map((snake) => snake.score)), reason, match.startedAt, Date.now()
+    nanoid(), 'snake', winnerId, JSON.stringify(match.players), JSON.stringify(scoreEntries), reason, match.startedAt, Date.now()
   );
   io.to(match.room).emit('snake:match:end', { winner, reason, scores: match.world.snakes.map((snake) => snake.score) });
   matches.delete(match.id);

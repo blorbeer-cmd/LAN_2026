@@ -35,11 +35,12 @@ test('GET /api/arcade/stats summarizes completed quiz results', async () => {
   assert.equal(quiz.title, 'Gaming-Quiz');
   assert.equal(quiz.matches, 1);
   assert.equal(quiz.leader.name, 'Arcade Alice');
-  assert.equal(quiz.players[0].best, 5); // highscore (best single game)
-  assert.equal(quiz.players[0].points, 5);
+  assert.equal(quiz.players[0].wins, 1); // Alice won the match
+  assert.equal(quiz.players[0].losses, 0);
+  assert.equal(quiz.players[0].winRate, 1);
 });
 
-test('arcade stats rank by best single-game score, not duels won', async () => {
+test('arcade stats rank by win–loss ratio, not single-game score', async () => {
   const p = await request(app).post('/api/players').send({ name: 'HighScorer' });
   const q = await request(app).post('/api/players').send({ name: 'DuelWinner' });
   const now = Date.now();
@@ -63,16 +64,17 @@ test('arcade stats rank by best single-game score, not duels won', async () => {
         now
       );
   // DuelWinner wins both duels but with modest scores; HighScorer loses both
-  // yet posts a huge single-game score.
+  // yet posts a huge single-game score. Win rate must win over raw score.
   mk('rank-1', 9000, 200, q.body.id);
   mk('rank-2', 100, 300, q.body.id);
 
   const res = await request(app).get('/api/arcade/stats');
   const game = res.body.games.find((g: { gameType: string }) => g.gameType === 'pong');
-  assert.equal(game.leader.name, 'HighScorer'); // ranked by highscore, not wins
-  assert.equal(game.players[0].best, 9000);
-  assert.equal(game.players[0].wins, 0); // never won a duel
-  assert.equal(game.players[1].name, 'DuelWinner');
+  assert.equal(game.leader.name, 'DuelWinner'); // ranked by win rate, not highscore
+  assert.equal(game.players[0].wins, 2);
+  assert.equal(game.players[0].winRate, 1);
+  assert.equal(game.players[1].name, 'HighScorer');
+  assert.equal(game.players[1].wins, 0); // never won a duel
 });
 
 test('GET /api/arcade/stats labels and aggregates tetris results too', async () => {
@@ -96,7 +98,7 @@ test('GET /api/arcade/stats labels and aggregates tetris results too', async () 
   assert.equal(tetris.matches, 1);
   assert.equal(tetris.leader.name, 'Tetris Cara');
   assert.equal(tetris.players[0].wins, 1);
-  assert.equal(tetris.players[0].points, 4200);
+  assert.equal(tetris.players[0].losses, 0);
 });
 
 test('GET /api/arcade/stats summarizes completed scribble results under their own title', async () => {
@@ -137,11 +139,47 @@ test('GET /api/arcade/stats labels Blobby Volley results', async () => {
   const res = await request(app).get('/api/arcade/stats');
   const blobby = res.body.games.find((game: { gameType: string }) => game.gameType === 'blobby');
   assert.equal(blobby.title, 'Blobby Volley');
-  assert.equal(blobby.rankingMode, 'winLoss');
   assert.equal(blobby.matches, 1);
   assert.equal(blobby.leader.name, 'Blobby Eve');
-  assert.equal(blobby.players[0].best, 7);
   assert.equal(blobby.players[0].wins, 1);
   assert.equal(blobby.players[0].losses, 0);
   assert.equal(blobby.players[0].winRate, 1);
+});
+
+test('GET /api/arcade/stats attributes Snake results to named players (title capitalized)', async () => {
+  const gwen = await request(app).post('/api/players').send({ name: 'Snake Gwen' });
+  const hank = await request(app).post('/api/players').send({ name: 'Snake Hank' });
+  const now = Date.now();
+  const scores = [
+    { playerId: gwen.body.id, name: gwen.body.name, score: 12 },
+    { playerId: hank.body.id, name: hank.body.name, score: 8 },
+  ];
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run('snake-test-result', 'snake', gwen.body.id, JSON.stringify(scores), JSON.stringify(scores), 'completed', now - 1000, now);
+
+  const res = await request(app).get('/api/arcade/stats');
+  const snake = res.body.games.find((game: { gameType: string }) => game.gameType === 'snake');
+  assert.equal(snake.title, 'Snake');
+  assert.equal(snake.leader.name, 'Snake Gwen');
+  assert.equal(snake.players[0].wins, 1);
+  assert.equal(snake.players[0].losses, 0);
+  assert.equal(snake.players.every((p: { name?: string }) => typeof p.name === 'string'), true);
+});
+
+test('GET /api/arcade/stats ignores legacy Snake rows that stored a bare score array', async () => {
+  const now = Date.now();
+  // Old snake results serialized `scores` as [12, 8] instead of per-player
+  // entries — these must not surface as a nameless phantom player.
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run('snake-legacy-result', 'snakelegacy', null, JSON.stringify([]), JSON.stringify([12, 8]), 'completed', now - 1000, now);
+
+  const res = await request(app).get('/api/arcade/stats');
+  // A game with no attributable results is dropped entirely rather than shown
+  // as an empty "1 Match, no players" tab.
+  const legacy = res.body.games.find((game: { gameType: string }) => game.gameType === 'snakelegacy');
+  assert.equal(legacy, undefined);
 });

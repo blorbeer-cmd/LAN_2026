@@ -17,8 +17,6 @@ const ARCADE_TITLES: Record<string, string> = {
   blobby: 'Blobby Volley',
   snake: 'Snake',
 };
-const WIN_LOSS_GAMES = new Set(['blobby']);
-
 interface ArcadeResultRow {
   game_type: string;
   winner_id: string | null;
@@ -60,25 +58,29 @@ arcadeRouter.get('/stats', (_req, res) => {
 
   const games = new Map<
     string,
-    { gameType: string; matches: number; players: Map<string, { playerId: string; name: string; matches: number; wins: number; points: number; best: number }> }
+    { gameType: string; matches: number; players: Map<string, { playerId: string; name: string; matches: number; wins: number }> }
   >();
 
   for (const row of rows) {
+    const parsed = JSON.parse(row.scores) as unknown;
+    // Only per-player score entries count. Legacy snake results serialized a
+    // bare score array ([12, 8]) with no player attribution — those rows are
+    // skipped entirely (not counted as matches, no phantom nameless player).
+    const scores = (Array.isArray(parsed) ? parsed : []).filter(
+      (s): s is ScoreEntry => !!s && typeof (s as ScoreEntry).playerId === 'string'
+    );
+    if (scores.length === 0) continue;
+
     const game = games.get(row.game_type) ?? { gameType: row.game_type, matches: 0, players: new Map() };
     game.matches += 1;
-    const scores = JSON.parse(row.scores) as ScoreEntry[];
     for (const score of scores) {
       const current = game.players.get(score.playerId) ?? {
         playerId: score.playerId,
         name: score.name,
         matches: 0,
         wins: 0,
-        points: 0,
-        best: 0,
       };
       current.matches += 1;
-      current.points += score.score;
-      current.best = Math.max(current.best, score.score); // single-game highscore
       if (row.winner_id === score.playerId) current.wins += 1;
       game.players.set(score.playerId, current);
     }
@@ -87,24 +89,21 @@ arcadeRouter.get('/stats', (_req, res) => {
 
   res.json({
     games: [...games.values()].map((game) => {
-      // A real highscore board: rank by best single-game score, not by how
-      // many duels someone won.
-      const players = [...game.players.values()].sort(
-        WIN_LOSS_GAMES.has(game.gameType)
-          ? (a, b) => b.wins / b.matches - a.wins / a.matches || b.wins - a.wins || a.name.localeCompare(b.name, 'de')
-          : (a, b) => b.best - a.best || b.points - a.points || a.name.localeCompare(b.name, 'de')
-      );
+      // Everything ranks by win–loss ratio now (highscores retired): most
+      // duels won relative to played, ties broken by absolute wins.
+      const players = [...game.players.values()]
+        .map((player) => ({
+          ...player,
+          losses: player.matches - player.wins,
+          winRate: player.matches > 0 ? player.wins / player.matches : 0,
+        }))
+        .sort((a, b) => b.winRate - a.winRate || b.wins - a.wins || a.name.localeCompare(b.name, 'de'));
       return {
         gameType: game.gameType,
         title: ARCADE_TITLES[game.gameType] ?? game.gameType,
         matches: game.matches,
-        rankingMode: WIN_LOSS_GAMES.has(game.gameType) ? 'winLoss' : 'highscore',
         leader: players[0] ?? null,
-        players: players.map((player) => ({
-          ...player,
-          losses: player.matches - player.wins,
-          winRate: player.matches > 0 ? player.wins / player.matches : 0,
-        })),
+        players,
       };
     }),
   });
