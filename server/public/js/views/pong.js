@@ -41,6 +41,10 @@ export function hasPongMatch() {
   return Boolean(match);
 }
 
+export function pongLobbies() {
+  return lobbies;
+}
+
 export function ensurePongSocket() {
   if (socket) return socket;
   socket = io({ auth: { token: getToken() } });

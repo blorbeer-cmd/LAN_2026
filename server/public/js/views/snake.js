@@ -25,6 +25,7 @@ export function mySnakeLobby() {
   return lobbies.find((lobby) => lobby.players.some((player) => player.id === myId())) ?? null;
 }
 export function hasSnakeMatch() { return Boolean(match); }
+export function snakeLobbies() { return lobbies; }
 
 export function ensureSnakeSocket() {
   if (socket) return socket;

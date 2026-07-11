@@ -98,6 +98,10 @@ export function hasScribbleMatch() {
   return !!match;
 }
 
+export function scribbleLobbies() {
+  return lobbies;
+}
+
 function amPlayer() {
   return !!match && match.players.some((p) => p.id === myId());
 }
