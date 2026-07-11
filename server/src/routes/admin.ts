@@ -1,14 +1,14 @@
-// Admin unlock: a device becomes "admin" by proving it knows the admin PIN
-// (config.adminPin). Empty PIN = open/dev mode, so unlocking always succeeds
-// and local testing needs no secret. Kept deliberately light — this is the
-// minimal moderation role (bulk-create test users, grant admin, edit/delete
-// everywhere), not a full per-user auth system. The actual admin-only writes
-// (e.g. granting admin) live on the players router and can be gated with
-// requireAdmin; this router just hands the client its admin ticket.
+// Admin extras (test-user seeding, agent diagnostics) plus the legacy PIN
+// unlock endpoints. The admin PIN is retired for now (one-tap admin mode,
+// everyone is an admin — see docs/KONZEPT-TEST-USER.md), so none of these
+// routes sit behind requireAdmin anymore: the frontend stopped sending
+// x-admin-pin, and enforcing a leftover ADMIN_PIN from an old deployment
+// .env would only 403 every admin action from the UI. When the PIN prompt
+// returns to the frontend, re-add requireAdmin here (and on the players
+// PATCH isAdmin field).
 
 import { Router } from 'express';
 import { adminUnlockValid, adminPinRequired } from '../auth';
-import { requireAdmin } from '../auth';
 import { db } from '../db';
 import { config } from '../config';
 import { broadcast, Events } from '../realtime';
@@ -36,7 +36,7 @@ adminRouter.post('/unlock', (req, res) => {
 // POST /api/admin/test-users - body: { count }. Creates fully seeded test
 // players (seats + visible monitors, skill/Bock per game, play sessions,
 // two of them live) in one transaction — see testUsers.ts.
-adminRouter.post('/test-users', requireAdmin, (req, res) => {
+adminRouter.post('/test-users', (req, res) => {
   const { count } = req.body ?? {};
   if (!Number.isInteger(count) || count < 1 || count > MAX_TEST_USERS_PER_CALL) {
     return res.status(400).json({ error: `count muss eine ganze Zahl zwischen 1 und ${MAX_TEST_USERS_PER_CALL} sein.` });
@@ -50,7 +50,7 @@ adminRouter.post('/test-users', requireAdmin, (req, res) => {
 
 // DELETE /api/admin/test-users - removes every test player and everything
 // hanging off them (skills, Bock, sessions, seats, neighbors, live rows).
-adminRouter.delete('/test-users', requireAdmin, (_req, res) => {
+adminRouter.delete('/test-users', (_req, res) => {
   const deleted = deleteTestUsers();
   if (deleted > 0) {
     broadcast(Events.playersChanged, null);
@@ -62,7 +62,7 @@ adminRouter.delete('/test-users', requireAdmin, (_req, res) => {
 
 // GET /api/admin/agent-diagnostics — one compact troubleshooting row per
 // player, including players that never installed/reported from an agent.
-adminRouter.get('/agent-diagnostics', requireAdmin, (_req, res) => {
+adminRouter.get('/agent-diagnostics', (_req, res) => {
   const now = Date.now();
   const rows = db.prepare(
     `SELECT p.id AS player_id, p.name,
