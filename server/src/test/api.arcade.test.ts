@@ -6,6 +6,15 @@ import { db } from '../db';
 
 const app = createApp();
 
+test('GET /api/arcade/lobbies returns the (empty) cross-game open-lobby list', async () => {
+  // Lobbies are created over Socket.IO, which these HTTP-only tests don't
+  // open — so the aggregate must cleanly report "none" rather than error.
+  // A populated list is covered by the e2e quiz-lobby flow.
+  const res = await request(app).get('/api/arcade/lobbies');
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.lobbies, []);
+});
+
 test('GET /api/arcade/stats summarizes completed quiz results', async () => {
   const alice = await request(app).post('/api/players').send({ name: 'Arcade Alice' });
   const bob = await request(app).post('/api/players').send({ name: 'Arcade Bob' });

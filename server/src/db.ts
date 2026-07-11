@@ -357,27 +357,6 @@ db.exec(`
     played_at      INTEGER
   );
 
-  -- "Jetzt zocken" pings: a spontaneous, short-lived "I want to play X right
-  -- now, who's in?" — deliberately lighter-weight than a vote round (no
-  -- start/stop lifecycle, just expires on its own) for the common case of
-  -- one player wanting to round up others immediately.
-  CREATE TABLE IF NOT EXISTS game_pings (
-    id         TEXT PRIMARY KEY,
-    player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-    game_id    TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
-    event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-    message    TEXT,
-    created_at INTEGER NOT NULL,
-    expires_at INTEGER NOT NULL
-  );
-
-  -- Who tapped "Ich bin dabei" on a ping.
-  CREATE TABLE IF NOT EXISTS game_ping_interested (
-    ping_id   TEXT NOT NULL REFERENCES game_pings(id) ON DELETE CASCADE,
-    player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-    PRIMARY KEY (ping_id, player_id)
-  );
-
   -- Web Push subscriptions (real OS-level notifications, not just in-app
   -- toasts): one row per browser/device a player opted in on. Keyed by
   -- endpoint (unique per browser+origin) rather than player_id, since one
@@ -422,16 +401,22 @@ db.exec(`
   );
 
   -- Every real push notification sent via notifyPlayers() (Durchsagen, neue
-  -- Sammelbestellung, Abstimmung offen, Arcade-Lobby, "Jetzt zocken?"-Ping,
-  -- Turnier/Draft-Events, ...), so a shared screen (Kiosk) can always show
-  -- "was zuletzt an alle rausging" without caring which feature triggered
-  -- it. No player_id/target list on purpose - this is a title/body/when
-  -- log, not a per-recipient delivery record (push_subscriptions handles
-  -- the actual delivery targets).
+  -- Sammelbestellung, Abstimmung offen, Arcade-Lobby, Turnier/Draft-Events,
+  -- ...), regardless of how many devices were actually subscribed. Read two
+  -- ways: the Kiosk's "was zuletzt rausging" banner and the Home view's
+  -- per-player notification feed. player_ids is the JSON recipient list the
+  -- feed filters by (NULL on rows from before the feed existed = show to
+  -- everyone); url is the deep link the notification opens; audience marks
+  -- personally-targeted pushes ('direct', e.g. "dein Match ist bereit")
+  -- apart from group-wide ones ('all'). Still not a per-recipient delivery
+  -- record - push_subscriptions handles the actual delivery targets.
   CREATE TABLE IF NOT EXISTS push_log (
     id         TEXT PRIMARY KEY,
     title      TEXT NOT NULL,
     body       TEXT NOT NULL,
+    url        TEXT,
+    audience   TEXT NOT NULL DEFAULT 'all',
+    player_ids TEXT,
     created_at INTEGER NOT NULL
   );
 
@@ -557,7 +542,6 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_votes_event ON votes(event_id);
   CREATE INDEX IF NOT EXISTS idx_vote_rounds_event ON vote_rounds(event_id);
   CREATE INDEX IF NOT EXISTS idx_seat_neighbors_event_player ON seat_neighbors(event_id, player_id);
-  CREATE INDEX IF NOT EXISTS idx_game_pings_event ON game_pings(event_id, expires_at);
   CREATE INDEX IF NOT EXISTS idx_matches_game ON matches(game_id);
   CREATE INDEX IF NOT EXISTS idx_matches_event ON matches(event_id);
   CREATE INDEX IF NOT EXISTS idx_matchmaking_draws_event ON matchmaking_draws(event_id);
@@ -968,6 +952,25 @@ function migrateSeatNeighborsSourceColumn(): void {
   db.exec("ALTER TABLE seat_neighbors ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'");
 }
 migrateSeatNeighborsSourceColumn();
+
+// Migration: older databases predate the Home notification feed's extra
+// push_log fields (deep-link url, recipient list, all/direct audience).
+// Legacy rows keep player_ids = NULL, which the feed treats as "for
+// everyone" — the pre-feed log never recorded recipients.
+function migratePushLogFeedColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(push_log)').all() as Array<{ name: string }>;
+  const has = (name: string) => columns.some((c) => c.name === name);
+  if (!has('url')) db.exec('ALTER TABLE push_log ADD COLUMN url TEXT');
+  if (!has('audience')) db.exec("ALTER TABLE push_log ADD COLUMN audience TEXT NOT NULL DEFAULT 'all'");
+  if (!has('player_ids')) db.exec('ALTER TABLE push_log ADD COLUMN player_ids TEXT');
+}
+migratePushLogFeedColumns();
+
+// Migration: the "Jetzt zocken" ping feature was removed (spontaneous
+// play requests go through Durchsagen or a vote round instead) — drop its
+// tables from databases that still carry them. Dropping a table drops its
+// indexes with it.
+db.exec('DROP TABLE IF EXISTS game_ping_interested; DROP TABLE IF EXISTS game_pings;');
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.

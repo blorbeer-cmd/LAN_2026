@@ -1,5 +1,9 @@
 import { Router } from 'express';
 import { db } from '../db';
+import { openLobbySummaries as quizLobbies } from '../arcade/arcade';
+import { openLobbySummaries as tetrisLobbies } from '../arcade/tetris';
+import { openLobbySummaries as scribbleLobbies } from '../arcade/scribble';
+import { openLobbySummaries as blobbyLobbies } from '../arcade/blobby';
 
 export const arcadeRouter = Router();
 
@@ -24,6 +28,22 @@ interface ScoreEntry {
   name: string;
   score: number;
 }
+
+// GET /api/arcade/lobbies - every currently open lobby across all arcade
+// games, newest first, for the Home view's "Aktuell" card. Lobbies live
+// in-memory in their socket modules (short-lived party state, not data),
+// so this just aggregates their summaries.
+arcadeRouter.get('/lobbies', (_req, res) => {
+  const lobbies = [
+    ...quizLobbies().map((l) => ({ ...l, gameType: 'quiz' })),
+    ...tetrisLobbies().map((l) => ({ ...l, gameType: 'tetris' })),
+    ...scribbleLobbies().map((l) => ({ ...l, gameType: 'scribble' })),
+    ...blobbyLobbies().map((l) => ({ ...l, gameType: 'blobby' })),
+  ]
+    .map((l) => ({ ...l, title: ARCADE_TITLES[l.gameType] ?? l.gameType }))
+    .sort((a, b) => b.createdAt - a.createdAt);
+  res.json({ lobbies });
+});
 
 arcadeRouter.get('/stats', (_req, res) => {
   const rows = db

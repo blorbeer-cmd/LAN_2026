@@ -57,8 +57,9 @@ Gruppiert nach Feature-Bereich (vollständiges Schema in `server/src/db.ts`):
   Matchmaking-Option „Sitznachbarn nicht gegeneinander").
 - **Live-Status:** `live_status` (Zustand je Spieler: spielt/pausiert/offline, seit wann),
   `live_status_games` (mehrere gleichzeitig laufende Spiele pro Spieler), `play_sessions`
-  (abgeschlossene Sessions, Basis für Spielzeit-Auswertungen/Awards), `game_pings` /
-  `game_ping_interested` („Jetzt zocken?"-Spontan-Pings, kein formaler Abstimmungs-Ablauf).
+  (abgeschlossene Sessions, Basis für Spielzeit-Auswertungen/Awards). Angezeigt auf der
+  „Home"-Ansicht (Landing Page), die zusätzlich den persönlichen Digest, den
+  Mitteilungs-Feed und die Kiosk-Inhalte (Abstimmung/Turnier/Bestellung/Rangliste) bündelt.
 - **Abstimmung:** `votes`, `vote_rounds` (Historie geschlossener Runden).
 - **Matchmaking & Ergebnisse:** `matches` (Ergebnisse fürs Leaderboard), `matchmaking_draws`
   (History der „Teams auslosen"-Ergebnisse).
@@ -69,8 +70,10 @@ Gruppiert nach Feature-Bereich (vollständiges Schema in `server/src/db.ts`):
   `info_entries` (Info-Board: WLAN, Links, Server-IPs), `food_orders` / `food_order_items`
   (Sammelbestellungen: offen → jeder trägt selbst ein → schließen friert ein; der optionale
   Versand-Zeitpunkt bleibt unabhängig davon jederzeit editierbar, auch nach dem Schließen).
-- **Sonstiges:** `push_subscriptions` (Web-Push-Opt-in), `app_state` (einfache Key/Value-Ablage,
-  z. B. laufende Vote-Runde).
+- **Sonstiges:** `push_subscriptions` (Web-Push-Opt-in), `push_log` (Verlauf gesendeter
+  Push-Nachrichten inkl. Empfängerliste und Deep-Link – füttert Kiosk-Banner und den
+  „Mitteilungen"-Feed auf Home), `app_state` (einfache Key/Value-Ablage, z. B. laufende
+  Vote-Runde).
 
 ## Race-Sicherheit
 
