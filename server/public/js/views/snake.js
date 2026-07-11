@@ -2,7 +2,7 @@ import { getToken } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
-import { getAdminPin, isAdmin } from '../admin.js';
+import { isAdmin } from '../admin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { allLobbyReady, lobbyPlayerChipsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeInfoGridHtml, matchRosterHtml } from './arcadeUi.js';
@@ -113,7 +113,7 @@ export function renderSnakeLobbyCard() {
 
 export function wireSnakeLobbyCard(container) {
   container.querySelector('#snake-bot')?.addEventListener('click', async () => {
-    const result = await emitAck('snake:lobby:bot', { playerId: myId(), adminPin: getAdminPin() });
+    const result = await emitAck('snake:lobby:bot', { playerId: myId() });
     if (!result?.ok) showToast(result?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelector('#snake-create')?.addEventListener('click', async () => {

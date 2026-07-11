@@ -14,7 +14,7 @@
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
-import { getAdminPin, isAdmin } from '../admin.js';
+import { isAdmin } from '../admin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { getToken } from '../api.js';
@@ -730,7 +730,7 @@ export function renderScribbleLobbyCard() {
 
 export function wireScribbleLobbyCard(container) {
   container.querySelector('#scribble-bot')?.addEventListener('click', async () => {
-    const res = await emitWithAck('scribble:lobby:bot', { playerId: myId(), adminPin: getAdminPin() });
+    const res = await emitWithAck('scribble:lobby:bot', { playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelector('#scribble-create')?.addEventListener('click', async () => {

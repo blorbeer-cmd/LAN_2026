@@ -2,7 +2,7 @@ import { getToken } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
-import { getAdminPin, isAdmin } from '../admin.js';
+import { isAdmin } from '../admin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { allLobbyReady, lobbyPlayerChipsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
@@ -154,7 +154,7 @@ export function wireBlobbyLobbyCard(container) {
     if (!res?.ok) showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelector('#blobby-bot')?.addEventListener('click', async () => {
-    const res = await emitAck('blobby:lobby:bot', { playerId: myId(), adminPin: getAdminPin() });
+    const res = await emitAck('blobby:lobby:bot', { playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelectorAll('[data-blobby-join]').forEach((b) => b.addEventListener('click', async () => {

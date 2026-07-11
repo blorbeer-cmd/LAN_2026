@@ -17,7 +17,7 @@ import { getToken } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
-import { getAdminPin, isAdmin } from '../admin.js';
+import { isAdmin } from '../admin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { allLobbyReady, lobbyPlayerChipsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
@@ -450,7 +450,7 @@ export function renderTetrisLobbyCard() {
 
 export function wireTetrisLobbyCard(container) {
   container.querySelector('#tetris-bot')?.addEventListener('click', async () => {
-    const res = await emitWithAck('tetris:lobby:bot', { playerId: myId(), adminPin: getAdminPin() });
+    const res = await emitWithAck('tetris:lobby:bot', { playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelector('#tetris-create')?.addEventListener('click', async () => {

@@ -3,7 +3,7 @@ import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
-import { getAdminPin, isAdmin } from '../admin.js';
+import { isAdmin } from '../admin.js';
 import { ensureTetrisSocket, renderTetrisLobbyCard, wireTetrisLobbyCard, myTetrisLobby } from './tetris.js';
 import {
   ensureScribbleSocket,
@@ -419,7 +419,7 @@ export function renderArcade(container, ctx) {
 
   container.querySelector('#quiz-bot')?.addEventListener('click', async () => {
     const playerId = getMyId();
-    const res = await emitWithAck('arcade:lobby:bot', { playerId, adminPin: getAdminPin() });
+    const res = await emitWithAck('arcade:lobby:bot', { playerId });
     if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
 
