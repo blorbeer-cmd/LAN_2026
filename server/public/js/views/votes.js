@@ -456,11 +456,16 @@ export function renderVotes(container, ctx) {
   container.querySelectorAll('[data-points-slider]').forEach((slider) => {
     const gameId = slider.dataset.pointsSlider;
     const valueEl = slider.closest('[data-points-row]').querySelector('.skill-value');
+    const updateSliderTone = () => {
+      slider.style.setProperty('--slider-pct', `${(Number(slider.value) / 10) * 100}%`);
+    };
+    updateSliderTone();
     slider.addEventListener('input', () => {
       valueEl.textContent = slider.value;
       const value = parseInt(slider.value, 10);
       if (value > 0) draftPoints.set(gameId, value);
       else draftPoints.delete(gameId);
+      updateSliderTone();
     });
   });
 
