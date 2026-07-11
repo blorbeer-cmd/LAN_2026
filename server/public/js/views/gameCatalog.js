@@ -218,6 +218,15 @@ function gameRowIconsHtml(game) {
   return `<span class="game-row-links">${detailBtn}${linkIcons}</span>`;
 }
 
+// Shown right next to the title in the list row (not just buried in the
+// detail modal) so it's obvious at a glance which games the agent can
+// actually detect via a process-name mapping — the whole reason Live-Status
+// works for that game at all.
+function trackableIndicatorHtml(game) {
+  if (game.processNames.length === 0) return '';
+  return `<span class="game-track-indicator" title="Trackbar – Prozessname hinterlegt" aria-label="Trackbar">${icon('radioTower')}</span>`;
+}
+
 function gameRowHtml(game, myId) {
   const bockStats = ratingStats(state.preferences, game.id);
   const skillStats = ratingStats(state.skills, game.id);
@@ -261,6 +270,7 @@ function gameRowHtml(game, myId) {
       <div class="game-row-name">
         ${gameBadgeHtml(game, 28)}
         <strong class="game-row-title">${escapeHtml(game.name)}</strong>
+        ${trackableIndicatorHtml(game)}
         ${gameRowIconsHtml(game)}
       </div>
       <div class="game-row-sliders">

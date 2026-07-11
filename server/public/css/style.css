@@ -1167,6 +1167,19 @@ button.card {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Static (non-interactive) marker for "agent can detect this game", reusing
+   the same green already used for "spielt"/"trackt gerade" elsewhere so the
+   color itself carries the meaning at a glance. */
+.game-track-indicator {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  color: var(--state-playing);
+}
+.game-track-indicator .ui-icon {
+  width: 16px;
+  height: 16px;
+}
 /* Details/Plattform/Trailer as one group of plain icon buttons, same size and
    no background/border so they read as row chrome rather than as another
    pill button competing with the sliders. Both trailer and Details use
