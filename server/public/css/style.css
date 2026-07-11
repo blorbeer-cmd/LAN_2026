@@ -261,6 +261,46 @@ input {
   gap: var(--space-2);
 }
 
+/* Always-on header banner (notificationBanner.js): the latest push
+   notification for the current identity, everywhere in the app — a
+   persistent, clickable counterpart to the transient toast nudges. */
+.notification-banner-link {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  background: var(--accent-gradient);
+  color: var(--accent-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+  cursor: pointer;
+}
+.notification-banner-static {
+  cursor: default;
+}
+.notification-banner-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notification-banner-text strong {
+  margin-right: var(--space-1);
+}
+.notification-banner-arrow {
+  flex-shrink: 0;
+}
+@media (hover: hover) {
+  .notification-banner-link:hover:not(.notification-banner-static) {
+    filter: brightness(1.08);
+  }
+}
+
 .topbar-title {
   font-size: var(--font-size-lg);
   display: flex;

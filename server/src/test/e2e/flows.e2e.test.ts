@@ -452,12 +452,12 @@ test('Arcade: open a quiz lobby, see it listed and on Home, then close it again'
   await page.click('#quiz-create-lobby');
   await page.waitForSelector('[data-close-lobby]');
 
-  // The open lobby also shows up on Home as an "Aktuell" card whose
-  // "Mitmachen" button deep-links back into the Arcade. No tile click needed
-  // there: the launcher force-expands the game whose lobby you're in.
+  // The open lobby also shows up on Home as a compact "Aktuell" row that
+  // deep-links back into the Arcade (the whole row is the tap target, not a
+  // separate labeled button — see statusRowHtml in home.js). No tile click
+  // needed there: the launcher force-expands the game whose lobby you're in.
   await page.click('[data-view="home"]');
-  await page.waitForSelector('text=Gaming-Quiz-Lobby offen');
-  await page.click('button:has-text("Mitmachen")');
+  await page.click('button:has-text("Gaming-Quiz-Lobby offen")');
 
   // The host sees their own lobby with a "Schließen" button instead of a
   // join button/"Drin" badge - closing was previously impossible (the only
@@ -785,7 +785,7 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
   await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
 });
 
-test('Durchsage: send a broadcast, see it in the history', async () => {
+test('Durchsage: send a broadcast, see it in the history, the header banner (on any view), and Home\'s Mitteilungen history', async () => {
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="broadcast"]');
   await page.waitForSelector('#broadcast-message');
@@ -803,8 +803,16 @@ test('Durchsage: send a broadcast, see it in the history', async () => {
     throw err;
   }
 
-  // The push behind the Durchsage also lands in Home's "Mitteilungen" feed,
-  // with a deep-link button back into the Durchsagen view.
+  // The always-on header banner (notificationBanner.js) shows the same push
+  // on ANY view, not just Home or Broadcast itself — navigate away first to
+  // prove that — and its own click also deep-links back into Durchsagen.
+  await page.click('[data-view="leaderboard"]');
+  await page.waitForSelector('#notification-banner:has-text("Essen ist da!")');
+  await page.click('#notification-banner [data-notification-navigate]');
+  await page.waitForSelector('#broadcast-message');
+
+  // The push also lands in Home's "Mitteilungen" history, further down the
+  // page, with its own deep-link button back into the Durchsagen view.
   await page.click('[data-view="home"]');
   await page.waitForSelector('.section-title:has-text("Mitteilungen")');
   await page.waitForSelector('text=Essen ist da!');
@@ -866,6 +874,23 @@ test('the device back button steps back through in-app views instead of leaving 
   // Forward should redo the same steps.
   await page.goForward();
   await page.waitForFunction(() => document.querySelector('.view-title')?.textContent?.includes('Nächstes'));
+});
+
+test('Aktuell: an open vote\'s title (if set) shows on Home\'s status card', async () => {
+  await page.click('[data-view="votes"]');
+  await page.waitForSelector('#votes-title');
+  await page.fill('#votes-title', 'Freitagabend-Runde');
+  await page.click('#votes-start');
+  await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
+
+  await page.click('[data-view="home"]');
+  await page.waitForSelector('.section-title:has-text("Aktuell")');
+  await page.waitForSelector('text=Freitagabend-Runde');
+
+  // Leave no open round behind for later tests.
+  await page.click('[data-view="votes"]');
+  await page.click('#votes-close');
+  await page.waitForSelector('#votes-start');
 });
 
 test('Kiosk: shows an open food order (when/where only), and the last-push banner picks up any feature, not just Durchsagen', async () => {

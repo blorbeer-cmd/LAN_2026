@@ -10,7 +10,8 @@ import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
 import { isAdmin, setAdmin } from './admin.js';
 import { filterTestUsers } from './testFilter.js';
-import { renderHome, invalidateDigest, invalidatePushFeed, invalidateHomeStatus, invalidateHomeSeating } from './views/home.js';
+import { renderHome, invalidateMissingSkills, invalidatePushFeed, invalidateHomeStatus, invalidateHomeSeating } from './views/home.js';
+import { initNotificationBanner, refreshNotificationBanner } from './notificationBanner.js';
 import { renderPlayers } from './views/players.js';
 import { renderSettings } from './views/games.js';
 import { renderMatchmaking, invalidateMatchmakingHistory, setDraftState } from './views/matchmaking.js';
@@ -251,7 +252,7 @@ function wireSocket() {
   ];
   fullReloadEvents.forEach((event) =>
     socket.on(event, () => {
-      invalidateDigest();
+      invalidateMissingSkills();
       // Cheap enough to invalidate on every one of these (not just
       // leaderboard:changed, the only one that actually changes match
       // history) — the next time the Spiele view opens it just refetches.
@@ -273,7 +274,7 @@ function wireSocket() {
   socket.on('live:changed', (payload) => {
     // Socket payloads bypass apiFetch, so the test-user filter must run here.
     state.live = filterTestUsers(payload);
-    invalidateDigest(); // a newly-running game may now need a skill rating
+    invalidateMissingSkills(); // a newly-running game may now need a skill rating
     if (currentView === 'home') renderCurrent();
   });
   socket.on('votes:changed', (payload) => {
@@ -282,7 +283,6 @@ function wireSocket() {
     lastVoteRound = payload.round;
 
     state.votes = payload;
-    invalidateDigest();
     // Home shows an "Abstimmung läuft" status card driven by state.votes.
     if (currentView === 'votes' || currentView === 'home') renderCurrent();
 
@@ -344,7 +344,6 @@ function wireSocket() {
   });
   socket.on('tournaments:changed', (payload) => {
     invalidateTournaments();
-    invalidateDigest();
     invalidateHomeStatus();
     if (currentView === 'tournaments' || currentView === 'home') renderCurrent();
 
@@ -363,10 +362,12 @@ function wireSocket() {
     }
   });
   // Every notifyPlayers() call on the server also lands here — refresh the
-  // Home view's "Mitteilungen" feed so new entries appear without a reload.
+  // Home view's "Mitteilungen" history and the always-on header banner so
+  // new entries appear without a reload.
   socket.on('push:sent', () => {
     invalidatePushFeed();
     if (currentView === 'home') renderCurrent();
+    refreshNotificationBanner();
   });
 
   // Arcade lobbies opening/closing update the Home "Aktuell" card. The
@@ -443,6 +444,7 @@ async function main() {
   wireNav();
   wireAdminMode();
   wireSocket();
+  initNotificationBanner();
   await loadAll();
   lastVoteRound = state.votes ? state.votes.round : null;
   // Nobody has set up "who am I" on this device yet (fresh invite link, new
