@@ -5,7 +5,7 @@
 // server/CLAUDE.md games reorg.
 
 import { api, getToken } from '../api.js';
-import { confirmDialog } from '../modal.js';
+import { openModal, confirmDialog } from '../modal.js';
 import { state } from '../state.js';
 import { icon } from '../icons.js';
 import { escapeHtml } from '../format.js';
