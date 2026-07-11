@@ -1,6 +1,10 @@
 // Shared physical table plan. Everyone can arrange players for now; keeping
 // the write endpoint deliberately ungated leaves room for a future admin-only
 // switch without changing the UI contract.
+//
+// Two interaction paths, same semantics: HTML5 drag & drop for mouse users,
+// and tap-to-select → tap-to-place for touch devices (where the native drag
+// events never fire). Both go through movePlayer() + save().
 
 import { api } from '../api.js';
 import { escapeHtml, avatarHtml } from '../format.js';
@@ -12,6 +16,8 @@ const LABELS = { top: 'Oben', right: 'Rechts', bottom: 'Unten', left: 'Links' };
 let cache = null;
 let loading = false;
 let saving = false;
+// Tap-to-place selection: { playerId, source: {side, seat} | null (pool) }.
+let selected = null;
 
 function playerMap(players) {
   return new Map(players.map((player) => [player.id, player]));
@@ -28,7 +34,8 @@ function assignmentAt(layout, side, seat) {
 function seatHtml(layout, players, side, seat, editable) {
   const assignment = assignmentAt(layout, side, seat);
   const player = assignment ? playerMap(players).get(assignment.playerId) : null;
-  return `<div class="seating-seat ${player ? 'is-occupied' : ''}" data-seat-side="${side}" data-seat-index="${seat}" ${player ? `data-player-id="${player.id}"` : ''}
+  const isSelected = editable && player && selected?.playerId === player.id;
+  return `<div class="seating-seat ${player ? 'is-occupied' : ''} ${isSelected ? 'is-selected' : ''}" data-seat-side="${side}" data-seat-index="${seat}" ${player ? `data-player-id="${player.id}"` : ''}
       ${editable && player ? 'draggable="true"' : ''} title="${player ? escapeHtml(player.name) : 'Freier Sitzplatz'}">
     ${player ? `${avatarHtml(player, 30)}<span>${escapeHtml(player.name)}</span>` : `<span class="seating-seat-number">${seat + 1}</span><span class="muted">frei</span>`}
   </div>`;
@@ -43,12 +50,12 @@ function sideHtml(layout, players, side, editable) {
 }
 
 export function renderSeatingPlan(layout, players, { editable = false } = {}) {
-  return `<div class="seating-plan ${editable ? 'is-editable' : 'is-readonly'}">
+  return `<div class="seating-plan ${editable ? 'is-editable' : 'is-readonly'} ${editable && selected ? 'is-moving' : ''}">
     ${sideHtml(layout, players, 'top', editable)}
     ${sideHtml(layout, players, 'right', editable)}
     <div class="seating-table-center">
       <div class="seating-table-mark"><strong>Sitzplan</strong></div>
-      ${editable ? '<span class="muted">Spieler auf Plätze ziehen</span>' : ''}
+      ${editable ? `<span class="muted">${selected ? 'Zielplatz antippen' : 'Spieler ziehen oder antippen'}</span>` : ''}
     </div>
     ${sideHtml(layout, players, 'bottom', editable)}
     ${sideHtml(layout, players, 'left', editable)}
@@ -72,7 +79,7 @@ function renderPool(layout, players) {
   return `<div class="seating-pool card">
     <div class="row-between"><div class="section-title" style="margin:0;">Spieler</div><span class="muted">${unassigned.length} frei</span></div>
     <div class="seating-player-pool" data-seat-pool>
-      ${unassigned.length ? unassigned.map((player) => `<div class="seating-pool-player" draggable="true" data-player-id="${player.id}">${avatarHtml(player, 28)}<span>${escapeHtml(player.name)}</span></div>`).join('') : '<span class="muted">Alle Spieler sitzen bereits am Tisch.</span>'}
+      ${unassigned.length ? unassigned.map((player) => `<div class="seating-pool-player ${selected?.playerId === player.id ? 'is-selected' : ''}" draggable="true" data-player-id="${player.id}">${avatarHtml(player, 28)}<span>${escapeHtml(player.name)}</span></div>`).join('') : '<span class="muted">Alle Spieler sitzen bereits am Tisch.</span>'}
     </div>
   </div>`;
 }
@@ -81,6 +88,8 @@ function renderEditor() {
   const { layout, players } = cache;
   return `<div class="seating-editor">
     ${renderSeatingPlan(layout, players, { editable: true })}
+    <p class="muted seating-hint">${icon('monitor')} Wer an derselben Tischkante nebeneinander sitzt, bekommt sich gegenseitig
+      automatisch als „Sichtbare Monitore" im Profil vorausgefüllt.</p>
     ${renderSideControls(layout)}
     ${renderPool(layout, players)}
   </div>`;
@@ -92,7 +101,6 @@ async function save(ctx) {
   try {
     cache = await api.seating.saveLayout({ eventId: cache.eventId, ...cache.layout });
     window.dispatchEvent(new CustomEvent('seating:changed'));
-    showToast('Sitzplan gespeichert.');
   } catch (err) {
     showToast(err.message, { error: true });
   } finally {
@@ -121,15 +129,19 @@ function movePlayer(playerId, side, seat, source = null) {
 function wireEditor(container, ctx) {
   let draggedPlayerId = null;
   let draggedSource = null;
+  const plan = container.querySelector('.seating-plan');
   container.querySelectorAll('[data-player-id]').forEach((element) => {
     element.addEventListener('dragstart', (event) => {
+      selected = null; // a drag replaces any pending tap-selection
       draggedPlayerId = element.dataset.playerId;
       draggedSource = element.dataset.seatSide
         ? { side: element.dataset.seatSide, seat: Number(element.dataset.seatIndex) }
         : null;
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('text/plain', draggedPlayerId);
+      plan.classList.add('is-moving');
     });
+    element.addEventListener('dragend', () => plan.classList.remove('is-moving'));
   });
   container.querySelectorAll('[data-seat-side]').forEach((seat) => {
     seat.addEventListener('dragover', (event) => { event.preventDefault(); seat.classList.add('is-drag-target'); });
@@ -144,17 +156,62 @@ function wireEditor(container, ctx) {
       draggedSource = null;
       await save(ctx);
     });
+    // Tap path: first tap selects an occupied seat, second tap places the
+    // selection here (swapping with any occupant, same as a drag would).
+    seat.addEventListener('click', async () => {
+      const occupantId = seat.dataset.playerId || null;
+      if (!selected) {
+        if (!occupantId) return;
+        selected = { playerId: occupantId, source: { side: seat.dataset.seatSide, seat: Number(seat.dataset.seatIndex) } };
+        ctx.rerender();
+        return;
+      }
+      if (selected.playerId === occupantId) {
+        selected = null;
+        ctx.rerender();
+        return;
+      }
+      const { playerId, source } = selected;
+      selected = null;
+      movePlayer(playerId, seat.dataset.seatSide, Number(seat.dataset.seatIndex), source);
+      await save(ctx);
+    });
   });
   const pool = container.querySelector('[data-seat-pool]');
   if (pool) {
-    pool.addEventListener('dragover', (event) => event.preventDefault());
+    pool.addEventListener('dragover', (event) => { event.preventDefault(); pool.classList.add('is-drag-target'); });
+    pool.addEventListener('dragleave', () => pool.classList.remove('is-drag-target'));
     pool.addEventListener('drop', async (event) => {
       event.preventDefault();
+      pool.classList.remove('is-drag-target');
       const playerId = draggedPlayerId || event.dataTransfer.getData('text/plain');
       if (!playerId) return;
       movePlayer(playerId, null, null);
       draggedPlayerId = null;
       draggedSource = null;
+      await save(ctx);
+    });
+    // Tap path: tapping a pool chip selects it for placing; tapping the empty
+    // pool area while a seated player is selected sends them back to the pool.
+    pool.querySelectorAll('[data-player-id]').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        selected = selected?.playerId === chip.dataset.playerId
+          ? null
+          : { playerId: chip.dataset.playerId, source: null };
+        ctx.rerender();
+      });
+    });
+    pool.addEventListener('click', async (event) => {
+      if (event.target.closest('[data-player-id]')) return; // chip clicks handled above
+      if (!selected) return;
+      if (!selected.source) {
+        selected = null; // pool chip tapped, then pool background: just deselect
+        ctx.rerender();
+        return;
+      }
+      const { playerId } = selected;
+      selected = null;
+      movePlayer(playerId, null, null);
       await save(ctx);
     });
   }
