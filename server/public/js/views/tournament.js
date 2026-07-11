@@ -40,6 +40,31 @@ let createLobbyName = '';
 let createLobbyPassword = '';
 let createProposedTeams = null; // [{ name, playerIds, players (for display), totalRating }]
 let createSeatConflicts = null; // { conflicts, considered } from the last proposal, for the seating note
+let createAvoidPairs = []; // seat-neighbor pairs from the last proposal, to re-flag conflicts after a manual move
+
+// Re-derives each player's seatConflict flag (and the seating-note count)
+// from createAvoidPairs — needed after a manual Feinschliff move on the
+// unsaved proposal, since the server only computes this once at draw time.
+function recomputeSeatConflicts() {
+  if (!createProposedTeams || createAvoidPairs.length === 0) return;
+  const teamOf = new Map();
+  createProposedTeams.forEach((t, i) => t.players.forEach((p) => teamOf.set(p.id, i)));
+  const conflictIds = new Set();
+  let conflicts = 0;
+  for (const [a, b] of createAvoidPairs) {
+    const teamA = teamOf.get(a);
+    const teamB = teamOf.get(b);
+    if (teamA !== undefined && teamB !== undefined && teamA !== teamB) {
+      conflictIds.add(a);
+      conflictIds.add(b);
+      conflicts++;
+    }
+  }
+  for (const t of createProposedTeams) {
+    for (const p of t.players) p.seatConflict = conflictIds.has(p.id);
+  }
+  createSeatConflicts = { conflicts, considered: createAvoidPairs.length };
+}
 
 async function loadList(ctx) {
   listLoading = true;
@@ -98,6 +123,7 @@ function resetCreateForm() {
   createLobbyPassword = '';
   createProposedTeams = null;
   createSeatConflicts = null;
+  createAvoidPairs = [];
 }
 
 // ---------- list + create ----------
@@ -201,6 +227,7 @@ function renderCreateForm(el, ctx) {
               <div class="team-player">
                 ${avatarHtml(p, 18)}
                 <span style="flex:1;">${escapeHtml(p.name)}</span>
+                ${p.seatConflict ? `<span title="Sitzt gegen Sitznachbar" style="color:var(--state-paused);">${icon('armchair')}</span>` : ''}
                 ${
                   createProposedTeams.length > 1
                     ? `<select class="team-move-select" data-tourn-move-player="${p.id}" aria-label="Team ändern">
@@ -365,6 +392,7 @@ function renderCreateForm(el, ctx) {
         playerIds: t.players.map((p) => p.id),
         totalRating: t.totalRating,
       }));
+      createAvoidPairs = result.avoidPairs ?? [];
       createSeatConflicts = result.seatPairsConsidered
         ? { conflicts: result.seatConflicts, considered: result.seatPairsConsidered }
         : null;
@@ -412,6 +440,7 @@ function renderCreateForm(el, ctx) {
         t.playerIds = t.players.map((p) => p.id);
         t.totalRating = t.players.reduce((sum, p) => sum + (p.rating ?? 0), 0);
       }
+      recomputeSeatConflicts();
       ctx.rerender();
     });
   });

@@ -75,6 +75,25 @@ export function countSeatConflicts(teamIdLists: string[][], avoidPairs: SeatPair
   return conflicts;
 }
 
+// Which players ended up as opponents against a declared seat neighbor
+// despite avoidAdjacentOpponents — used to flag those specific players in the
+// team display, not just show an aggregate count.
+export function seatConflictPlayerIds(teamIdLists: string[][], avoidPairs: SeatPair[]): Set<string> {
+  const ids = new Set<string>();
+  if (avoidPairs.length === 0) return ids;
+  const teamOf = new Map<string, number>();
+  teamIdLists.forEach((teamIds, i) => teamIds.forEach((id) => teamOf.set(id, i)));
+  for (const [a, b] of avoidPairs) {
+    const teamA = teamOf.get(a);
+    const teamB = teamOf.get(b);
+    if (teamA !== undefined && teamB !== undefined && teamA !== teamB) {
+      ids.add(a);
+      ids.add(b);
+    }
+  }
+  return ids;
+}
+
 // How costly one unresolved seat conflict is allowed to be, in skill-sum
 // imbalance points, before a swap that would fix it stops being worthwhile.
 // Ratings run 1-10, so this comfortably covers fixing a conflict by trading
