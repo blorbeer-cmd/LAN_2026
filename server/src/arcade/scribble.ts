@@ -150,6 +150,16 @@ function emitLobbies(io: Server) {
   io.emit('scribble:lobbies', { lobbies: publicLobbies() });
 }
 
+// Open-lobby summary for GET /api/arcade/lobbies — see arcade.ts.
+export function openLobbySummaries() {
+  return [...lobbies.values()].map((l) => ({
+    id: l.id,
+    hostName: l.host.name,
+    playerCount: l.players.length,
+    createdAt: l.createdAt,
+  }));
+}
+
 function removeFromOpenLobbies(io: Server, socketId: string) {
   let changed = false;
   for (const [id, lobby] of lobbies) {
@@ -442,7 +452,7 @@ export function registerScribbleSockets(io: Server): void {
       notifyPlayers(otherPlayerIds, {
         title: '✏️ Neue Scribble-Lobby',
         body: `${player.name} hat eine Scribble-Lobby geöffnet – jetzt beitreten!`,
-        url: '/',
+        url: '/#arcade',
       });
     });
     socket.on('scribble:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (res: unknown) => void) => {

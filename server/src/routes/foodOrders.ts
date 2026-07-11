@@ -160,8 +160,8 @@ foodOrdersRouter.post('/', (req, res) => {
 
   const sendAtNote = row.send_at ? ` (geht raus um ${new Date(row.send_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})` : '';
 
-  // Same notify pattern as pings: the socket payload carries a toast for
-  // everyone except the creator (they just tapped the button themselves).
+  // The socket payload carries a toast for everyone except the creator
+  // (they just tapped the button themselves).
   broadcast(Events.foodOrdersChanged, {
     notify: {
       message: `🍕 Neue Sammelbestellung: ${row.title}${sendAtNote} – jetzt eintragen!`,
@@ -172,7 +172,7 @@ foodOrdersRouter.post('/', (req, res) => {
   notifyPlayers(allPlayerIds, {
     title: '🍕 Neue Sammelbestellung',
     body: `${row.title}${sendAtNote} (von ${player.name}) – jetzt eintragen!`,
-    url: '/',
+    url: '/#foodOrders',
   });
 
   res.status(201).json(serializeOrder(row));

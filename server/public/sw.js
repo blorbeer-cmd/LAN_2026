@@ -24,10 +24,19 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const url = event.notification.data?.url || '/';
+  // The url's hash names the SPA view the push wants to land on (e.g.
+  // "/#votes"). An already-open window gets focused and told to switch views
+  // via postMessage (see app.js) — client.navigate() would reload the whole
+  // app just to change tabs. Only when no window exists does a fresh one
+  // open on the deep link, which app.js resolves on boot.
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
-        if ('focus' in client) return client.focus();
+        if ('focus' in client) {
+          const hashIndex = url.indexOf('#');
+          if (hashIndex !== -1) client.postMessage({ type: 'navigate', view: url.slice(hashIndex + 1) });
+          return client.focus();
+        }
       }
       return self.clients.openWindow(url);
     })

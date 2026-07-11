@@ -76,6 +76,8 @@ test('POST /api/admin/unlock succeeds in open mode', async () => {
 test('PATCH /api/players/:id toggles is_admin and validates the type', async () => {
   const created = await request(app).post('/api/players').send({ name: 'AdminTest' });
   assert.equal(created.status, 201);
+  // Everyone starts as an admin while the PIN is retired (see db.ts backfill).
+  assert.equal(created.body.is_admin, 1);
   const id = created.body.id;
 
   const bad = await request(app).patch(`/api/players/${id}`).send({ isAdmin: 'yes' });

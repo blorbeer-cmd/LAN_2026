@@ -5,7 +5,14 @@
 
 import { Router } from 'express';
 import { db } from '../db';
-import { getVapidPublicKey, isValidSubscription, saveSubscription, removeSubscription, getLastPushLogEntry } from '../push';
+import {
+  getVapidPublicKey,
+  isValidSubscription,
+  saveSubscription,
+  removeSubscription,
+  getLastPushLogEntry,
+  getPushLogEntriesFor,
+} from '../push';
 
 export const pushRouter = Router();
 
@@ -16,10 +23,24 @@ pushRouter.get('/vapid-public-key', (_req, res) => {
 });
 
 // GET /api/push/last - the most recent notification sent via notifyPlayers()
-// (Durchsage, neue Bestellung, Arcade-Lobby, Ping, Abstimmung, Turnier, ...),
+// (Durchsage, neue Bestellung, Arcade-Lobby, Abstimmung, Turnier, ...),
 // for the Kiosk screen. null once no push was ever sent.
 pushRouter.get('/last', (_req, res) => {
   res.json({ entry: getLastPushLogEntry() });
+});
+
+// GET /api/push/log?playerId=... - recent notifications relevant to one
+// player (they were on the recipient list), newest first, for the Home
+// view's "Mitteilungen" feed. Each entry carries the deep-link url the
+// notification would open, so the feed can offer the same jump-off point.
+pushRouter.get('/log', (req, res) => {
+  const { playerId } = req.query;
+  if (typeof playerId !== 'string' || !playerId) {
+    return res.status(400).json({ error: 'playerId ist erforderlich.' });
+  }
+  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
+  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  res.json({ entries: getPushLogEntriesFor(playerId) });
 });
 
 // POST /api/push/subscribe - register (or re-point) a browser subscription

@@ -29,6 +29,15 @@ let sortDir = 'asc';
 // them, so a stale suggestion just self-corrects next time this view opens.
 let suggestionsCache = null;
 let suggestionsLoading = false;
+// Bumped on every invalidation so an in-flight loadSuggestions() can tell it
+// was superseded (e.g. a second match got recorded while the first fetch —
+// which only saw one — was still in the air) and must not cache its now-
+// stale result: several leaderboard:changed events firing in quick
+// succession (a burst of match results) would otherwise let the *last*
+// in-flight response win regardless of which invalidation it actually
+// answers, permanently missing whatever changed after it was sent — nothing
+// else would ever trigger a follow-up fetch.
+let suggestionsEpoch = 0;
 
 // Guards the Bock/Skill sliders against a socket-triggered re-render (e.g.
 // the very 'preferences:changed'/'skills:changed' broadcast a drag's own
@@ -67,15 +76,21 @@ function ensureDragGuardInstalled() {
 // history, so a stale cache would keep showing yesterday's numbers.
 export function invalidateSkillSuggestions() {
   suggestionsCache = null;
+  suggestionsEpoch += 1;
 }
 
 async function loadSuggestions(ctx) {
   suggestionsLoading = true;
+  const epoch = suggestionsEpoch;
   try {
     const res = await api.skills.suggestions();
-    suggestionsCache = res.suggestions;
+    // Another invalidation landed while this request was in flight — its
+    // result reflects a moment that's already outdated, so leave the cache
+    // null instead of caching stale data: the render this rerender() call
+    // triggers below will see the null cache and fetch again itself.
+    if (epoch === suggestionsEpoch) suggestionsCache = res.suggestions;
   } catch {
-    suggestionsCache = [];
+    if (epoch === suggestionsEpoch) suggestionsCache = [];
   } finally {
     suggestionsLoading = false;
     ctx.rerender();
@@ -203,6 +218,15 @@ function gameRowIconsHtml(game) {
   return `<span class="game-row-links">${detailBtn}${linkIcons}</span>`;
 }
 
+// Shown right next to the title in the list row (not just buried in the
+// detail modal) so it's obvious at a glance which games the agent can
+// actually detect via a process-name mapping — the whole reason Live-Status
+// works for that game at all.
+function trackableIndicatorHtml(game) {
+  if (game.processNames.length === 0) return '';
+  return `<span class="game-track-indicator" title="Trackbar – Prozessname hinterlegt" aria-label="Trackbar">${icon('radioTower')}</span>`;
+}
+
 function gameRowHtml(game, myId) {
   const bockStats = ratingStats(state.preferences, game.id);
   const skillStats = ratingStats(state.skills, game.id);
@@ -246,6 +270,7 @@ function gameRowHtml(game, myId) {
       <div class="game-row-name">
         ${gameBadgeHtml(game, 28)}
         <strong class="game-row-title">${escapeHtml(game.name)}</strong>
+        ${trackableIndicatorHtml(game)}
         ${gameRowIconsHtml(game)}
       </div>
       <div class="game-row-sliders">

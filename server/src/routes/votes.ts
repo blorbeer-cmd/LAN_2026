@@ -298,7 +298,7 @@ votesRouter.post('/start', (req, res) => {
       nextMode === 'single'
         ? 'Stichwahl: jetzt für einen der Gewinner abstimmen.'
         : 'Was zocken wir als Nächstes? Spiele mit Punkten bewerten.',
-    url: '/',
+    url: '/#votes',
   });
 
   res.status(201).json(payload);

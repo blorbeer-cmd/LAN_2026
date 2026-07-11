@@ -87,6 +87,73 @@ test('GET /api/push/last reflects the most recently sent notification, regardles
   assert.ok(afterBroadcast.body.entry.createdAt > 0);
 });
 
+test('GET /api/push/log returns entries relevant to the player, with deep-link url', async () => {
+  const missing = await request(app).get('/api/push/log');
+  assert.equal(missing.status, 400);
+  const unknown = await request(app).get('/api/push/log?playerId=ghost');
+  assert.equal(unknown.status, 404);
+
+  await request(app).post('/api/broadcasts').send({ playerId, message: 'Feed-Eintrag für alle' });
+
+  const res = await request(app).get(`/api/push/log?playerId=${playerId}`);
+  assert.equal(res.status, 200);
+  const entry = res.body.entries[0];
+  assert.match(entry.body, /Feed-Eintrag für alle/);
+  assert.equal(entry.url, '/#broadcast');
+  assert.equal(entry.audience, 'all');
+  assert.ok(entry.createdAt > 0);
+});
+
+test('GET /api/push/log hides entries the player was not a recipient of, and marks targeted ones as direct', async (t) => {
+  t.mock.method(pushTransport, 'send', async () => {});
+
+  // A tournament between two *other* players: its "dein Match ist bereit"
+  // push targets only them, so it must appear in their feed (audience
+  // 'direct') and never in the uninvolved subscriber's.
+  const game = await request(app).post('/api/games').send({ name: 'Feed Filter Test Game' });
+  const p1 = await request(app).post('/api/players').send({ name: 'Feed P1' });
+  const p2 = await request(app).post('/api/players').send({ name: 'Feed P2' });
+  const p3 = await request(app).post('/api/players').send({ name: 'Feed P3' });
+  const created = await request(app)
+    .post('/api/tournaments')
+    .send({
+      gameId: game.body.id,
+      name: 'Feed Filter Turnier',
+      format: 'round_robin',
+      teams: [{ playerIds: [p1.body.id] }, { playerIds: [p2.body.id] }, { playerIds: [p3.body.id] }],
+    });
+  const matches = created.body.matches;
+  // Deciding round 1 sends the round-2 pairing their match-ready push.
+  await request(app)
+    .post(`/api/tournaments/${created.body.id}/matches/${matches[0].id}/result`)
+    .send({ winnerTeamId: matches[0].teamAId });
+
+  // Neither the created-push (recipients: the tournament's participants) nor
+  // the match-ready push (recipients: the two paired teams) involved this
+  // player, so their feed shows none of it.
+  const uninvolved = await request(app).get(`/api/push/log?playerId=${playerId}`);
+  assert.ok(
+    !uninvolved.body.entries.some((e: { title: string }) => /Match ist bereit/.test(e.title)),
+    'match-ready push must not appear for a player who was not a recipient'
+  );
+  assert.ok(!uninvolved.body.entries.some((e: { body: string }) => /Feed Filter Turnier/.test(e.body)));
+
+  const round2 = matches.filter((m: { round: number }) => m.round === 2);
+  const readyTeamIds = [round2[0].teamAId, round2[0].teamBId];
+  const teamPlayers = created.body.teams
+    .filter((team: { id: string }) => readyTeamIds.includes(team.id))
+    .flatMap((team: { players: Array<{ id: string }> }) => team.players.map((p) => p.id));
+  const involved = await request(app).get(`/api/push/log?playerId=${teamPlayers[0]}`);
+  // Positive check that participant-scoped entries do land in a recipient's
+  // feed: the created-push (audience 'all' within its recipient list) ...
+  assert.ok(involved.body.entries.some((e: { body: string }) => /Feed Filter Turnier/.test(e.body)));
+  // ... and the personally-targeted match-ready push, marked 'direct'.
+  const matchReady = involved.body.entries.find((e: { title: string }) => /Match ist bereit/.test(e.title));
+  assert.ok(matchReady, 'match-ready push must appear for a recipient');
+  assert.equal(matchReady.audience, 'direct');
+  assert.equal(matchReady.url, '/#tournaments');
+});
+
 test('a subscription that comes back as gone (410) is pruned', async (t) => {
   t.mock.method(pushTransport, 'send', async () => {
     const err = new Error('gone') as Error & { statusCode: number };
