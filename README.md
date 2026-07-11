@@ -142,7 +142,6 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
    | `SSH_PRIVATE_KEY` | Inhalt von `lan2026-deploy` (**ohne** `.pub`) |
    | `CF_TUNNEL_TOKEN` | Token aus Schritt 2 |
    | `APP_ACCESS_TOKEN` | starkes Zufallstoken, z. B. `openssl rand -hex 24` |
-   | `APP_ADMIN_PIN` | eigene PIN fürs Admin-Freischalten |
    | `GHCR_PULL_TOKEN` | GitHub → Settings → Developer settings → **Tokens (classic)** (fine-grained Tokens haben **kein** Packages-Permission – GitHub-seitige Lücke, nicht behebbar; und da das Repo nicht dir gehört, tauchte es dort im Repo-Auswahldialog ohnehin nicht auf). Scopes: `read:packages` + `repo` (`repo` sorgt dafür, dass GitHub deine bestehenden Collaborator-Rechte auf dem privaten Repo für das Package durchreicht). Ablaufdatum setzen und dir merken, das Secret + `.env` auf dem Server (siehe "Alltag" unten) danach zu erneuern. **Bewusst kein Fix "Package auf public stellen"** – das Image bleibt privat, der Server authentifiziert sich stattdessen selbst beim Pullen. |
 
 4. **`Provision Hetzner Server`-Workflow manuell starten** (Actions-Tab → Workflow auswählen →
@@ -186,9 +185,9 @@ bisher `npm install && npm run build && npm start` auf einem Laptop im WLAN.
 | `PORT` | `3000` | Port, auf dem der Server lauscht. |
 | `DB_FILE` | `server/data/lan.db` | Pfad zur SQLite-Datei. Wird beim ersten Start angelegt. |
 | `ACCESS_TOKEN` | *(leer = kein Schutz)* | Geteiltes Zugangs-Token für die Web-Oberfläche. **Für den Live-Betrieb unbedingt setzen**, sonst ist das Tool für jeden im Internet offen. |
-| `ADMIN_PIN` | *(leer = offener Admin-Modus)* | PIN fürs Freischalten von Admin-Aktionen. **Für den Live-Betrieb unbedingt setzen.** |
+| `ADMIN_PIN` | *(leer = offener Admin-Modus)* | Derzeit ungenutzt: Der Admin-Modus ist bewusst ohne PIN (Ein-Klick-Umschalter im Web-Tool, siehe `docs/KONZEPT-TEST-USER.md`). Leer lassen – mit gesetztem PIN würden Admin-Aktionen aus der Oberfläche fehlschlagen, bis die PIN-Abfrage im Frontend zurückkommt. |
 | `OFFLINE_TIMEOUT_MS` | `60000` | Nach wie vielen ms ohne Agent-Meldung ein Spieler als „offline" gilt. |
-| `NODE_ENV` | *(leer)* | Auf `production` gesetzt (macht der Docker-Container automatisch): verweigert den Start, wenn `ACCESS_TOKEN`/`ADMIN_PIN` leer sind, und beendet den Prozess statt weiterzulaufen, wenn ein unerwarteter Fehler durchschlägt (Docker startet ihn dann per `restart: unless-stopped` sofort neu). Für die LAN-Party selbst (kein Supervisor) bewusst **nicht** setzen. |
+| `NODE_ENV` | *(leer)* | Auf `production` gesetzt (macht der Docker-Container automatisch): verweigert den Start, wenn `ACCESS_TOKEN` leer ist, und beendet den Prozess statt weiterzulaufen, wenn ein unerwarteter Fehler durchschlägt (Docker startet ihn dann per `restart: unless-stopped` sofort neu). Für die LAN-Party selbst (kein Supervisor) bewusst **nicht** setzen. |
 
 Beispiel:
 

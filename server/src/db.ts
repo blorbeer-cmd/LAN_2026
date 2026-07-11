@@ -32,6 +32,7 @@ db.exec(`
     api_key         TEXT NOT NULL UNIQUE,
     tracking_paused INTEGER NOT NULL DEFAULT 0, -- player-side opt-out; agent reports for this player are dropped
     is_admin        INTEGER NOT NULL DEFAULT 0, -- moderation role; can be granted via PATCH /api/players/:id
+    is_test         INTEGER NOT NULL DEFAULT 0, -- admin-seeded test player; hidden outside admin mode (see testUsers.ts)
     created_at      INTEGER NOT NULL
   );
 
@@ -599,6 +600,15 @@ function migrateAdminColumn(): void {
   db.exec('ALTER TABLE players ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0');
 }
 migrateAdminColumn();
+
+// Migration: older databases predate the is_test flag for admin-seeded test
+// players (see testUsers.ts).
+function migrateTestColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'is_test')) return;
+  db.exec('ALTER TABLE players ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0');
+}
+migrateTestColumn();
 
 function migrateGameIconImageColumn(): void {
   const columns = db.prepare('PRAGMA table_info(games)').all() as Array<{ name: string }>;

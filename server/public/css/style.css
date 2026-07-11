@@ -239,6 +239,28 @@ input {
   opacity: 0.55;
 }
 
+/* Persistent "Admin-Modus aktiv" strip under the topbar (see app.js's
+   wireAdminMode) — reuses the paused/warn state colors so admin mode is
+   unmistakable without introducing a new hue. */
+.admin-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--state-paused-bg);
+  color: var(--state-paused);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.admin-banner-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .topbar-title {
   font-size: var(--font-size-lg);
   display: flex;

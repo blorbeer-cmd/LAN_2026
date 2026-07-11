@@ -11,6 +11,9 @@ import { adminUnlockValid, adminPinRequired } from '../auth';
 import { requireAdmin } from '../auth';
 import { db } from '../db';
 import { config } from '../config';
+import { broadcast, Events } from '../realtime';
+import { getLiveBoard } from '../liveStatus';
+import { createTestUsers, deleteTestUsers, countTestUsers, MAX_TEST_USERS_PER_CALL } from '../testUsers';
 
 export const adminRouter = Router();
 
@@ -28,6 +31,33 @@ adminRouter.post('/unlock', (req, res) => {
     return res.status(403).json({ error: 'Falscher Admin-PIN.' });
   }
   res.json({ ok: true });
+});
+
+// POST /api/admin/test-users - body: { count }. Creates fully seeded test
+// players (seats + visible monitors, skill/Bock per game, play sessions,
+// two of them live) in one transaction — see testUsers.ts.
+adminRouter.post('/test-users', requireAdmin, (req, res) => {
+  const { count } = req.body ?? {};
+  if (!Number.isInteger(count) || count < 1 || count > MAX_TEST_USERS_PER_CALL) {
+    return res.status(400).json({ error: `count muss eine ganze Zahl zwischen 1 und ${MAX_TEST_USERS_PER_CALL} sein.` });
+  }
+  const created = createTestUsers(count);
+  broadcast(Events.playersChanged, null);
+  broadcast(Events.skillsChanged, null);
+  broadcast(Events.liveStatusChanged, getLiveBoard());
+  res.status(201).json({ created, totalTestUsers: countTestUsers() });
+});
+
+// DELETE /api/admin/test-users - removes every test player and everything
+// hanging off them (skills, Bock, sessions, seats, neighbors, live rows).
+adminRouter.delete('/test-users', requireAdmin, (_req, res) => {
+  const deleted = deleteTestUsers();
+  if (deleted > 0) {
+    broadcast(Events.playersChanged, null);
+    broadcast(Events.skillsChanged, null);
+    broadcast(Events.liveStatusChanged, getLiveBoard());
+  }
+  res.json({ deleted });
 });
 
 // GET /api/admin/agent-diagnostics — one compact troubleshooting row per

@@ -2,6 +2,8 @@
 // errors so callers always get either parsed JSON or a thrown Error with the
 // server's German error message.
 
+import { filterTestUsers } from './testFilter.js';
+
 const TOKEN_KEY = 'lan2026_access_token';
 
 export function getToken() {
@@ -16,11 +18,11 @@ export async function apiFetch(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   const token = getToken();
   if (token) headers['x-access-token'] = token;
-  // Attach the admin PIN (set once on admin unlock) so admin-gated writes —
-  // e.g. granting admin — pass the server's requireAdmin check. Absent in
-  // open/dev mode, where the server allows it anyway.
-  const adminPin = localStorage.getItem('lan2026_admin_pin');
-  if (adminPin) headers['x-admin-pin'] = adminPin;
+  // Tells the server this device currently sees test players (admin mode).
+  // Needed for replace-style writes like the seating layout: a non-admin
+  // client's state has test users filtered out, so its saves must not be
+  // allowed to silently unseat them (see seating.ts).
+  if (localStorage.getItem('lan2026_admin') === '1') headers['x-admin-mode'] = '1';
 
   const res = await fetch(path, { ...options, headers });
 
@@ -42,7 +44,9 @@ export async function apiFetch(path, options = {}) {
     err.status = res.status;
     throw err;
   }
-  return body;
+  // Test players are visible in admin mode only — strip them out of every
+  // response centrally instead of in each view (see testFilter.js).
+  return filterTestUsers(body);
 }
 
 // For endpoints that don't return JSON (e.g. the QR code SVG) — apiFetch
@@ -318,9 +322,9 @@ export const api = {
   },
 
   admin: {
-    status: () => apiFetch('/api/admin/status'),
-    unlock: (pin) => apiFetch('/api/admin/unlock', { method: 'POST', body: JSON.stringify({ pin }) }),
     agentDiagnostics: () => apiFetch('/api/admin/agent-diagnostics'),
+    createTestUsers: (count) => apiFetch('/api/admin/test-users', { method: 'POST', body: JSON.stringify({ count }) }),
+    cleanupTestUsers: () => apiFetch('/api/admin/test-users', { method: 'DELETE' }),
   },
 
   foodOrders: {

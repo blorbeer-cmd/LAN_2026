@@ -8,6 +8,8 @@ import { state } from './state.js';
 import { loadAll } from './data.js';
 import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
+import { isAdmin, setAdmin } from './admin.js';
+import { filterTestUsers } from './testFilter.js';
 import { renderLive, invalidatePings, invalidateDigest } from './views/live.js';
 import { renderPlayers } from './views/players.js';
 import { renderSettings } from './views/games.js';
@@ -118,6 +120,26 @@ function switchView(view, { fromHistory = false } = {}) {
   if (!fromHistory && changed) {
     history.pushState({ view }, '');
   }
+}
+
+// Persistent "you are in admin mode" indicator: the banner under the topbar
+// plus a body class as a styling hook. Admin mode also changes which players
+// are visible (test users, see testFilter.js), so every toggle refetches.
+function updateAdminIndicator() {
+  document.getElementById('admin-banner').hidden = !isAdmin();
+  document.body.classList.toggle('admin-mode', isAdmin());
+}
+
+function wireAdminMode() {
+  updateAdminIndicator();
+  document.getElementById('admin-banner-leave').addEventListener('click', () => {
+    setAdmin(false);
+    showToast('Admin-Modus verlassen.');
+  });
+  window.addEventListener('lan:admin-changed', () => {
+    updateAdminIndicator();
+    ctx.refresh();
+  });
 }
 
 async function tokenWorks(candidate) {
@@ -231,7 +253,8 @@ function wireSocket() {
   // and re-render without an extra round trip — important since live-status
   // updates can arrive frequently (every agent report + periodic sweep).
   socket.on('live:changed', (payload) => {
-    state.live = payload;
+    // Socket payloads bypass apiFetch, so the test-user filter must run here.
+    state.live = filterTestUsers(payload);
     invalidateDigest(); // a newly-running game may now need a skill rating
     if (currentView === 'live') renderCurrent();
   });
@@ -394,6 +417,7 @@ async function main() {
   await ensureAccess();
   document.getElementById('app').hidden = false;
   wireNav();
+  wireAdminMode();
   wireSocket();
   await loadAll();
   lastVoteRound = state.votes ? state.votes.round : null;

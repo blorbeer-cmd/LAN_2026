@@ -269,3 +269,25 @@ test('two results submitted for the same draw at once: exactly one is recorded a
   const linked = history.body.history.find((h: { id: string }) => h.id === draw.body.id);
   assert.equal(linked.matchId, winner.body.id);
 });
+
+test('simultaneous test-user seeding: no duplicate names or double-booked seats', async () => {
+  // Both requests run their whole seed in one synchronous transaction, so
+  // they serialize — the second must see the first's taken names and seats.
+  const results = await Promise.all(
+    Array.from({ length: 2 }, () => request(app).post('/api/admin/test-users').send({ count: 3 }))
+  );
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[201], 2, JSON.stringify(counts));
+
+  const roster = await request(app).get('/api/players');
+  const testUsers = roster.body.filter((p: { is_test: number }) => p.is_test === 1);
+  assert.equal(testUsers.length, 6);
+  const names = testUsers.map((p: { name: string }) => p.name.toLowerCase());
+  assert.equal(new Set(names).size, names.length, 'names must be unique');
+
+  const layout = await request(app).get('/api/seating/layout');
+  const seatKeys = layout.body.layout.assignments.map((a: { side: string; seat: number }) => `${a.side}:${a.seat}`);
+  assert.equal(new Set(seatKeys).size, seatKeys.length, 'no seat may be double-booked');
+
+  await request(app).delete('/api/admin/test-users');
+});

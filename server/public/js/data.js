@@ -4,6 +4,7 @@
 
 import { api } from './api.js';
 import { state } from './state.js';
+import { filterTestUsers } from './testFilter.js';
 
 export async function loadAll() {
   const [players, games, skills, preferences, live, votes, matches, leaderboard, playtime, events] =
@@ -19,5 +20,13 @@ export async function loadAll() {
       api.stats.playtime(state.selectedGameId || undefined),
       api.events.list(),
     ]);
-  Object.assign(state, { players, games, skills, preferences, live, votes, matches, leaderboard, playtime, events });
+  // apiFetch already filters test users per response, but within this
+  // parallel batch a payload that only carries player IDs (leaderboard,
+  // playtime, …) may have been processed before the roster taught the
+  // filter which IDs are test users — run everything through once more now
+  // that the roster has definitely been seen (idempotent otherwise).
+  Object.assign(
+    state,
+    filterTestUsers({ players, games, skills, preferences, live, votes, matches, leaderboard, playtime, events })
+  );
 }

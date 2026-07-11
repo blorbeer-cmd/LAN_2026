@@ -33,25 +33,25 @@ export const config = {
   // is shut down without a clean stop message.
   offlineTimeoutMs: intFromEnv('OFFLINE_TIMEOUT_MS', 60_000),
 
-  // Optional PIN that unlocks admin mode (bulk-create test users, grant admin,
-  // moderate). Empty = dev/open mode: unlocking always succeeds, so local
-  // testing needs no secret. Set it in the live deployment to keep admin
-  // actions to whoever knows the PIN. Deliberately separate from the shared
-  // ACCESS_TOKEN (that gates the whole UI; this gates the admin-only extras).
+  // Optional PIN behind the admin-gated endpoints (grant admin, seed test
+  // users). Empty = open mode: the guard lets everyone through. The frontend
+  // currently never asks for a PIN — admin mode is a one-tap toggle (see
+  // docs/KONZEPT-TEST-USER.md) — so leave this empty until the PIN prompt
+  // returns; with a PIN set, admin actions from the UI would just fail.
   adminPin: process.env.ADMIN_PIN ?? '',
 } as const;
 
-// In production (the public-internet deploy) an empty ACCESS_TOKEN/ADMIN_PIN
-// silently means "no protection" — fine for a LAN party run by hand, a
-// launch-blocking footgun for a 24/7 public host. Pure so index.ts's boot
-// check is directly unit-testable without spawning a real process.
+// In production (the public-internet deploy) an empty ACCESS_TOKEN silently
+// means "no protection" — fine for a LAN party run by hand, a
+// launch-blocking footgun for a 24/7 public host. ADMIN_PIN is deliberately
+// NOT required while the admin PIN is retired (see adminPin above). Pure so
+// index.ts's boot check is directly unit-testable without spawning a real
+// process.
 export function productionConfigError(
   cfg: Pick<typeof config, 'accessToken' | 'adminPin'> = config
 ): string | null {
-  const missing = [
-    !cfg.accessToken && 'ACCESS_TOKEN',
-    !cfg.adminPin && 'ADMIN_PIN',
-  ].filter((v): v is string => Boolean(v));
-  if (missing.length === 0) return null;
-  return `NODE_ENV=production erfordert ${missing.join(' und ')}. Server wird nicht gestartet.`;
+  if (!cfg.accessToken) {
+    return 'NODE_ENV=production erfordert ACCESS_TOKEN. Server wird nicht gestartet.';
+  }
+  return null;
 }
