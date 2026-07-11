@@ -351,10 +351,13 @@ input {
   flex: 1;
   min-height: 0; /* allow this flex item to actually shrink and scroll internally, see .app */
   overflow-y: auto;
-  padding: var(--space-4) var(--space-4) calc(var(--nav-height) + var(--space-6));
-  max-width: var(--content-max-width);
+  /* Full-width scroll area with the content column centered via computed
+     side padding instead of max-width + auto margins — same visible column,
+     but the scrollbar parks at the window's right edge instead of floating
+     mid-screen at the column's edge on a wide display. */
+  padding: var(--space-4) max(var(--space-4), calc((100% - var(--content-max-width)) / 2))
+    calc(var(--nav-height) + var(--space-6));
   width: 100%;
-  margin: 0 auto;
 }
 /* Re-applied by switchView() on every tab change (and only there — realtime
    re-renders must not flash): the incoming view fades/slides in briefly. */
