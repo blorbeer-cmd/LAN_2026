@@ -29,7 +29,7 @@ function seatHtml(layout, players, side, seat, editable) {
   const assignment = assignmentAt(layout, side, seat);
   const player = assignment ? playerMap(players).get(assignment.playerId) : null;
   return `<div class="seating-seat ${player ? 'is-occupied' : ''}" data-seat-side="${side}" data-seat-index="${seat}" ${player ? `data-player-id="${player.id}"` : ''}
-      ${editable ? 'draggable="true"' : ''} title="${player ? escapeHtml(player.name) : 'Freier Sitzplatz'}">
+      ${editable && player ? 'draggable="true"' : ''} title="${player ? escapeHtml(player.name) : 'Freier Sitzplatz'}">
     ${player ? `${avatarHtml(player, 30)}<span>${escapeHtml(player.name)}</span>` : `<span class="seating-seat-number">${seat + 1}</span><span class="muted">frei</span>`}
   </div>`;
 }
