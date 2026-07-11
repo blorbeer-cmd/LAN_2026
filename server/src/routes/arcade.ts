@@ -4,6 +4,7 @@ import { openLobbySummaries as quizLobbies } from '../arcade/arcade';
 import { openLobbySummaries as tetrisLobbies } from '../arcade/tetris';
 import { openLobbySummaries as scribbleLobbies } from '../arcade/scribble';
 import { openLobbySummaries as blobbyLobbies } from '../arcade/blobby';
+import { openLobbySummaries as pongLobbies } from '../arcade/pong';
 import { openLobbySummaries as snakeLobbies } from '../arcade/snake';
 
 export const arcadeRouter = Router();
@@ -15,6 +16,7 @@ const ARCADE_TITLES: Record<string, string> = {
   tetris: 'Tetris',
   scribble: 'Scribble',
   blobby: 'Blobby Volley',
+  pong: 'Pong',
   snake: 'Snake',
 };
 interface ArcadeResultRow {
@@ -38,6 +40,7 @@ arcadeRouter.get('/lobbies', (_req, res) => {
     ...quizLobbies().map((l) => ({ ...l, gameType: 'quiz' })),
     ...tetrisLobbies().map((l) => ({ ...l, gameType: 'tetris' })),
     ...scribbleLobbies().map((l) => ({ ...l, gameType: 'scribble' })),
+    ...pongLobbies().map((l) => ({ ...l, gameType: 'pong' })),
     ...blobbyLobbies().map((l) => ({ ...l, gameType: 'blobby' })),
     ...snakeLobbies().map((l) => ({ ...l, gameType: 'snake' })),
   ]

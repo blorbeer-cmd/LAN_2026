@@ -1867,6 +1867,45 @@ button.card {
   font-weight: 800;
 }
 
+.pong-arena {
+  position: relative;
+  width: min(100%, 960px);
+  margin: 0 auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-card), 0 0 36px rgba(145, 99, 245, 0.12);
+}
+.pong-arena canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  touch-action: none;
+}
+.pong-point {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-pill);
+  background: var(--accent-gradient);
+  color: var(--accent-text);
+  font-weight: var(--font-weight-bold);
+  box-shadow: var(--shadow-card);
+}
+.pong-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  color: var(--text);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+}
+
 input[type='range'] {
   width: 100%;
   accent-color: var(--accent);

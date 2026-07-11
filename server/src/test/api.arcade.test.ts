@@ -70,6 +70,7 @@ test('arcade stats rank by win–loss ratio, not single-game score', async () =>
 
   const res = await request(app).get('/api/arcade/stats');
   const game = res.body.games.find((g: { gameType: string }) => g.gameType === 'pong');
+  assert.equal(game.title, 'Pong');
   assert.equal(game.leader.name, 'DuelWinner'); // ranked by win rate, not highscore
   assert.equal(game.players[0].wins, 2);
   assert.equal(game.players[0].winRate, 1);

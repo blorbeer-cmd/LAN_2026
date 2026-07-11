@@ -14,6 +14,7 @@ import { registerArcadeSockets } from './arcade/arcade';
 import { registerTetrisSockets } from './arcade/tetris';
 import { registerScribbleSockets } from './arcade/scribble';
 import { registerBlobbySockets } from './arcade/blobby';
+import { registerPongSockets } from './arcade/pong';
 import { registerSnakeSockets } from './arcade/snake';
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -42,6 +43,7 @@ function start(): void {
   registerTetrisSockets(io);
   registerScribbleSockets(io);
   registerBlobbySockets(io);
+  registerPongSockets(io);
   registerSnakeSockets(io);
 
   // Periodically flip stale players to offline.

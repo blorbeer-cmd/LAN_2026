@@ -13,6 +13,7 @@ import {
   hasScribbleMatch,
 } from './arcadeScribble.js';
 import { ensureBlobbySocket, renderBlobbyLobbyCard, wireBlobbyLobbyCard, myBlobbyLobby, hasBlobbyMatch } from './blobby.js';
+import { ensurePongSocket, renderPongLobbyCard, wirePongLobbyCard, myPongLobby, hasPongMatch } from './pong.js';
 import { ensureSnakeSocket, renderSnakeLobbyCard, wireSnakeLobbyCard, mySnakeLobby, hasSnakeMatch } from './snake.js';
 import { arcadeInfoGridHtml, matchRosterHtml } from './arcadeUi.js';
 import { confirmDialog } from '../modal.js';
@@ -26,7 +27,7 @@ const GAMES = [
   { id: 'quiz', icon: icon('brain'), name: 'Gaming-Quiz' },
   { id: 'tetris', icon: '🧩', name: 'Tetris' },
   { id: 'scribble', icon: icon('pencil'), name: 'Scribble' },
-  { id: 'pong', icon: icon('gitCommitVertical'), name: 'Pong', soon: true },
+  { id: 'pong', icon: icon('gitCommitVertical'), name: 'Pong' },
   { id: 'blobby', icon: icon('volleyball'), name: 'Blobby Volley' },
   { id: 'snake', icon: icon('snake'), name: 'Snake' },
 ];
@@ -317,6 +318,7 @@ function currentGame() {
   if (match || myLobby()) return 'quiz';
   if (myTetrisLobby()) return 'tetris';
   if (myScribbleLobby() || hasScribbleMatch()) return 'scribble';
+  if (myPongLobby() || hasPongMatch()) return 'pong';
   if (myBlobbyLobby() || hasBlobbyMatch()) return 'blobby';
   if (mySnakeLobby() || hasSnakeMatch()) return 'snake';
   return null;
@@ -355,6 +357,7 @@ function gameSectionsHtml() {
       }
       if (g.id === 'tetris') return `<div id="arcade-section-tetris" style="margin-top:var(--space-3);">${renderTetrisLobbyCard()}</div>`;
       if (g.id === 'scribble') return `<div id="arcade-section-scribble" style="margin-top:var(--space-3);">${renderScribbleLobbyCard()}</div>`;
+      if (g.id === 'pong') return `<div id="arcade-section-pong" style="margin-top:var(--space-3);">${renderPongLobbyCard()}</div>`;
       if (g.id === 'blobby') return `<div id="arcade-section-blobby" style="margin-top:var(--space-3);">${renderBlobbyLobbyCard()}</div>`;
       if (g.id === 'snake') return `<div id="arcade-section-snake" style="margin-top:var(--space-3);">${renderSnakeLobbyCard()}</div>`;
       return '';
@@ -366,6 +369,7 @@ export function renderArcade(container, ctx) {
   ensureSocket(ctx);
   ensureTetrisSocket();
   ensureScribbleSocket();
+  ensurePongSocket();
   ensureBlobbySocket();
   ensureSnakeSocket();
   if (!stats && !statsLoading) loadStats(ctx);
@@ -388,6 +392,7 @@ export function renderArcade(container, ctx) {
   wireWhoAmICard(container, 'whoami', ctx);
   wireTetrisLobbyCard(container);
   wireScribbleLobbyCard(container);
+  wirePongLobbyCard(container);
   wireBlobbyLobbyCard(container);
   wireSnakeLobbyCard(container);
 
