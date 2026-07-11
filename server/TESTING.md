@@ -16,9 +16,15 @@ und **Playwright** für echte Browser-Klickpfade.
 
 ```bash
 cd server
-npm test          # schnell: Unit + Integration (In-Memory-DB, kein Server/Browser nötig)
-npm run test:e2e  # langsamer: startet Server-Prozess(e) + Chromium, klickt durch die UI
+npm test              # schnell: Unit + Integration (In-Memory-DB, kein Server/Browser nötig)
+npm run test:coverage # wie npm test, zusätzlich mit Zeilen-/Branch-/Funktions-Coverage-Report
+npm run test:e2e      # langsamer: startet Server-Prozess(e) + Chromium, klickt durch die UI
 ```
+
+`test:coverage` nutzt Node's eingebautes `--experimental-test-coverage` (keine zusätzliche
+Abhängigkeit) und blendet Testdateien selbst aus dem Report aus. Kein hartes Minimum hinterlegt –
+der Report ist als Signal beim Review gedacht (sinkt die Zeilen-/Branch-Abdeckung einer Datei durch
+eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur den Happy Path).
 
 - Unit/Integration laufen gegen eine **In-Memory-SQLite** (`DB_FILE=:memory:`), berühren also nie
   echte Daten.
