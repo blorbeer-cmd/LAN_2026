@@ -138,6 +138,60 @@ test('finishing a round-robin round pushes the next round\'s teams', async (t) =
   await request(app).post('/api/push/unsubscribe').send({ endpoint: 'https://push.example.com/sub-rr' });
 });
 
+test('a match-ready push names the lobby and its default host (the upper bracket team)', async (t) => {
+  t.mock.method(pushTransport, 'send', async () => {});
+
+  const game = await request(app).post('/api/games').send({ name: 'Lobby Push Test Game' });
+  const gameId = game.body.id;
+  const teamPlayerIds: string[] = [];
+  for (const name of ['LB1', 'LB2', 'LB3', 'LB4']) {
+    const p = await request(app).post('/api/players').send({ name });
+    teamPlayerIds.push(p.body.id);
+  }
+  await request(app)
+    .post('/api/push/subscribe')
+    .send({
+      playerId,
+      subscription: { endpoint: 'https://push.example.com/sub-lobby', keys: { p256dh: 'p', auth: 'a' } },
+    });
+
+  const created = await request(app)
+    .post('/api/tournaments')
+    .send({
+      gameId,
+      format: 'single_elimination',
+      lobbyName: 'LAN2026',
+      lobbyPassword: 'geheim',
+      teams: [
+        { name: 'HostTeam', playerIds: [playerId] },
+        { name: 'OtherTeam', playerIds: [teamPlayerIds[0]] },
+        { playerIds: [teamPlayerIds[1]] },
+        { playerIds: [teamPlayerIds[2]] },
+      ],
+    });
+  const tournamentId = created.body.id;
+  const round1 = created.body.matches.filter((m: { round: number }) => m.round === 1);
+
+  const sendMock = t.mock.method(pushTransport, 'send', async () => {});
+  // Decide both round-1 matches so the final's teams (and thus a "match
+  // ready" push) become known.
+  await request(app)
+    .post(`/api/tournaments/${tournamentId}/matches/${round1[0].id}/result`)
+    .send({ winnerTeamId: round1[0].teamAId });
+  await request(app)
+    .post(`/api/tournaments/${tournamentId}/matches/${round1[1].id}/result`)
+    .send({ winnerTeamId: round1[1].teamAId });
+
+  const payloads = sendMock.mock.calls.map((c) => JSON.parse(c.arguments[1] as string));
+  const matchReady = payloads.find((p) => /nächstes Match/.test(p.body));
+  assert.ok(matchReady, 'expected a match-ready push once the final\'s teams were known');
+  assert.match(matchReady.body, /Lobby "LAN2026"/);
+  assert.match(matchReady.body, /PW: geheim/);
+  assert.match(matchReady.body, /HostTeam eröffnet die Lobby/);
+
+  await request(app).post('/api/push/unsubscribe').send({ endpoint: 'https://push.example.com/sub-lobby' });
+});
+
 test('POST /api/push/unsubscribe requires an endpoint', async () => {
   const res = await request(app).post('/api/push/unsubscribe');
   assert.equal(res.status, 400);

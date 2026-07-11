@@ -33,6 +33,8 @@ let createAvoidAdjacent = false;
 let createTrackScore = false;
 let createGroupCount = 2;
 let createAdvancersPerGroup = 2;
+let createLobbyName = '';
+let createLobbyPassword = '';
 let createProposedTeams = null; // [{ name, playerIds, players (for display), totalRating }]
 let createSeatConflicts = null; // { conflicts, considered } from the last proposal, for the seating note
 
@@ -88,6 +90,8 @@ function resetCreateForm() {
   createTrackScore = false;
   createGroupCount = 2;
   createAdvancersPerGroup = 2;
+  createLobbyName = '';
+  createLobbyPassword = '';
   createProposedTeams = null;
   createSeatConflicts = null;
 }
@@ -249,6 +253,19 @@ function renderCreateForm(el, ctx) {
         <input type="checkbox" id="tourn-track-score" ${createTrackScore ? 'checked' : ''} />
         <span>🔢 Ergebnisse mit Punktestand erfassen (statt nur Sieg/Niederlage)</span>
       </label>
+      <div class="row" style="align-items:flex-start;">
+        <div style="flex:1;">
+          <label for="tourn-lobby-name" class="field-label">Lobby-Name (optional)</label>
+          <input type="text" id="tourn-lobby-name" maxlength="60" value="${escapeHtml(createLobbyName)}" placeholder="z. B. LAN2026" />
+        </div>
+        <div style="flex:1;">
+          <label for="tourn-lobby-password" class="field-label">Lobby-Passwort (optional)</label>
+          <input type="text" id="tourn-lobby-password" maxlength="60" value="${escapeHtml(createLobbyPassword)}" placeholder="z. B. zocken123" />
+        </div>
+      </div>
+      <p class="muted" style="font-size:0.78rem;margin-top:-6px;">
+        Wird bei jeder Paarung mitgeschickt — das obere Team im Turnierbaum eröffnet standardmäßig die Lobby.
+      </p>
       <button type="button" class="btn btn-primary btn-block" id="tourn-submit" ${createProposedTeams ? '' : 'disabled'}>Turnier erstellen</button>
     </div>
   `;
@@ -290,6 +307,13 @@ function renderCreateForm(el, ctx) {
 
   el.querySelector('#tourn-track-score').addEventListener('change', (e) => {
     createTrackScore = e.target.checked;
+  });
+
+  el.querySelector('#tourn-lobby-name').addEventListener('input', (e) => {
+    createLobbyName = e.target.value;
+  });
+  el.querySelector('#tourn-lobby-password').addEventListener('input', (e) => {
+    createLobbyPassword = e.target.value;
   });
 
   const groupCountInput = el.querySelector('#tourn-group-count');
@@ -355,6 +379,8 @@ function renderCreateForm(el, ctx) {
           ...(createFormat === 'group_knockout'
             ? { groupCount: createGroupCount, advancersPerGroup: createAdvancersPerGroup }
             : {}),
+          ...(createLobbyName.trim() ? { lobbyName: createLobbyName.trim() } : {}),
+          ...(createLobbyPassword.trim() ? { lobbyPassword: createLobbyPassword.trim() } : {}),
           teams: createProposedTeams.map((t) => ({ name: t.name, playerIds: t.playerIds })),
         });
         resetCreateForm();
@@ -628,6 +654,14 @@ function renderDetail(container, ctx) {
     .filter(Boolean)
     .join(' · ');
 
+  const lobbyInfo =
+    t.lobbyName || t.lobbyPassword
+      ? `<div class="muted" style="margin-bottom:12px;font-size:0.85rem;">
+           🔑 ${t.lobbyName ? `Lobby "${escapeHtml(t.lobbyName)}"` : 'Lobby'}${t.lobbyPassword ? ` · PW: ${escapeHtml(t.lobbyPassword)}` : ''}
+           <span class="muted" style="font-size:0.78rem;"> — das obere Team im Baum eröffnet</span>
+         </div>`
+      : '';
+
   container.innerHTML = `
     <div class="row-between">
       <button type="button" class="btn btn-sm" id="tourn-back">‹ Zurück</button>
@@ -638,6 +672,7 @@ function renderDetail(container, ctx) {
       ${FORMAT_LABELS[t.format]}${formatMeta ? ` · ${formatMeta}` : ''} ·
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
     </div>
+    ${lobbyInfo}
     ${board}
   `;
 

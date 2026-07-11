@@ -39,6 +39,8 @@ interface TournamentRow {
   advancers_per_group: number | null;
   status: string;
   created_at: number;
+  lobby_name: string | null;
+  lobby_password: string | null;
 }
 
 interface TournamentTeamRow {
@@ -206,6 +208,8 @@ function buildDetail(tournamentId: string) {
     advancersPerGroup: tournament.advancers_per_group,
     status: tournament.status,
     createdAt: tournament.created_at,
+    lobbyName: tournament.lobby_name,
+    lobbyPassword: tournament.lobby_password,
     teams,
     matches,
     ...(standings ? { standings } : {}),
@@ -275,9 +279,10 @@ function validateTeamsInput(teams: unknown): TeamInput[] | { error: string } {
 // the one exception — it can't be generated until the group stage decides
 // who advances, see the result-recording handler below).
 // Body: { gameId, name?, format, twoLegged?, trackScore?, groupCount?,
-//         advancersPerGroup?, teams: [{ name?, playerIds }] }
+//         advancersPerGroup?, lobbyName?, lobbyPassword?, teams: [{ name?, playerIds }] }
 tournamentsRouter.post('/', (req, res) => {
-  const { gameId, name, format, twoLegged, trackScore, groupCount, advancersPerGroup, teams } = req.body ?? {};
+  const { gameId, name, format, twoLegged, trackScore, groupCount, advancersPerGroup, lobbyName, lobbyPassword, teams } =
+    req.body ?? {};
 
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
@@ -298,6 +303,12 @@ tournamentsRouter.post('/', (req, res) => {
   }
   if (name !== undefined && !isNonEmptyString(name, 80)) {
     return res.status(400).json({ error: 'name muss 1-80 Zeichen lang sein.' });
+  }
+  if (lobbyName !== undefined && lobbyName !== null && !isNonEmptyString(lobbyName, 60)) {
+    return res.status(400).json({ error: 'lobbyName muss 1-60 Zeichen lang sein.' });
+  }
+  if (lobbyPassword !== undefined && lobbyPassword !== null && !isNonEmptyString(lobbyPassword, 60)) {
+    return res.status(400).json({ error: 'lobbyPassword muss 1-60 Zeichen lang sein.' });
   }
 
   const teamsInput = validateTeamsInput(teams);
@@ -342,12 +353,14 @@ tournamentsRouter.post('/', (req, res) => {
 
   const teamIds = teamsInput.map(() => nanoid());
   const tournamentName = isNonEmptyString(name, 80) ? (name as string).trim() : `${game.name}-Turnier`;
+  const resolvedLobbyName = isNonEmptyString(lobbyName, 60) ? (lobbyName as string).trim() : null;
+  const resolvedLobbyPassword = isNonEmptyString(lobbyPassword, 60) ? (lobbyPassword as string).trim() : null;
 
   const create = db.transaction(() => {
     db.prepare(
       `INSERT INTO tournaments
-         (id, event_id, game_id, name, format, two_legged, track_score, group_count, advancers_per_group, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`
+         (id, event_id, game_id, name, format, two_legged, track_score, group_count, advancers_per_group, status, created_at, lobby_name, lobby_password)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`
     ).run(
       tournamentId,
       getTrackingEventId(),
@@ -358,7 +371,9 @@ tournamentsRouter.post('/', (req, res) => {
       resolvedTrackScore ? 1 : 0,
       resolvedGroupCount,
       resolvedAdvancersPerGroup,
-      now
+      now,
+      resolvedLobbyName,
+      resolvedLobbyPassword
     );
 
     // Team -> group assignment (group_knockout only) has to happen before
@@ -686,9 +701,18 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
     const nextTeamA = nextTeams.find((t) => t.id === nextMatch.team_a_id);
     const nextTeamB = nextTeams.find((t) => t.id === nextMatch.team_b_id);
     if (!nextTeamA || !nextTeamB) return undefined;
+    // team_a_id is always the upper team in the bracket tree (see
+    // propagateWinner in tournament.ts — the winner of the even-numbered
+    // feeder slot becomes team A), so it's the natural default for "who
+    // hosts" — no separate data field needed for this yet.
+    const lobbyBits = [
+      tournament!.lobby_name ? `Lobby "${tournament!.lobby_name}"` : null,
+      tournament!.lobby_password ? `PW: ${tournament!.lobby_password}` : null,
+    ].filter(Boolean);
+    const lobbyText = lobbyBits.length > 0 ? ` (${lobbyBits.join(', ')})` : '';
     const matchNotify = {
       playerIds: [...JSON.parse(nextTeamA.player_ids), ...JSON.parse(nextTeamB.player_ids)],
-      message: `⚔️ Dein nächstes Match steht an: ${nextTeamA.name} vs ${nextTeamB.name}`,
+      message: `⚔️ Dein nächstes Match steht an: ${nextTeamA.name} vs ${nextTeamB.name} — ${nextTeamA.name} eröffnet die Lobby${lobbyText}`,
     };
     notifyPlayers(matchNotify.playerIds, { title: '⚔️ Dein Match ist bereit', body: matchNotify.message, url: '/' });
     return matchNotify;

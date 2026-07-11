@@ -253,7 +253,9 @@ db.exec(`
     group_count          INTEGER,                     -- only for group_knockout
     advancers_per_group  INTEGER,                     -- only for group_knockout
     status               TEXT NOT NULL DEFAULT 'active', -- 'active' | 'completed'
-    created_at           INTEGER NOT NULL
+    created_at           INTEGER NOT NULL,
+    lobby_name           TEXT,                         -- optional: in-game lobby name used throughout the tournament
+    lobby_password       TEXT                          -- optional: in-game lobby password used throughout the tournament
   );
 
   -- A tournament's roster: fixed for the tournament's whole duration (unlike
@@ -460,6 +462,9 @@ function migrateTournamentColumns(): void {
   if (!hasMatchCol('group_index')) db.exec('ALTER TABLE tournament_matches ADD COLUMN group_index INTEGER');
   if (!hasMatchCol('score_a')) db.exec('ALTER TABLE tournament_matches ADD COLUMN score_a INTEGER');
   if (!hasMatchCol('score_b')) db.exec('ALTER TABLE tournament_matches ADD COLUMN score_b INTEGER');
+
+  if (!has('lobby_name')) db.exec('ALTER TABLE tournaments ADD COLUMN lobby_name TEXT');
+  if (!has('lobby_password')) db.exec('ALTER TABLE tournaments ADD COLUMN lobby_password TEXT');
 }
 migrateTournamentColumns();
 
