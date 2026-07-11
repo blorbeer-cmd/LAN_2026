@@ -96,9 +96,15 @@ interface PushLogEntry {
   createdAt: number;
 }
 
+// Only 'all' (group-wide) entries — the Kiosk is the sole consumer, a
+// shared screen with no identity of its own, so a 'direct' one (e.g. "dein
+// Match ist bereit") would read as if it applied to everyone glancing at it.
 export function getLastPushLogEntry(): PushLogEntry | null {
   const row = db
-    .prepare('SELECT id, title, body, url, audience, created_at AS createdAt FROM push_log ORDER BY created_at DESC LIMIT 1')
+    .prepare(
+      `SELECT id, title, body, url, audience, created_at AS createdAt FROM push_log
+       WHERE audience = 'all' ORDER BY created_at DESC LIMIT 1`
+    )
     .get() as PushLogEntry | undefined;
   return row ?? null;
 }

@@ -8,6 +8,7 @@ import { api, getToken, setToken } from './api.js';
 import { connectSocket } from './socket.js';
 import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml, formatDateTime } from './format.js';
 import { installIconReplacement, icon } from './icons.js';
+import { bannerContentHtml } from './pushFeed.js';
 
 installIconReplacement();
 
@@ -198,17 +199,22 @@ function renderFoodBanner(orders) {
 // Last-push banner: shows whatever was most recently sent to (almost)
 // everyone — a manual Durchsage, but just as much a new Sammelbestellung, an
 // Arcade-Lobby opening, a new vote round, a tournament update, ... (every
-// notifyPlayers() call is logged server-side, see push.ts). Always shows the
-// last one, with timestamp, rather than only
-// "currently active" ones — a kiosk screen someone glances at minutes later
-// should still see what was last announced, not go blank.
+// notifyPlayers() call is logged server-side, see push.ts — the server-side
+// filter in getLastPushLogEntry() already excludes personally-targeted
+// pushes like "dein Match ist bereit", which wouldn't mean anything to
+// everyone glancing at a shared screen). Always shows the last one, with
+// timestamp, rather than only "currently active" ones — a kiosk screen
+// someone glances at minutes later should still see what was last
+// announced, not go blank. Same bell + title + body content as the app's
+// header notification banner (see notificationBanner.js/pushFeed.js) —
+// just not clickable, since the Kiosk has nobody to click it.
 function renderBroadcastBanner(entry) {
   const el = document.getElementById('kiosk-broadcast');
   if (!entry) {
     el.hidden = true;
     return;
   }
-  el.innerHTML = `<strong>${escapeHtml(entry.title)}</strong> ${escapeHtml(entry.body)} <span class="kiosk-broadcast-time">· ${formatDateTime(entry.createdAt)} Uhr</span>`;
+  el.innerHTML = `${bannerContentHtml(entry)} <span class="kiosk-broadcast-time">· ${formatDateTime(entry.createdAt)} Uhr</span>`;
   el.hidden = false;
 }
 

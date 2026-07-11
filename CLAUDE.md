@@ -60,8 +60,11 @@ Gruppiert nach Feature-Bereich (vollständiges Schema in `server/src/db.ts`):
 - **Live-Status:** `live_status` (Zustand je Spieler: spielt/pausiert/offline, seit wann),
   `live_status_games` (mehrere gleichzeitig laufende Spiele pro Spieler), `play_sessions`
   (abgeschlossene Sessions, Basis für Spielzeit-Auswertungen/Awards). Angezeigt auf der
-  „Home"-Ansicht (Landing Page), die zusätzlich den persönlichen Digest, den
-  Mitteilungs-Feed und die Kiosk-Inhalte (Abstimmung/Turnier/Bestellung/Rangliste) bündelt.
+  „Home"-Ansicht (Landing Page), die zusätzlich die Kiosk-Inhalte bündelt
+  (Abstimmung/Turnier/Bestellung/Arcade-Lobby/Rangliste, samt persönlicher Skill-Bewertungs-
+  Nudge) und ganz unten den Mitteilungs-Verlauf zeigt. Die jeweils neueste Mitteilung für den
+  aktuellen Nutzer ist zusätzlich immer oben im App-Header sichtbar, auf jeder Ansicht,
+  inklusive Direktlink zum betreffenden Bereich (`notificationBanner.js`).
 - **Abstimmung:** `votes`, `vote_rounds` (Historie geschlossener Runden).
 - **Matchmaking & Ergebnisse:** `matches` (Ergebnisse fürs Leaderboard), `matchmaking_draws`
   (History der „Teams auslosen"-Ergebnisse).
