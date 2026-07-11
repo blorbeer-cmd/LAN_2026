@@ -962,6 +962,19 @@ export function setState(key: string, value: string): void {
 // backfill, which reads the old active_event_id key.
 migrateEventTrackingColumns();
 
+// For now every player is an admin: the PIN is retired and the friend group
+// moderates itself (see docs/KONZEPT-TEST-USER.md), and a roster where nobody
+// holds the flag would leave nobody to grant it. One-time backfill (guarded
+// via app_state, needs setState above) so a later deliberate revocation via
+// the admin panel survives restarts; new players default to admin in
+// routes/players.ts.
+function migrateAllPlayersAdminBackfill(): void {
+  if (getState('all_players_admin_backfill') === 'done') return;
+  db.exec('UPDATE players SET is_admin = 1');
+  setState('all_players_admin_backfill', 'done');
+}
+migrateAllPlayersAdminBackfill();
+
 function migrateSeatNeighborsSourceColumn(): void {
   const columns = db.prepare('PRAGMA table_info(seat_neighbors)').all() as Array<{ name: string }>;
   if (columns.some((c) => c.name === 'source')) return;
