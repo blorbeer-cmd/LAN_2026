@@ -36,7 +36,6 @@ let lobbies = [];
 let stats = null;
 let statsLoading = false;
 let activeStatsGame = null;
-let activeGame = null; // which game tile is expanded
 let match = null;
 let currentQuestion = null;
 let lastResult = null;
@@ -312,16 +311,16 @@ function renderMatch() {
   `;
 }
 
-// The game the launcher should currently expand: forced to the game the player
-// is actually engaged in (a live quiz match/lobby, a tetris lobby, or a
-// scribble lobby/match), else whatever tile they last tapped.
+// Which game the player is currently engaged in (a live quiz match/lobby, a
+// tetris lobby, ...) — used only to highlight the matching tile, since every
+// game's lobby card is shown at once now (see gameSectionsHtml below).
 function currentGame() {
   if (match || myLobby()) return 'quiz';
   if (myTetrisLobby()) return 'tetris';
   if (myScribbleLobby() || hasScribbleMatch()) return 'scribble';
   if (myBlobbyLobby() || hasBlobbyMatch()) return 'blobby';
   if (mySnakeLobby() || hasSnakeMatch()) return 'snake';
-  return activeGame;
+  return null;
 }
 
 function gameTileHtml(game, active) {
@@ -333,34 +332,35 @@ function gameTileHtml(game, active) {
     </button>`;
 }
 
-// The lobby/match UI for the currently selected game, shown under the tiles.
-function activeGameHtml() {
-  const game = currentGame();
-  if (game === 'quiz') {
-    const lobby = myLobby();
-    return `
-      <div class="card stack" style="margin-top:var(--space-3);">
-        <div class="row-between" style="gap:var(--space-3);">
-          <strong>Quiz-Lobby</strong>
-          <div class="row" style="gap:var(--space-2);">${isAdmin() ? `<button type="button" class="btn btn-sm btn-equal" id="quiz-bot" ${lobby || match ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="quiz-create-lobby" ${lobby || match ? 'disabled' : ''}>Lobby öffnen</button></div>
-        </div>
-        ${arcadeInfoGridHtml([
-          { label: 'Ziel', text: 'Richtige Antworten sammeln.' },
-          { label: 'Steuerung', text: 'Antwort tippen und senden.' },
-        ])}
-        ${renderLobbyList()}
-      </div>
-      ${targetControls(lobby)}`;
-  }
-  if (game === 'tetris') {
-    return `<div style="margin-top:var(--space-3);">${renderTetrisLobbyCard()}</div>`;
-  }
-  if (game === 'scribble') {
-    return `<div style="margin-top:var(--space-3);">${renderScribbleLobbyCard()}</div>`;
-  }
-  if (game === 'blobby') return `<div style="margin-top:var(--space-3);">${renderBlobbyLobbyCard()}</div>`;
-  if (game === 'snake') return `<div style="margin-top:var(--space-3);">${renderSnakeLobbyCard()}</div>`;
-  return '';
+// Every game's lobby/match card, in the same order as the tile grid above —
+// so all open lobbies are always visible, grouped and sorted by game, instead
+// of only the one tile the player last tapped.
+function gameSectionsHtml() {
+  const lobby = myLobby();
+  return GAMES.filter((g) => !g.soon)
+    .map((g) => {
+      if (g.id === 'quiz') {
+        return `
+          <div id="arcade-section-quiz" class="card stack" style="margin-top:var(--space-3);">
+            <div class="row-between" style="gap:var(--space-3);">
+              <strong>Quiz-Lobby</strong>
+              <div class="row" style="gap:var(--space-2);">${isAdmin() ? `<button type="button" class="btn btn-sm btn-equal" id="quiz-bot" ${lobby || match ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="quiz-create-lobby" ${lobby || match ? 'disabled' : ''}>Lobby öffnen</button></div>
+            </div>
+            ${arcadeInfoGridHtml([
+              { label: 'Ziel', text: 'Richtige Antworten sammeln.' },
+              { label: 'Steuerung', text: 'Antwort tippen und senden.' },
+            ])}
+            ${renderLobbyList()}
+          </div>
+          ${targetControls(lobby)}`;
+      }
+      if (g.id === 'tetris') return `<div id="arcade-section-tetris" style="margin-top:var(--space-3);">${renderTetrisLobbyCard()}</div>`;
+      if (g.id === 'scribble') return `<div id="arcade-section-scribble" style="margin-top:var(--space-3);">${renderScribbleLobbyCard()}</div>`;
+      if (g.id === 'blobby') return `<div id="arcade-section-blobby" style="margin-top:var(--space-3);">${renderBlobbyLobbyCard()}</div>`;
+      if (g.id === 'snake') return `<div id="arcade-section-snake" style="margin-top:var(--space-3);">${renderSnakeLobbyCard()}</div>`;
+      return '';
+    })
+    .join('');
 }
 
 export function renderArcade(container, ctx) {
@@ -381,7 +381,7 @@ export function renderArcade(container, ctx) {
     <div class="arcade-tiles">
       ${GAMES.map((g) => gameTileHtml(g, cg)).join('')}
     </div>
-    ${activeGameHtml()}
+    ${gameSectionsHtml()}
     <div class="section-title">📊 Arcade-Statistiken</div>
     <div class="card stack">${arcadeStatsHtml()}</div>
   `;
@@ -397,8 +397,7 @@ export function renderArcade(container, ctx) {
       const id = btn.dataset.game;
       const def = GAMES.find((g) => g.id === id);
       if (def?.soon) return showToast(`${def.name} kommt bald!`);
-      activeGame = activeGame === id ? null : id;
-      ctx.rerender();
+      document.getElementById(`arcade-section-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   });
 
