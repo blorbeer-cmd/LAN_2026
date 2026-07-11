@@ -68,6 +68,54 @@ function getPlayers(): PlayerRow[] {
   return db.prepare('SELECT id, name, color, avatar FROM players ORDER BY name COLLATE NOCASE').all() as PlayerRow[];
 }
 
+// Pairs of players seated right next to each other along the same table edge
+// (adjacent seat indices on the same side). Corner pairs — last seat of one
+// side next to the first seat of the next — are deliberately excluded: you
+// normally can't see a corner neighbor's monitor the way you can see a
+// same-edge neighbor's, so they shouldn't be auto-declared as visible.
+function computeAdjacentPairs(counts: Record<Side, number>, assignments: SeatingAssignment[]): Array<[string, string]> {
+  const pairs: Array<[string, string]> = [];
+  for (const side of SIDES) {
+    const bySeat = new Map<number, string>();
+    for (const a of assignments) if (a.side === side) bySeat.set(a.seat, a.playerId);
+    for (let seat = 0; seat < counts[side] - 1; seat++) {
+      const playerA = bySeat.get(seat);
+      const playerB = bySeat.get(seat + 1);
+      if (playerA && playerB) pairs.push([playerA, playerB]);
+    }
+  }
+  return pairs;
+}
+
+// Keeps seat_neighbors in sync with the table plan: every pair seated next to
+// each other along an edge gets an 'auto' row in both directions (so it shows
+// up in either player's own "Sichtbare Monitore" checklist). Only ever
+// touches rows this function itself created — a player who has manually
+// confirmed or added to their own list (source = 'manual', see players.ts's
+// PUT /:id/neighbors) keeps that choice even if the table plan changes later.
+function syncAutoSeatNeighbors(eventId: string, pairs: Array<[string, string]>): void {
+  const newKeys = new Set(pairs.map(([x, y]) => [x, y].sort().join('::')));
+  const existingAuto = db
+    .prepare("SELECT player_id, neighbor_id FROM seat_neighbors WHERE event_id = ? AND source = 'auto'")
+    .all(eventId) as Array<{ player_id: string; neighbor_id: string }>;
+  const remove = db.prepare(
+    "DELETE FROM seat_neighbors WHERE event_id = ? AND player_id = ? AND neighbor_id = ? AND source = 'auto'"
+  );
+  for (const row of existingAuto) {
+    const key = [row.player_id, row.neighbor_id].sort().join('::');
+    if (!newKeys.has(key)) remove.run(eventId, row.player_id, row.neighbor_id);
+  }
+  // INSERT OR IGNORE: if a manual row already claims this direction, leave it
+  // as-is rather than downgrading it back to 'auto'.
+  const insert = db.prepare(
+    "INSERT OR IGNORE INTO seat_neighbors (event_id, player_id, neighbor_id, source) VALUES (?, ?, ?, 'auto')"
+  );
+  for (const [x, y] of pairs) {
+    insert.run(eventId, x, y);
+    insert.run(eventId, y, x);
+  }
+}
+
 function getLayoutResponse(eventId: string) {
   const players = getPlayers();
   return { eventId, players, layout: readLayout(eventId, players) };
@@ -106,12 +154,17 @@ seatingRouter.put('/layout', (req, res) => {
     seenPlayers.add(assignment.playerId);
     validAssignments.push({ side, seat: assignment.seat, playerId: assignment.playerId });
   }
-  db.prepare(`INSERT INTO seating_layouts (event_id, top_seats, right_seats, bottom_seats, left_seats, assignments, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(event_id) DO UPDATE SET top_seats=excluded.top_seats,
-    right_seats=excluded.right_seats, bottom_seats=excluded.bottom_seats, left_seats=excluded.left_seats,
-    assignments=excluded.assignments, updated_at=excluded.updated_at`).run(
-    eventId, counts.top, counts.right, counts.bottom, counts.left, JSON.stringify(validAssignments), Date.now()
-  );
+  const adjacentPairs = computeAdjacentPairs(counts as Record<Side, number>, validAssignments);
+  const saveLayout = db.transaction(() => {
+    db.prepare(`INSERT INTO seating_layouts (event_id, top_seats, right_seats, bottom_seats, left_seats, assignments, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(event_id) DO UPDATE SET top_seats=excluded.top_seats,
+      right_seats=excluded.right_seats, bottom_seats=excluded.bottom_seats, left_seats=excluded.left_seats,
+      assignments=excluded.assignments, updated_at=excluded.updated_at`).run(
+      eventId, counts.top, counts.right, counts.bottom, counts.left, JSON.stringify(validAssignments), Date.now()
+    );
+    syncAutoSeatNeighbors(eventId, adjacentPairs);
+  });
+  saveLayout();
   res.json(getLayoutResponse(eventId));
 });
 

@@ -19,9 +19,12 @@ import { showToast } from '../toast.js';
 import { getPushSubscriptionState, enablePush, disablePush } from '../push.js';
 import { invalidateMyStats } from './myStats.js';
 import { resizeImageFile } from '../imageUtils.js';
+import { icon } from '../icons.js';
 
-// Who you've declared as a seat neighbor for the active event (FR-18
-// extension). Fetched lazily, reset whenever the active identity changes.
+// Whose monitor you've declared you can see ("Sichtbare Monitore") for the
+// active event (FR-18 extension) — pre-filled from same-edge seat placements
+// in the seating plan, plus anything checked here manually. Fetched lazily,
+// reset whenever the active identity changes.
 let neighborsCache = null;
 let neighborsLoading = false;
 let neighborsForPlayerId = null;
@@ -75,6 +78,13 @@ function renderIdentityPicker(container, ctx) {
     }
   });
 }
+
+// The seating plan editor (seating.js) may have just auto-filled/updated our
+// own visible-monitor pairs — refetch next render instead of showing a stale
+// cache (same pattern as live.js's seatingCache invalidation).
+window.addEventListener('seating:changed', () => {
+  neighborsForPlayerId = null;
+});
 
 async function loadNeighbors(playerId, ctx) {
   neighborsLoading = true;
@@ -242,13 +252,15 @@ export function renderProfile(container, ctx) {
     <div class="card">${renderPushSection()}</div>
 
     <div class="row-between">
-      <div class="section-title" style="margin-bottom:var(--space-2);">🪑 Sitznachbarn</div>
+      <div class="section-title" style="margin-bottom:var(--space-2);">${icon('monitor')} Sichtbare Monitore</div>
       <button type="button" class="btn btn-sm" data-navigate="seating">Sitzplan ansehen</button>
     </div>
     <div class="card">${renderNeighbors(myId)}</div>
     <p class="muted" style="font-size:var(--font-size-xs);margin-top:var(--space-2);">
-      Wen hast du bei dieser LAN neben dir sitzen? Wird beim Teams-Auslosen berücksichtigt, wenn
-      das für das jeweilige Spiel wichtig ist (in den Spiel-Einstellungen einstellbar).
+      Auf wessen Bildschirm kannst du von deinem Platz aus schauen? Nachbarn an derselben Tischkante
+      werden aus dem Sitzplan automatisch vorausgefüllt – kreuz hier weitere Personen an, deren
+      Monitor du zusätzlich siehst. Wird beim Teams-Auslosen berücksichtigt, wenn Sitznachbarn nicht
+      gegeneinander spielen sollen.
     </p>
 
     ${
