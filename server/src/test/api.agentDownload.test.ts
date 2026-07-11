@@ -13,6 +13,8 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { buildAgentConfig } from '../routes/agentDownload';
 
+const EXE_PATH = path.join(__dirname, '..', '..', 'agent-dist', 'lan2026-agent.exe');
+
 const app = createApp();
 const exeExists = fs.existsSync(
   path.join(__dirname, '..', '..', 'agent-dist', 'lan2026-agent.exe')
@@ -70,5 +72,24 @@ test('GET /api/agent-download streams a ZIP (or a clear 503 while the exe is mis
   } else {
     assert.equal(res.status, 503);
     assert.match(JSON.parse((res.body as Buffer).toString()).error, /agent-dist/);
+  }
+});
+
+test('GET /api/agent-download returns a clean 503 when the exe is not deployed', async () => {
+  // Whether this repo happens to ship a prebuilt exe or not, the "not
+  // deployed yet" branch must behave the same way — stub existsSync so it's
+  // exercised deterministically regardless of the actual repo state.
+  const originalExistsSync = fs.existsSync;
+  fs.existsSync = ((p: fs.PathLike) => {
+    if (p === EXE_PATH) return false;
+    return originalExistsSync(p);
+  }) as typeof fs.existsSync;
+
+  try {
+    const res = await request(app).get(`/api/agent-download?playerId=${playerId}`);
+    assert.equal(res.status, 503);
+    assert.match(res.body.error, /agent-dist\/lan2026-agent\.exe fehlt/);
+  } finally {
+    fs.existsSync = originalExistsSync;
   }
 });

@@ -8,7 +8,7 @@ und **Playwright** für echte Browser-Klickpfade.
 
 | Art | Womit | Was |
 |-----|-------|-----|
-| **Unit** | `node:test` + `assert` | Reine Logik ohne I/O: Zugangs-Guard, Live-Status-Ableitung, Matchmaking-Balancing, Leaderboard-Scoring (`src/*.test.ts`). |
+| **Unit** | `node:test` + `assert` | Reine Logik ohne I/O: Zugangs-Guard, Live-Status-Ableitung, Matchmaking-Balancing, Leaderboard-Scoring (`src/*.test.ts`). Ebenso die DOM-freien Frontend-Helfer (Formatierung, Avatar-Palette, Prozessnamen-Vorschläge, State-Lookups, `dateTimeFieldHtml`) direkt unter `public/js/*.test.js` — läuft ohne Build-Step als ESM (`public/package.json` setzt `"type": "module"` nur für den Node-Testlauf, ohne Auswirkung auf die im Browser statisch ausgelieferten Dateien). |
 | **Integration** | `node:test` + `supertest` | Echte HTTP-Requests gegen die Express-App (`src/test/*.test.ts`), gegen eine **In-Memory-DB**. |
 | **E2E (Browser)** | `node:test` + Playwright (`src/test/e2e/*.e2e.test.ts`) | Startet den echten gebauten Server + einen echten Chromium und klickt durch die Web-UI: Spieler anlegen, Teams auslosen, abstimmen, Ergebnis eintragen, Zugangs-Token-Login. |
 
@@ -16,9 +16,15 @@ und **Playwright** für echte Browser-Klickpfade.
 
 ```bash
 cd server
-npm test          # schnell: Unit + Integration (In-Memory-DB, kein Server/Browser nötig)
-npm run test:e2e  # langsamer: startet Server-Prozess(e) + Chromium, klickt durch die UI
+npm test              # schnell: Unit + Integration (In-Memory-DB, kein Server/Browser nötig)
+npm run test:coverage # wie npm test, zusätzlich mit Zeilen-/Branch-/Funktions-Coverage-Report
+npm run test:e2e      # langsamer: startet Server-Prozess(e) + Chromium, klickt durch die UI
 ```
+
+`test:coverage` nutzt Node's eingebautes `--experimental-test-coverage` (keine zusätzliche
+Abhängigkeit) und blendet Testdateien selbst aus dem Report aus. Kein hartes Minimum hinterlegt –
+der Report ist als Signal beim Review gedacht (sinkt die Zeilen-/Branch-Abdeckung einer Datei durch
+eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur den Happy Path).
 
 - Unit/Integration laufen gegen eine **In-Memory-SQLite** (`DB_FILE=:memory:`), berühren also nie
   echte Daten.
@@ -28,7 +34,8 @@ npm run test:e2e  # langsamer: startet Server-Prozess(e) + Chromium, klickt durc
 
 ## Konventionen
 
-- Unit-Testdateien heißen `*.test.ts` und liegen neben dem Code.
+- Unit-Testdateien heißen `*.test.ts` und liegen neben dem Code. Für die Frontend-Helfer unter
+  `public/js/` entsprechend `*.test.js` direkt daneben.
 - Integrationstests liegen unter `src/test/*.test.ts`.
 - E2E-Tests liegen unter `src/test/e2e/*.e2e.test.ts` und laufen **nicht** in `npm test` mit (eigenes
   Script `test:e2e`), da sie einen Server + Browser brauchen und entsprechend langsamer sind.

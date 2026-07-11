@@ -146,19 +146,24 @@ export function closeStaleSessions(now: number): void {
   cleanup();
 }
 
+// One sweep pass: closes stale sessions and re-broadcasts the board. Split
+// out from startOfflineSweeper so the tick logic itself is unit-testable
+// without waiting on a real timer.
+export function sweepOnce(now: number = Date.now()): void {
+  try {
+    closeStaleSessions(now);
+    broadcast(Events.liveStatusChanged, getLiveBoard());
+  } catch (err) {
+    // Never let a sweep error take down the timer/process.
+    // eslint-disable-next-line no-console
+    console.error('Offline sweep failed:', err);
+  }
+}
+
 // Periodically re-broadcasts the board so clients transition players to
 // "offline" even when no new report arrives (e.g. a PC was switched off).
 export function startOfflineSweeper(_io: Server): void {
   // Half the timeout is a good cadence: reacts quickly without busy-looping.
   const interval = Math.max(5_000, Math.floor(config.offlineTimeoutMs / 2));
-  setInterval(() => {
-    try {
-      closeStaleSessions(Date.now());
-      broadcast(Events.liveStatusChanged, getLiveBoard());
-    } catch (err) {
-      // Never let a sweep error take down the timer/process.
-      // eslint-disable-next-line no-console
-      console.error('Offline sweep failed:', err);
-    }
-  }, interval).unref();
+  setInterval(() => sweepOnce(), interval).unref();
 }
