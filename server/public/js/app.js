@@ -290,8 +290,14 @@ function wireSocket() {
   // A draw's teams were fine-tuned (player moved) or a result was just
   // entered for it (Team-Historie -> Ergebnis-Historie) — refetch so
   // everyone's history view stays in sync.
-  socket.on('matchmaking:draws-changed', () => {
+  socket.on('matchmaking:draws-changed', (payload) => {
     invalidateMatchmakingHistory();
+    // A result was just recorded for this draw elsewhere — the "gerade
+    // ausgelost" panel (if still showing that same draw) disappears too,
+    // not just Team-Historie.
+    if (payload?.matchId && state.lastMatchmaking?.id === payload.id) {
+      state.lastMatchmaking = null;
+    }
     if (currentView === 'matchmaking') renderCurrent();
   });
   socket.on('tournaments:changed', (payload) => {

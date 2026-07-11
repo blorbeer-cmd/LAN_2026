@@ -268,11 +268,15 @@ db.exec(`
     seat_conflicts        INTEGER NOT NULL DEFAULT 0,
     seat_pairs_considered INTEGER NOT NULL DEFAULT 0,
     generated_at          INTEGER NOT NULL,
-    match_id              TEXT REFERENCES matches(id) ON DELETE SET NULL
+    match_id              TEXT REFERENCES matches(id) ON DELETE SET NULL,
     -- Set once someone enters a result for this exact draw (Team-Historie ->
     -- Ergebnis-Historie). ON DELETE SET NULL mirrors tournament_matches.match_id:
     -- correcting/removing that leaderboard entry moves the draw back to
     -- Team-Historie instead of deleting the draw itself.
+    source                TEXT
+    -- NULL for a regular skill-balanced draw, 'draft' when these teams came
+    -- out of a finished Captain-Draft (see draft.ts) — shown as a badge so
+    -- Team-/Ergebnis-Historie still says how a lineup came to be.
   );
 
   -- Tournaments (FR-33): a single-elimination bracket ("Turnierbaum"), a
@@ -747,6 +751,9 @@ function migrateMatchmakingDrawsColumns(): void {
   const columns = db.prepare('PRAGMA table_info(matchmaking_draws)').all() as Array<{ name: string }>;
   if (!columns.some((c) => c.name === 'match_id')) {
     db.exec('ALTER TABLE matchmaking_draws ADD COLUMN match_id TEXT REFERENCES matches(id) ON DELETE SET NULL');
+  }
+  if (!columns.some((c) => c.name === 'source')) {
+    db.exec('ALTER TABLE matchmaking_draws ADD COLUMN source TEXT');
   }
 }
 migrateMatchmakingDrawsColumns();

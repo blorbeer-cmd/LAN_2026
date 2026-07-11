@@ -127,6 +127,11 @@ export function openMatchForm(ctx, options = {}) {
 
   let teamCount = options.presetTeams ? Math.max(2, options.presetTeams.length) : 2;
   let isFfa = false;
+  // Off by default: pick-a-winner covers the common case in one tap. Toggling
+  // this in swaps the winner radios for a score/Platz input per team (or per
+  // player in FFA) — the winner is then derived from those instead of asked
+  // for separately, so there's no way for the two to disagree.
+  let advancedMode = false;
   const defaultGameId = options.presetGameId || state.selectedGameId || state.games[0].id;
 
   const presetTeamIndexByPlayer = new Map();
@@ -140,6 +145,23 @@ export function openMatchForm(ctx, options = {}) {
   if (ffaCheckedIds.size === 0) ffaCheckedIds = new Set(state.players.map((p) => p.id));
   const ffaParticipants = () => state.players.filter((p) => ffaCheckedIds.has(p.id));
 
+  // Advanced mode has no explicit winner radio — derive it instead: rank 1
+  // wins if exactly one entry has it, otherwise the strictly-highest score
+  // wins if there is one. Anything ambiguous (no ranks/scores entered, a tie)
+  // just leaves winnerTeamIndex null (Unentschieden), same as picking no
+  // winner manually.
+  function deriveWinnerIndex(entries) {
+    const rankOnes = entries.filter((e) => e.rank === 1);
+    if (rankOnes.length === 1) return entries.indexOf(rankOnes[0]);
+    const scored = entries.filter((e) => typeof e.score === 'number');
+    if (scored.length > 0) {
+      const max = Math.max(...scored.map((e) => e.score));
+      const maxEntries = scored.filter((e) => e.score === max);
+      if (maxEntries.length === 1) return entries.indexOf(maxEntries[0]);
+    }
+    return null;
+  }
+
   const { close, el } = openModal(
     'Ergebnis eintragen',
     `
@@ -150,6 +172,10 @@ export function openMatchForm(ctx, options = {}) {
         <label class="check-row">
           <input type="checkbox" id="match-ffa" />
           <span>🎲 Frei-für-alle (kein Team, jeder für sich)</span>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" id="match-advanced" />
+          <span>${icon('chart')} Werte / Platzierung statt nur Sieger eintragen</span>
         </label>
         <div id="match-body"></div>
         <button type="submit" class="btn btn-primary btn-block">Speichern</button>
@@ -186,10 +212,28 @@ export function openMatchForm(ctx, options = {}) {
             </div>
             <div class="section-title">Spieler-Zuordnung</div>
             <div id="match-players">${playersHtml}</div>
-            <div class="section-title">Gewinner</div>
-            <div class="row" style="flex-wrap:wrap;">
-              ${Array.from({ length: teamCount }, (_, i) => `<label class="chip"><input type="radio" name="winner" value="${i}" /> Team ${i + 1}</label>`).join('')}
-              <label class="chip"><input type="radio" name="winner" value="" checked /> Unentschieden</label>
+            <div id="match-winner-section" ${advancedMode ? 'hidden' : ''}>
+              <div class="section-title">Gewinner</div>
+              <div class="row" style="flex-wrap:wrap;">
+                ${Array.from({ length: teamCount }, (_, i) => `<label class="chip"><input type="radio" name="winner" value="${i}" /> Team ${i + 1}</label>`).join('')}
+                <label class="chip"><input type="radio" name="winner" value="" checked /> Unentschieden</label>
+              </div>
+            </div>
+            <div id="match-scores-section" ${advancedMode ? '' : 'hidden'}>
+              <div class="section-title">${icon('chart')} Werte / Platzierung</div>
+              <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
+                Sieger wird automatisch aus Platz 1 bzw. dem höchsten Wert bestimmt. Beides ist optional
+                und unabhängig voneinander — leer lassen, was nicht zutrifft.
+              </p>
+              ${Array.from(
+                { length: teamCount },
+                (_, i) => `
+                <div class="row" style="align-items:center;">
+                  <span style="flex:1;">Team ${i + 1}</span>
+                  <input type="number" data-team-score="${i}" placeholder="Wert" step="any" style="width:90px;" />
+                  <input type="number" data-team-rank="${i}" placeholder="Platz" min="1" style="width:80px;" />
+                </div>`
+              ).join('')}
             </div>
           `;
 
@@ -210,6 +254,21 @@ export function openMatchForm(ctx, options = {}) {
           `;
         }
 
+        function renderFfaScoreOptions() {
+          const scoresEl = bodyEl.querySelector('#match-ffa-scores');
+          const participants = ffaParticipants();
+          scoresEl.innerHTML = participants
+            .map(
+              (p) => `
+              <div class="row" style="align-items:center;">
+                <span style="flex:1;">${escapeHtml(p.name)}</span>
+                <input type="number" data-ffa-score="${p.id}" placeholder="Wert" step="any" style="width:90px;" />
+                <input type="number" data-ffa-rank="${p.id}" placeholder="Platz" min="1" style="width:80px;" />
+              </div>`
+            )
+            .join('');
+        }
+
         function renderFfaPickers() {
           bodyEl.innerHTML = `
             <div class="section-title">Teilnehmer</div>
@@ -225,15 +284,27 @@ export function openMatchForm(ctx, options = {}) {
                 )
                 .join('')}
             </div>
-            <div class="section-title">Gewinner</div>
-            <div id="match-ffa-winner"></div>
+            <div id="match-ffa-winner-section" ${advancedMode ? 'hidden' : ''}>
+              <div class="section-title">Gewinner</div>
+              <div id="match-ffa-winner"></div>
+            </div>
+            <div id="match-ffa-scores-section" ${advancedMode ? '' : 'hidden'}>
+              <div class="section-title">${icon('chart')} Werte / Platzierung</div>
+              <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
+                Sieger wird automatisch aus Platz 1 bzw. dem höchsten Wert bestimmt. Beides ist optional
+                und unabhängig voneinander — leer lassen, was nicht zutrifft.
+              </p>
+              <div id="match-ffa-scores"></div>
+            </div>
           `;
           renderFfaWinnerOptions();
+          renderFfaScoreOptions();
           bodyEl.querySelectorAll('[data-ffa-player]').forEach((cb) => {
             cb.addEventListener('change', () => {
               if (cb.checked) ffaCheckedIds.add(cb.dataset.ffaPlayer);
               else ffaCheckedIds.delete(cb.dataset.ffaPlayer);
               renderFfaWinnerOptions();
+              renderFfaScoreOptions();
             });
           });
         }
@@ -248,6 +319,17 @@ export function openMatchForm(ctx, options = {}) {
         modalEl.querySelector('#match-ffa').addEventListener('change', (e) => {
           isFfa = e.target.checked;
           renderBody();
+        });
+
+        // Just flips which section is visible — never re-renders the body,
+        // so toggling this doesn't discard team assignments / checked
+        // participants the user already made.
+        modalEl.querySelector('#match-advanced').addEventListener('change', (e) => {
+          advancedMode = e.target.checked;
+          bodyEl.querySelector('#match-winner-section')?.toggleAttribute('hidden', advancedMode);
+          bodyEl.querySelector('#match-scores-section')?.toggleAttribute('hidden', !advancedMode);
+          bodyEl.querySelector('#match-ffa-winner-section')?.toggleAttribute('hidden', advancedMode);
+          bodyEl.querySelector('#match-ffa-scores-section')?.toggleAttribute('hidden', !advancedMode);
         });
 
         modalEl.querySelector('#match-form').addEventListener('submit', async (e) => {
@@ -270,8 +352,22 @@ export function openMatchForm(ctx, options = {}) {
               return showToast('Mindestens 2 Teilnehmer auswählen.', { error: true });
             }
             const teams = participants.map((p) => ({ playerIds: [p.id] }));
-            const winnerPlayerId = modalEl.querySelector('input[name="ffa-winner"]:checked')?.value || null;
-            const winnerTeamIndex = winnerPlayerId ? participants.findIndex((p) => p.id === winnerPlayerId) : null;
+
+            let winnerTeamIndex;
+            if (advancedMode) {
+              teams.forEach((t, i) => {
+                const playerId = participants[i].id;
+                const scoreRaw = modalEl.querySelector(`[data-ffa-score="${playerId}"]`)?.value;
+                const rankRaw = modalEl.querySelector(`[data-ffa-rank="${playerId}"]`)?.value;
+                t.score = scoreRaw ? parseFloat(scoreRaw) : null;
+                t.rank = rankRaw ? parseInt(rankRaw, 10) : null;
+              });
+              winnerTeamIndex = deriveWinnerIndex(teams);
+            } else {
+              const winnerPlayerId = modalEl.querySelector('input[name="ffa-winner"]:checked')?.value || null;
+              winnerTeamIndex = winnerPlayerId ? participants.findIndex((p) => p.id === winnerPlayerId) : null;
+            }
+
             try {
               await api.matches.create({ gameId, teams, winnerTeamIndex });
               close();
@@ -288,24 +384,37 @@ export function openMatchForm(ctx, options = {}) {
           modalEl.querySelectorAll('[data-team-for]').forEach((sel) => {
             if (sel.value !== '') teams[parseInt(sel.value, 10)].playerIds.push(sel.dataset.teamFor);
           });
+          if (advancedMode) {
+            teams.forEach((t, i) => {
+              const scoreRaw = modalEl.querySelector(`[data-team-score="${i}"]`)?.value;
+              const rankRaw = modalEl.querySelector(`[data-team-rank="${i}"]`)?.value;
+              t.score = scoreRaw ? parseFloat(scoreRaw) : null;
+              t.rank = rankRaw ? parseInt(rankRaw, 10) : null;
+            });
+          }
           const nonEmptyTeams = teams.filter((t) => t.playerIds.length > 0);
           if (nonEmptyTeams.length < 2) {
             unlock();
             return showToast('Mindestens 2 Teams müssen Spieler enthalten.', { error: true });
           }
-          const winnerRaw = modalEl.querySelector('input[name="winner"]:checked')?.value;
-          // Map the winner radio's index (over the full team slots, including
-          // any empty ones) onto its position in the filtered non-empty list
-          // actually sent to the API.
+
           let winnerTeamIndex = null;
-          if (winnerRaw !== '' && winnerRaw !== undefined) {
-            const winnerTeam = teams[parseInt(winnerRaw, 10)];
-            const idx = nonEmptyTeams.indexOf(winnerTeam);
-            if (idx === -1) {
-              unlock();
-              return showToast('Das Gewinner-Team hat keine Spieler zugeordnet.', { error: true });
+          if (advancedMode) {
+            winnerTeamIndex = deriveWinnerIndex(nonEmptyTeams);
+          } else {
+            const winnerRaw = modalEl.querySelector('input[name="winner"]:checked')?.value;
+            // Map the winner radio's index (over the full team slots,
+            // including any empty ones) onto its position in the filtered
+            // non-empty list actually sent to the API.
+            if (winnerRaw !== '' && winnerRaw !== undefined) {
+              const winnerTeam = teams[parseInt(winnerRaw, 10)];
+              const idx = nonEmptyTeams.indexOf(winnerTeam);
+              if (idx === -1) {
+                unlock();
+                return showToast('Das Gewinner-Team hat keine Spieler zugeordnet.', { error: true });
+              }
+              winnerTeamIndex = idx;
             }
-            winnerTeamIndex = idx;
           }
 
           try {
@@ -315,6 +424,13 @@ export function openMatchForm(ctx, options = {}) {
               winnerTeamIndex,
               ...(options.presetDrawId ? { drawId: options.presetDrawId } : {}),
             });
+            // The recorded draw disappears from both the "gerade ausgelost"
+            // panel and Team-Historie, showing up in Ergebnis-Historie
+            // instead — don't wait for the matchmaking:draws-changed socket
+            // round trip to hide the panel the submitter is looking at.
+            if (options.presetDrawId && state.lastMatchmaking?.id === options.presetDrawId) {
+              state.lastMatchmaking = null;
+            }
             close();
             await ctx.refresh();
             showToast('Ergebnis gespeichert.');

@@ -132,6 +132,7 @@ matchmakingRouter.post('/', (req, res) => {
     seatPairsConsidered: avoidPairs.length,
     generatedAt: Date.now(),
     matchId: null as string | null,
+    source: null as string | null,
   };
 
   // Logged for the history view (every draw, including re-rolls — see the
@@ -156,6 +157,7 @@ interface DrawRow {
   seatPairsConsidered: number;
   generatedAt: number;
   matchId: string | null;
+  source: string | null;
 }
 
 function parseDrawRow(r: DrawRow) {
@@ -169,7 +171,43 @@ function parseDrawRow(r: DrawRow) {
     seatPairsConsidered: r.seatPairsConsidered,
     generatedAt: r.generatedAt,
     matchId: r.matchId,
+    source: r.source,
   };
+}
+
+interface MatchResultRow {
+  id: string;
+  result: string;
+}
+
+// Ergebnis-Historie shows the actual entered score/rank/winner, not just the
+// draw's original team snapshot — merges each linked match's per-team result
+// data in by index. Draws are only ever linked right after being recorded
+// with that exact team lineup (see POST /api/matches), so the indices line
+// up; if a draw was somehow re-shaped since (defensive, shouldn't happen),
+// the length check just skips enrichment instead of misattributing scores.
+function attachMatchResults(draws: ReturnType<typeof parseDrawRow>[]): void {
+  const matchIds = draws.map((d) => d.matchId).filter((id): id is string => !!id);
+  if (matchIds.length === 0) return;
+
+  const placeholders = matchIds.map(() => '?').join(',');
+  const matchRows = db
+    .prepare(`SELECT id, result FROM matches WHERE id IN (${placeholders})`)
+    .all(...matchIds) as MatchResultRow[];
+  const resultById = new Map(
+    matchRows.map((m) => [m.id, JSON.parse(m.result) as { teams: Array<{ score?: number | null; rank?: number | null }>; winnerTeamIndex: number | null }])
+  );
+
+  for (const draw of draws) {
+    if (!draw.matchId) continue;
+    const matchResult = resultById.get(draw.matchId);
+    if (!matchResult || matchResult.teams.length !== draw.teams.length) continue;
+    draw.teams.forEach((t: { score?: number | null; rank?: number | null }, i: number) => {
+      t.score = matchResult.teams[i].score ?? null;
+      t.rank = matchResult.teams[i].rank ?? null;
+    });
+    (draw as { winnerTeamIndex?: number | null }).winnerTeamIndex = matchResult.winnerTeamIndex ?? null;
+  }
 }
 
 // GET /api/matchmaking/history - past draws for the active event (or an
@@ -194,7 +232,7 @@ matchmakingRouter.get('/history', (req, res) => {
       `SELECT md.id AS id, md.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
               md.teams AS teamsJson, md.seat_conflicts AS seatConflicts,
               md.seat_pairs_considered AS seatPairsConsidered, md.generated_at AS generatedAt,
-              md.match_id AS matchId
+              md.match_id AS matchId, md.source AS source
        FROM matchmaking_draws md
        JOIN games g ON g.id = md.game_id
        WHERE ${clauses.join(' AND ')}
@@ -203,7 +241,9 @@ matchmakingRouter.get('/history', (req, res) => {
     )
     .all(...params, limitNum) as DrawRow[];
 
-  res.json({ history: rows.map(parseDrawRow) });
+  const draws = rows.map(parseDrawRow);
+  attachMatchResults(draws);
+  res.json({ history: draws });
 });
 
 // PATCH /api/matchmaking/draws/:id/move - Feinschliff: move one player to a
@@ -255,7 +295,7 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
       `SELECT md.id AS id, md.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
               md.teams AS teamsJson, md.seat_conflicts AS seatConflicts,
               md.seat_pairs_considered AS seatPairsConsidered, md.generated_at AS generatedAt,
-              md.match_id AS matchId
+              md.match_id AS matchId, md.source AS source
        FROM matchmaking_draws md JOIN games g ON g.id = md.game_id WHERE md.id = ?`
     )
     .get(row.id) as DrawRow;

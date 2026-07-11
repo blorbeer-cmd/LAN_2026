@@ -187,6 +187,47 @@ test('POST /api/matchmaking returns a draw id and null matchId', async () => {
   assert.equal(res.body.matchId, null);
 });
 
+test('POST /api/matchmaking has a null source (only a Captain-Draft sets it)', async () => {
+  const res = await request(app).post('/api/matchmaking').send({ gameId, playerIds, teamCount: 2 });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.source, null);
+
+  const history = await request(app).get(`/api/matchmaking/history?gameId=${gameId}`);
+  const entry = history.body.history.find((h: { id: string }) => h.id === res.body.id);
+  assert.equal(entry.source, null);
+});
+
+test('GET /api/matchmaking/history enriches a linked draw with the recorded score/rank/winner', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Enrich Test Game' });
+  const p1 = await request(app).post('/api/players').send({ name: 'EnrichA' });
+  const p2 = await request(app).post('/api/players').send({ name: 'EnrichB' });
+  const ids = [p1.body.id, p2.body.id];
+
+  const draw = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: ids, teamCount: 2 });
+
+  await request(app)
+    .post('/api/matches')
+    .send({
+      gameId: game.body.id,
+      teams: [
+        { playerIds: [ids[0]], score: 21, rank: 1 },
+        { playerIds: [ids[1]], score: 14, rank: 2 },
+      ],
+      winnerTeamIndex: 0,
+      drawId: draw.body.id,
+    });
+
+  const history = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}`);
+  const linked = history.body.history.find((h: { id: string }) => h.id === draw.body.id);
+  assert.equal(linked.winnerTeamIndex, 0);
+  assert.equal(linked.teams[0].score, 21);
+  assert.equal(linked.teams[0].rank, 1);
+  assert.equal(linked.teams[1].score, 14);
+  assert.equal(linked.teams[1].rank, 2);
+});
+
 test('PATCH /api/matchmaking/draws/:id/move moves a player and recomputes totals', async () => {
   const game = await request(app).post('/api/games').send({ name: 'Move Test Game' });
   const names = ['MoveA', 'MoveB', 'MoveC', 'MoveD'];

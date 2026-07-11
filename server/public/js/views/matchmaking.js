@@ -88,10 +88,22 @@ function findDrawById(id) {
 // record a result — which is what turns this into an Ergebnis-Historie entry.
 function renderDrawCard(draw, { editable }) {
   const teamsHtml = draw.teams
-    .map(
-      (t, i) => `
+    .map((t, i) => {
+      // Only meaningful once a result is actually recorded (read-only cards)
+      // — the skill-balance "Score" above is a different number (the draw's
+      // rating total), so this is labeled distinctly to avoid confusion.
+      const resultParts = [];
+      if (!editable && draw.winnerTeamIndex === i) resultParts.push(`${icon('trophy')} Sieger`);
+      if (t.rank != null) resultParts.push(`Platz ${t.rank}`);
+      if (t.score != null) resultParts.push(`Wert ${t.score}`);
+      const resultLine = resultParts.length
+        ? `<div class="muted" style="font-size:var(--font-size-xs);">${resultParts.join(' · ')}</div>`
+        : '';
+
+      return `
       <div class="team-card">
         <div class="team-card-header"><span>Team ${i + 1}</span><span>Score ${t.totalRating}</span></div>
+        ${resultLine}
         ${t.players
           .map(
             (p) => `
@@ -109,8 +121,8 @@ function renderDrawCard(draw, { editable }) {
           </div>`
           )
           .join('')}
-      </div>`
-    )
+      </div>`;
+    })
     .join('');
 
   const seatingNote = draw.seatPairsConsidered
@@ -122,7 +134,10 @@ function renderDrawCard(draw, { editable }) {
   return `
     <div class="card stack" style="margin-bottom:var(--space-3);" data-draw-card="${draw.id}">
       <div class="row-between">
-        <div class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(draw.generatedAt)}</div>
+        <div class="row" style="gap:var(--space-2);">
+          <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(draw.generatedAt)}</span>
+          ${draw.source === 'draft' ? `<span class="badge">👑 Captain-Draft</span>` : ''}
+        </div>
         ${draw.matchId ? `<span class="badge badge-offline">✅ Ergebnis erfasst</span>` : ''}
       </div>
       <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));">${teamsHtml}</div>
@@ -440,9 +455,11 @@ export function renderMatchmaking(container, ctx) {
 }
 
 function renderResult(result) {
-  if (!result) return '';
+  // Once a result is recorded for this draw it moves into Ergebnis-Historie
+  // below — the "gerade ausgelost" panel has nothing left to show.
+  if (!result || result.matchId) return '';
   return `
     <div class="section-title row" style="gap:var(--space-2);">${gameBadgeHtml(gameById(result.gameId), 22)} ${escapeHtml(result.gameName)} — gerade ausgelost</div>
-    ${renderDrawCard(result, { editable: !result.matchId })}
+    ${renderDrawCard(result, { editable: true })}
   `;
 }

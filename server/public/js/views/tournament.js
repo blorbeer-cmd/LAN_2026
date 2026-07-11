@@ -189,7 +189,22 @@ function renderCreateForm(el, ctx) {
           <div class="team-card">
             <input type="text" data-team-name="${i}" value="${escapeHtml(t.name)}" maxlength="60" style="margin-bottom:var(--space-1);font-weight:var(--font-weight-bold);" />
             <div class="muted" style="font-size:var(--font-size-xs);margin-bottom:var(--space-2);">Score ${t.totalRating}</div>
-            ${t.players.map((p) => `<div class="team-player">${avatarHtml(p, 18)} ${escapeHtml(p.name)}</div>`).join('')}
+            ${t.players
+              .map(
+                (p) => `
+              <div class="team-player">
+                ${avatarHtml(p, 18)}
+                <span style="flex:1;">${escapeHtml(p.name)}</span>
+                ${
+                  createProposedTeams.length > 1
+                    ? `<select class="team-move-select" data-tourn-move-player="${p.id}" aria-label="Team ändern">
+                        ${createProposedTeams.map((_, ti) => `<option value="${ti}" ${ti === i ? 'selected' : ''}>Team ${ti + 1}</option>`).join('')}
+                      </select>`
+                    : ''
+                }
+              </div>`
+              )
+              .join('')}
           </div>`
           )
           .join('')}
@@ -340,6 +355,31 @@ function renderCreateForm(el, ctx) {
   el.querySelectorAll('[data-team-name]').forEach((input) => {
     input.addEventListener('input', () => {
       createProposedTeams[parseInt(input.dataset.teamName, 10)].name = input.value;
+    });
+  });
+
+  // Feinschliff, same as Team-Historie's move select in matchmaking.js —
+  // these teams aren't persisted yet (only "Turnier erstellen" writes them),
+  // so this is a plain client-side reassignment, no API call needed.
+  el.querySelectorAll('[data-tourn-move-player]').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      const playerId = sel.dataset.tournMovePlayer;
+      const toIndex = parseInt(sel.value, 10);
+      const fromIndex = createProposedTeams.findIndex((t) => t.players.some((p) => p.id === playerId));
+      if (fromIndex === -1 || fromIndex === toIndex) return;
+
+      const fromTeam = createProposedTeams[fromIndex];
+      const [player] = fromTeam.players.splice(
+        fromTeam.players.findIndex((p) => p.id === playerId),
+        1
+      );
+      const toTeam = createProposedTeams[toIndex];
+      toTeam.players.push(player);
+      for (const t of [fromTeam, toTeam]) {
+        t.playerIds = t.players.map((p) => p.id);
+        t.totalRating = t.players.reduce((sum, p) => sum + (p.rating ?? 0), 0);
+      }
+      ctx.rerender();
     });
   });
 

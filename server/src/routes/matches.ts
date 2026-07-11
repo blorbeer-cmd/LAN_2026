@@ -15,6 +15,13 @@ export const matchesRouter = Router();
 
 interface TeamInput {
   playerIds: string[];
+  // Both optional and independent of winnerTeamIndex/each other: a game with
+  // a real score (Punktestand) can carry `score`, a placement-only game
+  // (Mario Kart, ein Rennen) can carry `rank` instead, some games want both.
+  // Neither feeds the leaderboard's win/loss scoring (see leaderboard.ts) —
+  // that still only reads winnerTeamIndex — they're purely for display.
+  score?: number | null;
+  rank?: number | null; // 1 = first place; ties allowed (same rank twice)
 }
 
 interface MatchResult {
@@ -48,8 +55,9 @@ function validateTeams(
     return { error: 'teams muss ein Array mit mindestens 2 Teams sein.' };
   }
   const allIds: string[] = [];
+  const normalizedTeams: TeamInput[] = [];
   for (const t of teams as unknown[]) {
-    const team = t as { playerIds?: unknown };
+    const team = t as { playerIds?: unknown; score?: unknown; rank?: unknown };
     if (
       !team ||
       !Array.isArray(team.playerIds) ||
@@ -59,6 +67,22 @@ function validateTeams(
       return { error: 'Jedes Team braucht mindestens einen Spieler (playerIds).' };
     }
     allIds.push(...(team.playerIds as string[]));
+
+    let score: number | null = null;
+    if (team.score !== undefined && team.score !== null) {
+      if (typeof team.score !== 'number' || !Number.isFinite(team.score)) {
+        return { error: 'score muss eine Zahl sein.' };
+      }
+      score = team.score;
+    }
+    let rank: number | null = null;
+    if (team.rank !== undefined && team.rank !== null) {
+      if (typeof team.rank !== 'number' || !Number.isInteger(team.rank) || team.rank < 1) {
+        return { error: 'rank muss eine positive ganze Zahl sein (1 = erster Platz).' };
+      }
+      rank = team.rank;
+    }
+    normalizedTeams.push({ playerIds: team.playerIds as string[], score, rank });
   }
   if (new Set(allIds).size !== allIds.length) {
     return { error: 'Ein Spieler kann nicht gleichzeitig in mehreren Teams stehen.' };
@@ -77,7 +101,7 @@ function validateTeams(
     winner = winnerTeamIndex;
   }
 
-  return { teams: teams as TeamInput[], winnerTeamIndex: winner };
+  return { teams: normalizedTeams, winnerTeamIndex: winner };
 }
 
 function allPlayersExist(playerIds: string[]): boolean {

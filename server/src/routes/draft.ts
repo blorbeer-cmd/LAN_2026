@@ -253,7 +253,7 @@ draftRouter.post('/pick', (req, res) => {
       totalRating: 0,
     }));
     db.prepare(
-      'INSERT INTO matchmaking_draws (id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at) VALUES (?, ?, ?, ?, 0, 0, ?)'
+      "INSERT INTO matchmaking_draws (id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source) VALUES (?, ?, ?, ?, 0, 0, ?, 'draft')"
     ).run(nanoid(), row.game_id, row.event_id, JSON.stringify(teamsSnapshot), now);
   }
 

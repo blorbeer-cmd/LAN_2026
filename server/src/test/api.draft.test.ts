@@ -127,6 +127,9 @@ test('a full 2-captain draft: snake order, turn enforcement, auto-assigned last 
   const latest = history.body.history[0];
   assert.equal(latest.teams.length, 2);
   assert.equal(latest.teams[0].players.length, 3);
+  // Marked as coming from a Captain-Draft, so Team-/Ergebnis-Historie can
+  // show a "Captain-Draft" badge instead of looking like a random draw.
+  assert.equal(latest.source, 'draft');
 });
 
 test('POST /api/draft/cancel abandons a running draft', async () => {
