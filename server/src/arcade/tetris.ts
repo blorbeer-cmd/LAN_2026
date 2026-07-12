@@ -19,6 +19,7 @@ import { adminUnlockValid } from '../auth';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
+import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import {
   Board,
   Piece,
@@ -454,8 +455,10 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
     const entry = [...lobby.socketIds.entries()].find(([, sid]) => sid === socketId);
     if (!entry) continue;
     if (lobby.host.id === entry[0]) {
+      releaseLobbyMemberships(lobby.players.map((p) => p.id), 'tetris', id);
       lobbies.delete(id);
     } else {
+      releaseLobbyMembership(entry[0], 'tetris', id);
       lobby.socketIds.delete(entry[0]);
       lobby.ready.delete(entry[0]);
       lobby.players = lobby.players.filter((p) => p.id !== entry[0]);
@@ -476,7 +479,6 @@ export function registerTetrisSockets(io: Server): void {
     socket.on('tetris:lobby:create', (payload: { playerId?: string }, ack?: (res: unknown) => void) => {
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
-      removeFromOpenLobbies(io, socket.id);
       const lobby: TetrisLobby = {
         id: nanoid(),
         host: player,
@@ -485,6 +487,8 @@ export function registerTetrisSockets(io: Server): void {
         ready: new Set(),
         createdAt: Date.now(),
       };
+      if (!claimLobbyMembership(player.id, 'tetris', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
+      removeFromOpenLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby);
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
@@ -493,8 +497,9 @@ export function registerTetrisSockets(io: Server): void {
       if (!adminUnlockValid(payload?.adminPin)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
-      removeFromOpenLobbies(io, socket.id);
       const lobby: TetrisLobby = { id: nanoid(), host: player, players: [player, BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now() };
+      if (!claimLobbyMembership(player.id, 'tetris', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
+      removeFromOpenLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby); emitLobbies(io); ack?.({ ok: true, lobbyId: lobby.id });
     });
 
@@ -505,6 +510,7 @@ export function registerTetrisSockets(io: Server): void {
       const alreadyIn = lobby.players.some((p) => p.id === player.id);
       // 1v1: block a third party from crowding into a full lobby.
       if (!alreadyIn && lobby.players.length >= 2) return ack?.({ ok: false, error: 'Lobby ist voll (1v1).' });
+      if (!claimLobbyMembership(player.id, 'tetris', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromOpenLobbies(io, socket.id);
       if (!alreadyIn) lobby.players.push(player);
       lobby.socketIds.set(player.id, socket.id);
@@ -516,8 +522,10 @@ export function registerTetrisSockets(io: Server): void {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
       if (!lobby || typeof payload?.playerId !== 'string') return ack?.({ ok: true });
       if (lobby.host.id === payload.playerId) {
+        releaseLobbyMemberships(lobby.players.map((p) => p.id), 'tetris', lobby.id);
         lobbies.delete(lobby.id);
       } else {
+        releaseLobbyMembership(payload.playerId, 'tetris', lobby.id);
         lobby.socketIds.delete(payload.playerId);
         lobby.ready.delete(payload.playerId);
         lobby.players = lobby.players.filter((p) => p.id !== payload.playerId);
@@ -581,6 +589,7 @@ export function registerTetrisSockets(io: Server): void {
         match.states.set(p.id, state);
       }
       matches.set(matchId, match);
+      releaseLobbyMemberships(lobby.players.map((p) => p.id), 'tetris', lobby.id);
       lobbies.delete(lobby.id);
       emitLobbies(io);
       startArcadeSession(realPlayerIds(match.players), 'tetris');

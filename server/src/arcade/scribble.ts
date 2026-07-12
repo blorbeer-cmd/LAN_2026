@@ -19,6 +19,7 @@ import { matchesAnswer } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
+import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import {
   buildHintSchedule,
   HintStep,
@@ -168,8 +169,10 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
     const entry = [...lobby.socketIds.entries()].find(([, sid]) => sid === socketId);
     if (!entry) continue;
     if (lobby.host.id === entry[0]) {
+      releaseLobbyMemberships(lobby.players.map((p) => p.id), 'scribble', id);
       lobbies.delete(id);
     } else {
+      releaseLobbyMembership(entry[0], 'scribble', id);
       lobby.socketIds.delete(entry[0]);
       lobby.ready.delete(entry[0]);
       lobby.players = lobby.players.filter((p) => p.id !== entry[0]);
@@ -453,7 +456,6 @@ export function registerScribbleSockets(io: Server): void {
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
 
-      removeFromOpenLobbies(io, socket.id);
       const lobby: ScribbleLobby = {
         id: nanoid(),
         host: player,
@@ -462,6 +464,8 @@ export function registerScribbleSockets(io: Server): void {
         ready: new Set(),
         createdAt: Date.now(),
       };
+      if (!claimLobbyMembership(player.id, 'scribble', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
+      removeFromOpenLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby);
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
@@ -482,8 +486,9 @@ export function registerScribbleSockets(io: Server): void {
       if (!adminUnlockValid(payload?.adminPin)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
-      removeFromOpenLobbies(io, socket.id);
       const lobby: ScribbleLobby = { id: nanoid(), host: player, players: [player, BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now() };
+      if (!claimLobbyMembership(player.id, 'scribble', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
+      removeFromOpenLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby); emitLobbies(io); ack?.({ ok: true, lobbyId: lobby.id });
     });
 
@@ -492,6 +497,7 @@ export function registerScribbleSockets(io: Server): void {
       const player = playerById(payload?.playerId);
       if (!lobby || !player) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
 
+      if (!claimLobbyMembership(player.id, 'scribble', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromOpenLobbies(io, socket.id);
       if (!lobby.players.some((p) => p.id === player.id)) lobby.players.push(player);
       lobby.socketIds.set(player.id, socket.id);
@@ -503,8 +509,10 @@ export function registerScribbleSockets(io: Server): void {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
       if (!lobby || typeof payload?.playerId !== 'string') return ack?.({ ok: true });
       if (lobby.host.id === payload.playerId) {
+        releaseLobbyMemberships(lobby.players.map((p) => p.id), 'scribble', lobby.id);
         lobbies.delete(lobby.id);
       } else {
+        releaseLobbyMembership(payload.playerId, 'scribble', lobby.id);
         lobby.socketIds.delete(payload.playerId);
         lobby.ready.delete(payload.playerId);
         lobby.players = lobby.players.filter((p) => p.id !== payload.playerId);
@@ -571,6 +579,7 @@ export function registerScribbleSockets(io: Server): void {
           startedAt: Date.now(),
         };
         matches.set(match.id, match);
+        releaseLobbyMemberships(lobby.players.map((p) => p.id), 'scribble', lobby.id);
         lobbies.delete(lobby.id);
         emitLobbies(io);
         startArcadeSession(realPlayerIds(match.players), 'scribble');

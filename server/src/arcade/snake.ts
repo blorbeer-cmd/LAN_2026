@@ -6,6 +6,7 @@ import { createWorld, Direction, setDirection, SnakeWorld, stepWorld, SNAKE_HEIG
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
+import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 
 const TICK_MS = 125;
 const COUNTDOWN_MS = 3000;
@@ -76,8 +77,9 @@ function removeFromLobbies(io: Server, socketId: string) {
     const entry = [...lobby.socketIds].find(([, id]) => id === socketId);
     if (!entry) continue;
     const playerId = entry[0];
-    if (playerId === lobby.host.id) lobbies.delete(id);
+    if (playerId === lobby.host.id) { releaseLobbyMemberships(lobby.players.map((p) => p.id), 'snake', id); lobbies.delete(id); }
     else {
+      releaseLobbyMembership(playerId, 'snake', id);
       lobby.players = lobby.players.filter((player) => player.id !== playerId);
       lobby.socketIds.delete(playerId);
       lobby.ready.delete(playerId);
@@ -117,6 +119,7 @@ function startMatch(io: Server, lobby: Lobby) {
   for (const socketId of lobby.socketIds.values()) io.sockets.sockets.get(socketId)?.join(room);
   const match: Match = { id, room, host: lobby.host, players: lobby.players, world: createWorld(), loop: null, running: false, paused: false, startedAt: Date.now() };
   matches.set(id, match);
+  releaseLobbyMemberships(lobby.players.map((p) => p.id), 'snake', lobby.id);
   lobbies.delete(lobby.id);
   emitLobbies(io);
   startArcadeSession(realPlayerIds(match.players), 'snake');
@@ -143,8 +146,9 @@ export function registerSnakeSockets(io: Server): void {
     socket.on('snake:lobby:create', (payload: { playerId?: string }, ack?: (result: unknown) => void) => {
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Spieler nicht gefunden.' });
-      removeFromLobbies(io, socket.id);
       const lobby: Lobby = { id: nanoid(), host: player, players: [player], socketIds: new Map([[player.id, socket.id]]), ready: new Set(), createdAt: Date.now() };
+      if (!claimLobbyMembership(player.id, 'snake', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
+      removeFromLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby);
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
@@ -153,8 +157,9 @@ export function registerSnakeSockets(io: Server): void {
       if (!adminUnlockValid(payload?.adminPin)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Spieler nicht gefunden.' });
-      removeFromLobbies(io, socket.id);
       const lobby: Lobby = { id: nanoid(), host: player, players: [player, BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now() };
+      if (!claimLobbyMembership(player.id, 'snake', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
+      removeFromLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby);
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
@@ -165,6 +170,7 @@ export function registerSnakeSockets(io: Server): void {
       if (!lobby || !player) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
       const present = lobby.players.some((entry) => entry.id === player.id);
       if (!present && lobby.players.length >= 2) return ack?.({ ok: false, error: 'Lobby ist voll (1 gegen 1).' });
+      if (!claimLobbyMembership(player.id, 'snake', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromLobbies(io, socket.id);
       if (!present) lobby.players.push(player);
       lobby.socketIds.set(player.id, socket.id);
@@ -173,8 +179,9 @@ export function registerSnakeSockets(io: Server): void {
     });
     socket.on('snake:lobby:leave', (payload: { lobbyId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null;
-      if (lobby && payload.playerId === lobby.host.id) lobbies.delete(lobby.id);
+      if (lobby && payload.playerId === lobby.host.id) { releaseLobbyMemberships(lobby.players.map((p) => p.id), 'snake', lobby.id); lobbies.delete(lobby.id); }
       else if (lobby && payload.playerId) {
+        releaseLobbyMembership(payload.playerId, 'snake', lobby.id);
         lobby.players = lobby.players.filter((player) => player.id !== payload.playerId);
         lobby.socketIds.delete(payload.playerId);
         lobby.ready.delete(payload.playerId);

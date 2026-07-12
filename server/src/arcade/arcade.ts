@@ -7,6 +7,7 @@ import { matchesAnswer, pickQuestion } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
+import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 
 const DEFAULT_TARGET_SCORE = 5;
 const QUESTION_MS = 20_000;
@@ -237,8 +238,10 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
     const player = [...lobby.socketIds.entries()].find(([, value]) => value === socketId);
     if (!player) continue;
     if (lobby.host.id === player[0]) {
+      releaseLobbyMemberships(lobby.players.map((p) => p.id), 'quiz', id);
       lobbies.delete(id);
     } else {
+      releaseLobbyMembership(player[0], 'quiz', id);
       lobby.socketIds.delete(player[0]);
       lobby.ready.delete(player[0]);
       lobby.players = lobby.players.filter((p) => p.id !== player[0]);
@@ -260,7 +263,6 @@ export function registerArcadeSockets(io: Server): void {
       const player = playerById(payload?.playerId);
       if (!player || payload?.gameType !== 'quiz') return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
 
-      removeFromOpenLobbies(io, socket.id);
       const lobby: Lobby = {
         id: nanoid(),
         gameType: 'quiz',
@@ -270,6 +272,10 @@ export function registerArcadeSockets(io: Server): void {
         ready: new Set(),
         createdAt: Date.now(),
       };
+      if (!claimLobbyMembership(player.id, 'quiz', lobby.id)) {
+        return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
+      }
+      removeFromOpenLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby);
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
@@ -291,8 +297,9 @@ export function registerArcadeSockets(io: Server): void {
       if (!adminUnlockValid(payload?.adminPin)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
-      removeFromOpenLobbies(io, socket.id);
       const lobby: Lobby = { id: nanoid(), gameType: 'quiz', host: player, players: [player, QUIZ_BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([QUIZ_BOT.id]), createdAt: Date.now() };
+      if (!claimLobbyMembership(player.id, 'quiz', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
+      removeFromOpenLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby);
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
@@ -303,6 +310,7 @@ export function registerArcadeSockets(io: Server): void {
       if (!lobby) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
       if (payload?.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann die Lobby schließen.' });
 
+      releaseLobbyMemberships(lobby.players.map((p) => p.id), 'quiz', lobby.id);
       lobbies.delete(lobby.id);
       emitLobbies(io);
       ack?.({ ok: true });
@@ -313,11 +321,30 @@ export function registerArcadeSockets(io: Server): void {
       const player = playerById(payload?.playerId);
       if (!lobby || !player) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
 
+      if (!claimLobbyMembership(player.id, 'quiz', lobby.id)) {
+        return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
+      }
       removeFromOpenLobbies(io, socket.id);
       if (!lobby.players.some((p) => p.id === player.id)) lobby.players.push(player);
       lobby.socketIds.set(player.id, socket.id);
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
+    });
+
+    socket.on('arcade:lobby:leave', (payload: { lobbyId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+      const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
+      if (!lobby || typeof payload?.playerId !== 'string') return ack?.({ ok: true });
+      if (lobby.host.id === payload.playerId) {
+        releaseLobbyMemberships(lobby.players.map((p) => p.id), 'quiz', lobby.id);
+        lobbies.delete(lobby.id);
+      } else {
+        releaseLobbyMembership(payload.playerId, 'quiz', lobby.id);
+        lobby.socketIds.delete(payload.playerId);
+        lobby.ready.delete(payload.playerId);
+        lobby.players = lobby.players.filter((p) => p.id !== payload.playerId);
+      }
+      emitLobbies(io);
+      ack?.({ ok: true });
     });
 
     socket.on('arcade:lobby:ready', (payload: { lobbyId?: string; playerId?: string; ready?: boolean }, ack?: (res: unknown) => void) => {
@@ -358,6 +385,7 @@ export function registerArcadeSockets(io: Server): void {
         startedAt: Date.now(),
       };
       matches.set(match.id, match);
+      releaseLobbyMemberships(lobby.players.map((p) => p.id), 'quiz', lobby.id);
       lobbies.delete(lobby.id);
       emitLobbies(io);
       startArcadeSession(realPlayerIds(match.players), 'quiz');

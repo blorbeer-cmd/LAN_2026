@@ -726,7 +726,7 @@ export function renderScribbleLobbyCard() {
     <div class="card stack">
       <div class="row-between" style="gap:var(--space-3);">
         <strong>Scribble-Lobby</strong>
-        <div class="row" style="gap:var(--space-2);">${isAdmin() ? `<button type="button" class="btn btn-sm btn-equal" id="scribble-bot" ${lobby || match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="scribble-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div>
+        <div class="row" style="gap:var(--space-2);">${isAdmin() ? `<button type="button" class="btn btn-sm btn-equal" id="scribble-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="scribble-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div>
       </div>
       ${arcadeInfoGridHtml([
         { label: 'Ziel', text: 'Wörter erraten und Punkte sammeln.' },
@@ -744,14 +744,16 @@ export async function leaveMyScribbleLobby() {
   return emitWithAck('scribble:lobby:leave', { lobbyId: lobby.id, playerId: myId() });
 }
 
-export function wireScribbleLobbyCard(container, { beforeJoin } = {}) {
+export function wireScribbleLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
   container.querySelector('#scribble-bot')?.addEventListener('click', async () => {
+    if (beforeCreate && !(await beforeCreate())) return;
     const res = await emitWithAck('scribble:lobby:bot', { playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelector('#scribble-create')?.addEventListener('click', async () => {
     const playerId = myId();
     if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+    if (beforeCreate && !(await beforeCreate())) return;
     const res = await emitWithAck('scribble:lobby:create', { playerId });
     if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
     showToast('Scribble-Lobby geöffnet.');

@@ -140,7 +140,7 @@ export function renderPongLobbyCard() {
   const lobby = myPongLobby();
   const noMe = !myId();
   return `<div class="card stack"><div class="row-between" style="gap:var(--space-3);"><strong>Pong-Lobby</strong>
-    <div class="row" style="gap:var(--space-2);">${isAdmin() ? `<button type="button" class="btn btn-sm btn-equal" id="pong-bot" ${lobby || match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="pong-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div></div>
+    <div class="row" style="gap:var(--space-2);">${isAdmin() ? `<button type="button" class="btn btn-sm btn-equal" id="pong-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="pong-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div></div>
     ${arcadeInfoGridHtml([
       { label: 'Ziel', text: 'Erreiche zuerst die Punktzahl.' },
       { label: 'Steuerung', text: 'Pfeiltasten.' },
@@ -154,13 +154,15 @@ export async function leaveMyPongLobby() {
   return emitAck('pong:lobby:leave', { lobbyId: lobby.id, playerId: myId() });
 }
 
-export function wirePongLobbyCard(container, { beforeJoin } = {}) {
+export function wirePongLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
   container.querySelectorAll('input[name="pong-target"]').forEach((input) => input.addEventListener('change', () => { targetScore = Number(input.value); }));
   container.querySelector('#pong-create')?.addEventListener('click', async () => {
+    if (beforeCreate && !(await beforeCreate())) return;
     const result = await emitAck('pong:lobby:create', { playerId: myId() });
     if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelector('#pong-bot')?.addEventListener('click', async () => {
+    if (beforeCreate && !(await beforeCreate())) return;
     const result = await emitAck('pong:lobby:bot', { playerId: myId(), adminPin: getAdminPin() });
     if (!result?.ok) showToast(result?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });

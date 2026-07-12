@@ -326,26 +326,30 @@ function currentGame() {
   return activeGame ?? engagedGame();
 }
 
-async function leaveOwnLobbyBeforeJoining(targetGame) {
+async function leaveCurrentLobbyBeforeAction(targetGame, action) {
   const playerId = getMyId();
+  const quizLobby = myLobby();
   const candidates = [
-    { name: 'Quiz', lobby: myLobby(), leave: (lobby) => emitWithAck('arcade:lobby:close', { lobbyId: lobby.id, playerId }) },
+    { name: 'Quiz', lobby: quizLobby, leave: (lobby) => emitWithAck(lobby.host.id === playerId ? 'arcade:lobby:close' : 'arcade:lobby:leave', { lobbyId: lobby.id, playerId }) },
     { name: 'Tetris', lobby: myTetrisLobby(), leave: leaveMyTetrisLobby },
     { name: 'Scribble', lobby: myScribbleLobby(), leave: leaveMyScribbleLobby },
     { name: 'Pong', lobby: myPongLobby(), leave: leaveMyPongLobby },
     { name: 'Blobby Volley', lobby: myBlobbyLobby(), leave: leaveMyBlobbyLobby },
     { name: 'Snake', lobby: mySnakeLobby(), leave: leaveMySnakeLobby },
   ];
-  const own = candidates.find((entry) => entry.lobby?.host.id === playerId);
-  if (!own) return true;
+  const current = candidates.find((entry) => entry.lobby);
+  if (!current) return true;
+  const ownsLobby = current.lobby.host.id === playerId;
+  const consequence = ownsLobby ? 'wird deine eigene Lobby aufgelöst' : 'verlässt du deine aktuelle Lobby';
+  const actionText = action === 'create' ? 'eine neue Lobby öffnest' : 'dieser Lobby beitrittst';
   if (!(await confirmDialog(
-    `Du hast bereits eine eigene ${own.name}-Lobby. Wenn du dieser Lobby beitrittst, wird deine eigene Lobby aufgelöst.`,
-    { confirmText: 'Auflösen & beitreten', danger: true }
+    `Du bist bereits in einer ${current.name}-Lobby. Wenn du ${actionText}, ${consequence}.`,
+    { confirmText: action === 'create' ? 'Verlassen & öffnen' : 'Verlassen & beitreten', danger: true }
   ))) return false;
 
-  const result = await own.leave(own.lobby);
+  const result = await current.leave(current.lobby);
   if (!result?.ok) {
-    showToast(result?.error || 'Deine Lobby konnte nicht aufgelöst werden.', { error: true });
+    showToast(result?.error || 'Deine aktuelle Lobby konnte nicht verlassen werden.', { error: true });
     return false;
   }
   activeGame = targetGame;
@@ -434,7 +438,7 @@ function activeGameHtml() {
       <div class="card stack" style="margin-top:var(--space-3);">
         <div class="row-between" style="gap:var(--space-3);">
           <strong>Quiz-Lobby</strong>
-          <div class="row" style="gap:var(--space-2);">${isAdmin() ? `<button type="button" class="btn btn-sm btn-equal" id="quiz-bot" ${lobby || match ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="quiz-create-lobby" ${lobby || match ? 'disabled' : ''}>Lobby öffnen</button></div>
+          <div class="row" style="gap:var(--space-2);">${isAdmin() ? `<button type="button" class="btn btn-sm btn-equal" id="quiz-bot" ${match ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button></div>
         </div>
         ${arcadeInfoGridHtml([
           { label: 'Ziel', text: 'Richtige Antworten sammeln.' },
@@ -482,11 +486,11 @@ export function renderArcade(container, ctx) {
   `;
 
   wireWhoAmICard(container, 'whoami', ctx);
-  wireTetrisLobbyCard(container, { beforeJoin: () => leaveOwnLobbyBeforeJoining('tetris') });
-  wireScribbleLobbyCard(container, { beforeJoin: () => leaveOwnLobbyBeforeJoining('scribble') });
-  wirePongLobbyCard(container, { beforeJoin: () => leaveOwnLobbyBeforeJoining('pong') });
-  wireBlobbyLobbyCard(container, { beforeJoin: () => leaveOwnLobbyBeforeJoining('blobby') });
-  wireSnakeLobbyCard(container, { beforeJoin: () => leaveOwnLobbyBeforeJoining('snake') });
+  wireTetrisLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('tetris', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('tetris', 'join') });
+  wireScribbleLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('scribble', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('scribble', 'join') });
+  wirePongLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('pong', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('pong', 'join') });
+  wireBlobbyLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('blobby', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('blobby', 'join') });
+  wireSnakeLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('snake', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('snake', 'join') });
 
   container.querySelectorAll('[data-game]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -508,6 +512,7 @@ export function renderArcade(container, ctx) {
   container.querySelector('#quiz-create-lobby')?.addEventListener('click', async () => {
     const playerId = getMyId();
     if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+    if (!(await leaveCurrentLobbyBeforeAction('quiz', 'create'))) return;
     const res = await emitWithAck('arcade:lobby:create', { gameType: 'quiz', playerId });
     if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
     showToast('Quiz-Lobby geöffnet.');
@@ -515,6 +520,7 @@ export function renderArcade(container, ctx) {
 
   container.querySelector('#quiz-bot')?.addEventListener('click', async () => {
     const playerId = getMyId();
+    if (!(await leaveCurrentLobbyBeforeAction('quiz', 'create'))) return;
     const res = await emitWithAck('arcade:lobby:bot', { playerId });
     if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
@@ -531,7 +537,7 @@ export function renderArcade(container, ctx) {
     btn.addEventListener('click', async () => {
       const playerId = getMyId();
       if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
-      if (!(await leaveOwnLobbyBeforeJoining('quiz'))) return;
+      if (!(await leaveCurrentLobbyBeforeAction('quiz', 'join'))) return;
       const res = await emitWithAck('arcade:lobby:join', { lobbyId: btn.dataset.joinLobby, playerId });
       if (!res?.ok) showToast(res?.error || 'Beitritt fehlgeschlagen.', { error: true });
     });
