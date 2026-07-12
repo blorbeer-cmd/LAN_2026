@@ -11,6 +11,27 @@ pixel value, or font-size — always reference a token below.** If the token you
 need doesn't exist yet, add it to the `:root` block first (with a short comment
 on why), then use it. Don't invent a new one-off value at the call site.
 
+This document is mandatory for every change under `server/public/` and complements
+the repository-wide rules in `../DEVELOPMENT_GUIDELINES.md`. If code and this
+document disagree, inspect the current implementation before changing either one;
+then update both in the same work item so the discrepancy does not persist.
+
+## Required workflow for UI changes
+
+1. Read this document completely before editing frontend files.
+2. Search for an existing token, base component, layout helper and comparable view.
+   Extend a shared primitive only when the requirement is genuinely shared.
+3. Check the result at phone and laptop widths. For interaction changes, exercise
+   keyboard input and a touch-sized viewport as well as pointer input.
+4. Verify loading, empty, error, disabled and long-content states that the component
+   can actually reach. A happy-path screenshot alone is not sufficient.
+5. From `server/`, run `npm run check:tokens`, `npm run build`, `npm test` and
+   `npm run test:e2e`. If a command cannot run, report the exact reason and risk.
+
+The staged-diff token checker is a guardrail, not proof of design-system compliance.
+Review still has to catch semantic token misuse, unnecessary component variants,
+accessibility issues, responsive regressions, shadows and breakpoint decisions.
+
 ## Colors
 
 | Token | Value | Purpose |
@@ -170,6 +191,48 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **List row** — `.list-row` (+ `.list-row-icon`, `.list-row-desc`) for
   Spieler/Spiele/Turniere lists and the "Mehr" hub.
 
+Prefer composition of these primitives over view-specific copies. A new component
+class needs a distinct reusable purpose; a one-page selector that merely restates a
+base component is not a new component. Keep repeated row heights stable even when
+optional descriptions differ in length, using the established line-clamp or reserved-
+space pattern rather than content-dependent card heights.
+
+## Icons and visual language
+
+- New or changed interface icons must use the local Lucide-style helper in
+  `server/public/js/icons.js` (`icon(...)` or a suitable specialized helper).
+- Do not use emoji, Unicode pictograms or external icon CDNs in navigation, headings,
+  buttons, status badges, chips, empty states or toasts. The RespawnHQ logo is the
+  intentional exception; user-authored content such as game names may contain emoji.
+- Decorative icons are hidden from assistive technology. Icon-only controls require
+  a German accessible name (`aria-label` or visible equivalent) and a discoverable
+  tooltip where the action would otherwise be ambiguous.
+- Keep icon size, stroke and alignment consistent with the surrounding base component;
+  do not create local SVG variants for visual novelty.
+
+## Interaction and accessibility
+
+- Use semantic elements: `<button>` for actions, `<a>` for navigation and associated
+  `<label>` elements for form controls. Do not simulate controls with clickable `<div>`
+  elements.
+- Every interactive element must be usable by keyboard and show a visible focus state.
+  Focus order follows the visual and logical order; opening a modal moves focus inside,
+  closing it returns focus to the trigger.
+- Status, validation and selection cannot be communicated by color alone. Pair color
+  with German text and, where helpful, an icon or shape.
+- Form errors identify the affected field and explain how to recover. Disabled actions
+  should remain understandable; do not silently ignore a click that appears available.
+- Hover styles belong inside `@media (hover: hover)`. The default/touch state must not
+  depend on hover, and controls must have a comfortably tappable hit area.
+- Every animation and transition must have an effective global override under
+  `@media (prefers-reduced-motion: reduce)`. Motion must not be required to understand
+  a state change.
+- Dynamic announcements such as errors or completed background actions use the
+  established toast/live-region mechanism without repeatedly interrupting screen readers.
+- Layouts must tolerate longer German text, user-provided names and browser zoom without
+  clipping essential controls or creating horizontal page scrolling. Intentional
+  horizontal content such as the tournament bracket remains locally scrollable.
+
 ## Usage examples
 
 ```html
@@ -271,3 +334,27 @@ does **not** check colors/spacing outside `server/public` (e.g. `agent/`),
 and it does not check `box-shadow` or breakpoint values — those needed either
 too much judgment (glows are legitimately different sizes for different
 elements) or too much false-positive risk to check mechanically.
+
+Because the script reads the staged diff, an unstaged change may produce no finding.
+Before relying on the result, review the complete working diff as well. Do not stage
+unrelated user changes merely to make the checker inspect them. CI or review should run
+the same command on the intended change set; the same-line `design-token-ok` escape hatch
+always requires a concrete reason, never a generic suppression.
+
+GitHub Actions checks the full branch range with
+`npm run check:tokens -- --base-ref <base-sha>`. The explicit base is required in CI:
+a clean checkout has no staged diff, so the default pre-commit mode would otherwise inspect
+nothing and produce a misleading success.
+
+## UI review checklist
+
+- [ ] Existing tokens, helpers and base components are reused where appropriate.
+- [ ] No new raw color, spacing, radius or font values exist without a documented
+  `design-token-ok` reason.
+- [ ] Icons come from `icons.js`; icon-only controls have accessible German names.
+- [ ] Loading, empty, error, disabled and long-content states remain clear and stable.
+- [ ] The flow works with keyboard, visible focus, pointer and touch interaction.
+- [ ] Meaning is not color-only; reduced-motion and hover media rules are respected.
+- [ ] Phone and laptop layouts were checked, including browser zoom and long German text.
+- [ ] `check:tokens`, build, unit/integration tests and E2E tests are green, or the
+  unexecuted check and its remaining risk are explicitly reported.

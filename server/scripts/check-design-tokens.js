@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Pre-commit guard for the design system (see server/DESIGN_SYSTEM.md).
 //
-// Only looks at the ADDED lines of the staged diff under server/public — not
-// the whole file, and not the whole repo. That's deliberate: the codebase
+// By default, only looks at the ADDED lines of the staged diff under
+// server/public — not the whole file, and not the whole repo. CI passes
+// `--base-ref <sha-or-ref>` to inspect the complete pull-request/push diff
+// instead. That's deliberate: the codebase
 // still has a known, documented set of off-scale spacing values and other
 // intentional exceptions (see DESIGN_SYSTEM.md, "When a value genuinely
 // doesn't fit"); re-checking every existing line on every commit would mean
@@ -16,7 +18,16 @@
 // mirroring the "leave a short comment explaining why" guidance in
 // DESIGN_SYSTEM.md instead of silently bypassing the check.
 
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
+
+const BASE_REF_FLAG = '--base-ref';
+const baseRefFlagIndex = process.argv.indexOf(BASE_REF_FLAG);
+const baseRef = baseRefFlagIndex === -1 ? null : process.argv[baseRefFlagIndex + 1];
+
+if (baseRefFlagIndex !== -1 && (!baseRef || baseRef.startsWith('--'))) {
+  console.error(`Missing value for ${BASE_REF_FLAG}.`);
+  process.exit(2);
+}
 
 const SCOPE = 'server/public';
 const EXEMPT_FILES = new Set([
@@ -53,8 +64,13 @@ const RULES = [
   },
 ];
 
-function stagedFiles() {
-  const out = execSync('git diff --cached --name-only --diff-filter=ACM', { encoding: 'utf8' });
+function gitDiff(args) {
+  return execFileSync('git', ['diff', ...args], { encoding: 'utf8' });
+}
+
+function changedFiles() {
+  const revisionArgs = baseRef ? [`${baseRef}...HEAD`] : ['--cached'];
+  const out = gitDiff(['--name-only', '--diff-filter=ACM', ...revisionArgs]);
   return out
     .split('\n')
     .map((f) => f.trim())
@@ -64,13 +80,14 @@ function stagedFiles() {
 
 function addedLines(file) {
   // -U0: no context lines, only the actual diff hunks — keeps this to just
-  // what's genuinely new in this commit.
-  const diff = execSync(`git diff --cached -U0 -- "${file}"`, { encoding: 'utf8' });
+  // what's genuinely new in the commit or pull-request range.
+  const revisionArgs = baseRef ? [`${baseRef}...HEAD`] : ['--cached'];
+  const diff = gitDiff(['-U0', ...revisionArgs, '--', file]);
   return diff.split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++'));
 }
 
 function main() {
-  const files = stagedFiles();
+  const files = changedFiles();
   const violations = [];
 
   for (const file of files) {
@@ -88,7 +105,8 @@ function main() {
     process.exit(0);
   }
 
-  console.error('\n✗ Design-token check failed — hardcoded value(s) found in staged changes:\n');
+  const checkedScope = baseRef ? `changes since ${baseRef}` : 'staged changes';
+  console.error(`\n✗ Design-token check failed — hardcoded value(s) found in ${checkedScope}:\n`);
   for (const v of violations) {
     console.error(`  ${v.file} [${v.rule}]`);
     console.error(`    ${v.line}`);

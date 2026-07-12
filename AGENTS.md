@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-Verbindlicher Einstiegspunkt für Claude in diesem Repository.
+Verbindlicher Einstiegspunkt für Coding-Agents in diesem Repository.
 
 ## Pflichtlektüre
 
@@ -12,14 +12,14 @@ Verbindlicher Einstiegspunkt für Claude in diesem Repository.
    `server/TESTING.md` und `agent/README.md`, wenn der Auftrag den jeweiligen Bereich betrifft.
 
 `DEVELOPMENT_GUIDELINES.md` ist die einzige gemeinsame Quelle für Produkt-, Architektur-,
-Qualitäts- und Workflow-Regeln. Diese Datei enthält bewusst keine Kopie davon, damit Claude und
-andere Agents nach denselben Vorgaben arbeiten.
+Qualitäts- und Workflow-Regeln. Diese Datei enthält bewusst keine Kopie davon, damit die Vorgaben
+für verschiedene Agents nicht auseinanderlaufen.
 
 ## Geltung und Konflikte
 
 - Nutzer- und Systemanweisungen haben Vorrang.
-- Danach gelten diese Datei und die gemeinsame Richtlinie.
-- Bei einem Widerspruch zwischen dieser Datei, `AGENTS.md` und der gemeinsamen Richtlinie gilt
+- Danach gelten die nächstgelegene `AGENTS.md` und die gemeinsame Richtlinie.
+- Bei einem Widerspruch zwischen dieser Datei, `CLAUDE.md` und der gemeinsamen Richtlinie gilt
   `DEVELOPMENT_GUIDELINES.md`. Den Widerspruch nicht stillschweigend auslegen, sondern im Rahmen
   eines passenden Dokumentationsauftrags beheben oder dem Nutzer melden.
 - Vorhandene, nicht zum Auftrag gehörende Änderungen im Arbeitsbaum gehören dem Nutzer und werden
