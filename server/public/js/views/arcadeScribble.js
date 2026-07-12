@@ -19,7 +19,7 @@ import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { getToken } from '../api.js';
 import { lobbyPlayerChipsHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeInfoGridHtml, matchRosterHtml } from './arcadeUi.js';
+import { arcadeExpandControlHtml, arcadeInfoGridHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
 const SWATCHES = [
   '#1a1a1a',
@@ -656,7 +656,6 @@ export function ensureScribbleSocket() {
 // ---------- Lobby card (rendered inline inside the Arcade view) ----------
 
 function renderLobbyList() {
-  const mine = myScribbleLobby();
   if (lobbies.length === 0) return `<div class="empty-state" style="padding:var(--space-4);">Keine offene Scribble-Lobby.</div>`;
   return lobbies
     .map((l) => {
@@ -669,7 +668,7 @@ function renderLobbyList() {
               ${readyToggleHtml(l, myId(), 'scribble-ready')}
               <button type="button" class="btn btn-sm btn-equal" data-scribble-leave="${l.id}">Verlassen</button>
             </div>`
-          : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-scribble-join="${l.id}" ${mine ? 'disabled' : ''}>Beitreten</button>`;
+          : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-scribble-join="${l.id}">Beitreten</button>`;
       return `
         <div class="lb-row" style="align-items:flex-start;">
           <div class="stack" style="gap:var(--space-2);flex:1;">
@@ -732,7 +731,13 @@ export function renderScribbleLobbyCard() {
     </div>`;
 }
 
-export function wireScribbleLobbyCard(container) {
+export async function leaveMyScribbleLobby() {
+  const lobby = myScribbleLobby();
+  if (!lobby) return { ok: true };
+  return emitWithAck('scribble:lobby:leave', { lobbyId: lobby.id, playerId: myId() });
+}
+
+export function wireScribbleLobbyCard(container, { beforeJoin } = {}) {
   container.querySelector('#scribble-bot')?.addEventListener('click', async () => {
     const res = await emitWithAck('scribble:lobby:bot', { playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
@@ -749,6 +754,7 @@ export function wireScribbleLobbyCard(container) {
     btn.addEventListener('click', async () => {
       const playerId = myId();
       if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+      if (beforeJoin && !(await beforeJoin())) return;
       const res = await emitWithAck('scribble:lobby:join', { lobbyId: btn.dataset.scribbleJoin, playerId });
       if (!res?.ok) showToast(res?.error || 'Beitritt fehlgeschlagen.', { error: true });
     });
@@ -817,12 +823,14 @@ export function renderScribbleRoom(container) {
 
   container.innerHTML = `
     <div class="arcade-game-shell"><h1 class="view-title">Scribble</h1>
+    ${arcadeExpandControlHtml()}
     <div id="scribble-roster">${rosterScoreHtml()}</div>
     ${lastTurnEnd ? `<div class="card stack" style="margin-top:var(--space-3);"><strong>Wort war: ${escapeHtml(lastTurnEnd.word ?? '–')}</strong></div>` : ''}
     ${wordChoiceHtml()}
     ${turn?.phase === 'drawing' ? drawingAreaHtml() : ''}
     ${matchControlsHtml()}
     </div>`;
+  wireArcadeExpandControl(container);
   wireRoom(container);
 }
 

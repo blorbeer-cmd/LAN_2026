@@ -18,6 +18,7 @@ import { notifyPlayers } from '../push';
 import { matchesAnswer } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
+import { broadcastArcadeKiosk } from '../realtime';
 import {
   buildHintSchedule,
   HintStep,
@@ -182,6 +183,20 @@ function scorePayload(match: ScribbleMatchState) {
   return match.players.map((p) => ({ playerId: p.id, name: p.name, score: match.scores.get(p.id) ?? 0 }));
 }
 
+// Kiosk projection: intentionally contains only the drawing surface. Never
+// add currentWord, mask, wordOptions, hints, chat or guesses here.
+function kioskSnapshot(io: Server, match: ScribbleMatchState): void {
+  broadcastArcadeKiosk(io, {
+    gameType: 'scribble',
+    matchId: match.id,
+    players: match.players,
+    drawer: match.phase === 'drawing' ? match.players[match.drawIndex] : null,
+    phase: match.phase,
+    strokes: match.phase === 'drawing' ? match.strokes : [],
+    scores: scorePayload(match),
+  });
+}
+
 function realPlayerIds(players: PlayerRef[]): string[] {
   return players.filter((p) => p.id !== BOT_ID).map((p) => p.id);
 }
@@ -257,6 +272,7 @@ function finishMatch(io: Server, match: ScribbleMatchState, winner: PlayerRef | 
     reason,
     scores,
   });
+  broadcastArcadeKiosk(io, { gameType: null, matchId: match.id });
   matches.delete(match.id);
 }
 
@@ -336,6 +352,7 @@ function startNextTurn(io: Server, match: ScribbleMatchState): void {
     expiresAt: match.choiceExpiresAt,
     scores: scorePayload(match),
   });
+  kioskSnapshot(io, match);
 }
 
 function autoChooseWord(io: Server, match: ScribbleMatchState): void {
@@ -567,6 +584,7 @@ export function registerScribbleSockets(io: Server): void {
           turnDurationMs,
           beginsAt,
         });
+        kioskSnapshot(io, match);
         ack?.({ ok: true, matchId: match.id });
 
         // Give everyone a "3, 2, 1" before the first word choice appears.
@@ -615,6 +633,7 @@ export function registerScribbleSockets(io: Server): void {
         const batch: StrokeBatch = { type: 'stroke', strokeId: payload.strokeId, color, size, erase: !!payload.erase, points };
         if (match.strokes.length < MAX_STROKE_BATCHES) match.strokes.push(batch);
         socket.to(match.room).emit('scribble:stroke', { matchId: match.id, ...batch });
+        kioskSnapshot(io, match);
       }
     );
 
@@ -632,6 +651,7 @@ export function registerScribbleSockets(io: Server): void {
         const fill: FillOp = { type: 'fill', strokeId: payload.strokeId, x: payload.x, y: payload.y, color };
         if (match.strokes.length < MAX_STROKE_BATCHES) match.strokes.push(fill);
         socket.to(match.room).emit('scribble:fill', { matchId: match.id, x: fill.x, y: fill.y, color: fill.color });
+        kioskSnapshot(io, match);
       }
     );
 
@@ -642,6 +662,7 @@ export function registerScribbleSockets(io: Server): void {
       if (payload?.playerId === BOT_ID) return;
       match.strokes = [];
       io.to(match.room).emit('scribble:clear', { matchId: match.id });
+      kioskSnapshot(io, match);
     });
 
     // Removes the whole last pen stroke (every batch sharing its strokeId),
@@ -659,6 +680,7 @@ export function registerScribbleSockets(io: Server): void {
       const lastStrokeId = match.strokes[match.strokes.length - 1].strokeId;
       match.strokes = match.strokes.filter((s) => s.strokeId !== lastStrokeId);
       io.to(match.room).emit('scribble:redraw', { matchId: match.id, strokes: match.strokes });
+      kioskSnapshot(io, match);
     });
 
     socket.on(

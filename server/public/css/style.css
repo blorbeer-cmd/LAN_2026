@@ -991,6 +991,19 @@ button.card {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--space-2);
 }
+
+/* Open lobbies use a compact three-column overview on laptop widths. */
+.arcade-lobby-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+/* --bp-md: keep overview cards comfortable on phones. */
+@media (max-width: 640px) {
+  .arcade-lobby-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .arcade-tile {
   position: relative;
   display: flex;
@@ -1780,6 +1793,31 @@ button.card {
 .arcade-game-shell {
   width: min(100%, 960px);
   margin-inline: auto;
+}
+.arcade-expand-control {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-3);
+}
+.arcade-game-shell.is-expanded {
+  width: 100%;
+  max-width: none;
+}
+.arcade-game-shell.is-expanded .quiz-stage-card,
+.arcade-game-shell.is-expanded .scribble-stage-card,
+.arcade-game-shell.is-expanded .blobby-court,
+.arcade-game-shell.is-expanded .pong-arena,
+.arcade-game-shell.is-expanded .snake-game {
+  width: 100%;
+  max-width: none;
+}
+.arcade-game-shell.is-expanded .quiz-stage-card {
+  height: auto;
+  min-height: 220px;
+  max-height: none;
+}
+.arcade-game-shell.is-expanded .tetris-boards {
+  max-width: none;
 }
 .arcade-game-shell > .view-title {
   text-align: center;

@@ -5,6 +5,7 @@ import { Server, Socket } from 'socket.io';
 import { config } from './config';
 
 let io: Server | null = null;
+let latestArcadeKioskGame: unknown = null;
 
 export function setIo(server: Server): void {
   io = server;
@@ -15,6 +16,25 @@ export function setIo(server: Server): void {
 export function broadcast(event: string, payload: unknown): void {
   if (!io) return;
   io.emit(event, payload);
+}
+
+// Public, read-only stream for the shared kiosk. Callers must only pass
+// deliberately sanitised game state; this is separate from private match
+// rooms so the kiosk can follow a match without joining it.
+export function broadcastArcadeKiosk(io: Server, payload: unknown): void {
+  if (typeof payload === 'object' && payload !== null && 'gameType' in payload && (payload as { gameType?: unknown }).gameType === null) {
+    const endingMatchId = (payload as { matchId?: unknown }).matchId;
+    const currentMatchId = (latestArcadeKioskGame as { matchId?: unknown } | null)?.matchId;
+    if (endingMatchId !== currentMatchId) return;
+  }
+  latestArcadeKioskGame = payload;
+  io.emit('arcade:kiosk:game', payload);
+}
+
+export function registerArcadeKioskSockets(server: Server): void {
+  server.on('connection', (socket) => {
+    socket.on('kiosk:subscribe', () => socket.emit('arcade:kiosk:game', latestArcadeKioskGame));
+  });
 }
 
 // Socket.IO connections bypass Express middleware entirely, so the REST
