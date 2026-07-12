@@ -55,6 +55,7 @@ Hier sind alle in den PR-Metadaten gefundenen Arbeitsbranches zusammengefasst. D
 - [`feat/lan-polish-agent-pwa`](./feat-lan-polish-agent-pwa.md) — 1 gemergt, 0 offen
 - [`fix/issues-31-19-25`](./fix-issues-31-19-25.md) — 1 gemergt, 0 offen
 - [`fix/live-status-agent-url`](./fix-live-status-agent-url.md) — 1 gemergt, 0 offen
+- [`chore/node-24-pin`](./chore-node-24-pin.md) — in Arbeit
 - [`feat/lucide-ui-icons`](./feat-lucide-ui-icons.md) — 1 gemergt, 0 offen
 - [`feat/seating-drag-drop`](./feat-seating-drag-drop.md) — 1 gemergt, 0 offen
 - [`fix-e2e-chromium-path`](./fix-e2e-chromium-path.md) — 1 gemergt, 0 offen

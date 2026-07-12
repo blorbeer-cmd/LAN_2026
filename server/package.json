@@ -5,6 +5,9 @@
   "private": true,
   "type": "commonjs",
   "main": "dist/index.js",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "prepare": "node scripts/setup-git-hooks.js || true",
     "build": "tsc -p tsconfig.json",
