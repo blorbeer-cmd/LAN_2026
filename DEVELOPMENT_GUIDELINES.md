@@ -11,6 +11,9 @@ verweisen hierher. Gemeinsame Regeln werden nicht in mehreren Dateien dupliziert
 - Bereichsspezifische Dokumentation lesen, wenn sie für den Auftrag relevant ist:
   - Server-Tests: `server/TESTING.md`
   - Windows-Agent und lokales Kontroll-Tool: `agent/README.md`
+  - Serverbetrieb und Log-Rotation: `server/OPERATIONS.md`
+  - Geplante Versionierung der DB-Migrationen: `docs/plans/issue-29-db-migrations.md`
+  - Projekthistorie: `docs/changelog/README.md`
 - Dokumentation und Implementierung müssen gemeinsam aktuell bleiben. Ändert ein Feature ein hier
   beschriebenes Verhalten, wird die passende Dokumentation im selben Arbeitspaket aktualisiert.
 - Quellcode und Schema sind für aktuelle Implementierungsdetails maßgeblich. Bei Abweichungen nicht
@@ -35,6 +38,9 @@ darf beispielsweise keine zusätzliche Fehlerquelle oder kompliziertere Bedienun
 
 - **Server (`server/`):** Express für REST und statische Dateien, Socket.IO für Realtime-Push und
   `better-sqlite3` als synchrone, dateibasierte Datenbank.
+- **Runtime:** Node.js 24 ist über `.nvmrc` und die `engines`-Felder festgelegt. Lokale Entwicklung,
+  CI, Docker und Agent-Paketierung dürfen nicht stillschweigend auf abweichende Hauptversionen
+  wechseln.
 - **Frontend (`server/public/`):** statische Single-Page-App mit Vanilla JavaScript und modernem
   CSS. Kein Frontend-Framework, kein Bundler und kein zusätzlicher Build-Step.
 - **Agent (`agent/`):** eigenständiger, als Windows-EXE paketierbarer Node-Prozess. Er kennt nur
@@ -46,6 +52,11 @@ darf beispielsweise keine zusätzliche Fehlerquelle oder kompliziertere Bedienun
   Pfad `server/data/*.db`. Tests verwenden ausschließlich isolierte Test- bzw. In-Memory-Datenbanken.
 - **Aktuelles Schema:** `server/src/db.ts` ist die Quelle für Tabellen, Spalten und Migrationen.
   Neue Schemaänderungen brauchen eine migrationssichere Behandlung bestehender Installationen.
+- **Migrationsplan:** Bis `schema_migrations` gemäß `docs/plans/issue-29-db-migrations.md`
+  implementiert ist, bleiben bestehende Upgrade-Pfade idempotent und in ihrer historischen
+  Reihenfolge erhalten. Keine produktive DB wird neu aufgebaut oder zurückgesetzt, um eine
+  Migration zu vereinfachen. Änderungen erhalten Legacy-Fixtures, Wiederholungs- und
+  Rollback-bei-Fehler-Tests.
 
 Architekturwechsel, neue Frameworks oder größere Produktionsabhängigkeiten werden nicht nebenbei
 eingeführt. Sie brauchen einen klaren Nutzen, eine Folgenabschätzung und die Zustimmung des Nutzers.
@@ -130,9 +141,10 @@ ein Push auf `main` behält den automatischen Build-und-Deploy-Ablauf bei.
 | Änderung | Mindestens ausführen |
 |---|---|
 | Nur Dokumentation | Links, Pfade und genannte Scripts manuell prüfen |
-| Server, DB, API oder gemeinsame Logik | `npm run build` und `npm test` in `server/` |
+| Server, DB, API oder gemeinsame Logik | `npm run lint`, `npm run build` und `npm test` in `server/` |
 | Frontend-CSS oder Frontend-JS | zusätzlich `npm run check:tokens` und `npm run test:e2e` |
-| Agent | passende Scripts aus `agent/package.json`; Server-Vertragstests, falls Protokoll betroffen |
+| Agent | `npm run lint` und `npm test` in `agent/`; Server-Vertragstests, falls Protokoll betroffen |
+| Tooling-/Format-Konfiguration | zusätzlich `npm run format:check` in `server/` |
 | Race-relevanter Zustand | zusätzlicher Parallel-Request-Integrationstest |
 
 - Neue Logik erhält Tests für Happy Path, relevante Validierungsfehler und Zustandskonflikte.
@@ -156,7 +168,23 @@ ein Push auf `main` behält den automatischen Build-und-Deploy-Ablauf bei.
 - Abhängigkeiten und Lockfiles nur ändern, wenn sie für den Auftrag notwendig sind. Neue Pakete
   begründen und auf Wartungs-, Sicherheits- und Offline-Auswirkungen prüfen.
 
-## 10. Definition of Done
+## 10. Projekthistorie und Betrieb
+
+- Die versionierte Projekthistorie liegt unter `docs/changelog/`. `docs/changelog/README.md` ist
+  der chronologische Einstiegspunkt; die neuesten Einträge stehen oben.
+- Für jeden in `main` gemergten Pull Request wird unter `docs/changelog/pr/` ein Eintrag mit
+  PR-Nummer, Datum, Branch, Merge-Commit und kurzer Zusammenfassung gepflegt. Merge-Metadaten erst
+  eintragen, wenn sie tatsächlich existieren; niemals Nummern oder SHAs erfinden.
+- Für jeden Arbeitsbranch in der PR-Historie hält `docs/changelog/branches/` die zugehörigen PRs und
+  ihren Status zusammen. Nach Abschluss eines Feature-Branches beziehungsweise nach dem Merge
+  werden PR-Datei, Branch-Datei und Übersicht gemeinsam aktualisiert.
+- Reine technische Synchronisations-Merges ohne eigene fachliche Änderung erhalten keinen
+  duplizierten Feature-Eintrag.
+- Änderungen an Deployment, Logging, Backups oder Prozessbetrieb aktualisieren
+  `server/OPERATIONS.md`. Log-Rotation liegt beim verwendeten Container-/Prozessmanager und bleibt
+  vom separaten SQLite-Backup-Prozess getrennt.
+
+## 11. Definition of Done
 
 Eine Änderung ist erst fertig, wenn:
 
@@ -164,7 +192,7 @@ Eine Änderung ist erst fertig, wenn:
 - Eingaben, Fehlerpfade und gegebenenfalls konkurrierende Requests abgesichert sind,
 - relevante Realtime-Verbraucher aktualisiert wurden,
 - erforderliche Unit-, Integrations- und E2E-Tests ergänzt und erfolgreich ausgeführt wurden,
-- Build und Design-Token-Check entsprechend der Matrix grün sind,
+- Lint, Formatprüfung, Build und Design-Token-Check entsprechend der Matrix grün sind,
 - Dokumentation und tatsächliches Verhalten übereinstimmen,
 - keine Secrets, produktiven Daten oder sachfremden Änderungen enthalten sind,
 - der Abschluss geänderte Bereiche, ausgeführte Prüfungen und verbleibende Einschränkungen nennt.

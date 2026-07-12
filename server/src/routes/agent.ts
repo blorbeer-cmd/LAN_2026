@@ -18,7 +18,7 @@ import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
-import { getLiveBoard } from '../liveStatus';
+import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { isGameActive } from '../activity';
 import { config } from '../config';
 import { getTrackingEventId, isParticipant, OUTSIDE_EVENTS_ID } from '../events';
@@ -234,6 +234,9 @@ agentRouter.post('/tracking-paused', (req, res) => {
 
   db.prepare('UPDATE players SET tracking_paused = ? WHERE id = ?').run(paused ? 1 : 0, player.id);
 
+  if (paused) clearPlayerLiveStatus(player.id);
+
   broadcast(Events.playersChanged, null);
+  if (paused) broadcast(Events.liveStatusChanged, getLiveBoard());
   res.json({ ok: true, trackingPaused: paused });
 });

@@ -280,7 +280,7 @@ export function renderHome(container, ctx) {
           ${avatarHtml(p, 36)}
           <div class="player-card-main">
             <div class="row-between">
-              <span class="player-name">${escapeHtml(p.name)}${isMe ? ' <span class=\"muted\">(du)</span>' : ''}</span>
+              <span class="player-name">${escapeHtml(p.name)}${isMe ? ' <span class="muted">(du)</span>' : ''}</span>
               <span class="badge ${badgeClass}">${stateLabel(p.state)}</span>
             </div>
             ${games ? `<div class="player-card-games chip-list">${games}</div>` : ''}

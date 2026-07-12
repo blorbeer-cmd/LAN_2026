@@ -21,6 +21,15 @@ npm run test:coverage # wie npm test, zusätzlich mit Zeilen-/Branch-/Funktions-
 npm run test:e2e      # langsamer: startet Server-Prozess(e) + Chromium, klickt durch die UI
 ```
 
+Falls Playwright noch keinen Chromium-Browser installiert hat, einmalig aus `server/` ausführen:
+
+```bash
+npx playwright install chromium
+```
+
+Unter Linux kann bei fehlenden Systembibliotheken zusätzlich `npx playwright install --with-deps chromium`
+nötig sein.
+
 `test:coverage` nutzt Node's eingebautes `--experimental-test-coverage` (keine zusätzliche
 Abhängigkeit) und blendet Testdateien selbst aus dem Report aus. Kein hartes Minimum hinterlegt –
 der Report ist als Signal beim Review gedacht (sinkt die Zeilen-/Branch-Abdeckung einer Datei durch

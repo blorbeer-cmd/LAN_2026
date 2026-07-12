@@ -95,6 +95,9 @@ LAN_2026/
 
 ## Schnellstart (lokal / Entwicklung)
 
+Das Projekt verwendet Node.js 24. Die Version steht in `.nvmrc`; mit `nvm use` wird sie automatisch
+ausgewählt. Server und Agent deklarieren Node 24 zusätzlich über `engines`.
+
 ```bash
 # Server
 cd server
@@ -110,12 +113,31 @@ npm start
 
 Danach im Browser `http://localhost:3000` öffnen.
 
+### Code-Qualität
+
+Für einheitlichen Code stehen ESLint und Prettier bereit:
+
+```bash
+cd server
+npm run lint
+npm run format:check
+
+cd ../agent
+npm run lint
+```
+
+Die Regeln gelten zunächst als gemeinsame Grundlage für neue und geänderte Dateien; eine
+vollständige automatische Umformatierung der bestehenden Anwendung ist bewusst ein eigener Schritt.
+
 ## Deployment (24/7 auf `lan.dbehnke.dev`)
 
 Läuft dauerhaft auf einem Hetzner-VPS, containerisiert per Docker, per GitHub Actions deployt,
 per Cloudflare Tunnel ans Internet gehängt. Threat model bewusst schlank: kein Fremder greift in
 eine laufende LAN-Session ein, Ziel ist nur "kein leichtes Opfer für Zufallsfunde/Bots" – siehe
 `CLAUDE.md` für die volle Begründung.
+
+Hinweise zur Log-Rotation für den Dauerbetrieb stehen in
+[`server/OPERATIONS.md`](server/OPERATIONS.md).
 
 **Architektur:** `lan.dbehnke.dev` → Cloudflare (TLS, DNS, DDoS/WAF) → Cloudflare Tunnel
 (`cloudflared`, Origin hat **keinen offenen Port 80/443**) → `app`-Container (kein published Port,

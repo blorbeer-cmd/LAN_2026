@@ -51,6 +51,10 @@ jobs:
             base_ref="origin/$DEFAULT_BRANCH"
           fi
           npm run check:tokens -- --base-ref "$base_ref"
+      - name: Lint server and frontend
+        run: npm run lint
+      - name: Check tool configuration formatting
+        run: npm run format:check
       - run: npm run build
       - run: npm test
       - name: Install agent dependencies
@@ -59,6 +63,9 @@ jobs:
       - name: Test agent
         working-directory: agent
         run: npm test
+      - name: Lint agent
+        working-directory: agent
+        run: npm run lint
       - name: Test agent-server integration
         working-directory: agent
         run: npm run test:e2e

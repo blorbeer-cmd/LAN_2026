@@ -19,7 +19,7 @@ import {
 } from '../events';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
-import { getLiveBoard } from '../liveStatus';
+import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { isNonEmptyString } from '../validation';
 
 export const eventsRouter = Router();
@@ -233,7 +233,14 @@ eventsRouter.put('/:id/participants', (req, res) => {
     }
   }
 
+  const previousIds = new Set(getParticipantIds(req.params.id));
   setParticipants(req.params.id, uniqueIds);
+  const trackingEvent = getTrackingEvent();
+  const removedIds = trackingEvent.id === req.params.id
+    ? [...previousIds].filter((playerId) => !uniqueIds.includes(playerId))
+    : [];
+  for (const playerId of removedIds) clearPlayerLiveStatus(playerId);
   broadcast(Events.eventsChanged, null);
+  if (removedIds.length > 0) broadcast(Events.liveStatusChanged, getLiveBoard());
   res.json(serializeEvent(getEvent(req.params.id)));
 });

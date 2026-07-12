@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
+import { db } from '../db';
 
 const app = createApp();
 
@@ -167,6 +168,19 @@ test('participants roster gates who actually gets tracked while an event is trac
   assert.equal(rosteredEntry.state, 'playing');
   const notRosteredEntry = live.body.find((r: { player_id: string }) => r.player_id === notRostered.body.id);
   assert.equal(notRosteredEntry.state, 'offline');
+
+  const removeRes = await request(app)
+    .put(`/api/events/${eventAId}/participants`)
+    .send({ playerIds: [] });
+  assert.equal(removeRes.status, 200);
+  const afterRemoval = await request(app).get('/api/live');
+  const removedEntry = afterRemoval.body.find((r: { player_id: string }) => r.player_id === rostered.body.id);
+  assert.equal(removedEntry.state, 'offline');
+  assert.deepEqual(removedEntry.games, []);
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM play_sessions WHERE player_id = ? AND ended_at IS NULL').get(rostered.body.id) as { count: number }).count,
+    0
+  );
 });
 
 test('PUT /api/events/:id/participants rejects an unknown player', async () => {

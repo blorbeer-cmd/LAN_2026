@@ -1,0 +1,70 @@
+# Branch-Historie
+
+Hier sind alle in den PR-Metadaten gefundenen Arbeitsbranches zusammengefasst. Die Branch-Seite verweist auf alle PRs dieses Themenstrangs und kennzeichnet, ob sie gemergt oder noch offen sind.
+
+- [`claude/arcade-against-ai-admin-s55h89`](./claude-arcade-against-ai-admin-s55h89.md) — 0 gemergt, 1 offen
+- [`claude/arcade-all-open-lobbies-tptts0`](./claude-arcade-all-open-lobbies-tptts0.md) — 3 gemergt, 0 offen
+- [`claude/arcade-lobby-filtering-witbyu`](./claude-arcade-lobby-filtering-witbyu.md) — 1 gemergt, 0 offen
+- [`claude/arcade-ready-button-cw1cth`](./claude-arcade-ready-button-cw1cth.md) — 1 gemergt, 0 offen
+- [`claude/design-system-setup-7m45xk`](./claude-design-system-setup-7m45xk.md) — 2 gemergt, 0 offen
+- [`claude/food-order-metadata-links-tupa5b`](./claude-food-order-metadata-links-tupa5b.md) — 2 gemergt, 0 offen
+- [`claude/funny-mayer-8ib4li`](./claude-funny-mayer-8ib4li.md) — 7 gemergt, 0 offen
+- [`claude/game-list-trackability-icon-pzmnf6`](./claude-game-list-trackability-icon-pzmnf6.md) — 1 gemergt, 0 offen
+- [`claude/game-preference-voting-ototpn`](./claude-game-preference-voting-ototpn.md) — 2 gemergt, 0 offen
+- [`claude/games-features-reorganization-k3lbwv`](./claude-games-features-reorganization-k3lbwv.md) — 1 gemergt, 0 offen
+- [`claude/home-tiles-games-display-c6uua7`](./claude-home-tiles-games-display-c6uua7.md) — 2 gemergt, 0 offen
+- [`claude/kiosk-push-notification-sound-oaiiy9`](./claude-kiosk-push-notification-sound-oaiiy9.md) — 1 gemergt, 0 offen
+- [`claude/lan-party-tools-6jqu4g`](./claude-lan-party-tools-6jqu4g.md) — 1 gemergt, 0 offen
+- [`claude/lan-tools-quality-e2e-x6k61w`](./claude-lan-tools-quality-e2e-x6k61w.md) — 6 gemergt, 0 offen
+- [`claude/live-page-home-redesign-ailuxo`](./claude-live-page-home-redesign-ailuxo.md) — 4 gemergt, 0 offen
+- [`claude/merge-conflicts-ui-symbols-0b61av`](./claude-merge-conflicts-ui-symbols-0b61av.md) — 2 gemergt, 0 offen
+- [`claude/pause-live-tracking-bug-uilj46`](./claude-pause-live-tracking-bug-uilj46.md) — 2 gemergt, 0 offen
+- [`claude/pr-merge-order-p67vj8`](./claude-pr-merge-order-p67vj8.md) — 1 gemergt, 0 offen
+- [`claude/push-notification-types-9djvav`](./claude-push-notification-types-9djvav.md) — 1 gemergt, 0 offen
+- [`claude/rematch-result-history-05t4qm`](./claude-rematch-result-history-05t4qm.md) — 1 gemergt, 0 offen
+- [`claude/scribble-io-analysis-h2vfeb`](./claude-scribble-io-analysis-h2vfeb.md) — 1 gemergt, 0 offen
+- [`claude/scribble-word-list-t4o8i4`](./claude-scribble-word-list-t4o8i4.md) — 1 gemergt, 0 offen
+- [`claude/seating-monitors-sync-iqef7o`](./claude-seating-monitors-sync-iqef7o.md) — 1 gemergt, 0 offen
+- [`claude/seating-real-name`](./claude-seating-real-name.md) — 1 gemergt, 0 offen
+- [`claude/team-draw-button-persistence-nadnbw`](./claude-team-draw-button-persistence-nadnbw.md) — 1 gemergt, 0 offen
+- [`claude/team-draw-feature-rni1xs`](./claude-team-draw-feature-rni1xs.md) — 2 gemergt, 0 offen
+- [`claude/team-draw-seat-neighbors-2wfji2`](./claude-team-draw-seat-neighbors-2wfji2.md) — 2 gemergt, 0 offen
+- [`claude/test-coverage-analysis-ragd8i`](./claude-test-coverage-analysis-ragd8i.md) — 1 gemergt, 0 offen
+- [`claude/test-user-admin-setup-4ntv3z`](./claude-test-user-admin-setup-4ntv3z.md) — 3 gemergt, 0 offen
+- [`claude/tool-spacing-buttons-i853pj`](./claude-tool-spacing-buttons-i853pj.md) — 2 gemergt, 0 offen
+- [`claude/tournament-lobby-features-yt5cgp`](./claude-tournament-lobby-features-yt5cgp.md) — 2 gemergt, 0 offen
+- [`claude/tracking-tool-pause-feature-62phr2`](./claude-tracking-tool-pause-feature-62phr2.md) — 1 gemergt, 0 offen
+- [`claude/user-management-concept-xbro77`](./claude-user-management-concept-xbro77.md) — 1 gemergt, 1 offen
+- [`claude/voting-page-improvements-3bsox6`](./claude-voting-page-improvements-3bsox6.md) — 2 gemergt, 0 offen
+- [`feat/games-table-polish`](./feat-games-table-polish.md) — lokaler Arbeitsbranch, kein eigener PR-Eintrag
+- [`fix/assigned-bugs`](./fix-assigned-bugs.md) — lokaler Arbeitsbranch, kein eigener PR-Eintrag
+- [`fix/e2e-modal-cleanup`](./fix-e2e-modal-cleanup.md) — lokaler Arbeitsbranch, kein eigener PR-Eintrag
+- [`test/all-features-local`](./test-all-features-local.md) — lokaler Integrationsbranch, kein eigener PR-Eintrag
+- [`claude/voting-section-redesign-dop6cu`](./claude-voting-section-redesign-dop6cu.md) — 2 gemergt, 0 offen
+- [`claude/voting-slider-color-bug-zbq2uh`](./claude-voting-slider-color-bug-zbq2uh.md) — 1 gemergt, 0 offen
+- [`concurrency-fix-onto-main`](./concurrency-fix-onto-main.md) — 1 gemergt, 0 offen
+- [`feat/46-arcade-pong`](./feat-46-arcade-pong.md) — 1 gemergt, 0 offen
+- [`feat/admin-base`](./feat-admin-base.md) — 1 gemergt, 0 offen
+- [`feat/agent-diagnostics`](./feat-agent-diagnostics.md) — 1 gemergt, 0 offen
+- [`feat/arcade-blobby-volley`](./feat-arcade-blobby-volley.md) — 1 gemergt, 0 offen
+- [`feat/arcade-quiz`](./feat-arcade-quiz.md) — 1 gemergt, 0 offen
+- [`feat/arcade-tetris`](./feat-arcade-tetris.md) — 1 gemergt, 0 offen
+- [`feat/arrival-carpools`](./feat-arrival-carpools.md) — 1 gemergt, 0 offen
+- [`feat/game-catalog`](./feat-game-catalog.md) — 1 gemergt, 0 offen
+- [`feat/github-feedback-link`](./feat-github-feedback-link.md) — 1 gemergt, 0 offen
+- [`feat/lan-polish-agent-pwa`](./feat-lan-polish-agent-pwa.md) — 1 gemergt, 0 offen
+- [`fix/issues-31-19-25`](./fix-issues-31-19-25.md) — 1 gemergt, 0 offen
+- [`fix/live-status-agent-url`](./fix-live-status-agent-url.md) — 1 gemergt, 0 offen
+- [`chore/node-24-pin`](./chore-node-24-pin.md) — 1 gemergt, 0 offen
+- [`feat/lucide-ui-icons`](./feat-lucide-ui-icons.md) — 1 gemergt, 0 offen
+- [`feat/seating-drag-drop`](./feat-seating-drag-drop.md) — 1 gemergt, 0 offen
+- [`fix-e2e-chromium-path`](./fix-e2e-chromium-path.md) — 1 gemergt, 0 offen
+- [`fix/assigned-bugs`](./fix-assigned-bugs.md) — 1 gemergt, 0 offen
+- [`fix/e2e-modal-cleanup`](./fix-e2e-modal-cleanup.md) — 1 gemergt, 0 offen
+- [`fix/food-order-icons-guideline`](./fix-food-order-icons-guideline.md) — 1 gemergt, 0 offen
+- [`fix/logo-landing-link`](./fix-logo-landing-link.md) — 1 gemergt, 0 offen
+- [`fix/rang-1-gold-css-property`](./fix-rang-1-gold-css-property.md) — 1 gemergt, 0 offen
+- [`fix/themed-datetime-picker`](./fix-themed-datetime-picker.md) — 1 gemergt, 0 offen
+- [`node24-fix-onto-main`](./node24-fix-onto-main.md) — 1 gemergt, 0 offen
+- [`symbol-fix`](./symbol-fix.md) — 1 gemergt, 0 offen
+- [`worktree-hetzner-cicd`](./worktree-hetzner-cicd.md) — 1 gemergt, 0 offen
