@@ -13,7 +13,7 @@
 import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
-import { adminUnlockValid } from '../auth';
+import { playerMayUseArcadeAi } from './adminAccess';
 import { notifyPlayers } from '../push';
 import { matchesAnswer } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
@@ -479,7 +479,7 @@ export function registerScribbleSockets(io: Server): void {
       });
     });
     socket.on('scribble:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (res: unknown) => void) => {
-      if (!adminUnlockValid(payload?.adminPin)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
+      if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
       removeFromOpenLobbies(io, socket.id);

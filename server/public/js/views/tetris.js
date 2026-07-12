@@ -17,7 +17,7 @@ import { getToken } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
-import { isAdmin } from '../admin.js';
+import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { allLobbyReady, lobbyPlayerChipsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
@@ -439,7 +439,7 @@ export function renderTetrisLobbyCard() {
     <div class="card stack">
       <div class="row-between" style="gap:var(--space-3);">
         <strong>Tetris-Lobby</strong>
-        <div class="row" style="gap:var(--space-2);">${isAdmin() ? `<button type="button" class="btn btn-sm btn-equal" id="tetris-bot" ${lobby || match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="tetris-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div>
+        <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="tetris-bot" ${lobby || match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="tetris-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div>
       </div>
       ${arcadeInfoGridHtml([
         { label: 'Ziel', text: 'Überleben.' },
