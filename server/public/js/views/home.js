@@ -267,14 +267,14 @@ export function renderHome(container, ctx) {
     .map((p) => {
       const badgeClass = `badge-${p.state}`;
       const games = gameChipsHtml(p.games, p.activity_tracked);
-
-      const noteLine =
-        p.state === 'paused' && p.manual_note
-          ? `<div class="muted" style="margin-top:var(--space-1);font-size:var(--font-size-sm);">${escapeHtml(p.manual_note)}</div>`
-          : '';
-
       const isMe = p.player_id === myId;
 
+      // No note line here on purpose: the only note the UI ever sets is the
+      // fixed "Pause / Essen" string (see renderMyStatus's toggle below),
+      // which just restates the "Pause" badge already shown — rendering it
+      // was the last source of a tile being taller than its siblings, which
+      // visibly resized the whole .card-grid row (that stretches every card
+      // in a row to the tallest one) the moment someone paused.
       return `
         <div class="card player-card">
           ${avatarHtml(p, 36)}
@@ -284,7 +284,6 @@ export function renderHome(container, ctx) {
               <span class="badge ${badgeClass}">${stateLabel(p.state)}</span>
             </div>
             ${games ? `<div class="player-card-games chip-list">${games}</div>` : ''}
-            ${noteLine}
           </div>
         </div>`;
     })
