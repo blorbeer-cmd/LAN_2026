@@ -3,20 +3,24 @@ name: CI/CD
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch: {}
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   test:
+    name: Build and test
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: server
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           # 24 (current Active LTS) — matches server/Dockerfile. Also fixes
@@ -26,16 +30,42 @@ jobs:
           # 'dist-test/*.test.js'" (verified by reproducing it locally).
           node-version: 24
           cache: npm
-          cache-dependency-path: server/package-lock.json
+          cache-dependency-path: |
+            server/package-lock.json
+            agent/package-lock.json
       - run: npm ci
+      - name: Check design tokens
+        shell: bash
+        env:
+          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          base_ref="$EVENT_BASE_SHA"
+          if [[ -z "$base_ref" || "$base_ref" =~ ^0+$ ]]; then
+            base_ref="origin/$DEFAULT_BRANCH"
+          fi
+          npm run check:tokens -- --base-ref "$base_ref"
       - run: npm run build
       - run: npm test
+      - name: Install agent dependencies
+        working-directory: agent
+        run: npm ci
+      - name: Test agent
+        working-directory: agent
+        run: npm test
+      - name: Test agent-server integration
+        working-directory: agent
+        run: npm run test:e2e
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
 
   build-and-push:
+    if: github.event_name != 'pull_request'
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     outputs:
       image: ${{ steps.meta.outputs.image }}
     steps:
@@ -63,6 +93,7 @@ jobs:
             ${{ steps.meta.outputs.image }}:latest
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build-and-push
     runs-on: ubuntu-latest
     environment: production

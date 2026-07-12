@@ -118,7 +118,7 @@ Auf einer LAN lösen mehrere Personen dieselbe Aktion nahezu gleichzeitig aus. S
 Tests laufen mit dem eingebauten `node:test`-Runner, Supertest und Playwright. Details stehen in
 `server/TESTING.md`.
 
-Die Pipeline in `.github/workflows/ci.yml` führt die verbindlichen Prüfungen bei Pull Requests,
+Die Pipeline in `.github/workflows/deploy.yml` führt die verbindlichen Prüfungen bei Pull Requests,
 Änderungen an `main` und manuellen Ausführungen aus. Ein fehlgeschlagener Pflichtcheck wird nicht
 ignoriert oder durch erneutes Ausführen ohne Ursachenklärung umgangen. Lokale Prüfung und CI
 ergänzen einander; keine von beiden ersetzt die andere.
