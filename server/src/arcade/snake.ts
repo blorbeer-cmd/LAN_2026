@@ -1,7 +1,6 @@
 import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
-import { adminUnlockValid } from '../auth';
 import { createWorld, Direction, setDirection, SnakeWorld, stepWorld, SNAKE_HEIGHT, SNAKE_WIDTH } from './snakeLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
@@ -145,8 +144,7 @@ export function registerSnakeSockets(io: Server): void {
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
     });
-    socket.on('snake:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (result: unknown) => void) => {
-      if (!adminUnlockValid(payload?.adminPin)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
+    socket.on('snake:lobby:bot', (payload: { playerId?: string }, ack?: (result: unknown) => void) => {
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Spieler nicht gefunden.' });
       removeFromLobbies(io, socket.id);

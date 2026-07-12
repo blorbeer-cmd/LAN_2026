@@ -1,7 +1,6 @@
 import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
-import { adminUnlockValid } from '../auth';
 import { notifyPlayers } from '../push';
 import { matchesAnswer, pickQuestion } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
@@ -284,8 +283,7 @@ export function registerArcadeSockets(io: Server): void {
       });
     });
 
-    socket.on('arcade:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (res: unknown) => void) => {
-      if (!adminUnlockValid(payload?.adminPin)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
+    socket.on('arcade:lobby:bot', (payload: { playerId?: string }, ack?: (res: unknown) => void) => {
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
       removeFromOpenLobbies(io, socket.id);

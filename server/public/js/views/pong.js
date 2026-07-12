@@ -2,7 +2,6 @@ import { getToken } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
-import { getAdminPin, isAdmin } from '../admin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { allLobbyReady, lobbyPlayerChipsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
@@ -141,7 +140,7 @@ export function renderPongLobbyCard() {
   const lobby = myPongLobby();
   const noMe = !myId();
   return `<div class="card stack"><div class="row-between" style="gap:var(--space-3);"><strong>Pong-Lobby</strong>
-    <div class="row" style="gap:var(--space-2);">${isAdmin() ? `<button type="button" class="btn btn-sm btn-equal" id="pong-bot" ${lobby || match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="pong-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div></div>
+    <div class="row" style="gap:var(--space-2);"><button type="button" class="btn btn-sm btn-equal" id="pong-bot" ${lobby || match || noMe ? 'disabled' : ''}>Gegen KI</button><button type="button" class="btn btn-primary btn-sm btn-equal" id="pong-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div></div>
     ${arcadeInfoGridHtml([
       { label: 'Ziel', text: 'Erreiche zuerst die Punktzahl.' },
       { label: 'Steuerung', text: 'Pfeiltasten.' },
@@ -156,7 +155,7 @@ export function wirePongLobbyCard(container) {
     if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelector('#pong-bot')?.addEventListener('click', async () => {
-    const result = await emitAck('pong:lobby:bot', { playerId: myId(), adminPin: getAdminPin() });
+    const result = await emitAck('pong:lobby:bot', { playerId: myId() });
     if (!result?.ok) showToast(result?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelectorAll('[data-pong-join]').forEach((button) => button.addEventListener('click', async () => {

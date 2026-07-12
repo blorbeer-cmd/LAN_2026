@@ -3,7 +3,6 @@ import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
-import { isAdmin } from '../admin.js';
 import { ensureTetrisSocket, renderTetrisLobbyCard, wireTetrisLobbyCard, myTetrisLobby, tetrisLobbies } from './tetris.js';
 import {
   ensureScribbleSocket,
@@ -392,7 +391,7 @@ function activeGameHtml() {
       <div class="card stack" style="margin-top:var(--space-3);">
         <div class="row-between" style="gap:var(--space-3);">
           <strong>Quiz-Lobby</strong>
-          <div class="row" style="gap:var(--space-2);">${isAdmin() ? `<button type="button" class="btn btn-sm btn-equal" id="quiz-bot" ${lobby || match ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="quiz-create-lobby" ${lobby || match ? 'disabled' : ''}>Lobby öffnen</button></div>
+          <div class="row" style="gap:var(--space-2);"><button type="button" class="btn btn-sm btn-equal" id="quiz-bot" ${lobby || match ? 'disabled' : ''}>Gegen KI</button><button type="button" class="btn btn-primary btn-sm btn-equal" id="quiz-create-lobby" ${lobby || match ? 'disabled' : ''}>Lobby öffnen</button></div>
         </div>
         ${arcadeInfoGridHtml([
           { label: 'Ziel', text: 'Richtige Antworten sammeln.' },
