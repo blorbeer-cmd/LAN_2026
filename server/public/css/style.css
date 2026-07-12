@@ -1800,8 +1800,9 @@ button.card {
   margin-bottom: var(--space-3);
 }
 .arcade-game-shell.is-expanded {
-  width: 100%;
+  width: min(100%, calc(100vw - var(--space-4) - var(--space-4)));
   max-width: none;
+  box-sizing: border-box;
 }
 .arcade-game-shell.is-expanded .quiz-stage-card,
 .arcade-game-shell.is-expanded .scribble-stage-card,
@@ -1818,6 +1819,24 @@ button.card {
 }
 .arcade-game-shell.is-expanded .tetris-boards {
   max-width: none;
+}
+/* Expanded playfields must fit the current browser viewport in both axes.
+   The reserved height covers the title, expand control, roster and match
+   controls; the canvas keeps its own aspect ratio while it is capped. */
+.arcade-game-shell.is-expanded .scribble-canvas-wrap,
+.arcade-game-shell.is-expanded .tetris-boards,
+.arcade-game-shell.is-expanded .blobby-court,
+.arcade-game-shell.is-expanded .pong-arena,
+.arcade-game-shell.is-expanded .snake-game {
+  max-height: calc(100dvh - 18rem);
+}
+.arcade-game-shell.is-expanded .scribble-canvas-wrap canvas,
+.arcade-game-shell.is-expanded .tetris-canvas,
+.arcade-game-shell.is-expanded .blobby-court canvas,
+.arcade-game-shell.is-expanded .pong-arena canvas,
+.arcade-game-shell.is-expanded #snake-canvas {
+  max-height: calc(100dvh - 18rem);
+  object-fit: contain;
 }
 .arcade-game-shell > .view-title {
   text-align: center;
