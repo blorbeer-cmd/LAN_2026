@@ -647,6 +647,9 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     await page.mouse.move(box!.x + 120, box!.y + 90, { steps: 8 });
     await page.mouse.up();
 
+    await page.waitForFunction(() => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) >= 1);
+    await guesserPage.waitForFunction(() => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) >= 1);
+
     // The stroke must reach the guesser's canvas too (streamed over
     // Socket.IO, not part of the initial render).
     await guesserPage.waitForFunction(() => {
@@ -696,6 +699,7 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     await page.mouse.down();
     await page.mouse.move(box2!.x + 260, box2!.y + 60, { steps: 8 });
     await page.mouse.up();
+    await page.waitForFunction(() => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) >= 2);
     await guesserPage.waitForFunction(
       (before) => {
         const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement | null;
@@ -707,10 +711,13 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
       },
       guesserPaintedAfterStroke1
     );
+    await guesserPage.waitForFunction(() => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) >= 2);
     const guesserPaintedAfterStroke2 = await countPainted(guesserPage);
     const hostPaintedAfterStroke2 = await countPainted(page);
 
     await page.click('#scribble-undo');
+    await page.waitForFunction(() => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) === 1);
+    await guesserPage.waitForFunction(() => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) === 1);
     await page.waitForFunction(
       (before) => {
         const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement;
