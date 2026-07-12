@@ -574,6 +574,43 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_carpool_members_carpool ON carpool_members(carpool_id);
 `);
 
+type Migration = {
+  version: number;
+  name: string;
+  up: () => void;
+};
+
+// The initial schema above is the baseline for new databases. The numbered
+// migrations below bring older databases to that same baseline and keep a
+// durable record of which upgrade steps have already run.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS schema_migrations (
+    version    INTEGER PRIMARY KEY,
+    name       TEXT NOT NULL,
+    applied_at INTEGER NOT NULL
+  );
+`);
+
+const hasAppliedMigration = db.prepare('SELECT 1 FROM schema_migrations WHERE version = ?');
+const recordMigration = db.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)');
+
+function runMigration(migration: Migration): void {
+  if (hasAppliedMigration.get(migration.version)) return;
+
+  db.transaction(() => {
+    migration.up();
+    recordMigration.run(migration.version, migration.name, Date.now());
+  })();
+}
+
+export function getAppliedMigrations(): Array<{ version: number; name: string; applied_at: number }> {
+  return db.prepare('SELECT version, name, applied_at FROM schema_migrations ORDER BY version').all() as Array<{
+    version: number;
+    name: string;
+    applied_at: number;
+  }>;
+}
+
 // Migration: older databases were created before the `avatar` column existed.
 // CREATE TABLE IF NOT EXISTS above only applies to brand-new databases, so
 // add it here if missing (checked via PRAGMA rather than a version counter —
@@ -583,7 +620,7 @@ function migrateAvatarColumn(): void {
   if (columns.some((c) => c.name === 'avatar')) return;
   db.exec('ALTER TABLE players ADD COLUMN avatar TEXT');
 }
-migrateAvatarColumn();
+runMigration({ version: 1, name: 'add players.avatar', up: migrateAvatarColumn });
 
 // Migration: older databases predate the is_admin moderation flag.
 function migrateAdminColumn(): void {
@@ -591,7 +628,7 @@ function migrateAdminColumn(): void {
   if (columns.some((c) => c.name === 'is_admin')) return;
   db.exec('ALTER TABLE players ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0');
 }
-migrateAdminColumn();
+runMigration({ version: 2, name: 'add players.is_admin', up: migrateAdminColumn });
 
 // Migration: older databases predate the is_test flag for admin-seeded test
 // players (see testUsers.ts).
@@ -600,7 +637,7 @@ function migrateTestColumn(): void {
   if (columns.some((c) => c.name === 'is_test')) return;
   db.exec('ALTER TABLE players ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0');
 }
-migrateTestColumn();
+runMigration({ version: 3, name: 'add players.is_test', up: migrateTestColumn });
 
 // Migration: older databases predate the optional real_name column (the
 // actual person's name, shown in small next to the gamer name in the
@@ -610,21 +647,21 @@ function migrateRealNameColumn(): void {
   if (columns.some((c) => c.name === 'real_name')) return;
   db.exec('ALTER TABLE players ADD COLUMN real_name TEXT');
 }
-migrateRealNameColumn();
+runMigration({ version: 4, name: 'add players.real_name', up: migrateRealNameColumn });
 
 function migrateGameIconImageColumn(): void {
   const columns = db.prepare('PRAGMA table_info(games)').all() as Array<{ name: string }>;
   if (columns.some((c) => c.name === 'icon_image')) return;
   db.exec('ALTER TABLE games ADD COLUMN icon_image TEXT');
 }
-migrateGameIconImageColumn();
+runMigration({ version: 5, name: 'add games.icon_image', up: migrateGameIconImageColumn });
 
 function migrateGameArcadeKeyColumn(): void {
   const columns = db.prepare('PRAGMA table_info(games)').all() as Array<{ name: string }>;
   if (columns.some((c) => c.name === 'arcade_key')) return;
   db.exec('ALTER TABLE games ADD COLUMN arcade_key TEXT');
 }
-migrateGameArcadeKeyColumn();
+runMigration({ version: 6, name: 'add games.arcade_key', up: migrateGameArcadeKeyColumn });
 
 // Migration: older databases predate the games/game_catalog merge (see
 // server/CLAUDE.md games reorg) — games itself needs the catalog columns
@@ -640,9 +677,10 @@ function migrateGamesCatalogMergeColumns(): void {
   if (!has('platform_url')) db.exec('ALTER TABLE games ADD COLUMN platform_url TEXT');
   if (!has('trailer_url')) db.exec('ALTER TABLE games ADD COLUMN trailer_url TEXT');
   if (!has('status')) db.exec("ALTER TABLE games ADD COLUMN status TEXT NOT NULL DEFAULT 'catalog'");
-  if (!has('created_by')) db.exec('ALTER TABLE games ADD COLUMN created_by TEXT REFERENCES players(id) ON DELETE SET NULL');
+  if (!has('created_by'))
+    db.exec('ALTER TABLE games ADD COLUMN created_by TEXT REFERENCES players(id) ON DELETE SET NULL');
 }
-migrateGamesCatalogMergeColumns();
+runMigration({ version: 7, name: 'add games catalog columns', up: migrateGamesCatalogMergeColumns });
 
 function migrateLegacyGameCatalogIntoGames(): void {
   const catalogTableExists = db
@@ -666,11 +704,11 @@ function migrateLegacyGameCatalogIntoGames(): void {
   // both a tracked game and a catalog entry before the merge) only gets its
   // blank catalog fields filled in — the tracked row's own data always wins.
   const fillMissing = db.prepare(
-    `UPDATE games SET platform = COALESCE(platform, ?), platform_url = COALESCE(platform_url, ?), trailer_url = COALESCE(trailer_url, ?) WHERE id = ?`
+    `UPDATE games SET platform = COALESCE(platform, ?), platform_url = COALESCE(platform_url, ?), trailer_url = COALESCE(trailer_url, ?) WHERE id = ?`,
   );
   const insertGame = db.prepare(
     `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at, platform, platform_url, trailer_url, status, created_by)
-     VALUES (?, ?, '🎮', 1, 5, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, '🎮', 1, 5, ?, ?, ?, ?, ?, ?)`,
   );
 
   // catalog_id -> the games.id its ratings should be re-homed to.
@@ -691,7 +729,7 @@ function migrateLegacyGameCatalogIntoGames(): void {
           row.platform_url,
           row.trailer_url,
           row.is_suggestion ? 'suggestion' : 'catalog',
-          row.created_by
+          row.created_by,
         );
         resolvedGameId.set(row.id, row.id);
       }
@@ -705,7 +743,9 @@ function migrateLegacyGameCatalogIntoGames(): void {
     // Never overwrites a preference the player already has on the merged
     // game — the 1-10 "Bock" scale (changeable on a whim throughout the LAN)
     // is more current than a one-time 1-5 catalog rating from before the merge.
-    const insertPreference = db.prepare('INSERT OR IGNORE INTO preferences (player_id, game_id, rating) VALUES (?, ?, ?)');
+    const insertPreference = db.prepare(
+      'INSERT OR IGNORE INTO preferences (player_id, game_id, rating) VALUES (?, ?, ?)',
+    );
     for (const r of ratingRows) {
       const gameId = resolvedGameId.get(r.catalog_id);
       if (!gameId) continue;
@@ -717,7 +757,7 @@ function migrateLegacyGameCatalogIntoGames(): void {
     db.exec('DROP TABLE game_catalog');
   })();
 }
-migrateLegacyGameCatalogIntoGames();
+runMigration({ version: 8, name: 'merge legacy game catalog', up: migrateLegacyGameCatalogIntoGames });
 
 // Migration: older databases predate the optional "wann geht's raus"
 // send_at field on food orders.
@@ -726,7 +766,7 @@ function migrateFoodOrderSendAtColumn(): void {
   if (columns.some((c) => c.name === 'send_at')) return;
   db.exec('ALTER TABLE food_orders ADD COLUMN send_at INTEGER');
 }
-migrateFoodOrderSendAtColumn();
+runMigration({ version: 9, name: 'add food_orders.send_at', up: migrateFoodOrderSendAtColumn });
 
 // Migration: older databases predate the optional notes/link fields on food
 // orders (free-text info + link to the menu/delivery service).
@@ -736,7 +776,7 @@ function migrateFoodOrderNotesLinkColumns(): void {
   if (!has('notes')) db.exec('ALTER TABLE food_orders ADD COLUMN notes TEXT');
   if (!has('link')) db.exec('ALTER TABLE food_orders ADD COLUMN link TEXT');
 }
-migrateFoodOrderNotesLinkColumns();
+runMigration({ version: 10, name: 'add food order notes links', up: migrateFoodOrderNotesLinkColumns });
 
 // Migration: older databases predate the carpool driver plan (when/where
 // they start, ETA, seat count).
@@ -748,7 +788,7 @@ function migrateCarpoolPlanColumns(): void {
   if (!has('eta_at')) db.exec('ALTER TABLE carpools ADD COLUMN eta_at INTEGER');
   if (!has('seats_total')) db.exec('ALTER TABLE carpools ADD COLUMN seats_total INTEGER NOT NULL DEFAULT 3');
 }
-migrateCarpoolPlanColumns();
+runMigration({ version: 11, name: 'add carpool plan columns', up: migrateCarpoolPlanColumns });
 
 // Migration: older databases predate the group-knockout format and score
 // tracking (both added together) — add the columns they need if missing.
@@ -774,7 +814,7 @@ function migrateTournamentColumns(): void {
   if (!has('lobby_name')) db.exec('ALTER TABLE tournaments ADD COLUMN lobby_name TEXT');
   if (!has('lobby_password')) db.exec('ALTER TABLE tournaments ADD COLUMN lobby_password TEXT');
 }
-migrateTournamentColumns();
+runMigration({ version: 12, name: 'add tournament columns', up: migrateTournamentColumns });
 
 // Migration: older databases predate linking a matchmaking draw to the match
 // result eventually recorded for it (Team-Historie -> Ergebnis-Historie).
@@ -787,7 +827,7 @@ function migrateMatchmakingDrawsColumns(): void {
     db.exec('ALTER TABLE matchmaking_draws ADD COLUMN source TEXT');
   }
 }
-migrateMatchmakingDrawsColumns();
+runMigration({ version: 13, name: 'add matchmaking draw columns', up: migrateMatchmakingDrawsColumns });
 
 // Migration: older databases predate the foreground-game tracking columns
 // (which game of possibly several is actually focused right now).
@@ -801,7 +841,7 @@ function migrateForegroundColumns(): void {
     db.exec('ALTER TABLE live_status_games ADD COLUMN is_foreground INTEGER NOT NULL DEFAULT 0');
   }
 }
-migrateForegroundColumns();
+runMigration({ version: 14, name: 'add foreground columns', up: migrateForegroundColumns });
 
 // Migration: older databases predate the points-mode voting round (added
 // alongside the "Bock"/preference feature). votes used to have
@@ -846,7 +886,7 @@ function migrateVotesPointsMode(): void {
       `);
       db.exec(
         'INSERT INTO votes_new (id, player_id, game_id, event_id, round, points, created_at) ' +
-          'SELECT id, player_id, game_id, event_id, round, points, created_at FROM votes'
+          'SELECT id, player_id, game_id, event_id, round, points, created_at FROM votes',
       );
       db.exec('DROP TABLE votes');
       db.exec('ALTER TABLE votes_new RENAME TO votes');
@@ -855,7 +895,7 @@ function migrateVotesPointsMode(): void {
     }
   })();
 }
-migrateVotesPointsMode();
+runMigration({ version: 15, name: 'add votes points mode', up: migrateVotesPointsMode });
 
 // Migration: older databases predate the round title/info/selected-games
 // fields (a round used to be identified only by its number and mode).
@@ -867,7 +907,7 @@ function migrateVoteRoundsMetaColumns(): void {
     db.exec('ALTER TABLE vote_rounds ADD COLUMN selected_game_ids TEXT');
   }
 }
-migrateVoteRoundsMetaColumns();
+runMigration({ version: 16, name: 'add vote round metadata', up: migrateVoteRoundsMetaColumns });
 
 // Migration: older databases predate the optional location/description
 // event fields.
@@ -877,7 +917,7 @@ function migrateEventColumns(): void {
   if (!has('location')) db.exec('ALTER TABLE events ADD COLUMN location TEXT');
   if (!has('description')) db.exec('ALTER TABLE events ADD COLUMN description TEXT');
 }
-migrateEventColumns();
+runMigration({ version: 17, name: 'add event location and description', up: migrateEventColumns });
 
 // Fixed id for the permanent "außerhalb von Events" sentinel — see the
 // `events` table comment above for why this exists. Exported so events.ts
@@ -918,7 +958,7 @@ function migrateEventTrackingColumns(): void {
       db.prepare('UPDATE events SET tracking_enabled = 1 WHERE id = ?').run(previousActiveId);
       const players = db.prepare('SELECT id FROM players').all() as Array<{ id: string }>;
       const insertParticipant = db.prepare(
-        'INSERT OR IGNORE INTO event_participants (event_id, player_id) VALUES (?, ?)'
+        'INSERT OR IGNORE INTO event_participants (event_id, player_id) VALUES (?, ?)',
       );
       for (const p of players) insertParticipant.run(previousActiveId, p.id);
     }
@@ -954,22 +994,20 @@ db.exec(`
 `);
 
 export function getState(key: string): string | undefined {
-  const row = db.prepare('SELECT value FROM app_state WHERE key = ?').get(key) as
-    | { value: string }
-    | undefined;
+  const row = db.prepare('SELECT value FROM app_state WHERE key = ?').get(key) as { value: string } | undefined;
   return row?.value;
 }
 
 export function setState(key: string, value: string): void {
   db.prepare(
     `INSERT INTO app_state (key, value) VALUES (?, ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
   ).run(key, value);
 }
 
 // Needs app_state (just above) to exist first for its upgrade-continuity
 // backfill, which reads the old active_event_id key.
-migrateEventTrackingColumns();
+runMigration({ version: 18, name: 'add event tracking', up: migrateEventTrackingColumns });
 
 // For now every player is an admin: the PIN is retired and the friend group
 // moderates itself (see docs/KONZEPT-TEST-USER.md), and a roster where nobody
@@ -982,14 +1020,14 @@ function migrateAllPlayersAdminBackfill(): void {
   db.exec('UPDATE players SET is_admin = 1');
   setState('all_players_admin_backfill', 'done');
 }
-migrateAllPlayersAdminBackfill();
+runMigration({ version: 19, name: 'backfill player admins', up: migrateAllPlayersAdminBackfill });
 
 function migrateSeatNeighborsSourceColumn(): void {
   const columns = db.prepare('PRAGMA table_info(seat_neighbors)').all() as Array<{ name: string }>;
   if (columns.some((c) => c.name === 'source')) return;
   db.exec("ALTER TABLE seat_neighbors ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'");
 }
-migrateSeatNeighborsSourceColumn();
+runMigration({ version: 20, name: 'add seat neighbor source', up: migrateSeatNeighborsSourceColumn });
 
 // Migration: older databases predate the Home notification feed's extra
 // push_log fields (deep-link url, recipient list, all/direct audience).
@@ -1002,13 +1040,16 @@ function migratePushLogFeedColumns(): void {
   if (!has('audience')) db.exec("ALTER TABLE push_log ADD COLUMN audience TEXT NOT NULL DEFAULT 'all'");
   if (!has('player_ids')) db.exec('ALTER TABLE push_log ADD COLUMN player_ids TEXT');
 }
-migratePushLogFeedColumns();
+runMigration({ version: 21, name: 'add push log feed columns', up: migratePushLogFeedColumns });
 
 // Migration: the "Jetzt zocken" ping feature was removed (spontaneous
 // play requests go through Durchsagen or a vote round instead) — drop its
 // tables from databases that still carry them. Dropping a table drops its
 // indexes with it.
-db.exec('DROP TABLE IF EXISTS game_ping_interested; DROP TABLE IF EXISTS game_pings;');
+function removeGamePingTables(): void {
+  db.exec('DROP TABLE IF EXISTS game_ping_interested; DROP TABLE IF EXISTS game_pings;');
+}
+runMigration({ version: 22, name: 'remove game ping tables', up: removeGamePingTables });
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.
@@ -1019,10 +1060,10 @@ function seedGames(): void {
   const now = Date.now();
   const insertGame = db.prepare(
     `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?)`,
   );
   const insertProc = db.prepare(
-    `INSERT OR IGNORE INTO game_process_names (id, game_id, process_name) VALUES (?, ?, ?)`
+    `INSERT OR IGNORE INTO game_process_names (id, game_id, process_name) VALUES (?, ?, ?)`,
   );
 
   const defaults: Array<{
@@ -1072,7 +1113,7 @@ function seedArcadeGames(): void {
   const existing = db.prepare('SELECT id FROM games WHERE arcade_key = ?');
   const insertGame = db.prepare(
     `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at, status, arcade_key)
-     VALUES (?, ?, ?, 2, 2, ?, 'catalog', ?)`
+     VALUES (?, ?, ?, 2, 2, ?, 'catalog', ?)`,
   );
   const seed = db.transaction(() => {
     for (const g of ARCADE_GAME_DEFS) {
@@ -1090,7 +1131,7 @@ function seedQuizQuestions(): void {
 
   const now = Date.now();
   const insert = db.prepare(
-    'INSERT INTO quiz_questions (id, question, answers, category, difficulty, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    'INSERT INTO quiz_questions (id, question, answers, category, difficulty, created_at) VALUES (?, ?, ?, ?, ?, ?)',
   );
   db.transaction(() => {
     for (const q of DEFAULT_QUIZ_QUESTIONS) {
@@ -1154,7 +1195,7 @@ function cleanupCatalogGames(): void {
       db.prepare('UPDATE games SET platform = ?, trailer_url = ? WHERE id = ?').run(
         'NAS',
         WARCRAFT3_TFT_TRAILER_URL,
-        warcraft.id
+        warcraft.id,
       );
     }
 
@@ -1169,33 +1210,102 @@ function cleanupCatalogGames(): void {
 // only touches still-blank fields, so an admin's own edit is never reverted.
 function seedCatalogGames(): void {
   const now = Date.now();
-  const trailer = (title: string) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${title} gameplay trailer`)}`;
+  const trailer = (title: string) =>
+    `https://www.youtube.com/results?search_query=${encodeURIComponent(`${title} gameplay trailer`)}`;
   const defaults: Array<{ title: string; platform: string; platformUrl: string | null; trailerUrl?: string }> = [
-    { title: 'Age of Empires 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/813780/Age_of_Empires_II_Definitive_Edition/' },
-    { title: 'Age of Empires 4', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1466860/Age_of_Empires_IV_Anniversary_Edition/' },
+    {
+      title: 'Age of Empires 2',
+      platform: 'Steam',
+      platformUrl: 'https://store.steampowered.com/app/813780/Age_of_Empires_II_Definitive_Edition/',
+    },
+    {
+      title: 'Age of Empires 4',
+      platform: 'Steam',
+      platformUrl: 'https://store.steampowered.com/app/1466860/Age_of_Empires_IV_Anniversary_Edition/',
+    },
     { title: 'Among Us', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/945360/Among_Us/' },
-    { title: 'Back 4 Blood', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/924970/Back_4_Blood/' },
-    { title: 'C&C Generals', platform: 'EA', platformUrl: 'https://www.ea.com/games/command-and-conquer/command-and-conquer-generals' },
-    { title: 'Call of Duty 4 - Modern Warfare', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/7940/Call_of_Duty_4_Modern_Warfare_2007/' },
-    { title: 'Call of Duty II', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/2630/Call_of_Duty_2/' },
+    {
+      title: 'Back 4 Blood',
+      platform: 'Steam',
+      platformUrl: 'https://store.steampowered.com/app/924970/Back_4_Blood/',
+    },
+    {
+      title: 'C&C Generals',
+      platform: 'EA',
+      platformUrl: 'https://www.ea.com/games/command-and-conquer/command-and-conquer-generals',
+    },
+    {
+      title: 'Call of Duty 4 - Modern Warfare',
+      platform: 'Steam',
+      platformUrl: 'https://store.steampowered.com/app/7940/Call_of_Duty_4_Modern_Warfare_2007/',
+    },
+    {
+      title: 'Call of Duty II',
+      platform: 'Steam',
+      platformUrl: 'https://store.steampowered.com/app/2630/Call_of_Duty_2/',
+    },
     { title: 'Chivalry 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1824220/Chivalry_2/' },
-    { title: 'Dawn of War', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/4570/Warhammer_40000_Dawn_of_War__Game_of_the_Year_Edition/' },
+    {
+      title: 'Dawn of War',
+      platform: 'Steam',
+      platformUrl: 'https://store.steampowered.com/app/4570/Warhammer_40000_Dawn_of_War__Game_of_the_Year_Edition/',
+    },
     { title: 'DOTA 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/570/Dota_2/' },
     { title: 'Fall Guys', platform: 'Epic', platformUrl: 'https://store.epicgames.com/p/fall-guys' },
-    { title: 'Golf with your Friends', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/431240/Golf_With_Your_Friends/' },
+    {
+      title: 'Golf with your Friends',
+      platform: 'Steam',
+      platformUrl: 'https://store.steampowered.com/app/431240/Golf_With_Your_Friends/',
+    },
     { title: 'GRID', platform: 'Steam', platformUrl: 'https://store.steampowered.com/search/?term=GRID' },
-    { title: 'Halo Infinite', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1240440/Halo_Infinite/' },
-    { title: 'Hot Wheels Unleashed', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1271700/HOT_WHEELS_UNLEASHED/' },
-    { title: 'Jedi Knight II', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/6030/STAR_WARS_Jedi_Knight_II_Jedi_Outcast/' },
+    {
+      title: 'Halo Infinite',
+      platform: 'Steam',
+      platformUrl: 'https://store.steampowered.com/app/1240440/Halo_Infinite/',
+    },
+    {
+      title: 'Hot Wheels Unleashed',
+      platform: 'Steam',
+      platformUrl: 'https://store.steampowered.com/app/1271700/HOT_WHEELS_UNLEASHED/',
+    },
+    {
+      title: 'Jedi Knight II',
+      platform: 'Steam',
+      platformUrl: 'https://store.steampowered.com/app/6030/STAR_WARS_Jedi_Knight_II_Jedi_Outcast/',
+    },
     { title: 'League of Legends', platform: 'Riot', platformUrl: 'https://www.leagueoflegends.com/' },
     { title: 'Rocket League', platform: 'Epic', platformUrl: 'https://store.epicgames.com/p/rocket-league' },
-    { title: 'Sea of Thieves', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1172620/Sea_of_Thieves_2024_Edition/' },
-    { title: 'Star Wars Battlefront 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/1237950/STAR_WARS_Battlefront_II/' },
+    {
+      title: 'Sea of Thieves',
+      platform: 'Steam',
+      platformUrl: 'https://store.steampowered.com/app/1172620/Sea_of_Thieves_2024_Edition/',
+    },
+    {
+      title: 'Star Wars Battlefront 2',
+      platform: 'Steam',
+      platformUrl: 'https://store.steampowered.com/app/1237950/STAR_WARS_Battlefront_II/',
+    },
     { title: 'Starcraft 2', platform: 'Battle.net', platformUrl: 'https://starcraft2.blizzard.com/' },
-    { title: 'Team Fortress 2', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/440/Team_Fortress_2/' },
-    { title: 'TrackMania Nations Forever', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/11020/TrackMania_Nations_Forever/' },
-    { title: 'Tricky Towers', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/437920/Tricky_Towers/' },
-    { title: 'Ultimate Chicken Horse', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/386940/Ultimate_Chicken_Horse/' },
+    {
+      title: 'Team Fortress 2',
+      platform: 'Steam',
+      platformUrl: 'https://store.steampowered.com/app/440/Team_Fortress_2/',
+    },
+    {
+      title: 'TrackMania Nations Forever',
+      platform: 'Steam',
+      platformUrl: 'https://store.steampowered.com/app/11020/TrackMania_Nations_Forever/',
+    },
+    {
+      title: 'Tricky Towers',
+      platform: 'Steam',
+      platformUrl: 'https://store.steampowered.com/app/437920/Tricky_Towers/',
+    },
+    {
+      title: 'Ultimate Chicken Horse',
+      platform: 'Steam',
+      platformUrl: 'https://store.steampowered.com/app/386940/Ultimate_Chicken_Horse/',
+    },
     { title: 'UT2003', platform: 'NAS', platformUrl: null },
     { title: 'UT2004', platform: 'NAS', platformUrl: null },
     // The classic The Frozen Throne install from the NAS, not Reforged — hence
@@ -1207,10 +1317,10 @@ function seedCatalogGames(): void {
   const findByName = db.prepare('SELECT id FROM games WHERE name = ? COLLATE NOCASE');
   const insertGame = db.prepare(
     `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at, platform, platform_url, trailer_url, status)
-     VALUES (?, ?, '🎮', 1, 5, ?, ?, ?, ?, 'catalog')`
+     VALUES (?, ?, '🎮', 1, 5, ?, ?, ?, ?, 'catalog')`,
   );
   const fillMissing = db.prepare(
-    `UPDATE games SET platform = COALESCE(platform, ?), platform_url = COALESCE(platform_url, ?), trailer_url = COALESCE(trailer_url, ?) WHERE id = ?`
+    `UPDATE games SET platform = COALESCE(platform, ?), platform_url = COALESCE(platform_url, ?), trailer_url = COALESCE(trailer_url, ?) WHERE id = ?`,
   );
 
   db.transaction(() => {
@@ -1254,7 +1364,7 @@ function seedOutsideEventsEvent(): void {
   if (exists) return;
   db.prepare(
     `INSERT INTO events (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at)
-     VALUES (?, ?, ?, NULL, NULL, NULL, 0, NULL)`
+     VALUES (?, ?, ?, NULL, NULL, NULL, 0, NULL)`,
   ).run(OUTSIDE_EVENTS_ID, 'Außerhalb von Events', Date.now());
 }
 
