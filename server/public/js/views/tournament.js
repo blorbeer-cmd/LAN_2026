@@ -273,7 +273,7 @@ function renderCreateForm(el, ctx) {
       <input type="number" id="tourn-teamcount" placeholder="Anzahl Teams" min="2" value="${escapeHtml(createTeamCount)}" style="width:140px;" />
       <label class="check-row">
         <input type="checkbox" id="tourn-avoid-adjacent" ${createAvoidAdjacent ? 'checked' : ''} />
-        <span>${icon('armchair')} Sitznachbarn nicht gegeneinander auslosen (kommen bevorzugt ins selbe Team)</span>
+        <span>${icon('armchair')} Sitznachbarn bevorzugt ins selbe Team losen</span>
       </label>
       <button type="button" class="btn" id="tourn-propose">Teams vorschlagen</button>
 
