@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { chromium, Browser, Page } from 'playwright';
+import { normalizeAnswer } from '../../arcade/quizLogic';
 
 const PORT = 3901;
 const BASE_URL = `http://localhost:${PORT}`;
@@ -788,9 +789,10 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     // "Knapp dran": a wrong guess one edit away from the word gets private
     // feedback (via the socket ack, never broadcast) - only the guesser
     // should ever see it, not the drawer.
-    if (chosenWord.length >= 4) {
-      const mid = Math.floor(chosenWord.length / 2);
-      const closeTypo = chosenWord.slice(0, mid) + chosenWord.slice(mid + 1);
+    const normalizedWord = normalizeAnswer(chosenWord);
+    if (normalizedWord.length >= 4) {
+      const mid = Math.floor(normalizedWord.length / 2);
+      const closeTypo = normalizedWord.slice(0, mid) + normalizedWord.slice(mid + 1);
       await guesserPage.fill('#scribble-guess-input', closeTypo);
       await guesserPage.click('#scribble-guess-form button[type="submit"]');
       await guesserPage.waitForSelector('text=Knapp dran!');
