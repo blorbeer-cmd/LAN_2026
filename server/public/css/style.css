@@ -1820,56 +1820,55 @@ button.card {
 .arcade-game-shell.is-expanded .tetris-boards {
   max-width: none;
 }
-/* Expanded playfields use an actual viewport-bounded height. Setting the
-   height on the aspect-ratio wrapper (instead of only max-height) prevents a
-   width-driven canvas from growing past the visible browser area. */
+/* Expanded playfields are bounded by the viewport through their width. Their
+   native aspect ratios remain in charge of the height so canvas coordinates,
+   hit testing and overlays keep the same geometry at every scale. */
 .arcade-game-shell.is-expanded .scribble-canvas-wrap,
 .arcade-game-shell.is-expanded .blobby-court,
 .arcade-game-shell.is-expanded .pong-arena,
 .arcade-game-shell.is-expanded .snake-game {
-  width: auto;
+  width: min(100%, calc((100dvh - 18rem) * 1.6));
   max-width: 100%;
+  height: auto;
   box-sizing: border-box;
   overflow: hidden;
 }
 .arcade-game-shell.is-expanded .scribble-canvas-wrap {
-  height: min(calc(100dvh - 18rem), 62.5vw);
+  aspect-ratio: 8 / 5;
 }
 .arcade-game-shell.is-expanded .blobby-court {
-  height: min(calc(100dvh - 18rem), 60vw);
+  width: min(100%, calc((100dvh - 18rem) * 5 / 3));
 }
 .arcade-game-shell.is-expanded .pong-arena {
-  height: min(calc(100dvh - 18rem), 56.25vw);
+  width: min(100%, calc((100dvh - 18rem) * 16 / 9));
 }
 .arcade-game-shell.is-expanded .snake-game {
-  height: min(calc(100dvh - 18rem), 62.5vw);
+  width: min(100%, calc((100dvh - 18rem - var(--space-4)) * 1.6 + var(--space-4)));
 }
 .arcade-game-shell.is-expanded .scribble-canvas-wrap canvas,
 .arcade-game-shell.is-expanded .blobby-court canvas,
 .arcade-game-shell.is-expanded .pong-arena canvas,
 .arcade-game-shell.is-expanded #snake-canvas {
   width: 100%;
-  height: 100%;
-  object-fit: contain;
+  height: auto;
 }
 .arcade-game-shell.is-expanded .tetris-boards {
-  width: min(100%, calc(100vw - var(--space-3)));
-  height: min(calc(100dvh - 18rem), calc(100vw - var(--space-3)));
+  width: min(100%, calc(100dvh - 18rem), calc(100vw - var(--space-3)));
+  height: auto;
   max-width: none;
   box-sizing: border-box;
-  overflow: hidden;
 }
 .arcade-game-shell.is-expanded .tetris-board-col {
-  height: 100%;
+  height: auto;
 }
 .arcade-game-shell.is-expanded .tetris-canvas-wrap {
-  height: 100%;
+  height: auto;
   display: flex;
   justify-content: center;
 }
 .arcade-game-shell.is-expanded .tetris-canvas {
-  width: auto;
-  height: 100%;
+  width: 100%;
+  height: auto;
   max-width: 100%;
 }
 .arcade-game-shell > .view-title {
