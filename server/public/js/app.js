@@ -170,6 +170,7 @@ async function ensureAccess() {
   const fromUrl = new URLSearchParams(location.search).get('token');
   if (fromUrl && (await tokenWorks(fromUrl))) {
     setToken(fromUrl);
+    history.replaceState(null, '', `${location.pathname}${location.hash}`);
     return;
   }
 

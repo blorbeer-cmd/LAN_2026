@@ -26,3 +26,12 @@ test('unknown API route falls through to 404', async () => {
   const res = await request(app).get('/api/does-not-exist');
   assert.equal(res.status, 404);
 });
+
+test('JSON bodies above the parser limit return 413', async () => {
+  const res = await request(app)
+    .post('/api/health')
+    .set('content-type', 'application/json')
+    .send({ payload: 'x'.repeat(1_100_000) });
+  assert.equal(res.status, 413);
+  assert.equal(res.body.error, 'Die Anfrage ist zu groß.');
+});

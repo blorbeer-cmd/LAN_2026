@@ -73,6 +73,7 @@ test('an invite link (?token=) logs in automatically without the login form', as
   await page.evaluate(() => localStorage.clear());
   await page.goto(`${BASE_URL}/?token=${TOKEN}`);
   await page.waitForSelector('#app:not([hidden])');
+  assert.equal(new URL(page.url()).search, '');
 
   // Settings shows that same link back, built from the now-stored token.
   await page.click('#settings-btn');

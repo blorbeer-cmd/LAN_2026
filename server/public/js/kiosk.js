@@ -29,7 +29,9 @@ async function ensureAccess() {
   if (!token) return false;
   try {
     const res = await fetch('/api/health', { headers: { 'x-access-token': token } });
-    return res.ok;
+    if (!res.ok) return false;
+    if (fromUrl) history.replaceState(null, '', `${location.pathname}${location.hash}`);
+    return true;
   } catch {
     return false;
   }
