@@ -20,6 +20,7 @@ import { renderBroadcast, invalidateBroadcasts } from './views/broadcast.js';
 import { renderInfoBoard, invalidateInfoBoard } from './views/infoBoard.js';
 import { renderFoodOrders, invalidateFoodOrders } from './views/foodOrders.js';
 import { renderArcade, renderQuizRoom } from './views/arcade.js';
+import { renderArcadeWatch } from './views/arcadeWatch.js';
 import { renderTetris } from './views/tetris.js';
 import { renderScribbleRoom } from './views/arcadeScribble.js';
 import { renderBlobby } from './views/blobby.js';
@@ -59,6 +60,7 @@ const VIEWS = {
   infoBoard: renderInfoBoard,
   foodOrders: renderFoodOrders,
   arcade: renderArcade,
+  arcadeWatch: renderArcadeWatch,
   quizRoom: renderQuizRoom,
   tetris: renderTetris,
   scribbleRoom: renderScribbleRoom,
