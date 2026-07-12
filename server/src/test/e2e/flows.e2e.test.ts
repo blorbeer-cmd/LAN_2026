@@ -595,6 +595,61 @@ test('Arcade: a lobby guest flags themselves ready and the host sees it', async 
   }
 });
 
+test('Arcade: a non-player can watch a running quiz without seeing the question', async () => {
+  const players = (await (await fetch(`${BASE_URL}/api/players`)).json()) as Array<{ id: string; name: string }>;
+  const guest = players.find((p) => p.name === 'E2E Bob');
+  const spectator = players.find((p) => p.name === 'Analytics E2E Player');
+  assert.ok(guest, 'expected "E2E Bob" to exist');
+  assert.ok(spectator, 'expected "Analytics E2E Player" to exist');
+
+  const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const spectatorContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const guestPage = await guestContext.newPage();
+  const spectatorPage = await spectatorContext.newPage();
+  try {
+    await guestPage.goto(BASE_URL);
+    await guestPage.evaluate((id) => localStorage.setItem('lan2026_my_player_id', id), guest!.id);
+    await guestPage.reload();
+    await guestPage.waitForSelector('.nav-btn[data-view="more"]');
+    await guestPage.click('[data-view="more"]');
+    await guestPage.click('[data-navigate="arcade"]');
+    await guestPage.click('[data-game="quiz"]');
+
+    if ((await page.locator('#quiz-create-lobby').count()) === 0) await page.click('[data-game="quiz"]');
+    await page.waitForSelector('#quiz-create-lobby:not([disabled])');
+    await page.click('#quiz-create-lobby');
+    await guestPage.waitForSelector('[data-join-lobby]');
+    await guestPage.click('[data-join-lobby]');
+    await page.waitForSelector('#quiz-start-lobby:not([disabled])');
+    await guestPage.waitForSelector('[data-quiz-ready][data-ready="1"]');
+    await guestPage.click('[data-quiz-ready][data-ready="1"]');
+    await page.waitForSelector('text=2/2 bereit');
+    await page.click('#quiz-start-lobby');
+    await page.waitForSelector('#quiz-answer-form');
+
+    await spectatorPage.goto(BASE_URL);
+    await spectatorPage.evaluate((id) => localStorage.setItem('lan2026_my_player_id', id), spectator!.id);
+    await spectatorPage.reload();
+    await spectatorPage.waitForSelector('.nav-btn[data-view="more"]');
+    await spectatorPage.click('[data-view="more"]');
+    await spectatorPage.click('[data-navigate="arcade"]');
+    await spectatorPage.waitForSelector('[data-watch-match]');
+    await spectatorPage.click('[data-watch-match]');
+    await spectatorPage.waitForSelector('.arcade-watch-safe-note');
+    assert.equal(await spectatorPage.locator('#arcade-watch-canvas').count(), 0, 'quiz watchers do not receive a question canvas');
+    assert.equal(await spectatorPage.locator('#quiz-answer-form').count(), 0, 'watchers must not receive answer controls');
+  } finally {
+    if (await page.locator('#quiz-finish').count()) {
+      await page.click('#quiz-finish');
+      if (await page.locator('[data-confirm]').count()) await page.click('[data-confirm]');
+      await page.waitForSelector('#quiz-back', { timeout: 5000 }).catch(() => undefined);
+      if (await page.locator('#quiz-back').count()) await page.click('#quiz-back');
+    }
+    await guestContext.close();
+    await spectatorContext.close();
+  }
+});
+
 test('Arcade: Scribble - host draws, a second device guesses correctly, both see the reveal', async () => {
   // Unlike the quiz/draft flows above, Scribble strictly gates who may act
   // (only the current drawer can choose a word/draw, only raters may guess —

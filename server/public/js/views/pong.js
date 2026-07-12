@@ -2,7 +2,8 @@ import { getToken } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
-import { getAdminPin, isAdmin } from '../admin.js';
+import { getAdminPin } from '../admin.js';
+import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { allLobbyReady, lobbyPlayerChipsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
@@ -140,7 +141,7 @@ export function renderPongLobbyCard() {
   const lobby = myPongLobby();
   const noMe = !myId();
   return `<div class="card stack"><div class="row-between" style="gap:var(--space-3);"><strong>Pong-Lobby</strong>
-    <div class="row" style="gap:var(--space-2);">${isAdmin() ? `<button type="button" class="btn btn-sm btn-equal" id="pong-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="pong-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div></div>
+    <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="pong-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="pong-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div></div>
     ${arcadeInfoGridHtml([
       { label: 'Ziel', text: 'Erreiche zuerst die Punktzahl.' },
       { label: 'Steuerung', text: 'Pfeiltasten.' },

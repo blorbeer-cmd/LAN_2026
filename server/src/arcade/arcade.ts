@@ -1,7 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
-import { adminUnlockValid } from '../auth';
+import { playerMayUseArcadeAi } from './adminAccess';
 import { notifyPlayers } from '../push';
 import { matchesAnswer, pickQuestion } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
@@ -179,6 +179,7 @@ function scheduleQuestionTimeout(io: Server, match: MatchState, delayMs: number)
       correctAnswer: firstAcceptedAnswer(match.currentQuestion),
       scores: scorePayload(match),
     });
+    broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, phase: 'result', scores: scorePayload(match), paused: false });
     setTimeout(() => {
       if (matches.has(match.id)) sendQuestion(io, match);
     }, 1400);
@@ -207,7 +208,7 @@ function sendQuestion(io: Server, match: MatchState) {
     startedAt,
     expiresAt: match.questionExpiresAt,
   });
-  broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, question: question.question, category: question.category, scores: scorePayload(match), startedAt, expiresAt: match.questionExpiresAt });
+  broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, phase: 'playing', category: question.category, scores: scorePayload(match), startedAt, expiresAt: match.questionExpiresAt });
 
   scheduleQuestionTimeout(io, match, QUESTION_MS);
   const bot = match.players.find((player) => player.id === QUIZ_BOT.id);
@@ -228,6 +229,7 @@ function answerCorrect(io: Server, match: MatchState, player: PlayerRef) {
   markSeen(match, player.id);
   const scores = scorePayload(match);
   io.to(match.room).emit('arcade:quiz:result', { matchId: match.id, winner: player, correctAnswer: accepted[0], scores });
+  broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, phase: 'result', scores, paused: false });
   if ((match.scores.get(player.id) ?? 0) >= match.targetScore) finishMatch(io, match, player);
   else setTimeout(() => { if (matches.has(match.id)) sendQuestion(io, match); }, 1400);
 }
@@ -294,7 +296,7 @@ export function registerArcadeSockets(io: Server): void {
     });
 
     socket.on('arcade:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (res: unknown) => void) => {
-      if (!adminUnlockValid(payload?.adminPin)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
+      if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
       const lobby: Lobby = { id: nanoid(), gameType: 'quiz', host: player, players: [player, QUIZ_BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([QUIZ_BOT.id]), createdAt: Date.now() };
@@ -435,6 +437,7 @@ export function registerArcadeSockets(io: Server): void {
         scores: scorePayload(match),
         remainingMs: match.questionRemainingMs,
       });
+      broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, phase: 'playing', paused: true, scores: scorePayload(match), remainingMs: match.questionRemainingMs });
       ack?.({ ok: true });
     });
 
@@ -454,6 +457,7 @@ export function registerArcadeSockets(io: Server): void {
         scores: scorePayload(match),
         expiresAt: match.questionExpiresAt,
       });
+      broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, phase: 'playing', paused: false, scores: scorePayload(match), expiresAt: match.questionExpiresAt });
       ack?.({ ok: true });
     });
 

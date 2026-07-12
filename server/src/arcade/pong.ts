@@ -1,7 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
-import { adminUnlockValid } from '../auth';
+import { playerMayUseArcadeAi } from './adminAccess';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { PADDLE_HEIGHT, PONG_HEIGHT, PongInput, PongWorld, createWorld, stepWorld } from './pongLogic';
 import { broadcastArcadeKiosk } from '../realtime';
@@ -185,7 +185,7 @@ export function registerPongSockets(io: Server): void {
     });
 
     socket.on('pong:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (result: unknown) => void) => {
-      if (!adminUnlockValid(payload?.adminPin)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
+      if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
       const lobby: Lobby = {

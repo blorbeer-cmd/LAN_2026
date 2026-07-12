@@ -15,7 +15,7 @@
 import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
-import { adminUnlockValid } from '../auth';
+import { playerMayUseArcadeAi } from './adminAccess';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
@@ -494,7 +494,7 @@ export function registerTetrisSockets(io: Server): void {
       ack?.({ ok: true, lobbyId: lobby.id });
     });
     socket.on('tetris:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (res: unknown) => void) => {
-      if (!adminUnlockValid(payload?.adminPin)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
+      if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
       const lobby: TetrisLobby = { id: nanoid(), host: player, players: [player, BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now() };
@@ -637,6 +637,7 @@ export function registerTetrisSockets(io: Server): void {
       if (!match.running || match.paused) return ack?.({ ok: true });
       match.paused = true;
       io.to(match.room).emit('tetris:match:paused', { matchId: match.id });
+      broadcastState(io, match);
       ack?.({ ok: true });
     });
 
@@ -648,6 +649,7 @@ export function registerTetrisSockets(io: Server): void {
       match.paused = false;
       match.lastTick = Date.now();
       io.to(match.room).emit('tetris:match:resumed', { matchId: match.id });
+      broadcastState(io, match);
       ack?.({ ok: true });
     });
 

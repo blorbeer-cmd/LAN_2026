@@ -3,7 +3,7 @@ import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
-import { isAdmin } from '../admin.js';
+import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { ensureTetrisSocket, renderTetrisLobbyCard, wireTetrisLobbyCard, myTetrisLobby, tetrisLobbies, leaveMyTetrisLobby } from './tetris.js';
 import {
   ensureScribbleSocket,
@@ -18,6 +18,7 @@ import { ensureBlobbySocket, renderBlobbyLobbyCard, wireBlobbyLobbyCard, myBlobb
 import { ensurePongSocket, renderPongLobbyCard, wirePongLobbyCard, myPongLobby, hasPongMatch, pongLobbies, leaveMyPongLobby } from './pong.js';
 import { ensureSnakeSocket, renderSnakeLobbyCard, wireSnakeLobbyCard, mySnakeLobby, hasSnakeMatch, snakeLobbies, leaveMySnakeLobby } from './snake.js';
 import { arcadeExpandControlHtml, arcadeInfoGridHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { startArcadeWatch } from './arcadeWatch.js';
 import { confirmDialog } from '../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { lobbyPlayerChipsHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
@@ -35,6 +36,7 @@ const GAMES = [
 
 let socket = null;
 let lobbies = [];
+let watchMatches = [];
 let stats = null;
 let statsLoading = false;
 let activeStatsGame = null;
@@ -90,6 +92,10 @@ function ensureSocket(ctx) {
   socket = io({ auth: { token: getToken() } });
   socket.on('arcade:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
+    ctx.rerender();
+  });
+  socket.on('arcade:watch:list', (payload) => {
+    watchMatches = payload?.matches ?? [];
     ctx.rerender();
   });
   socket.on('arcade:match:start', (payload) => {
@@ -427,6 +433,28 @@ function openLobbiesOverviewHtml() {
     </div>`;
 }
 
+function runningMatchesOverviewHtml() {
+  if (watchMatches.length === 0) return '';
+  return `
+    <div class="section-title">Laufende Spiele</div>
+    <div class="arcade-watch-list" style="margin-bottom:var(--space-3);">
+      ${watchMatches
+        .map((live) => {
+          const game = GAMES.find((entry) => entry.id === live.gameType);
+          const players = (live.players ?? []).map((player) => escapeHtml(player.name ?? player.ref?.name ?? 'Spieler')).join(' · ');
+          const scoreText = (live.scores ?? []).map((score) => `${escapeHtml(score.name ?? 'Spieler')}: ${score.score ?? 0}`).join(' · ');
+          return `<div class="card arcade-watch-list-row">
+            <div class="stack" style="gap:var(--space-1);min-width:0;">
+              <strong>${game?.icon ?? ''} ${escapeHtml(game?.name ?? live.gameType)}</strong>
+              <span class="muted list-row-desc">${players || 'Spiel läuft'}${scoreText ? ` · ${scoreText}` : ''}</span>
+            </div>
+            <button type="button" class="btn btn-sm btn-primary" data-watch-match="${escapeHtml(live.matchId)}">Zuschauen</button>
+          </div>`;
+        })
+        .join('')}
+    </div>`;
+}
+
 // The lobby/match UI for the currently selected game, shown under the tiles.
 // Nothing renders here until a game is picked (or the player is already
 // engaged in one) — that's the whole point of keeping this a launcher.
@@ -438,7 +466,7 @@ function activeGameHtml() {
       <div class="card stack" style="margin-top:var(--space-3);">
         <div class="row-between" style="gap:var(--space-3);">
           <strong>Quiz-Lobby</strong>
-          <div class="row" style="gap:var(--space-2);">${isAdmin() ? `<button type="button" class="btn btn-sm btn-equal" id="quiz-bot" ${match ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button></div>
+          <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="quiz-bot" ${match ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button></div>
         </div>
         ${arcadeInfoGridHtml([
           { label: 'Ziel', text: 'Richtige Antworten sammeln.' },
@@ -479,6 +507,7 @@ export function renderArcade(container, ctx) {
     <div class="arcade-tiles">
       ${GAMES.map((g) => gameTileHtml(g, cg, openLobbyCount(g.id))).join('')}
     </div>
+    ${runningMatchesOverviewHtml()}
     ${openLobbiesOverviewHtml()}
     ${activeGameHtml()}
     <div class="section-title">📊 Arcade-Statistiken</div>
@@ -500,6 +529,10 @@ export function renderArcade(container, ctx) {
       activeGame = activeGame === id ? null : id;
       ctx.rerender();
     });
+  });
+
+  container.querySelectorAll('[data-watch-match]').forEach((btn) => {
+    btn.addEventListener('click', () => startArcadeWatch(btn.dataset.watchMatch));
   });
 
   container.querySelectorAll('[data-stats-tab]').forEach((btn) => {
