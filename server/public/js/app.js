@@ -110,6 +110,10 @@ function renderCurrent() {
 function switchView(view, { fromHistory = false } = {}) {
   const changed = view !== currentView;
   currentView = view;
+  // Realtime game modules use this marker to ignore updates while another
+  // view is active. Without it, a running game can rebuild the current DOM
+  // during navigation and make a tap appear to be lost.
+  viewContainer.dataset.view = view;
   document.querySelectorAll('.nav-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.view === view);
   });

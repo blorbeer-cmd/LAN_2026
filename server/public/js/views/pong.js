@@ -33,6 +33,7 @@ const myId = () => getMyId();
 const rerender = () => window.dispatchEvent(new CustomEvent('lan:rerender'));
 const navigate = (view) => window.dispatchEvent(new CustomEvent('lan:navigate', { detail: view }));
 const emitAck = (event, payload) => new Promise((resolve) => socket.emit(event, payload, resolve));
+const currentView = () => document.getElementById('view-container')?.dataset.view;
 
 export function myPongLobby() {
   return lobbies.find((lobby) => lobby.players.some((player) => player.id === myId())) ?? null;
@@ -51,7 +52,7 @@ export function ensurePongSocket() {
   socket = io({ auth: { token: getToken() } });
   socket.on('pong:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
-    if (!match) rerender();
+    if (!match && currentView() === 'arcade') rerender();
   });
   socket.on('pong:match:start', (payload) => {
     match = { ...payload, ended: false, winner: null, paused: false, running: false };
@@ -75,15 +76,15 @@ export function ensurePongSocket() {
       match.targetScore = payload.targetScore;
     }
     updateRoster();
-    if (!document.querySelector('#pong-canvas')) rerender();
+    if (!document.querySelector('#pong-canvas') && currentView() === 'arcade') rerender();
   });
   socket.on('pong:point', (payload) => {
     if (match) match.scores = payload.scores;
     updateRoster();
     flashPoint(payload.scorer?.name);
   });
-  socket.on('pong:match:paused', () => { if (match) { match.paused = true; rerender(); } });
-  socket.on('pong:match:resumed', () => { if (match) { match.paused = false; rerender(); } });
+  socket.on('pong:match:paused', () => { if (match) { match.paused = true; if (currentView() === 'pong') rerender(); } });
+  socket.on('pong:match:resumed', () => { if (match) { match.paused = false; if (currentView() === 'pong') rerender(); } });
   socket.on('pong:match:end', (payload) => {
     if (!match) return;
     match.ended = true;
@@ -93,7 +94,7 @@ export function ensurePongSocket() {
     cancelCountdown();
     window.dispatchEvent(new CustomEvent('lan:arcade-stats-dirty'));
     stopAnimation();
-    rerender();
+    if (currentView() === 'pong' || currentView() === 'arcade') rerender();
   });
   bindKeyboard();
   return socket;

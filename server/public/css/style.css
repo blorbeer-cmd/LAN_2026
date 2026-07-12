@@ -1853,15 +1853,17 @@ button.card {
   height: auto;
 }
 .arcade-game-shell.is-expanded .tetris-boards {
-  width: min(100%, calc(100dvh - 18rem), calc(100vw - var(--space-3)));
+  width: min(100%, calc(100vw - var(--space-3)));
   height: auto;
   max-width: none;
   box-sizing: border-box;
 }
 .arcade-game-shell.is-expanded .tetris-board-col {
   height: auto;
+  align-items: center;
 }
 .arcade-game-shell.is-expanded .tetris-canvas-wrap {
+  width: min(100%, calc((100dvh - 18rem) / 2));
   height: auto;
   display: flex;
   justify-content: center;
