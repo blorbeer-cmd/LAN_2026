@@ -161,12 +161,19 @@ test('POST /api/matchmaking flags the specific players left as opponents despite
     .send({ gameId: game.body.id, playerIds: ids, teamCount: 2, avoidAdjacentOpponents: true });
   assert.equal(res.status, 200);
   assert.equal(res.body.seatConflicts, 1);
-  const flagged = res.body.teams
-    .flatMap((t: { players: { id: string; seatConflict: boolean }[] }) => t.players)
-    .filter((p: { seatConflict: boolean }) => p.seatConflict)
-    .map((p: { id: string }) => p.id)
-    .sort();
+  type FlaggedPlayer = { id: string; name: string; seatConflict: boolean; seatConflictNames: string[] };
+  const players = res.body.teams.flatMap((t: { players: FlaggedPlayer[] }) => t.players) as FlaggedPlayer[];
+  const flagged = players.filter((p) => p.seatConflict).map((p) => p.id).sort();
   assert.deepEqual(flagged, [ids[0], ids[1]].sort());
+
+  // Each flagged player's tooltip should name the specific neighbor they
+  // ended up against, not just an aggregate count.
+  const playerO = players.find((p) => p.id === ids[0])!;
+  const playerP = players.find((p) => p.id === ids[1])!;
+  assert.deepEqual(playerO.seatConflictNames, ['P']);
+  assert.deepEqual(playerP.seatConflictNames, ['O']);
+  const unaffected = players.find((p) => p.id === ids[2])!;
+  assert.deepEqual(unaffected.seatConflictNames, []);
 });
 
 test('GET /api/matchmaking/history lists past draws for this game, newest first, with team scores', async () => {
@@ -394,12 +401,12 @@ test('PATCH /api/matchmaking/draws/:id/move recomputes seat-conflict flags after
     .send({ playerId: ids[0], toTeamIndex: otherTeam });
   assert.equal(moved.status, 200);
   assert.equal(moved.body.seatConflicts, 1);
-  const flagged = moved.body.teams
-    .flatMap((t: { players: { id: string; seatConflict: boolean }[] }) => t.players)
-    .filter((p: { seatConflict: boolean }) => p.seatConflict)
-    .map((p: { id: string }) => p.id)
-    .sort();
+  type FlaggedPlayer = { id: string; seatConflict: boolean; seatConflictNames: string[] };
+  const players = moved.body.teams.flatMap((t: { players: FlaggedPlayer[] }) => t.players) as FlaggedPlayer[];
+  const flagged = players.filter((p) => p.seatConflict).map((p) => p.id).sort();
   assert.deepEqual(flagged, [ids[0], ids[1]].sort());
+  const movedPlayer = players.find((p) => p.id === ids[0])!;
+  assert.deepEqual(movedPlayer.seatConflictNames, ['MoveSeatB']);
 });
 
 test('PATCH /api/matchmaking/draws/:id/move 404s for an unknown draw', async () => {

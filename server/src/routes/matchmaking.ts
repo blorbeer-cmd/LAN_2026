@@ -12,7 +12,7 @@ import {
   balanceTeams,
   computeTeamCount,
   countSeatConflicts,
-  seatConflictPlayerIds,
+  seatConflictNeighbors,
   type PlayerRating,
   type SeatPair,
 } from '../matchmaking';
@@ -118,15 +118,19 @@ matchmakingRouter.post('/', (req, res) => {
   const resolvedTeamCount = computeTeamCount(teamCount, players.length, game.max_team_size);
   const teamIdLists = balanceTeams(ratings, resolvedTeamCount, avoidPairs);
   const seatConflicts = countSeatConflicts(teamIdLists, avoidPairs);
-  const conflictIds = seatConflictPlayerIds(teamIdLists, avoidPairs);
+  const conflictNeighbors = seatConflictNeighbors(teamIdLists, avoidPairs);
 
   const playerById = new Map(players.map((p) => [p.id, p]));
   const teams = teamIdLists.map((ids) => {
-    const teamPlayers = ids.map((id) => ({
-      ...playerById.get(id)!,
-      rating: ratingByPlayer.get(id) ?? DEFAULT_RATING,
-      seatConflict: conflictIds.has(id),
-    }));
+    const teamPlayers = ids.map((id) => {
+      const neighborIds = conflictNeighbors.get(id);
+      return {
+        ...playerById.get(id)!,
+        rating: ratingByPlayer.get(id) ?? DEFAULT_RATING,
+        seatConflict: !!neighborIds,
+        seatConflictNames: neighborIds?.map((nid) => playerById.get(nid)?.name).filter((n): n is string => !!n) ?? [],
+      };
+    });
     return {
       players: teamPlayers,
       totalRating: teamPlayers.reduce((sum, p) => sum + p.rating, 0),
@@ -365,7 +369,7 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
   }
 
   const teams = JSON.parse(row.teams) as Array<{
-    players: Array<{ id: string; rating: number | null; seatConflict?: boolean }>;
+    players: Array<{ id: string; name: string; rating: number | null; seatConflict?: boolean; seatConflictNames?: string[] }>;
     totalRating: number;
   }>;
   if (toTeamIndex >= teams.length) {
@@ -393,13 +397,16 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
   // neighbors in the first place (avoidAdjacentOpponents was on for it).
   let seatConflicts = 0;
   if (row.seat_pairs_considered > 0) {
-    const allIds = teams.flatMap((t) => t.players.map((p) => p.id));
-    const avoidPairs = loadAvoidPairs(row.event_id, allIds);
+    const allPlayers = teams.flatMap((t) => t.players);
+    const nameById = new Map(allPlayers.map((p) => [p.id, p.name]));
+    const avoidPairs = loadAvoidPairs(row.event_id, allPlayers.map((p) => p.id));
     const teamIdLists = teams.map((t) => t.players.map((p) => p.id));
     seatConflicts = countSeatConflicts(teamIdLists, avoidPairs);
-    const conflictIds = seatConflictPlayerIds(teamIdLists, avoidPairs);
-    for (const t of teams) {
-      for (const p of t.players) p.seatConflict = conflictIds.has(p.id);
+    const conflictNeighbors = seatConflictNeighbors(teamIdLists, avoidPairs);
+    for (const p of allPlayers) {
+      const neighborIds = conflictNeighbors.get(p.id);
+      p.seatConflict = !!neighborIds;
+      p.seatConflictNames = neighborIds?.map((nid) => nameById.get(nid)).filter((n): n is string => !!n) ?? [];
     }
   }
 

@@ -76,22 +76,28 @@ export function countSeatConflicts(teamIdLists: string[][], avoidPairs: SeatPair
 }
 
 // Which players ended up as opponents against a declared seat neighbor
-// despite avoidAdjacentOpponents — used to flag those specific players in the
-// team display, not just show an aggregate count.
-export function seatConflictPlayerIds(teamIdLists: string[][], avoidPairs: SeatPair[]): Set<string> {
-  const ids = new Set<string>();
-  if (avoidPairs.length === 0) return ids;
+// despite avoidAdjacentOpponents, and *who* that neighbor was — used to flag
+// those specific players in the team display (with a tooltip naming the
+// neighbor), not just show an aggregate count.
+export function seatConflictNeighbors(teamIdLists: string[][], avoidPairs: SeatPair[]): Map<string, string[]> {
+  const byPlayer = new Map<string, string[]>();
+  if (avoidPairs.length === 0) return byPlayer;
   const teamOf = new Map<string, number>();
   teamIdLists.forEach((teamIds, i) => teamIds.forEach((id) => teamOf.set(id, i)));
+  const addConflict = (id: string, opponentId: string) => {
+    const list = byPlayer.get(id);
+    if (list) list.push(opponentId);
+    else byPlayer.set(id, [opponentId]);
+  };
   for (const [a, b] of avoidPairs) {
     const teamA = teamOf.get(a);
     const teamB = teamOf.get(b);
     if (teamA !== undefined && teamB !== undefined && teamA !== teamB) {
-      ids.add(a);
-      ids.add(b);
+      addConflict(a, b);
+      addConflict(b, a);
     }
   }
-  return ids;
+  return byPlayer;
 }
 
 // How costly one unresolved seat conflict is allowed to be, in skill-sum
