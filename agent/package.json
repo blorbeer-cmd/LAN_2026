@@ -11,7 +11,7 @@
     "test:e2e": "node --test src/test/e2e/*.e2e.test.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=24"
   },
   "devDependencies": {
     "@yao-pkg/pkg": "^6.21.0"

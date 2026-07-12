@@ -95,6 +95,9 @@ LAN_2026/
 
 ## Schnellstart (lokal / Entwicklung)
 
+Das Projekt verwendet Node.js 24. Die Version steht in `.nvmrc`; mit `nvm use` wird sie automatisch
+ausgewählt. Server und Agent deklarieren Node 24 zusätzlich über `engines`.
+
 ```bash
 # Server
 cd server

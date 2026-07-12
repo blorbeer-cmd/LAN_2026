@@ -148,6 +148,7 @@ Die Branch-Seiten zeigen, über welche PRs ein Themenstrang in `main` eingefloss
 - [`feat/lan-polish-agent-pwa`](branches/feat-lan-polish-agent-pwa.md)
 - [`fix/issues-31-19-25`](branches/fix-issues-31-19-25.md)
 - [`fix/live-status-agent-url`](branches/fix-live-status-agent-url.md)
+- [`chore/node-24-pin`](branches/chore-node-24-pin.md)
 - [`feat/lucide-ui-icons`](branches/feat-lucide-ui-icons.md)
 - [`feat/seating-drag-drop`](branches/feat-seating-drag-drop.md)
 - [`fix-e2e-chromium-path`](branches/fix-e2e-chromium-path.md)
