@@ -20,6 +20,7 @@ const myId = () => getMyId();
 const rerender = () => window.dispatchEvent(new CustomEvent('lan:rerender'));
 const navigate = (view) => window.dispatchEvent(new CustomEvent('lan:navigate', { detail: view }));
 const emitAck = (event, payload) => new Promise((resolve) => socket.emit(event, payload, resolve));
+const currentView = () => document.getElementById('view-container')?.dataset.view;
 
 export function mySnakeLobby() {
   return lobbies.find((lobby) => lobby.players.some((player) => player.id === myId())) ?? null;
@@ -32,7 +33,7 @@ export function ensureSnakeSocket() {
   socket = io({ auth: { token: getToken() } });
   socket.on('snake:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
-    if (!match) rerender();
+    if (!match && currentView() === 'arcade') rerender();
   });
   socket.on('snake:match:start', (payload) => {
     match = { ...payload, running: false, paused: false, ended: false };
@@ -48,10 +49,10 @@ export function ensureSnakeSocket() {
     }
     paintBoard();
     updateRosterDisplay();
-    if (!document.querySelector('#snake-canvas')) rerender();
+    if (!document.querySelector('#snake-canvas') && currentView() === 'arcade') rerender();
   });
-  socket.on('snake:match:paused', () => { if (match) { match.paused = true; rerender(); } });
-  socket.on('snake:match:resumed', () => { if (match) { match.paused = false; rerender(); } });
+  socket.on('snake:match:paused', () => { if (match) { match.paused = true; if (currentView() === 'snake') rerender(); } });
+  socket.on('snake:match:resumed', () => { if (match) { match.paused = false; if (currentView() === 'snake') rerender(); } });
   socket.on('snake:match:end', (payload) => {
     if (!match) return;
     match.ended = true;
@@ -59,7 +60,7 @@ export function ensureSnakeSocket() {
     match.scores = payload.scores ?? [];
     cancelCountdown();
     window.dispatchEvent(new CustomEvent('lan:arcade-stats-dirty'));
-    rerender();
+    if (currentView() === 'snake' || currentView() === 'arcade') rerender();
   });
   bindKeyboard();
   return socket;

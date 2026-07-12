@@ -68,6 +68,14 @@ function amPlayer() {
   return Boolean(match && match.players?.some((p) => p.id === myId()));
 }
 
+function tetrisViewMounted() {
+  return Boolean(document.querySelector('#tetris-boards'));
+}
+
+function currentView() {
+  return document.getElementById('view-container')?.dataset.view;
+}
+
 export function myTetrisLobby() {
   return lobbies.find((l) => l.players.some((p) => p.id === myId())) ?? null;
 }
@@ -88,7 +96,7 @@ export function ensureTetrisSocket() {
     lobbies = payload?.lobbies ?? [];
     // Only refresh the lobby UI while no match is running — never interrupt a
     // live match's canvases with a full rebuild.
-    if (!match) rerender();
+    if (!match && currentView() === 'arcade') rerender();
   });
 
   socket.on('tetris:match:start', (payload) => {
@@ -106,8 +114,10 @@ export function ensureTetrisSocket() {
       match.paused = payload.paused;
     }
     // Fast path: repaint the mounted canvases directly, no DOM rebuild.
-    if (document.querySelector('#tetris-boards')) paint();
-    else rerender();
+    // The socket remains connected while the user visits other views. Never
+    // trigger a render there: a frequent state tick must not compete with
+    // bottom-navigation clicks or repaint the current view unnecessarily.
+    if (tetrisViewMounted()) paint();
   });
 
   socket.on('tetris:match:paused', () => {
@@ -115,12 +125,12 @@ export function ensureTetrisSocket() {
     // Rerender (not just the overlay) so the host's button flips to
     // "Fortsetzen" — otherwise it stays "Pausieren" and re-clicking just
     // re-sends pause, leaving you stuck.
-    rerender();
+    if (tetrisViewMounted()) rerender();
   });
 
   socket.on('tetris:match:resumed', () => {
     if (match) match.paused = false;
-    rerender();
+    if (tetrisViewMounted()) rerender();
   });
 
   socket.on('tetris:match:end', (payload) => {
@@ -133,7 +143,7 @@ export function ensureTetrisSocket() {
     // A finished match adds a new highscore row — let the Arcade view know its
     // cached stats are stale so they refresh when the player heads back.
     window.dispatchEvent(new CustomEvent('lan:arcade-stats-dirty'));
-    rerender();
+    if (tetrisViewMounted()) rerender();
   });
 
   socket.on('tetris:opponent-left', () => {

@@ -33,6 +33,7 @@ const myId = () => getMyId();
 const rerender = () => window.dispatchEvent(new CustomEvent('lan:rerender'));
 const navigate = (view) => window.dispatchEvent(new CustomEvent('lan:navigate', { detail: view }));
 const emitAck = (event, payload) => new Promise((resolve) => socket.emit(event, payload, resolve));
+const currentView = () => document.getElementById('view-container')?.dataset.view;
 
 export function myBlobbyLobby() {
   return lobbies.find((l) => l.players.some((p) => p.id === myId())) ?? null;
@@ -43,7 +44,7 @@ export function blobbyLobbies() { return lobbies; }
 export function ensureBlobbySocket() {
   if (socket) return socket;
   socket = io({ auth: { token: getToken() } });
-  socket.on('blobby:lobbies', (payload) => { lobbies = payload?.lobbies ?? []; if (!match) rerender(); });
+  socket.on('blobby:lobbies', (payload) => { lobbies = payload?.lobbies ?? []; if (!match && currentView() === 'arcade') rerender(); });
   socket.on('blobby:match:start', (payload) => {
     match = { ...payload, ended: false, winner: null };
     previous = latest = null;
@@ -58,21 +59,22 @@ export function ensureBlobbySocket() {
     latestAt = performance.now();
     if (match) { match.running = payload.running; match.paused = payload.paused; match.scores = payload.scores; }
     updateScoreDisplay();
-    if (!document.querySelector('#blobby-canvas')) rerender();
+    if (!document.querySelector('#blobby-canvas') && currentView() === 'arcade') rerender();
   });
   socket.on('blobby:point', (payload) => {
     if (match) match.scores = payload.scores;
     updateScoreDisplay();
     flashPoint(payload.scorer?.name);
   });
-  socket.on('blobby:match:paused', () => { if (match) match.paused = true; rerender(); });
-  socket.on('blobby:match:resumed', () => { if (match) match.paused = false; rerender(); });
+  socket.on('blobby:match:paused', () => { if (match) { match.paused = true; if (currentView() === 'blobby') rerender(); } });
+  socket.on('blobby:match:resumed', () => { if (match) { match.paused = false; if (currentView() === 'blobby') rerender(); } });
   socket.on('blobby:match:end', (payload) => {
     if (!match) return;
     match.ended = true; match.running = false; match.winner = payload.winner ?? null; match.scores = payload.scores ?? [];
     cancelCountdown();
     window.dispatchEvent(new CustomEvent('lan:arcade-stats-dirty'));
-    stopAnimation(); rerender();
+    stopAnimation();
+    if (currentView() === 'blobby' || currentView() === 'arcade') rerender();
   });
   bindKeyboard();
   return socket;
