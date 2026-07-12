@@ -54,6 +54,7 @@ eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur d
 
 ## Vor jedem Commit
 
-`npm run build` **und** `npm test` müssen grün sein (siehe Qualitäts-Checkliste in `CLAUDE.md`).
+`npm run build` **und** `npm test` müssen grün sein (siehe Qualitäts-Checkliste in
+`../DEVELOPMENT_GUIDELINES.md`).
 `npm run test:e2e` sollte laufen, wenn sich am Frontend oder an view-übergreifenden Abläufen etwas
 geändert hat.

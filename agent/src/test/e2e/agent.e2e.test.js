@@ -3,10 +3,11 @@
 // path instead of `tasklist`, but the flow is identical: scan processes,
 // match against game_process_names, report, show up on the live board.
 //
-// Trick: our own `node` process is always running under `ps`, so we map the
-// process name "node" to a throwaway game and confirm the server picks it up
-// as "this player is playing it" — a genuine integration across agent,
-// server, and DB, not just unit-level mocking.
+// Trick: our own Node process is always running, so we map the name returned
+// by the production process scanner to a throwaway game. Recent Node/Linux
+// combinations may expose it as `MainThread` in `ps` instead of `node`, while
+// Windows reports `node.exe`; discovering it through the real scanner keeps
+// the test aligned with the platform it runs on.
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
@@ -14,6 +15,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { getRunningProcessNames } = require('../../processList');
 
 const PORT = 3910;
 const BASE_URL = `http://localhost:${PORT}`;
@@ -57,7 +59,11 @@ after(async () => {
 });
 
 test('agent reports the running node process and the server reflects it as "playing"', async () => {
-  // Map our own process name to a throwaway game.
+  const runningProcessNames = await getRunningProcessNames();
+  const nodeProcessName = ['node.exe', 'node', 'mainthread'].find((name) => runningProcessNames.includes(name));
+  assert.ok(nodeProcessName, 'the real process scanner should find the running Node test process');
+
+  // Map our own detected process name to a throwaway game.
   const gameRes = await fetch(`${BASE_URL}/api/games`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -67,7 +73,7 @@ test('agent reports the running node process and the server reflects it as "play
   await fetch(`${BASE_URL}/api/games/${game.id}/processes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ processName: 'node' }),
+    body: JSON.stringify({ processName: nodeProcessName }),
   });
 
   // Create a player and grab their API key.
