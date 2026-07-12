@@ -1033,6 +1033,25 @@ button.card {
   letter-spacing: 0.03em;
   color: var(--text-muted);
 }
+/* Open-lobby count on a game tile — same corner spot as .arcade-tile-soon,
+   never both at once (a "soon" game can't have open lobbies). */
+.arcade-tile-count {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 var(--space-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  background: var(--state-playing-bg);
+  color: var(--state-playing);
+  font-size: 0.6rem; /* design-token-ok: matches .arcade-tile-soon's ribbon scale, needs to fit a 2-digit count in 16px */
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
+}
 
 .arcade-stat-game {
   display: grid;
