@@ -722,6 +722,7 @@ export function registerScribbleSockets(io: Server): void {
           points,
         });
         io.to(match.room).emit('scribble:scores', { matchId: match.id, scores: scorePayload(match) });
+        kioskSnapshot(io, match);
         ack?.({ ok: true, correct: true, points });
 
         if (allEligibleGuessed(match)) {
@@ -746,6 +747,7 @@ export function registerScribbleSockets(io: Server): void {
       match.hintTimers = [];
       match.paused = true;
       io.to(match.room).emit('scribble:match:paused', { matchId: match.id, remainingMs, scores: scorePayload(match) });
+      kioskSnapshot(io, match);
       ack?.({ ok: true });
     });
 
@@ -762,6 +764,7 @@ export function registerScribbleSockets(io: Server): void {
       match.paused = false;
       startTurnTimers(io, match, remainingMs, elapsedMs);
       io.to(match.room).emit('scribble:match:resumed', { matchId: match.id, expiresAt: match.turnExpiresAt, scores: scorePayload(match) });
+      kioskSnapshot(io, match);
       ack?.({ ok: true });
     });
 

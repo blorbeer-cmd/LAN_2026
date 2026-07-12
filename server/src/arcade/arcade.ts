@@ -178,6 +178,7 @@ function scheduleQuestionTimeout(io: Server, match: MatchState, delayMs: number)
       correctAnswer: firstAcceptedAnswer(match.currentQuestion),
       scores: scorePayload(match),
     });
+    broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, phase: 'result', scores: scorePayload(match), paused: false });
     setTimeout(() => {
       if (matches.has(match.id)) sendQuestion(io, match);
     }, 1400);
@@ -206,7 +207,7 @@ function sendQuestion(io: Server, match: MatchState) {
     startedAt,
     expiresAt: match.questionExpiresAt,
   });
-  broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, question: question.question, category: question.category, scores: scorePayload(match), startedAt, expiresAt: match.questionExpiresAt });
+  broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, phase: 'playing', category: question.category, scores: scorePayload(match), startedAt, expiresAt: match.questionExpiresAt });
 
   scheduleQuestionTimeout(io, match, QUESTION_MS);
   const bot = match.players.find((player) => player.id === QUIZ_BOT.id);
@@ -227,6 +228,7 @@ function answerCorrect(io: Server, match: MatchState, player: PlayerRef) {
   markSeen(match, player.id);
   const scores = scorePayload(match);
   io.to(match.room).emit('arcade:quiz:result', { matchId: match.id, winner: player, correctAnswer: accepted[0], scores });
+  broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, phase: 'result', scores, paused: false });
   if ((match.scores.get(player.id) ?? 0) >= match.targetScore) finishMatch(io, match, player);
   else setTimeout(() => { if (matches.has(match.id)) sendQuestion(io, match); }, 1400);
 }
@@ -407,6 +409,7 @@ export function registerArcadeSockets(io: Server): void {
         scores: scorePayload(match),
         remainingMs: match.questionRemainingMs,
       });
+      broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, phase: 'playing', paused: true, scores: scorePayload(match), remainingMs: match.questionRemainingMs });
       ack?.({ ok: true });
     });
 
@@ -426,6 +429,7 @@ export function registerArcadeSockets(io: Server): void {
         scores: scorePayload(match),
         expiresAt: match.questionExpiresAt,
       });
+      broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, phase: 'playing', paused: false, scores: scorePayload(match), expiresAt: match.questionExpiresAt });
       ack?.({ ok: true });
     });
 

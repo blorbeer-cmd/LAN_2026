@@ -628,6 +628,7 @@ export function registerTetrisSockets(io: Server): void {
       if (!match.running || match.paused) return ack?.({ ok: true });
       match.paused = true;
       io.to(match.room).emit('tetris:match:paused', { matchId: match.id });
+      broadcastState(io, match);
       ack?.({ ok: true });
     });
 
@@ -639,6 +640,7 @@ export function registerTetrisSockets(io: Server): void {
       match.paused = false;
       match.lastTick = Date.now();
       io.to(match.room).emit('tetris:match:resumed', { matchId: match.id });
+      broadcastState(io, match);
       ack?.({ ok: true });
     });
 
