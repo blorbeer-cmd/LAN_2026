@@ -169,3 +169,18 @@ Guard **plus** einen Test in `server/src/test/api.concurrency.test.ts` (parallel
 
 - Entwicklung auf `claude/lan-party-tools-6jqu4g`.
 - Commit + Push, wenn eine in sich abgeschlossene Einheit fertig ist.
+
+## Projekthistorie und Changelog
+
+- Die Projekthistorie wird versioniert unter `docs/changelog/` gepflegt.
+- Für jeden in `main` gemergten Pull Request gibt es eine eigene Datei unter
+  `docs/changelog/pr/` mit PR-Nummer, Datum, Branch, Merge-Commit und einer kurzen
+  Zusammenfassung der Änderung.
+- Für jeden in der PR-Historie auftauchenden Arbeitsbranch gibt es eine zusammenfassende
+  Datei unter `docs/changelog/branches/`, die alle zugehörigen PRs und ihren Status verlinkt.
+- `docs/changelog/README.md` ist der chronologische Einstiegspunkt mit den neuesten Einträgen
+  oben. Nach jedem abgeschlossenen Feature-Branch und verpflichtend bei jedem Merge eines PRs
+  nach `main` werden die passende PR-Datei, Branch-Datei und die Übersicht aktualisiert, bevor
+  der Commit erstellt wird.
+- Reine technische Synchronisations-Merges ohne eigene fachliche Änderung werden nicht als
+  eigene Feature-Einträge dupliziert.
