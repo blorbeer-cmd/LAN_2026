@@ -617,7 +617,7 @@ export function registerScribbleSockets(io: Server): void {
         size?: number;
         erase?: boolean;
         points?: number[][];
-      }) => {
+      }, ack?: (result: { ok: boolean; strokeCount?: number }) => void) => {
         const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
         if (!match || match.phase !== 'drawing' || match.paused) return;
         if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
@@ -632,7 +632,9 @@ export function registerScribbleSockets(io: Server): void {
         const color = typeof payload.color === 'string' && payload.color.length <= 20 ? payload.color : '#111111';
         const batch: StrokeBatch = { type: 'stroke', strokeId: payload.strokeId, color, size, erase: !!payload.erase, points };
         if (match.strokes.length < MAX_STROKE_BATCHES) match.strokes.push(batch);
-        socket.to(match.room).emit('scribble:stroke', { matchId: match.id, ...batch });
+        const strokeCount = new Set(match.strokes.map((stroke) => stroke.strokeId)).size;
+        socket.to(match.room).emit('scribble:stroke', { matchId: match.id, ...batch, strokeCount });
+        ack?.({ ok: true, strokeCount });
         kioskSnapshot(io, match);
       }
     );
@@ -672,14 +674,16 @@ export function registerScribbleSockets(io: Server): void {
     // end of the line instead of undoing it. Broadcasts the reduced canonical
     // stroke list so every client redraws from the same authoritative state
     // rather than trying to "erase" (which can't correctly undo overlaps).
-    socket.on('scribble:undo', (payload: { matchId?: string; playerId?: string }) => {
+    socket.on('scribble:undo', (payload: { matchId?: string; playerId?: string }, ack?: (result: { ok: boolean; strokeCount?: number }) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
       if (!match || match.phase !== 'drawing' || match.paused) return;
       if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
       if (match.strokes.length === 0) return;
       const lastStrokeId = match.strokes[match.strokes.length - 1].strokeId;
       match.strokes = match.strokes.filter((s) => s.strokeId !== lastStrokeId);
-      io.to(match.room).emit('scribble:redraw', { matchId: match.id, strokes: match.strokes });
+      const strokeCount = new Set(match.strokes.map((stroke) => stroke.strokeId)).size;
+      io.to(match.room).emit('scribble:redraw', { matchId: match.id, strokes: match.strokes, strokeCount });
+      ack?.({ ok: true, strokeCount });
       kioskSnapshot(io, match);
     });
 

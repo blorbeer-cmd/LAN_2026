@@ -159,6 +159,7 @@ function setupCanvas(el) {
   canvas2d = canvasEl.getContext('2d');
   canvas2d.lineJoin = 'round';
   canvas2d.lineCap = 'round';
+  canvasEl.dataset.scribbleStrokeCount = '0';
   replayStrokes(replayStrokesOnNextCanvas ?? []);
   replayStrokesOnNextCanvas = null;
 }
@@ -290,6 +291,10 @@ function flush() {
     size: tool.size,
     erase: tool.mode === 'erase',
     points,
+  }, (response) => {
+    if (canvasEl && response?.ok && typeof response.strokeCount === 'number') {
+      canvasEl.dataset.scribbleStrokeCount = String(response.strokeCount);
+    }
   });
 }
 
@@ -538,6 +543,7 @@ export function ensureScribbleSocket() {
   socket.on('scribble:stroke', (payload) => {
     if (!match || payload.matchId !== match.matchId || isDrawer()) return;
     drawStroke(payload);
+    if (canvasEl && typeof payload.strokeCount === 'number') canvasEl.dataset.scribbleStrokeCount = String(payload.strokeCount);
   });
 
   socket.on('scribble:clear', (payload) => {
@@ -557,6 +563,7 @@ export function ensureScribbleSocket() {
   socket.on('scribble:redraw', (payload) => {
     if (!match || payload.matchId !== match.matchId) return;
     replayStrokes(payload.strokes ?? []);
+    if (canvasEl && typeof payload.strokeCount === 'number') canvasEl.dataset.scribbleStrokeCount = String(payload.strokeCount);
   });
 
   socket.on('scribble:hint', (payload) => {
