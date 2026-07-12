@@ -6,7 +6,7 @@ Stand: 2026-07-12 · Basis: `main` auf `a3011e2`
 
 ## Übersicht
 
-- Gemergte PRs dokumentiert: 73
+- Gemergte PRs dokumentiert: 85
 - Eindeutige PR-Branches dokumentiert: 59
 - Technische Synchronisations-Merges ohne eigenen PR sind nicht als eigene Feature-Einträge aufgeführt.
 
@@ -22,7 +22,9 @@ Stand: 2026-07-12 · Basis: `main` auf `a3011e2`
 | 2026-07-12 | [#141](https://github.com/blorbeer-cmd/LAN_2026/pull/141) | [Show lobby host/player counts in the arcade overview and tile badges](pr/pr-141-show-lobby-host-player-counts-in-the-arcade-overview-and-tile-badges.md) | `claude/arcade-all-open-lobbies-tptts0` |
 | 2026-07-12 | [#140](https://github.com/blorbeer-cmd/LAN_2026/pull/140) | [Fix remaining Home tile height jump on pause](pr/pr-140-fix-remaining-home-tile-height-jump-on-pause.md) | `claude/home-tiles-games-display-c6uua7` |
 | 2026-07-11 | [#138](https://github.com/blorbeer-cmd/LAN_2026/pull/138) | [Show Aktuell items as chips in the always-on header banner](pr/pr-138-show-aktuell-items-as-chips-in-the-always-on-header-banner.md) | `claude/live-page-home-redesign-ailuxo` |
+| 2026-07-11 | [#132](https://github.com/blorbeer-cmd/LAN_2026/pull/132) | [Add always-on header notification banner, compact Aktuell, unify Kiosk banner](pr/pr-132-add-always-on-header-notification-banner-compact-aktuell-unify-kiosk-banner.md) | `claude/live-page-home-redesign-ailuxo` |
 | 2026-07-11 | [#137](https://github.com/blorbeer-cmd/LAN_2026/pull/137) | [Arcade: back to one expanded game, add compact open-lobbies overview](pr/pr-137-arcade-back-to-one-expanded-game-add-compact-open-lobbies-overview.md) | `claude/arcade-lobby-filtering-witbyu` |
+| 2026-07-11 | [#131](https://github.com/blorbeer-cmd/LAN_2026/pull/131) | [Add ~2900 more Scribble words from skribbl.io's German word list](pr/pr-131-add-more-scribble-words.md) | `claude/scribble-word-list-t4o8i4` |
 | 2026-07-11 | [#136](https://github.com/blorbeer-cmd/LAN_2026/pull/136) | [Flag individual players still opposing a seat neighbor in team draws](pr/pr-136-flag-individual-players-still-opposing-a-seat-neighbor-in-team-draws.md) | `claude/team-draw-seat-neighbors-2wfji2` |
 | 2026-07-11 | [#135](https://github.com/blorbeer-cmd/LAN_2026/pull/135) | [Arcade-Spiel: Pong](pr/pr-135-arcade-spiel-pong.md) | `feat/46-arcade-pong` |
 | 2026-07-11 | [#134](https://github.com/blorbeer-cmd/LAN_2026/pull/134) | [Track Arcade playtime and live "who's playing" like other games](pr/pr-134-track-arcade-playtime-and-live-who-s-playing-like-other-games.md) | `claude/arcade-all-open-lobbies-tptts0` |
@@ -36,6 +38,10 @@ Stand: 2026-07-12 · Basis: `main` auf `a3011e2`
 | 2026-07-11 | [#124](https://github.com/blorbeer-cmd/LAN_2026/pull/124) | [Fix flaky skill-suggestion race in the Spiele view](pr/pr-124-fix-flaky-skill-suggestion-race-in-the-spiele-view.md) | `claude/live-page-home-redesign-ailuxo` |
 | 2026-07-11 | [#123](https://github.com/blorbeer-cmd/LAN_2026/pull/123) | [Seeded admin test users, admin-mode banner, retire admin PIN](pr/pr-123-seeded-admin-test-users-admin-mode-banner-retire-admin-pin.md) | `claude/test-user-admin-setup-4ntv3z` |
 | 2026-07-11 | [#122](https://github.com/blorbeer-cmd/LAN_2026/pull/122) | [Turn the Live view into the Home landing page](pr/pr-122-turn-the-live-view-into-the-home-landing-page.md) | `claude/live-page-home-redesign-ailuxo` |
+| 2026-07-11 | [#121](https://github.com/blorbeer-cmd/LAN_2026/pull/121) | [Add test-user seeding concept and implementation plan](pr/pr-121-add-test-user-seeding-concept-and-implementation-plan.md) | `claude/test-user-admin-setup-4ntv3z` |
+| 2026-07-11 | [#120](https://github.com/blorbeer-cmd/LAN_2026/pull/120) | [Play a notification chime on the kiosk when a new push arrives](pr/pr-120-play-kiosk-notification-chime-on-new-push.md) | `claude/kiosk-push-notification-sound-oaiiy9` |
+| 2026-07-11 | [#119](https://github.com/blorbeer-cmd/LAN_2026/pull/119) | [Fix voting points slider gradient while dragging](pr/pr-119-fix-voting-points-slider-gradient-while-dragging.md) | `claude/voting-slider-color-bug-zbq2uh` |
+| 2026-07-11 | [#118](https://github.com/blorbeer-cmd/LAN_2026/pull/118) | [Add realtime, offline-sweep, and DB migration test coverage](pr/pr-118-add-realtime-offline-sweep-and-db-migration-test-coverage.md) | `claude/test-coverage-analysis-ragd8i` |
 | 2026-07-11 | [#117](https://github.com/blorbeer-cmd/LAN_2026/pull/117) | [feat: LAN-Polish, Backup und PWA](pr/pr-117-feat-lan-polish-backup-und-pwa.md) | `feat/lan-polish-agent-pwa` |
 | 2026-07-11 | [#116](https://github.com/blorbeer-cmd/LAN_2026/pull/116) | [Claude/user management concept xbro77](pr/pr-116-claude-user-management-concept-xbro77.md) | `claude/user-management-concept-xbro77` |
 | 2026-07-11 | [#115](https://github.com/blorbeer-cmd/LAN_2026/pull/115) | [block moving the last player out of a team when reassigning proposed …](pr/pr-115-block-moving-the-last-player-out-of-a-team-when-reassigning-proposed.md) | `claude/tournament-lobby-features-yt5cgp` |
@@ -87,6 +93,9 @@ Stand: 2026-07-12 · Basis: `main` auf `a3011e2`
 | 2026-07-08 | [#10](https://github.com/blorbeer-cmd/LAN_2026/pull/10) | [fix: let manual pause note win over an active game in live state](pr/pr-010-fix-let-manual-pause-note-win-over-an-active-game-in-live-state.md) | `claude/pause-live-tracking-bug-uilj46` |
 | 2026-07-08 | [#9](https://github.com/blorbeer-cmd/LAN_2026/pull/9) | [Claude/funny mayer 8ib4li](pr/pr-009-claude-funny-mayer-8ib4li.md) | `claude/funny-mayer-8ib4li` |
 | 2026-07-08 | [#8](https://github.com/blorbeer-cmd/LAN_2026/pull/8) | [Claude/tool spacing buttons i853pj](pr/pr-008-claude-tool-spacing-buttons-i853pj.md) | `claude/tool-spacing-buttons-i853pj` |
+| 2026-07-08 | [#7](https://github.com/blorbeer-cmd/LAN_2026/pull/7) | [Improve game stats, suggestions, tournament UI and agent reporting](pr/pr-007-improve-game-stats-suggestions-tournament-ui-and-agent-reporting.md) | `claude/funny-mayer-8ib4li` |
+| 2026-07-08 | [#6](https://github.com/blorbeer-cmd/LAN_2026/pull/6) | [Push next-match notifications for round-robin tournaments](pr/pr-006-push-next-match-notifications.md) | `claude/push-notification-types-9djvav` |
+| 2026-07-08 | [#5](https://github.com/blorbeer-cmd/LAN_2026/pull/5) | [Add agent control server and pause support](pr/pr-005-add-agent-control-server-and-pause-support.md) | `claude/tracking-tool-pause-feature-62phr2` |
 | 2026-07-07 | [#4](https://github.com/blorbeer-cmd/LAN_2026/pull/4) | [Claude/funny mayer 8ib4li](pr/pr-004-claude-funny-mayer-8ib4li.md) | `claude/funny-mayer-8ib4li` |
 | 2026-07-07 | [#3](https://github.com/blorbeer-cmd/LAN_2026/pull/3) | [Claude/funny mayer 8ib4li](pr/pr-003-claude-funny-mayer-8ib4li.md) | `claude/funny-mayer-8ib4li` |
 | 2026-07-07 | [#2](https://github.com/blorbeer-cmd/LAN_2026/pull/2) | [Claude/funny mayer 8ib4li](pr/pr-002-claude-funny-mayer-8ib4li.md) | `claude/funny-mayer-8ib4li` |

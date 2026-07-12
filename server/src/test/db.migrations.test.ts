@@ -84,22 +84,30 @@ test('legacy game_catalog tables are merged into games and preferences', () => {
   // Player B already rated this game via the modern preferences table (e.g.
   // set after upgrading but before the catalog rows were cleaned up) — the
   // merge must never clobber a rating that's already there.
-  fixture.prepare('INSERT INTO preferences (player_id, game_id, rating) VALUES (?, ?, ?)').run('p-legacy-2', 'g-existing', 7);
+  fixture
+    .prepare('INSERT INTO preferences (player_id, game_id, rating) VALUES (?, ?, ?)')
+    .run('p-legacy-2', 'g-existing', 7);
 
   fixture
     .prepare(
-      'INSERT INTO game_catalog (id, title, platform, platform_url, trailer_url, is_suggestion, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO game_catalog (id, title, platform, platform_url, trailer_url, is_suggestion, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     )
     .run('c-existing', 'Custom LAN Shooter', 'PlatformX', 'http://platform-x', 'http://trailer-x', 0, null, now);
   fixture
     .prepare(
-      'INSERT INTO game_catalog (id, title, platform, platform_url, trailer_url, is_suggestion, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO game_catalog (id, title, platform, platform_url, trailer_url, is_suggestion, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     )
     .run('c-new', 'Legacy Catalog Only Game', 'PlatformY', null, null, 1, 'p-legacy-1', now);
 
-  fixture.prepare('INSERT INTO game_catalog_ratings (catalog_id, player_id, rating) VALUES (?, ?, ?)').run('c-existing', 'p-legacy-1', 4);
-  fixture.prepare('INSERT INTO game_catalog_ratings (catalog_id, player_id, rating) VALUES (?, ?, ?)').run('c-existing', 'p-legacy-2', 3);
-  fixture.prepare('INSERT INTO game_catalog_ratings (catalog_id, player_id, rating) VALUES (?, ?, ?)').run('c-new', 'p-legacy-1', 6);
+  fixture
+    .prepare('INSERT INTO game_catalog_ratings (catalog_id, player_id, rating) VALUES (?, ?, ?)')
+    .run('c-existing', 'p-legacy-1', 4);
+  fixture
+    .prepare('INSERT INTO game_catalog_ratings (catalog_id, player_id, rating) VALUES (?, ?, ?)')
+    .run('c-existing', 'p-legacy-2', 3);
+  fixture
+    .prepare('INSERT INTO game_catalog_ratings (catalog_id, player_id, rating) VALUES (?, ?, ?)')
+    .run('c-new', 'p-legacy-1', 6);
   fixture.close();
 
   runMigrations(dbFile);
@@ -185,18 +193,18 @@ test('legacy votes/vote_rounds schema is rebuilt for points-mode voting without 
     );
   `);
 
-  fixture.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run('p1', 'Voter A', 'key-1', now);
-  fixture.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run('p2', 'Voter B', 'key-2', now);
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('p1', 'Voter A', 'key-1', now);
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('p2', 'Voter B', 'key-2', now);
   fixture.prepare('INSERT INTO games (id, name, created_at) VALUES (?, ?, ?)').run('g1', 'Legacy Game One', now);
   fixture.prepare('INSERT INTO games (id, name, created_at) VALUES (?, ?, ?)').run('g2', 'Legacy Game Two', now);
   fixture.prepare('INSERT INTO events (id, name, starts_at) VALUES (?, ?, ?)').run('e1', 'Legacy Event', now);
-  fixture.prepare('INSERT INTO vote_rounds (round, event_id, started_at, closed_at, winner_game_ids) VALUES (?, ?, ?, ?, ?)').run(
-    1,
-    'e1',
-    now,
-    now,
-    JSON.stringify(['g1'])
-  );
+  fixture
+    .prepare('INSERT INTO vote_rounds (round, event_id, started_at, closed_at, winner_game_ids) VALUES (?, ?, ?, ?, ?)')
+    .run(1, 'e1', now, now, JSON.stringify(['g1']));
   fixture
     .prepare('INSERT INTO votes (id, player_id, game_id, event_id, round, created_at) VALUES (?, ?, ?, ?, ?, ?)')
     .run('v1', 'p1', 'g1', 'e1', 1, now);
@@ -210,14 +218,22 @@ test('legacy votes/vote_rounds schema is rebuilt for points-mode voting without 
   const migrated = new Database(dbFile, { readonly: true });
 
   const voteColumns = migrated.prepare('PRAGMA table_info(votes)').all() as Array<{ name: string }>;
-  assert.ok(voteColumns.some((c) => c.name === 'points'), 'votes should gain a points column');
+  assert.ok(
+    voteColumns.some((c) => c.name === 'points'),
+    'votes should gain a points column',
+  );
 
   const roundColumns = migrated.prepare('PRAGMA table_info(vote_rounds)').all() as Array<{ name: string }>;
   for (const col of ['mode', 'title', 'info', 'selected_game_ids']) {
-    assert.ok(roundColumns.some((c) => c.name === col), `vote_rounds should gain a ${col} column`);
+    assert.ok(
+      roundColumns.some((c) => c.name === col),
+      `vote_rounds should gain a ${col} column`,
+    );
   }
 
-  const existingVotes = migrated.prepare('SELECT id, player_id, game_id, round, points FROM votes ORDER BY id').all() as Array<{
+  const existingVotes = migrated
+    .prepare('SELECT id, player_id, game_id, round, points FROM votes ORDER BY id')
+    .all() as Array<{
     id: string;
     player_id: string;
     game_id: string;
@@ -230,9 +246,12 @@ test('legacy votes/vote_rounds schema is rebuilt for points-mode voting without 
       { id: 'v1', player_id: 'p1', game_id: 'g1', round: 1 },
       { id: 'v2', player_id: 'p2', game_id: 'g2', round: 1 },
     ],
-    'pre-existing votes must survive the rebuild unchanged'
+    'pre-existing votes must survive the rebuild unchanged',
   );
-  assert.ok(existingVotes.every((v) => v.points === null), 'migrated legacy rows have no points yet');
+  assert.ok(
+    existingVotes.every((v) => v.points === null),
+    'migrated legacy rows have no points yet',
+  );
 
   const migratedRound = migrated.prepare('SELECT mode, winner_game_ids FROM vote_rounds WHERE round = ?').get(1) as {
     mode: string;
@@ -250,10 +269,34 @@ test('legacy votes/vote_rounds schema is rebuilt for points-mode voting without 
   const writable = new Database(dbFile);
   assert.doesNotThrow(() => {
     writable
-      .prepare('INSERT INTO votes (id, player_id, game_id, event_id, round, points, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .prepare(
+        'INSERT INTO votes (id, player_id, game_id, event_id, round, points, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      )
       .run('v3', 'p1', 'g2', 'e1', 1, 5, now);
   }, 'the widened constraint should allow a second game vote from the same player in the same round');
   writable.close();
 
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('records the complete migration history and does not duplicate it on restart', () => {
+  const dbFile = makeTempDbPath('migration-history');
+
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile, { readonly: true });
+  const migrations = migrated.prepare('SELECT version, name FROM schema_migrations ORDER BY version').all() as Array<{
+    version: number;
+    name: string;
+  }>;
+
+  assert.equal(migrations.length, 22);
+  assert.deepEqual(
+    migrations.map((migration) => migration.version),
+    Array.from({ length: 22 }, (_, index) => index + 1),
+  );
+  assert.ok(migrations.every((migration) => migration.name.length > 0));
+  migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
