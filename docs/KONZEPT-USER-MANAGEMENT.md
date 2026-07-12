@@ -250,9 +250,10 @@ Request bekommt `409`) und Tests in `api.concurrency.test.ts`.
 - **Socket.IO-Rooms:** Beim Connect joint der Socket `global` + `event:<id>` für jede eigene
   Mitgliedschaft. `broadcast()` bekommt einen optionalen Event-Scope; alle event-bezogenen
   Realtime-Events (Votes, Turnier, Draft, Sitzplan, Durchsagen, Bestellungen …) senden nur
-  noch in ihren Room. Admin-Sockets joinen zusätzlich alle Rooms. Ändert ein Admin die
-  Teilnehmerliste, joint/verlässt der Server die betroffenen Sockets sofort (nicht erst beim
-  Reconnect).
+  noch in ihren Room. Admin-Sockets joinen zusätzlich alle Rooms. Ändert sich eine
+  Teilnehmerliste **oder eine Rolle** (Admin entzogen = sofort raus aus fremden Event-Rooms,
+  Admin erteilt = rein), joint/verlässt der Server die betroffenen Sockets sofort – nicht
+  erst beim Reconnect, sonst überlebt die alte Room-Mitgliedschaft in jedem offenen Tab.
 - **Push:** `notifyPlayers()` schneidet die Empfängerliste über `getEventAudience()` zu
   (heute: alle Abos). Test-User werden nie angeschrieben.
 - **Kiosk:** `GET /kiosk.html?k=<kioskToken>` – pro Event generierbarer Read-only-Token
@@ -285,7 +286,11 @@ Draft-Query um `event_id` erweitern) – inklusive neuer Concurrency-Tests.
   Zustand: Läuft die Admin-Session ab oder wird der Test-User gelöscht (`ON DELETE SET NULL`),
   ist der Admin automatisch wieder er selbst. Effektive Identität = `acting_as ?? player_id`;
   **effektive Rechte = die des Test-Users** (nie Admin, auch nicht „geerbt"). `GET /api/me`
-  liefert beide Identitäten, das UI zeigt den permanenten Banner.
+  liefert beide Identitäten, das UI zeigt den permanenten Banner. Eine bewusste Ausnahme von
+  der Rechte-Regel: `impersonate/stop` (und die Impersonations-Felder in `/api/me`)
+  autorisieren gegen den **Session-Inhaber** (`player_id`), nicht gegen die effektive
+  Identität – ein stumpfes `requireAdmin` auf die effektiven Rechte würde den Admin sonst im
+  Test-User-Zustand einsperren (kein Weg zurück außer Logout).
 
 ### 4.6 Migration bestehender Daten & sanfte Umstellung
 
@@ -439,7 +444,9 @@ reine Logik-Erweiterung ohne Migration.
   Check-dann-Schreiben-Muster → Guard in einer Transaktion + Concurrency-Test.
 - **Rollen wirken sofort:** Rechte werden pro Request aus der DB gelesen (Session speichert
   keine Rolle). Ein frisch entzogener Admin verliert die Rechte also mit dem nächsten Request,
-  nicht erst beim nächsten Login.
+  nicht erst beim nächsten Login. Für offene Socket-Verbindungen reicht das nicht (die stellen
+  keine neuen Requests): eine Rollenänderung stößt dasselbe sofortige Re-Rooming an wie eine
+  Roster-Änderung (4.4).
 - **Eigene Fehleingaben korrigieren:** Heute kann jeder z. B. ein falsch gemeldetes Match
   per PATCH korrigieren. Das bleibt bewusst so (Selbstorganisation); nur das endgültige
   **Löschen** wird Admin-Sache. Damit braucht es keinen „Besitzer"-Begriff pro Datensatz.
@@ -533,10 +540,14 @@ jeweilige Entscheidung:
   eine Ebene tiefer: **Drill-Downs** (Event-Detailseite, Match-Listen eines fremden Events,
   Vote-Historie) sind mitgliedschafts-gebunden. Das UI verlinkt aus Aggregationen deshalb nur
   in Events, in denen der Betrachter Mitglied ist – sonst gäbe es klickbare Links auf `404`.
-  Wichtig: Diese Empfehlung gilt für *einen* Freundeskreis pro Instanz. Sollen sich fremde
-  Gruppen eine Instanz teilen, kippt sie (Event-Namen und Spielernamen in Hall of Fame wären
-  dann bereits ein Leak) → dann greift stattdessen „Aggregationen nur über eigene Events +
-  Sentinel". Das ist Schalter-Entscheidung 11.4 und muss **vor** Phase 5 fallen.
+  Wichtig: Diese Empfehlung gilt für *einen* Freundeskreis pro Instanz. Für fremde Gruppen
+  auf einer gemeinsamen Instanz würde ein bloßes Umschalten der Aggregationen auf „eigene
+  Events + Sentinel" ohnehin nicht dichthalten: Spielerprofile, Spiele, Skills und Bock sind
+  konzeptionell global sichtbar, `/api/players` & Co. blieben also ein Leak. Echte
+  Gruppentrennung hieße Mandanten-Scoping über fast alle Tabellen – die Empfehlung ist
+  stattdessen, „ein Freundeskreis pro Instanz" zur harten Annahme zu machen und einer zweiten
+  Gruppe eine zweite Instanz zu geben (Entscheidung 11.4, muss **vor** Phase 5 bestätigt
+  sein).
 - **Analytics/Stats/Matches/Vote-Historie** akzeptieren ein freies `?eventId=`
   (`analytics.ts`, `stats.ts`, `matches.ts`, `votes.ts`): Ab Phase 5 wird jedes übergebene
   `eventId` gegen die Mitgliedschaft validiert (Admin: alles), und der **Default** wechselt
@@ -582,8 +593,13 @@ jeweilige Entscheidung:
   Namens-Lookup ins Leere läuft (namenlose Zeilen). **Entscheidung:** Hartes Löschen ist für
   Test-User und Unfälle gedacht; für echte Ex-Mitspieler gibt es stattdessen **Deaktivieren**
   (`deactivated_at`: kein Login, keine Push, nicht in Pickern/Rostern, aber Historie und
-  Namens-Lookups bleiben intakt). Der Lösch-Dialog sagt ehrlich, was kaskadiert, und bietet
-  Deaktivieren als Default-Alternative an.
+  Namens-Lookups bleiben intakt). Deaktivieren muss auch den **Agent-Pfad** abdecken: der auf
+  dem Rechner des Ex-Mitspielers installierte Agent läuft ggf. weiter und authentifiziert
+  sich am `requireUser`-freien Agent-Endpoint allein per `api_key` – Reports deaktivierter
+  Spieler werden deshalb serverseitig ignoriert (wie bei `tracking_paused`) und beim
+  Deaktivieren werden offene Play-Sessions geschlossen und der Live-Status entfernt. Der
+  Lösch-Dialog sagt ehrlich, was kaskadiert, und bietet Deaktivieren als Default-Alternative
+  an.
 - **Event löschen:** kaskadiert durch alle 16 event-gebundenen Tabellen – inklusive
   Hall-of-Fame-Eintrag und PDF-Grundlage. Bleibt möglich (Testdaten!), aber der Dialog
   benennt den Umfang („löscht X Matches, Y Turniere, Z Sessions unwiderruflich"); für echte
@@ -620,8 +636,8 @@ das Produktivverhalten bis zum Schluss unangetastet lässt.
 | **2 – Identität fest verdrahten** | `whoami.js` raus, `player_id` überall aus der Session statt aus Query/Body (inkl. Digest, Meine Stats, Skills/Bock-Schreibpfade), Profil-Screen (Passwort ändern, Logout), Push-Subscription-Neubindung bei Logout/Login | M |
 | **3 – Rollen & Admin-Härtung** | `requireAdmin` auf Session-Rolle, PIN-Flow entfernen, Bootstrap + Recovery-Code, Letzter-Admin-Guards (+ Concurrency-Test), DELETE-Endpoints gaten & fehlende ergänzen, Spieler-Deaktivierung statt Hard-Delete, `admin_log`, Admin-UI aufräumen | M–L |
 | **4 – Onboarding & Migration** | Invite-/Claim-Codes mit Ablauf/Widerruf + UI (Links/QR im Admin-Bereich), Claim-Flow für Bestandsspieler, Namens-Kollisions-Check (NOCASE), Umstellung `AUTH_MODE=required`, Alt-Token/PIN entfernen | M |
-| **5 – Event-Sichtbarkeit** | `requireEventAccess`, `getEventContextFor`/`getEventAudience` als zentrale Helfer in allen Schreib-/Versandpfaden, Validierung aller `?eventId=`-Filter, Kontext-Badge im Header, Socket.IO-Rooms inkl. Live-Rejoin bei Roster-Änderung, Roster-Entfernung schließt offene Sessions, Push-Scoping, Kiosk-Token, Event-CRUD admin-only, Event-Löschen mit Kaskaden-Warnung | L |
-| **6 – Scoping-Lücken & Feinschliff** | `event_id` für `broadcasts`/`info_entries`/`push_log`/`arcade_results` (inkl. „global"-Fall fürs Info-Board), Vote-/Draft-Guards pro Event, Test-User-Badges + Ausschluss aus Aggregationen/Push, Impersonation (`acting_as`), Tracking-Erinnerung; optional: „Daten umziehen"-Werkzeug | M–L |
+| **5 – Event-Sichtbarkeit** | `requireEventAccess`, `getEventContextFor`/`getEventAudience` als zentrale Helfer in allen Schreib-/Versandpfaden, Validierung aller `?eventId=`-Filter, Kontext-Badge im Header, Socket.IO-Rooms inkl. Live-Rejoin bei Roster-/Rollen-Änderung, Roster-Entfernung schließt offene Sessions, Push-Scoping, Kiosk-Token, Event-CRUD admin-only, Event-Löschen mit Kaskaden-Warnung. **Dazu gehören die Voraussetzungen der Grenze selbst:** `event_id` für `broadcasts` und `push_log` sowie Vote-/Draft-Guards pro Event – ohne sie wäre die frisch eingeführte Sichtbarkeit löchrig (globale Durchsagen/Push-Historie am Event-Kiosk, eine zwischen Event- und Sentinel-Welt geteilte Abstimmung) | L |
+| **6 – Scoping-Lücken & Feinschliff** | `event_id` für `info_entries` (inkl. „global"-Fall fürs Info-Board) und `arcade_results` – beide bleiben bis dahin bewusst global (reine Anzeige, innerhalb eines Freundeskreises kein Leak); Test-User-Badges + Ausschluss aus Aggregationen/Push, Impersonation (`acting_as`), Tracking-Erinnerung; optional: „Daten umziehen"-Werkzeug | M |
 
 Phasen 1–2 sind das kritische Fundament; ab Phase 3 sind die Schritte weitgehend unabhängig
 voneinander priorisierbar. Impersonation (in 6) kann bei Bedarf in Phase 3 vorgezogen werden,
@@ -657,9 +673,12 @@ Damit die offene Liste kurz bleibt – diese Punkte betrachtet das Konzept als e
 3. **Rückwirkende Sichtbarkeit für Neu-Eingeladene:** Wer während des Events dazukommt, sieht
    dann auch alles, was vorher im Event passiert ist. Vorschlag: ja (einfach und im
    Freundeskreis erwünscht) – nur explizit festhalten, damit es niemanden überrascht.
-4. **Ein Freundeskreis pro Instanz oder mehrere?** Bestimmt, ob Aggregationen global bleiben
-   dürfen (Empfehlung 10.6) oder auf „eigene Events + Sentinel" gefiltert werden müssen.
-   Muss vor Phase 5 entschieden sein.
+4. **Ein Freundeskreis pro Instanz – harte Annahme bestätigen.** Das Konzept setzt überall
+   voraus, dass alle User einander sehen dürfen (Spieler, Spiele, Skills und Aggregationen
+   sind bewusst global). Eine Mehrgruppen-Instanz wäre mit gefilterten Auswertungen allein
+   nicht dicht (8.1) und liefe auf Mandanten-Scoping fast aller Tabellen hinaus – der
+   empfohlene Weg für eine zweite Gruppe ist eine zweite Instanz (eine SQLite-Datei, ein
+   Prozess). Muss vor Phase 5 bestätigt sein.
 5. **Wer darf Events anlegen?** Konzept sagt: nur Admins. Alternative: jeder darf anlegen und
    wird „Orga" seines Events (Basis dafür ist mit `event_participants.role` vorbereitet,
    6.1). Bewusst erst mal weggelassen.
