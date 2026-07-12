@@ -23,7 +23,7 @@ das Fundament komplett.
 |---|---|---|
 | Zugangsschutz | **Ein** geteilter Access-Token für alle (`x-access-token`, im Einladungslink als `?token=`) | Hält Fremde raus, unterscheidet aber niemanden |
 | Identität | `whoami.js`: jedes Gerät merkt sich per `localStorage`, „wer es ist" – frei wählbar, jederzeit per „Nicht du?" wechselbar. Viele POST-Bodies und sogar Lese-Endpoints (z. B. `GET /api/digest?playerId=`) nehmen die `playerId` ungeprüft vom Client | Reines Vertrauensmodell; genau das soll wegfallen |
-| Admin | Geteilte Admin-PIN (`x-admin-pin`), auf jedem Gerät freischaltbar. Es gibt zwar schon `players.is_admin`, aber serverseitig hängt **fast nichts** daran (nur 2 Routen nutzen `requireAdmin`, und der prüft die PIN, nicht die Rolle) | Rolle existiert als Spalte, wird aber nicht durchgesetzt |
+| Admin | Die Admin-PIN ist faktisch stillgelegt (Default leer = offener Modus), und eine Migration hat bewusst **alle Bestandsspieler zu Admins gemacht**; neue Spieler starten ebenfalls als Admin (siehe `migrateAllPlayersAdminBackfill` in `db.ts` und `docs/KONZEPT-TEST-USER.md`) | Rolle existiert als Spalte, ist aber flächendeckend vergeben und damit bedeutungslos – beim Scharfschalten echter Rollen müssen die Alt-Flags zurückgesetzt werden (siehe 4.3/Phase 3) |
 | Agent | Pro Spieler ein eigener `api_key` (steckt im personalisierten ZIP) | Bleibt unverändert – das ist bereits „echte" Geräte-Auth |
 | Socket.IO | Prüft nur den geteilten Access-Token | Muss künftig die User-Session prüfen |
 
@@ -105,8 +105,9 @@ Die Ideen aus der Anfrage sind alle machbar – an diesen Stellen empfehle ich P
    Identität.
 4. **Impersonation nur auf Test-User beschränken.** Wenn Admins sich in *jeden* User verwandeln
    könnten, könnte ein Admin unbemerkt als echter Freund abstimmen/bestellen/schreiben – das
-   vergiftet das Vertrauen in alles, was das Tool anzeigt. Deshalb: neue Spalte
-   `players.is_test`; „Als dieser User agieren" geht **nur** bei `is_test = 1`. Während der
+   vergiftet das Vertrauen in alles, was das Tool anzeigt. Die Spalte `players.is_test`
+   existiert bereits (Test-User-Feature, `docs/KONZEPT-TEST-USER.md`); „Als dieser User
+   agieren" geht **nur** bei `is_test = 1`. Während der
    Impersonation zeigt das UI dauerhaft einen Banner („Du agierst als Test 3 – zurück zu dir"),
    und Test-User bekommen nie Push-Nachrichten.
 5. **Event-Anlage und Event-Verwaltung werden Admin-Funktionen.** Bisher stand das allen offen
@@ -138,8 +139,9 @@ Die Ideen aus der Anfrage sind alle machbar – an diesen Stellen empfehle ich P
 
 ```sql
 ALTER TABLE players ADD COLUMN password_hash TEXT;          -- NULL = Konto noch nicht beansprucht
-ALTER TABLE players ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE players ADD COLUMN last_login_at INTEGER;
+ALTER TABLE players ADD COLUMN deactivated_at INTEGER;      -- Ex-Mitspieler: siehe 8.4
+-- players.is_test existiert bereits (Test-User-Feature)
 
 CREATE TABLE sessions (
   id           TEXT PRIMARY KEY,          -- nanoid
@@ -214,10 +216,15 @@ Request bekommt `409`) und Tests in `api.concurrency.test.ts`.
 
 - `requireAdmin` prüft künftig die **Session-Rolle** (`players.is_admin` des eingeloggten
   Users) statt der PIN. Die PIN und der ganze Unlock-Flow im Admin-View entfallen.
-- **Bootstrap:** Beim allerersten Start ohne Admin (Migration: kein Spieler mit
-  `password_hash` und `is_admin`) wird das erste erfolgreich registrierte/beanspruchte Konto
-  automatisch Admin. Zusätzlich Env-Fallback `ADMIN_RECOVERY_CODE` für den Fall „einziger
-  Admin hat sein Passwort vergessen".
+- **Alt-Flags zurücksetzen (kritisch):** Heute sind per Migration **alle** Bestandsspieler
+  Admins, und neue Spieler starten als Admin (1.1). Ohne Reset wären sämtliche neuen Gates
+  No-ops – jedes beanspruchte Konto wäre ja Admin. Beim Scharfschalten der Rollen (spätestens
+  mit `AUTH_MODE=required`) werden deshalb alle `is_admin`-Flags zurückgesetzt und Admins
+  explizit neu bestimmt; neue Spieler starten ab dann als normale User.
+- **Bootstrap:** Nach dem Reset wird das erste erfolgreich registrierte/beanspruchte Konto
+  automatisch Admin (typisch: der Betreiber claimt zuerst und verteilt dann die Links).
+  Zusätzlich Env-Fallback `ADMIN_RECOVERY_CODE` für den Fall „einziger Admin hat sein
+  Passwort vergessen".
 - Die vollständige Rechte-Matrix und die Sonderfälle (letzter Admin, Selbst-Degradierung,
   Test-User-Regeln) stehen in Abschnitt 6.
 
@@ -277,9 +284,10 @@ Draft-Query um `event_id` erweitern) – inklusive neuer Concurrency-Tests.
 - **Audit-Log (klein, aber wertvoll):** eine simple `admin_log`-Tabelle
   (wer, was, wann, Ziel-ID) für Löschungen, Rollenänderungen und Impersonations-Starts.
   Kein UI-Aufwand nötig – zunächst reicht, dass es nachvollziehbar in der DB steht.
-- **Test-User:** Bulk-Anlage gibt es schon; sie setzt künftig `is_test = 1`. Test-User sind
-  in normalen Listen markiert (Badge), von Push/Digest ausgeschlossen und können nie Admin
-  werden.
+- **Test-User:** Seeding mit `is_test = 1` samt Ausblendung außerhalb des Admin-Modus
+  existiert bereits (`testUsers.ts`, `docs/KONZEPT-TEST-USER.md`). Neu dazu kommen: Ausschluss
+  aus Push/Digest und Aggregationen (8.5) und die Regel, dass Test-User nie Admin werden
+  können.
 - **Impersonation:** `POST /api/admin/impersonate/:playerId` (nur `is_test`-Ziele) setzt
   `acting_as` auf der **eigenen** Admin-Session; `POST /api/admin/impersonate/stop` setzt es
   zurück. Kein zweites Cookie, keine zweite Session – dadurch gibt es keinen „hängenden"
@@ -376,12 +384,17 @@ nachrüstbar), nicht Mail.
 - **Web-Push:** `push_subscriptions` hängt an `player_id`. Wichtiger Edge Case auf geteilten
   Geräten: meldet sich User A ab und User B an, zeigt das Gerät sonst weiter A's
   Push-Nachrichten. Deshalb löscht Logout die Push-Subscription dieses Geräts (Client ruft
-  `pushManager.getSubscription().unsubscribe()` + `DELETE /api/push/subscription` auf), und
-  nach Login wird neu abonniert.
+  `pushManager.getSubscription().unsubscribe()` auf und meldet den Endpoint am **bestehenden**
+  `POST /api/push/unsubscribe` ab), und nach Login wird neu abonniert.
 - **Kiosk-Token** ist strikt read-only: eigene Middleware, Positivliste der erlaubten
   GET-Endpoints, kein Zugriff auf `/api/me`, keine Schreibpfade.
-- **Agent unverändert:** `api_key`-Header wie bisher; Agent-Endpoints hängen **nicht** hinter
-  `requireUser` (der Agent hat keine Session).
+- **Agent unverändert – aber der Key wird zum Geheimnis:** `api_key`-Header wie bisher;
+  Agent-Endpoints hängen **nicht** hinter `requireUser` (der Agent hat keine Session). Genau
+  deshalb darf der Key nicht mehr allgemein lesbar sein: `GET /api/players/:id` liefert heute
+  die volle Zeile **inklusive `api_key`** an jeden Aufrufer – mit echten Logins könnte damit
+  jeder User fremde Agent-Reports fälschen. Künftig wird der Key nur noch an den
+  Konto-Inhaber selbst (für den personalisierten Agent-Download) und Admins ausgegeben,
+  überall sonst gestript; dazu ein Admin-/Selbstbedienungs-Endpoint zum Rotieren des Keys.
 
 ### 5.3 Missbrauchs- und Ausfall-Szenarien
 
@@ -450,11 +463,10 @@ reine Logik-Erweiterung ohne Migration.
 - **Eigene Fehleingaben korrigieren:** Heute kann jeder z. B. ein falsch gemeldetes Match
   per PATCH korrigieren. Das bleibt bewusst so (Selbstorganisation); nur das endgültige
   **Löschen** wird Admin-Sache. Damit braucht es keinen „Besitzer"-Begriff pro Datensatz.
-- **Namensregeln:** Login-Name = Spielername. Eindeutigkeit künftig **case-insensitiv**
-  (`UNIQUE COLLATE NOCASE`), sonst existieren „tim" und „Tim" als getrennte Konten und
-  vertippen sich gegenseitig beim Login. Migration prüft Bestandsdaten auf solche Kollisionen
-  (unwahrscheinlich bei 15 Leuten, aber der Check ist billig). Umbenennen bleibt erlaubt –
-  ein freigewordener Name kann neu vergeben werden; das Passwort verhindert Verwechslungs-Logins.
+- **Namensregeln:** Login-Name = Spielername. Case-insensitive Eindeutigkeit ist **bereits
+  umgesetzt** (Unique-Index `name COLLATE NOCASE` in `db.ts`) – der Login übernimmt dieselbe
+  Collation. Umbenennen bleibt erlaubt – ein freigewordener Name kann neu vergeben werden;
+  das Passwort verhindert Verwechslungs-Logins.
 - **Selbstlöschung:** Es gibt keinen „Konto löschen"-Knopf für User – bei 15 Freunden ist das
   ein Admin-Gespräch. Vermeidet die Kaskaden-Fußangel aus 8.4 im Selbstbedienungs-Modus.
 - **Invite-Hygiene:** Codes verfallen (Default 14 Tage), sind einzeln zurückziehbar und im
@@ -597,7 +609,11 @@ jeweilige Entscheidung:
   dem Rechner des Ex-Mitspielers installierte Agent läuft ggf. weiter und authentifiziert
   sich am `requireUser`-freien Agent-Endpoint allein per `api_key` – Reports deaktivierter
   Spieler werden deshalb serverseitig ignoriert (wie bei `tracking_paused`) und beim
-  Deaktivieren werden offene Play-Sessions geschlossen und der Live-Status entfernt. Der
+  Deaktivieren werden offene Play-Sessions geschlossen und der Live-Status entfernt. Ebenso
+  den **Session-Pfad**: Wegen der 90-Tage-Sessions bliebe ein bereits eingeloggtes Gerät
+  sonst voll handlungsfähig – Deaktivieren löscht daher alle `sessions`-Zeilen des Spielers,
+  und `requireUser` lehnt `deactivated_at`-Konten grundsätzlich ab (Prüfung pro Request, wie
+  bei Rollen). Der
   Lösch-Dialog sagt ehrlich, was kaskadiert, und bietet Deaktivieren als Default-Alternative
   an.
 - **Event löschen:** kaskadiert durch alle 16 event-gebundenen Tabellen – inklusive
@@ -634,10 +650,10 @@ das Produktivverhalten bis zum Schluss unangetastet lässt.
 | **0 – Bugfix Event-Anlage** | `openModal`-Import in `games.js` (in diesem Branch bereits enthalten) | XS ✅ |
 | **1 – Auth-Fundament** | Schema (Spalten, `sessions`, `invites`), scrypt-Hashing, `/api/auth/*`, `/api/me`, `requireUser`-Middleware, Session-Cookie inkl. `COOKIE_SECURE`-Flag, Socket.IO-Handshake + Socket-Kick bei Logout, Login-/Register-Screen, Rate-Limit. Alles hinter `AUTH_MODE` | L |
 | **2 – Identität fest verdrahten** | `whoami.js` raus, `player_id` überall aus der Session statt aus Query/Body (inkl. Digest, Meine Stats, Skills/Bock-Schreibpfade), Profil-Screen (Passwort ändern, Logout), Push-Subscription-Neubindung bei Logout/Login | M |
-| **3 – Rollen & Admin-Härtung** | `requireAdmin` auf Session-Rolle, PIN-Flow entfernen, Bootstrap + Recovery-Code, Letzter-Admin-Guards (+ Concurrency-Test), DELETE-Endpoints gaten & fehlende ergänzen, Spieler-Deaktivierung statt Hard-Delete, `admin_log`, Admin-UI aufräumen | M–L |
+| **3 – Rollen & Admin-Härtung** | `requireAdmin` auf Session-Rolle, PIN-Flow entfernen, **Reset der Alt-Admin-Flags** (heute ist jeder Admin – ohne Reset sind alle Gates No-ops) + Bootstrap + Recovery-Code, Letzter-Admin-Guards (+ Concurrency-Test), DELETE-Endpoints gaten & fehlende ergänzen, Spieler-Deaktivierung statt Hard-Delete (inkl. Session-Invalidierung + Agent-Ignore), `api_key` nur noch für Inhaber/Admin lesbar + Key-Rotation, `admin_log`, Admin-UI aufräumen | M–L |
 | **4 – Onboarding & Migration** | Invite-/Claim-Codes mit Ablauf/Widerruf + UI (Links/QR im Admin-Bereich), Claim-Flow für Bestandsspieler, Namens-Kollisions-Check (NOCASE), Umstellung `AUTH_MODE=required`, Alt-Token/PIN entfernen | M |
-| **5 – Event-Sichtbarkeit** | `requireEventAccess`, `getEventContextFor`/`getEventAudience` als zentrale Helfer in allen Schreib-/Versandpfaden, Validierung aller `?eventId=`-Filter, Kontext-Badge im Header, Socket.IO-Rooms inkl. Live-Rejoin bei Roster-/Rollen-Änderung, Roster-Entfernung schließt offene Sessions, Push-Scoping, Kiosk-Token, Event-CRUD admin-only, Event-Löschen mit Kaskaden-Warnung. **Dazu gehören die Voraussetzungen der Grenze selbst:** `event_id` für `broadcasts` und `push_log` sowie Vote-/Draft-Guards pro Event – ohne sie wäre die frisch eingeführte Sichtbarkeit löchrig (globale Durchsagen/Push-Historie am Event-Kiosk, eine zwischen Event- und Sentinel-Welt geteilte Abstimmung) | L |
-| **6 – Scoping-Lücken & Feinschliff** | `event_id` für `info_entries` (inkl. „global"-Fall fürs Info-Board) und `arcade_results` – beide bleiben bis dahin bewusst global (reine Anzeige, innerhalb eines Freundeskreises kein Leak); Test-User-Badges + Ausschluss aus Aggregationen/Push, Impersonation (`acting_as`), Tracking-Erinnerung; optional: „Daten umziehen"-Werkzeug | M |
+| **5 – Event-Sichtbarkeit** | `requireEventAccess`, `getEventContextFor`/`getEventAudience` als zentrale Helfer in allen Schreib-/Versandpfaden, Validierung aller `?eventId=`-Filter, Kontext-Badge im Header, Socket.IO-Rooms inkl. Live-Rejoin bei Roster-/Rollen-Änderung, Roster-Entfernung schließt offene Sessions, Push-Scoping, Kiosk-Token, Event-CRUD admin-only, Event-Löschen mit Kaskaden-Warnung. **Dazu gehören die Voraussetzungen der Grenze selbst:** `event_id` für `broadcasts` und `push_log`, Vote-/Draft-Guards pro Event **und die Arcade-Live-Fläche** (`GET /api/arcade/lobbies` aggregiert heute alle offenen Lobbys, die Lobby-Listen gehen per globalem `io.emit` raus – Lobbys bekommen denselben Event-Kontext/Room wie alles andere, sonst sehen und joinen Nicht-Mitglieder weiter die Lobbys des Events). Ohne diese Punkte wäre die frisch eingeführte Sichtbarkeit löchrig | L |
+| **6 – Scoping-Lücken & Feinschliff** | `event_id` für `info_entries` (inkl. „global"-Fall fürs Info-Board) und `arcade_results` – beide bleiben bis dahin bewusst global (reine Anzeige-Historie, innerhalb eines Freundeskreises kein Leak); Test-User-Ausschluss aus Aggregationen/Push, Impersonation (`acting_as`), Tracking-Erinnerung; optional: „Daten umziehen"-Werkzeug | M |
 
 Phasen 1–2 sind das kritische Fundament; ab Phase 3 sind die Schritte weitgehend unabhängig
 voneinander priorisierbar. Impersonation (in 6) kann bei Bedarf in Phase 3 vorgezogen werden,
