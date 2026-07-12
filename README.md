@@ -113,6 +113,22 @@ npm start
 
 Danach im Browser `http://localhost:3000` öffnen.
 
+### Code-Qualität
+
+Für einheitlichen Code stehen ESLint und Prettier bereit:
+
+```bash
+cd server
+npm run lint
+npm run format:check
+
+cd ../agent
+npm run lint
+```
+
+Die Regeln gelten zunächst als gemeinsame Grundlage für neue und geänderte Dateien; eine
+vollständige automatische Umformatierung der bestehenden Anwendung ist bewusst ein eigener Schritt.
+
 ## Deployment (24/7 auf `lan.dbehnke.dev`)
 
 Läuft dauerhaft auf einem Hetzner-VPS, containerisiert per Docker, per GitHub Actions deployt,
