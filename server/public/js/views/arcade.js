@@ -326,31 +326,38 @@ function currentGame() {
   return activeGame;
 }
 
-// How many open lobbies exist right now for a given game, so the compact
-// overview below can list only games that actually have one open.
-function openLobbyCount(gameId) {
+// The raw open-lobby list for a given game — every xLobbies() getter
+// already returns the same { id, host, players, ... } shape as quiz's own
+// `lobbies`, so this is the one place that maps a game id to it.
+function gameLobbies(gameId) {
   switch (gameId) {
     case 'quiz':
-      return lobbies.length;
+      return lobbies;
     case 'tetris':
-      return tetrisLobbies().length;
+      return tetrisLobbies();
     case 'scribble':
-      return scribbleLobbies().length;
+      return scribbleLobbies();
     case 'pong':
-      return pongLobbies().length;
+      return pongLobbies();
     case 'blobby':
-      return blobbyLobbies().length;
+      return blobbyLobbies();
     case 'snake':
-      return snakeLobbies().length;
+      return snakeLobbies();
     default:
-      return 0;
+      return [];
   }
 }
 
-function gameTileHtml(game, active) {
+// How many open lobbies exist right now for a given game, so the tile grid
+// and the compact overview below can both show it.
+function openLobbyCount(gameId) {
+  return gameLobbies(gameId).length;
+}
+
+function gameTileHtml(game, active, count) {
   return `
     <button type="button" class="card arcade-tile ${active === game.id ? 'is-active' : ''} ${game.soon ? 'is-soon' : ''}" data-game="${game.id}">
-      ${game.soon ? `<span class="arcade-tile-soon">Bald</span>` : ''}
+      ${game.soon ? `<span class="arcade-tile-soon">Bald</span>` : count > 0 ? `<span class="arcade-tile-count">${count}</span>` : ''}
       <span class="arcade-tile-icon" aria-hidden="true">${game.icon}</span>
       <span class="arcade-tile-name">${escapeHtml(game.name)}</span>
     </button>`;
@@ -358,25 +365,34 @@ function gameTileHtml(game, active) {
 
 // Compact, always-current list of just the open lobbies, grouped and sorted
 // by game (in the same fixed order as the tile grid) — a game that currently
-// has no open lobby doesn't get a row at all. Tapping a row expands that
-// game's full section below, same as tapping its tile.
+// has no open lobby doesn't get a row at all. Each row's sub-line names every
+// open lobby's host and current player count, so a glance is enough to know
+// who's waiting and whether it's worth joining, without expanding anything.
+// Tapping a row still expands that game's full section below, same as
+// tapping its tile.
 function openLobbiesOverviewHtml() {
   const rows = GAMES.filter((g) => !g.soon)
-    .map((g) => ({ game: g, count: openLobbyCount(g.id) }))
-    .filter(({ count }) => count > 0);
+    .map((g) => ({ game: g, lobbies: gameLobbies(g.id) }))
+    .filter(({ lobbies: gl }) => gl.length > 0);
   if (rows.length === 0) return '';
   return `
     <div class="section-title">Offene Lobbys</div>
-    <div class="card-grid" style="margin-bottom:var(--space-3);">
+    <div class="stack" style="gap:var(--space-2);margin-bottom:var(--space-3);">
       ${rows
-        .map(
-          ({ game, count }) => `
+        .map(({ game, lobbies: gl }) => {
+          const hostsSummary = gl
+            .map((l) => `${escapeHtml(l.host.name)} · ${l.players.length} Spieler`)
+            .join(', ');
+          return `
         <button type="button" class="card row list-row" data-game="${game.id}">
           <span class="list-row-icon" aria-hidden="true">${game.icon}</span>
-          <span style="flex:1;">${escapeHtml(game.name)}</span>
-          <span class="badge">${count} offen</span>
-        </button>`
-        )
+          <span style="flex:1;min-width:0;">
+            <div class="player-name">${escapeHtml(game.name)}</div>
+            <div class="muted list-row-desc">${hostsSummary}</div>
+          </span>
+          <span class="badge">${gl.length} offen</span>
+        </button>`;
+        })
         .join('')}
     </div>`;
 }
@@ -431,7 +447,7 @@ export function renderArcade(container, ctx) {
     ${whoAmICardHtml('whoami')}
     <div class="section-title">🎮 Spiele</div>
     <div class="arcade-tiles">
-      ${GAMES.map((g) => gameTileHtml(g, cg)).join('')}
+      ${GAMES.map((g) => gameTileHtml(g, cg, openLobbyCount(g.id))).join('')}
     </div>
     ${openLobbiesOverviewHtml()}
     ${activeGameHtml()}
