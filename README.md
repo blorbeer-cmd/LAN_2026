@@ -136,6 +136,9 @@ per Cloudflare Tunnel ans Internet gehängt. Threat model bewusst schlank: kein 
 eine laufende LAN-Session ein, Ziel ist nur "kein leichtes Opfer für Zufallsfunde/Bots" – siehe
 `CLAUDE.md` für die volle Begründung.
 
+Hinweise zur Log-Rotation für den Dauerbetrieb stehen in
+[`server/OPERATIONS.md`](server/OPERATIONS.md).
+
 **Architektur:** `lan.dbehnke.dev` → Cloudflare (TLS, DNS, DDoS/WAF) → Cloudflare Tunnel
 (`cloudflared`, Origin hat **keinen offenen Port 80/443**) → `app`-Container (kein published Port,
 nur intern im Docker-Netz erreichbar) → SQLite-Datei auf einem Bind-Mount, überlebt jedes Redeploy.

@@ -14,6 +14,7 @@ Stand: 2026-07-12 · Basis: `main` auf `a3011e2`
 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
+| 2026-07-12 | main | [ESLint/Prettier und Log-Rotation](pr/main-2026-07-12-tooling-and-operations.md) | `main` |
 | 2026-07-12 | [#146](https://github.com/blorbeer-cmd/LAN_2026/pull/146) | [Pin project runtime to Node 24](pr/pr-146-pin-project-runtime-to-node-24.md) | `chore/node-24-pin` |
 | 2026-07-12 | [#145](https://github.com/blorbeer-cmd/LAN_2026/pull/145) | [Fix stale live status and agent proxy URLs](pr/pr-145-fix-stale-live-status-and-agent-proxy-urls.md) | `fix/live-status-agent-url` |
 | 2026-07-12 | [#144](https://github.com/blorbeer-cmd/LAN_2026/pull/144) | [Fix invite token handling, JSON limits and Playwright docs](pr/pr-144-fix-invite-token-handling-json-limits-and-playwright-docs.md) | `fix/issues-31-19-25` |
