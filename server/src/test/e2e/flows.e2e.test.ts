@@ -750,6 +750,13 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
       },
       hostPaintedAfterStroke1
     );
+    await page.waitForFunction(() => {
+      const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement | null;
+      if (!c) return false;
+      const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+      for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) return true;
+      return false;
+    });
     const guesserPaintedAfterStroke1 = await countPainted(guesserPage);
 
     // A second, separate pen stroke (well clear of the first, kept inside
@@ -802,6 +809,20 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
       },
       guesserPaintedAfterStroke2
     );
+    await page.waitForFunction(() => {
+      const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement | null;
+      if (!c) return false;
+      const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+      for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) return true;
+      return false;
+    });
+    await guesserPage.waitForFunction(() => {
+      const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement | null;
+      if (!c) return false;
+      const data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+      for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) return true;
+      return false;
+    });
     // Undo removed the whole second stroke on both sides - what's left
     // should be (roughly) just the first stroke again, not an empty canvas.
     const hostPaintedAfterUndo = await countPainted(page);
