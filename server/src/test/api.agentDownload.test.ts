@@ -11,7 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import request from 'supertest';
 import { createApp } from '../app';
-import { buildAgentConfig } from '../routes/agentDownload';
+import { buildAgentConfig, resolveAgentServerUrl } from '../routes/agentDownload';
 
 const EXE_PATH = path.join(__dirname, '..', '..', 'agent-dist', 'lan2026-agent.exe');
 
@@ -35,6 +35,11 @@ test('buildAgentConfig only turns trackActivity on for exactly "1"', () => {
   assert.equal(buildAgentConfig('http://x', 'k', '1').trackActivity, true);
   assert.equal(buildAgentConfig('http://x', 'k', 'true').trackActivity, false);
   assert.equal(buildAgentConfig('http://x', 'k', '0').trackActivity, false);
+});
+
+test('resolveAgentServerUrl prefers the configured public URL', () => {
+  assert.equal(resolveAgentServerUrl('http', 'internal:3000', 'https://lan.example/'), 'https://lan.example');
+  assert.equal(resolveAgentServerUrl('https', 'lan.example', ''), 'https://lan.example');
 });
 
 test('setup: a player', async () => {

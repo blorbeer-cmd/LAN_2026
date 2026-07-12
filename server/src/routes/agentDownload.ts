@@ -12,6 +12,7 @@ import fs from 'fs';
 import path from 'path';
 import archiver from 'archiver';
 import { db } from '../db';
+import { config } from '../config';
 
 export const agentDownloadRouter = Router();
 
@@ -40,6 +41,11 @@ export function buildAgentConfig(serverUrl: string, apiKey: string, trackActivit
     pollIntervalMs: 10000,
     trackActivity: trackActivityParam === '1',
   };
+}
+
+export function resolveAgentServerUrl(protocol: string, host: string, publicBaseUrl = config.publicBaseUrl): string {
+  const normalizedPublicBaseUrl = publicBaseUrl.trim().replace(/\/+$/, '');
+  return normalizedPublicBaseUrl || `${protocol}://${host}`;
 }
 
 // Kept plain-ASCII (no umlauts) since a .bat file's default codepage often
@@ -123,7 +129,7 @@ agentDownloadRouter.get('/', (req, res) => {
     });
   }
 
-  const serverUrl = `${req.protocol}://${req.get('host')}`;
+  const serverUrl = resolveAgentServerUrl(req.protocol, req.get('host') ?? '');
   const config = buildAgentConfig(serverUrl, player.api_key, trackActivity);
 
   res.attachment(`RespawnHQ-Agent-${sanitizeForFilename(player.name)}.zip`);

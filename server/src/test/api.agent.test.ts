@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
+import { db } from '../db';
 
 const app = createApp();
 let apiKey: string;
@@ -214,9 +215,22 @@ test('POST /api/agent/tracking-paused rejects a non-boolean paused', async () =>
 });
 
 test('POST /api/agent/tracking-paused sets the flag that both the web profile and /report see', async () => {
+  await request(app)
+    .post('/api/agent/report')
+    .set('x-api-key', apiKey)
+    .send({ processNames: ['cs2.exe'] });
+
   const paused = await request(app).post('/api/agent/tracking-paused').set('x-api-key', apiKey).send({ paused: true });
   assert.equal(paused.status, 200);
   assert.equal(paused.body.trackingPaused, true);
+
+  const live = await request(app).get('/api/live');
+  const entry = live.body.find((row: { player_id: string }) => row.player_id === playerId);
+  assert.deepEqual(entry.games, []);
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM play_sessions WHERE player_id = ? AND ended_at IS NULL').get(playerId) as { count: number }).count,
+    0
+  );
 
   const profile = await request(app).get(`/api/players/${playerId}`);
   assert.equal(profile.body.tracking_paused, 1);

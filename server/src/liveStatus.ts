@@ -35,6 +35,19 @@ export interface LiveBoardEntry {
 
 export type LiveState = 'playing' | 'paused' | 'offline';
 
+// Removes one player's currently detected games and closes their open play
+// sessions. The next agent report starts a clean live-status window.
+export function clearPlayerLiveStatus(playerId: string, endedAt = Date.now()): void {
+  const cleanup = db.transaction(() => {
+    db.prepare(
+      'UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND ended_at IS NULL'
+    ).run(endedAt, playerId);
+    db.prepare('DELETE FROM live_status_games WHERE player_id = ?').run(playerId);
+    db.prepare('DELETE FROM live_status WHERE player_id = ?').run(playerId);
+  });
+  cleanup();
+}
+
 // Pure derivation rule, kept independent of the exact row shape so it's easy
 // to unit-test: playing if the agent reported recently AND at least one game
 // is currently detected; paused if a manual note is set (regardless of agent
@@ -43,8 +56,11 @@ export function deriveState(
   input: { last_seen: number | null; manual_note: string | null; activeGamesCount: number },
   now: number
 ): LiveState {
-  if (input.manual_note) return 'paused';
   const fresh = input.last_seen != null && now - input.last_seen <= config.offlineTimeoutMs;
+  // A player without an agent has no last_seen timestamp, so their explicit
+  // manual note remains meaningful. Once an agent has reported but gone stale,
+  // the stale note must not hide the offline state.
+  if (input.manual_note && (input.last_seen == null || fresh)) return 'paused';
   if (fresh && input.activeGamesCount > 0) return 'playing';
   return 'offline';
 }
