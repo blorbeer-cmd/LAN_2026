@@ -7,7 +7,7 @@
 import { api } from '../api.js';
 import { confirmDialog } from '../modal.js';
 import { state, gameById } from '../state.js';
-import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
+import { escapeHtml, avatarHtml, gameBadgeHtml, seatConflictIconHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 
@@ -42,26 +42,42 @@ let createProposedTeams = null; // [{ name, playerIds, players (for display), to
 let createSeatConflicts = null; // { conflicts, considered } from the last proposal, for the seating note
 let createAvoidPairs = []; // seat-neighbor pairs from the last proposal, to re-flag conflicts after a manual move
 
-// Re-derives each player's seatConflict flag (and the seating-note count)
-// from createAvoidPairs — needed after a manual Feinschliff move on the
-// unsaved proposal, since the server only computes this once at draw time.
+// Re-derives each player's seatConflict flag/neighbor names (and the
+// seating-note count) from createAvoidPairs — needed after a manual
+// Feinschliff move on the unsaved proposal, since the server only computes
+// this once at draw time.
 function recomputeSeatConflicts() {
   if (!createProposedTeams || createAvoidPairs.length === 0) return;
   const teamOf = new Map();
-  createProposedTeams.forEach((t, i) => t.players.forEach((p) => teamOf.set(p.id, i)));
-  const conflictIds = new Set();
+  const nameById = new Map();
+  createProposedTeams.forEach((t, i) =>
+    t.players.forEach((p) => {
+      teamOf.set(p.id, i);
+      nameById.set(p.id, p.name);
+    })
+  );
+  const conflictNeighborIds = new Map();
+  const addConflict = (id, opponentId) => {
+    const list = conflictNeighborIds.get(id);
+    if (list) list.push(opponentId);
+    else conflictNeighborIds.set(id, [opponentId]);
+  };
   let conflicts = 0;
   for (const [a, b] of createAvoidPairs) {
     const teamA = teamOf.get(a);
     const teamB = teamOf.get(b);
     if (teamA !== undefined && teamB !== undefined && teamA !== teamB) {
-      conflictIds.add(a);
-      conflictIds.add(b);
+      addConflict(a, b);
+      addConflict(b, a);
       conflicts++;
     }
   }
   for (const t of createProposedTeams) {
-    for (const p of t.players) p.seatConflict = conflictIds.has(p.id);
+    for (const p of t.players) {
+      const neighborIds = conflictNeighborIds.get(p.id);
+      p.seatConflict = !!neighborIds;
+      p.seatConflictNames = neighborIds?.map((id) => nameById.get(id)).filter(Boolean) ?? [];
+    }
   }
   createSeatConflicts = { conflicts, considered: createAvoidPairs.length };
 }
@@ -227,7 +243,7 @@ function renderCreateForm(el, ctx) {
               <div class="team-player">
                 ${avatarHtml(p, 18)}
                 <span style="flex:1;">${escapeHtml(p.name)}</span>
-                ${p.seatConflict ? `<span title="Sitzt gegen Sitznachbar" style="color:var(--state-paused);">${icon('armchair')}</span>` : ''}
+                ${seatConflictIconHtml(p)}
                 ${
                   createProposedTeams.length > 1
                     ? `<select class="team-move-select" data-tourn-move-player="${p.id}" aria-label="Team ändern">

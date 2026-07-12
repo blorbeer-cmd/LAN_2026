@@ -1,5 +1,7 @@
 // Small formatting/escaping helpers shared by every view.
 
+import { icon } from './icons.js';
+
 export function escapeHtml(value) {
   const s = String(value ?? '');
   return s
@@ -55,6 +57,19 @@ export function avatarHtml(player, size = 32) {
     return `<img class="avatar-img" src="${escapeHtml(player.avatar)}" alt="" style="width:${size}px;height:${size}px;" />`;
   }
   return `<span class="avatar-dot" style="background:${color};width:${size}px;height:${size}px;"></span>`;
+}
+
+// Seat-neighbor conflict marker for a team-draw player row (FR-18
+// extension): always renders the icon slot, just hidden via visibility when
+// there's no conflict, so the rating/select that follows never shifts
+// left/right depending on which rows happen to have a conflict.
+export function seatConflictIconHtml(player) {
+  const names = player?.seatConflictNames;
+  const hasConflict = !!player?.seatConflict;
+  const title = hasConflict
+    ? `Sitzt gegen Sitznachbar${names?.length > 1 ? 'n' : ''}: ${names.map(escapeHtml).join(', ')}`
+    : '';
+  return `<span title="${title}" style="color:var(--state-paused);${hasConflict ? '' : 'visibility:hidden;'}">${icon('armchair')}</span>`;
 }
 
 // Game artwork and emoji are deliberately omitted from the UI. There are not
