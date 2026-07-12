@@ -328,8 +328,34 @@ Gemäß Projektregeln pro Phase:
 | **Name + Passwort, Session-Cookie** ✅ Empfehlung | Selbsterklärend für alle, kein Zusatz-Infrastruktur-Bedarf, neues Gerät jederzeit ohne Admin-Hilfe. Nachteil „Passwort-Nerv" wird durch 90-Tage-Sessions und Invite-Onboarding fast vollständig neutralisiert |
 | Personalisierter Geräte-Link ohne Passwort („Link = Konto") | Verlockend einfach, aber: jedes neue Gerät braucht den Admin, ein weitergeleiteter/abfotografierter Link ist ein vollwertiger Konto-Zugang, und Links landen erfahrungsgemäß in Gruppenchats. Als *Onboarding* (Invite/Claim-Link) übernehmen wir genau diese UX – nur eben mit einmaligem Passwort-Setzen dahinter |
 | PIN pro User (4–6 Ziffern) | Auf einem aus der Cloud erreichbaren Server trivial durchprobierbar; Rate-Limits dagegen zu bauen ist mehr Aufwand als ein echtes Passwort |
-| Magic-Link per E-Mail | Bräuchte Mail-Versand-Infrastruktur und aktuelle Mail-Adressen aller Freunde – überdimensioniert |
+| Magic-Link per E-Mail | Auch **mit** aufgebauter Mail-Infrastruktur nicht empfohlen – Begründung unten (5.1.1) |
 | Passkeys / WebAuthn | Technisch die schönste Lösung (nichts zu merken, nicht phishbar), aber: an die Domain gebunden (Umzug des Servers = alle Passkeys weg), Gerätewechsel/-verlust braucht Recovery-Pfad, spürbar mehr Implementierungs- und Erklär-Aufwand. **Als optionaler zweiter Login-Weg später nachrüstbar**, da die Session-Schicht identisch bleibt |
+
+#### 5.1.1 Warum Magic Links auch mit eigener Mail-Infrastruktur nicht gewinnen
+
+Die naheliegende Einwand-Umkehr („dann bauen wir eben Mail-Versand") wurde geprüft. Die
+Ablehnung hängt aber nicht an der fehlenden Infrastruktur, sondern an drei strukturellen
+Punkten:
+
+1. **Der Login passiert im zeitkritischsten Moment.** Eingeloggt wird fast nur, wenn jemand
+   auf der Party ein neues/geliehenes Gerät einrichtet. Genau dann hinge der Zugang an
+   Party-WLAN → Mailprovider → Spamfilter → Zustell-Latenz. Passwort-Login ist sofort da und
+   hat null externe Abhängigkeiten – das zahlt direkt auf Produktziel Nr. 1 ein
+   („läuft 3 Tage durch, ohne dass jemand eingreifen muss").
+2. **Zustellbarkeit ist Dauerbetrieb, kein Einmal-Aufwand.** Selbst gehosteter SMTP landet
+   zuverlässig im Spam; realistisch bräuchte es einen Transaktions-Mail-Dienst samt
+   Absender-Domain, SPF/DKIM und API-Key – laufende Wartung und ein zusätzlicher Single Point
+   of Failure während der LAN, für ein Tool mit ein paar Einsatz-Wochenenden pro Jahr.
+   Zusätzlich müssten erstmals Mail-Adressen aller Mitspieler erhoben und gepflegt werden.
+3. **Der Nutzen wäre minimal, weil das Konzept die Magic-Link-UX schon fast hat.** Onboarding
+   und „Passwort vergessen" laufen ohnehin über personalisierte Einmal-Links (Invite/Claim/
+   Reset) – verteilt über WhatsApp/Discord, wo sich die Gruppe zuverlässiger erreicht als per
+   Mail. Mit 90-Tage-Sessions tippt jede Person ihr Passwort pro Gerät grob einmal im Jahr;
+   Magic Links würden also einen praktisch nie auftretenden Schritt wegoptimieren.
+
+Falls „nichts merken müssen" später doch gewünscht ist, ist der bessere zweite Schritt
+**Passkeys** (keine externe Abhängigkeit, offline-fähig, auf derselben Session-Schicht
+nachrüstbar), nicht Mail.
 
 ### 5.2 Transport & Browser-Integration
 
