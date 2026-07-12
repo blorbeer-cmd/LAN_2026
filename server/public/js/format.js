@@ -67,7 +67,7 @@ export function seatConflictIconHtml(player) {
   const names = player?.seatConflictNames;
   const hasConflict = !!player?.seatConflict;
   const title = hasConflict
-    ? `Sitzt gegen Sitznachbar${names?.length > 1 ? 'n' : ''}: ${names.map(escapeHtml).join(', ')}`
+    ? `Spielt gegen Sitznachbar${names?.length > 1 ? 'n' : ''}: ${names.map(escapeHtml).join(', ')}`
     : '';
   return `<span title="${title}" style="color:var(--state-paused);${hasConflict ? '' : 'visibility:hidden;'}">${icon('armchair')}</span>`;
 }

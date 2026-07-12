@@ -391,7 +391,7 @@ export function renderMatchmaking(container, ctx) {
       <div class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">Anzahl Teams leer lassen für automatisch (Standard: 2)</div>
       <label class="check-row">
         <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
-        <span>${icon('armchair')} Sitznachbarn nicht gegeneinander auslosen</span>
+        <span>${icon('armchair')} Sitznachbarn bevorzugt ins selbe Team losen</span>
       </label>
 
       <div class="section-title" style="margin:var(--space-2) 0 0;">👑 Oder: Captain-Draft</div>
