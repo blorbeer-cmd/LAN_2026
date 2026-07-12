@@ -21,7 +21,7 @@ import { isAdmin } from '../admin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { allLobbyReady, lobbyPlayerChipsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeInfoGridHtml, matchRosterHtml } from './arcadeUi.js';
+import { arcadeExpandControlHtml, arcadeInfoGridHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
 const COLS = 10;
 const ROWS = 20;
@@ -384,7 +384,6 @@ function paintOverlay() {
 // ---------- Lobby card (rendered inline inside the Arcade view) ----------
 
 function renderLobbyList() {
-  const mine = myTetrisLobby();
   if (lobbies.length === 0) return `<div class="empty-state" style="padding:var(--space-4);">Keine offene Tetris-Lobby.</div>`;
   return lobbies
     .map((l) => {
@@ -399,7 +398,7 @@ function renderLobbyList() {
               ${readyToggleHtml(l, myId(), 'tetris-ready')}
               <button type="button" class="btn btn-sm btn-equal" data-tetris-leave="${l.id}">Verlassen</button>
             </div>`
-          : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-tetris-join="${l.id}" ${mine || full ? 'disabled' : ''}>Beitreten</button>`;
+          : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-tetris-join="${l.id}" ${full ? 'disabled' : ''}>Beitreten</button>`;
       return `
         <div class="lb-row" style="align-items:flex-start;">
           <div class="stack" style="gap:var(--space-2);flex:1;">
@@ -452,7 +451,13 @@ export function renderTetrisLobbyCard() {
     </div>`;
 }
 
-export function wireTetrisLobbyCard(container) {
+export async function leaveMyTetrisLobby() {
+  const lobby = myTetrisLobby();
+  if (!lobby) return { ok: true };
+  return emitWithAck('tetris:lobby:leave', { lobbyId: lobby.id, playerId: myId() });
+}
+
+export function wireTetrisLobbyCard(container, { beforeJoin } = {}) {
   container.querySelector('#tetris-bot')?.addEventListener('click', async () => {
     const res = await emitWithAck('tetris:lobby:bot', { playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
@@ -469,6 +474,7 @@ export function wireTetrisLobbyCard(container) {
     btn.addEventListener('click', async () => {
       const playerId = myId();
       if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+      if (beforeJoin && !(await beforeJoin())) return;
       const res = await emitWithAck('tetris:lobby:join', { lobbyId: btn.dataset.tetrisJoin, playerId });
       if (!res?.ok) showToast(res?.error || 'Beitritt fehlgeschlagen.', { error: true });
     });
@@ -560,6 +566,7 @@ export function renderTetris(container, ctx) {
   });
   container.innerHTML = `
     <div class="arcade-game-shell"><h1 class="view-title">Tetris</h1>
+    ${arcadeExpandControlHtml()}
     <div id="tetris-game">
       <div id="tetris-roster">${roster}</div>
       <div id="tetris-boards" class="tetris-boards">
@@ -571,6 +578,7 @@ export function renderTetris(container, ctx) {
     </div></div>`;
   paint();
   wireMatch(container);
+  wireArcadeExpandControl(container);
 }
 
 function wireMatch(container) {
