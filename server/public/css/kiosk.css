@@ -126,6 +126,49 @@
   color: var(--accent);
 }
 
+.kiosk-game {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6) var(--space-6);
+}
+.kiosk-game-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.kiosk-game-header h1 {
+  margin: 0;
+  font-size: var(--font-size-2xl);
+}
+.kiosk-game-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.kiosk-game-content canvas {
+  display: block;
+  width: min(100%, 1200px);
+  height: min(100%, 700px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.kiosk-game-question {
+  max-width: 1000px;
+  padding: var(--space-7);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  font-size: var(--font-size-2xl);
+  text-align: center;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .kiosk-broadcast {
     animation: none;

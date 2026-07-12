@@ -5,6 +5,7 @@ import { adminUnlockValid } from '../auth';
 import { createWorld, Direction, setDirection, SnakeWorld, stepWorld, SNAKE_HEIGHT, SNAKE_WIDTH } from './snakeLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
+import { broadcastArcadeKiosk } from '../realtime';
 
 const TICK_MS = 125;
 const COUNTDOWN_MS = 3000;
@@ -42,7 +43,9 @@ export function openLobbySummaries() {
   }));
 }
 function snapshot(io: Server, match: Match) {
-  io.to(match.room).emit('snake:state', { matchId: match.id, world: match.world, running: match.running, paused: match.paused, serverTime: Date.now() });
+  const payload = { matchId: match.id, world: match.world, running: match.running, paused: match.paused, serverTime: Date.now() };
+  io.to(match.room).emit('snake:state', payload);
+  broadcastArcadeKiosk(io, { gameType: 'snake', ...payload, players: match.players });
 }
 function realPlayerIds(players: Player[]): string[] {
   return players.filter((p) => p.id !== BOT_ID).map((p) => p.id);
@@ -64,6 +67,7 @@ function finish(io: Server, match: Match, winner: Player | null, reason: string)
     nanoid(), 'snake', winnerId, JSON.stringify(match.players), JSON.stringify(scoreEntries), reason, match.startedAt, Date.now()
   );
   io.to(match.room).emit('snake:match:end', { winner, reason, scores: match.world.snakes.map((snake) => snake.score) });
+  broadcastArcadeKiosk(io, { gameType: null, matchId: match.id });
   matches.delete(match.id);
 }
 function removeFromLobbies(io: Server, socketId: string) {

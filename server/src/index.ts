@@ -7,7 +7,7 @@ import { Server } from 'socket.io';
 import { config, productionConfigError } from './config';
 import './db'; // side-effect: open DB, create schema, seed defaults
 import { createApp } from './app';
-import { setIo, createSocketAuthGuard } from './realtime';
+import { setIo, createSocketAuthGuard, registerArcadeKioskSockets } from './realtime';
 import { accessProtectionEnabled } from './auth';
 import { startOfflineSweeper } from './liveStatus';
 import { startArcadeHeartbeat } from './arcade/arcadeTracking';
@@ -39,6 +39,7 @@ function start(): void {
   setIo(io);
 
   io.use(createSocketAuthGuard());
+  registerArcadeKioskSockets(io);
 
   registerArcadeSockets(io);
   registerTetrisSockets(io);

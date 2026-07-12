@@ -6,6 +6,7 @@ import { notifyPlayers } from '../push';
 import { matchesAnswer, pickQuestion } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
+import { broadcastArcadeKiosk } from '../realtime';
 
 const DEFAULT_TARGET_SCORE = 5;
 const QUESTION_MS = 20_000;
@@ -163,6 +164,7 @@ function finishMatch(io: Server, match: MatchState, winner: PlayerRef | null, re
     Date.now()
   );
   io.to(match.room).emit('arcade:match:end', { matchId: match.id, winner, reason, scores: scorePayload(match) });
+  broadcastArcadeKiosk(io, { gameType: null, matchId: match.id });
   matches.delete(match.id);
 }
 
@@ -204,6 +206,7 @@ function sendQuestion(io: Server, match: MatchState) {
     startedAt,
     expiresAt: match.questionExpiresAt,
   });
+  broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, question: question.question, category: question.category, scores: scorePayload(match), startedAt, expiresAt: match.questionExpiresAt });
 
   scheduleQuestionTimeout(io, match, QUESTION_MS);
   const bot = match.players.find((player) => player.id === QUIZ_BOT.id);
@@ -367,6 +370,7 @@ export function registerArcadeSockets(io: Server): void {
         targetScore: score,
         beginsAt,
       });
+      broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, phase: 'countdown', players: match.players, scores: scorePayload(match) });
       ack?.({ ok: true, matchId: match.id });
       // Hold the first question until the shared 3-2-1 countdown finishes.
       setTimeout(() => {

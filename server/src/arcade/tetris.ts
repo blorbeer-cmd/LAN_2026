@@ -18,6 +18,7 @@ import { db } from '../db';
 import { adminUnlockValid } from '../auth';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
+import { broadcastArcadeKiosk } from '../realtime';
 import {
   Board,
   Piece,
@@ -161,12 +162,14 @@ function serializeState(match: TetrisMatch, state: PlayerState) {
 }
 
 function broadcastState(io: Server, match: TetrisMatch) {
-  io.to(match.room).emit('tetris:state', {
+  const payload = {
     matchId: match.id,
     running: match.running,
     paused: match.paused,
     players: match.players.map((p) => serializeState(match, match.states.get(p.id)!)),
-  });
+  };
+  io.to(match.room).emit('tetris:state', payload);
+  broadcastArcadeKiosk(io, { gameType: 'tetris', ...payload, playerRefs: match.players });
 }
 
 function opponentState(match: TetrisMatch, playerId: string): PlayerState | null {
@@ -283,6 +286,7 @@ function finishMatch(io: Server, match: TetrisMatch, winner: PlayerRef | null, r
     reason,
     scores: scorePayload(match),
   });
+  broadcastArcadeKiosk(io, { gameType: null, matchId: match.id });
   matches.delete(match.id);
 }
 

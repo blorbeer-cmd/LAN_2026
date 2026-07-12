@@ -5,6 +5,7 @@ import { adminUnlockValid } from '../auth';
 import { BlobbyInput, BlobbyWorld, createWorld, stepWorld } from './blobbyLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
+import { broadcastArcadeKiosk } from '../realtime';
 
 const TICK_MS = 1000 / 60;
 const SNAPSHOT_MS = 50;
@@ -54,10 +55,12 @@ function scorePayload(match: Match) {
   return match.players.map((p) => ({ playerId: p.id, name: p.name, score: match.scores.get(p.id) ?? 0 }));
 }
 function snapshot(io: Server, match: Match) {
-  io.to(match.room).emit('blobby:state', {
+  const payload = {
     matchId: match.id, serverTime: Date.now(), running: match.running, paused: match.paused,
     world: match.world, scores: scorePayload(match), targetScore: match.targetScore,
-  });
+  };
+  io.to(match.room).emit('blobby:state', payload);
+  broadcastArcadeKiosk(io, { gameType: 'blobby', ...payload, players: match.players });
 }
 function realPlayerIds(players: PlayerRef[]): string[] {
   return players.filter((p) => p.id !== BOT_ID).map((p) => p.id);
@@ -71,6 +74,7 @@ function finish(io: Server, match: Match, winner: PlayerRef | null, reason: stri
     nanoid(), 'blobby', winner?.id === BOT_ID ? null : winner?.id ?? null, JSON.stringify(match.players), JSON.stringify(scorePayload(match)), reason, match.startedAt, Date.now()
   );
   io.to(match.room).emit('blobby:match:end', { matchId: match.id, winner, reason, scores: scorePayload(match) });
+  broadcastArcadeKiosk(io, { gameType: null, matchId: match.id });
   matches.delete(match.id);
 }
 function resetRally(match: Match, serveSide: 'left' | 'right') {

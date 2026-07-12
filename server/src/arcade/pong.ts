@@ -4,6 +4,7 @@ import { db } from '../db';
 import { adminUnlockValid } from '../auth';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { PADDLE_HEIGHT, PONG_HEIGHT, PongInput, PongWorld, createWorld, stepWorld } from './pongLogic';
+import { broadcastArcadeKiosk } from '../realtime';
 
 const TICK_MS = 1000 / 60;
 const SNAPSHOT_MS = 50;
@@ -69,7 +70,7 @@ function scorePayload(match: Match) {
 }
 
 function snapshot(io: Server, match: Match) {
-  io.to(match.room).emit('pong:state', {
+  const payload = {
     matchId: match.id,
     serverTime: Date.now(),
     running: match.running,
@@ -77,7 +78,9 @@ function snapshot(io: Server, match: Match) {
     world: match.world,
     scores: scorePayload(match),
     targetScore: match.targetScore,
-  });
+  };
+  io.to(match.room).emit('pong:state', payload);
+  broadcastArcadeKiosk(io, { gameType: 'pong', ...payload, players: match.players });
 }
 
 function finish(io: Server, match: Match, winner: Player | null, reason: string) {
@@ -97,6 +100,7 @@ function finish(io: Server, match: Match, winner: Player | null, reason: string)
     Date.now()
   );
   io.to(match.room).emit('pong:match:end', { matchId: match.id, winner, reason, scores: scorePayload(match) });
+  broadcastArcadeKiosk(io, { gameType: null, matchId: match.id });
   matches.delete(match.id);
 }
 

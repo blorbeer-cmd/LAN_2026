@@ -21,7 +21,7 @@
     <div id="kiosk-broadcast" class="kiosk-broadcast" hidden></div>
     <div id="kiosk-food-banner" class="kiosk-food-banner" hidden></div>
 
-    <main class="kiosk-grid">
+    <main id="kiosk-dashboard" class="kiosk-grid">
       <section class="kiosk-card">
         <h2>📡 Live-Status</h2>
         <div id="kiosk-live"><div class="empty-state">Lädt…</div></div>
@@ -42,6 +42,10 @@
         <div id="kiosk-tournament"><div class="empty-state">Lädt…</div></div>
       </section>
     </main>
+    <section id="kiosk-game" class="kiosk-game" hidden aria-live="polite">
+      <div class="kiosk-game-header"><h1 id="kiosk-game-title">Arcade</h1><span id="kiosk-game-status"></span></div>
+      <div id="kiosk-game-content" class="kiosk-game-content"></div>
+    </section>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>

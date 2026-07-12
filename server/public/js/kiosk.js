@@ -13,6 +13,131 @@ import { bannerContentHtml } from './pushFeed.js';
 installIconReplacement();
 
 const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
+const GAME_NAMES = { quiz: 'Gaming-Quiz', tetris: 'Tetris', scribble: 'Scribble', blobby: 'Blobby Volley', pong: 'Pong', snake: 'Snake' };
+const cssColor = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+function drawKioskCanvas(canvas, game) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = cssColor('--bg');
+  ctx.fillRect(0, 0, w, h);
+
+  if (game.gameType === 'scribble') {
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const op of game.strokes || []) {
+      if (op.type === 'fill') {
+        const x = Math.max(0, Math.min(w - 1, Math.round(op.x * w)));
+        const y = Math.max(0, Math.min(h - 1, Math.round(op.y * h)));
+        const image = ctx.getImageData(0, 0, w, h);
+        const target = (y * w + x) * 4;
+        const replacement = document.createElement('canvas').getContext('2d');
+        if (!replacement) continue;
+        replacement.fillStyle = op.color;
+        replacement.fillRect(0, 0, 1, 1);
+        const color = replacement.getImageData(0, 0, 1, 1).data;
+        const start = [image.data[target], image.data[target + 1], image.data[target + 2], image.data[target + 3]];
+        if (start.every((value, index) => value === color[index])) continue;
+        const stack = [[x, y]];
+        while (stack.length) {
+          const [px, py] = stack.pop();
+          if (px < 0 || py < 0 || px >= w || py >= h) continue;
+          const offset = (py * w + px) * 4;
+          if (!start.every((value, index) => image.data[offset + index] === value)) continue;
+          color.forEach((value, index) => { image.data[offset + index] = value; });
+          stack.push([px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]);
+        }
+        ctx.putImageData(image, 0, 0);
+        continue;
+      }
+      if (op.type !== 'stroke' || !op.points?.length) continue;
+      ctx.beginPath();
+      ctx.strokeStyle = op.erase ? cssColor('--bg') : op.color;
+      ctx.lineWidth = op.size * 2;
+      op.points.forEach(([x, y], i) => (i ? ctx.lineTo(x * w, y * h) : ctx.moveTo(x * w, y * h)));
+      ctx.stroke();
+    }
+    return;
+  }
+
+  if (game.gameType === 'tetris') {
+    const boards = game.players || [];
+    const boardW = w / Math.max(1, boards.length);
+    boards.forEach((player, index) => {
+      const left = index * boardW + boardW * 0.1;
+      const top = h * 0.06;
+      const bw = boardW * 0.8;
+      const bh = h * 0.88;
+      const cell = Math.min(bw / 10, bh / 20);
+      ctx.fillStyle = cssColor('--bg-elevated');
+      ctx.fillRect(left, top, cell * 10, cell * 20);
+      (player.board || []).forEach((row, y) => row.forEach((value, x) => {
+        if (!value) return;
+        ctx.fillStyle = cssColor('--accent');
+        ctx.fillRect(left + x * cell, top + y * cell, cell - 1, cell - 1);
+      }));
+      if (player.current) {
+        ctx.fillStyle = player.current.color || cssColor('--accent-2');
+        player.current.cells.forEach(([x, y]) => ctx.fillRect(left + x * cell, top + y * cell, cell - 1, cell - 1));
+      }
+      ctx.fillStyle = cssColor('--text');
+      ctx.font = `${parseFloat(getComputedStyle(document.body).fontSize) * 1.5}px sans-serif`;
+      ctx.fillText(player.name || 'Spieler', left, h * 0.98);
+    });
+    return;
+  }
+
+  const world = game.world;
+  if (!world) return;
+  if (game.gameType === 'snake') {
+    const cw = w / 32;
+    const ch = h / 20;
+    ctx.strokeStyle = cssColor('--accent-2');
+    ctx.globalAlpha = 0.12;
+    for (let x = 1; x < 32; x++) { ctx.beginPath(); ctx.moveTo(x * cw, 0); ctx.lineTo(x * cw, h); ctx.stroke(); }
+    for (let y = 1; y < 20; y++) { ctx.beginPath(); ctx.moveTo(0, y * ch); ctx.lineTo(w, y * ch); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+    world.snakes.forEach((snake, index) => { ctx.fillStyle = index ? cssColor('--accent-3') : cssColor('--accent'); snake.body.forEach((part) => ctx.fillRect(part.x * cw, part.y * ch, cw - 2, ch - 2)); });
+    ctx.fillStyle = cssColor('--rank-1-gold'); ctx.beginPath(); ctx.arc((world.food.x + 0.5) * cw, (world.food.y + 0.5) * ch, Math.min(cw, ch) * 0.35, 0, Math.PI * 2); ctx.fill();
+  } else if (game.gameType === 'pong') {
+    const scaleX = w / 800;
+    const scaleY = h / 450;
+    ctx.fillStyle = cssColor('--accent'); ctx.fillRect(world.paddles[0].x * scaleX, world.paddles[0].y * scaleY, 12, world.paddles[0].height * scaleY);
+    ctx.fillStyle = cssColor('--accent-3'); ctx.fillRect(world.paddles[1].x * scaleX, world.paddles[1].y * scaleY, 12, world.paddles[1].height * scaleY);
+    ctx.fillStyle = cssColor('--text'); ctx.beginPath(); ctx.arc(world.ball.x * scaleX, world.ball.y * scaleY, 10, 0, Math.PI * 2); ctx.fill();
+  } else if (game.gameType === 'blobby') {
+    const sx = w / 1000;
+    const sy = h / 600;
+    ctx.strokeStyle = cssColor('--accent-2'); ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h); ctx.stroke();
+    world.blobs.forEach((blob, index) => { ctx.fillStyle = index ? cssColor('--accent-3') : cssColor('--accent'); ctx.beginPath(); ctx.arc(blob.x * sx, blob.y * sy, 28, 0, Math.PI * 2); ctx.fill(); });
+    ctx.fillStyle = cssColor('--rank-1-gold'); ctx.beginPath(); ctx.arc(world.ball.x * sx, world.ball.y * sy, 16, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function renderArcadeStream(game) {
+  const gameView = document.getElementById('kiosk-game');
+  const dashboard = document.getElementById('kiosk-dashboard');
+  if (!game?.gameType) {
+    gameView.hidden = true;
+    dashboard.hidden = false;
+    return;
+  }
+  dashboard.hidden = true;
+  gameView.hidden = false;
+  document.getElementById('kiosk-game-title').textContent = GAME_NAMES[game.gameType] || 'Arcade';
+  document.getElementById('kiosk-game-status').textContent = game.phase === 'countdown' ? 'Startet gleich' : game.paused ? 'Pause' : 'Läuft';
+  const content = document.getElementById('kiosk-game-content');
+  if (game.gameType === 'quiz') {
+    content.innerHTML = `<div class="kiosk-game-question">${escapeHtml(game.question || 'Nächste Frage kommt gleich.')}</div>`;
+    return;
+  }
+  let canvas = content.querySelector('canvas');
+  if (!canvas) { content.innerHTML = '<canvas width="1200" height="700" aria-label="Livebild des Arcade-Spiels"></canvas>'; canvas = content.querySelector('canvas'); }
+  drawKioskCanvas(canvas, game);
+}
 
 // Same idea as app.js's ensureAccess, but with no login form to fall back
 // to — a kiosk screen is set up once (via ?token=…, same as an invite link)
@@ -313,6 +438,9 @@ async function main() {
   await refreshAll();
 
   const socket = connectSocket();
+
+  socket.on('arcade:kiosk:game', renderArcadeStream);
+  socket.emit('kiosk:subscribe');
 
   [
     'live:changed',
