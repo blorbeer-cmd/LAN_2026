@@ -4,7 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Build, publish and deploy after successful tests
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -60,7 +66,7 @@ jobs:
       - run: npm run test:e2e
 
   build-and-push:
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy)
     needs: test
     runs-on: ubuntu-latest
     permissions:
@@ -93,7 +99,7 @@ jobs:
             ${{ steps.meta.outputs.image }}:latest
 
   deploy:
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy)
     needs: build-and-push
     runs-on: ubuntu-latest
     environment: production

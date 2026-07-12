@@ -123,6 +123,10 @@ Die Pipeline in `.github/workflows/deploy.yml` führt die verbindlichen Prüfung
 ignoriert oder durch erneutes Ausführen ohne Ursachenklärung umgangen. Lokale Prüfung und CI
 ergänzen einander; keine von beiden ersetzt die andere.
 
+Ein manueller Workflow-Lauf führt standardmäßig nur die Prüfungen aus. Image-Veröffentlichung und
+Produktiv-Deployment benötigen bei manueller Ausführung die ausdrückliche Eingabe `deploy=true`;
+ein Push auf `main` behält den automatischen Build-und-Deploy-Ablauf bei.
+
 | Änderung | Mindestens ausführen |
 |---|---|
 | Nur Dokumentation | Links, Pfade und genannte Scripts manuell prüfen |
