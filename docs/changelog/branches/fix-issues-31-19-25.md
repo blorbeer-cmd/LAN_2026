@@ -8,4 +8,6 @@ Kleine Sicherheits-, Robustheits- und Test-Dokumentationsverbesserungen:
 - Große JSON-Anfragen mit einem klaren `413` ablehnen.
 - Installation des Playwright-Chromium-Browsers dokumentieren.
 
-Der zugehörige Pull Request wird nach dem Merge hier ergänzt.
+## Pull Request
+
+- [PR #144](https://github.com/blorbeer-cmd/LAN_2026/pull/144), gemergt am 2026-07-12.

@@ -14,6 +14,7 @@ Stand: 2026-07-12 · Basis: `main` auf `a3011e2`
 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
+| 2026-07-12 | [#144](https://github.com/blorbeer-cmd/LAN_2026/pull/144) | [Fix invite token handling, JSON limits and Playwright docs](pr/pr-144-fix-invite-token-handling-json-limits-and-playwright-docs.md) | `fix/issues-31-19-25` |
 | 2026-07-12 | [#143](https://github.com/blorbeer-cmd/LAN_2026/pull/143) | [Fix seat-conflict icon spacing and show the neighbor's name in its tooltip](pr/pr-143-fix-seat-conflict-icon-spacing-and-show-the-neighbor-s-name-in-its-too.md) | `claude/team-draw-seat-neighbors-2wfji2` |
 | 2026-07-12 | [#141](https://github.com/blorbeer-cmd/LAN_2026/pull/141) | [Show lobby host/player counts in the arcade overview and tile badges](pr/pr-141-show-lobby-host-player-counts-in-the-arcade-overview-and-tile-badges.md) | `claude/arcade-all-open-lobbies-tptts0` |
 | 2026-07-12 | [#140](https://github.com/blorbeer-cmd/LAN_2026/pull/140) | [Fix remaining Home tile height jump on pause](pr/pr-140-fix-remaining-home-tile-height-jump-on-pause.md) | `claude/home-tiles-games-display-c6uua7` |
