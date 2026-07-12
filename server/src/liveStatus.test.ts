@@ -42,12 +42,17 @@ test('no active games but a manual note => paused', () => {
   assert.equal(state, 'paused');
 });
 
-test('stale report but a manual note => paused (note wins over offline)', () => {
+test('stale report but a manual note => offline', () => {
   const now = 1_000_000;
   const state = deriveState(
     { last_seen: now - config.offlineTimeoutMs - 5_000, manual_note: 'Pause', activeGamesCount: 1 },
     now
   );
+  assert.equal(state, 'offline');
+});
+
+test('a manual note without an agent report remains paused', () => {
+  const state = deriveState({ last_seen: null, manual_note: 'Essen', activeGamesCount: 0 }, 1_000_000);
   assert.equal(state, 'paused');
 });
 
