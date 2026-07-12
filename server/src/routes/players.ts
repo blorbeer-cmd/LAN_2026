@@ -112,10 +112,9 @@ playersRouter.post('/', (req, res) => {
     avatar: avatar ?? null,
     api_key: nanoid(24),
     tracking_paused: 0,
-    // Everyone is an admin for now (PIN retired, self-moderating friend
-    // group — see the backfill in db.ts); the flag stays revocable per
-    // player through the admin panel.
-    is_admin: 1,
+    // New players are regular participants until an existing admin grants
+    // the moderation flag. Arcade AI matches rely on this flag too.
+    is_admin: 0,
     created_at: Date.now(),
   };
 
@@ -160,9 +159,8 @@ playersRouter.patch('/:id', (req, res) => {
   if (isAdmin !== undefined && typeof isAdmin !== 'boolean') {
     return res.status(400).json({ error: 'isAdmin muss ein Boolean sein.' });
   }
-  // Granting/revoking admin is as open as the other self-service fields
-  // while the admin PIN is retired (everyone is an admin anyway — see the
-  // backfill in db.ts); the former x-admin-pin check returns with the PIN.
+  // Granting/revoking admin remains an admin-panel action in the UI; the
+  // endpoint keeps the existing trusted-friend-group API shape.
 
   const nextName = name !== undefined ? name.trim() : existing.name;
   if (name !== undefined && nameTaken(nextName, existing.id)) {

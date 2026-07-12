@@ -184,3 +184,15 @@ test('GET /api/arcade/stats ignores legacy Snake rows that stored a bare score a
   const legacy = res.body.games.find((game: { gameType: string }) => game.gameType === 'snakelegacy');
   assert.equal(legacy, undefined);
 });
+
+test('arcade AI access follows the selected player admin flag', async () => {
+  const player = await request(app).post('/api/players').send({ name: 'Arcade Non Admin' });
+  assert.equal(player.body.is_admin, 0);
+
+  const { playerMayUseArcadeAi } = await import('../arcade/adminAccess');
+  assert.equal(playerMayUseArcadeAi(player.body.id), false);
+
+  await request(app).patch(`/api/players/${player.body.id}`).send({ isAdmin: true }).expect(200);
+  assert.equal(playerMayUseArcadeAi(player.body.id), true);
+  assert.equal(playerMayUseArcadeAi('missing-player'), false);
+});
