@@ -66,7 +66,6 @@ export function ensureSnakeSocket() {
 }
 
 function lobbyList() {
-  const mine = mySnakeLobby();
   if (!lobbies.length) return '<div class="empty-state" style="padding:var(--space-4);">Keine offene Snake-Lobby.</div>';
   return lobbies.map((lobby) => {
     const isHost = lobby.host.id === myId();
@@ -79,7 +78,7 @@ function lobbyList() {
             ${readyToggleHtml(lobby, myId(), 'snake-ready')}
             <button type="button" class="btn btn-sm btn-equal" data-snake-leave="${lobby.id}">Verlassen</button>
           </div>`
-        : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-snake-join="${lobby.id}" ${mine || full ? 'disabled' : ''}>Beitreten</button>`;
+        : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-snake-join="${lobby.id}" ${full ? 'disabled' : ''}>Beitreten</button>`;
     return `<div class="lb-row" style="align-items:flex-start;">
       <div class="stack" style="gap:var(--space-2);flex:1;">
         <strong>${escapeHtml(lobby.host.name)}s Snake-Lobby</strong>
@@ -112,7 +111,13 @@ export function renderSnakeLobbyCard() {
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}${lobbyList()}${hostStart()}</div>`;
 }
 
-export function wireSnakeLobbyCard(container) {
+export async function leaveMySnakeLobby() {
+  const lobby = mySnakeLobby();
+  if (!lobby) return { ok: true };
+  return emitAck('snake:lobby:leave', { lobbyId: lobby.id, playerId: myId() });
+}
+
+export function wireSnakeLobbyCard(container, { beforeJoin } = {}) {
   container.querySelector('#snake-bot')?.addEventListener('click', async () => {
     const result = await emitAck('snake:lobby:bot', { playerId: myId() });
     if (!result?.ok) showToast(result?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
@@ -122,6 +127,7 @@ export function wireSnakeLobbyCard(container) {
     if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelectorAll('[data-snake-join]').forEach((button) => button.addEventListener('click', async () => {
+    if (beforeJoin && !(await beforeJoin())) return;
     const result = await emitAck('snake:lobby:join', { lobbyId: button.dataset.snakeJoin, playerId: myId() });
     if (!result?.ok) showToast(result?.error || 'Beitritt fehlgeschlagen.', { error: true });
   }));

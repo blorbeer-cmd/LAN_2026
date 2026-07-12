@@ -102,7 +102,6 @@ function bindKeyboard() {
 }
 
 function lobbyList() {
-  const mine = myBlobbyLobby();
   if (!lobbies.length) return '<div class="empty-state" style="padding:var(--space-4);">Keine offene Blobby-Volley-Lobby.</div>';
   return lobbies.map((l) => {
     const isHost = l.host.id === myId();
@@ -115,7 +114,7 @@ function lobbyList() {
             ${readyToggleHtml(l, myId(), 'blobby-ready')}
             <button type="button" class="btn btn-sm btn-equal" data-blobby-leave="${l.id}">Verlassen</button>
           </div>`
-        : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-blobby-join="${l.id}" ${mine || full ? 'disabled' : ''}>Beitreten</button>`;
+        : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-blobby-join="${l.id}" ${full ? 'disabled' : ''}>Beitreten</button>`;
     return `<div class="lb-row" style="align-items:flex-start;">
       <div class="stack" style="gap:var(--space-2);flex:1;">
         <strong>${escapeHtml(l.host.name)}s Blobby-Volley-Lobby</strong>
@@ -148,7 +147,13 @@ export function renderBlobbyLobbyCard() {
     ])}
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}${lobbyList()}${hostStart()}</div>`;
 }
-export function wireBlobbyLobbyCard(container) {
+export async function leaveMyBlobbyLobby() {
+  const lobby = myBlobbyLobby();
+  if (!lobby) return { ok: true };
+  return emitAck('blobby:lobby:leave', { lobbyId: lobby.id, playerId: myId() });
+}
+
+export function wireBlobbyLobbyCard(container, { beforeJoin } = {}) {
   container.querySelectorAll('input[name="blobby-target"]').forEach((input) => input.addEventListener('change', () => { targetScore = Number(input.value); }));
   container.querySelector('#blobby-create')?.addEventListener('click', async () => {
     const res = await emitAck('blobby:lobby:create', { playerId: myId() });
@@ -159,6 +164,7 @@ export function wireBlobbyLobbyCard(container) {
     if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelectorAll('[data-blobby-join]').forEach((b) => b.addEventListener('click', async () => {
+    if (beforeJoin && !(await beforeJoin())) return;
     const res = await emitAck('blobby:lobby:join', { lobbyId: b.dataset.blobbyJoin, playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'Beitritt fehlgeschlagen.', { error: true });
   }));

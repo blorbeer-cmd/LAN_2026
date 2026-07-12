@@ -4,7 +4,7 @@ import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { isAdmin } from '../admin.js';
-import { ensureTetrisSocket, renderTetrisLobbyCard, wireTetrisLobbyCard, myTetrisLobby, tetrisLobbies } from './tetris.js';
+import { ensureTetrisSocket, renderTetrisLobbyCard, wireTetrisLobbyCard, myTetrisLobby, tetrisLobbies, leaveMyTetrisLobby } from './tetris.js';
 import {
   ensureScribbleSocket,
   renderScribbleLobbyCard,
@@ -12,18 +12,18 @@ import {
   myScribbleLobby,
   hasScribbleMatch,
   scribbleLobbies,
+  leaveMyScribbleLobby,
 } from './arcadeScribble.js';
-import { ensureBlobbySocket, renderBlobbyLobbyCard, wireBlobbyLobbyCard, myBlobbyLobby, hasBlobbyMatch, blobbyLobbies } from './blobby.js';
-import { ensurePongSocket, renderPongLobbyCard, wirePongLobbyCard, myPongLobby, hasPongMatch, pongLobbies } from './pong.js';
-import { ensureSnakeSocket, renderSnakeLobbyCard, wireSnakeLobbyCard, mySnakeLobby, hasSnakeMatch, snakeLobbies } from './snake.js';
+import { ensureBlobbySocket, renderBlobbyLobbyCard, wireBlobbyLobbyCard, myBlobbyLobby, hasBlobbyMatch, blobbyLobbies, leaveMyBlobbyLobby } from './blobby.js';
+import { ensurePongSocket, renderPongLobbyCard, wirePongLobbyCard, myPongLobby, hasPongMatch, pongLobbies, leaveMyPongLobby } from './pong.js';
+import { ensureSnakeSocket, renderSnakeLobbyCard, wireSnakeLobbyCard, mySnakeLobby, hasSnakeMatch, snakeLobbies, leaveMySnakeLobby } from './snake.js';
 import { arcadeInfoGridHtml, matchRosterHtml } from './arcadeUi.js';
 import { confirmDialog } from '../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { lobbyPlayerChipsHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 
-// The Arcade opens as a launcher: a compact grid of game tiles. Picking one
-// reveals that game's lobby below. Quiz, Tetris and Scribble are live; the
-// rest are placeholders for games still to come.
+// The Arcade opens as a launcher: a compact grid of playable game tiles.
+// Picking one reveals that game's lobby below.
 const GAMES = [
   { id: 'quiz', icon: icon('brain'), name: 'Gaming-Quiz' },
   { id: 'tetris', icon: '🧩', name: 'Tetris' },
@@ -230,7 +230,6 @@ function targetControls(lobby) {
 }
 
 function renderLobbyList() {
-  const mine = myLobby();
   if (lobbies.length === 0) return `<div class="empty-state" style="padding:var(--space-4);">Keine offene Quiz-Lobby.</div>`;
   return lobbies
     .map((l) => {
@@ -240,7 +239,7 @@ function renderLobbyList() {
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-close-lobby="${l.id}">Schließen</button>`
         : joined
           ? readyToggleHtml(l, getMyId(), 'quiz-ready')
-          : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-join-lobby="${l.id}" ${mine ? 'disabled' : ''}>Beitreten</button>`;
+          : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-join-lobby="${l.id}">Beitreten</button>`;
       return `
         <div class="lb-row" style="align-items:flex-start;">
           <div class="stack" style="gap:var(--space-2);flex:1;">
@@ -313,17 +312,44 @@ function renderMatch() {
   `;
 }
 
-// The game the launcher should currently expand: forced to the game the player
-// is actually engaged in (a live quiz match/lobby, a tetris lobby, or a
-// scribble/blobby/snake lobby/match), else whatever tile they last tapped.
-function currentGame() {
+function engagedGame() {
   if (match || myLobby()) return 'quiz';
   if (myTetrisLobby()) return 'tetris';
   if (myScribbleLobby() || hasScribbleMatch()) return 'scribble';
   if (myPongLobby() || hasPongMatch()) return 'pong';
   if (myBlobbyLobby() || hasBlobbyMatch()) return 'blobby';
   if (mySnakeLobby() || hasSnakeMatch()) return 'snake';
-  return activeGame;
+  return null;
+}
+
+function currentGame() {
+  return activeGame ?? engagedGame();
+}
+
+async function leaveOwnLobbyBeforeJoining(targetGame) {
+  const playerId = getMyId();
+  const candidates = [
+    { name: 'Quiz', lobby: myLobby(), leave: (lobby) => emitWithAck('arcade:lobby:close', { lobbyId: lobby.id, playerId }) },
+    { name: 'Tetris', lobby: myTetrisLobby(), leave: leaveMyTetrisLobby },
+    { name: 'Scribble', lobby: myScribbleLobby(), leave: leaveMyScribbleLobby },
+    { name: 'Pong', lobby: myPongLobby(), leave: leaveMyPongLobby },
+    { name: 'Blobby Volley', lobby: myBlobbyLobby(), leave: leaveMyBlobbyLobby },
+    { name: 'Snake', lobby: mySnakeLobby(), leave: leaveMySnakeLobby },
+  ];
+  const own = candidates.find((entry) => entry.lobby?.host.id === playerId);
+  if (!own) return true;
+  if (!(await confirmDialog(
+    `Du hast bereits eine eigene ${own.name}-Lobby. Wenn du dieser Lobby beitrittst, wird deine eigene Lobby aufgelöst.`,
+    { confirmText: 'Auflösen & beitreten', danger: true }
+  ))) return false;
+
+  const result = await own.leave(own.lobby);
+  if (!result?.ok) {
+    showToast(result?.error || 'Deine Lobby konnte nicht aufgelöst werden.', { error: true });
+    return false;
+  }
+  activeGame = targetGame;
+  return true;
 }
 
 // The raw open-lobby list for a given game — every xLobbies() getter
@@ -456,11 +482,11 @@ export function renderArcade(container, ctx) {
   `;
 
   wireWhoAmICard(container, 'whoami', ctx);
-  wireTetrisLobbyCard(container);
-  wireScribbleLobbyCard(container);
-  wirePongLobbyCard(container);
-  wireBlobbyLobbyCard(container);
-  wireSnakeLobbyCard(container);
+  wireTetrisLobbyCard(container, { beforeJoin: () => leaveOwnLobbyBeforeJoining('tetris') });
+  wireScribbleLobbyCard(container, { beforeJoin: () => leaveOwnLobbyBeforeJoining('scribble') });
+  wirePongLobbyCard(container, { beforeJoin: () => leaveOwnLobbyBeforeJoining('pong') });
+  wireBlobbyLobbyCard(container, { beforeJoin: () => leaveOwnLobbyBeforeJoining('blobby') });
+  wireSnakeLobbyCard(container, { beforeJoin: () => leaveOwnLobbyBeforeJoining('snake') });
 
   container.querySelectorAll('[data-game]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -505,6 +531,7 @@ export function renderArcade(container, ctx) {
     btn.addEventListener('click', async () => {
       const playerId = getMyId();
       if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+      if (!(await leaveOwnLobbyBeforeJoining('quiz'))) return;
       const res = await emitWithAck('arcade:lobby:join', { lobbyId: btn.dataset.joinLobby, playerId });
       if (!res?.ok) showToast(res?.error || 'Beitritt fehlgeschlagen.', { error: true });
     });

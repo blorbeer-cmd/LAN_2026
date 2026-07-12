@@ -459,17 +459,76 @@ test('Arcade: open a quiz lobby, see it listed and on Home, then close it again'
   // needed there: the launcher force-expands the game whose lobby you're in.
   await page.click('[data-view="home"]');
   await page.click('button:has-text("Gaming-Quiz-Lobby offen")');
-
   // The host sees their own lobby with a "Schließen" button instead of a
   // join button/"Drin" badge - closing was previously impossible (the only
   // way to get rid of a lobby was to disconnect the socket, e.g. by closing
   // the tab), leaving abandoned lobbies listed forever.
   await page.waitForSelector('[data-close-lobby]');
+
+  // An open lobby must not lock the launcher to its game. The host can still
+  // inspect another game's lobbies and return without closing their own.
+  await page.click('[data-game="tetris"]');
+  await page.waitForSelector('#tetris-create');
+  await page.click('[data-game="quiz"]');
+  await page.waitForSelector('[data-close-lobby]');
+
   await page.click('[data-close-lobby]');
   await page.waitForSelector('text=Keine offene Quiz-Lobby.');
 
   // Closed - the create button is enabled again.
   await page.waitForSelector('#quiz-create-lobby:not([disabled])');
+});
+
+test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', async () => {
+  const players = (await (await fetch(`${BASE_URL}/api/players`)).json()) as Array<{ id: string; name: string }>;
+  const guest = players.find((p) => p.name === 'E2E Bob');
+  assert.ok(guest, 'expected "E2E Bob" (added by an earlier test) to exist');
+
+  const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const guestPage = await guestContext.newPage();
+  try {
+    await guestPage.goto(BASE_URL);
+    await guestPage.evaluate((id) => localStorage.setItem('lan2026_my_player_id', id), guest!.id);
+    await guestPage.reload();
+    await guestPage.waitForSelector('.nav-btn[data-view="more"]');
+    await guestPage.click('[data-view="more"]');
+    await guestPage.click('[data-navigate="arcade"]');
+
+    for (const game of ['pong', 'blobby'] as const) {
+      if ((await page.locator('#quiz-create-lobby').count()) === 0) await page.click('[data-game="quiz"]');
+      await page.waitForSelector('#quiz-create-lobby:not([disabled])');
+      await page.click('#quiz-create-lobby');
+
+      await guestPage.click(`[data-game="${game}"]`);
+      await guestPage.waitForSelector(`#${game}-create:not([disabled])`);
+      await guestPage.click(`#${game}-create`);
+
+      await page.click(`[data-game="${game}"]`);
+      await page.waitForSelector(`[data-${game}-join]`);
+      await page.click(`[data-${game}-join]`);
+      await page.waitForSelector('text=Wenn du dieser Lobby beitrittst, wird deine eigene Lobby aufgelöst.');
+
+      // Cancelling must keep the owned lobby intact.
+      await page.click('[data-cancel]');
+      await page.click('[data-game="quiz"]');
+      await page.waitForSelector('[data-close-lobby]');
+
+      await page.click(`[data-game="${game}"]`);
+      await page.click(`[data-${game}-join]`);
+      await page.click('[data-confirm]');
+      await page.waitForSelector(`[data-${game}-leave]`);
+
+      await page.click('[data-game="quiz"]');
+      await page.waitForSelector('text=Keine offene Quiz-Lobby.');
+
+      await guestPage.waitForSelector(`[data-${game}-close]`);
+      await guestPage.click(`[data-${game}-close]`);
+      await page.click(`[data-game="${game}"]`);
+      await page.waitForSelector(`text=Keine offene ${game === 'pong' ? 'Pong' : 'Blobby-Volley'}-Lobby.`);
+    }
+  } finally {
+    await guestContext.close();
+  }
 });
 
 test('Arcade: a lobby guest flags themselves ready and the host sees it', async () => {

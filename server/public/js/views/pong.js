@@ -99,7 +99,6 @@ export function ensurePongSocket() {
 }
 
 function lobbyList() {
-  const mine = myPongLobby();
   if (!lobbies.length) return '<div class="empty-state" style="padding:var(--space-4);">Keine offene Pong-Lobby.</div>';
   return lobbies.map((lobby) => {
     const isHost = lobby.host.id === myId();
@@ -112,7 +111,7 @@ function lobbyList() {
             ${readyToggleHtml(lobby, myId(), 'pong-ready')}
             <button type="button" class="btn btn-sm btn-equal" data-pong-leave="${lobby.id}">Verlassen</button>
           </div>`
-        : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-pong-join="${lobby.id}" ${mine || full ? 'disabled' : ''}>Beitreten</button>`;
+        : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-pong-join="${lobby.id}" ${full ? 'disabled' : ''}>Beitreten</button>`;
     return `<div class="lb-row" style="align-items:flex-start;">
       <div class="stack" style="gap:var(--space-2);flex:1;">
         <strong>${escapeHtml(lobby.host.name)}s Pong-Lobby</strong>
@@ -149,7 +148,13 @@ export function renderPongLobbyCard() {
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}${lobbyList()}${hostStart()}</div>`;
 }
 
-export function wirePongLobbyCard(container) {
+export async function leaveMyPongLobby() {
+  const lobby = myPongLobby();
+  if (!lobby) return { ok: true };
+  return emitAck('pong:lobby:leave', { lobbyId: lobby.id, playerId: myId() });
+}
+
+export function wirePongLobbyCard(container, { beforeJoin } = {}) {
   container.querySelectorAll('input[name="pong-target"]').forEach((input) => input.addEventListener('change', () => { targetScore = Number(input.value); }));
   container.querySelector('#pong-create')?.addEventListener('click', async () => {
     const result = await emitAck('pong:lobby:create', { playerId: myId() });
@@ -160,6 +165,7 @@ export function wirePongLobbyCard(container) {
     if (!result?.ok) showToast(result?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelectorAll('[data-pong-join]').forEach((button) => button.addEventListener('click', async () => {
+    if (beforeJoin && !(await beforeJoin())) return;
     const result = await emitAck('pong:lobby:join', { lobbyId: button.dataset.pongJoin, playerId: myId() });
     if (!result?.ok) showToast(result?.error || 'Beitritt fehlgeschlagen.', { error: true });
   }));
