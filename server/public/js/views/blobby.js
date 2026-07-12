@@ -140,7 +140,7 @@ function hostStart() {
 export function renderBlobbyLobbyCard() {
   const lobby = myBlobbyLobby(); const noMe = !myId();
   return `<div class="card stack"><div class="row-between" style="gap:var(--space-3);"><strong>Blobby-Volley-Lobby</strong>
-    <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="blobby-bot" ${lobby || match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="blobby-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div></div>
+    <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="blobby-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="blobby-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div></div>
     ${arcadeInfoGridHtml([
       { label: 'Ziel', text: 'Erreiche zuerst die Punktzahl.' },
       { label: 'Steuerung', text: 'Pfeiltasten.' },
@@ -153,13 +153,15 @@ export async function leaveMyBlobbyLobby() {
   return emitAck('blobby:lobby:leave', { lobbyId: lobby.id, playerId: myId() });
 }
 
-export function wireBlobbyLobbyCard(container, { beforeJoin } = {}) {
+export function wireBlobbyLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
   container.querySelectorAll('input[name="blobby-target"]').forEach((input) => input.addEventListener('change', () => { targetScore = Number(input.value); }));
   container.querySelector('#blobby-create')?.addEventListener('click', async () => {
+    if (beforeCreate && !(await beforeCreate())) return;
     const res = await emitAck('blobby:lobby:create', { playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelector('#blobby-bot')?.addEventListener('click', async () => {
+    if (beforeCreate && !(await beforeCreate())) return;
     const res = await emitAck('blobby:lobby:bot', { playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });

@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { chromium, Browser, Page } from 'playwright';
+import { normalizeAnswer } from '../../arcade/quizLogic';
 
 const PORT = 3901;
 const BASE_URL = `http://localhost:${PORT}`;
@@ -506,6 +507,14 @@ test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', as
       await page.waitForSelector('#quiz-create-lobby:not([disabled])');
       await page.click('#quiz-create-lobby');
 
+      // Opening another lobby uses the same guarded switch flow.
+      await page.click('[data-game="tetris"]');
+      await page.click('#tetris-create');
+      await page.waitForSelector('text=Wenn du eine neue Lobby öffnest, wird deine eigene Lobby aufgelöst.');
+      await page.click('[data-cancel]');
+      await page.click('[data-game="quiz"]');
+      await page.waitForSelector('[data-close-lobby]');
+
       await guestPage.click(`[data-game="${game}"]`);
       await guestPage.waitForSelector(`#${game}-create:not([disabled])`);
       await guestPage.click(`#${game}-create`);
@@ -835,9 +844,10 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     // "Knapp dran": a wrong guess one edit away from the word gets private
     // feedback (via the socket ack, never broadcast) - only the guesser
     // should ever see it, not the drawer.
-    if (chosenWord.length >= 4) {
-      const mid = Math.floor(chosenWord.length / 2);
-      const closeTypo = chosenWord.slice(0, mid) + chosenWord.slice(mid + 1);
+    const normalizedWord = normalizeAnswer(chosenWord);
+    if (normalizedWord.length >= 4) {
+      const mid = Math.floor(normalizedWord.length / 2);
+      const closeTypo = normalizedWord.slice(0, mid) + normalizedWord.slice(mid + 1);
       await guesserPage.fill('#scribble-guess-input', closeTypo);
       await guesserPage.click('#scribble-guess-form button[type="submit"]');
       await guesserPage.waitForSelector('text=Knapp dran!');

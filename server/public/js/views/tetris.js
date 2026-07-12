@@ -439,7 +439,7 @@ export function renderTetrisLobbyCard() {
     <div class="card stack">
       <div class="row-between" style="gap:var(--space-3);">
         <strong>Tetris-Lobby</strong>
-        <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="tetris-bot" ${lobby || match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="tetris-create" ${lobby || match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div>
+        <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="tetris-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="tetris-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div>
       </div>
       ${arcadeInfoGridHtml([
         { label: 'Ziel', text: 'Überleben.' },
@@ -457,14 +457,16 @@ export async function leaveMyTetrisLobby() {
   return emitWithAck('tetris:lobby:leave', { lobbyId: lobby.id, playerId: myId() });
 }
 
-export function wireTetrisLobbyCard(container, { beforeJoin } = {}) {
+export function wireTetrisLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
   container.querySelector('#tetris-bot')?.addEventListener('click', async () => {
+    if (beforeCreate && !(await beforeCreate())) return;
     const res = await emitWithAck('tetris:lobby:bot', { playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelector('#tetris-create')?.addEventListener('click', async () => {
     const playerId = myId();
     if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+    if (beforeCreate && !(await beforeCreate())) return;
     const res = await emitWithAck('tetris:lobby:create', { playerId });
     if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
     showToast('Tetris-Lobby geöffnet.');
