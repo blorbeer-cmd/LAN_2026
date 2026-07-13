@@ -291,12 +291,16 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 22);
+  assert.equal(migrations.length, 23);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 22 }, (_, index) => index + 1),
+    Array.from({ length: 23 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
+  for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
+    const row = migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
+    assert.ok(row, `${table} should be created for legacy databases`);
+  }
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

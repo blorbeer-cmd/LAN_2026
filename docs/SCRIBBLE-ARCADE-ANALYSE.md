@@ -1,5 +1,9 @@
 # Analyse: skribbl.io-Nachbau für den Arcade-Bereich
 
+> Stand Juli 2026: Scribble ist umgesetzt. Zusätzlich zum ursprünglichen Konzept besitzt das Spiel
+> inzwischen eine persistente Bildergalerie mit Reaktionen, Favoritenwahl und Künstlerstatistiken;
+> die Details stehen in §3.7.
+
 Prüfung des Spiels **skribbl.io** (Montagsmaler / Draw & Guess) mit Blick darauf, es als zweites
 Arcade-Spiel neben dem Gaming-Quiz nachzubauen. Arbeitstitel: **„Scribble"**.
 
@@ -117,8 +121,8 @@ Einfach und nachvollziehbar, keine versteckte Magie:
 - **Werkzeuge fürs MVP:** 8 Farben, 3 Stiftgrößen, Radierer (= Strich in Hintergrundfarbe),
   Alles-löschen. Füllen/Undo erst im Ausbau (Undo ist mit der Strich-Liste trivial: letzten
   Strich entfernen + Redraw-Event).
-- Zeichnungen werden **nicht persistiert** – nach dem Zug ist die Strich-Liste weg. Kein
-  DB-Wachstum, keine Datenschutzfragen.
+- Während des Zugs liegt die Zeichnung als Strich-Liste im Match-State. Nach einem gültig
+  abgeschlossenen Zug wird sie für Bewertung, Rundenwahl und Galerie persistiert; siehe §3.7.
 
 ### 3.5 Rate-Chat & Disconnects
 
@@ -153,6 +157,34 @@ Einfach und nachvollziehbar, keine versteckte Magie:
 | `arcade:scribble:sync` | S→C | Voller State für Reconnect/Late-Join |
 
 `arcade:match:start/end/pause/resume/paused/resumed` werden unverändert mitbenutzt.
+
+### 3.7 Bildbewertungen, Rundenfavorit und Galerie
+
+- Nach jedem gültigen Zug bleibt das letzte Bild während des weiteren Spiels sichtbar und kann von
+  anderen Spielern einmal als **Cool**, **Kreativ** oder **Witzig** bewertet werden. Die Auswahl
+  kann geändert werden; Selbstbewertungen sind gesperrt.
+- Nachdem jeder Spieler der Runde einmal Zeichner war, öffnet sich für maximal 30 Sekunden eine
+  Galerie. Sie zeigt alle Rundenbilder nach Reaktionszahl sortiert, nennt Wort und Künstler und
+  erlaubt jedem Spieler genau eine änderbare Favoritenstimme. Das eigene Bild ist nicht wählbar,
+  außer im Solo-Spiel gegen die KI, in dem ausschließlich eigene Zeichnungen zur Auswahl stehen.
+- Angemeldete Zuschauer dürfen im wortgeschützten Live-Stream ebenfalls Reaktionen und genau eine
+  Favoritenstimme abgeben. Ihre Stimmen werden unter ihrer normalen Spieleridentität in denselben
+  Tabellen gespeichert und zählen vollständig zur Auswertung. Aktive Match-Teilnehmer erhalten
+  über den Zuschauerkanal keine zweite Stimme; Zuschauer sehen weder Wort noch Maske, Tipps oder
+  Chat. Eine offene Galerie wartet bei der vorzeitigen Auflösung auch auf aktive Zuschauer mit
+  Stimmberechtigung, spätestens nach 30 Sekunden wird sie immer ausgewertet.
+- Favoritenstimmen entscheiden den Rundensieger. Bei Gleichstand entscheiden die Reaktionen unter
+  den punktgleichen Bildern; ein danach verbleibender Gleichstand ergibt mehrere gemeinsame
+  Rundenbilder. Falls niemand abstimmt, dienen die Reaktionen direkt als transparente Grundlage.
+- Zeichnungen, Reaktionen und Favoriten werden in `scribble_drawings`,
+  `scribble_drawing_reactions` und `scribble_drawing_favorites` gespeichert. Zeichenoperationen
+  bleiben reproduzierbar, ohne binäre Bilddateien im Repository abzulegen.
+- Gekürte Rundenbilder bleiben im Arcade-Bereich in der **Rundenbilder-Galerie** einsehbar. Die
+  Scribble-Auswertung zeigt pro Künstler Bildanzahl, gewonnene Runden, Favoritenstimmen,
+  Reaktionssumme und die Aufteilung nach den drei Reaktionstypen.
+- Reconnect-Sync enthält das letzte Bild, eine gegebenenfalls offene Galerie und die eigenen
+  bisherigen Auswahlen. Der Client kann dadurch nach einem Verbindungsabbruch ohne doppelte Stimme
+  oder verlorenen Auswahlzustand fortfahren.
 
 ---
 

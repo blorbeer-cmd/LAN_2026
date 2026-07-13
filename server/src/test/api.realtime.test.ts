@@ -15,7 +15,8 @@ import { Server } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import request from 'supertest';
 import { createApp } from '../app';
-import { setIo, Events, createSocketAuthGuard, registerArcadeKioskSockets, broadcastArcadeKiosk } from '../realtime';
+import { setIo, Events, createSocketAuthGuard, registerArcadeKioskSockets, broadcastArcadeKiosk, arcadeWatcherPlayerIds } from '../realtime';
+import { db } from '../db';
 
 async function withServer(fn: (baseUrl: string) => Promise<void>): Promise<void> {
   const app = createApp();
@@ -193,7 +194,7 @@ test('arcade watch list removes a finished match instead of re-adding a blank gh
     assert.equal((await listed).find((match) => match.matchId === matchId)?.gameType, 'pong');
 
     const joined = new Promise<unknown>((resolve) => client.emit('arcade:watch:join', { matchId }, resolve));
-    assert.deepEqual(await joined, { ok: true, matchId });
+    assert.deepEqual(await joined, { ok: true, matchId, votingPlayerId: null, canVote: false });
 
     const ended = new Promise<{ matchId: string }>((resolve) => client.on('arcade:watch:ended', resolve));
     const cleared = new Promise<Array<{ matchId?: string; gameType?: string }>>((resolve) => {
@@ -210,5 +211,53 @@ test('arcade watch list removes a finished match instead of re-adding a blank gh
     client.close();
     io.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+  }
+});
+
+test('arcade watchers may vote under a real non-participant identity, but participants get no second vote', async () => {
+  const httpServer = http.createServer();
+  const io = new Server(httpServer);
+  registerArcadeKioskSockets(io);
+  const suffix = `${Date.now()}-${Math.random()}`;
+  const participantId = `watch-participant-${suffix}`;
+  const spectatorId = `watch-spectator-${suffix}`;
+  db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(participantId, 'Watch Participant', participantId, Date.now());
+  db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(spectatorId, 'Watch Spectator', spectatorId, Date.now());
+
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const port = (httpServer.address() as AddressInfo).port;
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const client = ioClient(baseUrl, { transports: ['websocket'], reconnection: false });
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      client.on('connect', () => resolve());
+      client.on('connect_error', reject);
+    });
+    const matchId = `watch-voting-${suffix}`;
+    broadcastArcadeKiosk(io, {
+      matchId,
+      gameType: 'scribble',
+      phase: 'drawing',
+      players: [{ id: participantId, name: 'Watch Participant' }],
+      strokes: [],
+    });
+
+    const participantJoin = await new Promise<unknown>((resolve) => {
+      client.emit('arcade:watch:join', { matchId, playerId: participantId }, resolve);
+    });
+    assert.deepEqual(participantJoin, { ok: true, matchId, votingPlayerId: null, canVote: false });
+    assert.deepEqual(arcadeWatcherPlayerIds(io, matchId), []);
+
+    const spectatorJoin = await new Promise<unknown>((resolve) => {
+      client.emit('arcade:watch:join', { matchId, playerId: spectatorId }, resolve);
+    });
+    assert.deepEqual(spectatorJoin, { ok: true, matchId, votingPlayerId: spectatorId, canVote: true });
+    assert.deepEqual(arcadeWatcherPlayerIds(io, matchId), [spectatorId]);
+  } finally {
+    client.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    db.prepare('DELETE FROM players WHERE id IN (?, ?)').run(participantId, spectatorId);
   }
 });

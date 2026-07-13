@@ -459,6 +459,37 @@ db.exec(`
     PRIMARY KEY (word_id, player_id)
   );
 
+  CREATE TABLE IF NOT EXISTS scribble_drawings (
+    id              TEXT PRIMARY KEY,
+    match_id        TEXT NOT NULL,
+    round_number    INTEGER NOT NULL,
+    turn_number     INTEGER NOT NULL,
+    artist_id       TEXT REFERENCES players(id) ON DELETE SET NULL,
+    artist_name     TEXT NOT NULL,
+    word            TEXT NOT NULL,
+    draw_ops        TEXT NOT NULL,
+    is_round_winner INTEGER NOT NULL DEFAULT 0,
+    created_at      INTEGER NOT NULL,
+    UNIQUE (match_id, turn_number)
+  );
+
+  CREATE TABLE IF NOT EXISTS scribble_drawing_reactions (
+    drawing_id TEXT NOT NULL REFERENCES scribble_drawings(id) ON DELETE CASCADE,
+    player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    reaction   TEXT NOT NULL CHECK (reaction IN ('cool', 'creative', 'funny')),
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (drawing_id, player_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS scribble_drawing_favorites (
+    match_id    TEXT NOT NULL,
+    round_number INTEGER NOT NULL,
+    player_id   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    drawing_id  TEXT NOT NULL REFERENCES scribble_drawings(id) ON DELETE CASCADE,
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (match_id, round_number, player_id)
+  );
+
   CREATE TABLE IF NOT EXISTS arcade_results (
     id          TEXT PRIMARY KEY,
     game_type   TEXT NOT NULL,
@@ -567,6 +598,10 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_push_log_created ON push_log(created_at);
   CREATE INDEX IF NOT EXISTS idx_quiz_seen_player ON quiz_seen(player_id);
   CREATE INDEX IF NOT EXISTS idx_scribble_seen_player ON scribble_seen(player_id);
+  CREATE INDEX IF NOT EXISTS idx_scribble_drawings_artist ON scribble_drawings(artist_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_scribble_drawings_winners ON scribble_drawings(is_round_winner, created_at);
+  CREATE INDEX IF NOT EXISTS idx_scribble_reactions_player ON scribble_drawing_reactions(player_id);
+  CREATE INDEX IF NOT EXISTS idx_scribble_favorites_drawing ON scribble_drawing_favorites(drawing_id);
   CREATE INDEX IF NOT EXISTS idx_food_orders_event ON food_orders(event_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_food_order_items_order ON food_order_items(order_id);
   CREATE INDEX IF NOT EXISTS idx_arrivals_event ON arrivals(event_id, arrival_at, departure_at);
@@ -1047,6 +1082,44 @@ function removeGamePingTables(): void {
   db.exec('DROP TABLE IF EXISTS game_ping_interested; DROP TABLE IF EXISTS game_pings;');
 }
 runMigration({ version: 22, name: 'remove game ping tables', up: removeGamePingTables });
+
+function createScribbleGalleryTables(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS scribble_drawings (
+      id              TEXT PRIMARY KEY,
+      match_id        TEXT NOT NULL,
+      round_number    INTEGER NOT NULL,
+      turn_number     INTEGER NOT NULL,
+      artist_id       TEXT REFERENCES players(id) ON DELETE SET NULL,
+      artist_name     TEXT NOT NULL,
+      word            TEXT NOT NULL,
+      draw_ops        TEXT NOT NULL,
+      is_round_winner INTEGER NOT NULL DEFAULT 0,
+      created_at      INTEGER NOT NULL,
+      UNIQUE (match_id, turn_number)
+    );
+    CREATE TABLE IF NOT EXISTS scribble_drawing_reactions (
+      drawing_id TEXT NOT NULL REFERENCES scribble_drawings(id) ON DELETE CASCADE,
+      player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      reaction   TEXT NOT NULL CHECK (reaction IN ('cool', 'creative', 'funny')),
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (drawing_id, player_id)
+    );
+    CREATE TABLE IF NOT EXISTS scribble_drawing_favorites (
+      match_id      TEXT NOT NULL,
+      round_number  INTEGER NOT NULL,
+      player_id     TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      drawing_id    TEXT NOT NULL REFERENCES scribble_drawings(id) ON DELETE CASCADE,
+      created_at    INTEGER NOT NULL,
+      PRIMARY KEY (match_id, round_number, player_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_scribble_drawings_artist ON scribble_drawings(artist_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_scribble_drawings_winners ON scribble_drawings(is_round_winner, created_at);
+    CREATE INDEX IF NOT EXISTS idx_scribble_reactions_player ON scribble_drawing_reactions(player_id);
+    CREATE INDEX IF NOT EXISTS idx_scribble_favorites_drawing ON scribble_drawing_favorites(drawing_id);
+  `);
+}
+runMigration({ version: 23, name: 'add scribble drawing gallery', up: createScribbleGalleryTables });
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.

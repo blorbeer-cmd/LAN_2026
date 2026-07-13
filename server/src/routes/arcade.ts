@@ -31,6 +31,18 @@ interface ScoreEntry {
   score: number;
 }
 
+interface ScribbleArtStatsRow {
+  player_id: string | null;
+  name: string;
+  drawings: number;
+  round_wins: number;
+  reactions: number;
+  cool: number;
+  creative: number;
+  funny: number;
+  favorites: number;
+}
+
 // GET /api/arcade/lobbies - every currently open lobby across all arcade
 // games, newest first, for the Home view's "Aktuell" card. Lobbies live
 // in-memory in their socket modules (short-lived party state, not data),
@@ -90,6 +102,20 @@ arcadeRouter.get('/stats', (_req, res) => {
     games.set(row.game_type, game);
   }
 
+  const scribbleArtPlayers = db.prepare(
+    `SELECT d.artist_id AS player_id, d.artist_name AS name,
+            COUNT(*) AS drawings,
+            SUM(d.is_round_winner) AS round_wins,
+            SUM((SELECT COUNT(*) FROM scribble_drawing_reactions r WHERE r.drawing_id = d.id)) AS reactions,
+            SUM((SELECT COUNT(*) FROM scribble_drawing_reactions r WHERE r.drawing_id = d.id AND r.reaction = 'cool')) AS cool,
+            SUM((SELECT COUNT(*) FROM scribble_drawing_reactions r WHERE r.drawing_id = d.id AND r.reaction = 'creative')) AS creative,
+            SUM((SELECT COUNT(*) FROM scribble_drawing_reactions r WHERE r.drawing_id = d.id AND r.reaction = 'funny')) AS funny,
+            SUM((SELECT COUNT(*) FROM scribble_drawing_favorites f WHERE f.drawing_id = d.id)) AS favorites
+     FROM scribble_drawings d
+     GROUP BY d.artist_id, d.artist_name
+     ORDER BY round_wins DESC, favorites DESC, reactions DESC, name COLLATE NOCASE`
+  ).all() as ScribbleArtStatsRow[];
+
   res.json({
     games: [...games.values()].map((game) => {
       // Everything ranks by win–loss ratio now (highscores retired): most
@@ -107,7 +133,58 @@ arcadeRouter.get('/stats', (_req, res) => {
         matches: game.matches,
         leader: players[0] ?? null,
         players,
+        ...(game.gameType === 'scribble'
+          ? {
+              artPlayers: scribbleArtPlayers.map((player) => ({
+                playerId: player.player_id,
+                name: player.name,
+                drawings: player.drawings,
+                roundWins: player.round_wins,
+                reactions: player.reactions,
+                averageReactions: player.drawings > 0 ? player.reactions / player.drawings : 0,
+                favorites: player.favorites,
+                reactionBreakdown: { cool: player.cool, creative: player.creative, funny: player.funny },
+              })),
+            }
+          : {}),
       };
     }),
+  });
+});
+
+arcadeRouter.get('/scribble/gallery', (_req, res) => {
+  const rows = db.prepare(
+    `SELECT d.id, d.match_id, d.round_number, d.artist_id, d.artist_name, d.word, d.draw_ops, d.created_at,
+            COUNT(DISTINCT r.player_id) AS reaction_count,
+            COUNT(DISTINCT CASE WHEN r.reaction = 'cool' THEN r.player_id END) AS cool_count,
+            COUNT(DISTINCT CASE WHEN r.reaction = 'creative' THEN r.player_id END) AS creative_count,
+            COUNT(DISTINCT CASE WHEN r.reaction = 'funny' THEN r.player_id END) AS funny_count,
+            COUNT(DISTINCT f.player_id) AS favorite_votes
+     FROM scribble_drawings d
+     LEFT JOIN scribble_drawing_reactions r ON r.drawing_id = d.id
+     LEFT JOIN scribble_drawing_favorites f ON f.drawing_id = d.id
+     WHERE d.is_round_winner = 1
+     GROUP BY d.id
+     ORDER BY d.created_at DESC
+     LIMIT 50`
+  ).all() as Array<{
+    id: string; match_id: string; round_number: number; artist_id: string | null; artist_name: string;
+    word: string; draw_ops: string; created_at: number; reaction_count: number; cool_count: number;
+    creative_count: number; funny_count: number; favorite_votes: number;
+  }>;
+  res.json({
+    drawings: rows.map((row) => ({
+      id: row.id,
+      matchId: row.match_id,
+      round: row.round_number,
+      artistId: row.artist_id,
+      artistName: row.artist_name,
+      word: row.word,
+      strokes: JSON.parse(row.draw_ops),
+      reactionCount: row.reaction_count,
+      reactions: { cool: row.cool_count, creative: row.creative_count, funny: row.funny_count },
+      favoriteVotes: row.favorite_votes,
+      createdAt: row.created_at,
+    })),
   });
 });

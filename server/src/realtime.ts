@@ -3,6 +3,7 @@
 
 import { Server, Socket } from 'socket.io';
 import { config } from './config';
+import { db } from './db';
 
 let io: Server | null = null;
 let latestArcadeKioskGame: unknown = null;
@@ -10,6 +11,39 @@ const latestArcadeGames = new Map<string, Record<string, unknown>>();
 
 function watchRoom(matchId: string): string {
   return `arcade-watch:${matchId}`;
+}
+
+function arcadePlayerIds(payload: Record<string, unknown>): Set<string> {
+  const entries = Array.isArray(payload.players)
+    ? payload.players
+    : Array.isArray(payload.playerRefs)
+      ? payload.playerRefs
+      : [];
+  return new Set(
+    entries
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') return null;
+        const item = entry as { id?: unknown; playerId?: unknown; ref?: { id?: unknown } };
+        const id = item.id ?? item.playerId ?? item.ref?.id;
+        return typeof id === 'string' ? id : null;
+      })
+      .filter((id): id is string => id !== null)
+  );
+}
+
+function spectatorPlayerId(payload: Record<string, unknown>, playerId: unknown): string | null {
+  if (typeof playerId !== 'string' || !playerId || arcadePlayerIds(payload).has(playerId)) return null;
+  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId) as { id: string } | undefined;
+  return player?.id ?? null;
+}
+
+export function arcadeWatcherPlayerIds(server: Server, matchId: string): string[] {
+  const socketIds = server.sockets.adapter.rooms.get(watchRoom(matchId)) ?? new Set<string>();
+  return [...new Set(
+    [...socketIds]
+      .map((socketId) => server.sockets.sockets.get(socketId)?.data.arcadeWatchPlayerId)
+      .filter((playerId): playerId is string => typeof playerId === 'string' && !!playerId)
+  )];
 }
 
 function watchState(payload: Record<string, unknown>): Record<string, unknown> {
@@ -87,21 +121,27 @@ export function registerArcadeKioskSockets(server: Server): void {
     socket.on('kiosk:subscribe', () => socket.emit('arcade:kiosk:game', latestArcadeKioskGame));
     socket.emit('arcade:watch:list', { matches: [...latestArcadeGames.values()].map(watchSummary) });
     socket.on('arcade:watch:list', () => emitArcadeWatchList(server));
-    socket.on('arcade:watch:join', (payload: { matchId?: string }, ack?: (result: unknown) => void) => {
+    socket.on('arcade:watch:join', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const matchId = payload?.matchId;
       if (typeof matchId !== 'string' || !latestArcadeGames.has(matchId)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       const previousRoom = socket.data.arcadeWatchRoom;
       if (typeof previousRoom === 'string') socket.leave(previousRoom);
+      const playerId = spectatorPlayerId(latestArcadeGames.get(matchId)!, payload?.playerId);
       const room = watchRoom(matchId);
       socket.join(room);
       socket.data.arcadeWatchRoom = room;
+      socket.data.arcadeWatchMatchId = matchId;
+      if (playerId) socket.data.arcadeWatchPlayerId = playerId;
+      else delete socket.data.arcadeWatchPlayerId;
       socket.emit('arcade:watch:state', watchState(latestArcadeGames.get(matchId)!));
-      ack?.({ ok: true, matchId });
+      ack?.({ ok: true, matchId, votingPlayerId: playerId, canVote: playerId !== null });
     });
     socket.on('arcade:watch:leave', () => {
       const room = socket.data.arcadeWatchRoom;
       if (typeof room === 'string') socket.leave(room);
       delete socket.data.arcadeWatchRoom;
+      delete socket.data.arcadeWatchMatchId;
+      delete socket.data.arcadeWatchPlayerId;
     });
   });
 }
