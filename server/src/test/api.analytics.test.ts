@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
+import { db } from '../db';
 
 const app = createApp();
 let cs2GameId: string;
@@ -270,4 +271,71 @@ test('GET /api/analytics/games-tournaments filters by eventId', async () => {
   assert.equal(res.body.tournaments.total, 0);
   assert.equal(res.body.draws.total, 0);
   assert.equal(res.body.fun.biggestRivalry, null);
+});
+
+// ---------- arcade (match durations, most-active player, day timeline) ----------
+
+test('GET /api/analytics/arcade summarizes durations, most-active players and a daily timeline', async () => {
+  const ace = await request(app).post('/api/players').send({ name: 'Arcade Ace' });
+  const bea = await request(app).post('/api/players').send({ name: 'Arcade Bea' });
+  const now = Date.now();
+
+  const mk = (id: string, winner: string, startedAt: number, endedAt: number) =>
+    db
+      .prepare(
+        `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+         VALUES (?, 'snake', ?, ?, ?, 'completed', ?, ?)`
+      )
+      .run(
+        id,
+        winner,
+        JSON.stringify([{ playerId: ace.body.id }, { playerId: bea.body.id }]),
+        JSON.stringify([
+          { playerId: ace.body.id, name: ace.body.name, score: 10 },
+          { playerId: bea.body.id, name: bea.body.name, score: 4 },
+        ]),
+        startedAt,
+        endedAt
+      );
+
+  // Ace wins both, so Ace is the most-active *and* the only "winner" in this
+  // isolated game_type; durations are 1s and 3s -> avg 2s, longest 3s.
+  mk('arcade-analytics-1', ace.body.id, now - 1000, now);
+  mk('arcade-analytics-2', ace.body.id, now - 3000, now);
+
+  const res = await request(app).get('/api/analytics/arcade');
+  assert.equal(res.status, 200);
+  assert.ok(res.body.totals.matches >= 2);
+  assert.ok(res.body.totals.players >= 2);
+
+  const snake = res.body.games.find((g: { gameType: string }) => g.gameType === 'snake');
+  assert.ok(snake);
+  assert.equal(snake.title, 'Snake');
+  assert.equal(snake.matches, 2);
+  assert.equal(snake.uniquePlayers, 2);
+  assert.equal(snake.mostActive.name, 'Arcade Ace');
+  assert.equal(snake.mostActive.matches, 2);
+  assert.ok(snake.avgDurationFormatted);
+  assert.ok(snake.longestDurationFormatted);
+
+  assert.ok(Array.isArray(res.body.timeline));
+  assert.ok(res.body.timeline.length >= 1);
+  assert.ok(res.body.timeline.every((b: { dayStart: number; count: number }) => b.count > 0));
+});
+
+test('GET /api/analytics/arcade skips legacy score rows with no player attribution', async () => {
+  const before = await request(app).get('/api/analytics/arcade');
+  const matchesBefore = before.body.games.find((g: { gameType: string }) => g.gameType === 'snake').matches;
+
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, 'snake', NULL, '[]', ?, 'completed', ?, ?)`
+  ).run('arcade-analytics-legacy', JSON.stringify([12, 8]), now - 1000, now);
+
+  const after = await request(app).get('/api/analytics/arcade');
+  const matchesAfter = after.body.games.find((g: { gameType: string }) => g.gameType === 'snake').matches;
+
+  assert.equal(matchesAfter, matchesBefore); // the legacy row didn't count
+  assert.equal(after.body.totals.matches, before.body.totals.matches);
 });

@@ -215,6 +215,7 @@ export const api = {
       const qs = new URLSearchParams(params).toString();
       return apiFetch(`/api/analytics/games-tournaments${qs ? `?${qs}` : ''}`);
     },
+    arcade: () => apiFetch('/api/analytics/arcade'),
   },
 
   events: {
