@@ -49,6 +49,14 @@ let suggestionsEpoch = 0;
 // while a drag is active keeps the live element intact; endDrag() below
 // catches up with a single no-network re-render once the drag actually ends.
 let sliderDragActive = false;
+// The value change is debounced (see the 'input' listener below) and then
+// written via an async API call, both of which outlive pointerup. Without
+// this, endDrag()'s catch-up render fires while that write is still
+// pending, repainting the row from not-yet-updated state — the slider
+// visibly snaps back to the old value for a moment before the debounced
+// write lands and a second render shows the new one. Keeping the render
+// guard up until the write actually settles avoids that stale repaint.
+let sliderSaving = false;
 let dragGuardInstalled = false;
 let lastCtx = null;
 
@@ -58,7 +66,7 @@ function ensureDragGuardInstalled() {
   const endDrag = () => {
     if (!sliderDragActive) return;
     sliderDragActive = false;
-    lastCtx?.rerender();
+    if (!sliderSaving) lastCtx?.rerender();
   };
   // Listening on document (not the slider) is what catches a release outside
   // the slider's own box — a range input's native drag keeps tracking the
@@ -501,7 +509,7 @@ function openGameDetail(gameId, ctx) {
 export function renderGameCatalog(container, ctx) {
   lastCtx = ctx;
   ensureDragGuardInstalled();
-  if (sliderDragActive) return;
+  if (sliderDragActive || sliderSaving) return;
 
   if (suggestionsCache === null && !suggestionsLoading) loadSuggestions(ctx);
 
@@ -578,6 +586,7 @@ export function renderGameCatalog(container, ctx) {
     slider.addEventListener('input', () => {
       valueEl.textContent = slider.value;
       updateSliderTone();
+      sliderSaving = true;
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(async () => {
         try {
@@ -592,6 +601,9 @@ export function renderGameCatalog(container, ctx) {
           }
         } catch (err) {
           showToast(err.message, { error: true });
+        } finally {
+          sliderSaving = false;
+          if (!sliderDragActive) lastCtx?.rerender();
         }
       }, 250);
     });
