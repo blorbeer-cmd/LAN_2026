@@ -1,12 +1,12 @@
 # Konzept: Richtiges User-Management (Login, Rollen, Event-Sichtbarkeit)
 
-Stand: Juli 2026 · Status: **Entwurf zur Diskussion** (Rev. 2 – mit Detail-Review, Edge Cases
-und Auth-Entscheidung)
+Stand: Juli 2026 · Status: **reviewter Umsetzungsvorschlag** (Rev. 3 – mit Detail-Review,
+Edge Cases, Auth-Entscheidung und abgesicherter Migration)
 
 Dieses Dokument beschreibt, wie aus dem heutigen „Jeder darf alles, Identität ist Ehrensache"-Modell
 ein echtes User-Management wird: persönlicher Login, feste Identität, Admin-Rolle mit Moderations-
-rechten, Test-User-Impersonation und Events, die nur ihre eingeladenen Teilnehmer sehen. Rev. 2
-ergänzt die Detailprüfung: Authentifizierungs-Entscheidung (Abschnitt 5), Rollen-/Rechte-Matrix
+rechten, Test-User-Impersonation und Events, die nur ihre eingeladenen Teilnehmer sehen. Rev. 3
+enthält die Detailprüfung: Authentifizierungs-Entscheidung (Abschnitt 5), Rollen-/Rechte-Matrix
 (Abschnitt 6), Bewertung des Sentinel-Modells „immer laufendes Event" (Abschnitt 7) und einen
 Edge-Case-Katalog für Anzeige & Auswertungen (Abschnitt 8), jeweils am realen Code festgemacht.
 
@@ -29,9 +29,10 @@ das Fundament komplett.
 
 ### 1.2 Event-Scoping der Daten
 
-Die Datenbank ist bereits weitgehend event-fähig: **16 Tabellen** tragen ein `event_id`
+Die Datenbank ist bereits weitgehend event-fähig: **12 fachliche Tabellen** tragen ein `event_id`
 (Votes, Vote-Runden, Matches, Auslosungen, Turniere, Play-Sessions, Sitznachbarn, Sitzplan,
-Pings, Drafts, Sammelbestellungen, Anreisen, Fahrgemeinschaften …). Der Sentinel
+Drafts, Sammelbestellungen, Anreisen und Fahrgemeinschaften), dazu kommt die Zuordnungstabelle
+`event_participants`. Der Sentinel
 `OUTSIDE_EVENTS_ID` („Außerhalb von Events") fängt alles auf, was ohne getracktes Event passiert.
 
 Das heutige Zuordnungs-Muster ist überall gleich: **Schreibpfade** taggen mit
@@ -92,14 +93,16 @@ Die Ideen aus der Anfrage sind alle machbar – an diesen Stellen empfehle ich P
 1. **„User" nicht als neue Entität bauen, sondern `players` erweitern.** Ein separates
    User-Objekt mit Verknüpfung zum Spieler würde jede Route, jedes Frontend-Stück und die
    ganze Agent-Logik doppelt verkomplizieren. Spieler *ist* das Konto: `players` bekommt
-   `password_hash`, `is_test`, Sessions hängen direkt am Spieler. (Der Agent-`api_key` bleibt
-   davon unberührt.)
+   `password_hash`, `login_name` und `deactivated_at`; Sessions hängen direkt am Spieler. Das
+   vorhandene `is_test` wird weiterverwendet. (Der Agent-`api_key` bleibt protokollseitig
+   unabhängig.)
 2. **Passwort ja – aber die Hürde klein halten.** Produktziel Nr. 2 ist „Handy raus, URL auf,
    loslegen". Deshalb: Registrierung nur über **Einladungslink mit Einmal-Code** (ersetzt den
-   heutigen geteilten Token-Link), Passwort mit milden Regeln (min. 8 Zeichen, keine
-   Sonderzeichen-Pflicht), **lange Sessions** (~90 Tage, gleitend verlängert) – man loggt sich
-   pro Gerät praktisch einmal ein und ist die ganze LAN (und die nächste) drin. Details und
-   verworfene Alternativen: Abschnitt 5.
+   heutigen geteilten Token-Link), Passwort mit milden Regeln (min. 10, max. 128 Zeichen, keine
+   Sonderzeichen-Pflicht), **lange Sessions** (90 Tage Inaktivitätslimit, höchstens ein Jahr) –
+   man loggt sich pro Gerät praktisch einmal ein. Das obere Längenlimit verhindert, dass extrem
+   große Eingaben unnötig viel CPU/RAM im Passwort-Hashing binden. Details und verworfene
+   Alternativen: Abschnitt 5.
 3. **„Nicht mehr wechseln" heißt nicht „kein Logout".** Logout muss bleiben (geteilte Geräte,
    Familien-Tablet als Kiosk …). Was wegfällt, ist der *passwortlose* Wechsel auf eine fremde
    Identität.
@@ -125,9 +128,25 @@ Die Ideen aus der Anfrage sind alle machbar – an diesen Stellen empfehle ich P
 8. **Kiosk braucht eine eigene Lösung.** Der TV an der Wand kann sich nicht als Person
    einloggen. Vorschlag: pro Event generierbarer **Read-only-Kiosk-Link** (eigener Token, nur
    GET auf die Kiosk-Daten dieses Events).
-9. **HTTPS wird Pflicht statt Empfehlung.** Der Server ist aus der Cloud erreichbar; sobald
-   echte Passwörter fließen, müssen sie verschlüsselt transportiert werden. (Für Web-Push ist
-   HTTPS ohnehin schon nötig, das Deployment kann das also bereits.)
+9. **Loginname und Gamername trennen.** Der sichtbare `players.name` darf weiter geändert werden.
+   Login erfolgt über ein neues, stabiles `login_name`, das bei Registrierung normalisiert
+   (`trim`, Unicode-NFC, Kleinschreibung) und eindeutig gespeichert wird. Sonst ändert ein
+   Profil-Edit unbemerkt die Zugangsdaten und Groß-/Kleinschreibung führt zu Doppelkonten.
+10. **Cookie-Auth setzt eine Transportentscheidung voraus.** Im Cloud-Betrieb ist HTTPS Pflicht.
+    Im rein lokalen LAN läuft der Server heute aber über HTTP; dort würde ein `Secure`-Cookie
+    vom Browser nicht gesendet. Das Cookie wird daher nur hinter nachweislich korrektem HTTPS
+    `Secure`; ein öffentlicher Production-Start ohne HTTPS/korrekt konfigurierten Proxy schlägt
+    fehl. Für HTTP wird ausdrücklich nur ein privates, vertrauenswürdiges LAN unterstützt.
+11. **Secrets nie im Klartext in der DB.** Neben Session-Tokens werden auch Invite-, Reset- und
+    Kiosk-Tokens nur als SHA-256-Hash gespeichert. Links enthalten das zufällige Original genau
+    einmal. Ein DB-Backup wird damit nicht automatisch zum gültigen Login-Link.
+12. **Kein „erster Besucher wird Admin".** Beim öffentlichen Deployment wäre das eine
+    Übernahme-Race. Der erste Admin braucht einen expliziten, einmaligen Bootstrap-Code aus der
+    Server-Konfiguration; danach ist der Bootstrap-Endpunkt dauerhaft deaktiviert.
+13. **Deaktivieren vor Löschen.** Ein Konto wird im Normalfall gesperrt (Sessions widerrufen,
+    Historie bleibt konsistent). Das irreversible Löschen inklusive Historie ist eine getrennte,
+    deutlich bestätigte Admin-Aktion. Das ist sicherer als jede Moderation direkt an weit
+    kaskadierende `DELETE`s zu hängen.
 
 ---
 
@@ -139,17 +158,19 @@ Die Ideen aus der Anfrage sind alle machbar – an diesen Stellen empfehle ich P
 
 ```sql
 ALTER TABLE players ADD COLUMN password_hash TEXT;          -- NULL = Konto noch nicht beansprucht
+ALTER TABLE players ADD COLUMN login_name TEXT;              -- stabil, normalisiert, nach Claim eindeutig
 ALTER TABLE players ADD COLUMN last_login_at INTEGER;
 ALTER TABLE players ADD COLUMN deactivated_at INTEGER;      -- Ex-Mitspieler: siehe 8.4
 -- players.is_test existiert bereits (Test-User-Feature)
 
 CREATE TABLE sessions (
   id           TEXT PRIMARY KEY,          -- nanoid
-  player_id    TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  player_id    TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE, -- echter Login/Admin
   token_hash   TEXT NOT NULL UNIQUE,      -- SHA-256 des Session-Tokens (Token selbst nie speichern)
   created_at   INTEGER NOT NULL,
   last_seen_at INTEGER NOT NULL,
-  expires_at   INTEGER NOT NULL,
+  idle_expires_at INTEGER NOT NULL,
+  absolute_expires_at INTEGER NOT NULL,
   -- Test-User-Impersonation: gesetzt = diese (Admin-)Session agiert gerade als
   -- der referenzierte Test-User. ON DELETE SET NULL: wird der Test-User
   -- gelöscht, fällt die Session automatisch auf den Admin selbst zurück.
@@ -157,43 +178,66 @@ CREATE TABLE sessions (
 );
 
 CREATE TABLE invites (
-  code        TEXT PRIMARY KEY,          -- nanoid, Einmal-Code
+  id          TEXT PRIMARY KEY,
+  token_hash  TEXT NOT NULL UNIQUE,      -- Hash eines zufälligen 256-bit-Einmal-Tokens
+  kind        TEXT NOT NULL CHECK (kind IN ('register', 'claim', 'reset')),
   player_id   TEXT REFERENCES players(id) ON DELETE CASCADE, -- gesetzt = Claim-Code für Bestandsspieler
   event_id    TEXT REFERENCES events(id) ON DELETE CASCADE,  -- optional: direkt in dieses Event
   created_by  TEXT NOT NULL REFERENCES players(id),
   created_at  INTEGER NOT NULL,
-  expires_at  INTEGER,                   -- Empfehlung: Default 14 Tage
+  expires_at  INTEGER NOT NULL,          -- Empfehlung: Default 14 Tage
   revoked_at  INTEGER,                   -- Admin kann Codes zurückziehen
   used_at     INTEGER,
   used_by     TEXT REFERENCES players(id)
 );
 ```
 
-**Passwort-Hashing:** `crypto.scrypt` aus Node-Bordmitteln (Format `scrypt$N$r$p$salt$hash`).
-Kein neues natives Paket, kein Build-Risiko – bewusst gegen `bcrypt`/`argon2`-Dependencies
-entschieden. Für 15 Nutzer auf LAN-Hardware ist scrypt mit Standardparametern mehr als genug.
+`is_test` und `is_admin` existieren bereits. Ein partieller Unique-Index auf `login_name`
+(`WHERE login_name IS NOT NULL`) erlaubt die schrittweise Übernahme bestehender Konten.
+
+**Passwort-Hashing:** `crypto.scrypt` aus Node-Bordmitteln (versioniertes Format
+`scrypt$v=1$N=...$r=...$p=...$salt$hash`). Kein neues natives Paket, kein Build-Risiko – bewusst
+gegen `bcrypt`/`argon2`-Dependencies entschieden. Parameter und `maxmem` werden explizit gesetzt,
+auf der Zielhardware gemessen und so gewählt, dass ein Login grob 100–250 ms benötigt. Salt und
+Hash sind mindestens 16 bzw. 32 zufällige Bytes; der Vergleich erfolgt mit
+`crypto.timingSafeEqual`. Bei später erhöhten Parametern wird nach erfolgreichem Login neu gehasht.
 
 **Session-Mechanik:**
 - Login liefert einen zufälligen Token (256 bit), gespeichert wird nur dessen Hash.
-- Transport als **HTTP-only-Cookie** (`SameSite=Lax`, `Secure`): funktioniert automatisch für
-  `fetch`, Socket.IO-Handshake **und** den Service Worker (Web-Push-Setup), ohne dass das
-  Frontend Token-Handling betreiben muss. Der bisherige `x-access-token`-Header entfällt.
-- Lebensdauer ~90 Tage, `last_seen_at` gleitend aktualisiert; Logout löscht die Session-Zeile.
+- Transport als **HTTP-only-Cookie** (`Path=/`, `SameSite=Lax`, kein `Domain`; unter HTTPS
+  zusätzlich `Secure` und nach Möglichkeit `__Host-`-Prefix): funktioniert automatisch für
+  `fetch`, Socket.IO-Handshake **und** den Service Worker, ohne Frontend-Token-Handling. Der
+  bisherige `x-access-token`-Header entfällt. `Secure` wird nicht blind anhand eines beliebigen
+  Forwarded-Headers gesetzt; nur ein explizit konfigurierter vertrauenswürdiger Proxy darf das
+  Protokoll bestimmen. Zulässige Origins kommen aus `PUBLIC_ORIGIN`, nicht aus dem vom Client
+  kontrollierbaren `Host`-Header.
+- 90 Tage Inaktivitätslimit plus absolutes Limit von einem Jahr. `last_seen_at`/Idle-Ablauf werden
+  höchstens einmal pro Stunde aktualisiert, nicht bei jedem Request (weniger SQLite-Schreiblast).
 - Passwortänderung invalidiert alle anderen Sessions des Kontos.
-- Login-Endpoint mit einfachem Rate-Limit (siehe 5.3) gegen Durchprobieren.
+- Login-, Invite- und Reset-Endpunkte bekommen Limits pro IP **und** normalisiertem Login/Konto,
+  eine gleichförmige Fehlermeldung und möglichst ähnliche Laufzeit für „User fehlt" und „Passwort
+  falsch" (Details: 5.3). Hinter einem Proxy wird die Client-IP nur bei explizitem `trust proxy`
+  übernommen.
+- Cookie-basierte schreibende Requests akzeptieren nur den erwarteten `Origin` (bzw. kontrolliert
+  `Referer`, falls `Origin` fehlt) und JSON-Content-Type. `SameSite=Lax` bleibt zusätzliche
+  CSRF-Abwehr. Socket.IO prüft beim Handshake ebenfalls Session, Ablauf und Origin.
+- Abgelaufene Sessions werden beim Zugriff und zusätzlich periodisch gelöscht. Logs enthalten
+  weder Cookies noch Invite-/Reset-Token.
 
 **Neue Endpoints:**
 
 | Endpoint | Zweck |
 |---|---|
-| `POST /api/auth/register` | Neues Konto über Invite-Code (`code`, `name`, `password`, Avatar/Farbe) |
+| `POST /api/auth/bootstrap` | Genau das erste Admin-Konto mit Bootstrap-Code anlegen/beanspruchen |
+| `POST /api/auth/register` | Neues Konto über Invite-Code (`code`, `loginName`, `name`, `password`, Avatar/Farbe) |
 | `POST /api/auth/claim` | Bestandsspieler-Konto beanspruchen (`code`, `password`) |
-| `POST /api/auth/login` | `name` + `password` → Session-Cookie |
+| `POST /api/auth/login` | `loginName` + `password` → Session-Cookie |
 | `POST /api/auth/logout` | Session beenden |
 | `GET  /api/me` | Eigenes Profil + Rolle + ggf. Impersonations-Status |
 | `POST /api/auth/password` | Eigenes Passwort ändern |
+| `POST /api/auth/reset` | Passwort mit kurzlebigem Admin-Reset-Link setzen |
 
-**Race-Sicherheit (gemäß CLAUDE.md-Regel):** Registrierung mit gleichem Namen, doppeltes
+**Race-Sicherheit (gemäß CLAUDE.md-Regel):** Registrierung mit gleichem normalisiertem Loginname, doppeltes
 Einlösen desselben Invite-Codes und paralleles Claim desselben Spielers sind klassische
 Check-dann-Schreiben-Muster → expliziter Guard (UNIQUE-Constraints + Transaktion, zweiter
 Request bekommt `409`) und Tests in `api.concurrency.test.ts`.
@@ -204,13 +248,17 @@ Request bekommt `409`) und Tests in `api.concurrency.test.ts`.
   Token-Abfrage). Einladungslink `/?invite=CODE` springt direkt in die Registrierung mit
   vorausgefülltem Code – der „Handy raus, loslegen"-Flow bleibt also ein einziger Link/QR-Code.
 - `whoami.js` wird ersatzlos entfernt; überall, wo heute `getMyId()` gelesen wird
-  (Voting, Live-Pause, Skills, Bestellungen, Pings, Arcade …), kommt die Identität aus
+  (Voting, Live-Pause, Skills, Bestellungen, Arcade …), kommt die Identität aus
   `GET /api/me` (einmal beim App-Start in den `state`). Serverseitig wird `player_id` aus der
   Session genommen und **nicht mehr aus dem Request akzeptiert** – das gilt auch für
   Lese-Endpoints wie `GET /api/digest?playerId=` und die persönlichen Statistiken, die heute
   jede beliebige `playerId` beantworten.
 - Profil-Screen behält Name/Avatar/Farbe-Bearbeitung (nur fürs eigene Konto) und bekommt
   „Passwort ändern" + „Abmelden".
+- Der Frontend-State ist keine Berechtigungsquelle. Auch wenn ein alter Client weiterhin
+  `playerId`, `isAdmin` oder `eventId` sendet, ignoriert bzw. validiert der Server diese Felder.
+  Jede Mutation wird als **self**, **event participant** oder **admin** klassifiziert; Routen ohne
+  dokumentierte Klasse werden im `required`-Modus nicht freigeschaltet.
 
 ### 4.3 Rollen & Durchsetzung
 
@@ -221,12 +269,25 @@ Request bekommt `409`) und Tests in `api.concurrency.test.ts`.
   No-ops – jedes beanspruchte Konto wäre ja Admin. Beim Scharfschalten der Rollen (spätestens
   mit `AUTH_MODE=required`) werden deshalb alle `is_admin`-Flags zurückgesetzt und Admins
   explizit neu bestimmt; neue Spieler starten ab dann als normale User.
-- **Bootstrap:** Nach dem Reset wird das erste erfolgreich registrierte/beanspruchte Konto
-  automatisch Admin (typisch: der Betreiber claimt zuerst und verteilt dann die Links).
-  Zusätzlich Env-Fallback `ADMIN_RECOVERY_CODE` für den Fall „einziger Admin hat sein
-  Passwort vergessen".
+- **Bootstrap:** Solange es noch keinen beanspruchten Admin gibt, kann genau ein Konto nur mit
+  `ADMIN_BOOTSTRAP_CODE` Admin werden. Einlösen und Admin-Zuweisung laufen in einer Transaktion;
+  danach lehnt der Endpoint jeden weiteren Versuch ab. In Production ist ein starker Code Pflicht.
+  Recovery erfolgt bevorzugt als lokaler CLI-Befehl auf dem Server, nicht über einen dauerhaft
+  erreichbaren HTTP-Mastercode.
+- Admin-gated werden: alle DELETE-Endpoints, Event-CRUD inkl. Teilnehmerliste und Tracking,
+  Spiele-Löschung, Admin-Rechte vergeben/entziehen, Invite-Codes erzeugen, Impersonation,
+  Broadcast-Löschung. **Nicht** admin-gated bleibt alles Mitmach-artige (Votes, Skills, Bock,
+  Bestellpositionen, eigene Anreise, Ergebnisse melden …) – die LAN soll sich weiter selbst
+  organisieren.
+- Rollenänderungen dürfen niemals den letzten aktiven Admin entfernen. Test-User können keine
+  Admin-Rolle erhalten. Eine gesperrte Person verliert sofort alle Browser-Sessions; ihr Agent-Key
+  wird separat widerrufen oder rotiert.
 - Die vollständige Rechte-Matrix und die Sonderfälle (letzter Admin, Selbst-Degradierung,
-  Test-User-Regeln) stehen in Abschnitt 6.
+  Test-User-Regeln, Kiosk) stehen in Abschnitt 6. Sie gilt gleichermaßen für REST und Socket.IO:
+  Socket-Handler leiten `player_id` aus der authentifizierten Session ab und prüfen den
+  Event-Kontext; Payload-Felder sind keine Identität. `created_by`, `used_by` und Audit-Actor
+  werden immer serverseitig gesetzt. `/api/agent` bleibt die einzige getrennte
+  Maschinen-Schnittstelle und akzeptiert ausschließlich den zum Spieler gehörenden Agent-Key.
 
 ### 4.4 Event-Sichtbarkeit
 
@@ -260,17 +321,30 @@ Request bekommt `409`) und Tests in `api.concurrency.test.ts`.
   noch in ihren Room. Admin-Sockets joinen zusätzlich alle Rooms. Ändert sich eine
   Teilnehmerliste **oder eine Rolle** (Admin entzogen = sofort raus aus fremden Event-Rooms,
   Admin erteilt = rein), joint/verlässt der Server die betroffenen Sockets sofort – nicht
-  erst beim Reconnect, sonst überlebt die alte Room-Mitgliedschaft in jedem offenen Tab.
+  erst beim Reconnect, sonst überlebt die alte Room-Mitgliedschaft in jedem offenen Tab. Bei
+  Sperrung oder Session-Widerruf werden betroffene Sockets getrennt; jeder Reconnect prüft die
+  aktuelle DB.
 - **Push:** `notifyPlayers()` schneidet die Empfängerliste über `getEventAudience()` zu
   (heute: alle Abos). Test-User werden nie angeschrieben.
-- **Kiosk:** `GET /kiosk.html?k=<kioskToken>` – pro Event generierbarer Read-only-Token
-  (eigene kleine Tabelle oder Spalte an `events`), der nur die Kiosk-Aggregat-Endpoints darf.
+- **Kiosk:** `GET /kiosk.html?k=<kioskToken>` – pro Event generierbarer, rotierbarer
+  Read-only-Token, von dem nur der Hash gespeichert wird. Der Kiosk darf ausschließlich eine
+  kleine Allowlist von Aggregat-GETs nutzen, nie reguläre `/api`-Mutationen oder
+  personenbezogene Admin-Daten. Die Seite entfernt den Token nach dem Start per
+  `history.replaceState` aus der URL; Responses setzen `Referrer-Policy: no-referrer` und
+  `Cache-Control: no-store`.
+
+Der aktuell ausgewählte Event-Kontext ist im UI immer sichtbar. Mutationen tragen ihn explizit;
+der Server leitet ihn bei Ressourcen-URLs aus der Ressource ab und vergleicht beides. Er darf nicht
+stillschweigend vom gerade global trackenden Event abhängen – sonst kann ein Tab-Wechsel Daten in
+das falsche Event schreiben.
 
 **Restliche Scoping-Lücken schließen:** `broadcasts`, `info_entries` und `push_log` bekommen
 ein `event_id` (Info-Board: pro Event **plus** globale Einträge, denn „WLAN-Passwort" ist
 ortsgebunden, „Discord-Link" eher global – gelöst über `event_id NULL` = global sichtbar;
 `push_log` braucht das Scoping, damit der Kiosk eines Events nur „seine" Push-Historie zeigt).
-`arcade_results` bekommt `event_id` für saubere Event-Auswertungen. Die Guards „eine laufende
+Beim Push-Log bleibt zusätzlich die konkrete Empfängerliste maßgeblich; `NULL` macht eine
+Nachricht nicht automatisch für jeden sichtbar. `arcade_results` bekommt `event_id` für saubere
+Event-Auswertungen. Die Guards „eine laufende
 Abstimmung"/„ein aktiver Draft" wandern von global auf pro Event (Key im `app_state` bzw.
 Draft-Query um `event_id` erweitern) – inklusive neuer Concurrency-Tests.
 
@@ -281,6 +355,11 @@ Draft-Query um `event_id` erweitern) – inklusive neuer Concurrency-Tests.
   Auslosungs-Historie (`matchmaking_draws`), einzelne Play-Sessions und Durchsagen.
   Alles mit Bestätigungsdialog im UI. Die Auswirkungen auf Historie und Auswertungen
   (Kaskaden, verwaiste Ergebnis-Snapshots) sind nicht trivial – siehe 8.4.
+- **Kontolebenszyklus:** `deactivated_at` sperrt Login, Sessions und Agent-Zugriff, behält aber
+  Historie und Anzeigenamen. „Endgültig löschen" ist separat, zeigt eine Auswirkungsübersicht
+  und verlangt eine zweite Bestätigung. Für fachliche Historien ist `ON DELETE SET NULL` plus
+  Snapshot-Name zu prüfen; pauschales CASCADE darf nicht unbemerkt Leaderboards und
+  Turnierverläufe umschreiben.
 - **Audit-Log (klein, aber wertvoll):** eine simple `admin_log`-Tabelle
   (wer, was, wann, Ziel-ID) für Löschungen, Rollenänderungen und Impersonations-Starts.
   Kein UI-Aufwand nötig – zunächst reicht, dass es nachvollziehbar in der DB steht.
@@ -309,12 +388,21 @@ Bestandsspieler haben Profile, Skills, Historie – nichts davon geht verloren:
 2. **Claim-Flow:** Der Admin erzeugt pro Bestandsspieler einen Claim-Link (Invite mit
    `player_id`) und verschickt ihn (WhatsApp/Discord). Erster Klick → Passwort setzen → Konto
    gehört der Person. Neue Leute kommen über normale Invite-Links rein.
-3. **Feature-Flag `AUTH_MODE`:** `legacy` (heutiges Verhalten, Default bis alles fertig ist) →
+3. **Rollen sauber initialisieren:** Das heutige `is_admin` ist keine belastbare Migrationquelle:
+   die bestehende DB-Migration setzt derzeit alle Spieler auf Admin. Beim einmaligen RBAC-Setup
+   werden deshalb nicht blind diese Flags übernommen. Ein explizit gebootstrapptes Konto wird
+   erster Admin; danach vergibt es weitere Rollen. Ein Marker in `app_state` verhindert, dass
+   dieser Schritt nach einem Neustart nochmals läuft.
+4. **Feature-Flag `AUTH_MODE`:** `legacy` (heutiges Verhalten, Default bis alles fertig ist) →
    `required` (Login Pflicht). Damit lässt sich jede Phase einzeln mergen und auf der
    nächsten Session testen, ohne einen Big-Bang-Umstieg. Der geteilte Access-Token und die
-   Admin-PIN werden erst entfernt, wenn `required` stabil läuft.
-4. **Agent bleibt kompatibel:** `api_key`-Auth der Agents ist von allem hier unabhängig –
-   niemand muss den Agent neu herunterladen.
+   Admin-PIN werden erst entfernt, wenn `required` stabil läuft. In Production darf `legacy` nur
+   mit einem zusätzlichen bewussten Opt-in starten, damit ein falscher Env-Wert nicht unbemerkt
+   den alten Vertrauensmodus aktiviert.
+5. **Agent bleibt protokollkompatibel:** Bestehende Agenten müssen nicht neu heruntergeladen
+   werden. Konto-Sperrung oder endgültiges Löschen widerruft aber den zugehörigen Key. Als
+   anschließende Härtung sollte `api_key` wie ein Passwort nur gehasht gespeichert und über einen
+   getrennten Admin-Flow rotiert werden; das ist nicht blockierend für Browser-Auth.
 
 ### 4.7 Tests
 
@@ -329,6 +417,40 @@ Gemäß Projektregeln pro Phase:
   paralleles „letzten Admin degradieren" (einer gewinnt, der Zustand „0 Admins" ist unmöglich).
 - **E2E (Playwright):** Login-Gate, Invite-Link-Onboarding, „User sieht fremdes Event nicht",
   Admin löscht Turnier, Impersonation mit Banner und Rückkehr.
+- **Security-Regressionen:** abgelaufene/gesperrte Session, fremder Origin, fehlender/falscher
+  JSON-Content-Type, gestohlener DB-Hash statt Original-Token, deaktiviertes Konto, letzter Admin,
+  Impersonation ohne Admin-Rechte, Socket nach Teilnehmerentzug und manipulierte `playerId`/
+  `eventId`-Felder.
+
+### 4.8 Sicherheitsgrenzen und Nicht-Ziele
+
+- Das System schützt Konten gegeneinander und Event-Daten vor nicht eingeladenen Konten. Es ist
+  kein Mandanten-/Enterprise-IAM; Admins dürfen definitionsgemäß alle Event-Daten sehen.
+- HTTP im privaten LAN schützt **nicht** gegen Mitschneiden oder Manipulation durch andere Geräte
+  im Netz. Wer dieses Risiko ausschließen will, betreibt auch lokal HTTPS. Cloud/Internet ohne
+  HTTPS wird nicht unterstützt.
+- Ein kompromittierter Server oder ein Admin mit DB-/Host-Zugriff liegt außerhalb des
+  Browser-Berechtigungsmodells. Hashing begrenzt Folgeschäden, ersetzt aber keine Backups und
+  Host-Sicherheit.
+- Anzeigenamen, Avatare und globale Stammdaten sind innerhalb der Gruppe sichtbar. E-Mail,
+  OAuth/OIDC, MFA und Self-Service-E-Mail-Reset sind für rund 15 bekannte Personen bewusst kein
+  Ziel.
+
+### 4.9 Definition of Done für `AUTH_MODE=required`
+
+Die Umschaltung ist erst freigegeben, wenn:
+
+- jede REST-Mutation in einer gepflegten Berechtigungsmatrix als self/event/admin erfasst und
+  serverseitig getestet ist;
+- alle REST-Listen, Socket-Events, Push-Empfänger, Exporte, Kiosk-Aggregate und Deep-Links die
+  Event-Sichtbarkeit respektieren;
+- mindestens ein beanspruchtes Admin-Konto existiert und der letzte Admin nicht entzogen werden
+  kann;
+- Claim-/Reset-/Invite-Tokens Ablauf, Einmalnutzung, Widerruf und Race-Tests bestehen;
+- Rollback dokumentiert und eine DB-Sicherung erstellt ist; ein Rollback reaktiviert keine alten
+  Sessions oder bereits verbrauchten Tokens;
+- Login, Logout, Passwortwechsel, Sperrung und Teilnehmerentzug in REST **und** Socket.IO E2E
+  geprüft sind.
 
 ---
 
@@ -338,7 +460,7 @@ Gemäß Projektregeln pro Phase:
 
 | Variante | Bewertung |
 |---|---|
-| **Name + Passwort, Session-Cookie** ✅ Empfehlung | Selbsterklärend für alle, kein Zusatz-Infrastruktur-Bedarf, neues Gerät jederzeit ohne Admin-Hilfe. Nachteil „Passwort-Nerv" wird durch 90-Tage-Sessions und Invite-Onboarding fast vollständig neutralisiert |
+| **Loginname + Passwort, Session-Cookie** ✅ Empfehlung | Selbsterklärend für alle, kein Zusatz-Infrastruktur-Bedarf, neues Gerät jederzeit ohne Admin-Hilfe. Nachteil „Passwort-Nerv" wird durch 90-Tage-Sessions und Invite-Onboarding fast vollständig neutralisiert |
 | Personalisierter Geräte-Link ohne Passwort („Link = Konto") | Verlockend einfach, aber: jedes neue Gerät braucht den Admin, ein weitergeleiteter/abfotografierter Link ist ein vollwertiger Konto-Zugang, und Links landen erfahrungsgemäß in Gruppenchats. Als *Onboarding* (Invite/Claim-Link) übernehmen wir genau diese UX – nur eben mit einmaligem Passwort-Setzen dahinter |
 | PIN pro User (4–6 Ziffern) | Auf einem aus der Cloud erreichbaren Server trivial durchprobierbar; Rate-Limits dagegen zu bauen ist mehr Aufwand als ein echtes Passwort |
 | Magic-Link per E-Mail | Auch **mit** aufgebauter Mail-Infrastruktur nicht empfohlen – Begründung unten (5.1.1) |
@@ -372,12 +494,14 @@ nachrüstbar), nicht Mail.
 
 ### 5.2 Transport & Browser-Integration
 
-- **Cookie:** `HttpOnly`, `SameSite=Lax`, `Secure`, Pfad `/`. `SameSite=Lax` blockt
+- **Cookie:** `HttpOnly`, `SameSite=Lax`, unter HTTPS `Secure`, Pfad `/`. `SameSite=Lax` blockt
   Cross-Site-POSTs, damit ist CSRF für die JSON-API praktisch abgedeckt (zusätzlich: Server
   akzeptiert nur `Content-Type: application/json`).
 - **Betrieb ohne HTTPS** (reines LAN ohne Cloud): `Secure`-Cookies funktionieren dann nicht.
-  Dafür ein explizites Config-Flag `COOKIE_SECURE=0` mit dickem Log-Warnhinweis – Default
-  bleibt sicher.
+  HTTP wird deshalb nur in einem privaten, vertrauenswürdigen LAN unterstützt. In Production
+  muss `PUBLIC_ORIGIN` HTTPS ausweisen; nur ein explizit konfigurierter vertrauenswürdiger Proxy
+  darf das erkannte Protokoll beeinflussen. Zulässige Origins werden nie aus dem vom Client
+  kontrollierbaren `Host`-Header abgeleitet.
 - **Socket.IO** authentifiziert im Handshake über dasselbe Cookie. Logout/Passwortwechsel
   trennt aktiv alle Sockets der betroffenen Session(s), sonst lebt eine „tote" Session im
   offenen Tab weiter.
@@ -405,10 +529,10 @@ nachrüstbar), nicht Mail.
   wiederum meldet im UI klar „zu viele Versuche, warte kurz".
 - **Session läuft mitten auf der LAN ab:** durch gleitende Verlängerung praktisch
   ausgeschlossen; falls doch (Gerät lag 90 Tage im Schrank), landet man auf dem Login-Screen
-  mit vorausgefülltem Namen – ein Feld tippen, weiter.
+  mit vorausgefülltem Loginname – ein Feld tippen, weiter.
 - **Passwort vergessen:** Admin erzeugt Reset-Link (derselbe Invite-Mechanismus mit
-  `player_id`). Vergisst der **letzte Admin** sein Passwort: `ADMIN_RECOVERY_CODE` aus der
-  Server-Config erlaubt einmalig, ein Konto zum Admin zu machen.
+  `player_id`). Vergisst der **letzte Admin** sein Passwort, setzt ein lokaler CLI-Befehl auf dem
+  Server dessen Zugang zurück. Ein dauerhaft erreichbarer HTTP-Mastercode wird bewusst vermieden.
 - **Mehrere Geräte pro Person:** ausdrücklich unterstützt (Handy + Laptop = zwei Sessions).
   Der Profil-Screen kann später eine „Angemeldete Geräte"-Liste mit Einzel-Logout bekommen –
   nice-to-have, kein Muss.
@@ -463,10 +587,11 @@ reine Logik-Erweiterung ohne Migration.
 - **Eigene Fehleingaben korrigieren:** Heute kann jeder z. B. ein falsch gemeldetes Match
   per PATCH korrigieren. Das bleibt bewusst so (Selbstorganisation); nur das endgültige
   **Löschen** wird Admin-Sache. Damit braucht es keinen „Besitzer"-Begriff pro Datensatz.
-- **Namensregeln:** Login-Name = Spielername. Case-insensitive Eindeutigkeit ist **bereits
-  umgesetzt** (Unique-Index `name COLLATE NOCASE` in `db.ts`) – der Login übernimmt dieselbe
-  Collation. Umbenennen bleibt erlaubt – ein freigewordener Name kann neu vergeben werden;
-  das Passwort verhindert Verwechslungs-Logins.
+- **Namensregeln:** Der stabile `login_name` ist vom sichtbaren Gamername getrennt. Er wird bei
+  Registrierung per `trim`, Unicode-NFC und Kleinschreibung normalisiert und über einen
+  partiellen Unique-Index abgesichert. Den Gamername darf der User weiter ändern; eine Änderung
+  des Loginnamens ist ein eigener, erneut authentifizierter Account-Flow. Der bereits vorhandene
+  Unique-Index `name COLLATE NOCASE` schützt weiterhin die sichtbaren Spielernamen.
 - **Selbstlöschung:** Es gibt keinen „Konto löschen"-Knopf für User – bei 15 Freunden ist das
   ein Admin-Gespräch. Vermeidet die Kaskaden-Fußangel aus 8.4 im Selbstbedienungs-Modus.
 - **Invite-Hygiene:** Codes verfallen (Default 14 Tage), sind einzeln zurückziehbar und im
@@ -616,7 +741,7 @@ jeweilige Entscheidung:
   bei Rollen). Der
   Lösch-Dialog sagt ehrlich, was kaskadiert, und bietet Deaktivieren als Default-Alternative
   an.
-- **Event löschen:** kaskadiert durch alle 16 event-gebundenen Tabellen – inklusive
+- **Event löschen:** kaskadiert durch alle event-gebundenen Tabellen – inklusive
   Hall-of-Fame-Eintrag und PDF-Grundlage. Bleibt möglich (Testdaten!), aber der Dialog
   benennt den Umfang („löscht X Matches, Y Turniere, Z Sessions unwiderruflich"); für echte
   vergangene Events ist „Beenden" der richtige Weg, nicht Löschen.
@@ -648,26 +773,27 @@ das Produktivverhalten bis zum Schluss unangetastet lässt.
 | Phase | Inhalt | Größe |
 |---|---|---|
 | **0 – Bugfix Event-Anlage** | `openModal`-Import in `games.js` (in diesem Branch bereits enthalten) | XS ✅ |
-| **1 – Auth-Fundament** | Schema (Spalten, `sessions`, `invites`), scrypt-Hashing, `/api/auth/*`, `/api/me`, `requireUser`-Middleware, Session-Cookie inkl. `COOKIE_SECURE`-Flag, Socket.IO-Handshake + Socket-Kick bei Logout, Login-/Register-Screen, Rate-Limit. Alles hinter `AUTH_MODE` | L |
-| **2 – Identität fest verdrahten** | `whoami.js` raus, `player_id` überall aus der Session statt aus Query/Body (inkl. Digest, Meine Stats, Skills/Bock-Schreibpfade), Profil-Screen (Passwort ändern, Logout), Push-Subscription-Neubindung bei Logout/Login | M |
-| **3 – Rollen & Admin-Härtung** | `requireAdmin` auf Session-Rolle, PIN-Flow entfernen, **Reset der Alt-Admin-Flags** (heute ist jeder Admin – ohne Reset sind alle Gates No-ops) + Bootstrap + Recovery-Code, Letzter-Admin-Guards (+ Concurrency-Test), DELETE-Endpoints gaten & fehlende ergänzen, Spieler-Deaktivierung statt Hard-Delete (inkl. Session-Invalidierung + Agent-Ignore), `api_key` nur noch für Inhaber/Admin lesbar + Key-Rotation, `admin_log`, Admin-UI aufräumen | M–L |
-| **4 – Onboarding & Migration** | Invite-/Claim-Codes mit Ablauf/Widerruf + UI (Links/QR im Admin-Bereich), Claim-Flow für Bestandsspieler, Namens-Kollisions-Check (NOCASE), Umstellung `AUTH_MODE=required`, Alt-Token/PIN entfernen | M |
+| **1 – Auth-Fundament** | Schema (Spalten, `sessions`, `invites`), scrypt-Hashing, `/api/auth/*`, `/api/me`, `requireUser`, Session-Cookie inkl. sicherer HTTPS-/LAN-Konfiguration, Origin-/CSRF-Prüfung, Socket.IO-Handshake + Socket-Kick bei Logout und Rate-Limits. Alles hinter `AUTH_MODE` | L |
+| **2 – Identität fest verdrahten** | Berechtigungsmatrix anlegen, `whoami.js` raus, `player_id` überall aus der Session statt aus Query/Body (inkl. Digest, Meine Stats, Skills/Bock-Schreibpfade und Socket-Handler), Profil-Screen (Passwort ändern, Logout), Push-Subscription-Neubindung bei Logout/Login | L |
+| **3 – Rollen & Admin-Härtung** | `requireAdmin` auf Session-Rolle, PIN-Flow entfernen, **Reset der Alt-Admin-Flags** (heute ist jeder Admin – ohne Reset sind alle Gates No-ops) + Bootstrap-Code + lokaler Recovery-Befehl, Letzter-Admin-Guards (+ Concurrency-Test), DELETE-Endpoints gaten & fehlende ergänzen, Spieler-Deaktivierung statt Hard-Delete (inkl. Session-Invalidierung + Agent-Ignore), `api_key` nur noch für Inhaber/Admin lesbar + Key-Rotation, `admin_log`, Admin-UI aufräumen | L |
+| **4 – Onboarding & Migration** | Invite-/Claim-/Reset-Codes mit Ablauf/Widerruf + UI (Links/QR im Admin-Bereich), Claim-Flow für Bestandsspieler, normalisierter separater `login_name`, Rollen explizit initialisieren | M |
 | **5 – Event-Sichtbarkeit** | `requireEventAccess`, `getEventContextFor`/`getEventAudience` als zentrale Helfer in allen Schreib-/Versandpfaden, Validierung aller `?eventId=`-Filter, Kontext-Badge im Header, Socket.IO-Rooms inkl. Live-Rejoin bei Roster-/Rollen-Änderung, Roster-Entfernung schließt offene Sessions, Push-Scoping, Kiosk-Token, Event-CRUD admin-only, Event-Löschen mit Kaskaden-Warnung. **Dazu gehören die Voraussetzungen der Grenze selbst:** `event_id` für `broadcasts` und `push_log`, Vote-/Draft-Guards pro Event **und die Arcade-Live-Fläche** (`GET /api/arcade/lobbies` aggregiert heute alle offenen Lobbys, die Lobby-Listen gehen per globalem `io.emit` raus – Lobbys bekommen denselben Event-Kontext/Room wie alles andere, sonst sehen und joinen Nicht-Mitglieder weiter die Lobbys des Events). Ohne diese Punkte wäre die frisch eingeführte Sichtbarkeit löchrig | L |
-| **6 – Scoping-Lücken & Feinschliff** | `event_id` für `info_entries` (inkl. „global"-Fall fürs Info-Board) und `arcade_results` – beide bleiben bis dahin bewusst global (reine Anzeige-Historie, innerhalb eines Freundeskreises kein Leak); Test-User-Ausschluss aus Aggregationen/Push, Impersonation (`acting_as`), Tracking-Erinnerung; optional: „Daten umziehen"-Werkzeug | M |
+| **6 – Scoping-Lücken & Feinschliff** | `event_id` für `info_entries` (inkl. „global"-Fall fürs Info-Board) und `arcade_results`; Test-User-Ausschluss aus Aggregationen/Push, Impersonation (`acting_as`), Tracking-Erinnerung; optional: „Daten umziehen"-Werkzeug | M |
+| **7 – Aktivierung** | Vollständige Definition of Done prüfen, DB sichern, Konten claimen, `AUTH_MODE=required` setzen, Alt-Token/PIN entfernen, dokumentierter Smoke-Test und Rollback | S |
 
-Phasen 1–2 sind das kritische Fundament; ab Phase 3 sind die Schritte weitgehend unabhängig
-voneinander priorisierbar. Impersonation (in 6) kann bei Bedarf in Phase 3 vorgezogen werden,
-wenn das Testen ohne „Nicht du?" vorher zu unbequem wird. Entscheidung 11.4 (getrennte
-Freundeskreise ja/nein) muss vor Phase 5 stehen.
+Phasen 1–2 sind das kritische Fundament; ab Phase 3 sind die Schritte teilweise parallel
+vorbereitbar. Die produktive Umschaltung erfolgt aber bewusst erst in Phase 7. Impersonation (in 6)
+kann bei Bedarf in Phase 3 vorgezogen werden, wenn das Testen ohne „Nicht du?" vorher zu
+unbequem wird. Entscheidung 11.4 (getrennte Freundeskreise ja/nein) muss vor Phase 5 stehen.
 
 ---
 
-## 10. Bereits getroffene Detail-Entscheidungen (Rev. 2)
+## 10. Bereits getroffene Detail-Entscheidungen (Rev. 3)
 
 Damit die offene Liste kurz bleibt – diese Punkte betrachtet das Konzept als entschieden
 (Einspruch natürlich möglich):
 
-1. **Auth-Verfahren:** Name + Passwort + langlebiges HTTP-only-Session-Cookie; Passkeys als
+1. **Auth-Verfahren:** stabiler Loginname + Passwort + langlebiges HTTP-only-Session-Cookie; Passkeys als
    möglicher späterer Zusatz-Login (5.1).
 2. **Sentinel-Modell bleibt** – mit personenbezogener Kontext-Regel `getEventContextFor()`
    und definierter Sentinel-Audience (7.1/7.2).
@@ -684,8 +810,9 @@ Damit die offene Liste kurz bleibt – diese Punkte betrachtet das Konzept als e
 
 1. **Passwort vergessen (normale User):** Vorschlag: Admin generiert einen Reset-Link
    (gleicher Mechanismus wie Claim-Code). Kein E-Mail-Versand nötig – Freundeskreis.
-2. **Dürfen User sich selbst umbenennen?** Bisher ja; mit festen Identitäten spricht wenig
-   dagegen (Name bleibt UNIQUE, künftig case-insensitiv). Vorschlag: ja, beibehalten.
+2. **Dürfen User sich selbst umbenennen?** Vorschlag: ja, den sichtbaren Gamername weiter frei
+   ändern lassen. Der separate `login_name` bleibt stabil und wird nur über einen expliziten,
+   erneut authentifizierten Account-Flow geändert.
 3. **Rückwirkende Sichtbarkeit für Neu-Eingeladene:** Wer während des Events dazukommt, sieht
    dann auch alles, was vorher im Event passiert ist. Vorschlag: ja (einfach und im
    Freundeskreis erwünscht) – nur explizit festhalten, damit es niemanden überrascht.
@@ -695,8 +822,10 @@ Damit die offene Liste kurz bleibt – diese Punkte betrachtet das Konzept als e
    nicht dicht (8.1) und liefe auf Mandanten-Scoping fast aller Tabellen hinaus – der
    empfohlene Weg für eine zweite Gruppe ist eine zweite Instanz (eine SQLite-Datei, ein
    Prozess). Muss vor Phase 5 bestätigt sein.
-5. **Wer darf Events anlegen?** Konzept sagt: nur Admins. Alternative: jeder darf anlegen und
+5. **Sichtbarkeit vergangener Events:** Sieht man Events, an denen man teilgenommen hat, nach
+   deren Ende weiter (Erinnerungen, PDF-Andenken)? Vorschlag: ja – Mitgliedschaft verfällt nicht.
+6. **Wer darf Events anlegen?** Konzept sagt: nur Admins. Alternative: jeder darf anlegen und
    wird „Orga" seines Events (Basis dafür ist mit `event_participants.role` vorbereitet,
    6.1). Bewusst erst mal weggelassen.
-6. **„Daten umziehen"-Werkzeug** (Sentinel → Event bei vergessenem Tracking, 7.3): einplanen
+7. **„Daten umziehen"-Werkzeug** (Sentinel → Event bei vergessenem Tracking, 7.3): einplanen
    oder auf Bedarf verschieben?
