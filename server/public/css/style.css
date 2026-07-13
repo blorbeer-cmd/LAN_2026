@@ -1020,7 +1020,7 @@ button.card {
 .arcade-tiles {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 
 /* Open lobbies use a compact three-column overview on laptop widths. */
@@ -1041,14 +1041,14 @@ button.card {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  gap: var(--space-1);
-  min-height: 80px;
-  padding: var(--space-2) var(--space-1);
+  gap: var(--space-2);
+  min-height: 88px;
+  padding: var(--space-3) var(--space-1);
   cursor: pointer;
   text-align: center;
 }
 .arcade-tile-icon {
-  font-size: var(--font-size-xl);
+  font-size: var(--font-size-2xl);
   line-height: 1;
 }
 .arcade-tile-name {
