@@ -9,6 +9,7 @@ import { connectSocket } from './socket.js';
 import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml, formatDateTime } from './format.js';
 import { installIconReplacement, icon } from './icons.js';
 import { bannerContentHtml } from './pushFeed.js';
+import { drawArcadeStreamCanvas } from './arcadeStreamRenderer.js';
 
 installIconReplacement();
 
@@ -16,7 +17,7 @@ const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
 const GAME_NAMES = { quiz: 'Gaming-Quiz', tetris: 'Tetris', scribble: 'Scribble', blobby: 'Blobby Volley', pong: 'Pong', snake: 'Snake' };
 const cssColor = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
-function drawKioskCanvas(canvas, game) {
+function drawLegacyKioskCanvas(canvas, game) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const w = canvas.width;
@@ -117,6 +118,14 @@ function drawKioskCanvas(canvas, game) {
   }
 }
 
+function drawKioskCanvas(canvas, game) {
+  if (GAME_NAMES[game.gameType]) {
+    drawArcadeStreamCanvas(canvas, game);
+    return;
+  }
+  drawLegacyKioskCanvas(canvas, game);
+}
+
 function renderArcadeStream(game) {
   const gameView = document.getElementById('kiosk-game');
   const dashboard = document.getElementById('kiosk-dashboard');
@@ -135,7 +144,7 @@ function renderArcadeStream(game) {
     return;
   }
   let canvas = content.querySelector('canvas');
-  if (!canvas) { content.innerHTML = '<canvas width="1200" height="700" aria-label="Livebild des Arcade-Spiels"></canvas>'; canvas = content.querySelector('canvas'); }
+  if (!canvas) { content.innerHTML = '<canvas width="800" height="450" aria-label="Livebild des Arcade-Spiels"></canvas>'; canvas = content.querySelector('canvas'); }
   drawKioskCanvas(canvas, game);
 }
 
