@@ -168,6 +168,7 @@ function broadcastState(io: Server, match: TetrisMatch) {
     running: match.running,
     paused: match.paused,
     players: match.players.map((p) => serializeState(match, match.states.get(p.id)!)),
+    scores: scorePayload(match),
   };
   io.to(match.room).emit('tetris:state', payload);
   broadcastArcadeKiosk(io, { gameType: 'tetris', ...payload, playerRefs: match.players });

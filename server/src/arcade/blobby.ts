@@ -2,7 +2,7 @@ import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { playerMayUseArcadeAi } from './adminAccess';
-import { BlobbyInput, BlobbyWorld, createWorld, stepWorld } from './blobbyLogic';
+import { BALL_RADIUS, BLOB_RADIUS, BlobbyInput, BlobbyWorld, COURT_HEIGHT, COURT_WIDTH, GROUND_Y, NET_HEIGHT, NET_X, createWorld, stepWorld } from './blobbyLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
@@ -59,6 +59,7 @@ function snapshot(io: Server, match: Match) {
   const payload = {
     matchId: match.id, serverTime: Date.now(), running: match.running, paused: match.paused,
     world: match.world, scores: scorePayload(match), targetScore: match.targetScore,
+    render: { width: COURT_WIDTH, height: COURT_HEIGHT, groundY: GROUND_Y, netX: NET_X, netHeight: NET_HEIGHT, blobRadius: BLOB_RADIUS, ballRadius: BALL_RADIUS },
   };
   io.to(match.room).emit('blobby:state', payload);
   broadcastArcadeKiosk(io, { gameType: 'blobby', ...payload, players: match.players });
