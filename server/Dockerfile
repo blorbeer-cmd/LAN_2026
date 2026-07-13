@@ -10,7 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ \
     && rm -rf /var/lib/apt/lists/*
 
+# npm runs the repository's prepare hook during npm ci. Include that tiny
+# script before dependency installation so container builds stay quiet; it
+# intentionally becomes a no-op because the image has no .git checkout.
 COPY package.json package-lock.json ./
+COPY scripts/setup-git-hooks.js ./scripts/setup-git-hooks.js
 RUN npm ci
 
 COPY tsconfig.json ./
