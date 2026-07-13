@@ -5,11 +5,12 @@
 // dedicated full-screen `scribbleRoom` view — the app switches to it
 // automatically when the match starts and back to Arcade when it ends.
 //
-// Owns a <canvas> that must survive high-frequency updates (strokes, hint
-// reveals, chat, score ticks) without a full DOM rebuild, since the client
-// has no local record of already-confirmed strokes to replay outside of a
-// rejoin sync (see setupCanvas). Those events mutate the already-rendered
-// DOM directly; only real phase/turn transitions call rerender().
+// Owns a <canvas> whose high-frequency updates (strokes, hint reveals,
+// chat, score ticks) mutate the already-rendered DOM directly; only real
+// phase/turn transitions call rerender(). The confirmed draw ops are
+// additionally mirrored in `confirmedOps`, so a rebuild that does happen —
+// or a redraw broadcast arriving while no canvas is mounted — restores the
+// drawing via setupCanvas() instead of leaving a blank canvas behind.
 
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
@@ -76,10 +77,21 @@ let pendingPoints = [];
 // overlap, per-frame batches (often a single point) arrive as isolated dots.
 let lastFlushedPoint = null;
 let flushScheduled = false;
-// Set only right after a rejoin sync, consumed once by the next canvas
-// setup — a fresh turn always starts with a blank canvas server-side, so
-// this must never linger and get replayed onto a later, unrelated turn.
-let replayStrokesOnNextCanvas = null;
+// The client's mirror of the server's authoritative draw-op list for the
+// current turn. A rerender rebuilds the container and recreates the canvas
+// blank, and a redraw broadcast can arrive in the instant no canvas is
+// mounted — without this record either case silently loses the confirmed
+// drawing until the turn ends. Every setupCanvas() replays it; it resets
+// exactly when the server's own list does (new turn, clear, redraw, rejoin
+// sync outside the drawing phase).
+let confirmedOps = [];
+let confirmedStrokeCount = 0;
+
+function setConfirmedStrokeCount(count) {
+  if (typeof count !== 'number') return;
+  confirmedStrokeCount = count;
+  if (canvasEl) canvasEl.dataset.scribbleStrokeCount = String(count);
+}
 
 function myId() {
   return getMyId();
@@ -118,6 +130,8 @@ function isDrawer() {
 function resetMatchState() {
   match = null;
   turn = null;
+  confirmedOps = [];
+  confirmedStrokeCount = 0;
   wordOptions = null;
   mask = null;
   choiceExpiresAt = null;
@@ -168,9 +182,8 @@ function setupCanvas(el) {
   canvas2d = canvasEl.getContext('2d');
   canvas2d.lineJoin = 'round';
   canvas2d.lineCap = 'round';
-  canvasEl.dataset.scribbleStrokeCount = '0';
-  replayStrokes(replayStrokesOnNextCanvas ?? []);
-  replayStrokesOnNextCanvas = null;
+  canvasEl.dataset.scribbleStrokeCount = String(confirmedStrokeCount);
+  replayStrokes(confirmedOps);
 }
 
 function replayStrokes(strokes) {
@@ -318,18 +331,12 @@ function flush() {
   const points = lastFlushedPoint ? [lastFlushedPoint, ...pendingPoints] : pendingPoints;
   lastFlushedPoint = pendingPoints[pendingPoints.length - 1];
   pendingPoints = [];
-  socket?.emit('scribble:stroke', {
-    matchId: match.matchId,
-    playerId: myId(),
-    strokeId: currentStrokeId,
-    color: tool.color,
-    size: tool.size,
-    erase: tool.mode === 'erase',
-    points,
-  }, (response) => {
-    if (canvasEl && response?.ok && typeof response.strokeCount === 'number') {
-      canvasEl.dataset.scribbleStrokeCount = String(response.strokeCount);
-    }
+  const batch = { type: 'stroke', strokeId: currentStrokeId, color: tool.color, size: tool.size, erase: tool.mode === 'erase', points };
+  // Optimistically confirmed — a later redraw/clear/turn resets the mirror
+  // to the server's authoritative list anyway.
+  confirmedOps.push(batch);
+  socket?.emit('scribble:stroke', { matchId: match.matchId, playerId: myId(), ...batch }, (response) => {
+    if (response?.ok) setConfirmedStrokeCount(response.strokeCount);
   });
 }
 
@@ -342,17 +349,10 @@ function onPointerDown(e) {
   const p = pointFromEvent(e);
   if (tool.mode === 'fill') {
     floodFill(p[0], p[1], tool.color);
-    socket?.emit('scribble:fill', {
-      matchId: match.matchId,
-      playerId: myId(),
-      strokeId: newOpId(),
-      x: p[0],
-      y: p[1],
-      color: tool.color,
-    }, (response) => {
-      if (canvasEl && response?.ok && typeof response.strokeCount === 'number') {
-        canvasEl.dataset.scribbleStrokeCount = String(response.strokeCount);
-      }
+    const fillOp = { type: 'fill', strokeId: newOpId(), x: p[0], y: p[1], color: tool.color };
+    confirmedOps.push(fillOp);
+    socket?.emit('scribble:fill', { matchId: match.matchId, playerId: myId(), ...fillOp }, (response) => {
+      if (response?.ok) setConfirmedStrokeCount(response.strokeCount);
     });
     return;
   }
@@ -632,6 +632,10 @@ export function ensureScribbleSocket() {
 
   socket.on('scribble:turn', (payload) => {
     if (!match || payload.matchId !== match.matchId) return;
+    // Turn boundaries (choosing start, drawing start) always begin with an
+    // empty server-side op list — mirror that before the canvas remounts.
+    confirmedOps = [];
+    confirmedStrokeCount = 0;
     turn = payload;
     mask = payload.mask ?? null;
     wordOptions = payload.phase === 'choosing' ? wordOptions : null;
@@ -649,19 +653,23 @@ export function ensureScribbleSocket() {
   // full container rebuild would recreate (and blank) it.
   socket.on('scribble:stroke', (payload) => {
     if (!match || payload.matchId !== match.matchId || isDrawer()) return;
+    confirmedOps.push({ type: 'stroke', strokeId: payload.strokeId, color: payload.color, size: payload.size, erase: payload.erase, points: payload.points });
     drawStroke(payload);
-    if (canvasEl && typeof payload.strokeCount === 'number') canvasEl.dataset.scribbleStrokeCount = String(payload.strokeCount);
+    setConfirmedStrokeCount(payload.strokeCount);
   });
 
   socket.on('scribble:clear', (payload) => {
     if (!match || payload.matchId !== match.matchId) return;
+    confirmedOps = [];
+    setConfirmedStrokeCount(0);
     if (canvas2d && canvasEl) canvas2d.clearRect(0, 0, canvasEl.width, canvasEl.height);
   });
 
   socket.on('scribble:fill', (payload) => {
     if (!match || payload.matchId !== match.matchId || isDrawer()) return;
+    confirmedOps.push({ type: 'fill', x: payload.x, y: payload.y, color: payload.color });
     floodFill(payload.x, payload.y, payload.color);
-    if (canvasEl && typeof payload.strokeCount === 'number') canvasEl.dataset.scribbleStrokeCount = String(payload.strokeCount);
+    setConfirmedStrokeCount(payload.strokeCount);
   });
 
   // Undo replaces the whole canvas from the server's authoritative reduced
@@ -670,8 +678,9 @@ export function ensureScribbleSocket() {
   // stroke from local real-time drawing).
   socket.on('scribble:redraw', (payload) => {
     if (!match || payload.matchId !== match.matchId) return;
-    replayStrokes(payload.strokes ?? []);
-    if (canvasEl && typeof payload.strokeCount === 'number') canvasEl.dataset.scribbleStrokeCount = String(payload.strokeCount);
+    confirmedOps = payload.strokes ?? [];
+    replayStrokes(confirmedOps);
+    setConfirmedStrokeCount(payload.strokeCount);
   });
 
   socket.on('scribble:hint', (payload) => {
@@ -767,11 +776,11 @@ export function ensureScribbleSocket() {
     socket.emit('scribble:rejoin', { matchId: match.matchId, playerId: myId() }, (res) => {
       if (!res?.ok) return;
       const sync = res.sync;
-      // Only a drawing-phase sync has a live canvas to replay onto. A sync
-      // during gallery/reveal/choosing must not park the previous turn's
-      // strokes here — no canvas consumes them now, and the next turn's
-      // setupCanvas() would replay the stale artwork onto its blank canvas.
-      replayStrokesOnNextCanvas = sync.phase === 'drawing' ? sync.strokes : null;
+      // Only a drawing-phase sync carries ops for a live canvas. A sync
+      // during gallery/reveal/choosing must reset the mirror instead — the
+      // next turn's canvas has to start blank, not replay stale artwork.
+      confirmedOps = sync.phase === 'drawing' ? sync.strokes ?? [] : [];
+      confirmedStrokeCount = new Set(confirmedOps.map((op) => op.strokeId)).size;
       match = { matchId: sync.matchId, host: sync.host, players: sync.players, rounds: sync.rounds, turnDurationMs: sync.turnDurationMs };
       turn = {
         matchId: sync.matchId,
