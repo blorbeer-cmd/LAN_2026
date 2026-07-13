@@ -43,11 +43,13 @@ Sicherheitsprozess.
 
 ## Produktions-Deployment
 
-Der Workflow `.github/workflows/deploy.yml` veröffentlicht für jeden relevanten Push auf `main`
-ein mit dem Commit-SHA getaggtes Image. Reine Markdown- und `docs/`-Änderungen durchlaufen bereits
-im Pull Request die vollständige CI, lösen nach dem Merge aber keinen Image-Build und keinen
-Produktionsneustart aus. Vor einem App-Update wird die versionierte `docker-compose.yml` auf den
-Server übertragen; Geheimnisse verbleiben ausschließlich in dessen nicht versionierter `.env`.
+Der Workflow `.github/workflows/deploy.yml` baut bereits in jedem Pull Request das vollständige
+Runtime-Image, veröffentlicht es dort aber nicht. Für jeden relevanten Push auf `main` wird das mit
+dem Commit-SHA getaggte Image anschließend veröffentlicht. Reine Markdown- und `docs/`-Änderungen
+durchlaufen im Pull Request die vollständige CI, lösen nach dem Merge aber keinen erneuten
+Image-Build und keinen Produktionsneustart aus. Vor einem App-Update wird die versionierte
+`docker-compose.yml` auf den Server übertragen; Geheimnisse verbleiben ausschließlich in dessen
+nicht versionierter `.env`.
 
 Das Runtime-Image besitzt einen Docker-Healthcheck gegen `/api/health`. Der Check verwendet den im
 Container vorhandenen `ACCESS_TOKEN`, ohne ihn in Logs oder Prozessargumenten außerhalb des

@@ -184,11 +184,11 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
 ### Alltag
 
 - **Deploy:** einfach eine relevante Änderung nach `main` pushen. Tests (Unit + Integration + E2E)
-  müssen grün sein, sonst wird nicht gebaut/deployt. Reine Markdown-/`docs/`-Änderungen werden im
-  Pull Request vollständig geprüft, lösen nach dem Merge aber keinen unnötigen Image-Build oder
-  Produktionsneustart aus. Der Deploy wartet auf den Container-Healthcheck und zeigt bei einem
-  Startfehler automatisch Status und die letzten 100 App-Logzeilen; anschließend stellt er das
-  zuvor laufende Image wieder her.
+  und der vollständige Runtime-Image-Build müssen bereits im Pull Request grün sein. Reine
+  Markdown-/`docs/`-Änderungen werden dort vollständig geprüft, lösen nach dem Merge aber keinen
+  erneuten Image-Build oder Produktionsneustart aus. Der Deploy wartet auf den
+  Container-Healthcheck und zeigt bei einem Startfehler automatisch Status und die letzten 100
+  App-Logzeilen; anschließend stellt er das zuvor laufende Image wieder her.
 - **Rollback:** auf dem Server (`ssh deploy@<HETZNER_HOST>`) `/opt/lan2026/rollback.sh <git-sha>`
   ausführen – pinnt das Docker-Image auf einen früheren, bereits gebauten Stand.
 - **Backups:** noch nicht eingerichtet (siehe Security-Review) – für echte Daten vor der ersten
