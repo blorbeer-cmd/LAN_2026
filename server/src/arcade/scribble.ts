@@ -14,7 +14,7 @@ import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { playerMayUseArcadeAi } from './adminAccess';
-import { notifyPlayers } from '../push';
+import { notifyPlayers, resolvePushTopic } from '../push';
 import { matchesAnswer } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
@@ -33,6 +33,10 @@ import {
   selectRoundWinnerIds,
   wordMask,
 } from './scribbleLogic';
+
+function scribbleLobbyPushKey(lobbyId: string): string {
+  return `arcade-lobby:scribble:${lobbyId}`;
+}
 
 const CHOICE_MS = 15_000;
 const REVEAL_MS = 3_000;
@@ -180,6 +184,7 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
     if (lobby.host.id === entry[0]) {
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'scribble', id);
       lobbies.delete(id);
+      resolvePushTopic(scribbleLobbyPushKey(id));
     } else {
       releaseLobbyMembership(entry[0], 'scribble', id);
       lobby.socketIds.delete(entry[0]);
@@ -706,11 +711,16 @@ export function registerScribbleSockets(io: Server): void {
         const otherPlayerIds = (db.prepare('SELECT id FROM players WHERE id != ?').all(player.id) as Array<{ id: string }>).map(
           (p) => p.id
         );
-        notifyPlayers(otherPlayerIds, {
-          title: '✏️ Neue Scribble-Lobby',
-          body: `${player.name} hat eine Scribble-Lobby geöffnet – jetzt beitreten!`,
-          url: '/#arcade',
-        });
+        notifyPlayers(
+          otherPlayerIds,
+          {
+            title: '✏️ Neue Scribble-Lobby',
+            body: `${player.name} hat eine Scribble-Lobby geöffnet – jetzt beitreten!`,
+            url: '/#arcade',
+          },
+          'all',
+          { key: scribbleLobbyPushKey(lobby.id) }
+        );
       }
     });
     socket.on('scribble:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (res: unknown) => void) => {
@@ -742,6 +752,7 @@ export function registerScribbleSockets(io: Server): void {
       if (lobby.host.id === payload.playerId) {
         releaseLobbyMemberships(lobby.players.map((p) => p.id), 'scribble', lobby.id);
         lobbies.delete(lobby.id);
+        resolvePushTopic(scribbleLobbyPushKey(lobby.id));
       } else {
         releaseLobbyMembership(payload.playerId, 'scribble', lobby.id);
         lobby.socketIds.delete(payload.playerId);
@@ -817,6 +828,7 @@ export function registerScribbleSockets(io: Server): void {
         matches.set(match.id, match);
         releaseLobbyMemberships(lobby.players.map((p) => p.id), 'scribble', lobby.id);
         lobbies.delete(lobby.id);
+        resolvePushTopic(scribbleLobbyPushKey(lobby.id));
         emitLobbies(io);
         startArcadeSession(realPlayerIds(match.players), 'scribble');
 

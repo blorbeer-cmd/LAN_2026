@@ -194,8 +194,11 @@ export const Events = {
   tournamentsChanged: 'tournaments:changed',
   draftChanged: 'draft:changed',
   broadcastNew: 'broadcast:new',
+  broadcastsChanged: 'broadcasts:changed',
   infoChanged: 'info:changed',
   foodOrdersChanged: 'foodOrders:changed',
   arrivalsChanged: 'arrivals:changed',
   pushSent: 'push:sent',
+  pushChanged: 'push:changed',
+  pushSeen: 'push:seen',
 } as const;

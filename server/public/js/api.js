@@ -292,7 +292,10 @@ export const api = {
       apiFetch('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ playerId, subscription }) }),
     unsubscribe: (endpoint) => apiFetch('/api/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
     last: () => apiFetch('/api/push/last'),
+    current: (playerId) => apiFetch(`/api/push/current?playerId=${encodeURIComponent(playerId)}`),
     log: (playerId) => apiFetch(`/api/push/log?playerId=${encodeURIComponent(playerId)}`),
+    seen: (id, playerId) =>
+      apiFetch(`/api/push/${id}/seen`, { method: 'POST', body: JSON.stringify({ playerId }) }),
   },
 
   agent: {
@@ -310,8 +313,10 @@ export const api = {
 
   broadcasts: {
     list: () => apiFetch('/api/broadcasts'),
-    send: (playerId, message) =>
-      apiFetch('/api/broadcasts', { method: 'POST', body: JSON.stringify({ playerId, message }) }),
+    send: (playerId, message, endsAt) =>
+      apiFetch('/api/broadcasts', { method: 'POST', body: JSON.stringify({ playerId, message, endsAt }) }),
+    end: (id, playerId) =>
+      apiFetch(`/api/broadcasts/${id}/end`, { method: 'POST', body: JSON.stringify({ playerId }) }),
   },
 
   info: {

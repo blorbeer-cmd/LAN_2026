@@ -21,7 +21,7 @@ import { nanoid } from 'nanoid';
 import { db, getState, setState } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getTrackingEventId, OUTSIDE_EVENTS_ID } from '../events';
-import { notifyPlayers } from '../push';
+import { notifyPlayers, resolvePushTopic } from '../push';
 import { isIntInRange } from '../validation';
 import { formatDurationMs } from '../playtime';
 
@@ -293,14 +293,19 @@ votesRouter.post('/start', (req, res) => {
   const payload = buildPayload();
   broadcast(Events.votesChanged, payload);
 
-  notifyPlayers(voteNotificationPlayerIds(), {
-    title: cleanTitle ? `🗳️ ${cleanTitle}` : '🗳️ Neue Abstimmung',
-    body:
-      nextMode === 'single'
-        ? 'Stichwahl: jetzt für einen der Gewinner abstimmen.'
-        : 'Was zocken wir als Nächstes? Spiele mit Punkten bewerten.',
-    url: '/#votes',
-  });
+  notifyPlayers(
+    voteNotificationPlayerIds(),
+    {
+      title: cleanTitle ? `🗳️ ${cleanTitle}` : '🗳️ Neue Abstimmung',
+      body:
+        nextMode === 'single'
+          ? 'Stichwahl: jetzt für einen der Gewinner abstimmen.'
+          : 'Was zocken wir als Nächstes? Spiele mit Punkten bewerten.',
+      url: '/#votes',
+    },
+    'all',
+    { key: `vote:${nextRound}` }
+  );
 
   res.status(201).json(payload);
 });
@@ -430,6 +435,7 @@ votesRouter.post('/close', (_req, res) => {
     JSON.stringify(winnerGameIds),
     state.round
   );
+  resolvePushTopic(`vote:${state.round}`);
 
   const payload = buildPayload({ winnerGameIds });
   broadcast(Events.votesChanged, payload);
@@ -447,6 +453,7 @@ votesRouter.post('/cancel', (_req, res) => {
   db.prepare('DELETE FROM votes WHERE round = ?').run(state.round);
   db.prepare('DELETE FROM vote_rounds WHERE round = ?').run(state.round);
   setState(OPEN_KEY, '0');
+  resolvePushTopic(`vote:${state.round}`);
 
   const payload = buildPayload();
   broadcast(Events.votesChanged, payload);

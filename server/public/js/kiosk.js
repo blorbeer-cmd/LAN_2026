@@ -338,17 +338,35 @@ function renderFoodBanner(orders) {
 // notifyPlayers() call is logged server-side, see push.ts — the server-side
 // filter in getLastPushLogEntry() already excludes personally-targeted
 // pushes like "dein Match ist bereit", which wouldn't mean anything to
-// everyone glancing at a shared screen). Always shows the last one, with
-// timestamp, rather than only "currently active" ones — a kiosk screen
-// someone glances at minutes later should still see what was last
-// announced, not go blank. Same bell + title + body content as the app's
+// everyone glancing at a shared screen). Shows the newest still-active one,
+// with timestamp; closed or expired topics fall back to an older applicable
+// announcement instead of lingering. Same bell + title + body content as
+// the app's
 // header notification banner (see notificationBanner.js/pushFeed.js) —
 // just not clickable, since the Kiosk has nobody to click it.
+let pushBannerExpiryTimer = null;
+
+async function refreshPushBanner() {
+  try {
+    const current = await api.push.last();
+    renderBroadcastBanner(current.entry);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Kiosk push-banner refresh failed:', err);
+  }
+}
+
 function renderBroadcastBanner(entry) {
   const el = document.getElementById('kiosk-broadcast');
+  if (pushBannerExpiryTimer) clearTimeout(pushBannerExpiryTimer);
+  pushBannerExpiryTimer = null;
   if (!entry) {
     el.hidden = true;
     return;
+  }
+  if (entry.expiresAt) {
+    const delay = Math.max(0, Math.min(entry.expiresAt - Date.now() + 50, 2_147_483_647));
+    pushBannerExpiryTimer = setTimeout(refreshPushBanner, delay);
   }
   el.innerHTML = `${bannerContentHtml(entry)} <span class="kiosk-broadcast-time">· ${formatDateTime(entry.createdAt)} Uhr</span>`;
   el.hidden = false;
@@ -464,12 +482,12 @@ async function main() {
 
   // Last-push banner: a big banner across the top of the shared screen — the
   // whole point of putting it on the kiosk is that people look up from their
-  // own machines. Stays up permanently (newest message replaces it) rather
-  // than auto-hiding, so it still reads correctly minutes later.
+  // own machines. It stays until superseded, resolved or expired.
   socket.on('push:sent', (payload) => {
     renderBroadcastBanner(payload);
     playPushSound();
   });
+  socket.on('push:changed', refreshPushBanner);
 }
 
 main().catch((err) => {

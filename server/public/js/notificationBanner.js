@@ -1,4 +1,4 @@
-// Always-on header banner: shows the single most recent push notification
+// Always-on header banner: shows the newest still-active push notification
 // that concerned this device's current identity, with a direct link into
 // whatever view it's about — a persistent counterpart to the transient toast
 // nudges app.js already fires on the relevant socket events, for anyone who
@@ -17,15 +17,17 @@ import { icon } from './icons.js';
 import { escapeHtml } from './format.js';
 import { feedLinkView, bannerContentHtml } from './pushFeed.js';
 import { ensureAktuellLoaded, aktuellItems } from './aktuellStatus.js';
+import { showToast } from './toast.js';
 
 let epoch = 0;
 let lastEntry = null;
+let expiryTimer = null;
 
 function bannerEl() {
   return document.getElementById('notification-banner');
 }
 
-// Redraws from whatever's currently cached — the last-fetched push entry
+// Redraws from whatever's currently cached — the last-fetched active push entry
 // plus the shared "Aktuell" items — without refetching either. Called after
 // a push refetch resolves, whenever aktuellStatus.js reports new data, and
 // exported for app.js to call directly on state.votes changes (the vote
@@ -34,6 +36,13 @@ function bannerEl() {
 export function renderBanner() {
   const banner = bannerEl();
   if (!banner) return;
+
+  if (expiryTimer) clearTimeout(expiryTimer);
+  expiryTimer = null;
+  if (lastEntry?.expiresAt) {
+    const delay = Math.max(0, Math.min(lastEntry.expiresAt - Date.now() + 50, 2_147_483_647));
+    expiryTimer = setTimeout(refreshNotificationBanner, delay);
+  }
 
   const chips = aktuellItems()
     .map(
@@ -52,9 +61,13 @@ export function renderBanner() {
   if (lastEntry) {
     const view = feedLinkView(lastEntry.url);
     const content = bannerContentHtml(lastEntry);
-    pushLine = view
+    const contentLine = view
       ? `<button type="button" class="notification-banner-link" data-notification-navigate="${view}">${content}${icon('chevronRight', { className: 'notification-banner-arrow' })}</button>`
       : `<span class="notification-banner-link notification-banner-static">${content}</span>`;
+    pushLine = `<div class="notification-banner-push">
+      ${contentLine}
+      <button type="button" class="notification-banner-dismiss" data-notification-dismiss title="Als gesehen markieren" aria-label="Mitteilung als gesehen markieren">${icon('x')}</button>
+    </div>`;
   }
 
   banner.innerHTML = `${pushLine}${chips ? `<div class="notification-banner-aktuell">${chips}</div>` : ''}`;
@@ -64,6 +77,21 @@ export function renderBanner() {
     el.addEventListener('click', (e) => {
       window.dispatchEvent(new CustomEvent('lan:navigate', { detail: e.currentTarget.dataset.notificationNavigate }));
     });
+  });
+
+  const dismissButton = banner.querySelector('[data-notification-dismiss]');
+  dismissButton?.addEventListener('click', async () => {
+    const entryId = lastEntry?.id;
+    const playerId = getMyId();
+    if (!entryId || !playerId || dismissButton.disabled) return;
+    dismissButton.disabled = true;
+    try {
+      await api.push.seen(entryId, playerId);
+      await refreshNotificationBanner();
+    } catch (err) {
+      dismissButton.disabled = false;
+      showToast(err.message, { error: true });
+    }
   });
 }
 
@@ -77,8 +105,8 @@ export async function refreshNotificationBanner() {
   let entry = null;
   if (myId) {
     try {
-      const res = await api.push.log(myId);
-      entry = res.entries[0] ?? null;
+      const res = await api.push.current(myId);
+      entry = res.entry ?? null;
     } catch {
       entry = null;
     }
