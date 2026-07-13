@@ -13,6 +13,7 @@ import {
   hasScribbleMatch,
   scribbleLobbies,
   leaveMyScribbleLobby,
+  renderScribbleDrawing,
 } from './arcadeScribble.js';
 import { ensureBlobbySocket, renderBlobbyLobbyCard, wireBlobbyLobbyCard, myBlobbyLobby, hasBlobbyMatch, blobbyLobbies, leaveMyBlobbyLobby } from './blobby.js';
 import { ensurePongSocket, renderPongLobbyCard, wirePongLobbyCard, myPongLobby, hasPongMatch, pongLobbies, leaveMyPongLobby } from './pong.js';
@@ -39,6 +40,7 @@ let lobbies = [];
 let watchMatches = [];
 let stats = null;
 let statsLoading = false;
+let scribbleGallery = [];
 let activeStatsGame = null;
 let activeGame = null; // which game tile is expanded
 let match = null;
@@ -59,6 +61,7 @@ function rerenderIfView(ctx, view) {
 // fires this so our cached highscores refetch the next time Arcade renders.
 window.addEventListener('lan:arcade-stats-dirty', () => {
   stats = null;
+  scribbleGallery = [];
 });
 
 function stopCountdown() {
@@ -85,10 +88,13 @@ async function loadStats(ctx) {
   if (statsLoading) return;
   statsLoading = true;
   try {
-    stats = await api.arcade.stats();
+    const [loadedStats, gallery] = await Promise.all([api.arcade.stats(), api.arcade.scribbleGallery()]);
+    stats = loadedStats;
+    scribbleGallery = gallery.drawings ?? [];
   } catch (err) {
     showToast(err.message, { error: true });
     stats = { games: [] };
+    scribbleGallery = [];
   } finally {
     statsLoading = false;
     rerenderIfView(ctx, 'arcade');
@@ -183,6 +189,30 @@ function myLobby() {
   return lobbies.find((l) => l.players.some((p) => p.id === myId)) ?? null;
 }
 
+function scribbleArtStatsHtml(game) {
+  const players = game.artPlayers ?? [];
+  const artRows = players.length
+    ? players.map((player, index) => `
+        <div class="lb-row scribble-art-stat-row">
+          <span><strong>${index + 1}. ${escapeHtml(player.name)}</strong><span class="muted"> · ${player.drawings} Bilder</span></span>
+          <span class="muted" style="text-align:right;">${player.roundWins} Rundenbilder · ${player.favorites} Favoriten<br />Cool ${player.reactionBreakdown.cool} · Kreativ ${player.reactionBreakdown.creative} · Witzig ${player.reactionBreakdown.funny}</span>
+        </div>`).join('')
+    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine bewerteten Scribble-Bilder.</div>`;
+  const galleryHtml = scribbleGallery.length
+    ? `<div class="scribble-gallery-grid">${scribbleGallery.map((drawing) => `
+        <article class="card stack scribble-drawing-card is-winner">
+          <div class="row-between" style="gap:var(--space-2);"><strong>${escapeHtml(drawing.artistName)}</strong><span class="badge">${icon('trophy')} Runde ${drawing.round}</span></div>
+          <div class="scribble-stored-canvas-wrap"><canvas data-arcade-gallery-drawing="${drawing.id}" aria-label="Rundenbild von ${escapeHtml(drawing.artistName)}"></canvas></div>
+          <div class="muted">${escapeHtml(drawing.word)} · ${drawing.favoriteVotes} Favoriten · ${drawing.reactionCount} Reaktionen</div>
+        </article>`).join('')}</div>`
+    : `<div class="empty-state" style="padding:var(--space-4);">Noch kein Rundenbild gekürt.</div>`;
+  return `
+    <div class="section-title">Beste Bilder pro Spieler</div>
+    <div>${artRows}</div>
+    <div class="section-title">Rundenbilder-Galerie</div>
+    ${galleryHtml}`;
+}
+
 function arcadeStatsHtml() {
   if (!stats && !statsLoading) return '';
   if (statsLoading && !stats) return `<div class="empty-state" style="padding:var(--space-4);">Statistiken laden…</div>`;
@@ -220,7 +250,8 @@ function arcadeStatsHtml() {
         <span class="badge">${game.matches} Match(es)</span>
       </div>
       ${rows}
-    </div>`;
+    </div>
+    ${game.gameType === 'scribble' ? scribbleArtStatsHtml(game) : ''}`;
 }
 
 function targetControls(lobby) {
@@ -548,6 +579,11 @@ export function renderArcade(container, ctx) {
       activeStatsGame = btn.dataset.statsTab;
       ctx.rerender();
     });
+  });
+
+  container.querySelectorAll('canvas[data-arcade-gallery-drawing]').forEach((canvas) => {
+    const drawing = scribbleGallery.find((entry) => entry.id === canvas.dataset.arcadeGalleryDrawing);
+    if (drawing) renderScribbleDrawing(canvas, drawing.strokes ?? []);
   });
 
   container.querySelector('#quiz-create-lobby')?.addEventListener('click', async () => {

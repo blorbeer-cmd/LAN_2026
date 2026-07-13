@@ -662,11 +662,16 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
   // the roster here would silently break it.
   const players = (await (await fetch(`${BASE_URL}/api/players`)).json()) as Array<{ id: string; name: string }>;
   const guesser = players.find((p) => p.name === 'E2E Bob');
+  const spectator = players.find((p) => p.name === 'Analytics E2E Player');
   assert.ok(guesser, 'expected "E2E Bob" (added by an earlier test) to exist');
+  assert.ok(spectator, 'expected "Analytics E2E Player" to exist');
 
   const guesserContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const spectatorContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const guesserPage = await guesserContext.newPage();
+  const spectatorPage = await spectatorContext.newPage();
   guesserPage.on('pageerror', (err) => console.error('[guesser pageerror]', err.message));
+  spectatorPage.on('pageerror', (err) => console.error('[spectator pageerror]', err.message));
   try {
     await guesserPage.goto(BASE_URL);
     await guesserPage.evaluate((id) => localStorage.setItem('lan2026_my_player_id', id), guesser!.id);
@@ -675,6 +680,13 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     await guesserPage.click('[data-view="more"]');
     await guesserPage.click('[data-navigate="arcade"]');
     await guesserPage.click('[data-game="scribble"]');
+
+    await spectatorPage.goto(BASE_URL);
+    await spectatorPage.evaluate((id) => localStorage.setItem('lan2026_my_player_id', id), spectator!.id);
+    await spectatorPage.reload();
+    await spectatorPage.waitForSelector('.nav-btn[data-view="more"]');
+    await spectatorPage.click('[data-view="more"]');
+    await spectatorPage.click('[data-navigate="arcade"]');
 
     // Host (the shared device driving `page` through this whole suite) opens
     // the lobby — draw order is lobby join order, so the host always draws
@@ -689,7 +701,14 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     await guesserPage.click('[data-scribble-join]');
 
     await page.waitForSelector('#scribble-start:not([disabled])');
+    await page.check('input[name="scribble-rounds"][value="1"]');
     await page.click('#scribble-start');
+
+    // A third, non-participating player watches the same match. Their saved
+    // identity may vote, but receives neither the word nor guess controls.
+    await spectatorPage.waitForSelector('[data-watch-match]');
+    await spectatorPage.click('[data-watch-match]');
+    await spectatorPage.waitForSelector('.arcade-watch-safe-note');
 
     // Host picks a word — the actual text is only ever shown to the drawer,
     // never sent to the guesser (see scribble.ts), so capture it from the
@@ -698,6 +717,10 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     const wordBtn = page.locator('.scribble-word-choice-btn').first();
     const chosenWord = (await wordBtn.textContent())!.trim();
     await wordBtn.click();
+    await spectatorPage.waitForSelector('#arcade-watch-canvas');
+    assert.equal(await spectatorPage.locator('.scribble-word-mask').count(), 0, 'watchers must never receive the word mask');
+    assert.equal(await spectatorPage.locator('#scribble-guess-form').count(), 0, 'watchers must never receive guess controls');
+    assert.equal(await spectatorPage.getByText(chosenWord, { exact: true }).count(), 0, 'watchers must never receive the real word');
 
     // The guesser must never see the plain word, only the underscore mask.
     await guesserPage.waitForSelector('.scribble-word-mask');
@@ -713,6 +736,15 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
 
     await page.waitForFunction(() => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) >= 1);
     await guesserPage.waitForFunction(() => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) >= 1);
+    await spectatorPage.waitForFunction(() => {
+      const canvas = document.querySelector('#arcade-watch-canvas') as HTMLCanvasElement | null;
+      if (!canvas) return false;
+      const data = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] !== data[0] || data[i + 1] !== data[1] || data[i + 2] !== data[2]) return true;
+      }
+      return false;
+    });
 
     // A watcher-list refresh belongs to the Arcade overview and must not
     // rebuild a running game's view. Before this regression guard, the
@@ -903,8 +935,54 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     // there's only one) and reveals the word to everyone.
     await page.waitForSelector(`text=Wort war: ${chosenWord}`);
     await guesserPage.waitForSelector(`text=Wort war: ${chosenWord}`);
+
+    // The last drawing stays rateable while the next turn begins. Artists
+    // cannot rate their own work; the guesser can choose one of the named
+    // reactions and the shared count updates immediately.
+    await guesserPage.click('[data-drawing-reaction="creative"]:not([disabled])');
+    await guesserPage.waitForSelector('[data-reaction-count$=":creative"]:has-text("1")');
+    await spectatorPage.waitForSelector('text=Letztes Bild bewerten');
+    await spectatorPage.click('[data-watch-reaction="cool"]:not([disabled])');
+    await spectatorPage.waitForSelector('[data-watch-reaction="cool"] span:has-text("1")');
+    assert.equal(await spectatorPage.getByText(chosenWord, { exact: true }).count(), 0, 'the reveal word stays private from watchers');
+
+    // Finish the second turn so the one-round match enters its gallery.
+    await guesserPage.waitForSelector('.scribble-word-choice-btn');
+    const secondWordBtn = guesserPage.locator('.scribble-word-choice-btn').first();
+    const secondWord = (await secondWordBtn.textContent())!.trim();
+    await secondWordBtn.click();
+    await page.waitForSelector('#scribble-guess-input');
+    await page.fill('#scribble-guess-input', secondWord);
+    await page.click('#scribble-guess-form button[type="submit"]');
+
+    await page.waitForSelector('.scribble-round-gallery');
+    await guesserPage.waitForSelector('.scribble-round-gallery');
+    await spectatorPage.waitForSelector('.scribble-round-gallery');
+    assert.equal(await page.locator('.scribble-round-gallery .scribble-drawing-card').count(), 2);
+    assert.equal(await guesserPage.locator('.scribble-round-gallery .scribble-drawing-card').count(), 2);
+    assert.equal(await spectatorPage.locator('.scribble-round-gallery .scribble-drawing-card').count(), 2);
+
+    // Each player picks the other artist's image; the watcher adds a third,
+    // persisted vote. The gallery only resolves after all three eligible
+    // identities voted, and the spectator sees the same winner.
+    await spectatorPage.click('[data-watch-favorite]:not([disabled])');
+    await page.click('[data-favorite-drawing]:not([disabled])');
+    await guesserPage.click('[data-favorite-drawing]:not([disabled])');
+    await page.waitForSelector('text=Rundenbild gekürt');
+    await page.waitForSelector('.scribble-drawing-card.is-winner');
+    await guesserPage.waitForSelector('.scribble-drawing-card.is-winner');
+    await spectatorPage.waitForSelector('text=Rundenbild gekürt');
+    await spectatorPage.waitForSelector('.scribble-drawing-card.is-winner');
+
+    await page.waitForSelector('#scribble-back');
+    await page.click('#scribble-back');
+    // With Scribble as the only completed Arcade game the existing stats UI
+    // intentionally omits its one-item tab bar and opens it directly.
+    await page.waitForSelector('text=Rundenbilder-Galerie');
+    await page.waitForSelector('canvas[data-arcade-gallery-drawing]');
   } finally {
     await guesserContext.close();
+    await spectatorContext.close();
   }
 });
 

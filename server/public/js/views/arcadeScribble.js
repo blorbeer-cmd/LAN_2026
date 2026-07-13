@@ -18,6 +18,7 @@ import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { getToken } from '../api.js';
+import { icon } from '../icons.js';
 import { lobbyPlayerChipsHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeExpandControlHtml, arcadeInfoGridHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
@@ -48,6 +49,10 @@ let paused = false;
 let pausedRemainingMs = null;
 let lastTurnEnd = null; // { word, reason } shown briefly during 'reveal'
 let matchEnded = null; // { winner, scores } once finished
+let gallery = null;
+let galleryExpiresAt = null;
+let myReactions = {};
+let favoriteDrawingId = null;
 
 let tool = { color: SWATCHES[0], size: SIZES[1], mode: 'pen' }; // mode: 'pen' | 'erase' | 'fill'
 let countdownInterval = null;
@@ -121,6 +126,10 @@ function resetMatchState() {
   pausedRemainingMs = null;
   lastTurnEnd = null;
   matchEnded = null;
+  gallery = null;
+  galleryExpiresAt = null;
+  myReactions = {};
+  favoriteDrawingId = null;
   stopCountdown();
 }
 
@@ -131,7 +140,7 @@ function stopCountdown() {
 
 function secondsLeft() {
   if (paused) return Math.max(0, Math.ceil((pausedRemainingMs ?? 0) / 1000));
-  const expiresAt = turn?.phase === 'choosing' ? choiceExpiresAt : turnExpiresAt;
+  const expiresAt = turn?.phase === 'choosing' ? choiceExpiresAt : turn?.phase === 'gallery' ? galleryExpiresAt : turnExpiresAt;
   if (!expiresAt) return 0;
   return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
 }
@@ -167,30 +176,36 @@ function setupCanvas(el) {
 function replayStrokes(strokes) {
   if (!canvas2d || !canvasEl) return;
   canvas2d.clearRect(0, 0, canvasEl.width, canvasEl.height);
-  for (const stroke of strokes) drawStroke(stroke);
+  for (const stroke of strokes) drawStrokeOn(canvas2d, canvasEl, stroke);
 }
 
 function drawStroke(stroke) {
   if (!canvas2d || !canvasEl) return;
-  if (stroke?.type === 'fill') return floodFill(stroke.x, stroke.y, stroke.color);
+  drawStrokeOn(canvas2d, canvasEl, stroke);
+}
+
+function drawStrokeOn(context, canvas, stroke) {
+  if (stroke?.type === 'fill') return floodFillOn(context, canvas, stroke.x, stroke.y, stroke.color);
   if (!stroke?.points?.length) return;
-  const w = canvasEl.width;
-  const h = canvasEl.height;
-  canvas2d.strokeStyle = stroke.erase ? '#ffffff' : stroke.color;
-  canvas2d.lineWidth = stroke.size;
-  canvas2d.beginPath();
+  const w = canvas.width;
+  const h = canvas.height;
+  context.strokeStyle = stroke.erase ? '#ffffff' : stroke.color; // design-token-ok: eraser matches white drawing paper
+  context.lineWidth = stroke.size;
+  context.lineJoin = 'round';
+  context.lineCap = 'round';
+  context.beginPath();
   stroke.points.forEach(([x, y], i) => {
     const px = x * w;
     const py = y * h;
-    if (i === 0) canvas2d.moveTo(px, py);
-    else canvas2d.lineTo(px, py);
+    if (i === 0) context.moveTo(px, py);
+    else context.lineTo(px, py);
   });
   // A lone point (a tap) would otherwise render nothing — a zero-length
   // lineTo with round lineCap paints it as a dot.
   if (stroke.points.length === 1) {
-    canvas2d.lineTo(stroke.points[0][0] * w, stroke.points[0][1] * h);
+    context.lineTo(stroke.points[0][0] * w, stroke.points[0][1] * h);
   }
-  canvas2d.stroke();
+  context.stroke();
 }
 
 function drawLocalSegment(from, to) {
@@ -214,12 +229,16 @@ function hexToRgba(hex) {
 // tolerance, since stroke edges are anti-aliased rather than flat colors.
 function floodFill(xFrac, yFrac, colorHex) {
   if (!canvas2d || !canvasEl) return;
-  const w = canvasEl.width;
-  const h = canvasEl.height;
+  floodFillOn(canvas2d, canvasEl, xFrac, yFrac, colorHex);
+}
+
+function floodFillOn(context, canvas, xFrac, yFrac, colorHex) {
+  const w = canvas.width;
+  const h = canvas.height;
   if (w === 0 || h === 0) return;
   const startX = Math.min(w - 1, Math.max(0, Math.round(xFrac * w)));
   const startY = Math.min(h - 1, Math.max(0, Math.round(yFrac * h)));
-  const imageData = canvas2d.getImageData(0, 0, w, h);
+  const imageData = context.getImageData(0, 0, w, h);
   const data = imageData.data;
   const startIdx = (startY * w + startX) * 4;
   const target = [data[startIdx], data[startIdx + 1], data[startIdx + 2], data[startIdx + 3]];
@@ -261,7 +280,23 @@ function floodFill(xFrac, yFrac, colorHex) {
     visit(x, y + 1);
     visit(x, y - 1);
   }
-  canvas2d.putImageData(imageData, 0, 0);
+  context.putImageData(imageData, 0, 0);
+}
+
+function renderStoredCanvases(container) {
+  container.querySelectorAll('canvas[data-stored-drawing]').forEach((canvas) => {
+    const drawing = [lastTurnEnd?.drawing, ...(gallery?.drawings ?? [])].find((entry) => entry?.id === canvas.dataset.storedDrawing);
+    if (!drawing) return;
+    renderScribbleDrawing(canvas, drawing.strokes ?? []);
+  });
+}
+
+export function renderScribbleDrawing(canvas, strokes) {
+  canvas.width = canvas.clientWidth;
+  canvas.height = canvas.clientHeight;
+  const context = canvas.getContext('2d');
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  for (const stroke of strokes) drawStrokeOn(context, canvas, stroke);
 }
 
 function pointFromEvent(e) {
@@ -475,6 +510,72 @@ function drawingAreaHtml() {
     </div>`;
 }
 
+const REACTION_OPTIONS = [
+  { id: 'cool', label: 'Cool', icon: 'sparkles' },
+  { id: 'creative', label: 'Kreativ', icon: 'lightbulb' },
+  { id: 'funny', label: 'Witzig', icon: 'star' },
+];
+
+function reactionControlsHtml(drawing) {
+  const ownDrawing = drawing.artistId === myId();
+  return `<div class="scribble-reactions" aria-label="Bild bewerten">
+    ${REACTION_OPTIONS.map((option) => {
+      const selected = myReactions[drawing.id] === option.id;
+      return `<button type="button" class="btn btn-sm ${selected ? 'btn-primary' : ''}" data-drawing-reaction="${option.id}" data-drawing-id="${drawing.id}" aria-pressed="${selected}" ${ownDrawing ? 'disabled title="Eigene Bilder können nicht bewertet werden"' : ''}>
+        ${icon(option.icon)} ${option.label} <span data-reaction-count="${drawing.id}:${option.id}">${drawing.reactions?.[option.id] ?? 0}</span>
+      </button>`;
+    }).join('')}
+  </div>`;
+}
+
+function storedDrawingHtml(drawing, { galleryCard = false } = {}) {
+  const ownDrawing = drawing.artistId === myId();
+  const hasOtherArtist = (gallery?.drawings ?? []).some((entry) => entry.artistId !== myId());
+  const favoriteDisabled = ownDrawing && hasOtherArtist;
+  const favoriteSelected = favoriteDrawingId === drawing.id;
+  const winner = gallery?.resolved && drawing.isRoundWinner;
+  return `<article class="card stack scribble-drawing-card ${winner ? 'is-winner' : ''}">
+    <div class="row-between" style="gap:var(--space-2);">
+      <strong>${escapeHtml(drawing.artistName)}</strong>
+      ${winner ? `<span class="badge">${icon('trophy')} Rundenbild</span>` : `<span class="muted">${drawing.reactionCount ?? 0} Reaktionen</span>`}
+    </div>
+    <div class="scribble-stored-canvas-wrap"><canvas data-stored-drawing="${drawing.id}" aria-label="Zeichnung von ${escapeHtml(drawing.artistName)}"></canvas></div>
+    <div class="muted">Wort: ${escapeHtml(drawing.word)}</div>
+    ${reactionControlsHtml(drawing)}
+    ${galleryCard && !gallery?.resolved
+      ? `<button type="button" class="btn ${favoriteSelected ? 'btn-primary' : ''}" data-favorite-drawing="${drawing.id}" aria-pressed="${favoriteSelected}" ${favoriteDisabled ? 'disabled title="Das eigene Bild kann nicht Favorit sein"' : ''}>
+          ${icon('star')} ${favoriteSelected ? 'Dein Favorit' : 'Als Favorit wählen'} · ${drawing.favoriteVotes ?? 0}
+        </button>`
+      : galleryCard
+        ? `<div class="muted">${drawing.favoriteVotes ?? 0} Favoritenstimmen</div>`
+        : ''}
+  </article>`;
+}
+
+function lastDrawingHtml() {
+  if (!lastTurnEnd?.drawing || turn?.phase === 'gallery') return '';
+  return `<div class="scribble-last-drawing" style="margin-top:var(--space-3);">
+    <div class="section-title">Letztes Bild bewerten</div>
+    <strong>Wort war: ${escapeHtml(lastTurnEnd.word ?? '')}</strong>
+    ${storedDrawingHtml(lastTurnEnd.drawing)}
+  </div>`;
+}
+
+function galleryHtml() {
+  if (!gallery || turn?.phase !== 'gallery') return '';
+  const heading = gallery.resolved ? 'Rundenbild gekürt' : 'Favorit der Runde';
+  const info = gallery.resolved
+    ? 'Der Rundensieger bleibt dauerhaft in der Scribble-Galerie sichtbar.'
+    : 'Die Bilder sind nach Reaktionen sortiert. Wähle genau einen Favoriten; deine Auswahl kann bis zum Ende geändert werden.';
+  return `<section class="stack scribble-round-gallery" style="margin-top:var(--space-3);">
+    <div class="row-between" style="gap:var(--space-3);">
+      <div><div class="section-title">${heading}</div><div class="muted">Runde ${gallery.round}/${gallery.rounds} · ${info}</div></div>
+      ${!gallery.resolved ? `<span id="scribble-countdown" class="badge badge-playing">${secondsLeft()}s</span>` : ''}
+    </div>
+    <div class="scribble-gallery-grid">${(gallery.drawings ?? []).map((drawing) => storedDrawingHtml(drawing, { galleryCard: true })).join('')}</div>
+  </section>`;
+}
+
 function appendChatLine(payload) {
   if (!chatLogEl) return;
   const line = document.createElement('div');
@@ -536,7 +637,9 @@ export function ensureScribbleSocket() {
     wordOptions = payload.phase === 'choosing' ? wordOptions : null;
     choiceExpiresAt = payload.phase === 'choosing' ? payload.expiresAt : null;
     turnExpiresAt = payload.phase === 'drawing' ? payload.expiresAt : null;
-    lastTurnEnd = null;
+    gallery = null;
+    galleryExpiresAt = null;
+    favoriteDrawingId = null;
     paused = false;
     rerender();
   });
@@ -590,10 +693,32 @@ export function ensureScribbleSocket() {
 
   socket.on('scribble:turn-end', (payload) => {
     if (!match || payload.matchId !== match.matchId) return;
-    lastTurnEnd = { word: payload.word, reason: payload.reason };
+    lastTurnEnd = { word: payload.word, reason: payload.reason, drawing: payload.drawing };
     if (turn) turn = { ...turn, scores: payload.scores, phase: 'reveal' };
     turnExpiresAt = null;
     choiceExpiresAt = null;
+    stopCountdown();
+    rerender();
+  });
+
+  socket.on('scribble:drawing-rating', (payload) => {
+    if (!match || payload.matchId !== match.matchId || !payload.drawing) return;
+    if (lastTurnEnd?.drawing?.id === payload.drawing.id) lastTurnEnd = { ...lastTurnEnd, drawing: payload.drawing };
+    if (gallery) gallery = { ...gallery, drawings: gallery.drawings.map((drawing) => drawing.id === payload.drawing.id ? payload.drawing : drawing) };
+    if (turn?.phase === 'gallery' || turn?.phase === 'reveal') rerender();
+    else {
+      for (const option of REACTION_OPTIONS) {
+        const count = document.querySelector(`[data-reaction-count="${payload.drawing.id}:${option.id}"]`);
+        if (count) count.textContent = String(payload.drawing.reactions?.[option.id] ?? 0);
+      }
+    }
+  });
+
+  socket.on('scribble:gallery', (payload) => {
+    if (!match || payload.matchId !== match.matchId) return;
+    gallery = payload;
+    galleryExpiresAt = payload.expiresAt;
+    turn = { ...(turn ?? {}), phase: 'gallery', round: payload.round, rounds: payload.rounds };
     stopCountdown();
     rerender();
   });
@@ -658,6 +783,11 @@ export function ensureScribbleSocket() {
       choiceExpiresAt = sync.phase === 'choosing' ? sync.expiresAt : null;
       turnExpiresAt = sync.phase === 'drawing' ? sync.expiresAt : null;
       paused = sync.paused;
+      lastTurnEnd = sync.lastDrawing ? { word: sync.lastDrawing.word, reason: 'synced', drawing: sync.lastDrawing } : null;
+      gallery = sync.gallery;
+      galleryExpiresAt = sync.gallery?.expiresAt ?? null;
+      myReactions = sync.selectedRatings?.reactions ?? {};
+      favoriteDrawingId = sync.selectedRatings?.favoriteDrawingId ?? null;
       rerender();
     });
   });
@@ -839,7 +969,8 @@ export function renderScribbleRoom(container) {
     <div class="arcade-game-shell"><h1 class="view-title">Scribble</h1>
     ${arcadeExpandControlHtml()}
     <div id="scribble-roster">${rosterScoreHtml()}</div>
-    ${lastTurnEnd ? `<div class="card stack" style="margin-top:var(--space-3);"><strong>Wort war: ${escapeHtml(lastTurnEnd.word ?? '–')}</strong></div>` : ''}
+    ${galleryHtml()}
+    ${lastDrawingHtml()}
     ${wordChoiceHtml()}
     ${turn?.phase === 'drawing' ? drawingAreaHtml() : ''}
     ${matchControlsHtml()}
@@ -860,6 +991,7 @@ function wireRoom(container) {
     canvas2d = null;
     toolbarEl = null;
   }
+  renderStoredCanvases(container);
   if (!paused) startCountdown();
   else updateCountdownBadge();
 
@@ -868,6 +1000,37 @@ function wireRoom(container) {
       socket.emit('scribble:word', { matchId: match.matchId, playerId: myId(), wordId: btn.dataset.wordId }, (res) => {
         if (!res?.ok) showToast(res?.error || 'Wort konnte nicht gewählt werden.', { error: true });
       });
+    });
+  });
+
+  container.querySelectorAll('[data-drawing-reaction]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const res = await emitWithAck('scribble:reaction', {
+        matchId: match.matchId,
+        playerId: myId(),
+        drawingId: btn.dataset.drawingId,
+        reaction: btn.dataset.drawingReaction,
+      });
+      if (!res?.ok) return showToast(res?.error || 'Bewertung nicht möglich.', { error: true });
+      myReactions[btn.dataset.drawingId] = res.reaction;
+      container.querySelectorAll(`[data-drawing-id="${btn.dataset.drawingId}"]`).forEach((reactionBtn) => {
+        const selected = reactionBtn.dataset.drawingReaction === res.reaction;
+        reactionBtn.classList.toggle('btn-primary', selected);
+        reactionBtn.setAttribute('aria-pressed', String(selected));
+      });
+    });
+  });
+
+  container.querySelectorAll('[data-favorite-drawing]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const res = await emitWithAck('scribble:favorite', {
+        matchId: match.matchId,
+        playerId: myId(),
+        drawingId: btn.dataset.favoriteDrawing,
+      });
+      if (!res?.ok) return showToast(res?.error || 'Favorit konnte nicht gewählt werden.', { error: true });
+      favoriteDrawingId = res.drawingId;
+      rerender();
     });
   });
 

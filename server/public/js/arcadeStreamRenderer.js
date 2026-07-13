@@ -82,9 +82,7 @@ function drawScribble(ctx, game, width, height) {
       if (index) ctx.lineTo(x * width, y * height);
       else ctx.moveTo(x * width, y * height);
     });
-    if (operation.points.length === 1) {
-      ctx.lineTo(operation.points[0][0] * width, operation.points[0][1] * height);
-    }
+    if (operation.points.length === 1) ctx.lineTo(operation.points[0][0] * width, operation.points[0][1] * height);
     ctx.stroke();
   }
 }

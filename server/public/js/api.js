@@ -260,6 +260,7 @@ export const api = {
   arcade: {
     stats: () => apiFetch('/api/arcade/stats'),
     lobbies: () => apiFetch('/api/arcade/lobbies'),
+    scribbleGallery: () => apiFetch('/api/arcade/scribble/gallery'),
   },
 
   export: {

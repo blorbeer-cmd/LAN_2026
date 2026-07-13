@@ -18,7 +18,7 @@ import { notifyPlayers } from '../push';
 import { matchesAnswer } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
-import { broadcastArcadeKiosk } from '../realtime';
+import { arcadeWatcherPlayerIds, broadcastArcadeKiosk, onArcadeWatcherChange } from '../realtime';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import {
   buildHintSchedule,
@@ -29,11 +29,14 @@ import {
   pickWordChoices,
   pointsForDrawer,
   pointsForGuess,
+  selectRoundWinnerIds,
   wordMask,
 } from './scribbleLogic';
 
 const CHOICE_MS = 15_000;
 const REVEAL_MS = 3_000;
+const GALLERY_MS = 30_000;
+const GALLERY_RESULT_MS = 4_000;
 const COUNTDOWN_MS = 3000; // "3, 2, 1" before the first turn's word choice
 const DEFAULT_ROUNDS = 2;
 const DEFAULT_TURN_MS = 60_000;
@@ -99,7 +102,7 @@ interface ScribbleMatchState {
   turnDurationMs: number;
   turnsPlayed: number;
   drawIndex: number;
-  phase: 'choosing' | 'drawing' | 'reveal';
+  phase: 'choosing' | 'drawing' | 'reveal' | 'gallery';
   currentWord: string | null;
   currentWordId: string | null;
   wordOptions: WordRow[] | null;
@@ -107,6 +110,10 @@ interface ScribbleMatchState {
   revealedIndices: Set<number>;
   pendingHints: HintStep[];
   strokes: DrawOp[];
+  currentDrawingId: string | null;
+  galleryRound: number | null;
+  galleryExpiresAt: number | null;
+  galleryResolved: boolean;
   choiceTimer: NodeJS.Timeout | null;
   choiceExpiresAt: number | null;
   turnTimer: NodeJS.Timeout | null;
@@ -117,6 +124,7 @@ interface ScribbleMatchState {
   nextTurnTimer: NodeJS.Timeout | null;
   startTimer: NodeJS.Timeout | null; // the pre-first-turn "3, 2, 1" delay
   botTimer: NodeJS.Timeout | null;
+  galleryTimer: NodeJS.Timeout | null;
   paused: boolean;
   startedAt: number;
 }
@@ -186,6 +194,41 @@ function scorePayload(match: ScribbleMatchState) {
   return match.players.map((p) => ({ playerId: p.id, name: p.name, score: match.scores.get(p.id) ?? 0 }));
 }
 
+function spectatorDrawing(drawing: DrawingSummary) {
+  return {
+    id: drawing.id,
+    round: drawing.round,
+    artistId: drawing.artistId,
+    artistName: drawing.artistName,
+    strokes: drawing.strokes,
+    reactionCount: drawing.reactionCount,
+    reactions: drawing.reactions,
+    favoriteVotes: drawing.favoriteVotes,
+    isRoundWinner: drawing.isRoundWinner,
+    createdAt: drawing.createdAt,
+  };
+}
+
+function currentDrawingSummary(match: ScribbleMatchState): DrawingSummary | null {
+  if (!match.currentDrawingId || match.turnsPlayed === 0) return null;
+  const round = Math.max(1, Math.ceil(match.turnsPlayed / match.players.length));
+  return drawingSummaries(match.id, round).find((drawing) => drawing.id === match.currentDrawingId) ?? null;
+}
+
+function spectatorVoting(match: ScribbleMatchState) {
+  if (match.phase === 'gallery' && match.galleryRound !== null) {
+    return {
+      mode: match.galleryResolved ? 'resolved' : 'favorite',
+      round: match.galleryRound,
+      rounds: match.rounds,
+      expiresAt: match.galleryExpiresAt,
+      drawings: drawingSummaries(match.id, match.galleryRound).map(spectatorDrawing),
+    };
+  }
+  const drawing = currentDrawingSummary(match);
+  return drawing ? { mode: 'reaction', round: drawing.round, drawings: [spectatorDrawing(drawing)] } : null;
+}
+
 // Kiosk projection: intentionally contains only the drawing surface. Never
 // add currentWord, mask, wordOptions, hints, chat or guesses here.
 function kioskSnapshot(io: Server, match: ScribbleMatchState): void {
@@ -197,6 +240,7 @@ function kioskSnapshot(io: Server, match: ScribbleMatchState): void {
     phase: match.phase,
     strokes: match.phase === 'drawing' ? match.strokes : [],
     scores: scorePayload(match),
+    voting: spectatorVoting(match),
   });
 }
 
@@ -223,12 +267,14 @@ function clearAllTimers(match: ScribbleMatchState): void {
   if (match.nextTurnTimer) clearTimeout(match.nextTurnTimer);
   if (match.startTimer) clearTimeout(match.startTimer);
   if (match.botTimer) clearTimeout(match.botTimer);
+  if (match.galleryTimer) clearTimeout(match.galleryTimer);
   match.hintTimers.forEach(clearTimeout);
   match.choiceTimer = null;
   match.turnTimer = null;
   match.nextTurnTimer = null;
   match.startTimer = null;
   match.botTimer = null;
+  match.galleryTimer = null;
   match.hintTimers = [];
 }
 
@@ -255,6 +301,108 @@ function markWordSeen(wordId: string, playerIds: string[]): void {
      ON CONFLICT(word_id, player_id) DO UPDATE SET seen_at = excluded.seen_at`
   );
   for (const id of playerIds) if (id !== BOT_ID) stmt.run(wordId, id, now);
+}
+
+interface DrawingSummary {
+  id: string;
+  matchId: string;
+  round: number;
+  artistId: string | null;
+  artistName: string;
+  word: string;
+  strokes: DrawOp[];
+  reactionCount: number;
+  reactions: Record<'cool' | 'creative' | 'funny', number>;
+  favoriteVotes: number;
+  isRoundWinner: boolean;
+  createdAt: number;
+}
+
+interface DrawingAggregateRow {
+  id: string;
+  match_id: string;
+  round_number: number;
+  artist_id: string | null;
+  artist_name: string;
+  word: string;
+  draw_ops: string;
+  is_round_winner: number;
+  created_at: number;
+  reaction_count: number;
+  cool_count: number;
+  creative_count: number;
+  funny_count: number;
+  favorite_votes: number;
+}
+
+function drawingSummaries(matchId: string, round: number): DrawingSummary[] {
+  const rows = db.prepare(
+    `SELECT d.id, d.match_id, d.round_number, d.artist_id, d.artist_name, d.word, d.draw_ops,
+            d.is_round_winner, d.created_at,
+            COUNT(DISTINCT r.player_id) AS reaction_count,
+            COUNT(DISTINCT CASE WHEN r.reaction = 'cool' THEN r.player_id END) AS cool_count,
+            COUNT(DISTINCT CASE WHEN r.reaction = 'creative' THEN r.player_id END) AS creative_count,
+            COUNT(DISTINCT CASE WHEN r.reaction = 'funny' THEN r.player_id END) AS funny_count,
+            COUNT(DISTINCT f.player_id) AS favorite_votes
+     FROM scribble_drawings d
+     LEFT JOIN scribble_drawing_reactions r ON r.drawing_id = d.id
+     LEFT JOIN scribble_drawing_favorites f ON f.drawing_id = d.id
+     WHERE d.match_id = ? AND d.round_number = ?
+     GROUP BY d.id
+     ORDER BY reaction_count DESC, d.created_at ASC`
+  ).all(matchId, round) as DrawingAggregateRow[];
+  return rows.map((row) => ({
+    id: row.id,
+    matchId: row.match_id,
+    round: row.round_number,
+    artistId: row.artist_id,
+    artistName: row.artist_name,
+    word: row.word,
+    strokes: JSON.parse(row.draw_ops) as DrawOp[],
+    reactionCount: row.reaction_count,
+    reactions: { cool: row.cool_count, creative: row.creative_count, funny: row.funny_count },
+    favoriteVotes: row.favorite_votes,
+    isRoundWinner: row.is_round_winner === 1,
+    createdAt: row.created_at,
+  }));
+}
+
+function persistCurrentDrawing(match: ScribbleMatchState): DrawingSummary | null {
+  const drawer = match.players[match.drawIndex];
+  if (!drawer || drawer.id === BOT_ID || !match.currentWord) return null;
+  const id = nanoid();
+  const round = Math.floor(match.turnsPlayed / match.players.length) + 1;
+  db.prepare(
+    `INSERT INTO scribble_drawings
+       (id, match_id, round_number, turn_number, artist_id, artist_name, word, draw_ops, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, match.id, round, match.turnsPlayed + 1, drawer.id, drawer.name, match.currentWord, JSON.stringify(match.strokes), Date.now());
+  match.currentDrawingId = id;
+  return drawingSummaries(match.id, round).find((drawing) => drawing.id === id) ?? null;
+}
+
+function selectedRatings(match: ScribbleMatchState, playerId: string): { reactions: Record<string, string>; favoriteDrawingId: string | null } {
+  const reactionRows = db.prepare(
+    `SELECT r.drawing_id, r.reaction
+     FROM scribble_drawing_reactions r
+     JOIN scribble_drawings d ON d.id = r.drawing_id
+     WHERE d.match_id = ? AND r.player_id = ?`
+  ).all(match.id, playerId) as Array<{ drawing_id: string; reaction: string }>;
+  const favorite = match.galleryRound === null ? undefined : db.prepare(
+    'SELECT drawing_id FROM scribble_drawing_favorites WHERE match_id = ? AND round_number = ? AND player_id = ?'
+  ).get(match.id, match.galleryRound, playerId) as { drawing_id: string } | undefined;
+  return {
+    reactions: Object.fromEntries(reactionRows.map((row) => [row.drawing_id, row.reaction])),
+    favoriteDrawingId: favorite?.drawing_id ?? null,
+  };
+}
+
+function ratingPlayer(match: ScribbleMatchState, socket: Socket, playerId: unknown): PlayerRef | null {
+  if (typeof playerId !== 'string' || !playerId || playerId === BOT_ID) return null;
+  const participant = match.players.find((entry) => entry.id === playerId);
+  if (participant) return match.socketIds.get(participant.id) === socket.id ? participant : null;
+  if (socket.data.arcadeWatchMatchId !== match.id || socket.data.arcadeWatchPlayerId !== playerId) return null;
+  return playerById(playerId);
 }
 
 function finishMatch(io: Server, match: ScribbleMatchState, winner: PlayerRef | null, reason: string): void {
@@ -299,6 +447,67 @@ function fireHint(io: Server, match: ScribbleMatchState, hint: HintStep): void {
   });
 }
 
+function emitGallery(io: Server, match: ScribbleMatchState, resolved = match.galleryResolved): void {
+  if (match.galleryRound === null) return;
+  io.to(match.room).emit('scribble:gallery', {
+    matchId: match.id,
+    round: match.galleryRound,
+    rounds: match.rounds,
+    drawings: drawingSummaries(match.id, match.galleryRound),
+    expiresAt: match.galleryExpiresAt,
+    resolved,
+  });
+}
+
+function resolveRoundGallery(io: Server, match: ScribbleMatchState): void {
+  if (!matches.has(match.id) || match.phase !== 'gallery' || match.galleryResolved || match.galleryRound === null) return;
+  if (match.galleryTimer) clearTimeout(match.galleryTimer);
+  match.galleryTimer = null;
+  match.galleryExpiresAt = null;
+  const drawings = drawingSummaries(match.id, match.galleryRound);
+  const winnerIds = selectRoundWinnerIds(drawings);
+  const markWinner = db.transaction(() => {
+    db.prepare('UPDATE scribble_drawings SET is_round_winner = 0 WHERE match_id = ? AND round_number = ?').run(match.id, match.galleryRound);
+    const statement = db.prepare('UPDATE scribble_drawings SET is_round_winner = 1 WHERE id = ?');
+    for (const id of winnerIds) statement.run(id);
+  });
+  markWinner();
+  match.galleryResolved = true;
+  emitGallery(io, match, true);
+  kioskSnapshot(io, match);
+  match.nextTurnTimer = setTimeout(() => {
+    if (matches.has(match.id)) startNextTurn(io, match);
+  }, GALLERY_RESULT_MS);
+}
+
+function maybeResolveRoundGallery(io: Server, match: ScribbleMatchState): void {
+  if (match.galleryRound === null || match.galleryResolved) return;
+  const drawings = drawingSummaries(match.id, match.galleryRound);
+  if (drawings.length <= 1) return resolveRoundGallery(io, match);
+  const eligibleVoters = [...new Set([
+    ...realPlayerIds(match.players).filter((playerId) => match.online.has(playerId)),
+    ...arcadeWatcherPlayerIds(io, match.id),
+  ])];
+  if (eligibleVoters.length === 0) return;
+  const rows = db.prepare(
+    'SELECT player_id FROM scribble_drawing_favorites WHERE match_id = ? AND round_number = ?'
+  ).all(match.id, match.galleryRound) as Array<{ player_id: string }>;
+  const voters = new Set(rows.map((row) => row.player_id));
+  if (eligibleVoters.every((playerId) => voters.has(playerId))) resolveRoundGallery(io, match);
+}
+
+function startRoundGallery(io: Server, match: ScribbleMatchState): void {
+  clearAllTimers(match);
+  match.phase = 'gallery';
+  match.galleryRound = Math.ceil(match.turnsPlayed / match.players.length);
+  match.galleryResolved = false;
+  match.galleryExpiresAt = Date.now() + GALLERY_MS;
+  match.galleryTimer = setTimeout(() => resolveRoundGallery(io, match), GALLERY_MS);
+  emitGallery(io, match, false);
+  kioskSnapshot(io, match);
+  maybeResolveRoundGallery(io, match);
+}
+
 function startNextTurn(io: Server, match: ScribbleMatchState): void {
   if (isMatchComplete(match.turnsPlayed, match.rounds, match.players.length)) {
     return finishMatch(io, match, null, 'completed');
@@ -320,6 +529,9 @@ function startNextTurn(io: Server, match: ScribbleMatchState): void {
   match.revealedIndices = new Set();
   match.pendingHints = [];
   match.strokes = [];
+  match.galleryRound = null;
+  match.galleryExpiresAt = null;
+  match.galleryResolved = false;
 
   const pool = loadWordPool();
   const seen = seenWordIds(match.players.map((p) => p.id));
@@ -399,6 +611,7 @@ function chooseWord(io: Server, match: ScribbleMatchState, wordId: string): void
   }
 
   startTurnTimers(io, match, match.turnDurationMs, 0);
+  kioskSnapshot(io, match);
   if (match.players.some((player) => player.id === BOT_ID)) {
     match.botTimer = setTimeout(() => {
       if (!matches.has(match.id) || match.phase !== 'drawing' || match.paused || !match.currentWord) return;
@@ -416,7 +629,7 @@ function chooseWord(io: Server, match: ScribbleMatchState, wordId: string): void
 }
 
 function endTurn(io: Server, match: ScribbleMatchState, reason: string): void {
-  if (match.phase === 'reveal') return;
+  if (match.phase !== 'drawing') return;
   clearAllTimers(match);
   match.phase = 'reveal';
 
@@ -431,20 +644,29 @@ function endTurn(io: Server, match: ScribbleMatchState, reason: string): void {
     );
   }
 
+  const drawing = reason === 'drawer-left' ? null : persistCurrentDrawing(match);
   match.turnsPlayed += 1;
   io.to(match.room).emit('scribble:turn-end', {
     matchId: match.id,
     word: match.currentWord,
     reason,
     scores: scorePayload(match),
+    drawing,
   });
+  kioskSnapshot(io, match);
 
   match.nextTurnTimer = setTimeout(() => {
-    if (matches.has(match.id)) startNextTurn(io, match);
+    if (!matches.has(match.id)) return;
+    if (match.turnsPlayed % match.players.length === 0) startRoundGallery(io, match);
+    else startNextTurn(io, match);
   }, REVEAL_MS);
 }
 
 export function registerScribbleSockets(io: Server): void {
+  onArcadeWatcherChange((server, matchId) => {
+    const match = matches.get(matchId);
+    if (match?.phase === 'gallery') maybeResolveRoundGallery(server, match);
+  });
   io.on('connection', (socket: Socket) => {
     socket.emit('scribble:lobbies', { lobbies: publicLobbies() });
 
@@ -565,6 +787,10 @@ export function registerScribbleSockets(io: Server): void {
           revealedIndices: new Set(),
           pendingHints: [],
           strokes: [],
+          currentDrawingId: null,
+          galleryRound: null,
+          galleryExpiresAt: null,
+          galleryResolved: false,
           choiceTimer: null,
           choiceExpiresAt: null,
           turnTimer: null,
@@ -575,6 +801,7 @@ export function registerScribbleSockets(io: Server): void {
           nextTurnTimer: null,
           startTimer: null,
           botTimer: null,
+          galleryTimer: null,
           paused: false,
           startedAt: Date.now(),
         };
@@ -742,6 +969,82 @@ export function registerScribbleSockets(io: Server): void {
       }
     );
 
+    socket.on(
+      'scribble:reaction',
+      (payload: { matchId?: string; playerId?: string; drawingId?: string; reaction?: string }, ack?: (res: unknown) => void) => {
+        const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+        const player = match ? ratingPlayer(match, socket, payload?.playerId) : null;
+        if (!match || !player) {
+          return ack?.({ ok: false, error: 'Bewertung nicht möglich.' });
+        }
+        if (!['cool', 'creative', 'funny'].includes(payload?.reaction ?? '') || typeof payload?.drawingId !== 'string') {
+          return ack?.({ ok: false, error: 'Ungültige Bewertung.' });
+        }
+        const drawing = db.prepare(
+          'SELECT id, round_number, artist_id FROM scribble_drawings WHERE id = ? AND match_id = ?'
+        ).get(payload.drawingId, match.id) as { id: string; round_number: number; artist_id: string | null } | undefined;
+        const allowed = drawing && (drawing.id === match.currentDrawingId || (match.phase === 'gallery' && drawing.round_number === match.galleryRound));
+        if (!allowed) return ack?.({ ok: false, error: 'Dieses Bild kann gerade nicht bewertet werden.' });
+        if (drawing.artist_id === player.id) return ack?.({ ok: false, error: 'Das eigene Bild kann nicht bewertet werden.' });
+
+        db.prepare(
+          `INSERT INTO scribble_drawing_reactions (drawing_id, player_id, reaction, created_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(drawing_id, player_id) DO UPDATE SET reaction = excluded.reaction, created_at = excluded.created_at`
+        ).run(drawing.id, player.id, payload.reaction, Date.now());
+        const updated = drawingSummaries(match.id, drawing.round_number).find((entry) => entry.id === drawing.id)!;
+        io.to(match.room).emit('scribble:drawing-rating', { matchId: match.id, drawing: updated });
+        if (match.phase === 'gallery') emitGallery(io, match);
+        kioskSnapshot(io, match);
+        ack?.({ ok: true, reaction: payload.reaction });
+      }
+    );
+
+    socket.on(
+      'scribble:favorite',
+      (payload: { matchId?: string; playerId?: string; drawingId?: string }, ack?: (res: unknown) => void) => {
+        const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+        const player = match ? ratingPlayer(match, socket, payload?.playerId) : null;
+        if (!match || !player) {
+          return ack?.({ ok: false, error: 'Favorit konnte nicht gewählt werden.' });
+        }
+        if (match.phase !== 'gallery' || match.galleryResolved || match.galleryRound === null || typeof payload?.drawingId !== 'string') {
+          return ack?.({ ok: false, error: 'Die Favoritenwahl ist nicht geöffnet.' });
+        }
+        const drawing = db.prepare(
+          'SELECT id, artist_id FROM scribble_drawings WHERE id = ? AND match_id = ? AND round_number = ?'
+        ).get(payload.drawingId, match.id, match.galleryRound) as { id: string; artist_id: string | null } | undefined;
+        if (!drawing) return ack?.({ ok: false, error: 'Bild nicht gefunden.' });
+        const hasOtherArtist = drawingSummaries(match.id, match.galleryRound).some((entry) => entry.artistId !== player.id);
+        if (drawing.artist_id === player.id && hasOtherArtist) {
+          return ack?.({ ok: false, error: 'Das eigene Bild kann nicht Favorit sein.' });
+        }
+
+        db.prepare(
+          `INSERT INTO scribble_drawing_favorites (match_id, round_number, player_id, drawing_id, created_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(match_id, round_number, player_id)
+           DO UPDATE SET drawing_id = excluded.drawing_id, created_at = excluded.created_at`
+        ).run(match.id, match.galleryRound, player.id, drawing.id, Date.now());
+        ack?.({ ok: true, drawingId: drawing.id });
+        emitGallery(io, match);
+        kioskSnapshot(io, match);
+        maybeResolveRoundGallery(io, match);
+      }
+    );
+
+    socket.on(
+      'scribble:watch:selections',
+      (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+        const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+        const player = match ? ratingPlayer(match, socket, payload?.playerId) : null;
+        if (!match || !player || match.players.some((entry) => entry.id === player.id)) {
+          return ack?.({ ok: false, error: 'Zuschauerstimmen sind nicht verfügbar.' });
+        }
+        ack?.({ ok: true, selectedRatings: selectedRatings(match, player.id) });
+      }
+    );
+
     socket.on('scribble:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
       if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
@@ -806,17 +1109,31 @@ export function registerScribbleSockets(io: Server): void {
           rounds: match.rounds,
           turnDurationMs: match.turnDurationMs,
           phase: match.phase,
-          round: Math.floor(match.turnsPlayed / match.players.length) + 1,
+          round: match.galleryRound ?? Math.floor(match.turnsPlayed / match.players.length) + 1,
           drawer: match.drawIndex >= 0 ? match.players[match.drawIndex] : null,
           isDrawer: match.drawIndex >= 0 && match.players[match.drawIndex]?.id === player.id,
           mask: match.currentWord ? wordMask(match.currentWord, match.revealedIndices) : null,
           // Only ever the real word for the drawer themself — everyone else
           // (including this same payload's `mask` field) must stay masked.
           word: match.currentWord && match.players[match.drawIndex]?.id === player.id ? match.currentWord : null,
-          expiresAt: match.phase === 'choosing' ? match.choiceExpiresAt : match.turnExpiresAt,
+          expiresAt: match.phase === 'choosing' ? match.choiceExpiresAt : match.phase === 'gallery' ? match.galleryExpiresAt : match.turnExpiresAt,
           paused: match.paused,
           scores: scorePayload(match),
           strokes: match.strokes,
+          lastDrawing: match.currentDrawingId
+            ? drawingSummaries(match.id, Math.max(1, Math.ceil(match.turnsPlayed / match.players.length))).find((drawing) => drawing.id === match.currentDrawingId) ?? null
+            : null,
+          gallery:
+            match.phase === 'gallery' && match.galleryRound !== null
+              ? {
+                  round: match.galleryRound,
+                  rounds: match.rounds,
+                  drawings: drawingSummaries(match.id, match.galleryRound),
+                  expiresAt: match.galleryExpiresAt,
+                  resolved: match.galleryResolved,
+                }
+              : null,
+          selectedRatings: selectedRatings(match, player.id),
           wordOptions:
             match.phase === 'choosing' && match.players[match.drawIndex]?.id === player.id
               ? match.wordOptions?.map((w) => ({ id: w.id, word: w.word })) ?? null
@@ -839,7 +1156,7 @@ export function registerScribbleSockets(io: Server): void {
           continue;
         }
 
-        const isDrawer = match.phase !== 'choosing' ? match.players[match.drawIndex]?.id === playerId : false;
+        const isDrawer = match.phase === 'drawing' && match.players[match.drawIndex]?.id === playerId;
         if (match.phase === 'choosing' && match.players[match.drawIndex]?.id === playerId) {
           if (match.choiceTimer) clearTimeout(match.choiceTimer);
           match.choiceTimer = null;
@@ -849,6 +1166,8 @@ export function registerScribbleSockets(io: Server): void {
         } else if (match.phase === 'drawing' && allEligibleGuessed(match)) {
           // The last remaining un-guessed rater just left — nothing left to wait for.
           endTurn(io, match, 'all-guessed');
+        } else if (match.phase === 'gallery') {
+          maybeResolveRoundGallery(io, match);
         }
       }
     });

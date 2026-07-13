@@ -100,6 +100,27 @@ export function isMatchComplete(turnsPlayed: number, rounds: number, playerCount
   return turnsPlayed >= rounds * playerCount;
 }
 
+export interface RatedDrawing {
+  id: string;
+  favoriteVotes: number;
+  reactionCount: number;
+}
+
+// Favorites decide the round. Reactions are the transparent fallback when a
+// round times out without a favorite vote; exact ties deliberately produce
+// shared winners instead of inventing a hidden tiebreaker.
+export function selectRoundWinnerIds(drawings: RatedDrawing[]): string[] {
+  if (drawings.length === 0) return [];
+  const highestFavorites = Math.max(...drawings.map((drawing) => drawing.favoriteVotes));
+  const candidates = highestFavorites > 0
+    ? drawings.filter((drawing) => drawing.favoriteVotes === highestFavorites)
+    : drawings;
+  const highestReactions = Math.max(...candidates.map((drawing) => drawing.reactionCount));
+  return candidates
+    .filter((drawing) => drawing.reactionCount === highestReactions)
+    .map((drawing) => drawing.id);
+}
+
 // Classic edit distance (insert/delete/substitute), single-row DP to avoid
 // allocating a full m*n matrix for what's only ever called on short words.
 export function levenshteinDistance(a: string, b: string): number {

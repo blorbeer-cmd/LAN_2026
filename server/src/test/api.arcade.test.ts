@@ -124,6 +124,64 @@ test('GET /api/arcade/stats summarizes completed scribble results under their ow
   assert.equal(scribble.leader.name, 'Arcade Carla');
 });
 
+test('scribble stats and gallery retain round-winning drawings and per-artist ratings', async () => {
+  const artist = await request(app).post('/api/players').send({ name: 'Gallery Artist' });
+  const voter = await request(app).post('/api/players').send({ name: 'Gallery Voter' });
+  const now = Date.now();
+  const scores = [
+    { playerId: artist.body.id, name: artist.body.name, score: 120 },
+    { playerId: voter.body.id, name: voter.body.name, score: 90 },
+  ];
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, 'scribble', ?, ?, ?, 'completed', ?, ?)`
+  ).run('gallery-result', artist.body.id, JSON.stringify(scores), JSON.stringify(scores), now - 1000, now);
+  db.prepare(
+    `INSERT INTO scribble_drawings
+       (id, match_id, round_number, turn_number, artist_id, artist_name, word, draw_ops, is_round_winner, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    'gallery-drawing',
+    'gallery-match',
+    1,
+    1,
+    artist.body.id,
+    artist.body.name,
+    'Rakete',
+    JSON.stringify([{ type: 'stroke', strokeId: 's1', color: '#1a1a1a', size: 6, erase: false, points: [[0.1, 0.2], [0.8, 0.7]] }]),
+    1,
+    now
+  );
+  db.prepare(
+    'INSERT INTO scribble_drawing_reactions (drawing_id, player_id, reaction, created_at) VALUES (?, ?, ?, ?)'
+  ).run('gallery-drawing', voter.body.id, 'creative', now);
+  db.prepare(
+    'INSERT INTO scribble_drawing_favorites (match_id, round_number, player_id, drawing_id, created_at) VALUES (?, ?, ?, ?, ?)'
+  ).run('gallery-match', 1, voter.body.id, 'gallery-drawing', now);
+
+  const statsRes = await request(app).get('/api/arcade/stats').expect(200);
+  const scribble = statsRes.body.games.find((game: { gameType: string }) => game.gameType === 'scribble');
+  const artStats = scribble.artPlayers.find((player: { playerId: string }) => player.playerId === artist.body.id);
+  assert.deepEqual(
+    {
+      drawings: artStats.drawings,
+      roundWins: artStats.roundWins,
+      reactions: artStats.reactions,
+      favorites: artStats.favorites,
+      creative: artStats.reactionBreakdown.creative,
+    },
+    { drawings: 1, roundWins: 1, reactions: 1, favorites: 1, creative: 1 }
+  );
+
+  const galleryRes = await request(app).get('/api/arcade/scribble/gallery').expect(200);
+  const drawing = galleryRes.body.drawings.find((entry: { id: string }) => entry.id === 'gallery-drawing');
+  assert.equal(drawing.artistName, 'Gallery Artist');
+  assert.equal(drawing.word, 'Rakete');
+  assert.equal(drawing.favoriteVotes, 1);
+  assert.equal(drawing.reactions.creative, 1);
+  assert.equal(drawing.strokes[0].strokeId, 's1');
+});
+
 test('GET /api/arcade/stats labels Blobby Volley results', async () => {
   const eve = await request(app).post('/api/players').send({ name: 'Blobby Eve' });
   const finn = await request(app).post('/api/players').send({ name: 'Blobby Finn' });

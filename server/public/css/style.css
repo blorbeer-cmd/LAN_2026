@@ -1168,6 +1168,55 @@ button.card {
   padding: var(--space-3);
 }
 
+.scribble-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-3);
+}
+
+.scribble-drawing-card {
+  min-width: 0;
+}
+
+.scribble-drawing-card.is-winner {
+  border-color: var(--rank-1-gold);
+}
+
+.scribble-stored-canvas-wrap {
+  width: 100%;
+  aspect-ratio: 8 / 5;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-text);
+}
+
+.scribble-stored-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.scribble-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.scribble-reactions .btn {
+  flex: 1 1 auto;
+}
+
+.scribble-last-drawing .scribble-drawing-card {
+  max-width: 520px;
+}
+
+.scribble-art-stat-row {
+  align-items: flex-start;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
 /* Spiele view (gameCatalog.js): one compact table-like row per game. A real
    <table> would need horizontal scroll on a phone (the lesson from the old
    .catalog-table), so it's a CSS grid: name/Bock/Skill as columns on wide
