@@ -15,7 +15,7 @@ import { Server } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import request from 'supertest';
 import { createApp } from '../app';
-import { setIo, Events, createSocketAuthGuard } from '../realtime';
+import { setIo, Events, createSocketAuthGuard, registerArcadeKioskSockets, broadcastArcadeKiosk } from '../realtime';
 
 async function withServer(fn: (baseUrl: string) => Promise<void>): Promise<void> {
   const app = createApp();
@@ -159,4 +159,56 @@ test('createSocketAuthGuard lets any socket through when no access token is conf
       socket.close();
     }
   });
+});
+
+test('arcade watch list removes a finished match instead of re-adding a blank ghost entry', async () => {
+  const httpServer = http.createServer();
+  const io = new Server(httpServer);
+  registerArcadeKioskSockets(io);
+
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const port = (httpServer.address() as AddressInfo).port;
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const client = ioClient(baseUrl, { transports: ['websocket'], reconnection: false });
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      client.on('connect', () => resolve());
+      client.on('connect_error', reject);
+    });
+
+    const matchId = 'watch-finished-match';
+    const listed = new Promise<Array<{ matchId: string; gameType: string }>>((resolve) => {
+      client.on('arcade:watch:list', (payload: { matches?: Array<{ matchId: string; gameType: string }> }) => {
+        if (payload.matches?.some((match) => match.matchId === matchId)) resolve(payload.matches);
+      });
+    });
+    broadcastArcadeKiosk(io, {
+      matchId,
+      gameType: 'pong',
+      running: true,
+      players: [{ id: 'p1', name: 'Pong One' }],
+      scores: [{ playerId: 'p1', name: 'Pong One', score: 0 }],
+    });
+    assert.equal((await listed).find((match) => match.matchId === matchId)?.gameType, 'pong');
+
+    const joined = new Promise<unknown>((resolve) => client.emit('arcade:watch:join', { matchId }, resolve));
+    assert.deepEqual(await joined, { ok: true, matchId });
+
+    const ended = new Promise<{ matchId: string }>((resolve) => client.on('arcade:watch:ended', resolve));
+    const cleared = new Promise<Array<{ matchId?: string; gameType?: string }>>((resolve) => {
+      client.on('arcade:watch:list', (payload: { matches?: Array<{ matchId?: string; gameType?: string }> }) => {
+        if (!payload.matches?.some((match) => match.matchId === matchId)) resolve(payload.matches ?? []);
+      });
+    });
+
+    broadcastArcadeKiosk(io, { gameType: null, matchId });
+
+    assert.deepEqual(await ended, { matchId });
+    assert.equal((await cleared).some((match) => match.matchId === matchId || match.gameType === null), false);
+  } finally {
+    client.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+  }
 });

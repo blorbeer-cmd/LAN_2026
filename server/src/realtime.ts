@@ -60,9 +60,15 @@ export function broadcastArcadeKiosk(io: Server, payload: unknown): void {
   if (typeof payload === 'object' && payload !== null && 'gameType' in payload && (payload as { gameType?: unknown }).gameType === null) {
     const endingMatchId = (payload as { matchId?: unknown }).matchId;
     const currentMatchId = (latestArcadeKioskGame as { matchId?: unknown } | null)?.matchId;
-    if (typeof endingMatchId === 'string') latestArcadeGames.delete(endingMatchId);
+    if (typeof endingMatchId === 'string') {
+      latestArcadeGames.delete(endingMatchId);
+      io.to(watchRoom(endingMatchId)).emit('arcade:watch:ended', { matchId: endingMatchId });
+    }
     emitArcadeWatchList(io);
     if (endingMatchId !== currentMatchId) return;
+    latestArcadeKioskGame = payload;
+    io.emit('arcade:kiosk:game', payload);
+    return;
   }
   if (typeof payload === 'object' && payload !== null && typeof (payload as { matchId?: unknown }).matchId === 'string') {
     const matchId = (payload as { matchId: string }).matchId;

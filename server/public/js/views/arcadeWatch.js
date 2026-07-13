@@ -28,9 +28,18 @@ function ensureSocket() {
   socket.on('arcade:watch:list', (payload) => {
     watchList = payload?.matches ?? [];
     if (watchedMatchId && !watchList.some((match) => match.matchId === watchedMatchId)) {
+      watchedMatchId = null;
       watchedState = null;
+      navigate('arcade');
+      return;
     }
     rerender();
+  });
+  socket.on('arcade:watch:ended', (payload) => {
+    if (!watchedMatchId || payload?.matchId !== watchedMatchId) return;
+    watchedMatchId = null;
+    watchedState = null;
+    navigate('arcade');
   });
   socket.on('arcade:watch:state', (payload) => {
     if (!watchedMatchId || payload?.matchId !== watchedMatchId) return;
@@ -53,6 +62,8 @@ export function startArcadeWatch(matchId) {
   ensureSocket().emit('arcade:watch:join', { matchId }, (result) => {
     if (!result?.ok) {
       watchedMatchId = null;
+      watchedState = null;
+      navigate('arcade');
       return;
     }
     rerender();
