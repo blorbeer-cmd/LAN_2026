@@ -1184,7 +1184,7 @@ button.card {
 
 .scribble-stored-canvas-wrap {
   width: 100%;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 8 / 5;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);

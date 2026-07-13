@@ -8,6 +8,8 @@ import { db } from './db';
 let io: Server | null = null;
 let latestArcadeKioskGame: unknown = null;
 const latestArcadeGames = new Map<string, Record<string, unknown>>();
+type ArcadeWatcherChangeListener = (server: Server, matchId: string) => void;
+const arcadeWatcherChangeListeners = new Set<ArcadeWatcherChangeListener>();
 
 function watchRoom(matchId: string): string {
   return `arcade-watch:${matchId}`;
@@ -44,6 +46,16 @@ export function arcadeWatcherPlayerIds(server: Server, matchId: string): string[
       .map((socketId) => server.sockets.sockets.get(socketId)?.data.arcadeWatchPlayerId)
       .filter((playerId): playerId is string => typeof playerId === 'string' && !!playerId)
   )];
+}
+
+export function onArcadeWatcherChange(listener: ArcadeWatcherChangeListener): () => void {
+  arcadeWatcherChangeListeners.add(listener);
+  return () => arcadeWatcherChangeListeners.delete(listener);
+}
+
+function notifyArcadeWatcherChange(server: Server, matchId: unknown): void {
+  if (typeof matchId !== 'string') return;
+  for (const listener of arcadeWatcherChangeListeners) listener(server, matchId);
 }
 
 function watchState(payload: Record<string, unknown>): Record<string, unknown> {
@@ -125,7 +137,9 @@ export function registerArcadeKioskSockets(server: Server): void {
       const matchId = payload?.matchId;
       if (typeof matchId !== 'string' || !latestArcadeGames.has(matchId)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       const previousRoom = socket.data.arcadeWatchRoom;
+      const previousMatchId = socket.data.arcadeWatchMatchId;
       if (typeof previousRoom === 'string') socket.leave(previousRoom);
+      notifyArcadeWatcherChange(server, previousMatchId);
       const playerId = spectatorPlayerId(latestArcadeGames.get(matchId)!, payload?.playerId);
       const room = watchRoom(matchId);
       socket.join(room);
@@ -134,15 +148,19 @@ export function registerArcadeKioskSockets(server: Server): void {
       if (playerId) socket.data.arcadeWatchPlayerId = playerId;
       else delete socket.data.arcadeWatchPlayerId;
       socket.emit('arcade:watch:state', watchState(latestArcadeGames.get(matchId)!));
+      notifyArcadeWatcherChange(server, matchId);
       ack?.({ ok: true, matchId, votingPlayerId: playerId, canVote: playerId !== null });
     });
     socket.on('arcade:watch:leave', () => {
       const room = socket.data.arcadeWatchRoom;
+      const matchId = socket.data.arcadeWatchMatchId;
       if (typeof room === 'string') socket.leave(room);
+      notifyArcadeWatcherChange(server, matchId);
       delete socket.data.arcadeWatchRoom;
       delete socket.data.arcadeWatchMatchId;
       delete socket.data.arcadeWatchPlayerId;
     });
+    socket.on('disconnect', () => notifyArcadeWatcherChange(server, socket.data.arcadeWatchMatchId));
   });
 }
 

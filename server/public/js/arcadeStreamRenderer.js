@@ -17,6 +17,8 @@ const TETRIS_COLORS = {
   8: '#5b6577', // design-token-ok: garbage block hue
 };
 
+const SCRIBBLE_PAPER_COLOR = '#ffffff'; // design-token-ok: Scribble's drawing paper is intentionally white in every theme
+
 const cssColor = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 export function arcadeStreamCanvasSize(gameType) {
@@ -74,12 +76,13 @@ function drawScribble(ctx, game, width, height) {
     }
     if (operation.type !== 'stroke' || !operation.points?.length) continue;
     ctx.beginPath();
-    ctx.strokeStyle = operation.erase ? cssColor('--bg') : operation.color;
+    ctx.strokeStyle = operation.erase ? SCRIBBLE_PAPER_COLOR : operation.color;
     ctx.lineWidth = operation.size;
     operation.points.forEach(([x, y], index) => {
       if (index) ctx.lineTo(x * width, y * height);
       else ctx.moveTo(x * width, y * height);
     });
+    if (operation.points.length === 1) ctx.lineTo(operation.points[0][0] * width, operation.points[0][1] * height);
     ctx.stroke();
   }
 }
@@ -113,6 +116,11 @@ function drawTetris(ctx, game, width, height) {
         if (y >= 0) ctx.fillRect(left + x * cell + 1, top + y * cell + 1, cell - 2, cell - 2);
       });
     }
+    ctx.fillStyle = cssColor('--text');
+    ctx.font = `${parseFloat(getComputedStyle(document.body).fontSize) * 1.5}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(player.name || 'Spieler', left + cell * 5, height * 0.98);
+    ctx.textAlign = 'start';
   });
 }
 
@@ -191,7 +199,7 @@ export function drawArcadeStreamCanvas(canvas, game) {
   if (!ctx) return;
   const { width, height } = canvas;
   ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = cssColor('--bg');
+  ctx.fillStyle = game.gameType === 'scribble' ? SCRIBBLE_PAPER_COLOR : cssColor('--bg');
   ctx.fillRect(0, 0, width, height);
 
   if (game.gameType === 'scribble') drawScribble(ctx, game, width, height);

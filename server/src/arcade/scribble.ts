@@ -18,7 +18,7 @@ import { notifyPlayers } from '../push';
 import { matchesAnswer } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
-import { arcadeWatcherPlayerIds, broadcastArcadeKiosk } from '../realtime';
+import { arcadeWatcherPlayerIds, broadcastArcadeKiosk, onArcadeWatcherChange } from '../realtime';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import {
   buildHintSchedule,
@@ -663,6 +663,10 @@ function endTurn(io: Server, match: ScribbleMatchState, reason: string): void {
 }
 
 export function registerScribbleSockets(io: Server): void {
+  onArcadeWatcherChange((server, matchId) => {
+    const match = matches.get(matchId);
+    if (match?.phase === 'gallery') maybeResolveRoundGallery(server, match);
+  });
   io.on('connection', (socket: Socket) => {
     socket.emit('scribble:lobbies', { lobbies: publicLobbies() });
 
