@@ -1919,7 +1919,6 @@ button.card {
   display: block;
   width: 100%;
   height: auto;
-  aspect-ratio: 16 / 9;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg);
