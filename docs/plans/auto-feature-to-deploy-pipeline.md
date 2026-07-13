@@ -89,6 +89,8 @@ Auto-Merge-Aktivieren) dürfen `GITHUB_TOKEN` nutzen, weil dort kein Folge-Trigg
 | `no-auto` | Opt-out: Automatik fasst diesen PR nicht an, auch wenn er von einem Agent stammt |
 | `auto:fixing` | Autor-Agent arbeitet gerade (verhindert parallele Läufe zusätzlich zur `concurrency`-Gruppe) |
 | `auto:waiting` | Zuständiger Agent ist wegen Nutzungslimit/Rate-Limit nicht verfügbar; die anstehende Aktion wird per Schedule erneut versucht (siehe Abschnitt 6) |
+| `review:skip` | Nur vom Menschen zu setzen: auf das Agent-Review dieses PRs wird verzichtet, das Merge-Gate akzeptiert den PR ohne Gegen-Review (Abschnitt 6) |
+| `review:self` | Nur vom Menschen zu setzen: der Autor-Agent darf diesen PR ausnahmsweise selbst reviewen (Abschnitt 6) |
 | `needs-human` | Eskalation: Rundenlimit erreicht oder Fall, den die Automatik nicht entscheiden darf |
 
 Labels sind bewusst der einzige Zustandsspeicher: sichtbar in der PR-Übersicht, manuell
@@ -97,7 +99,9 @@ korrigierbar und ohne zusätzliche Datenhaltung.
 ## 5. Leitplanken (nicht verhandelbar)
 
 - **Kein Agent approvt oder merged eigene Änderungen.** Approval kommt immer vom Gegen-Agent bzw.
-  vom Gate-Workflow, der das Gegen-Review geprüft hat.
+  vom Gate-Workflow, der das Gegen-Review geprüft hat. Einzige Ausnahme: der Mensch gibt den PR
+  bei limitbedingter Reviewer-Nichtverfügbarkeit ausdrücklich per `review:skip` oder `review:self`
+  frei (Abschnitt 6) – die Automatik selbst trifft diese Entscheidung nie.
 - **Rundenlimits:** maximal 3 CI-Fix-Runden und maximal 3 Review-Runden pro PR. Danach
   `needs-human` + Benachrichtigung statt Endlosschleife. Das deckt sich mit der Richtlinie, einen
   roten Pflichtcheck nicht durch bloßes Wiederholen zu umgehen: jede Runde muss eine echte
@@ -138,20 +142,46 @@ zurück – die Standardstrategie ist deshalb **warten und erneut versuchen, nie
 
 1. Der PR erhält das Label `auto:waiting` plus einen kurzen Kommentar: welche Aktion aussteht
    (Review, CI-Fix, Konfliktauflösung, Kommentar-Umsetzung), welcher Agent fehlt, Zeitstempel.
-2. Der bestehende Schedule-Lauf (Phase 3) versucht bei `auto:waiting`-PRs die ausstehende Aktion
+2. **Sofortige Benachrichtigung bei verzögertem Review:** Betrifft die Wartesituation das
+   Gegen-Review, wird der Nutzer immer und unmittelbar informiert – nicht erst nach der
+   24-Stunden-Eskalation. Der Kommentar aus Schritt 1 enthält dazu eine `@`-Mention des Nutzers
+   (löst je nach GitHub-Einstellungen E-Mail-/Push-Benachrichtigung aus) und nennt die drei
+   Handlungsoptionen aus dem folgenden Unterabschnitt. Ohne Reaktion wartet die Automatik einfach
+   weiter – die Benachrichtigung ist ein Angebot, kein Zwang zu reagieren.
+3. Der bestehende Schedule-Lauf (Phase 3) versucht bei `auto:waiting`-PRs die ausstehende Aktion
    erneut – dadurch entsteht ein natürlicher 2-Stunden-Backoff ohne zusätzliche Infrastruktur.
    Wartezyklen zählen **nicht** auf die Rundenlimits aus Abschnitt 5; die zählen nur echte
    Arbeitsrunden.
-3. Nach 24 Stunden ohne erfolgreiche Wiederaufnahme: Label `needs-human` + Benachrichtigung.
-   Vermutlich liegt dann kein Zeitfenster-Limit vor, sondern ein erschöpftes Budget oder ein
-   Integrationsproblem, das ein Mensch klären muss.
+4. Nach 24 Stunden ohne erfolgreiche Wiederaufnahme: Label `needs-human` + erneute
+   Benachrichtigung. Vermutlich liegt dann kein Zeitfenster-Limit vor, sondern ein erschöpftes
+   Budget oder ein Integrationsproblem, das ein Mensch klären muss.
+
+### Optionen des Nutzers bei verzögertem Review
+
+Ist das Review limitbedingt verzögert, hat der Nutzer pro PR immer drei Wege; die beiden
+Abkürzungen wählt er durch Setzen eines Labels, das nur für Menschen gedacht ist:
+
+1. **Warten (Standard, keine Aktion nötig):** Die Automatik versucht das Review weiter, sobald
+   der Reviewer-Agent wieder verfügbar ist.
+2. **`review:skip` – auf das Review verzichten:** Das Merge-Gate (Phase 5) behandelt den PR, als
+   läge ein `VERDICT: approve` vor. CI-Pflichtchecks gelten unverändert; der PR merged also erst,
+   wenn die Pipeline grün ist. Der Verzicht ist eine bewusste, im PR sichtbare Einzelfall-
+   Entscheidung des Menschen.
+3. **`review:self` – Selbst-Review durch den Autor-Agent:** Der Review-Workflow (Phase 1) startet
+   das Review ausnahmsweise beim Autor-Agent statt beim Gegen-Agent. Dessen `VERDICT` zählt für
+   das Gate; Änderungswünsche durchlaufen die normalen Runden aus Phase 4. Ein Selbst-Review
+   findet Flüchtigkeitsfehler, aber tendenziell nicht die eigenen Denkfehler – deshalb nur als
+   vom Menschen gesetzte Ausnahme, nie als automatischer Fallback.
+
+Beide Labels wirken nur auf den jeweiligen PR und werden von der Automatik nie selbst gesetzt.
+Setzt der Nutzer das Label wieder ab, bevor das Gate gegriffen hat, gilt wieder der Standardweg.
 
 ### Grundsätze
 
-- **Das Review-Gate wird nie übersprungen, weil der Reviewer nicht verfügbar ist.** Ein
-  ungereviewter Auto-Merge ist ausgeschlossen; der PR wartet, egal wie grün die CI ist.
-- **Kein Selbst-Review als Fallback.** Ist der Reviewer-Agent dauerhaft nicht verfügbar, reviewt
-  ein Mensch (`needs-human`), nicht der Autor-Agent.
+- **Die Automatik überspringt das Review-Gate nie von sich aus.** Ohne menschliche Freigabe per
+  `review:skip`/`review:self` wartet der PR, egal wie grün die CI ist.
+- **Kein Selbst-Review als automatischer Fallback.** Selbst-Review gibt es ausschließlich als
+  bewusste Einzelfall-Entscheidung des Menschen über `review:self`.
 - **Degradierter Modus für Fixes (optional, siehe offene Entscheidungen):** Ist der
   *Autor*-Agent dauerhaft nicht verfügbar, darf der jeweils andere Agent CI-Fixes,
   Konfliktauflösungen und Kommentar-Umsetzungen übernehmen. Da dann Fixer und Reviewer dieselbe
@@ -181,7 +211,8 @@ zurück – die Standardstrategie ist deshalb **warten und erneut versuchen, nie
 5. **Branch-Ruleset für `main`** anlegen bzw. prüfen: Required Status Check „Build and test“,
    mindestens 1 Approval, „Require conversation resolution before merging“. Damit ist Auto-Merge
    technisch erst möglich, wenn CI grün ist und ein Gegen-Review vorliegt.
-6. **Labels anlegen:** `auto-pipeline`, `no-auto`, `auto:fixing`, `auto:waiting`, `needs-human`.
+6. **Labels anlegen:** `auto-pipeline`, `no-auto`, `auto:fixing`, `auto:waiting`, `review:skip`,
+   `review:self`, `needs-human`.
 
 Verifikation Phase 0: Test-PR von Hand öffnen, `@claude` und `@codex` je einmal erwähnen und
 prüfen, dass beide antworten.
@@ -194,6 +225,9 @@ Re-Review-Anforderung).
 1. Job „classify“: bestimmt aus Head-Branch-Präfix (`claude/`, `codex/`) und PR-Autor den
    Autor-Agent; setzt bei Agent-PRs das Label `auto-pipeline` (sofern nicht `no-auto`).
 2. Job „request-review“ (nur mit `auto-pipeline`, nicht bei Draft):
+   - Trägt der PR das vom Menschen gesetzte Label `review:self` (Abschnitt 6), geht der
+     Review-Auftrag an den Autor-Agent statt an den Gegen-Agent; bei `review:skip` entfällt der
+     Review-Auftrag ganz.
    - Autor = Claude → Kommentar `@codex review` posten (bzw. den in Phase 0 verifizierten
      Codex-Review-Mechanismus nutzen).
    - Autor = Codex → `anthropics/claude-code-action` mit Review-Prompt starten. Der Prompt
@@ -256,8 +290,10 @@ vom Gegen-Agent.
 Trigger: `pull_request_review` (`submitted`), `workflow_run` (CI erfolgreich).
 
 1. Gate-Bedingungen: Label `auto-pipeline`, kein `needs-human`/`no-auto`, letztes Review des
-   Gegen-Agents enthält `VERDICT: approve`, alle Review-Threads resolved, PR ist kein Draft,
-   Diff enthält keine Änderungen unter `.github/workflows/**` oder `infra/**`.
+   zuständigen Reviewers enthält `VERDICT: approve` (Gegen-Agent; bei `review:self` der
+   Autor-Agent, bei `review:skip` entfällt diese Bedingung gemäß Abschnitt 6), alle
+   Review-Threads resolved, PR ist kein Draft, Diff enthält keine Änderungen unter
+   `.github/workflows/**` oder `infra/**`.
 2. Gate erfüllt → formales Approval durch den Gate-Job (github-actions-Bot, deshalb die
    Einstellung aus Phase 0.4) und natives Auto-Merge (Squash) aktivieren. GitHub merged dann
    selbstständig, sobald der Pflichtcheck grün ist – Reihenfolgeprobleme zwischen „Review fertig“
