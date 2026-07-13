@@ -264,20 +264,47 @@ input {
 /* Always-on header banner (notificationBanner.js): the latest push
    notification for the current identity, everywhere in the app — a
    persistent, clickable counterpart to the transient toast nudges. */
-.notification-banner-link {
+.notification-banner-push {
   display: flex;
   align-items: center;
   width: 100%;
+  background: var(--accent-gradient);
+  color: var(--accent-text);
+}
+.notification-banner-link {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
   border: none;
-  background: var(--accent-gradient);
-  color: var(--accent-text);
+  background: transparent;
+  color: inherit;
   font: inherit;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   text-align: left;
   cursor: pointer;
+}
+.notification-banner-dismiss {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  align-self: stretch;
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.notification-banner-dismiss:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+#broadcast-message {
+  width: 100%;
 }
 .notification-banner-static {
   cursor: default;
@@ -298,6 +325,9 @@ input {
 @media (hover: hover) {
   .notification-banner-link:hover:not(.notification-banner-static) {
     filter: brightness(1.08);
+  }
+  .notification-banner-dismiss:hover:not(:disabled) {
+    filter: brightness(1.2);
   }
 }
 

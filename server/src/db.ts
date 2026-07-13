@@ -405,13 +405,15 @@ db.exec(`
     id         TEXT PRIMARY KEY,
     player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     message    TEXT NOT NULL,
+    ends_at    INTEGER NOT NULL,
+    ended_at   INTEGER,
     created_at INTEGER NOT NULL
   );
 
   -- Every real push notification sent via notifyPlayers() (Durchsagen, neue
   -- Sammelbestellung, Abstimmung offen, Arcade-Lobby, Turnier/Draft-Events,
   -- ...), regardless of how many devices were actually subscribed. Read two
-  -- ways: the Kiosk's "was zuletzt rausging" banner and the Home view's
+  -- ways: the Kiosk's newest-active banner and the Home view's
   -- per-player notification feed. player_ids is the JSON recipient list the
   -- feed filters by (NULL on rows from before the feed existed = show to
   -- everyone); url is the deep link the notification opens; audience marks
@@ -425,7 +427,20 @@ db.exec(`
     url        TEXT,
     audience   TEXT NOT NULL DEFAULT 'all',
     player_ids TEXT,
+    topic_key  TEXT,
+    expires_at INTEGER,
+    resolved_at INTEGER,
     created_at INTEGER NOT NULL
+  );
+
+  -- Per-player dismissal for the always-on app-header banner. The push log
+  -- remains intact as notification history; this only records that one
+  -- player no longer wants a specific entry occupying their banner.
+  CREATE TABLE IF NOT EXISTS push_log_seen (
+    push_id    TEXT NOT NULL REFERENCES push_log(id) ON DELETE CASCADE,
+    player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    seen_at    INTEGER NOT NULL,
+    PRIMARY KEY (push_id, player_id)
   );
 
   CREATE TABLE IF NOT EXISTS quiz_questions (
@@ -596,6 +611,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_drafts_status ON drafts(status);
   CREATE INDEX IF NOT EXISTS idx_broadcasts_created ON broadcasts(created_at);
   CREATE INDEX IF NOT EXISTS idx_push_log_created ON push_log(created_at);
+  CREATE INDEX IF NOT EXISTS idx_push_log_seen_player ON push_log_seen(player_id, push_id);
   CREATE INDEX IF NOT EXISTS idx_quiz_seen_player ON quiz_seen(player_id);
   CREATE INDEX IF NOT EXISTS idx_scribble_seen_player ON scribble_seen(player_id);
   CREATE INDEX IF NOT EXISTS idx_scribble_drawings_artist ON scribble_drawings(artist_id, created_at);
@@ -1120,6 +1136,41 @@ function createScribbleGalleryTables(): void {
   `);
 }
 runMigration({ version: 23, name: 'add scribble drawing gallery', up: createScribbleGalleryTables });
+
+// Banner notifications about short-lived subjects need their own lifecycle:
+// the push log remains a history, while topic_key/resolved_at/expires_at let
+// banner queries skip a vote, lobby, order, draft, tournament or match once
+// it is no longer actionable. Legacy rows deliberately keep topic_key NULL
+// and therefore behave like permanent announcements.
+function migratePushLogLifecycleColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(push_log)').all() as Array<{ name: string }>;
+  const has = (name: string) => columns.some((column) => column.name === name);
+  if (!has('topic_key')) db.exec('ALTER TABLE push_log ADD COLUMN topic_key TEXT');
+  if (!has('expires_at')) db.exec('ALTER TABLE push_log ADD COLUMN expires_at INTEGER');
+  if (!has('resolved_at')) db.exec('ALTER TABLE push_log ADD COLUMN resolved_at INTEGER');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_push_log_topic_lifecycle ON push_log(topic_key, resolved_at, expires_at)');
+}
+runMigration({ version: 24, name: 'add push log lifecycle', up: migratePushLogLifecycleColumns });
+
+// Durchsagen now have an explicit lifetime (legacy messages receive the same
+// one-hour default as new ones), and banner dismissals are stored per player.
+function migrateBroadcastLifecycleAndPushSeen(): void {
+  const columns = db.prepare('PRAGMA table_info(broadcasts)').all() as Array<{ name: string }>;
+  const has = (name: string) => columns.some((column) => column.name === name);
+  if (!has('ends_at')) db.exec('ALTER TABLE broadcasts ADD COLUMN ends_at INTEGER');
+  if (!has('ended_at')) db.exec('ALTER TABLE broadcasts ADD COLUMN ended_at INTEGER');
+  db.exec('UPDATE broadcasts SET ends_at = created_at + 3600000 WHERE ends_at IS NULL');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS push_log_seen (
+      push_id    TEXT NOT NULL REFERENCES push_log(id) ON DELETE CASCADE,
+      player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      seen_at    INTEGER NOT NULL,
+      PRIMARY KEY (push_id, player_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_push_log_seen_player ON push_log_seen(player_id, push_id);
+  `);
+}
+runMigration({ version: 25, name: 'add broadcast lifecycle and push seen', up: migrateBroadcastLifecycleAndPushSeen });
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.

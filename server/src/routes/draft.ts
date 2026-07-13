@@ -14,7 +14,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getTrackingEventId } from '../events';
-import { notifyPlayers } from '../push';
+import { notifyPlayers, resolvePushTopic } from '../push';
 
 export const draftRouter = Router();
 
@@ -185,11 +185,16 @@ draftRouter.post('/start', (req, res) => {
   broadcast(Events.draftChanged, { ...state, started: true });
 
   // The captains need to show up and pick; everyone else gets to watch.
-  notifyPlayers(allIds, {
-    title: '👑 Captain-Draft gestartet',
-    body: `${game.name}: Die Captains picken jetzt ihre Teams.`,
-    url: '/#matchmaking',
-  });
+  notifyPlayers(
+    allIds,
+    {
+      title: '👑 Captain-Draft gestartet',
+      body: `${game.name}: Die Captains picken jetzt ihre Teams.`,
+      url: '/#matchmaking',
+    },
+    'all',
+    { key: `draft:${row.id}` }
+  );
 
   res.status(201).json(state);
 });
@@ -255,6 +260,7 @@ draftRouter.post('/pick', (req, res) => {
     db.prepare(
       "INSERT INTO matchmaking_draws (id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source) VALUES (?, ?, ?, ?, 0, 0, ?, 'draft')"
     ).run(nanoid(), row.game_id, row.event_id, JSON.stringify(teamsSnapshot), now);
+    resolvePushTopic(`draft:${row.id}`);
   }
 
   broadcast(Events.draftChanged, { ...state, completed });
@@ -268,6 +274,7 @@ draftRouter.post('/cancel', (_req, res) => {
   if (!row) return res.status(409).json({ error: 'Es läuft kein Draft.' });
 
   db.prepare("UPDATE drafts SET status = 'cancelled' WHERE id = ?").run(row.id);
+  resolvePushTopic(`draft:${row.id}`);
   const state = buildState({ ...row, status: 'cancelled' });
   broadcast(Events.draftChanged, state);
   res.json(state);

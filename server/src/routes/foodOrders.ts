@@ -12,7 +12,7 @@ import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getTrackingEventId } from '../events';
 import { isNonEmptyString, isValidUrl } from '../validation';
-import { notifyPlayers } from '../push';
+import { notifyPlayers, resolvePushTopic, updatePushTopicExpiry } from '../push';
 
 export const foodOrdersRouter = Router();
 
@@ -169,11 +169,16 @@ foodOrdersRouter.post('/', (req, res) => {
     },
   });
   const allPlayerIds = (db.prepare('SELECT id FROM players').all() as Array<{ id: string }>).map((p) => p.id);
-  notifyPlayers(allPlayerIds, {
-    title: '🍕 Neue Sammelbestellung',
-    body: `${row.title}${sendAtNote} (von ${player.name}) – jetzt eintragen!`,
-    url: '/#foodOrders',
-  });
+  notifyPlayers(
+    allPlayerIds,
+    {
+      title: '🍕 Neue Sammelbestellung',
+      body: `${row.title}${sendAtNote} (von ${player.name}) – jetzt eintragen!`,
+      url: '/#foodOrders',
+    },
+    'all',
+    { key: `food-order:${row.id}`, expiresAt: row.send_at }
+  );
 
   res.status(201).json(serializeOrder(row));
 });
@@ -210,6 +215,7 @@ foodOrdersRouter.patch('/:id', (req, res) => {
     next.link,
     order.id
   );
+  if (sendAt !== undefined) updatePushTopicExpiry(`food-order:${order.id}`, next.send_at);
   broadcast(Events.foodOrdersChanged, null);
   res.json(serializeOrder({ ...order, ...next }));
 });
@@ -283,6 +289,7 @@ foodOrdersRouter.post('/:id/close', (req, res) => {
 
   const closedAt = Date.now();
   db.prepare('UPDATE food_orders SET closed_at = ? WHERE id = ?').run(closedAt, order.id);
+  resolvePushTopic(`food-order:${order.id}`);
   broadcast(Events.foodOrdersChanged, null);
   res.json(serializeOrder({ ...order, closed_at: closedAt }));
 });

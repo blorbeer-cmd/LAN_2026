@@ -5,7 +5,7 @@
 // the kiosk content, but tappable and personalized), the realtime live board,
 // a leaderboard snapshot, the seating plan, and — at the very bottom, as a
 // history rather than something needing attention — the full notification
-// log. The single most recent notification is additionally always visible
+// log. The newest still-active notification is additionally always visible
 // in the app header (see notificationBanner.js), on every view, not just
 // this one.
 
@@ -101,8 +101,8 @@ function renderStatus() {
 
 // "Mitteilungen": history of recent push notifications that concerned this
 // player (Durchsagen, neue Abstimmung, Turnier-Events, Bestellungen, ...),
-// straight from the server's push log. The single most recent one is always
-// visible up in the app header on every view (see notificationBanner.js);
+// straight from the server's push log. The newest still-active one is visible
+// up in the app header on every view (see notificationBanner.js);
 // this is the full recent history, further down the page since (once read)
 // it's a look-back, not something needing attention right now.
 let feedCache = null;

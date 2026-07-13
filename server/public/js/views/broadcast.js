@@ -7,6 +7,8 @@ import { api } from '../api.js';
 import { escapeHtml, formatDateTime } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
+import { icon } from '../icons.js';
 
 let historyCache = null;
 let historyLoading = false;
@@ -30,23 +32,31 @@ export function invalidateBroadcasts() {
   historyCache = null;
 }
 
-function renderHistory() {
+function renderHistory(myId) {
   if (historyLoading || historyCache === null) {
     return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   if (historyCache.length === 0) {
     return `<div class="empty-state"><span class="emoji">📢</span>Noch keine Durchsagen.</div>`;
   }
+  const now = Date.now();
   return historyCache
-    .map(
-      (b) => `
+    .map((b) => {
+      const active = !b.endedAt && b.endsAt > now;
+      const status = b.endedAt
+        ? `Beendet am ${formatDateTime(b.endedAt)} Uhr`
+        : active
+          ? `Sichtbar bis ${formatDateTime(b.endsAt)} Uhr`
+          : `Abgelaufen am ${formatDateTime(b.endsAt)} Uhr`;
+      return `
       <div class="lb-row" style="align-items:flex-start;">
         <div class="stack" style="gap:var(--space-1);flex:1;">
           <div><strong>${escapeHtml(b.playerName)}</strong>: ${escapeHtml(b.message)}</div>
-          <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(b.createdAt)}</span>
+          <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(b.createdAt)} Uhr · ${status}</span>
         </div>
-      </div>`
-    )
+        ${active && b.playerId === myId ? `<button type="button" class="btn btn-sm btn-danger" data-end-broadcast="${b.id}">${icon('x')} Beenden</button>` : ''}
+      </div>`;
+    })
     .join('');
 }
 
@@ -61,15 +71,25 @@ export function renderBroadcast(container, ctx) {
   const prevInput = container.querySelector('#broadcast-message');
   const prevValue = prevInput?.value ?? '';
   const hadFocus = prevInput && document.activeElement === prevInput;
+  const prevEndsAtValue = container.querySelector('#broadcast-ends-at')?.value ?? '';
+  const parsedEndsAt = prevEndsAtValue ? new Date(prevEndsAtValue).getTime() : NaN;
+  const displayEndsAt = Number.isFinite(parsedEndsAt) ? parsedEndsAt : Date.now() + 60 * 60 * 1000;
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <h1 class="view-title">📢 Durchsage</h1>
     ${whoAmICardHtml('broadcast-whoami', { marginBottom: '12px' })}
     <div class="card stack">
-      <form id="broadcast-form" class="row">
-        <input type="text" id="broadcast-message" placeholder="z.B. Essen ist da!" maxlength="200" style="flex:1;" ${myId ? '' : 'disabled'} />
-        <button type="submit" class="btn btn-primary" ${myId ? '' : 'disabled'}>Senden</button>
+      <form id="broadcast-form" class="stack">
+        <div>
+          <label for="broadcast-message" class="field-label">Nachricht</label>
+          <input type="text" id="broadcast-message" placeholder="z.B. Essen ist da!" maxlength="200" ${myId ? '' : 'disabled'} />
+        </div>
+        <div>
+          <label for="broadcast-ends-at" class="field-label">Sichtbar bis</label>
+          ${dateTimeFieldHtml('broadcast-ends-at', displayEndsAt, { disabled: !myId })}
+        </div>
+        <button type="submit" class="btn btn-primary" ${myId ? '' : 'disabled'}>${icon('megaphone')} Senden</button>
       </form>
       <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
         Erscheint sofort auf allen offenen Geräten, auf dem Kiosk-Bildschirm und als
@@ -78,10 +98,11 @@ export function renderBroadcast(container, ctx) {
     </div>
 
     <div class="section-title">🕓 Letzte Durchsagen</div>
-    <div class="card">${renderHistory()}</div>
+    <div class="card">${renderHistory(myId)}</div>
   `;
 
   wireWhoAmICard(container, 'broadcast-whoami', ctx);
+  wireDateTimeField(container, 'broadcast-ends-at');
 
   const messageInput = container.querySelector('#broadcast-message');
   if (prevValue) messageInput.value = prevValue;
@@ -91,14 +112,25 @@ export function renderBroadcast(container, ctx) {
     e.preventDefault();
     const input = container.querySelector('#broadcast-message');
     const message = input.value.trim();
+    const endsAtInput = container.querySelector('#broadcast-ends-at');
+    const endsAt = new Date(endsAtInput.value).getTime();
     if (!message) return;
     if (!myId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+    if (!Number.isFinite(endsAt) || endsAt <= Date.now()) {
+      return showToast('Bitte einen Endzeitpunkt in der Zukunft wählen.', { error: true });
+    }
     const submitBtn = container.querySelector('#broadcast-form button[type="submit"]');
     if (submitBtn.disabled) return;
     submitBtn.disabled = true;
     try {
-      await api.broadcasts.send(myId, message);
-      input.value = '';
+      await api.broadcasts.send(myId, message, endsAt);
+      // A broadcast:new socket event may have re-rendered the form while the
+      // request was in flight, so clear the currently mounted fields rather
+      // than only the now-detached references captured before await.
+      const currentInput = container.querySelector('#broadcast-message');
+      const currentEndsAtInput = container.querySelector('#broadcast-ends-at');
+      if (currentInput) currentInput.value = '';
+      if (currentEndsAtInput) currentEndsAtInput.value = '';
       historyCache = null;
       showToast('Durchsage gesendet.');
       ctx.rerender();
@@ -106,5 +138,21 @@ export function renderBroadcast(container, ctx) {
       submitBtn.disabled = false;
       showToast(err.message, { error: true });
     }
+  });
+
+  container.querySelectorAll('[data-end-broadcast]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (!myId || button.disabled) return;
+      button.disabled = true;
+      try {
+        await api.broadcasts.end(button.dataset.endBroadcast, myId);
+        historyCache = null;
+        showToast('Durchsage beendet.');
+        ctx.rerender();
+      } catch (err) {
+        button.disabled = false;
+        showToast(err.message, { error: true });
+      }
+    });
   });
 }

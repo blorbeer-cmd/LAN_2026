@@ -454,7 +454,18 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.waitForSelector('text=Geht raus um 24.12., 22:00 Uhr');
 });
 
-test('Arcade: open a quiz lobby, see it listed and on Home, then close it again', async () => {
+test('Arcade: open a quiz lobby, see it listed and on Home, then close it again', async (t) => {
+  const players = (await (await fetch(`${BASE_URL}/api/players`)).json()) as Array<{ id: string; name: string }>;
+  const guest = players.find((player) => player.name === 'E2E Bob');
+  assert.ok(guest, 'expected "E2E Bob" (added by an earlier test) to exist');
+  const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const guestPage = await guestContext.newPage();
+  t.after(async () => guestContext.close());
+  await guestPage.goto(BASE_URL);
+  await guestPage.evaluate((id) => localStorage.setItem('lan2026_my_player_id', id), guest.id);
+  await guestPage.reload();
+  await guestPage.waitForSelector('.nav-btn[data-view="home"]');
+
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="arcade"]');
   // Arcade is a launcher; select the quiz tile before its lobby controls
@@ -463,6 +474,7 @@ test('Arcade: open a quiz lobby, see it listed and on Home, then close it again'
   await page.waitForSelector('#quiz-create-lobby');
   await page.click('#quiz-create-lobby');
   await page.waitForSelector('[data-close-lobby]');
+  await guestPage.waitForSelector('#notification-banner:has-text("Neue Quiz-Lobby")');
 
   // The open lobby also shows up on Home as a compact "Aktuell" row that
   // deep-links back into the Arcade (the whole row is the tap target, not a
@@ -492,6 +504,9 @@ test('Arcade: open a quiz lobby, see it listed and on Home, then close it again'
 
   await page.click('[data-close-lobby]');
   await page.waitForSelector('text=Keine offene Quiz-Lobby.');
+  await guestPage.waitForFunction(
+    () => !document.getElementById('notification-banner')?.textContent?.includes('Neue Quiz-Lobby')
+  );
 
   // Closed - the create button is enabled again.
   await page.waitForSelector('#quiz-create-lobby:not([disabled])');
@@ -1054,6 +1069,9 @@ test('Durchsage: send a broadcast, see it in the history, the header banner (on 
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="broadcast"]');
   await page.waitForSelector('#broadcast-message');
+  const defaultEndsAt = new Date(await page.inputValue('#broadcast-ends-at')).getTime();
+  assert.ok(defaultEndsAt >= Date.now() + 55 * 60 * 1000);
+  assert.ok(defaultEndsAt <= Date.now() + 65 * 60 * 1000);
   await page.fill('#broadcast-message', 'Essen ist da!');
   await page.click('#broadcast-form button[type="submit"]');
   // Wait for the durable signal (the entry in "Letzte Durchsagen"), not the
@@ -1076,6 +1094,15 @@ test('Durchsage: send a broadcast, see it in the history, the header banner (on 
   await page.click('#notification-banner [data-notification-navigate]');
   await page.waitForSelector('#broadcast-message');
 
+  // "Gesehen" only removes the persistent banner for this identity. The
+  // durable Home history remains available below.
+  await page.click('[data-view="leaderboard"]');
+  await page.waitForSelector('#notification-banner:has-text("Essen ist da!")');
+  await page.click('#notification-banner [data-notification-dismiss]');
+  await page.waitForFunction(
+    () => !document.getElementById('notification-banner')?.textContent?.includes('Essen ist da!')
+  );
+
   // The push also lands in Home's "Mitteilungen" history, further down the
   // page, with its own deep-link button back into the Durchsagen view.
   await page.click('[data-view="home"]');
@@ -1083,6 +1110,19 @@ test('Durchsage: send a broadcast, see it in the history, the header banner (on 
   await page.waitForSelector('text=Essen ist da!');
   await page.click('button:has-text("Zu den Durchsagen")');
   await page.waitForSelector('#broadcast-message');
+
+  // A second message can be ended early by its creator; its history row
+  // remains and the banner disappears immediately.
+  await page.fill('#broadcast-message', 'Turnier startet gleich!');
+  await page.click('#broadcast-form button[type="submit"]');
+  const activeRow = page.locator('.lb-row:has-text("Turnier startet gleich!")');
+  await activeRow.waitFor();
+  await page.waitForSelector('#notification-banner:has-text("Turnier startet gleich!")');
+  await activeRow.locator('[data-end-broadcast]').click();
+  await activeRow.locator('text=Beendet am').waitFor();
+  await page.waitForFunction(
+    () => !document.getElementById('notification-banner')?.textContent?.includes('Turnier startet gleich!')
+  );
 });
 
 test('Captain-Draft: pick captains, run the live draft to completion', async () => {

@@ -394,6 +394,15 @@ function wireSocket() {
     if (currentView === 'home') renderCurrent();
     refreshNotificationBanner();
   });
+  // A short-lived push topic was closed, completed or reached its deadline.
+  // Its history stays on Home, but the always-on banner must immediately
+  // fall back to the newest entry that is still actionable.
+  socket.on('push:changed', refreshNotificationBanner);
+  // Dismissals are personal: only refresh devices currently acting as the
+  // player who marked this entry as seen.
+  socket.on('push:seen', (payload) => {
+    if (payload?.playerId === getMyId()) refreshNotificationBanner();
+  });
 
   // Arcade lobbies opening/closing update the Home "Aktuell" card. The
   // Arcade views consume these payloads themselves; Home just refetches the
@@ -437,6 +446,10 @@ function wireSocket() {
     if (payload && payload.playerId !== getMyId()) {
       showToast(`📢 ${payload.playerName}: ${payload.message}`, { duration: 8000 });
     }
+  });
+  socket.on('broadcasts:changed', () => {
+    invalidateBroadcasts();
+    if (currentView === 'broadcast') renderCurrent();
   });
 
   socket.on('info:changed', () => {

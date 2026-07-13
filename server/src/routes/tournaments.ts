@@ -10,7 +10,7 @@ import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getTrackingEventId } from '../events';
 import { isNonEmptyString } from '../validation';
-import { notifyPlayers } from '../push';
+import { notifyPlayers, resolvePushTopic } from '../push';
 import {
   generateBracket,
   applyBracketResult,
@@ -460,7 +460,12 @@ tournamentsRouter.post('/', (req, res) => {
       message: `🏆 Neues Turnier: ${tournamentName}`,
     },
   });
-  notifyPlayers(allPlayerIds, { title: '🏆 Neues Turnier', body: tournamentName, url: '/#tournaments' });
+  notifyPlayers(
+    allPlayerIds,
+    { title: '🏆 Neues Turnier', body: tournamentName, url: '/#tournaments' },
+    'all',
+    { key: `tournament:${tournamentId}` }
+  );
   res.status(201).json(buildDetail(tournamentId));
 });
 
@@ -687,6 +692,7 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
     }
   });
   record();
+  resolvePushTopic(`tournament:${tournament.id}:match:${match.id}`);
 
   // Looks up a match's two teams and, if both are known, sends the "your
   // match is up" push + returns the notify payload for the socket broadcast.
@@ -717,7 +723,8 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
     notifyPlayers(
       matchNotify.playerIds,
       { title: '⚔️ Dein Match ist bereit', body: matchNotify.message, url: '/#tournaments' },
-      'direct'
+      'direct',
+      { key: `tournament:${tournament!.id}:match:${matchId}` }
     );
     return matchNotify;
   }
@@ -736,7 +743,12 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
       playerIds,
       message: `🏆 Gruppenphase von ${tournament!.name} beendet – die K.O.-Runde steht!`,
     };
-    notifyPlayers(playerIds, { title: '🏆 K.O.-Runde steht', body: knockoutNotify.message, url: '/#tournaments' }, 'direct');
+    notifyPlayers(
+      playerIds,
+      { title: '🏆 K.O.-Runde steht', body: knockoutNotify.message, url: '/#tournaments' },
+      'direct',
+      { key: `tournament:${tournament!.id}:stage:knockout` }
+    );
     return knockoutNotify;
   }
 
@@ -763,6 +775,11 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
     });
   }
 
+  const currentTournament = db.prepare('SELECT status FROM tournaments WHERE id = ?').get(tournament.id) as
+    | { status: string }
+    | undefined;
+  if (currentTournament?.status !== 'active') resolvePushTopic(`tournament:${tournament.id}`, true);
+
   broadcast(Events.tournamentsChanged, {
     type: notify ? (knockoutJustGenerated ? 'knockout_stage_started' : 'match_ready') : 'updated',
     tournamentId: tournament.id,
@@ -781,6 +798,7 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
 tournamentsRouter.delete('/:id', (req, res) => {
   const result = db.prepare('DELETE FROM tournaments WHERE id = ?').run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
+  resolvePushTopic(`tournament:${req.params.id}`, true);
   broadcast(Events.tournamentsChanged, { type: 'deleted', tournamentId: req.params.id });
   res.status(204).end();
 });

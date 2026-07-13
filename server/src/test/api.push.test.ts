@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
+import { db } from '../db';
 import { pushTransport } from '../push';
 
 const app = createApp();
@@ -69,11 +70,15 @@ test('starting a new vote round pushes to subscribed players', async (t) => {
 
 test('GET /api/push/last reflects the most recently sent notification, regardless of feature', async () => {
   await request(app).post('/api/votes/start');
-  await request(app).post('/api/votes/cancel');
 
   const afterVotes = await request(app).get('/api/push/last');
   assert.equal(afterVotes.status, 200);
   assert.match(afterVotes.body.entry.title, /Abstimmung/);
+
+  await request(app).post('/api/votes/cancel');
+  const afterCancel = await request(app).get('/api/push/last');
+  assert.equal(afterCancel.status, 200);
+  assert.equal(afterCancel.body.entry, null, 'a cancelled vote must leave the active banner');
 
   // A different feature's notifyPlayers() call (Durchsage) becomes the new
   // "last" entry — the log isn't scoped to one feature.
@@ -85,6 +90,123 @@ test('GET /api/push/last reflects the most recently sent notification, regardles
   assert.match(afterBroadcast.body.entry.title, /📢/);
   assert.match(afterBroadcast.body.entry.body, /Pizza ist da!/);
   assert.ok(afterBroadcast.body.entry.createdAt > 0);
+});
+
+test('GET /api/push/current validates identity and skips resolved topics without deleting history', async () => {
+  const missing = await request(app).get('/api/push/current');
+  assert.equal(missing.status, 400);
+  const unknown = await request(app).get('/api/push/current?playerId=ghost');
+  assert.equal(unknown.status, 404);
+
+  await request(app).post('/api/votes/start');
+  const whileOpen = await request(app).get(`/api/push/current?playerId=${playerId}`);
+  assert.match(whileOpen.body.entry.title, /Abstimmung/);
+
+  await request(app).post('/api/votes/close');
+  const afterClose = await request(app).get(`/api/push/current?playerId=${playerId}`);
+  assert.ok(!/Abstimmung/.test(afterClose.body.entry?.title ?? ''));
+
+  const history = await request(app).get(`/api/push/log?playerId=${playerId}`);
+  assert.ok(history.body.entries.some((entry: { title: string }) => /Abstimmung/.test(entry.title)));
+});
+
+test('POST /api/push/:id/seen dismisses only this player\'s banner and keeps notification history', async () => {
+  const other = await request(app).post('/api/players').send({ name: 'Push Seen Other' });
+  const created = await request(app).post('/api/broadcasts').send({ playerId, message: 'Persönlich wegklickbar' });
+  assert.equal(created.status, 201);
+
+  const current = await request(app).get(`/api/push/current?playerId=${playerId}`);
+  assert.match(current.body.entry.body, /Persönlich wegklickbar/);
+  const pushId = current.body.entry.id as string;
+
+  const missingPlayer = await request(app).post(`/api/push/${pushId}/seen`).send({});
+  assert.equal(missingPlayer.status, 400);
+  const unknownPlayer = await request(app).post(`/api/push/${pushId}/seen`).send({ playerId: 'ghost' });
+  assert.equal(unknownPlayer.status, 404);
+  const missingPush = await request(app).post('/api/push/missing/seen').send({ playerId });
+  assert.equal(missingPush.status, 404);
+
+  const seen = await request(app).post(`/api/push/${pushId}/seen`).send({ playerId });
+  assert.equal(seen.status, 204);
+  const repeated = await request(app).post(`/api/push/${pushId}/seen`).send({ playerId });
+  assert.equal(repeated.status, 204);
+
+  const ownAfter = await request(app).get(`/api/push/current?playerId=${playerId}`);
+  assert.notEqual(ownAfter.body.entry?.id, pushId);
+  const otherAfter = await request(app).get(`/api/push/current?playerId=${other.body.id}`);
+  assert.equal(otherAfter.body.entry.id, pushId);
+
+  const history = await request(app).get(`/api/push/log?playerId=${playerId}`);
+  assert.ok(history.body.entries.some((entry: { id: string }) => entry.id === pushId));
+});
+
+test('broadcast pushes disappear when ended by their creator or after their deadline', async () => {
+  const ended = await request(app).post('/api/broadcasts').send({ playerId, message: 'Vorzeitig beenden' });
+  assert.equal(ended.status, 201);
+  let current = await request(app).get(`/api/push/current?playerId=${playerId}`);
+  assert.match(current.body.entry.body, /Vorzeitig beenden/);
+
+  await request(app).post(`/api/broadcasts/${ended.body.id}/end`).send({ playerId });
+  current = await request(app).get(`/api/push/current?playerId=${playerId}`);
+  assert.ok(!/Vorzeitig beenden/.test(current.body.entry?.body ?? ''));
+
+  const expiring = await request(app)
+    .post('/api/broadcasts')
+    .send({ playerId, message: 'Automatisch ablaufen', endsAt: Date.now() + 50 });
+  assert.equal(expiring.status, 201);
+  await new Promise((resolve) => setTimeout(resolve, 75));
+  current = await request(app).get(`/api/push/current?playerId=${playerId}`);
+  assert.ok(!/Automatisch ablaufen/.test(current.body.entry?.body ?? ''));
+});
+
+test('closed and expired food-order pushes are omitted from active banners', async () => {
+  const order = await request(app)
+    .post('/api/food-orders')
+    .send({ playerId, title: 'Push-Lifecycle-Pizza', sendAt: Date.now() + 60_000 });
+  assert.equal(order.status, 201);
+
+  const whileOpen = await request(app).get(`/api/push/current?playerId=${playerId}`);
+  assert.match(whileOpen.body.entry.body, /Push-Lifecycle-Pizza/);
+
+  await request(app).post(`/api/food-orders/${order.body.id}/close`);
+  const afterClose = await request(app).get(`/api/push/current?playerId=${playerId}`);
+  assert.ok(!/Push-Lifecycle-Pizza/.test(afterClose.body.entry?.body ?? ''));
+
+  const expired = await request(app)
+    .post('/api/food-orders')
+    .send({ playerId, title: 'Schon-abgelaufen', sendAt: Date.now() - 1 });
+  assert.equal(expired.status, 201);
+  const afterExpiry = await request(app).get(`/api/push/current?playerId=${playerId}`);
+  assert.ok(!/Schon-abgelaufen/.test(afterExpiry.body.entry?.body ?? ''));
+});
+
+test('completed and cancelled drafts leave active banners', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Push Draft Game' });
+  const players = await Promise.all(
+    ['Draft Captain A', 'Draft Captain B', 'Draft Pick A', 'Draft Pick B'].map((name) =>
+      request(app).post('/api/players').send({ name })
+    )
+  );
+  const ids = players.map((player) => player.body.id as string);
+
+  const first = await request(app)
+    .post('/api/draft/start')
+    .send({ gameId: game.body.id, captainIds: ids.slice(0, 2), poolPlayerIds: ids.slice(2) });
+  assert.equal(first.status, 201);
+  const active = await request(app).get(`/api/push/current?playerId=${ids[0]}`);
+  assert.match(active.body.entry.title, /Captain-Draft/);
+
+  await request(app).post('/api/draft/pick').send({ playerId: ids[0], pickPlayerId: ids[2] });
+  const completed = await request(app).get(`/api/push/current?playerId=${ids[0]}`);
+  assert.ok(!/Captain-Draft/.test(completed.body.entry?.title ?? ''));
+
+  const second = await request(app)
+    .post('/api/draft/start')
+    .send({ gameId: game.body.id, captainIds: ids.slice(0, 2), poolPlayerIds: ids.slice(2) });
+  assert.equal(second.status, 201);
+  await request(app).post('/api/draft/cancel');
+  const cancelled = await request(app).get(`/api/push/current?playerId=${ids[0]}`);
+  assert.ok(!/Captain-Draft/.test(cancelled.body.entry?.title ?? ''));
 });
 
 test('GET /api/push/log returns entries relevant to the player, with deep-link url', async () => {
@@ -283,6 +405,24 @@ test('a match-ready push names the lobby and its default host (the upper bracket
   // creation push), even though the direct one is chronologically newer.
   const last = await request(app).get('/api/push/last');
   assert.match(last.body.entry.title, /Neues Turnier/);
+
+  const ready = await request(app).get(`/api/push/current?playerId=${playerId}`);
+  assert.match(ready.body.entry.title, /Match ist bereit/);
+
+  const detail = await request(app).get(`/api/tournaments/${tournamentId}`);
+  const finalMatch = detail.body.matches.find((match: { round: number }) => match.round === 2);
+  assert.ok(finalMatch?.teamAId && finalMatch?.teamBId);
+  await request(app)
+    .post(`/api/tournaments/${tournamentId}/matches/${finalMatch.id}/result`)
+    .send({ winnerTeamId: finalMatch.teamAId });
+
+  const afterResult = await request(app).get(`/api/push/current?playerId=${playerId}`);
+  assert.ok(!/Lobby "LAN2026"/.test(afterResult.body.entry?.body ?? ''));
+
+  const unresolvedTournamentTopics = db
+    .prepare("SELECT COUNT(*) AS count FROM push_log WHERE topic_key LIKE ? AND resolved_at IS NULL")
+    .get(`tournament:${tournamentId}%`) as { count: number };
+  assert.equal(unresolvedTournamentTopics.count, 0);
 
   await request(app).post('/api/push/unsubscribe').send({ endpoint: 'https://push.example.com/sub-lobby' });
 });
