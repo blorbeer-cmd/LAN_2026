@@ -36,4 +36,11 @@ RUN chown -R node:node /app
 USER node
 
 EXPOSE 3000
+
+# The deploy waits for this check before reporting success. It uses Node
+# itself so the slim runtime image needs no curl/wget package, and reads the
+# existing container environment without exposing ACCESS_TOKEN in CI logs.
+HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=12 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:3000/api/health',{headers:{'x-access-token':process.env.ACCESS_TOKEN||''}}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+
 CMD ["node", "dist/index.js"]

@@ -3,6 +3,12 @@ name: CI/CD
 on:
   push:
     branches: [main]
+    # Pull requests still run the complete CI below. Once a docs-only PR is
+    # merged, do not rebuild and restart production for Markdown that cannot
+    # change the shipped image.
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   pull_request:
   workflow_dispatch:
     inputs:
@@ -24,10 +30,10 @@ jobs:
       run:
         working-directory: server
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           # 24 (current Active LTS) — matches server/Dockerfile. Also fixes
           # a real bug: npm test's `node --test "<glob>"` needs the test
@@ -73,20 +79,21 @@ jobs:
       - run: npm run test:e2e
 
   build-and-push:
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy)
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       packages: write
     outputs:
       image: ${{ steps.meta.outputs.image }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy)
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -97,10 +104,14 @@ jobs:
           IMAGE="ghcr.io/${{ github.repository }}"
           echo "image=${IMAGE,,}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: ./server
-          push: true
+          # Pull requests build the exact runtime image as a deployment
+          # gate, but only main/manual deploy runs may publish it.
+          push: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy) }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: |
             ${{ steps.meta.outputs.image }}:${{ github.sha }}
             ${{ steps.meta.outputs.image }}:latest
@@ -109,7 +120,10 @@ jobs:
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy)
     needs: build-and-push
     runs-on: ubuntu-latest
-    environment: production
+    timeout-minutes: 10
+    environment:
+      name: production
+      url: https://lan.dbehnke.dev
     # Only one deploy against the single production box at a time. Two
     # pushes close together would otherwise both SSH in and race on the
     # same `.env`/`docker compose` state — queue the second instead of
@@ -121,11 +135,25 @@ jobs:
       group: production-deploy
       cancel-in-progress: false
     steps:
+      - uses: actions/checkout@v7
+
+      # Keep the live service definition in sync as deploy safeguards (for
+      # example logging limits) evolve; secrets remain exclusively in the
+      # server-side .env and are never copied from the repository.
+      - uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: deploy
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: docker-compose.yml
+          target: /opt/lan2026
+          overwrite: true
+
       # Pinning the box to this exact sha (not a floating :latest tag) keeps
       # deploys reproducible and makes infra/cloud-init.yaml.tpl's
       # rollback.sh consistent: the next normal push here overwrites
       # whatever sha a manual rollback pinned to.
-      - uses: appleboy/ssh-action@v1.2.0
+      - uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.HETZNER_HOST }}
           username: deploy
@@ -133,7 +161,19 @@ jobs:
           script: |
             set -euo pipefail
             cd /opt/lan2026
-            sed -i "s#^IMAGE=.*#IMAGE=${{ needs.build-and-push.outputs.image }}:${{ github.sha }}#" .env
-            docker compose pull app
-            docker compose up -d app
+            previous_image="$(sed -n 's/^IMAGE=//p' .env)"
+            next_image="${{ needs.build-and-push.outputs.image }}:${{ github.sha }}"
+            sed -i "s#^IMAGE=.*#IMAGE=${next_image}#" .env
+            if ! docker compose pull app || ! docker compose up -d --wait --wait-timeout 90 app; then
+              docker compose ps app || true
+              docker compose logs --tail=100 app || true
+              if [ -n "$previous_image" ] && [ "$previous_image" != "$next_image" ]; then
+                echo "Deploy failed; restoring previous image."
+                sed -i "s#^IMAGE=.*#IMAGE=${previous_image}#" .env
+                docker compose up -d --wait --wait-timeout 90 app || true
+                docker compose ps app || true
+              fi
+              exit 1
+            fi
+            docker compose ps app
             docker image prune -af --filter "until=720h"

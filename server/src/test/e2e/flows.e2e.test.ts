@@ -233,22 +233,32 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
   // The device identity is still "E2E Alice" from onboarding, so this view
   // opens straight into the profile editor rather than the identity picker.
   await page.waitForSelector('#profile-name');
+  // Profile-local neighbor/push state loads immediately after the first
+  // paint and can replace the form once. Let that initial render settle so
+  // the test never types into a form that is about to be detached.
+  await page.waitForTimeout(250);
   assert.equal(await page.inputValue('#profile-name'), 'E2E Alice');
 
   // Renaming to a name someone else already has must be rejected, not
   // silently accepted or crash the view.
   await page.fill('#profile-name', 'E2E Bob');
-  await Promise.all([
-    page.waitForResponse(
-      (response) => response.url().includes('/api/players/') && response.request().method() === 'PATCH' && response.status() === 409
-    ),
-    page.click('#profile-save'),
-  ]);
+  const conflictResponse = page.waitForResponse(
+    (response) => response.url().includes('/api/players/') && response.request().method() === 'PATCH'
+  );
+  await page.click('#profile-save');
+  const conflict = await conflictResponse;
+  assert.equal(conflict.status(), 409, `duplicate rename returned: ${await conflict.text()}`);
   assert.equal(await page.inputValue('#profile-name'), 'E2E Bob');
 
   // A genuinely free name should save fine.
   await page.fill('#profile-name', 'E2E Alice Pro');
+  const renameResponse = page.waitForResponse(
+    (response) => response.url().includes('/api/players/') && response.request().method() === 'PATCH'
+  );
   await page.click('#profile-save');
+  const renamed = await renameResponse;
+  assert.ok(renamed.ok(), `profile rename failed (${renamed.status()}): ${await renamed.text()}`);
+  await page.waitForSelector('.toast:has-text("Gespeichert")');
   await page.waitForFunction(() => {
     const el = document.querySelector('#profile-name') as HTMLInputElement | null;
     return el?.value === 'E2E Alice Pro';
@@ -1192,7 +1202,12 @@ test('Admin: one-tap mode with banner, seeded test users visible only in admin m
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="admin"]');
   await page.fill('#admin-count', '3');
+  const seedResponse = page.waitForResponse(
+    (response) => response.url().endsWith('/api/admin/test-users') && response.request().method() === 'POST'
+  );
   await page.click('#admin-bulk');
+  const seeded = await seedResponse;
+  assert.ok(seeded.ok(), `test-user seed failed (${seeded.status()}): ${await seeded.text()}`);
   await page.waitForSelector('text=3 Test-Spieler vorhanden');
   await page.waitForSelector('.badge-paused >> text=Test');
 

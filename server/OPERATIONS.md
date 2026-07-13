@@ -40,3 +40,33 @@ pm2 set pm2-logrotate:retain 5
 
 Die Datenbankrotation ist davon unabhängig: SQLite-Backups bleiben ein eigener Betriebs- und
 Sicherheitsprozess.
+
+## Produktions-Deployment
+
+Der Workflow `.github/workflows/deploy.yml` baut bereits in jedem Pull Request das vollständige
+Runtime-Image, veröffentlicht es dort aber nicht. Für jeden relevanten Push auf `main` wird das mit
+dem Commit-SHA getaggte Image anschließend veröffentlicht. Reine Markdown- und `docs/`-Änderungen
+durchlaufen im Pull Request die vollständige CI, lösen nach dem Merge aber keinen erneuten
+Image-Build und keinen Produktionsneustart aus. Vor einem App-Update wird die versionierte
+`docker-compose.yml` auf den Server übertragen; Geheimnisse verbleiben ausschließlich in dessen
+nicht versionierter `.env`.
+
+Das Runtime-Image besitzt einen Docker-Healthcheck gegen `/api/health`. Der Check verwendet den im
+Container vorhandenen `ACCESS_TOKEN`, ohne ihn in Logs oder Prozessargumenten außerhalb des
+Containers offenzulegen. Das Deployment verwendet `docker compose up -d --wait` und gilt deshalb
+erst als erfolgreich, wenn der neue Node-Prozess Anfragen beantwortet. Bei Pull-, Start- oder
+Healthcheck-Fehlern gibt der Workflow automatisch `docker compose ps app` und die letzten 100
+Container-Logzeilen aus. Dabei wird das zuvor gepinnte Image wieder gestartet, sodass ein kaputtes
+Image nicht bis zu einem manuellen Eingriff produktiv bleibt. Auch das generierte Rollback-Skript
+wartet auf einen gesunden Container.
+
+Der Docker-Build nutzt den GitHub-Actions-Cache. Build- und Deploy-Jobs haben eigene Timeouts; der
+Deploy bleibt über die Concurrency-Gruppe `production-deploy` für den einzelnen Produktionsserver
+serialisiert. Die veröffentlichte Environment-URL ist `https://lan.dbehnke.dev`.
+Die Compose-Konfiguration verwendet den lokalen Docker-Logging-Treiber mit Größen- und
+Dateilimits, damit App- und Tunnel-Logs den Datenträger nicht unbegrenzt füllen.
+
+Die in Workflows verwendeten Actions werden über `.github/dependabot.yml` wöchentlich auf Updates
+geprüft. Runtime-Deprecation-Warnungen in Action-Post-Steps stammen aus der jeweiligen Action und
+nicht automatisch aus dem Node-Prozess der Anwendung; sie werden durch zeitnahe Action-Upgrades
+behoben.
