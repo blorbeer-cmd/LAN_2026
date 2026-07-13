@@ -2,7 +2,7 @@ import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { playerMayUseArcadeAi } from './adminAccess';
-import { notifyPlayers } from '../push';
+import { notifyPlayers, resolvePushTopic } from '../push';
 import { matchesAnswer, pickQuestion } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
@@ -14,6 +14,10 @@ const DEFAULT_TARGET_SCORE = 5;
 const QUESTION_MS = 20_000;
 const COUNTDOWN_MS = 3000; // "3, 2, 1" intro before the first question
 const QUIZ_BOT = { id: 'quiz-bot', name: 'Quiz-Bot' };
+
+function quizLobbyPushKey(lobbyId: string): string {
+  return `arcade-lobby:quiz:${lobbyId}`;
+}
 
 interface PlayerRef {
   id: string;
@@ -243,6 +247,7 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
     if (lobby.host.id === player[0]) {
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'quiz', id);
       lobbies.delete(id);
+      resolvePushTopic(quizLobbyPushKey(id));
     } else {
       releaseLobbyMembership(player[0], 'quiz', id);
       lobby.socketIds.delete(player[0]);
@@ -291,11 +296,16 @@ export function registerArcadeSockets(io: Server): void {
         const otherPlayerIds = (db.prepare('SELECT id FROM players WHERE id != ?').all(player.id) as Array<{ id: string }>).map(
           (p) => p.id
         );
-        notifyPlayers(otherPlayerIds, {
-          title: '🕹️ Neue Quiz-Lobby',
-          body: `${player.name} hat eine Quiz-Lobby geöffnet – jetzt beitreten!`,
-          url: '/#arcade',
-        });
+        notifyPlayers(
+          otherPlayerIds,
+          {
+            title: '🕹️ Neue Quiz-Lobby',
+            body: `${player.name} hat eine Quiz-Lobby geöffnet – jetzt beitreten!`,
+            url: '/#arcade',
+          },
+          'all',
+          { key: quizLobbyPushKey(lobby.id) }
+        );
       }
     });
 
@@ -318,6 +328,7 @@ export function registerArcadeSockets(io: Server): void {
 
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'quiz', lobby.id);
       lobbies.delete(lobby.id);
+      resolvePushTopic(quizLobbyPushKey(lobby.id));
       emitLobbies(io);
       ack?.({ ok: true });
     });
@@ -343,6 +354,7 @@ export function registerArcadeSockets(io: Server): void {
       if (lobby.host.id === payload.playerId) {
         releaseLobbyMemberships(lobby.players.map((p) => p.id), 'quiz', lobby.id);
         lobbies.delete(lobby.id);
+        resolvePushTopic(quizLobbyPushKey(lobby.id));
       } else {
         releaseLobbyMembership(payload.playerId, 'quiz', lobby.id);
         lobby.socketIds.delete(payload.playerId);
@@ -393,6 +405,7 @@ export function registerArcadeSockets(io: Server): void {
       matches.set(match.id, match);
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'quiz', lobby.id);
       lobbies.delete(lobby.id);
+      resolvePushTopic(quizLobbyPushKey(lobby.id));
       emitLobbies(io);
       startArcadeSession(realPlayerIds(match.players), 'quiz');
       const beginsAt = Date.now() + COUNTDOWN_MS;

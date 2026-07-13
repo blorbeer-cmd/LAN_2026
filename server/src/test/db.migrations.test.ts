@@ -291,16 +291,26 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 23);
+  assert.equal(migrations.length, 25);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 23 }, (_, index) => index + 1),
+    Array.from({ length: 25 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
     const row = migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
     assert.ok(row, `${table} should be created for legacy databases`);
   }
+  const pushLogColumns = migrated.prepare('PRAGMA table_info(push_log)').all() as Array<{ name: string }>;
+  for (const column of ['topic_key', 'expires_at', 'resolved_at']) {
+    assert.ok(pushLogColumns.some((entry) => entry.name === column), `${column} should be added to legacy push logs`);
+  }
+  const broadcastColumns = migrated.prepare('PRAGMA table_info(broadcasts)').all() as Array<{ name: string }>;
+  for (const column of ['ends_at', 'ended_at']) {
+    assert.ok(broadcastColumns.some((entry) => entry.name === column), `${column} should be added to legacy broadcasts`);
+  }
+  const pushSeen = migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'push_log_seen'").get();
+  assert.ok(pushSeen, 'push_log_seen should be created for legacy databases');
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

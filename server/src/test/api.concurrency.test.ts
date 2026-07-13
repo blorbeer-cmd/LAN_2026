@@ -291,3 +291,19 @@ test('simultaneous test-user seeding: no duplicate names or double-booked seats'
 
   await request(app).delete('/api/admin/test-users');
 });
+
+test('simultaneous broadcast endings: exactly one request ends the announcement', async () => {
+  const created = await request(app)
+    .post('/api/broadcasts')
+    .send({ playerId: playerIds[0], message: 'Race-Durchsage' });
+  assert.equal(created.status, 201);
+
+  const results = await Promise.all(
+    Array.from({ length: 6 }, () =>
+      request(app).post(`/api/broadcasts/${created.body.id}/end`).send({ playerId: playerIds[0] })
+    )
+  );
+  const counts = statusCounts(results.map((result) => result.status));
+  assert.equal(counts[200], 1, JSON.stringify(counts));
+  assert.equal(counts[409], 5, JSON.stringify(counts));
+});
