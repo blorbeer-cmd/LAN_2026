@@ -18,7 +18,7 @@ jobs:
       FIREWALL_NAME: lan2026-ssh-only
       SSH_KEY_NAME: lan2026-deploy
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install hcloud CLI + envsubst
         run: |
