@@ -2,18 +2,20 @@
 
 Diese Übersicht dokumentiert die Entwicklung von LAN_2026 aus der Git-Historie. Für jeden gemergten Pull Request gibt es eine eigene Datei unter `docs/changelog/pr/`; zusätzlich sind die zugehörigen Arbeitsbranches unter `docs/changelog/branches/` erfasst.
 
-Stand: 2026-07-13 · Basis: `main` auf `7b3832a`
+Stand: 2026-07-13 · Basis: `main` auf `2e92824`
 
 ## Übersicht
 
-- Gemergte PRs dokumentiert: 87
-- Eindeutige PR-Branches dokumentiert: 59
+- Gemergte PRs dokumentiert: 89
+- Eindeutige PR-Branches dokumentiert: 61
 - Technische Synchronisations-Merges ohne eigenen PR sind nicht als eigene Feature-Einträge aufgeführt.
 
 ## Chronologie
 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
+| 2026-07-13 | [#171](https://github.com/blorbeer-cmd/LAN_2026/pull/171) | [Prepare-Hook im Container-Build korrigiert](pr/pr-171-fix-prepare-hook-in-container-build.md) | `codex/docker-prepare-fix` |
+| 2026-07-13 | [#169](https://github.com/blorbeer-cmd/LAN_2026/pull/169) | [Produktionsdeploys gehärtet und optimiert](pr/pr-169-harden-and-optimize-production-deployments.md) | `codex/deploy-optimizations` |
 | 2026-07-13 | [#167](https://github.com/blorbeer-cmd/LAN_2026/pull/167) | [Scribble-Galerie und Zuschauerbewertungen](pr/pr-167-add-scribble-gallery-voting.md) | `codex/fix-scribble-watch-rerender` |
 | 2026-07-13 | [#166](https://github.com/blorbeer-cmd/LAN_2026/pull/166) | [Gemeinsamer Arcade-Spectator-Renderer](pr/pr-166-fix-arcade-spectator-rendering.md) | `codex/fix-arcade-spectator-views` |
 | 2026-07-12 | main | [ESLint/Prettier und Log-Rotation](pr/main-2026-07-12-tooling-and-operations.md) | `main` |
@@ -108,6 +110,8 @@ Stand: 2026-07-13 · Basis: `main` auf `7b3832a`
 
 Die Branch-Seiten zeigen, über welche PRs ein Themenstrang in `main` eingeflossen ist. Auch Branches mit mehreren aufeinanderfolgenden PRs bleiben als ein Themenstrang nachvollziehbar.
 
+- [`codex/deploy-optimizations`](branches/codex-deploy-optimizations.md)
+- [`codex/docker-prepare-fix`](branches/codex-docker-prepare-fix.md)
 - [`codex/fix-arcade-spectator-views`](branches/codex-fix-arcade-spectator-views.md)
 - [`codex/fix-scribble-watch-rerender`](branches/codex-fix-scribble-watch-rerender.md)
 
