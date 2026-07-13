@@ -60,6 +60,10 @@ Wiederholungsfall ab.
 - Integrationstests liegen unter `src/test/*.test.ts`.
 - E2E-Tests liegen unter `src/test/e2e/*.e2e.test.ts` und laufen **nicht** in `npm test` mit (eigenes
   Script `test:e2e`), da sie einen Server + Browser brauchen und entsprechend langsamer sind.
+- Die E2E-Dateien laufen parallel (eine pro Prozess) und starten je einen eigenen Server — jede
+  Datei braucht deshalb einen **eigenen Test-Port** (aktuell: 3901 `flows`, 3902 `access`,
+  3903 `arcade`, 3910 Agent-Integration in `agent/`). Ein doppelt vergebener Port lässt alle Tests
+  der betroffenen Datei mit „Server did not become ready“ scheitern.
 - Der Produktions-Build (`npm run build`) schließt alle Testdateien aus – sie landen nie in `dist/`.
 - `index.ts` startet den Server nur, wenn es direkt ausgeführt wird (`require.main === module`),
   damit Tests die App importieren können, ohne einen Port zu belegen.
