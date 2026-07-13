@@ -5,6 +5,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
+import { db } from '../db';
+import { config } from '../config';
 
 const app = createApp();
 let playerId: string;
@@ -54,4 +56,25 @@ test('an empty/whitespace-only note is treated the same as clearing it', async (
   const board = await request(app).get('/api/live');
   const entry = board.body.find((r: { player_id: string }) => r.player_id === playerId);
   assert.equal(entry.manual_note, null);
+});
+
+test('setting a note still pauses a player whose last agent report has gone stale', async () => {
+  // Reproduces the Home pause button silently doing nothing: a player whose
+  // agent stopped reporting a while ago has a stale live_status row. Their
+  // note must still bump last_seen so deriveState doesn't immediately
+  // discard the fresh manual override as stale (see live.ts).
+  const stalePlayer = await request(app).post('/api/players').send({ name: 'Stale Note Tester' });
+  const staleId = stalePlayer.body.id;
+  const staleLastSeen = Date.now() - config.offlineTimeoutMs - 5_000;
+  db.prepare(
+    `INSERT INTO live_status (player_id, last_seen, manual_note) VALUES (?, ?, NULL)`
+  ).run(staleId, staleLastSeen);
+
+  const res = await request(app).post(`/api/live/${staleId}/note`).send({ note: 'Pause / Essen' });
+  assert.equal(res.status, 200);
+
+  const board = await request(app).get('/api/live');
+  const entry = board.body.find((r: { player_id: string }) => r.player_id === staleId);
+  assert.equal(entry.state, 'paused');
+  assert.equal(entry.manual_note, 'Pause / Essen');
 });

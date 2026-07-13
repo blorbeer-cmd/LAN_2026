@@ -27,15 +27,16 @@ liveRouter.post('/:playerId/note', (req, res) => {
   }
   const normalized = typeof note === 'string' && note.trim() ? note.trim() : null;
 
-  const existing = db.prepare('SELECT last_seen FROM live_status WHERE player_id = ?').get(req.params.playerId) as
-    | { last_seen: number }
-    | undefined;
-  const lastSeen = existing ? existing.last_seen : Date.now();
-
+  // Setting or clearing the note is itself a deliberate, current action from
+  // the player, so it counts as a fresh sighting just like an agent report
+  // does. Without bumping last_seen here, a player whose agent report has
+  // already gone stale (closed the game a while ago) would set manual_note
+  // only for deriveState to immediately discard it again as stale, making
+  // the pause button appear to silently do nothing (see liveStatus.ts).
   db.prepare(
     `INSERT INTO live_status (player_id, last_seen, manual_note) VALUES (?, ?, ?)
-     ON CONFLICT(player_id) DO UPDATE SET manual_note = excluded.manual_note`
-  ).run(req.params.playerId, lastSeen, normalized);
+     ON CONFLICT(player_id) DO UPDATE SET last_seen = excluded.last_seen, manual_note = excluded.manual_note`
+  ).run(req.params.playerId, Date.now(), normalized);
 
   broadcast(Events.liveStatusChanged, getLiveBoard());
   res.json({ ok: true });
