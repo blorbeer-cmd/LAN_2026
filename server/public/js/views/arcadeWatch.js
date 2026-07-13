@@ -26,6 +26,10 @@ let lastRenderSignature = '';
 
 const rerender = () => window.dispatchEvent(new CustomEvent('lan:rerender'));
 const navigate = (view) => window.dispatchEvent(new CustomEvent('lan:navigate', { detail: view }));
+// Replaces the current history entry instead of pushing — used when leaving
+// a watch view whose match is gone, so the stale entry never stays reachable
+// via back/forward (see switchView in app.js).
+const navigateReplace = (view) => window.dispatchEvent(new CustomEvent('lan:navigate', { detail: { view, replace: true } }));
 const isArcadeWatchView = () => document.getElementById('view-container')?.dataset.view === 'arcadeWatch';
 
 function resetVoting() {
@@ -67,7 +71,7 @@ function joinWatch(matchId) {
       watchedMatchId = null;
       watchedState = null;
       resetVoting();
-      if (isArcadeWatchView()) navigate('arcade');
+      if (isArcadeWatchView()) navigateReplace('arcade');
       return;
     }
     watchCanVote = result.canVote === true;
@@ -89,7 +93,7 @@ function ensureSocket() {
       watchedMatchId = null;
       watchedState = null;
       resetVoting();
-      if (isArcadeWatchView()) navigate('arcade');
+      if (isArcadeWatchView()) navigateReplace('arcade');
       return;
     }
     if (isArcadeWatchView()) rerender();
@@ -99,7 +103,7 @@ function ensureSocket() {
     watchedMatchId = null;
     watchedState = null;
     resetVoting();
-    if (isArcadeWatchView()) navigate('arcade');
+    if (isArcadeWatchView()) navigateReplace('arcade');
   });
   socket.on('arcade:watch:state', (payload) => {
     if (!watchedMatchId || payload?.matchId !== watchedMatchId) return;
@@ -254,6 +258,15 @@ function wireScribbleVoting(container) {
 
 export function renderArcadeWatch(container) {
   ensureSocket();
+  // A history entry can outlive its match: leave the watch view via the
+  // global nav, let the match end, then press back. Without a watched match
+  // this view would sit on "Verbindung…" forever, so redirect to the Arcade
+  // and replace the stale entry instead of pushing on top of it (a pushed
+  // entry would make the back button bounce between both states).
+  if (!watchedMatchId) {
+    window.dispatchEvent(new CustomEvent('lan:navigate', { detail: { view: 'arcade', replace: true } }));
+    return;
+  }
   const state = watchedState;
   const name = GAME_NAMES[state?.gameType] ?? GAME_NAMES[watchList.find((match) => match.matchId === watchedMatchId)?.gameType] ?? 'Arcade';
   container.innerHTML = `

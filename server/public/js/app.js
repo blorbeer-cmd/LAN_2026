@@ -107,7 +107,12 @@ function renderCurrent() {
 // the view popstate already navigated the browser to instead of pushing
 // another (identical) entry on top of it, which would trap back/forward in
 // a loop between the same two states.
-function switchView(view, { fromHistory = false } = {}) {
+// `replace` swaps the current history entry for the target view instead of
+// pushing a new one — for redirects away from an entry that must not stay
+// reachable via the back button (e.g. a watch view whose match has ended;
+// re-pushing would trap back/forward between the stale entry and its
+// redirect target).
+function switchView(view, { fromHistory = false, replace = false } = {}) {
   const changed = view !== currentView;
   currentView = view;
   // Realtime game modules use this marker to ignore updates while another
@@ -129,7 +134,9 @@ function switchView(view, { fromHistory = false } = {}) {
   document.getElementById('profile-btn').classList.toggle('needs-setup', !getMyId());
   renderCurrent();
   viewContainer.scrollTop = 0;
-  if (!fromHistory && changed) {
+  if (replace) {
+    history.replaceState({ view }, '');
+  } else if (!fromHistory && changed) {
     history.pushState({ view }, '');
   }
 }
@@ -226,7 +233,11 @@ function wireNav() {
   // from outside a click (e.g. the Tetris module jumping to the board view
   // when a realtime match starts, or refreshing its inline lobby on a socket
   // update). Kept as plain CustomEvents so modules stay decoupled from app.js.
-  window.addEventListener('lan:navigate', (e) => switchView(e.detail));
+  // detail is either the view name or { view, replace } (see switchView).
+  window.addEventListener('lan:navigate', (e) => {
+    const detail = typeof e.detail === 'string' ? { view: e.detail } : e.detail ?? {};
+    if (VIEWS[detail.view]) switchView(detail.view, { replace: detail.replace === true });
+  });
   window.addEventListener('lan:rerender', () => renderCurrent());
 
   // Back/forward: jump to whichever view is recorded on the popped entry
