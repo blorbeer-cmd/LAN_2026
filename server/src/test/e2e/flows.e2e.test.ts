@@ -714,6 +714,26 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     await page.waitForFunction(() => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) >= 1);
     await guesserPage.waitForFunction(() => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) >= 1);
 
+    // A watcher-list refresh belongs to the Arcade overview and must not
+    // rebuild a running game's view. Before this regression guard, the
+    // overview socket recreated Scribble's canvas here and erased its first
+    // streamed stroke (the intermittent CI failure this flow covers).
+    await guesserPage.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          const probe = (window as any).io();
+          probe.once('arcade:watch:list', () => {
+            probe.close();
+            setTimeout(resolve, 0);
+          });
+          probe.emit('arcade:watch:list');
+        })
+    );
+    assert.ok(
+      Number(await guesserPage.locator('#scribble-canvas').getAttribute('data-scribble-stroke-count')) >= 1,
+      'Arcade watch-list updates must not reset the active Scribble canvas'
+    );
+
     // The stroke must reach the guesser's canvas too (streamed over
     // Socket.IO, not part of the initial render).
     await guesserPage.waitForFunction(() => {
