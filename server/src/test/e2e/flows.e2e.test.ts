@@ -172,6 +172,21 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.waitForFunction(() => !document.querySelector('.badge-paused'));
 });
 
+test('matchmaking Ergebnis-Historie marks a recorded draw as Unentschieden', async () => {
+  await page.click('[data-view="matchmaking"]');
+  await page.click('#mm-generate');
+  await page.waitForSelector('[data-record-draw]');
+  await page.click('[data-record-draw]');
+
+  // "Unentschieden" is the default winner radio in the result form — submit
+  // as-is to record a drawn result.
+  await page.waitForSelector('#match-form');
+  await page.click('#match-form button[type="submit"]');
+
+  await page.waitForSelector('.section-title:has-text("Ergebnis-Historie")');
+  await page.waitForSelector('[data-draw-card] .badge:has-text("Unentschieden")');
+});
+
 test('Auswertungen (via Mehr) shows a real award and a visible, auto-scrolled concurrency chart', async () => {
   // Create a player + a session via the real agent-report endpoint (not the
   // UI) so there's an actual play_sessions row to render.

@@ -140,6 +140,7 @@ function renderDrawCard(draw, { editable }) {
           ${draw.source === 'draft' ? `<span class="badge">👑 Captain-Draft</span>` : ''}
         </div>
         ${draw.matchId ? `<span class="badge badge-offline">✅ Ergebnis erfasst</span>` : ''}
+        ${!editable && draw.winnerTeamIndex === null ? `<span class="badge">🤝 Unentschieden</span>` : ''}
       </div>
       <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));">${teamsHtml}</div>
       ${seatingNote}
