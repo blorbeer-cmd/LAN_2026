@@ -859,10 +859,14 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
       for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++;
       return n > before;
     }, guesserPaintedAfterUndo);
+    await page.waitForFunction(() => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) === 2);
+    await guesserPage.waitForFunction(() => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) === 2);
     const hostPaintedAfterFill = await countPainted(page);
     assert.ok(hostPaintedAfterFill > hostPaintedAfterUndo + 1000, 'fill must flood a large area, not just paint a single pixel');
 
     await page.click('#scribble-undo');
+    await page.waitForFunction(() => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) === 1);
+    await guesserPage.waitForFunction(() => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) === 1);
     await page.waitForFunction(
       (before) => {
         const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement;

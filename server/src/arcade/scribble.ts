@@ -650,7 +650,7 @@ export function registerScribbleSockets(io: Server): void {
 
     socket.on(
       'scribble:fill',
-      (payload: { matchId?: string; playerId?: string; strokeId?: string; x?: number; y?: number; color?: string }) => {
+      (payload: { matchId?: string; playerId?: string; strokeId?: string; x?: number; y?: number; color?: string }, ack?: (result: { ok: boolean; strokeCount?: number }) => void) => {
         const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
         if (!match || match.phase !== 'drawing' || match.paused) return;
         if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
@@ -661,7 +661,9 @@ export function registerScribbleSockets(io: Server): void {
         const color = typeof payload.color === 'string' && payload.color.length <= 20 ? payload.color : '#111111';
         const fill: FillOp = { type: 'fill', strokeId: payload.strokeId, x: payload.x, y: payload.y, color };
         if (match.strokes.length < MAX_STROKE_BATCHES) match.strokes.push(fill);
-        socket.to(match.room).emit('scribble:fill', { matchId: match.id, x: fill.x, y: fill.y, color: fill.color });
+        const strokeCount = new Set(match.strokes.map((stroke) => stroke.strokeId)).size;
+        socket.to(match.room).emit('scribble:fill', { matchId: match.id, x: fill.x, y: fill.y, color: fill.color, strokeCount });
+        ack?.({ ok: true, strokeCount });
         kioskSnapshot(io, match);
       }
     );
