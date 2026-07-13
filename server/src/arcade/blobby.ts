@@ -231,6 +231,17 @@ export function registerBlobbySockets(io: Server): void {
       if (payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann beenden.' });
       finish(io, match, null, 'ended-by-host'); ack?.({ ok: true });
     });
+    // Lets a non-host participant end a running match themselves instead of
+    // relying on the host (who might be AFK) or a raw disconnect — same
+    // outcome as a disconnect mid-match: the match ends, opponent wins.
+    socket.on('blobby:match:leave', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => {
+      const match = typeof payload.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      const leaver = match.players.find((p) => p.id === payload?.playerId);
+      if (!leaver) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
+      finish(io, match, match.players.find((p) => p.id !== leaver.id) ?? null, 'player-left');
+      ack?.({ ok: true });
+    });
     socket.on('disconnect', () => {
       removeFromLobbies(io, socket.id);
       for (const match of matches.values()) {

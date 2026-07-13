@@ -662,6 +662,20 @@ export function registerTetrisSockets(io: Server): void {
       ack?.({ ok: true });
     });
 
+    // Lets a non-host participant end a running match themselves instead of
+    // relying on the host (who might be AFK) or a raw disconnect — same
+    // outcome as a disconnect mid-match: the match ends, opponent wins.
+    socket.on('tetris:match:leave', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      const leaver = match.players.find((p) => p.id === payload?.playerId);
+      if (!leaver) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
+      const winner = match.players.find((p) => p.id !== leaver.id) ?? null;
+      io.to(match.room).emit('tetris:opponent-left', { matchId: match.id, playerId: leaver.id });
+      finishMatch(io, match, winner, 'player-left');
+      ack?.({ ok: true });
+    });
+
     socket.on('disconnect', () => {
       removeFromOpenLobbies(io, socket.id);
       for (const [, match] of matches) {

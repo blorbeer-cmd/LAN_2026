@@ -486,6 +486,19 @@ export function registerArcadeSockets(io: Server): void {
       ack?.({ ok: true });
     });
 
+    // Lets a non-host participant end a running match themselves instead of
+    // relying on the host (who might be AFK) or a raw disconnect — same
+    // outcome as a disconnect mid-match.
+    socket.on('arcade:match:leave', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      const leaver = match.players.find((p) => p.id === payload?.playerId);
+      if (!leaver) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
+      io.to(match.room).emit('arcade:match:opponent-left', { matchId: match.id, playerId: leaver.id });
+      finishMatch(io, match, null, 'player-left');
+      ack?.({ ok: true });
+    });
+
     socket.on('disconnect', () => {
       removeFromOpenLobbies(io, socket.id);
       for (const [id, match] of matches) {

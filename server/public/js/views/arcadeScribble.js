@@ -458,7 +458,17 @@ function wordChoiceHtml() {
 }
 
 function matchControlsHtml() {
-  if (!match || matchEnded || match.host.id !== myId()) return '';
+  if (!match || matchEnded) return '';
+  if (match.host.id !== myId()) {
+    // A non-host player can't pause (shared timer state, host-only), but
+    // must still have a way out instead of only a raw tab close — available
+    // regardless of turn phase, unlike the host's pause/finish below.
+    if (!amPlayer()) return '';
+    return `
+      <div class="arcade-match-controls">
+        <button type="button" class="btn btn-sm btn-equal btn-danger" id="scribble-leave-match">Verlassen</button>
+      </div>`;
+  }
   if (turn?.phase !== 'drawing') return '';
   return `
     <div class="arcade-match-controls">
@@ -1102,5 +1112,10 @@ function wireRoom(container) {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
     const res = await emitWithAck('scribble:match:finish', { matchId: match.matchId, playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'Beenden fehlgeschlagen.', { error: true });
+  });
+  container.querySelector('#scribble-leave-match')?.addEventListener('click', async () => {
+    if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
+    const res = await emitWithAck('scribble:match:leave', { matchId: match.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
   });
 }

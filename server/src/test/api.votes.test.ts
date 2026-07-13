@@ -11,6 +11,7 @@ let playerA: string;
 let playerB: string;
 let gameCs2: string;
 let gameRl: string;
+let gameAoe2: string;
 
 test('setup: players and games for voting', async () => {
   const a = await request(app).post('/api/players').send({ name: 'Voter A' });
@@ -21,6 +22,7 @@ test('setup: players and games for voting', async () => {
   const games = await request(app).get('/api/games');
   gameCs2 = games.body.find((g: { name: string }) => g.name === 'Counter-Strike 2').id;
   gameRl = games.body.find((g: { name: string }) => g.name === 'Rocket League').id;
+  gameAoe2 = games.body.find((g: { name: string }) => g.name === 'Age of Empires 2').id;
 });
 
 test('GET /api/votes with no round yet: closed, no votes', async () => {
@@ -180,6 +182,31 @@ test('a fresh round with no votes yet is sorted by aggregate "Bock" rating (Beli
   assert.equal(rlResult.preferenceCount, 2);
 
   await request(app).post('/api/votes/cancel');
+});
+
+test('catalogResults keeps showing every rated game after a round restricted to fewer games closes', async () => {
+  // Age of Empires 2 is rated highest but never part of a round that only
+  // ever covers CS2 and Rocket League — the "Top 5 nach Bock-Level" widget
+  // (driven by catalogResults) must still surface it once that round closes,
+  // unlike `results`, which stays scoped to the round's own selection.
+  await request(app).put('/api/preferences').send({ playerId: playerA, gameId: gameAoe2, rating: 10 });
+  await request(app).put('/api/preferences').send({ playerId: playerB, gameId: gameAoe2, rating: 10 });
+
+  await request(app).post('/api/votes/start').send({ gameIds: [gameCs2, gameRl] });
+  await request(app).post('/api/votes/close');
+
+  const res = await request(app).get('/api/votes');
+  assert.equal(res.body.open, false);
+
+  const scopedIds = res.body.results.map((r: { gameId: string }) => r.gameId);
+  assert.ok(!scopedIds.includes(gameAoe2), 'results should stay scoped to the closed round\'s selected games');
+
+  const catalogIds = res.body.catalogResults.map((r: { gameId: string }) => r.gameId);
+  assert.ok(catalogIds.includes(gameAoe2), 'catalogResults should include every game regardless of the last round\'s selection');
+
+  const aoe2 = res.body.catalogResults.find((r: { gameId: string }) => r.gameId === gameAoe2);
+  assert.equal(aoe2.avgPreference, 10);
+  assert.ok(catalogIds.indexOf(gameAoe2) < catalogIds.indexOf(gameCs2), 'higher-rated game should sort before a lower-rated one');
 });
 
 test('POST /api/votes/start rejects an invalid mode', async () => {
