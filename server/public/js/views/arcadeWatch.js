@@ -34,7 +34,7 @@ function ensureSocket() {
       if (isArcadeWatchView()) navigate('arcade');
       return;
     }
-    rerender();
+    if (isArcadeWatchView()) rerender();
   });
   socket.on('arcade:watch:ended', (payload) => {
     if (!watchedMatchId || payload?.matchId !== watchedMatchId) return;
@@ -48,7 +48,7 @@ function ensureSocket() {
     const canvas = document.querySelector('#arcade-watch-canvas');
     if (canvas) paint(canvas, payload);
     updateWatchMeta(payload);
-    if (!document.querySelector('#arcade-watch-canvas') && payload.gameType !== 'quiz') rerender();
+    if (isArcadeWatchView() && !document.querySelector('#arcade-watch-canvas') && payload.gameType !== 'quiz') rerender();
   });
   return socket;
 }

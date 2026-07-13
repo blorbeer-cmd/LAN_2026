@@ -314,6 +314,10 @@ function onPointerDown(e) {
       x: p[0],
       y: p[1],
       color: tool.color,
+    }, (response) => {
+      if (canvasEl && response?.ok && typeof response.strokeCount === 'number') {
+        canvasEl.dataset.scribbleStrokeCount = String(response.strokeCount);
+      }
     });
     return;
   }
@@ -554,6 +558,7 @@ export function ensureScribbleSocket() {
   socket.on('scribble:fill', (payload) => {
     if (!match || payload.matchId !== match.matchId || isDrawer()) return;
     floodFill(payload.x, payload.y, payload.color);
+    if (canvasEl && typeof payload.strokeCount === 'number') canvasEl.dataset.scribbleStrokeCount = String(payload.strokeCount);
   });
 
   // Undo replaces the whole canvas from the server's authoritative reduced

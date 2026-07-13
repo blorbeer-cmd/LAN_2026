@@ -47,6 +47,14 @@ let lastResult = null;
 let countdownInterval = null;
 let customTarget = '';
 
+function currentView() {
+  return document.getElementById('view-container')?.dataset.view;
+}
+
+function rerenderIfView(ctx, view) {
+  if (currentView() === view) ctx.rerender();
+}
+
 // The Tetris view lives in its own module; when one of its matches finishes it
 // fires this so our cached highscores refetch the next time Arcade renders.
 window.addEventListener('lan:arcade-stats-dirty', () => {
@@ -83,7 +91,7 @@ async function loadStats(ctx) {
     stats = { games: [] };
   } finally {
     statsLoading = false;
-    ctx.rerender();
+    rerenderIfView(ctx, 'arcade');
   }
 }
 
@@ -92,11 +100,11 @@ function ensureSocket(ctx) {
   socket = io({ auth: { token: getToken() } });
   socket.on('arcade:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
-    ctx.rerender();
+    rerenderIfView(ctx, 'arcade');
   });
   socket.on('arcade:watch:list', (payload) => {
     watchMatches = payload?.matches ?? [];
-    ctx.rerender();
+    rerenderIfView(ctx, 'arcade');
   });
   socket.on('arcade:match:start', (payload) => {
     match = { ...payload, scores: payload.players.map((p) => ({ playerId: p.id, name: p.name, score: 0 })), paused: false };
@@ -111,21 +119,21 @@ function ensureSocket(ctx) {
     if (payload.scores) match = { ...(match ?? {}), matchId: payload.matchId, scores: payload.scores, targetScore: payload.targetScore };
     lastResult = null;
     startCountdown();
-    ctx.rerender();
+    rerenderIfView(ctx, 'quizRoom');
   });
   socket.on('arcade:quiz:result', (payload) => {
     lastResult = payload;
     if (payload.scores) match = { ...(match ?? {}), scores: payload.scores };
     currentQuestion = null;
     stopCountdown();
-    ctx.rerender();
+    rerenderIfView(ctx, 'quizRoom');
   });
   socket.on('arcade:quiz:timeout', (payload) => {
     lastResult = { winner: null, correctAnswer: payload.correctAnswer, timeout: true };
     if (payload.scores) match = { ...(match ?? {}), scores: payload.scores };
     currentQuestion = null;
     stopCountdown();
-    ctx.rerender();
+    rerenderIfView(ctx, 'quizRoom');
   });
   socket.on('arcade:match:end', (payload) => {
     lastResult = payload.winner ? { winner: payload.winner, correctAnswer: 'Match beendet' } : lastResult;
@@ -135,18 +143,18 @@ function ensureSocket(ctx) {
     cancelCountdown();
     stats = null;
     loadStats(ctx);
-    ctx.rerender();
+    rerenderIfView(ctx, 'quizRoom');
   });
   socket.on('arcade:match:paused', (payload) => {
     if (payload.scores) match = { ...(match ?? {}), scores: payload.scores, paused: true, remainingMs: payload.remainingMs };
     stopCountdown();
-    ctx.rerender();
+    rerenderIfView(ctx, 'quizRoom');
   });
   socket.on('arcade:match:resumed', (payload) => {
     if (payload.scores) match = { ...(match ?? {}), scores: payload.scores, paused: false, remainingMs: null };
     if (currentQuestion && payload.expiresAt) currentQuestion = { ...currentQuestion, expiresAt: payload.expiresAt };
     startCountdown();
-    ctx.rerender();
+    rerenderIfView(ctx, 'quizRoom');
   });
   socket.on('arcade:match:opponent-left', () => {
     showToast('Ein Spieler hat das Match verlassen.', { error: true });
