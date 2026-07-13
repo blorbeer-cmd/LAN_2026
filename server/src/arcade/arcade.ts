@@ -8,6 +8,7 @@ import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
+import { shouldSendLobbyPush } from './lobbyPush';
 
 const DEFAULT_TARGET_SCORE = 5;
 const QUESTION_MS = 20_000;
@@ -284,15 +285,18 @@ export function registerArcadeSockets(io: Server): void {
 
       // Nobody has the Arcade view open to see the toast-on-connect above,
       // so a real push is the only way the rest of the LAN finds out a lobby
-      // is waiting for them.
-      const otherPlayerIds = (db.prepare('SELECT id FROM players WHERE id != ?').all(player.id) as Array<{ id: string }>).map(
-        (p) => p.id
-      );
-      notifyPlayers(otherPlayerIds, {
-        title: '🕹️ Neue Quiz-Lobby',
-        body: `${player.name} hat eine Quiz-Lobby geöffnet – jetzt beitreten!`,
-        url: '/#arcade',
-      });
+      // is waiting for them. Throttled per game type (see lobbyPush.ts) so
+      // rapid re-creation cannot spam every phone on the LAN.
+      if (shouldSendLobbyPush('quiz')) {
+        const otherPlayerIds = (db.prepare('SELECT id FROM players WHERE id != ?').all(player.id) as Array<{ id: string }>).map(
+          (p) => p.id
+        );
+        notifyPlayers(otherPlayerIds, {
+          title: '🕹️ Neue Quiz-Lobby',
+          body: `${player.name} hat eine Quiz-Lobby geöffnet – jetzt beitreten!`,
+          url: '/#arcade',
+        });
+      }
     });
 
     socket.on('arcade:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (res: unknown) => void) => {

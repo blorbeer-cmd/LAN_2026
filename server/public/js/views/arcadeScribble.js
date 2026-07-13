@@ -767,7 +767,11 @@ export function ensureScribbleSocket() {
     socket.emit('scribble:rejoin', { matchId: match.matchId, playerId: myId() }, (res) => {
       if (!res?.ok) return;
       const sync = res.sync;
-      replayStrokesOnNextCanvas = sync.strokes;
+      // Only a drawing-phase sync has a live canvas to replay onto. A sync
+      // during gallery/reveal/choosing must not park the previous turn's
+      // strokes here — no canvas consumes them now, and the next turn's
+      // setupCanvas() would replay the stale artwork onto its blank canvas.
+      replayStrokesOnNextCanvas = sync.phase === 'drawing' ? sync.strokes : null;
       match = { matchId: sync.matchId, host: sync.host, players: sync.players, rounds: sync.rounds, turnDurationMs: sync.turnDurationMs };
       turn = {
         matchId: sync.matchId,

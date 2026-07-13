@@ -20,6 +20,7 @@ import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { arcadeWatcherPlayerIds, broadcastArcadeKiosk, onArcadeWatcherChange } from '../realtime';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
+import { shouldSendLobbyPush } from './lobbyPush';
 import {
   buildHintSchedule,
   HintStep,
@@ -529,6 +530,11 @@ function startNextTurn(io: Server, match: ScribbleMatchState): void {
   match.revealedIndices = new Set();
   match.pendingHints = [];
   match.strokes = [];
+  // Leaving a resolved gallery closes that round's rating window for good:
+  // its last drawing must not stay the reaction target (spectatorVoting /
+  // scribble:reaction) into the next round. Mid-round turn changes keep it —
+  // "Letztes Bild bewerten" intentionally spans the following turn.
+  if (match.galleryResolved) match.currentDrawingId = null;
   match.galleryRound = null;
   match.galleryExpiresAt = null;
   match.galleryResolved = false;
@@ -694,15 +700,18 @@ export function registerScribbleSockets(io: Server): void {
 
       // Nobody has the Arcade view open to see the toast-on-connect above,
       // so a real push is the only way the rest of the LAN finds out a lobby
-      // is waiting for them.
-      const otherPlayerIds = (db.prepare('SELECT id FROM players WHERE id != ?').all(player.id) as Array<{ id: string }>).map(
-        (p) => p.id
-      );
-      notifyPlayers(otherPlayerIds, {
-        title: '✏️ Neue Scribble-Lobby',
-        body: `${player.name} hat eine Scribble-Lobby geöffnet – jetzt beitreten!`,
-        url: '/#arcade',
-      });
+      // is waiting for them. Throttled per game type (see lobbyPush.ts) so
+      // rapid re-creation cannot spam every phone on the LAN.
+      if (shouldSendLobbyPush('scribble')) {
+        const otherPlayerIds = (db.prepare('SELECT id FROM players WHERE id != ?').all(player.id) as Array<{ id: string }>).map(
+          (p) => p.id
+        );
+        notifyPlayers(otherPlayerIds, {
+          title: '✏️ Neue Scribble-Lobby',
+          body: `${player.name} hat eine Scribble-Lobby geöffnet – jetzt beitreten!`,
+          url: '/#arcade',
+        });
+      }
     });
     socket.on('scribble:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (res: unknown) => void) => {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
