@@ -21,17 +21,28 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same branch supersedes the running checks — except on
+# main, where an in-flight run may already be deploying and must finish.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# The former single "Build and test" job ran every check back to back and made
+# each merge wait for the full serial chain. The mandatory checks are unchanged
+# but now run as parallel jobs; the runtime image builds alongside them and is
+# only published (and deployed) after every check has passed.
 jobs:
-  test:
-    name: Build and test
+  server-checks:
+    name: Server lint, build and tests
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: server
     steps:
       - uses: actions/checkout@v7
         with:
+          # check:tokens diffs against the branch base, which needs history.
           fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
@@ -42,9 +53,7 @@ jobs:
           # 'dist-test/*.test.js'" (verified by reproducing it locally).
           node-version: 24
           cache: npm
-          cache-dependency-path: |
-            server/package-lock.json
-            agent/package-lock.json
+          cache-dependency-path: server/package-lock.json
       - run: npm ci
       - name: Check design tokens
         shell: bash
@@ -63,23 +72,94 @@ jobs:
         run: npm run format:check
       - run: npm run build
       - run: npm test
+
+  e2e:
+    name: Browser E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      # The Chromium download (~150 MB) dominated this step — cache it keyed
+      # on the lockfile, so only a Playwright version bump re-downloads.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}
+      - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Chromium system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      # test:e2e builds the server itself before starting it.
+      - run: npm run test:e2e
+
+  agent:
+    name: Agent lint and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            server/package-lock.json
+            agent/package-lock.json
+      # The agent-server integration test drives the real built server.
+      - name: Build server for the integration test
+        working-directory: server
+        run: npm ci && npm run build
       - name: Install agent dependencies
         working-directory: agent
         run: npm ci
-      - name: Test agent
-        working-directory: agent
-        run: npm test
       - name: Lint agent
         working-directory: agent
         run: npm run lint
+      - name: Test agent
+        working-directory: agent
+        run: npm test
       - name: Test agent-server integration
         working-directory: agent
         run: npm run test:e2e
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
 
-  build-and-push:
-    needs: test
+  # Builds the exact runtime image on every run as a deployment gate (also on
+  # pull requests), in parallel with the checks above. Nothing is published
+  # here — the publish job below re-uses this build via the shared layer
+  # cache once all checks are green.
+  image:
+    name: Build runtime image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: ./server
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Publishing stays gated on every check: a push to main publishes and
+  # deploys automatically, a manual run only with the explicit deploy=true
+  # input. The image itself comes out of the layer cache written by the
+  # parallel build above, so this job is quick.
+  publish:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy)
+    needs: [server-checks, e2e, agent, image]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -93,7 +173,6 @@ jobs:
       - uses: docker/setup-buildx-action@v4
 
       - uses: docker/login-action@v4
-        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy)
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -107,18 +186,15 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: ./server
-          # Pull requests build the exact runtime image as a deployment
-          # gate, but only main/manual deploy runs may publish it.
-          push: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy) }}
+          push: true
           cache-from: type=gha
-          cache-to: type=gha,mode=max
           tags: |
             ${{ steps.meta.outputs.image }}:${{ github.sha }}
             ${{ steps.meta.outputs.image }}:latest
 
   deploy:
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy)
-    needs: build-and-push
+    needs: publish
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
@@ -127,10 +203,10 @@ jobs:
     # Only one deploy against the single production box at a time. Two
     # pushes close together would otherwise both SSH in and race on the
     # same `.env`/`docker compose` state — queue the second instead of
-    # running it in parallel (test/build-and-push above stay unaffected,
-    # only this job serializes). Not scoped to a branch/sha on purpose:
-    # there's exactly one production target, so every deploy shares the
-    # same lock regardless of which commit triggered it.
+    # running it in parallel (the check jobs above stay unaffected, only
+    # this job serializes). Not scoped to a branch/sha on purpose: there's
+    # exactly one production target, so every deploy shares the same lock
+    # regardless of which commit triggered it.
     concurrency:
       group: production-deploy
       cancel-in-progress: false
@@ -162,7 +238,7 @@ jobs:
             set -euo pipefail
             cd /opt/lan2026
             previous_image="$(sed -n 's/^IMAGE=//p' .env)"
-            next_image="${{ needs.build-and-push.outputs.image }}:${{ github.sha }}"
+            next_image="${{ needs.publish.outputs.image }}:${{ github.sha }}"
             sed -i "s#^IMAGE=.*#IMAGE=${next_image}#" .env
             if ! docker compose pull app || ! docker compose up -d --wait --wait-timeout 90 app; then
               docker compose ps app || true

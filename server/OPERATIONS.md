@@ -60,9 +60,15 @@ Container-Logzeilen aus. Dabei wird das zuvor gepinnte Image wieder gestartet, s
 Image nicht bis zu einem manuellen Eingriff produktiv bleibt. Auch das generierte Rollback-Skript
 wartet auf einen gesunden Container.
 
-Der Docker-Build nutzt den GitHub-Actions-Cache. Build- und Deploy-Jobs haben eigene Timeouts; der
+Die Pflichtchecks laufen als parallele Jobs (Server-Checks, Browser-E2E, Agent, Runtime-Image-Build)
+statt als eine serielle Kette; der `publish`-Job veröffentlicht das Image nach grünen Checks aus dem
+geteilten Buildx-Layer-Cache, erst danach startet der Deploy. Playwright-Browser werden zwischen
+Läufen gecacht, und überholte Läufe auf Nicht-`main`-Refs werden per Concurrency abgebrochen.
+Der Docker-Build nutzt den GitHub-Actions-Cache. Alle Jobs haben eigene Timeouts; der
 Deploy bleibt über die Concurrency-Gruppe `production-deploy` für den einzelnen Produktionsserver
-serialisiert. Die veröffentlichte Environment-URL ist `https://lan.dbehnke.dev`.
+serialisiert. Die veröffentlichte Environment-URL ist `https://lan.dbehnke.dev`. Referenziert eine
+Branch-Protection-Regel noch den früheren Sammel-Check „Build and test“, muss sie auf die neuen
+Job-Namen umgestellt werden.
 Die Compose-Konfiguration verwendet den lokalen Docker-Logging-Treiber mit Größen- und
 Dateilimits, damit App- und Tunnel-Logs den Datenträger nicht unbegrenzt füllen.
 
