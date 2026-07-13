@@ -88,6 +88,7 @@ Auto-Merge-Aktivieren) dürfen `GITHUB_TOKEN` nutzen, weil dort kein Folge-Trigg
 | `auto-pipeline` | Automatik für diesen PR aktiv (Opt-in; wird für `claude/*`- und `codex/*`-PRs automatisch gesetzt) |
 | `no-auto` | Opt-out: Automatik fasst diesen PR nicht an, auch wenn er von einem Agent stammt |
 | `auto:fixing` | Autor-Agent arbeitet gerade (verhindert parallele Läufe zusätzlich zur `concurrency`-Gruppe) |
+| `auto:waiting` | Zuständiger Agent ist wegen Nutzungslimit/Rate-Limit nicht verfügbar; die anstehende Aktion wird per Schedule erneut versucht (siehe Abschnitt 6) |
 | `needs-human` | Eskalation: Rundenlimit erreicht oder Fall, den die Automatik nicht entscheiden darf |
 
 Labels sind bewusst der einzige Zustandsspeicher: sichtbar in der PR-Übersicht, manuell
@@ -117,7 +118,51 @@ korrigierbar und ohne zusätzliche Datenhaltung.
 - **Produktionsschutz unverändert:** Deployt wird weiterhin ausschließlich durch den bestehenden
   `deploy`-Job nach Push auf `main`. Die Automatik erhält keinerlei SSH- oder Deploy-Rechte.
 
-## 6. Schritt-für-Schritt-Plan
+## 6. Nichtverfügbarkeit durch Nutzungslimits
+
+Beide Agents unterliegen Nutzungslimits (Claude-API-Budget bzw. Abo-Zeitfenster, Codex-Kontingent
+mit 5-Stunden- und Wochenfenstern). Solche Limits setzen sich nach Ablauf des Fensters von selbst
+zurück – die Standardstrategie ist deshalb **warten und erneut versuchen, niemals umgehen**.
+
+### Erkennung
+
+- **Claude:** Der `claude-code-action`-Job schlägt mit einem erkennbaren API-Fehler fehl
+  (Rate-Limit `429`, erschöpftes Guthaben). Der Orchestrierungs-Workflow wertet die Fehlerart aus
+  und unterscheidet „Limit“ (warten) von „echter Fehler“ (Eskalation).
+- **Codex:** Es gibt keinen synchronen Fehlerkanal – eine Mention verhallt bei erschöpftem
+  Kontingent einfach. Deshalb prüft ein Watchdog (verzögerter Job bzw. der nächste Schedule-Lauf)
+  nach jeder `@codex …`-Mention, ob innerhalb von ~45 Minuten eine Reaktion erfolgt ist
+  (Kommentar, Review oder Push). Keine Reaktion → als „nicht verfügbar“ behandeln.
+
+### Verhalten
+
+1. Der PR erhält das Label `auto:waiting` plus einen kurzen Kommentar: welche Aktion aussteht
+   (Review, CI-Fix, Konfliktauflösung, Kommentar-Umsetzung), welcher Agent fehlt, Zeitstempel.
+2. Der bestehende Schedule-Lauf (Phase 3) versucht bei `auto:waiting`-PRs die ausstehende Aktion
+   erneut – dadurch entsteht ein natürlicher 2-Stunden-Backoff ohne zusätzliche Infrastruktur.
+   Wartezyklen zählen **nicht** auf die Rundenlimits aus Abschnitt 5; die zählen nur echte
+   Arbeitsrunden.
+3. Nach 24 Stunden ohne erfolgreiche Wiederaufnahme: Label `needs-human` + Benachrichtigung.
+   Vermutlich liegt dann kein Zeitfenster-Limit vor, sondern ein erschöpftes Budget oder ein
+   Integrationsproblem, das ein Mensch klären muss.
+
+### Grundsätze
+
+- **Das Review-Gate wird nie übersprungen, weil der Reviewer nicht verfügbar ist.** Ein
+  ungereviewter Auto-Merge ist ausgeschlossen; der PR wartet, egal wie grün die CI ist.
+- **Kein Selbst-Review als Fallback.** Ist der Reviewer-Agent dauerhaft nicht verfügbar, reviewt
+  ein Mensch (`needs-human`), nicht der Autor-Agent.
+- **Degradierter Modus für Fixes (optional, siehe offene Entscheidungen):** Ist der
+  *Autor*-Agent dauerhaft nicht verfügbar, darf der jeweils andere Agent CI-Fixes,
+  Konfliktauflösungen und Kommentar-Umsetzungen übernehmen. Da dann Fixer und Reviewer dieselbe
+  Instanz sind, ist die Vier-Augen-Trennung verletzt – in diesem Modus setzt das Merge-Gate
+  automatisch `needs-human`, und das finale Approval kommt von einem Menschen. Vollautomatisch
+  bis Produktion gibt es nur bei intakter Rollentrennung.
+- **CI und Deployment sind nicht betroffen:** Nutzungslimits treffen nur die Agents. Pflichtchecks
+  und der bestehende Deploy-Job laufen unverändert; ein wartender PR blockiert keine anderen PRs
+  und kein laufendes Deployment.
+
+## 7. Schritt-für-Schritt-Plan
 
 ### Phase 0 – Voraussetzungen und Bestandsaufnahme (manuell, einmalig)
 
@@ -136,7 +181,7 @@ korrigierbar und ohne zusätzliche Datenhaltung.
 5. **Branch-Ruleset für `main`** anlegen bzw. prüfen: Required Status Check „Build and test“,
    mindestens 1 Approval, „Require conversation resolution before merging“. Damit ist Auto-Merge
    technisch erst möglich, wenn CI grün ist und ein Gegen-Review vorliegt.
-6. **Labels anlegen:** `auto-pipeline`, `no-auto`, `auto:fixing`, `needs-human`.
+6. **Labels anlegen:** `auto-pipeline`, `no-auto`, `auto:fixing`, `auto:waiting`, `needs-human`.
 
 Verifikation Phase 0: Test-PR von Hand öffnen, `@claude` und `@codex` je einmal erwähnen und
 prüfen, dass beide antworten.
@@ -181,7 +226,9 @@ Trigger: `workflow_run` (Workflow „CI/CD“, `conclusion == failure`), zugeord
 ### Phase 3 – Merge-Konflikte automatisch auflösen
 
 Gleicher Workflow wie Phase 2, zusätzlicher Trigger: `push` auf `main` sowie `schedule`
-(z. B. alle 2 Stunden als Fangnetz, GitHub liefert für Konflikt-Zustände kein Event).
+(z. B. alle 2 Stunden als Fangnetz, GitHub liefert für Konflikt-Zustände kein Event). Derselbe
+Schedule-Lauf nimmt auch `auto:waiting`-PRs wieder auf (Abschnitt 6) und prüft als
+Codex-Watchdog, ob offene `@codex`-Mentions unbeantwortet geblieben sind.
 
 1. Alle offenen `auto-pipeline`-PRs auflisten; bei `mergeable_state == dirty` den Autor-Agent
    beauftragen: `git merge origin/main` auf dem PR-Branch, Konflikte inhaltlich auflösen (beide
@@ -243,7 +290,7 @@ Trigger: `pull_request` (`closed`, `merged == true`).
 4. Betriebsdokumentation: Kill-Switch, Labels, Eskalationsweg und Kostenhinweise in `README.md`
    bzw. `server/OPERATIONS.md` ergänzen; Changelog-Eintrag für das Automatisierungs-PR selbst.
 
-## 7. Aufwand, Kosten, Risiken
+## 8. Aufwand, Kosten, Risiken
 
 - **Kosten:** Jede Review-, Fix- und Changelog-Runde verbraucht Claude-API-Tokens bzw.
   Codex-Kontingent; die GitHub-Actions-Minuten selbst sind im öffentlichen/kleinen Rahmen
@@ -258,7 +305,7 @@ Trigger: `pull_request` (`closed`, `merged == true`).
   Secrets (`SSH_PRIVATE_KEY`, `HETZNER_HOST`) bleiben exklusiv beim bestehenden Deploy-Job mit
   Environment `production`.
 
-## 8. Offene Entscheidungen (vor Phase 1 klären)
+## 9. Offene Entscheidungen (vor Phase 1 klären)
 
 1. **Letzte menschliche Instanz vor Produktion?** Standard dieses Konzepts: vollautomatisch bis
    Produktion. Alternativ kann das GitHub-Environment `production` einen „Required reviewer“
@@ -272,8 +319,13 @@ Trigger: `pull_request` (`closed`, `merged == true`).
    oder erst später kommt. Fallback: Claude übernimmt Fixes auch auf Codex-PRs, das Review bleibt
    trotzdem beim jeweils anderen Agent – die Vier-Augen-Trennung gilt dann pro Commit-Runde nur
    noch eingeschränkt und wird im Pilot bewertet.
+4. **Degradierter Modus bei Nutzungslimits (Abschnitt 6):** Darf der jeweils andere Agent die
+   Fixes übernehmen, wenn der Autor-Agent dauerhaft nicht verfügbar ist (dann mit menschlichem
+   Final-Approval), oder wartet der PR strikt, bis der Autor-Agent wieder verfügbar ist?
+   Empfehlung: im Pilot strikt warten; den degradierten Modus erst freischalten, wenn die
+   Grundautomatik stabil läuft.
 
-## 9. Nicht Bestandteil dieses Vorhabens
+## 10. Nicht Bestandteil dieses Vorhabens
 
 - Keine Änderung an Test-, Build- oder Deploy-Logik in `deploy.yml` (außer keinerlei Änderung –
   die Orchestrierung liegt in neuen, separaten Workflow-Dateien).
