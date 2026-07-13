@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { playerMayUseArcadeAi } from './adminAccess';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
-import { PADDLE_HEIGHT, PONG_HEIGHT, PongInput, PongWorld, createWorld, stepWorld } from './pongLogic';
+import { BALL_RADIUS, PADDLE_HEIGHT, PADDLE_WIDTH, PONG_HEIGHT, PONG_WIDTH, PongInput, PongWorld, createWorld, stepWorld } from './pongLogic';
 import { broadcastArcadeKiosk } from '../realtime';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 
@@ -79,6 +79,7 @@ function snapshot(io: Server, match: Match) {
     world: match.world,
     scores: scorePayload(match),
     targetScore: match.targetScore,
+    render: { width: PONG_WIDTH, height: PONG_HEIGHT, paddleWidth: PADDLE_WIDTH, paddleHeight: PADDLE_HEIGHT, ballRadius: BALL_RADIUS },
   };
   io.to(match.room).emit('pong:state', payload);
   broadcastArcadeKiosk(io, { gameType: 'pong', ...payload, players: match.players });

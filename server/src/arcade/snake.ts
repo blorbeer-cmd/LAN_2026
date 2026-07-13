@@ -44,7 +44,20 @@ export function openLobbySummaries() {
   }));
 }
 function snapshot(io: Server, match: Match) {
-  const payload = { matchId: match.id, world: match.world, running: match.running, paused: match.paused, serverTime: Date.now() };
+  const scores = match.players.map((player, index) => ({
+    playerId: player.id,
+    name: player.name,
+    score: match.world.snakes[index]?.score ?? 0,
+  }));
+  const payload = {
+    matchId: match.id,
+    world: match.world,
+    running: match.running,
+    paused: match.paused,
+    serverTime: Date.now(),
+    scores,
+    render: { width: SNAKE_WIDTH, height: SNAKE_HEIGHT },
+  };
   io.to(match.room).emit('snake:state', payload);
   broadcastArcadeKiosk(io, { gameType: 'snake', ...payload, players: match.players });
 }

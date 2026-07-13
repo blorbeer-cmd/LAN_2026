@@ -153,8 +153,10 @@
 }
 .kiosk-game-content canvas {
   display: block;
-  width: min(100%, 1200px);
-  height: min(100%, 700px);
+  width: auto;
+  height: auto;
+  max-width: min(100%, 1200px);
+  max-height: min(100%, 700px);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);
