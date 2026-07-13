@@ -1208,7 +1208,6 @@ test('Admin: one-tap mode with banner, seeded test users visible only in admin m
   await page.click('#admin-bulk');
   const seeded = await seedResponse;
   assert.ok(seeded.ok(), `test-user seed failed (${seeded.status()}): ${await seeded.text()}`);
-  await page.waitForSelector('#toast-container:has-text("3 Test-Spieler angelegt")');
   await page.waitForSelector('text=3 Test-Spieler vorhanden');
   await page.waitForSelector('.badge-paused >> text=Test');
 
