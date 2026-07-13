@@ -983,13 +983,14 @@ button.card {
 }
 
 /* Arcade launcher: a compact row of game tiles instead of full-width cards.
-   Fixed 5 columns so all games sit side by side; minmax(0,1fr) lets them
-   shrink on a phone rather than overflow, and the name clamps to two lines so
-   tiles stay the same height regardless of label length. */
+   Fixed columns (one per GAMES entry) so all games sit side by side;
+   minmax(0,1fr) lets them shrink on a phone rather than overflow, and the
+   name clamps to two lines so tiles stay the same height regardless of
+   label length. */
 .arcade-tiles {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: var(--space-2);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-1);
 }
 
 /* Open lobbies use a compact three-column overview on laptop widths. */
@@ -1010,14 +1011,14 @@ button.card {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  gap: var(--space-2);
-  min-height: 88px;
-  padding: var(--space-3) var(--space-1) var(--space-3);
+  gap: var(--space-1);
+  min-height: 80px;
+  padding: var(--space-2) var(--space-1);
   cursor: pointer;
   text-align: center;
 }
 .arcade-tile-icon {
-  font-size: var(--font-size-2xl);
+  font-size: var(--font-size-xl);
   line-height: 1;
 }
 .arcade-tile-name {
