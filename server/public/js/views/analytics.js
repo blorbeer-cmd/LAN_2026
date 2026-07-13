@@ -1,18 +1,22 @@
-// Auswertungen view: two tabs sharing one event/date filter — "Spielzeit"
-// (awards, longest sessions, multitasking, a raw session log, a per-game
-// concurrency chart) and "Matches & Turniere" (recorded results, tournament
+// Auswertungen view: three tabs — "Spielzeit" and "Matches & Turniere" share
+// one event/date filter (awards, longest sessions, multitasking, a raw
+// session log, a per-game concurrency chart; recorded results, tournament
 // counts, team-auslosen history, a few "witzige" head-to-head records).
+// "Arcade" has no filter of its own (arcade_results isn't tied to a single
+// event) and covers the arcade mini-games specifically: match durations,
+// the most-active player per game and a per-day match timeline — on top of
+// the win/loss leaderboard already shown on the Arcade view's own stats tab.
 // Reached via the "Mehr" hub, not the main bottom nav — this is for browsing
-// after the fact, not something needed mid-game. Used to be two separate
-// views; merged since both answer
+// after the fact, not something needed mid-game. Playtime/Matches used to be
+// two separate views; merged since both answer
 // "how did the LAN go", just from different angles (see server/CLAUDE.md
 // games reorg) — one entry in the Mehr hub instead of two, and switching
 // angles no longer means re-picking the event/date range from scratch.
 //
 // Data is fetched lazily per tab and cached in this module (not the shared
 // `state`, since it's filtered by its own date range independent of the
-// rest of the app) — loadPlaytimeData()/loadMatchesData() fetch, then
-// trigger a re-render.
+// rest of the app) — loadPlaytimeData()/loadMatchesData()/loadArcadeData()
+// fetch, then trigger a re-render.
 
 import { api } from '../api.js';
 import { state } from '../state.js';
@@ -20,12 +24,14 @@ import { escapeHtml, formatDateTime, avatarHtml, gameBadgeHtml } from '../format
 import { showToast } from '../toast.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 
-let activeTab = 'playtime'; // 'playtime' | 'matches'
+let activeTab = 'playtime'; // 'playtime' | 'matches' | 'arcade'
 
 let cache = null; // playtime tab
 let loading = false;
 let matchesCache = null; // matches/tournaments tab
 let matchesLoading = false;
+let arcadeCache = null; // arcade tab
+let arcadeLoading = false;
 
 function defaultFilters() {
   // eventId: 'active' resolves to the currently active event on first
@@ -139,6 +145,24 @@ async function loadMatchesData(ctx) {
   }
 }
 
+// Arcade tab: match durations, most-active player and a per-day timeline
+// for the arcade mini-games, on top of the win/loss leaderboard already
+// shown on the Arcade view's own stats tab. arcade_results has no event_id,
+// so this is always all-time — no event/date filter to wire up here.
+async function loadArcadeData(ctx) {
+  arcadeLoading = true;
+  ctx.rerender();
+  try {
+    arcadeCache = await api.analytics.arcade();
+  } catch (err) {
+    showToast(err.message, { error: true });
+    arcadeCache = { totals: { matches: 0, players: 0, totalDurationFormatted: '0s', avgDurationFormatted: '0s' }, games: [], timeline: [] };
+  } finally {
+    arcadeLoading = false;
+    ctx.rerender();
+  }
+}
+
 function renderEventOptions() {
   const sorted = [...state.events].sort((a, b) => b.starts_at - a.starts_at);
   const options = sorted
@@ -158,6 +182,9 @@ export function renderAnalytics(container, ctx) {
   if (activeTab === 'matches' && matchesCache === null && !matchesLoading) {
     loadMatchesData(ctx);
   }
+  if (activeTab === 'arcade' && arcadeCache === null && !arcadeLoading) {
+    loadArcadeData(ctx);
+  }
   const displayRange = filters.from && filters.to ? { from: filters.from, to: filters.to } : selectedEventRange();
 
   container.innerHTML = `
@@ -166,20 +193,25 @@ export function renderAnalytics(container, ctx) {
     <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-3);">
       <button type="button" class="btn btn-sm ${activeTab === 'playtime' ? 'btn-primary' : ''}" data-an-tab="playtime">🕒 Spielzeit</button>
       <button type="button" class="btn btn-sm ${activeTab === 'matches' ? 'btn-primary' : ''}" data-an-tab="matches">🎲 Matches & Turniere</button>
+      <button type="button" class="btn btn-sm ${activeTab === 'arcade' ? 'btn-primary' : ''}" data-an-tab="arcade">🕹️ Arcade</button>
     </div>
-    <div class="card stack">
-      <select id="an-event">${renderEventOptions()}</select>
-      ${
-        activeTab === 'playtime'
-          ? `<div class="field-row">
-               <div>${dateTimeFieldHtml('an-from', displayRange.from, { clearable: true })}</div>
-               <div>${dateTimeFieldHtml('an-to', displayRange.to, { clearable: true })}</div>
-             </div>
-             <button type="button" class="btn btn-primary btn-block" id="an-apply">Zeitraum zusätzlich eingrenzen</button>
-             <div class="muted" style="font-size:var(--font-size-xs);">Event wählen zeigt genau dessen Daten. Die Felder darüber grenzen innerhalb des Events optional weiter ein (z.B. nur Samstagnacht).</div>`
-          : `<div class="muted" style="font-size:var(--font-size-xs);">Event wählen zeigt genau dessen Daten.</div>`
-      }
-    </div>
+    ${
+      activeTab === 'arcade'
+        ? ''
+        : `<div class="card stack">
+             <select id="an-event">${renderEventOptions()}</select>
+             ${
+               activeTab === 'playtime'
+                 ? `<div class="field-row">
+                      <div>${dateTimeFieldHtml('an-from', displayRange.from, { clearable: true })}</div>
+                      <div>${dateTimeFieldHtml('an-to', displayRange.to, { clearable: true })}</div>
+                    </div>
+                    <button type="button" class="btn btn-primary btn-block" id="an-apply">Zeitraum zusätzlich eingrenzen</button>
+                    <div class="muted" style="font-size:var(--font-size-xs);">Event wählen zeigt genau dessen Daten. Die Felder darüber grenzen innerhalb des Events optional weiter ein (z.B. nur Samstagnacht).</div>`
+                 : `<div class="muted" style="font-size:var(--font-size-xs);">Event wählen zeigt genau dessen Daten.</div>`
+             }
+           </div>`
+    }
     <div id="an-content">${renderActiveTabContent()}</div>
   `;
 
@@ -203,14 +235,17 @@ export function renderAnalytics(container, ctx) {
     });
   });
 
-  container.querySelector('#an-event').addEventListener('change', (e) => {
-    filters.eventId = e.target.value; // '' selects "Gesamt (alle Events)"
-    filters.from = null;
-    filters.to = null;
-    cache = null;
-    matchesCache = null;
-    ctx.rerender();
-  });
+  const eventSelect = container.querySelector('#an-event');
+  if (eventSelect) {
+    eventSelect.addEventListener('change', (e) => {
+      filters.eventId = e.target.value; // '' selects "Gesamt (alle Events)"
+      filters.from = null;
+      filters.to = null;
+      cache = null;
+      matchesCache = null;
+      ctx.rerender();
+    });
+  }
 
   if (activeTab === 'playtime' && !loading && cache) {
     wirePlaytimeContent(container, ctx);
@@ -221,7 +256,85 @@ function renderActiveTabContent() {
   if (activeTab === 'matches') {
     return matchesLoading || !matchesCache ? `<div class="empty-state">Lädt…</div>` : renderMatchesContent();
   }
+  if (activeTab === 'arcade') {
+    return arcadeLoading || !arcadeCache ? `<div class="empty-state">Lädt…</div>` : renderArcadeContent();
+  }
   return loading || !cache ? `<div class="empty-state">Lädt…</div>` : renderPlaytimeContent();
+}
+
+function renderArcadeContent() {
+  const totals = arcadeCache.totals;
+  const games = arcadeCache.games;
+  const timeline = arcadeCache.timeline;
+
+  const gameRows = games.length
+    ? games
+        .map(
+          (g, i) => `
+        <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
+          <span class="lb-rank">${i + 1}</span>
+          <span style="flex:1;">
+            ${escapeHtml(g.title)}
+            <div class="muted" style="font-size:var(--font-size-xs);">
+              ${g.uniquePlayers} Spieler · ⌀ ${escapeHtml(g.avgDurationFormatted)} · längstes Match ${escapeHtml(g.longestDurationFormatted)}
+              ${g.mostActive ? ` · aktivster Spieler: ${escapeHtml(g.mostActive.name)} (${g.mostActive.matches}×)` : ''}
+            </div>
+          </span>
+          <span class="lb-points">${g.matches}×</span>
+        </div>`
+        )
+        .join('')
+    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine abgeschlossenen Arcade-Matches.</div>`;
+
+  return `
+    <div class="section-title">🕹️ Arcade insgesamt</div>
+    <div class="card">
+      <div class="lb-row">
+        <span style="flex:1;">Matches</span>
+        <span class="lb-points">${totals.matches}</span>
+      </div>
+      <div class="lb-row">
+        <span style="flex:1;">Beteiligte Spieler</span>
+        <span class="lb-points">${totals.players}</span>
+      </div>
+      <div class="lb-row">
+        <span style="flex:1;">Ø Matchdauer</span>
+        <span class="lb-points">${escapeHtml(totals.avgDurationFormatted)}</span>
+      </div>
+      <div class="lb-row">
+        <span style="flex:1;">Gesamte Matchzeit</span>
+        <span class="lb-points">${escapeHtml(totals.totalDurationFormatted)}</span>
+      </div>
+    </div>
+
+    <div class="section-title">🏟️ Pro Spiel</div>
+    <div class="card">${gameRows}</div>
+
+    <div class="section-title">📈 Matches pro Tag</div>
+    <div class="card">${renderArcadeTimelineChart(timeline)}</div>
+  `;
+}
+
+// design-token-ok: bar-corner radius and gap are sized against this chart's
+// own thin bars, not the general spacing/radius scale — see "When a value
+// genuinely doesn't fit" in DESIGN_SYSTEM.md.
+function renderArcadeTimelineChart(timeline) {
+  if (!timeline.length) {
+    return `<div class="empty-state" style="padding:var(--space-4);">Noch keine Matches, aus denen sich ein Verlauf zeichnen ließe.</div>`;
+  }
+  const barRadius = '2px'; // design-token-ok: scaled to this chart's own thin bars, same exception as renderConcurrencyChart
+  const max = timeline.reduce((m, b) => Math.max(m, b.count), 1);
+  const bars = timeline
+    .map((b) => {
+      const heightPct = Math.round((b.count / max) * 100);
+      const label = new Date(b.dayStart).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+      return `<div style="display:flex;flex-direction:column;align-items:center;gap:var(--space-1);flex:0 0 32px;">
+        <div title="${escapeHtml(label)}: ${b.count} Match(es)" style="width:20px;height:${Math.max(4, heightPct)}px;max-height:100px;background:var(--accent);border-radius:${barRadius};align-self:flex-end;"></div>
+        <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(label)}</span>
+      </div>`;
+    })
+    .join('');
+  return `<div style="display:flex;align-items:flex-end;gap:var(--space-2);height:130px;overflow-x:auto;padding-bottom:2px;">${bars}</div>`;
 }
 
 function renderPlaytimeContent() {

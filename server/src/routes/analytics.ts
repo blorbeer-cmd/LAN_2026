@@ -20,6 +20,7 @@ import {
 import { parseTimeRangeQuery } from './queryHelpers';
 import { computeAwards } from '../awards';
 import { matchCountsByGame, biggestRivalry, bestDuo, biggestUnderdogWin, type MatchForUnderdog } from '../gameStats';
+import { ARCADE_TITLES } from './arcade';
 
 export const analyticsRouter = Router();
 
@@ -448,5 +449,123 @@ analyticsRouter.get('/games-tournaments', (req, res) => {
             }
           : null,
     },
+  });
+});
+
+interface ArcadeResultFullRow {
+  game_type: string;
+  scores: string;
+  started_at: number;
+  ended_at: number;
+}
+
+interface ArcadeScoreEntry {
+  playerId: string;
+  name: string;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// GET /api/analytics/arcade - the arcade-specific "Auswertungen" tab: match
+// durations, most-active player per game and a per-day match timeline, on
+// top of the win/loss leaderboard already exposed by GET /api/arcade/stats.
+// arcade_results has no event_id column (arcade matches aren't tied to a
+// single event the way tournaments/matches are), so this is always all-time.
+analyticsRouter.get('/arcade', (_req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT game_type, scores, started_at, ended_at
+       FROM arcade_results
+       WHERE reason = 'completed'
+       ORDER BY started_at ASC`
+    )
+    .all() as ArcadeResultFullRow[];
+
+  interface GameAgg {
+    gameType: string;
+    matches: number;
+    totalDurationMs: number;
+    longestDurationMs: number;
+    players: Set<string>;
+    matchesByPlayer: Map<string, { playerId: string; name: string; matches: number }>;
+  }
+  const games = new Map<string, GameAgg>();
+  const dayBuckets = new Map<number, number>();
+  const allPlayers = new Set<string>();
+  let totalDurationMs = 0;
+  let countedMatches = 0;
+
+  for (const row of rows) {
+    const parsed = JSON.parse(row.scores) as unknown;
+    // Same legacy-row guard as GET /api/arcade/stats: bare score arrays with
+    // no player attribution don't count as a match here either.
+    const scores = (Array.isArray(parsed) ? parsed : []).filter(
+      (s): s is ArcadeScoreEntry => !!s && typeof (s as ArcadeScoreEntry).playerId === 'string'
+    );
+    if (scores.length === 0) continue;
+    countedMatches += 1;
+
+    const durationMs = Math.max(0, row.ended_at - row.started_at);
+    totalDurationMs += durationMs;
+
+    const dayStart = Math.floor(row.started_at / DAY_MS) * DAY_MS;
+    dayBuckets.set(dayStart, (dayBuckets.get(dayStart) ?? 0) + 1);
+
+    const game = games.get(row.game_type) ?? {
+      gameType: row.game_type,
+      matches: 0,
+      totalDurationMs: 0,
+      longestDurationMs: 0,
+      players: new Set<string>(),
+      matchesByPlayer: new Map(),
+    };
+    game.matches += 1;
+    game.totalDurationMs += durationMs;
+    game.longestDurationMs = Math.max(game.longestDurationMs, durationMs);
+    for (const score of scores) {
+      game.players.add(score.playerId);
+      allPlayers.add(score.playerId);
+      const current = game.matchesByPlayer.get(score.playerId) ?? {
+        playerId: score.playerId,
+        name: score.name,
+        matches: 0,
+      };
+      current.matches += 1;
+      game.matchesByPlayer.set(score.playerId, current);
+    }
+    games.set(row.game_type, game);
+  }
+
+  const gamesOut = [...games.values()]
+    .map((g) => {
+      const mostActive =
+        [...g.matchesByPlayer.values()].sort(
+          (a, b) => b.matches - a.matches || a.name.localeCompare(b.name, 'de')
+        )[0] ?? null;
+      return {
+        gameType: g.gameType,
+        title: ARCADE_TITLES[g.gameType] ?? g.gameType,
+        matches: g.matches,
+        uniquePlayers: g.players.size,
+        avgDurationFormatted: formatDurationMs(g.matches > 0 ? Math.round(g.totalDurationMs / g.matches) : 0),
+        longestDurationFormatted: formatDurationMs(g.longestDurationMs),
+        mostActive,
+      };
+    })
+    .sort((a, b) => b.matches - a.matches);
+
+  const timeline = [...dayBuckets.entries()]
+    .map(([dayStart, count]) => ({ dayStart, count }))
+    .sort((a, b) => a.dayStart - b.dayStart);
+
+  res.json({
+    totals: {
+      matches: countedMatches,
+      players: allPlayers.size,
+      totalDurationFormatted: formatDurationMs(totalDurationMs),
+      avgDurationFormatted: formatDurationMs(countedMatches > 0 ? Math.round(totalDurationMs / countedMatches) : 0),
+    },
+    games: gamesOut,
+    timeline,
   });
 });

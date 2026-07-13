@@ -11,7 +11,7 @@ export const arcadeRouter = Router();
 
 // Display names per arcade game_type, so the stats view labels each tab
 // nicely instead of showing the raw internal key.
-const ARCADE_TITLES: Record<string, string> = {
+export const ARCADE_TITLES: Record<string, string> = {
   quiz: 'Gaming-Quiz',
   tetris: 'Tetris',
   scribble: 'Scribble',
