@@ -260,6 +260,21 @@ function renderClosedRows(results, mode, winnerGameIds) {
     .join('');
 }
 
+// A round's winner chips, points/vote-count suffix included — shared between
+// the "Letztes Ergebnis" card and the history list so a Stichwahl's vote
+// count isn't accidentally dropped in one of the two places (points mode
+// shows points, 'single'/Stichwahl mode shows the vote count instead).
+function winnerChipsHtml(h, badgeSize) {
+  if (!h.winners.length) return `<span class="muted">Niemand hat abgestimmt</span>`;
+  return h.winners
+    .map((w) => {
+      const points = h.mode === 'points' && w.points > 0 ? ` · ${w.points} Pkt.` : '';
+      const voteCount = h.mode !== 'points' && w.votes > 0 ? ` · ${w.votes} Stimme(n)` : '';
+      return `<span class="chip">${gameBadgeHtml({ id: w.gameId, icon: w.icon }, badgeSize)} ${escapeHtml(w.gameName)}${points}${voteCount}</span>`;
+    })
+    .join('');
+}
+
 // ---------- last result: the most recent closed round, straight from history ----------
 
 function renderLastResult() {
@@ -270,15 +285,7 @@ function renderLastResult() {
     return `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">🗳️</span>Noch keine Abstimmung durchgeführt.</div>`;
   }
   const h = historyCache[0];
-  const winners = h.winners.length
-    ? h.winners
-        .map((w) => {
-          const points = h.mode === 'points' && w.points > 0 ? ` · ${w.points} Pkt.` : '';
-          const voteCount = h.mode !== 'points' && w.votes > 0 ? ` · ${w.votes} Stimme(n)` : '';
-          return `<span class="chip">${gameBadgeHtml({ id: w.gameId, icon: w.icon }, 24)} ${escapeHtml(w.gameName)}${points}${voteCount}</span>`;
-        })
-        .join('')
-    : `<span class="muted">Niemand hat abgestimmt</span>`;
+  const winners = winnerChipsHtml(h, 24);
   return `
     <div class="stack" style="gap:var(--space-2);padding:var(--space-1) 0;">
       ${h.title ? `<div class="player-name">${escapeHtml(h.title)}</div>` : ''}
@@ -298,24 +305,22 @@ function renderHistory() {
   if (historyCache.length === 0) {
     return `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">🗳️</span>Noch keine vergangenen Abstimmungen.</div>`;
   }
+  // Each round is its own card (not a shared list of rows) — a round carries
+  // enough of its own detail (title, several winner chips, mode) that lumping
+  // them into one big box made every past round bleed into the next instead
+  // of reading as separate results. Same "card stack list" shape as e.g.
+  // matchmaking.js's Team-Historie.
   return historyCache
     .map((h) => {
-      const winners = h.winners.length
-        ? h.winners
-            .map((w) => {
-              const points = h.mode === 'points' && w.points > 0 ? ` · ${w.points} Pkt.` : '';
-              return `<span class="chip">${gameBadgeHtml({ id: w.gameId, icon: w.icon }, 20)} ${escapeHtml(w.gameName)}${points}</span>`;
-            })
-            .join('')
-        : `<span class="muted">Niemand hat abgestimmt</span>`;
+      const winners = winnerChipsHtml(h, 20);
       return `
-        <button type="button" class="lb-row" style="align-items:flex-start;width:100%;text-align:left;background:none;border:none;cursor:pointer;" data-open-history-round="${h.round}">
-          <div class="stack" style="gap:var(--space-1);flex:1;">
-            ${h.title ? `<div class="player-name">${escapeHtml(h.title)}</div>` : ''}
-            <div class="chip-list">${winners}</div>
-            <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(h.closedAt)} · ${h.mode === 'points' ? 'Punkte-Modus' : 'Stichwahl'}</span>
+        <button type="button" class="card stack" style="margin-bottom:var(--space-3);width:100%;text-align:left;" data-open-history-round="${h.round}">
+          <div class="row-between">
+            ${h.title ? `<div class="player-name">${escapeHtml(h.title)}</div>` : `<div class="muted">Abstimmung Runde ${h.round}</div>`}
+            <span class="muted" style="font-size:var(--font-size-xs);flex-shrink:0;">${h.totalVotes} Stimme(n) ›</span>
           </div>
-          <span class="muted" style="font-size:var(--font-size-xs);flex-shrink:0;">${h.totalVotes} Stimme(n) ›</span>
+          <div class="chip-list">${winners}</div>
+          <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(h.closedAt)} · ${h.mode === 'points' ? 'Punkte-Modus' : 'Stichwahl'}</span>
         </button>`;
     })
     .join('');
@@ -409,8 +414,8 @@ export function renderVotes(container, ctx) {
         .map((w) => `<span class="chip">${gameBadgeHtml({ id: w.gameId, icon: w.icon }, 24)} ${escapeHtml(w.gameName)}</span>`)
         .join('');
       runoffSectionHtml = `
+        <div class="section-title">🤝 Unentschieden</div>
         <div class="card stack">
-          <div class="section-title" style="margin-bottom:0;">🤝 Unentschieden</div>
           <div class="chip-list">${tiedChips}</div>
           <button type="button" class="btn btn-primary btn-block" id="votes-runoff">Stichwahl starten</button>
         </div>`;
@@ -426,8 +431,8 @@ export function renderVotes(container, ctx) {
       )
       .join('');
     openSectionHtml = `
+      <div class="section-title">🗳️ Neue Abstimmung starten</div>
       <div class="card stack">
-        <div class="section-title" style="margin-bottom:0;">Neue Abstimmung starten</div>
         <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
           🔢 Jede:r verteilt 0–10 Punkte auf beliebig viele Spiele. Nach dem Beenden gewinnt die höchste Punktzahl.
         </p>
@@ -464,14 +469,14 @@ export function renderVotes(container, ctx) {
     <div class="card">${renderLastResult()}</div>
 
     <div class="section-title">🔥 Top 5 nach Bock-Level</div>
-    <div class="card">${renderTop5(votes.results)}</div>
+    <div class="card">${renderTop5(votes.catalogResults)}</div>
 
     ${runoffSectionHtml}
     ${openSectionHtml}
 
     <div class="section-title">${icon('timer')} Vote-Historie</div>
     <p class="muted" style="font-size:var(--font-size-xs);margin:calc(var(--space-1) * -1) 0 var(--space-2);">Antippen für die genaue Punkteverteilung dieser Runde.</p>
-    <div class="card">${renderHistory()}</div>
+    ${renderHistory()}
   `;
 
   wireWhoAmICard(container, 'whoami', ctx);

@@ -212,7 +212,16 @@ function buildPayload(extra: Record<string, unknown> = {}) {
     }
   ).n;
   const results = state.open ? redactOpenRoundResults(fullResults) : fullResults;
-  return { ...state, ...meta, results, totalVotes, totalPoints, totalVoters, ...extra };
+  // The "Top 5 nach Bock-Level" widget is meant to always reflect the whole
+  // catalog, independent of which games the most recent round happened to
+  // restrict itself to ("Nur bestimmte Spiele zur Wahl stellen") — otherwise
+  // that restriction would silently keep hiding every other game from the
+  // widget forever, even after the round closes. Only recompute when a
+  // restriction is actually in effect; otherwise fullResults already is the
+  // full catalog.
+  const catalogFullResults = meta.selectedGameIds ? buildResults(state.round, state.mode, null) : fullResults;
+  const catalogResults = state.open ? redactOpenRoundResults(catalogFullResults) : catalogFullResults;
+  return { ...state, ...meta, results, catalogResults, totalVotes, totalPoints, totalVoters, ...extra };
 }
 
 // GET /api/votes - current round's state and tally.
