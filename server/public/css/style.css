@@ -1894,18 +1894,30 @@ button.card {
 .arcade-game-shell.is-expanded .snake-game {
   width: min(100%, calc((100dvh - 18rem - var(--space-4)) * 1.6 + var(--space-4)));
 }
-.arcade-game-shell.is-expanded .scribble-canvas-wrap canvas,
 .arcade-game-shell.is-expanded .blobby-court canvas,
 .arcade-game-shell.is-expanded .pong-arena canvas,
 .arcade-game-shell.is-expanded #snake-canvas {
   width: 100%;
   height: auto;
 }
+/* The Scribble canvas carries no width/height attributes when the saved
+   expand preference applies before setupCanvas() runs — height:auto would
+   fall back to the canvas default 300×150 (2:1) inside the 8:5 wrapper and
+   distort every replayed stroke. The wrapper's aspect-ratio is the geometry
+   authority, so the canvas must always fill it completely. */
+.arcade-game-shell.is-expanded .scribble-canvas-wrap canvas {
+  width: 100%;
+  height: 100%;
+}
 .arcade-game-shell.is-expanded .tetris-boards {
   width: min(100%, calc(100vw - var(--space-3)));
   height: auto;
   max-width: none;
   box-sizing: border-box;
+  /* Contains the decorative ::before glow (inset -24px): at near-viewport
+     width it would otherwise protrude past .view-container and create
+     horizontal page scrolling. */
+  overflow: hidden;
 }
 .arcade-game-shell.is-expanded .tetris-board-col {
   height: auto;
