@@ -35,7 +35,7 @@ let createAvoidAdjacent = false;
 let createTrackScore = false;
 let createGroupCount = 2;
 let createAdvancersPerGroup = 2;
-let createTeamCount = ''; // persisted across re-rolls, so "Teams vorschlagen" acts as reroll
+let createTeamCount = ''; // persisted across re-rolls, so "Teams auslosen" acts as reroll
 let createLobbyName = '';
 let createLobbyPassword = '';
 let createProposedTeams = null; // [{ name, playerIds, players (for display), totalRating }]
@@ -275,7 +275,7 @@ function renderCreateForm(el, ctx) {
         <input type="checkbox" id="tourn-avoid-adjacent" ${createAvoidAdjacent ? 'checked' : ''} />
         <span>${icon('armchair')} Sitznachbarn bevorzugt ins selbe Team losen</span>
       </label>
-      <button type="button" class="btn" id="tourn-propose">Teams vorschlagen</button>
+      <button type="button" class="btn btn-primary" id="tourn-propose">Teams auslosen</button>
 
       ${teamsPreview}
 
