@@ -2,11 +2,11 @@
 
 Diese Übersicht dokumentiert die Entwicklung von LAN_2026 aus der Git-Historie. Für jeden gemergten Pull Request gibt es eine eigene Datei unter `docs/changelog/pr/`; zusätzlich sind die zugehörigen Arbeitsbranches unter `docs/changelog/branches/` erfasst.
 
-Stand: 2026-07-12 · Basis: `main` auf `a3011e2`
+Stand: 2026-07-13 · Basis: `main` auf `7b3832a`
 
 ## Übersicht
 
-- Gemergte PRs dokumentiert: 85
+- Gemergte PRs dokumentiert: 87
 - Eindeutige PR-Branches dokumentiert: 59
 - Technische Synchronisations-Merges ohne eigenen PR sind nicht als eigene Feature-Einträge aufgeführt.
 
@@ -14,6 +14,8 @@ Stand: 2026-07-12 · Basis: `main` auf `a3011e2`
 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
+| 2026-07-13 | [#167](https://github.com/blorbeer-cmd/LAN_2026/pull/167) | [Scribble-Galerie und Zuschauerbewertungen](pr/pr-167-add-scribble-gallery-voting.md) | `codex/fix-scribble-watch-rerender` |
+| 2026-07-13 | [#166](https://github.com/blorbeer-cmd/LAN_2026/pull/166) | [Gemeinsamer Arcade-Spectator-Renderer](pr/pr-166-fix-arcade-spectator-rendering.md) | `codex/fix-arcade-spectator-views` |
 | 2026-07-12 | main | [ESLint/Prettier und Log-Rotation](pr/main-2026-07-12-tooling-and-operations.md) | `main` |
 | 2026-07-12 | [#146](https://github.com/blorbeer-cmd/LAN_2026/pull/146) | [Pin project runtime to Node 24](pr/pr-146-pin-project-runtime-to-node-24.md) | `chore/node-24-pin` |
 | 2026-07-12 | [#145](https://github.com/blorbeer-cmd/LAN_2026/pull/145) | [Fix stale live status and agent proxy URLs](pr/pr-145-fix-stale-live-status-and-agent-proxy-urls.md) | `fix/live-status-agent-url` |
@@ -105,6 +107,9 @@ Stand: 2026-07-12 · Basis: `main` auf `a3011e2`
 ## Branch-Index
 
 Die Branch-Seiten zeigen, über welche PRs ein Themenstrang in `main` eingeflossen ist. Auch Branches mit mehreren aufeinanderfolgenden PRs bleiben als ein Themenstrang nachvollziehbar.
+
+- [`codex/fix-arcade-spectator-views`](branches/codex-fix-arcade-spectator-views.md)
+- [`codex/fix-scribble-watch-rerender`](branches/codex-fix-scribble-watch-rerender.md)
 
 - [`claude/arcade-against-ai-admin-s55h89`](branches/claude-arcade-against-ai-admin-s55h89.md)
 - [`claude/arcade-all-open-lobbies-tptts0`](branches/claude-arcade-all-open-lobbies-tptts0.md)
