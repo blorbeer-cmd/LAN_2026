@@ -17,6 +17,7 @@ let watchList = [];
 
 const rerender = () => window.dispatchEvent(new CustomEvent('lan:rerender'));
 const navigate = (view) => window.dispatchEvent(new CustomEvent('lan:navigate', { detail: view }));
+const isArcadeWatchView = () => document.getElementById('view-container')?.dataset.view === 'arcadeWatch';
 
 function css(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -30,7 +31,7 @@ function ensureSocket() {
     if (watchedMatchId && !watchList.some((match) => match.matchId === watchedMatchId)) {
       watchedMatchId = null;
       watchedState = null;
-      navigate('arcade');
+      if (isArcadeWatchView()) navigate('arcade');
       return;
     }
     rerender();
@@ -39,7 +40,7 @@ function ensureSocket() {
     if (!watchedMatchId || payload?.matchId !== watchedMatchId) return;
     watchedMatchId = null;
     watchedState = null;
-    navigate('arcade');
+    if (isArcadeWatchView()) navigate('arcade');
   });
   socket.on('arcade:watch:state', (payload) => {
     if (!watchedMatchId || payload?.matchId !== watchedMatchId) return;
@@ -63,7 +64,7 @@ export function startArcadeWatch(matchId) {
     if (!result?.ok) {
       watchedMatchId = null;
       watchedState = null;
-      navigate('arcade');
+      if (isArcadeWatchView()) navigate('arcade');
       return;
     }
     rerender();
