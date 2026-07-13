@@ -2,18 +2,19 @@
 
 Diese Übersicht dokumentiert die Entwicklung von LAN_2026 aus der Git-Historie. Für jeden gemergten Pull Request gibt es eine eigene Datei unter `docs/changelog/pr/`; zusätzlich sind die zugehörigen Arbeitsbranches unter `docs/changelog/branches/` erfasst.
 
-Stand: 2026-07-13 · Basis: `main` auf `2e92824`
+Stand: 2026-07-13 · Basis: `main` auf `0d10088`
 
 ## Übersicht
 
-- Gemergte PRs dokumentiert: 89
-- Eindeutige PR-Branches dokumentiert: 61
+- Gemergte PRs dokumentiert: 90
+- Eindeutige PR-Branches dokumentiert: 62
 - Technische Synchronisations-Merges ohne eigenen PR sind nicht als eigene Feature-Einträge aufgeführt.
 
 ## Chronologie
 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
+| 2026-07-13 | [#174](https://github.com/blorbeer-cmd/LAN_2026/pull/174) | [Arcade-Review-Follow-up, Spectator-/Rapid-Fire-E2E und parallele CI](pr/pr-174-arcade-review-follow-up-e2e-coverage-and-ci-parallelization.md) | `claude/arcade-e2e-testing-gn96bz` |
 | 2026-07-13 | [#171](https://github.com/blorbeer-cmd/LAN_2026/pull/171) | [Prepare-Hook im Container-Build korrigiert](pr/pr-171-fix-prepare-hook-in-container-build.md) | `codex/docker-prepare-fix` |
 | 2026-07-13 | [#169](https://github.com/blorbeer-cmd/LAN_2026/pull/169) | [Produktionsdeploys gehärtet und optimiert](pr/pr-169-harden-and-optimize-production-deployments.md) | `codex/deploy-optimizations` |
 | 2026-07-13 | [#167](https://github.com/blorbeer-cmd/LAN_2026/pull/167) | [Scribble-Galerie und Zuschauerbewertungen](pr/pr-167-add-scribble-gallery-voting.md) | `codex/fix-scribble-watch-rerender` |
