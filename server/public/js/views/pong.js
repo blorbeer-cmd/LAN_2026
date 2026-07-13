@@ -348,6 +348,17 @@ function resultHtml() {
   return `<div class="card arcade-winner-card"><strong>${text}</strong><button class="btn btn-primary" id="pong-back">Zur Arcade</button></div>`;
 }
 
+function matchControlsHtml(isHost) {
+  if (!match || match.ended) return '';
+  if (!isHost) {
+    // A non-host player can't pause (shared timer state, host-only), but
+    // must still have a way out instead of only a raw tab close.
+    if (!match.players.some((p) => p.id === myId())) return '';
+    return `<div class="arcade-match-controls"><button class="btn btn-sm btn-equal btn-danger" id="pong-leave-match">Verlassen</button></div>`;
+  }
+  return `<div class="arcade-match-controls">${match.paused ? '<button class="btn btn-sm btn-equal btn-primary" id="pong-resume">Fortsetzen</button>' : '<button class="btn btn-sm btn-equal" id="pong-pause">Pausieren</button>'}<button class="btn btn-sm btn-equal btn-danger" id="pong-finish">Beenden</button></div>`;
+}
+
 export function renderPong(container) {
   ensurePongSocket();
   if (!match) {
@@ -362,7 +373,7 @@ export function renderPong(container) {
   });
   container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Pong</h1>${arcadeExpandControlHtml()}<div id="pong-roster">${roster}</div>
     <div class="pong-arena"><canvas id="pong-canvas" width="${W}" height="${H}"></canvas><div id="pong-point" class="pong-point" hidden></div>${match.paused ? '<div class="pong-overlay">Pause</div>' : ''}</div>
-    ${isHost && !match.ended ? `<div class="arcade-match-controls">${match.paused ? '<button class="btn btn-sm btn-equal btn-primary" id="pong-resume">Fortsetzen</button>' : '<button class="btn btn-sm btn-equal" id="pong-pause">Pausieren</button>'}<button class="btn btn-sm btn-equal btn-danger" id="pong-finish">Beenden</button></div>` : ''}${resultHtml()}</div>`;
+    ${matchControlsHtml(isHost)}${resultHtml()}</div>`;
   wireGame(container);
   wireArcadeExpandControl(container);
   startAnimation();
@@ -381,6 +392,11 @@ function wireGame(container) {
   container.querySelector('#pong-finish')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
     await emitAck('pong:match:finish', { matchId: match.matchId, playerId: myId() });
+  });
+  container.querySelector('#pong-leave-match')?.addEventListener('click', async () => {
+    if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
+    const result = await emitAck('pong:match:leave', { matchId: match.matchId, playerId: myId() });
+    if (!result?.ok) showToast(result?.error || 'Verlassen fehlgeschlagen.', { error: true });
   });
   container.querySelector('#pong-back')?.addEventListener('click', () => {
     match = null;

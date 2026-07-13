@@ -542,7 +542,16 @@ function boardColumn(prefix, label) {
 }
 
 function matchControls() {
-  if (!match || match.ended || match.host?.id !== myId()) return '';
+  if (!match || match.ended) return '';
+  if (match.host?.id !== myId()) {
+    // A non-host player can't pause (shared timer state, host-only), but
+    // must still have a way out instead of only a raw tab close.
+    if (!amPlayer()) return '';
+    return `
+      <div class="arcade-match-controls">
+        <button type="button" class="btn btn-sm btn-equal btn-danger" id="tetris-leave">Verlassen</button>
+      </div>`;
+  }
   return `
     <div class="arcade-match-controls">
       ${
@@ -608,6 +617,11 @@ function wireMatch(container) {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
     const res = await emitWithAck('tetris:match:finish', { matchId: match?.matchId, playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'Beenden fehlgeschlagen.', { error: true });
+  });
+  container.querySelector('#tetris-leave')?.addEventListener('click', async () => {
+    if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
+    const res = await emitWithAck('tetris:match:leave', { matchId: match?.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
   });
 
   container.querySelector('#tetris-back')?.addEventListener('click', () => {

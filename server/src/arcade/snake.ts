@@ -242,6 +242,17 @@ export function registerSnakeSockets(io: Server): void {
       finish(io, match, null, 'aborted');
       ack?.({ ok: true });
     });
+    // Lets a non-host participant end a running match themselves instead of
+    // relying on the host (who might be AFK) — same outcome as a disconnect
+    // mid-match: the match ends, opponent wins.
+    socket.on('snake:match:leave', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
+      const match = payload?.matchId ? matches.get(payload.matchId) : null;
+      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      const leaver = match.players.find((p) => p.id === payload?.playerId);
+      if (!leaver) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
+      finish(io, match, match.players.find((p) => p.id !== leaver.id) ?? null, 'player-left');
+      ack?.({ ok: true });
+    });
     socket.on('disconnect', () => removeFromLobbies(io, socket.id));
   });
 }

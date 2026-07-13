@@ -1151,33 +1151,49 @@ export function registerScribbleSockets(io: Server): void {
       });
     });
 
+    // Shared by an actual socket disconnect and an explicit "Verlassen" tap:
+    // mark the player offline and let the round adapt (skip the drawer's
+    // turn, resolve a gallery nobody's left to react to, or end the whole
+    // match once fewer than 2 players remain).
+    function handlePlayerLeft(playerId: string, match: ScribbleMatchState) {
+      match.online.delete(playerId);
+      io.to(match.room).emit('scribble:presence', { matchId: match.id, playerId, online: false });
+
+      if (match.online.size < 2) {
+        finishMatch(io, match, null, 'player-left');
+        return;
+      }
+
+      const isDrawer = match.phase === 'drawing' && match.players[match.drawIndex]?.id === playerId;
+      if (match.phase === 'choosing' && match.players[match.drawIndex]?.id === playerId) {
+        if (match.choiceTimer) clearTimeout(match.choiceTimer);
+        match.choiceTimer = null;
+        startNextTurn(io, match);
+      } else if (isDrawer) {
+        endTurn(io, match, 'drawer-left');
+      } else if (match.phase === 'drawing' && allEligibleGuessed(match)) {
+        // The last remaining un-guessed rater just left — nothing left to wait for.
+        endTurn(io, match, 'all-guessed');
+      } else if (match.phase === 'gallery') {
+        maybeResolveRoundGallery(io, match);
+      }
+    }
+
+    socket.on('scribble:match:leave', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      const leaver = match.players.find((p) => p.id === payload?.playerId);
+      if (!leaver) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
+      handlePlayerLeft(leaver.id, match);
+      ack?.({ ok: true });
+    });
+
     socket.on('disconnect', () => {
       removeFromOpenLobbies(io, socket.id);
       for (const match of matches.values()) {
         const entry = [...match.socketIds.entries()].find(([, sid]) => sid === socket.id);
         if (!entry) continue;
-        const [playerId] = entry;
-        match.online.delete(playerId);
-        io.to(match.room).emit('scribble:presence', { matchId: match.id, playerId, online: false });
-
-        if (match.online.size < 2) {
-          finishMatch(io, match, null, 'player-left');
-          continue;
-        }
-
-        const isDrawer = match.phase === 'drawing' && match.players[match.drawIndex]?.id === playerId;
-        if (match.phase === 'choosing' && match.players[match.drawIndex]?.id === playerId) {
-          if (match.choiceTimer) clearTimeout(match.choiceTimer);
-          match.choiceTimer = null;
-          startNextTurn(io, match);
-        } else if (isDrawer) {
-          endTurn(io, match, 'drawer-left');
-        } else if (match.phase === 'drawing' && allEligibleGuessed(match)) {
-          // The last remaining un-guessed rater just left — nothing left to wait for.
-          endTurn(io, match, 'all-guessed');
-        } else if (match.phase === 'gallery') {
-          maybeResolveRoundGallery(io, match);
-        }
+        handlePlayerLeft(entry[0], match);
       }
     });
   });

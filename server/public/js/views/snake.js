@@ -1,6 +1,7 @@
 import { getToken } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
+import { confirmDialog } from '../modal.js';
 import { getMyId } from '../whoami.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
@@ -228,10 +229,20 @@ export function renderSnake(container) {
     scoreFor: (player, index) => `${world?.snakes?.[index]?.score ?? 0} Punkte`,
   });
   const result = match.ended ? `<div class="card arcade-winner-card"><strong>${endedText}</strong><button type="button" class="btn btn-primary" id="snake-back">Zur Arcade</button></div>` : '';
+  const isPlayer = match.players.some((p) => p.id === myId());
+  // A non-host player can't pause (shared timer state, host-only), but must
+  // still have a way out instead of only a raw tab close.
+  const controls = match.ended
+    ? ''
+    : isHost
+      ? `<div class="arcade-match-controls"><button class="btn btn-sm btn-equal" id="snake-pause">${match.paused ? 'Fortsetzen' : 'Pausieren'}</button><button class="btn btn-sm btn-equal btn-danger" id="snake-finish">Beenden</button></div>`
+      : isPlayer
+        ? `<div class="arcade-match-controls"><button class="btn btn-sm btn-equal btn-danger" id="snake-leave-match">Verlassen</button></div>`
+        : '';
   container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Snake</h1>${arcadeExpandControlHtml()}
     <div id="snake-roster">${roster}</div>
     <div class="card snake-game"><canvas id="snake-canvas"></canvas>${match.paused ? '<div class="snake-overlay">Pause</div>' : ''}</div>
-    ${isHost && !match.ended ? `<div class="arcade-match-controls"><button class="btn btn-sm btn-equal" id="snake-pause">${match.paused ? 'Fortsetzen' : 'Pausieren'}</button><button class="btn btn-sm btn-equal btn-danger" id="snake-finish">Beenden</button></div>` : ''}${result}</div>`;
+    ${controls}${result}</div>`;
   wireArcadeExpandControl(container);
   paintBoard();
   wireSwipeControls(container.querySelector('#snake-canvas'));
@@ -240,6 +251,11 @@ export function renderSnake(container) {
   });
   container.querySelector('#snake-finish')?.addEventListener('click', async () => {
     await emitAck('snake:match:finish', { matchId: match.matchId, playerId: myId() });
+  });
+  container.querySelector('#snake-leave-match')?.addEventListener('click', async () => {
+    if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
+    const res = await emitAck('snake:match:leave', { matchId: match.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
   });
   container.querySelector('#snake-back')?.addEventListener('click', () => {
     match = null;

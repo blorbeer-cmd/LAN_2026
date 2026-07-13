@@ -301,6 +301,16 @@ function resultHtml() {
   if (!match?.ended) return '';
   return `<div class="card arcade-winner-card"><strong>Match beendet</strong><button class="btn btn-primary" id="blobby-back">Zur Arcade</button></div>`;
 }
+function matchControlsHtml(host) {
+  if (!match || match.ended) return '';
+  if (!host) {
+    // A non-host player can't pause (shared timer state, host-only), but
+    // must still have a way out instead of only a raw tab close.
+    if (!match.players.some((p) => p.id === myId())) return '';
+    return `<div class="arcade-match-controls"><button class="btn btn-sm btn-equal btn-danger" id="blobby-leave-match">Verlassen</button></div>`;
+  }
+  return `<div class="arcade-match-controls">${match.paused ? '<button class="btn btn-sm btn-equal btn-primary" id="blobby-resume">Fortsetzen</button>' : '<button class="btn btn-sm btn-equal" id="blobby-pause">Pausieren</button>'}<button class="btn btn-sm btn-equal btn-danger" id="blobby-finish">Beenden</button></div>`;
+}
 export function renderBlobby(container) {
   ensureBlobbySocket();
   if (!match) { container.innerHTML = '<button class="btn btn-sm" data-navigate="arcade">‹ Arcade</button><div class="empty-state">Kein laufendes Blobby-Volley-Match.</div>'; return; }
@@ -314,7 +324,7 @@ export function renderBlobby(container) {
   });
   container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Blobby Volley</h1>${arcadeExpandControlHtml()}<div id="blobby-roster">${roster}</div>
     <div class="blobby-court"><canvas id="blobby-canvas" width="${W}" height="${H}"></canvas><div id="blobby-point" class="blobby-point" hidden></div>${match.paused ? '<div class="blobby-pause-overlay">Pause</div>' : ''}</div>
-    ${host && !match.ended ? `<div class="arcade-match-controls">${match.paused ? '<button class="btn btn-sm btn-equal btn-primary" id="blobby-resume">Fortsetzen</button>' : '<button class="btn btn-sm btn-equal" id="blobby-pause">Pausieren</button>'}<button class="btn btn-sm btn-equal btn-danger" id="blobby-finish">Beenden</button></div>` : ''}${resultHtml()}</div>`;
+    ${matchControlsHtml(host)}${resultHtml()}</div>`;
   wireGame(container); wireArcadeExpandControl(container); startAnimation();
 }
 function wireGame(container) {
@@ -330,6 +340,11 @@ function wireGame(container) {
   container.querySelector('#blobby-finish')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
     await emitAck('blobby:match:finish', { matchId: match.matchId, playerId: myId() });
+  });
+  container.querySelector('#blobby-leave-match')?.addEventListener('click', async () => {
+    if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
+    const res = await emitAck('blobby:match:leave', { matchId: match.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
   });
   container.querySelector('#blobby-back')?.addEventListener('click', () => { match = null; previous = latest = null; stopAnimation(); navigate('arcade'); });
 }

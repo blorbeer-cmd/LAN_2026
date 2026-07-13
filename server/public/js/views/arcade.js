@@ -305,7 +305,17 @@ function secondsLeft() {
 }
 
 function matchControlsHtml() {
-  if (!match || match.ended || match.host?.id !== getMyId()) return '';
+  if (!match || match.ended) return '';
+  const isHost = match.host?.id === getMyId();
+  if (!isHost) {
+    // A non-host player can't pause (shared timer state, host-only), but
+    // must still have a way out instead of only a raw tab close.
+    if (!match.players.some((p) => p.id === getMyId())) return '';
+    return `
+      <div class="arcade-match-controls">
+        <button type="button" class="btn btn-sm btn-equal btn-danger" id="quiz-leave">Verlassen</button>
+      </div>`;
+  }
   return `
     <div class="arcade-match-controls">
       ${
@@ -692,6 +702,12 @@ function wireQuizMatch(container) {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
     const res = await emitWithAck('arcade:match:finish', { matchId: match?.matchId, playerId: getMyId() });
     if (!res?.ok) showToast(res?.error || 'Beenden fehlgeschlagen.', { error: true });
+  });
+
+  container.querySelector('#quiz-leave')?.addEventListener('click', async () => {
+    if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
+    const res = await emitWithAck('arcade:match:leave', { matchId: match?.matchId, playerId: getMyId() });
+    if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
   });
 
   container.querySelector('#quiz-back')?.addEventListener('click', () => {
