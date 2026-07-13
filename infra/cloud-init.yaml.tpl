@@ -55,6 +55,11 @@ write_files:
             - '3000'
           volumes:
             - ./data:/app/data
+          logging:
+            driver: local
+            options:
+              max-size: 10m
+              max-file: '5'
 
         cloudflared:
           image: cloudflare/cloudflared:latest
@@ -62,6 +67,11 @@ write_files:
           command: tunnel run
           environment:
             - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+          logging:
+            driver: local
+            options:
+              max-size: 10m
+              max-file: '5'
           # No depends_on: cloudflared must come up even before the app
           # image has ever been pushed (see runcmd below) — it retries the
           # connection to app:3000 on its own once that exists.
@@ -89,7 +99,11 @@ write_files:
       cd /opt/lan2026
       sed -i "s#^IMAGE=.*#IMAGE=ghcr.io/blorbeer-cmd/lan_2026:${1}#" .env
       docker compose pull app
-      docker compose up -d app
+      if ! docker compose up -d --wait --wait-timeout 90 app; then
+        docker compose ps app || true
+        docker compose logs --tail=100 app || true
+        exit 1
+      fi
 
   - path: /opt/lan2026/docker-login.sh
     permissions: '0700'
