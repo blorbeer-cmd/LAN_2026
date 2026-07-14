@@ -413,6 +413,13 @@ input {
   filter: drop-shadow(var(--shadow-glow-brand));
 }
 
+/* The compact wordmark in page headers is deliberately straight and drops
+   the HQ suffix; the remaining product rename is tracked separately. */
+.topbar-wordmark {
+  font-style: normal;
+  transform: none;
+}
+
 .topbar-actions {
   display: flex;
   align-items: center;

@@ -18,7 +18,7 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 ## Generell
 
 - [ ] [ ] Produktname von „RespawnHQ“ zu „Respawn“ ändern
-  - [ ] [ ] Text nicht kursiv darstellen
+  - [x] [ ] Wortmarke oben links bereits als „Respawn“ und nicht kursiv darstellen
   - [ ] [ ] Repo und alle Referenzen zu RespawnHQ ebenfalls umbenennen
 - [x] [ ] Kreuz zum Schließen der Meldungen reparieren; aktuell reagiert es nicht
   - Kommentar: Der vorhandene Schließpfad funktioniert im E2E-Test; kein zusätzlicher Code-Fix war nötig.

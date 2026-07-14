@@ -75,6 +75,16 @@ test('fresh device lands on self-onboarding and creates its profile there', asyn
   await page.goto(BASE_URL);
   await page.waitForSelector('#app:not([hidden])');
 
+  const topbarWordmark = page.locator('.topbar-wordmark');
+  assert.equal((await topbarWordmark.textContent())?.trim(), 'Respawn');
+  assert.deepEqual(
+    await topbarWordmark.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { fontStyle: style.fontStyle, transform: style.transform };
+    }),
+    { fontStyle: 'normal', transform: 'none' },
+  );
+
   // No identity stored on this device yet -> the app must route straight to
   // the profile/onboarding view, not the Live board.
   assert.equal((await page.textContent('.view-title'))?.trim(), 'Willkommen bei RespawnHQ');
@@ -1349,6 +1359,7 @@ test('Kiosk: shows an open food order (when/where only), and the last-push banne
   });
 
   await page.goto(`${BASE_URL}/kiosk.html`);
+  assert.equal((await page.locator('.topbar-wordmark').textContent())?.trim(), 'Respawn');
 
   // The food banner shows only the when/where (send time + menu link) — the
   // items themselves stay on everyone's own phone, never on the shared screen.

@@ -159,7 +159,9 @@ Betroffene Dateien: `server/public/js/views/analytics.js`, gegebenenfalls
 
 ### 7. Produktname separat koordinieren
 
-- Sichtbare lokale Produkttexte, PWA-Metadaten, Kiosk, Service Worker, Tests und Agent-Artefaktnamen
+- Die kompakte Wortmarke oben links heißt auf ausdrücklichen Wunsch bereits „Respawn“ und ist nicht
+  kursiv. Das ist bewusst noch kein vollständiger Produkt-Rename.
+- Übrige sichtbare Produkttexte, PWA-Metadaten, Kiosk-Titel, Service Worker, Tests und Agent-Artefaktnamen
   können in einem eigenen Rename-Commit von „RespawnHQ“ zu „Respawn“ wechseln.
 - Das Repository selbst lässt sich nicht durch einen lokalen Code-PR umbenennen. Repo-Slug,
   Clone-URLs, Deploy-/Badge-Referenzen und externe Integrationen werden erst nach ausdrücklicher
