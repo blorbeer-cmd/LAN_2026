@@ -1021,17 +1021,19 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     await page.waitForSelector(`text=Wort war: ${chosenWord}`);
     await guesserPage.waitForSelector(`text=Wort war: ${chosenWord}`);
 
-    // The last drawing stays rateable while the next turn begins. Artists
-    // cannot rate their own work; the guesser can choose one of the named
-    // reactions and the shared count updates immediately.
-    await guesserPage.click('[data-drawing-reaction="creative"]:not([disabled])');
-    await guesserPage.waitForSelector('[data-reaction-count$=":creative"]:has-text("1")');
-    await spectatorPage.waitForSelector('text=Letztes Bild bewerten');
-    await spectatorPage.click('[data-watch-reaction="cool"]:not([disabled])');
-    await spectatorPage.waitForSelector('[data-watch-reaction="cool"] span:has-text("1")');
+    // The last drawing stays votable while the next turn begins - the
+    // artist never sees their own thumb button; the guesser and the
+    // spectator can each mark it, and the shared count updates live.
+    await guesserPage.waitForSelector('#scribble-thumb');
+    await guesserPage.click('#scribble-thumb');
+    await guesserPage.waitForFunction(() => document.querySelector('[data-scribble-thumb-count]')?.textContent === '1');
+    await spectatorPage.waitForSelector('#arcade-watch-thumb:not([disabled])');
+    await spectatorPage.click('#arcade-watch-thumb');
+    await guesserPage.waitForFunction(() => document.querySelector('[data-scribble-thumb-count]')?.textContent === '2');
     assert.equal(await spectatorPage.getByText(chosenWord, { exact: true }).count(), 0, 'the reveal word stays private from watchers');
 
-    // Finish the second turn so the one-round match enters its gallery.
+    // Finish the second (and, with 1 round, last) turn - no round-gallery
+    // pause anymore, the match completes straight after this turn's reveal.
     await guesserPage.waitForSelector('.scribble-word-choice-btn');
     const secondWordBtn = guesserPage.locator('.scribble-word-choice-btn').first();
     const secondWord = (await secondWordBtn.textContent())!.trim();
@@ -1040,24 +1042,15 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     await page.fill('#scribble-guess-input', secondWord);
     await page.click('#scribble-guess-form button[type="submit"]');
 
-    await page.waitForSelector('.scribble-round-gallery');
-    await guesserPage.waitForSelector('.scribble-round-gallery');
-    await spectatorPage.waitForSelector('.scribble-round-gallery');
-    assert.equal(await page.locator('.scribble-round-gallery .scribble-drawing-card').count(), 2);
-    assert.equal(await guesserPage.locator('.scribble-round-gallery .scribble-drawing-card').count(), 2);
-    assert.equal(await spectatorPage.locator('.scribble-round-gallery .scribble-drawing-card').count(), 2);
-
-    // Each player picks the other artist's image; the watcher adds a third,
-    // persisted vote. The gallery only resolves after all three eligible
-    // identities voted, and the spectator sees the same winner.
-    await spectatorPage.click('[data-watch-favorite]:not([disabled])');
-    await page.click('[data-favorite-drawing]:not([disabled])');
-    await guesserPage.click('[data-favorite-drawing]:not([disabled])');
-    await page.waitForSelector('text=Rundenbild gekürt');
-    await page.waitForSelector('.scribble-drawing-card.is-winner');
-    await guesserPage.waitForSelector('.scribble-drawing-card.is-winner');
-    await spectatorPage.waitForSelector('text=Rundenbild gekürt');
-    await spectatorPage.waitForSelector('.scribble-drawing-card.is-winner');
+    // The whole match ends; only the drawing marked with a thumb re-enters
+    // the final, whole-match favorite vote (the second turn's drawing never
+    // got a thumb, so exactly one card is offered) - it's the host's own,
+    // so the host can't favorite it themselves; the guesser can.
+    await page.waitForSelector('text=Match beendet');
+    await guesserPage.waitForSelector('.scribble-drawing-card');
+    assert.equal(await guesserPage.locator('.scribble-drawing-card').count(), 1, 'only the marked drawing re-enters the final vote');
+    await guesserPage.click('[data-final-favorite]:not([disabled])');
+    await guesserPage.waitForSelector('[data-final-favorite].btn-primary');
 
     await page.waitForSelector('#scribble-back');
     await page.click('#scribble-back');

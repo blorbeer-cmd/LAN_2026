@@ -20,8 +20,8 @@ let watchedState = null;
 let watchList = [];
 let watchCanVote = false;
 let watchVotingPlayerId = null;
-let watchReactions = {};
-let watchFavoriteDrawingId = null;
+let watchThumbToken = null;
+let watchThumbActive = false;
 let lastRenderSignature = '';
 
 const rerender = () => window.dispatchEvent(new CustomEvent('lan:rerender'));
@@ -35,34 +35,20 @@ const isArcadeWatchView = () => document.getElementById('view-container')?.datas
 function resetVoting() {
   watchCanVote = false;
   watchVotingPlayerId = null;
-  watchReactions = {};
-  watchFavoriteDrawingId = null;
+  watchThumbToken = null;
+  watchThumbActive = false;
   lastRenderSignature = '';
 }
 
 function votingSignature(state) {
   const voting = state?.voting;
-  return JSON.stringify({
-    phase: state?.phase,
-    mode: voting?.mode,
-    round: voting?.round,
-    drawings: (voting?.drawings ?? []).map((drawing) => ({
-      id: drawing.id,
-      reactions: drawing.reactions,
-      favoriteVotes: drawing.favoriteVotes,
-      winner: drawing.isRoundWinner,
-    })),
-  });
-}
-
-function syncWatchSelections() {
-  if (!watchCanVote || !watchedMatchId || !watchVotingPlayerId) return;
-  socket.emit('scribble:watch:selections', { matchId: watchedMatchId, playerId: watchVotingPlayerId }, (result) => {
-    if (!result?.ok) return;
-    watchReactions = result.selectedRatings?.reactions ?? {};
-    watchFavoriteDrawingId = result.selectedRatings?.favoriteDrawingId ?? null;
-    if (isArcadeWatchView()) rerender();
-  });
+  // A new token means the vote reset for a new drawing — drop any stale
+  // "already thumbed" state from the previous one.
+  if (voting?.token !== watchThumbToken) {
+    watchThumbToken = voting?.token ?? null;
+    watchThumbActive = false;
+  }
+  return JSON.stringify({ phase: state?.phase, token: voting?.token, count: voting?.count });
 }
 
 function joinWatch(matchId) {
@@ -76,7 +62,6 @@ function joinWatch(matchId) {
     }
     watchCanVote = result.canVote === true;
     watchVotingPlayerId = result.votingPlayerId ?? null;
-    syncWatchSelections();
     rerender();
   });
 }
@@ -152,106 +137,48 @@ function rosterHtml(state) {
 
 function updateWatchMeta(state) {
   const status = document.querySelector('#arcade-watch-status');
-  if (status) status.textContent = state.paused ? 'Pause' : state.phase === 'countdown' ? 'Startet gleich' : state.phase === 'gallery' ? 'Abstimmung' : 'Läuft';
+  if (status) status.textContent = state.paused ? 'Pause' : state.phase === 'countdown' ? 'Startet gleich' : 'Läuft';
 }
 
 function stateHtml(state) {
   if (!state) return '<div class="empty-state">Verbindung zum Spiel wird hergestellt…</div>';
   if (state.gameType === 'quiz') return '<div class="arcade-watch-safe-note">Frage und Antworten werden für Zuschauer verborgen.</div>';
-  if (state.gameType === 'scribble' && state.phase !== 'drawing') {
-    return state.voting?.drawings?.length ? '' : '<div class="empty-state">Die nächste Zeichnung startet gleich.</div>';
-  }
   const [width, height] = arcadeStreamCanvasSize(state.gameType);
   return `<canvas id="arcade-watch-canvas" width="${width}" height="${height}" aria-label="Livebild des Spiels"></canvas>`;
 }
 
-const REACTION_OPTIONS = [
-  { id: 'cool', label: 'Cool', icon: 'sparkles' },
-  { id: 'creative', label: 'Kreativ', icon: 'lightbulb' },
-  { id: 'funny', label: 'Witzig', icon: 'star' },
-];
-
-function spectatorReactionControlsHtml(drawing, resolved) {
-  return `<div class="scribble-reactions" aria-label="Bild bewerten">
-    ${REACTION_OPTIONS.map((option) => {
-      const selected = watchReactions[drawing.id] === option.id;
-      return `<button type="button" class="btn btn-sm ${selected ? 'btn-primary' : ''}" data-watch-reaction="${option.id}" data-watch-drawing-id="${drawing.id}" aria-pressed="${selected}" ${!watchCanVote || resolved ? 'disabled' : ''}>
-        ${icon(option.icon)} ${option.label} <span>${drawing.reactions?.[option.id] ?? 0}</span>
-      </button>`;
-    }).join('')}
+// The only rating mechanic left: a live thumbs-up for whichever Scribble
+// drawing is currently votable. No canvas replay - spectators already see
+// it live via the stream canvas above.
+function scribbleVotingHtml(state) {
+  const voting = state?.voting;
+  if (!voting?.token) return '';
+  const identityInMatch = (state.players ?? []).some((player) => (player.id ?? player.playerId ?? player.ref?.id) === getMyId());
+  const votingNote = watchCanVote
+    ? 'Markiere das Bild - Favoriten stehen am Ende des Matches nochmal zur Wahl.'
+    : identityInMatch ? 'Als Mitspieler stimmst du direkt in deiner Spielansicht ab.' : 'Zum Abstimmen muss auf diesem Gerät eine Spieleridentität ausgewählt sein.';
+  return `<div class="row-between" style="margin-top:var(--space-3);gap:var(--space-2);">
+    <span class="muted">${escapeHtml(votingNote)}</span>
+    <button type="button" class="btn btn-sm ${watchThumbActive ? 'btn-primary' : ''}" id="arcade-watch-thumb" aria-pressed="${watchThumbActive}" ${!watchCanVote ? 'disabled' : ''}>
+      ${icon('thumbsUp')} <span id="arcade-watch-thumb-count">${voting.count ?? 0}</span>
+    </button>
   </div>`;
 }
 
-function spectatorDrawingHtml(drawing, voting) {
-  const resolved = voting.mode === 'resolved';
-  const winner = resolved && drawing.isRoundWinner;
-  const favoriteSelected = watchFavoriteDrawingId === drawing.id;
-  return `<article class="card stack scribble-drawing-card ${winner ? 'is-winner' : ''}">
-    <div class="row-between" style="gap:var(--space-2);">
-      <strong>${escapeHtml(drawing.artistName)}</strong>
-      ${winner ? `<span class="badge">${icon('trophy')} Rundenbild</span>` : `<span class="muted">${drawing.reactionCount ?? 0} Reaktionen</span>`}
-    </div>
-    <div class="scribble-stored-canvas-wrap"><canvas data-watch-stored-drawing="${drawing.id}" aria-label="Zeichnung von ${escapeHtml(drawing.artistName)}"></canvas></div>
-    ${spectatorReactionControlsHtml(drawing, resolved)}
-    ${voting.mode === 'favorite'
-      ? `<button type="button" class="btn ${favoriteSelected ? 'btn-primary' : ''}" data-watch-favorite="${drawing.id}" aria-pressed="${favoriteSelected}" ${!watchCanVote ? 'disabled' : ''}>
-          ${icon('star')} ${favoriteSelected ? 'Dein Favorit' : 'Als Favorit wählen'} · ${drawing.favoriteVotes ?? 0}
-        </button>`
-      : resolved ? `<div class="muted">${drawing.favoriteVotes ?? 0} Favoritenstimmen</div>` : ''}
-  </article>`;
-}
-
-function scribbleVotingHtml(state) {
-  const voting = state?.voting;
-  if (!voting?.drawings?.length) return '';
-  const heading = voting.mode === 'favorite' ? 'Favorit der Runde' : voting.mode === 'resolved' ? 'Rundenbild gekürt' : 'Letztes Bild bewerten';
-  const identityInMatch = (state.players ?? []).some((player) => (player.id ?? player.playerId ?? player.ref?.id) === getMyId());
-  const votingNote = watchCanVote
-    ? voting.mode === 'favorite' ? 'Wähle genau einen Favoriten. Deine Auswahl kann bis zum Ende geändert werden.' : 'Deine Reaktion fließt direkt in die Rundenauswertung ein.'
-    : identityInMatch ? 'Als Mitspieler stimmst du direkt in deiner Spielansicht ab.' : 'Zum Abstimmen muss auf diesem Gerät eine Spieleridentität ausgewählt sein.';
-  return `<section class="stack scribble-round-gallery" style="margin-top:var(--space-3);">
-    <div>
-      <div class="section-title">${heading}</div>
-      <div class="muted">${escapeHtml(votingNote)}</div>
-    </div>
-    <div class="scribble-gallery-grid">${voting.drawings.map((drawing) => spectatorDrawingHtml(drawing, voting)).join('')}</div>
-  </section>`;
-}
-
-function drawStoredScribbleCanvases(container, state) {
-  const drawings = new Map((state?.voting?.drawings ?? []).map((drawing) => [drawing.id, drawing]));
-  container.querySelectorAll('[data-watch-stored-drawing]').forEach((canvas) => {
-    const drawing = drawings.get(canvas.dataset.watchStoredDrawing);
-    if (drawing) drawArcadeStreamCanvas(canvas, { gameType: 'scribble', strokes: drawing.strokes });
-  });
-}
-
 function wireScribbleVoting(container) {
-  container.querySelectorAll('[data-watch-reaction]').forEach((button) => {
-    button.addEventListener('click', () => {
-      socket.emit('scribble:reaction', {
-        matchId: watchedMatchId,
-        playerId: watchVotingPlayerId,
-        drawingId: button.dataset.watchDrawingId,
-        reaction: button.dataset.watchReaction,
-      }, (result) => {
-        if (!result?.ok) return showToast(result?.error || 'Bewertung nicht möglich.', { error: true });
-        watchReactions[button.dataset.watchDrawingId] = result.reaction;
-        rerender();
-      });
-    });
-  });
-  container.querySelectorAll('[data-watch-favorite]').forEach((button) => {
-    button.addEventListener('click', () => {
-      socket.emit('scribble:favorite', {
-        matchId: watchedMatchId,
-        playerId: watchVotingPlayerId,
-        drawingId: button.dataset.watchFavorite,
-      }, (result) => {
-        if (!result?.ok) return showToast(result?.error || 'Favorit konnte nicht gewählt werden.', { error: true });
-        watchFavoriteDrawingId = result.drawingId;
-        rerender();
-      });
+  container.querySelector('#arcade-watch-thumb')?.addEventListener('click', () => {
+    const token = watchThumbToken;
+    socket.emit('scribble:thumb', { matchId: watchedMatchId, playerId: watchVotingPlayerId, token }, (result) => {
+      if (!result?.ok) return showToast(result?.error || 'Bewertung nicht möglich.', { error: true });
+      if (token !== watchThumbToken) return; // the vote window rotated while the request was in flight
+      watchThumbActive = result.active;
+      const btn = container.querySelector('#arcade-watch-thumb');
+      if (btn) {
+        btn.classList.toggle('btn-primary', watchThumbActive);
+        btn.setAttribute('aria-pressed', String(watchThumbActive));
+      }
+      const countEl = container.querySelector('#arcade-watch-thumb-count');
+      if (countEl) countEl.textContent = String(result.count);
     });
   });
 }
@@ -273,7 +200,7 @@ export function renderArcadeWatch(container) {
     <div class="arcade-game-shell arcade-watch-shell">
       <button type="button" class="btn btn-sm" id="arcade-watch-back">‹ Arcade</button>
       <h1 class="view-title">${escapeHtml(name)} ansehen</h1>
-      <div class="arcade-watch-header"><span id="arcade-watch-status">${state?.paused ? 'Pause' : state?.phase === 'gallery' ? 'Abstimmung' : 'Läuft'}</span><span class="muted">Nur Zuschauer</span></div>
+      <div class="arcade-watch-header"><span id="arcade-watch-status">${state?.paused ? 'Pause' : 'Läuft'}</span><span class="muted">Nur Zuschauer</span></div>
       ${rosterHtml(state ?? {})}
       ${stateHtml(state)}
       ${state?.gameType === 'scribble' ? scribbleVotingHtml(state) : ''}
@@ -285,7 +212,6 @@ export function renderArcadeWatch(container) {
     drawArcadeStreamCanvas(container.querySelector('#arcade-watch-canvas'), state);
   }
   if (state?.gameType === 'scribble') {
-    drawStoredScribbleCanvases(container, state);
     wireScribbleVoting(container);
   }
 }
