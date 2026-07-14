@@ -187,6 +187,51 @@ test('matchmaking Ergebnis-Historie marks a recorded draw as Unentschieden', asy
   await page.waitForSelector('[data-draw-card] .badge:has-text("Unentschieden")');
 });
 
+test('matchmaking Ergebnis-Historie shows the winner after switching to Frei-für-alle for a drawn lineup', async () => {
+  // Regression test: teams were drawn, but the result was entered as
+  // "Frei-für-alle" instead of the drawn team shape — the draw must still
+  // move into Ergebnis-Historie with the winner shown, not stay stuck in
+  // Team-Historie.
+  await page.click('[data-view="matchmaking"]');
+  await page.click('#mm-generate');
+  await page.waitForSelector('[data-record-draw]');
+  await page.click('[data-record-draw]');
+
+  await page.waitForSelector('#match-form');
+  await page.check('#match-ffa');
+  await page.waitForSelector('input[name="ffa-winner"]');
+  // First radio is a real participant (the "Kein Sieger" fallback is last).
+  await page.check('input[name="ffa-winner"] >> nth=0');
+  await page.click('#match-form button[type="submit"]');
+
+  await page.waitForSelector('.section-title:has-text("Ergebnis-Historie")');
+  await page.waitForSelector('[data-draw-card]:has-text("Sieger")');
+});
+
+test('Ergebnis eintragen keeps a manual team reassignment after changing "Anzahl Teams"', async () => {
+  // Regression test: reassigning a player to a different team in the entry
+  // form, then changing "Anzahl Teams", must not silently revert that player
+  // back to the original drawn team.
+  await page.click('[data-view="matchmaking"]');
+  await page.click('#mm-generate');
+  await page.waitForSelector('[data-record-draw]');
+  await page.click('[data-record-draw]');
+  await page.waitForSelector('#match-players');
+
+  const teamSelects = page.locator('[data-team-for]');
+  const firstPlayerId = await teamSelects.nth(0).getAttribute('data-team-for');
+  const originalValue = await teamSelects.nth(0).inputValue();
+  const otherValue = originalValue === '0' ? '1' : '0';
+  await teamSelects.nth(0).selectOption(otherValue);
+
+  // Bumping team count re-renders the player list — the manual reassignment
+  // just made must survive that re-render.
+  await page.fill('#match-teamcount', '3');
+  await page.waitForSelector('[data-team-for]');
+  const reselected = page.locator(`[data-team-for="${firstPlayerId}"]`);
+  assert.equal(await reselected.inputValue(), otherValue);
+});
+
 test('Auswertungen (via Mehr) shows a real award and a visible, auto-scrolled concurrency chart', async () => {
   // Create a player + a session via the real agent-report endpoint (not the
   // UI) so there's an actual play_sessions row to render.
