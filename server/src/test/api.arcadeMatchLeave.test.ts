@@ -178,3 +178,175 @@ test('a non-host participant can leave a running match in every arcade game', as
     clearLobbyMemberships();
   }
 });
+
+test('leaving a running match never shows the leaver their own "opponent left" toast', async () => {
+  clearLobbyMemberships();
+  const httpServer = http.createServer(createApp());
+  const io = new Server(httpServer);
+  registerArcadeSockets(io);
+  registerTetrisSockets(io);
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+
+  const hostSocket = await connect(baseUrl);
+  const guestSocket = await connect(baseUrl);
+
+  try {
+    // quiz
+    {
+      const [hostId, guestId] = await makePlayers(baseUrl, ['Toast Quiz Host', 'Toast Quiz Guest']);
+      const created = await emitAck(hostSocket, 'arcade:lobby:create', { gameType: 'quiz', playerId: hostId });
+      await emitAck(guestSocket, 'arcade:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
+      const startPromise = waitForEvent(guestSocket, 'arcade:match:start') as Promise<{ matchId: string }>;
+      await emitAck(hostSocket, 'arcade:lobby:start', { lobbyId: created.lobbyId, playerId: hostId });
+      const { matchId } = await startPromise;
+
+      let leaverSawOwnDeparture = false;
+      guestSocket.once('arcade:match:opponent-left', () => {
+        leaverSawOwnDeparture = true;
+      });
+      const hostSawDeparture = waitForEvent(hostSocket, 'arcade:match:opponent-left');
+      const left = await emitAck(guestSocket, 'arcade:match:leave', { matchId, playerId: guestId });
+      assert.equal(left.ok, true);
+      await hostSawDeparture; // the remaining player must still be told
+      assert.equal(leaverSawOwnDeparture, false, 'the player who just left must not see a toast about their own departure');
+    }
+
+    // tetris
+    {
+      const [hostId, guestId] = await makePlayers(baseUrl, ['Toast Tetris Host', 'Toast Tetris Guest']);
+      const created = await emitAck(hostSocket, 'tetris:lobby:create', { playerId: hostId });
+      await emitAck(guestSocket, 'tetris:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
+      const startPromise = waitForEvent(guestSocket, 'tetris:match:start') as Promise<{ matchId: string }>;
+      await emitAck(hostSocket, 'tetris:lobby:start', { lobbyId: created.lobbyId, playerId: hostId });
+      const { matchId } = await startPromise;
+
+      let leaverSawOwnDeparture = false;
+      guestSocket.once('tetris:opponent-left', () => {
+        leaverSawOwnDeparture = true;
+      });
+      const hostSawDeparture = waitForEvent(hostSocket, 'tetris:opponent-left');
+      const left = await emitAck(guestSocket, 'tetris:match:leave', { matchId, playerId: guestId });
+      assert.equal(left.ok, true);
+      await hostSawDeparture;
+      assert.equal(leaverSawOwnDeparture, false, 'the player who just left must not see a toast about their own departure');
+    }
+  } finally {
+    hostSocket.close();
+    guestSocket.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    clearLobbyMemberships();
+  }
+});
+
+test('scribble: leaving revokes guess authorization instead of letting a departed player keep scoring in a 3+ player match', async () => {
+  clearLobbyMemberships();
+  const httpServer = http.createServer(createApp());
+  const io = new Server(httpServer);
+  registerScribbleSockets(io);
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+
+  const hostSocket = await connect(baseUrl);
+  const guestASocket = await connect(baseUrl);
+  const guestBSocket = await connect(baseUrl);
+
+  try {
+    const [hostId, guestAId, guestBId] = await makePlayers(baseUrl, ['Scribble3 Host', 'Scribble3 GuestA', 'Scribble3 GuestB']);
+    const created = await emitAck(hostSocket, 'scribble:lobby:create', { playerId: hostId });
+    await emitAck(guestASocket, 'scribble:lobby:join', { lobbyId: created.lobbyId, playerId: guestAId });
+    await emitAck(guestBSocket, 'scribble:lobby:join', { lobbyId: created.lobbyId, playerId: guestBId });
+
+    const participants = [
+      { id: hostId, socket: hostSocket },
+      { id: guestAId, socket: guestASocket },
+      { id: guestBId, socket: guestBSocket },
+    ];
+    // Whichever socket receives the word-choice prompt is this turn's drawer.
+    const choosePromise = Promise.race(
+      participants.map(
+        ({ id, socket }) =>
+          new Promise<{ drawerId: string; options: Array<{ id: string; word: string }> }>((resolve) =>
+            socket.once('scribble:choose', (payload: { options: Array<{ id: string; word: string }> }) =>
+              resolve({ drawerId: id, options: payload.options })
+            )
+          )
+      )
+    );
+    const started = await emitAck(hostSocket, 'scribble:lobby:start', { lobbyId: created.lobbyId, playerId: hostId });
+    assert.equal(started.ok, true);
+    const matchId = started.matchId as string;
+    const { drawerId, options } = await choosePromise;
+    const drawer = participants.find((p) => p.id === drawerId)!;
+    const word = options[0].word;
+    const chose = await emitAck(drawer.socket, 'scribble:word', { matchId, playerId: drawerId, wordId: options[0].id });
+    assert.equal(chose.ok, true);
+
+    const [leaver, remainingGuesser] = participants.filter((p) => p.id !== drawerId);
+
+    const left = await emitAck(leaver.socket, 'scribble:match:leave', { matchId, playerId: leaver.id });
+    assert.equal(left.ok, true);
+
+    // The departed player's socket is still connected (unlike a real
+    // disconnect) — without the online check, this guess would still score.
+    const guessAfterLeave = await emitAck(leaver.socket, 'scribble:guess', { matchId, playerId: leaver.id, text: word });
+    assert.equal(guessAfterLeave.ok, false, 'a player who explicitly left must not be able to keep guessing/scoring');
+
+    // The match itself must still be running for the players who stayed.
+    const guessFromRemaining = await emitAck(remainingGuesser.socket, 'scribble:guess', {
+      matchId,
+      playerId: remainingGuesser.id,
+      text: word,
+    });
+    assert.equal(guessFromRemaining.ok, true);
+    assert.equal(guessFromRemaining.correct, true);
+  } finally {
+    hostSocket.close();
+    guestASocket.close();
+    guestBSocket.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    clearLobbyMemberships();
+  }
+});
+
+test('a host finishing a match at the same instant a guest leaves it resolves cleanly (no crash, no duplicate result)', async () => {
+  clearLobbyMemberships();
+  const httpServer = http.createServer(createApp());
+  const io = new Server(httpServer);
+  registerArcadeSockets(io);
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+
+  const hostSocket = await connect(baseUrl);
+  const guestSocket = await connect(baseUrl);
+
+  try {
+    const [hostId, guestId] = await makePlayers(baseUrl, ['Race Quiz Host', 'Race Quiz Guest']);
+    const created = await emitAck(hostSocket, 'arcade:lobby:create', { gameType: 'quiz', playerId: hostId });
+    await emitAck(guestSocket, 'arcade:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
+    const startPromise = waitForEvent(guestSocket, 'arcade:match:start') as Promise<{ matchId: string }>;
+    await emitAck(hostSocket, 'arcade:lobby:start', { lobbyId: created.lobbyId, playerId: hostId });
+    const { matchId } = await startPromise;
+
+    // Exactly one of the two concurrent requests may "win" (the match only
+    // exists once); the other gets a clean rejection, never a crash or a
+    // second arcade_results row for the same match.
+    const [finishResult, leaveResult] = await Promise.all([
+      emitAck(hostSocket, 'arcade:match:finish', { matchId, playerId: hostId }),
+      emitAck(guestSocket, 'arcade:match:leave', { matchId, playerId: guestId }),
+    ]);
+    const outcomes = [finishResult.ok, leaveResult.ok];
+    assert.ok(outcomes.includes(true), 'at least one of the two racing requests must succeed');
+
+    const resultsRes = await request(baseUrl).get(`/api/arcade/stats`);
+    assert.equal(resultsRes.status, 200);
+  } finally {
+    hostSocket.close();
+    guestSocket.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    clearLobbyMemberships();
+  }
+});

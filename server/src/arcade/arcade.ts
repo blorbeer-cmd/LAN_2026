@@ -494,7 +494,10 @@ export function registerArcadeSockets(io: Server): void {
       if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       const leaver = match.players.find((p) => p.id === payload?.playerId);
       if (!leaver) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
-      io.to(match.room).emit('arcade:match:opponent-left', { matchId: match.id, playerId: leaver.id });
+      // socket.to (not io.to): the leaver's own socket is still joined to
+      // match.room at this point (unlike a real disconnect), so io.to would
+      // also show them their own "opponent left" toast.
+      socket.to(match.room).emit('arcade:match:opponent-left', { matchId: match.id, playerId: leaver.id });
       finishMatch(io, match, null, 'player-left');
       ack?.({ ok: true });
     });

@@ -1116,6 +1116,11 @@ function wireRoom(container) {
   container.querySelector('#scribble-leave-match')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
     const res = await emitWithAck('scribble:match:leave', { matchId: match.matchId, playerId: myId() });
-    if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
+    if (!res?.ok) return showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
+    // Unlike the 1v1 games, a Scribble match with 3+ players keeps running
+    // for everyone else — there's no incoming match:end for the leaver to
+    // react to, so this client has to clear its own state and navigate away.
+    resetMatchState();
+    navigate('arcade');
   });
 }
