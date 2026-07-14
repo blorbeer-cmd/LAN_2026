@@ -158,9 +158,10 @@ CREATE TABLE sessions (
 
 CREATE TABLE invites (
   code        TEXT PRIMARY KEY,          -- nanoid, Einmal-Code
-  player_id   TEXT REFERENCES players(id) ON DELETE CASCADE, -- gesetzt = Claim-Code für Bestandsspieler
+  purpose     TEXT NOT NULL,             -- 'register' | 'claim' | 'reset' (siehe unten)
+  player_id   TEXT REFERENCES players(id) ON DELETE CASCADE, -- gesetzt bei claim/reset
   event_id    TEXT REFERENCES events(id) ON DELETE CASCADE,  -- optional: direkt in dieses Event
-  created_by  TEXT NOT NULL REFERENCES players(id),
+  created_by  TEXT REFERENCES players(id), -- NULL = System (Recovery-Bootstrap, s. 4.3)
   created_at  INTEGER NOT NULL,
   expires_at  INTEGER,                   -- Empfehlung: Default 14 Tage
   revoked_at  INTEGER,                   -- Admin kann Codes zurückziehen
@@ -168,6 +169,15 @@ CREATE TABLE invites (
   used_by     TEXT REFERENCES players(id)
 );
 ```
+
+**Warum Codes einen `purpose` brauchen:** Claim- und Reset-Links teilen sich zwar den
+Mechanismus, dürfen aber nicht dieselbe Sorte Code sein. Sonst gilt entweder „Claim geht auch
+auf beanspruchte Konten" – dann wird jeder alte, noch nicht abgelaufene Claim-Link nachträglich
+zum Passwort-Reset-Generalschlüssel für das Konto – oder Claim lehnt beanspruchte Konten ab,
+und der dokumentierte Reset-Flow funktioniert gar nicht. Deshalb: `claim`-Codes gelten nur für
+unbeanspruchte Konten und **alle** offenen Claim-Codes eines Spielers werden beim erfolgreichen
+Claim entwertet; `reset`-Codes gelten nur für beanspruchte Konten, und Passwortänderung/-reset
+entwertet alle offenen Reset-Codes des Kontos.
 
 **Passwort-Hashing:** `crypto.scrypt` aus Node-Bordmitteln (Format `scrypt$N$r$p$salt$hash`).
 Kein neues natives Paket, kein Build-Risiko – bewusst gegen `bcrypt`/`argon2`-Dependencies
@@ -221,10 +231,20 @@ Request bekommt `409`) und Tests in `api.concurrency.test.ts`.
   No-ops – jedes beanspruchte Konto wäre ja Admin. Beim Scharfschalten der Rollen (spätestens
   mit `AUTH_MODE=required`) werden deshalb alle `is_admin`-Flags zurückgesetzt und Admins
   explizit neu bestimmt; neue Spieler starten ab dann als normale User.
-- **Bootstrap:** Nach dem Reset wird das erste erfolgreich registrierte/beanspruchte Konto
-  automatisch Admin (typisch: der Betreiber claimt zuerst und verteilt dann die Links).
-  Zusätzlich Env-Fallback `ADMIN_RECOVERY_CODE` für den Fall „einziger Admin hat sein
-  Passwort vergessen".
+- **Bootstrap ohne Deadlock:** Registrieren/Claim brauchen einen Invite-Code, Codes erzeugen
+  können nur Admins, und Admin wird man erst durch Registrieren/Claim – auf einer frischen DB
+  (oder nach dem Flag-Reset ohne vorbereitete Links) wäre das ein Henne-Ei-Lockout. Zwei
+  Auswege, beide Teil des Konzepts: (1) Die Cutover-Checkliste verlangt, dass die Claim-Links
+  **vor** dem Umschalten auf `AUTH_MODE=required` erzeugt werden – das passiert noch im
+  Legacy-Modus, in dem heute jeder Admin ist. (2) `POST /api/auth/register`/`claim`
+  akzeptieren den `ADMIN_RECOVERY_CODE` aus der Server-Config als Invite-Ersatz, solange kein
+  beanspruchtes Admin-Konto existiert; das so erstellte Konto wird Admin (dafür ist
+  `invites.created_by` nullable – Systemvorgang ohne menschlichen Ersteller). Damit gibt es
+  in keinem Zustand – frische DB eingeschlossen – keinen Weg hinein.
+- **Bootstrap-Regel:** Nach dem Reset wird das erste erfolgreich registrierte/beanspruchte
+  Konto automatisch Admin (typisch: der Betreiber claimt zuerst und verteilt dann die Links).
+  `ADMIN_RECOVERY_CODE` dient außerdem als Fallback für „einziger Admin hat sein Passwort
+  vergessen".
 - Die vollständige Rechte-Matrix und die Sonderfälle (letzter Admin, Selbst-Degradierung,
   Test-User-Regeln) stehen in Abschnitt 6.
 
@@ -250,7 +270,12 @@ Request bekommt `409`) und Tests in `api.concurrency.test.ts`.
     das trackende Event, **wenn er Teilnehmer ist**, sonst der Sentinel. Ersetzt die heutigen
     direkten `getTrackingEventId()`-Aufrufe in allen Schreibpfaden.
   - `getEventAudience(eventId)` – wen erreichen Push/Broadcast/Realtime dieses Events:
-    Teilnehmerliste bei echten Events, alle Nicht-Test-User beim Sentinel.
+    bei echten Events die aktive Teilnehmerliste; beim Sentinel alle aktiven Nicht-Test-User
+    **abzüglich** der Teilnehmer eines gerade trackenden Events und abzüglich deaktivierter
+    Konten. Der Abzug ist wichtig: Startet ein Nicht-Mitglied während einer laufenden LAN eine
+    Sentinel-Abstimmung oder -Durchsage, dürfen die Event-Teilnehmer davon keine Push/Toasts
+    bekommen – sonst blutet die Sentinel-Welt in die Event-Welt hinein. (Nur die
+    Live-Zustellung ist so beschnitten; *lesen* dürfen Sentinel-Daten weiterhin alle.)
 - List-Endpoints mit Event-Filter (`/api/events`, Historien, Analytics, Export) validieren
   ein übergebenes `?eventId=` gegen die Mitgliedschaft, statt es ungeprüft in die Query zu
   stecken; Default ist der Kontext des Users, nicht blind das trackende Event.
@@ -272,7 +297,12 @@ ortsgebunden, „Discord-Link" eher global – gelöst über `event_id NULL` = g
 `push_log` braucht das Scoping, damit der Kiosk eines Events nur „seine" Push-Historie zeigt).
 `arcade_results` bekommt `event_id` für saubere Event-Auswertungen. Die Guards „eine laufende
 Abstimmung"/„ein aktiver Draft" wandern von global auf pro Event (Key im `app_state` bzw.
-Draft-Query um `event_id` erweitern) – inklusive neuer Concurrency-Tests.
+Draft-Query um `event_id` erweitern) – inklusive neuer Concurrency-Tests. Schema-Detail
+dabei: `vote_rounds.round` ist heute ein **globaler** Schlüssel, an dem Votes und Ergebnisse
+hängen. Die globale Runden-Sequenz bleibt deshalb bestehen (zwei parallel laufende Runden
+belegen nie dieselbe Nummer – kein Kollisions- oder Vermischungsrisiko in den
+Ergebnis-Queries), nur der „laufende Runde"-Zeiger im `app_state` wird pro Event geführt;
+die Historie filtert wie bisher über `event_id`.
 
 ### 4.5 Admin-Moderation
 
@@ -298,7 +328,11 @@ Draft-Query um `event_id` erweitern) – inklusive neuer Concurrency-Tests.
   der Rechte-Regel: `impersonate/stop` (und die Impersonations-Felder in `/api/me`)
   autorisieren gegen den **Session-Inhaber** (`player_id`), nicht gegen die effektive
   Identität – ein stumpfes `requireAdmin` auf die effektiven Rechte würde den Admin sonst im
-  Test-User-Zustand einsperren (kein Weg zurück außer Logout).
+  Test-User-Zustand einsperren (kein Weg zurück außer Logout). Start und Stop stoßen
+  außerdem dasselbe sofortige Socket-Re-Rooming an wie Rollen-/Roster-Änderungen (4.4) –
+  ein bereits offener Admin-Tab darf nach dem Wechsel in den Test-User nicht in allen
+  Event-Rooms hängen bleiben und dort Realtime-Daten empfangen, die der Test-User nicht
+  sehen dürfte.
 
 ### 4.6 Migration bestehender Daten & sanfte Umstellung
 
@@ -387,7 +421,11 @@ nachrüstbar), nicht Mail.
   `pushManager.getSubscription().unsubscribe()` auf und meldet den Endpoint am **bestehenden**
   `POST /api/push/unsubscribe` ab), und nach Login wird neu abonniert.
 - **Kiosk-Token** ist strikt read-only: eigene Middleware, Positivliste der erlaubten
-  GET-Endpoints, kein Zugriff auf `/api/me`, keine Schreibpfade.
+  GET-Endpoints, kein Zugriff auf `/api/me`, keine Schreibpfade. Dazu gehört ein
+  **read-only Socket.IO-Handshake**: Der Kiosk lebt von Realtime-Updates (`kiosk.js`
+  verbindet sich heute per Socket) – der Token joint deshalb genau den Room seines Events
+  (empfangen ja, senden nein). Ohne diesen Pfad wäre die Wand-Anzeige nach dem Wegfall des
+  geteilten Tokens nur noch so aktuell wie ihr letzter Poll.
 - **Agent unverändert – aber der Key wird zum Geheimnis:** `api_key`-Header wie bisher;
   Agent-Endpoints hängen **nicht** hinter `requireUser` (der Agent hat keine Session). Genau
   deshalb darf der Key nicht mehr allgemein lesbar sein: `GET /api/players/:id` liefert heute
@@ -406,8 +444,8 @@ nachrüstbar), nicht Mail.
 - **Session läuft mitten auf der LAN ab:** durch gleitende Verlängerung praktisch
   ausgeschlossen; falls doch (Gerät lag 90 Tage im Schrank), landet man auf dem Login-Screen
   mit vorausgefülltem Namen – ein Feld tippen, weiter.
-- **Passwort vergessen:** Admin erzeugt Reset-Link (derselbe Invite-Mechanismus mit
-  `player_id`). Vergisst der **letzte Admin** sein Passwort: `ADMIN_RECOVERY_CODE` aus der
+- **Passwort vergessen:** Admin erzeugt Reset-Link (Invite mit `purpose = 'reset'` und
+  `player_id` – bewusst eine eigene Code-Sorte, siehe 4.1). Vergisst der **letzte Admin** sein Passwort: `ADMIN_RECOVERY_CODE` aus der
   Server-Config erlaubt einmalig, ein Konto zum Admin zu machen.
 - **Mehrere Geräte pro Person:** ausdrücklich unterstützt (Handy + Laptop = zwei Sessions).
   Der Profil-Screen kann später eine „Angemeldete Geräte"-Liste mit Einzel-Logout bekommen –
@@ -494,7 +532,7 @@ sie implizit zu lassen:
 
 | Eigenschaft | Regel |
 |---|---|
-| Roster | Der Sentinel hat keine Teilnehmerliste → „Teilnehmer" = **alle** echten (Nicht-Test-)User. Zentral im Helfer `getEventAudience()` verankert, den Push, Broadcasts und Realtime-Rooms gemeinsam nutzen |
+| Roster | Der Sentinel hat keine Teilnehmerliste → „Teilnehmer" = alle **aktiven** echten User (ohne Test- und deaktivierte Konten); während ein Event trackt, gehören dessen Teilnehmer zur Event-Welt und zählen nicht zur Sentinel-*Zustell*-Audience (4.4) – *lesen* dürfen Sentinel-Daten weiterhin alle. Zentral im Helfer `getEventAudience()` verankert, den Push, Broadcasts und Realtime-Rooms gemeinsam nutzen |
 | Lebenszyklus | Der Sentinel kann nie tracken, nie enden, nie gelöscht/umbenannt werden (teilweise schon so geschützt) und taucht nie in Hall of Fame/PDF-Andenken auf |
 | Sichtbarkeit | Sentinel-Daten sind für alle eingeloggten User sichtbar – er ist der gemeinsame Grundraum |
 
@@ -509,9 +547,13 @@ Auswertung.
 
 **Regel (neu, zentral):** Der Schreib-Kontext ist personenbezogen –
 `getEventContextFor(playerId)` = trackendes Event, **wenn** der User dort Teilnehmer ist,
-sonst Sentinel. Genau dieses Muster lebt der Agent-Report heute schon vor (Nicht-Teilnehmer
-werden während eines trackenden Events nicht erfasst); es wird auf alle Schreibpfade
-verallgemeinert (Votes, Matches, Bestellungen, Pings, Sitznachbarn, Anreisen, Drafts …).
+sonst Sentinel. Der Agent-Report kennt heute nur die halbe Regel: Nicht-Teilnehmer werden
+während eines trackenden Events schlicht **gar nicht** erfasst. Künftig nutzt auch der
+Agent-Pfad `getEventContextFor()` und schreibt sie stattdessen in den Sentinel – sonst zeigt
+deren „Außerhalb von Events"-Live-Board während einer fremden LAN nur eingefrorene
+Offline-Daten (pausierte und deaktivierte Spieler bleiben ausgenommen). Dieselbe Regel gilt
+für alle übrigen Schreibpfade (Votes, Matches, Bestellungen, Pings, Sitznachbarn, Anreisen,
+Drafts …).
 
 Konsequenz für die Anzeige: Während ein Event trackt, existieren **zwei parallele Welten**
 (Event-Welt und Sentinel-Welt). Das UI muss den eigenen Kontext deshalb sichtbar machen –
@@ -611,8 +653,10 @@ jeweilige Entscheidung:
   Spieler werden deshalb serverseitig ignoriert (wie bei `tracking_paused`) und beim
   Deaktivieren werden offene Play-Sessions geschlossen und der Live-Status entfernt. Ebenso
   den **Session-Pfad**: Wegen der 90-Tage-Sessions bliebe ein bereits eingeloggtes Gerät
-  sonst voll handlungsfähig – Deaktivieren löscht daher alle `sessions`-Zeilen des Spielers,
-  und `requireUser` lehnt `deactivated_at`-Konten grundsätzlich ab (Prüfung pro Request, wie
+  sonst voll handlungsfähig – Deaktivieren löscht daher alle `sessions`-Zeilen **und
+  `push_subscriptions`** des Spielers, trennt seine offenen Sockets sofort (wie bei
+  Logout/Passwortwechsel, sonst empfängt ein offener Tab weiter Realtime-Updates), und
+  `requireUser` lehnt `deactivated_at`-Konten grundsätzlich ab (Prüfung pro Request, wie
   bei Rollen). Der
   Lösch-Dialog sagt ehrlich, was kaskadiert, und bietet Deaktivieren als Default-Alternative
   an.
@@ -632,6 +676,12 @@ jeweilige Entscheidung:
   die bestehende `from`/`to`-Proratierung in den Analytics bleibt dafür das Werkzeug).
 - **Ende der Mitgliedschaft ≠ Ende der Sichtbarkeit:** Wer bei einem Event dabei *war*, sieht
   es dauerhaft (Erinnerungen, PDF-Andenken) – Mitgliedschaft verfällt nicht mit `ended_at`.
+  Das braucht ein Schema-Detail: Heute *löscht* eine Roster-Änderung die
+  `event_participants`-Zeile – als Autorisierungs-Grundlage wäre die Historie damit weg und
+  `requireEventAccess` würde einem nachträglich Entfernten trotz Teilnahme `404` liefern.
+  Deshalb bekommt `event_participants` ein `removed_at`: **aktive** Mitgliedschaft (Tracking,
+  Audience, Mitmachen) = `removed_at IS NULL`; **Lesesichtbarkeit** = Zeile existiert. Hartes
+  Entfernen der Zeile bleibt für den Fall „versehentlich hinzugefügt, war nie da".
 - **Test-User in Auswertungen:** Test-User tauchen in Leaderboard/Playtime auf, sobald mit
   ihnen getestet wurde – im echten Betrieb stören sie. Regel: Test-User(-Daten) sind in
   Aggregationen ausgeblendet, solange sie `is_test` sind; wer echte Testdaten behalten will,
@@ -650,9 +700,9 @@ das Produktivverhalten bis zum Schluss unangetastet lässt.
 | **0 – Bugfix Event-Anlage** | `openModal`-Import in `games.js` (in diesem Branch bereits enthalten) | XS ✅ |
 | **1 – Auth-Fundament** | Schema (Spalten, `sessions`, `invites`), scrypt-Hashing, `/api/auth/*`, `/api/me`, `requireUser`-Middleware, Session-Cookie inkl. `COOKIE_SECURE`-Flag, Socket.IO-Handshake + Socket-Kick bei Logout, Login-/Register-Screen, Rate-Limit. Alles hinter `AUTH_MODE` | L |
 | **2 – Identität fest verdrahten** | `whoami.js` raus, `player_id` überall aus der Session statt aus Query/Body (inkl. Digest, Meine Stats, Skills/Bock-Schreibpfade), Profil-Screen (Passwort ändern, Logout), Push-Subscription-Neubindung bei Logout/Login | M |
-| **3 – Rollen & Admin-Härtung** | `requireAdmin` auf Session-Rolle, PIN-Flow entfernen, **Reset der Alt-Admin-Flags** (heute ist jeder Admin – ohne Reset sind alle Gates No-ops) + Bootstrap + Recovery-Code, Letzter-Admin-Guards (+ Concurrency-Test), DELETE-Endpoints gaten & fehlende ergänzen, Spieler-Deaktivierung statt Hard-Delete (inkl. Session-Invalidierung + Agent-Ignore), `api_key` nur noch für Inhaber/Admin lesbar + Key-Rotation, `admin_log`, Admin-UI aufräumen | M–L |
+| **3 – Rollen & Admin-Härtung** | `requireAdmin` auf Session-Rolle, PIN-Flow entfernen, **Reset der Alt-Admin-Flags** (heute ist jeder Admin – ohne Reset sind alle Gates No-ops) + Bootstrap + Recovery-Code, Letzter-Admin-Guards (+ Concurrency-Test), DELETE-Endpoints gaten & fehlende ergänzen, Spieler-Deaktivierung statt Hard-Delete (inkl. Session-/Socket-/Push-Abo-Invalidierung + Agent-Ignore), `api_key` nur noch für Inhaber/Admin lesbar + Key-Rotation, `admin_log`, Admin-UI aufräumen | M–L |
 | **4 – Onboarding & Migration** | Invite-/Claim-Codes mit Ablauf/Widerruf + UI (Links/QR im Admin-Bereich), Claim-Flow für Bestandsspieler, Namens-Kollisions-Check (NOCASE), Umstellung `AUTH_MODE=required`, Alt-Token/PIN entfernen | M |
-| **5 – Event-Sichtbarkeit** | `requireEventAccess`, `getEventContextFor`/`getEventAudience` als zentrale Helfer in allen Schreib-/Versandpfaden, Validierung aller `?eventId=`-Filter, Kontext-Badge im Header, Socket.IO-Rooms inkl. Live-Rejoin bei Roster-/Rollen-Änderung, Roster-Entfernung schließt offene Sessions, Push-Scoping, Kiosk-Token, Event-CRUD admin-only, Event-Löschen mit Kaskaden-Warnung. **Dazu gehören die Voraussetzungen der Grenze selbst:** `event_id` für `broadcasts` und `push_log`, Vote-/Draft-Guards pro Event **und die Arcade-Live-Fläche** (`GET /api/arcade/lobbies` aggregiert heute alle offenen Lobbys, die Lobby-Listen gehen per globalem `io.emit` raus – Lobbys bekommen denselben Event-Kontext/Room wie alles andere, sonst sehen und joinen Nicht-Mitglieder weiter die Lobbys des Events). Ohne diese Punkte wäre die frisch eingeführte Sichtbarkeit löchrig | L |
+| **5 – Event-Sichtbarkeit** | `requireEventAccess`, `getEventContextFor`/`getEventAudience` als zentrale Helfer in allen Schreib-/Versandpfaden, Validierung aller `?eventId=`-Filter, Kontext-Badge im Header, Socket.IO-Rooms inkl. Live-Rejoin bei Roster-/Rollen-/Impersonations-Änderung, Roster-Entfernung schließt offene Sessions, historisierte Mitgliedschaft (`event_participants.removed_at` statt Zeilen-Löschung, 8.5), Push-Scoping, Kiosk-Token inkl. Read-only-Socket, Event-CRUD admin-only, Event-Löschen mit Kaskaden-Warnung. **Dazu gehören die Voraussetzungen der Grenze selbst:** `event_id` für `broadcasts` und `push_log`, Vote-/Draft-Guards pro Event **und die Arcade-Live-Fläche** (`GET /api/arcade/lobbies` aggregiert heute alle offenen Lobbys, die Lobby-Listen gehen per globalem `io.emit` raus – Lobbys bekommen denselben Event-Kontext/Room wie alles andere, sonst sehen und joinen Nicht-Mitglieder weiter die Lobbys des Events). Ohne diese Punkte wäre die frisch eingeführte Sichtbarkeit löchrig | L |
 | **6 – Scoping-Lücken & Feinschliff** | `event_id` für `info_entries` (inkl. „global"-Fall fürs Info-Board) und `arcade_results` – beide bleiben bis dahin bewusst global (reine Anzeige-Historie, innerhalb eines Freundeskreises kein Leak); Test-User-Ausschluss aus Aggregationen/Push, Impersonation (`acting_as`), Tracking-Erinnerung; optional: „Daten umziehen"-Werkzeug | M |
 
 Phasen 1–2 sind das kritische Fundament; ab Phase 3 sind die Schritte weitgehend unabhängig
