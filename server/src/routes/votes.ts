@@ -129,9 +129,13 @@ function voteWinCountsByGame(): Map<string, number> {
   return counts;
 }
 
-function buildResults(round: number, mode: VoteMode, selectedGameIds: string[] | null = null): ResultRow[] {
+// Every game in the catalog for the given round, scored and sorted — never
+// filtered by a round's own selectedGameIds (see filterResults for that), so
+// a single call's underlying query/sort can be reused for both the
+// round-scoped view and the always-full-catalog "Bock" popularity view
+// (buildPayload's `catalogResults`) instead of querying twice.
+function buildAllResults(round: number, mode: VoteMode): ResultRow[] {
   const now = Date.now();
-  const allowed = selectedGameIds ? new Set(selectedGameIds) : null;
   const rows = db
     .prepare(
       `SELECT g.id AS gameId, g.name AS gameName, g.icon AS icon,
@@ -159,10 +163,8 @@ function buildResults(round: number, mode: VoteMode, selectedGameIds: string[] |
     )
     .all(round, now) as Array<Omit<ResultRow, 'score' | 'totalPlaytimeFormatted' | 'voteWinCount'>>;
 
-  const filteredRows = allowed ? rows.filter((r) => allowed.has(r.gameId)) : rows;
-
   const winCounts = voteWinCountsByGame();
-  const results: ResultRow[] = filteredRows.map((r) => ({
+  const results: ResultRow[] = rows.map((r) => ({
     ...r,
     score: mode === 'points' ? r.points : r.votes,
     totalPlaytimeFormatted: formatDurationMs(r.totalPlaytimeMs),
@@ -179,6 +181,16 @@ function buildResults(round: number, mode: VoteMode, selectedGameIds: string[] |
     return a.gameName.localeCompare(b.gameName, 'de');
   });
   return results;
+}
+
+function filterResults(results: ResultRow[], selectedGameIds: string[] | null): ResultRow[] {
+  if (!selectedGameIds) return results;
+  const allowed = new Set(selectedGameIds);
+  return results.filter((r) => allowed.has(r.gameId));
+}
+
+function buildResults(round: number, mode: VoteMode, selectedGameIds: string[] | null = null): ResultRow[] {
+  return filterResults(buildAllResults(round, mode), selectedGameIds);
 }
 
 // While a round is open, nobody — not even the person about to close it —
@@ -203,7 +215,15 @@ function redactOpenRoundResults(results: ResultRow[]): Array<Omit<ResultRow, 'vo
 function buildPayload(extra: Record<string, unknown> = {}) {
   const state = readRoundState();
   const meta = getRoundMeta(state.round);
-  const fullResults = buildResults(state.round, state.mode, meta.selectedGameIds);
+  // One query (buildAllResults) backs both views: the round-scoped
+  // `results` (filtered to this round's own game selection, if any) and the
+  // always-full-catalog `catalogResults` behind the "Top 5 nach Bock-Level"
+  // widget. That widget must never stay hidden behind a past round's "Nur
+  // bestimmte Spiele zur Wahl stellen" restriction, but recomputing the same
+  // SQL join a second time just to drop that restriction would be redundant
+  // — filtering the already-fetched rows in JS is enough.
+  const catalogFullResults = buildAllResults(state.round, state.mode);
+  const fullResults = filterResults(catalogFullResults, meta.selectedGameIds);
   const totalVotes = fullResults.reduce((sum, r) => sum + r.votes, 0);
   const totalPoints = fullResults.reduce((sum, r) => sum + r.points, 0);
   const totalVoters = (
@@ -212,14 +232,6 @@ function buildPayload(extra: Record<string, unknown> = {}) {
     }
   ).n;
   const results = state.open ? redactOpenRoundResults(fullResults) : fullResults;
-  // The "Top 5 nach Bock-Level" widget is meant to always reflect the whole
-  // catalog, independent of which games the most recent round happened to
-  // restrict itself to ("Nur bestimmte Spiele zur Wahl stellen") — otherwise
-  // that restriction would silently keep hiding every other game from the
-  // widget forever, even after the round closes. Only recompute when a
-  // restriction is actually in effect; otherwise fullResults already is the
-  // full catalog.
-  const catalogFullResults = meta.selectedGameIds ? buildResults(state.round, state.mode, null) : fullResults;
   const catalogResults = state.open ? redactOpenRoundResults(catalogFullResults) : catalogFullResults;
   return { ...state, ...meta, results, catalogResults, totalVotes, totalPoints, totalVoters, ...extra };
 }

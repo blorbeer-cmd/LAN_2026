@@ -671,7 +671,10 @@ export function registerTetrisSockets(io: Server): void {
       const leaver = match.players.find((p) => p.id === payload?.playerId);
       if (!leaver) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
       const winner = match.players.find((p) => p.id !== leaver.id) ?? null;
-      io.to(match.room).emit('tetris:opponent-left', { matchId: match.id, playerId: leaver.id });
+      // socket.to (not io.to): the leaver's own socket is still joined to
+      // match.room at this point (unlike a real disconnect), so io.to would
+      // also show them their own "opponent left" toast.
+      socket.to(match.room).emit('tetris:opponent-left', { matchId: match.id, playerId: leaver.id });
       finishMatch(io, match, winner, 'player-left');
       ack?.({ ok: true });
     });

@@ -1228,9 +1228,9 @@ function wireRoom(container) {
     if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
     const res = await emitWithAck('scribble:match:leave', { matchId: match.matchId, playerId: myId() });
     if (!res?.ok) return showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
-    // With 3+ remaining players the match keeps running for them, so no
-    // scribble:match:end reaches this client - leaving has to close the
-    // room locally instead of waiting for a broadcast that may never come.
+    // Unlike the 1v1 games, a Scribble match with 3+ players keeps running
+    // for everyone else — there's no incoming match:end for the leaver to
+    // react to, so this client has to clear its own state and navigate away.
     resetMatchState();
     navigate('arcade');
   });

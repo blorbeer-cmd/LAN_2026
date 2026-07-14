@@ -452,7 +452,13 @@ function selectedRatings(match: ScribbleMatchState, playerId: string): { reactio
 function ratingPlayer(match: ScribbleMatchState, socket: Socket, playerId: unknown): PlayerRef | null {
   if (typeof playerId !== 'string' || !playerId || playerId === BOT_ID) return null;
   const participant = match.players.find((entry) => entry.id === playerId);
-  if (participant) return match.socketIds.get(participant.id) === socket.id ? participant : null;
+  if (participant) {
+    // A player who explicitly left (see handlePlayerLeft) must not keep
+    // rating rounds they're no longer part of, even though their socket
+    // stays registered in match.socketIds.
+    if (!match.online.has(participant.id)) return null;
+    return match.socketIds.get(participant.id) === socket.id ? participant : null;
+  }
   if (socket.data.arcadeWatchMatchId !== match.id || socket.data.arcadeWatchPlayerId !== playerId) return null;
   return playerById(playerId);
 }
@@ -1043,6 +1049,10 @@ export function registerScribbleSockets(io: Server): void {
           return ack?.({ ok: false, error: 'Tipp nicht angenommen.' });
         }
         if (player.id === BOT_ID) return ack?.({ ok: false, error: 'Tipp nicht angenommen.' });
+        // A player who explicitly left (handlePlayerLeft below) stays in
+        // match.players/match.socketIds — matches keep running without them
+        // in a 3+ player match — but must not be able to keep guessing.
+        if (!match.online.has(player.id)) return ack?.({ ok: false, error: 'Tipp nicht angenommen.' });
         if (match.phase !== 'drawing' || match.paused) return ack?.({ ok: true, correct: false });
         if (match.players[match.drawIndex]?.id === player.id) return ack?.({ ok: false, error: 'Der Zeichner rät nicht mit.' });
         if (match.guessedPlayerIds.has(player.id)) return ack?.({ ok: true, correct: true });

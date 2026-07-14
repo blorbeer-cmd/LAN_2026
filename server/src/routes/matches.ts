@@ -10,8 +10,16 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getTrackingEventId } from '../events';
+import { applySeatConflicts, buildTeamsSnapshot } from './matchmaking';
 
 export const matchesRouter = Router();
+
+interface DrawLinkRow {
+  id: string;
+  match_id: string | null;
+  event_id: string;
+  seat_pairs_considered: number;
+}
 
 interface TeamInput {
   playerIds: string[];
@@ -159,10 +167,11 @@ matchesRouter.post('/', (req, res) => {
   if (drawId !== undefined && (typeof drawId !== 'string' || !drawId)) {
     return res.status(400).json({ error: 'drawId ist ungültig.' });
   }
+  let draw: DrawLinkRow | undefined;
   if (drawId) {
-    const draw = db.prepare('SELECT id, match_id FROM matchmaking_draws WHERE id = ?').get(drawId) as
-      | { id: string; match_id: string | null }
-      | undefined;
+    draw = db
+      .prepare('SELECT id, match_id, event_id, seat_pairs_considered FROM matchmaking_draws WHERE id = ?')
+      .get(drawId) as DrawLinkRow | undefined;
     if (!draw) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
     if (draw.match_id) return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
   }
@@ -182,13 +191,30 @@ matchesRouter.post('/', (req, res) => {
     row.result
   );
 
-  if (drawId) {
+  if (drawId && draw) {
     // Race-safe: only claims the draw if it's still unrecorded, so two
     // simultaneous submissions for the same draw can't both "win" it.
     const claimed = db
       .prepare('UPDATE matchmaking_draws SET match_id = ? WHERE id = ? AND match_id IS NULL')
       .run(row.id, drawId);
-    if (claimed.changes > 0) broadcast(Events.matchmakingDrawsChanged, { id: drawId, matchId: row.id });
+    if (claimed.changes > 0) {
+      // The submitted teams can differ from the draw's original snapshot —
+      // a player was moved or dropped in the entry form, or the result was
+      // entered as Frei-für-alle (each participant becomes their own team)
+      // instead of the drawn team shape. Re-snapshot the draw's `teams` to
+      // what was actually recorded so Ergebnis-Historie shows the real
+      // lineup, and so its length always matches the match's for
+      // attachMatchResults' score/rank/winner enrichment.
+      const teamPlayerIdLists = validated.teams.map((t) => t.playerIds);
+      const snapshotTeams = buildTeamsSnapshot(gameId, teamPlayerIdLists);
+      const seatConflicts = draw.seat_pairs_considered > 0 ? applySeatConflicts(draw.event_id, snapshotTeams) : 0;
+      db.prepare('UPDATE matchmaking_draws SET teams = ?, seat_conflicts = ? WHERE id = ?').run(
+        JSON.stringify(snapshotTeams),
+        seatConflicts,
+        drawId
+      );
+      broadcast(Events.matchmakingDrawsChanged, { id: drawId, matchId: row.id });
+    }
   }
 
   broadcast(Events.leaderboardChanged, null);
