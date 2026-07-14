@@ -109,7 +109,7 @@ function renderDrawCard(draw, { editable }) {
             (p) => `
           <div class="team-player">
             ${avatarHtml(p, 18)}
-            <span style="flex:1;">${escapeHtml(p.name)}</span>
+            <span class="team-player-name" style="flex:1;">${escapeHtml(p.name)}</span>
             ${seatConflictIconHtml(p)}
             ${p.rating != null ? `<span class="rating">${p.rating}</span>` : ''}
             ${
@@ -142,7 +142,9 @@ function renderDrawCard(draw, { editable }) {
         ${draw.matchId ? `<span class="badge badge-offline">✅ Ergebnis erfasst</span>` : ''}
         ${!editable && draw.winnerTeamIndex === null ? `<span class="badge">🤝 Unentschieden</span>` : ''}
       </div>
-      <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));">${teamsHtml}</div>
+      <div class="team-results-scroll">
+        <div class="grid" style="grid-template-columns:repeat(${draw.teams.length}, minmax(190px, 1fr));">${teamsHtml}</div>
+      </div>
       ${seatingNote}
       ${editable ? `<button type="button" class="btn btn-primary btn-sm" data-record-draw="${draw.id}">✅ Ergebnis eintragen</button>` : ''}
       ${!editable ? `<button type="button" class="btn btn-primary btn-sm" data-rematch-draw="${draw.id}">${icon('shuffle')} Rematch</button>` : ''}
