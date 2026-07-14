@@ -1228,20 +1228,6 @@ button.card {
   height: 100%;
 }
 
-.scribble-reactions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.scribble-reactions .btn {
-  flex: 1 1 auto;
-}
-
-.scribble-last-drawing .scribble-drawing-card {
-  max-width: 520px;
-}
-
 .scribble-art-stat-row {
   align-items: flex-start;
   gap: var(--space-2);

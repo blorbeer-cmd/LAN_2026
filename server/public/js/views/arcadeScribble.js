@@ -49,15 +49,11 @@ let turnExpiresAt = null;
 let paused = false;
 let pausedRemainingMs = null;
 let lastTurnEnd = null; // { word, reason } shown briefly during 'reveal'
-let matchEnded = null; // { winner, scores } once finished
-let gallery = null;
-let galleryExpiresAt = null;
-let myReactions = {};
-let favoriteDrawingId = null;
+let matchEnded = null; // { winner, scores, drawings } once finished
 // Live thumbs-up: valid for exactly one drawing at a time (whichever is
 // currently being drawn, or was most recently), from the moment it starts
-// until the next word is chosen. Never persisted - only used to sort the
-// round-end gallery, see scribble.ts's roundThumbs.
+// until the next word is chosen. Never persisted - only marks a drawing so
+// it re-enters the final, whole-match favorite vote once the match ends.
 let thumbsToken = null;
 let thumbsCount = 0;
 let myThumbActive = false;
@@ -149,10 +145,6 @@ function resetMatchState() {
   pausedRemainingMs = null;
   lastTurnEnd = null;
   matchEnded = null;
-  gallery = null;
-  galleryExpiresAt = null;
-  myReactions = {};
-  favoriteDrawingId = null;
   thumbsToken = null;
   thumbsCount = 0;
   myThumbActive = false;
@@ -167,7 +159,7 @@ function stopCountdown() {
 
 function secondsLeft() {
   if (paused) return Math.max(0, Math.ceil((pausedRemainingMs ?? 0) / 1000));
-  const expiresAt = turn?.phase === 'choosing' ? choiceExpiresAt : turn?.phase === 'gallery' ? galleryExpiresAt : turnExpiresAt;
+  const expiresAt = turn?.phase === 'choosing' ? choiceExpiresAt : turnExpiresAt;
   if (!expiresAt) return 0;
   return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
 }
@@ -309,11 +301,11 @@ function floodFillOn(context, canvas, xFrac, yFrac, colorHex) {
   context.putImageData(imageData, 0, 0);
 }
 
+// Only the final favorite gallery still replays stored strokes onto a
+// canvas (live play now shows just a compact thumb marker, no replay card).
 function renderStoredCanvases(container) {
   container.querySelectorAll('canvas[data-stored-drawing]').forEach((canvas) => {
-    const drawing = [lastTurnEnd?.drawing, ...(gallery?.drawings ?? []), ...(matchEnded?.drawings ?? [])].find(
-      (entry) => entry?.id === canvas.dataset.storedDrawing
-    );
+    const drawing = (matchEnded?.drawings ?? []).find((entry) => entry?.id === canvas.dataset.storedDrawing);
     if (!drawing) return;
     renderScribbleDrawing(canvas, drawing.strokes ?? []);
   });
@@ -554,9 +546,9 @@ function guessFormHtml() {
 }
 
 // Live thumbs-up for whichever drawing is currently votable (the one being
-// drawn right now, or the one just finished, through the following
-// choosing/drawing phase — see scribble.ts's liveThumbsToken). Purely a
-// pre-selection/sorting signal for the round-end gallery, never saved.
+// drawn right now, or the one just finished, up until the next word is
+// chosen — see scribble.ts's liveThumbsToken). Never saved on its own; a
+// marked drawing only re-enters the final, whole-match favorite vote.
 function thumbButtonHtml() {
   if (!thumbsToken || isDrawer()) return '';
   return `<button type="button" class="btn btn-sm ${myThumbActive ? 'btn-primary' : ''}" id="scribble-thumb" aria-pressed="${myThumbActive}">
@@ -579,73 +571,18 @@ function drawingAreaHtml() {
     </div>`;
 }
 
-const REACTION_OPTIONS = [
-  { id: 'cool', label: 'Cool', icon: 'sparkles' },
-  { id: 'creative', label: 'Kreativ', icon: 'lightbulb' },
-  { id: 'funny', label: 'Witzig', icon: 'star' },
-];
-
-function reactionControlsHtml(drawing) {
-  const ownDrawing = drawing.artistId === myId();
-  return `<div class="scribble-reactions" aria-label="Bild bewerten">
-    ${REACTION_OPTIONS.map((option) => {
-      const selected = myReactions[drawing.id] === option.id;
-      return `<button type="button" class="btn btn-sm ${selected ? 'btn-primary' : ''}" data-drawing-reaction="${option.id}" data-drawing-id="${drawing.id}" aria-pressed="${selected}" ${ownDrawing ? 'disabled title="Eigene Bilder können nicht bewertet werden"' : ''}>
-        ${icon(option.icon)} ${option.label} <span data-reaction-count="${drawing.id}:${option.id}">${drawing.reactions?.[option.id] ?? 0}</span>
-      </button>`;
-    }).join('')}
+// A compact, one-line control for marking the picture that was just drawn -
+// deliberately no canvas replay/card here (that used to push the actual
+// drawing area down); the live thumbsToken still covers this same drawing
+// through 'reveal' and 'choosing', right up until the next word is chosen
+// (drawingAreaHtml renders the same thumbButtonHtml() once 'drawing' takes
+// over again, so this is never shown at the same time as that one).
+function lastDrawingThumbHtml() {
+  if (!lastTurnEnd?.drawing || turn?.phase === 'drawing') return '';
+  return `<div class="row-between" style="margin-top:var(--space-3);gap:var(--space-2);">
+    <span class="muted">Wort war: ${escapeHtml(lastTurnEnd.word ?? '')}</span>
+    ${thumbButtonHtml()}
   </div>`;
-}
-
-function storedDrawingHtml(drawing, { galleryCard = false } = {}) {
-  const ownDrawing = drawing.artistId === myId();
-  const hasOtherArtist = (gallery?.drawings ?? []).some((entry) => entry.artistId !== myId());
-  const favoriteDisabled = ownDrawing && hasOtherArtist;
-  const favoriteSelected = favoriteDrawingId === drawing.id;
-  const winner = gallery?.resolved && drawing.isRoundWinner;
-  return `<article class="card stack scribble-drawing-card ${winner ? 'is-winner' : ''}">
-    <div class="row-between" style="gap:var(--space-2);">
-      <strong>${escapeHtml(drawing.artistName)}</strong>
-      ${winner ? `<span class="badge">${icon('trophy')} Rundenbild</span>` : `<span class="muted">${drawing.reactionCount ?? 0} Reaktionen</span>`}
-    </div>
-    <div class="scribble-stored-canvas-wrap"><canvas data-stored-drawing="${drawing.id}" aria-label="Zeichnung von ${escapeHtml(drawing.artistName)}"></canvas></div>
-    <div class="muted">Wort: ${escapeHtml(drawing.word)}</div>
-    ${reactionControlsHtml(drawing)}
-    ${galleryCard && !gallery?.resolved
-      ? `<button type="button" class="btn ${favoriteSelected ? 'btn-primary' : ''}" data-favorite-drawing="${drawing.id}" aria-pressed="${favoriteSelected}" ${favoriteDisabled ? 'disabled title="Das eigene Bild kann nicht Favorit sein"' : ''}>
-          ${icon('star')} ${favoriteSelected ? 'Dein Favorit' : 'Als Favorit wählen'} · ${drawing.favoriteVotes ?? 0}
-        </button>`
-      : galleryCard
-        ? `<div class="muted">${drawing.favoriteVotes ?? 0} Favoritenstimmen</div>`
-        : ''}
-  </article>`;
-}
-
-function lastDrawingHtml() {
-  if (!lastTurnEnd?.drawing || turn?.phase === 'gallery') return '';
-  return `<div class="scribble-last-drawing" style="margin-top:var(--space-3);">
-    <div class="row-between" style="gap:var(--space-2);">
-      <div class="section-title">Letztes Bild bewerten</div>
-      ${thumbButtonHtml()}
-    </div>
-    <strong>Wort war: ${escapeHtml(lastTurnEnd.word ?? '')}</strong>
-    ${storedDrawingHtml(lastTurnEnd.drawing)}
-  </div>`;
-}
-
-function galleryHtml() {
-  if (!gallery || turn?.phase !== 'gallery') return '';
-  const heading = gallery.resolved ? 'Rundenbild gekürt' : 'Favorit der Runde';
-  const info = gallery.resolved
-    ? 'Der Rundensieger bleibt dauerhaft in der Scribble-Galerie sichtbar.'
-    : 'Die Bilder sind nach Reaktionen sortiert. Wähle genau einen Favoriten; deine Auswahl kann bis zum Ende geändert werden.';
-  return `<section class="stack scribble-round-gallery" style="margin-top:var(--space-3);">
-    <div class="row-between" style="gap:var(--space-3);">
-      <div><div class="section-title">${heading}</div><div class="muted">Runde ${gallery.round}/${gallery.rounds} · ${info}</div></div>
-      ${!gallery.resolved ? `<span id="scribble-countdown" class="badge badge-playing">${secondsLeft()}s</span>` : ''}
-    </div>
-    <div class="scribble-gallery-grid">${(gallery.drawings ?? []).map((drawing) => storedDrawingHtml(drawing, { galleryCard: true })).join('')}</div>
-  </section>`;
 }
 
 function appendChatLine(payload) {
@@ -713,9 +650,6 @@ export function ensureScribbleSocket() {
     wordOptions = payload.phase === 'choosing' ? wordOptions : null;
     choiceExpiresAt = payload.phase === 'choosing' ? payload.expiresAt : null;
     turnExpiresAt = payload.phase === 'drawing' ? payload.expiresAt : null;
-    gallery = null;
-    galleryExpiresAt = null;
-    favoriteDrawingId = null;
     paused = false;
     if (payload.phase === 'drawing') {
       thumbsToken = payload.thumbsToken ?? null;
@@ -795,28 +729,6 @@ export function ensureScribbleSocket() {
     rerender();
   });
 
-  socket.on('scribble:drawing-rating', (payload) => {
-    if (!match || payload.matchId !== match.matchId || !payload.drawing) return;
-    if (lastTurnEnd?.drawing?.id === payload.drawing.id) lastTurnEnd = { ...lastTurnEnd, drawing: payload.drawing };
-    if (gallery) gallery = { ...gallery, drawings: gallery.drawings.map((drawing) => drawing.id === payload.drawing.id ? payload.drawing : drawing) };
-    if (turn?.phase === 'gallery' || turn?.phase === 'reveal') rerender();
-    else {
-      for (const option of REACTION_OPTIONS) {
-        const count = document.querySelector(`[data-reaction-count="${payload.drawing.id}:${option.id}"]`);
-        if (count) count.textContent = String(payload.drawing.reactions?.[option.id] ?? 0);
-      }
-    }
-  });
-
-  socket.on('scribble:gallery', (payload) => {
-    if (!match || payload.matchId !== match.matchId) return;
-    gallery = payload;
-    galleryExpiresAt = payload.expiresAt;
-    turn = { ...(turn ?? {}), phase: 'gallery', round: payload.round, rounds: payload.rounds };
-    stopCountdown();
-    rerender();
-  });
-
   socket.on('scribble:match:end', (payload) => {
     if (!match || payload.matchId !== match.matchId) return;
     matchEnded = { winner: payload.winner, scores: payload.scores, drawings: payload.drawings ?? [] };
@@ -863,8 +775,8 @@ export function ensureScribbleSocket() {
       if (!res?.ok) return;
       const sync = res.sync;
       // Only a drawing-phase sync carries ops for a live canvas. A sync
-      // during gallery/reveal/choosing must reset the mirror instead — the
-      // next turn's canvas has to start blank, not replay stale artwork.
+      // during reveal/choosing must reset the mirror instead — the next
+      // turn's canvas has to start blank, not replay stale artwork.
       confirmedOps = sync.phase === 'drawing' ? sync.strokes ?? [] : [];
       confirmedStrokeCount = new Set(confirmedOps.map((op) => op.strokeId)).size;
       match = { matchId: sync.matchId, host: sync.host, players: sync.players, rounds: sync.rounds, turnDurationMs: sync.turnDurationMs };
@@ -883,10 +795,6 @@ export function ensureScribbleSocket() {
       turnExpiresAt = sync.phase === 'drawing' ? sync.expiresAt : null;
       paused = sync.paused;
       lastTurnEnd = sync.lastDrawing ? { word: sync.lastDrawing.word, reason: 'synced', drawing: sync.lastDrawing } : null;
-      gallery = sync.gallery;
-      galleryExpiresAt = sync.gallery?.expiresAt ?? null;
-      myReactions = sync.selectedRatings?.reactions ?? {};
-      favoriteDrawingId = sync.selectedRatings?.favoriteDrawingId ?? null;
       thumbsToken = sync.thumbsToken ?? null;
       thumbsCount = sync.thumbsCount ?? 0;
       myThumbActive = !!sync.myThumbActive;
@@ -1087,8 +995,7 @@ export function renderScribbleRoom(container) {
     <div class="arcade-game-shell"><h1 class="view-title">Scribble</h1>
     ${arcadeExpandControlHtml()}
     <div id="scribble-roster">${rosterScoreHtml()}</div>
-    ${galleryHtml()}
-    ${lastDrawingHtml()}
+    ${lastDrawingThumbHtml()}
     ${wordChoiceHtml()}
     ${turn?.phase === 'drawing' ? drawingAreaHtml() : ''}
     ${matchControlsHtml()}
@@ -1109,7 +1016,6 @@ function wireRoom(container) {
     canvas2d = null;
     toolbarEl = null;
   }
-  renderStoredCanvases(container);
   if (!paused) startCountdown();
   else updateCountdownBadge();
 
@@ -1135,37 +1041,6 @@ function wireRoom(container) {
     }
     const countEl = container.querySelector('[data-scribble-thumb-count]');
     if (countEl) countEl.textContent = String(thumbsCount);
-  });
-
-  container.querySelectorAll('[data-drawing-reaction]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const res = await emitWithAck('scribble:reaction', {
-        matchId: match.matchId,
-        playerId: myId(),
-        drawingId: btn.dataset.drawingId,
-        reaction: btn.dataset.drawingReaction,
-      });
-      if (!res?.ok) return showToast(res?.error || 'Bewertung nicht möglich.', { error: true });
-      myReactions[btn.dataset.drawingId] = res.reaction;
-      container.querySelectorAll(`[data-drawing-id="${btn.dataset.drawingId}"]`).forEach((reactionBtn) => {
-        const selected = reactionBtn.dataset.drawingReaction === res.reaction;
-        reactionBtn.classList.toggle('btn-primary', selected);
-        reactionBtn.setAttribute('aria-pressed', String(selected));
-      });
-    });
-  });
-
-  container.querySelectorAll('[data-favorite-drawing]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const res = await emitWithAck('scribble:favorite', {
-        matchId: match.matchId,
-        playerId: myId(),
-        drawingId: btn.dataset.favoriteDrawing,
-      });
-      if (!res?.ok) return showToast(res?.error || 'Favorit konnte nicht gewählt werden.', { error: true });
-      favoriteDrawingId = res.drawingId;
-      rerender();
-    });
   });
 
   container.querySelectorAll('[data-color]').forEach((btn) => {
