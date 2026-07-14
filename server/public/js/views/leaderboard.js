@@ -139,9 +139,14 @@ export function openMatchForm(ctx, options = {}) {
     options.presetTeams.forEach((t, i) => t.playerIds.forEach((pid) => presetTeamIndexByPlayer.set(pid, i)));
   }
 
-  // Free-for-all defaults to whoever is currently shown as playing, same
+  // Free-for-all defaults to the drawn lineup's players when entering a
+  // result for a specific draw (so switching to "Frei-für-alle" there keeps
+  // the same participants instead of silently swapping in "whoever is
+  // playing now"), otherwise whoever is currently shown as playing, same
   // convention as "Teams auslosen" and tournament creation.
-  let ffaCheckedIds = new Set(state.live.filter((p) => p.state === 'playing').map((p) => p.player_id));
+  let ffaCheckedIds = options.presetTeams
+    ? new Set(options.presetTeams.flatMap((t) => t.playerIds))
+    : new Set(state.live.filter((p) => p.state === 'playing').map((p) => p.player_id));
   if (ffaCheckedIds.size === 0) ffaCheckedIds = new Set(state.players.map((p) => p.id));
   const ffaParticipants = () => state.players.filter((p) => ffaCheckedIds.has(p.id));
 
@@ -238,6 +243,13 @@ export function openMatchForm(ctx, options = {}) {
           `;
 
           bodyEl.querySelector('#match-teamcount').addEventListener('input', (e) => {
+            // Capture whatever the user already picked before re-rendering,
+            // so changing "Anzahl Teams" doesn't quietly revert a manual
+            // team reassignment (or removal, via "–") made just before it.
+            bodyEl.querySelectorAll('[data-team-for]').forEach((sel) => {
+              if (sel.value === '') presetTeamIndexByPlayer.delete(sel.dataset.teamFor);
+              else presetTeamIndexByPlayer.set(sel.dataset.teamFor, parseInt(sel.value, 10));
+            });
             teamCount = Math.min(6, Math.max(2, parseInt(e.target.value, 10) || 2));
             renderTeamPickers();
           });
@@ -369,7 +381,18 @@ export function openMatchForm(ctx, options = {}) {
             }
 
             try {
-              await api.matches.create({ gameId, teams, winnerTeamIndex });
+              await api.matches.create({
+                gameId,
+                teams,
+                winnerTeamIndex,
+                ...(options.presetDrawId ? { drawId: options.presetDrawId } : {}),
+              });
+              // Same as the team-mode branch below: don't wait for the
+              // matchmaking:draws-changed round trip to hide the "gerade
+              // ausgelost" panel the submitter is looking at.
+              if (options.presetDrawId && state.lastMatchmaking?.id === options.presetDrawId) {
+                state.lastMatchmaking = null;
+              }
               close();
               await ctx.refresh();
               showToast('Ergebnis gespeichert.');

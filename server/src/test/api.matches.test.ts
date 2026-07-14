@@ -134,6 +134,65 @@ test('POST /api/matches with a drawId links the draw to the new match (Team-Hist
   assert.equal(linked.matchId, match.body.id);
 });
 
+test('POST /api/matches re-snapshots the linked draw to the actually-submitted teams (player moved before saving)', async () => {
+  // Draw puts A+C on one team, B alone on the other, but the result is
+  // entered with A moved onto B's team instead (as if reassigned in the
+  // entry form) — Ergebnis-Historie must reflect what was actually played,
+  // not the original draw lineup.
+  const draw = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId, playerIds: [playerA, playerB, playerC], teamCount: 2 });
+
+  const match = await request(app)
+    .post('/api/matches')
+    .send({
+      gameId,
+      teams: [{ playerIds: [playerB, playerA] }, { playerIds: [playerC] }],
+      winnerTeamIndex: 0,
+      drawId: draw.body.id,
+    });
+  assert.equal(match.status, 201);
+
+  const history = await request(app).get(`/api/matchmaking/history?gameId=${gameId}`);
+  const linked = history.body.history.find((h: { id: string }) => h.id === draw.body.id);
+  assert.ok(linked, 'draw should appear in history');
+  assert.equal(linked.matchId, match.body.id);
+  assert.deepEqual(
+    linked.teams.map((t: { players: { id: string }[] }) => t.players.map((p) => p.id).sort()),
+    [[playerA, playerB].sort(), [playerC]]
+  );
+  assert.equal(linked.winnerTeamIndex, 0);
+});
+
+test('POST /api/matches links a Frei-für-alle result (different team shape) back to its draw and shows the winner', async () => {
+  const draw = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId, playerIds: [playerA, playerB, playerC], teamCount: 2 });
+
+  // Frei-für-alle: every participant becomes their own one-player team,
+  // unlike the drawn 2-team lineup above.
+  const match = await request(app)
+    .post('/api/matches')
+    .send({
+      gameId,
+      teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }, { playerIds: [playerC] }],
+      winnerTeamIndex: 2,
+      drawId: draw.body.id,
+    });
+  assert.equal(match.status, 201);
+
+  const history = await request(app).get(`/api/matchmaking/history?gameId=${gameId}`);
+  const linked = history.body.history.find((h: { id: string }) => h.id === draw.body.id);
+  assert.ok(linked, 'draw should appear in history');
+  assert.equal(linked.matchId, match.body.id);
+  assert.equal(linked.teams.length, 3);
+  assert.equal(linked.winnerTeamIndex, 2);
+  assert.deepEqual(
+    linked.teams.map((t: { players: { id: string }[] }) => t.players.map((p) => p.id)),
+    [[playerA], [playerB], [playerC]]
+  );
+});
+
 test('POST /api/matches 404s for an unknown drawId', async () => {
   const res = await request(app)
     .post('/api/matches')

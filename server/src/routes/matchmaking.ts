@@ -36,6 +36,64 @@ interface PlayerRow {
   avatar: string | null;
 }
 
+// Re-derives a draw-shaped teams snapshot (full player info + totalRating)
+// from plain player-id lists — used wherever a fresh matchmaking_draws.teams
+// value needs to be built from scratch: the rematch endpoint, and POST
+// /api/matches re-snapshotting a linked draw to whatever was actually
+// submitted (see the comment on that call site).
+export function buildTeamsSnapshot(gameId: string, teamPlayerIdLists: string[][]) {
+  const allIds = [...new Set(teamPlayerIdLists.flat())];
+  const playerById = new Map<string, PlayerRow>();
+  const ratingByPlayer = new Map<string, number>();
+  if (allIds.length > 0) {
+    const placeholders = allIds.map(() => '?').join(',');
+    const players = db
+      .prepare(`SELECT id, name, color, avatar FROM players WHERE id IN (${placeholders})`)
+      .all(...allIds) as PlayerRow[];
+    players.forEach((p) => playerById.set(p.id, p));
+    const ratingRows = db
+      .prepare(`SELECT player_id, rating FROM skills WHERE game_id = ? AND player_id IN (${placeholders})`)
+      .all(gameId, ...allIds) as Array<{ player_id: string; rating: number }>;
+    ratingRows.forEach((r) => ratingByPlayer.set(r.player_id, r.rating));
+  }
+  return teamPlayerIdLists.map((ids) => {
+    const teamPlayers = ids.map((id) => {
+      const p = playerById.get(id);
+      return {
+        id,
+        name: p?.name ?? '?',
+        color: p?.color ?? '#888888',
+        avatar: p?.avatar ?? null,
+        rating: ratingByPlayer.get(id) ?? DEFAULT_RATING,
+      };
+    });
+    return { players: teamPlayers, totalRating: teamPlayers.reduce((sum, p) => sum + p.rating, 0) };
+  });
+}
+
+// Recomputes and applies per-player seatConflict/seatConflictNames flags for
+// a teams snapshot (mutates the player objects in place) and returns the
+// aggregate conflict count. Shared by the Feinschliff move handler and the
+// POST /api/matches re-snapshot below — both need to re-derive conflicts
+// after a team lineup changes post-draw.
+export function applySeatConflicts(
+  eventId: string,
+  teams: Array<{ players: Array<{ id: string; name: string; seatConflict?: boolean; seatConflictNames?: string[] }> }>
+): number {
+  const allPlayers = teams.flatMap((t) => t.players);
+  const nameById = new Map(allPlayers.map((p) => [p.id, p.name]));
+  const avoidPairs = loadAvoidPairs(eventId, allPlayers.map((p) => p.id));
+  const teamIdLists = teams.map((t) => t.players.map((p) => p.id));
+  const seatConflicts = countSeatConflicts(teamIdLists, avoidPairs);
+  const conflictNeighbors = seatConflictNeighbors(teamIdLists, avoidPairs);
+  for (const p of allPlayers) {
+    const neighborIds = conflictNeighbors.get(p.id);
+    p.seatConflict = !!neighborIds;
+    p.seatConflictNames = neighborIds?.map((nid) => nameById.get(nid)).filter((n): n is string => !!n) ?? [];
+  }
+  return seatConflicts;
+}
+
 // Declared seat-neighbor pairs among a set of players, deduped (neighbors are
 // stored per-direction — see seat_neighbors' comment in db.ts). Shared by the
 // initial draw and by re-deriving conflicts after a manual Feinschliff move.
@@ -209,22 +267,7 @@ matchmakingRouter.post('/rematch', (req, res) => {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
   }
 
-  const ratingRows = db
-    .prepare(`SELECT player_id, rating FROM skills WHERE game_id = ? AND player_id IN (${placeholders})`)
-    .all(gameId, ...uniqueIds) as Array<{ player_id: string; rating: number }>;
-  const ratingByPlayer = new Map(ratingRows.map((r) => [r.player_id, r.rating]));
-  const playerById = new Map(players.map((p) => [p.id, p]));
-
-  const teams = teamPlayerIdLists.map((ids) => {
-    const teamPlayers = ids.map((id) => ({
-      ...playerById.get(id)!,
-      rating: ratingByPlayer.get(id) ?? DEFAULT_RATING,
-    }));
-    return {
-      players: teamPlayers,
-      totalRating: teamPlayers.reduce((sum, p) => sum + p.rating, 0),
-    };
-  });
+  const teams = buildTeamsSnapshot(gameId, teamPlayerIdLists);
 
   const drawId = nanoid();
   const result = {
@@ -395,20 +438,7 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
   // The move can turn a resolved seat-neighbor pair into a conflict (or fix
   // one) — only re-derive it when this draw actually considered seat
   // neighbors in the first place (avoidAdjacentOpponents was on for it).
-  let seatConflicts = 0;
-  if (row.seat_pairs_considered > 0) {
-    const allPlayers = teams.flatMap((t) => t.players);
-    const nameById = new Map(allPlayers.map((p) => [p.id, p.name]));
-    const avoidPairs = loadAvoidPairs(row.event_id, allPlayers.map((p) => p.id));
-    const teamIdLists = teams.map((t) => t.players.map((p) => p.id));
-    seatConflicts = countSeatConflicts(teamIdLists, avoidPairs);
-    const conflictNeighbors = seatConflictNeighbors(teamIdLists, avoidPairs);
-    for (const p of allPlayers) {
-      const neighborIds = conflictNeighbors.get(p.id);
-      p.seatConflict = !!neighborIds;
-      p.seatConflictNames = neighborIds?.map((nid) => nameById.get(nid)).filter((n): n is string => !!n) ?? [];
-    }
-  }
+  const seatConflicts = row.seat_pairs_considered > 0 ? applySeatConflicts(row.event_id, teams) : 0;
 
   db.prepare('UPDATE matchmaking_draws SET teams = ?, seat_conflicts = ? WHERE id = ?').run(
     JSON.stringify(teams),
