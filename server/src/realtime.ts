@@ -4,6 +4,7 @@
 import { Server, Socket } from 'socket.io';
 import { config } from './config';
 import { db } from './db';
+import { parseCookieHeader, verifySession, SESSION_COOKIE_NAME } from './sessions';
 
 let io: Server | null = null;
 let latestArcadeKioskGame: unknown = null;
@@ -170,11 +171,22 @@ export function registerArcadeKioskSockets(server: Server): void {
 // WebSocket, even with ACCESS_TOKEN set — enforce the same shared token here.
 // Parameterized (defaulting to config.accessToken) so the exact matching
 // logic is unit-testable without depending on process-wide env state.
+//
+// A valid per-user session cookie (see sessions.ts) is accepted as an
+// alternative to the token: a browser that already holds one got there by
+// passing this exact gate once already (the login/register gate only shows
+// up after the shared-token screen, see public/js/authGate.js), and
+// same-origin requests carry cookies automatically — nothing extra for the
+// Socket.IO client to do. This does not replace the token — both still
+// coexist until the shared token is retired (see
+// docs/KONZEPT-USER-MANAGEMENT.md phase 4).
 export function createSocketAuthGuard(accessToken: string = config.accessToken) {
   return (socket: Socket, next: (err?: Error) => void): void => {
     if (!accessToken) return next();
     const token = socket.handshake.auth?.token ?? socket.handshake.query?.token;
     if (token === accessToken) return next();
+    const sessionToken = parseCookieHeader(socket.handshake.headers.cookie)[SESSION_COOKIE_NAME];
+    if (sessionToken && verifySession(sessionToken)) return next();
     next(new Error('unauthorized'));
   };
 }

@@ -9,6 +9,7 @@ import path from 'path';
 import { requireAccess, accessProtectionEnabled } from './auth';
 import { apiRouter } from './routes';
 import { agentRouter } from './routes/agent';
+import { config } from './config';
 
 export function createApp(): express.Express {
   const app = express();
@@ -25,9 +26,13 @@ export function createApp(): express.Express {
   app.use(express.json({ limit: '1mb' }));
 
   // Public endpoint so the login screen knows whether a token is required.
-  // Intentionally NOT behind requireAccess.
+  // Intentionally NOT behind requireAccess. authMode tells the frontend
+  // whether to show the real per-user login/register gate on top of (or,
+  // once AUTH_MODE=required, only after) the shared-token gate — see
+  // docs/KONZEPT-USER-MANAGEMENT.md. 'legacy' (the default) means: behave
+  // exactly like before, the gate never appears.
   app.get('/api/meta', (_req, res) => {
-    res.json({ accessProtection: accessProtectionEnabled() });
+    res.json({ accessProtection: accessProtectionEnabled(), authMode: config.authMode });
   });
 
   // Agent reports authenticate via the player's own API key (NFR-15), not the

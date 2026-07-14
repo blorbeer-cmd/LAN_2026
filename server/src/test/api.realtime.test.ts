@@ -17,6 +17,8 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { setIo, Events, createSocketAuthGuard, registerArcadeKioskSockets, broadcastArcadeKiosk, arcadeWatcherPlayerIds } from '../realtime';
 import { db } from '../db';
+import { createSession, SESSION_COOKIE_NAME } from '../sessions';
+import { nanoid } from 'nanoid';
 
 async function withServer(fn: (baseUrl: string) => Promise<void>): Promise<void> {
   const app = createApp();
@@ -159,6 +161,50 @@ test('createSocketAuthGuard lets any socket through when no access token is conf
     } finally {
       socket.close();
     }
+  });
+});
+
+test('createSocketAuthGuard accepts a socket carrying a valid session cookie instead of the token', async () => {
+  const playerId = nanoid();
+  db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(
+    playerId,
+    `Realtime Session Test ${playerId}`,
+    nanoid(24),
+    Date.now()
+  );
+  const sessionToken = createSession(playerId);
+
+  await withGuardedServer('secret-token', async (baseUrl) => {
+    const socket = ioClient(baseUrl, {
+      transports: ['websocket'],
+      reconnection: false,
+      extraHeaders: { Cookie: `${SESSION_COOKIE_NAME}=${sessionToken}` },
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        socket.on('connect', () => resolve());
+        socket.on('connect_error', reject);
+      });
+      assert.ok(socket.connected);
+    } finally {
+      socket.close();
+    }
+  });
+});
+
+test('createSocketAuthGuard rejects a socket with neither a valid token nor a valid session cookie', async () => {
+  await withGuardedServer('secret-token', async (baseUrl) => {
+    const rejected = new Promise<Error>((resolve) => {
+      const socket = ioClient(baseUrl, {
+        transports: ['websocket'],
+        reconnection: false,
+        extraHeaders: { Cookie: `${SESSION_COOKIE_NAME}=not-a-real-token` },
+      });
+      socket.on('connect_error', (err) => resolve(err));
+      socket.on('connect', () => socket.close());
+    });
+    const err = await rejected;
+    assert.match(err.message, /unauthorized/);
   });
 });
 
