@@ -54,6 +54,15 @@ let gallery = null;
 let galleryExpiresAt = null;
 let myReactions = {};
 let favoriteDrawingId = null;
+// Live thumbs-up: valid for exactly one drawing at a time (whichever is
+// currently being drawn, or was most recently), from the moment it starts
+// until the next word is chosen. Never persisted - only used to sort the
+// round-end gallery, see scribble.ts's roundThumbs.
+let thumbsToken = null;
+let thumbsCount = 0;
+let myThumbActive = false;
+// Final favorite pick, offered once across every drawing of the whole match.
+let finalFavoriteDrawingId = null;
 
 let tool = { color: SWATCHES[0], size: SIZES[1], mode: 'pen' }; // mode: 'pen' | 'erase' | 'fill'
 let countdownInterval = null;
@@ -144,6 +153,10 @@ function resetMatchState() {
   galleryExpiresAt = null;
   myReactions = {};
   favoriteDrawingId = null;
+  thumbsToken = null;
+  thumbsCount = 0;
+  myThumbActive = false;
+  finalFavoriteDrawingId = null;
   stopCountdown();
 }
 
@@ -298,7 +311,9 @@ function floodFillOn(context, canvas, xFrac, yFrac, colorHex) {
 
 function renderStoredCanvases(container) {
   container.querySelectorAll('canvas[data-stored-drawing]').forEach((canvas) => {
-    const drawing = [lastTurnEnd?.drawing, ...(gallery?.drawings ?? [])].find((entry) => entry?.id === canvas.dataset.storedDrawing);
+    const drawing = [lastTurnEnd?.drawing, ...(gallery?.drawings ?? []), ...(matchEnded?.drawings ?? [])].find(
+      (entry) => entry?.id === canvas.dataset.storedDrawing
+    );
     if (!drawing) return;
     renderScribbleDrawing(canvas, drawing.strokes ?? []);
   });
@@ -481,6 +496,36 @@ function matchControlsHtml() {
     </div>`;
 }
 
+function finalFavoriteCardHtml(drawing) {
+  const ownDrawing = drawing.artistId === myId();
+  const hasOtherArtist = (matchEnded?.drawings ?? []).some((entry) => entry.artistId !== myId());
+  const disabled = ownDrawing && hasOtherArtist;
+  const selected = finalFavoriteDrawingId === drawing.id;
+  return `<article class="card stack scribble-drawing-card">
+    <div class="row-between" style="gap:var(--space-2);">
+      <strong>${escapeHtml(drawing.artistName)}</strong>
+      <span class="muted">Runde ${drawing.round}</span>
+    </div>
+    <div class="scribble-stored-canvas-wrap"><canvas data-stored-drawing="${drawing.id}" aria-label="Zeichnung von ${escapeHtml(drawing.artistName)}"></canvas></div>
+    <div class="muted">Wort: ${escapeHtml(drawing.word)}</div>
+    <button type="button" class="btn ${selected ? 'btn-primary' : ''}" data-final-favorite="${drawing.id}" aria-pressed="${selected}" ${disabled ? 'disabled title="Das eigene Bild kann nicht Favorit sein"' : ''}>
+      ${icon('star')} ${selected ? 'Dein Favorit' : 'Als Favorit wählen'}
+    </button>
+  </article>`;
+}
+
+// The whole match's gallery, offered once at the very end so the favorite
+// pick spans every drawing instead of only the last one that happened to be
+// on screen when the match ended.
+function finalFavoriteGalleryHtml() {
+  if (!matchEnded?.drawings?.length) return '';
+  return `<section class="stack scribble-round-gallery" style="margin-top:var(--space-3);">
+    <div class="section-title">Dein Favorit des Matches</div>
+    <div class="muted">Wähle aus allen Bildern dieser Partie deinen Favoriten.</div>
+    <div class="scribble-gallery-grid">${matchEnded.drawings.map(finalFavoriteCardHtml).join('')}</div>
+  </section>`;
+}
+
 function winnerCelebrationHtml() {
   if (!matchEnded) return '';
   const roster = matchRosterHtml(match.players, {
@@ -495,7 +540,8 @@ function winnerCelebrationHtml() {
       <strong>Match beendet</strong>
       ${roster}
       <button type="button" class="btn btn-primary" id="scribble-back">Zur Arcade</button>
-    </div>`;
+    </div>
+    ${finalFavoriteGalleryHtml()}`;
 }
 
 function guessFormHtml() {
@@ -507,10 +553,23 @@ function guessFormHtml() {
     </form>`;
 }
 
+// Live thumbs-up for whichever drawing is currently votable (the one being
+// drawn right now, or the one just finished, through the following
+// choosing/drawing phase — see scribble.ts's liveThumbsToken). Purely a
+// pre-selection/sorting signal for the round-end gallery, never saved.
+function thumbButtonHtml() {
+  if (!thumbsToken || isDrawer()) return '';
+  return `<button type="button" class="btn btn-sm ${myThumbActive ? 'btn-primary' : ''}" id="scribble-thumb" aria-pressed="${myThumbActive}">
+    ${icon('thumbsUp')} <span data-scribble-thumb-count>${thumbsCount}</span>
+  </button>`;
+}
+
 function drawingAreaHtml() {
+  const wordMaskHtml = `<div class="scribble-word-mask">${escapeHtml((isDrawer() ? turn.currentWord : mask) ?? mask ?? '')}</div>`;
+  const thumb = thumbButtonHtml();
   return `
     <div class="card stack scribble-stage-card" style="margin-top:var(--space-3);">
-      <div class="scribble-word-mask">${escapeHtml((isDrawer() ? turn.currentWord : mask) ?? mask ?? '')}</div>
+      ${thumb ? `<div class="row-between" style="gap:var(--space-2);">${wordMaskHtml}${thumb}</div>` : wordMaskHtml}
       <div class="scribble-canvas-wrap ${!isDrawer() ? 'scribble-canvas-locked' : ''}">
         <canvas id="scribble-canvas"></canvas>
       </div>
@@ -565,7 +624,10 @@ function storedDrawingHtml(drawing, { galleryCard = false } = {}) {
 function lastDrawingHtml() {
   if (!lastTurnEnd?.drawing || turn?.phase === 'gallery') return '';
   return `<div class="scribble-last-drawing" style="margin-top:var(--space-3);">
-    <div class="section-title">Letztes Bild bewerten</div>
+    <div class="row-between" style="gap:var(--space-2);">
+      <div class="section-title">Letztes Bild bewerten</div>
+      ${thumbButtonHtml()}
+    </div>
     <strong>Wort war: ${escapeHtml(lastTurnEnd.word ?? '')}</strong>
     ${storedDrawingHtml(lastTurnEnd.drawing)}
   </div>`;
@@ -655,7 +717,19 @@ export function ensureScribbleSocket() {
     galleryExpiresAt = null;
     favoriteDrawingId = null;
     paused = false;
+    if (payload.phase === 'drawing') {
+      thumbsToken = payload.thumbsToken ?? null;
+      thumbsCount = 0;
+      myThumbActive = false;
+    }
     rerender();
+  });
+
+  socket.on('scribble:thumb-update', (payload) => {
+    if (!match || payload.matchId !== match.matchId || payload.token !== thumbsToken) return;
+    thumbsCount = payload.count;
+    const el = document.querySelector('[data-scribble-thumb-count]');
+    if (el) el.textContent = String(thumbsCount);
   });
 
   // Broadcast from the drawer's strokes/clear/fill — draw directly onto the
@@ -716,6 +790,7 @@ export function ensureScribbleSocket() {
     if (turn) turn = { ...turn, scores: payload.scores, phase: 'reveal' };
     turnExpiresAt = null;
     choiceExpiresAt = null;
+    thumbsToken = payload.thumbsToken ?? thumbsToken;
     stopCountdown();
     rerender();
   });
@@ -744,7 +819,8 @@ export function ensureScribbleSocket() {
 
   socket.on('scribble:match:end', (payload) => {
     if (!match || payload.matchId !== match.matchId) return;
-    matchEnded = { winner: payload.winner, scores: payload.scores };
+    matchEnded = { winner: payload.winner, scores: payload.scores, drawings: payload.drawings ?? [] };
+    finalFavoriteDrawingId = null;
     stopCountdown();
     cancelCountdown();
     // A finished match adds a new highscore row — let the Arcade view know
@@ -811,6 +887,9 @@ export function ensureScribbleSocket() {
       galleryExpiresAt = sync.gallery?.expiresAt ?? null;
       myReactions = sync.selectedRatings?.reactions ?? {};
       favoriteDrawingId = sync.selectedRatings?.favoriteDrawingId ?? null;
+      thumbsToken = sync.thumbsToken ?? null;
+      thumbsCount = sync.thumbsCount ?? 0;
+      myThumbActive = !!sync.myThumbActive;
       rerender();
     });
   });
@@ -981,9 +1060,25 @@ export function renderScribbleRoom(container) {
   if (matchEnded) {
     container.innerHTML = `
       <div class="arcade-game-shell"><h1 class="view-title">Scribble</h1>${winnerCelebrationHtml()}</div>`;
+    renderStoredCanvases(container);
     container.querySelector('#scribble-back')?.addEventListener('click', () => {
       resetMatchState();
       navigate('arcade');
+    });
+    container.querySelectorAll('[data-final-favorite]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const drawingId = btn.dataset.finalFavorite;
+        const res = await emitWithAck('scribble:match:favorite-final', { matchId: match.matchId, playerId: myId(), drawingId });
+        if (!res?.ok) return showToast(res?.error || 'Favorit konnte nicht gewählt werden.', { error: true });
+        finalFavoriteDrawingId = drawingId;
+        container.querySelectorAll('[data-final-favorite]').forEach((otherBtn) => {
+          const selected = otherBtn.dataset.finalFavorite === drawingId;
+          otherBtn.classList.toggle('btn-primary', selected);
+          otherBtn.setAttribute('aria-pressed', String(selected));
+          otherBtn.textContent = '';
+          otherBtn.insertAdjacentHTML('beforeend', `${icon('star')} ${selected ? 'Dein Favorit' : 'Als Favorit wählen'}`);
+        });
+      });
     });
     return;
   }
@@ -1024,6 +1119,22 @@ function wireRoom(container) {
         if (!res?.ok) showToast(res?.error || 'Wort konnte nicht gewählt werden.', { error: true });
       });
     });
+  });
+
+  container.querySelector('#scribble-thumb')?.addEventListener('click', async () => {
+    const token = thumbsToken;
+    const res = await emitWithAck('scribble:thumb', { matchId: match.matchId, playerId: myId(), token });
+    if (!res?.ok) return showToast(res?.error || 'Bewertung nicht möglich.', { error: true });
+    if (token !== thumbsToken) return; // the vote window rotated while the request was in flight
+    myThumbActive = res.active;
+    thumbsCount = res.count;
+    const btn = container.querySelector('#scribble-thumb');
+    if (btn) {
+      btn.classList.toggle('btn-primary', myThumbActive);
+      btn.setAttribute('aria-pressed', String(myThumbActive));
+    }
+    const countEl = container.querySelector('[data-scribble-thumb-count]');
+    if (countEl) countEl.textContent = String(thumbsCount);
   });
 
   container.querySelectorAll('[data-drawing-reaction]').forEach((btn) => {
