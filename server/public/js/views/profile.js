@@ -15,6 +15,7 @@ import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, avatarHtml } from '../format.js';
 import { getMyId, setMyId } from '../whoami.js';
+import { authRequired, logout } from '../authGate.js';
 import { showToast } from '../toast.js';
 import { getPushSubscriptionState, enablePush, disablePush } from '../push.js';
 import { invalidateMyStats } from './myStats.js';
@@ -167,7 +168,11 @@ export function renderProfile(container, ctx) {
   container.innerHTML = `
     <div class="row-between">
       <h1 class="view-title">👤 Mein Profil</h1>
-      <button type="button" class="btn btn-sm" id="profile-not-me">Nicht du?</button>
+      ${
+        authRequired
+          ? `<button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>`
+          : `<button type="button" class="btn btn-sm" id="profile-not-me">Nicht du?</button>`
+      }
     </div>
 
     <div class="card stack">
@@ -281,12 +286,19 @@ export function renderProfile(container, ctx) {
     </div>
   `;
 
-  container.querySelector('#profile-not-me').addEventListener('click', () => {
-    setMyId('');
-    invalidateMyStats();
-    neighborsForPlayerId = null;
-    ctx.rerender();
-  });
+  // "Nicht du?" (a passwordless identity switch) stops making sense once a
+  // real, password-backed session is active — the account IS the identity
+  // then, so the same button instead really signs out (see authGate.js).
+  if (authRequired) {
+    container.querySelector('#profile-logout').addEventListener('click', () => logout());
+  } else {
+    container.querySelector('#profile-not-me').addEventListener('click', () => {
+      setMyId('');
+      invalidateMyStats();
+      neighborsForPlayerId = null;
+      ctx.rerender();
+    });
+  }
 
   // Fetched lazily (the roster list intentionally omits API keys) and only
   // ever for your own profile — see the players.js detail modal for the

@@ -26,6 +26,15 @@
     </form>
   </div>
 
+  <!-- Real per-user login/register/claim gate (see
+       docs/KONZEPT-USER-MANAGEMENT.md, public/js/authGate.js). Only ever
+       shown when the server reports authMode: 'required' via /api/meta —
+       stays empty and hidden otherwise, so nothing changes for today's
+       shared-token-only deployments. Content is rendered into it by
+       authGate.js, not hardcoded here, since which form (login/register/
+       claim) applies depends on the URL the visitor arrived with. -->
+  <div id="auth-screen" class="login-screen" hidden></div>
+
   <div id="app" class="app" hidden>
     <header class="topbar">
       <a class="topbar-title" href="/" aria-label="Zur Landingpage">

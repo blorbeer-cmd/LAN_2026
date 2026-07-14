@@ -1,0 +1,132 @@
+// Browser E2E test for real per-user login (see
+// docs/KONZEPT-USER-MANAGEMENT.md): once AUTH_MODE=required, an invite link
+// registers a brand-new account and logs it straight in, logging out drops
+// back to the login gate, and logging back in with the same credentials
+// works. Bootstraps one admin via ADMIN_RECOVERY_CODE (through plain fetch,
+// not the browser — that flow has its own coverage in
+// api.auth.recovery.test.ts) purely to be able to mint the invite code this
+// test needs.
+
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn, ChildProcess } from 'child_process';
+import path from 'path';
+import { chromium, Browser, Page } from 'playwright';
+
+const PORT = 3904; // 3901 = flows, 3902 = access, 3903 = arcade, 3910 = agent integration
+const BASE_URL = `http://localhost:${PORT}`;
+const RECOVERY_CODE = 'e2e-admin-recovery-code';
+const NAME = 'E2E New Person';
+const PASSWORD = 'e2e new person password';
+
+let serverProcess: ChildProcess;
+let browser: Browser;
+let page: Page;
+
+async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return;
+    } catch {
+      // not up yet, keep polling
+    }
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  throw new Error(`Server at ${url} did not become ready in time`);
+}
+
+// Mints a fresh 'register' invite code by bootstrapping one admin account
+// via the recovery code (plain HTTP, no browser involved) and having it
+// issue the invite the actual browser flow will consume.
+async function mintRegisterInviteCode(): Promise<string> {
+  const bootstrap = await fetch(`${BASE_URL}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: RECOVERY_CODE, name: 'E2E Bootstrap Admin', password: 'e2e bootstrap password' }),
+  });
+  const setCookie = bootstrap.headers.get('set-cookie');
+  assert.ok(setCookie, 'bootstrap register should set a session cookie');
+  const adminCookie = setCookie!.split(';')[0];
+
+  const invite = await fetch(`${BASE_URL}/api/auth/invites`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    body: JSON.stringify({ purpose: 'register' }),
+  });
+  const body = (await invite.json()) as { code: string };
+  return body.code;
+}
+
+before(async () => {
+  serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
+    env: { ...process.env, PORT: String(PORT), DB_FILE: ':memory:', AUTH_MODE: 'required', ADMIN_RECOVERY_CODE: RECOVERY_CODE },
+    stdio: 'ignore',
+  });
+  await waitForServer(`${BASE_URL}/api/health`);
+  browser = await chromium.launch();
+  page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+});
+
+after(async () => {
+  await browser?.close();
+  serverProcess?.kill();
+});
+
+test('an invite link registers a new account and logs it straight in', async () => {
+  const code = await mintRegisterInviteCode();
+
+  await page.goto(`${BASE_URL}/?invite=${code}`);
+  await page.waitForSelector('#auth-screen:not([hidden])');
+
+  await page.fill('#auth-name', NAME);
+  await page.fill('#auth-password', PASSWORD);
+  await page.click('#auth-form button[type="submit"]');
+
+  await page.waitForSelector('#app:not([hidden])');
+  const search = new URL(page.url()).search;
+  assert.equal(search, '', 'the consumed invite code should be dropped from the URL');
+  // #app unhides as soon as the gate resolves, before main()'s subsequent
+  // loadAll() populates state.players — navigating to Profile before that
+  // finishes would find no matching player and show the "pick an identity"
+  // fallback instead of the real profile (with its Logout button). A brief
+  // settle avoids racing that unrelated, pre-existing boot-order timing.
+  await page.waitForTimeout(500);
+});
+
+test('logging out drops back to the login gate, and logging back in works', async () => {
+  await page.click('#profile-btn');
+  await page.waitForSelector('#profile-logout');
+  await page.click('#profile-logout');
+
+  await page.waitForSelector('#auth-screen:not([hidden])');
+  await page.waitForSelector('#auth-name');
+
+  await page.fill('#auth-name', NAME);
+  await page.fill('#auth-password', PASSWORD);
+  await page.click('#auth-form button[type="submit"]');
+
+  await page.waitForSelector('#app:not([hidden])');
+  await page.waitForTimeout(500); // see the comment on the previous test
+});
+
+test('a wrong password on the login gate shows an error and does not proceed', async () => {
+  await page.click('#profile-btn');
+  await page.waitForSelector('#profile-logout');
+  await page.click('#profile-logout');
+  await page.waitForSelector('#auth-screen:not([hidden])');
+
+  await page.fill('#auth-name', NAME);
+  await page.fill('#auth-password', 'not the right password');
+  await page.click('#auth-form button[type="submit"]');
+
+  await page.waitForSelector('#auth-error:not([hidden])');
+  const appHidden = await page.getAttribute('#app', 'hidden');
+  assert.notEqual(appHidden, null);
+
+  // Recover the session for any later test that might reuse this page.
+  await page.fill('#auth-password', PASSWORD);
+  await page.click('#auth-form button[type="submit"]');
+  await page.waitForSelector('#app:not([hidden])');
+});

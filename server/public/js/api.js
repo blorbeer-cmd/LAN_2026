@@ -95,6 +95,16 @@ export async function fetchBlob(path) {
 
 export const api = {
   meta: () => apiFetch('/api/meta'),
+  me: () => apiFetch('/api/me'),
+
+  // Real per-user login (see docs/KONZEPT-USER-MANAGEMENT.md). Only used by
+  // authGate.js, and only once the server reports authMode: 'required'.
+  auth: {
+    register: (data) => apiFetch('/api/auth/register', { method: 'POST', body: JSON.stringify(data) }),
+    claim: (data) => apiFetch('/api/auth/claim', { method: 'POST', body: JSON.stringify(data) }),
+    login: (data) => apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify(data) }),
+    logout: () => apiFetch('/api/auth/logout', { method: 'POST' }),
+  },
 
   players: {
     list: () => apiFetch('/api/players'),
