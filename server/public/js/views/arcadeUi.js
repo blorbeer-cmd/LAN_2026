@@ -2,6 +2,34 @@ import { escapeHtml, avatarHtml } from '../format.js';
 
 const ARCADE_EXPANDED_KEY = 'lan-arcade-expanded';
 
+// Every expanded playfield (`.arcade-game-shell.is-expanded ...`) sizes its
+// width off a shared `--arcade-h-budget` height budget (default: a fixed
+// `100dvh - 18rem` guess in style.css). That guess works for the game with
+// the least surrounding UI but clips the score/chat/controls of games with
+// more of it. This measures the *actual* leftover space in the scrollable
+// view and, only when the guess overflows it, shrinks the shared budget by
+// exactly the overflow amount so every game's formula stays correct.
+function syncExpandedPlayfieldHeight(shell) {
+  if (!shell.classList.contains('is-expanded')) {
+    shell.style.removeProperty('--arcade-h-budget');
+    return;
+  }
+  const viewContainer = shell.closest('.view-container');
+  if (!viewContainer) return;
+  // Reset to the CSS default before measuring so repeated calls (resize,
+  // re-render) converge instead of ratcheting the height down each time.
+  shell.style.removeProperty('--arcade-h-budget');
+  requestAnimationFrame(() => {
+    if (!shell.isConnected || !shell.classList.contains('is-expanded')) return;
+    const overflow = viewContainer.scrollHeight - viewContainer.clientHeight;
+    if (overflow <= 0) return;
+    const remPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const cssBudget = window.innerHeight - 18 * remPx;
+    const target = Math.max(160, cssBudget - overflow - 8);
+    shell.style.setProperty('--arcade-h-budget', `${target}px`);
+  });
+}
+
 export function arcadeExpandControlHtml() {
   return `
     <div class="arcade-expand-control">
@@ -34,11 +62,22 @@ export function wireArcadeExpandControl(container) {
     } catch {
       // The preference is optional and must not block playing.
     }
+    syncExpandedPlayfieldHeight(shell);
   };
 
   apply(expanded);
   button.addEventListener('click', () => apply(!expanded));
+  resizeTrackedShell = shell;
 }
+
+// Every game view replaces its container's innerHTML (and thus `shell`) on
+// each re-render, so a per-call `resize` listener would pile up detached
+// listeners over a long-running session. One shared listener always reads
+// whichever shell was wired most recently instead.
+let resizeTrackedShell = null;
+window.addEventListener('resize', () => {
+  if (resizeTrackedShell?.isConnected) syncExpandedPlayfieldHeight(resizeTrackedShell);
+});
 
 export function matchRosterHtml(players, { winnerId = null, scoreFor = null, detailFor = null } = {}) {
   return `

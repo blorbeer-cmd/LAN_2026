@@ -1900,6 +1900,14 @@ button.card {
 .arcade-game-shell.is-expanded .tetris-boards {
   max-width: none;
 }
+/* The height budget every expanded-playfield width formula below is derived
+   from. The default is a fixed guess (fits the least-chrome game); JS
+   (arcadeUi.js's syncExpandedPlayfieldHeight) overrides it with a measured,
+   precise value on the shell's inline style whenever the guess would
+   overflow the scrollable view and clip score/chat/controls below the fold. */
+.arcade-game-shell.is-expanded {
+  --arcade-h-budget: calc(100dvh - 18rem);
+}
 /* Expanded playfields are bounded by the viewport through their width. Their
    native aspect ratios remain in charge of the height so canvas coordinates,
    hit testing and overlays keep the same geometry at every scale. */
@@ -1907,7 +1915,7 @@ button.card {
 .arcade-game-shell.is-expanded .blobby-court,
 .arcade-game-shell.is-expanded .pong-arena,
 .arcade-game-shell.is-expanded .snake-game {
-  width: min(100%, calc((100dvh - 18rem) * 1.6));
+  width: min(100%, calc(var(--arcade-h-budget) * 1.6));
   max-width: 100%;
   height: auto;
   box-sizing: border-box;
@@ -1917,13 +1925,13 @@ button.card {
   aspect-ratio: 8 / 5;
 }
 .arcade-game-shell.is-expanded .blobby-court {
-  width: min(100%, calc((100dvh - 18rem) * 5 / 3));
+  width: min(100%, calc(var(--arcade-h-budget) * 5 / 3));
 }
 .arcade-game-shell.is-expanded .pong-arena {
-  width: min(100%, calc((100dvh - 18rem) * 16 / 9));
+  width: min(100%, calc(var(--arcade-h-budget) * 16 / 9));
 }
 .arcade-game-shell.is-expanded .snake-game {
-  width: min(100%, calc((100dvh - 18rem - var(--space-4)) * 1.6 + var(--space-4)));
+  width: min(100%, calc((var(--arcade-h-budget) - var(--space-4)) * 1.6 + var(--space-4)));
 }
 .arcade-game-shell.is-expanded .blobby-court canvas,
 .arcade-game-shell.is-expanded .pong-arena canvas,
@@ -1955,7 +1963,7 @@ button.card {
   align-items: center;
 }
 .arcade-game-shell.is-expanded .tetris-canvas-wrap {
-  width: min(100%, calc((100dvh - 18rem) / 2));
+  width: min(100%, calc(var(--arcade-h-budget) / 2));
   height: auto;
   display: flex;
   justify-content: center;
