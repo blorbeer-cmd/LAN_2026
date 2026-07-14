@@ -14,6 +14,7 @@ import {
   getCurrentPushLogEntryFor,
   getPushLogEntriesFor,
   markPushSeen,
+  hidePushForPlayer,
 } from '../push';
 
 export const pushRouter = Router();
@@ -31,9 +32,9 @@ pushRouter.get('/last', (_req, res) => {
   res.json({ entry: getLastPushLogEntry() });
 });
 
-// GET /api/push/current?playerId=... - the newest still-actionable entry for
-// the personal app-header banner. Closed topics are skipped; the full /log
-// endpoint below intentionally remains an unfiltered notification history.
+// GET /api/push/current?playerId=... - legacy endpoint for the newest
+// still-actionable personal entry. The full /log endpoint below remains the
+// notification history used by the current header center.
 pushRouter.get('/current', (req, res) => {
   const { playerId } = req.query;
   if (typeof playerId !== 'string' || !playerId) {
@@ -45,9 +46,8 @@ pushRouter.get('/current', (req, res) => {
 });
 
 // GET /api/push/log?playerId=... - recent notifications relevant to one
-// player (they were on the recipient list), newest first, for the Home
-// view's "Mitteilungen" feed. Each entry carries the deep-link url the
-// notification would open, so the feed can offer the same jump-off point.
+// player (they were on the recipient list), newest first, for the header
+// notification center. Each entry carries its in-app deep link.
 pushRouter.get('/log', (req, res) => {
   const { playerId } = req.query;
   if (typeof playerId !== 'string' || !playerId) {
@@ -58,8 +58,8 @@ pushRouter.get('/log', (req, res) => {
   res.json({ entries: getPushLogEntriesFor(playerId) });
 });
 
-// POST /api/push/:id/seen - dismiss one notification from this player's
-// persistent header banner. It intentionally remains in /log as history.
+// POST /api/push/:id/seen - mark one notification read for this player. It
+// intentionally remains in /log as history.
 pushRouter.post('/:id/seen', (req, res) => {
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
@@ -69,6 +69,22 @@ pushRouter.post('/:id/seen', (req, res) => {
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const result = markPushSeen(req.params.id, playerId);
+  if (result === 'not_found') return res.status(404).json({ error: 'Mitteilung nicht gefunden.' });
+  if (result === 'not_recipient') return res.status(403).json({ error: 'Mitteilung gehört nicht zu diesem Spieler.' });
+  res.status(204).end();
+});
+
+// DELETE /api/push/:id - hide one notification for one player. This is a
+// per-recipient removal, never a global deletion from the shared push log.
+pushRouter.delete('/:id', (req, res) => {
+  const { playerId } = req.body ?? {};
+  if (typeof playerId !== 'string' || !playerId) {
+    return res.status(400).json({ error: 'playerId ist erforderlich.' });
+  }
+  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
+  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+
+  const result = hidePushForPlayer(req.params.id, playerId);
   if (result === 'not_found') return res.status(404).json({ error: 'Mitteilung nicht gefunden.' });
   if (result === 'not_recipient') return res.status(403).json({ error: 'Mitteilung gehört nicht zu diesem Spieler.' });
   res.status(204).end();

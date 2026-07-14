@@ -164,6 +164,8 @@ responsive on smaller screens.
 columns without making names or avatars too cramped.
 `--assignment-select-width` (112px) keeps repeated player-to-team selectors aligned independently
 of player-name length.
+`--notification-panel-width` (360px) caps the header notification center while it remains
+viewport-responsive on phones.
 
 ## Breakpoints
 
@@ -201,6 +203,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Contextual help** — `.info-tooltip` with `.info-tooltip-trigger` and
   `.info-tooltip-panel`, rendered/wired through `infoTooltip.js`; works with pointer, keyboard and
   touch instead of relying on the native `title` attribute.
+- **Notification center** — `.notification-center` with `.notification-center-panel` and
+  `.notification-center-entry`; its bell lives in the shared topbar and personal read/remove state
+  stays server-backed.
 
 Prefer composition of these primitives over view-specific copies. A new component
 class needs a distinct reusable purpose; a one-page selector that merely restates a

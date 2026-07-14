@@ -1,12 +1,7 @@
 // Shared "what's currently active" status: an open vote, active tournaments,
 // open food orders, waiting arcade lobbies, and (personal) unrated skills
-// for currently-live games. Single source of truth for both Home's
-// "Aktuell" section (full detail rows, see home.js) and the always-on
-// header notification banner (compact chips, see notificationBanner.js) —
-// so the same set of "current" things shows up consistently in both places
-// instead of two independently-stale caches drifting apart. Returns plain
-// data (aktuellItems()), not markup — each caller renders it however fits
-// its own space.
+// for currently-live games. Single source of truth for Home's "Aktuell"
+// section (see home.js). Returns plain data via aktuellItems(), not markup.
 
 import { api } from './api.js';
 import { state } from './state.js';
@@ -19,8 +14,8 @@ let missingSkillsCache = null;
 let missingSkillsLoadedForId = null;
 let missingSkillsLoading = false;
 
-// Fired whenever a (re)load completes, so anything showing this data (Home,
-// the header banner) can re-render without needing its own poll loop.
+// Fired whenever a (re)load completes, so Home can re-render without its own
+// poll loop.
 function notifyChanged() {
   window.dispatchEvent(new CustomEvent('lan:aktuell-changed'));
 }
@@ -62,18 +57,16 @@ async function loadMissingSkills(myId) {
 }
 
 // Kicks off whatever's missing/stale for the current identity. Safe to call
-// from anywhere (Home's render, the header banner's init) — a no-op while a
-// load for the same thing is already in flight.
+// from Home's render — a no-op while a load for the same thing is already in
+// flight.
 export function ensureAktuellLoaded() {
   if (statusCache === null && !statusLoading) loadStatus();
   const myId = getMyId();
   if (myId && missingSkillsLoadedForId !== myId && !missingSkillsLoading) loadMissingSkills(myId);
 }
 
-// Called on the socket events that actually change this data (see app.js) —
-// unlike a plain invalidate, this refetches right away: the header banner
-// has to stay live even while nobody's looking at Home to lazily trigger a
-// reload on render.
+// Called on socket events that change this data (see app.js). Refetching
+// right away keeps an already-open Home view current.
 export function invalidateAktuellStatus() {
   statusCache = null;
   loadStatus();
@@ -92,9 +85,8 @@ const FORMAT_LABELS = {
   group_knockout: 'Gruppen + K.O.',
 };
 
-// { iconName, title, sub, navigate }[] — sub is dropped by callers with
-// less room (the banner's compact chips); title/sub are raw text, not yet
-// HTML-escaped, so every caller escapes at its own render time.
+// { iconName, title, sub, navigate }[] — title/sub are raw text, not yet
+// HTML-escaped, so the caller escapes them while rendering.
 export function aktuellItems() {
   const items = [];
 

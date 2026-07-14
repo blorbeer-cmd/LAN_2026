@@ -591,7 +591,9 @@ test('Arcade: open a quiz lobby, see it listed and on Home, then close it again'
   await page.waitForSelector('#quiz-create-lobby');
   await page.click('#quiz-create-lobby');
   await page.waitForSelector('[data-close-lobby]');
-  await guestPage.waitForSelector('#notification-banner:has-text("Neue Quiz-Lobby")');
+  await guestPage.click('#notifications-btn');
+  await guestPage.waitForSelector('#notifications-panel:has-text("Neue Quiz-Lobby")');
+  await guestPage.click('[data-notification-close]');
 
   // The open lobby also shows up on Home as a compact "Aktuell" row that
   // deep-links back into the Arcade (the whole row is the tap target, not a
@@ -621,9 +623,6 @@ test('Arcade: open a quiz lobby, see it listed and on Home, then close it again'
 
   await page.click('[data-close-lobby]');
   await page.waitForSelector('text=Keine offene Quiz-Lobby.');
-  await guestPage.waitForFunction(
-    () => !document.getElementById('notification-banner')?.textContent?.includes('Neue Quiz-Lobby')
-  );
 
   // Closed - the create button is enabled again.
   await page.waitForSelector('#quiz-create-lobby:not([disabled])');
@@ -1182,7 +1181,7 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
   await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
 });
 
-test('Durchsage: send a broadcast, see it in the history, the header banner (on any view), and Home\'s Mitteilungen history', async () => {
+test('Durchsage: notification center can navigate, mark read and remove without duplicating Home', async () => {
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="broadcast"]');
   await page.waitForSelector('#broadcast-message');
@@ -1203,43 +1202,61 @@ test('Durchsage: send a broadcast, see it in the history, the header banner (on 
     throw err;
   }
 
-  // The always-on header banner (notificationBanner.js) shows the same push
-  // on ANY view, not just Home or Broadcast itself — navigate away first to
-  // prove that — and its own click also deep-links back into Durchsagen.
+  // The header bell shows the same push on any view and deep-links back into
+  // Durchsagen. Opening the target also marks this entry as read.
   await page.click('[data-view="leaderboard"]');
-  await page.waitForSelector('#notification-banner:has-text("Essen ist da!")');
-  await page.click('#notification-banner [data-notification-navigate]');
-  await page.waitForSelector('#broadcast-message');
-
-  // "Gesehen" only removes the persistent banner for this identity. The
-  // durable Home history remains available below.
-  await page.click('[data-view="leaderboard"]');
-  await page.waitForSelector('#notification-banner:has-text("Essen ist da!")');
-  await page.click('#notification-banner [data-notification-dismiss]');
-  await page.waitForFunction(
-    () => !document.getElementById('notification-banner')?.textContent?.includes('Essen ist da!')
+  await page.waitForSelector('#notifications-count:not([hidden])');
+  await page.click('#notifications-btn');
+  assert.equal(await page.getAttribute('#notifications-btn', 'aria-expanded'), 'true');
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    true,
+    'notification center must not create horizontal page scroll on mobile',
   );
-
-  // The push also lands in Home's "Mitteilungen" history, further down the
-  // page, with its own deep-link button back into the Durchsagen view.
-  await page.click('[data-view="home"]');
-  await page.waitForSelector('.section-title:has-text("Mitteilungen")');
-  await page.waitForSelector('text=Essen ist da!');
-  await page.click('button:has-text("Zu den Durchsagen")');
+  const panelBox = await page.locator('#notifications-panel').boundingBox();
+  assert.ok(panelBox && panelBox.x >= 0 && panelBox.x + panelBox.width <= 390);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#notifications-panel', { state: 'hidden' });
+  assert.equal(await page.getAttribute('#notifications-btn', 'aria-expanded'), 'false');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'notifications-btn');
+  await page.click('#notifications-btn');
+  const foodNotification = page.locator('.notification-center-entry:has-text("Essen ist da!")');
+  await foodNotification.waitFor();
+  await foodNotification.locator('.badge:has-text("Neu")').waitFor();
+  await foodNotification.locator('[data-notification-navigate]').click();
   await page.waitForSelector('#broadcast-message');
 
-  // A second message can be ended early by its creator; its history row
-  // remains and the banner disappears immediately.
+  await page.click('#notifications-btn');
+  const readFoodNotification = page.locator('.notification-center-entry:has-text("Essen ist da!")');
+  await readFoodNotification.waitFor();
+  assert.equal(await readFoodNotification.locator('.badge:has-text("Neu")').count(), 0);
+
+  // Removing is personal and leaves the durable Durchsage itself intact.
+  await readFoodNotification.locator('[data-notification-hide]').click();
+  await readFoodNotification.waitFor({ state: 'detached' });
+  await page.click('[data-notification-close]');
+  await page.waitForSelector('.lb-row >> text=Essen ist da!');
+
+  // Home no longer renders a second notification history in a different
+  // style; notifications live only under the bell.
+  await page.click('[data-view="home"]');
+  assert.equal(await page.locator('.section-title:has-text("Mitteilungen")').count(), 0);
+
+  // A second message can be ended early by its creator; it remains a past
+  // notification until this player removes it from the center.
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="broadcast"]');
   await page.fill('#broadcast-message', 'Turnier startet gleich!');
   await page.click('#broadcast-form button[type="submit"]');
   const activeRow = page.locator('.lb-row:has-text("Turnier startet gleich!")');
   await activeRow.waitFor();
-  await page.waitForSelector('#notification-banner:has-text("Turnier startet gleich!")');
   await activeRow.locator('[data-end-broadcast]').click();
   await activeRow.locator('text=Beendet am').waitFor();
-  await page.waitForFunction(
-    () => !document.getElementById('notification-banner')?.textContent?.includes('Turnier startet gleich!')
-  );
+  await page.click('#notifications-btn');
+  const endedNotification = page.locator('.notification-center-entry:has-text("Turnier startet gleich!")');
+  await endedNotification.waitFor();
+  await endedNotification.locator('[data-notification-hide]').click();
+  await endedNotification.waitFor({ state: 'detached' });
 });
 
 test('Captain-Draft: pick captains, run the live draft to completion', async () => {

@@ -3,20 +3,17 @@
 // currently running and needs you (open vote / active tournament / open food
 // order / waiting arcade lobby / an unrated skill for a currently-live game —
 // the kiosk content, but tappable and personalized), the realtime live board,
-// a leaderboard snapshot, the seating plan, and — at the very bottom, as a
-// history rather than something needing attention — the full notification
-// log. The newest still-active notification is additionally always visible
-// in the app header (see notificationBanner.js), on every view, not just
-// this one.
+// a leaderboard snapshot and the seating plan. Notifications live only in
+// the header bell (see notificationBanner.js), so Home does not duplicate
+// the same content in a second style.
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, formatDateTime, stateLabel, avatarHtml, gameBadgeHtml, gameChipsHtml } from '../format.js';
+import { escapeHtml, stateLabel, avatarHtml, gameBadgeHtml, gameChipsHtml } from '../format.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { renderSeatingPlan } from './seating.js';
-import { feedLinkView, FEED_LINK_LABELS } from '../pushFeed.js';
 import { ensureAktuellLoaded, aktuellItems } from '../aktuellStatus.js';
 
 const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
@@ -97,65 +94,6 @@ function renderStatus() {
   return `
     <div class="section-title">Aktuell</div>
     <div class="card-grid" style="margin-bottom:var(--space-4);">${rows.join('')}</div>
-  `;
-}
-
-// "Mitteilungen": history of recent push notifications that concerned this
-// player (Durchsagen, neue Abstimmung, Turnier-Events, Bestellungen, ...),
-// straight from the server's push log. The newest still-active one is visible
-// up in the app header on every view (see notificationBanner.js);
-// this is the full recent history, further down the page since (once read)
-// it's a look-back, not something needing attention right now.
-let feedCache = null;
-let feedLoadedForId = null;
-let feedLoading = false;
-
-export function invalidatePushFeed() {
-  feedCache = null;
-  feedLoadedForId = null;
-}
-
-async function loadFeed(ctx, myId) {
-  feedLoading = true;
-  try {
-    const res = await api.push.log(myId);
-    feedCache = res.entries;
-    feedLoadedForId = myId;
-  } catch {
-    feedCache = [];
-    feedLoadedForId = myId;
-  } finally {
-    feedLoading = false;
-    ctx.rerender();
-  }
-}
-
-const FEED_LIMIT = 8;
-
-function renderFeed(myId) {
-  if (!myId || feedLoading || feedCache === null || feedLoadedForId !== myId) return '';
-  if (feedCache.length === 0) return '';
-
-  const rows = feedCache
-    .slice(0, FEED_LIMIT)
-    .map((e, i) => {
-      const view = feedLinkView(e.url);
-      const directBadge = e.audience === 'direct' ? `<span class="badge badge-playing">Für dich</span>` : '';
-      return `
-        <div class="stack" style="gap:var(--space-1);${i > 0 ? 'border-top:1px solid var(--border);padding-top:var(--space-3);' : ''}">
-          <div class="row-between" style="gap:var(--space-2);">
-            <span class="row" style="gap:var(--space-2);min-width:0;"><strong>${escapeHtml(e.title)}</strong>${directBadge}</span>
-            <span class="muted" style="font-size:var(--font-size-xs);flex-shrink:0;">${formatDateTime(e.createdAt)}</span>
-          </div>
-          <div class="muted" style="font-size:var(--font-size-sm);">${escapeHtml(e.body)}</div>
-          ${view ? `<div><button type="button" class="btn btn-sm" data-navigate="${view}">${FEED_LINK_LABELS[view]} ${icon('chevronRight')}</button></div>` : ''}
-        </div>`;
-    })
-    .join('');
-
-  return `
-    <div class="section-title">${icon('bell')} Mitteilungen</div>
-    <div class="card stack" style="gap:var(--space-3);margin-bottom:var(--space-4);">${rows}</div>
   `;
 }
 
@@ -260,10 +198,6 @@ export function renderHome(container, ctx) {
   const whoAmI = whoAmICardHtml('home-whoami', { marginBottom: '16px' });
 
   ensureAktuellLoaded();
-  if (myId && feedLoadedForId !== myId && !feedLoading) {
-    loadFeed(ctx, myId);
-  }
-
   const cards = players
     .map((p) => {
       const badgeClass = `badge-${p.state}`;
@@ -300,7 +234,6 @@ export function renderHome(container, ctx) {
     <div class="card-grid">${cards}</div>
     ${renderLeaderboardTop()}
     ${renderHomeSeating(ctx)}
-    ${renderFeed(myId)}
   `;
 
   wireWhoAmICard(container, 'home-whoami', ctx);

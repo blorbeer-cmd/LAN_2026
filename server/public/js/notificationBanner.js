@@ -1,133 +1,214 @@
-// Always-on header banner: shows the newest still-active push notification
-// that concerned this device's current identity, with a direct link into
-// whatever view it's about — a persistent counterpart to the transient toast
-// nudges app.js already fires on the relevant socket events, for anyone who
-// missed the toast, wasn't looking at the screen, or is just coming back
-// after a while away. Below that prominent line, it also surfaces the same
-// "Aktuell" items Home shows (open vote, active tournaments, ...) as small
-// tappable chips, so the always-visible one thing doesn't hide the rest of
-// what's currently going on. Lives outside the per-view render cycle
-// (switchView/renderCurrent in app.js) since it must stay visible across
-// every view, not just Home, so it manages its own small slice of DOM
-// directly instead of going through a view module's render(container, ctx).
+// Header notification center: the bell next to profile/settings loads the
+// current identity's relevant push-log entries, keeps unread state on the
+// server, and lets that player hide an entry without deleting it for anyone
+// else. The old always-visible strip and Home history intentionally no
+// longer render the same notification in parallel.
 
 import { api } from './api.js';
 import { getMyId } from './whoami.js';
 import { icon } from './icons.js';
-import { escapeHtml } from './format.js';
-import { feedLinkView, bannerContentHtml } from './pushFeed.js';
-import { ensureAktuellLoaded, aktuellItems } from './aktuellStatus.js';
+import { escapeHtml, formatDateTime } from './format.js';
+import { feedLinkView, FEED_LINK_LABELS } from './pushFeed.js';
 import { showToast } from './toast.js';
 
-let epoch = 0;
-let lastEntry = null;
-let expiryTimer = null;
+const FEED_LIMIT = 20;
 
-function bannerEl() {
-  return document.getElementById('notification-banner');
+let epoch = 0;
+let entries = [];
+let loadedForId = null;
+let loading = false;
+let loadError = false;
+let isOpen = false;
+
+function buttonEl() {
+  return document.getElementById('notifications-btn');
 }
 
-// Redraws from whatever's currently cached — the last-fetched active push entry
-// plus the shared "Aktuell" items — without refetching either. Called after
-// a push refetch resolves, whenever aktuellStatus.js reports new data, and
-// exported for app.js to call directly on state.votes changes (the vote
-// chip reads state.votes live, which isn't part of aktuellStatus.js's own
-// cache).
-export function renderBanner() {
-  const banner = bannerEl();
-  if (!banner) return;
+function panelEl() {
+  return document.getElementById('notifications-panel');
+}
 
-  if (expiryTimer) clearTimeout(expiryTimer);
-  expiryTimer = null;
-  if (lastEntry?.expiresAt) {
-    const delay = Math.max(0, Math.min(lastEntry.expiresAt - Date.now() + 50, 2_147_483_647));
-    expiryTimer = setTimeout(refreshNotificationBanner, delay);
+function countEl() {
+  return document.getElementById('notifications-count');
+}
+
+function setOpen(nextOpen) {
+  isOpen = nextOpen;
+  renderBanner();
+}
+
+function entryHtml(entry) {
+  const view = feedLinkView(entry.url);
+  const unreadBadge = entry.seen ? '' : '<span class="badge badge-playing">Neu</span>';
+  const directBadge = entry.audience === 'direct' ? '<span class="badge badge-paused">Für dich</span>' : '';
+  return `<article class="notification-center-entry${entry.seen ? '' : ' is-unread'}" data-notification-entry="${entry.id}">
+    <div class="row-between notification-center-entry-head">
+      <span class="row notification-center-entry-title">
+        <strong>${escapeHtml(entry.title)}</strong>${unreadBadge}${directBadge}
+      </span>
+      <time class="muted notification-center-time">${formatDateTime(entry.createdAt)}</time>
+    </div>
+    <div class="muted notification-center-body">${escapeHtml(entry.body)}</div>
+    <div class="notification-center-actions">
+      ${view ? `<button type="button" class="btn btn-sm" data-notification-navigate="${view}" data-notification-id="${entry.id}">${FEED_LINK_LABELS[view]}</button>` : ''}
+      ${entry.seen ? '' : `<button type="button" class="btn btn-sm" data-notification-seen="${entry.id}">Als gelesen markieren</button>`}
+      <button type="button" class="icon-btn notification-center-remove" data-notification-hide="${entry.id}" aria-label="Mitteilung entfernen" title="Mitteilung entfernen">${icon('trash')}</button>
+    </div>
+  </article>`;
+}
+
+function panelContentHtml(myId) {
+  if (!myId) {
+    return '<div class="empty-state notification-center-empty">Wähle zuerst dein Profil aus.</div>';
   }
-
-  const chips = aktuellItems()
-    .map(
-      (item) =>
-        `<button type="button" class="chip notification-banner-chip" data-notification-navigate="${item.navigate}">${icon(item.iconName)}<span>${escapeHtml(item.title)}</span></button>`
-    )
-    .join('');
-
-  if (!lastEntry && !chips) {
-    banner.hidden = true;
-    banner.innerHTML = '';
-    return;
+  if (loading && loadedForId !== myId) {
+    return '<div class="empty-state notification-center-empty">Mitteilungen werden geladen…</div>';
   }
-
-  let pushLine = '';
-  if (lastEntry) {
-    const view = feedLinkView(lastEntry.url);
-    const content = bannerContentHtml(lastEntry);
-    const contentLine = view
-      ? `<button type="button" class="notification-banner-link" data-notification-navigate="${view}">${content}${icon('chevronRight', { className: 'notification-banner-arrow' })}</button>`
-      : `<span class="notification-banner-link notification-banner-static">${content}</span>`;
-    pushLine = `<div class="notification-banner-push">
-      ${contentLine}
-      <button type="button" class="notification-banner-dismiss" data-notification-dismiss title="Als gesehen markieren" aria-label="Mitteilung als gesehen markieren">${icon('x')}</button>
-    </div>`;
+  if (loadError) {
+    return '<div class="empty-state notification-center-empty">Mitteilungen konnten nicht geladen werden.</div>';
   }
+  if (entries.length === 0) {
+    return '<div class="empty-state notification-center-empty">Keine Mitteilungen.</div>';
+  }
+  return `<div class="notification-center-list">${entries.slice(0, FEED_LIMIT).map(entryHtml).join('')}</div>`;
+}
 
-  banner.innerHTML = `${pushLine}${chips ? `<div class="notification-banner-aktuell">${chips}</div>` : ''}`;
-  banner.hidden = false;
-
-  banner.querySelectorAll('[data-notification-navigate]').forEach((el) => {
-    el.addEventListener('click', (e) => {
-      window.dispatchEvent(new CustomEvent('lan:navigate', { detail: e.currentTarget.dataset.notificationNavigate }));
-    });
-  });
-
-  const dismissButton = banner.querySelector('[data-notification-dismiss]');
-  dismissButton?.addEventListener('click', async () => {
-    const entryId = lastEntry?.id;
-    const playerId = getMyId();
-    if (!entryId || !playerId || dismissButton.disabled) return;
-    dismissButton.disabled = true;
-    try {
-      await api.push.seen(entryId, playerId);
-      await refreshNotificationBanner();
-    } catch (err) {
-      dismissButton.disabled = false;
-      showToast(err.message, { error: true });
+async function markSeen(entryId, { navigate } = {}) {
+  const playerId = getMyId();
+  const entry = entries.find((item) => item.id === entryId);
+  if (!playerId || !entry) return;
+  entry.seen = true;
+  renderBanner();
+  try {
+    await api.push.seen(entryId, playerId);
+    if (navigate) {
+      setOpen(false);
+      window.dispatchEvent(new CustomEvent('lan:navigate', { detail: navigate }));
     }
+  } catch (err) {
+    entry.seen = false;
+    renderBanner();
+    showToast(err.message, { error: true });
+  }
+}
+
+async function hideEntry(entryId) {
+  const playerId = getMyId();
+  if (!playerId) return;
+  const previousEntries = entries;
+  entries = entries.filter((item) => item.id !== entryId);
+  renderBanner();
+  try {
+    await api.push.hide(entryId, playerId);
+  } catch (err) {
+    entries = previousEntries;
+    renderBanner();
+    showToast(err.message, { error: true });
+  }
+}
+
+// Kept under the established export name so app.js and realtime consumers
+// do not need a second notification state abstraction.
+export function renderBanner() {
+  const button = buttonEl();
+  const panel = panelEl();
+  const count = countEl();
+  if (!button || !panel || !count) return;
+
+  const myId = getMyId();
+  const unreadCount = myId === loadedForId ? entries.filter((entry) => !entry.seen).length : 0;
+  count.textContent = unreadCount > 9 ? '9+' : String(unreadCount);
+  count.hidden = unreadCount === 0;
+  button.classList.toggle('has-unread', unreadCount > 0);
+  button.setAttribute('aria-expanded', String(isOpen));
+  button.setAttribute(
+    'aria-label',
+    unreadCount > 0 ? `Mitteilungen, ${unreadCount} ungelesen` : 'Mitteilungen'
+  );
+
+  panel.hidden = !isOpen;
+  if (!isOpen) return;
+  panel.innerHTML = `
+    <div class="notification-center-header row-between">
+      <strong>Mitteilungen</strong>
+      <button type="button" class="icon-btn" data-notification-close aria-label="Mitteilungen schließen" title="Schließen">${icon('x')}</button>
+    </div>
+    ${panelContentHtml(myId)}
+  `;
+
+  panel.querySelector('[data-notification-close]')?.addEventListener('click', () => {
+    setOpen(false);
+    button.focus();
+  });
+  panel.querySelectorAll('[data-notification-seen]').forEach((control) => {
+    control.addEventListener('click', () => markSeen(control.dataset.notificationSeen));
+  });
+  panel.querySelectorAll('[data-notification-hide]').forEach((control) => {
+    control.addEventListener('click', () => hideEntry(control.dataset.notificationHide));
+  });
+  panel.querySelectorAll('[data-notification-navigate]').forEach((control) => {
+    control.addEventListener('click', () =>
+      markSeen(control.dataset.notificationId, { navigate: control.dataset.notificationNavigate })
+    );
   });
 }
 
 export async function refreshNotificationBanner() {
   const myId = getMyId();
   const thisEpoch = ++epoch;
+  if (!myId) {
+    entries = [];
+    loadedForId = null;
+    loading = false;
+    loadError = false;
+    renderBanner();
+    return;
+  }
 
-  // The "Aktuell" chips aren't personal (besides the skill nudge, which
-  // aktuellStatus.js only loads once an identity exists) so they don't need
-  // an identity to show — only the personal push line does.
-  let entry = null;
-  if (myId) {
-    try {
-      const res = await api.push.current(myId);
-      entry = res.entry ?? null;
-    } catch {
-      entry = null;
+  loading = true;
+  loadError = false;
+  renderBanner();
+  try {
+    const res = await api.push.log(myId);
+    if (thisEpoch !== epoch) return;
+    entries = res.entries;
+    loadedForId = myId;
+  } catch {
+    if (thisEpoch !== epoch) return;
+    entries = [];
+    loadedForId = myId;
+    loadError = true;
+  } finally {
+    if (thisEpoch === epoch) {
+      loading = false;
+      renderBanner();
     }
   }
-  // A newer refresh (identity change, or another push arriving) has since
-  // started or already finished — its result is the current one, don't let
-  // this now-outdated response clobber it.
-  if (thisEpoch !== epoch) return;
-
-  lastEntry = entry;
-  renderBanner();
 }
 
-// Called once from app.js's main(): loads the initial state and keeps it
-// live afterward without any per-view module having to remember to ask.
 export function initNotificationBanner() {
-  refreshNotificationBanner();
-  ensureAktuellLoaded();
-  window.addEventListener('lan:identity-changed', () => {
-    refreshNotificationBanner();
-    ensureAktuellLoaded();
+  const button = buttonEl();
+  const center = document.querySelector('[data-notification-center]');
+  if (!button || !center) return;
+
+  button.addEventListener('click', () => {
+    setOpen(!isOpen);
+    if (isOpen) refreshNotificationBanner();
   });
-  window.addEventListener('lan:aktuell-changed', renderBanner);
+  document.addEventListener('pointerdown', (event) => {
+    if (isOpen && !center.contains(event.target)) setOpen(false);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !isOpen) return;
+    setOpen(false);
+    button.focus();
+  });
+  window.addEventListener('lan:identity-changed', () => {
+    isOpen = false;
+    entries = [];
+    loadedForId = null;
+    loadError = false;
+    refreshNotificationBanner();
+  });
+  refreshNotificationBanner();
 }

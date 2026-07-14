@@ -340,10 +340,8 @@ function renderFoodBanner(orders) {
 // pushes like "dein Match ist bereit", which wouldn't mean anything to
 // everyone glancing at a shared screen). Shows the newest still-active one,
 // with timestamp; closed or expired topics fall back to an older applicable
-// announcement instead of lingering. Same bell + title + body content as
-// the app's
-// header notification banner (see notificationBanner.js/pushFeed.js) —
-// just not clickable, since the Kiosk has nobody to click it.
+// announcement instead of lingering. The shared content markup lives in
+// pushFeed.js; this Kiosk version is not clickable.
 let pushBannerExpiryTimer = null;
 
 async function refreshPushBanner() {

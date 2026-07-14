@@ -4,9 +4,11 @@
 
 Der lokale PR setzt das umsetzungsreife Feedback aus `docs/FEEDBACK-GENERELL.md` als zusammenhängenden
 UI-Polish-Pass um. Änderungen an Identität, Login, Rollen, Spieler-Lebenszyklus, Agent-Key-Rechten,
-personenbezogenen Mitteilungen, Einladungen und Event-Sichtbarkeit bleiben ausdrücklich außen vor.
-Diese Punkte sind in der Feedbackliste mit `Kommentar (Usermanagement)` markiert und gehören in die
-Phasen aus `docs/KONZEPT-USER-MANAGEMENT.md`.
+Einladungen und Event-Sichtbarkeit bleiben ausdrücklich außen vor. Der personenbezogene
+Meldungsbereich wurde auf späteren ausdrücklichen Wunsch bereits auf Basis der lokal gewählten
+Spieleridentität umgesetzt; ein künftiges Usermanagement muss diese vorläufige Bindung auf die
+authentifizierte Session umstellen. Die übrigen Punkte mit `Kommentar (Usermanagement)` gehören in
+die Phasen aus `docs/KONZEPT-USER-MANAGEMENT.md`.
 
 Vorgeschlagener Arbeitstitel: **Refine general UI copy, layouts and contextual help**.
 
@@ -99,8 +101,9 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   „Aktuell“ nutzt die bereits responsive `card-grid` für mehrere Kacheln.
 - Sitzplan erhält eine Überschrift analog zu Rangliste und Status; „Gesamte Rangliste“ ersetzt
   „Ganze Rangliste“.
-- Den Meldungsbereich nicht zu einer neuen personenbezogenen Glockenliste umbauen; dieser Teil ist
-  wegen Usermanagement zurückgestellt. Die bestehende neueste Kopfzeilen-Mitteilung bleibt bestehen.
+- Den doppelten Home-/Kopfzeilen-Meldungsbereich durch eine Glocke in der Kopfzeile ersetzen. Die
+  Liste ist nach neuesten Meldungen sortiert; gelesen und persönlich ausgeblendet wird vorläufig
+  anhand der lokal gewählten Spieleridentität. Die Home-Historie und der dauerhafte Banner entfallen.
 - Rang-Titel, Kurztexte und Ergebnisformular bereinigen. Für die Spieler-Zuordnung eine stabile
   Grid-/Spaltenstruktur verwenden, damit Selects unabhängig von Namenslängen fluchten.
 - Vote-Beschreibung auf „Punkte frei verteilen, höchste Summe gewinnt.“ kürzen, Aktionsbuttons
@@ -185,7 +188,7 @@ E2E-Abdeckung ergänzt mindestens:
 - Mehrspaltige Spieler-/Vote-Auswahl auf Laptop und einspaltiger, overflow-freier Aufbau auf Handy.
 - „Alle markieren“/„Auswahl aufheben“, Teamwert `2` und gültiger/ungültiger Draft-Startzustand.
 - Standardmäßig geschlossene Team-/Vote-Historien und weiterhin erreichbare Historieninhalte.
-- Banner-Schließen nur dann als neuer Regressionstest, wenn der gemeldete Fehler reproduzierbar ist.
+- Meldungsliste, Gelesenstatus, persönliches Ausblenden, Deep-Link und `Escape` im Browser abdecken.
 - Datumsauswahl in Essen mit demselben Helper-Verhalten wie An-/Abreise.
 
 ### Manuell
@@ -203,7 +206,7 @@ E2E-Abdeckung ergänzt mindestens:
 - Alle mit `Kommentar (Usermanagement)` markierten Punkte.
 - Neue Login-, Session-, Rollen-, Rechte-, Invite-, Kiosk-Token- oder Event-Scoping-Logik.
 - Löschen oder Deaktivieren von Spielern sowie Änderungen an Agent-Key-Sichtbarkeit/-Rotation.
-- Personenbezogene Mitteilungslisten mit gelesen/ungelesen oder Löschen.
+- Authentifizierte Session-Zuordnung des vorläufig spielerbezogenen Meldungsstatus.
 - Remote-Repository umbenennen, Branch pushen, GitHub-PR eröffnen oder mergen.
 - Backend-Analytics-Endpunkte nur deshalb löschen, weil ihre aktuelle UI ausgeblendet wird.
 
@@ -214,7 +217,8 @@ E2E-Abdeckung ergänzt mindestens:
 3. `refactor: simplify secondary view copy and icons`
 4. `refactor: streamline analytics profile and settings views`
 5. `test: cover general UI polish flows`
-6. optional separat: `chore: rename RespawnHQ product references`
+6. `feat: add personal header notification center`
+7. optional separat: `chore: rename RespawnHQ product references`
 
 Nach jedem Commit bleibt die App lauffähig; Dokumentation und Tests werden spätestens im selben
 Arbeitspaket aktualisiert. Sachfremde oder bereits vorhandene Nutzeränderungen werden nicht gestaged.

@@ -36,11 +36,11 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 
 ## Home
 
-- [ ] [ ] Meldungsbereich vereinheitlichen und grundsätzlich nur die neueste Meldung anzeigen
+- [x] [ ] Meldungsbereich vereinheitlichen und grundsätzlich nur die neueste Meldung anzeigen
   - Notiz: Aktuell erscheinen unter anderem Admin-Modus, „Neue Sammelbestellung“ und die Sammelbestellung selbst mehrfach bzw. in unterschiedlichen Stilen.
-  - Kommentar (Usermanagement): Die rein visuelle Doppelungsprüfung darf im UI-PR stattfinden;
-    eine neue personenbezogene Mitteilungslogik bleibt wegen Session-Identität, Push-Neubindung und
-    Event-Scoping bis zu den Phasen 2 und 5 zurückgestellt.
+  - Kommentar (Usermanagement): Auf ausdrücklichen Wunsch bereits mit der aktuell lokal gewählten
+    Spieleridentität umgesetzt. Ein künftiges Usermanagement muss diese Zuordnung auf die echte
+    Session-Identität umstellen; Login, Rollen und Event-Scoping bleiben weiterhin außen vor.
 - [ ] [ ] Prüfen, warum der Status immer „Offline“ ist
   - [ ] [ ] Agent-Anbindung prüfen
   - [ ] [ ] Falls der Status nicht zuverlässig über den Browser ermittelt werden kann: Statusanzeige entfernen
@@ -49,13 +49,14 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 - [x] [ ] „Aktuell“ für mehrere nebeneinanderstehende Kacheln vorbereiten
 - [x] [ ] „Ganze Rangliste“ in „Gesamte Rangliste“ umbenennen
 - [x] [ ] Sitzplan mit einem Titel oben links versehen, analog zu Rangliste und Status
-- [ ] [ ] „Mitteilungen“ aus dem unteren Seitenbereich herauslösen
-  - [ ] [ ] Glocken-Symbol in der oberen Leiste bei Profil, Einstellungen und GitHub ergänzen
-  - [ ] [ ] Mitteilungen dort als Liste anzeigen
-  - [ ] [ ] Mitteilungen als gelesen markieren können
-  - [ ] [ ] Mitteilungen entfernen können
-  - Kommentar (Usermanagement): Zurückstellen. Gelesen-/Löschstatus, Push-Abos und Sichtbarkeit
-    werden mit fester Identität und Event-Scoping in den Phasen 2 und 5 neu angebunden.
+- [x] [ ] „Mitteilungen“ aus dem unteren Seitenbereich herauslösen
+  - [x] [ ] Glocken-Symbol in der oberen Leiste bei Profil, Einstellungen und GitHub ergänzen
+  - [x] [ ] Mitteilungen dort als Liste anzeigen
+  - [x] [ ] Mitteilungen als gelesen markieren können
+  - [x] [ ] Mitteilungen entfernen können
+  - Kommentar (Usermanagement): Gelesen- und Ausblendestatus sind vorläufig an die aktuell lokal
+    gewählte Spieleridentität gebunden. Ein künftiges Usermanagement muss diese Bindung auf die
+    authentifizierte Session migrieren; Push-Abos und Event-Sichtbarkeit bleiben unverändert.
 
 ## Turniere
 

@@ -59,6 +59,7 @@
   --info-popover-max-width: 320px;
   --selection-card-min-width: 160px;
   --assignment-select-width: 112px;
+  --notification-panel-width: 360px;
 
   /* Avatar sizes — the one scale every avatar/color-dot rendering (see
      avatarHtml in format.js) should size itself from, instead of each call
@@ -265,96 +266,110 @@ input {
   gap: var(--space-2);
 }
 
-/* Always-on header banner (notificationBanner.js): the latest push
-   notification for the current identity, everywhere in the app — a
-   persistent, clickable counterpart to the transient toast nudges. */
-.notification-banner-push {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  background: var(--accent-gradient);
-  color: var(--accent-text);
-}
-.notification-banner-link {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  border: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  text-align: left;
-  cursor: pointer;
-}
-.notification-banner-dismiss {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  align-self: stretch;
-  padding: var(--space-2) var(--space-4);
-  border: none;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-.notification-banner-dismiss:disabled {
-  cursor: wait;
-  opacity: 0.55;
-}
-
 #broadcast-message {
   width: 100%;
 }
-.notification-banner-static {
-  cursor: default;
-}
-.notification-banner-text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.notification-banner-text strong {
-  margin-right: var(--space-1);
-}
-.notification-banner-arrow {
-  flex-shrink: 0;
-}
-@media (hover: hover) {
-  .notification-banner-link:hover:not(.notification-banner-static) {
-    filter: brightness(1.08);
-  }
-  .notification-banner-dismiss:hover:not(:disabled) {
-    filter: brightness(1.2);
-  }
-}
 
-/* Compact "Aktuell" chips below the prominent push line — same data as
-   Home's "Aktuell" cards (see aktuellStatus.js), just small enough to fit
-   the header on every view. Sits on a neutral strip, not the gradient bar,
-   so several chips stay readable at once. */
-.notification-banner-aktuell {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
+/* Header notification center: one bell replaces the duplicated persistent
+   strip and Home history. Entries stay personal to the selected identity. */
+.notification-center {
+  position: relative;
+}
+.notification-center #notifications-btn {
+  position: relative;
+}
+.notification-count {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: var(--space-5);
+  height: var(--space-5);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--danger);
+  color: var(--accent-text);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+}
+.notification-center-panel {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: 30;
+  width: min(var(--notification-panel-width), calc(100vw - var(--space-4)));
+  max-height: calc(100dvh - var(--topbar-height) - var(--nav-height) - var(--space-6));
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+}
+@media (max-width: 639px) {
+  .notification-center-panel {
+    position: fixed;
+    top: calc(var(--topbar-height) + var(--space-2));
+    right: var(--space-2);
+    left: var(--space-2);
+    width: auto;
+  }
+}
+.notification-center-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+.notification-center-list {
+  display: flex;
+  flex-direction: column;
+}
+.notification-center-entry {
+  padding: var(--space-3);
   border-bottom: 1px solid var(--border);
 }
-.notification-banner-chip {
-  font: inherit;
-  cursor: pointer;
+.notification-center-entry:last-child {
+  border-bottom: 0;
 }
-@media (hover: hover) {
-  .notification-banner-chip:hover {
-    filter: brightness(1.12);
-  }
+.notification-center-entry.is-unread {
+  border-left: var(--space-1) solid var(--accent);
+  background: var(--bg-elevated-2);
+}
+.notification-center-entry-head,
+.notification-center-entry-title,
+.notification-center-actions {
+  gap: var(--space-2);
+}
+.notification-center-entry-title {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.notification-center-time {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+}
+.notification-center-body {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+.notification-center-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+}
+.notification-center-remove {
+  margin-left: auto;
+  color: var(--danger);
+}
+.notification-center-empty {
+  padding: var(--space-5);
 }
 
 .topbar-title {
@@ -401,7 +416,7 @@ input {
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-1);
 }
 
 .icon-btn {

@@ -10,8 +10,8 @@ import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
 import { isAdmin, setAdmin } from './admin.js';
 import { filterTestUsers } from './testFilter.js';
-import { renderHome, invalidatePushFeed, invalidateHomeSeating } from './views/home.js';
-import { initNotificationBanner, refreshNotificationBanner, renderBanner } from './notificationBanner.js';
+import { renderHome, invalidateHomeSeating } from './views/home.js';
+import { initNotificationBanner, refreshNotificationBanner } from './notificationBanner.js';
 import { invalidateMissingSkills, invalidateAktuellStatus } from './aktuellStatus.js';
 import { renderPlayers } from './views/players.js';
 import { renderSettings } from './views/games.js';
@@ -304,12 +304,8 @@ function wireSocket() {
     lastVoteRound = payload.round;
 
     state.votes = payload;
-    // Home shows an "Abstimmung läuft" status card driven by state.votes,
-    // and the header banner shows the same thing as a chip — on every view,
-    // so it needs its own re-render here rather than piggybacking on
-    // renderCurrent(), which only touches the currently visible view.
+    // Home shows an "Abstimmung läuft" status card driven by state.votes.
     if (currentView === 'votes' || currentView === 'home') renderCurrent();
-    renderBanner();
 
     // Anyone with an identity gets nudged that a new vote opened, even if
     // they're not currently looking at the Votes tab — otherwise the only
@@ -387,16 +383,12 @@ function wireSocket() {
     }
   });
   // Every notifyPlayers() call on the server also lands here — refresh the
-  // Home view's "Mitteilungen" history and the always-on header banner so
-  // new entries appear without a reload.
+  // header notification center so new entries appear without a reload.
   socket.on('push:sent', () => {
-    invalidatePushFeed();
-    if (currentView === 'home') renderCurrent();
     refreshNotificationBanner();
   });
   // A short-lived push topic was closed, completed or reached its deadline.
-  // Its history stays on Home, but the always-on banner must immediately
-  // fall back to the newest entry that is still actionable.
+  // Refresh the center so its server-backed state remains current.
   socket.on('push:changed', refreshNotificationBanner);
   // Dismissals are personal: only refresh devices currently acting as the
   // player who marked this entry as seen.

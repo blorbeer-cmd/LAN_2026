@@ -110,7 +110,7 @@ test('GET /api/push/current validates identity and skips resolved topics without
   assert.ok(history.body.entries.some((entry: { title: string }) => /Abstimmung/.test(entry.title)));
 });
 
-test('POST /api/push/:id/seen dismisses only this player\'s banner and keeps notification history', async () => {
+test('POST /api/push/:id/seen marks only this player\'s notification read and keeps its history', async () => {
   const other = await request(app).post('/api/players').send({ name: 'Push Seen Other' });
   const created = await request(app).post('/api/broadcasts').send({ playerId, message: 'Persönlich wegklickbar' });
   assert.equal(created.status, 201);
@@ -137,7 +137,41 @@ test('POST /api/push/:id/seen dismisses only this player\'s banner and keeps not
   assert.equal(otherAfter.body.entry.id, pushId);
 
   const history = await request(app).get(`/api/push/log?playerId=${playerId}`);
-  assert.ok(history.body.entries.some((entry: { id: string }) => entry.id === pushId));
+  const seenEntry = history.body.entries.find((entry: { id: string }) => entry.id === pushId);
+  assert.ok(seenEntry);
+  assert.equal(seenEntry.seen, true);
+});
+
+test('DELETE /api/push/:id hides a notification only for that player', async () => {
+  const other = await request(app).post('/api/players').send({ name: 'Push Hidden Other' });
+  const created = await request(app).post('/api/broadcasts').send({ playerId, message: 'Persönlich entfernbar' });
+  assert.equal(created.status, 201);
+
+  const ownBefore = await request(app).get(`/api/push/log?playerId=${playerId}`);
+  const pushId = ownBefore.body.entries.find((entry: { body: string }) => /Persönlich entfernbar/.test(entry.body)).id;
+  assert.equal(ownBefore.body.entries.find((entry: { id: string }) => entry.id === pushId).seen, false);
+
+  assert.equal((await request(app).delete(`/api/push/${pushId}`).send({})).status, 400);
+  assert.equal((await request(app).delete(`/api/push/${pushId}`).send({ playerId: 'ghost' })).status, 404);
+  assert.equal((await request(app).delete('/api/push/missing').send({ playerId })).status, 404);
+
+  const directId = 'push-hidden-not-recipient';
+  db.prepare(
+    `INSERT INTO push_log (id, title, body, url, audience, player_ids, created_at)
+     VALUES (?, 'Direkt', 'Nur für den anderen Spieler', NULL, 'direct', ?, ?)`,
+  ).run(directId, JSON.stringify([other.body.id]), Date.now());
+  assert.equal((await request(app).delete(`/api/push/${directId}`).send({ playerId })).status, 403);
+
+  assert.equal((await request(app).delete(`/api/push/${pushId}`).send({ playerId })).status, 204);
+  assert.equal((await request(app).delete(`/api/push/${pushId}`).send({ playerId })).status, 204);
+
+  const ownAfter = await request(app).get(`/api/push/log?playerId=${playerId}`);
+  assert.ok(!ownAfter.body.entries.some((entry: { id: string }) => entry.id === pushId));
+  const ownCurrent = await request(app).get(`/api/push/current?playerId=${playerId}`);
+  assert.notEqual(ownCurrent.body.entry?.id, pushId);
+
+  const otherAfter = await request(app).get(`/api/push/log?playerId=${other.body.id}`);
+  assert.ok(otherAfter.body.entries.some((entry: { id: string }) => entry.id === pushId));
 });
 
 test('broadcast pushes disappear when ended by their creator or after their deadline', async () => {
@@ -223,6 +257,7 @@ test('GET /api/push/log returns entries relevant to the player, with deep-link u
   assert.match(entry.body, /Feed-Eintrag für alle/);
   assert.equal(entry.url, '/#broadcast');
   assert.equal(entry.audience, 'all');
+  assert.equal(entry.seen, false);
   assert.ok(entry.createdAt > 0);
 });
 
