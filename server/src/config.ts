@@ -43,6 +43,25 @@ export const config = {
   // docs/KONZEPT-TEST-USER.md) — so leave this empty until the PIN prompt
   // returns; with a PIN set, admin actions from the UI would just fail.
   adminPin: process.env.ADMIN_PIN ?? '',
+
+  // Whether real per-user login is enforced anywhere yet. 'legacy' (default)
+  // keeps today's behavior untouched — the new /api/auth/* endpoints exist
+  // and work, but nothing else requires a session. Feature routes start
+  // gating on this once identity is wired through them (see
+  // docs/KONZEPT-USER-MANAGEMENT.md phase 2+); introduced now so that work
+  // doesn't need a second config plumbing pass.
+  authMode: (process.env.AUTH_MODE === 'required' ? 'required' : 'legacy') as 'legacy' | 'required',
+
+  // Session cookies are Secure by default (required for SameSite cookies to
+  // survive real browsers, and this server is reachable from the cloud).
+  // Set COOKIE_SECURE=0 for a plain-HTTP LAN-only deployment.
+  cookieSecure: process.env.COOKIE_SECURE !== '0',
+
+  // One-time bootstrap secret: lets the very first admin claim/register an
+  // account without needing an existing admin session to issue them an
+  // invite first (see accounts.ts). Empty = bootstrap via recovery code is
+  // disabled entirely.
+  adminRecoveryCode: process.env.ADMIN_RECOVERY_CODE ?? '',
 } as const;
 
 // In production (the public-internet deploy) an empty ACCESS_TOKEN silently

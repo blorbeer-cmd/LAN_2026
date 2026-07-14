@@ -1172,6 +1172,47 @@ function migrateBroadcastLifecycleAndPushSeen(): void {
 }
 runMigration({ version: 25, name: 'add broadcast lifecycle and push seen', up: migrateBroadcastLifecycleAndPushSeen });
 
+// Real per-user login (see docs/KONZEPT-USER-MANAGEMENT.md): players gain a
+// password (NULL = not yet claimed/registered), sessions are looked up by the
+// hash of their token (the token itself is never stored), and invites are the
+// only way in — either claiming an existing player row or registering a new
+// one. purpose distinguishes 'register' | 'claim' | 'reset' so a stale claim
+// link can never double as a password-reset master key once the account is
+// claimed (see accounts.ts).
+function migrateAccountsAuth(): void {
+  const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  const has = (name: string) => columns.some((column) => column.name === name);
+  if (!has('password_hash')) db.exec('ALTER TABLE players ADD COLUMN password_hash TEXT');
+  if (!has('last_login_at')) db.exec('ALTER TABLE players ADD COLUMN last_login_at INTEGER');
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id           TEXT PRIMARY KEY,
+      player_id    TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      token_hash   TEXT NOT NULL UNIQUE,
+      created_at   INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL,
+      expires_at   INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_sessions_player ON sessions(player_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+
+    CREATE TABLE IF NOT EXISTS invites (
+      code        TEXT PRIMARY KEY,
+      purpose     TEXT NOT NULL, -- 'register' | 'claim' | 'reset'
+      player_id   TEXT REFERENCES players(id) ON DELETE CASCADE, -- set for claim/reset
+      created_by  TEXT NOT NULL REFERENCES players(id),
+      created_at  INTEGER NOT NULL,
+      expires_at  INTEGER,
+      revoked_at  INTEGER,
+      used_at     INTEGER,
+      used_by     TEXT REFERENCES players(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_invites_player ON invites(player_id);
+  `);
+}
+runMigration({ version: 26, name: 'add accounts auth (sessions, invites)', up: migrateAccountsAuth });
+
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.
 function seedGames(): void {

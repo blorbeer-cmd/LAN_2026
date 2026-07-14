@@ -31,12 +31,32 @@ import { arcadeRouter } from './arcade';
 import { arrivalsRouter } from './arrivals';
 import { adminRouter } from './admin';
 import { backupRouter } from './backup';
+import { authRouter } from './auth';
+import { requireUser } from '../sessions';
 
 export const apiRouter = Router();
 
 // Simple health check, handy for uptime monitoring on the cloud host.
 apiRouter.get('/health', (_req, res) => {
   res.json({ ok: true, time: Date.now() });
+});
+
+apiRouter.use('/auth', authRouter);
+
+// GET /api/me - the logged-in account, per the real per-user login system
+// (see docs/KONZEPT-USER-MANAGEMENT.md). Not used anywhere in the app yet —
+// identity still comes from whoami.js/localStorage until that's wired over
+// in a later change.
+apiRouter.get('/me', requireUser, (req, res) => {
+  const p = req.player!;
+  res.json({
+    id: p.id,
+    name: p.name,
+    color: p.color,
+    avatar: p.avatar,
+    isAdmin: Boolean(p.is_admin),
+    isTest: Boolean(p.is_test),
+  });
 });
 
 apiRouter.use('/players', playersRouter);
