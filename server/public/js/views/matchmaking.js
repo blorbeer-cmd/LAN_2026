@@ -245,6 +245,20 @@ function renderHistory() {
 
 // ---------- captain draft: live board ----------
 
+// The draft itself stays skill-blind (snake order is the fairness
+// mechanism, see the file header comment) — this is purely a display aid so
+// captains can see who they're picking. Looked up client-side from the
+// already-loaded skills cache, same pattern as players.js's ratingFor.
+function skillRatingFor(playerId, gameId) {
+  const entry = state.skills.find((s) => s.player_id === playerId && s.game_id === gameId);
+  return entry ? entry.rating : null;
+}
+
+function draftPlayerRatingHtml(playerId, gameId) {
+  const rating = skillRatingFor(playerId, gameId);
+  return rating != null ? ` <span class="rating">${rating}</span>` : '';
+}
+
 function renderDraftBoard(draft, ctx) {
   const myId = getMyId();
   const isMyTurn = draft.turnCaptainId === myId;
@@ -255,7 +269,7 @@ function renderDraftBoard(draft, ctx) {
       (t, i) => `
       <div class="team-card" ${draft.turnCaptainIndex === i ? 'style="border-color:var(--accent);"' : ''}>
         <div class="team-card-header"><span>👑 ${escapeHtml(t.captain.name)}</span>${draft.turnCaptainIndex === i ? '<span style="color:var(--accent);">am Zug</span>' : ''}</div>
-        ${t.players.map((p) => `<div class="team-player">${avatarHtml(p, 20)} ${escapeHtml(p.name)}</div>`).join('')}
+        ${t.players.map((p) => `<div class="team-player">${avatarHtml(p, 20)} ${escapeHtml(p.name)}${draftPlayerRatingHtml(p.id, draft.gameId)}</div>`).join('')}
       </div>`
     )
     .join('');
@@ -263,8 +277,8 @@ function renderDraftBoard(draft, ctx) {
   const poolHtml = draft.pool
     .map((p) =>
       isMyTurn
-        ? `<button type="button" class="chip" data-draft-pick="${p.id}" style="cursor:pointer;">${avatarHtml(p, 18)} ${escapeHtml(p.name)}</button>`
-        : `<span class="chip" style="opacity:0.85;">${avatarHtml(p, 18)} ${escapeHtml(p.name)}</span>`
+        ? `<button type="button" class="chip" data-draft-pick="${p.id}" style="cursor:pointer;">${avatarHtml(p, 18)} ${escapeHtml(p.name)}${draftPlayerRatingHtml(p.id, draft.gameId)}</button>`
+        : `<span class="chip" style="opacity:0.85;">${avatarHtml(p, 18)} ${escapeHtml(p.name)}${draftPlayerRatingHtml(p.id, draft.gameId)}</span>`
     )
     .join('');
 

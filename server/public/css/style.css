@@ -2280,8 +2280,7 @@ input[type='range'].preference-row-slider {
   padding: var(--space-1) 0;
   min-width: 0;
 }
-.team-player .rating {
-  margin-left: auto;
+.rating {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -2290,6 +2289,9 @@ input[type='range'].preference-row-slider {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+.team-player .rating {
+  margin-left: auto;
 }
 .team-move-select {
   width: auto;
