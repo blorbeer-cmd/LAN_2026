@@ -51,6 +51,7 @@ async function loadSeating(ctx) {
 function renderHomeSeating(ctx) {
   if (seatingCache === null && !seatingLoading) loadSeating(ctx);
   return `<section class="live-seating">
+    <div class="section-title">Sitzplan</div>
     ${seatingLoading || seatingCache === null
       ? '<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>'
       : renderSeatingPlan(seatingCache.layout, seatingCache.players)}
@@ -210,7 +211,7 @@ function renderLeaderboardTop() {
     <div class="section-title">Rangliste</div>
     <div class="card" style="margin-bottom:var(--space-4);">
       ${rows}
-      <button type="button" class="btn btn-sm btn-block" data-navigate="leaderboard" style="margin-top:var(--space-3);">Ganze Rangliste ${icon('chevronRight')}</button>
+      <button type="button" class="btn btn-sm btn-block" data-navigate="leaderboard" style="margin-top:var(--space-3);">Gesamte Rangliste ${icon('chevronRight')}</button>
     </div>
   `;
 }
@@ -250,7 +251,7 @@ export function renderHome(container, ctx) {
       <div class="empty-state">
         <img src="/img/mascot.svg" alt="" width="72" height="66" class="mascot" />
         Noch keine Spieler angelegt.<br />
-        <button type="button" class="btn btn-primary btn-sm" data-navigate="profile" style="margin-top:var(--space-3);">${icon('user')} Eigenes Profil anlegen</button>
+        <button type="button" class="btn btn-primary btn-sm" data-navigate="profile" style="margin-top:var(--space-3);">Eigenes Profil anlegen</button>
       </div>`;
     return;
   }
@@ -292,9 +293,9 @@ export function renderHome(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Home</h1>
     ${whoAmI}
-    ${renderMyStatus(myId, players)}
     ${renderStatus()}
     ${renderActiveGroups(players)}
+    ${renderMyStatus(myId, players)}
     <div class="section-title">Live-Status</div>
     <div class="card-grid">${cards}</div>
     ${renderLeaderboardTop()}

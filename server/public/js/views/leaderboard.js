@@ -84,19 +84,19 @@ export function renderLeaderboard(container, ctx) {
   container.innerHTML = `
     <div class="row-between">
       <h1 class="view-title">Rangliste</h1>
-      <button type="button" class="btn btn-primary btn-sm" id="add-match-btn">+ Ergebnis</button>
+      <button type="button" class="btn btn-primary btn-sm" id="add-match-btn">Ergebnis eintragen</button>
     </div>
     <select id="lb-filter" style="margin-bottom:var(--space-3);">${gameOptions}</select>
     <div class="card">
       ${standings.length === 0 ? `<div class="empty-state"><span class="emoji">🏆</span>Noch keine Ergebnisse.</div>` : rows}
     </div>
 
-    <div class="section-title">${icon('timer')} Spielzeit</div>
+    <div class="section-title">Spielzeit</div>
     <div class="card">
       ${playtime.length === 0 ? `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeRows}
     </div>
 
-    <div class="section-title">${icon('timer')} Spielzeit pro Spiel (alle zusammen)</div>
+    <div class="section-title">Spielzeit pro Spiel</div>
     <div class="card">
       ${playtimeByGame.length === 0 ? `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeByGameRows}
     </div>
@@ -176,11 +176,11 @@ export function openMatchForm(ctx, options = {}) {
         </select>
         <label class="check-row">
           <input type="checkbox" id="match-ffa" />
-          <span>🎲 Frei-für-alle (kein Team, jeder für sich)</span>
+          <span>Frei-für-alle</span>
         </label>
         <label class="check-row">
           <input type="checkbox" id="match-advanced" />
-          <span>${icon('chart')} Werte / Platzierung statt nur Sieger eintragen</span>
+          <span>Werte / Platzierung eintragen</span>
         </label>
         <div id="match-body"></div>
         <button type="submit" class="btn btn-primary btn-block">Speichern</button>
@@ -199,9 +199,9 @@ export function openMatchForm(ctx, options = {}) {
           const playersHtml = state.players
             .map(
               (p) => `
-              <div class="row" style="padding:var(--space-1) 0;">
+              <div class="player-assignment-row" style="padding:var(--space-1) 0;">
                 ${avatarHtml(p, 20)}
-                <span style="flex:1;">${escapeHtml(p.name)}</span>
+                <span>${escapeHtml(p.name)}</span>
                 <select data-team-for="${p.id}">
                   <option value="" ${presetTeamIndexByPlayer.has(p.id) ? '' : 'selected'}>–</option>
                   ${teamOptions(p.id)}
@@ -225,7 +225,7 @@ export function openMatchForm(ctx, options = {}) {
               </div>
             </div>
             <div id="match-scores-section" ${advancedMode ? '' : 'hidden'}>
-              <div class="section-title">${icon('chart')} Werte / Platzierung</div>
+              <div class="section-title">Werte / Platzierung eintragen</div>
               <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
                 Sieger wird automatisch aus Platz 1 bzw. dem höchsten Wert bestimmt. Beides ist optional
                 und unabhängig voneinander — leer lassen, was nicht zutrifft.
@@ -301,7 +301,7 @@ export function openMatchForm(ctx, options = {}) {
               <div id="match-ffa-winner"></div>
             </div>
             <div id="match-ffa-scores-section" ${advancedMode ? '' : 'hidden'}>
-              <div class="section-title">${icon('chart')} Werte / Platzierung</div>
+              <div class="section-title">Werte / Platzierung eintragen</div>
               <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
                 Sieger wird automatisch aus Platz 1 bzw. dem höchsten Wert bestimmt. Beides ist optional
                 und unabhängig voneinander — leer lassen, was nicht zutrifft.

@@ -52,7 +52,7 @@ function renderMyForm(myId) {
             ${dateTimeFieldHtml('departure-at', own?.departure_at ?? null, { clearable: true, disabled: !myId })}
           </div>
         </div>
-        <textarea id="arrival-note" maxlength="240" rows="2" placeholder="Notiz, z.B. komme erst nach der Arbeit" ${myId ? '' : 'disabled'}>${escapeHtml(own?.note || '')}</textarea>
+        <textarea id="arrival-note" maxlength="240" rows="2" placeholder="Notiz (optional)" ${myId ? '' : 'disabled'}>${escapeHtml(own?.note || '')}</textarea>
         <button type="submit" class="btn btn-primary btn-block" ${myId ? '' : 'disabled'}>Speichern</button>
       </form>
     </div>
@@ -66,15 +66,15 @@ function renderCarpool(c, direction, myId) {
   const memberHtml =
     c.members.length > 0
       ? `<div class="row arrivals-chip-row">${c.members
-          .map((m) => `<span class="chip">${avatarHtml(m, 18)} ${escapeHtml(m.name)}${m.id === c.driverId ? ' 🚗 Fahrer' : ''}</span>`)
+          .map((m) => `<span class="chip">${avatarHtml(m, 18)} ${escapeHtml(m.name)}${m.id === c.driverId ? ' · Fahrer' : ''}</span>`)
           .join('')}</div>`
       : `<div class="muted" style="font-size:var(--font-size-sm);">Noch niemand dabei.</div>`;
   const planLines = [
     c.startAt || c.startLocation
-      ? `<div class="arrivals-time-line"><span>🕐</span><strong>${c.startAt ? formatDateTime(c.startAt) : 'Zeit offen'}${c.startLocation ? ` ab ${escapeHtml(c.startLocation)}` : ''}</strong></div>`
+      ? `<div class="arrivals-time-line"><span>Start</span><strong>${c.startAt ? formatDateTime(c.startAt) : 'Zeit offen'}${c.startLocation ? ` ab ${escapeHtml(c.startLocation)}` : ''}</strong></div>`
       : '',
-    c.etaAt ? `<div class="arrivals-time-line"><span>🏁</span><strong>ETA ${formatDateTime(c.etaAt)}</strong></div>` : '',
-    `<div class="arrivals-time-line"><span>💺</span><strong>${c.seatsFree}/${c.seatsTotal} frei</strong></div>`,
+    c.etaAt ? `<div class="arrivals-time-line"><span>Ankunft</span><strong>${formatDateTime(c.etaAt)}</strong></div>` : '',
+    `<div class="arrivals-time-line"><span>Plätze</span><strong>${c.seatsFree}/${c.seatsTotal} frei</strong></div>`,
   ]
     .filter(Boolean)
     .join('');
@@ -95,7 +95,7 @@ function renderCarpool(c, direction, myId) {
       <div class="arrivals-carpool-head">
         <div>
           <strong>${escapeHtml(c.label)}</strong>
-          <div class="muted" style="font-size:var(--font-size-xs);">🚗 ${escapeHtml(c.createdByName)} fährt · angelegt ${formatDateTime(c.createdAt)}</div>
+          <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(c.createdByName)} fährt · angelegt ${formatDateTime(c.createdAt)}</div>
         </div>
         <div class="arrivals-carpool-actions">
           ${joinAction}
@@ -103,7 +103,7 @@ function renderCarpool(c, direction, myId) {
           ${isDriver ? `<button type="button" class="btn btn-sm btn-danger" data-remove-carpool="${c.id}">Löschen</button>` : ''}
         </div>
       </div>
-      ${planLines}
+      <div class="arrivals-time-pair">${planLines}</div>
       ${memberHtml}
       ${!myId ? `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um beizutreten.</div>` : ''}
     </div>`;
@@ -155,8 +155,10 @@ function renderPeopleList() {
           ${avatarHtml(player, 30)}
           <span class="arrivals-person-main">
             <div class="player-name">${escapeHtml(player.name)}</div>
-            <div class="arrivals-time-line"><span>An</span><strong>${escapeHtml(arrival)}</strong></div>
-            <div class="arrivals-time-line"><span>Ab</span><strong>${escapeHtml(departure)}</strong></div>
+            <div class="arrivals-time-pair">
+              <div class="arrivals-time-line"><span>An</span><strong>${escapeHtml(arrival)}</strong></div>
+              <div class="arrivals-time-line"><span>Ab</span><strong>${escapeHtml(departure)}</strong></div>
+            </div>
             ${entry?.note ? `<div class="muted arrivals-note">${escapeHtml(entry.note)}</div>` : ''}
           </span>
         </div>`;
@@ -190,7 +192,7 @@ function openCarpoolForm(direction, myId, ctx, existing = null) {
             ${dateTimeFieldHtml('carpool-start-at', existing?.startAt ?? null, { clearable: true })}
           </div>
           <div>
-            <label for="carpool-eta-at" class="field-label">ETA (Ankunft ca.)</label>
+            <label for="carpool-eta-at" class="field-label">Ankunft</label>
             ${dateTimeFieldHtml('carpool-eta-at', existing?.etaAt ?? null, { clearable: true })}
           </div>
         </div>
@@ -243,7 +245,7 @@ export function renderArrivals(container, ctx) {
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
-    <h1 class="view-title">🚗 An- & Abreise</h1>
+    <h1 class="view-title">An- & Abreise</h1>
     ${whoAmICardHtml('arrivals-whoami', { marginBottom: '12px' })}
     ${
       loaded

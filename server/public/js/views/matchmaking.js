@@ -11,11 +11,13 @@ import { escapeHtml, avatarHtml, gameBadgeHtml, formatDateTime, seatConflictIcon
 import { showToast } from '../toast.js';
 import { openMatchForm } from './leaderboard.js';
 import { getMyId } from '../whoami.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
 let checkedIds = null;
 let avoidAdjacentOpponents = false;
+let teamCountValue = '2';
 
 // Captain-draft state: the latest draft (active or finished) as delivered by
 // GET /api/draft or the draft:changed socket event. A running draft takes
@@ -146,7 +148,7 @@ function renderDrawCard(draw, { editable }) {
         <div class="grid" style="grid-template-columns:repeat(${draw.teams.length}, minmax(190px, 1fr));">${teamsHtml}</div>
       </div>
       ${seatingNote}
-      ${editable ? `<button type="button" class="btn btn-primary btn-sm" data-record-draw="${draw.id}">✅ Ergebnis eintragen</button>` : ''}
+      ${editable ? `<button type="button" class="btn btn-primary btn-sm" data-record-draw="${draw.id}">Ergebnis eintragen</button>` : ''}
       ${!editable ? `<button type="button" class="btn btn-primary btn-sm" data-rematch-draw="${draw.id}">${icon('shuffle')} Rematch</button>` : ''}
     </div>`;
 }
@@ -214,11 +216,16 @@ function wireDrawCards(container, ctx) {
 
 function renderHistory() {
   if (historyLoading || historyCache === null) {
-    return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
+    return `<details class="history-details">
+      <summary class="section-title">Team-Historie</summary>
+      <div class="empty-state" style="padding:var(--space-4);">Lädt…</div>
+    </details>`;
   }
   if (historyCache.length === 0) {
-    return `<div class="section-title">🕓 Team-Historie</div>
-      <div class="empty-state" style="padding:var(--space-4);"><span class="emoji">⚖️</span>Noch keine Auslosungen für dieses Spiel.</div>`;
+    return `<details class="history-details">
+      <summary class="section-title">Team-Historie</summary>
+      <div class="empty-state" style="padding:var(--space-4);">Noch keine Auslosungen für dieses Spiel.</div>
+    </details>`;
   }
 
   // Ergebnis-Historie (ein Ergebnis wurde eingetragen) kommt vor die
@@ -232,12 +239,14 @@ function renderHistory() {
     : '';
 
   const teamSection = `
-    <div class="section-title">🕓 Team-Historie</div>
-    ${
-      teamHistory.length
-        ? teamHistory.map((d) => renderDrawCard(d, { editable: true })).join('')
-        : `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">⚖️</span>Noch keine offenen Auslosungen.</div>`
-    }
+    <details class="history-details">
+      <summary class="section-title">Team-Historie</summary>
+      ${
+        teamHistory.length
+          ? teamHistory.map((d) => renderDrawCard(d, { editable: true })).join('')
+          : `<div class="empty-state" style="padding:var(--space-4);">Noch keine offenen Auslosungen.</div>`
+      }
+    </details>
   `;
 
   return resultSection + teamSection;
@@ -377,10 +386,6 @@ export function renderMatchmaking(container, ctx) {
     )
     .join('');
 
-  // Toggling a player checkbox re-renders (the captain chips derive from the
-  // checked set) — keep whatever team count the user already typed.
-  const prevTeamCount = container.querySelector('#mm-teamcount')?.value ?? '';
-
   // Captain chips: pick 2-4 captains from the currently checked players —
   // the rest of the checked players become the pool the captains pick from.
   const checkedPlayers = state.players.filter((p) => checkedIds.has(p.id));
@@ -400,33 +405,56 @@ export function renderMatchmaking(container, ctx) {
     <h1 class="view-title">Teams auslosen</h1>
     <div class="card stack">
       <select id="mm-game">${gameOptions}</select>
-      <div>${playerRows}</div>
+      <div class="selection-toolbar">
+        <label class="field-label" for="mm-teamcount">Anzahl Teams</label>
+        <input type="number" id="mm-teamcount" min="2" value="${escapeHtml(teamCountValue)}" />
+        <button type="button" class="btn btn-sm" id="mm-select-all">Alle markieren</button>
+        <button type="button" class="btn btn-sm" id="mm-select-none">Auswahl aufheben</button>
+      </div>
+      <div class="player-selection-grid">${playerRows}</div>
       <div class="row">
-        <input type="number" id="mm-teamcount" placeholder="Teams" min="2" style="width:90px;flex-shrink:0;" />
         <button type="button" class="btn btn-primary" id="mm-generate" style="flex:1;">Teams auslosen</button>
       </div>
-      <div class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">Anzahl Teams leer lassen für automatisch (Standard: 2)</div>
       <label class="check-row">
         <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
-        <span>${icon('armchair')} Sitznachbarn bevorzugt ins selbe Team losen</span>
+        <span>Sitznachbarn zusammen</span>
       </label>
 
-      <div class="section-title" style="margin:var(--space-2) 0 0;">👑 Oder: Captain-Draft</div>
-      <div class="muted" style="font-size:var(--font-size-xs);">
-        2-4 Captains antippen – sie picken dann abwechselnd live aus den übrigen angehakten
-        Spielern. Alle können auf ihrem Handy zusehen.
+      <div class="section-title title-with-info" style="margin:var(--space-2) 0 0;">
+        <span>Captain Draft</span>
+        ${infoTooltipHtml(
+          'captain-draft-help',
+          'Captain Draft',
+          '2–4 Captains antippen – sie picken dann abwechselnd live aus den übrigen angehakten Spielern. Alle können auf ihrem Handy zusehen.'
+        )}
       </div>
+      <div class="muted" style="font-size:var(--font-size-xs);">2–4 Captains wählen</div>
       <div class="chip-list">${captainChips || '<span class="muted" style="font-size:var(--font-size-sm);">Oben Spieler anhaken, dann hier Captains wählen.</span>'}</div>
-      <button type="button" class="btn" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten${draftReady ? ` (${draftCaptainIds.size} Captains, ${draftPoolSize} im Pool)` : ''}</button>
+      <div class="action-row-centered">
+        <button type="button" class="btn ${draftReady ? 'btn-primary' : ''}" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten${draftReady ? ` (${draftCaptainIds.size} Captains, ${draftPoolSize} im Pool)` : ''}</button>
+      </div>
     </div>
     <div id="mm-result">${renderResult(state.lastMatchmaking)}</div>
 
     ${renderHistory()}
   `;
 
-  if (prevTeamCount) container.querySelector('#mm-teamcount').value = prevTeamCount;
-
+  wireInfoTooltips(container);
   wireDrawCards(container, ctx);
+
+  container.querySelector('#mm-teamcount').addEventListener('input', (event) => {
+    teamCountValue = event.target.value;
+  });
+
+  container.querySelector('#mm-select-all').addEventListener('click', () => {
+    checkedIds = new Set(state.players.map((player) => player.id));
+    ctx.rerender();
+  });
+  container.querySelector('#mm-select-none').addEventListener('click', () => {
+    checkedIds.clear();
+    draftCaptainIds.clear();
+    ctx.rerender();
+  });
 
   container.querySelectorAll('[data-captain-toggle]').forEach((btn) => {
     btn.addEventListener('click', () => {

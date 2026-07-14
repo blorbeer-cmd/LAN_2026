@@ -264,7 +264,7 @@ export function renderSeating(container, ctx) {
   if (cache === null && !loading) load(ctx);
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="settings">‹ Zurück</button>
-    <h1 class="view-title">${icon('armchair')} Sitzplan</h1>
+    <h1 class="view-title">Sitzplan</h1>
     ${loading || cache === null ? '<div class="empty-state">Lädt…</div>' : renderEditor()}`;
   if (cache) wireEditor(container, ctx);
 }

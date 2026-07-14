@@ -390,7 +390,7 @@ export function renderVotes(container, ctx) {
       votes.mode === 'points'
         ? `🟢 Abstimmung läuft (Punkte-Modus) · ${votes.totalVoters} von ${totalPlayers} haben abgestimmt – Verteilung gibt's erst nach dem Ende`
         : `🟢 Stichwahl läuft · ${votes.totalVoters} von ${totalPlayers} haben abgestimmt – Ergebnis gibt's erst nach dem Ende`;
-    const rows = renderOpenRows(votes, mineReady);
+    const rows = `<div class="vote-game-grid">${renderOpenRows(votes, mineReady)}</div>`;
     const submitLabel = votes.mode === 'points' ? 'Bewertung abschicken' : 'Stimme abschicken';
     openSectionHtml = `
       <div class="section-title">🗳️ ${votes.title ? escapeHtml(votes.title) : 'Abstimmung'}</div>
@@ -399,10 +399,8 @@ export function renderVotes(container, ctx) {
         ${votes.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0;">${escapeHtml(votes.info)}</p>` : ''}
         ${rows}
         <button type="button" class="btn btn-primary btn-block" id="votes-submit" ${mineReady ? '' : 'disabled'}>${submitLabel}</button>
-      </div>
-      <div class="row" style="margin-top:var(--space-3);">
-        <button type="button" class="btn btn-primary" id="votes-close" style="flex:1;">Beenden &amp; Gewinner küren</button>
-        <button type="button" class="btn btn-danger" id="votes-cancel">Abbrechen</button>
+        <button type="button" class="btn btn-primary btn-block" id="votes-close">Beenden &amp; Gewinner küren</button>
+        <button type="button" class="btn btn-danger btn-sm" id="votes-cancel" style="align-self:center;">Abbrechen</button>
       </div>`;
   } else {
     // Only offered right after a round closed in a tie (several games sharing
@@ -431,10 +429,10 @@ export function renderVotes(container, ctx) {
       )
       .join('');
     openSectionHtml = `
-      <div class="section-title">🗳️ Neue Abstimmung starten</div>
+      <div class="section-title">Neue Abstimmung starten</div>
       <div class="card stack">
         <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
-          🔢 Jede:r verteilt 0–10 Punkte auf beliebig viele Spiele. Nach dem Beenden gewinnt die höchste Punktzahl.
+          Punkte frei verteilen, höchste Summe gewinnt.
         </p>
         <label class="stack" style="gap:var(--space-1);">
           <span class="muted" style="font-size:var(--font-size-xs);">Titel (optional)</span>
@@ -454,7 +452,7 @@ export function renderVotes(container, ctx) {
               <span class="muted" style="font-size:var(--font-size-xs);">Welche Spiele stehen zur Wahl?</span>
               <button type="button" class="btn btn-sm" id="votes-select-toggle">Alle abwählen</button>
             </div>
-            <div id="votes-game-select">${gameCheckboxes}</div>
+            <div id="votes-game-select" class="vote-game-grid">${gameCheckboxes}</div>
           </div>
         </div>
         <button type="button" class="btn btn-primary btn-block" id="votes-start">Abstimmung starten</button>
@@ -474,9 +472,10 @@ export function renderVotes(container, ctx) {
     ${runoffSectionHtml}
     ${openSectionHtml}
 
-    <div class="section-title">${icon('timer')} Vote-Historie</div>
-    <p class="muted" style="font-size:var(--font-size-xs);margin:calc(var(--space-1) * -1) 0 var(--space-2);">Antippen für die genaue Punkteverteilung dieser Runde.</p>
-    ${renderHistory()}
+    <details class="history-details">
+      <summary class="section-title">${icon('timer')} Vote-Historie</summary>
+      ${renderHistory()}
+    </details>
   `;
 
   wireWhoAmICard(container, 'whoami', ctx);

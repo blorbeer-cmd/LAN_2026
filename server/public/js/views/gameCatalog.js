@@ -519,14 +519,14 @@ export function renderGameCatalog(container, ctx) {
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
-    <h1 class="view-title">🎮 Spiele</h1>
+    <h1 class="view-title">Spiele</h1>
     ${whoAmICardHtml('whoami')}
     <div class="row-between" style="margin-top:var(--space-3);gap:var(--space-3);align-items:center;">
       <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
         <button type="button" class="btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}" data-tab="catalog">Alle</button>
         <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
       </div>
-      <button type="button" class="btn btn-primary btn-sm" id="suggest-new">+ Spiel vorschlagen</button>
+      <button type="button" class="btn btn-primary btn-sm" id="suggest-new">Spiel vorschlagen</button>
     </div>
     <div class="row" style="gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3);">
       ${sortButton('name', 'Name')}

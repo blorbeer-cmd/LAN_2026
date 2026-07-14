@@ -95,7 +95,7 @@ function openShareLinkModal(eventName) {
 function renderInviteSection() {
   const token = getToken();
   return `
-    <div class="section-title">🔗 Einladungslink</div>
+    <div class="section-title">Einladungslink</div>
     <div class="card stack">
       ${renderInviteLinkBody()}
       <p class="muted" style="font-size:var(--font-size-xs);">
@@ -105,7 +105,7 @@ function renderInviteSection() {
       </p>
     </div>
 
-    <div class="section-title">🖥️ TV-/Kiosk-Ansicht</div>
+    <div class="section-title">TV-/Kiosk-Ansicht</div>
     <div class="card stack">
       <a href="/kiosk.html${token ? `?token=${encodeURIComponent(token)}` : ''}" target="_blank" rel="noopener" class="btn btn-block">Kiosk-Ansicht öffnen</a>
       <p class="muted" style="font-size:var(--font-size-xs);">
@@ -163,7 +163,7 @@ function renderEventSection() {
 
   return `
     <div class="row-between" style="margin-top:var(--space-5);">
-      <div class="section-title" style="margin:0 0 8px;">🎪 Events</div>
+      <div class="section-title" style="margin:0;">Events</div>
       <button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>
     </div>
     <p class="muted" style="font-size:var(--font-size-xs);margin:0 0 14px;">
@@ -351,15 +351,15 @@ export function renderSettings(container, ctx) {
     <h1 class="view-title">Einstellungen</h1>
     ${renderEventSection()}
     ${renderInviteSection()}
-    <div class="section-title">${icon('tableRowsSplit')} Sitzplan</div>
+    <div class="section-title">Sitzplan</div>
     <div class="card row-between">
       <span class="muted">Tisch, Plätze und Sitzordnung gemeinsam festlegen.</span>
       <button type="button" class="btn btn-sm" data-navigate="seating">Sitzplan öffnen</button>
     </div>
-    <div class="section-title">${icon('download')} Backup</div>
+    <div class="section-title">Backup</div>
     <div class="card row-between">
       <span class="muted">Sichert den aktuellen Stand als SQLite-Datei.</span>
-      <button type="button" class="btn btn-sm" id="download-backup">Backup laden</button>
+      <button type="button" class="btn btn-sm" id="download-backup">Download Backup</button>
     </div>
   `;
 

@@ -8,7 +8,6 @@ import { escapeHtml, formatDateTime } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
-import { icon } from '../icons.js';
 
 let historyCache = null;
 let historyLoading = false;
@@ -54,7 +53,7 @@ function renderHistory(myId) {
           <div><strong>${escapeHtml(b.playerName)}</strong>: ${escapeHtml(b.message)}</div>
           <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(b.createdAt)} Uhr · ${status}</span>
         </div>
-        ${active && b.playerId === myId ? `<button type="button" class="btn btn-sm btn-danger" data-end-broadcast="${b.id}">${icon('x')} Beenden</button>` : ''}
+        ${active && b.playerId === myId ? `<button type="button" class="btn btn-sm btn-danger" data-end-broadcast="${b.id}">Beenden</button>` : ''}
       </div>`;
     })
     .join('');
@@ -77,7 +76,7 @@ export function renderBroadcast(container, ctx) {
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
-    <h1 class="view-title">📢 Durchsage</h1>
+    <h1 class="view-title">Durchsage</h1>
     ${whoAmICardHtml('broadcast-whoami', { marginBottom: '12px' })}
     <div class="card stack">
       <form id="broadcast-form" class="stack">
@@ -89,7 +88,7 @@ export function renderBroadcast(container, ctx) {
           <label for="broadcast-ends-at" class="field-label">Sichtbar bis</label>
           ${dateTimeFieldHtml('broadcast-ends-at', displayEndsAt, { disabled: !myId })}
         </div>
-        <button type="submit" class="btn btn-primary" ${myId ? '' : 'disabled'}>${icon('megaphone')} Senden</button>
+        <button type="submit" class="btn btn-primary" ${myId ? '' : 'disabled'}>Senden</button>
       </form>
       <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
         Erscheint sofort auf allen offenen Geräten, auf dem Kiosk-Bildschirm und als
@@ -97,7 +96,7 @@ export function renderBroadcast(container, ctx) {
       </p>
     </div>
 
-    <div class="section-title">🕓 Letzte Durchsagen</div>
+    <div class="section-title">Letzte Durchsagen</div>
     <div class="card">${renderHistory(myId)}</div>
   `;
 

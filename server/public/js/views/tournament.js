@@ -10,6 +10,7 @@ import { state, gameById } from '../state.js';
 import { escapeHtml, avatarHtml, gameBadgeHtml, seatConflictIconHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
@@ -168,8 +169,8 @@ function renderList(container, ctx) {
 
   container.innerHTML = `
     <div class="row-between">
-      <h1 class="view-title">${icon('swords')} Turniere</h1>
-      <button type="button" class="btn btn-primary btn-sm" id="tourn-new-btn">+ Turnier</button>
+      <h1 class="view-title">Turniere</h1>
+      <button type="button" class="btn btn-primary btn-sm" id="tourn-new-btn">Turnier anlegen</button>
     </div>
     <div id="tourn-create"></div>
     ${listHtml}
@@ -266,15 +267,25 @@ function renderCreateForm(el, ctx) {
     <div class="card stack" style="margin-bottom:var(--space-4);">
       <div class="row-between">
         <div class="section-title" style="margin:0;">Neues Turnier</div>
-        <button type="button" class="icon-btn" id="tourn-create-close" aria-label="Schließen">✕</button>
+        <button type="button" class="icon-btn" id="tourn-create-close" aria-label="Schließen">${icon('x')}</button>
       </div>
       <select id="tourn-game">${gameOptions}</select>
-      <div>${playerRows}</div>
-      <input type="number" id="tourn-teamcount" placeholder="Anzahl Teams" min="2" value="${escapeHtml(createTeamCount)}" style="width:140px;" />
-      <label class="check-row">
+      <div class="selection-toolbar">
+        <label class="field-label" for="tourn-teamcount">Anzahl Teams</label>
+        <input type="number" id="tourn-teamcount" min="2" value="${escapeHtml(createTeamCount)}" />
+        <button type="button" class="btn btn-sm" id="tourn-select-all">Alle markieren</button>
+        <button type="button" class="btn btn-sm" id="tourn-select-none">Auswahl aufheben</button>
+      </div>
+      <div class="player-selection-grid">${playerRows}</div>
+      <div class="check-row">
         <input type="checkbox" id="tourn-avoid-adjacent" ${createAvoidAdjacent ? 'checked' : ''} />
-        <span>${icon('armchair')} Sitznachbarn bevorzugt ins selbe Team losen</span>
-      </label>
+        <label for="tourn-avoid-adjacent" style="flex:1;">Sitznachbarn zusammen</label>
+        ${infoTooltipHtml(
+            'tournament-neighbors-help',
+            'Sitznachbarn zusammen',
+            'Sitznachbarn werden nach Möglichkeit in dasselbe Team gelost. Die Skill-Balance hat Vorrang, wenn beides nicht gleichzeitig möglich ist.'
+          )}
+      </div>
       <button type="button" class="btn btn-primary" id="tourn-propose">Teams auslosen</button>
 
       ${teamsPreview}
@@ -302,16 +313,26 @@ function renderCreateForm(el, ctx) {
       }
       ${
         createFormat === 'round_robin' || createFormat === 'group_knockout'
-          ? `<label class="check-row">
+          ? `<div class="check-row">
                <input type="checkbox" id="tourn-two-legged" ${createTwoLegged ? 'checked' : ''} />
-               <span>🔁 Hin- und Rückspiele${createFormat === 'group_knockout' ? ' (in der Gruppenphase)' : ' (jeder spielt zweimal gegen jeden)'}</span>
-             </label>`
+               <label for="tourn-two-legged" style="flex:1;">Hin- und Rückspiel${createFormat === 'group_knockout' ? ' in der Gruppenphase' : ''}</label>
+               ${infoTooltipHtml(
+                   'tournament-two-legged-help',
+                   'Hin- und Rückspiel',
+                   'Jede Paarung wird zweimal gespielt.'
+                 )}
+             </div>`
           : ''
       }
-      <label class="check-row">
+      <div class="check-row">
         <input type="checkbox" id="tourn-track-score" ${createTrackScore ? 'checked' : ''} />
-        <span>🔢 Ergebnisse mit Punktestand erfassen (statt nur Sieg/Niederlage)</span>
-      </label>
+        <label for="tourn-track-score" style="flex:1;">Ergebnisse inkl. Punktestand</label>
+        ${infoTooltipHtml(
+            'tournament-score-help',
+            'Ergebnisse inklusive Punktestand',
+            'Erfasst den genauen Punktestand statt nur Sieg oder Niederlage.'
+          )}
+      </div>
       <div class="row" style="align-items:flex-start;">
         <div style="flex:1;">
           <label for="tourn-lobby-name" class="field-label">Lobby-Name (optional)</label>
@@ -328,6 +349,8 @@ function renderCreateForm(el, ctx) {
       <button type="button" class="btn btn-primary btn-block" id="tourn-submit" ${createProposedTeams ? '' : 'disabled'}>Turnier erstellen</button>
     </div>
   `;
+
+  wireInfoTooltips(el);
 
   el.querySelector('#tourn-create-close').addEventListener('click', () => {
     resetCreateForm();
@@ -346,6 +369,17 @@ function renderCreateForm(el, ctx) {
       else createCheckedIds.delete(cb.dataset.createPlayer);
       createProposedTeams = null;
     });
+  });
+
+  el.querySelector('#tourn-select-all').addEventListener('click', () => {
+    createCheckedIds = new Set(state.players.map((player) => player.id));
+    createProposedTeams = null;
+    ctx.rerender();
+  });
+  el.querySelector('#tourn-select-none').addEventListener('click', () => {
+    createCheckedIds.clear();
+    createProposedTeams = null;
+    ctx.rerender();
   });
 
   el.querySelector('#tourn-format').addEventListener('change', (e) => {

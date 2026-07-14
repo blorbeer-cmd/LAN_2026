@@ -75,18 +75,18 @@ export function renderHallOfFame(container, ctx) {
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
-    <h1 class="view-title">🏛️ Hall of Fame</h1>
+    <h1 class="view-title">Hall of Fame</h1>
     ${
       loading || cache === null
         ? `<div class="empty-state">Lädt…</div>`
         : `
-      <div class="section-title">👑 Meiste Gesamtsiege</div>
+      <div class="section-title">Meiste Gesamtsiege</div>
       <div class="card">${rankedRows(cache.allTime.mostOverallWins, 'Gesamtsieg')}</div>
 
-      <div class="section-title">🏆 Meiste Turniersiege</div>
+      <div class="section-title">Meiste Turniersiege</div>
       <div class="card">${rankedRows(cache.allTime.mostTournamentWins, 'Turnier')}</div>
 
-      <div class="section-title">📅 Nach LAN</div>
+      <div class="section-title">Nach LAN</div>
       ${
         cache.events.length === 0
           ? `<div class="empty-state"><span class="emoji">🏛️</span>Noch keine Events.</div>`

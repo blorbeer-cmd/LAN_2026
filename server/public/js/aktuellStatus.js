@@ -132,7 +132,7 @@ export function aktuellItems() {
     items.push({
       iconName: 'hamburger',
       title: `Sammelbestellung „${o.title}"`,
-      sub: o.sendAt ? `Geht raus um ${formatDateTime(o.sendAt)} Uhr` : 'Zeitpunkt noch offen',
+      sub: o.sendAt ? `Versand ${formatDateTime(o.sendAt)} Uhr` : 'Zeitpunkt noch offen',
       navigate: 'foodOrders',
     });
   }

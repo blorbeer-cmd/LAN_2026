@@ -1,0 +1,220 @@
+# Plan: Allgemeines Feedback als lokaler UI-PR
+
+## Ziel und PR-Zuschnitt
+
+Der lokale PR setzt das umsetzungsreife Feedback aus `docs/FEEDBACK-GENERELL.md` als zusammenhängenden
+UI-Polish-Pass um. Änderungen an Identität, Login, Rollen, Spieler-Lebenszyklus, Agent-Key-Rechten,
+personenbezogenen Mitteilungen, Einladungen und Event-Sichtbarkeit bleiben ausdrücklich außen vor.
+Diese Punkte sind in der Feedbackliste mit `Kommentar (Usermanagement)` markiert und gehören in die
+Phasen aus `docs/KONZEPT-USER-MANAGEMENT.md`.
+
+Vorgeschlagener Arbeitstitel: **Refine general UI copy, layouts and contextual help**.
+
+Der PR darf mehrere kleine Commits enthalten, bleibt aber ein lokaler Arbeitsbranch. Kein Push,
+kein GitHub-PR und kein Umbenennen des entfernten Repositories ohne gesonderten Auftrag.
+
+## Leitentscheidungen
+
+1. Erklärtexte werden nicht pauschal versteckt. Ein Tooltip bleibt nur dort erhalten, wo der
+   entfernte Text eine nicht offensichtliche Bedienregel erklärt. Reine Wiederholungen entfallen.
+2. Das sogenannte Tooltip ist ein touch-tauglicher Info-Popover: ein Lucide-Infosymbol neben Titel
+   oder Feldname, kein nur per Hover erreichbares natives `title`-Attribut.
+3. Seitentitel und farbige Aktionsbuttons werden entsprechend der Feedbackliste von dekorativen
+   Symbolen befreit. Status-, Warn- und rein ikonische Bedienelemente behalten notwendige Symbole.
+4. Die Kacheln unter „Mehr“ werden alphabetisch sortiert. Das schafft eine objektive, dauerhaft
+   stabile Reihenfolge; die fachliche Gruppierung ist bei nur zehn Einträgen nicht eindeutig.
+5. Historien werden mit nativen `<details>`/`<summary>` standardmäßig eingeklappt. Dadurch bleiben
+   Tastaturbedienung und Semantik ohne eigene Zustandslogik erhalten.
+6. Die bestehende Implementierung der „Längsten Einzelsession pro Spiel“ wählt bereits die längste
+   einzelne Spieler-Session und hängt nicht davon ab, wer ein Spiel zuerst öffnet oder zuletzt
+   schließt. Der PR macht diese Bedeutung im Titel eindeutig und sichert sie mit einem Test ab.
+7. „Belegung über die Zeit“ und „Mehrere Spiele gleichzeitig offen“ verschwinden aus der normalen
+   Auswertungsansicht. Das Session-Protokoll bleibt für die Nachbereitung in einem eingeklappten
+   Detailbereich erhalten. Die APIs werden in diesem UI-PR nicht vorschnell gelöscht.
+
+## Arbeitspakete
+
+### 1. Ausgangszustand und regressionssichere Basis
+
+- Vor der Änderung die in der Feedbackliste genannten Pfade auf aktuellem Phone- und Laptop-Viewport
+  reproduzieren; die Liste ist teilweise älter als der jetzige Code.
+- Das Schließen der neuesten Kopfzeilen-Mitteilung in `notificationBanner.js` gezielt prüfen.
+  Die Funktion und ein E2E-Pfad existieren bereits; nur bei reproduzierbarem Fehler Ursache beheben
+  und den Test auf den tatsächlichen Fehlerfall erweitern.
+- Den immer „Offline“ wirkenden Status mit vorhandenem Agent-Heartbeat und Live-State prüfen. Dieser
+  Diagnosepunkt ist kein Anlass, im UI-PR Authentifizierung oder Agent-Key-Rechte umzubauen.
+- Bereits erfüllte Punkte nur dokumentieren und zur gemeinsamen Abnahme vorlegen; keine nutzlose
+  Neuimplementierung erzeugen.
+
+Betroffene Dateien voraussichtlich: `server/public/js/notificationBanner.js`,
+`server/public/js/views/home.js`, `server/src/test/e2e/flows.e2e.test.ts` sowie bei einem echten
+Statusfehler die vorhandenen Live-State-Tests.
+
+### 2. Gemeinsames Info-Tooltip/Popover
+
+- Einen kleinen wiederverwendbaren Helper unter `server/public/js/` ergänzen, der Überschrift,
+  Infoschalter und sicher escapten Hilfetext rendert und nach Re-Renders verdrahtet werden kann.
+- Der Schalter verwendet `icon('info')`, einen deutschen zugänglichen Namen und eine stabile
+  Beziehung zum Hilfetext. Er öffnet per Klick/Touch und Tastatur, schließt beim zweiten Auslösen,
+  mit `Escape`, außerhalb des Popovers und beim Öffnen eines anderen Hinweises.
+- Fokus bleibt nachvollziehbar; der Text enthält keine interaktiven Elemente. Hover darf auf Geräten
+  mit Maus zusätzlich funktionieren, ist aber keine Voraussetzung.
+- Darstellung in `style.css` ausschließlich mit vorhandenen Design-Tokens: erhöhte dunkle Fläche,
+  Border, Radius, Shadow, lesbare maximale Breite und sichere Positionierung ohne horizontalen
+  Seiten-Overflow auf dem Handy.
+- Erste konkrete Nutzung:
+  - „Captain Draft“: sichtbar „2–4 Captains wählen“, vollständiger Ablauf im Info-Popover.
+  - Turnieroptionen „Sitznachbarn zusammen“, „Hin- und Rückspiel“ und „Ergebnisse inkl.
+    Punktestand“ nur dann mit Hinweis versehen, wenn die gekürzte Beschriftung die Auswirkung nicht
+    ausreichend erklärt.
+- Texte, deren fachlicher Inhalt durch das Usermanagement wechselt (Einladung, Kiosk, Durchsage,
+  Agent-Key), bekommen in diesem PR bewusst noch kein Tooltip.
+
+Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.js`,
+`server/public/css/style.css`, `server/public/js/views/matchmaking.js`,
+`server/public/js/views/tournament.js` und E2E-Abdeckung.
+
+### 3. Teams und Turniere gemeinsam vereinheitlichen
+
+- Eine gemeinsame responsive Spieler-Auswahlklasse einführen: eine Spalte auf schmalen Handys,
+  zwei bis vier Kachelbreiten je nach verfügbarem Platz auf Laptop/Desktop.
+- In beiden Ansichten „Alle markieren“ und „Auswahl aufheben“ nahe der Teamanzahl anbieten. Die
+  Buttons ändern nur die lokale Auswahl und erhalten den bereits eingegebenen Teamwert.
+- Teamanzahl in „Teams“ mit `2` vorbelegen; den bisherigen Automatik-Hinweis entfernen.
+- Beschriftungen und Symbole gemäß Feedback bereinigen, ohne Checkbox-Semantik zu ändern.
+- Captain-Draft in „Captain Draft“ umbenennen, sichtbaren Kurztext einsetzen und den Langtext in den
+  neuen Info-Popover verschieben.
+- „Draft starten“ mittig unter „Teams auslosen“ ausrichten und erst bei gültiger Auswahl als primäre
+  Aktion darstellen; `disabled` bleibt nicht nur farblich erkennbar.
+- Team- und Vote-Historie standardmäßig einklappen; Lade-, Leer- und Ergebniszustände müssen auch im
+  eingeklappten Aufbau stabil bleiben.
+
+Betroffene Dateien: `server/public/js/views/matchmaking.js`,
+`server/public/js/views/tournament.js`, `server/public/js/views/votes.js`,
+`server/public/css/style.css` und `server/src/test/e2e/flows.e2e.test.ts`.
+
+### 4. Home, Rang und Vote aufräumen
+
+- Home-Reihenfolge auf „Aktuell“, Live-Inhalte, Rangliste/Sitzplan und danach „Dein Status“ umstellen;
+  „Aktuell“ nutzt die bereits responsive `card-grid` für mehrere Kacheln.
+- Sitzplan erhält eine Überschrift analog zu Rangliste und Status; „Gesamte Rangliste“ ersetzt
+  „Ganze Rangliste“.
+- Den Meldungsbereich nicht zu einer neuen personenbezogenen Glockenliste umbauen; dieser Teil ist
+  wegen Usermanagement zurückgestellt. Die bestehende neueste Kopfzeilen-Mitteilung bleibt bestehen.
+- Rang-Titel, Kurztexte und Ergebnisformular bereinigen. Für die Spieler-Zuordnung eine stabile
+  Grid-/Spaltenstruktur verwenden, damit Selects unabhängig von Namenslängen fluchten.
+- Vote-Beschreibung auf „Punkte frei verteilen, höchste Summe gewinnt.“ kürzen, Aktionsbuttons
+  ausrichten und Spiele ab `--bp-md` zweispaltig darstellen; auf dem Handy bleibt eine Spalte.
+- Die Vote-Historie als eingeklapptes `<details>` mit dem ausdrücklich gewünschten lokalen
+  Historien-Symbol ausführen; den alten Antipp-Erklärungstext entfernen.
+
+Betroffene Dateien: `server/public/js/views/home.js`, `server/public/js/views/seating.js`,
+`server/public/js/views/leaderboard.js`, `server/public/js/views/votes.js` und
+`server/public/css/style.css`.
+
+### 5. Unterseiten unter „Mehr“ konsistent bereinigen
+
+- Einträge in `more.js` alphabetisch sortieren und die dort gewünschten Kurztexte aktualisieren
+  („Essen“, „Minigame-Lobbies“, „Awards und Statistiken“, keine An-/Abreise-Beschreibung).
+- Auf den Zielseiten die in der Feedbackliste genannten dekorativen Seiten-/Abschnittssymbole und
+  Symbole in farbigen Textbuttons entfernen. Rein ikonische Aktionen wie Bearbeiten, Kopieren,
+  Schließen oder Löschen bleiben erhalten und bekommen weiterhin zugängliche Namen.
+- Info-Board-Inhalte durch eine klarere Typografie und Kartenhierarchie hervorheben, ohne die
+  Aktionsbuttons zu vergrößern; das Seitentitel-Symbol entfällt.
+- Essen-Texte vereinfachen und für die Datumsauswahl den vorhandenen `dateTimeField`-Helper wie bei
+  An-/Abreise verwenden.
+- An-/Abreise: Felder umbenennen, falsche Fahrgemeinschaftssymbole entfernen und Zeitangaben mit
+  einer responsiven Feldreihe nebeneinanderstellen.
+- Spieler und Admin sowie alle „Du bist …“-Hinweise nicht anfassen. Bei „Durchsage“ nur den sicheren
+  visuellen Punkt an der Historienüberschrift umsetzen; die markierten Usermanagement-Punkte bleiben
+  unverändert.
+
+Betroffene Dateien vor allem: `server/public/js/views/more.js`, `infoBoard.js`, `gameCatalog.js`,
+`foodOrders.js`, `arcade.js`, `arrivals.js`, `broadcast.js`, `hallOfFame.js` und
+`server/public/css/style.css`.
+
+### 6. Auswertungen, Profil und Einstellungen verschlanken
+
+- Auswertungen: Kacheltext und Titel bereinigen, Symbole entfernen, Awards-Karten einheitlich mit
+  dem Spieler in der unteren Kartenzeile ausrichten.
+- „Längste Einzelsession pro Spiel“ in „Längste individuelle Session pro Spiel“ umbenennen und den
+  vorhandenen Max-pro-Einzelsession-Pfad durch einen Unit-/Integrationstest gegen überlappende
+  Sessions mehrerer Spieler absichern.
+- Multitasking-Liste und Belegungsdiagramm nicht mehr laden/rendern; das Backend bleibt für eine
+  spätere Achievement- oder überarbeitete Analyse nutzbar. Das Session-Protokoll wird als
+  standardmäßig geschlossener Nachbereitungsbereich geführt.
+- Die Zeit-/Event-Filterung selbst bleibt wegen des künftigen Event-Scopings unverändert.
+- Profil: rein visuelle/textliche Punkte umsetzen (Erklärung entfernen, Felder nebeneinander,
+  Sitzplan-Link bewerten, Abstände und Statistik-Titel). Der Agent-Bereich bleibt zurückgestellt.
+- Einstellungen: nur sichere Oberflächenpunkte wie Titel-/Sitzplan-Symbole und „Download Backup“
+  umsetzen. Event-, Einladungs- und Kiosk-Erklärungen bleiben zurückgestellt.
+
+Betroffene Dateien: `server/public/js/views/analytics.js`, gegebenenfalls
+`server/src/sessionStats.test.ts`, `server/public/js/views/profile.js`,
+`server/public/js/views/myStats.js`, `server/public/js/views/games.js` und
+`server/public/css/style.css`.
+
+### 7. Produktname separat koordinieren
+
+- Sichtbare lokale Produkttexte, PWA-Metadaten, Kiosk, Service Worker, Tests und Agent-Artefaktnamen
+  können in einem eigenen Rename-Commit von „RespawnHQ“ zu „Respawn“ wechseln.
+- Das Repository selbst lässt sich nicht durch einen lokalen Code-PR umbenennen. Repo-Slug,
+  Clone-URLs, Deploy-/Badge-Referenzen und externe Integrationen werden erst nach ausdrücklicher
+  Freigabe koordiniert. Bis dahin keine halbe Umbenennung mergen.
+- Empfehlung: den Rename als separaten PR behandeln, damit UI-Review und externe Umstellung nicht
+  voneinander abhängen.
+
+## Test- und Abnahmeplan
+
+### Automatisiert
+
+Aus `server/`:
+
+```bash
+npm run lint
+npm run format:check
+npm run check:tokens
+npm run build
+npm test
+npm run test:e2e
+```
+
+E2E-Abdeckung ergänzt mindestens:
+
+- Info-Popover per Klick, Tastatur und `Escape`, inklusive nur eines offenen Popovers.
+- Mehrspaltige Spieler-/Vote-Auswahl auf Laptop und einspaltiger, overflow-freier Aufbau auf Handy.
+- „Alle markieren“/„Auswahl aufheben“, Teamwert `2` und gültiger/ungültiger Draft-Startzustand.
+- Standardmäßig geschlossene Team-/Vote-Historien und weiterhin erreichbare Historieninhalte.
+- Banner-Schließen nur dann als neuer Regressionstest, wenn der gemeldete Fehler reproduzierbar ist.
+- Datumsauswahl in Essen mit demselben Helper-Verhalten wie An-/Abreise.
+
+### Manuell
+
+- Phone und Laptop, Browser-Zoom sowie lange Spieler-, Spiel- und Info-Board-Texte prüfen.
+- Fokusreihenfolge, sichtbaren Fokus, Touch-Zielgröße, Screenreader-Namen und `Escape`-Verhalten des
+  Info-Popovers kontrollieren.
+- Lade-, Leer-, Fehler-, Disabled- und lange Historienzustände je betroffener Ansicht prüfen.
+- Symbol-Audit: keine dekorativen Icons in bereinigten Titeln/farbigen Buttons, aber notwendige
+  Status- und Icon-only-Aktionen bleiben verständlich.
+- Feedback-Checkboxen erst nach gemeinsamer visueller Abnahme auf `[x]` setzen.
+
+## Bewusst nicht Bestandteil dieses PRs
+
+- Alle mit `Kommentar (Usermanagement)` markierten Punkte.
+- Neue Login-, Session-, Rollen-, Rechte-, Invite-, Kiosk-Token- oder Event-Scoping-Logik.
+- Löschen oder Deaktivieren von Spielern sowie Änderungen an Agent-Key-Sichtbarkeit/-Rotation.
+- Personenbezogene Mitteilungslisten mit gelesen/ungelesen oder Löschen.
+- Remote-Repository umbenennen, Branch pushen, GitHub-PR eröffnen oder mergen.
+- Backend-Analytics-Endpunkte nur deshalb löschen, weil ihre aktuelle UI ausgeblendet wird.
+
+## Reviewbare Commit-Reihenfolge
+
+1. `feat: add accessible contextual info popovers`
+2. `feat: refine tournament team and voting layouts`
+3. `refactor: simplify secondary view copy and icons`
+4. `refactor: streamline analytics profile and settings views`
+5. `test: cover general UI polish flows`
+6. optional separat: `chore: rename RespawnHQ product references`
+
+Nach jedem Commit bleibt die App lauffähig; Dokumentation und Tests werden spätestens im selben
+Arbeitspaket aktualisiert. Sachfremde oder bereits vorhandene Nutzeränderungen werden nicht gestaged.

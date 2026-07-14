@@ -7,16 +7,16 @@
 import { icon } from '../icons.js';
 
 const ITEMS = [
-  { view: 'infoBoard', icon: 'pin', title: 'Info-Board', desc: 'WLAN, Discord, Server-IPs, Hausregeln – alles Wichtige an einem Ort.' },
-  { view: 'gameCatalog', icon: 'gamepad', title: 'Spiele', desc: 'Alle Spiele: Bock & Skill eintragen, vorschlagen, verwalten.' },
-  { view: 'foodOrders', icon: 'hamburger', title: 'Essen bestellen', desc: 'Sammelbestellung öffnen, jeder trägt sich selbst ein.' },
-  { view: 'arcade', icon: 'joystick', title: 'Arcade', desc: 'Mini-Games starten, aktuell mit Mehrspieler-Gaming-Quiz.' },
-  { view: 'arrivals', icon: 'van', title: 'An- & Abreise', desc: 'Wann kommst/gehst du, plus Fahrgemeinschaften.' },
-  { view: 'broadcast', icon: 'megaphone', title: 'Durchsage', desc: 'Eine Nachricht an alle Geräte, den Kiosk und als Push.' },
-  { view: 'players', icon: 'users', title: 'Spieler', desc: 'Alle Teilnehmer: anlegen, umbenennen, Agent-Keys nachschlagen.' },
-  { view: 'analytics', icon: 'chart', title: 'Auswertungen', desc: 'Spielzeit, Awards und Match-/Turnier-Statistiken, Rivalitäten, Duos.' },
-  { view: 'hallOfFame', icon: 'landmark', title: 'Hall of Fame', desc: 'Champions über alle LAN-Partys hinweg.' },
   { view: 'admin', icon: 'shield', title: 'Admin', desc: 'Test-Spieler anlegen, Admin vergeben, moderieren.' },
+  { view: 'arrivals', icon: 'van', title: 'An- & Abreise', desc: '' },
+  { view: 'arcade', icon: 'joystick', title: 'Arcade', desc: 'Minigame-Lobbies' },
+  { view: 'analytics', icon: 'chart', title: 'Auswertungen', desc: 'Awards und Statistiken' },
+  { view: 'broadcast', icon: 'megaphone', title: 'Durchsage', desc: 'Eine Nachricht an alle Geräte, den Kiosk und als Push.' },
+  { view: 'foodOrders', icon: 'hamburger', title: 'Essen', desc: 'Sammelbestellung öffnen, jeder trägt sich selbst ein.' },
+  { view: 'hallOfFame', icon: 'landmark', title: 'Hall of Fame', desc: 'Champions über alle LAN-Partys hinweg.' },
+  { view: 'infoBoard', icon: 'pin', title: 'Info-Board', desc: 'WLAN, Discord, Server-IPs, Hausregeln – alles Wichtige an einem Ort.' },
+  { view: 'players', icon: 'users', title: 'Spieler', desc: 'Alle Teilnehmer: anlegen, umbenennen, Agent-Keys nachschlagen.' },
+  { view: 'gameCatalog', icon: 'gamepad', title: 'Spiele', desc: 'Alle Spiele: Bock & Skill eintragen, vorschlagen, verwalten.' },
 ];
 
 export function renderMore(container) {
@@ -26,7 +26,7 @@ export function renderMore(container) {
       <span class="list-row-icon">${icon(item.icon)}</span>
       <span style="flex:1;">
         <div class="player-name">${item.title}</div>
-        <div class="muted list-row-desc">${item.desc}</div>
+        ${item.desc ? `<div class="muted list-row-desc">${item.desc}</div>` : ''}
       </span>
       <span class="muted">›</span>
     </button>`

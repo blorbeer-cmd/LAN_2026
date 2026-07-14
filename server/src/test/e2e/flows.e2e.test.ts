@@ -32,6 +32,17 @@ async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
   throw new Error(`Server at ${url} did not become ready in time`);
 }
 
+async function setDateTimeField(id: string, value: string): Promise<void> {
+  await page.locator(`#${id}`).evaluate((element, nextValue) => {
+    (element as HTMLInputElement).value = nextValue;
+  }, value);
+}
+
+async function openTeamHistory(): Promise<void> {
+  const details = page.locator('details.history-details:has(summary:has-text("Team-Historie"))');
+  if (!(await details.getAttribute('open'))) await details.locator('summary').click();
+}
+
 before(async () => {
   serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
     env: { ...process.env, PORT: String(PORT), DB_FILE: ':memory:', ACCESS_TOKEN: '' },
@@ -99,6 +110,30 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
 
   // Matchmaking: draw teams for both players.
   await page.click('[data-view="matchmaking"]');
+  assert.equal(await page.inputValue('#mm-teamcount'), '2');
+  await page.click('#mm-select-none');
+  assert.equal(await page.locator('[data-player]:checked').count(), 0);
+  await page.click('#mm-select-all');
+  assert.equal(await page.locator('[data-player]:checked').count(), 2);
+  assert.equal(await page.locator('details.history-details:has(summary:has-text("Team-Historie"))').getAttribute('open'), null);
+
+  const mobileSelectionColumns = await page.locator('.player-selection-grid').evaluate((element) =>
+    getComputedStyle(element).gridTemplateColumns.split(' ').length
+  );
+  assert.equal(mobileSelectionColumns, 1);
+  await page.setViewportSize({ width: 900, height: 844 });
+  const desktopSelectionColumns = await page.locator('.player-selection-grid').evaluate((element) =>
+    getComputedStyle(element).gridTemplateColumns.split(' ').length
+  );
+  assert.ok(desktopSelectionColumns >= 2);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  const draftHelp = page.locator('[aria-controls="captain-draft-help"]');
+  await draftHelp.click();
+  assert.equal(await draftHelp.getAttribute('aria-expanded'), 'true');
+  await page.keyboard.press('Escape');
+  assert.equal(await draftHelp.getAttribute('aria-expanded'), 'false');
+
   await page.click('#mm-generate');
   await page.waitForSelector('.team-card');
   const teamCards = await page.locator('.team-card').count();
@@ -115,6 +150,13 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.waitForSelector('text=Du bist E2E Alice');
   await page.click('#votes-start');
   await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
+  const submitBox = await page.locator('#votes-submit').boundingBox();
+  const closeBox = await page.locator('#votes-close').boundingBox();
+  assert.equal(Math.round(submitBox?.width || 0), Math.round(closeBox?.width || 0));
+  assert.equal(await page.locator('.vote-game-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 1);
+  await page.setViewportSize({ width: 900, height: 844 });
+  assert.equal(await page.locator('.vote-game-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 2);
+  await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars while the round is open');
   await page.locator('[data-points-slider] >> nth=0').evaluate((el) => {
     (el as HTMLInputElement).value = '5';
@@ -137,9 +179,11 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   // detail modal, not on the main page.
   await page.waitForSelector('text=Letztes Ergebnis');
   assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars on the main page, even after closing');
+  assert.equal(await page.locator('details.history-details:has(summary:has-text("Vote-Historie"))').getAttribute('open'), null);
 
   // The just-closed round can be reopened from the history list for the
   // full detailed breakdown.
+  await page.click('details.history-details:has(summary:has-text("Vote-Historie")) > summary');
   await page.click('[data-open-history-round]');
   await page.waitForSelector('text=Abstimmung Runde 1');
   await page.waitForSelector('.modal .vote-bar-track');
@@ -175,6 +219,7 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
 test('matchmaking Ergebnis-Historie marks a recorded draw as Unentschieden', async () => {
   await page.click('[data-view="matchmaking"]');
   await page.click('#mm-generate');
+  await openTeamHistory();
   await page.waitForSelector('[data-record-draw]');
   await page.click('[data-record-draw]');
 
@@ -194,6 +239,7 @@ test('matchmaking Ergebnis-Historie shows the winner after switching to Frei-fü
   // Team-Historie.
   await page.click('[data-view="matchmaking"]');
   await page.click('#mm-generate');
+  await openTeamHistory();
   await page.waitForSelector('[data-record-draw]');
   await page.click('[data-record-draw]');
 
@@ -214,6 +260,7 @@ test('Ergebnis eintragen keeps a manual team reassignment after changing "Anzahl
   // back to the original drawn team.
   await page.click('[data-view="matchmaking"]');
   await page.click('#mm-generate');
+  await openTeamHistory();
   await page.waitForSelector('[data-record-draw]');
   await page.click('[data-record-draw]');
   await page.waitForSelector('#match-players');
@@ -232,7 +279,7 @@ test('Ergebnis eintragen keeps a manual team reassignment after changing "Anzahl
   assert.equal(await reselected.inputValue(), otherValue);
 });
 
-test('Auswertungen (via Mehr) shows a real award and a visible, auto-scrolled concurrency chart', async () => {
+test('Auswertungen (via Mehr) shows a real award and keeps detail logs collapsed', async () => {
   // Create a player + a session via the real agent-report endpoint (not the
   // UI) so there's an actual play_sessions row to render.
   const playerRes = await page.request.post(`${BASE_URL}/api/players`, {
@@ -261,17 +308,12 @@ test('Auswertungen (via Mehr) shows a real award and a visible, auto-scrolled co
   await page.waitForSelector('text=Marathon-Zocker', { timeout: 5000 });
   assert.ok((await page.textContent('.view-title'))?.includes('Auswertungen'));
 
-  // Switch the concurrency chart to CS2 and confirm at least one bar has a
-  // real height (regression check for the auto-scroll/empty-looking-chart
-  // bug: bars must be reachable/visible, not scrolled off-screen).
-  await page.selectOption('#an-concurrency-game', { label: cs2.name });
-  await page.waitForFunction(
-    () => {
-      const bars = Array.from(document.querySelectorAll<HTMLElement>('#an-concurrency-chart > div'));
-      return bars.some((b) => (parseFloat(b.style.height) || 0) > 2);
-    },
-    { timeout: 5000 }
-  );
+  // The noisy concurrency controls are intentionally gone. The session log
+  // remains available on demand, but starts collapsed.
+  assert.equal(await page.locator('#an-concurrency-game').count(), 0);
+  const sessionLog = page.locator('details:has(summary:has-text("Session-Protokoll"))');
+  assert.equal(await sessionLog.getAttribute('open'), null);
+  await page.waitForSelector('text=Längste individuelle Session pro Spiel');
 
   // The "Matches & Turniere" tab (merged in from the old separate Spiele &
   // Turniere view) shares this same event filter and renders alongside it.
@@ -351,6 +393,7 @@ test('Sitzplan: the real name set in Mein Profil shows in small everywhere the s
   // Seat her via the editor's tap-to-place path (select the pool chip, then
   // tap an empty seat) rather than HTML5 drag & drop, which Playwright can't
   // simulate reliably.
+  await page.click('#settings-btn');
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('[data-seat-pool] [data-player-id]');
   await page.locator('[data-seat-pool] [data-player-id]', { hasText: 'E2E Alice Pro' }).click();
@@ -444,6 +487,20 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
   // create — the submit button only unlocks once a proposal exists.
   await page.waitForSelector('#tourn-propose');
   assert.equal(await page.locator('#tourn-submit').isDisabled(), true);
+  const neighborHelp = page.locator('[aria-controls="tournament-neighbors-help"]');
+  const scoreHelp = page.locator('[aria-controls="tournament-score-help"]');
+  await neighborHelp.click();
+  assert.equal(await neighborHelp.getAttribute('aria-expanded'), 'true');
+  await scoreHelp.click();
+  assert.equal(await neighborHelp.getAttribute('aria-expanded'), 'false');
+  assert.equal(await scoreHelp.getAttribute('aria-expanded'), 'true');
+  await page.keyboard.press('Escape');
+  assert.equal(await scoreHelp.getAttribute('aria-expanded'), 'false');
+  await neighborHelp.focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await neighborHelp.getAttribute('aria-expanded'), 'true');
+  await page.keyboard.press('Escape');
+
   await page.click('#tourn-propose');
   await page.waitForSelector('[data-team-name]');
   await page.click('#tourn-submit');
@@ -478,21 +535,21 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.waitForSelector('#order-new-btn');
   await page.click('#order-new-btn');
   await page.fill('#order-title', "Pizza bei Luigi's");
-  await page.fill('#order-sendat', '2026-12-24T20:00');
+  await setDateTimeField('order-sendat', '2026-12-24T20:00');
   await page.fill('#order-notes', 'Mindestbestellwert 15€, bar zahlen');
   await page.fill('#order-link', 'https://luigis-pizza.example/karte');
   await page.click('#order-form button[type="submit"]');
   await page.waitForSelector('text=Pizza bei Luigi');
-  await page.waitForSelector('text=Geht raus um 24.12., 20:00 Uhr');
+  await page.waitForSelector('text=Versand 24.12., 20:00 Uhr');
   await page.waitForSelector('text=Mindestbestellwert 15€, bar zahlen');
   await page.waitForSelector('a[href="https://luigis-pizza.example/karte"]');
 
   // The send time / notes / link are editable after the fact (independent of closing).
   await page.click('[data-edit-details]');
-  await page.fill('#sendat-input', '2026-12-24T21:30');
+  await setDateTimeField('sendat-input', '2026-12-24T21:30');
   await page.fill('#notes-input', 'Doch Kartenzahlung möglich');
   await page.click('#details-form button[type="submit"]');
-  await page.waitForSelector('text=Geht raus um 24.12., 21:30 Uhr');
+  await page.waitForSelector('text=Versand 24.12., 21:30 Uhr');
   await page.waitForSelector('text=Doch Kartenzahlung möglich');
 
   await page.fill('[data-item-desc]', '1x Margherita groß');
@@ -509,9 +566,9 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   // Closing only freezes items — the details stay correctable afterward.
   await page.click('details summary'); // expand the now-closed order
   await page.click('[data-edit-details]');
-  await page.fill('#sendat-input', '2026-12-24T22:00');
+  await setDateTimeField('sendat-input', '2026-12-24T22:00');
   await page.click('#details-form button[type="submit"]');
-  await page.waitForSelector('text=Geht raus um 24.12., 22:00 Uhr');
+  await page.waitForSelector('text=Versand 24.12., 22:00 Uhr');
 });
 
 test('Arcade: open a quiz lobby, see it listed and on Home, then close it again', async (t) => {
@@ -1213,6 +1270,7 @@ test('Captain-Draft: pick captains, run the live draft to completion', async () 
   // The finished draft landed in the shared Team-Historie (not pinned to the
   // page top) with the usual "Ergebnis eintragen" follow-up available there.
   await page.waitForSelector('.section-title:has-text("Team-Historie")');
+  await openTeamHistory();
   await page.waitForSelector('[data-record-draw]');
 });
 

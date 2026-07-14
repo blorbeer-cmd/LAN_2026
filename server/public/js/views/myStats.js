@@ -146,16 +146,16 @@ function renderStats() {
     </div>
     ${kpis}
 
-    <div class="section-title">🏅 Meine Erfolge</div>
+    <div class="section-title">Meine Erfolge</div>
     ${awardsHtml}
 
-    <div class="section-title">🎮 Spielzeit pro Spiel</div>
+    <div class="section-title">Spielzeit pro Spiel</div>
     <div class="card">${gamesHtml}</div>
 
-    <div class="section-title">📅 Spielzeit pro Event</div>
+    <div class="section-title">Spielzeit pro Event</div>
     <div class="card">${eventsHtml}</div>
 
-    <div class="section-title">🏃 Meine längsten Sessions</div>
+    <div class="section-title">Meine längsten Sessions</div>
     <div class="card">${longestHtml}</div>
   `;
 }
@@ -177,7 +177,7 @@ export function renderMyStats(container, ctx) {
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="profile">‹ Zurück zum Profil</button>
-    <h1 class="view-title">📊 Meine Statistiken</h1>
+    <h1 class="view-title">Meine Statistiken</h1>
     ${renderStats()}
   `;
 

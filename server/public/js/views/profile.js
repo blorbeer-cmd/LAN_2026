@@ -19,7 +19,6 @@ import { showToast } from '../toast.js';
 import { getPushSubscriptionState, enablePush, disablePush } from '../push.js';
 import { invalidateMyStats } from './myStats.js';
 import { resizeImageFile } from '../imageUtils.js';
-import { icon } from '../icons.js';
 
 // Whose monitor you've declared you can see ("Sichtbare Monitore") for the
 // active event (FR-18 extension) — pre-filled from same-edge seat placements
@@ -38,7 +37,7 @@ let pushBusy = false;
 function renderIdentityPicker(container, ctx) {
   const myId = getMyId();
   container.innerHTML = `
-    <h1 class="view-title">👋 Willkommen bei RespawnHQ</h1>
+    <h1 class="view-title">Willkommen bei RespawnHQ</h1>
     <div class="card stack">
       <div class="player-name">Neu hier? Leg dir dein Profil an:</div>
       <form id="profile-new-form" class="row">
@@ -166,7 +165,7 @@ export function renderProfile(container, ctx) {
 
   container.innerHTML = `
     <div class="row-between">
-      <h1 class="view-title">👤 Mein Profil</h1>
+      <h1 class="view-title">Mein Profil</h1>
       <button type="button" class="btn btn-sm" id="profile-not-me">Nicht du?</button>
     </div>
 
@@ -177,17 +176,19 @@ export function renderProfile(container, ctx) {
         </label>
         <input type="file" id="profile-avatar-input" accept="image/*" hidden />
         <div class="stack" style="flex:1;gap:var(--space-2);">
-          <div class="row">
-            <input type="color" id="profile-color" value="${me.color}" />
-            <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" style="flex:1;" placeholder="Gamer-Name" />
+          <input type="color" id="profile-color" value="${me.color}" aria-label="Profilfarbe" />
+          <div class="field-row">
+            <div>
+              <label for="profile-name" class="field-label">Gamer-Name</label>
+              <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" />
+            </div>
+            <div>
+              <label for="profile-real-name" class="field-label">Richtiger Name</label>
+              <input type="text" id="profile-real-name" value="${escapeHtml(me.real_name || '')}" maxlength="60" placeholder="Optional" />
+            </div>
           </div>
-          <input type="text" id="profile-real-name" value="${escapeHtml(me.real_name || '')}" maxlength="60" placeholder="Richtiger Name (optional)" />
           <button type="button" class="btn btn-primary btn-sm" id="profile-save">Speichern</button>
         </div>
-      </div>
-      <div class="muted" style="font-size:var(--font-size-xs);">
-        Bild antippen zum Ändern. Gamer-Name muss über alle Spieler eindeutig sein. Der richtige Name ist
-        optional und wird klein im Sitzplan angezeigt – hilft Neulingen, dich am Tisch zu finden.
       </div>
     </div>
 
@@ -252,31 +253,13 @@ export function renderProfile(container, ctx) {
       </details>
     </div>
 
-    <div class="section-title">🔔 Push-Benachrichtigungen</div>
+    <div class="section-title">Push-Benachrichtigungen</div>
     <div class="card">${renderPushSection()}</div>
 
-    <div class="row-between">
-      <div class="section-title" style="margin-bottom:var(--space-2);">${icon('monitor')} Sichtbare Monitore</div>
-      <button type="button" class="btn btn-sm" data-navigate="seating">Sitzplan ansehen</button>
-    </div>
+    <div class="section-title">Sichtbare Monitore</div>
     <div class="card">${renderNeighbors(myId)}</div>
-    <p class="muted" style="font-size:var(--font-size-xs);margin-top:var(--space-2);">
-      Auf wessen Bildschirm kannst du von deinem Platz aus schauen? Nachbarn an derselben Tischkante
-      werden aus dem Sitzplan automatisch vorausgefüllt – kreuz hier weitere Personen an, deren
-      Monitor du zusätzlich siehst. Wird beim Teams-Auslosen berücksichtigt, wenn Sitznachbarn nicht
-      gegeneinander spielen sollen.
-    </p>
-
-    ${
-      hasAnyRating
-        ? `<div class="card row-between">
-             <span>🎮 <strong>Bock & Skill</strong></span>
-             <button type="button" class="btn btn-sm" data-navigate="gameCatalog">Zu den Spielen</button>
-           </div>`
-        : ''
-    }
-    <div class="card row-between">
-      <span>📊 <strong>Meine Statistiken</strong></span>
+    <div class="card row-between profile-stats-link">
+      <strong>Meine Statistiken</strong>
       <button type="button" class="btn btn-sm" data-navigate="myStats">Ansehen</button>
     </div>
   `;

@@ -552,7 +552,7 @@ export function renderArcade(container, ctx) {
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <h1 class="view-title">Arcade</h1>
     ${whoAmICardHtml('whoami')}
-    <div class="section-title">🎮 Spiele</div>
+    <div class="section-title">Spiele</div>
     <div class="arcade-tiles">
       ${GAMES.map((g) => gameTileHtml(g, cg, openLobbyCount(g.id))).join('')}
     </div>

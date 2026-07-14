@@ -6,11 +6,12 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, avatarHtml, formatDateTime, toDatetimeLocal } from '../format.js';
+import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { icon } from '../icons.js';
+import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 
 let cache = null;
 let loading = false;
@@ -109,17 +110,17 @@ function renderItems(order, myId) {
 // items themselves.
 function renderDetails(order) {
   const sendAtLabel = order.sendAt
-    ? `${icon('timer')} Geht raus um ${formatDateTime(order.sendAt)} Uhr`
+    ? `${icon('timer')} Versand ${formatDateTime(order.sendAt)} Uhr`
     : `${icon('timer')} Kein Zeitpunkt festgelegt`;
   const hasDetails = Boolean(order.sendAt || order.notes || order.link);
   return `
     <div class="stack" style="gap:var(--space-1);">
       <div class="row-between">
         <span class="muted" style="font-size:var(--font-size-sm);">${sendAtLabel}</span>
-        <button type="button" class="btn btn-sm" data-edit-details="${order.id}">${hasDetails ? 'Bearbeiten' : '+ Infos & Link'}</button>
+        <button type="button" class="btn btn-sm" data-edit-details="${order.id}">${hasDetails ? 'Bearbeiten' : 'Info'}</button>
       </div>
       ${order.notes ? `<div class="muted" style="font-size:var(--font-size-sm);white-space:pre-wrap;word-break:break-word;">${escapeHtml(order.notes)}</div>` : ''}
-      ${order.link ? `<a href="${escapeHtml(order.link)}" target="_blank" rel="noopener" style="font-size:var(--font-size-sm);">${icon('link')} Zur Karte / Lieferdienst</a>` : ''}
+      ${order.link ? `<a href="${escapeHtml(order.link)}" target="_blank" rel="noopener" style="font-size:var(--font-size-sm);">${icon('link')} Link</a>` : ''}
     </div>`;
 }
 
@@ -141,7 +142,7 @@ function renderOpenOrder(order, myId) {
           ? `<form class="row" data-add-item-form="${order.id}">
                <input type="text" data-item-desc placeholder="z.B. 1x Margherita groß" maxlength="120" required style="flex:1;" />
                <input type="text" data-item-price placeholder="€" inputmode="decimal" style="width:70px;flex-shrink:0;" />
-               <button type="submit" class="btn btn-primary btn-sm">+</button>
+               <button type="submit" class="btn btn-primary btn-sm">Hinzufügen</button>
              </form>`
           : `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um dich einzutragen.</div>`
       }
@@ -168,15 +169,15 @@ function openNewOrderForm(ctx, myId) {
       <form id="order-form" class="stack">
         <input type="text" id="order-title" maxlength="80" required autofocus placeholder="z.B. Pizza bei Luigi's" />
         <div>
-          <label for="order-sendat" class="field-label">Geht raus um (optional)</label>
-          <input type="datetime-local" id="order-sendat" />
+          <label for="order-sendat" class="field-label">Versand (optional)</label>
+          ${dateTimeFieldHtml('order-sendat', null, { clearable: true })}
         </div>
         <div>
-          <label for="order-notes" class="field-label">Infos (optional)</label>
+          <label for="order-notes" class="field-label">Info (optional)</label>
           <textarea id="order-notes" rows="2" maxlength="500" placeholder="z.B. Mindestbestellwert 15€, bar zahlen"></textarea>
         </div>
         <div>
-          <label for="order-link" class="field-label">Link zu Karte / Lieferdienst (optional)</label>
+          <label for="order-link" class="field-label">Link (optional)</label>
           <input type="url" id="order-link" maxlength="300" placeholder="https://…" />
         </div>
         <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
@@ -188,6 +189,7 @@ function openNewOrderForm(ctx, myId) {
     `,
     {
       onMount: (el) => {
+        wireDateTimeField(el, 'order-sendat');
         el.querySelector('#order-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const title = el.querySelector('#order-title').value.trim();
@@ -217,27 +219,27 @@ function openNewOrderForm(ctx, myId) {
 
 function openDetailsForm(ctx, order) {
   const { close } = openModal(
-    'Infos & Link bearbeiten',
+    'Info bearbeiten',
     `
       <form id="details-form" class="stack">
         <div>
-          <label for="sendat-input" class="field-label">Geht raus um</label>
-          <input type="datetime-local" id="sendat-input" value="${order.sendAt ? toDatetimeLocal(order.sendAt) : ''}" />
+          <label for="sendat-input" class="field-label">Versand</label>
+          ${dateTimeFieldHtml('sendat-input', order.sendAt, { clearable: true })}
         </div>
         <div>
-          <label for="notes-input" class="field-label">Infos</label>
+          <label for="notes-input" class="field-label">Info</label>
           <textarea id="notes-input" rows="3" maxlength="500" placeholder="z.B. Mindestbestellwert 15€, bar zahlen">${escapeHtml(order.notes ?? '')}</textarea>
         </div>
         <div>
-          <label for="link-input" class="field-label">Link zu Karte / Lieferdienst</label>
+          <label for="link-input" class="field-label">Link</label>
           <input type="url" id="link-input" maxlength="300" placeholder="https://…" value="${escapeHtml(order.link ?? '')}" />
         </div>
-        <p class="muted" style="font-size:var(--font-size-xs);margin:0;">Leer lassen entfernt das jeweilige Feld.</p>
         <button type="submit" class="btn btn-primary btn-block">Speichern</button>
       </form>
     `,
     {
       onMount: (el) => {
+        wireDateTimeField(el, 'sendat-input');
         el.querySelector('#details-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const sendAtRaw = el.querySelector('#sendat-input').value;
@@ -297,12 +299,12 @@ export function renderFoodOrders(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <div class="row-between">
-      <h1 class="view-title">${icon('hamburger')} Essen bestellen</h1>
-      <button type="button" class="btn btn-primary btn-sm" id="order-new-btn" ${myId ? '' : 'disabled'}>+ Bestellung</button>
+      <h1 class="view-title">Essen</h1>
+      <button type="button" class="btn btn-primary btn-sm" id="order-new-btn" ${myId ? '' : 'disabled'}>Bestellung öffnen</button>
     </div>
     ${whoAmICardHtml('food-whoami', { marginBottom: '12px' })}
     ${openHtml}
-    ${closedOrders.length ? `<div class="section-title">${icon('timer')} Frühere Bestellungen</div>${closedOrders.map(renderClosedOrder).join('')}` : ''}
+    ${closedOrders.length ? `<div class="section-title">Frühere Bestellungen</div>${closedOrders.map(renderClosedOrder).join('')}` : ''}
   `;
 
   wireWhoAmICard(container, 'food-whoami', ctx);

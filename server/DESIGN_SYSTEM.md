@@ -157,6 +157,14 @@ scale step worth adding here instead).
 `--row-icon-size` (36px) is a separate, unrelated token for the icon tile in
 `.list-row` (players/games/tournaments/"Mehr" hub) — not an avatar.
 
+`--tap-target-size` (44px) is the shared minimum square for icon-only touch controls.
+`--info-popover-max-width` (320px) caps contextual-help popovers while their actual width remains
+responsive on smaller screens.
+`--selection-card-min-width` (160px) controls when player checkbox cards reflow into additional
+columns without making names or avatars too cramped.
+`--assignment-select-width` (112px) keeps repeated player-to-team selectors aligned independently
+of player-name length.
+
 ## Breakpoints
 
 CSS custom properties can't be evaluated inside an `@media` condition (a CSS
@@ -190,6 +198,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Chip** — `.chip` (generic pill, works on `<span>`, `<button>`, `<a>`).
 - **List row** — `.list-row` (+ `.list-row-icon`, `.list-row-desc`) for
   Spieler/Spiele/Turniere lists and the "Mehr" hub.
+- **Contextual help** — `.info-tooltip` with `.info-tooltip-trigger` and
+  `.info-tooltip-panel`, rendered/wired through `infoTooltip.js`; works with pointer, keyboard and
+  touch instead of relying on the native `title` attribute.
 
 Prefer composition of these primitives over view-specific copies. A new component
 class needs a distinct reusable purpose; a one-page selector that merely restates a
@@ -286,9 +297,8 @@ check this line is intentional).
 
 The current, complete list of such exceptions in `server/public`:
 
-- **`analytics.js`'s concurrency chart** (`renderConcurrencyChart`) — the 2px
-  bar gap/corner-radius/bottom-padding are sized against the chart's own thin
-  bars, not the spacing/radius scale.
+- **`analytics.js`'s Arcade timeline chart** (`renderArcadeTimelineChart`) — its 2px bar
+  corner-radius is sized against the chart's own thin bars, not the radius scale.
 - **`.bracket-score-input`** (`style.css`) — its 4px/2px padding is tuned to
   fit two digits inside the input's fixed 34px width.
 - **`.dt-time-select`** and the native `select` chevron padding (`style.css`)
