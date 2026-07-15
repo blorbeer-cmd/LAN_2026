@@ -2078,27 +2078,27 @@ button.card {
   white-space: nowrap;
 }
 .arrivals-member-role {
-  margin-left: auto;
+  flex-shrink: 0;
   font-size: var(--font-size-xs);
 }
-.arrivals-carpool-card {
-  gap: 0;
-  padding: 0;
-  overflow: hidden;
+.arrivals-carpool-directions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
 }
 .arrivals-carpool-section {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3);
+  min-width: 0;
+  gap: var(--space-3);
 }
-.arrivals-carpool-section + .arrivals-carpool-section {
-  border-top: 1px solid var(--border);
+.arrivals-carpool-section.is-arrival::before {
+  background: var(--accent);
+}
+.arrivals-carpool-section.is-departure::before {
+  background: var(--accent-3);
 }
 .arrivals-carpool-row {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3) 0 0;
-  border-top: 1px solid rgba(122, 141, 195, 0.13);
+  gap: var(--space-3);
+  padding: var(--space-3);
 }
 .arrivals-carpool-head {
   display: flex;
@@ -2107,13 +2107,27 @@ button.card {
   gap: var(--space-2);
 }
 .arrivals-carpool-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-2);
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--border);
+}
+.arrivals-carpool-actions.is-driver {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.arrivals-carpool-actions .btn {
+  width: 100%;
+}
+.arrivals-carpool-members {
+  display: grid;
+  gap: var(--space-1);
 }
 .arrivals-carpool-empty {
   font-size: var(--font-size-sm);
+}
+.arrivals-mobile-sort {
+  display: none;
 }
 .arrivals-people-card {
   padding: 0;
@@ -2134,6 +2148,27 @@ button.card {
   font-weight: var(--font-weight-bold);
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+.arrivals-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.arrivals-sort-button.is-active {
+  color: var(--text);
+}
+.arrivals-sort-button .ui-icon {
+  width: 1em;
+  height: 1em;
 }
 .arrivals-times-row:last-child {
   border-bottom: none;
@@ -2179,7 +2214,38 @@ button.card {
 .arrivals-time-line strong {
   font-weight: var(--font-weight-medium);
 }
+@media (hover: hover) {
+  .arrivals-sort-button:hover {
+    color: var(--accent);
+  }
+}
+@media (min-width: 640px) {
+  .arrivals-carpool-directions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 @media (max-width: 639px) {
+  .arrivals-mobile-sort {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .arrivals-mobile-sort .arrivals-sort-button {
+    min-height: var(--tap-target-size);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    text-transform: none;
+    background: var(--bg-elevated-2);
+  }
+  .arrivals-mobile-sort .arrivals-sort-button.is-active {
+    border-color: var(--accent);
+    color: var(--text);
+  }
   .arrivals-times-header {
     display: none;
   }
