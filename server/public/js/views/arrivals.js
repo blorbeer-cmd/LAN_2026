@@ -79,12 +79,9 @@ function renderCarpool(c, direction, myId) {
           .join('')}</div>`
       : `<div class="muted" style="font-size:var(--font-size-sm);">Noch niemand dabei.</div>`;
   const planLines = [
-    c.startAt || c.startLocation
-      ? `<div class="arrivals-time-line"><span>Start</span><strong>${c.startAt ? formatDateTime(c.startAt) : 'Zeit offen'}${c.startLocation ? ` ab ${escapeHtml(c.startLocation)}` : ''}</strong></div>`
-      : '',
-    c.etaAt ? `<div class="arrivals-time-line"><span>Ankunft</span><strong>${formatDateTime(c.etaAt)}</strong></div>` : '',
+    `<div class="arrivals-time-line"><span>Start</span><strong>${c.startAt ? formatDateTime(c.startAt) : 'offen'}${c.startLocation ? ` ab ${escapeHtml(c.startLocation)}` : ''}</strong></div>`,
+    `<div class="arrivals-time-line"><span>Ankunft</span><strong>${c.etaAt ? formatDateTime(c.etaAt) : 'offen'}</strong></div>`,
   ]
-    .filter(Boolean)
     .join('');
 
   let joinAction = '';
@@ -104,7 +101,7 @@ function renderCarpool(c, direction, myId) {
         <strong>${escapeHtml(c.label)}</strong>
         <span class="badge arrivals-carpool-seats">${c.seatsFree}/${c.seatsTotal} frei</span>
       </div>
-      ${planLines ? `<div class="arrivals-time-pair">${planLines}</div>` : ''}
+      <div class="arrivals-time-pair">${planLines}</div>
       <div class="arrivals-carpool-members">
         <span class="field-label">Mitfahrende</span>
         ${memberHtml}
@@ -130,7 +127,11 @@ function renderCarpoolSection(direction, title, myId) {
         <strong>${title}</strong>
         <button type="button" class="btn btn-sm btn-primary" data-new-carpool="${direction}" ${myId ? '' : 'disabled'}>+ Neu</button>
       </div>
-      ${rows.length ? rows.map((c) => renderCarpool(c, direction, myId)).join('') : `<div class="muted arrivals-carpool-empty">Noch keine Fahrgemeinschaft.</div>`}
+      ${
+        rows.length
+          ? `<div class="two-column-card-grid">${rows.map((c) => renderCarpool(c, direction, myId)).join('')}</div>`
+          : `<div class="muted arrivals-carpool-empty">Noch keine Fahrgemeinschaft.</div>`
+      }
     </section>`;
 }
 
