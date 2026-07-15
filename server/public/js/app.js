@@ -244,7 +244,6 @@ function wireNav() {
     if (VIEWS[detail.view]) switchView(detail.view, { replace: detail.replace === true });
   });
   window.addEventListener('lan:rerender', () => renderCurrent());
-  window.addEventListener('lan:group-changed', () => ctx.refresh());
 
   // Back/forward: jump to whichever view is recorded on the popped entry
   // instead of re-pushing it (see switchView's fromHistory param). No

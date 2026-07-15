@@ -84,17 +84,6 @@ Trackingtabellen noch nicht vollständig nach Gruppen isoliert sind. Die Migrati
 dauerhafte Startgruppe an und ordnet bestehende Konten zu; `1` schaltet nur in Entwicklungs- und
 Testumgebungen das Anlegen weiterer Gruppen und deren Einladungslinks frei.
 
-Seit Phase 5b werden Gruppenrollen und gruppengebundene Events bei jedem Request serverseitig neu
-aufgelöst. Der vom Browser gesendete `x-group-id` ist nur die Auswahl des Tabs und niemals ein
-Berechtigungsnachweis; Objektzugriffe leiten die besitzende Gruppe aus der Ressource ab. Änderungen
-an Mitgliedschaften und Rollen wirken deshalb ohne neue Anmeldung. Gruppenaktionen stehen im
-jeweiligen Gruppen-Audit, während `/api/admin/audit` ausschließlich Instanzaktionen enthält.
-Owner-/Rollen-/Entfernungs- und Archivierungsaktionen verlangen weiterhin Step-up-Reauth.
-
-Das ist noch keine Freigabe für mehrere produktive Gruppen: Spiele, Skills, Tracking, Realtime,
-Push, Kiosk und Arcade werden erst in den Phasen 5c–5e vollständig isoliert. Bis dahin bleibt
-`MULTI_GROUPS_ENABLED=0` verbindlich.
-
 Die in Workflows verwendeten Actions werden über `.github/dependabot.yml` wöchentlich auf Updates
 geprüft. Runtime-Deprecation-Warnungen in Action-Post-Steps stammen aus der jeweiligen Action und
 nicht automatisch aus dem Node-Prozess der Anwendung; sie werden durch zeitnahe Action-Upgrades

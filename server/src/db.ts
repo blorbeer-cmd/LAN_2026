@@ -1221,8 +1221,9 @@ runMigration({ version: 26, name: 'add accounts auth (sessions, invites)', up: m
 // is immutable, so a corrected CREATE TABLE in migration 26 alone would not
 // repair an already-upgraded installation.
 function repairInviteAuditForeignKeys(): void {
-  const table = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'invites'").get() as
-    { sql: string } | undefined;
+  const table = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'invites'")
+    .get() as { sql: string } | undefined;
   if (!table) {
     migrateAccountsAuth();
     return;
@@ -1346,26 +1347,26 @@ function addGroupFoundation(): void {
        FROM players
        WHERE password_hash IS NOT NULL AND deactivated_at IS NULL AND is_test = 0
        ORDER BY is_admin DESC, created_at, id
-       LIMIT 1`,
+       LIMIT 1`
     )
     .get() as { id: string } | undefined;
 
   db.prepare(
     `INSERT OR IGNORE INTO groups (id, name, description, created_by, created_at, archived_at)
-     VALUES (?, 'RespawnHQ', 'Automatisch migrierte Startgruppe', ?, ?, NULL)`,
+     VALUES (?, 'RespawnHQ', 'Automatisch migrierte Startgruppe', ?, ?, NULL)`
   ).run(DEFAULT_GROUP_ID, owner?.id ?? null, now);
 
   const players = db
     .prepare(
       `SELECT id, is_admin, is_test, tracking_paused
        FROM players
-       WHERE deactivated_at IS NULL`,
+       WHERE deactivated_at IS NULL`
     )
     .all() as Array<{ id: string; is_admin: number; is_test: number; tracking_paused: number }>;
   const insertMembership = db.prepare(
     `INSERT OR IGNORE INTO group_memberships
        (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
-     VALUES (?, ?, ?, 'active', ?, NULL, ?, NULL)`,
+     VALUES (?, ?, ?, 'active', ?, NULL, ?, NULL)`
   );
   for (const player of players) {
     const role = player.id === owner?.id ? 'owner' : player.is_admin && !player.is_test ? 'admin' : 'member';
@@ -1376,37 +1377,6 @@ function addGroupFoundation(): void {
   }
 }
 runMigration({ version: 30, name: 'add multi-group foundation', up: addGroupFoundation });
-
-// Phase 5b gives events and audit records an owning group. The broader feature
-// tables follow in 5c; columns stay nullable at the SQLite level during this
-// compatibility stage so the existing sentinel and instance-level audit can
-// coexist with group-owned rows. Application writes require a group for every
-// real event and every group action.
-function addGroupAuthorizationFoundation(): void {
-  const eventColumns = db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
-  if (!eventColumns.some((column) => column.name === 'group_id')) {
-    db.exec('ALTER TABLE events ADD COLUMN group_id TEXT REFERENCES groups(id) ON DELETE RESTRICT');
-  }
-  if (!eventColumns.some((column) => column.name === 'status')) {
-    db.exec(
-      "ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('draft', 'published', 'cancelled', 'ended'))",
-    );
-  }
-  db.prepare('UPDATE events SET group_id = ? WHERE group_id IS NULL').run(DEFAULT_GROUP_ID);
-  db.prepare('UPDATE events SET ends_at = starts_at + ? WHERE id != ? AND (ends_at IS NULL OR ends_at <= starts_at)').run(
-    24 * 60 * 60 * 1000,
-    OUTSIDE_EVENTS_ID,
-  );
-  db.prepare("UPDATE events SET status = 'ended' WHERE ended_at IS NOT NULL").run();
-  db.exec('CREATE INDEX IF NOT EXISTS idx_events_group_start ON events(group_id, starts_at DESC)');
-
-  const auditColumns = db.prepare('PRAGMA table_info(admin_log)').all() as Array<{ name: string }>;
-  if (!auditColumns.some((column) => column.name === 'group_id')) {
-    db.exec('ALTER TABLE admin_log ADD COLUMN group_id TEXT REFERENCES groups(id) ON DELETE SET NULL');
-  }
-  db.exec('CREATE INDEX IF NOT EXISTS idx_admin_log_group_created ON admin_log(group_id, created_at DESC)');
-}
-runMigration({ version: 31, name: 'add group authorization foundation', up: addGroupAuthorizationFoundation });
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.
@@ -1720,10 +1690,9 @@ function seedOutsideEventsEvent(): void {
   const exists = db.prepare('SELECT 1 FROM events WHERE id = ?').get(OUTSIDE_EVENTS_ID);
   if (exists) return;
   db.prepare(
-    `INSERT INTO events
-       (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at, group_id, status)
-     VALUES (?, ?, ?, NULL, NULL, NULL, 0, NULL, ?, 'published')`,
-  ).run(OUTSIDE_EVENTS_ID, 'Außerhalb von Events', Date.now(), DEFAULT_GROUP_ID);
+    `INSERT INTO events (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at)
+     VALUES (?, ?, ?, NULL, NULL, NULL, 0, NULL)`,
+  ).run(OUTSIDE_EVENTS_ID, 'Außerhalb von Events', Date.now());
 }
 
 seedOutsideEventsEvent();

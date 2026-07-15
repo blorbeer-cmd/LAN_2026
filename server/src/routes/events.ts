@@ -4,7 +4,6 @@
 
 import { Router } from 'express';
 import {
-  cancelEvent,
   listEvents,
   getEvent,
   getTrackingEvent,
@@ -17,26 +16,13 @@ import {
   setParticipants,
   OUTSIDE_EVENTS_ID,
   type UpdateEventFields,
-  type EventRow,
 } from '../events';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { isNonEmptyString } from '../validation';
-import { requireConfiguredGroupMembership, requireGroupRole, resolveGroupResource } from '../groupAuthorization';
-import { requireRecentReauthentication } from '../sessions';
-import { writeAdminAudit } from '../adminAudit';
-import { config } from '../config';
 
 export const eventsRouter = Router();
-
-const resolveEvent = resolveGroupResource<EventRow>({
-  resourceType: 'Event',
-  load: (id) => {
-    const event = getEvent(id);
-    return event ? { resource: event, groupId: event.group_id } : undefined;
-  },
-});
 
 function serializeEvent(event: ReturnType<typeof getEvent>) {
   if (!event) return undefined;
@@ -50,8 +36,6 @@ function serializeEvent(event: ReturnType<typeof getEvent>) {
     trackingEnabled: Boolean(event.tracking_enabled),
     isEnded: Boolean(event.ended_at),
     endedAt: event.ended_at,
-    groupId: event.group_id,
-    status: event.status,
     isOutsideEvents: event.id === OUTSIDE_EVENTS_ID,
     participantIds: event.id === OUTSIDE_EVENTS_ID ? undefined : getParticipantIds(event.id),
   };
@@ -60,28 +44,17 @@ function serializeEvent(event: ReturnType<typeof getEvent>) {
 // GET /api/events - every real event plus the "außerhalb von Events"
 // sentinel (flagged via isOutsideEvents) so filter dropdowns elsewhere in
 // the app can just iterate this one list.
-eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
+eventsRouter.get('/', (_req, res) => {
   const trackingId = getTrackingEvent().id;
-  const real = listEvents(req.group!.id).map((e) => ({ ...serializeEvent(e), isActive: e.id === trackingId }));
+  const real = listEvents().map((e) => ({ ...serializeEvent(e), isActive: e.id === trackingId }));
   const outside = serializeEvent(getEvent(OUTSIDE_EVENTS_ID))!;
-  res.json([...real, { ...outside, groupId: req.group!.id, isActive: trackingId === OUTSIDE_EVENTS_ID }]);
+  res.json([...real, { ...outside, isActive: trackingId === OUTSIDE_EVENTS_ID }]);
 });
 
 // GET /api/events/active - the event currently tracking, or the "außerhalb
 // von Events" sentinel if none is.
-eventsRouter.get('/active', requireConfiguredGroupMembership, (req, res) => {
-  const tracking = getTrackingEvent();
-  if (tracking.id !== OUTSIDE_EVENTS_ID && tracking.group_id === req.group!.id) {
-    res.json(serializeEvent(tracking));
-    return;
-  }
-  res.json({ ...serializeEvent(getEvent(OUTSIDE_EVENTS_ID)), groupId: req.group!.id });
-});
-
-eventsRouter.get('/:id', resolveEvent, (req, res) => {
-  const event = req.groupResource as EventRow;
-  if (event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
-  res.json(serializeEvent(event));
+eventsRouter.get('/active', (_req, res) => {
+  res.json(serializeEvent(getTrackingEvent()));
 });
 
 // Optional freeform text (location/description): undefined = not provided,
@@ -89,7 +62,7 @@ eventsRouter.get('/:id', resolveEvent, (req, res) => {
 function parseOptionalText(
   value: unknown,
   maxLength: number,
-  label: string,
+  label: string
 ): { ok: true; value: string | null } | { ok: false; error: string } {
   if (value === undefined || value === null || value === '') return { ok: true, value: null };
   if (typeof value !== 'string' || value.trim().length > maxLength) {
@@ -98,11 +71,11 @@ function parseOptionalText(
   return { ok: true, value: value.trim() };
 }
 
-// Optional timestamp parser for PATCH (undefined = not provided). Event
-// boundaries themselves stay mandatory; the route rejects a parsed null.
+// Optional timestamp for PATCH (undefined = not provided, null = explicitly
+// cleared — only meaningful for endsAt there); POST requires both instead.
 function parseOptionalTimestamp(
   value: unknown,
-  label: string,
+  label: string
 ): { ok: true; value: number | null } | { ok: false; error: string } {
   if (value === undefined || value === null) return { ok: true, value: null };
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -111,10 +84,7 @@ function parseOptionalTimestamp(
   return { ok: true, value };
 }
 
-function parseRequiredTimestamp(
-  value: unknown,
-  label: string,
-): { ok: true; value: number } | { ok: false; error: string } {
+function parseRequiredTimestamp(value: unknown, label: string): { ok: true; value: number } | { ok: false; error: string } {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return { ok: false, error: `${label} ist erforderlich (Zeitstempel in ms).` };
   }
@@ -125,7 +95,7 @@ function parseRequiredTimestamp(
 // events can exist side by side, so creating one never touches whichever
 // event (if any) is currently tracking.
 // Body: { name, startsAt, endsAt, location?, description? }
-eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin'), (req, res) => {
+eventsRouter.post('/', (req, res) => {
   const { name, startsAt, endsAt, location, description } = req.body ?? {};
   if (!isNonEmptyString(name, 80)) {
     return res.status(400).json({ error: 'Name ist erforderlich (1-80 Zeichen).' });
@@ -135,8 +105,8 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
   if (!parsedStartsAt.ok) return res.status(400).json({ error: parsedStartsAt.error });
   const parsedEndsAt = parseRequiredTimestamp(endsAt, 'endsAt');
   if (!parsedEndsAt.ok) return res.status(400).json({ error: parsedEndsAt.error });
-  if (parsedEndsAt.value <= parsedStartsAt.value) {
-    return res.status(400).json({ error: 'endsAt muss nach startsAt liegen.' });
+  if (parsedEndsAt.value < parsedStartsAt.value) {
+    return res.status(400).json({ error: 'endsAt darf nicht vor startsAt liegen.' });
   }
   const parsedLocation = parseOptionalText(location, 80, 'location');
   if (!parsedLocation.ok) return res.status(400).json({ error: parsedLocation.error });
@@ -144,20 +114,12 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
   if (!parsedDescription.ok) return res.status(400).json({ error: parsedDescription.error });
 
   const event = createEvent(name.trim(), {
-    groupId: req.player ? req.group!.id : undefined,
     startsAt: parsedStartsAt.value,
     endsAt: parsedEndsAt.value,
     location: parsedLocation.value,
     description: parsedDescription.value,
   });
 
-  writeAdminAudit({
-    actorPlayerId: req.player?.id,
-    groupId: req.player ? req.group!.id : undefined,
-    action: 'event_created',
-    targetType: 'event',
-    targetId: event.id,
-  });
   broadcast(Events.eventsChanged, null);
   res.status(201).json(serializeEvent(event));
 });
@@ -165,8 +127,8 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
 // PATCH /api/events/:id - metadata correction only (name/dates/location/
 // description); never touches tracking state or live status.
 // Body: any subset of { name?, startsAt?, endsAt?, location?, description? }
-eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) => {
-  const existing = req.groupResource as EventRow;
+eventsRouter.patch('/:id', (req, res) => {
+  const existing = getEvent(req.params.id);
   if (!existing || existing.id === OUTSIDE_EVENTS_ID) {
     return res.status(404).json({ error: 'Event nicht gefunden.' });
   }
@@ -186,17 +148,17 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
   if (endsAt !== undefined) {
     const parsed = parseOptionalTimestamp(endsAt, 'endsAt');
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
-    if (parsed.value === null) return res.status(400).json({ error: 'endsAt darf nicht leer sein.' });
     fields.endsAt = parsed.value;
   }
   // Validated against the EFFECTIVE start/end (existing values merged with
   // whatever this request is changing), so e.g. patching just endsAt on an
   // event whose existing startsAt is later still gets caught. endsAt is
-  // required at creation and remains required during PATCH.
+  // required at creation but stays PATCH-clearable (null) for now, matching
+  // the general "PATCH only changes what you send" convention.
   const effectiveStartsAt = fields.startsAt ?? existing.starts_at;
   const effectiveEndsAt = fields.endsAt !== undefined ? fields.endsAt : existing.ends_at;
-  if (effectiveEndsAt === null || effectiveEndsAt <= effectiveStartsAt) {
-    return res.status(400).json({ error: 'endsAt muss nach startsAt liegen.' });
+  if (effectiveEndsAt !== null && effectiveEndsAt < effectiveStartsAt) {
+    return res.status(400).json({ error: 'endsAt darf nicht vor startsAt liegen.' });
   }
   if (location !== undefined) {
     const parsed = parseOptionalText(location, 80, 'location');
@@ -210,42 +172,21 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
   }
 
   const updated = updateEvent(req.params.id, fields);
-  writeAdminAudit({
-    actorPlayerId: req.player?.id,
-    groupId: req.player ? req.group!.id : undefined,
-    action: 'event_updated',
-    targetType: 'event',
-    targetId: req.params.id,
-  });
   broadcast(Events.eventsChanged, null);
   res.json(serializeEvent(updated));
 });
 
 // POST /api/events/:id/tracking/start - 409s (with the conflicting event's
 // id/name) if a different event is already tracking.
-eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin'), (req, res) => {
+eventsRouter.post('/:id/tracking/start', (req, res) => {
   const result = startTracking(req.params.id);
   if (!result.ok) {
     const status = result.code === 'not_found' ? 404 : result.code === 'conflict' ? 409 : 400;
-    const conflict = result.conflictEventId ? getEvent(result.conflictEventId) : undefined;
-    const visibleConflict = conflict?.group_id === req.group!.id;
     return res.status(status).json({
-      error:
-        result.code === 'conflict' && !visibleConflict
-          ? 'Tracking läuft bereits in einem anderen Gruppenkontext.'
-          : result.error,
-      ...(visibleConflict
-        ? { conflictEventId: result.conflictEventId, conflictEventName: result.conflictEventName }
-        : {}),
+      error: result.error,
+      ...(result.conflictEventId ? { conflictEventId: result.conflictEventId, conflictEventName: result.conflictEventName } : {}),
     });
   }
-  writeAdminAudit({
-    actorPlayerId: req.player?.id,
-    groupId: req.player ? req.group!.id : undefined,
-    action: 'event_tracking_started',
-    targetType: 'event',
-    targetId: req.params.id,
-  });
   broadcast(Events.eventsChanged, null);
   broadcast(Events.liveStatusChanged, getLiveBoard());
   res.json(serializeEvent(result.event));
@@ -253,16 +194,9 @@ eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin')
 
 // POST /api/events/:id/tracking/stop - pauses tracking without ending the
 // event; can be resumed with .../tracking/start later.
-eventsRouter.post('/:id/tracking/stop', resolveEvent, requireGroupRole('admin'), (req, res) => {
+eventsRouter.post('/:id/tracking/stop', (req, res) => {
   const updated = stopTracking(req.params.id);
   if (!updated) return res.status(404).json({ error: 'Event nicht gefunden.' });
-  writeAdminAudit({
-    actorPlayerId: req.player?.id,
-    groupId: req.player ? req.group!.id : undefined,
-    action: 'event_tracking_stopped',
-    targetType: 'event',
-    targetId: req.params.id,
-  });
   broadcast(Events.eventsChanged, null);
   broadcast(Events.liveStatusChanged, getLiveBoard());
   res.json(serializeEvent(updated));
@@ -270,16 +204,9 @@ eventsRouter.post('/:id/tracking/stop', resolveEvent, requireGroupRole('admin'),
 
 // POST /api/events/:id/end - closes the event for good (stops tracking
 // first if it was on).
-eventsRouter.post('/:id/end', resolveEvent, requireGroupRole('admin'), (req, res) => {
+eventsRouter.post('/:id/end', (req, res) => {
   const updated = endEvent(req.params.id);
   if (!updated) return res.status(404).json({ error: 'Event nicht gefunden.' });
-  writeAdminAudit({
-    actorPlayerId: req.player?.id,
-    groupId: req.player ? req.group!.id : undefined,
-    action: 'event_ended',
-    targetType: 'event',
-    targetId: req.params.id,
-  });
   broadcast(Events.eventsChanged, null);
   broadcast(Events.liveStatusChanged, getLiveBoard());
   res.json(serializeEvent(updated));
@@ -287,8 +214,8 @@ eventsRouter.post('/:id/end', resolveEvent, requireGroupRole('admin'), (req, res
 
 // PUT /api/events/:id/participants - replace the whole roster.
 // Body: { playerIds: string[] }
-eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (req, res) => {
-  const event = req.groupResource as EventRow;
+eventsRouter.put('/:id/participants', (req, res) => {
+  const event = getEvent(req.params.id);
   if (!event || event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
 
   const { playerIds } = req.body ?? {};
@@ -298,19 +225,7 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
   const uniqueIds = [...new Set(playerIds)];
   if (uniqueIds.length > 0) {
     const placeholders = uniqueIds.map(() => '?').join(',');
-    const found = (
-      config.authMode === 'legacy'
-        ? db.prepare(`SELECT id FROM players WHERE id IN (${placeholders})`).all(...uniqueIds)
-        : db
-            .prepare(
-              `SELECT p.id
-             FROM players p
-             JOIN group_memberships gm ON gm.player_id = p.id
-             WHERE gm.group_id = ? AND gm.status = 'active' AND p.deactivated_at IS NULL
-               AND p.id IN (${placeholders})`,
-            )
-            .all(req.group!.id, ...uniqueIds)
-    ) as Array<{
+    const found = db.prepare(`SELECT id FROM players WHERE id IN (${placeholders})`).all(...uniqueIds) as Array<{
       id: string;
     }>;
     if (found.length !== uniqueIds.length) {
@@ -321,32 +236,11 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
   const previousIds = new Set(getParticipantIds(req.params.id));
   setParticipants(req.params.id, uniqueIds);
   const trackingEvent = getTrackingEvent();
-  const removedIds =
-    trackingEvent.id === req.params.id ? [...previousIds].filter((playerId) => !uniqueIds.includes(playerId)) : [];
+  const removedIds = trackingEvent.id === req.params.id
+    ? [...previousIds].filter((playerId) => !uniqueIds.includes(playerId))
+    : [];
   for (const playerId of removedIds) clearPlayerLiveStatus(playerId);
-  writeAdminAudit({
-    actorPlayerId: req.player?.id,
-    groupId: req.player ? req.group!.id : undefined,
-    action: 'event_participants_updated',
-    targetType: 'event',
-    targetId: req.params.id,
-    details: { participantCount: uniqueIds.length },
-  });
   broadcast(Events.eventsChanged, null);
   if (removedIds.length > 0) broadcast(Events.liveStatusChanged, getLiveBoard());
   res.json(serializeEvent(getEvent(req.params.id)));
-});
-
-eventsRouter.delete('/:id', resolveEvent, requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
-  const cancelled = cancelEvent(req.params.id);
-  if (!cancelled) return res.status(409).json({ error: 'Laufende oder beendete Events können nicht abgesagt werden.' });
-  writeAdminAudit({
-    actorPlayerId: req.player?.id,
-    groupId: req.player ? req.group!.id : undefined,
-    action: 'event_cancelled',
-    targetType: 'event',
-    targetId: req.params.id,
-  });
-  broadcast(Events.eventsChanged, null);
-  res.json(serializeEvent(cancelled));
 });
