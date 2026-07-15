@@ -210,7 +210,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Notification center** — `.notification-highlight` exposes the newest active unread entry as a
   brand-gradient direct link below the topbar and follows its domain/expiry lifecycle;
   `.notification-center` with `.notification-center-panel`, `.notification-center-toolbar` and
-  `.notification-center-entry` keeps the full personal history plus single/bulk read/remove state.
+  `.notification-center-entry` keeps the full personal history plus single/bulk read/remove state;
+  the two bulk actions share the complete toolbar width in equal columns.
 - **Global search** — `.global-search` with `.global-search-results` and
   `.global-search-result`, wired through `searchPalette.js`; opens from the topbar or with
   `Strg/Cmd + K`, searches both areas and current app content without an external service, and uses
