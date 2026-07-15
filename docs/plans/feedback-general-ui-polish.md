@@ -208,8 +208,10 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   Formfelder erben seitenweit dieselbe Systemschrift. Der Home-Sitzplan richtet Avatar und Namen
   sauber aus, hebt Gamer-Namen lesbarer hervor und zeigt ihren Live-Status direkt dahinter als
   kompakten grünen, gelben oder roten Indikator.
-- Rang verwendet die neue vollbreite Kartenhierarchie für „Rangliste“, „Spielzeit“ und „Spielzeit
-  pro Spiel“; der Spielfilter gehört in die Ranglisten-Gruppe. Rang-Titel, Kurztexte und
+- Rang fasst die gemeinsam gefilterten Bereiche „Rangliste“ und Spieler-Spielzeit in einer
+  vollbreiten Hauptkarte zusammen; beide bleiben darin über umrandete Unterbereiche mit der
+  gemeinsamen Akzentkante unterscheidbar. Der Spielfilter steht oberhalb beider Bereiche.
+  „Spielzeit pro Spiel“ bleibt als ungefilterte Hauptkarte separat. Rang-Titel, Kurztexte und
   Leerzustände sind bereinigt. Alle drei Listen stehen ab `--bp-md` in zwei Spalten; auf Handys
   bleibt eine Spalte, einzelne Einträge nutzen die volle Breite. Der Spielfilter wirkt auf Rangliste
   und Spieler-Spielzeit, während „Spielzeit pro Spiel“ immer den Vergleich aller Spiele behält.

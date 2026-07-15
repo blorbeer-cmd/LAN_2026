@@ -273,10 +273,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   heading lives inside the surface through `.grouped-page-section-title`, while filters and
   subordinate rows remain part of that same group. This is the default hierarchy for overview
   pages with several related datasets instead of headings that float between unrelated cards.
-- **Leaderboard** — The concise page title is „Rang“. „Rangliste“, „Spielzeit“ and „Spielzeit pro
-  Spiel“ are separate grouped page sections, and the game filter belongs to the ranking section.
-  The selected game scopes the standings and per-player „Spielzeit“ only; „Spielzeit pro Spiel“
-  always keeps the all-game totals so the comparison does not collapse to one row.
+- **Leaderboard** — The concise page title is „Rang“. The filtered „Rangliste“ and per-player
+  „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
+  each remains a distinct `.tournament-section-panel` with the shared accent rail. „Spielzeit pro
+  Spiel“ stays a separate grouped page section. The selected game scopes the two accented sections
+  only; „Spielzeit pro Spiel“ always keeps the all-game totals so the comparison does not collapse
+  to one row.
   Every section uses `.leaderboard-list-grid`: one column on phones and two columns from `--bp-md`;
   a single row or empty state spans the full available width.
   Player and game names truncate safely without pushing points or controls outside the card; wins

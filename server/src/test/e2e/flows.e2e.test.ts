@@ -282,17 +282,27 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   // Leaderboard: record a match and see it reflected.
   await page.click('[data-view="leaderboard"]');
   await page.waitForSelector('h1:text-is("Rang")');
-  for (const title of ['Rangliste', 'Spielzeit', 'Spielzeit pro Spiel']) {
+  assert.equal(
+    await page.locator('section.grouped-page-section:has(> .grouped-page-section-title > h2:text-is("Rangliste & Spielzeit"))').count(),
+    1,
+    'filtered ranking and playtime should share one grouped section'
+  );
+  for (const title of ['Rangliste', 'Spielzeit']) {
     assert.equal(
-      await page.locator(`section.grouped-page-section:has(h2:text-is("${title}"))`).count(),
+      await page.locator(`section[aria-labelledby="leaderboard-filtered-title"] section.tournament-section-panel:has(h2:text-is("${title}"))`).count(),
       1,
-      `${title} should be presented as a grouped leaderboard section`
+      `${title} should remain an accented subsection`
     );
   }
   assert.equal(
-    await page.locator('section[aria-labelledby="leaderboard-ranking-title"] #lb-filter').count(),
+    await page.locator('section.grouped-page-section:has(> .grouped-page-section-title > h2:text-is("Spielzeit pro Spiel"))').count(),
     1,
-    'the game filter belongs to the ranking section'
+    'per-game playtime should remain a separate grouped section'
+  );
+  assert.equal(
+    await page.locator('section[aria-labelledby="leaderboard-filtered-title"] #lb-filter').count(),
+    1,
+    'the game filter belongs to the shared filtered section'
   );
   for (const grid of await page.locator('.leaderboard-list-grid').all()) {
     assert.equal(

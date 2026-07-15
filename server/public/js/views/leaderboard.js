@@ -90,25 +90,31 @@ export function renderLeaderboard(container, ctx) {
       <button type="button" class="btn btn-primary btn-sm" id="add-match-btn">Ergebnis eintragen</button>
     </div>
     <div class="grouped-page-sections">
-      <section class="card stack grouped-page-section" aria-labelledby="leaderboard-ranking-title">
+      <section class="card stack grouped-page-section" aria-labelledby="leaderboard-filtered-title">
         <div class="grouped-page-section-title">
-          <h2 id="leaderboard-ranking-title">Rangliste</h2>
+          <h2 id="leaderboard-filtered-title">Rangliste &amp; Spielzeit</h2>
         </div>
         <label>
           <span class="field-label">Spiel auswählen</span>
           <select id="lb-filter">${gameOptions}</select>
         </label>
-        <div class="leaderboard-list-grid">
-          ${standings.length === 0 ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('leaderboard'))}</span>Noch keine Ergebnisse.</div>` : rows}
-        </div>
-      </section>
-
-      <section class="card stack grouped-page-section" aria-labelledby="leaderboard-playtime-title">
-        <div class="grouped-page-section-title">
-          <h2 id="leaderboard-playtime-title">Spielzeit</h2>
-        </div>
-        <div class="leaderboard-list-grid">
-          ${playtime.length === 0 ? `<div class="empty-state"><span class="empty-state-icon">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeRows}
+        <div class="stack">
+          <section class="tournament-section-panel stack" aria-labelledby="leaderboard-ranking-title">
+            <div class="grouped-page-section-title">
+              <h2 id="leaderboard-ranking-title">Rangliste</h2>
+            </div>
+            <div class="leaderboard-list-grid">
+              ${standings.length === 0 ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('leaderboard'))}</span>Noch keine Ergebnisse.</div>` : rows}
+            </div>
+          </section>
+          <section class="tournament-section-panel stack" aria-labelledby="leaderboard-playtime-title">
+            <div class="grouped-page-section-title">
+              <h2 id="leaderboard-playtime-title">Spielzeit</h2>
+            </div>
+            <div class="leaderboard-list-grid">
+              ${playtime.length === 0 ? `<div class="empty-state"><span class="empty-state-icon">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeRows}
+            </div>
+          </section>
         </div>
       </section>
 
