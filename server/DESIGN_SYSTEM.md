@@ -223,8 +223,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the shared live state as green „Spielt“, yellow „Pause“ or red „Offline“. Its German title and
   accessible label preserve the meaning beyond color. Playing and pause indicators pulse gently,
   while offline stays static; the global reduced-motion rule disables that motion when requested.
-- **Tournament overview** — `.tournament-list-grid` stretches one or two tournament cards across
-  the available width instead of reserving empty columns. `.tournament-list-section` presents
+- **Tournament overview** — `.tournament-list-grid` shows at most two tournament cards per row;
+  a single card stretches across the available width and further cards wrap. `.tournament-list-section` presents
   active and completed tournaments as two prominent status rows without separate summary-stat
   cards. `.tournament-player-grid` keeps the player picker at two cards per row, while
   `.tournament-detail-stats` and

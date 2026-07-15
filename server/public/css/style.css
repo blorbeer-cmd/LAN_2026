@@ -1087,7 +1087,10 @@ input[type='number']::-webkit-inner-spin-button {
 }
 @media (min-width: 640px) { /* --bp-md */
   .tournament-list-grid {
-    grid-template-columns: repeat(auto-fit, minmax(calc(var(--selection-card-min-width) * 2), 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .tournament-list-grid .tournament-list-card:only-child {
+    grid-column: 1 / -1;
   }
   .tournament-team-preview-grid {
     grid-template-columns: repeat(auto-fit, minmax(calc(var(--selection-card-min-width) + var(--space-8) * 2), 1fr));

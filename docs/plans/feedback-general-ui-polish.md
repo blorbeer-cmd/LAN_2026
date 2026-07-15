@@ -92,7 +92,8 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   Aktion darstellen; `disabled` bleibt nicht nur farblich erkennbar.
 - Team- und Vote-Historie standardmäßig einklappen; Lade-, Leer- und Ergebniszustände müssen auch im
   eingeklappten Aufbau stabil bleiben.
-- Die Turnierübersicht nutzt ein oder zwei vorhandene Turniere über die volle Kartenbreite, zeigt
+- Die Turnierübersicht zeigt maximal zwei Turnierkarten pro Zeile; eine einzelne Karte nutzt die
+  volle Breite und weitere Karten brechen in die nächste Zeile um. Sie zeigt
   laufende Turniere beim geöffneten Anlageformular weiterhin davor und ordnet abgeschlossene
   Turniere danach in einer zweiten prominenten Statusreihe ein. Separate Statistik-Kacheln für
   Gesamtzahl, laufende Turniere und Teams entfallen. Die Detailansicht ergänzt Fortschritt, Teams
