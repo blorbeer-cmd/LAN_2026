@@ -16,11 +16,12 @@ interface SkillRow {
   rating: number;
 }
 
-// GET /api/skills - all ratings, optionally filtered by ?playerId= or ?gameId=.
+// GET /api/skills - all ratings for the caller's current group, optionally
+// filtered by ?playerId= or ?gameId=.
 skillsRouter.get('/', (req, res) => {
   const { playerId, gameId } = req.query;
-  const clauses: string[] = [];
-  const params: string[] = [];
+  const clauses: string[] = ['group_id = ?'];
+  const params: string[] = [req.group!.id];
 
   if (typeof playerId === 'string') {
     clauses.push('player_id = ?');
@@ -31,8 +32,7 @@ skillsRouter.get('/', (req, res) => {
     params.push(gameId);
   }
 
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  const rows = db.prepare(`SELECT * FROM skills ${where}`).all(...params) as SkillRow[];
+  const rows = db.prepare(`SELECT player_id, game_id, rating FROM skills WHERE ${clauses.join(' AND ')}`).all(...params) as SkillRow[];
   res.json(rows);
 });
 
@@ -42,8 +42,8 @@ skillsRouter.get('/', (req, res) => {
 // rather than cached/stored: at this project's scale (a LAN's worth of
 // matches) that's cheap, and it means the suggestion is always exactly
 // consistent with the current match history, including edits/deletes.
-skillsRouter.get('/suggestions', (_req, res) => {
-  const games = db.prepare('SELECT id FROM games').all() as Array<{ id: string }>;
+skillsRouter.get('/suggestions', (req, res) => {
+  const games = db.prepare('SELECT id FROM games WHERE group_id = ?').all(req.group!.id) as Array<{ id: string }>;
   const suggestions: Array<{
     gameId: string;
     playerId: string;
@@ -90,13 +90,13 @@ skillsRouter.put('/', requireConfiguredUser, (req, res) => {
 
   const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  const game = db.prepare('SELECT id FROM games WHERE id = ?').get(gameId);
+  const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id);
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
 
   db.prepare(
-    `INSERT INTO skills (player_id, game_id, rating) VALUES (?, ?, ?)
+    `INSERT INTO skills (player_id, game_id, group_id, rating) VALUES (?, ?, ?, ?)
      ON CONFLICT(player_id, game_id) DO UPDATE SET rating = excluded.rating`
-  ).run(playerId, gameId, rating);
+  ).run(playerId, gameId, req.group!.id, rating);
 
   broadcast(Events.skillsChanged, null);
   res.json({ playerId, gameId, rating });
@@ -108,8 +108,8 @@ skillsRouter.delete('/:playerId/:gameId', requireConfiguredUser, (req, res) => {
     return res.status(403).json({ error: 'Du kannst nur deine eigenen Skill-Ratings bearbeiten.' });
   }
   const result = db
-    .prepare('DELETE FROM skills WHERE player_id = ? AND game_id = ?')
-    .run(req.params.playerId, req.params.gameId);
+    .prepare('DELETE FROM skills WHERE player_id = ? AND game_id = ? AND group_id = ?')
+    .run(req.params.playerId, req.params.gameId, req.group!.id);
   if (result.changes === 0) {
     return res.status(404).json({ error: 'Rating nicht gefunden.' });
   }
