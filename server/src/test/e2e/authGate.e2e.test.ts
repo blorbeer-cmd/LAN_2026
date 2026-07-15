@@ -24,6 +24,7 @@ let serverProcess: ChildProcess;
 let browser: Browser;
 let page: Page;
 let adminCookie: string;
+let adminAccountId: string;
 
 async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
   const start = Date.now();
@@ -51,6 +52,7 @@ async function mintRegisterInviteCode(): Promise<string> {
   const setCookie = bootstrap.headers.get('set-cookie');
   assert.ok(setCookie, 'bootstrap register should set a session cookie');
   adminCookie = setCookie!.split(';')[0];
+  adminAccountId = ((await bootstrap.json()) as { id: string }).id;
 
   const reauth = await fetch(`${BASE_URL}/api/auth/reauth`, {
     method: 'POST',
@@ -266,6 +268,7 @@ test('group switcher creates a group and preserves its invite through login', as
   await page.waitForSelector('#group-invite-link');
   const inviteLink = await page.inputValue('#group-invite-link');
   assert.equal(new URL(inviteLink).searchParams.has('groupInvite'), true);
+  await page.click('.modal-backdrop [data-close]');
 
   const inviteePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
   try {
@@ -285,6 +288,18 @@ test('group switcher creates a group and preserves its invite through login', as
       true,
       'the mobile group switcher must not introduce horizontal scrolling'
     );
+
+    await page.click('#group-btn');
+    await page.click('#group-manage-btn');
+    const adminRole = page.locator(`[data-member-role="${adminAccountId}"]`);
+    await adminRole.waitFor();
+    await adminRole.selectOption('admin');
+    await page.waitForTimeout(250);
+
+    await inviteePage.click('#group-btn');
+    await inviteePage.click('#group-manage-btn');
+    await inviteePage.waitForSelector('#group-edit-form');
+    await inviteePage.waitForSelector('#group-test-users-form', { state: 'attached' });
   } finally {
     await inviteePage.close();
   }

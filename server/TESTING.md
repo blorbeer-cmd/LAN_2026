@@ -40,6 +40,10 @@ eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur d
 - E2E startet den gebauten Server (`dist/index.js`) als eigenen Kindprozess auf einem Test-Port,
   ebenfalls mit `DB_FILE=:memory:`, und schließt ihn danach automatisch wieder.
 - Jede Test-Datei läuft in einem eigenen Prozess (Isolation durch den Node-Runner).
+- Die verpflichtende Zwei-Gruppen-Autorisierungsmatrix liegt in
+  `src/test/api.groupAuthorization.required.test.ts`. Sie prüft fremde Ressourcen (`404`),
+  unzureichende Rollen (`403`), sofortige Rollenwirkung, gruppengebundene Events/Audits,
+  Test-Spieler-Eigentum und den Last-Owner-Race.
 
 ## Datenbank-Migrationen
 

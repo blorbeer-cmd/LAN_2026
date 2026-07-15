@@ -13,7 +13,7 @@
 // is a pure reader and never creates anything itself.
 
 import { nanoid } from 'nanoid';
-import { db, OUTSIDE_EVENTS_ID } from './db';
+import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 
 export { OUTSIDE_EVENTS_ID };
 
@@ -26,6 +26,8 @@ export interface EventRow {
   description: string | null;
   tracking_enabled: number;
   ended_at: number | null;
+  group_id: string | null;
+  status: 'draft' | 'published' | 'cancelled' | 'ended';
 }
 
 // Whichever event currently has tracking_enabled — or the permanent
@@ -48,11 +50,14 @@ export function getEvent(id: string): EventRow | undefined {
 // Real events only — excludes the "außerhalb von Events" sentinel, which
 // isn't something you create/edit/end like a normal event (it's always
 // listed separately wherever that's relevant, e.g. as a filter option).
-export function listEvents(): EventRow[] {
-  return db.prepare('SELECT * FROM events WHERE id != ? ORDER BY starts_at DESC').all(OUTSIDE_EVENTS_ID) as EventRow[];
+export function listEvents(groupId = DEFAULT_GROUP_ID): EventRow[] {
+  return db
+    .prepare('SELECT * FROM events WHERE id != ? AND group_id = ? ORDER BY starts_at DESC')
+    .all(OUTSIDE_EVENTS_ID, groupId) as EventRow[];
 }
 
 export interface CreateEventOptions {
+  groupId?: string;
   startsAt: number;
   endsAt: number | null;
   location?: string | null;
@@ -65,9 +70,18 @@ export interface CreateEventOptions {
 export function createEvent(name: string, options: CreateEventOptions): EventRow {
   const id = nanoid();
   db.prepare(
-    `INSERT INTO events (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at)
-     VALUES (?, ?, ?, ?, ?, ?, 0, NULL)`
-  ).run(id, name, options.startsAt, options.endsAt, options.location ?? null, options.description ?? null);
+    `INSERT INTO events
+       (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at, group_id, status)
+     VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, 'published')`
+  ).run(
+    id,
+    name,
+    options.startsAt,
+    options.endsAt,
+    options.location ?? null,
+    options.description ?? null,
+    options.groupId ?? DEFAULT_GROUP_ID
+  );
   return getEvent(id)!;
 }
 
@@ -133,6 +147,9 @@ export function startTracking(id: string): StartTrackingResult {
   if (event.ended_at) {
     return { ok: false, code: 'invalid', error: 'Ein beendetes Event kann nicht wieder getrackt werden.' };
   }
+  if (event.status === 'cancelled') {
+    return { ok: false, code: 'invalid', error: 'Ein abgesagtes Event kann nicht getrackt werden.' };
+  }
   if (event.tracking_enabled) return { ok: true, event };
 
   const current = db.prepare('SELECT id, name FROM events WHERE tracking_enabled = 1').get() as
@@ -176,8 +193,15 @@ export function endEvent(id: string): EventRow | undefined {
   if (!event || event.id === OUTSIDE_EVENTS_ID) return undefined;
 
   const wasTracking = Boolean(event.tracking_enabled);
-  db.prepare('UPDATE events SET tracking_enabled = 0, ended_at = ? WHERE id = ?').run(Date.now(), id);
+  db.prepare("UPDATE events SET tracking_enabled = 0, ended_at = ?, status = 'ended' WHERE id = ?").run(Date.now(), id);
   if (wasTracking) wipeLiveStatus();
+  return getEvent(id);
+}
+
+export function cancelEvent(id: string): EventRow | undefined {
+  const event = getEvent(id);
+  if (!event || event.id === OUTSIDE_EVENTS_ID || event.tracking_enabled || event.status === 'ended') return undefined;
+  db.prepare("UPDATE events SET status = 'cancelled' WHERE id = ?").run(id);
   return getEvent(id);
 }
 
