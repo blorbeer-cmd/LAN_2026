@@ -30,6 +30,7 @@ const SHORT_FORMAT_LABELS = {
 
 let listCache = null;
 let listLoading = false;
+let completedSectionOpen = false;
 
 let currentTournamentId = null; // null = list/create view
 let detailCache = null;
@@ -184,18 +185,31 @@ function renderList(container, ctx) {
       </button>`
     )
     .join('')}</div>`;
-  const tournamentSection = (title, tournaments, { active = false } = {}) => `
-    <section class="card tournament-list-section${active ? ' is-active' : ''}" aria-label="${title}">
+  const tournamentSection = (title, tournaments, { active = false, collapsible = false } = {}) => {
+    const content = tournaments.length
+      ? tournamentCards(tournaments)
+      : `<div class="muted tournament-list-empty">${active ? 'Gerade läuft kein Turnier.' : 'Noch keine abgeschlossenen Turniere.'}</div>`;
+    if (collapsible) {
+      return `<details class="card tournament-list-section tournament-list-section-collapsible" data-completed-tournaments ${completedSectionOpen ? 'open' : ''}>
+        <summary class="tournament-list-section-header">
+          <h2>${title}</h2>
+          <span class="tournament-list-section-summary-end">
+            <span class="badge badge-offline">${tournaments.length}</span>
+            <span class="tournament-list-section-chevron">${icon('chevronRight')}</span>
+          </span>
+        </summary>
+        <div class="tournament-list-section-content">${content}</div>
+      </details>`;
+    }
+
+    return `<section class="card tournament-list-section${active ? ' is-active' : ''}" aria-label="${title}">
       <div class="tournament-list-section-header">
         <h2>${title}</h2>
         <span class="badge ${active ? 'badge-playing' : 'badge-offline'}">${tournaments.length}</span>
       </div>
-      ${
-        tournaments.length
-          ? tournamentCards(tournaments)
-          : `<div class="muted tournament-list-empty">${active ? 'Gerade läuft kein Turnier.' : 'Noch keine abgeschlossenen Turniere.'}</div>`
-      }
+      ${content}
     </section>`;
+  };
 
   let currentListHtml;
   let completedListHtml = '';
@@ -207,7 +221,7 @@ function renderList(container, ctx) {
     const activeTournaments = listCache.filter((t) => t.status !== 'completed');
     const completedTournaments = listCache.filter((t) => t.status === 'completed');
     currentListHtml = tournamentSection('Aktuelle Turniere', activeTournaments, { active: true });
-    completedListHtml = tournamentSection('Abgeschlossene Turniere', completedTournaments);
+    completedListHtml = tournamentSection('Abgeschlossene Turniere', completedTournaments, { collapsible: true });
   }
 
   container.innerHTML = `
@@ -230,6 +244,11 @@ function renderList(container, ctx) {
       currentTournamentId = btn.dataset.openTournament;
       ctx.rerender();
     });
+  });
+
+  const completedSection = container.querySelector('[data-completed-tournaments]');
+  completedSection?.addEventListener('toggle', () => {
+    completedSectionOpen = completedSection.open;
   });
 
   if (createOpen) {

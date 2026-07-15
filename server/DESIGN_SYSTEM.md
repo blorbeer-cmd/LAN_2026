@@ -226,7 +226,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Tournament overview** — `.tournament-list-grid` shows at most two tournament cards per row;
   a single card stretches across the available width and further cards wrap. `.tournament-list-section` presents
   active and completed tournaments as two prominent status rows without separate summary-stat
-  cards. `.tournament-player-grid` keeps the player picker at two cards per row, while
+  cards. The completed row uses a native disclosure, starts collapsed and retains its open state
+  across view re-renders. `.tournament-player-grid` keeps the player picker at two cards per row, while
   `.tournament-detail-stats` and `.tournament-team-grid` expose real progress and roster information
   above a centered, locally scrollable bracket; team cards use at most two columns. The proposal
   grid follows the same two-column cap and uses draggable `.tournament-drag-player` rows, with

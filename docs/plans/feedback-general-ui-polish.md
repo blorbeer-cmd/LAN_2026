@@ -95,7 +95,8 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
 - Die Turnierübersicht zeigt maximal zwei Turnierkarten pro Zeile; eine einzelne Karte nutzt die
   volle Breite und weitere Karten brechen in die nächste Zeile um. Sie zeigt
   laufende Turniere beim geöffneten Anlageformular weiterhin davor und ordnet abgeschlossene
-  Turniere danach in einer zweiten prominenten Statusreihe ein. Separate Statistik-Kacheln für
+  Turniere danach in einer zweiten prominenten, standardmäßig eingeklappten Statusreihe ein. Der
+  aufgeklappte Zustand bleibt bei Aktualisierungen innerhalb der Ansicht erhalten. Separate Statistik-Kacheln für
   Gesamtzahl, laufende Turniere und Teams entfallen. Die Detailansicht ergänzt Fortschritt, Teams
   und Teilnehmende; kleine Turnierbäume werden im verfügbaren Bereich zentriert.
 - Die Spielerauswahl beim Anlegen erscheint mit zwei Kacheln pro Zeile und beliebig vielen Zeilen
