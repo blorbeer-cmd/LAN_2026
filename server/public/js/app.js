@@ -39,6 +39,7 @@ import { renderMyStats } from './views/myStats.js';
 import { renderMore } from './views/more.js';
 import { renderAdmin } from './views/admin.js';
 import { installIconReplacement } from './icons.js';
+import { initGlobalSearch } from './searchPalette.js';
 
 installIconReplacement();
 
@@ -472,6 +473,7 @@ async function main() {
   await ensureAccess();
   document.getElementById('app').hidden = false;
   wireNav();
+  initGlobalSearch((view) => switchView(view));
   wireAdminMode();
   wireSocket();
   initNotificationBanner();

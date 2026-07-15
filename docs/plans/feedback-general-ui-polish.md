@@ -171,6 +171,19 @@ Betroffene Dateien: `server/public/js/views/analytics.js`, gegebenenfalls
 - Nach vollständig grünen lokalen Prüfungen das GitHub-Repository in `Respawn` umbenennen und erst
   danach die lokale `origin`-URL aktualisieren. Push und Merge bleiben separate Schritte.
 
+### 8. Globale interaktive Suche ergänzen
+
+- Ein Suchsymbol in der Kopfzeile öffnet eine responsive Command-Palette; `Strg/Cmd + K` und `/`
+  bieten denselben schnellen Einstieg per Tastatur.
+- Der lokale Index umfasst alle Hauptbereiche, Tools und persönliche Ziele sowie verständliche
+  Synonyme wie „Captain Draft“, „Voting“, „Anreise“ oder „WLAN“.
+- Treffer werden während der Eingabe gefiltert und lassen sich per Touch, Maus, Pfeiltasten und
+  Enter öffnen. Escape, Klick auf den Hintergrund und der Schließen-Button schließen die Palette
+  und geben den Fokus an den Auslöser zurück.
+- Die erste Ausbaustufe navigiert bewusst auf Bereiche. Eine spätere Inhaltssuche kann Spieler,
+  Spiele oder Info-Board-Einträge als eigene Treffer ergänzen, sobald dafür klare Zielzustände in
+  den jeweiligen Ansichten existieren.
+
 ## Test- und Abnahmeplan
 
 ### Automatisiert

@@ -111,6 +111,42 @@ test('fresh device lands on self-onboarding and creates its profile there', asyn
   await page.waitForSelector('text=Bock & Skill eintragen');
 });
 
+test('global search filters areas, supports keyboard navigation and restores focus', async () => {
+  await page.click('#global-search-btn');
+  await page.waitForSelector('.global-search-modal');
+  assert.equal(await page.locator('#global-search-input').evaluate((element) => element === document.activeElement), true);
+
+  await page.fill('#global-search-input', 'Captain Draft');
+  await page.waitForSelector('.global-search-result:has-text("Teams auslosen")');
+  await page.click('.global-search-result:has-text("Teams auslosen")');
+  await page.waitForSelector('.view-title:text("Teams auslosen")');
+
+  await page.keyboard.press('Control+K');
+  await page.fill('#global-search-input', 'Statistik');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.view-title:text("Auswertungen")');
+
+  await page.click('#global-search-btn');
+  await page.fill('#global-search-input', 'gibt es nicht');
+  await page.waitForSelector('text=Kein passender Bereich gefunden.');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.global-search-modal').count(), 0);
+  assert.equal(await page.locator('#global-search-btn').evaluate((element) => element === document.activeElement), true);
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.click('#global-search-btn');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 900, height: 844 });
+  await page.click('#global-search-btn');
+  const desktopModal = await page.locator('.global-search-modal .modal').boundingBox();
+  assert.ok(desktopModal && desktopModal.width <= 640);
+  assert.ok(Math.abs(desktopModal.x + desktopModal.width / 2 - 450) <= 1);
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 390, height: 844 });
+});
+
 test('full click-through: players, matchmaking, voting, leaderboard, live pause', async () => {
   // Add a second player via the roster view (lives in the "Mehr" hub — the
   // bottom nav slot went to Turniere).

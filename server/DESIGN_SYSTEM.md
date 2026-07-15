@@ -166,6 +166,8 @@ columns without making names or avatars too cramped.
 of player-name length.
 `--notification-panel-width` (360px) caps the header notification center while it remains
 viewport-responsive on phones.
+`--search-panel-width` (640px) gives the global search palette enough room for titles and short
+descriptions while the shared modal remains full-width on phones.
 
 ## Breakpoints
 
@@ -206,6 +208,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Notification center** — `.notification-center` with `.notification-center-panel` and
   `.notification-center-entry`; its bell lives in the shared topbar and personal read/remove state
   stays server-backed.
+- **Global search** — `.global-search` with `.global-search-results` and
+  `.global-search-result`, wired through `searchPalette.js`; opens from the topbar or with
+  `Strg/Cmd + K` and navigates across all areas without an external search service.
 
 Prefer composition of these primitives over view-specific copies. A new component
 class needs a distinct reusable purpose; a one-page selector that merely restates a

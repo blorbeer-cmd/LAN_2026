@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
   <!-- bump ?v= when the stylesheet changes so no cached copy survives a reload -->
-  <link rel="stylesheet" href="/css/style.css?v=6" />
+  <link rel="stylesheet" href="/css/style.css?v=7" />
 </head>
 <body>
   <div id="login-screen" class="login-screen" hidden>
@@ -33,6 +33,7 @@
         <span class="brand-title">Respawn</span>
       </a>
       <div class="topbar-actions">
+        <button id="global-search-btn" class="icon-btn" type="button" aria-label="Bereiche und Tools durchsuchen" aria-keyshortcuts="Control+K Meta+K" title="Suchen (Strg/⌘ K)"></button>
         <div class="notification-center" data-notification-center>
           <button id="notifications-btn" class="icon-btn" aria-label="Mitteilungen" aria-controls="notifications-panel" aria-expanded="false" title="Mitteilungen">
             <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>

@@ -2,7 +2,8 @@
 // (player detail, game editor, match entry). Bottom-sheet on mobile, centered
 // dialog on wider screens (handled purely in CSS).
 
-export function openModal(title, bodyHtml, { onMount } = {}) {
+export function openModal(title, bodyHtml, { onMount, onClose } = {}) {
+  const previousFocus = document.activeElement;
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   backdrop.innerHTML = `
@@ -16,13 +17,50 @@ export function openModal(title, bodyHtml, { onMount } = {}) {
   `;
   document.body.appendChild(backdrop);
 
-  const close = () => backdrop.remove();
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener('keydown', onKeydown);
+    backdrop.remove();
+    onClose?.();
+    if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+  };
+  const onKeydown = (e) => {
+    if (e.key === 'Escape') close();
+    if (e.key !== 'Tab') return;
+    const focusableSelector = [
+      'button:not([disabled])',
+      'a[href]',
+      'input:not([disabled])',
+      'select:not([disabled])',
+      'textarea:not([disabled])',
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(',');
+    const focusable = [...backdrop.querySelectorAll(focusableSelector)].filter(
+      (element) => !element.hidden && element.getClientRects().length > 0
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
   backdrop.addEventListener('click', (e) => {
     if (e.target === backdrop) close();
   });
   backdrop.querySelector('[data-close]').addEventListener('click', close);
+  document.addEventListener('keydown', onKeydown);
 
   if (onMount) onMount(backdrop, close);
+  if (!backdrop.contains(document.activeElement)) {
+    backdrop.querySelector('input, select, textarea, button, a[href]')?.focus();
+  }
   return { el: backdrop, close };
 }
 

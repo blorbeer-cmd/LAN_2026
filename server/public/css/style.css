@@ -60,6 +60,7 @@
   --selection-card-min-width: 160px;
   --assignment-select-width: 112px;
   --notification-panel-width: 360px;
+  --search-panel-width: 640px;
 
   /* Avatar sizes — the one scale every avatar/color-dot rendering (see
      avatarHtml in format.js) should size itself from, instead of each call
@@ -412,6 +413,12 @@ input {
   display: flex;
   align-items: center;
   gap: var(--space-1);
+}
+
+@media (max-width: 479px) { /* --bp-sm */
+  .topbar-title .brand-title {
+    display: none;
+  }
 }
 
 .icon-btn {
@@ -2937,6 +2944,92 @@ input[type='number'].bracket-score-input {
 .modal-header h2 {
   margin: 0;
   font-size: var(--font-size-lg);
+}
+
+/* Global command palette: fast navigation across every area without adding
+   a search service or a second navigation hierarchy. */
+.global-search-modal .modal {
+  max-width: var(--search-panel-width);
+  padding: var(--space-4);
+}
+.global-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.global-search-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+#global-search-input {
+  width: 100%;
+}
+.global-search-summary {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+.global-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 55dvh;
+  overflow-y: auto;
+}
+.global-search-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.global-search-result.is-selected {
+  border-color: var(--accent);
+  background: var(--bg-elevated-2);
+}
+.global-search-result-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.global-search-result-main .muted,
+.global-search-result-description {
+  font-size: var(--font-size-xs);
+}
+.global-search-empty {
+  padding: var(--space-5);
+  color: var(--text-muted);
+  text-align: center;
+}
+.global-search-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+.global-search-shortcuts span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.global-search-shortcuts kbd {
+  min-width: var(--space-5);
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+  font: inherit;
+  text-align: center;
 }
 
 /* ---------- Shared physical seating plan ---------- */

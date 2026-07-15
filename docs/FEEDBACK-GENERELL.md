@@ -36,6 +36,13 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
   - Notiz: Beispiel „Captain Draft“: sichtbar bleibt „2–4 Captains wählen“; das Infosymbol erklärt
     „2–4 Captains antippen – sie picken dann abwechselnd live aus den übrigen angehakten Spielern.
     Alle können auf ihrem Handy zusehen.“
+- [x] [ ] Globale interaktive Suche für Bereiche und Tools ergänzen
+  - [x] [ ] Suchsymbol in der Kopfzeile und Tastenkürzel `Strg/Cmd + K` anbieten
+  - [x] [ ] Treffer während der Eingabe filtern und direkt zum gewählten Bereich navigieren
+  - [x] [ ] Bedienung per Touch, Pfeiltasten, Enter und Escape sicherstellen
+  - Kommentar: Die lokale Command-Palette durchsucht Titel, Beschreibungen und Synonyme ohne
+    externen Suchdienst. Inhalte innerhalb einzelner Bereiche können später als eigener Index
+    ergänzt werden.
 
 ## Home
 
