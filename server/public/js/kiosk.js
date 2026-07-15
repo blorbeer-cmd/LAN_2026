@@ -10,11 +10,10 @@ import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml, formatDateTime } fro
 import { installIconReplacement, icon } from './icons.js';
 import { bannerContentHtml } from './pushFeed.js';
 import { drawArcadeStreamCanvas } from './arcadeStreamRenderer.js';
+import { domainIcon, installDomainIcons } from './domainIcons.js';
 
 installIconReplacement();
-document.querySelectorAll('[data-kiosk-icon]').forEach((element) => {
-  element.innerHTML = icon(element.dataset.kioskIcon);
-});
+installDomainIcons();
 
 const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
 const GAME_NAMES = { quiz: 'Gaming-Quiz', tetris: 'Tetris', scribble: 'Scribble', blobby: 'Blobby Volley', pong: 'Pong', snake: 'Snake' };
@@ -390,7 +389,7 @@ async function refreshAll() {
     renderBroadcastBanner(lastPush.entry);
 
     const active = tournaments.find((t) => t.status === 'active') || tournaments[0] || null;
-    document.getElementById('kiosk-tournament-title').innerHTML = `${icon('swords')} ${active ? escapeHtml(active.name) : 'Turnier'}`;
+    document.getElementById('kiosk-tournament-title').innerHTML = `${icon(domainIcon('tournaments'))} ${active ? escapeHtml(active.name) : 'Turnier'}`;
     if (active) {
       const detail = await api.tournaments.get(active.id);
       document.getElementById('kiosk-tournament').innerHTML = renderTournament(detail);

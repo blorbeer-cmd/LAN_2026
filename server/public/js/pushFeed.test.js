@@ -11,6 +11,6 @@ test('legacy notification emoji are removed from persisted titles', () => {
 
 test('notification categories use the shared UI icon set', () => {
   assert.equal(feedEntryIcon({ url: '/#foodOrders' }), 'hamburger');
-  assert.equal(feedEntryIcon({ url: '/#tournaments' }), 'trophy');
+  assert.equal(feedEntryIcon({ url: '/#tournaments' }), 'swords');
   assert.equal(feedEntryIcon({ url: '/unbekannt' }), 'bell');
 });

@@ -11,6 +11,7 @@ import { escapeHtml, avatarHtml, gameBadgeHtml, seatConflictIconHtml } from '../
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { domainIcon } from '../domainIcons.js';
 
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
@@ -152,7 +153,7 @@ function renderList(container, ctx) {
     listLoading || listCache === null
       ? `<div class="empty-state">Lädt…</div>`
       : listCache.length === 0
-        ? `<div class="empty-state"><span class="empty-state-icon">${icon('swords')}</span><br />Noch keine Turniere.</div>`
+        ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('tournaments'))}</span><br />Noch keine Turniere.</div>`
         : `<div class="card-grid">${listCache
             .map(
               (t) => `

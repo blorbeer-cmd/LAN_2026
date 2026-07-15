@@ -231,6 +231,9 @@ space pattern rather than content-dependent card heights.
 
 - New or changed interface icons must use the local Lucide-style helper in
   `server/public/js/icons.js` (`icon(...)` or a suitable specialized helper).
+- Repeated domain meanings use `server/public/js/domainIcons.js` as their semantic source of truth
+  across navigation-adjacent cards and notifications. In particular, crossed swords mean an active
+  tournament, the activity pulse means Skill, and the trophy is reserved for results and wins.
 - Do not use emoji, Unicode pictograms or external icon CDNs in navigation, headings,
   buttons, status badges, chips, empty states or toasts. The Respawn logo is the
   intentional exception; user-authored content such as game names may contain emoji.

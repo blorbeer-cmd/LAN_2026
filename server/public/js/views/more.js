@@ -5,18 +5,19 @@
 // since everyone self-onboards through their profile).
 
 import { icon } from '../icons.js';
+import { domainIcon } from '../domainIcons.js';
 
 const ITEMS = [
   { view: 'admin', icon: 'shield', title: 'Admin', desc: 'Test-Spieler anlegen, Admin vergeben, moderieren.' },
   { view: 'arrivals', icon: 'van', title: 'An- & Abreise', desc: '' },
-  { view: 'arcade', icon: 'joystick', title: 'Arcade', desc: 'Minigame-Lobbies' },
+  { view: 'arcade', icon: domainIcon('arcade'), title: 'Arcade', desc: 'Minigame-Lobbies' },
   { view: 'analytics', icon: 'chart', title: 'Auswertungen', desc: 'Awards und Statistiken' },
-  { view: 'broadcast', icon: 'megaphone', title: 'Durchsage', desc: 'Eine Nachricht an alle Geräte, den Kiosk und als Push.' },
-  { view: 'foodOrders', icon: 'hamburger', title: 'Essen', desc: 'Sammelbestellung öffnen, jeder trägt sich selbst ein.' },
+  { view: 'broadcast', icon: domainIcon('broadcast'), title: 'Durchsage', desc: 'Eine Nachricht an alle Geräte, den Kiosk und als Push.' },
+  { view: 'foodOrders', icon: domainIcon('foodOrders'), title: 'Essen', desc: 'Sammelbestellung öffnen, jeder trägt sich selbst ein.' },
   { view: 'hallOfFame', icon: 'landmark', title: 'Hall of Fame', desc: 'Champions über alle LAN-Partys hinweg.' },
   { view: 'infoBoard', icon: 'pin', title: 'Info-Board', desc: 'WLAN, Discord, Server-IPs, Hausregeln – alles Wichtige an einem Ort.' },
   { view: 'players', icon: 'users', title: 'Spieler', desc: 'Alle Teilnehmer: anlegen, umbenennen, Agent-Keys nachschlagen.' },
-  { view: 'gameCatalog', icon: 'gamepad', title: 'Spiele', desc: 'Alle Spiele: Bock & Skill eintragen, vorschlagen, verwalten.' },
+  { view: 'gameCatalog', icon: domainIcon('gameCatalog'), title: 'Spiele', desc: 'Alle Spiele: Bock & Skill eintragen, vorschlagen, verwalten.' },
 ];
 
 export function renderMore(container) {

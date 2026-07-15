@@ -14,6 +14,7 @@ import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { suggestProcessNames } from '../gameProcessSuggestions.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { domainIcon } from '../domainIcons.js';
 
 let activeTab = 'catalog'; // 'catalog' | 'suggestions'
 let sortKey = 'name';
@@ -267,7 +268,7 @@ function gameRowHtml(game, myId) {
     : [
         bockRow,
         ratingRowHtml({
-          label: `${icon('activity')} Skill`,
+          label: `${icon(domainIcon('skill'))} Skill`,
           accentClass: '',
           mine: mySkill,
           avg: skillStats.avg,

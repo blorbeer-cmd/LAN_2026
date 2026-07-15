@@ -7,6 +7,7 @@ import { api } from './api.js';
 import { state } from './state.js';
 import { formatDateTime } from './format.js';
 import { getMyId } from './whoami.js';
+import { domainIcon } from './domainIcons.js';
 
 let statusCache = null; // { tournaments, foodOrders, arcadeLobbies }
 let statusLoading = false;
@@ -94,7 +95,7 @@ export function aktuellItems() {
   // a rating for a game everyone can already see running.
   for (const g of missingSkillsCache ?? []) {
     items.push({
-      iconName: 'star',
+      iconName: domainIcon('skill'),
       title: `Skill für ${g.name} bewerten`,
       sub: 'Wird gerade gespielt',
       navigate: 'gameCatalog',
@@ -104,7 +105,7 @@ export function aktuellItems() {
   if (state.votes?.open) {
     const voters = state.votes.totalVoters ?? 0;
     items.push({
-      iconName: 'vote',
+      iconName: domainIcon('votes'),
       title: state.votes.title || 'Abstimmung läuft',
       sub: `${voters} Teilnehmer bisher`,
       navigate: 'votes',
@@ -113,7 +114,7 @@ export function aktuellItems() {
 
   for (const t of (statusCache?.tournaments ?? []).filter((t) => t.status === 'active')) {
     items.push({
-      iconName: 'swords',
+      iconName: domainIcon('tournaments'),
       title: t.name,
       sub: `${t.gameName} · ${FORMAT_LABELS[t.format] ?? t.format}`,
       navigate: 'tournaments',
@@ -122,7 +123,7 @@ export function aktuellItems() {
 
   for (const o of (statusCache?.foodOrders ?? []).filter((o) => o.open)) {
     items.push({
-      iconName: 'hamburger',
+      iconName: domainIcon('foodOrders'),
       title: `Sammelbestellung „${o.title}"`,
       sub: o.sendAt ? `Versand ${formatDateTime(o.sendAt)} Uhr` : 'Zeitpunkt noch offen',
       navigate: 'foodOrders',
@@ -131,7 +132,7 @@ export function aktuellItems() {
 
   for (const l of statusCache?.arcadeLobbies ?? []) {
     items.push({
-      iconName: 'joystick',
+      iconName: domainIcon('arcade'),
       title: `${l.title}-Lobby offen`,
       sub: `Von ${l.hostName} · ${l.playerCount} ${l.playerCount === 1 ? 'wartet' : 'warten'}`,
       navigate: 'arcade',

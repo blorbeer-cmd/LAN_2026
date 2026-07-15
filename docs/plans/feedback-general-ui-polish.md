@@ -113,6 +113,9 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   damit Aktionszeilen auf schmalen Displays nicht umbrechen. Mitteilungskategorien verwenden das
   gemeinsame Lucide-Set; Sammelbestellungen erhalten das Bestell- statt des alten Pizza-Symbols.
   Bereits gespeicherte Einträge mit Emoji-Präfix werden bei der Anzeige normalisiert.
+- Wiederkehrende Fachsymbole werden zentral in `domainIcons.js` zugeordnet und von Navigation,
+  Aktuell-Karten, Kiosk und Mitteilungen wiederverwendet: Schwerter stehen für laufende Turniere,
+  der Aktivitäts-Puls für Skill und der Pokal ausschließlich für Ergebnisse beziehungsweise Siege.
 - Die Ranglisten-Vorschau zeigt auf größeren Displays die ersten sechs Plätze in zwei Spalten und
   fällt auf schmalen Handys in eine fortlaufende Liste zurück.
 - Spieler-Namen verwenden in Live-Status, Rangliste und Auswahlansichten denselben Namensstil;

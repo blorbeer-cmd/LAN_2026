@@ -4,6 +4,7 @@
 
 import { escapeHtml } from './format.js';
 import { icon } from './icons.js';
+import { domainIcon } from './domainIcons.js';
 
 export const FEED_LINK_LABELS = {
   votes: 'Zur Abstimmung',
@@ -12,15 +13,6 @@ export const FEED_LINK_LABELS = {
   foodOrders: 'Zur Bestellung',
   arcade: 'Zur Arcade',
   broadcast: 'Zu den Durchsagen',
-};
-
-export const FEED_ICONS = {
-  votes: 'vote',
-  tournaments: 'trophy',
-  matchmaking: 'users',
-  foodOrders: 'hamburger',
-  arcade: 'joystick',
-  broadcast: 'megaphone',
 };
 
 // Older persisted push rows used a leading emoji as UI chrome. Keep their
@@ -42,7 +34,7 @@ export function feedEntryTitle(entry) {
 }
 
 export function feedEntryIcon(entry) {
-  return FEED_ICONS[feedLinkView(entry?.url)] || 'bell';
+  return domainIcon(feedLinkView(entry?.url));
 }
 
 // Bell + title + body markup for the read-only Kiosk banner.

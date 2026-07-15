@@ -40,8 +40,10 @@ import { renderMore } from './views/more.js';
 import { renderAdmin } from './views/admin.js';
 import { installIconReplacement } from './icons.js';
 import { initGlobalSearch } from './searchPalette.js';
+import { installDomainIcons } from './domainIcons.js';
 
 installIconReplacement();
+installDomainIcons();
 
 const VIEWS = {
   home: renderHome,
