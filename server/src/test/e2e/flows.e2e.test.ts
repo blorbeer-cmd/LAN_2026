@@ -584,6 +584,12 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
   assert.equal(await page.locator('#tourn-submit').isDisabled(), true);
   const neighborHelp = page.locator('[aria-controls="tournament-neighbors-help"]');
   const scoreHelp = page.locator('[aria-controls="tournament-score-help"]');
+  const lobbyHelp = page.locator('[aria-controls="tournament-lobby-help"]');
+  assert.ok((await page.locator('input[name="tourn-game"]').count()) >= 2);
+  assert.equal(
+    await page.locator('.tournament-game-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
+    2,
+  );
   await neighborHelp.click();
   assert.equal(await neighborHelp.getAttribute('aria-expanded'), 'true');
   await scoreHelp.click();
@@ -594,6 +600,9 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
   await neighborHelp.focus();
   await page.keyboard.press('Enter');
   assert.equal(await neighborHelp.getAttribute('aria-expanded'), 'true');
+  await page.keyboard.press('Escape');
+  await lobbyHelp.click();
+  assert.equal(await lobbyHelp.getAttribute('aria-expanded'), 'true');
   await page.keyboard.press('Escape');
 
   await page.click('#tourn-propose');

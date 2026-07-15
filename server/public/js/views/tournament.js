@@ -149,32 +149,55 @@ function resetCreateForm() {
 function renderList(container, ctx) {
   if (listCache === null && !listLoading) loadList(ctx);
 
-  const listHtml =
-    listLoading || listCache === null
-      ? `<div class="empty-state">Lädt…</div>`
-      : listCache.length === 0
-        ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('tournaments'))}</span><br />Noch keine Turniere.</div>`
-        : `<div class="card-grid">${listCache
-            .map(
-              (t) => `
-            <button type="button" class="card row list-row" data-open-tournament="${t.id}">
-              ${gameBadgeHtml({ id: t.gameId, icon: t.gameIcon }, 36)}
-              <span style="flex:1;">
-                <div class="player-name">${escapeHtml(t.name)}</div>
-                <div class="muted" style="font-size:var(--font-size-xs);">${FORMAT_LABELS[t.format]} · ${t.teamCount} Teams</div>
-              </span>
-              <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
-            </button>`
-            )
-            .join('')}</div>`;
+  const tournamentCards = (tournaments) => `<div class="card-grid tournament-list-grid">${tournaments
+    .map(
+      (t) => `
+      <button type="button" class="card tournament-list-card" data-open-tournament="${t.id}">
+        ${gameBadgeHtml({ id: t.gameId, icon: t.gameIcon }, 44)}
+        <span class="tournament-list-card-main">
+          <span class="player-name">${escapeHtml(t.name)}</span>
+          <span class="muted tournament-list-game">${escapeHtml(t.gameName)}</span>
+          <span class="muted tournament-list-meta">${FORMAT_LABELS[t.format]} · ${t.teamCount} Teams</span>
+        </span>
+        <span class="tournament-list-card-end">
+          <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
+          ${icon('chevronRight')}
+        </span>
+      </button>`
+    )
+    .join('')}</div>`;
+
+  let currentListHtml;
+  let completedListHtml = '';
+  if (listLoading || listCache === null) {
+    currentListHtml = `<div class="empty-state">Lädt…</div>`;
+  } else if (listCache.length === 0) {
+    currentListHtml = `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('tournaments'))}</span><br />Noch keine Turniere.</div>`;
+  } else {
+    const activeTournaments = listCache.filter((t) => t.status !== 'completed');
+    const completedTournaments = listCache.filter((t) => t.status === 'completed');
+    const totalTeams = listCache.reduce((sum, tournament) => sum + Number(tournament.teamCount || 0), 0);
+    currentListHtml = `
+      <div class="tournament-overview-grid" aria-label="Turnierübersicht">
+        <div class="card tournament-stat"><span class="muted">Turniere</span><strong>${listCache.length}</strong></div>
+        <div class="card tournament-stat"><span class="muted">Laufend</span><strong>${activeTournaments.length}</strong></div>
+        <div class="card tournament-stat"><span class="muted">Teams insgesamt</span><strong>${totalTeams}</strong></div>
+      </div>
+      ${activeTournaments.length ? `<div class="section-title">Aktuelle Turniere</div>${tournamentCards(activeTournaments)}` : ''}
+    `;
+    completedListHtml = completedTournaments.length
+      ? `<div class="section-title">Abgeschlossene Turniere</div>${tournamentCards(completedTournaments)}`
+      : '';
+  }
 
   container.innerHTML = `
     <div class="row-between">
       <h1 class="view-title">Turniere</h1>
       <button type="button" class="btn btn-primary btn-sm" id="tourn-new-btn">Turnier anlegen</button>
     </div>
+    ${currentListHtml}
     <div id="tourn-create"></div>
-    ${listHtml}
+    ${completedListHtml}
   `;
 
   container.querySelector('#tourn-new-btn').addEventListener('click', () => {
@@ -205,10 +228,20 @@ function renderCreateForm(el, ctx) {
     if (createCheckedIds.size === 0) createCheckedIds = new Set(state.players.map((p) => p.id));
   }
 
-  const selectedGameId = state.selectedGameId || state.games[0].id;
+  const selectedGameId = state.games.some((game) => game.id === state.selectedGameId)
+    ? state.selectedGameId
+    : state.games[0].id;
+  state.selectedGameId = selectedGameId;
 
   const gameOptions = state.games
-    .map((g) => `<option value="${g.id}" ${g.id === selectedGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`)
+    .map(
+      (g) => `
+      <label class="tournament-game-option${g.id === selectedGameId ? ' is-selected' : ''}">
+        <input type="radio" name="tourn-game" value="${g.id}" ${g.id === selectedGameId ? 'checked' : ''} />
+        ${gameBadgeHtml(g, 32)}
+        <span class="player-name">${escapeHtml(g.name)}</span>
+      </label>`
+    )
     .join('');
 
   const playerRows = state.players
@@ -270,22 +303,25 @@ function renderCreateForm(el, ctx) {
         <div class="section-title" style="margin:0;">Neues Turnier</div>
         <button type="button" class="icon-btn" id="tourn-create-close" aria-label="Schließen">${icon('x')}</button>
       </div>
-      <select id="tourn-game">${gameOptions}</select>
+      <div class="field-label">Spiel auswählen</div>
+      <div class="tournament-game-grid" role="radiogroup" aria-label="Spiel auswählen">${gameOptions}</div>
       <div class="selection-toolbar">
-        <label class="field-label" for="tourn-teamcount">Anzahl Teams</label>
-        <input type="number" id="tourn-teamcount" min="2" value="${escapeHtml(createTeamCount)}" />
+        <div class="tournament-team-count-field">
+          <label class="field-label" for="tourn-teamcount">Anzahl Teams</label>
+          <input type="number" id="tourn-teamcount" min="2" value="${escapeHtml(createTeamCount)}" />
+        </div>
         <button type="button" class="btn btn-sm" id="tourn-select-all">Alle markieren</button>
         <button type="button" class="btn btn-sm" id="tourn-select-none">Auswahl aufheben</button>
       </div>
       <div class="player-selection-grid">${playerRows}</div>
       <div class="check-row">
-        <input type="checkbox" id="tourn-avoid-adjacent" ${createAvoidAdjacent ? 'checked' : ''} />
-        <label for="tourn-avoid-adjacent" style="flex:1;">Sitznachbarn zusammen</label>
         ${infoTooltipHtml(
             'tournament-neighbors-help',
-            'Sitznachbarn zusammen',
+            'Sitznachbarn',
             'Sitznachbarn werden nach Möglichkeit in dasselbe Team gelost. Die Skill-Balance hat Vorrang, wenn beides nicht gleichzeitig möglich ist.'
           )}
+        <input type="checkbox" id="tourn-avoid-adjacent" ${createAvoidAdjacent ? 'checked' : ''} />
+        <label for="tourn-avoid-adjacent" style="flex:1;">Sitznachbarn</label>
       </div>
       <button type="button" class="btn btn-primary" id="tourn-propose">Teams auslosen</button>
 
@@ -315,38 +351,43 @@ function renderCreateForm(el, ctx) {
       ${
         createFormat === 'round_robin' || createFormat === 'group_knockout'
           ? `<div class="check-row">
-               <input type="checkbox" id="tourn-two-legged" ${createTwoLegged ? 'checked' : ''} />
-               <label for="tourn-two-legged" style="flex:1;">Hin- und Rückspiel${createFormat === 'group_knockout' ? ' in der Gruppenphase' : ''}</label>
                ${infoTooltipHtml(
                    'tournament-two-legged-help',
                    'Hin- und Rückspiel',
                    'Jede Paarung wird zweimal gespielt.'
                  )}
+               <input type="checkbox" id="tourn-two-legged" ${createTwoLegged ? 'checked' : ''} />
+               <label for="tourn-two-legged" style="flex:1;">Hin- und Rückspiel${createFormat === 'group_knockout' ? ' in der Gruppenphase' : ''}</label>
              </div>`
           : ''
       }
       <div class="check-row">
-        <input type="checkbox" id="tourn-track-score" ${createTrackScore ? 'checked' : ''} />
-        <label for="tourn-track-score" style="flex:1;">Ergebnisse inkl. Punktestand</label>
         ${infoTooltipHtml(
             'tournament-score-help',
             'Ergebnisse inklusive Punktestand',
             'Erfasst den genauen Punktestand statt nur Sieg oder Niederlage.'
           )}
+        <input type="checkbox" id="tourn-track-score" ${createTrackScore ? 'checked' : ''} />
+        <label for="tourn-track-score" style="flex:1;">Ergebnisse inkl. Punktestand</label>
       </div>
-      <div class="row" style="align-items:flex-start;">
-        <div style="flex:1;">
-          <label for="tourn-lobby-name" class="field-label">Lobby-Name (optional)</label>
+      <div class="title-with-info tournament-field-heading">
+        <span class="field-label">Lobby-Zugang (optional)</span>
+        ${infoTooltipHtml(
+            'tournament-lobby-help',
+            'Lobby-Zugang',
+            'Wird bei jeder Paarung mitgeschickt — das obere Team im Turnierbaum eröffnet standardmäßig die Lobby.'
+          )}
+      </div>
+      <div class="field-row">
+        <div>
+          <label for="tourn-lobby-name" class="field-label">Lobby-Name</label>
           <input type="text" id="tourn-lobby-name" maxlength="60" value="${escapeHtml(createLobbyName)}" placeholder="z. B. Respawn" />
         </div>
-        <div style="flex:1;">
-          <label for="tourn-lobby-password" class="field-label">Lobby-Passwort (optional)</label>
+        <div>
+          <label for="tourn-lobby-password" class="field-label">Lobby-Passwort</label>
           <input type="text" id="tourn-lobby-password" maxlength="60" value="${escapeHtml(createLobbyPassword)}" placeholder="z. B. zocken123" />
         </div>
       </div>
-      <p class="muted" style="font-size:0.78rem;margin-top:-6px;">
-        Wird bei jeder Paarung mitgeschickt — das obere Team im Turnierbaum eröffnet standardmäßig die Lobby.
-      </p>
       <button type="button" class="btn btn-primary btn-block" id="tourn-submit" ${createProposedTeams ? '' : 'disabled'}>Turnier erstellen</button>
     </div>
   `;
@@ -358,10 +399,12 @@ function renderCreateForm(el, ctx) {
     ctx.rerender();
   });
 
-  el.querySelector('#tourn-game').addEventListener('change', (e) => {
-    state.selectedGameId = e.target.value;
-    createProposedTeams = null;
-    ctx.rerender();
+  el.querySelectorAll('input[name="tourn-game"]').forEach((radio) => {
+    radio.addEventListener('change', (e) => {
+      state.selectedGameId = e.target.value;
+      createProposedTeams = null;
+      ctx.rerender();
+    });
   });
 
   el.querySelectorAll('[data-create-player]').forEach((cb) => {
@@ -428,7 +471,7 @@ function renderCreateForm(el, ctx) {
   }
 
   async function proposeTeams() {
-    const gameId = el.querySelector('#tourn-game').value;
+    const gameId = state.selectedGameId || state.games[0].id;
     const playerIds = [...createCheckedIds];
     if (playerIds.length < 2) {
       return showToast('Mindestens 2 Spieler auswählen.', { error: true });
@@ -500,7 +543,7 @@ function renderCreateForm(el, ctx) {
   if (submitBtn) {
     submitBtn.addEventListener('click', async () => {
       if (!createProposedTeams) return;
-      const gameId = el.querySelector('#tourn-game').value;
+      const gameId = state.selectedGameId || state.games[0].id;
       try {
         const created = await api.tournaments.create({
           gameId,
@@ -657,8 +700,10 @@ function renderBracket(t, ctx, matches = t.matches) {
 
   return `
     <div class="bracket-tree-wrap">
-      <div class="bracket-round-titles">${titles}</div>
-      ${tree}
+      <div class="bracket-tree-content">
+        <div class="bracket-round-titles">${titles}</div>
+        ${tree}
+      </div>
     </div>`;
 }
 
@@ -754,6 +799,35 @@ function renderGroupKnockout(t, ctx) {
   return `${groupBlocks}${knockoutHtml}`;
 }
 
+function renderTournamentTeams(t) {
+  const cards = t.teams
+    .map(
+      (team) => `
+      <div class="team-card tournament-team-card">
+        <div class="team-card-header">
+          <span>${escapeHtml(team.name)}</span>
+          <span class="muted">${team.players.length} Spieler</span>
+        </div>
+        ${
+          team.players.length
+            ? team.players
+                .map(
+                  (player) => `
+                  <div class="team-player">
+                    ${avatarHtml(player, 24)}
+                    <span class="player-name">${escapeHtml(player.name)}</span>
+                  </div>`
+                )
+                .join('')
+            : '<div class="muted">Keine aktiven Spieler</div>'
+        }
+      </div>`
+    )
+    .join('');
+
+  return `<div class="section-title">Teams & Teilnehmer</div><div class="tournament-team-grid">${cards}</div>`;
+}
+
 function renderDetail(container, ctx) {
   if (detailForId !== currentTournamentId && !detailLoading) {
     loadDetail(currentTournamentId, ctx);
@@ -770,12 +844,19 @@ function renderDetail(container, ctx) {
   }
 
   const t = detailCache;
-  const board =
+  const boardContent =
     t.format === 'single_elimination'
       ? renderBracket(t, ctx)
       : t.format === 'group_knockout'
         ? renderGroupKnockout(t, ctx)
         : renderRoundRobin(t, ctx);
+  const board =
+    t.format === 'single_elimination'
+      ? `<div class="section-title">Turnierbaum</div><div class="card tournament-board-panel">${boardContent}</div>`
+      : boardContent;
+
+  const decidedMatches = t.matches.filter((match) => match.winnerTeamId !== null || match.isDraw).length;
+  const participantCount = t.teams.reduce((sum, team) => sum + team.players.length, 0);
 
   const formatMeta = [
     t.twoLegged ? 'Hin- und Rückspiele' : null,
@@ -787,9 +868,9 @@ function renderDetail(container, ctx) {
 
   const lobbyInfo =
     t.lobbyName || t.lobbyPassword
-      ? `<div class="muted" style="margin-bottom:12px;font-size:0.85rem;">
+      ? `<div class="muted tournament-lobby-info">
            ${icon('key')} ${t.lobbyName ? `Lobby "${escapeHtml(t.lobbyName)}"` : 'Lobby'}${t.lobbyPassword ? ` · PW: ${escapeHtml(t.lobbyPassword)}` : ''}
-           <span class="muted" style="font-size:0.78rem;"> — das obere Team im Baum eröffnet</span>
+           <span class="muted tournament-lobby-note"> — das obere Team im Baum eröffnet</span>
          </div>`
       : '';
 
@@ -804,6 +885,12 @@ function renderDetail(container, ctx) {
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
     </div>
     ${lobbyInfo}
+    <div class="tournament-detail-stats" aria-label="Turnierstatus">
+      <div class="card tournament-stat"><span class="muted">Teams</span><strong>${t.teams.length}</strong></div>
+      <div class="card tournament-stat"><span class="muted">Teilnehmende</span><strong>${participantCount}</strong></div>
+      <div class="card tournament-stat"><span class="muted">Partien entschieden</span><strong>${decidedMatches} / ${t.matches.length}</strong></div>
+    </div>
+    ${renderTournamentTeams(t)}
     ${board}
   `;
 

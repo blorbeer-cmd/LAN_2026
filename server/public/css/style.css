@@ -917,6 +917,16 @@ input[type='number']::-webkit-inner-spin-button {
   width: calc(var(--space-8) * 2);
   flex: 0 0 auto;
 }
+.selection-toolbar input[type='number'],
+.selection-toolbar .btn {
+  height: var(--tap-target-size);
+}
+.tournament-team-count-field {
+  flex: 0 0 calc(var(--space-8) * 2);
+}
+.tournament-team-count-field input[type='number'] {
+  width: 100%;
+}
 .player-selection-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -954,6 +964,112 @@ input[type='number']::-webkit-inner-spin-button {
 @media (min-width: 640px) { /* --bp-md */
   .player-selection-grid {
     grid-template-columns: repeat(auto-fit, minmax(var(--selection-card-min-width), 1fr));
+  }
+}
+
+/* Tournament overview and creation deliberately use their available width:
+   one or two entries stretch instead of reserving empty auto-fill columns,
+   while game choices stay in the requested two-column picker. */
+.tournament-overview-grid,
+.tournament-detail-stats,
+.tournament-team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--selection-card-min-width), 1fr));
+  gap: var(--space-3);
+}
+.tournament-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.tournament-stat strong {
+  font-size: var(--font-size-xl);
+}
+.tournament-list-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.tournament-list-card {
+  width: 100%;
+  min-height: calc(var(--row-min-h) + var(--space-4));
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: left;
+  cursor: pointer;
+}
+.tournament-list-card-main,
+.tournament-list-card-end {
+  display: flex;
+}
+.tournament-list-card-main {
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.tournament-list-card-main .player-name {
+  overflow-wrap: anywhere;
+}
+.tournament-list-game,
+.tournament-list-meta {
+  font-size: var(--font-size-xs);
+}
+.tournament-list-card-end {
+  align-items: center;
+  gap: var(--space-2);
+}
+.tournament-game-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.tournament-game-option {
+  min-width: 0;
+  min-height: var(--tap-target-size);
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  cursor: pointer;
+}
+.tournament-game-option.is-selected {
+  border-color: var(--accent);
+}
+.tournament-game-option input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.tournament-game-option .player-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tournament-field-heading {
+  margin-bottom: calc(var(--space-2) * -1);
+}
+.tournament-field-heading .field-label {
+  margin: 0;
+}
+.tournament-lobby-info {
+  margin-bottom: var(--space-3);
+  font-size: var(--font-size-sm);
+}
+.tournament-lobby-note {
+  font-size: var(--font-size-xs);
+}
+.tournament-team-card .team-card-header .muted {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+}
+.tournament-board-panel {
+  overflow: hidden;
+}
+@media (min-width: 640px) { /* --bp-md */
+  .tournament-list-grid {
+    grid-template-columns: repeat(auto-fit, minmax(calc(var(--selection-card-min-width) * 2), 1fr));
   }
 }
 
@@ -2571,6 +2687,13 @@ input[type='range'].preference-row-slider {
   overflow-y: hidden;
   padding: var(--space-1) var(--space-4) var(--space-5);
   margin: 0 -16px;
+}
+.bracket-tree-content {
+  width: max-content;
+  min-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 .bracket-round-titles {
   display: flex;

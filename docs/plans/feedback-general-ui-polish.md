@@ -91,6 +91,13 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   Aktion darstellen; `disabled` bleibt nicht nur farblich erkennbar.
 - Team- und Vote-Historie standardmäßig einklappen; Lade-, Leer- und Ergebniszustände müssen auch im
   eingeklappten Aufbau stabil bleiben.
+- Die Turnierübersicht nutzt ein oder zwei vorhandene Turniere über die volle Kartenbreite, zeigt
+  laufende Turniere beim geöffneten Anlageformular weiterhin davor und ordnet abgeschlossene
+  Turniere danach ein. Die Detailansicht ergänzt Fortschritt, Teams und Teilnehmende; kleine
+  Turnierbäume werden im verfügbaren Bereich zentriert.
+- Die Spielauswahl beim Anlegen erscheint zweispaltig. Teamanzahl und Auswahlaktionen teilen sich
+  dieselbe Steuerelementhöhe; Sitznachbarn, Punktestand und der gemeinsame Lobby-Hinweis verwenden
+  die touch-tauglichen Info-Popovers statt dauerhaft sichtbarer Erklärtexte.
 
 Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 `server/public/js/views/tournament.js`, `server/public/js/views/votes.js`,
