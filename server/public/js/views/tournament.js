@@ -298,99 +298,112 @@ function renderCreateForm(el, ctx) {
         <div class="section-title" style="margin:0;">Neues Turnier</div>
         <button type="button" class="icon-btn" id="tourn-create-close" aria-label="Schließen">${icon('x')}</button>
       </div>
-      <label class="field-label" for="tourn-game">Spiel auswählen</label>
-      <select id="tourn-game">${gameOptions}</select>
-      <div class="selection-toolbar">
-        <div class="tournament-team-count-field">
-          <label class="field-label" for="tourn-teamcount">Anzahl Teams</label>
-          <input type="number" id="tourn-teamcount" min="2" value="${escapeHtml(createTeamCount)}" />
+      <section class="tournament-create-step stack" aria-labelledby="tournament-draw-step-title">
+        <div class="tournament-create-step-title">
+          <span class="tournament-create-step-number" aria-hidden="true">1</span>
+          <h3 id="tournament-draw-step-title">Auslosung</h3>
         </div>
-        <button type="button" class="btn btn-sm" id="tourn-select-all">Alle markieren</button>
-        <button type="button" class="btn btn-sm" id="tourn-select-none">Auswahl aufheben</button>
-      </div>
-      <div class="player-selection-grid tournament-player-grid">${playerRows}</div>
-      <div class="check-row">
-        <input type="checkbox" id="tourn-avoid-adjacent" ${createAvoidAdjacent ? 'checked' : ''} />
-        <span class="title-with-info tournament-option-label">
-          <label for="tourn-avoid-adjacent">Sitznachbarn</label>
-          ${infoTooltipHtml(
-              'tournament-neighbors-help',
-              'Sitznachbarn',
-              'Sitznachbarn werden nach Möglichkeit in dasselbe Team gelost. Die Skill-Balance hat Vorrang, wenn beides nicht gleichzeitig möglich ist.'
-            )}
-        </span>
-      </div>
-      <button type="button" class="btn btn-primary" id="tourn-propose">Teams auslosen</button>
-
-      ${teamsPreview}
-
-      <select id="tourn-format">
-        ${Object.entries(FORMAT_LABELS).map(([v, label]) => `<option value="${v}" ${v === createFormat ? 'selected' : ''}>${label}</option>`).join('')}
-      </select>
-      ${
-        createFormat === 'group_knockout'
-          ? `<div class="row" style="align-items:flex-start;">
-               <div style="flex:1;">
-                 <label for="tourn-group-count" class="field-label">Anzahl Gruppen</label>
-                 <input type="number" id="tourn-group-count" min="2" value="${createGroupCount}" />
-               </div>
-               <div style="flex:1;">
-                 <label for="tourn-advancers" class="field-label">Aufsteiger pro Gruppe</label>
-                 <input type="number" id="tourn-advancers" min="1" value="${createAdvancersPerGroup}" />
-               </div>
-             </div>
-             <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
-               Die Teams spielen zuerst in Gruppen jeder gegen jeden, danach ziehen die besten
-               Teams je Gruppe automatisch in ein K.O.-Turnier ein.
-             </p>`
-          : ''
-      }
-      ${
-        createFormat === 'round_robin' || createFormat === 'group_knockout'
-          ? `<div class="check-row">
-               <input type="checkbox" id="tourn-two-legged" ${createTwoLegged ? 'checked' : ''} />
-               <span class="title-with-info tournament-option-label">
-                 <label for="tourn-two-legged">Hin- und Rückspiel${createFormat === 'group_knockout' ? ' in der Gruppenphase' : ''}</label>
-                 ${infoTooltipHtml(
-                     'tournament-two-legged-help',
-                     'Hin- und Rückspiel',
-                     'Jede Paarung wird zweimal gespielt.'
-                   )}
-               </span>
-             </div>`
-          : ''
-      }
-      <div class="check-row">
-        <input type="checkbox" id="tourn-track-score" ${createTrackScore ? 'checked' : ''} />
-        <span class="title-with-info tournament-option-label">
-          <label for="tourn-track-score">Ergebnisse inkl. Punktestand</label>
-          ${infoTooltipHtml(
-              'tournament-score-help',
-              'Ergebnisse inklusive Punktestand',
-              'Erfasst den genauen Punktestand statt nur Sieg oder Niederlage.'
-            )}
-        </span>
-      </div>
-      <div class="field-row">
-        <div>
-          <div class="title-with-info tournament-field-label">
-            <label for="tourn-lobby-name" class="field-label">Lobby-Name (optional)</label>
+        <label class="field-label" for="tourn-game">Spiel auswählen</label>
+        <select id="tourn-game">${gameOptions}</select>
+        <div class="selection-toolbar">
+          <div class="tournament-team-count-field">
+            <label class="field-label" for="tourn-teamcount">Anzahl Teams</label>
+            <input type="number" id="tourn-teamcount" min="2" value="${escapeHtml(createTeamCount)}" />
+          </div>
+          <button type="button" class="btn btn-sm" id="tourn-select-all">Alle markieren</button>
+          <button type="button" class="btn btn-sm" id="tourn-select-none">Auswahl aufheben</button>
+        </div>
+        <div class="player-selection-grid tournament-player-grid">${playerRows}</div>
+        <div class="check-row">
+          <input type="checkbox" id="tourn-avoid-adjacent" ${createAvoidAdjacent ? 'checked' : ''} />
+          <span class="title-with-info tournament-option-label">
+            <label for="tourn-avoid-adjacent">Sitznachbarn</label>
             ${infoTooltipHtml(
-                'tournament-lobby-help',
-                'Lobby-Name',
-                'Wird bei jeder Paarung mitgeschickt — das obere Team im Turnierbaum eröffnet standardmäßig die Lobby.'
+                'tournament-neighbors-help',
+                'Sitznachbarn',
+                'Sitznachbarn werden nach Möglichkeit in dasselbe Team gelost. Die Skill-Balance hat Vorrang, wenn beides nicht gleichzeitig möglich ist.'
               )}
-          </div>
-          <input type="text" id="tourn-lobby-name" maxlength="60" value="${escapeHtml(createLobbyName)}" placeholder="z. B. Respawn" />
+          </span>
         </div>
-        <div>
-          <div class="tournament-field-label">
-            <label for="tourn-lobby-password" class="field-label">Lobby-Passwort (optional)</label>
-          </div>
-          <input type="text" id="tourn-lobby-password" maxlength="60" value="${escapeHtml(createLobbyPassword)}" placeholder="z. B. zocken123" />
+        <button type="button" class="btn btn-primary" id="tourn-propose">Teams auslosen</button>
+
+        ${teamsPreview}
+      </section>
+
+      <section class="tournament-create-step stack" aria-labelledby="tournament-mode-step-title">
+        <div class="tournament-create-step-title">
+          <span class="tournament-create-step-number" aria-hidden="true">2</span>
+          <h3 id="tournament-mode-step-title">Turniermodus</h3>
         </div>
-      </div>
-      <button type="button" class="btn btn-primary btn-block" id="tourn-submit" ${createProposedTeams ? '' : 'disabled'}>Turnier erstellen</button>
+        <label class="field-label" for="tourn-format">Turnierformat</label>
+        <select id="tourn-format">
+          ${Object.entries(FORMAT_LABELS).map(([v, label]) => `<option value="${v}" ${v === createFormat ? 'selected' : ''}>${label}</option>`).join('')}
+        </select>
+        ${
+          createFormat === 'group_knockout'
+            ? `<div class="row" style="align-items:flex-start;">
+                 <div style="flex:1;">
+                   <label for="tourn-group-count" class="field-label">Anzahl Gruppen</label>
+                   <input type="number" id="tourn-group-count" min="2" value="${createGroupCount}" />
+                 </div>
+                 <div style="flex:1;">
+                   <label for="tourn-advancers" class="field-label">Aufsteiger pro Gruppe</label>
+                   <input type="number" id="tourn-advancers" min="1" value="${createAdvancersPerGroup}" />
+                 </div>
+               </div>
+               <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
+                 Die Teams spielen zuerst in Gruppen jeder gegen jeden, danach ziehen die besten
+                 Teams je Gruppe automatisch in ein K.O.-Turnier ein.
+               </p>`
+            : ''
+        }
+        ${
+          createFormat === 'round_robin' || createFormat === 'group_knockout'
+            ? `<div class="check-row">
+                 <input type="checkbox" id="tourn-two-legged" ${createTwoLegged ? 'checked' : ''} />
+                 <span class="title-with-info tournament-option-label">
+                   <label for="tourn-two-legged">Hin- und Rückspiel${createFormat === 'group_knockout' ? ' in der Gruppenphase' : ''}</label>
+                   ${infoTooltipHtml(
+                       'tournament-two-legged-help',
+                       'Hin- und Rückspiel',
+                       'Jede Paarung wird zweimal gespielt.'
+                     )}
+                 </span>
+               </div>`
+            : ''
+        }
+        <div class="check-row">
+          <input type="checkbox" id="tourn-track-score" ${createTrackScore ? 'checked' : ''} />
+          <span class="title-with-info tournament-option-label">
+            <label for="tourn-track-score">Ergebnisse inkl. Punktestand</label>
+            ${infoTooltipHtml(
+                'tournament-score-help',
+                'Ergebnisse inklusive Punktestand',
+                'Erfasst den genauen Punktestand statt nur Sieg oder Niederlage.'
+              )}
+          </span>
+        </div>
+        <div class="field-row">
+          <div>
+            <div class="title-with-info tournament-field-label">
+              <label for="tourn-lobby-name" class="field-label">Lobby-Name (optional)</label>
+              ${infoTooltipHtml(
+                  'tournament-lobby-help',
+                  'Lobby-Name',
+                  'Wird bei jeder Paarung mitgeschickt — das obere Team im Turnierbaum eröffnet standardmäßig die Lobby.'
+                )}
+            </div>
+            <input type="text" id="tourn-lobby-name" maxlength="60" value="${escapeHtml(createLobbyName)}" placeholder="z. B. Respawn" />
+          </div>
+          <div>
+            <div class="tournament-field-label">
+              <label for="tourn-lobby-password" class="field-label">Lobby-Passwort (optional)</label>
+            </div>
+            <input type="text" id="tourn-lobby-password" maxlength="60" value="${escapeHtml(createLobbyPassword)}" placeholder="z. B. zocken123" />
+          </div>
+        </div>
+        <button type="button" class="btn btn-primary btn-block" id="tourn-submit" ${createProposedTeams ? '' : 'disabled'}>Turnier erstellen</button>
+      </section>
     </div>
   `;
 

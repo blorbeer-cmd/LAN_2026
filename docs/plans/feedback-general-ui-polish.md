@@ -107,6 +107,9 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   Turnierreihe, geöffnetem Formular und abgeschlossener Reihe gilt derselbe vertikale Abstand.
 - Auch Vorschauen mit vielen ausgelosten Teams brechen in ausreichend breite Kartenzeilen um;
   Gamer-Name und Teamwechsel-Auswahl bleiben innerhalb ihrer jeweiligen Karte.
+- Das Anlageformular trennt Auslosung und Turniermodus als zwei nummerierte, umrandete Schritte:
+  Spiel, Teilnehmende und Teamvorschau gehören zu Schritt 1; Format, Ergebnisoptionen, Lobby und
+  die finale Erstellung zu Schritt 2.
 
 Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 `server/public/js/views/tournament.js`, `server/public/js/views/votes.js`,

@@ -230,7 +230,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.tournament-detail-stats` and
   `.tournament-team-grid` expose real progress and roster information above a centered, locally
   scrollable bracket. `.tournament-team-preview-grid` wraps large proposals into comfortably wide
-  cards so player names and reassignment controls stay inside each card.
+  cards so player names and reassignment controls stay inside each card. The create form uses two
+  numbered `.tournament-create-step` panels to separate „Auslosung“ from „Turniermodus“.
 
 Prefer composition of these primitives over view-specific copies. A new component
 class needs a distinct reusable purpose; a one-page selector that merely restates a
