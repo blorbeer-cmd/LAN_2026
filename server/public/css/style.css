@@ -978,6 +978,17 @@ input[type='number']::-webkit-inner-spin-button {
   grid-template-columns: repeat(auto-fit, minmax(var(--selection-card-min-width), 1fr));
   gap: var(--space-3);
 }
+.tournament-detail-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: calc(var(--space-3) * -1);
+  margin-bottom: var(--space-3);
+}
+.tournament-detail-format {
+  align-items: center;
+}
 .tournament-team-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1085,6 +1096,9 @@ input[type='number']::-webkit-inner-spin-button {
   display: grid;
   gap: var(--space-4);
   margin-top: var(--space-4);
+}
+.tournament-round-panel > .section-title {
+  margin: 0;
 }
 .tournament-group-panel > .section-title {
   margin-top: 0;

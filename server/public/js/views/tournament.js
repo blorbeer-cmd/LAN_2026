@@ -813,7 +813,7 @@ function renderBracket(t, ctx, matches = t.matches) {
 
 // ---------- detail: round-robin (also reused for each group_knockout group) ----------
 
-function renderRoundRobinBoard(t, teamsById, matches, standings) {
+function renderRoundRobinBoard(t, teamsById, matches, standings, { accentRounds = false } = {}) {
   const byRound = new Map();
   for (const m of matches) byRound.set(m.round, [...(byRound.get(m.round) ?? []), m]);
 
@@ -855,7 +855,12 @@ function renderRoundRobinBoard(t, teamsById, matches, standings) {
             </div>`;
         })
         .join('');
-      return `<div class="section-title" style="margin-top:var(--space-4);">Runde ${round}</div><div class="card">${rows}</div>`;
+      return accentRounds
+        ? `<section class="tournament-section-panel tournament-round-panel stack">
+             <div class="section-title">Runde ${round}</div>
+             <div class="card">${rows}</div>
+           </section>`
+        : `<div class="section-title" style="margin-top:var(--space-4);">Runde ${round}</div><div class="card">${rows}</div>`;
     })
     .join('');
 
@@ -880,7 +885,7 @@ function renderRoundRobinBoard(t, teamsById, matches, standings) {
 
 function renderRoundRobin(t, ctx) {
   const teamsById = new Map(t.teams.map((team) => [team.id, team]));
-  return renderRoundRobinBoard(t, teamsById, t.matches, t.standings);
+  return renderRoundRobinBoard(t, teamsById, t.matches, t.standings, { accentRounds: true });
 }
 
 // ---------- detail: group stage + knockout ----------
@@ -984,6 +989,19 @@ function renderDetail(container, ctx) {
   ]
     .filter(Boolean)
     .join(' · ');
+  const formatExplanation = `${FORMAT_LABELS[t.format]}${formatMeta ? ` · ${formatMeta}` : ''}`;
+  const compactFormatLabel =
+    t.format === 'round_robin' ? 'Liga' : t.format === 'group_knockout' ? 'Gruppenphase + K.O.' : null;
+  const formatDisplay = compactFormatLabel
+    ? `<span class="title-with-info tournament-detail-format">
+         <span>${compactFormatLabel}</span>
+         ${infoTooltipHtml(
+             `tournament-detail-format-${t.id}`,
+             compactFormatLabel,
+             formatExplanation
+           )}
+       </span>`
+    : `<span>${formatExplanation}</span>`;
 
   const lobbyInfo =
     t.lobbyName || t.lobbyPassword
@@ -1017,8 +1035,8 @@ function renderDetail(container, ctx) {
       <button type="button" class="btn btn-sm btn-danger" id="tourn-delete">Löschen</button>
     </div>
     <h1 class="view-title row" style="gap:var(--space-2);">${gameBadgeHtml({ id: t.gameId, icon: t.gameIcon }, 26)} ${escapeHtml(t.name)}</h1>
-    <div class="muted" style="margin-top:calc(var(--space-3) * -1);margin-bottom:var(--space-3);">
-      ${FORMAT_LABELS[t.format]}${formatMeta ? ` · ${formatMeta}` : ''} ·
+    <div class="muted tournament-detail-meta">
+      ${formatDisplay}
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
     </div>
     ${lobbyInfo}
@@ -1031,6 +1049,8 @@ function renderDetail(container, ctx) {
     ${renderTournamentTeams(t)}
     ${board}
   `;
+
+  wireInfoTooltips(container);
 
   container.querySelectorAll('[data-copy-lobby]').forEach((btn) => {
     btn.addEventListener('click', async () => {

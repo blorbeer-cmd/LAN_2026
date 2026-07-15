@@ -111,6 +111,10 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   und überlappen auch bei einem einzelnen Finale nicht.
 - Teams, Teilnehmende und entschiedene Partien bilden unter „Turnierstatus“ einen eigenen Abschnitt,
   statt optisch zum darüberliegenden Lobby-Zugang zu gehören.
+- Die Detailansicht kürzt die sichtbaren Formatangaben auf „Liga“ beziehungsweise „Gruppenphase +
+  K.O.“ und verschiebt Modusdetails, Gruppenanzahl, Aufsteiger und Punktestand in das direkt
+  anschließende Info-Popover. Liga-Runden verwenden dieselbe umrandete Akzentgruppe wie Gruppen- und
+  K.O.-Phasen.
 - Teamkarten in der Detailansicht und in der Auslosung nutzen höchstens zwei Spalten. In der
   Auslosung lassen sich Gamer per Drag-and-drop, Touch-Auswahl oder Pfeiltasten zwischen Teams
   verschieben; das bisherige Team-Dropdown entfällt.
