@@ -9,6 +9,7 @@ import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { AVATAR_PALETTE } from '../avatarPalette.js';
 import { icon } from '../icons.js';
+import { domainIcon } from '../domainIcons.js';
 
 function randomColor() {
   return AVATAR_PALETTE[Math.floor(Math.random() * AVATAR_PALETTE.length)];
@@ -53,7 +54,7 @@ export function renderPlayers(container, ctx) {
     </div>
     ${
       state.players.length === 0
-        ? `<div class="empty-state"><span class="empty-state-icon">${icon('users')}</span>Noch keine Spieler.<br />Leg den ersten an.</div>`
+        ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('players'))}</span>Noch keine Spieler.<br />Leg den ersten an.</div>`
         : `<div class="card-grid">${rows}</div>`
     }
   `;

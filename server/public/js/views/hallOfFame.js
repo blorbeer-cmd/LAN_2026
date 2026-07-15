@@ -7,6 +7,7 @@ import { api } from '../api.js';
 import { escapeHtml, avatarHtml, formatDate } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
+import { domainIcon } from '../domainIcons.js';
 
 let cache = null;
 let loading = false;
@@ -90,7 +91,7 @@ export function renderHallOfFame(container, ctx) {
       <div class="section-title">Nach LAN</div>
       ${
         cache.events.length === 0
-          ? `<div class="empty-state"><span class="empty-state-icon">${icon('landmark')}</span>Noch keine Events.</div>`
+          ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('hallOfFame'))}</span>Noch keine Events.</div>`
           : cache.events.map(renderEvent).join('')
       }
     `

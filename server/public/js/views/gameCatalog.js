@@ -543,7 +543,7 @@ export function renderGameCatalog(container, ctx) {
     <div class="game-table" style="margin-top:var(--space-3);">
       ${
         rows.length === 0
-          ? `<div class="empty-state"><span class="empty-state-icon">${icon('gamepad')}</span>${activeTab === 'suggestions' ? 'Noch keine vorgeschlagenen Spiele.' : 'Noch keine Spiele im Katalog.'}</div>`
+          ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('gameCatalog'))}</span>${activeTab === 'suggestions' ? 'Noch keine vorgeschlagenen Spiele.' : 'Noch keine Spiele im Katalog.'}</div>`
           : rows.map((g) => gameRowHtml(g, myId)).join('')
       }
     </div>

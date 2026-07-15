@@ -9,6 +9,7 @@ import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { icon } from '../icons.js';
+import { domainIcon } from '../domainIcons.js';
 
 let historyCache = null;
 let historyLoading = false;
@@ -37,7 +38,7 @@ function renderHistory(myId) {
     return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   if (historyCache.length === 0) {
-    return `<div class="empty-state"><span class="empty-state-icon">${icon('megaphone')}</span>Noch keine Durchsagen.</div>`;
+    return `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('broadcast'))}</span>Noch keine Durchsagen.</div>`;
   }
   const now = Date.now();
   return historyCache

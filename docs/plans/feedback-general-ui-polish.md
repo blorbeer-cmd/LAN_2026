@@ -115,8 +115,10 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   Bereits gespeicherte Einträge mit Emoji-Präfix werden bei der Anzeige normalisiert. Der redundante
   „Neu“-Badge entfällt; ungelesene Einträge bleiben durch Rand und Hintergrund klar erkennbar.
 - Wiederkehrende Fachsymbole werden zentral in `domainIcons.js` zugeordnet und von Navigation,
-  Aktuell-Karten, Kiosk und Mitteilungen wiederverwendet: Schwerter stehen für laufende Turniere,
-  der Aktivitäts-Puls für Skill und der Pokal ausschließlich für Ergebnisse beziehungsweise Siege.
+  Aktuell-Karten, Kiosk, Mitteilungen, Leerzuständen und Querverweisen wiederverwendet. Untere
+  Navigation und „Mehr“ sind die verbindliche Referenz: Schwerter stehen für laufende Turniere,
+  die Waage für Teams, der Aktivitäts-Puls für Skill, der Hamburger für Sammelbestellungen und der
+  Pokal ausschließlich für Ranglisten, Ergebnisse beziehungsweise Siege.
 - Die Ranglisten-Vorschau zeigt auf größeren Displays die ersten sechs Plätze in zwei Spalten und
   fällt auf schmalen Handys in eine fortlaufende Liste zurück.
 - Spieler-Namen verwenden in Live-Status, Rangliste und Auswahlansichten denselben Namensstil;

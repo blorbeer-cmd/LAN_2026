@@ -11,6 +11,7 @@ import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
+import { domainIcon } from '../domainIcons.js';
 
 export function renderLeaderboard(container, ctx) {
   const filterGameId = state.selectedGameId || '';
@@ -88,7 +89,7 @@ export function renderLeaderboard(container, ctx) {
     </div>
     <select id="lb-filter" style="margin-bottom:var(--space-3);">${gameOptions}</select>
     <div class="card">
-      ${standings.length === 0 ? `<div class="empty-state"><span class="empty-state-icon">${icon('trophy')}</span>Noch keine Ergebnisse.</div>` : rows}
+      ${standings.length === 0 ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('leaderboard'))}</span>Noch keine Ergebnisse.</div>` : rows}
     </div>
 
     <div class="section-title">Spielzeit</div>

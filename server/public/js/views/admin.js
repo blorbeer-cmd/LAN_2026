@@ -11,6 +11,7 @@ import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { isAdmin, setAdmin } from '../admin.js';
 import { icon } from '../icons.js';
+import { domainIcon } from '../domainIcons.js';
 
 let agentDiagnostics = null;
 let diagnosticsLoading = false;
@@ -79,7 +80,7 @@ async function deletePlayer(player, ctx) {
 function renderActivate(container) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
-    <h1 class="view-title">${icon('shield')} Admin</h1>
+    <h1 class="view-title">${icon(domainIcon('admin'))} Admin</h1>
     <div class="card stack">
       <p class="muted">Im Admin-Modus kannst du Test-Spieler mit fertigen Daten anlegen,
       Admin-Rechte vergeben und Spieler löschen. Test-Spieler sind nur sichtbar,
@@ -142,7 +143,7 @@ function renderPanel(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <div class="row-between">
-      <h1 class="view-title">${icon('shield')} Admin</h1>
+      <h1 class="view-title">${icon(domainIcon('admin'))} Admin</h1>
       <button type="button" class="btn btn-sm" id="admin-leave">Modus verlassen</button>
     </div>
 

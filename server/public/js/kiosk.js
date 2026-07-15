@@ -213,7 +213,7 @@ function renderVotes(votes) {
   const label = votes.mode === 'points' ? `${votes.totalVoters} Teilnehmer bisher` : `${votes.totalVoters} Stimme(n) bisher`;
   return `
     <div class="empty-state">
-      <span class="empty-state-icon">${icon('vote')}</span>
+      <span class="empty-state-icon">${icon(domainIcon('votes'))}</span>
       Abstimmung läuft${votes.mode === 'points' ? ' (Punkte-Modus)' : ''}.<br />
       <span class="muted">${label} – Ergebnis erst nach dem Ende.</span>
     </div>`;
@@ -328,7 +328,7 @@ function renderFoodBanner(orders) {
       const where = o.link
         ? ` · <a href="${escapeHtml(o.link)}" target="_blank" rel="noopener">${icon('link')} Zur Karte/Lieferdienst</a>`
         : '';
-      return `<div>${icon('hamburger')} Sammelbestellung „${escapeHtml(o.title)}" läuft – ${when}${where}</div>`;
+      return `<div>${icon(domainIcon('foodOrders'))} Sammelbestellung „${escapeHtml(o.title)}" läuft – ${when}${where}</div>`;
     })
     .join('');
   el.hidden = false;

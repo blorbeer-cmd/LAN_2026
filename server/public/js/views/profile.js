@@ -20,6 +20,7 @@ import { getPushSubscriptionState, enablePush, disablePush } from '../push.js';
 import { invalidateMyStats } from './myStats.js';
 import { resizeImageFile } from '../imageUtils.js';
 import { icon } from '../icons.js';
+import { domainIcon } from '../domainIcons.js';
 
 // Whose monitor you've declared you can see ("Sichtbare Monitore") for the
 // active event (FR-18 extension) — pre-filled from same-edge seat placements
@@ -200,7 +201,7 @@ export function renderProfile(container, ctx) {
           ? ''
           : `<div class="card stack" style="border-color:rgba(91,140,255,0.55);">
                <div class="row" style="gap:var(--space-2);align-items:center;">
-                 <span class="inline-icon">${icon('gamepad')}</span>
+                 <span class="inline-icon">${icon(domainIcon('gameCatalog'))}</span>
                  <strong>Bock & Skill eintragen</strong>
                </div>
                <p class="muted" style="font-size:var(--font-size-xs);margin:0;">

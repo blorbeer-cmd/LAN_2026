@@ -233,8 +233,12 @@ space pattern rather than content-dependent card heights.
 - New or changed interface icons must use the local Lucide-style helper in
   `server/public/js/icons.js` (`icon(...)` or a suitable specialized helper).
 - Repeated domain meanings use `server/public/js/domainIcons.js` as their semantic source of truth
-  across navigation-adjacent cards and notifications. In particular, crossed swords mean an active
-  tournament, the activity pulse means Skill, and the trophy is reserved for results and wins.
+  across navigation-adjacent cards, empty states, cross-links, kiosk content and notifications.
+  Bottom navigation and the entries under „Mehr“ define the canonical view symbols; other
+  appearances of one of those views must request the icon by its view key instead of choosing an
+  icon locally. In particular, crossed swords mean an active tournament, scales mean team
+  balancing, the activity pulse means Skill, the hamburger means a Sammelbestellung, and the trophy
+  is reserved for rankings, results and wins.
 - Do not use emoji, Unicode pictograms or external icon CDNs in navigation, headings,
   buttons, status badges, chips, empty states or toasts. The Respawn logo is the
   intentional exception; user-authored content such as game names may contain emoji.

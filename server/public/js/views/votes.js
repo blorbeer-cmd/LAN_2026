@@ -38,6 +38,7 @@ import { escapeHtml, formatDate, formatDateTime, gameBadgeHtml } from '../format
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { domainIcon } from '../domainIcons.js';
 
 // Cached separately from `state` (like analytics.js does) since it's fetched
 // from its own endpoint, not part of the main loadAll() round-trip.
@@ -282,7 +283,7 @@ function renderLastResult() {
     return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   if (historyCache.length === 0) {
-    return `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon('vote')}</span>Noch keine Abstimmung durchgeführt.</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon(domainIcon('votes'))}</span>Noch keine Abstimmung durchgeführt.</div>`;
   }
   const h = historyCache[0];
   const winners = winnerChipsHtml(h, 24);
@@ -303,7 +304,7 @@ function renderHistory() {
     return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   if (historyCache.length === 0) {
-    return `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon('vote')}</span>Noch keine vergangenen Abstimmungen.</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon(domainIcon('votes'))}</span>Noch keine vergangenen Abstimmungen.</div>`;
   }
   // Each round is its own card (not a shared list of rows) — a round carries
   // enough of its own detail (title, several winner chips, mode) that lumping
@@ -393,7 +394,7 @@ export function renderVotes(container, ctx) {
     const rows = `<div class="vote-game-grid">${renderOpenRows(votes, mineReady)}</div>`;
     const submitLabel = votes.mode === 'points' ? 'Bewertung abschicken' : 'Stimme abschicken';
     openSectionHtml = `
-      <div class="section-title">${icon('vote')} ${votes.title ? escapeHtml(votes.title) : 'Abstimmung'}</div>
+      <div class="section-title">${icon(domainIcon('votes'))} ${votes.title ? escapeHtml(votes.title) : 'Abstimmung'}</div>
       <div class="card stack">
         <div class="muted">${summary}</div>
         ${votes.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0;">${escapeHtml(votes.info)}</p>` : ''}

@@ -11,6 +11,7 @@ import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { icon } from '../icons.js';
+import { domainIcon } from '../domainIcons.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 
 let cache = null;
@@ -128,7 +129,7 @@ function renderOpenOrder(order, myId) {
   return `
     <div class="card stack" data-order-card="${order.id}">
       <div class="row-between">
-        <strong>${icon('hamburger')} ${escapeHtml(order.title)}</strong>
+        <strong>${icon(domainIcon('foodOrders'))} ${escapeHtml(order.title)}</strong>
         <span class="badge badge-playing">Offen</span>
       </div>
       <div class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
@@ -292,7 +293,7 @@ export function renderFoodOrders(container, ctx) {
     loading || cache === null
       ? `<div class="empty-state">Lädt…</div>`
       : openOrders.length === 0
-        ? `<div class="empty-state"><span class="empty-state-icon">${icon('hamburger')}</span><br />Gerade keine offene Bestellung.<br />
+        ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('foodOrders'))}</span><br />Gerade keine offene Bestellung.<br />
            <span class="muted" style="font-size:var(--font-size-sm);">Starte eine, wenn ihr was bestellen wollt – alle können sich dann selbst eintragen.</span></div>`
         : `<div class="stack">${openOrders.map((o) => renderOpenOrder(o, myId)).join('')}</div>`;
 

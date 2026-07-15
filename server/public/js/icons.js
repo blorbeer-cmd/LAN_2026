@@ -67,17 +67,18 @@ const ICONS = {
   flame: '<path d="M12 22a7 7 0 0 0 7-7c0-4-3-6-4-10-2 2-3 4-3 6-2-1-3-3-3-5-3 3-4 6-4 9a7 7 0 0 0 7 7Z"/><path d="M12 22a3 3 0 0 0 3-3c0-2-1-3-2-4-1 1-2 2-2 4a3 3 0 0 0 1 3Z"/>',
   flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1Z"/><line x1="4" x2="4" y1="22" y2="15"/>',
   house: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  menu: '<path d="M4 12h16"/><path d="M4 6h16"/><path d="M4 18h16"/>',
   info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
   thumbsUp: '<path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/>',
 };
 
 const EMOJI_ICONS = new Map([
-  ['📌', 'pin'], ['🎮', 'gamepad'], ['🎮️', 'gamepad'], ['🎲', 'dice'], ['🕹️', 'joystick'], ['🍕', 'pizza'],
+  ['📌', 'pin'], ['🎮', 'gamepad'], ['🎮️', 'gamepad'], ['🎲', 'dice'], ['🕹️', 'joystick'], ['🍕', 'hamburger'],
   ['🚗', 'car'], ['📢', 'megaphone'], ['👥', 'users'], ['🧑‍🤝‍🧑', 'users'], ['📊', 'chart'], ['📈', 'chart'],
   ['🏛️', 'landmark'], ['🪑', 'armchair'], ['💺', 'armchair'], ['🔑', 'key'], ['👤', 'user'], ['👋', 'user'],
   ['📋', 'clipboard'], ['✏️', 'pencil'], ['🗑️', 'trash'], ['⏱️', 'timer'], ['🕒', 'timer'], ['🕓', 'timer'], ['🕐', 'timer'],
   ['📅', 'calendar'], ['🗓️', 'calendar'], ['🔗', 'link'], ['✅', 'check'], ['✓', 'check'], ['👑', 'crown'],
-  ['🏆', 'trophy'], ['🏅', 'award'], ['📡', 'radioTower'], ['🗳️', 'vote'], ['⚖️', 'shuffle'], ['⚔️', 'activity'],
+  ['🏆', 'trophy'], ['🏅', 'award'], ['📡', 'radioTower'], ['🗳️', 'vote'], ['⚖️', 'scale'], ['⚔️', 'swords'],
   ['💡', 'lightbulb'], ['📚', 'library'], ['⭐', 'star'], ['🔥', 'activity'], ['💪', 'activity'], ['⚡', 'activity'],
   ['🖥️', 'monitor'], ['🔔', 'bell'], ['📍', 'mapPin'], ['📄', 'file'], ['📥', 'download'], ['🌐', 'globe'],
   ['🔁', 'shuffle'], ['🔢', 'chart'], ['🏃', 'activity'], ['🤹', 'activity'], ['🥊', 'activity'], ['🤝', 'users'],

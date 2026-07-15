@@ -8,23 +8,23 @@ import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
 
 const ITEMS = [
-  { view: 'admin', icon: 'shield', title: 'Admin', desc: 'Test-Spieler anlegen, Admin vergeben, moderieren.' },
-  { view: 'arrivals', icon: 'van', title: 'An- & Abreise', desc: '' },
-  { view: 'arcade', icon: domainIcon('arcade'), title: 'Arcade', desc: 'Minigame-Lobbies' },
-  { view: 'analytics', icon: 'chart', title: 'Auswertungen', desc: 'Awards und Statistiken' },
-  { view: 'broadcast', icon: domainIcon('broadcast'), title: 'Durchsage', desc: 'Eine Nachricht an alle Geräte, den Kiosk und als Push.' },
-  { view: 'foodOrders', icon: domainIcon('foodOrders'), title: 'Essen', desc: 'Sammelbestellung öffnen, jeder trägt sich selbst ein.' },
-  { view: 'hallOfFame', icon: 'landmark', title: 'Hall of Fame', desc: 'Champions über alle LAN-Partys hinweg.' },
-  { view: 'infoBoard', icon: 'pin', title: 'Info-Board', desc: 'WLAN, Discord, Server-IPs, Hausregeln – alles Wichtige an einem Ort.' },
-  { view: 'players', icon: 'users', title: 'Spieler', desc: 'Alle Teilnehmer: anlegen, umbenennen, Agent-Keys nachschlagen.' },
-  { view: 'gameCatalog', icon: domainIcon('gameCatalog'), title: 'Spiele', desc: 'Alle Spiele: Bock & Skill eintragen, vorschlagen, verwalten.' },
+  { view: 'admin', title: 'Admin', desc: 'Test-Spieler anlegen, Admin vergeben, moderieren.' },
+  { view: 'arrivals', title: 'An- & Abreise', desc: '' },
+  { view: 'arcade', title: 'Arcade', desc: 'Minigame-Lobbies' },
+  { view: 'analytics', title: 'Auswertungen', desc: 'Awards und Statistiken' },
+  { view: 'broadcast', title: 'Durchsage', desc: 'Eine Nachricht an alle Geräte, den Kiosk und als Push.' },
+  { view: 'foodOrders', title: 'Essen', desc: 'Sammelbestellung öffnen, jeder trägt sich selbst ein.' },
+  { view: 'hallOfFame', title: 'Hall of Fame', desc: 'Champions über alle LAN-Partys hinweg.' },
+  { view: 'infoBoard', title: 'Info-Board', desc: 'WLAN, Discord, Server-IPs, Hausregeln – alles Wichtige an einem Ort.' },
+  { view: 'players', title: 'Spieler', desc: 'Alle Teilnehmer: anlegen, umbenennen, Agent-Keys nachschlagen.' },
+  { view: 'gameCatalog', title: 'Spiele', desc: 'Alle Spiele: Bock & Skill eintragen, vorschlagen, verwalten.' },
 ];
 
 export function renderMore(container) {
   const rows = ITEMS.map(
     (item) => `
     <button type="button" class="card row list-row" data-navigate="${item.view}">
-      <span class="list-row-icon">${icon(item.icon)}</span>
+      <span class="list-row-icon">${icon(domainIcon(item.view))}</span>
       <span style="flex:1;">
         <div class="player-name">${item.title}</div>
         ${item.desc ? `<div class="muted list-row-desc">${item.desc}</div>` : ''}

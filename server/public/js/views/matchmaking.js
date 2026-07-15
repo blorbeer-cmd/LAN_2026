@@ -12,6 +12,7 @@ import { showToast } from '../toast.js';
 import { openMatchForm } from './leaderboard.js';
 import { getMyId } from '../whoami.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { domainIcon } from '../domainIcons.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -338,7 +339,7 @@ export function renderMatchmaking(container, ctx) {
   if (state.games.length === 0 || state.players.length === 0) {
     container.innerHTML = `
       <h1 class="view-title">Teams auslosen</h1>
-      <div class="empty-state"><span class="empty-state-icon">${icon('shuffle')}</span>Dafür braucht es mindestens ein Spiel und 2 Spieler.</div>`;
+      <div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('matchmaking'))}</span>Dafür braucht es mindestens ein Spiel und 2 Spieler.</div>`;
     return;
   }
 
