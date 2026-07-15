@@ -18,11 +18,12 @@ import {
 import { ensureBlobbySocket, renderBlobbyLobbyCard, wireBlobbyLobbyCard, myBlobbyLobby, hasBlobbyMatch, blobbyLobbies, leaveMyBlobbyLobby } from './blobby.js';
 import { ensurePongSocket, renderPongLobbyCard, wirePongLobbyCard, myPongLobby, hasPongMatch, pongLobbies, leaveMyPongLobby } from './pong.js';
 import { ensureSnakeSocket, renderSnakeLobbyCard, wireSnakeLobbyCard, mySnakeLobby, hasSnakeMatch, snakeLobbies, leaveMySnakeLobby } from './snake.js';
-import { arcadeExpandControlHtml, arcadeInfoGridHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeExpandControlHtml, arcadeLobbyTitleHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 import { startArcadeWatch } from './arcadeWatch.js';
 import { confirmDialog } from '../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { lobbyPlayerChipsHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { wireInfoTooltips } from '../infoTooltip.js';
 
 // The Arcade opens as a launcher: a compact grid of playable game tiles.
 // Picking one reveals that game's lobby below.
@@ -194,8 +195,12 @@ function scribbleArtStatsHtml(game) {
   const artRows = players.length
     ? players.map((player, index) => `
         <div class="lb-row scribble-art-stat-row">
-          <span><strong>${index + 1}. ${escapeHtml(player.name)}</strong><span class="muted"> · ${player.drawings} Bilder</span></span>
-          <span class="muted" style="text-align:right;">${player.roundWins} Rundenbilder · ${player.favorites} Favoriten<br />Cool ${player.reactionBreakdown.cool} · Kreativ ${player.reactionBreakdown.creative} · Witzig ${player.reactionBreakdown.funny}</span>
+          <span class="lb-rank">${index + 1}</span>
+          <span class="leaderboard-row-main">
+            <strong class="player-name leaderboard-row-name">${escapeHtml(player.name)}</strong>
+            <span class="muted leaderboard-row-stat">${player.drawings} Bilder · ${player.roundWins} Rundenbilder · ${player.favorites} Favoriten</span>
+            <span class="muted leaderboard-row-stat">Cool ${player.reactionBreakdown.cool} · Kreativ ${player.reactionBreakdown.creative} · Witzig ${player.reactionBreakdown.funny}</span>
+          </span>
         </div>`).join('')
     : `<div class="empty-state" style="padding:var(--space-4);">Noch keine bewerteten Scribble-Bilder.</div>`;
   const galleryHtml = scribbleGallery.length
@@ -208,9 +213,17 @@ function scribbleArtStatsHtml(game) {
     : `<div class="empty-state" style="padding:var(--space-4);">Noch kein Rundenbild gekürt.</div>`;
   return `
     <div class="section-title">Beste Bilder pro Spieler</div>
-    <div>${artRows}</div>
+    <div class="leaderboard-list-grid">${artRows}</div>
     <div class="section-title">Rundenbilder-Galerie</div>
     ${galleryHtml}`;
+}
+
+function arcadeMatchCountLabel(count) {
+  return `${count} ${count === 1 ? 'Match' : 'Matches'}`;
+}
+
+function arcadeResultLabel(wins, losses) {
+  return `${wins} ${wins === 1 ? 'Sieg' : 'Siege'} · ${losses} ${losses === 1 ? 'Niederlage' : 'Niederlagen'}`;
 }
 
 function arcadeStatsHtml() {
@@ -236,20 +249,24 @@ function arcadeStatsHtml() {
     .map(
       (p, i) => `
         <div class="lb-row">
-          <span>${i + 1}. ${escapeHtml(p.name)}</span>
-          <span class="muted" style="font-variant-numeric:tabular-nums;">${p.wins}–${p.losses} · ${Math.round(p.winRate * 100)}%</span>
+          <span class="lb-rank">${i + 1}</span>
+          <span class="leaderboard-row-main">
+            <strong class="player-name leaderboard-row-name">${escapeHtml(p.name)}</strong>
+            <span class="muted leaderboard-row-stat">${arcadeResultLabel(p.wins, p.losses)}</span>
+          </span>
+          <strong class="lb-points">${Math.round(p.winRate * 100)}%</strong>
         </div>`
     )
     .join('');
   return `
     ${tabs}
-    <div class="arcade-stat-game">
+    <section class="tournament-section-panel stack arcade-stat-game">
       <div class="row-between">
-        <strong>${escapeHtml(game.title)} · W–L-Ratio</strong>
-        <span class="badge">${game.matches} Match(es)</span>
+        <strong>${escapeHtml(game.title)}</strong>
+        <span class="badge">${arcadeMatchCountLabel(game.matches)}</span>
       </div>
-      ${rows}
-    </div>
+      <div class="leaderboard-list-grid">${rows}</div>
+    </section>
     ${game.gameType === 'scribble' ? scribbleArtStatsHtml(game) : ''}`;
 }
 
@@ -440,10 +457,10 @@ function openLobbyCount(gameId) {
 
 function gameTileHtml(game, active, count) {
   return `
-    <button type="button" class="card arcade-tile ${active === game.id ? 'is-active' : ''} ${game.soon ? 'is-soon' : ''}" data-game="${game.id}">
-      ${game.soon ? `<span class="arcade-tile-soon">Bald</span>` : count > 0 ? `<span class="arcade-tile-count">${count}</span>` : ''}
+    <button type="button" class="card arcade-tile ${active === game.id ? 'is-active' : ''} ${game.soon ? 'is-soon' : ''}" data-game="${game.id}" aria-pressed="${active === game.id}">
       <span class="arcade-tile-icon" aria-hidden="true">${game.icon}</span>
       <span class="arcade-tile-name">${escapeHtml(game.name)}</span>
+      ${game.soon ? `<span class="badge arcade-tile-state">Bald</span>` : count > 0 ? `<span class="badge arcade-tile-count">${count} offen</span>` : ''}
     </button>`;
 }
 
@@ -462,7 +479,7 @@ function openLobbiesOverviewHtml() {
   return `
     <section class="card stack grouped-page-section" aria-labelledby="arcade-open-lobbies-title">
       <div class="grouped-page-section-title"><h2 id="arcade-open-lobbies-title">Offene Lobbys</h2></div>
-      <div class="arcade-lobby-grid">
+      <div class="arcade-lobby-grid two-column-card-grid">
         ${rows
           .map(({ game, lobbies: gl }) => {
             const hostsSummary = gl
@@ -488,7 +505,7 @@ function runningMatchesOverviewHtml() {
   return `
     <section class="card stack grouped-page-section" aria-labelledby="arcade-running-title">
       <div class="grouped-page-section-title"><h2 id="arcade-running-title">Laufende Spiele</h2></div>
-      <div class="arcade-watch-list">
+      <div class="arcade-watch-list two-column-card-grid">
         ${watchMatches
           .map((live) => {
             const game = GAMES.find((entry) => entry.id === live.gameType);
@@ -516,14 +533,13 @@ function activeGameHtml() {
     const lobby = myLobby();
     return `
       <div class="card stack">
-        <div class="row-between" style="gap:var(--space-3);">
-          <strong>Quiz-Lobby</strong>
+        <div class="row-between arcade-lobby-header" style="gap:var(--space-3);">
+          ${arcadeLobbyTitleHtml('quiz', 'Quiz-Lobby', [
+            { label: 'Ziel', text: 'Richtige Antworten sammeln.' },
+            { label: 'Steuerung', text: 'Antwort tippen und senden.' },
+          ])}
           <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="quiz-bot" ${match ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button></div>
         </div>
-        ${arcadeInfoGridHtml([
-          { label: 'Ziel', text: 'Richtige Antworten sammeln.' },
-          { label: 'Steuerung', text: 'Antwort tippen und senden.' },
-        ])}
         ${renderLobbyList()}
       </div>
       ${targetControls(lobby)}`;
@@ -574,13 +590,14 @@ export function renderArcade(container, ctx) {
           : ''
       }
       <section class="card stack grouped-page-section" aria-labelledby="arcade-stats-title">
-        <div class="grouped-page-section-title"><h2 id="arcade-stats-title">Arcade-Statistiken</h2></div>
+        <div class="grouped-page-section-title"><h2 id="arcade-stats-title">Statistiken</h2></div>
         ${arcadeStatsHtml()}
       </section>
     </div>
   `;
 
   wireWhoAmICard(container, 'whoami', ctx);
+  wireInfoTooltips(container);
   wireTetrisLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('tetris', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('tetris', 'join') });
   wireScribbleLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('scribble', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('scribble', 'join') });
   wirePongLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('pong', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('pong', 'join') });

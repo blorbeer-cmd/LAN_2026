@@ -7,7 +7,7 @@ import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { allLobbyReady, lobbyPlayerChipsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, arcadeInfoGridHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeExpandControlHtml, arcadeLobbyTitleHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
 const W = 960;
 const H = 540;
@@ -141,12 +141,11 @@ function hostStart() {
 export function renderPongLobbyCard() {
   const lobby = myPongLobby();
   const noMe = !myId();
-  return `<div class="card stack"><div class="row-between" style="gap:var(--space-3);"><strong>Pong-Lobby</strong>
-    <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="pong-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="pong-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div></div>
-    ${arcadeInfoGridHtml([
+  return `<div class="card stack"><div class="row-between arcade-lobby-header" style="gap:var(--space-3);">${arcadeLobbyTitleHtml('pong', 'Pong-Lobby', [
       { label: 'Ziel', text: 'Erreiche zuerst die Punktzahl.' },
       { label: 'Steuerung', text: 'Pfeiltasten.' },
     ])}
+    <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="pong-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="pong-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div></div>
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}${lobbyList()}${hostStart()}</div>`;
 }
 

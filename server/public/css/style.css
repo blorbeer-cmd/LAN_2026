@@ -1642,98 +1642,79 @@ button.card {
   padding-top: var(--space-3);
 }
 
-/* Arcade launcher: a compact row of game tiles instead of full-width cards.
-   Fixed columns (one per GAMES entry) so all games sit side by side;
-   minmax(0,1fr) lets them shrink on a phone rather than overflow, and the
-   name clamps to two lines so tiles stay the same height regardless of
-   label length. */
+/* Arcade launcher: game choices follow the shared one-/two-column card
+   rhythm instead of shrinking every game into one narrow desktop row. */
 .arcade-tiles {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: var(--space-2);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
 }
-
-/* Open lobbies use a compact three-column overview on laptop widths. */
-.arcade-lobby-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-2);
-}
-/* --bp-md: keep overview cards comfortable on phones. */
-@media (max-width: 640px) {
-  .arcade-lobby-grid {
-    grid-template-columns: minmax(0, 1fr);
+@media (min-width: 640px) { /* --bp-md */
+  .arcade-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 .arcade-tile {
-  position: relative;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  gap: var(--space-2);
-  min-height: 88px;
-  padding: var(--space-3) var(--space-1);
+  gap: var(--space-3);
+  min-height: var(--row-min-h);
+  padding: var(--space-3);
   cursor: pointer;
-  text-align: center;
+  text-align: left;
 }
 .arcade-tile-icon {
-  font-size: var(--font-size-2xl);
-  line-height: 1;
+  width: var(--row-icon-size);
+  height: var(--row-icon-size);
+  display: inline-flex;
+  flex: 0 0 var(--row-icon-size);
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  font-size: var(--font-size-xl);
+  line-height: var(--line-height-tight);
 }
 .arcade-tile-name {
-  font-size: var(--font-size-2xs);
-  font-weight: var(--font-weight-bold);
-  line-height: 1.15;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  min-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
 }
 .arcade-tile.is-active {
-  border-color: rgba(91, 140, 255, 0.7);
+  border-color: var(--accent);
   background: var(--bg-elevated-2);
 }
 .arcade-tile.is-soon {
   opacity: 0.5;
 }
-.arcade-tile-soon {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  font-size: 0.55rem; /* design-token-ok: smaller than the smallest text token so a "SOON" ribbon doesn't crowd the tile */
-  font-weight: var(--font-weight-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--text-muted);
-}
-/* Open-lobby count on a game tile — same corner spot as .arcade-tile-soon,
-   never both at once (a "soon" game can't have open lobbies). */
+.arcade-tile-state,
 .arcade-tile-count {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 var(--space-1);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-full);
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.arcade-tile-count {
   background: var(--state-playing-bg);
   color: var(--state-playing);
-  font-size: 0.6rem; /* design-token-ok: matches .arcade-tile-soon's ribbon scale, needs to fit a 2-digit count in 16px */
-  font-weight: var(--font-weight-bold);
-  line-height: 1;
 }
 
 .arcade-stat-game {
-  display: grid;
+  min-width: 0;
+}
+.arcade-lobby-header {
+  flex-wrap: wrap;
+}
+.arcade-lobby-title {
+  min-width: 0;
   gap: var(--space-2);
 }
-.arcade-stat-game + .arcade-stat-game {
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
+.arcade-lobby-header > .row:last-child {
+  margin-left: auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .arcade-winner-card {
   display: grid;
@@ -2774,10 +2755,6 @@ button.card {
 .arcade-game-shell > .view-title {
   text-align: center;
 }
-.arcade-watch-list {
-  display: grid;
-  gap: var(--space-2);
-}
 .arcade-watch-list-row {
   display: flex;
   align-items: center;
@@ -2867,22 +2844,6 @@ button.card {
 .arcade-player-tile-detail {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-}
-.arcade-info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-}
-.arcade-info-card {
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--bg-elevated);
-}
-.arcade-info-text {
-  color: var(--text);
-  font-size: var(--font-size-sm);
 }
 .arcade-game-shell .quiz-stage-card {
   width: min(100%, 680px);

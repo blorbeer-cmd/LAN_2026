@@ -21,7 +21,7 @@ import { confirmDialog } from '../modal.js';
 import { getToken } from '../api.js';
 import { icon } from '../icons.js';
 import { lobbyPlayerChipsHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, arcadeInfoGridHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeExpandControlHtml, arcadeLobbyTitleHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
 const SWATCHES = [
   '#1a1a1a',
@@ -961,14 +961,13 @@ export function renderScribbleLobbyCard() {
   const noMe = !myId();
   return `
     <div class="card stack">
-      <div class="row-between" style="gap:var(--space-3);">
-        <strong>Scribble-Lobby</strong>
+      <div class="row-between arcade-lobby-header" style="gap:var(--space-3);">
+        ${arcadeLobbyTitleHtml('scribble', 'Scribble-Lobby', [
+          { label: 'Ziel', text: 'Wörter erraten und Punkte sammeln.' },
+          { label: 'Steuerung', text: 'Zeichnen + Tippen.' },
+        ])}
         <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="scribble-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="scribble-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div>
       </div>
-      ${arcadeInfoGridHtml([
-        { label: 'Ziel', text: 'Wörter erraten und Punkte sammeln.' },
-        { label: 'Steuerung', text: 'Zeichnen + Tippen.' },
-      ])}
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
       ${renderLobbyList()}
       ${hostStartHtml()}

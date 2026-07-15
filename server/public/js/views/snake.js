@@ -6,7 +6,7 @@ import { getMyId } from '../whoami.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { allLobbyReady, lobbyPlayerChipsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, arcadeInfoGridHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeExpandControlHtml, arcadeLobbyTitleHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
 const COLS = 32;
 const ROWS = 20;
@@ -104,12 +104,11 @@ function hostStart() {
 export function renderSnakeLobbyCard() {
   const lobby = mySnakeLobby();
   const noMe = !myId();
-  return `<div class="card stack"><div class="row-between" style="gap:var(--space-3);"><strong>Snake-Lobby</strong>
-    <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="snake-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="snake-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div></div>
-    ${arcadeInfoGridHtml([
+  return `<div class="card stack"><div class="row-between arcade-lobby-header" style="gap:var(--space-3);">${arcadeLobbyTitleHtml('snake', 'Snake-Lobby', [
       { label: 'Ziel', text: 'Länger leben als die andere Schlange.' },
       { label: 'Steuerung', text: 'Pfeiltasten.' },
     ])}
+    <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="snake-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="snake-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div></div>
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}${lobbyList()}${hostStart()}</div>`;
 }
 

@@ -1,4 +1,5 @@
 import { escapeHtml, avatarHtml } from '../format.js';
+import { infoTooltipHtml } from '../infoTooltip.js';
 
 const ARCADE_EXPANDED_KEY = 'lan-arcade-expanded';
 
@@ -102,17 +103,10 @@ export function matchRosterHtml(players, { winnerId = null, scoreFor = null, det
     </div>`;
 }
 
-export function arcadeInfoGridHtml(items) {
-  return `
-    <div class="arcade-info-grid">
-      ${items
-        .map(
-          (item) => `
-            <div class="arcade-info-card">
-              <div class="field-label">${escapeHtml(item.label)}</div>
-              <div class="arcade-info-text">${escapeHtml(item.text)}</div>
-            </div>`
-        )
-        .join('')}
-    </div>`;
+export function arcadeLobbyTitleHtml(gameId, title, items) {
+  const explanation = items.map((item) => `${item.label}: ${item.text}`).join(' ');
+  return `<div class="row arcade-lobby-title">
+    <strong>${escapeHtml(title)}</strong>
+    ${infoTooltipHtml(`arcade-${gameId}-lobby-info`, title, explanation)}
+  </div>`;
 }

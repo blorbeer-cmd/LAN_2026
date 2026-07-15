@@ -294,6 +294,16 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   without an available join action show the parallel neutral „Mitfahrer“ role. All member and free
   rows share one minimum height; the join action stays compact inside it. A driver's „Bearbeiten“
   action uses the primary button treatment next to the destructive delete action.
+- **Arcade** — The launcher follows the grouped-page hierarchy with separate full-width cards for
+  „Spiele“, optional running games, optional open lobbies, the selected game and „Statistiken“.
+  Game choices are horizontal nested cards with their Lucide game icon, name and an explicit
+  „… offen“ lobby badge; they form one column on phones and exactly two from `--bp-md`. Running
+  games and open-lobby cards reuse the same responsive two-column rhythm. Selecting a game keeps
+  its lobby workflow inside a dedicated main group. Goal and controls are explanation text, so one
+  info tooltip directly beside the lobby title replaces the former standalone information cards.
+  Statistics use the concise title „Statistiken“ and place the selected game's results in an
+  accented `.tournament-section-panel`; player rows reuse `.leaderboard-list-grid` for the shared
+  one-/two-column ranking presentation and spell out wins and losses in German.
 - **Leaderboard** — The concise page title is „Rang“. The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
   each remains a distinct `.tournament-section-panel` with the shared accent rail. „Spielzeit pro
