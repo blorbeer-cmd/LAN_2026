@@ -6,11 +6,12 @@
 // actually get played.
 //
 // Two modes, chosen when a round is started:
-// - 'single' (default): each player picks exactly one game; changing your
-//   pick replaces the previous one.
+// - 'single' (default): each player picks exactly one game.
 // - 'points': each player distributes 1-10 points across as many games as
-//   they like (a game with 0 points is simply left out); resubmitting
-//   replaces the player's whole set for the round.
+//   they like (a game with 0 points is simply left out).
+// A player may submit exactly once per round in either mode. The write guard
+// sits inside the database transaction so double taps and concurrent devices
+// cannot replace an already accepted submission.
 // Both modes rank games by a "score" (vote count for 'single', point sum for
 // 'points'); ties (including the all-zero state before anyone has voted)
 // fall back to the games' aggregate "Bock" rating (preferences table) so the
@@ -331,7 +332,7 @@ votesRouter.post('/start', (req, res) => {
   res.status(201).json(payload);
 });
 
-// POST /api/votes - cast or change a vote in the current round ('single' mode only).
+// POST /api/votes - cast one vote in the current round ('single' mode only).
 // Body: { playerId, gameId }
 votesRouter.post('/', (req, res) => {
   const state = readRoundState();
@@ -359,23 +360,25 @@ votesRouter.post('/', (req, res) => {
   }
 
   const castVote = db.transaction(() => {
-    db.prepare('DELETE FROM votes WHERE player_id = ? AND round = ?').run(playerId, state.round);
+    const existing = db.prepare('SELECT 1 FROM votes WHERE player_id = ? AND round = ? LIMIT 1').get(playerId, state.round);
+    if (existing) return false;
     db.prepare(
       'INSERT INTO votes (id, player_id, game_id, event_id, round, points, created_at) VALUES (?, ?, ?, ?, ?, NULL, ?)'
     ).run(nanoid(), playerId, gameId, getTrackingEventId(), state.round, Date.now());
+    return true;
   });
-  castVote();
+  if (!castVote()) {
+    return res.status(409).json({ error: 'Du hast in dieser Runde bereits abgestimmt.' });
+  }
 
   const payload = buildPayload();
   broadcast(Events.votesChanged, payload);
   res.json(payload);
 });
 
-// POST /api/votes/points - cast or replace a player's points in the current
+// POST /api/votes/points - cast a player's points once in the current
 // round ('points' mode only). Body: { playerId, entries: [{ gameId, points }] },
-// any number of distinct games (including none, to clear your points
-// entirely), 1-10 points each. Resubmitting replaces the player's whole
-// previous set so they can change their mind any time.
+// one or more distinct games, 1-10 points each.
 votesRouter.post('/points', (req, res) => {
   const state = readRoundState();
   if (!state.open) {
@@ -394,6 +397,9 @@ votesRouter.post('/points', (req, res) => {
 
   if (!Array.isArray(entries)) {
     return res.status(400).json({ error: 'entries muss ein Array sein.' });
+  }
+  if (entries.length === 0) {
+    return res.status(400).json({ error: 'Bitte mindestens ein Spiel bewerten.' });
   }
 
   const meta = getRoundMeta(state.round);
@@ -422,15 +428,19 @@ votesRouter.post('/points', (req, res) => {
   const now = Date.now();
   const eventId = getTrackingEventId();
   const castPoints = db.transaction(() => {
-    db.prepare('DELETE FROM votes WHERE player_id = ? AND round = ?').run(playerId, state.round);
+    const existing = db.prepare('SELECT 1 FROM votes WHERE player_id = ? AND round = ? LIMIT 1').get(playerId, state.round);
+    if (existing) return false;
     const insert = db.prepare(
       'INSERT INTO votes (id, player_id, game_id, event_id, round, points, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     );
     for (const entry of clean) {
       insert.run(nanoid(), playerId, entry.gameId, eventId, state.round, entry.points, now);
     }
+    return true;
   });
-  castPoints();
+  if (!castPoints()) {
+    return res.status(409).json({ error: 'Du hast in dieser Runde bereits abgestimmt.' });
+  }
 
   const payload = buildPayload();
   broadcast(Events.votesChanged, payload);

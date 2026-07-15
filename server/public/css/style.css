@@ -3189,6 +3189,19 @@ input[type='number'].tournament-score-input {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
 }
+.vote-submitted-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--tap-target-size);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--state-playing);
+  border-radius: var(--radius-sm);
+  background: var(--state-playing-bg);
+  color: var(--state-playing);
+  font-weight: var(--font-weight-bold);
+}
 .vote-empty-state {
   display: flex;
   flex: 1 1 auto;

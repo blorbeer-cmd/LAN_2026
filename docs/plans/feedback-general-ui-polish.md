@@ -214,6 +214,9 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   Infofeld starten gleich hoch; Filterleiste und Auswahlbutton verwenden konsistente Abstände.
   Die Teilnehmeraktion bleibt vollbreit und primär, darunter stehen „Abbrechen“ und „Beenden“ gleich breit.
   Vote-Leerzustände zentrieren Symbol und Text vertikal. Der Seitentitel lautet kompakt „Vote“.
+  Pro Gamer und Runde ist genau eine Abgabe erlaubt. Die API schützt dies atomar auch gegen
+  Doppeltaps oder ein zweites Gerät; leere Punkteabgaben sind ungültig. Nach erfolgreicher Abgabe
+  sperrt die UI die Auswahl und ersetzt den Button durch „Bewertung/Stimme abgegeben“.
 - Die Vote-Historie nutzt den neuen gemeinsamen, symbolfreien Collapse-Stil, startet geschlossen und
   behält ihren geöffneten Zustand bei Live-Aktualisierungen; der alte Antipp-Erklärtext entfällt.
 

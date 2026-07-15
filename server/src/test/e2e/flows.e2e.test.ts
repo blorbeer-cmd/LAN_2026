@@ -243,6 +243,9 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   );
   await page.click('#votes-submit');
   await page.waitForFunction(() => document.body.textContent?.includes('1 von 2'));
+  await page.waitForSelector('.vote-submitted-state:has-text("Bewertung abgegeben")');
+  assert.equal(await page.locator('#votes-submit').count(), 0);
+  assert.ok(await page.locator('[data-points-slider]').first().isDisabled());
   assert.equal(await page.locator('.vote-bar-track').count(), 0, 'still no bars after casting, before closing');
 
   await page.click('#votes-close');

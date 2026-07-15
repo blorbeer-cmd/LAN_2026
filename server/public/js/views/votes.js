@@ -67,10 +67,9 @@ export function invalidateVoteHistory() {
   historyCache = null;
 }
 
-// The current player's own already-submitted entries in the running round —
-// for 'points' mode this is which games, how many points each; for 'single'
-// mode it's just "did I already vote, and for what". Used only to seed the
-// local draft (see below) once per round/player, not rendered directly.
+// The current player's own already-submitted entries in the running round.
+// Any entry means this identity has used its one submission for the round;
+// the values remain visible, but the controls and submit action are locked.
 let mineCache = null; // Map<gameId, points|null>
 let mineCacheKey = null; // `${round}:${playerId}`
 let mineLoading = false;
@@ -207,7 +206,7 @@ function renderTop5(results) {
 
 // ---------- open round: stage a local draft, submit explicitly ----------
 
-function renderOpenRows(votes, draftReady) {
+function renderOpenRows(votes, draftReady, hasSubmitted) {
   return votes.results
     .map((r) => {
       let action = '';
@@ -216,7 +215,7 @@ function renderOpenRows(votes, draftReady) {
         pointsSliderRow = `<div class="muted" style="font-size:var(--font-size-xs);padding:var(--space-1) 0 0;">Lädt deine Auswahl…</div>`;
       } else if (votes.mode === 'single') {
         const isSelected = draftSingleGameId === r.gameId;
-        action = `<button type="button" class="btn btn-sm ${isSelected ? 'btn-primary' : ''}" data-vote-select="${r.gameId}">${isSelected ? `${icon('check')} Ausgewählt` : 'Auswählen'}</button>`;
+        action = `<button type="button" class="btn btn-sm ${isSelected ? 'btn-primary' : ''}" data-vote-select="${r.gameId}" ${hasSubmitted ? 'disabled' : ''}>${isSelected ? `${icon('check')} Ausgewählt` : 'Auswählen'}</button>`;
       } else {
         const pointsVal = draftPoints.get(r.gameId) ?? 0;
         pointsSliderRow = `
@@ -224,7 +223,7 @@ function renderOpenRows(votes, draftReady) {
             <span class="muted" style="font-size:var(--font-size-xs);">Punkte</span>
             <span class="skill-value">${pointsVal}</span>
             <input type="range" class="skill-row-slider" min="0" max="10" step="1"
-                   data-points-slider="${r.gameId}" value="${pointsVal}" />
+                   data-points-slider="${r.gameId}" value="${pointsVal}" ${hasSubmitted ? 'disabled' : ''} />
           </div>`;
       }
 
@@ -376,6 +375,7 @@ export function renderVotes(container, ctx) {
     }
   }
   const mineReady = votes.open && myId && mineCacheKey === `${votes.round}:${myId}` && mineCache;
+  const hasSubmitted = Boolean(mineReady && mineCache.size > 0);
 
   if (mineReady && draftKey !== mineCacheKey) {
     draftSingleGameId = votes.mode === 'single' ? [...mineCache.keys()][0] ?? null : null;
@@ -394,8 +394,9 @@ export function renderVotes(container, ctx) {
       votes.mode === 'points'
         ? 'Die Punkteverteilung bleibt bis zum Ende der Abstimmung verborgen.'
         : 'Das Ergebnis bleibt bis zum Ende der Stichwahl verborgen.';
-    const rows = `<div class="vote-game-grid">${renderOpenRows(votes, mineReady)}</div>`;
+    const rows = `<div class="vote-game-grid">${renderOpenRows(votes, mineReady, hasSubmitted)}</div>`;
     const submitLabel = votes.mode === 'points' ? 'Bewertung abschicken' : 'Stimme abschicken';
+    const submittedLabel = votes.mode === 'points' ? 'Bewertung abgegeben' : 'Stimme abgegeben';
     openSectionHtml = `
       <section class="tournament-section-panel vote-page-section vote-workflow-section stack" aria-labelledby="vote-current-title">
         <div class="tournament-create-step-title">
@@ -408,7 +409,11 @@ export function renderVotes(container, ctx) {
         ${votes.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0;">${escapeHtml(votes.info)}</p>` : ''}
         ${rows}
         <div class="vote-action-stack">
-          <button type="button" class="btn btn-primary btn-block" id="votes-submit" ${mineReady ? '' : 'disabled'}>${submitLabel}</button>
+          ${
+            hasSubmitted
+              ? `<div class="vote-submitted-state">${icon('circleCheck')} ${submittedLabel}</div>`
+              : `<button type="button" class="btn btn-primary btn-block" id="votes-submit" ${mineReady ? '' : 'disabled'}>${submitLabel}</button>`
+          }
           <div class="vote-secondary-actions">
             <button type="button" class="btn btn-danger btn-block" id="votes-cancel">Abbrechen</button>
             <button type="button" class="btn btn-block" id="votes-close">Beenden</button>
@@ -550,16 +555,23 @@ export function renderVotes(container, ctx) {
   const submitBtn = container.querySelector('#votes-submit');
   if (submitBtn) {
     submitBtn.addEventListener('click', async () => {
+      if (submitBtn.disabled) return;
       const playerId = getMyId();
       if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
       if (votes.mode === 'single' && !draftSingleGameId) {
         return showToast('Bitte zuerst ein Spiel auswählen.', { error: true });
       }
+      const entries = votes.mode === 'points'
+        ? [...draftPoints.entries()].map(([gameId, points]) => ({ gameId, points }))
+        : [];
+      if (votes.mode === 'points' && entries.length === 0) {
+        return showToast('Bitte mindestens ein Spiel bewerten.', { error: true });
+      }
+      submitBtn.disabled = true;
       try {
         if (votes.mode === 'single') {
           await api.votes.cast(playerId, draftSingleGameId);
         } else {
-          const entries = [...draftPoints.entries()].map(([gameId, points]) => ({ gameId, points }));
           await api.votes.castPoints(playerId, entries);
         }
         mineCache = null; // force a reload so the draft re-syncs with what the server now has
@@ -567,6 +579,7 @@ export function renderVotes(container, ctx) {
         await ctx.refresh();
         showToast('Deine Stimme wurde gezählt.');
       } catch (err) {
+        submitBtn.disabled = false;
         showToast(err.message, { error: true });
       }
     });

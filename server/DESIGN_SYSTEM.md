@@ -271,6 +271,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the same control height; the optional game filter uses an aligned toolbar and consistent gaps.
   The participant action spans the full width, with equal-width „Abbrechen“ and „Beenden“ actions below.
   Vote-specific empty states center icon and copy vertically in both overview and history.
+  Every identity can submit only once per round: the server enforces this atomically with `409`,
+  empty points submissions are invalid, and the client replaces the submit action with a green
+  „Bewertung/Stimme abgegeben“ state while locking that identity's controls.
   Vote history uses the shared icon-free collapsible header, starts closed and retains its open state
   across live re-renders.
 - **Tournament overview** — `.tournament-list-grid` shows at most two tournament cards per row;
