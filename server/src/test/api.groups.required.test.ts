@@ -42,6 +42,24 @@ function runGroupScenario(multiGroupsEnabled: boolean): void {
       if (!${multiGroupsEnabled}) {
         assert.equal(created.status, 409, JSON.stringify(created.body));
         assert.equal(created.body.code, 'multi_groups_disabled');
+        assert.equal((await request(app).post('/api/auth/reauth').set('Cookie', adminCookie).send({
+          password: 'group owner secure passphrase',
+        })).status, 204);
+        const accountInvite = await request(app)
+          .post('/api/auth/invites')
+          .set('Cookie', adminCookie)
+          .send({ purpose: 'register' });
+        assert.equal(accountInvite.status, 201, JSON.stringify(accountInvite.body));
+        const member = await request(app).post('/api/auth/register').send({
+          code: accountInvite.body.code,
+          name: 'Default Group Member',
+          password: 'default group member passphrase',
+        });
+        assert.equal(member.status, 201, JSON.stringify(member.body));
+        const blockedRemoval = await request(app)
+          .delete('/api/groups/' + DEFAULT_GROUP_ID + '/members/' + member.body.id)
+          .set('Cookie', adminCookie);
+        assert.equal(blockedRemoval.status, 409);
         return;
       }
 

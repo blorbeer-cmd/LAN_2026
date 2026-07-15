@@ -68,6 +68,12 @@ test('group roles, event resources and audit remain isolated across two groups',
       await addMember(alice, groupA, bob);
       await addMember(carol, groupB, alice);
 
+      const deactivateSoleOwner = await request(app)
+        .post('/api/players/' + carol.account.id + '/deactivate')
+        .set('Cookie', alice.cookie);
+      assert.equal(deactivateSoleOwner.status, 409);
+      assert.match(deactivateSoleOwner.body.error, /Owner/);
+
       const now = Date.now();
       const eventA = await scoped(app, 'post', '/api/events', alice.cookie, groupA).send({
         name: 'Event A', startsAt: now, endsAt: now + 60_000,
@@ -81,6 +87,8 @@ test('group roles, event resources and audit remain isolated across two groups',
       assert.equal(eventB.body.groupId, groupB);
 
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/start', alice.cookie, groupA).send({})).status, 200);
+      const archiveWhileTracking = await request(app).delete('/api/groups/' + groupA).set('Cookie', alice.cookie);
+      assert.equal(archiveWhileTracking.status, 409);
       const hiddenTrackingConflict = await scoped(app, 'post', '/api/events/' + eventB.body.id + '/tracking/start', carol.cookie, groupB).send({});
       assert.equal(hiddenTrackingConflict.status, 409);
       assert.equal(hiddenTrackingConflict.body.conflictEventId, undefined);
@@ -142,6 +150,13 @@ test('group roles, event resources and audit remain isolated across two groups',
         .set('Cookie', alice.cookie)
         .send({ role: 'owner' });
       assert.equal(makeBobOwner.status, 200, JSON.stringify(makeBobOwner.body));
+      db.prepare('UPDATE players SET deactivated_at = ? WHERE id = ?').run(Date.now(), bob.account.id);
+      const activeOwnerGuard = await request(app)
+        .patch('/api/groups/' + groupA + '/members/' + alice.account.id)
+        .set('Cookie', alice.cookie)
+        .send({ role: 'member' });
+      assert.equal(activeOwnerGuard.status, 409);
+      db.prepare('UPDATE players SET deactivated_at = NULL WHERE id = ?').run(bob.account.id);
       const ownerRace = await Promise.all([
         request(app).patch('/api/groups/' + groupA + '/members/' + bob.account.id).set('Cookie', alice.cookie).send({ role: 'member' }),
         request(app).patch('/api/groups/' + groupA + '/members/' + alice.account.id).set('Cookie', bob.cookie).send({ role: 'member' }),

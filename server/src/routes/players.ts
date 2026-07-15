@@ -282,7 +282,7 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
   if (target.deactivated_at !== null) return res.status(409).json({ error: 'Dieses Konto ist bereits deaktiviert.' });
 
   const now = Date.now();
-  const deactivated = db.transaction(() => {
+  const deactivated = db.transaction((): 'ok' | 'last_admin' | 'last_group_owner' => {
     if (target.is_admin) {
       const adminCount = (
         db
@@ -293,8 +293,25 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
           count: number;
         }
       ).count;
-      if (adminCount <= 1) return false;
+      if (adminCount <= 1) return 'last_admin';
     }
+    const soleOwnedGroup = db
+      .prepare(
+        `SELECT gm.group_id
+         FROM group_memberships gm
+         JOIN groups g ON g.id = gm.group_id AND g.archived_at IS NULL
+         WHERE gm.player_id = ? AND gm.status = 'active' AND gm.role = 'owner'
+           AND NOT EXISTS (
+             SELECT 1
+             FROM group_memberships other
+             JOIN players p ON p.id = other.player_id
+             WHERE other.group_id = gm.group_id AND other.player_id != gm.player_id
+               AND other.status = 'active' AND other.role = 'owner' AND p.deactivated_at IS NULL
+           )
+         LIMIT 1`,
+      )
+      .get(target.id);
+    if (soleOwnedGroup) return 'last_group_owner';
     db.prepare('UPDATE players SET deactivated_at = ?, is_admin = 0, tracking_paused = 1 WHERE id = ?').run(now, target.id);
     db.prepare('DELETE FROM sessions WHERE player_id = ?').run(target.id);
     db.prepare('DELETE FROM push_subscriptions WHERE player_id = ?').run(target.id);
@@ -303,9 +320,14 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
     voidOutstandingInvites(target.id, 'claim');
     voidOutstandingInvites(target.id, 'reset');
     writeAdminAudit({ actorPlayerId: req.player?.id, action: 'player_deactivated', targetType: 'player', targetId: target.id });
-    return true;
+    return 'ok';
   })();
-  if (!deactivated) return res.status(409).json({ error: 'Der letzte Admin kann nicht deaktiviert werden.' });
+  if (deactivated === 'last_admin') {
+    return res.status(409).json({ error: 'Der letzte Admin kann nicht deaktiviert werden.' });
+  }
+  if (deactivated === 'last_group_owner') {
+    return res.status(409).json({ error: 'Der letzte aktive Owner einer Gruppe kann nicht deaktiviert werden.' });
+  }
   disconnectPlayerSockets(target.id);
   broadcast(Events.playersChanged, null);
   broadcast(Events.liveStatusChanged, null);

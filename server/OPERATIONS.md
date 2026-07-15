@@ -98,6 +98,9 @@ aufgelöst. Der vom Browser gesendete `x-group-id` ist nur die Auswahl des Tabs 
 Berechtigungsnachweis; Objektzugriffe leiten die besitzende Gruppe aus der Ressource ab. Änderungen
 an Mitgliedschaften und Rollen wirken deshalb ohne neue Anmeldung. Gruppenaktionen stehen im
 jeweiligen Gruppen-Audit, während `/api/admin/audit` ausschließlich Instanzaktionen enthält.
+Der letzte aktive Owner kann weder herabgestuft, entfernt, aus der Gruppe austreten noch als Konto
+deaktiviert werden. Die Startgruppe verliert im Ein-Gruppen-Rollout keine Mitglieder, und eine
+Gruppe mit laufendem Event-Tracking kann nicht archiviert werden.
 Owner-/Rollen-/Entfernungs- und Archivierungsaktionen verlangen weiterhin Step-up-Reauth.
 
 Das ist noch keine Freigabe für mehrere produktive Gruppen: Spiele, Skills, Tracking, Realtime,
