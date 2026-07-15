@@ -2053,9 +2053,33 @@ button.card {
 .arrivals-block > .section-title {
   margin-top: 0;
 }
-.arrivals-chip-row {
-  gap: var(--space-1);
-  flex-wrap: wrap;
+.arrival-note-input {
+  min-height: var(--tap-target-size);
+  height: var(--tap-target-size);
+}
+.arrivals-member-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1) var(--space-4);
+}
+.arrivals-member-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-1) 0;
+}
+.arrivals-member-row + .arrivals-member-row {
+  border-top: 1px solid var(--border);
+}
+.arrivals-member-row .player-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.arrivals-member-role {
+  margin-left: auto;
+  font-size: var(--font-size-xs);
 }
 .arrivals-carpool-card {
   gap: 0;
@@ -2095,19 +2119,44 @@ button.card {
   padding: 0;
   overflow: hidden;
 }
-.arrivals-person-row {
+.arrivals-times-header,
+.arrivals-times-row {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.25fr) repeat(2, minmax(0, 1fr)) minmax(0, 1.25fr);
+  align-items: center;
   gap: var(--space-3);
-  align-items: start;
-  padding: var(--space-3) var(--space-3);
+  padding: var(--space-3);
   border-bottom: 1px solid var(--border);
 }
-.arrivals-person-row:last-child {
+.arrivals-times-header {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.arrivals-times-row:last-child {
   border-bottom: none;
 }
-.arrivals-person-main {
+.arrivals-times-player {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   min-width: 0;
+}
+.arrivals-times-player .player-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.arrivals-times-value,
+.arrivals-times-note {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-sm);
+}
+.arrivals-times-value strong {
+  font-weight: var(--font-weight-medium);
 }
 .arrivals-time-line {
   display: grid;
@@ -2130,9 +2179,26 @@ button.card {
 .arrivals-time-line strong {
   font-weight: var(--font-weight-medium);
 }
-.arrivals-note {
-  font-size: var(--font-size-xs);
-  margin-top: var(--space-1);
+@media (max-width: 639px) {
+  .arrivals-times-header {
+    display: none;
+  }
+  .arrivals-times-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .arrivals-times-player,
+  .arrivals-times-note {
+    grid-column: 1 / -1;
+  }
+  .arrivals-times-value::before,
+  .arrivals-times-note::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: var(--space-1);
+    color: var(--text-muted);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-regular);
+  }
 }
 
 /* ---------- Tetris Battle (views/tetris.js) ---------- */

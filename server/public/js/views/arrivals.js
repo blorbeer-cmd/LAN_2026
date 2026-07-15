@@ -53,7 +53,7 @@ function renderMyForm(myId) {
             ${dateTimeFieldHtml('departure-at', own?.departure_at ?? null, { clearable: true, disabled: !myId })}
           </div>
         </div>
-        <textarea id="arrival-note" maxlength="240" rows="2" placeholder="Notiz (optional)" ${myId ? '' : 'disabled'}>${escapeHtml(own?.note || '')}</textarea>
+        <textarea class="arrival-note-input" id="arrival-note" maxlength="240" rows="1" placeholder="Notiz (optional)" ${myId ? '' : 'disabled'}>${escapeHtml(own?.note || '')}</textarea>
         <button type="submit" class="btn btn-primary btn-block" ${myId ? '' : 'disabled'}>Speichern</button>
       </form>
     </section>
@@ -66,8 +66,14 @@ function renderCarpool(c, direction, myId) {
   const full = c.seatsFree <= 0;
   const memberHtml =
     c.members.length > 0
-      ? `<div class="row arrivals-chip-row">${c.members
-          .map((m) => `<span class="chip">${avatarHtml(m, 18)} ${escapeHtml(m.name)}${m.id === c.driverId ? ' · Fahrer' : ''}</span>`)
+      ? `<div class="arrivals-member-list">${c.members
+          .map(
+            (m) => `<div class="arrivals-member-row">
+              ${avatarHtml(m, 24)}
+              <span class="player-name">${escapeHtml(m.name)}</span>
+              ${m.id === c.driverId ? '<span class="muted arrivals-member-role">Fahrer</span>' : ''}
+            </div>`
+          )
           .join('')}</div>`
       : `<div class="muted" style="font-size:var(--font-size-sm);">Noch niemand dabei.</div>`;
   const planLines = [
@@ -116,7 +122,7 @@ function renderCarpoolSection(direction, title, myId) {
     <div class="arrivals-carpool-section">
       <div class="row-between">
         <strong>${title}</strong>
-        <button type="button" class="btn btn-sm" data-new-carpool="${direction}" ${myId ? '' : 'disabled'}>+ Neu</button>
+        <button type="button" class="btn btn-sm btn-primary" data-new-carpool="${direction}" ${myId ? '' : 'disabled'}>+ Neu</button>
       </div>
       ${rows.length ? rows.map((c) => renderCarpool(c, direction, myId)).join('') : `<div class="muted arrivals-carpool-empty">Noch keine Fahrgemeinschaft.</div>`}
     </div>`;
@@ -152,16 +158,14 @@ function renderPeopleList() {
       const arrival = entry?.arrival_at ? formatDateTime(entry.arrival_at) : 'offen';
       const departure = entry?.departure_at ? formatDateTime(entry.departure_at) : 'offen';
       return `
-        <div class="arrivals-person-row">
-          ${avatarHtml(player, 30)}
-          <span class="arrivals-person-main">
-            <div class="player-name">${escapeHtml(player.name)}</div>
-            <div class="arrivals-time-pair">
-              <div class="arrivals-time-line"><span>An</span><strong>${escapeHtml(arrival)}</strong></div>
-              <div class="arrivals-time-line"><span>Ab</span><strong>${escapeHtml(departure)}</strong></div>
-            </div>
-            ${entry?.note ? `<div class="muted arrivals-note">${escapeHtml(entry.note)}</div>` : ''}
-          </span>
+        <div class="arrivals-times-row" role="row">
+          <div class="arrivals-times-player" role="cell">
+            ${avatarHtml(player, 30)}
+            <span class="player-name">${escapeHtml(player.name)}</span>
+          </div>
+          <div class="arrivals-times-value" role="cell" data-label="Anreise"><strong>${escapeHtml(arrival)}</strong></div>
+          <div class="arrivals-times-value" role="cell" data-label="Abreise"><strong>${escapeHtml(departure)}</strong></div>
+          <div class="arrivals-times-note muted" role="cell" data-label="Notiz">${entry?.note ? escapeHtml(entry.note) : '–'}</div>
         </div>`;
     })
     .join('');
@@ -169,7 +173,18 @@ function renderPeopleList() {
   return `
     <section class="card stack grouped-page-section" aria-labelledby="arrivals-times-title">
       <div class="grouped-page-section-title"><h2 id="arrivals-times-title">Alle Zeiten</h2></div>
-      <div class="card arrivals-people-card">${rows || '<div class="empty-state">Noch keine Spieler.</div>'}</div>
+      <div class="card arrivals-people-card" role="table" aria-label="An- und Abreisezeiten">
+        ${
+          rows
+            ? `<div class="arrivals-times-header" role="row">
+                 <span role="columnheader">Spieler</span>
+                 <span role="columnheader">Anreise</span>
+                 <span role="columnheader">Abreise</span>
+                 <span role="columnheader">Notiz</span>
+               </div>${rows}`
+            : '<div class="empty-state">Noch keine Spieler.</div>'
+        }
+      </div>
     </section>`;
 }
 
