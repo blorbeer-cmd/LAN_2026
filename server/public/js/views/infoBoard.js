@@ -1,4 +1,4 @@
-// Info-Board view: the pinned answers to the questions everyone asks five
+// Info view: the pinned answers to the questions everyone asks five
 // times per evening — WLAN password, Discord link, game-server IPs, house
 // rules. Anyone can add/edit/delete entries (LAN trust model); values get a
 // one-tap copy button since most of them exist to be pasted somewhere.
@@ -90,7 +90,7 @@ export function renderInfoBoard(container, ctx) {
               <div class="row-between">
                 <strong class="info-board-title">${escapeHtml(e.title)}</strong>
                 <span class="row" style="gap:var(--space-1);">
-                  <button type="button" class="icon-btn" data-copy-entry="${e.id}" title="Inhalt kopieren" aria-label="Inhalt kopieren">${icon('clipboard')}</button>
+                  <button type="button" class="icon-btn" data-copy-entry="${e.id}" title="Inhalt kopieren" aria-label="Inhalt kopieren">${icon('copy')}</button>
                   <button type="button" class="icon-btn" data-edit-entry="${e.id}" title="Bearbeiten" aria-label="Bearbeiten">${icon('pencil')}</button>
                   <button type="button" class="icon-btn" data-delete-entry="${e.id}" title="Löschen" aria-label="Löschen">${icon('trash')}</button>
                 </span>
@@ -103,7 +103,7 @@ export function renderInfoBoard(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <div class="row-between">
-      <h1 class="view-title">Info-Board</h1>
+      <h1 class="view-title">Info</h1>
       <button type="button" class="btn btn-primary btn-sm" id="info-new-btn">Eintrag anlegen</button>
     </div>
     <div class="grouped-page-sections">

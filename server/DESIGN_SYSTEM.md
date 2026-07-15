@@ -271,6 +271,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   profile editor. Foreign profiles expose neither edit/delete actions nor the private agent key;
   the API omits the private agent key and rejects profile-field updates when `x-player-id` does not
   match the target player.
+  The roster itself has no duplicate „Teilnehmende“ heading and no player-creation action. Player
+  creation stays deliberately deferred until authenticated user management owns that workflow.
   This device-local identity header is deliberately documented as the temporary boundary that
   future authenticated user management must replace.
 - **Grouped page sections** — `.grouped-page-sections` stacks the page's major areas with the
@@ -288,6 +290,19 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   The destinations below „Mehr“ follow this same hierarchy without adding decorative accent rails:
   their major workflows and datasets are main groups, while entries, players, orders and results
   remain subordinate cards or rows inside those groups.
+- **Broadcasts** — „Neue Durchsage“ and the recent history are separate grouped sections. Delivery
+  channels live in the shared contextual tooltip directly beside „Neue Durchsage“ instead of a
+  persistent explanation below the form. History entries use the standard responsive two-column
+  row grid.
+- **Food orders** — Open orders form a responsive two-column nested-card grid. Order information,
+  per-player positions, the responsive add-item form, total and actions are visually separated
+  inside each card. An absent send time is plain text without a misleading timer icon. Closing an
+  order is a destructive full-width action below a divider; closed orders use the standard
+  collapsible-card history presentation.
+- **Hall of Fame and Info** — Hall-of-Fame rankings use the shared two-column leaderboard grid;
+  events are two-column cards whose overall and tournament winners are stable bordered rows rather
+  than pills. The visible short name for the former Info-Board is „Info“ throughout navigation,
+  search and the page itself; entries remain responsive two-column nested cards.
 - **Arrival carpools** — Anreise and Abreise remain separate full-width accented panels. Their
   carpool cards use two columns from `--bp-md`, but an odd final card deliberately keeps one-column
   width instead of spanning the row; phones stay single-column. Every card repeats Start and

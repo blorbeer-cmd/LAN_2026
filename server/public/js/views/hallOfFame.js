@@ -45,29 +45,32 @@ function rankedRows(entries, suffix) {
 function renderEvent(e) {
   const range = `${formatDate(e.startsAt)}${e.endsAt ? ' – ' + formatDate(e.endsAt) : ' (läuft)'}`;
   const championLine = e.overallChampion
-    ? `<div class="row" style="margin-top:var(--space-2);">${avatarHtml(e.overallChampion, 22)} <strong>${escapeHtml(e.overallChampion.name)}</strong><span class="muted">— ${e.overallChampion.points} P. Gesamtsieger</span></div>`
-    : `<div class="muted" style="margin-top:var(--space-2);font-size:var(--font-size-sm);">Kein Gesamtsieger erfasst.</div>`;
+    ? `<div class="row hall-of-fame-result">${avatarHtml(e.overallChampion, 22)} <strong>${escapeHtml(e.overallChampion.name)}</strong><span class="muted">${e.overallChampion.points} P. Gesamtsieger</span></div>`
+    : `<div class="muted hall-of-fame-empty-result">Kein Gesamtsieger erfasst.</div>`;
 
   const tournamentsHtml = e.tournamentChampions.length
     ? e.tournamentChampions
         .map(
           (t) => `
-        <div class="chip" style="margin-top:var(--space-2);">
-          ${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)} — <strong>${escapeHtml(t.championTeamName || '–')}</strong>
-          <span class="muted">(${escapeHtml(t.championPlayers.join(', '))})</span>
+        <div class="hall-of-fame-result">
+          <span class="hall-of-fame-game">${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)}</span>
+          <span class="hall-of-fame-tournament-winner">
+            <strong>${escapeHtml(t.championTeamName || '–')}</strong>
+            <span class="muted">${escapeHtml(t.championPlayers.join(', '))}</span>
+          </span>
         </div>`
         )
         .join('')
     : '';
 
   return `
-    <div class="card">
-      <div class="row-between">
+    <div class="card stack hall-of-fame-event">
+      <div class="row-between hall-of-fame-event-header">
         <span class="player-name">${escapeHtml(e.eventName)}</span>
         <span class="muted" style="font-size:var(--font-size-xs);">${range}</span>
       </div>
       ${championLine}
-      <div class="chip-list">${tournamentsHtml}</div>
+      ${tournamentsHtml ? `<div class="hall-of-fame-tournaments">${tournamentsHtml}</div>` : ''}
     </div>
   `;
 }

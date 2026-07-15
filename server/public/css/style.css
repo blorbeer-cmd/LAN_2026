@@ -3683,6 +3683,99 @@ input[type='number'].tournament-score-input {
 .leaderboard-list-grid > .empty-state {
   grid-column: 1 / -1;
 }
+.food-order-card {
+  align-content: start;
+}
+.food-order-meta,
+.hall-of-fame-empty-result {
+  font-size: var(--font-size-xs);
+}
+.food-order-details {
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+}
+.food-order-player {
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.food-order-player:last-child {
+  border-bottom: 0;
+}
+.food-order-player-head {
+  gap: var(--space-2);
+}
+.food-order-player-items {
+  padding-left: calc(var(--space-5) + var(--space-2));
+}
+.food-order-item {
+  min-height: var(--space-7);
+  padding: var(--space-1) 0;
+}
+.food-order-item-remove {
+  padding: 0 var(--space-1);
+  font-size: var(--font-size-xs);
+}
+.food-order-total {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+.food-order-item-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+.food-order-price-input {
+  width: 100%;
+}
+.food-order-close-action {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.food-order-history-list,
+.hall-of-fame-tournaments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.hall-of-fame-event-header {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.hall-of-fame-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+}
+.hall-of-fame-result.row {
+  display: flex;
+  flex-wrap: wrap;
+}
+.hall-of-fame-game {
+  min-width: 0;
+}
+.hall-of-fame-tournament-winner {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+@media (min-width: 640px) { /* --bp-md */
+  .food-order-item-form {
+    grid-template-columns: minmax(0, 1fr) calc(var(--space-8) + var(--space-6)) auto;
+  }
+  .hall-of-fame-result:not(.row) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
 .lb-rank {
   font-weight: var(--font-weight-black);
   color: var(--text-muted);

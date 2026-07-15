@@ -80,25 +80,25 @@ function renderItems(order, myId) {
       const rows = items
         .map(
           (i) => `
-          <div class="row" style="padding:var(--space-1) 0;">
+          <div class="row food-order-item">
             <span style="flex:1;">${escapeHtml(i.description)}</span>
             ${i.priceCents !== null ? `<span class="muted" style="font-variant-numeric:tabular-nums;">${formatCents(i.priceCents)}</span>` : ''}
             ${
               order.open && i.playerId === myId
-                ? `<button type="button" class="icon-btn" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen" style="font-size:var(--font-size-xs);padding:0 4px;">${icon('x')}</button>`
+                ? `<button type="button" class="icon-btn food-order-item-remove" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen">${icon('x')}</button>`
                 : ''
             }
           </div>`
         )
         .join('');
       return `
-        <div class="stack" style="gap:var(--space-1);padding:var(--space-2) 0;border-bottom:1px solid var(--border);">
-          <div class="row" style="gap:var(--space-2);">
+        <div class="stack food-order-player">
+          <div class="row food-order-player-head">
             ${avatarHtml(player, 20)}
             <strong style="flex:1;">${escapeHtml(first.playerName)}</strong>
             ${playerSum > 0 ? `<span class="muted" style="font-size:var(--font-size-xs);">${formatCents(playerSum)}</span>` : ''}
           </div>
-          <div style="padding-left:28px;">${rows}</div>
+          <div class="food-order-player-items">${rows}</div>
         </div>`;
     })
     .join('');
@@ -112,10 +112,10 @@ function renderItems(order, myId) {
 function renderDetails(order) {
   const sendAtLabel = order.sendAt
     ? `${icon('timer')} Versand ${formatDateTime(order.sendAt)} Uhr`
-    : `${icon('timer')} Kein Zeitpunkt festgelegt`;
+    : 'Kein Zeitpunkt festgelegt';
   const hasDetails = Boolean(order.sendAt || order.notes || order.link);
   return `
-    <div class="stack" style="gap:var(--space-1);">
+    <div class="stack food-order-details">
       <div class="row-between">
         <span class="muted" style="font-size:var(--font-size-sm);">${sendAtLabel}</span>
         <button type="button" class="btn btn-sm" data-edit-details="${order.id}">${hasDetails ? 'Bearbeiten' : 'Info'}</button>
@@ -127,33 +127,35 @@ function renderDetails(order) {
 
 function renderOpenOrder(order, myId) {
   return `
-    <div class="card stack" data-order-card="${order.id}">
+    <div class="card stack food-order-card" data-order-card="${order.id}">
       <div class="row-between">
         <strong>${icon(domainIcon('foodOrders'))} ${escapeHtml(order.title)}</strong>
         <span class="badge badge-playing">Offen</span>
       </div>
-      <div class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
+      <div class="muted food-order-meta">
         von ${escapeHtml(order.createdByName)} · ${formatDateTime(order.createdAt)}
       </div>
       ${renderDetails(order)}
-      <div>${renderItems(order, myId)}</div>
-      ${order.totalCents > 0 ? `<div class="row-between"><strong>Summe</strong><strong>${formatCents(order.totalCents)}</strong></div>` : ''}
+      <div class="food-order-items">${renderItems(order, myId)}</div>
+      ${order.totalCents > 0 ? `<div class="row-between food-order-total"><strong>Summe</strong><strong>${formatCents(order.totalCents)}</strong></div>` : ''}
       ${
         myId
-          ? `<form class="row" data-add-item-form="${order.id}">
-               <input type="text" data-item-desc placeholder="z.B. 1x Margherita groß" maxlength="120" required style="flex:1;" />
-               <input type="text" data-item-price placeholder="€" inputmode="decimal" style="width:70px;flex-shrink:0;" />
+          ? `<form class="food-order-item-form" data-add-item-form="${order.id}">
+               <input type="text" data-item-desc placeholder="z.B. 1x Margherita groß" maxlength="120" required />
+               <input type="text" class="food-order-price-input" data-item-price placeholder="€" inputmode="decimal" />
                <button type="submit" class="btn btn-primary btn-sm">Hinzufügen</button>
              </form>`
           : `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um dich einzutragen.</div>`
       }
-      <button type="button" class="btn btn-sm" data-close-order="${order.id}">${icon('check')} Bestellung schließen</button>
+      <div class="food-order-close-action">
+        <button type="button" class="btn btn-danger btn-sm btn-block" data-close-order="${order.id}">Bestellung schließen</button>
+      </div>
     </div>`;
 }
 
 function renderClosedOrder(order) {
   return `
-    <details class="card collapsible-section" style="margin-bottom:var(--space-3);" data-closed-order="${order.id}" ${expandedClosedOrderIds.has(order.id) ? 'open' : ''}>
+    <details class="card collapsible-section" data-closed-order="${order.id}" ${expandedClosedOrderIds.has(order.id) ? 'open' : ''}>
       <summary class="collapsible-section-header">
         <h2>${escapeHtml(order.title)} <span class="muted" style="font-size:var(--font-size-xs);font-weight:var(--font-weight-regular);">· ${order.items.length} Position(en)${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}</span></h2>
         <span class="collapsible-section-summary-end">
@@ -318,7 +320,7 @@ export function renderFoodOrders(container, ctx) {
         closedOrders.length
           ? `<section class="card stack grouped-page-section" aria-labelledby="food-history-title">
                <div class="grouped-page-section-title"><h2 id="food-history-title">Frühere Bestellungen</h2></div>
-               ${closedOrders.map(renderClosedOrder).join('')}
+               <div class="food-order-history-list">${closedOrders.map(renderClosedOrder).join('')}</div>
              </section>`
           : ''
       }

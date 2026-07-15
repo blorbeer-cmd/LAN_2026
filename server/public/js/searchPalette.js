@@ -17,7 +17,7 @@ export const SEARCH_ENTRIES = [
   { view: 'myStats', title: 'Meine Statistiken', category: 'Bereich', description: 'Eigene Spielzeit und persönliche Werte', aliases: 'stats spielzeit auswertung', priority: 80 },
   { view: 'settings', title: 'Einstellungen', category: 'Bereich', description: 'Events, Spiele und Sicherungen verwalten', aliases: 'setup konfiguration backup event', priority: 85 },
   { view: 'admin', title: 'Admin', category: 'Bereich', description: 'Test-Spieler, Rechte und Diagnose', aliases: 'moderation verwaltung diagnose', priority: 60 },
-  { view: 'players', title: 'Spieler', category: 'Bereich', description: 'Teilnehmende verwalten und Agent-Status prüfen', aliases: 'teilnehmer roster personen agent', priority: 70 },
+  { view: 'players', title: 'Spieler', category: 'Bereich', description: 'Spielerprofile und Bewertungen ansehen', aliases: 'teilnehmer roster personen profil', priority: 70 },
   { view: 'gameCatalog', title: 'Spiele', category: 'Bereich', description: 'Bock, Skill und Spielekatalog', aliases: 'games katalog bewertung skill bock', priority: 75 },
   { view: 'arrivals', title: 'An- & Abreise', category: 'Bereich', description: 'Zeiten und Fahrgemeinschaften planen', aliases: 'anreise abreise ankunft abfahrt fahrt carpool', priority: 65 },
   { view: 'arcade', title: 'Arcade', category: 'Bereich', description: 'Minigame-Lobbies öffnen und mitspielen', aliases: 'quiz tetris scribble pong blobby snake minigame', priority: 74 },
@@ -25,7 +25,7 @@ export const SEARCH_ENTRIES = [
   { view: 'broadcast', title: 'Durchsage', category: 'Bereich', description: 'Eine Mitteilung an alle Geräte senden', aliases: 'ansage nachricht push kiosk', priority: 63 },
   { view: 'foodOrders', title: 'Essen', category: 'Bereich', description: 'Sammelbestellungen koordinieren', aliases: 'bestellung food pizza lieferdienst', priority: 68 },
   { view: 'hallOfFame', title: 'Hall of Fame', category: 'Bereich', description: 'Champions vergangener Events', aliases: 'champions sieger historie ruhmeshalle', priority: 61 },
-  { view: 'infoBoard', title: 'Info-Board', category: 'Bereich', description: 'WLAN, Discord, Server und Hausregeln', aliases: 'info board information wlan discord server hausregeln', priority: 69 },
+  { view: 'infoBoard', title: 'Info', category: 'Bereich', description: 'WLAN, Discord, Server und Hausregeln', aliases: 'info board information wlan discord server hausregeln', priority: 69 },
   { view: 'seating', title: 'Sitzplan', category: 'Bereich', description: 'Plätze und sichtbare Monitore verwalten', aliases: 'sitzplatz tisch monitore nachbarn', priority: 67 },
 ];
 
@@ -106,7 +106,7 @@ export function createContentSearchEntries(appState, content = {}) {
   const infoEntries = (content.infoEntries ?? []).map((entry) => ({
     view: 'infoBoard',
     title: feedEntryTitle(entry),
-    category: 'Info-Board',
+    category: 'Info',
     description: compactText(entry.content),
     aliases: entry.content,
     priority: 84,

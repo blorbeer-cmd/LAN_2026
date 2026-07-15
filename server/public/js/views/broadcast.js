@@ -10,6 +10,7 @@ import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let historyCache = null;
 let historyLoading = false;
@@ -41,7 +42,7 @@ function renderHistory(myId) {
     return `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('broadcast'))}</span>Noch keine Durchsagen.</div>`;
   }
   const now = Date.now();
-  return historyCache
+  const rows = historyCache
     .map((b) => {
       const active = !b.endedAt && b.endsAt > now;
       const status = b.endedAt
@@ -59,6 +60,7 @@ function renderHistory(myId) {
       </div>`;
     })
     .join('');
+  return `<div class="leaderboard-list-grid">${rows}</div>`;
 }
 
 export function renderBroadcast(container, ctx) {
@@ -82,7 +84,16 @@ export function renderBroadcast(container, ctx) {
     ${whoAmICardHtml('broadcast-whoami', { marginBottom: '12px' })}
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="broadcast-new-title">
-        <div class="grouped-page-section-title"><h2 id="broadcast-new-title">Neue Durchsage</h2></div>
+        <div class="grouped-page-section-title">
+          <span class="title-with-info">
+            <h2 id="broadcast-new-title">Neue Durchsage</h2>
+            ${infoTooltipHtml(
+              'broadcast-delivery-help',
+              'Neue Durchsage',
+              'Erscheint sofort auf allen offenen Geräten, auf dem Kiosk-Bildschirm und als Push-Benachrichtigung bei allen, die Push aktiviert haben.'
+            )}
+          </span>
+        </div>
         <form id="broadcast-form" class="stack">
           <div>
             <label for="broadcast-message" class="field-label">Nachricht</label>
@@ -94,10 +105,6 @@ export function renderBroadcast(container, ctx) {
           </div>
           <button type="submit" class="btn btn-primary" ${myId ? '' : 'disabled'}>Senden</button>
         </form>
-        <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
-          Erscheint sofort auf allen offenen Geräten, auf dem Kiosk-Bildschirm und als
-          Push-Benachrichtigung bei allen, die Push aktiviert haben.
-        </p>
       </section>
       <section class="card stack grouped-page-section" aria-labelledby="broadcast-history-title">
         <div class="grouped-page-section-title"><h2 id="broadcast-history-title">Letzte Durchsagen</h2></div>
@@ -108,6 +115,7 @@ export function renderBroadcast(container, ctx) {
 
   wireWhoAmICard(container, 'broadcast-whoami', ctx);
   wireDateTimeField(container, 'broadcast-ends-at');
+  wireInfoTooltips(container);
 
   const messageInput = container.querySelector('#broadcast-message');
   if (prevValue) messageInput.value = prevValue;

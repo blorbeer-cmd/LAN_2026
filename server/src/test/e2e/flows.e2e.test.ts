@@ -54,6 +54,13 @@ async function switchIdentityAndOpenArrivals(label: string): Promise<void> {
   await page.waitForSelector('[data-new-carpool="arrival"]');
 }
 
+async function createPlayerForFlow(name: string): Promise<void> {
+  const response = await page.request.post(`${BASE_URL}/api/players`, { data: { name } });
+  assert.equal(response.status(), 201);
+  await page.reload();
+  await page.waitForSelector(`[data-player]:has-text("${name}")`);
+}
+
 before(async () => {
   serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
     env: { ...process.env, PORT: String(PORT), DB_FILE: ':memory:', ACCESS_TOKEN: '' },
@@ -161,14 +168,11 @@ test('global search filters areas, supports keyboard navigation and restores foc
 });
 
 test('full click-through: players, matchmaking, voting, leaderboard, live pause', async () => {
-  // Add a second player via the roster view (lives in the "Mehr" hub — the
-  // bottom nav slot went to Turniere).
+  // The public roster no longer creates identities; test setup creates the
+  // second profile through the API that future user management will own.
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="players"]');
-  await page.click('#add-player-btn');
-  await page.fill('#new-player-name', 'E2E Bob');
-  await page.click('#add-player-form button[type="submit"]');
-  await page.waitForSelector('text=E2E Bob');
+  await createPlayerForFlow('E2E Bob');
 
   // Other profiles are read-only; the current identity opens its own editor.
   await page.click('button[data-player] >> text=E2E Bob');
@@ -721,7 +725,7 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
   await page.waitForSelector('text=Beendet', { timeout: 5000 });
 });
 
-test('Info-Board: create an entry, see it rendered', async () => {
+test('Info: create an entry, see it rendered', async () => {
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="infoBoard"]');
   await page.waitForSelector('#info-new-btn');
@@ -1334,13 +1338,10 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
 });
 
 test('An- & Abreise: carpool marks the driver, enforces seats, driver can only delete', async () => {
-  // A third roster player to later demonstrate a full carpool.
+  // A third player to later demonstrate a full carpool.
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="players"]');
-  await page.click('#add-player-btn');
-  await page.fill('#new-player-name', 'E2E Carol');
-  await page.click('#add-player-form button[type="submit"]');
-  await page.waitForSelector('text=E2E Carol');
+  await createPlayerForFlow('E2E Carol');
 
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="arrivals"]');
