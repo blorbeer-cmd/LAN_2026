@@ -244,12 +244,12 @@ export function renderBanner() {
         <strong>Mitteilungen</strong>
         <button type="button" class="icon-btn" data-notification-close aria-label="Mitteilungen schließen" title="Schließen">${icon('x')}</button>
       </div>
-      ${entries.length > 0 ? `<div class="notification-center-toolbar">
-        <button type="button" class="btn btn-sm" data-notifications-seen-all ${entries.every((entry) => entry.seen) ? 'disabled' : ''}>Alle als gelesen markieren</button>
-        <button type="button" class="btn btn-sm btn-danger" data-notifications-hide-all>Alle löschen</button>
-      </div>` : ''}
     </div>
     ${panelContentHtml(myId)}
+    ${entries.length > 0 ? `<div class="notification-center-toolbar">
+      <button type="button" class="btn btn-sm" data-notifications-seen-all ${entries.every((entry) => entry.seen) ? 'disabled' : ''}>Alle als gelesen markieren</button>
+      <button type="button" class="btn btn-sm btn-danger" data-notifications-hide-all>Alle löschen</button>
+    </div>` : ''}
   `;
 
   panel.querySelector('[data-notification-close]')?.addEventListener('click', () => {

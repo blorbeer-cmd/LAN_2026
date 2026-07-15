@@ -387,10 +387,15 @@ textarea {
   background: var(--bg-elevated);
 }
 .notification-center-toolbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
-  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
 }
 .notification-center-list {
   display: flex;
