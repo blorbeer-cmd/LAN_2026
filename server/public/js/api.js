@@ -121,19 +121,43 @@ export const api = {
 
   groups: {
     list: () => apiFetch('/api/groups'),
+    get: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}`),
     create: (data) => apiFetch('/api/groups', { method: 'POST', body: JSON.stringify(data) }),
+    update: (groupId, data) =>
+      apiFetch(`/api/groups/${encodeURIComponent(groupId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    archive: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}`, { method: 'DELETE' }),
     members: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/members`),
+    updateMember: (groupId, playerId, role) =>
+      apiFetch(`/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(playerId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role }),
+      }),
+    removeMember: (groupId, playerId) =>
+      apiFetch(`/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(playerId)}`, {
+        method: 'DELETE',
+      }),
+    leave: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/leave`, { method: 'POST' }),
+    audit: (groupId, limit = 100) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/audit?limit=${limit}`),
+    createTestUsers: (groupId, count) =>
+      apiFetch(`/api/groups/${encodeURIComponent(groupId)}/test-users`, {
+        method: 'POST',
+        body: JSON.stringify({ count }),
+      }),
+    cleanupTestUsers: (groupId) =>
+      apiFetch(`/api/groups/${encodeURIComponent(groupId)}/test-users`, { method: 'DELETE' }),
     invitePreview: (code) => apiFetch(`/api/groups/invites/${encodeURIComponent(code)}`),
     acceptInvite: (code) => apiFetch(`/api/groups/invites/${encodeURIComponent(code)}/accept`, { method: 'POST' }),
     invites: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/invites`),
-    createInvite: (groupId, data = {}) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/invites`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-    revokeInvite: (groupId, code) => apiFetch(
-      `/api/groups/${encodeURIComponent(groupId)}/invites/${encodeURIComponent(code)}`,
-      { method: 'DELETE' },
-    ),
+    createInvite: (groupId, data = {}) =>
+      apiFetch(`/api/groups/${encodeURIComponent(groupId)}/invites`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    revokeInvite: (groupId, code) =>
+      apiFetch(`/api/groups/${encodeURIComponent(groupId)}/invites/${encodeURIComponent(code)}`, { method: 'DELETE' }),
   },
 
   // Real per-user login (see docs/KONZEPT-USER-MANAGEMENT.md). Only used by
@@ -224,8 +248,7 @@ export const api = {
     history: () => apiFetch('/api/votes/history'),
     historyRound: (round) => apiFetch(`/api/votes/history/${round}`),
     start: (options = {}) => apiFetch('/api/votes/start', { method: 'POST', body: JSON.stringify(options) }),
-    cast: (playerId, gameId) =>
-      apiFetch('/api/votes', { method: 'POST', body: JSON.stringify({ playerId, gameId }) }),
+    cast: (playerId, gameId) => apiFetch('/api/votes', { method: 'POST', body: JSON.stringify({ playerId, gameId }) }),
     castPoints: (playerId, entries) =>
       apiFetch('/api/votes/points', { method: 'POST', body: JSON.stringify({ playerId, entries }) }),
     close: () => apiFetch('/api/votes/close', { method: 'POST' }),
@@ -287,6 +310,7 @@ export const api = {
     startTracking: (id) => apiFetch(`/api/events/${id}/tracking/start`, { method: 'POST' }),
     stopTracking: (id) => apiFetch(`/api/events/${id}/tracking/stop`, { method: 'POST' }),
     end: (id) => apiFetch(`/api/events/${id}/end`, { method: 'POST' }),
+    cancel: (id) => apiFetch(`/api/events/${id}`, { method: 'DELETE' }),
     setParticipants: (id, playerIds) =>
       apiFetch(`/api/events/${id}/participants`, { method: 'PUT', body: JSON.stringify({ playerIds }) }),
   },
@@ -313,7 +337,8 @@ export const api = {
   quiz: {
     questions: () => apiFetch('/api/quiz/questions'),
     createQuestion: (data) => apiFetch('/api/quiz/questions', { method: 'POST', body: JSON.stringify(data) }),
-    updateQuestion: (id, data) => apiFetch(`/api/quiz/questions/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    updateQuestion: (id, data) =>
+      apiFetch(`/api/quiz/questions/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     removeQuestion: (id) => apiFetch(`/api/quiz/questions/${id}`, { method: 'DELETE' }),
   },
 
@@ -350,17 +375,19 @@ export const api = {
     vapidPublicKey: () => apiFetch('/api/push/vapid-public-key'),
     subscribe: (playerId, subscription) =>
       apiFetch('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ playerId, subscription }) }),
-    unsubscribe: (endpoint) => apiFetch('/api/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
+    unsubscribe: (endpoint) =>
+      apiFetch('/api/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
     last: () => apiFetch('/api/push/last'),
     current: (playerId) => apiFetch(`/api/push/current?playerId=${encodeURIComponent(playerId)}`),
     log: (playerId) => apiFetch(`/api/push/log?playerId=${encodeURIComponent(playerId)}`),
-    seen: (id, playerId) =>
-      apiFetch(`/api/push/${id}/seen`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    seen: (id, playerId) => apiFetch(`/api/push/${id}/seen`, { method: 'POST', body: JSON.stringify({ playerId }) }),
   },
 
   agent: {
     download: (playerId, trackActivity) =>
-      fetchBlob(`/api/agent-download?playerId=${encodeURIComponent(playerId)}${trackActivity ? '&trackActivity=1' : ''}`),
+      fetchBlob(
+        `/api/agent-download?playerId=${encodeURIComponent(playerId)}${trackActivity ? '&trackActivity=1' : ''}`,
+      ),
   },
 
   draft: {
@@ -390,8 +417,16 @@ export const api = {
     players: () => apiFetch('/api/admin/players'),
     audit: (limit = 100) => apiFetch(`/api/admin/audit?limit=${limit}`),
     agentDiagnostics: () => apiFetch('/api/admin/agent-diagnostics'),
-    createTestUsers: (count) => apiFetch('/api/admin/test-users', { method: 'POST', body: JSON.stringify({ count }) }),
-    cleanupTestUsers: () => apiFetch('/api/admin/test-users', { method: 'DELETE' }),
+    createTestUsers: (count) => {
+      const groupId = sessionStorage.getItem(GROUP_KEY);
+      return groupId
+        ? api.groups.createTestUsers(groupId, count)
+        : apiFetch('/api/admin/test-users', { method: 'POST', body: JSON.stringify({ count }) });
+    },
+    cleanupTestUsers: () => {
+      const groupId = sessionStorage.getItem(GROUP_KEY);
+      return groupId ? api.groups.cleanupTestUsers(groupId) : apiFetch('/api/admin/test-users', { method: 'DELETE' });
+    },
   },
 
   foodOrders: {
@@ -414,7 +449,8 @@ export const api = {
     list: () => apiFetch('/api/arrivals'),
     saveMine: (data) => apiFetch('/api/arrivals/mine', { method: 'PUT', body: JSON.stringify(data) }),
     createCarpool: (data) => apiFetch('/api/arrivals/carpools', { method: 'POST', body: JSON.stringify(data) }),
-    editCarpool: (id, data) => apiFetch(`/api/arrivals/carpools/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    editCarpool: (id, data) =>
+      apiFetch(`/api/arrivals/carpools/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     joinCarpool: (id, playerId) =>
       apiFetch(`/api/arrivals/carpools/${id}/join`, { method: 'POST', body: JSON.stringify({ playerId }) }),
     leaveCarpool: (id, playerId) =>
