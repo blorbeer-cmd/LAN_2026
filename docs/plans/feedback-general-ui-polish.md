@@ -113,7 +113,8 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   fällt auf schmalen Handys in eine fortlaufende Liste zurück.
 - Spieler-Namen verwenden in Live-Status, Rangliste und Auswahlansichten denselben Namensstil;
   Formfelder erben seitenweit dieselbe Systemschrift. Der Home-Sitzplan richtet Avatar und Namen
-  sauber aus und hebt Gamer-Namen lesbarer hervor.
+  sauber aus, hebt Gamer-Namen lesbarer hervor und zeigt ihren Live-Status direkt dahinter als
+  kompakten grünen, gelben oder roten Indikator.
 - Rang-Titel, Kurztexte und Ergebnisformular bereinigen. Für die Spieler-Zuordnung eine stabile
   Grid-/Spaltenstruktur verwenden, damit Selects unabhängig von Namenslängen fluchten.
 - Vote-Beschreibung auf „Punkte frei verteilen, höchste Summe gewinnt.“ kürzen, Aktionsbuttons

@@ -323,7 +323,7 @@ function wireSocket() {
     // Socket payloads bypass apiFetch, so the test-user filter must run here.
     state.live = filterTestUsers(payload);
     invalidateMissingSkills(); // a newly-running game may now need a skill rating
-    if (currentView === 'home') renderCurrent();
+    if (currentView === 'home' || currentView === 'seating') renderCurrent();
   });
   socket.on('votes:changed', (payload) => {
     const isNewRound = payload.open && payload.round !== lastVoteRound;

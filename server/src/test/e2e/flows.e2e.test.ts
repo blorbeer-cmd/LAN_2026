@@ -1498,9 +1498,28 @@ test('Admin: one-tap mode with banner, seeded test users visible only in admin m
   );
   await page.click('#admin-bulk');
   const seeded = await seedResponse;
-  assert.ok(seeded.ok(), `test-user seed failed (${seeded.status()}): ${await seeded.text()}`);
+  const seededText = await seeded.text();
+  assert.ok(seeded.ok(), `test-user seed failed (${seeded.status()}): ${seededText}`);
+  const seededBody = JSON.parse(seededText) as { created: Array<{ id: string; name: string }> };
+  const pausedTestPlayer = seededBody.created[2];
+  const pauseResponse = await page.request.post(`${BASE_URL}/api/live/${pausedTestPlayer.id}/note`, {
+    data: { note: 'Pause / Essen' },
+  });
+  assert.ok(pauseResponse.ok(), `test-user pause failed (${pauseResponse.status()}): ${await pauseResponse.text()}`);
   await page.waitForSelector('text=3 Test-Spieler vorhanden');
   await page.waitForSelector('.badge-paused >> text=Test');
+
+  // The shared seating plan exposes the real live state compactly after the
+  // gamer name: seeded players cover playing + paused while the regular
+  // roster also supplies an offline seat. The title/ARIA label keeps the
+  // three colors understandable without relying on color alone.
+  await page.click('[data-view="home"]');
+  await page.waitForSelector('.live-seating .seating-status-indicator.is-playing[aria-label="Status: Spielt"]');
+  await page.waitForSelector(`.live-seating [data-player-id="${pausedTestPlayer.id}"] .seating-status-indicator.is-paused[aria-label="Status: Pause"]`);
+  await page.waitForSelector('.live-seating .seating-status-indicator.is-offline[aria-label="Status: Offline"]');
+  await page.click('#settings-btn');
+  await page.click('[data-navigate="seating"]');
+  await page.waitForSelector(`.seating-plan.is-editable [data-player-id="${pausedTestPlayer.id}"] .seating-status-indicator.is-paused`);
 
   // Visible on the roster (Mehr → Spieler) while in admin mode...
   await page.click('[data-view="more"]');

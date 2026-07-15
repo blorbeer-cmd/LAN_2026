@@ -3212,14 +3212,31 @@ input[type='number'].bracket-score-input {
   white-space: nowrap;
   max-width: 100%;
 }
+.seating-seat-name-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
+}
 .seating-seat-realname {
   font-size: var(--font-size-2xs);
   color: var(--text-muted);
 }
 .seating-seat-name {
+  min-width: 0;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
 }
+.seating-status-indicator {
+  flex: 0 0 var(--space-2);
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--danger);
+}
+.seating-status-indicator.is-playing { background: var(--state-playing); }
+.seating-status-indicator.is-paused { background: var(--state-paused); }
 .seating-plan.is-readonly .seating-seat-realname.is-empty {
   display: none;
 }

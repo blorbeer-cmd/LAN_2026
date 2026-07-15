@@ -215,6 +215,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.global-search-result`, wired through `searchPalette.js`; opens from the topbar or with
   `Strg/Cmd + K`, searches both areas and current app content without an external service, and uses
   `.search-target-highlight` to expose a concrete result after navigation.
+- **Seating status** — `.seating-status-indicator` sits directly after the gamer name and mirrors
+  the shared live state as green „Spielt“, yellow „Pause“ or red „Offline“. Its German title and
+  accessible label preserve the meaning beyond color.
 
 Prefer composition of these primitives over view-specific copies. A new component
 class needs a distinct reusable purpose; a one-page selector that merely restates a

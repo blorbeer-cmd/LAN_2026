@@ -7,7 +7,8 @@
 // events never fire). Both go through movePlayer() + save().
 
 import { api } from '../api.js';
-import { escapeHtml, avatarHtml } from '../format.js';
+import { state } from '../state.js';
+import { escapeHtml, avatarHtml, stateLabel } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 
@@ -46,8 +47,13 @@ function assignmentAt(layout, side, seat) {
 // list-row height rule).
 function seatNamesHtml(player) {
   const realName = player.real_name;
+  const liveState = state.live.find((entry) => entry.player_id === player.id)?.state ?? 'offline';
+  const liveLabel = stateLabel(liveState);
   return `<span class="seating-seat-names">
-    <span class="seating-seat-name">${escapeHtml(player.name)}</span>
+    <span class="seating-seat-name-line">
+      <span class="seating-seat-name">${escapeHtml(player.name)}</span>
+      <span class="seating-status-indicator is-${liveState}" role="img" aria-label="Status: ${liveLabel}" title="${liveLabel}"></span>
+    </span>
     <span class="seating-seat-realname${realName ? '' : ' is-empty'}"${realName ? '' : ' style="visibility:hidden;"'}>${escapeHtml(realName || ' ')}</span>
   </span>`;
 }
