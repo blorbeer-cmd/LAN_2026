@@ -322,11 +322,7 @@ function renderCurrentVote({ allowRunoff = false } = {}) {
     ${renderVoteRanking(h.results, h.mode, h.winnerGameIds)}
     ${
       hasTie && allowRunoff
-        ? `<div class="vote-tie-action stack">
-            <div>
-              <div class="player-name">Unentschieden</div>
-              <div class="muted vote-result-meta">${h.winnerGameIds.length} Spiele teilen sich den ersten Platz.</div>
-            </div>
+        ? `<div class="vote-tie-action">
             <button type="button" class="btn btn-primary btn-block" id="votes-runoff">Stichwahl starten</button>
           </div>`
         : ''

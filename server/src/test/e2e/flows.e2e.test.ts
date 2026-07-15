@@ -264,6 +264,7 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   const currentVote = page.locator('section[aria-labelledby="vote-current-result-title"]');
   assert.equal(await currentVote.locator('.lb-row.is-tied').count(), 2);
   assert.deepEqual(await currentVote.locator('.lb-row.is-tied .lb-rank').allTextContents(), ['1', '1']);
+  assert.equal(await currentVote.getByText('Unentschieden', { exact: true }).count(), 0);
   assert.equal(await currentVote.locator('#votes-runoff').count(), 1, 'the runoff action belongs to the current Vote card');
   assert.equal(await page.locator('section[aria-labelledby="vote-runoff-title"]').count(), 0, 'no separate runoff card remains');
   assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars on the main page, even after closing');

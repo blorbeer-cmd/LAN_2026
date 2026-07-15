@@ -219,7 +219,8 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   der eingeklappten Vote-Historie zeigen die zehn bestplatzierten Spiele in kompakten
   Ranglistenzeilen; die Detailaktion mit allen Balken bleibt erhalten. Bei einem Unentschieden
   tragen die punktgleichen Sieger denselben Rang und einen sichtbaren Rahmen. Der Textstatus und
-  „Stichwahl starten“ stehen unten in derselben „Aktueller Vote“-Karte. Die Top 10 teilen sich ab
+  der zusätzliche Erklärungstext entfallen; „Stichwahl starten“ steht direkt unten in derselben
+  „Aktueller Vote“-Karte. Die Top 10 teilen sich ab
   `--bp-md` in zwei geordnete Fünferlisten. Die
   Spieleauswahl bleibt auch mobil als
   umrandetes Kartenraster erkennbar. Der Erklärtext zur verdeckten Auswertung steht als Tooltip direkt
