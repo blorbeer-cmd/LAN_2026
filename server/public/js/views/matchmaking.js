@@ -156,8 +156,8 @@ function renderDrawCard(draw, { editable, showGame = false }) {
       ${
         !editable
           ? `<div class="row" style="flex-wrap:wrap;">
-               <button type="button" class="btn btn-primary btn-sm" style="flex:1 1 var(--selection-card-min-width);" data-edit-draw-result="${draw.id}">Ergebnis bearbeiten</button>
-               <button type="button" class="btn btn-sm" style="flex:1 1 var(--selection-card-min-width);" data-rematch-draw="${draw.id}">${icon('shuffle')} Rematch</button>
+               <button type="button" class="btn btn-sm" style="flex:1 1 var(--selection-card-min-width);" data-edit-draw-result="${draw.id}">Ergebnis bearbeiten</button>
+               <button type="button" class="btn btn-primary btn-sm" style="flex:1 1 var(--selection-card-min-width);" data-rematch-draw="${draw.id}">${icon('shuffle')} Rematch</button>
              </div>`
           : ''
       }

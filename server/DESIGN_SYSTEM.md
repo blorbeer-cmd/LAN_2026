@@ -247,7 +247,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   history card repeats its game badge and name. Recorded results omit a status badge;
   `.matchmaking-draw-team.is-winner` identifies the winner through a reinforced border and an
   accessible group label. „Ergebnis bearbeiten“ opens a correction form for winner, value and
-  placement and updates the existing match instead of creating a duplicate result.
+  placement and updates the existing match instead of creating a duplicate result. On recorded
+  history cards, „Rematch“ is the primary action while editing remains visually secondary.
 - **Tournament overview** — `.tournament-list-grid` shows at most two tournament cards per row;
   a single card stretches across the available width and further cards wrap. `.tournament-list-section` presents
   active and completed tournaments as two prominent status rows without separate summary-stat

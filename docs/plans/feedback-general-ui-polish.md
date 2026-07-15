@@ -154,7 +154,8 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   geschlossenen „Historie“ ohne Symbol gezeigt; jeder Eintrag nennt Spielsymbol und Spielname.
   Statt „Ergebnis erfasst“ kennzeichnet ein verstärkter Rahmen das
   Gewinner-Team. Gewinner, Wert und Platzierung lassen sich über „Ergebnis bearbeiten“ am
-  bestehenden Match korrigieren, ohne einen zweiten Ergebniseintrag anzulegen.
+  bestehenden Match korrigieren, ohne einen zweiten Ergebniseintrag anzulegen. Auf abgeschlossenen
+  Einträgen ist „Rematch“ die hervorgehobene Primäraktion, „Ergebnis bearbeiten“ bleibt sekundär.
 
 Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 `server/public/js/views/tournament.js`, `server/public/js/views/votes.js`,
