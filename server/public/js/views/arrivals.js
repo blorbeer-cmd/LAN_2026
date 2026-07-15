@@ -71,7 +71,7 @@ function renderCarpool(c, direction, myId) {
       (m) => `<div class="arrivals-member-row">
               ${avatarHtml(m, 24)}
               <span class="player-name">${escapeHtml(m.name)}</span>
-              ${m.id === c.driverId ? '<span class="muted arrivals-member-role">· Fahrer</span>' : ''}
+              ${m.id === c.driverId ? '<span class="arrivals-member-role">Fahrer</span>' : ''}
             </div>`
     )
     .join('');
@@ -80,9 +80,9 @@ function renderCarpool(c, direction, myId) {
       ? `<button type="button" class="btn btn-sm btn-primary" data-join-carpool="${c.id}">Mitfahren</button>`
       : !myId
         ? '<button type="button" class="btn btn-sm" disabled>Mitfahren</button>'
-        : '<span class="muted arrivals-free-seat-status">Frei</span>';
+        : '';
     return `<div class="arrivals-member-row arrivals-free-seat-row">
-      <span class="muted arrivals-free-seat-label">Freier Platz</span>
+      <span class="muted arrivals-free-seat-label">Frei</span>
       ${control}
     </div>`;
   }).join('');

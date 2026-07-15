@@ -283,8 +283,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   carpool cards use two columns from `--bp-md`, but an odd final card deliberately keeps one-column
   width instead of spanning the row; phones stay single-column. Every card repeats Start and
   Ankunft vertically. Below the current passengers, every available passenger seat has its own
-  „Freier Platz“ row with a direct „Mitfahren“ action for eligible players; drivers and existing
-  passengers see those rows as non-interactive availability instead of being able to join twice.
+  compact „Frei“ row with a direct „Mitfahren“ action for eligible players. The driver row uses the
+  same right-hand action column for a neutral „Fahrer“ label; drivers and existing passengers leave
+  the free rows' action column empty instead of repeating „Frei“ or allowing duplicate joins.
 - **Leaderboard** — The concise page title is „Rang“. The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
   each remains a distinct `.tournament-section-panel` with the shared accent rail. „Spielzeit pro

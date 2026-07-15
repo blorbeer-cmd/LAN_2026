@@ -2078,8 +2078,16 @@ button.card {
   white-space: nowrap;
 }
 .arrivals-member-role {
+  display: inline-flex;
+  width: calc(var(--space-8) + var(--space-8));
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  padding: var(--space-2) var(--space-3);
   flex-shrink: 0;
-  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
 }
 .arrivals-carpool-directions {
   display: grid;
@@ -2138,10 +2146,7 @@ button.card {
   padding-left: calc(var(--avatar-size-sm) + var(--space-2));
 }
 .arrivals-free-seat-row .btn {
-  min-height: var(--tap-target-size);
-}
-.arrivals-free-seat-status {
-  padding-right: var(--space-2);
+  width: calc(var(--space-8) + var(--space-8));
 }
 .arrivals-carpool-empty {
   font-size: var(--font-size-sm);
