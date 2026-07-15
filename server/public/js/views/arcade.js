@@ -18,22 +18,52 @@ import {
 import { ensureBlobbySocket, renderBlobbyLobbyCard, wireBlobbyLobbyCard, myBlobbyLobby, hasBlobbyMatch, blobbyLobbies, leaveMyBlobbyLobby } from './blobby.js';
 import { ensurePongSocket, renderPongLobbyCard, wirePongLobbyCard, myPongLobby, hasPongMatch, pongLobbies, leaveMyPongLobby } from './pong.js';
 import { ensureSnakeSocket, renderSnakeLobbyCard, wireSnakeLobbyCard, mySnakeLobby, hasSnakeMatch, snakeLobbies, leaveMySnakeLobby } from './snake.js';
-import { arcadeExpandControlHtml, arcadeLobbyTitleHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 import { startArcadeWatch } from './arcadeWatch.js';
 import { confirmDialog } from '../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { arcadeLobbyEntryHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { wireInfoTooltips } from '../infoTooltip.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 // The Arcade opens as a launcher: a compact grid of playable game tiles.
 // Picking one reveals that game's lobby below.
 const GAMES = [
-  { id: 'quiz', icon: icon('brain'), name: 'Gaming-Quiz' },
-  { id: 'tetris', icon: icon('blocks'), name: 'Tetris' },
-  { id: 'scribble', icon: icon('pencil'), name: 'Scribble' },
-  { id: 'pong', icon: icon('gitCommitVertical'), name: 'Pong' },
-  { id: 'blobby', icon: icon('volleyball'), name: 'Blobby Volley' },
-  { id: 'snake', icon: icon('snake'), name: 'Snake' },
+  {
+    id: 'quiz',
+    icon: icon('brain'),
+    name: 'Gaming-Quiz',
+    help: 'Ziel: Richtige Antworten sammeln. Steuerung: Antwort tippen und senden.',
+  },
+  {
+    id: 'tetris',
+    icon: icon('blocks'),
+    name: 'Tetris',
+    help: 'Ziel: Überleben. Steuerung: Pfeiltasten und Leertaste.',
+  },
+  {
+    id: 'scribble',
+    icon: icon('pencil'),
+    name: 'Scribble',
+    help: 'Ziel: Wörter erraten und Punkte sammeln. Steuerung: Zeichnen und tippen.',
+  },
+  {
+    id: 'pong',
+    icon: icon('gitCommitVertical'),
+    name: 'Pong',
+    help: 'Ziel: Erreiche zuerst die Punktzahl. Steuerung: Pfeiltasten.',
+  },
+  {
+    id: 'blobby',
+    icon: icon('volleyball'),
+    name: 'Blobby Volley',
+    help: 'Ziel: Erreiche zuerst die Punktzahl. Steuerung: Pfeiltasten.',
+  },
+  {
+    id: 'snake',
+    icon: icon('snake'),
+    name: 'Snake',
+    help: 'Ziel: Länger leben als die andere Schlange. Steuerung: Pfeiltasten.',
+  },
 ];
 
 let socket = null;
@@ -302,7 +332,7 @@ function renderLobbyList() {
           ? readyToggleHtml(l, getMyId(), 'quiz-ready')
           : '';
       const joinAction = !joined && !isHost
-        ? `<button type="button" class="btn btn-sm btn-equal btn-primary" data-join-lobby="${l.id}">Beitreten</button>`
+        ? `<button type="button" class="btn btn-sm btn-primary" data-join-lobby="${l.id}">Beitreten</button>`
         : '';
       return arcadeLobbyEntryHtml(l, { joinAction, footerActions });
     })
@@ -459,42 +489,6 @@ function gameTileHtml(game, active, count) {
     </button>`;
 }
 
-// Compact, always-current list of just the open lobbies, grouped and sorted
-// by game (in the same fixed order as the tile grid) — a game that currently
-// has no open lobby doesn't get a row at all. Each row's sub-line names every
-// open lobby's host and current player count, so a glance is enough to know
-// who's waiting and whether it's worth joining, without expanding anything.
-// Tapping a row still expands that game's full section below, same as
-// tapping its tile.
-function openLobbiesOverviewHtml() {
-  const rows = GAMES.filter((g) => !g.soon)
-    .map((g) => ({ game: g, lobbies: gameLobbies(g.id) }))
-    .filter(({ lobbies: gl }) => gl.length > 0);
-  if (rows.length === 0) return '';
-  return `
-    <section class="card stack grouped-page-section" aria-labelledby="arcade-open-lobbies-title">
-      <div class="grouped-page-section-title"><h2 id="arcade-open-lobbies-title">Offene Lobbys</h2></div>
-      <div class="arcade-lobby-grid two-column-card-grid">
-        ${rows
-          .map(({ game, lobbies: gl }) => {
-            const hostsSummary = gl
-              .map((l) => `${escapeHtml(l.host.name)} · ${l.players.length} Spieler`)
-              .join(', ');
-            return `
-          <button type="button" class="card row list-row" data-game="${game.id}">
-            <span class="list-row-icon" aria-hidden="true">${game.icon}</span>
-            <span style="flex:1;min-width:0;">
-              <div class="player-name">${escapeHtml(game.name)}</div>
-              <div class="muted list-row-desc">${hostsSummary}</div>
-            </span>
-            <span class="badge">${gl.length} offen</span>
-          </button>`;
-          })
-          .join('')}
-      </div>
-    </section>`;
-}
-
 function runningMatchesOverviewHtml() {
   if (watchMatches.length === 0) return '';
   return `
@@ -528,14 +522,11 @@ function activeGameHtml() {
     const lobby = myLobby();
     return `
       <div class="card stack arcade-lobby-card">
-        <div class="row-between arcade-lobby-header" style="gap:var(--space-3);">
-          ${arcadeLobbyTitleHtml('quiz', 'Lobby', [
-            { label: 'Ziel', text: 'Richtige Antworten sammeln.' },
-            { label: 'Steuerung', text: 'Antwort tippen und senden.' },
-          ])}
-          <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="quiz-bot" ${match ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button></div>
-        </div>
         ${renderLobbyList()}
+        <div class="arcade-lobby-create-actions">
+          ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="quiz-bot" ${match ? 'disabled' : ''}>Gegen KI</button>` : ''}
+          <button type="button" class="btn btn-primary btn-sm" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button>
+        </div>
       </div>
       ${targetControls(lobby)}`;
   }
@@ -562,7 +553,7 @@ export function renderArcade(container, ctx) {
   const lobby = myLobby();
 
   const cg = currentGame();
-  const activeGameName = GAMES.find((game) => game.id === cg)?.name;
+  const activeGameDefinition = GAMES.find((game) => game.id === cg);
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Arcade</h1>
@@ -575,11 +566,15 @@ export function renderArcade(container, ctx) {
         </div>
       </section>
       ${runningMatchesOverviewHtml()}
-      ${openLobbiesOverviewHtml()}
       ${
-        activeGameName
+        activeGameDefinition
           ? `<section class="card stack grouped-page-section" aria-labelledby="arcade-active-game-title">
-               <div class="grouped-page-section-title"><h2 id="arcade-active-game-title">${escapeHtml(activeGameName)}</h2></div>
+               <div class="grouped-page-section-title">
+                 <div class="row arcade-active-game-title">
+                   <h2 id="arcade-active-game-title">${escapeHtml(activeGameDefinition.name)}</h2>
+                   ${infoTooltipHtml(`arcade-${activeGameDefinition.id}-game-info`, activeGameDefinition.name, activeGameDefinition.help)}
+                 </div>
+               </div>
                ${activeGameHtml()}
              </section>`
           : ''

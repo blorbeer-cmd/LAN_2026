@@ -21,7 +21,7 @@ import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { allLobbyReady, arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, arcadeLobbyTitleHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
 const COLS = 10;
 const ROWS = 20;
@@ -408,7 +408,7 @@ function renderLobbyList() {
             <button type="button" class="btn btn-sm btn-equal" data-tetris-leave="${l.id}">Verlassen</button>`
           : '';
       const joinAction = !joined && !isHost
-        ? `<button type="button" class="btn btn-sm btn-equal btn-primary" data-tetris-join="${l.id}" ${full ? 'disabled' : ''}>Beitreten</button>`
+        ? `<button type="button" class="btn btn-sm btn-primary" data-tetris-join="${l.id}" ${full ? 'disabled' : ''}>Beitreten</button>`
         : '';
       return arcadeLobbyEntryHtml(l, { playerLimit: 2, joinAction, footerActions, full });
     })
@@ -419,14 +419,10 @@ function hostStartHtml() {
   const lobby = myTetrisLobby();
   if (!lobby || lobby.host.id !== myId()) return '';
   const ready = lobby.players.length === 2;
-  const hint = !ready
-    ? 'Warte auf einen Gegner…'
-    : allLobbyReady(lobby)
-      ? 'Gegner ist bereit.'
-      : 'Gegner ist da — noch nicht bereit.';
+  const hint = ready ? (allLobbyReady(lobby) ? 'Gegner ist bereit.' : 'Gegner ist da — noch nicht bereit.') : '';
   return `
     <div class="stack" style="gap:var(--space-2);border-top:1px solid var(--border);padding-top:var(--space-3);">
-      <div class="muted" style="font-size:var(--font-size-xs);">${hint}</div>
+      ${hint ? `<div class="muted" style="font-size:var(--font-size-xs);">${hint}</div>` : ''}
       <button type="button" class="btn btn-primary btn-block" id="tetris-start" ${ready ? '' : 'disabled'}>Start</button>
     </div>`;
 }
@@ -440,15 +436,12 @@ export function renderTetrisLobbyCard() {
   const noMe = !myId();
   return `
     <div class="card stack arcade-lobby-card">
-      <div class="row-between arcade-lobby-header" style="gap:var(--space-3);">
-        ${arcadeLobbyTitleHtml('tetris', 'Lobby', [
-          { label: 'Ziel', text: 'Überleben.' },
-          { label: 'Steuerung', text: 'Pfeiltasten + Leertaste.' },
-        ])}
-        <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="tetris-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="tetris-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div>
-      </div>
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
       ${renderLobbyList()}
+      <div class="arcade-lobby-create-actions">
+        ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="tetris-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
+        <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+      </div>
       ${hostStartHtml()}
     </div>`;
 }

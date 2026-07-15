@@ -1713,20 +1713,20 @@ button.card {
 .arcade-stat-game {
   min-width: 0;
 }
-.arcade-lobby-header {
-  flex-wrap: wrap;
-}
 .arcade-lobby-card {
   gap: var(--space-3);
 }
-.arcade-lobby-title {
-  min-width: 0;
+.arcade-active-game-title {
   gap: var(--space-2);
 }
-.arcade-lobby-header > .row:last-child {
-  margin-left: auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+.arcade-lobby-create-actions {
+  display: flex;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+.arcade-lobby-create-actions .btn {
+  flex: 1 1 0;
 }
 .arcade-lobby-entry {
   gap: var(--space-2);
@@ -1783,10 +1783,15 @@ button.card {
   justify-content: space-between;
 }
 .arcade-lobby-free-label {
+  display: inline-flex;
+  align-self: stretch;
+  align-items: center;
   padding-left: calc(var(--avatar-size-sm) + var(--space-2));
 }
 .arcade-lobby-free-row .btn {
   width: calc(var(--space-8) + var(--space-8));
+  margin-left: auto;
+  align-self: center;
   padding-top: var(--space-1);
   padding-bottom: var(--space-1);
 }

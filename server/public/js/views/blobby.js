@@ -5,7 +5,7 @@ import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { allLobbyReady, arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, arcadeLobbyTitleHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
 const W = 1000;
 const H = 600;
@@ -115,7 +115,7 @@ function lobbyList() {
           <button type="button" class="btn btn-sm btn-equal" data-blobby-leave="${l.id}">Verlassen</button>`
         : '';
     const joinAction = !joined && !isHost
-      ? `<button type="button" class="btn btn-sm btn-equal btn-primary" data-blobby-join="${l.id}" ${full ? 'disabled' : ''}>Beitreten</button>`
+      ? `<button type="button" class="btn btn-sm btn-primary" data-blobby-join="${l.id}" ${full ? 'disabled' : ''}>Beitreten</button>`
       : '';
     return arcadeLobbyEntryHtml(l, { playerLimit: 2, joinAction, footerActions, full });
   }).join('');
@@ -124,24 +124,27 @@ function hostStart() {
   const lobby = myBlobbyLobby();
   if (!lobby || lobby.host.id !== myId()) return '';
   const ready = lobby.players.length === 2;
-  const hint = !ready ? 'Warte auf einen Gegner…' : allLobbyReady(lobby) ? 'Gegner ist bereit.' : 'Gegner ist da — noch nicht bereit.';
+  const hint = ready ? (allLobbyReady(lobby) ? 'Gegner ist bereit.' : 'Gegner ist da — noch nicht bereit.') : '';
   return `<div class="stack" style="gap:var(--space-2);border-top:1px solid var(--border);padding-top:var(--space-3);">
     <div class="field-label">Punkte bis Sieg</div>
     <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
       ${[5, 7, 10, 15].map((n) => `<label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="blobby-target" value="${n}" ${n === targetScore ? 'checked' : ''} />${n}</label>`).join('')}
     </div>
-    <div class="muted" style="font-size:var(--font-size-xs);">${hint}</div>
+    ${hint ? `<div class="muted" style="font-size:var(--font-size-xs);">${hint}</div>` : ''}
     <button type="button" class="btn btn-primary btn-block" id="blobby-start" ${ready ? '' : 'disabled'}>Start</button>
   </div>`;
 }
 export function renderBlobbyLobbyCard() {
   const lobby = myBlobbyLobby(); const noMe = !myId();
-  return `<div class="card stack arcade-lobby-card"><div class="row-between arcade-lobby-header" style="gap:var(--space-3);">${arcadeLobbyTitleHtml('blobby', 'Lobby', [
-      { label: 'Ziel', text: 'Erreiche zuerst die Punktzahl.' },
-      { label: 'Steuerung', text: 'Pfeiltasten.' },
-    ])}
-    <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="blobby-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="blobby-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div></div>
-    ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}${lobbyList()}${hostStart()}</div>`;
+  return `<div class="card stack arcade-lobby-card">
+    ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
+    ${lobbyList()}
+    <div class="arcade-lobby-create-actions">
+      ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="blobby-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
+      <button type="button" class="btn btn-primary btn-sm" id="blobby-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+    </div>
+    ${hostStart()}
+  </div>`;
 }
 export async function leaveMyBlobbyLobby() {
   const lobby = myBlobbyLobby();

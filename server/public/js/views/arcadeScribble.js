@@ -21,7 +21,7 @@ import { confirmDialog } from '../modal.js';
 import { getToken } from '../api.js';
 import { icon } from '../icons.js';
 import { arcadeLobbyEntryHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, arcadeLobbyTitleHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
 const SWATCHES = [
   '#1a1a1a',
@@ -912,7 +912,7 @@ function renderLobbyList() {
             <button type="button" class="btn btn-sm btn-equal" data-scribble-leave="${l.id}">Verlassen</button>`
           : '';
       const joinAction = !joined && !isHost
-        ? `<button type="button" class="btn btn-sm btn-equal btn-primary" data-scribble-join="${l.id}">Beitreten</button>`
+        ? `<button type="button" class="btn btn-sm btn-primary" data-scribble-join="${l.id}">Beitreten</button>`
         : '';
       return arcadeLobbyEntryHtml(l, { joinAction, footerActions });
     })
@@ -954,15 +954,12 @@ export function renderScribbleLobbyCard() {
   const noMe = !myId();
   return `
     <div class="card stack arcade-lobby-card">
-      <div class="row-between arcade-lobby-header" style="gap:var(--space-3);">
-        ${arcadeLobbyTitleHtml('scribble', 'Lobby', [
-          { label: 'Ziel', text: 'Wörter erraten und Punkte sammeln.' },
-          { label: 'Steuerung', text: 'Zeichnen + Tippen.' },
-        ])}
-        <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="scribble-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="scribble-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div>
-      </div>
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
       ${renderLobbyList()}
+      <div class="arcade-lobby-create-actions">
+        ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="scribble-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
+        <button type="button" class="btn btn-primary btn-sm" id="scribble-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+      </div>
       ${hostStartHtml()}
     </div>`;
 }

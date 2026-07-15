@@ -7,7 +7,7 @@ import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { allLobbyReady, arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, arcadeLobbyTitleHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
 const W = 960;
 const H = 540;
@@ -113,7 +113,7 @@ function lobbyList() {
           <button type="button" class="btn btn-sm btn-equal" data-pong-leave="${lobby.id}">Verlassen</button>`
         : '';
     const joinAction = !joined && !isHost
-      ? `<button type="button" class="btn btn-sm btn-equal btn-primary" data-pong-join="${lobby.id}" ${full ? 'disabled' : ''}>Beitreten</button>`
+      ? `<button type="button" class="btn btn-sm btn-primary" data-pong-join="${lobby.id}" ${full ? 'disabled' : ''}>Beitreten</button>`
       : '';
     return arcadeLobbyEntryHtml(lobby, { playerLimit: 2, joinAction, footerActions, full });
   }).join('');
@@ -123,13 +123,13 @@ function hostStart() {
   const lobby = myPongLobby();
   if (!lobby || lobby.host.id !== myId()) return '';
   const ready = lobby.players.length === 2;
-  const hint = !ready ? 'Warte auf einen Gegner…' : allLobbyReady(lobby) ? 'Gegner ist bereit.' : 'Gegner ist da — noch nicht bereit.';
+  const hint = ready ? (allLobbyReady(lobby) ? 'Gegner ist bereit.' : 'Gegner ist da — noch nicht bereit.') : '';
   return `<div class="stack" style="gap:var(--space-2);border-top:1px solid var(--border);padding-top:var(--space-3);">
     <div class="field-label">Punkte bis Sieg</div>
     <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
       ${[5, 7, 10, 15].map((score) => `<label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="pong-target" value="${score}" ${score === targetScore ? 'checked' : ''} />${score}</label>`).join('')}
     </div>
-    <div class="muted" style="font-size:var(--font-size-xs);">${hint}</div>
+    ${hint ? `<div class="muted" style="font-size:var(--font-size-xs);">${hint}</div>` : ''}
     <button type="button" class="btn btn-primary btn-block" id="pong-start" ${ready ? '' : 'disabled'}>Start</button>
   </div>`;
 }
@@ -137,12 +137,15 @@ function hostStart() {
 export function renderPongLobbyCard() {
   const lobby = myPongLobby();
   const noMe = !myId();
-  return `<div class="card stack arcade-lobby-card"><div class="row-between arcade-lobby-header" style="gap:var(--space-3);">${arcadeLobbyTitleHtml('pong', 'Lobby', [
-      { label: 'Ziel', text: 'Erreiche zuerst die Punktzahl.' },
-      { label: 'Steuerung', text: 'Pfeiltasten.' },
-    ])}
-    <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="pong-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="pong-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div></div>
-    ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}${lobbyList()}${hostStart()}</div>`;
+  return `<div class="card stack arcade-lobby-card">
+    ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
+    ${lobbyList()}
+    <div class="arcade-lobby-create-actions">
+      ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="pong-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
+      <button type="button" class="btn btn-primary btn-sm" id="pong-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+    </div>
+    ${hostStart()}
+  </div>`;
 }
 
 export async function leaveMyPongLobby() {

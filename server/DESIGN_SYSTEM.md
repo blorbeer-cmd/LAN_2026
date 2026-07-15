@@ -297,16 +297,18 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   rows share one minimum height; the join action stays compact inside it. A driver's „Bearbeiten“
   action uses the primary button treatment next to the destructive delete action.
 - **Arcade** — The launcher follows the grouped-page hierarchy with separate full-width cards for
-  „Spiele“, optional running games, optional open lobbies, the selected game and „Statistiken“.
+  „Spiele“, optional running games, the selected game and „Statistiken“.
   Game choices are horizontal nested cards with their Lucide game icon, name and an explicit
   „… offen“ lobby badge; they form one column on phones and exactly two from `--bp-md`. Running
-  games and open-lobby cards reuse the same responsive two-column rhythm. Selecting a game keeps
-  its lobby workflow inside a dedicated main group. The selected game name is not repeated inside
-  that group: its concise heading is „Lobby“. Every open lobby is a nested card modeled on the
+  games reuse the same responsive two-column rhythm. The tile badge is the only separate open-lobby
+  overview; selecting a game reveals all of its lobbies in the dedicated main group. Goal and
+  controls live in one tooltip directly beside that selected game's title instead of a second
+  „Lobby“ heading. Every open lobby is a nested card modeled on the
   carpool cards, with the host's lobby name and player count in the header, stable player rows with
   role/readiness at the right, a direct join action in a free-slot row and host/member actions in a
-  separated full-width footer. Goal and controls are explanation text, so one
-  info tooltip directly beside the lobby title replaces the former standalone information cards.
+  separated full-width footer. Host labels, free labels and join actions share one aligned action
+  column and row height. The „Gegen KI“ and „Lobby öffnen“ actions follow the lobby cards in one
+  equal-width action row; an empty lobby no longer adds a redundant waiting sentence.
   Statistics use the concise title „Statistiken“ and place the selected game's results in a plain
   nested card without an accent rail; player rows reuse `.leaderboard-list-grid` for the shared
   one-/two-column ranking presentation and spell out wins and losses in German.

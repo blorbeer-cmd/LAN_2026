@@ -782,7 +782,7 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.waitForSelector('text=Versand 24.12., 22:00 Uhr');
 });
 
-test('Arcade: open a quiz lobby, see it listed and on Home, then close it again', async (t) => {
+test('Arcade: open a quiz lobby, see it on Home, then close it again', async (t) => {
   const players = (await (await fetch(`${BASE_URL}/api/players`)).json()) as Array<{ id: string; name: string }>;
   const guest = players.find((player) => player.name === 'E2E Bob');
   assert.ok(guest, 'expected "E2E Bob" (added by an earlier test) to exist');
@@ -812,12 +812,7 @@ test('Arcade: open a quiz lobby, see it listed and on Home, then close it again'
   // needed there: the launcher force-expands the game whose lobby you're in.
   await page.click('[data-view="home"]');
   await page.click('button:has-text("Gaming-Quiz-Lobby offen")');
-  await page.waitForSelector('.arcade-lobby-grid');
-  assert.equal(
-    await page.locator('.arcade-lobby-grid').evaluate((element) => getComputedStyle(element).display),
-    'grid',
-    'open lobbies should render in the compact overview grid'
-  );
+  await page.waitForSelector('#arcade-active-game-title:has-text("Gaming-Quiz")');
 
   // The host sees their own lobby with a "Schließen" button instead of a
   // join button/"Drin" badge - closing was previously impossible (the only
