@@ -118,7 +118,7 @@ agentDownloadRouter.get('/', ...withQueryPlayerIdentity, (req, res) => {
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
-  const player = db.prepare('SELECT id, name, api_key FROM players WHERE id = ?').get(playerId) as
+  const player = db.prepare('SELECT id, name, api_key FROM players WHERE id = ? AND deactivated_at IS NULL').get(playerId) as
     | PlayerRow
     | undefined;
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });

@@ -10,6 +10,7 @@ import { lockMyIdToSession } from './whoami.js';
 import { escapeHtml } from './format.js';
 import { icon } from './icons.js';
 import { detachPushSubscription, rebindExistingPushSubscription } from './push.js';
+import { setAdmin } from './admin.js';
 
 function paramFromUrl(name) {
   return new URLSearchParams(location.search).get(name);
@@ -26,6 +27,7 @@ export async function logout() {
   try {
     await detachPushSubscription().catch(() => {});
     await api.auth.logout();
+    setAdmin(false);
   } finally {
     // Simplest correct reset: every piece of client state that assumed a
     // logged-in identity (whoami's stored id, in-memory view state, socket
@@ -117,6 +119,7 @@ export async function ensureLogin() {
     try {
       const me = await api.me();
       lockMyIdToSession(me.id);
+      setAdmin(Boolean(me.isAdmin));
       await rebindExistingPushSubscription(me.id).catch(() => {});
       return;
     } catch {
@@ -170,6 +173,7 @@ export async function ensureLogin() {
           me = await api.auth.login({ name, password });
         }
         lockMyIdToSession(me.id);
+        setAdmin(Boolean(me.isAdmin));
         await rebindExistingPushSubscription(me.id).catch(() => {});
         // Drop the invite/claim/reset code from the URL once it's been used —
         // reloading the page must not re-attempt (and fail) the same

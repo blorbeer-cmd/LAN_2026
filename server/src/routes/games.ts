@@ -10,7 +10,8 @@ import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString, isIntInRange, isValidAvatar } from '../validation';
 import { requireAdmin } from '../auth';
-import { withBodyPlayerIdentity } from '../sessions';
+import { writeAdminAudit } from '../adminAudit';
+import { requireRecentReauthentication, withBodyPlayerIdentity } from '../sessions';
 
 export const gamesRouter = Router();
 
@@ -284,7 +285,7 @@ gamesRouter.post('/:id/promote', requireAdmin, (req, res) => {
 
 // DELETE /api/games/:id - cascades to process names, skills, preferences,
 // votes, matches; sets live_status.game_id to NULL for anyone currently on it.
-gamesRouter.delete('/:id', (req, res) => {
+gamesRouter.delete('/:id', requireAdmin, requireRecentReauthentication, (req, res) => {
   const existing = db.prepare('SELECT arcade_key FROM games WHERE id = ?').get(req.params.id) as
     | { arcade_key: string | null }
     | undefined;
@@ -295,6 +296,7 @@ gamesRouter.delete('/:id', (req, res) => {
   if (result.changes === 0) {
     return res.status(404).json({ error: 'Spiel nicht gefunden.' });
   }
+  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'game_deleted', targetType: 'game', targetId: req.params.id });
   broadcast(Events.gamesChanged, null);
   broadcast(Events.liveStatusChanged, null);
   res.status(204).end();

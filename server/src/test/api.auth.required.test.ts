@@ -74,6 +74,12 @@ test('required auth binds personal APIs to the session and protects API keys', (
       assert.equal('api_key' in foreignProfile.body, false);
       const ownProfile = await request(app).get('/api/players/' + alice.account.id).set('Cookie', alice.cookie);
       assert.equal(typeof ownProfile.body.api_key, 'string');
+      const oldAliceApiKey = ownProfile.body.api_key;
+      const rotatedKey = await request(app).post('/api/players/' + alice.account.id + '/api-key/rotate').set('Cookie', alice.cookie);
+      assert.equal(rotatedKey.status, 200, JSON.stringify(rotatedKey.body));
+      assert.notEqual(rotatedKey.body.apiKey, oldAliceApiKey);
+      assert.equal((await request(app).post('/api/agent/report').set('x-api-key', oldAliceApiKey).send({ processNames: [] })).status, 401);
+      assert.equal((await request(app).post('/api/agent/report').set('x-api-key', rotatedKey.body.apiKey).send({ processNames: [] })).status, 200);
 
       const foreignPatch = await request(app).patch('/api/players/' + bob.account.id).set('Cookie', alice.cookie).send({ name: 'Spoofed Bob' });
       assert.equal(foreignPatch.status, 403);
@@ -125,8 +131,45 @@ test('required auth binds personal APIs to the session and protects API keys', (
       const isolatedStepUp = await request(app).delete('/api/players/' + bob.account.id).set('Cookie', cookie(secondAdminLogin));
       assert.equal(isolatedStepUp.status, 403);
       assert.equal(isolatedStepUp.body.code, 'reauth_required');
-      const deleteAfterStepUp = await request(app).delete('/api/players/' + bob.account.id).set('Cookie', adminCookie);
-      assert.equal(deleteAfterStepUp.status, 204);
+      const hardDeleteRealPlayer = await request(app).delete('/api/players/' + bob.account.id).set('Cookie', adminCookie);
+      assert.equal(hardDeleteRealPlayer.status, 409);
+      const bobFull = await request(app).get('/api/players/' + bob.account.id).set('Cookie', adminCookie);
+      const deactivate = await request(app).post('/api/players/' + bob.account.id + '/deactivate').set('Cookie', adminCookie);
+      assert.equal(deactivate.status, 204, JSON.stringify(deactivate.body));
+      assert.equal((await request(app).get('/api/me').set('Cookie', bob.cookie)).status, 401);
+      assert.equal((await request(app).post('/api/agent/report').set('x-api-key', bobFull.body.api_key).send({ processNames: [] })).status, 401);
+      const activeRoster = await request(app).get('/api/players');
+      assert.equal(activeRoster.body.some((player) => player.id === bob.account.id), false);
+      const adminRoster = await request(app).get('/api/admin/players').set('Cookie', adminCookie);
+      assert.ok(adminRoster.body.find((player) => player.id === bob.account.id).deactivated_at);
+      const reactivate = await request(app).post('/api/players/' + bob.account.id + '/reactivate').set('Cookie', adminCookie);
+      assert.equal(reactivate.status, 204);
+      const bobRelogin = await request(app).post('/api/auth/login').send({ name: 'Required Bob', password: 'required bob secure passphrase' });
+      assert.equal(bobRelogin.status, 200);
+
+      const nonAdminAdminRoute = await request(app).get('/api/admin/players').set('Cookie', cookie(bobRelogin));
+      assert.equal(nonAdminAdminRoute.status, 403);
+      const audit = await request(app).get('/api/admin/audit').set('Cookie', adminCookie);
+      assert.equal(audit.status, 200);
+      assert.ok(audit.body.some((entry) => entry.action === 'player_deactivated' && entry.target_id === bob.account.id));
+      assert.ok(audit.body.some((entry) => entry.action === 'api_key_rotated' && entry.target_id === alice.account.id));
+
+      const promoteAliceAgain = await request(app).patch('/api/players/' + alice.account.id).set('Cookie', adminCookie).send({ isAdmin: true });
+      assert.equal(promoteAliceAgain.status, 200, JSON.stringify(promoteAliceAgain.body));
+      const aliceStepUp = await request(app).post('/api/auth/reauth').set('Cookie', alice.cookie).send({
+        password: 'required alice secure passphrase',
+      });
+      assert.equal(aliceStepUp.status, 204);
+      const concurrentRevocations = await Promise.all([
+        request(app).patch('/api/players/' + alice.account.id).set('Cookie', adminCookie).send({ isAdmin: false }),
+        request(app).patch('/api/players/' + admin.body.id).set('Cookie', alice.cookie).send({ isAdmin: false }),
+      ]);
+      assert.equal(concurrentRevocations.filter((response) => response.status === 200).length, 1);
+      assert.ok(concurrentRevocations.every((response) => [200, 403, 409].includes(response.status)));
+      const activeAdminCount = db.prepare(
+        'SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL'
+      ).get().count;
+      assert.equal(activeAdminCount, 1);
     })().catch((error) => {
       console.error(error);
       process.exit(1);

@@ -12,10 +12,33 @@ import { showToast } from '../toast.js';
 import { isAdmin, setAdmin } from '../admin.js';
 import { withStepUp } from '../reauth.js';
 import { icon } from '../icons.js';
+import { authRequired } from '../authGate.js';
+import { getMyId } from '../whoami.js';
 
 let agentDiagnostics = null;
 let diagnosticsLoading = false;
 let seedBusy = false;
+let adminPlayers = null;
+let adminPlayersLoading = false;
+
+async function loadAdminPlayers(ctx, force = false) {
+  if (adminPlayersLoading || (adminPlayers && !force)) return;
+  adminPlayersLoading = true;
+  try {
+    adminPlayers = await api.admin.players();
+  } catch (error) {
+    showToast(error.message, { error: true });
+    adminPlayers = [];
+  } finally {
+    adminPlayersLoading = false;
+    ctx.rerender();
+  }
+}
+
+async function refreshAdminData(ctx) {
+  await ctx.refresh();
+  if (authRequired) await loadAdminPlayers(ctx, true);
+}
 
 async function loadAgentDiagnostics(ctx, force = false) {
   if (diagnosticsLoading || (agentDiagnostics && !force)) return;
@@ -37,7 +60,7 @@ async function createTestUsers(count, ctx) {
   try {
     const res = await api.admin.createTestUsers(count);
     showToast(`${res.created.length} Test-Spieler angelegt – mit Sitzplatz, Skills, Bock und Spielzeit.`);
-    await ctx.refresh();
+    await refreshAdminData(ctx);
   } catch (err) {
     showToast(err.message, { error: true });
   } finally {
@@ -48,9 +71,10 @@ async function createTestUsers(count, ctx) {
 async function cleanupTestUsers(ctx) {
   if (!(await confirmDialog('Alle Test-Spieler und ihre Daten (Sitzplätze, Skills, Spielzeit) löschen?'))) return;
   try {
-    const res = await api.admin.cleanupTestUsers();
+    const res = await withStepUp(() => api.admin.cleanupTestUsers());
+    if (res === undefined) return;
     showToast(res.deleted > 0 ? `${res.deleted} Test-Spieler entfernt.` : 'Keine Test-Spieler vorhanden.');
-    await ctx.refresh();
+    await refreshAdminData(ctx);
   } catch (err) {
     showToast(err.message, { error: true });
   }
@@ -61,7 +85,7 @@ async function toggleAdmin(player, ctx) {
     const updated = await withStepUp(() => api.players.update(player.id, { isAdmin: !player.is_admin }));
     if (updated === undefined) return;
     showToast(player.is_admin ? `${player.name} ist kein Admin mehr.` : `${player.name} ist jetzt Admin.`);
-    await ctx.refresh();
+    await refreshAdminData(ctx);
   } catch (err) {
     showToast(err.message, { error: true });
   }
@@ -73,9 +97,36 @@ async function deletePlayer(player, ctx) {
     const removed = await withStepUp(() => api.players.remove(player.id));
     if (removed === undefined) return;
     showToast('Spieler gelöscht.');
-    await ctx.refresh();
+    await refreshAdminData(ctx);
   } catch (err) {
     showToast(err.message, { error: true });
+  }
+}
+
+async function deactivatePlayer(player, ctx) {
+  if (!(await confirmDialog(`Konto „${player.name}“ deaktivieren? Login, Agent, Push und offene Sitzungen werden sofort beendet; Historie und Statistiken bleiben erhalten.`, {
+    title: 'Konto deaktivieren',
+    confirmText: 'Deaktivieren',
+    danger: true,
+  }))) return;
+  try {
+    const result = await withStepUp(() => api.players.deactivate(player.id));
+    if (result === undefined) return;
+    showToast('Konto deaktiviert.');
+    await refreshAdminData(ctx);
+  } catch (error) {
+    showToast(error.message, { error: true });
+  }
+}
+
+async function reactivatePlayer(player, ctx) {
+  try {
+    const result = await withStepUp(() => api.players.reactivate(player.id));
+    if (result === undefined) return;
+    showToast('Konto reaktiviert. Die Admin-Rolle bleibt aus Sicherheitsgründen entzogen.');
+    await refreshAdminData(ctx);
+  } catch (error) {
+    showToast(error.message, { error: true });
   }
 }
 
@@ -98,7 +149,8 @@ function renderActivate(container) {
 }
 
 function renderPanel(container, ctx) {
-  const players = state.players || [];
+  if (authRequired && adminPlayers === null && !adminPlayersLoading) loadAdminPlayers(ctx);
+  const players = authRequired ? adminPlayers || [] : state.players || [];
   const testCount = players.filter((p) => p.is_test).length;
   if (agentDiagnostics === null && !diagnosticsLoading) loadAgentDiagnostics(ctx);
   const rows = players
@@ -110,10 +162,11 @@ function renderPanel(container, ctx) {
           <span class="player-name">${escapeHtml(p.name)}</span>
           ${p.is_admin ? '<span class="badge badge-playing">Admin</span>' : ''}
           ${p.is_test ? '<span class="badge badge-paused">Test</span>' : ''}
+          ${p.deactivated_at ? '<span class="badge badge-offline">Deaktiviert</span>' : ''}
         </span>
         <span class="row" style="gap:var(--space-2);">
-          <button type="button" class="btn btn-sm" data-toggle-admin="${p.id}">${p.is_admin ? 'Admin entziehen' : 'Admin machen'}</button>
-          <button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">Löschen</button>
+          ${p.deactivated_at ? `<button type="button" class="btn btn-sm" data-reactivate-player="${p.id}">Reaktivieren</button>` : `<button type="button" class="btn btn-sm" data-toggle-admin="${p.id}" ${p.is_test ? 'disabled' : ''}>${p.is_admin ? 'Admin entziehen' : 'Admin machen'}</button>`}
+          ${p.deactivated_at ? '' : p.is_test ? `<button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">Löschen</button>` : `<button type="button" class="btn btn-sm btn-danger" data-deactivate-player="${p.id}">Deaktivieren</button>`}
         </span>
       </div>`
     )
@@ -146,7 +199,7 @@ function renderPanel(container, ctx) {
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <div class="row-between">
       <h1 class="view-title">${icon('shield')} Admin</h1>
-      <button type="button" class="btn btn-sm" id="admin-leave">Modus verlassen</button>
+      ${authRequired ? '' : '<button type="button" class="btn btn-sm" id="admin-leave">Modus verlassen</button>'}
     </div>
 
     <div class="section-title">Test-Spieler</div>
@@ -176,8 +229,8 @@ function renderPanel(container, ctx) {
     </div>
   `;
 
-  container.querySelector('#admin-leave').addEventListener('click', () => {
-    setAdmin(false); // app.js reacts: banner disappears, data refetched
+  container.querySelector('#admin-leave')?.addEventListener('click', () => {
+    setAdmin(false);
     showToast('Admin-Modus verlassen.');
   });
 
@@ -192,20 +245,49 @@ function renderPanel(container, ctx) {
 
   container.querySelectorAll('[data-toggle-admin]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const player = (state.players || []).find((p) => p.id === btn.dataset.toggleAdmin);
+      const player = players.find((p) => p.id === btn.dataset.toggleAdmin);
       if (player) toggleAdmin(player, ctx);
     });
   });
 
   container.querySelectorAll('[data-delete-player]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const player = (state.players || []).find((p) => p.id === btn.dataset.deletePlayer);
+      const player = players.find((p) => p.id === btn.dataset.deletePlayer);
       if (player) deletePlayer(player, ctx);
+    });
+  });
+  container.querySelectorAll('[data-deactivate-player]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const player = players.find((p) => p.id === btn.dataset.deactivatePlayer);
+      if (player) deactivatePlayer(player, ctx);
+    });
+  });
+  container.querySelectorAll('[data-reactivate-player]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const player = players.find((p) => p.id === btn.dataset.reactivatePlayer);
+      if (player) reactivatePlayer(player, ctx);
     });
   });
 }
 
 export function renderAdmin(container, ctx) {
+  if (authRequired) {
+    const current = (state.players || []).find((player) => player.id === getMyId());
+    if (!current?.is_admin) {
+      if (isAdmin()) setAdmin(false);
+      container.innerHTML = `
+        <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
+        <h1 class="view-title">${icon('shield')} Admin</h1>
+        <div class="card"><p class="muted">Dieses Konto hat keine Admin-Rechte.</p></div>`;
+      return;
+    }
+    if (!isAdmin()) {
+      setAdmin(true);
+      return;
+    }
+    renderPanel(container, ctx);
+    return;
+  }
   if (isAdmin()) renderPanel(container, ctx);
   else renderActivate(container);
 }

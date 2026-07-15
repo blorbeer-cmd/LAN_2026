@@ -4,7 +4,7 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
-import { broadcast, Events } from '../realtime';
+import { broadcast, disconnectPlayerSockets, Events } from '../realtime';
 import { isNonEmptyString, isHexColor, isValidAvatar } from '../validation';
 import { getTrackingEventId } from '../events';
 import { formatDurationMs, computePlaytime, type PlaySession } from '../playtime';
@@ -15,6 +15,10 @@ import {
 } from '../sessionStats';
 import { computeAwards } from '../awards';
 import { hasRecentReauthentication, requireConfiguredUser, withParamPlayerIdentity } from '../sessions';
+import { requireAdmin } from '../auth';
+import { clearPlayerLiveStatus } from '../liveStatus';
+import { writeAdminAudit } from '../adminAudit';
+import { voidOutstandingInvites } from '../invites';
 
 export const playersRouter = Router();
 
@@ -29,6 +33,8 @@ interface PlayerRow {
   api_key: string;
   tracking_paused: number;
   is_admin: number;
+  is_test: number;
+  deactivated_at: number | null;
   created_at: number;
   agent_last_seen?: number | null;
 }
@@ -64,7 +70,7 @@ function toPublicPlayer(row: PlayerRow) {
 // GET /api/players - roster without API keys.
 playersRouter.get('/', (_req, res) => {
   const rows = db
-    .prepare('SELECT * FROM players ORDER BY name COLLATE NOCASE')
+    .prepare('SELECT * FROM players WHERE deactivated_at IS NULL ORDER BY name COLLATE NOCASE')
     .all() as PlayerRow[];
   res.json(rows.map(toPublicPlayer));
 });
@@ -81,6 +87,9 @@ playersRouter.get('/:id', requireConfiguredUser, (req, res) => {
     | PlayerRow
     | undefined;
   if (!row) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  if (row.deactivated_at !== null && !req.player?.is_admin) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
   const maySeeApiKey = !req.player || req.player.id === row.id || Boolean(req.player.is_admin);
   res.json(maySeeApiKey ? row : toPublicPlayer(row));
 });
@@ -122,6 +131,8 @@ playersRouter.post('/', requireConfiguredUser, (req, res) => {
     // New players are regular participants until an existing admin grants
     // the moderation flag. Arcade AI matches rely on this flag too.
     is_admin: 0,
+    is_test: 0,
+    deactivated_at: null,
     created_at: Date.now(),
   };
 
@@ -173,6 +184,9 @@ playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   if (req.player && isAdmin !== undefined && !req.player.is_admin) {
     return res.status(403).json({ error: 'Nur Admins können Rollen ändern.' });
   }
+  if (isAdmin === true && existing.is_test) {
+    return res.status(409).json({ error: 'Test-Spieler können keine Admin-Rechte erhalten.' });
+  }
   if (
     req.player &&
     isAdmin !== undefined &&
@@ -196,24 +210,39 @@ playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   const nextTrackingPaused = trackingPaused !== undefined ? (trackingPaused ? 1 : 0) : existing.tracking_paused;
   const nextIsAdmin = isAdmin !== undefined ? (isAdmin ? 1 : 0) : existing.is_admin;
 
-  if (req.player && existing.is_admin && nextIsAdmin === 0) {
-    const adminCount = (db.prepare('SELECT COUNT(*) AS count FROM players WHERE is_admin = 1').get() as { count: number }).count;
-    if (adminCount <= 1) {
-      return res.status(409).json({ error: 'Der letzte Admin kann seine Rolle nicht verlieren.' });
+  const roleChanged = nextIsAdmin !== existing.is_admin;
+  const update = db.transaction(() => {
+    if (roleChanged && existing.is_admin && nextIsAdmin === 0) {
+      const adminCount = (
+        db.prepare('SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL').get() as {
+          count: number;
+        }
+      ).count;
+      if (adminCount <= 1) return false;
     }
-  }
-
-  db.prepare('UPDATE players SET name = ?, real_name = ?, color = ?, avatar = ?, tracking_paused = ?, is_admin = ? WHERE id = ?').run(
-    nextName,
-    nextRealName,
-    nextColor,
-    nextAvatar,
-    nextTrackingPaused,
-    nextIsAdmin,
-    existing.id
-  );
+    db.prepare('UPDATE players SET name = ?, real_name = ?, color = ?, avatar = ?, tracking_paused = ?, is_admin = ? WHERE id = ?').run(
+      nextName,
+      nextRealName,
+      nextColor,
+      nextAvatar,
+      nextTrackingPaused,
+      nextIsAdmin,
+      existing.id
+    );
+    if (roleChanged) {
+      writeAdminAudit({
+        actorPlayerId: req.player?.id,
+        action: nextIsAdmin ? 'admin_granted' : 'admin_revoked',
+        targetType: 'player',
+        targetId: existing.id,
+      });
+    }
+    return true;
+  })();
+  if (!update) return res.status(409).json({ error: 'Der letzte Admin kann seine Rolle nicht verlieren.' });
 
   broadcast(Events.playersChanged, null);
+  if (roleChanged) disconnectPlayerSockets(existing.id);
   res.json({
     ...existing,
     name: nextName,
@@ -225,34 +254,94 @@ playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   });
 });
 
-// DELETE /api/players/:id - removes the player and cascades to their skills/
-// live status/votes (enforced by SQLite foreign keys).
-playersRouter.delete('/:id', requireConfiguredUser, (req, res) => {
-  if (req.player && !req.player.is_admin) {
-    return res.status(403).json({ error: 'Nur Admins können Spieler löschen.' });
-  }
+playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
   if (req.player && !hasRecentReauthentication(req.sessionId)) {
     return res.status(403).json({
-      error: 'Bitte bestätige dein Passwort, bevor du Spieler löschst.',
+      error: 'Bitte bestätige dein Passwort, bevor du ein Konto deaktivierst.',
       code: 'reauth_required',
     });
   }
-  if (req.player) {
-    const target = db.prepare('SELECT is_admin FROM players WHERE id = ?').get(req.params.id) as
-      | { is_admin: number }
-      | undefined;
-    if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  const target = db.prepare('SELECT id, is_admin, is_test, deactivated_at FROM players WHERE id = ?').get(req.params.id) as
+    | Pick<PlayerRow, 'id' | 'is_admin' | 'is_test' | 'deactivated_at'>
+    | undefined;
+  if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  if (target.is_test) return res.status(409).json({ error: 'Test-Spieler werden vollständig gelöscht.' });
+  if (target.deactivated_at !== null) return res.status(409).json({ error: 'Dieses Konto ist bereits deaktiviert.' });
+
+  const now = Date.now();
+  const deactivated = db.transaction(() => {
     if (target.is_admin) {
-      const adminCount = (db.prepare('SELECT COUNT(*) AS count FROM players WHERE is_admin = 1').get() as { count: number }).count;
-      if (adminCount <= 1) {
-        return res.status(409).json({ error: 'Der letzte Admin kann nicht gelöscht werden.' });
-      }
+      const adminCount = (
+        db.prepare('SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL').get() as {
+          count: number;
+        }
+      ).count;
+      if (adminCount <= 1) return false;
     }
+    db.prepare('UPDATE players SET deactivated_at = ?, is_admin = 0, tracking_paused = 1 WHERE id = ?').run(now, target.id);
+    db.prepare('DELETE FROM sessions WHERE player_id = ?').run(target.id);
+    db.prepare('DELETE FROM push_subscriptions WHERE player_id = ?').run(target.id);
+    db.prepare('DELETE FROM agent_diagnostics WHERE player_id = ?').run(target.id);
+    clearPlayerLiveStatus(target.id, now);
+    voidOutstandingInvites(target.id, 'claim');
+    voidOutstandingInvites(target.id, 'reset');
+    writeAdminAudit({ actorPlayerId: req.player?.id, action: 'player_deactivated', targetType: 'player', targetId: target.id });
+    return true;
+  })();
+  if (!deactivated) return res.status(409).json({ error: 'Der letzte Admin kann nicht deaktiviert werden.' });
+  disconnectPlayerSockets(target.id);
+  broadcast(Events.playersChanged, null);
+  broadcast(Events.liveStatusChanged, null);
+  res.status(204).end();
+});
+
+playersRouter.post('/:id/reactivate', requireAdmin, (req, res) => {
+  if (req.player && !hasRecentReauthentication(req.sessionId)) {
+    return res.status(403).json({
+      error: 'Bitte bestätige dein Passwort, bevor du ein Konto reaktivierst.',
+      code: 'reauth_required',
+    });
   }
+  const result = db.prepare('UPDATE players SET deactivated_at = NULL WHERE id = ? AND deactivated_at IS NOT NULL').run(req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Deaktiviertes Konto nicht gefunden.' });
+  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'player_reactivated', targetType: 'player', targetId: req.params.id });
+  broadcast(Events.playersChanged, null);
+  res.status(204).end();
+});
+
+playersRouter.post('/:id/api-key/rotate', requireConfiguredUser, (req, res) => {
+  const target = db.prepare('SELECT id, deactivated_at FROM players WHERE id = ?').get(req.params.id) as
+    | { id: string; deactivated_at: number | null }
+    | undefined;
+  if (!target || target.deactivated_at !== null) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  if (req.player && req.player.id !== target.id && !req.player.is_admin) {
+    return res.status(403).json({ error: 'Du kannst nur deinen eigenen Agent-Key erneuern.' });
+  }
+  if (req.player?.is_admin && req.player.id !== target.id && !hasRecentReauthentication(req.sessionId)) {
+    return res.status(403).json({ error: 'Bitte bestätige dein Passwort.', code: 'reauth_required' });
+  }
+  const apiKey = nanoid(24);
+  db.prepare('UPDATE players SET api_key = ? WHERE id = ?').run(apiKey, target.id);
+  clearPlayerLiveStatus(target.id);
+  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'api_key_rotated', targetType: 'player', targetId: target.id });
+  broadcast(Events.liveStatusChanged, null);
+  res.json({ apiKey });
+});
+
+// Hard-delete is intentionally limited to disposable test identities. Real
+// participants are deactivated so historical matches and statistics remain.
+playersRouter.delete('/:id', requireAdmin, (req, res) => {
+  if (req.player && !hasRecentReauthentication(req.sessionId)) {
+    return res.status(403).json({ error: 'Bitte bestätige dein Passwort.', code: 'reauth_required' });
+  }
+  const target = db.prepare('SELECT is_test FROM players WHERE id = ?').get(req.params.id) as { is_test: number } | undefined;
+  if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  if (!target.is_test) return res.status(409).json({ error: 'Echte Spieler werden deaktiviert statt gelöscht.' });
   const result = db.prepare('DELETE FROM players WHERE id = ?').run(req.params.id);
   if (result.changes === 0) {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   }
+  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'test_player_deleted', targetType: 'player', targetId: req.params.id });
   broadcast(Events.playersChanged, null);
   res.status(204).end();
 });

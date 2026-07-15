@@ -75,8 +75,9 @@ export function createTestUsers(count: number): CreatedTestUser[] {
     );
 
     const insertPlayer = db.prepare(
-      // is_admin follows the everyone-is-admin default (see routes/players.ts).
-      'INSERT INTO players (id, name, color, avatar, api_key, tracking_paused, is_admin, is_test, created_at) VALUES (?, ?, ?, ?, ?, 0, 1, 1, ?)'
+      // Test identities never carry real admin privileges. Admins can act as
+      // them later without leaking their own role into the test account.
+      'INSERT INTO players (id, name, color, avatar, api_key, tracking_paused, is_admin, is_test, created_at) VALUES (?, ?, ?, ?, ?, 0, 0, 1, ?)'
     );
     const insertSkill = db.prepare('INSERT INTO skills (player_id, game_id, rating) VALUES (?, ?, ?)');
     const insertPreference = db.prepare('INSERT INTO preferences (player_id, game_id, rating) VALUES (?, ?, ?)');

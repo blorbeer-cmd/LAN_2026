@@ -17,6 +17,7 @@ interface PlayerBody {
   id: string;
   name: string;
   is_test: number;
+  is_admin: number;
 }
 
 test('POST /api/admin/test-users validates count', async () => {
@@ -38,6 +39,7 @@ test('POST /api/admin/test-users seeds players with seats, neighbors, ratings, a
   const testRows = (roster.body as PlayerBody[]).filter((p) => ids.includes(p.id));
   assert.equal(testRows.length, 4);
   assert.ok(testRows.every((p) => p.is_test === 1));
+  assert.ok(testRows.every((p) => p.is_admin === 0));
 
   // A skill and a Bock rating (1-10) for every game, per player.
   const games = (await request(app).get('/api/games')).body as Array<{ id: string }>;

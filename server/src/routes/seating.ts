@@ -30,7 +30,7 @@ interface PlayerRow {
 
 function getPlayers(): PlayerRow[] {
   return db
-    .prepare('SELECT id, name, real_name, color, avatar, is_test FROM players ORDER BY name COLLATE NOCASE')
+    .prepare('SELECT id, name, real_name, color, avatar, is_test FROM players WHERE deactivated_at IS NULL ORDER BY name COLLATE NOCASE')
     .all() as PlayerRow[];
 }
 
@@ -109,7 +109,7 @@ seatingRouter.get('/', (req, res) => {
     .prepare('SELECT player_id, neighbor_id FROM seat_neighbors WHERE event_id = ?')
     .all(filterEventId) as Array<{ player_id: string; neighbor_id: string }>;
 
-  const players = db.prepare('SELECT id, name, color, avatar, is_test FROM players').all() as PlayerRow[];
+  const players = db.prepare('SELECT id, name, color, avatar, is_test FROM players WHERE deactivated_at IS NULL').all() as PlayerRow[];
   const playerById = new Map(players.map((p) => [p.id, p]));
 
   // Neighbors are declared per-direction (A says B, independent of whether

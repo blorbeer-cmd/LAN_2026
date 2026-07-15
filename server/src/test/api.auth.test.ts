@@ -10,6 +10,7 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { createInvite } from '../invites';
 import { SESSION_COOKIE_NAME } from '../sessions';
+import { db } from '../db';
 
 const app = createApp();
 
@@ -282,6 +283,10 @@ test('registered players and invite creators remain deletable', async () => {
     .post('/api/auth/register')
     .send({ code: invite.code, name: 'Disposable Registered Player', password: 'disposable password' });
   assert.equal(registered.status, 201);
+
+  // Hard-delete remains available for disposable/test identities, which also
+  // pins the invite audit foreign-key behavior this test targets.
+  db.prepare('UPDATE players SET is_test = 1 WHERE id IN (?, ?)').run(creator.body.id, registered.body.id);
 
   assert.equal((await request(app).delete(`/api/players/${creator.body.id}`)).status, 204);
   assert.equal((await request(app).delete(`/api/players/${registered.body.id}`)).status, 204);

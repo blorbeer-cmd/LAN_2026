@@ -40,7 +40,7 @@ agentRouter.post('/report', (req, res) => {
     return res.status(401).json({ error: 'API-Key fehlt (Header x-api-key).' });
   }
 
-  const player = db.prepare('SELECT id, name, tracking_paused FROM players WHERE api_key = ?').get(apiKey) as
+  const player = db.prepare('SELECT id, name, tracking_paused FROM players WHERE api_key = ? AND deactivated_at IS NULL').get(apiKey) as
     | PlayerRow
     | undefined;
   if (!player) {
@@ -222,7 +222,7 @@ agentRouter.post('/tracking-paused', (req, res) => {
     return res.status(401).json({ error: 'API-Key fehlt (Header x-api-key).' });
   }
 
-  const player = db.prepare('SELECT id FROM players WHERE api_key = ?').get(apiKey) as { id: string } | undefined;
+  const player = db.prepare('SELECT id FROM players WHERE api_key = ? AND deactivated_at IS NULL').get(apiKey) as { id: string } | undefined;
   if (!player) {
     return res.status(401).json({ error: 'Ungültiger API-Key.' });
   }

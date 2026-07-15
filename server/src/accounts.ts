@@ -67,6 +67,8 @@ export function verifyPasswordConstantTime(password: string, stored: string | nu
 // to decide whether the recovery code is still allowed to mint the first
 // admin, or whether that door should already be closed.
 export function hasClaimedAdmin(): boolean {
-  const row = db.prepare('SELECT 1 FROM players WHERE is_admin = 1 AND password_hash IS NOT NULL LIMIT 1').get();
+  const row = db
+    .prepare('SELECT 1 FROM players WHERE is_admin = 1 AND password_hash IS NOT NULL AND deactivated_at IS NULL LIMIT 1')
+    .get();
   return Boolean(row);
 }

@@ -89,6 +89,9 @@ test('PATCH /api/players/:id toggles is_admin and validates the type', async () 
   const single = await request(app).get(`/api/players/${id}`);
   assert.equal(single.body.is_admin, 1);
 
+  const second = await request(app).post('/api/players').send({ name: 'SecondAdminTest' });
+  assert.equal((await request(app).patch(`/api/players/${second.body.id}`).send({ isAdmin: true })).status, 200);
+
   const revoke = await request(app).patch(`/api/players/${id}`).send({ isAdmin: false });
   assert.equal(revoke.status, 200);
   assert.equal(revoke.body.is_admin, 0);

@@ -71,7 +71,7 @@ export function getLiveBoard(): LiveBoardEntry[] {
   const now = Date.now();
 
   const players = db
-    .prepare('SELECT id, name, color, avatar FROM players ORDER BY name COLLATE NOCASE')
+    .prepare('SELECT id, name, color, avatar FROM players WHERE deactivated_at IS NULL ORDER BY name COLLATE NOCASE')
     .all() as Array<{ id: string; name: string; color: string; avatar: string | null }>;
 
   const statusRows = db

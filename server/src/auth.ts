@@ -7,6 +7,8 @@
 
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { config } from './config';
+import { requireUser } from './sessions';
+import { writeAdminAudit } from './adminAudit';
 
 // Reads the shared token from either a header or query param. The frontend
 // stores it in localStorage and sends it as a header on every request.
@@ -58,10 +60,32 @@ export function createAdminGuard(expectedPin: string): RequestHandler {
 }
 
 // Default admin guard wired to the configured PIN, used by the running server.
-export const requireAdmin = createAdminGuard(config.adminPin);
+export const requireAdmin: RequestHandler = (req, res, next): void => {
+  if (config.authMode === 'legacy') {
+    // Legacy mode deliberately preserves the pre-account trust model. The
+    // retired ADMIN_PIN is no longer a second, client-held security state.
+    next();
+    return;
+  }
+  requireUser(req, res, () => {
+    if (!req.player?.is_admin) {
+      writeAdminAudit({
+        actorPlayerId: req.player?.id,
+        action: 'access_denied',
+        targetType: 'route',
+        targetId: `${req.method} ${req.path}`,
+        details: { status: 403, requiredRole: 'admin' },
+      });
+      res.status(403).json({ error: 'Nur für Admins.' });
+      return;
+    }
+    next();
+  });
+};
 
 // Whether an admin PIN is configured at all (false = open mode). The frontend
 // uses this to decide whether to prompt for a PIN before enabling admin mode.
 export function adminPinRequired(pin: string = config.adminPin): boolean {
-  return Boolean(pin);
+  void pin;
+  return false;
 }

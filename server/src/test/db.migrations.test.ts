@@ -291,10 +291,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 28);
+  assert.equal(migrations.length, 29);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 28 }, (_, index) => index + 1),
+    Array.from({ length: 29 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -311,6 +311,40 @@ test('records the complete migration history and does not duplicate it on restar
   }
   const pushSeen = migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'push_log_seen'").get();
   assert.ok(pushSeen, 'push_log_seen should be created for legacy databases');
+  const playerColumns = migrated.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  assert.ok(playerColumns.some((column) => column.name === 'deactivated_at'));
+  assert.ok(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'admin_log'").get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('account hardening clears only unclaimed and test-user legacy admin flags', () => {
+  const dbFile = makeTempDbPath('admin-role-cutover');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const insert = fixture.prepare(
+    'INSERT INTO players (id, name, api_key, is_admin, is_test, password_hash, created_at) VALUES (?, ?, ?, 1, ?, ?, ?)'
+  );
+  insert.run('claimed-admin', 'Claimed Admin', 'claimed-admin-key', 0, 'stored-password-hash', Date.now());
+  insert.run('legacy-admin', 'Legacy Admin', 'legacy-admin-key', 0, null, Date.now());
+  insert.run('test-admin', 'Test Admin', 'test-admin-key', 1, 'stored-password-hash', Date.now());
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 29').run();
+  fixture.close();
+
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile, { readonly: true });
+  const roles = migrated.prepare('SELECT id, is_admin FROM players WHERE id IN (?, ?, ?) ORDER BY id').all(
+    'claimed-admin',
+    'legacy-admin',
+    'test-admin'
+  );
+  assert.deepEqual(roles, [
+    { id: 'claimed-admin', is_admin: 1 },
+    { id: 'legacy-admin', is_admin: 0 },
+    { id: 'test-admin', is_admin: 0 },
+  ]);
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

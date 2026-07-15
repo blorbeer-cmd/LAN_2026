@@ -37,19 +37,12 @@ export const config = {
   // is shut down without a clean stop message.
   offlineTimeoutMs: intFromEnv('OFFLINE_TIMEOUT_MS', 60_000),
 
-  // Optional PIN behind the admin-gated endpoints (grant admin, seed test
-  // users). Empty = open mode: the guard lets everyone through. The frontend
-  // currently never asks for a PIN — admin mode is a one-tap toggle (see
-  // docs/KONZEPT-TEST-USER.md) — so leave this empty until the PIN prompt
-  // returns; with a PIN set, admin actions from the UI would just fail.
+  // Deprecated compatibility setting. Required auth derives admin access
+  // exclusively from the session role; legacy keeps its old trust model.
   adminPin: process.env.ADMIN_PIN ?? '',
 
-  // Whether real per-user login is enforced anywhere yet. 'legacy' (default)
-  // keeps today's behavior untouched — the new /api/auth/* endpoints exist
-  // and work, but nothing else requires a session. Feature routes start
-  // gating on this once identity is wired through them (see
-  // docs/KONZEPT-USER-MANAGEMENT.md phase 2+); introduced now so that work
-  // doesn't need a second config plumbing pass.
+  // 'legacy' (default) preserves the pre-account behavior. 'required' makes
+  // session identity and roles authoritative across feature/admin routes.
   authMode: (process.env.AUTH_MODE === 'required' ? 'required' : 'legacy') as 'legacy' | 'required',
 
   // Session cookies are Secure by default (required for SameSite cookies to

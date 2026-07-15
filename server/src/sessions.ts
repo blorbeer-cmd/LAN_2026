@@ -10,6 +10,7 @@ import { nanoid } from 'nanoid';
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { db } from './db';
 import { config } from './config';
+import { writeAdminAudit } from './adminAudit';
 
 // __Host- prevents sibling subdomains from overwriting the production
 // session cookie. Plain-HTTP LAN deployments cannot use that prefix because
@@ -26,6 +27,7 @@ export interface AuthPlayer {
   avatar: string | null;
   is_admin: number;
   is_test: number;
+  deactivated_at: number | null;
   created_at: number;
 }
 
@@ -121,9 +123,9 @@ export function verifySession(rawToken: string): { session: SessionRow; player: 
   }
 
   const player = db
-    .prepare('SELECT id, name, color, avatar, is_admin, is_test, created_at FROM players WHERE id = ?')
+    .prepare('SELECT id, name, color, avatar, is_admin, is_test, deactivated_at, created_at FROM players WHERE id = ?')
     .get(session.player_id) as AuthPlayer | undefined;
-  if (!player) {
+  if (!player || player.deactivated_at !== null) {
     // Player row is gone (deleted) but the session outlived it somehow —
     // shouldn't happen given ON DELETE CASCADE, but fail safe.
     db.prepare('DELETE FROM sessions WHERE id = ?').run(session.id);
@@ -169,6 +171,17 @@ export function hasRecentReauthentication(sessionId: string | undefined): boolea
   return Boolean(row?.reauthenticated_at && row.reauthenticated_at > Date.now() - REAUTH_TTL_MS);
 }
 
+// Critical admin mutations require a password confirmation in required mode.
+// Legacy requests have no session-bound player and keep their existing trust
+// model until the deployment is cut over.
+export const requireRecentReauthentication: RequestHandler = (req, res, next): void => {
+  if (req.player && !hasRecentReauthentication(req.sessionId)) {
+    res.status(403).json({ error: 'Bitte bestätige dein Passwort.', code: 'reauth_required' });
+    return;
+  }
+  next();
+};
+
 // Used on password change ("invalidates all OTHER sessions") and account
 // deactivation ("invalidates all sessions"). exceptSessionId lets password
 // change keep the session that just made the request alive.
@@ -187,6 +200,12 @@ export const requireUser: RequestHandler = (req: Request, res: Response, next: N
   const token = getSessionToken(req);
   const resolved = token ? verifySession(token) : undefined;
   if (!resolved) {
+    writeAdminAudit({
+      action: 'access_denied',
+      targetType: 'route',
+      targetId: `${req.method} ${req.path}`,
+      details: { status: 401 },
+    });
     res.status(401).json({ error: 'Nicht angemeldet.' });
     return;
   }
@@ -234,6 +253,13 @@ export const requireSessionAdmin: RequestHandler[] = [
   requireUser,
   (req: Request, res: Response, next: NextFunction): void => {
     if (!req.player?.is_admin) {
+      writeAdminAudit({
+        actorPlayerId: req.player?.id,
+        action: 'access_denied',
+        targetType: 'route',
+        targetId: `${req.method} ${req.path}`,
+        details: { status: 403, requiredRole: 'admin' },
+      });
       res.status(403).json({ error: 'Nur für Admins.' });
       return;
     }

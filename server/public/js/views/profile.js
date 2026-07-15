@@ -1,8 +1,5 @@
-// "Mein Profil" view: each invited player picks/creates their own identity
-// (reusing the whoami.js mechanism already used by the Live view for pausing
-// and by Votes for casting a vote — this tool has no real per-person login,
-// just a shared access token, so "who am I" is a convenience the browser
-// remembers locally, not a security boundary), then can maintain their own
+// "Mein Profil": required auth binds identity to the session; legacy mode
+// keeps whoami.js as a compatibility selector. Players can maintain their own
 // gamer name (unique across everyone), a profile picture and seat neighbors.
 // Bock/Skill-Ratings moved to the Spiele view (see server/CLAUDE.md games
 // reorg) — that's where the group averages live too, so this page just
@@ -21,6 +18,7 @@ import { getPushSubscriptionState, enablePush, disablePush } from '../push.js';
 import { invalidateMyStats } from './myStats.js';
 import { resizeImageFile } from '../imageUtils.js';
 import { icon } from '../icons.js';
+import { confirmDialog } from '../modal.js';
 
 // Whose monitor you've declared you can see ("Sichtbare Monitore") for the
 // active event (FR-18 extension) — pre-filled from same-edge seat placements
@@ -268,6 +266,7 @@ export function renderProfile(container, ctx) {
           <input type="text" id="profile-apikey" readonly value="Laden…" style="flex:1;font-family:monospace;" />
           <button type="button" class="btn btn-sm" id="profile-copy-key">Kopieren</button>
         </div>
+        <button type="button" class="btn btn-sm btn-danger" id="profile-rotate-key">Agent-Key erneuern</button>
         <p class="muted" style="font-size:var(--font-size-xs);margin-top:var(--space-2);">
           Diesen Key in die Config des Agenten (<code>agent/</code>-Ordner im Repo, mit Node.js
           gestartet) eintragen – siehe <code>agent/README.md</code>.
@@ -371,6 +370,21 @@ export function renderProfile(container, ctx) {
       showToast('API-Key kopiert.');
     } catch {
       showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+    }
+  });
+
+  container.querySelector('#profile-rotate-key').addEventListener('click', async () => {
+    if (!(await confirmDialog('Agent-Key wirklich erneuern? Der aktuell installierte Agent muss danach neu eingerichtet werden.', {
+      title: 'Agent-Key erneuern',
+      confirmText: 'Erneuern',
+      danger: true,
+    }))) return;
+    try {
+      const result = await api.players.rotateApiKey(myId);
+      container.querySelector('#profile-apikey').value = result.apiKey;
+      showToast('Agent-Key erneuert. Der alte Key ist sofort ungültig.');
+    } catch (error) {
+      showToast(error.message, { error: true });
     }
   });
 

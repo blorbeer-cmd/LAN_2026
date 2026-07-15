@@ -37,6 +37,7 @@ import {
   recordLoginFailure,
   recordLoginSuccess,
 } from '../loginRateLimit';
+import { writeAdminAudit } from '../adminAudit';
 
 export const authRouter = Router();
 
@@ -62,6 +63,7 @@ interface PlayerRow {
   password_hash: string | null;
   is_admin: number;
   is_test: number;
+  deactivated_at: number | null;
   created_at: number;
 }
 
@@ -127,6 +129,7 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
     password_hash: hashPassword(password),
     is_admin: isBootstrap ? 1 : 0,
     is_test: 0,
+    deactivated_at: null,
     created_at: now,
   };
 
@@ -147,6 +150,15 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
   }
 
   broadcast(Events.playersChanged, null);
+  if (isBootstrap) {
+    writeAdminAudit({
+      actorPlayerId: player.id,
+      action: 'recovery_code_used',
+      targetType: 'player',
+      targetId: player.id,
+      details: { flow: 'register' },
+    });
+  }
   const token = createSession(player.id);
   setSessionCookie(res, token);
   res.status(201).json(toPublicAccount(player));
@@ -183,6 +195,7 @@ authRouter.post('/claim', limitAnonymousAuthAttempts, (req, res) => {
 
   const existing = db.prepare('SELECT * FROM players WHERE id = ?').get(resolvedPlayerId) as PlayerRow | undefined;
   if (!existing) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  if (existing.deactivated_at !== null) return res.status(409).json({ error: 'Dieses Konto ist deaktiviert.' });
   if (existing.password_hash) return res.status(409).json({ error: 'Dieses Konto ist bereits beansprucht.' });
 
   const now = Date.now();
@@ -209,6 +222,15 @@ authRouter.post('/claim', limitAnonymousAuthAttempts, (req, res) => {
   }
 
   broadcast(Events.playersChanged, null);
+  if (isBootstrap) {
+    writeAdminAudit({
+      actorPlayerId: existing.id,
+      action: 'recovery_code_used',
+      targetType: 'player',
+      targetId: existing.id,
+      details: { flow: 'claim' },
+    });
+  }
   const token = createSession(existing.id);
   setSessionCookie(res, token);
   res.json(toPublicAccount({ ...existing, is_admin: nextIsAdmin }));
@@ -223,6 +245,11 @@ authRouter.post('/login', limitAnonymousAuthAttempts, (req, res) => {
   const trimmedName = name.trim();
 
   if (isLoginLocked(trimmedName)) {
+    writeAdminAudit({
+      action: 'login_locked',
+      targetType: 'account_name',
+      targetId: trimmedName,
+    });
     return res.status(429).json({
       error: 'Zu viele Fehlversuche – bitte kurz warten.',
       retryAfterMs: loginRetryAfterMs(trimmedName),
@@ -235,7 +262,22 @@ authRouter.post('/login', limitAnonymousAuthAttempts, (req, res) => {
 
   if (!verifyPasswordConstantTime(password, player?.password_hash ?? null)) {
     recordLoginFailure(trimmedName);
+    writeAdminAudit({
+      action: 'login_failed',
+      targetType: 'account_name',
+      targetId: trimmedName,
+    });
     return res.status(401).json({ error: 'Name oder Passwort ist falsch.' });
+  }
+
+  if (player!.deactivated_at !== null) {
+    writeAdminAudit({
+      actorPlayerId: player!.id,
+      action: 'login_denied_deactivated',
+      targetType: 'player',
+      targetId: player!.id,
+    });
+    return res.status(403).json({ error: 'Dieses Konto ist deaktiviert.' });
   }
 
   recordLoginSuccess(trimmedName);

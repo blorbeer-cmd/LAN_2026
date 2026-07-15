@@ -34,6 +34,7 @@ db.exec(`
     tracking_paused INTEGER NOT NULL DEFAULT 0, -- player-side opt-out; agent reports for this player are dropped
     is_admin        INTEGER NOT NULL DEFAULT 0, -- moderation role; can be granted via PATCH /api/players/:id
     is_test         INTEGER NOT NULL DEFAULT 0, -- admin-seeded test player; hidden outside admin mode (see testUsers.ts)
+    deactivated_at  INTEGER, -- former participant: kept for history, denied login/agent access and hidden from active rosters
     created_at      INTEGER NOT NULL
   );
 
@@ -1261,6 +1262,32 @@ function addSessionReauthentication(): void {
   }
 }
 runMigration({ version: 28, name: 'add session reauthentication', up: addSessionReauthentication });
+
+function addAccountDeactivationAndAdminLog(): void {
+  const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'deactivated_at')) {
+    db.exec('ALTER TABLE players ADD COLUMN deactivated_at INTEGER');
+  }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS admin_log (
+      id              TEXT PRIMARY KEY,
+      actor_player_id TEXT REFERENCES players(id) ON DELETE SET NULL,
+      action          TEXT NOT NULL,
+      target_type     TEXT NOT NULL,
+      target_id       TEXT,
+      details         TEXT,
+      created_at      INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_admin_log_created ON admin_log(created_at);
+    CREATE INDEX IF NOT EXISTS idx_admin_log_actor ON admin_log(actor_player_id, created_at);
+  `);
+  // The legacy test-user rollout deliberately marked every existing player as
+  // admin. Unclaimed identities never made an explicit role choice, so clear
+  // those compatibility flags before required auth is enabled. A claimed
+  // bootstrap admin (and any roles granted afterwards) remains untouched.
+  db.prepare('UPDATE players SET is_admin = 0 WHERE password_hash IS NULL OR is_test = 1').run();
+}
+runMigration({ version: 29, name: 'add account deactivation and admin log', up: addAccountDeactivationAndAdminLog });
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.

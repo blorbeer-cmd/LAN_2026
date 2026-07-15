@@ -1,4 +1,7 @@
 import { Router } from 'express';
+import { requireAdmin } from '../auth';
+import { requireRecentReauthentication } from '../sessions';
+import { writeAdminAudit } from '../adminAudit';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { isNonEmptyString } from '../validation';
@@ -115,8 +118,9 @@ quizRouter.patch('/questions/:id', (req, res) => {
   res.json(serializeQuestions());
 });
 
-quizRouter.delete('/questions/:id', (req, res) => {
+quizRouter.delete('/questions/:id', requireAdmin, requireRecentReauthentication, (req, res) => {
   const result = db.prepare('DELETE FROM quiz_questions WHERE id = ?').run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Frage nicht gefunden.' });
+  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'quiz_question_deleted', targetType: 'quiz_question', targetId: req.params.id });
   res.status(204).end();
 });

@@ -116,6 +116,9 @@ export const api = {
     create: (data) => apiFetch('/api/players', { method: 'POST', body: JSON.stringify(data) }),
     update: (id, data) => apiFetch(`/api/players/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     remove: (id) => apiFetch(`/api/players/${id}`, { method: 'DELETE' }),
+    deactivate: (id) => apiFetch(`/api/players/${id}/deactivate`, { method: 'POST' }),
+    reactivate: (id) => apiFetch(`/api/players/${id}/reactivate`, { method: 'POST' }),
+    rotateApiKey: (id) => apiFetch(`/api/players/${id}/api-key/rotate`, { method: 'POST' }),
     stats: (id, params = {}) => {
       const qs = new URLSearchParams(params).toString();
       return apiFetch(`/api/players/${id}/stats${qs ? `?${qs}` : ''}`);
@@ -342,6 +345,8 @@ export const api = {
   },
 
   admin: {
+    players: () => apiFetch('/api/admin/players'),
+    audit: (limit = 100) => apiFetch(`/api/admin/audit?limit=${limit}`),
     agentDiagnostics: () => apiFetch('/api/admin/agent-diagnostics'),
     createTestUsers: (count) => apiFetch('/api/admin/test-users', { method: 'POST', body: JSON.stringify({ count }) }),
     cleanupTestUsers: () => apiFetch('/api/admin/test-users', { method: 'DELETE' }),
