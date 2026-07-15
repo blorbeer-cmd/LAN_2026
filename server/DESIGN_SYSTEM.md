@@ -241,8 +241,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Every player row in both setup flows, the live draft and the drawn teams labels the skill level for
   the selected game as `Skill 1–10`; an en dash makes a missing self-rating explicit instead of silently
   presenting the matchmaking fallback as a real rating.
-  Team and result histories start collapsed through the shared collapsible-section component.
-  Every history card repeats its game badge and name. Recorded results omit a status badge;
+  Open draws and recorded results share one newest-first „Historie“ because they are two states of
+  the same lineup. It starts collapsed through the shared collapsible-section component. Every
+  history card repeats its game badge and name. Recorded results omit a status badge;
   `.matchmaking-draw-team.is-winner` identifies the winner through a reinforced border and an
   accessible group label. „Ergebnis bearbeiten“ opens a correction form for winner, value and
   placement and updates the existing match instead of creating a duplicate result.

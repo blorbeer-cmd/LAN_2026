@@ -27,7 +27,7 @@ let selectedDrawPlayer = null;
 // everyone watches), so it lives here in the Teams view rather than in its
 // own tab. A *finished* draft doesn't get any special treatment here beyond
 // that — its teams already landed in matchmaking_draws (see draft.ts), so
-// they show up in Team-Historie below like any other draw.
+// they show up in Historie below like any other draw.
 let draftCache = null; // { draft: {...} | null }
 let draftLoading = false;
 let draftPlayerIds = null; // independently selected participants for the next draft
@@ -90,8 +90,8 @@ function findDrawById(id) {
 
 // One drawn/recorded lineup: team cards plus, for a still-unrecorded draw,
 // draggable player rows and the button to record a result — which is what
-// turns this into an Ergebnis-Historie entry. Selecting a player and then a
-// team is the touch equivalent; arrow keys provide the keyboard path.
+// changes its actions inside the shared Historie. Selecting a player and
+// then a team is the touch equivalent; arrow keys provide the keyboard path.
 function renderDrawCard(draw, { editable, showGame = false }) {
   const selectedTeamIndex =
     editable && selectedDrawPlayer?.drawId === draw.id
@@ -349,8 +349,8 @@ function wireDrawCards(container, ctx) {
       try {
         // Logs a fresh matchmaking_draws row for the same lineup (unlike a
         // "Teams auslosen" re-roll, this keeps the exact teams) so the result
-        // entered below links back to it and lands in Ergebnis-Historie,
-        // same as any other draw — see the /rematch endpoint's comment.
+        // entered below links back to it in Historie, same as any other draw
+        // — see the /rematch endpoint's comment.
         const rematchDraw = await api.matchmaking.rematch({ gameId: draw.gameId, teams });
         state.lastMatchmaking = rematchDraw;
         ctx.rerender();
@@ -382,42 +382,28 @@ function renderHistoryDetails(title, count, content) {
 function renderHistory() {
   if (historyLoading || historyCache === null) {
     return renderHistoryDetails(
-      'Team-Historie',
+      'Historie',
       0,
       '<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>'
     );
   }
   if (historyCache.length === 0) {
     return renderHistoryDetails(
-      'Team-Historie',
+      'Historie',
       0,
       '<div class="empty-state" style="padding:var(--space-4);">Noch keine Auslosungen für dieses Spiel.</div>'
     );
   }
 
-  // Ergebnis-Historie (ein Ergebnis wurde eingetragen) kommt vor die
-  // Team-Historie (noch offene Zusammenstellungen) — sobald ein Ergebnis
-  // erfasst wird, wandert der Eintrag von unten nach oben.
-  const resultHistory = historyCache.filter((d) => d.matchId);
-  const teamHistory = historyCache.filter((d) => !d.matchId);
-
-  const resultSection = resultHistory.length
-    ? renderHistoryDetails(
-        'Ergebnis-Historie',
-        resultHistory.length,
-        resultHistory.map((d) => renderDrawCard(d, { editable: false, showGame: true })).join('')
-      )
-    : '';
-
-  const teamSection = renderHistoryDetails(
-    'Team-Historie',
-    teamHistory.length,
-    teamHistory.length
-      ? teamHistory.map((d) => renderDrawCard(d, { editable: true, showGame: true })).join('')
-      : '<div class="empty-state" style="padding:var(--space-4);">Noch keine offenen Auslosungen.</div>'
+  // Open draws and recorded results are two states of the same lineup, so
+  // keep them in the server's newest-first order inside one shared history.
+  return renderHistoryDetails(
+    'Historie',
+    historyCache.length,
+    historyCache
+      .map((draw) => renderDrawCard(draw, { editable: !draw.matchId, showGame: true }))
+      .join('')
   );
-
-  return resultSection + teamSection;
 }
 
 // ---------- captain draft: live board ----------
@@ -521,7 +507,7 @@ export function renderMatchmaking(container, ctx) {
   // A running draft takes over the view on every device — it's a shared live
   // event, and mixing it with the regular draw form would just distract. A
   // finished draft gets no special treatment here — its teams already sit in
-  // Team-Historie below (see draft.ts), same as any other draw.
+  // Historie below (see draft.ts), same as any other draw.
   const draft = draftCache?.draft;
   if (draft && draft.status === 'active') {
     container.innerHTML = `
@@ -768,8 +754,8 @@ export function renderMatchmaking(container, ctx) {
 }
 
 function renderResult(result) {
-  // Once a result is recorded for this draw it moves into Ergebnis-Historie
-  // below — the "gerade ausgelost" panel has nothing left to show.
+  // Once a result is recorded, this draw stays in Historie with result
+  // actions while the "gerade ausgelost" panel has nothing left to show.
   if (!result || result.matchId) return '';
   return `
     <div class="section-title row" style="gap:var(--space-2);">${gameBadgeHtml(gameById(result.gameId), 22)} ${escapeHtml(result.gameName)} — gerade ausgelost</div>

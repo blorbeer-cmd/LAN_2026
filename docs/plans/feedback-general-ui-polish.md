@@ -148,8 +148,9 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   Dekorative Draft-Symbole und der Hinweis „Du bist am
   Zug“ entfallen. In Auslosung, Draft-Auswahl, Live-Draft und ausgelosten Teams steht bei jedem Gamer
   das Skill-Level für das ausgewählte Spiel; eine fehlende Bewertung wird als „Skill –“ ausgewiesen.
-  Ergebnis-Historie ist standardmäßig geschlossen und ohne Symbol; jeder Eintrag
-  nennt Spielsymbol und Spielname. Statt „Ergebnis erfasst“ kennzeichnet ein verstärkter Rahmen das
+  Offene Auslosungen und erfasste Ergebnisse werden chronologisch in einer gemeinsamen, standardmäßig
+  geschlossenen „Historie“ ohne Symbol gezeigt; jeder Eintrag nennt Spielsymbol und Spielname.
+  Statt „Ergebnis erfasst“ kennzeichnet ein verstärkter Rahmen das
   Gewinner-Team. Gewinner, Wert und Platzierung lassen sich über „Ergebnis bearbeiten“ am
   bestehenden Match korrigieren, ohne einen zweiten Ergebniseintrag anzulegen.
 

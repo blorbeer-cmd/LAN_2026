@@ -9,7 +9,7 @@ import { getMyId } from './whoami.js';
 export const SEARCH_ENTRIES = [
   { view: 'home', title: 'Home', category: 'Bereich', description: 'Aktuelles, Live-Status und Überblick', aliases: 'start übersicht dashboard', priority: 100 },
   { view: 'tournaments', title: 'Turniere', category: 'Bereich', description: 'Turniere anlegen und Ergebnisse verwalten', aliases: 'tournament ko runde bracket', priority: 99 },
-  { view: 'matchmaking', title: 'Teams auslosen', category: 'Bereich', description: 'Auslosen, Captain Draft und Team-Historie', aliases: 'teams matchmaking captain draft kraft', priority: 98 },
+  { view: 'matchmaking', title: 'Teams auslosen', category: 'Bereich', description: 'Auslosen, Captain Draft und Historie', aliases: 'teams matchmaking captain draft kraft team-historie ergebnis-historie', priority: 98 },
   { view: 'votes', title: 'Abstimmung', category: 'Bereich', description: 'Gemeinsam das nächste Spiel wählen', aliases: 'vote voting punkte spielwahl', priority: 97 },
   { view: 'leaderboard', title: 'Rangliste', category: 'Bereich', description: 'Ergebnisse, Punkte und Platzierungen', aliases: 'rang leaderboard ergebnis match', priority: 96 },
   { view: 'more', title: 'Mehr', category: 'Bereich', description: 'Alle weiteren Bereiche und Tools', aliases: 'menü tools', priority: 95 },

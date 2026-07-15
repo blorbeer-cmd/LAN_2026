@@ -119,8 +119,8 @@ export function renderLeaderboard(container, ctx) {
 // Also called from matchmaking.js (with presetGameId/presetTeams) so a
 // freshly drawn set of teams can go straight into "Ergebnis eintragen"
 // without re-picking every player by hand. presetDrawId additionally links
-// the saved match back to that matchmaking_draws row, moving it from
-// Team-Historie to Ergebnis-Historie.
+// the saved match back to that matchmaking_draws row and updates its actions
+// in the shared Historie.
 export function openMatchForm(ctx, options = {}) {
   if (state.games.length === 0 || state.players.length === 0) {
     return showToast('Dafür braucht es mindestens ein Spiel und 2 Spieler.', { error: true });
@@ -448,9 +448,9 @@ export function openMatchForm(ctx, options = {}) {
               winnerTeamIndex,
               ...(options.presetDrawId ? { drawId: options.presetDrawId } : {}),
             });
-            // The recorded draw disappears from both the "gerade ausgelost"
-            // panel and Team-Historie, showing up in Ergebnis-Historie
-            // instead — don't wait for the matchmaking:draws-changed socket
+            // The recorded draw disappears from the "gerade ausgelost"
+            // panel and becomes a result inside Historie — don't wait for
+            // the matchmaking:draws-changed socket
             // round trip to hide the panel the submitter is looking at.
             if (options.presetDrawId && state.lastMatchmaking?.id === options.presetDrawId) {
               state.lastMatchmaking = null;

@@ -310,7 +310,7 @@ function renderHistory() {
   // enough of its own detail (title, several winner chips, mode) that lumping
   // them into one big box made every past round bleed into the next instead
   // of reading as separate results. Same "card stack list" shape as e.g.
-  // matchmaking.js's Team-Historie.
+  // matchmaking.js's Historie.
   return historyCache
     .map((h) => {
       const winners = winnerChipsHtml(h, 20);

@@ -38,8 +38,8 @@ async function setDateTimeField(id: string, value: string): Promise<void> {
   }, value);
 }
 
-async function openTeamHistory(): Promise<void> {
-  const details = page.locator('details.history-details:has(summary:has-text("Team-Historie"))');
+async function openMatchmakingHistory(): Promise<void> {
+  const details = page.locator('details.history-details:has(summary:has-text("Historie"))');
   if (!(await details.getAttribute('open'))) await details.locator('summary').click();
 }
 
@@ -185,7 +185,7 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   assert.equal(await page.locator('[data-player]:checked').count(), 0);
   await page.click('#mm-select-all');
   assert.equal(await page.locator('[data-player]:checked').count(), 2);
-  assert.equal(await page.locator('details.history-details:has(summary:has-text("Team-Historie"))').getAttribute('open'), null);
+  assert.equal(await page.locator('details.history-details:has(summary:has-text("Historie"))').getAttribute('open'), null);
 
   const mobileSelectionColumns = await page.locator('.player-selection-grid').evaluate((element) =>
     getComputedStyle(element).gridTemplateColumns.split(' ').length
@@ -303,10 +303,10 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.waitForFunction(() => !document.querySelector('.badge-paused'));
 });
 
-test('matchmaking Ergebnis-Historie marks a recorded draw as Unentschieden', async () => {
+test('matchmaking Historie marks a recorded draw as Unentschieden', async () => {
   await page.click('[data-view="matchmaking"]');
   await page.click('#mm-generate');
-  await openTeamHistory();
+  await openMatchmakingHistory();
   await page.waitForSelector('[data-record-draw]');
   await page.click('[data-record-draw]');
 
@@ -315,18 +315,19 @@ test('matchmaking Ergebnis-Historie marks a recorded draw as Unentschieden', asy
   await page.waitForSelector('#match-form');
   await page.click('#match-form button[type="submit"]');
 
-  await page.waitForSelector('.section-title:has-text("Ergebnis-Historie")');
+  await page.waitForFunction(() => !!document.querySelector('[data-edit-draw-result]'));
+  await openMatchmakingHistory();
   await page.waitForSelector('[data-draw-card] .badge:has-text("Unentschieden")');
 });
 
-test('matchmaking Ergebnis-Historie shows the winner after switching to Frei-für-alle for a drawn lineup', async () => {
+test('matchmaking Historie shows the winner after switching to Frei-für-alle for a drawn lineup', async () => {
   // Regression test: teams were drawn, but the result was entered as
   // "Frei-für-alle" instead of the drawn team shape — the draw must still
-  // move into Ergebnis-Historie with the winner shown, not stay stuck in
-  // Team-Historie.
+  // remain in Historie with the winner shown instead of retaining the open
+  // draw actions.
   await page.click('[data-view="matchmaking"]');
   await page.click('#mm-generate');
-  await openTeamHistory();
+  await openMatchmakingHistory();
   await page.waitForSelector('[data-record-draw]');
   await page.click('[data-record-draw]');
 
@@ -337,8 +338,9 @@ test('matchmaking Ergebnis-Historie shows the winner after switching to Frei-fü
   await page.check('input[name="ffa-winner"] >> nth=0');
   await page.click('#match-form button[type="submit"]');
 
-  await page.waitForSelector('.section-title:has-text("Ergebnis-Historie")');
-  await page.waitForSelector('[data-draw-card]:has-text("Sieger")');
+  await page.waitForFunction(() => !!document.querySelector('[data-edit-draw-result]'));
+  await openMatchmakingHistory();
+  await page.waitForSelector('[data-draw-card] .matchmaking-draw-team.is-winner');
 });
 
 test('Ergebnis eintragen keeps a manual team reassignment after changing "Anzahl Teams"', async () => {
@@ -347,7 +349,7 @@ test('Ergebnis eintragen keeps a manual team reassignment after changing "Anzahl
   // back to the original drawn team.
   await page.click('[data-view="matchmaking"]');
   await page.click('#mm-generate');
-  await openTeamHistory();
+  await openMatchmakingHistory();
   await page.waitForSelector('[data-record-draw]');
   await page.click('[data-record-draw]');
   await page.waitForSelector('#match-players');
@@ -1408,10 +1410,10 @@ test('Captain-Draft: pick captains, run the live draft to completion', async () 
   }
   await page.waitForSelector('text=Captain-Draft läuft', { state: 'detached', timeout: 5000 });
 
-  // The finished draft landed in the shared Team-Historie (not pinned to the
+  // The finished draft landed in the shared Historie (not pinned to the
   // page top) with the usual "Ergebnis eintragen" follow-up available there.
-  await page.waitForSelector('.section-title:has-text("Team-Historie")');
-  await openTeamHistory();
+  await page.waitForSelector('details.history-details:has(summary:has-text("Historie"))');
+  await openMatchmakingHistory();
   await page.waitForSelector('[data-record-draw]');
 });
 
