@@ -3168,16 +3168,18 @@ input[type='number'].tournament-score-input {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
-.vote-overview-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
-}
-.vote-overview-group {
-  margin-top: var(--space-4);
-}
 .vote-page-section {
   margin-top: var(--space-4);
+}
+.vote-ranking-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.vote-ranking-column {
+  min-width: 0;
+}
+.vote-ranking-column:only-child {
+  grid-column: 1 / -1;
 }
 .vote-action-stack {
   display: flex;
@@ -3230,15 +3232,17 @@ input[type='number'].tournament-score-input {
   margin: 0;
 }
 .vote-workflow-section .tournament-create-step-title h2,
-.vote-overview-grid .tournament-create-step-title h2,
 .vote-page-section .tournament-create-step-title h2 {
   margin: 0;
   font-size: var(--font-size-lg);
 }
 @media (min-width: 640px) { /* --bp-md */
-  .vote-overview-grid,
   .vote-game-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .vote-ranking-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-6);
   }
 }
 /* The gradient lives on the track itself (fixed left-to-right, full width)

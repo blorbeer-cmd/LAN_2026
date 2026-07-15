@@ -3,14 +3,12 @@
 // each phone remembers "who I am" locally so casting a vote takes no form.
 //
 // Layout, top to bottom:
-// 1. The last (closed) round's result, pulled straight from the history —
-//    always visible, so you see what just got decided without digging.
-// 2. The current Top 5 by aggregate "Bock" rating — always visible,
-//    read-only (no vote controls), so there's always something useful on
-//    screen even with no vote running.
-// 3. Either "start a new round" controls (idle), or the full interactive
+// 1. Either "start a new round" controls (idle), or the full interactive
 //    game list plus a submit button (round open) — the rest of the catalog
 //    only appears once a round is actually running.
+// 2. The latest closed result as "Aktueller Vote", pulled from history.
+// 3. The current Top 10 by aggregate "Bock" rating, split into two compact
+//    five-item columns on wider screens.
 //
 // While a round is open, nobody sees how votes/points are distributed across
 // games yet — only the server-side final tally, once closed, may influence
@@ -158,7 +156,7 @@ function statsRowHtml(r) {
     </div>`;
 }
 
-// ---------- Top 5 by aggregate "Bock" rating: always visible, read-only ----------
+// ---------- Top 10 by aggregate "Bock" rating: always visible, read-only ----------
 
 function topByPreference(results, n = 5) {
   return [...results]
@@ -183,25 +181,28 @@ function topMetaHtml(r) {
 // pinned right) instead of the old full .vote-row block — a "Bock" ranking
 // doesn't need its own two-line stats block per game to be useful at a
 // glance.
-function renderTop5(results) {
-  const top5 = topByPreference(results, 5);
-  if (top5.length === 0) {
+function renderTop10(results) {
+  const top10 = topByPreference(results, 10);
+  if (top10.length === 0) {
     return `<div class="empty-state" style="padding:var(--space-4);">Noch keine Spiele im Katalog.</div>`;
   }
-  return top5
-    .map(
-      (r, i) => `
-        <div class="lb-row">
-          <span class="lb-rank">${i + 1}</span>
-          ${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 28)}
-          <span style="flex:1;min-width:0;">
-            <div class="player-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.gameName)}</div>
-            <div class="muted" style="font-size:var(--font-size-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${topMetaHtml(r)}</div>
-          </span>
-          <span class="lb-points">${icon('flame')} ${r.preferenceCount ? r.avgPreference.toFixed(1) : '–'}</span>
-        </div>`
-    )
-    .join('');
+  const rowHtml = (r, i) => `
+    <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
+      <span class="lb-rank">${i + 1}</span>
+      ${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 28)}
+      <span style="flex:1;min-width:0;">
+        <div class="player-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.gameName)}</div>
+        <div class="muted" style="font-size:var(--font-size-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${topMetaHtml(r)}</div>
+      </span>
+      <span class="lb-points">${icon('flame')} ${r.preferenceCount ? r.avgPreference.toFixed(1) : '–'}</span>
+    </div>`;
+  const splitAt = Math.ceil(top10.length / 2);
+  const secondColumn = top10.slice(splitAt);
+  return `
+    <div class="vote-ranking-columns">
+      <div class="vote-ranking-column">${top10.slice(0, splitAt).map(rowHtml).join('')}</div>
+      ${secondColumn.length ? `<div class="vote-ranking-column">${secondColumn.map((r, i) => rowHtml(r, i + splitAt)).join('')}</div>` : ''}
+    </div>`;
 }
 
 // ---------- open round: stage a local draft, submit explicitly ----------
@@ -262,10 +263,9 @@ function renderClosedRows(results, mode, winnerGameIds) {
     .join('');
 }
 
-// A round's winner chips, points/vote-count suffix included — shared between
-// the "Letztes Ergebnis" card and the history list so a Stichwahl's vote
-// count isn't accidentally dropped in one of the two places (points mode
-// shows points, 'single'/Stichwahl mode shows the vote count instead).
+// A round's winner chips, points/vote-count suffix included — used by the
+// history list so a Stichwahl's vote count isn't accidentally dropped
+// (points mode shows points, 'single'/Stichwahl mode shows the vote count).
 function winnerChipsHtml(h, badgeSize) {
   if (!h.winners.length) return `<span class="muted">Niemand hat abgestimmt</span>`;
   return h.winners
@@ -277,9 +277,9 @@ function winnerChipsHtml(h, badgeSize) {
     .join('');
 }
 
-// ---------- last result: the most recent closed round, straight from history ----------
+// ---------- current vote: the most recent closed round, straight from history ----------
 
-function renderLastResult() {
+function renderCurrentVote() {
   if (historyLoading || historyCache === null) {
     return `<div class="empty-state vote-empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
@@ -287,15 +287,28 @@ function renderLastResult() {
     return `<div class="empty-state vote-empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon(domainIcon('votes'))}</span><span>Noch keine Abstimmung durchgeführt.</span></div>`;
   }
   const h = historyCache[0];
-  const winners = winnerChipsHtml(h, 24);
-  return `
-    <div class="stack" style="gap:var(--space-2);padding:var(--space-1) 0;">
-      ${h.title ? `<div class="player-name">${escapeHtml(h.title)}</div>` : ''}
-      <div class="chip-list">${winners}</div>
-      <span class="muted" style="font-size:var(--font-size-xs);">
-        ${formatDateTime(h.closedAt)} · ${h.mode === 'points' ? 'Punkte-Modus' : 'Stichwahl'} · ${h.totalVotes} Stimme(n)
-      </span>
-    </div>`;
+  if (!h.winners.length) {
+    return `<div class="lb-row"><span class="muted">Niemand hat abgestimmt</span></div>`;
+  }
+  return h.winners
+    .map((winner) => {
+      const score = h.mode === 'points' ? `${winner.points} Pkt.` : `${winner.votes} Stimme(n)`;
+      const meta = [h.title, formatDateTime(h.closedAt), h.mode === 'points' ? 'Punkte-Modus' : 'Stichwahl']
+        .filter(Boolean)
+        .map(escapeHtml)
+        .join(' · ');
+      return `
+        <div class="lb-row rank-1">
+          <span class="lb-rank">1</span>
+          ${gameBadgeHtml({ id: winner.gameId, icon: winner.icon }, 28)}
+          <span style="flex:1;min-width:0;">
+            <div class="player-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(winner.gameName)}</div>
+            <div class="muted" style="font-size:var(--font-size-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${meta}</div>
+          </span>
+          <span class="lb-points">${score}</span>
+        </div>`;
+    })
+    .join('');
 }
 
 // ---------- history: list + reopen a past round's full detail ----------
@@ -398,7 +411,7 @@ export function renderVotes(container, ctx) {
     const submitLabel = votes.mode === 'points' ? 'Bewertung abschicken' : 'Stimme abschicken';
     const submittedLabel = votes.mode === 'points' ? 'Bewertung abgegeben' : 'Stimme abgegeben';
     openSectionHtml = `
-      <section class="tournament-section-panel vote-page-section vote-workflow-section stack" aria-labelledby="vote-current-title">
+      <section class="card vote-page-section vote-workflow-section stack" aria-labelledby="vote-current-title">
         <div class="tournament-create-step-title">
           <h2 id="vote-current-title" class="title-with-info">
             <span>${votes.title ? escapeHtml(votes.title) : 'Abstimmung läuft'}</span>
@@ -430,7 +443,7 @@ export function renderVotes(container, ctx) {
         .map((w) => `<span class="chip">${gameBadgeHtml({ id: w.gameId, icon: w.icon }, 24)} ${escapeHtml(w.gameName)}</span>`)
         .join('');
       runoffSectionHtml = `
-        <section class="tournament-section-panel vote-page-section stack" aria-labelledby="vote-runoff-title">
+        <section class="card vote-page-section stack" aria-labelledby="vote-runoff-title">
           <div class="tournament-create-step-title"><h2 id="vote-runoff-title">Unentschieden</h2></div>
           <div class="chip-list">${tiedChips}</div>
           <button type="button" class="btn btn-primary btn-block" id="votes-runoff">Stichwahl starten</button>
@@ -450,10 +463,10 @@ export function renderVotes(container, ctx) {
       <section class="card vote-page-section vote-workflow-section stack" aria-labelledby="vote-start-title">
         <div class="tournament-create-step-title">
           <h2 id="vote-start-title" class="title-with-info">
-            <span>Neue Abstimmung starten</span>
+            <span>Neue Abstimmung</span>
             ${infoTooltipHtml(
                 'vote-points-help',
-                'Neue Abstimmung starten',
+                'Neue Abstimmung',
                 'Punkte frei verteilen, höchste Summe gewinnt.'
               )}
           </h2>
@@ -487,21 +500,19 @@ export function renderVotes(container, ctx) {
     <h1 class="view-title">Vote</h1>
     ${whoAmI}
 
-    <div class="card vote-overview-group">
-      <div class="vote-overview-grid">
-        <section class="tournament-section-panel stack" aria-labelledby="vote-last-result-title">
-          <div class="tournament-create-step-title"><h2 id="vote-last-result-title">Letztes Ergebnis</h2></div>
-          ${renderLastResult()}
-        </section>
-        <section class="tournament-section-panel stack" aria-labelledby="vote-top-games-title">
-          <div class="tournament-create-step-title"><h2 id="vote-top-games-title">Top 5 nach Bock-Level</h2></div>
-          ${renderTop5(votes.catalogResults)}
-        </section>
-      </div>
-    </div>
+    ${openSectionHtml}
+
+    <section class="card vote-page-section stack" aria-labelledby="vote-current-result-title">
+      <div class="tournament-create-step-title"><h2 id="vote-current-result-title">Aktueller Vote</h2></div>
+      ${renderCurrentVote()}
+    </section>
 
     ${runoffSectionHtml}
-    ${openSectionHtml}
+
+    <section class="card vote-page-section stack" aria-labelledby="vote-top-games-title">
+      <div class="tournament-create-step-title"><h2 id="vote-top-games-title">Top 10 nach Bock-Level</h2></div>
+      ${renderTop10(votes.catalogResults)}
+    </section>
 
     <details class="card history-details collapsible-section" data-vote-history ${historyOpen ? 'open' : ''}>
       <summary class="collapsible-section-header">

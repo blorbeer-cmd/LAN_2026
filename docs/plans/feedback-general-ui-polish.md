@@ -209,10 +209,11 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   Grid-/Spaltenstruktur verwenden, damit Selects unabhängig von Namenslängen fluchten.
 - Vote-Beschreibung auf „Punkte frei verteilen, höchste Summe gewinnt.“ kürzen, Aktionsbuttons
   ausrichten und Spiele ab `--bp-md` zweispaltig darstellen; auf dem Handy bleibt eine Spalte.
-- Vote übernimmt die neuen Seitenmuster aus Home, Turniere und Teams: Ergebnis und Bock-Rangliste
-  bilden innerhalb einer gemeinsamen Elternkarte eine responsive ein-/zweispaltige Übersicht mit
-  eigener Akzentkante je Teilbereich. Die neue Abstimmung liegt als vollbreite Gruppe ohne Akzentkante
-  und dekoratives Titel-Symbol vor; die Spieleauswahl bleibt auch mobil als
+- Vote übernimmt die neuen Seitenmuster aus Home, Turniere und Teams: Die neue beziehungsweise
+  laufende Abstimmung steht zuerst. Darunter folgen „Aktueller Vote“ und „Top 10 nach Bock-Level“
+  als eigene vollbreite Gruppen ohne Akzentkante. Das aktuelle Ergebnis verwendet kompakte
+  Ranglistenzeilen; die Top 10 teilen sich ab `--bp-md` in zwei geordnete Fünferlisten. Die
+  Spieleauswahl bleibt auch mobil als
   umrandetes Kartenraster erkennbar. Der Erklärtext zur verdeckten Auswertung steht als Tooltip direkt
   neben dem Titel, die Punkte-Erklärung entsprechend am Titel der neuen Abstimmung. Titel- und
   Infofeld starten gleich hoch; Filterleiste und Auswahlbutton verwenden konsistente Abstände.

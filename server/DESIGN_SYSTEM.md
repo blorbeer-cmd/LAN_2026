@@ -269,10 +269,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   This device-local identity header is deliberately documented as the temporary boundary that
   future authenticated user management must replace.
 - **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the
-  same restrained accent-rail panels as team and tournament workflows.
-  The latest result and Bock ranking form a one-column/two-column overview inside one parent card,
-  retaining an accent rail per subpanel. New-round controls use a plain full-width parent card without
-  an accent rail or decorative heading icon. Game rows remain one
+  same card grouping as the other polished workflows without an accent rail.
+  New/current-round controls come first, followed by separate full-width cards for „Aktueller Vote“
+  and „Top 10 nach Bock-Level“. The latest winner uses the same compact leaderboard row as the Bock
+  ranking. The Top 10 form two ordered five-item columns from `--bp-md`, while phones keep one
+  continuous list. Game rows remain one
   column on phones and two from `--bp-md`, with the same bordered card treatment at both sizes.
   Explanations sit in info tooltips immediately beside their titles. Title and info fields start at
   the same control height; the optional game filter uses an aligned toolbar and consistent gaps.

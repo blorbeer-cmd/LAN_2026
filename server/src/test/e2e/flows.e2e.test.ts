@@ -251,10 +251,10 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
 
   await page.click('#votes-close');
   await page.waitForSelector('#votes-start');
-  // Closing reveals the winner in the "Letztes Ergebnis" summary at the top
+  // Closing reveals the winner in the compact "Aktueller Vote" group
   // of the page — the full per-game breakdown only appears in the history
   // detail modal, not on the main page.
-  await page.waitForSelector('text=Letztes Ergebnis');
+  await page.waitForSelector('text=Aktueller Vote');
   assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars on the main page, even after closing');
   assert.equal(await page.locator('details.history-details:has(summary:has-text("Vote-Historie"))').getAttribute('open'), null);
 

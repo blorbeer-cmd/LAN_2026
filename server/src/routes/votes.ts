@@ -218,7 +218,7 @@ function buildPayload(extra: Record<string, unknown> = {}) {
   const meta = getRoundMeta(state.round);
   // One query (buildAllResults) backs both views: the round-scoped
   // `results` (filtered to this round's own game selection, if any) and the
-  // always-full-catalog `catalogResults` behind the "Top 5 nach Bock-Level"
+  // always-full-catalog `catalogResults` behind the "Top 10 nach Bock-Level"
   // widget. That widget must never stay hidden behind a past round's "Nur
   // bestimmte Spiele zur Wahl stellen" restriction, but recomputing the same
   // SQL join a second time just to drop that restriction would be redundant

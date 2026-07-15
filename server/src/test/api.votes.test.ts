@@ -185,7 +185,7 @@ test('a fresh round with no votes yet is sorted by aggregate "Bock" rating (Beli
 
 test('catalogResults keeps showing every rated game after a round restricted to fewer games closes', async () => {
   // Age of Empires 2 is rated highest but never part of a round that only
-  // ever covers CS2 and Rocket League — the "Top 5 nach Bock-Level" widget
+  // ever covers CS2 and Rocket League — the "Top 10 nach Bock-Level" widget
   // (driven by catalogResults) must still surface it once that round closes,
   // unlike `results`, which stays scoped to the round's own selection.
   await request(app).put('/api/preferences').send({ playerId: playerA, gameId: gameAoe2, rating: 10 });
