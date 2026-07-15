@@ -88,6 +88,11 @@ vom Dashboard benötigten GET-Endpunkte und das Socket-Ereignis `kiosk:subscribe
 `KIOSK_TOKEN` bleibt der Kiosk im Required-Modus gesperrt. Die spätere eventbezogene Token-Ausgabe
 aus dem User-Management-Konzept ersetzt diesen vorläufigen installationsweiten Token.
 
+`MULTI_GROUPS_ENABLED` bleibt in Produktion auf dem Standardwert `0`, solange die Fach- und
+Trackingtabellen noch nicht vollständig nach Gruppen isoliert sind. Die Migration legt bereits die
+dauerhafte Startgruppe an und ordnet bestehende Konten zu; `1` schaltet nur in Entwicklungs- und
+Testumgebungen das Anlegen weiterer Gruppen und deren Einladungslinks frei.
+
 Die in Workflows verwendeten Actions werden über `.github/dependabot.yml` wöchentlich auf Updates
 geprüft. Runtime-Deprecation-Warnungen in Action-Post-Steps stammen aus der jeweiligen Action und
 nicht automatisch aus dem Node-Prozess der Anwendung; sie werden durch zeitnahe Action-Upgrades

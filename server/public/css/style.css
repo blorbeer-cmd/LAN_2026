@@ -400,6 +400,45 @@ input {
   gap: var(--space-3);
 }
 
+.group-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 180px;
+  min-height: 40px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+.group-switcher[hidden] {
+  display: none;
+}
+.group-switcher .ui-icon {
+  flex: 0 0 auto;
+}
+.group-switcher span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 639px) { /* --bp-md */
+  .topbar-title .brand-title,
+  .github-icon-btn {
+    display: none;
+  }
+  .topbar-actions {
+    gap: var(--space-1);
+  }
+  .group-switcher {
+    max-width: 132px;
+  }
+}
+
 .icon-btn {
   display: inline-flex;
   align-items: center;
@@ -903,6 +942,55 @@ input[type='number']::-webkit-inner-spin-button {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+.group-list {
+  display: grid;
+  gap: var(--space-2);
+}
+.group-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.group-option.is-active {
+  border-color: var(--accent);
+}
+.group-option span:first-child {
+  display: grid;
+  gap: var(--space-1);
+}
+.group-option small {
+  color: var(--text-muted);
+}
+.group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.notice {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.notice-warning {
+  border-color: var(--state-paused);
+  background: var(--state-paused-bg);
+  color: var(--state-paused);
 }
 .grid {
   display: grid;

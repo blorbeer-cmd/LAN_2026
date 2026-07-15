@@ -226,6 +226,7 @@ bisher `npm install && npm run build && npm start` auf einem Laptop im WLAN.
 | `KIOSK_TOKEN` | *(leer = Kiosk in Required-Mode gesperrt)* | Separater Read-only-Zugang für die Kiosk-GET-Endpunkte und `kiosk:subscribe`; Aufruf als `/kiosk.html?token=...`. |
 | `ACCESS_TOKEN` | *(leer = kein Schutz)* | Nur im Legacy-Modus: geteiltes Zugangs-Token für die Web-Oberfläche. Im Required-Modus wird es ignoriert. |
 | `COOKIE_SECURE` | `1` | Sichere Session-Cookies; nur für bewusstes lokales HTTP-Hosting mit `0` abschalten. |
+| `MULTI_GROUPS_ENABLED` | `0` | Aktiviert ausschließlich für Entwicklung und Tests das Anlegen weiterer Gruppen und Gruppeneinladungen. Bis Fach- und Trackingdaten vollständig gruppenbezogen isoliert sind, in Produktion auf `0` lassen. |
 | `OFFLINE_TIMEOUT_MS` | `60000` | Nach wie vielen ms ohne Agent-Meldung ein Spieler als „offline" gilt. |
 | `NODE_ENV` | *(leer)* | Auf `production` gesetzt (macht der Docker-Container automatisch): verlangt im Legacy-Modus `ACCESS_TOKEN`, im Required-Modus `ADMIN_RECOVERY_CODE`, und beendet den Prozess bei unerwarteten Fehlern, damit Docker sauber neu startet. Für die LAN-Party selbst ohne Supervisor bewusst **nicht** setzen. |
 

@@ -32,6 +32,7 @@ export function createApp(): express.Express {
       accessProtection: accessProtectionEnabled(),
       authMode: config.authMode,
       kioskProtection: config.authMode === 'required' && Boolean(config.kioskToken),
+      multiGroupsEnabled: config.multiGroupsEnabled,
     });
   });
 
