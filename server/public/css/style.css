@@ -2113,31 +2113,6 @@ button.card {
 .arrivals-carpool-seats {
   flex-shrink: 0;
 }
-.arrivals-carpool-seat-map {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-}
-.arrivals-carpool-seat {
-  display: inline-flex;
-  width: var(--space-6);
-  height: var(--space-6);
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-}
-.arrivals-carpool-seat.is-free {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--bg);
-}
-.arrivals-carpool-seat .ui-icon {
-  width: var(--space-4);
-  height: var(--space-4);
-}
 .arrivals-carpool-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -2155,6 +2130,18 @@ button.card {
 .arrivals-carpool-members {
   display: grid;
   gap: var(--space-1);
+}
+.arrivals-free-seat-row {
+  justify-content: space-between;
+}
+.arrivals-free-seat-label {
+  padding-left: calc(var(--avatar-size-sm) + var(--space-2));
+}
+.arrivals-free-seat-row .btn {
+  min-height: var(--tap-target-size);
+}
+.arrivals-free-seat-status {
+  padding-right: var(--space-2);
 }
 .arrivals-carpool-empty {
   font-size: var(--font-size-sm);

@@ -65,23 +65,28 @@ function renderMyForm(myId) {
 function renderCarpool(c, direction, myId) {
   const isDriver = c.driverId === myId;
   const amIn = Boolean(myId && c.members.some((m) => m.id === myId));
-  const full = c.seatsFree <= 0;
-  const seatMapHtml = Array.from({ length: c.seatsTotal }, (_, index) => {
-    const isFree = index < c.seatsFree;
-    return `<span class="arrivals-carpool-seat ${isFree ? 'is-free' : 'is-occupied'}">${icon('armchair')}</span>`;
-  }).join('');
-  const memberHtml =
-    c.members.length > 0
-      ? `<div class="arrivals-member-list">${c.members
-          .map(
-            (m) => `<div class="arrivals-member-row">
+  const canJoin = Boolean(myId && !isDriver && !amIn);
+  const memberRowsHtml = c.members
+    .map(
+      (m) => `<div class="arrivals-member-row">
               ${avatarHtml(m, 24)}
               <span class="player-name">${escapeHtml(m.name)}</span>
               ${m.id === c.driverId ? '<span class="muted arrivals-member-role">· Fahrer</span>' : ''}
             </div>`
-          )
-          .join('')}</div>`
-      : `<div class="muted" style="font-size:var(--font-size-sm);">Noch niemand dabei.</div>`;
+    )
+    .join('');
+  const freeSeatRowsHtml = Array.from({ length: c.seatsFree }, () => {
+    const control = canJoin
+      ? `<button type="button" class="btn btn-sm btn-primary" data-join-carpool="${c.id}">Mitfahren</button>`
+      : !myId
+        ? '<button type="button" class="btn btn-sm" disabled>Mitfahren</button>'
+        : '<span class="muted arrivals-free-seat-status">Frei</span>';
+    return `<div class="arrivals-member-row arrivals-free-seat-row">
+      <span class="muted arrivals-free-seat-label">Freier Platz</span>
+      ${control}
+    </div>`;
+  }).join('');
+  const memberHtml = `<div class="arrivals-member-list">${memberRowsHtml}${freeSeatRowsHtml}</div>`;
   const planLines = [
     `<div class="arrivals-time-line"><span>Start</span><strong>${c.startAt ? formatDateTime(c.startAt) : 'offen'}${c.startLocation ? ` ab ${escapeHtml(c.startLocation)}` : ''}</strong></div>`,
     `<div class="arrivals-time-line"><span>Ankunft</span><strong>${c.etaAt ? formatDateTime(c.etaAt) : 'offen'}</strong></div>`,
@@ -89,14 +94,8 @@ function renderCarpool(c, direction, myId) {
     .join('');
 
   let joinAction = '';
-  if (myId && !isDriver) {
-    if (amIn) {
-      joinAction = `<button type="button" class="btn btn-sm btn-block" data-leave-carpool="${c.id}">Austragen</button>`;
-    } else if (full) {
-      joinAction = `<button type="button" class="btn btn-sm btn-block" disabled>Keine Plätze frei</button>`;
-    } else {
-      joinAction = `<button type="button" class="btn btn-primary btn-block" data-join-carpool="${c.id}">Mitfahren</button>`;
-    }
+  if (myId && !isDriver && amIn) {
+    joinAction = `<button type="button" class="btn btn-sm btn-block" data-leave-carpool="${c.id}">Austragen</button>`;
   }
 
   return `
@@ -106,9 +105,6 @@ function renderCarpool(c, direction, myId) {
         <span class="badge arrivals-carpool-seats">${c.seatsFree}/${c.seatsTotal} frei</span>
       </div>
       <div class="arrivals-time-pair">${planLines}</div>
-      <div class="arrivals-carpool-seat-map" role="img" aria-label="${c.seatsFree} von ${c.seatsTotal} Plätzen frei">
-        ${seatMapHtml}
-      </div>
       <div class="arrivals-carpool-members">
         <span class="field-label">Mitfahrende</span>
         ${memberHtml}
