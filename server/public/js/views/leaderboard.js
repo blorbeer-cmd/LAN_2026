@@ -69,7 +69,7 @@ export function renderLeaderboard(container, ctx) {
 
   // "How long did this game run at the party in total" — summed across
   // everyone, as opposed to the per-player breakdown above.
-  const playtimeByGame = state.playtime?.totalsByGame || [];
+  const playtimeByGame = state.playtimeAllGames?.totalsByGame || [];
   const playtimeByGameRows = playtimeByGame
     .map(
       (g) => `
@@ -126,9 +126,12 @@ export function renderLeaderboard(container, ctx) {
   container.querySelector('#lb-filter').addEventListener('change', async (e) => {
     state.selectedGameId = e.target.value || null;
     const gameId = state.selectedGameId || undefined;
-    [state.leaderboard, state.playtime] = await Promise.all([
+    const playtimeAllGamesPromise = api.stats.playtime();
+    const playtimePromise = gameId ? api.stats.playtime(gameId) : playtimeAllGamesPromise;
+    [state.leaderboard, state.playtime, state.playtimeAllGames] = await Promise.all([
       api.leaderboard.get(gameId),
-      api.stats.playtime(gameId),
+      playtimePromise,
+      playtimeAllGamesPromise,
     ]);
     ctx.rerender();
   });

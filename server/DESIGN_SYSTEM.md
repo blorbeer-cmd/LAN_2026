@@ -275,6 +275,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   pages with several related datasets instead of headings that float between unrelated cards.
 - **Leaderboard** — The concise page title is „Rang“. „Rangliste“, „Spielzeit“ and „Spielzeit pro
   Spiel“ are separate grouped page sections, and the game filter belongs to the ranking section.
+  The selected game scopes the standings and per-player „Spielzeit“ only; „Spielzeit pro Spiel“
+  always keeps the all-game totals so the comparison does not collapse to one row.
   Every section uses `.leaderboard-list-grid`: one column on phones and two columns from `--bp-md`;
   a single row or empty state spans the full available width.
   Player and game names truncate safely without pushing points or controls outside the card; wins

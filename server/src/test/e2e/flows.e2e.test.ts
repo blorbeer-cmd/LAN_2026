@@ -310,6 +310,21 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
     );
   }
   await page.setViewportSize({ width: 390, height: 844 });
+  const filteredGameId = await page.locator('#lb-filter option').nth(2).getAttribute('value');
+  assert.ok(filteredGameId);
+  const [filteredPlaytimeResponse, allPlaytimeResponse] = await Promise.all([
+    page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === '/api/stats/playtime' && url.searchParams.get('gameId') === filteredGameId;
+    }),
+    page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === '/api/stats/playtime' && !url.searchParams.has('gameId');
+    }),
+    page.selectOption('#lb-filter', filteredGameId),
+  ]);
+  assert.equal(filteredPlaytimeResponse.ok(), true, 'per-player playtime should follow the selected game');
+  assert.equal(allPlaytimeResponse.ok(), true, 'per-game playtime should keep loading all games');
   await page.click('#add-match-btn');
   await page.waitForSelector('#match-players');
   assert.deepEqual(
