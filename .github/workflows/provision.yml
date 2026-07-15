@@ -60,10 +60,11 @@ jobs:
           CF_TUNNEL_TOKEN="${{ secrets.CF_TUNNEL_TOKEN }}" \
           APP_ACCESS_TOKEN="${{ secrets.APP_ACCESS_TOKEN }}" \
           APP_ADMIN_RECOVERY_CODE="${{ secrets.APP_ADMIN_RECOVERY_CODE }}" \
+          APP_KIOSK_TOKEN="${{ secrets.APP_KIOSK_TOKEN }}" \
           GHCR_PULL_TOKEN="${{ secrets.GHCR_PULL_TOKEN }}" \
           GHCR_PULL_USERNAME="${{ github.actor }}" \
           INITIAL_IMAGE="$IMAGE_LOWER" \
-            envsubst '$SSH_PUBLIC_KEY $CF_TUNNEL_TOKEN $APP_ACCESS_TOKEN $APP_ADMIN_RECOVERY_CODE $GHCR_PULL_TOKEN $GHCR_PULL_USERNAME $INITIAL_IMAGE' \
+            envsubst '$SSH_PUBLIC_KEY $CF_TUNNEL_TOKEN $APP_ACCESS_TOKEN $APP_ADMIN_RECOVERY_CODE $APP_KIOSK_TOKEN $GHCR_PULL_TOKEN $GHCR_PULL_USERNAME $INITIAL_IMAGE' \
             < infra/cloud-init.yaml.tpl > /tmp/cloud-init.yaml
 
       - name: Create server (no-op if it already exists)

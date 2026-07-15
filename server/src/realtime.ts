@@ -202,9 +202,23 @@ export function registerArcadeKioskSockets(server: Server): void {
 // an existing user session remains a valid alternative to the shared token.
 export function createSocketAuthGuard(
   accessToken: string = config.accessToken,
-  authMode: 'legacy' | 'required' = config.authMode
+  authMode: 'legacy' | 'required' = config.authMode,
+  kioskToken: string = config.kioskToken
 ) {
   return (socket: Socket, next: (err?: Error) => void): void => {
+    if (
+      authMode === 'required' &&
+      socket.handshake.auth?.kiosk === true &&
+      Boolean(kioskToken) &&
+      socket.handshake.auth?.token === kioskToken
+    ) {
+      socket.data.kioskReadOnly = true;
+      socket.use(([event], proceed) => {
+        if (event === 'kiosk:subscribe') return proceed();
+        proceed(new Error('unauthorized'));
+      });
+      return next();
+    }
     const sessionToken = parseCookieHeader(socket.handshake.headers.cookie)[SESSION_COOKIE_NAME];
     const resolved = sessionToken ? verifySession(sessionToken) : undefined;
     if (resolved) {

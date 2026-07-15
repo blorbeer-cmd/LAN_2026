@@ -36,10 +36,15 @@ function fakeReq(cookieHeader?: string): Request {
   return { headers: { cookie: cookieHeader } } as unknown as Request;
 }
 
-function fakeRes(): Response & { statusCode: number; body: unknown } {
+function fakeRes(): Response & { statusCode: number; body: unknown; headers: Record<string, unknown> } {
   const res = {
     statusCode: 0,
     body: undefined as unknown,
+    headers: {} as Record<string, unknown>,
+    setHeader(name: string, value: unknown) {
+      this.headers[name.toLowerCase()] = value;
+      return this;
+    },
     status(code: number) {
       this.statusCode = code;
       return this;
@@ -49,7 +54,7 @@ function fakeRes(): Response & { statusCode: number; body: unknown } {
       return this;
     },
   };
-  return res as unknown as Response & { statusCode: number; body: unknown };
+  return res as unknown as Response & { statusCode: number; body: unknown; headers: Record<string, unknown> };
 }
 
 test('parseCookieHeader reads one cookie among several', () => {
@@ -83,6 +88,10 @@ test('verifySession rejects (and cleans up) an expired session', () => {
   assert.equal(verifySession(token), undefined);
   const remaining = db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE player_id = ?').get(playerId) as { n: number };
   assert.equal(remaining.n, 0, 'expired session row should be deleted on lookup');
+});
+
+test('parseCookieHeader ignores malformed percent encoding', () => {
+  assert.deepEqual(parseCookieHeader(`${SESSION_COOKIE_NAME}=%`), {});
 });
 
 test('verifySession enforces the absolute lifetime even when idle expiry is still in the future', () => {
@@ -157,6 +166,7 @@ test('requireUser accepts a valid session and sets req.player', () => {
   assert.equal(called, true);
   assert.equal(req.player?.id, playerId);
   assert.equal(typeof req.sessionId, 'string');
+  assert.match(String(res.headers['set-cookie']), /Max-Age=/);
 });
 
 test('requireSessionAdmin rejects a logged-in non-admin with 403', () => {

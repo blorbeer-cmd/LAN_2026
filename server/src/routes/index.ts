@@ -33,6 +33,8 @@ import { adminRouter } from './admin';
 import { backupRouter } from './backup';
 import { authRouter } from './auth';
 import { requireConfiguredUser, requireUser } from '../sessions';
+import { config } from '../config';
+import { extractToken } from '../auth';
 
 export const apiRouter = Router();
 
@@ -46,7 +48,25 @@ apiRouter.use('/auth', authRouter);
 // Once required auth is enabled, every browser-facing feature API is behind
 // the verified session. Health and the anonymous auth flows above stay public;
 // legacy mode keeps the existing shared-token behavior unchanged.
-apiRouter.use(requireConfiguredUser);
+const KIOSK_GET_PATHS = [
+  /^\/live\/?$/,
+  /^\/votes\/?$/,
+  /^\/leaderboard\/?$/,
+  /^\/tournaments(?:\/[^/]+)?\/?$/,
+  /^\/food-orders\/?$/,
+];
+
+apiRouter.use((req, res, next) => {
+  const kioskRead =
+    config.authMode === 'required' &&
+    req.method === 'GET' &&
+    req.header('x-kiosk-mode') === '1' &&
+    Boolean(config.kioskToken) &&
+    extractToken(req) === config.kioskToken &&
+    KIOSK_GET_PATHS.some((pattern) => pattern.test(req.path));
+  if (kioskRead) return next();
+  requireConfiguredUser(req, res, next);
+});
 
 // GET /api/me - the logged-in account, per the real per-user login system
 // (see docs/KONZEPT-USER-MANAGEMENT.md).

@@ -10,6 +10,7 @@ import { state, gameById } from '../state.js';
 import { escapeHtml, avatarHtml, gameBadgeHtml, seatConflictIconHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
+import { withStepUp } from '../reauth.js';
 
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
@@ -780,7 +781,8 @@ function renderDetail(container, ctx) {
   container.querySelector('#tourn-delete').addEventListener('click', async () => {
     if (!(await confirmDialog(`Turnier "${t.name}" wirklich löschen?`))) return;
     try {
-      await api.tournaments.remove(t.id);
+      const removed = await withStepUp(() => api.tournaments.remove(t.id));
+      if (removed === undefined) return;
       currentTournamentId = null;
       listCache = null;
       showToast('Turnier gelöscht.');

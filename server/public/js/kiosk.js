@@ -4,7 +4,7 @@
 // format.js modules the main app uses, but renders its own compact layout
 // rather than the phone-sized views (see kiosk.html/css).
 
-import { api, getToken, setToken } from './api.js';
+import { api, getToken, setKioskMode, setToken } from './api.js';
 import { connectSocket } from './socket.js';
 import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml, formatDateTime } from './format.js';
 import { installIconReplacement, icon } from './icons.js';
@@ -12,6 +12,7 @@ import { bannerContentHtml } from './pushFeed.js';
 import { drawArcadeStreamCanvas } from './arcadeStreamRenderer.js';
 
 installIconReplacement();
+setKioskMode(true);
 
 const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
 const GAME_NAMES = { quiz: 'Gaming-Quiz', tetris: 'Tetris', scribble: 'Scribble', blobby: 'Blobby Volley', pong: 'Pong', snake: 'Snake' };
@@ -154,7 +155,9 @@ function renderArcadeStream(game) {
 // in if it's missing.
 async function ensureAccess() {
   const meta = await api.meta();
-  if (!meta.accessProtection) return true;
+  const protectedAccess = meta.authMode === 'required' ? meta.kioskProtection : meta.accessProtection;
+  if (meta.authMode === 'required' && !meta.kioskProtection) return false;
+  if (!protectedAccess) return true;
 
   const fromUrl = new URLSearchParams(location.search).get('token');
   if (fromUrl) setToken(fromUrl);
@@ -466,7 +469,7 @@ async function main() {
   setInterval(updateClock, 1000);
   await refreshAll();
 
-  const socket = connectSocket();
+  const socket = connectSocket({ kiosk: true });
 
   socket.on('arcade:kiosk:game', renderArcadeStream);
   socket.emit('kiosk:subscribe');

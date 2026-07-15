@@ -7,6 +7,7 @@ import { api } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
+import { withStepUp } from '../reauth.js';
 
 let cache = null;
 let loading = false;
@@ -136,7 +137,8 @@ export function renderInfoBoard(container, ctx) {
       if (!entry) return;
       if (!(await confirmDialog(`Eintrag "${entry.title}" wirklich löschen?`))) return;
       try {
-        await api.info.remove(entry.id);
+        const removed = await withStepUp(() => api.info.remove(entry.id));
+        if (removed === undefined) return;
         cache = null;
         showToast('Eintrag gelöscht.');
         ctx.rerender();

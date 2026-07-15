@@ -150,6 +150,9 @@ gamesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   const parsedTrailer = optionalUrl(trailerUrl ?? null);
   if (parsedTrailer === undefined) return res.status(400).json({ error: 'Trailer-Link muss mit http(s) beginnen.' });
   const resolvedStatus: GameStatus = status === 'suggestion' ? 'suggestion' : 'catalog';
+  if (req.player && resolvedStatus === 'catalog' && !req.player.is_admin) {
+    return res.status(403).json({ error: 'Nur Admins können Spiele direkt in den Katalog aufnehmen.' });
+  }
   const createdBy = assertPlayer(playerId);
   if (createdBy === undefined) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 

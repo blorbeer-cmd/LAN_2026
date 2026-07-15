@@ -10,6 +10,12 @@ function intFromEnv(name: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+export function parseAuthMode(value: string | undefined): 'legacy' | 'required' {
+  if (value === undefined || value === '' || value === 'legacy') return 'legacy';
+  if (value === 'required') return 'required';
+  throw new Error(`Ungültiger AUTH_MODE "${value}". Erlaubt sind "legacy" und "required".`);
+}
+
 export const config = {
   // Port the HTTP/WebSocket server listens on.
   port: intFromEnv('PORT', 3000),
@@ -39,7 +45,10 @@ export const config = {
 
   // 'legacy' (default) preserves the pre-account behavior. 'required' makes
   // session identity and roles authoritative across feature/admin routes.
-  authMode: (process.env.AUTH_MODE === 'required' ? 'required' : 'legacy') as 'legacy' | 'required',
+  authMode: parseAuthMode(process.env.AUTH_MODE),
+
+  // Dedicated read-only credential for the shared kiosk in required mode.
+  kioskToken: process.env.KIOSK_TOKEN ?? '',
 
   // Session cookies are Secure by default (required for SameSite cookies to
   // survive real browsers, and this server is reachable from the cloud).

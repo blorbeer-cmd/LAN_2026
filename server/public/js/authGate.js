@@ -16,6 +16,12 @@ function paramFromUrl(name) {
   return new URLSearchParams(location.search).get(name);
 }
 
+function clearAuthActionUrl() {
+  const cleanUrl = new URL(location.href);
+  for (const name of ['invite', 'claim', 'reset', 'playerId']) cleanUrl.searchParams.delete(name);
+  history.replaceState(null, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+}
+
 // Whether real per-user login is active for this session — true exactly
 // when ensureLogin() below has run (app.js only calls it while the server
 // reports authMode: 'required'). Read by profile.js to decide between the
@@ -121,6 +127,12 @@ export async function ensureLogin() {
   const claimCode = paramFromUrl('claim');
   const resetCode = paramFromUrl('reset');
   const mode = inviteCode ? 'register' : claimCode ? 'claim' : resetCode ? 'reset' : 'login';
+  let existingSession = null;
+  try {
+    existingSession = await api.me();
+  } catch {
+    // No valid session; the selected action or login form remains authoritative.
+  }
   let bootstrapAccounts = null;
   if (claimCode) {
     try {
@@ -133,14 +145,11 @@ export async function ensureLogin() {
   // Process action links even when this browser already holds a session.
   // Shared party devices commonly still have somebody else logged in.
   if (mode === 'login') {
-    try {
-      const me = await api.me();
-      lockMyIdToSession(me.id);
-      setAdmin(Boolean(me.isAdmin));
-      await rebindExistingPushSubscription(me.id).catch(() => {});
+    if (existingSession) {
+      lockMyIdToSession(existingSession.id);
+      setAdmin(Boolean(existingSession.isAdmin));
+      await rebindExistingPushSubscription(existingSession.id).catch(() => {});
       return;
-    } catch {
-      // No valid session yet; fall through to the login gate below.
     }
   }
 
@@ -154,6 +163,15 @@ export async function ensureLogin() {
           ? renderResetForm()
           : renderLoginForm();
   screen.hidden = false;
+
+  if (existingSession && mode !== 'login') {
+    screen
+      .querySelector('#auth-error')
+      .insertAdjacentHTML(
+        'beforebegin',
+        `<button type="button" class="btn" id="auth-continue-session">Als ${escapeHtml(existingSession.name)} zur App</button>`
+      );
+  }
 
   screen.querySelectorAll('[data-password-toggle]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -170,6 +188,15 @@ export async function ensureLogin() {
   return new Promise((resolve) => {
     const form = screen.querySelector('#auth-form');
     const errorEl = screen.querySelector('#auth-error');
+
+    screen.querySelector('#auth-continue-session')?.addEventListener('click', async () => {
+      clearAuthActionUrl();
+      lockMyIdToSession(existingSession.id);
+      setAdmin(Boolean(existingSession.isAdmin));
+      await rebindExistingPushSubscription(existingSession.id).catch(() => {});
+      screen.hidden = true;
+      resolve();
+    });
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -196,7 +223,7 @@ export async function ensureLogin() {
         // Drop the invite/claim/reset code from the URL once it's been used —
         // reloading the page must not re-attempt (and fail) the same
         // already-consumed code.
-        history.replaceState(null, '', `${location.pathname}${location.hash}`);
+        clearAuthActionUrl();
         screen.hidden = true;
         resolve();
       } catch (err) {

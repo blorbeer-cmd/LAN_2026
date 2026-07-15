@@ -8,10 +8,12 @@ import path from 'path';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { config } from '../config';
+import { requireAdmin } from '../auth';
+import { requireRecentReauthentication } from '../sessions';
 
 export const backupRouter = Router();
 
-backupRouter.get('/', async (_req, res, next) => {
+backupRouter.get('/', requireAdmin, requireRecentReauthentication, async (_req, res, next) => {
   if (config.dbFile === ':memory:') {
     return res.status(409).json({ error: 'Für die In-Memory-Datenbank ist kein Datei-Backup verfügbar.' });
   }

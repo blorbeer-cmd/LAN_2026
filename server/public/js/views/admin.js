@@ -108,7 +108,7 @@ async function loadAdminPlayers(ctx, force = false) {
 
 async function refreshAdminData(ctx) {
   await ctx.refresh();
-  if (authRequired) await Promise.all([loadAdminPlayers(ctx, true), loadActiveInvites(ctx, true)]);
+  await Promise.all([loadAdminPlayers(ctx, true), ...(authRequired ? [loadActiveInvites(ctx, true)] : [])]);
 }
 
 async function createLoginInvite(purpose, player, ctx) {
@@ -249,9 +249,9 @@ function renderActivate(container) {
 }
 
 function renderPanel(container, ctx) {
-  if (authRequired && adminPlayers === null && !adminPlayersLoading) loadAdminPlayers(ctx);
+  if (adminPlayers === null && !adminPlayersLoading) loadAdminPlayers(ctx);
   if (authRequired && activeInvites === null && !activeInvitesLoading) loadActiveInvites(ctx);
-  const players = authRequired ? adminPlayers || [] : state.players || [];
+  const players = adminPlayers || [];
   const testCount = players.filter((p) => p.is_test).length;
   if (agentDiagnostics === null && !diagnosticsLoading) loadAgentDiagnostics(ctx);
   const rows = players

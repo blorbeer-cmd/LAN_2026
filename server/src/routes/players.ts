@@ -37,6 +37,8 @@ interface PlayerRow {
   deactivated_at: number | null;
   created_at: number;
   agent_last_seen?: number | null;
+  password_hash?: string | null;
+  last_login_at?: number | null;
 }
 
 // realName is optional and clearable (unlike the required gamer `name`): a
@@ -63,7 +65,12 @@ function toPublicPlayer(row: PlayerRow) {
   // The API key is left out of bulk listings so a glance at the roster can't
   // be used to spoof someone else's live status; it's only returned when a
   // client explicitly asks for that one player (their own profile).
-  const { api_key: _apiKey, ...rest } = row;
+  const { api_key: _apiKey, password_hash: _passwordHash, last_login_at: _lastLoginAt, ...rest } = row;
+  return rest;
+}
+
+function toPrivatePlayer(row: PlayerRow) {
+  const { password_hash: _passwordHash, last_login_at: _lastLoginAt, ...rest } = row;
   return rest;
 }
 
@@ -91,7 +98,7 @@ playersRouter.get('/:id', requireConfiguredUser, (req, res) => {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   }
   const maySeeApiKey = !req.player || req.player.id === row.id || Boolean(req.player.is_admin);
-  res.json(maySeeApiKey ? row : toPublicPlayer(row));
+  res.json(maySeeApiKey ? toPrivatePlayer(row) : toPublicPlayer(row));
 });
 
 // POST /api/players - create a player. Returns the API key once here (and via
@@ -214,7 +221,11 @@ playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   const update = db.transaction(() => {
     if (roleChanged && existing.is_admin && nextIsAdmin === 0) {
       const adminCount = (
-        db.prepare('SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL').get() as {
+        db
+          .prepare(
+            'SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL AND (? = 0 OR password_hash IS NOT NULL)'
+          )
+          .get(req.player ? 1 : 0) as {
           count: number;
         }
       ).count;
@@ -243,15 +254,17 @@ playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
 
   broadcast(Events.playersChanged, null);
   if (roleChanged) disconnectPlayerSockets(existing.id);
-  res.json({
-    ...existing,
-    name: nextName,
-    real_name: nextRealName,
-    color: nextColor,
-    avatar: nextAvatar,
-    tracking_paused: nextTrackingPaused,
-    is_admin: nextIsAdmin,
-  });
+  res.json(
+    toPrivatePlayer({
+      ...existing,
+      name: nextName,
+      real_name: nextRealName,
+      color: nextColor,
+      avatar: nextAvatar,
+      tracking_paused: nextTrackingPaused,
+      is_admin: nextIsAdmin,
+    })
+  );
 });
 
 playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
@@ -272,7 +285,11 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
   const deactivated = db.transaction(() => {
     if (target.is_admin) {
       const adminCount = (
-        db.prepare('SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL').get() as {
+        db
+          .prepare(
+            'SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL AND (? = 0 OR password_hash IS NOT NULL)'
+          )
+          .get(req.player ? 1 : 0) as {
           count: number;
         }
       ).count;
@@ -341,6 +358,7 @@ playersRouter.delete('/:id', requireAdmin, (req, res) => {
   if (result.changes === 0) {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   }
+  disconnectPlayerSockets(req.params.id);
   writeAdminAudit({ actorPlayerId: req.player?.id, action: 'test_player_deleted', targetType: 'player', targetId: req.params.id });
   broadcast(Events.playersChanged, null);
   res.status(204).end();

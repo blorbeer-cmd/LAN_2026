@@ -62,7 +62,11 @@ export function parseCookieHeader(header: string | undefined): Record<string, st
     if (eq === -1) continue;
     const name = part.slice(0, eq).trim();
     if (!name) continue;
-    out[name] = decodeURIComponent(part.slice(eq + 1).trim());
+    try {
+      out[name] = decodeURIComponent(part.slice(eq + 1).trim());
+    } catch {
+      // Malformed external input is an invalid cookie, not a server error.
+    }
   }
   return out;
 }
@@ -77,8 +81,11 @@ function cookieAttributes(maxAgeSeconds: number): string {
   return parts.join('; ');
 }
 
-export function setSessionCookie(res: Response, token: string): void {
-  res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; ${cookieAttributes(Math.floor(SESSION_TTL_MS / 1000))}`);
+export function setSessionCookie(res: Response, token: string, maxAgeMs: number = SESSION_TTL_MS): void {
+  res.setHeader(
+    'Set-Cookie',
+    `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; ${cookieAttributes(Math.max(0, Math.floor(maxAgeMs / 1000)))}`
+  );
 }
 
 export function clearSessionCookie(res: Response): void {
@@ -200,17 +207,12 @@ export const requireUser: RequestHandler = (req: Request, res: Response, next: N
   const token = getSessionToken(req);
   const resolved = token ? verifySession(token) : undefined;
   if (!resolved) {
-    writeAdminAudit({
-      action: 'access_denied',
-      targetType: 'route',
-      targetId: `${req.method} ${req.path}`,
-      details: { status: 401 },
-    });
     res.status(401).json({ error: 'Nicht angemeldet.' });
     return;
   }
   req.player = resolved.player;
   req.sessionId = resolved.session.id;
+  setSessionCookie(res, token!, resolved.session.expires_at - Date.now());
   next();
 };
 

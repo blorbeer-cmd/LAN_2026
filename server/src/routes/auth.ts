@@ -92,6 +92,18 @@ function recoveryCodeUsable(code: string): boolean {
   return Boolean(config.adminRecoveryCode) && code === config.adminRecoveryCode && !hasClaimedAdmin();
 }
 
+function soleClaimedAdminForRecovery(code: string): PlayerRow | undefined {
+  if (!config.adminRecoveryCode || code !== config.adminRecoveryCode) return undefined;
+  const admins = db
+    .prepare(
+      `SELECT * FROM players
+       WHERE is_admin = 1 AND password_hash IS NOT NULL AND deactivated_at IS NULL
+       LIMIT 2`
+    )
+    .all() as PlayerRow[];
+  return admins.length === 1 ? admins[0] : undefined;
+}
+
 // Lets the one-time recovery link select an existing legacy profile without
 // making the normal roster public. The recovery code is the authorization;
 // once any claimed admin exists this endpoint closes permanently.
@@ -257,7 +269,7 @@ authRouter.post('/claim', limitAnonymousAuthAttempts, (req, res) => {
 // POST /api/auth/login - Body: { name, password }
 authRouter.post('/login', limitAnonymousAuthAttempts, (req, res) => {
   const { name, password } = req.body ?? {};
-  if (typeof name !== 'string' || !name.trim() || typeof password !== 'string' || !password) {
+  if (!isNonEmptyString(name) || typeof password !== 'string' || password.length < 1 || password.length > 200) {
     return res.status(400).json({ error: 'Name und Passwort sind erforderlich.' });
   }
   const trimmedName = name.trim();
@@ -274,9 +286,15 @@ authRouter.post('/login', limitAnonymousAuthAttempts, (req, res) => {
     });
   }
 
-  const player = db.prepare('SELECT * FROM players WHERE name = ? COLLATE NOCASE').get(trimmedName) as
-    | PlayerRow
-    | undefined;
+  const matchingPlayers = db
+    .prepare('SELECT * FROM players WHERE name = ? COLLATE NOCASE LIMIT 2')
+    .all(trimmedName) as PlayerRow[];
+  if (matchingPlayers.length > 1) {
+    verifyPasswordConstantTime(password, null);
+    writeAdminAudit({ action: 'login_ambiguous', targetType: 'account_name', targetId: trimmedName });
+    return res.status(409).json({ error: 'Dieser Name ist mehrfach vorhanden. Bitte wende dich an einen Admin.' });
+  }
+  const player = matchingPlayers[0];
 
   if (!verifyPasswordConstantTime(password, player?.password_hash ?? null)) {
     recordLoginFailure(trimmedName);
@@ -336,6 +354,7 @@ authRouter.post('/password', requireUser, (req, res) => {
   db.prepare('UPDATE players SET password_hash = ? WHERE id = ?').run(hashPassword(newPassword), existing.id);
   markSessionReauthenticated(req.sessionId!);
   deleteAllSessionsForPlayer(existing.id, req.sessionId);
+  db.prepare('DELETE FROM push_subscriptions WHERE player_id = ?').run(existing.id);
   disconnectPlayerSockets(existing.id, req.sessionId);
   voidOutstandingInvites(existing.id, 'reset');
   res.status(204).end();
@@ -346,15 +365,24 @@ authRouter.post('/password', requireUser, (req, res) => {
 // left unlocked cannot inherit a confirmation made on another device.
 authRouter.post('/reauth', requireUser, (req, res) => {
   const { password } = req.body ?? {};
-  if (typeof password !== 'string' || !password) {
+  if (typeof password !== 'string' || password.length < 1 || password.length > 200) {
     return res.status(400).json({ error: 'Passwort ist erforderlich.' });
+  }
+  const limiterKey = `reauth:${req.sessionId}`;
+  if (isLoginLocked(limiterKey)) {
+    return res.status(429).json({
+      error: 'Zu viele Fehlversuche – bitte kurz warten.',
+      retryAfterMs: loginRetryAfterMs(limiterKey),
+    });
   }
   const existing = db.prepare('SELECT password_hash FROM players WHERE id = ?').get(req.player!.id) as {
     password_hash: string | null;
   };
   if (!verifyPasswordConstantTime(password, existing.password_hash)) {
+    recordLoginFailure(limiterKey);
     return res.status(401).json({ error: 'Passwort ist falsch.' });
   }
+  recordLoginSuccess(limiterKey);
   markSessionReauthenticated(req.sessionId!);
   res.status(204).end();
 });
@@ -371,24 +399,26 @@ authRouter.post('/reset', limitAnonymousAuthAttempts, (req, res) => {
     return res.status(400).json({ error: `Neues Passwort muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen lang sein.` });
   }
 
-  const invite = findValidInvite(code, 'reset');
-  if (!invite?.player_id) {
+  const recoveryTarget = soleClaimedAdminForRecovery(code);
+  const invite = recoveryTarget ? undefined : findValidInvite(code, 'reset');
+  if (!recoveryTarget && !invite?.player_id) {
     return res.status(400).json({ error: 'Reset-Code ist ungültig oder abgelaufen.' });
   }
-  const existing = db.prepare('SELECT * FROM players WHERE id = ?').get(invite.player_id) as PlayerRow | undefined;
+  const existing = recoveryTarget ?? (db.prepare('SELECT * FROM players WHERE id = ?').get(invite!.player_id) as PlayerRow | undefined);
   if (!existing?.password_hash) {
     return res.status(400).json({ error: 'Reset-Code ist ungültig oder abgelaufen.' });
   }
 
   const passwordHash = hashPassword(newPassword);
   const reset = db.transaction(() => {
-    if (!markInviteUsed(invite.code, existing.id, 'reset')) return false;
+    if (invite && !markInviteUsed(invite.code, existing.id, 'reset')) return false;
     db.prepare('UPDATE players SET password_hash = ?, last_login_at = ? WHERE id = ?').run(
       passwordHash,
       Date.now(),
       existing.id
     );
     deleteAllSessionsForPlayer(existing.id);
+    db.prepare('DELETE FROM push_subscriptions WHERE player_id = ?').run(existing.id);
     voidOutstandingInvites(existing.id, 'reset');
     return true;
   })();
@@ -397,6 +427,15 @@ authRouter.post('/reset', limitAnonymousAuthAttempts, (req, res) => {
   }
 
   disconnectPlayerSockets(existing.id);
+  if (recoveryTarget) {
+    writeAdminAudit({
+      actorPlayerId: existing.id,
+      action: 'recovery_code_used',
+      targetType: 'player',
+      targetId: existing.id,
+      details: { flow: 'reset' },
+    });
+  }
   const token = createSession(existing.id);
   setSessionCookie(res, token);
   res.json(toPublicAccount(existing));

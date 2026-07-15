@@ -101,6 +101,7 @@ before(async () => {
       AUTH_MODE: 'required',
       ACCESS_TOKEN: 'obsolete-shared-token',
       ADMIN_RECOVERY_CODE: RECOVERY_CODE,
+      KIOSK_TOKEN: 'e2e-kiosk-token',
     },
     stdio: 'ignore',
   });
@@ -174,6 +175,27 @@ test('a wrong password on the login gate shows an error and does not proceed', a
   await page.fill('#auth-password', PASSWORD);
   await page.click('#auth-form button[type="submit"]');
   await page.waitForSelector('#app:not([hidden])');
+});
+
+test('a logged-in user can leave a stale action link without editing the URL', async () => {
+  await page.goto(`${BASE_URL}/?invite=already-used-or-invalid`);
+  await page.waitForSelector('#auth-continue-session');
+  assert.match((await page.textContent('#auth-continue-session')) ?? '', new RegExp(NAME));
+  await page.click('#auth-continue-session');
+  await page.waitForSelector('#app:not([hidden])');
+  assert.equal(new URL(page.url()).searchParams.has('invite'), false);
+});
+
+test('the required-mode kiosk starts with its dedicated read-only token', async () => {
+  const kioskPage = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  try {
+    await kioskPage.goto(`${BASE_URL}/kiosk.html?token=e2e-kiosk-token`);
+    await kioskPage.waitForSelector('#kiosk-dashboard:not([hidden])');
+    await kioskPage.waitForSelector('#kiosk-live');
+    assert.equal(new URL(kioskPage.url()).searchParams.has('token'), false);
+  } finally {
+    await kioskPage.close();
+  }
 });
 
 test('a reset link replaces the password and signs the browser in with a fresh session', async () => {

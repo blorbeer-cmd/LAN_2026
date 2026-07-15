@@ -78,6 +78,15 @@ Start, damit ein Deployment nicht ohne erreichbaren ersten/letzten Admin live ge
 wird zuerst über `/?claim=<RECOVERY_CODE>` ein bestehendes Profil als Admin beansprucht; erst danach
 werden die übrigen persönlichen Claim-Links verteilt. `ACCESS_TOKEN` bleibt ausschließlich für
 Rollbacks auf Legacy-Images in der `.env` und wird vom aktuellen Required-Modus ignoriert.
+Der Bootstrap-Pfad ist danach geschlossen. Gibt es genau einen aktiven, beanspruchten Admin, kann
+`/?reset=<RECOVERY_CODE>` dieses letzte Admin-Konto wiederherstellen; bei mehreren Admins wird der
+Recovery-Code für Resets abgelehnt.
+
+Der gemeinsam genutzte Bildschirm erhält im Required-Modus einen separaten `KIOSK_TOKEN` und wird
+einmalig über `/kiosk.html?token=<KIOSK_TOKEN>` eingerichtet. Dieser Zugang ist serverseitig auf die
+vom Dashboard benötigten GET-Endpunkte und das Socket-Ereignis `kiosk:subscribe` begrenzt. Ohne
+`KIOSK_TOKEN` bleibt der Kiosk im Required-Modus gesperrt. Die spätere eventbezogene Token-Ausgabe
+aus dem User-Management-Konzept ersetzt diesen vorläufigen installationsweiten Token.
 
 Die in Workflows verwendeten Actions werden über `.github/dependabot.yml` wöchentlich auf Updates
 geprüft. Runtime-Deprecation-Warnungen in Action-Post-Steps stammen aus der jeweiligen Action und

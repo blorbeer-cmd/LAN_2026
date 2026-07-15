@@ -6,7 +6,7 @@ import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isIntInRange } from '../validation';
 import { computeSkillSuggestionsForGame, MIN_RESULTS_FOR_SUGGESTION, type SkillSuggestionMatch } from '../skillSuggestion';
-import { withBodyPlayerIdentity, withParamPlayerIdentity } from '../sessions';
+import { requireConfiguredUser } from '../sessions';
 
 export const skillsRouter = Router();
 
@@ -72,11 +72,14 @@ skillsRouter.get('/suggestions', (_req, res) => {
 
 // PUT /api/skills - upsert a single rating. Idempotent by design so the
 // frontend can fire-and-forget on every slider change.
-skillsRouter.put('/', ...withBodyPlayerIdentity, (req, res) => {
+skillsRouter.put('/', requireConfiguredUser, (req, res) => {
   const { playerId, gameId, rating } = req.body ?? {};
 
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
+  }
+  if (req.player && playerId !== req.player.id) {
+    return res.status(403).json({ error: 'Du kannst nur deine eigenen Skill-Ratings bearbeiten.' });
   }
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
@@ -100,7 +103,10 @@ skillsRouter.put('/', ...withBodyPlayerIdentity, (req, res) => {
 });
 
 // DELETE /api/skills/:playerId/:gameId - clear a rating.
-skillsRouter.delete('/:playerId/:gameId', ...withParamPlayerIdentity(), (req, res) => {
+skillsRouter.delete('/:playerId/:gameId', requireConfiguredUser, (req, res) => {
+  if (req.player && req.params.playerId !== req.player.id) {
+    return res.status(403).json({ error: 'Du kannst nur deine eigenen Skill-Ratings bearbeiten.' });
+  }
   const result = db
     .prepare('DELETE FROM skills WHERE player_id = ? AND game_id = ?')
     .run(req.params.playerId, req.params.gameId);

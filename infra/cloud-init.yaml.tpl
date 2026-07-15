@@ -7,7 +7,7 @@
 #
 # Placeholders substituted by the workflow (its envsubst whitelist), never
 # committed with real values: SSH_PUBLIC_KEY, CF_TUNNEL_TOKEN,
-# APP_ACCESS_TOKEN, APP_ADMIN_RECOVERY_CODE, GHCR_PULL_TOKEN, GHCR_PULL_USERNAME,
+# APP_ACCESS_TOKEN, APP_ADMIN_RECOVERY_CODE, APP_KIOSK_TOKEN, GHCR_PULL_TOKEN, GHCR_PULL_USERNAME,
 # INITIAL_IMAGE — GHCR_PULL_USERNAME isn't secret (it's just github.actor,
 # whoever ran the provision workflow — not a repo owner or a new secret),
 # and INITIAL_IMAGE exists only
@@ -81,6 +81,7 @@ write_files:
     content: |
       AUTH_MODE=required
       ADMIN_RECOVERY_CODE=$APP_ADMIN_RECOVERY_CODE
+      KIOSK_TOKEN=$APP_KIOSK_TOKEN
       # Kept for rollback compatibility with images from before personal auth.
       ACCESS_TOKEN=$APP_ACCESS_TOKEN
       CF_TUNNEL_TOKEN=$CF_TUNNEL_TOKEN

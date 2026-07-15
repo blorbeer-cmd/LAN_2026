@@ -4,7 +4,14 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { productionConfigError } from './config';
+import { parseAuthMode, productionConfigError } from './config';
+
+test('parseAuthMode rejects unsafe fallback values', () => {
+  assert.equal(parseAuthMode(undefined), 'legacy');
+  assert.equal(parseAuthMode('legacy'), 'legacy');
+  assert.equal(parseAuthMode('required'), 'required');
+  assert.throws(() => parseAuthMode('Required'), /AUTH_MODE/);
+});
 
 test('productionConfigError: legacy mode passes when ACCESS_TOKEN is set', () => {
   assert.equal(

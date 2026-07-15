@@ -186,7 +186,9 @@ async function ensureToken() {
   const fromUrl = new URLSearchParams(location.search).get('token');
   if (fromUrl && (await tokenWorks(fromUrl))) {
     setToken(fromUrl);
-    history.replaceState(null, '', `${location.pathname}${location.hash}`);
+    const cleanUrl = new URL(location.href);
+    cleanUrl.searchParams.delete('token');
+    history.replaceState(null, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
     return;
   }
 

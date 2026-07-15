@@ -5,6 +5,11 @@
 import { filterTestUsers } from './testFilter.js';
 
 const TOKEN_KEY = 'lan2026_access_token';
+let kioskMode = false;
+
+export function setKioskMode(enabled) {
+  kioskMode = Boolean(enabled);
+}
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY) || '';
@@ -18,6 +23,7 @@ export async function apiFetch(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   const token = getToken();
   if (token) headers['x-access-token'] = token;
+  if (kioskMode) headers['x-kiosk-mode'] = '1';
   // Tells the server this device currently sees test players (admin mode).
   // Needed for replace-style writes like the seating layout: a non-admin
   // client's state has test users filtered out, so its saves must not be
@@ -82,12 +88,18 @@ export async function fetchBlob(path) {
   const res = await fetch(path, { headers });
   if (!res.ok) {
     let message = `Fehler ${res.status}`;
+    let code;
     try {
-      message = (await res.json()).error || message;
+      const body = await res.json();
+      message = body.error || message;
+      code = body.code;
     } catch {
       // body wasn't JSON either; keep the generic message
     }
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = res.status;
+    error.code = code;
+    throw error;
   }
   const disposition = res.headers.get('content-disposition') || '';
   const match = disposition.match(/filename="([^"]+)"/);

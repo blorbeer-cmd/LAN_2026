@@ -242,6 +242,41 @@ test('required socket auth rejects shared-token-only clients and binds payload i
   }
 });
 
+test('required socket auth accepts a read-only kiosk token and rejects mutation events', async () => {
+  const httpServer = http.createServer();
+  const io = new Server(httpServer);
+  io.use(createSocketAuthGuard('legacy-token', 'required', 'kiosk-token'));
+  let mutationReachedHandler = false;
+  io.on('connection', (socket) => {
+    socket.on('kiosk:subscribe', (ack?: (value: string) => void) => ack?.('ok'));
+    socket.on('identity:test', () => {
+      mutationReachedHandler = true;
+    });
+  });
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+  const socket = ioClient(baseUrl, {
+    transports: ['websocket'],
+    reconnection: false,
+    auth: { token: 'kiosk-token', kiosk: true },
+  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      socket.once('connect', resolve);
+      socket.once('connect_error', reject);
+    });
+    const subscribed = await new Promise<string>((resolve) => socket.emit('kiosk:subscribe', resolve));
+    assert.equal(subscribed, 'ok');
+    socket.emit('identity:test', {});
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(mutationReachedHandler, false);
+  } finally {
+    socket.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+  }
+});
+
 test('logging out actively disconnects sockets authenticated by that session', async () => {
   const playerId = nanoid();
   db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(
@@ -261,6 +296,25 @@ test('logging out actively disconnects sockets authenticated by that session', a
     assert.equal(logout.status, 204);
     assert.equal(await disconnected, 'io server disconnect');
     assert.equal(socket.connected, false);
+  });
+});
+
+test('hard-deleting a test player immediately disconnects their authenticated sockets', async () => {
+  const playerId = nanoid();
+  db.prepare('INSERT INTO players (id, name, api_key, is_test, created_at) VALUES (?, ?, ?, 1, ?)').run(
+    playerId,
+    `Realtime Deleted Test ${playerId}`,
+    nanoid(24),
+    Date.now()
+  );
+  const sessionToken = createSession(playerId);
+
+  await withServer(async (baseUrl) => {
+    const socket = await connectClient(baseUrl, sessionToken);
+    const disconnected = new Promise<string>((resolve) => socket.once('disconnect', resolve));
+    const removed = await request(baseUrl).delete(`/api/players/${playerId}`);
+    assert.equal(removed.status, 204, JSON.stringify(removed.body));
+    assert.equal(await disconnected, 'io server disconnect');
   });
 });
 
