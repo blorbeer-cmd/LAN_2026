@@ -11,8 +11,8 @@ export const liveRouter = Router();
 
 const MAX_NOTE_LENGTH = 60;
 
-liveRouter.get('/', (_req, res) => {
-  res.json(getLiveBoard());
+liveRouter.get('/', (req, res) => {
+  res.json(getLiveBoard(req.group!.id));
 });
 
 // POST /api/live/:playerId/note - manual override (FR-28), e.g. "Pause/Essen"
@@ -39,6 +39,6 @@ liveRouter.post('/:playerId/note', ...withParamPlayerIdentity(), (req, res) => {
      ON CONFLICT(player_id) DO UPDATE SET last_seen = excluded.last_seen, manual_note = excluded.manual_note`
   ).run(req.params.playerId, Date.now(), normalized);
 
-  broadcast(Events.liveStatusChanged, getLiveBoard());
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
   res.json({ ok: true });
 });

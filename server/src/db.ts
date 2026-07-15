@@ -1408,6 +1408,86 @@ function addGroupAuthorizationFoundation(): void {
 }
 runMigration({ version: 31, name: 'add group authorization foundation', up: addGroupAuthorizationFoundation });
 
+// Phase 5c (cluster 1): game catalog, skills, preferences and live/presence
+// data become group-owned. Columns stay nullable at the SQLite level (same
+// compatibility stance as 5b) and are backfilled to the migrated default
+// group; application code treats them as required for every real write.
+// game_process_names.process_name carried a column-level UNIQUE constraint
+// that SQLite cannot relax via ALTER TABLE, so that table is rebuilt to scope
+// uniqueness to (group_id, process_name) instead — different groups may
+// track the same process name against their own, independent game entries.
+function addCatalogAndPresenceGroupScoping(): void {
+  const addGroupIdColumn = (table: string, onDelete: 'RESTRICT' | 'CASCADE' = 'RESTRICT'): void => {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((c) => c.name === 'group_id')) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN group_id TEXT REFERENCES groups(id) ON DELETE ${onDelete}`);
+    }
+  };
+
+  addGroupIdColumn('games');
+  // The 5 built-in Arcade titles (arcade_key set) are system-wide fixtures
+  // shared by every group, not a group's curated catalog entry — they stay
+  // group_id = NULL forever; only real catalog/suggestion games get an owner.
+  db.prepare("UPDATE games SET group_id = ? WHERE group_id IS NULL AND arcade_key IS NULL").run(DEFAULT_GROUP_ID);
+  // Composite unique index so game_process_names (and future tables) can
+  // enforce a composite foreign key of (group_id, game_id) -> (group_id, id),
+  // guaranteeing a child row's group can never drift from its game's group.
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_games_group_pk ON games(group_id, id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_games_group_name ON games(group_id, name COLLATE NOCASE)');
+
+  addGroupIdColumn('skills');
+  db.prepare(
+    `UPDATE skills SET group_id = (SELECT g.group_id FROM games g WHERE g.id = skills.game_id)
+     WHERE group_id IS NULL`,
+  ).run();
+  db.exec('CREATE INDEX IF NOT EXISTS idx_skills_group ON skills(group_id)');
+
+  addGroupIdColumn('preferences');
+  db.prepare(
+    `UPDATE preferences SET group_id = (SELECT g.group_id FROM games g WHERE g.id = preferences.game_id)
+     WHERE group_id IS NULL`,
+  ).run();
+  db.exec('CREATE INDEX IF NOT EXISTS idx_preferences_group ON preferences(group_id)');
+
+  addGroupIdColumn('live_status_games');
+  db.prepare(
+    `UPDATE live_status_games SET group_id = (SELECT g.group_id FROM games g WHERE g.id = live_status_games.game_id)
+     WHERE group_id IS NULL`,
+  ).run();
+  db.exec('CREATE INDEX IF NOT EXISTS idx_live_status_games_group ON live_status_games(group_id)');
+
+  addGroupIdColumn('play_sessions');
+  db.prepare(
+    `UPDATE play_sessions SET group_id = (SELECT g.group_id FROM games g WHERE g.id = play_sessions.game_id)
+     WHERE group_id IS NULL`,
+  ).run();
+  db.exec('CREATE INDEX IF NOT EXISTS idx_play_sessions_group ON play_sessions(group_id, started_at DESC)');
+
+  const processNameColumns = db.prepare('PRAGMA table_info(game_process_names)').all() as Array<{ name: string }>;
+  if (!processNameColumns.some((c) => c.name === 'group_id')) {
+    db.exec(`
+      CREATE TABLE game_process_names_new (
+        id           TEXT PRIMARY KEY,
+        game_id      TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        group_id     TEXT REFERENCES groups(id) ON DELETE RESTRICT,
+        process_name TEXT NOT NULL,
+        FOREIGN KEY (group_id, game_id) REFERENCES games(group_id, id) ON DELETE CASCADE
+      );
+    `);
+    db.exec(`
+      INSERT INTO game_process_names_new (id, game_id, group_id, process_name)
+      SELECT gpn.id, gpn.game_id, g.group_id, gpn.process_name
+      FROM game_process_names gpn
+      JOIN games g ON g.id = gpn.game_id
+    `);
+    db.exec('DROP TABLE game_process_names');
+    db.exec('ALTER TABLE game_process_names_new RENAME TO game_process_names');
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_game_process_names_group_process ON game_process_names(group_id, process_name)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_game_process_names_game ON game_process_names(game_id)');
+  }
+}
+runMigration({ version: 32, name: 'add catalog and presence group scoping', up: addCatalogAndPresenceGroupScoping });
+
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.
 function seedGames(): void {
@@ -1416,11 +1496,11 @@ function seedGames(): void {
 
   const now = Date.now();
   const insertGame = db.prepare(
-    `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at, group_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertProc = db.prepare(
-    `INSERT OR IGNORE INTO game_process_names (id, game_id, process_name) VALUES (?, ?, ?)`,
+    `INSERT OR IGNORE INTO game_process_names (id, game_id, group_id, process_name) VALUES (?, ?, ?, ?)`,
   );
 
   const defaults: Array<{
@@ -1440,9 +1520,9 @@ function seedGames(): void {
   const seed = db.transaction(() => {
     for (const g of defaults) {
       const gameId = nanoid();
-      insertGame.run(gameId, g.name, g.icon, g.min, g.max, now);
+      insertGame.run(gameId, g.name, g.icon, g.min, g.max, now, DEFAULT_GROUP_ID);
       for (const p of g.procs) {
-        insertProc.run(nanoid(), gameId, p.toLowerCase());
+        insertProc.run(nanoid(), gameId, DEFAULT_GROUP_ID, p.toLowerCase());
       }
     }
   });
@@ -1671,10 +1751,13 @@ function seedCatalogGames(): void {
     { title: 'Wreckfest', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/228380/Wreckfest/' },
   ];
 
-  const findByName = db.prepare('SELECT id FROM games WHERE name = ? COLLATE NOCASE');
+  // This shared planning-sheet seed only ever targeted the single migrated
+  // group; scoping the lookup/insert to it keeps that intent correct even
+  // once other groups' catalogs can contain a same-named game.
+  const findByName = db.prepare('SELECT id FROM games WHERE name = ? COLLATE NOCASE AND group_id = ?');
   const insertGame = db.prepare(
-    `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at, platform, platform_url, trailer_url, status)
-     VALUES (?, ?, '🎮', 1, 5, ?, ?, ?, ?, 'catalog')`,
+    `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at, platform, platform_url, trailer_url, status, group_id)
+     VALUES (?, ?, '🎮', 1, 5, ?, ?, ?, ?, 'catalog', ?)`,
   );
   const fillMissing = db.prepare(
     `UPDATE games SET platform = COALESCE(platform, ?), platform_url = COALESCE(platform_url, ?), trailer_url = COALESCE(trailer_url, ?) WHERE id = ?`,
@@ -1683,11 +1766,11 @@ function seedCatalogGames(): void {
   db.transaction(() => {
     for (const g of defaults) {
       const trailerUrl = g.trailerUrl ?? trailer(g.title);
-      const existing = findByName.get(g.title) as { id: string } | undefined;
+      const existing = findByName.get(g.title, DEFAULT_GROUP_ID) as { id: string } | undefined;
       if (existing) {
         fillMissing.run(g.platform, g.platformUrl, trailerUrl, existing.id);
       } else {
-        insertGame.run(nanoid(), g.title, now, g.platform, g.platformUrl, trailerUrl);
+        insertGame.run(nanoid(), g.title, now, g.platform, g.platformUrl, trailerUrl, DEFAULT_GROUP_ID);
       }
     }
   })();

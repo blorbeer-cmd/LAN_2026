@@ -36,6 +36,9 @@ import { groupsRouter } from './groups';
 import { requireConfiguredUser, requireUser } from '../sessions';
 import { config } from '../config';
 import { extractToken } from '../auth';
+import { requireConfiguredGroupMembership } from '../groupAuthorization';
+import { getGroup } from '../groups';
+import { DEFAULT_GROUP_ID } from '../db';
 
 export const apiRouter = Router();
 
@@ -65,8 +68,21 @@ apiRouter.use((req, res, next) => {
     Boolean(config.kioskToken) &&
     extractToken(req) === config.kioskToken &&
     KIOSK_GET_PATHS.some((pattern) => pattern.test(req.path));
-  if (kioskRead) return next();
+  if (kioskRead) {
+    // The kiosk token isn't group-scoped yet (Phase 5e); until then it reads
+    // the single migrated group, same as legacy mode's implicit context.
+    req.group = getGroup(DEFAULT_GROUP_ID);
+    return next();
+  }
   requireConfiguredUser(req, res, next);
+});
+
+// Resolves req.group for every feature route below (the group-scoped data
+// added in Phase 5c reads it directly), skipping re-resolution when the
+// kiosk branch above already set it.
+apiRouter.use((req, res, next) => {
+  if (req.group) return next();
+  requireConfiguredGroupMembership(req, res, next);
 });
 
 // GET /api/me - the logged-in account, per the real per-user login system

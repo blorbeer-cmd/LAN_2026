@@ -84,8 +84,9 @@ export function createTestUsers(count: number, ownerGroupId = DEFAULT_GROUP_ID):
     const eventId = getTrackingEventId();
     // Arcade titles (quiz/tetris/...) are excluded here just like in
     // GET /api/games — they aren't skill-rated or vote-eligible, see
-    // routes/games.ts's arcade_key filter.
-    const games = db.prepare('SELECT id FROM games WHERE arcade_key IS NULL').all() as GameRow[];
+    // routes/games.ts's arcade_key filter. Scoped to the owning group's own
+    // catalog, same as every other group-owned read.
+    const games = db.prepare('SELECT id FROM games WHERE arcade_key IS NULL AND group_id = ?').all(ownerGroupId) as GameRow[];
     const takenNames = new Set(
       (db.prepare('SELECT name FROM players').all() as Array<{ name: string }>).map((r) => r.name.toLowerCase()),
     );
@@ -102,17 +103,17 @@ export function createTestUsers(count: number, ownerGroupId = DEFAULT_GROUP_ID):
          (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
        VALUES (?, ?, 'member', 'active', ?, NULL, 0, NULL)`,
     );
-    const insertSkill = db.prepare('INSERT INTO skills (player_id, game_id, rating) VALUES (?, ?, ?)');
-    const insertPreference = db.prepare('INSERT INTO preferences (player_id, game_id, rating) VALUES (?, ?, ?)');
+    const insertSkill = db.prepare('INSERT INTO skills (player_id, game_id, group_id, rating) VALUES (?, ?, ?, ?)');
+    const insertPreference = db.prepare('INSERT INTO preferences (player_id, game_id, group_id, rating) VALUES (?, ?, ?, ?)');
     const insertSession = db.prepare(
-      'INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at, active_ms) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO play_sessions (id, player_id, game_id, group_id, event_id, started_at, ended_at, active_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     );
     const insertLiveStatus = db.prepare(
       `INSERT INTO live_status (player_id, last_seen, manual_note, activity_tracked) VALUES (?, ?, NULL, 0)
        ON CONFLICT(player_id) DO UPDATE SET last_seen = excluded.last_seen`,
     );
     const insertLiveGame = db.prepare(
-      'INSERT OR IGNORE INTO live_status_games (player_id, game_id, since, is_foreground) VALUES (?, ?, ?, 1)',
+      'INSERT OR IGNORE INTO live_status_games (player_id, game_id, group_id, since, is_foreground) VALUES (?, ?, ?, ?, 1)',
     );
 
     const created: CreatedTestUser[] = [];
@@ -134,8 +135,8 @@ export function createTestUsers(count: number, ownerGroupId = DEFAULT_GROUP_ID):
       for (const game of games) {
         const skill = randInt(1, 10);
         const bock = clampRating(skill + randInt(-3, 3));
-        insertSkill.run(id, game.id, skill);
-        insertPreference.run(id, game.id, bock);
+        insertSkill.run(id, game.id, ownerGroupId, skill);
+        insertPreference.run(id, game.id, ownerGroupId, bock);
         bockByGame.set(game.id, bock);
       }
 
@@ -153,7 +154,7 @@ export function createTestUsers(count: number, ownerGroupId = DEFAULT_GROUP_ID):
           const startedAt = endedAt - durationMs;
           if (startedAt < now - 12 * HOUR_MS) break;
           const activeMs = Math.round((durationMs * randInt(60, 95)) / 100);
-          insertSession.run(nanoid(), id, gameId, eventId, startedAt, endedAt, activeMs);
+          insertSession.run(nanoid(), id, gameId, ownerGroupId, eventId, startedAt, endedAt, activeMs);
           cursor = startedAt - randInt(10, 60) * MINUTE_MS;
         }
       }
@@ -164,9 +165,9 @@ export function createTestUsers(count: number, ownerGroupId = DEFAULT_GROUP_ID):
       if (i < 2 && games.length > 0) {
         const gameId = [...bockByGame.entries()].sort((a, b) => b[1] - a[1])[0][0];
         const since = now - randInt(10, 30) * MINUTE_MS;
-        insertSession.run(nanoid(), id, gameId, eventId, since, null, 0);
+        insertSession.run(nanoid(), id, gameId, ownerGroupId, eventId, since, null, 0);
         insertLiveStatus.run(id, now);
-        insertLiveGame.run(id, gameId, since);
+        insertLiveGame.run(id, gameId, ownerGroupId, since);
       }
     }
 

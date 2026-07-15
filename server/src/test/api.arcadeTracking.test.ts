@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
-import { db } from '../db';
+import { db, DEFAULT_GROUP_ID } from '../db';
 import { getLiveBoard } from '../liveStatus';
 import { startArcadeSession, endArcadeSession } from '../arcade/arcadeTracking';
 
@@ -44,7 +44,7 @@ test('starting an Arcade session marks players "playing" on the live board and o
 
   startArcadeSession([alice, bob], 'quiz');
 
-  const board = getLiveBoard();
+  const board = getLiveBoard(DEFAULT_GROUP_ID);
   for (const id of [alice, bob]) {
     const entry = board.find((p) => p.player_id === id);
     assert.ok(entry, 'player must appear on the live board');
@@ -60,7 +60,7 @@ test('starting an Arcade session marks players "playing" on the live board and o
 
   endArcadeSession([alice, bob], 'quiz');
 
-  const afterEnd = getLiveBoard();
+  const afterEnd = getLiveBoard(DEFAULT_GROUP_ID);
   for (const id of [alice, bob]) {
     const entry = afterEnd.find((p) => p.player_id === id);
     assert.equal(entry!.games.length, 0, 'the arcade game must be removed from live_status_games on end');

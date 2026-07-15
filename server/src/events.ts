@@ -5,9 +5,11 @@
 // (OUTSIDE_EVENTS_ID) represents "außerhalb von Events": whatever gets
 // recorded while no real event is tracking lands there instead, so every
 // event-scoped table can keep a plain non-null event_id rather than
-// threading a nullable "no event" case through the whole codebase. Players,
-// games, and skills are NOT touched by any of this — they're intentionally
-// global across events (same friend group every year).
+// threading a nullable "no event" case through the whole codebase. Players
+// are NOT touched by any of this — accounts are global across events and
+// groups (same person, same account, every year). Games/skills/preferences
+// are scoped per *group*, not per event (see docs/KONZEPT-USER-MANAGEMENT.md
+// 7.2) — several events of the same group still share one catalog.
 //
 // The sentinel is seeded once by db.ts at startup — getTrackingEventId here
 // is a pure reader and never creates anything itself.

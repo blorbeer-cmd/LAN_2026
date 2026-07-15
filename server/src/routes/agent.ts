@@ -16,12 +16,13 @@
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { db } from '../db';
+import { db, DEFAULT_GROUP_ID } from '../db';
 import { broadcast, Events } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { isGameActive } from '../activity';
 import { config } from '../config';
-import { getTrackingEventId, isParticipant, OUTSIDE_EVENTS_ID } from '../events';
+import { getTrackingEvent, getTrackingEventId, isParticipant, OUTSIDE_EVENTS_ID } from '../events';
+import { getGroupMembership } from '../groups';
 
 export const agentRouter = Router();
 
@@ -101,24 +102,40 @@ agentRouter.post('/report', (req, res) => {
     });
   }
 
+  // A report carries no group selector of its own (only the api_key), so
+  // which group's game catalog it matches against is resolved the same way
+  // events already pick "the" active tracking context: the currently
+  // tracking event's group (or the per-instance "außerhalb von Events"
+  // sentinel's group when none is tracking — it always has one). If the
+  // player isn't an active member of that group, nothing can match: this
+  // avoids silently attributing playtime to a game from a group the report
+  // has no business touching. See docs/KONZEPT-USER-MANAGEMENT.md 7.4.
+  // Legacy mode predates group membership entirely (players created via the
+  // simple "add a participant" flow never get a group_memberships row), so
+  // it keeps today's behavior: everyone belongs to the one implicit group.
+  const matchGroupId = getTrackingEvent().group_id;
+  const canMatchGames =
+    matchGroupId !== null &&
+    (config.authMode === 'legacy' || getGroupMembership(matchGroupId, player.id)?.status === 'active');
+
   // A report can match several distinct games at once (e.g. cs2.exe AND
   // rocketleague.exe both running).
   let matchedGameIds: string[] = [];
-  if (normalized.length > 0) {
+  if (canMatchGames && normalized.length > 0) {
     const placeholders = normalized.map(() => '?').join(',');
     const matches = db
-      .prepare(`SELECT DISTINCT game_id FROM game_process_names WHERE process_name IN (${placeholders})`)
-      .all(...normalized) as Array<{ game_id: string }>;
+      .prepare(`SELECT DISTINCT game_id FROM game_process_names WHERE group_id = ? AND process_name IN (${placeholders})`)
+      .all(matchGroupId, ...normalized) as Array<{ game_id: string }>;
     matchedGameIds = matches.map((m) => m.game_id);
   }
 
   // Which (if any) currently-matched game is the one actually being played
   // right now, per the optional foreground/idle signal.
   let activeGameId: string | null = null;
-  if (normalizedForeground) {
+  if (canMatchGames && normalizedForeground) {
     const owningGame = db
-      .prepare('SELECT game_id FROM game_process_names WHERE process_name = ?')
-      .get(normalizedForeground) as { game_id: string } | undefined;
+      .prepare('SELECT game_id FROM game_process_names WHERE group_id = ? AND process_name = ?')
+      .get(matchGroupId, normalizedForeground) as { game_id: string } | undefined;
     if (owningGame && matchedGameIds.includes(owningGame.game_id)) {
       const gameProcessNames = db
         .prepare('SELECT process_name FROM game_process_names WHERE game_id = ?')
@@ -180,11 +197,11 @@ agentRouter.post('/report', (req, res) => {
         ).run(isForeground, player.id, gameId);
       } else {
         db.prepare(
-          'INSERT INTO live_status_games (player_id, game_id, since, is_foreground) VALUES (?, ?, ?, ?)'
-        ).run(player.id, gameId, now, isForeground);
+          'INSERT INTO live_status_games (player_id, game_id, group_id, since, is_foreground) VALUES (?, ?, ?, ?, ?)'
+        ).run(player.id, gameId, matchGroupId, now, isForeground);
         db.prepare(
-          'INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at) VALUES (?, ?, ?, ?, ?, NULL)'
-        ).run(nanoid(), player.id, gameId, trackingEventId, now);
+          'INSERT INTO play_sessions (id, player_id, game_id, group_id, event_id, started_at, ended_at) VALUES (?, ?, ?, ?, ?, ?, NULL)'
+        ).run(nanoid(), player.id, gameId, matchGroupId, trackingEventId, now);
       }
     }
 
@@ -200,7 +217,7 @@ agentRouter.post('/report', (req, res) => {
   });
   sync();
 
-  broadcast(Events.liveStatusChanged, getLiveBoard());
+  broadcast(Events.liveStatusChanged, getLiveBoard(matchGroupId ?? DEFAULT_GROUP_ID));
   res.json({
     ok: true,
     playerId: player.id,
@@ -237,6 +254,6 @@ agentRouter.post('/tracking-paused', (req, res) => {
   if (paused) clearPlayerLiveStatus(player.id);
 
   broadcast(Events.playersChanged, null);
-  if (paused) broadcast(Events.liveStatusChanged, getLiveBoard());
+  if (paused) broadcast(Events.liveStatusChanged, getLiveBoard(getTrackingEvent().group_id ?? DEFAULT_GROUP_ID));
   res.json({ ok: true, trackingPaused: paused });
 });

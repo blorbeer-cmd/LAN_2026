@@ -7,10 +7,10 @@
 // on an agent report that will never come.
 
 import { nanoid } from 'nanoid';
-import { db, ARCADE_GAME_DEFS } from '../db';
+import { db, ARCADE_GAME_DEFS, DEFAULT_GROUP_ID } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getLiveBoard } from '../liveStatus';
-import { getTrackingEventId } from '../events';
+import { getTrackingEvent, getTrackingEventId } from '../events';
 
 export type ArcadeGameKey = (typeof ARCADE_GAME_DEFS)[number]['key'];
 
@@ -40,6 +40,11 @@ export function startArcadeSession(playerIds: string[], key: ArcadeGameKey): voi
   if (!gameId || playerIds.length === 0) return;
   const now = Date.now();
   const eventId = getTrackingEventId();
+  // The Arcade titles themselves are shared system fixtures (games.group_id
+  // NULL, see db.ts), but a live session still belongs to whichever group its
+  // players are actually in — same "current tracking context" resolution
+  // agent.ts uses for regular PC games (7.4 in the concept doc).
+  const groupId = getTrackingEvent().group_id ?? DEFAULT_GROUP_ID;
 
   const touchStatus = db.prepare(
     `INSERT INTO live_status (player_id, last_seen, manual_note, activity_tracked) VALUES (?, ?, NULL, 0)
@@ -47,22 +52,22 @@ export function startArcadeSession(playerIds: string[], key: ArcadeGameKey): voi
   );
   const alreadyPlaying = db.prepare('SELECT 1 FROM live_status_games WHERE player_id = ? AND game_id = ?');
   const insertGame = db.prepare(
-    'INSERT OR IGNORE INTO live_status_games (player_id, game_id, since, is_foreground) VALUES (?, ?, ?, 1)'
+    'INSERT OR IGNORE INTO live_status_games (player_id, game_id, group_id, since, is_foreground) VALUES (?, ?, ?, ?, 1)'
   );
   const insertSession = db.prepare(
-    'INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at) VALUES (?, ?, ?, ?, ?, NULL)'
+    'INSERT INTO play_sessions (id, player_id, game_id, group_id, event_id, started_at, ended_at) VALUES (?, ?, ?, ?, ?, ?, NULL)'
   );
 
   const run = db.transaction(() => {
     for (const playerId of playerIds) {
       touchStatus.run(playerId, now);
       const already = alreadyPlaying.get(playerId, gameId);
-      insertGame.run(playerId, gameId, now);
-      if (!already) insertSession.run(nanoid(), playerId, gameId, eventId, now);
+      insertGame.run(playerId, gameId, groupId, now);
+      if (!already) insertSession.run(nanoid(), playerId, gameId, groupId, eventId, now);
     }
   });
   run();
-  broadcast(Events.liveStatusChanged, getLiveBoard());
+  broadcast(Events.liveStatusChanged, getLiveBoard(groupId));
 }
 
 // Ends the arcade session for the given real players — called on every match
@@ -84,7 +89,7 @@ export function endArcadeSession(playerIds: string[], key: ArcadeGameKey): void 
     }
   });
   run();
-  broadcast(Events.liveStatusChanged, getLiveBoard());
+  broadcast(Events.liveStatusChanged, getLiveBoard(getTrackingEvent().group_id ?? DEFAULT_GROUP_ID));
 }
 
 // Every player currently in an open arcade session, across all games.
@@ -112,6 +117,6 @@ export function startArcadeHeartbeat(): void {
       for (const id of ids) touch.run(now, id);
     });
     run();
-    broadcast(Events.liveStatusChanged, getLiveBoard());
+    broadcast(Events.liveStatusChanged, getLiveBoard(getTrackingEvent().group_id ?? DEFAULT_GROUP_ID));
   }, 20_000).unref();
 }
