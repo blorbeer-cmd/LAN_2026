@@ -187,7 +187,14 @@ groupsRouter.delete(
   requireGroupRole('owner'),
   requireRecentReauthentication,
   (req, res) => {
-    const group = archiveGroup(req.group!.id)!;
+    const archived = archiveGroup(req.group!.id);
+    if (!archived.ok) {
+      if (archived.code === 'tracking_active') {
+        return res.status(409).json({ error: 'Die Gruppe kann während eines laufenden Trackings nicht archiviert werden.' });
+      }
+      return res.status(404).json({ error: 'Gruppe nicht gefunden.' });
+    }
+    const group = archived.group;
     writeAdminAudit({
       actorPlayerId: req.player!.id,
       groupId: group.id,
@@ -246,6 +253,11 @@ groupsRouter.delete(
   requireGroupRole('admin'),
   requireRecentReauthentication,
   (req, res) => {
+    if (!config.multiGroupsEnabled && req.group!.id === DEFAULT_GROUP_ID) {
+      return res
+        .status(409)
+        .json({ error: 'Aus der Startgruppe können während des Ein-Gruppen-Rollouts keine Mitglieder entfernt werden.' });
+    }
     const result = removeGroupMember(req.group!.id, req.player!.id, req.params.playerId);
     if (!result.ok) return sendMembershipMutationError(res, result);
     writeAdminAudit({

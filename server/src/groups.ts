@@ -159,7 +159,11 @@ function activeOwnerCount(groupId: string): number {
   return (
     db
       .prepare(
-        "SELECT COUNT(*) AS count FROM group_memberships WHERE group_id = ? AND status = 'active' AND role = 'owner'",
+        `SELECT COUNT(*) AS count
+         FROM group_memberships gm
+         JOIN players p ON p.id = gm.player_id
+         WHERE gm.group_id = ? AND gm.status = 'active' AND gm.role = 'owner'
+           AND p.deactivated_at IS NULL`,
       )
       .get(groupId) as { count: number }
   ).count;
@@ -237,11 +241,21 @@ export function leaveGroup(groupId: string, playerId: string): MembershipMutatio
   })();
 }
 
-export function archiveGroup(groupId: string): GroupRow | undefined {
-  const group = getGroup(groupId);
-  if (!group || group.archived_at !== null) return undefined;
-  db.prepare('UPDATE groups SET archived_at = ? WHERE id = ? AND archived_at IS NULL').run(Date.now(), groupId);
-  return getGroup(groupId);
+export type ArchiveGroupResult =
+  | { ok: true; group: GroupRow }
+  | { ok: false; code: 'not_found' | 'tracking_active' };
+
+export function archiveGroup(groupId: string): ArchiveGroupResult {
+  return db.transaction(() => {
+    const group = getGroup(groupId);
+    if (!group || group.archived_at !== null) return { ok: false, code: 'not_found' } as const;
+    const tracking = db
+      .prepare('SELECT 1 FROM events WHERE group_id = ? AND tracking_enabled = 1 LIMIT 1')
+      .get(groupId);
+    if (tracking) return { ok: false, code: 'tracking_active' } as const;
+    db.prepare('UPDATE groups SET archived_at = ? WHERE id = ? AND archived_at IS NULL').run(Date.now(), groupId);
+    return { ok: true, group: getGroup(groupId)! } as const;
+  })();
 }
 
 export function listGroupMembers(

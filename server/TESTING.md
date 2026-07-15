@@ -43,7 +43,8 @@ eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur d
 - Die verpflichtende Zwei-Gruppen-Autorisierungsmatrix liegt in
   `src/test/api.groupAuthorization.required.test.ts`. Sie prüft fremde Ressourcen (`404`),
   unzureichende Rollen (`403`), sofortige Rollenwirkung, gruppengebundene Events/Audits,
-  Test-Spieler-Eigentum und den Last-Owner-Race.
+  Test-Spieler-Eigentum, den Last-Owner-Race, deaktivierte Owner, den Entfernungsschutz der
+  Startgruppe und die Archivierungssperre bei laufendem Tracking.
 
 ## Datenbank-Migrationen
 
