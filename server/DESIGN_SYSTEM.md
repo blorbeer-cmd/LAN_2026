@@ -261,6 +261,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the icon's tooltip and accessible label retain the full „Skill-Level“ meaning. Team headers show
   the same icon with a dynamically calculated total; missing ratings contribute `0`, stated
   explicitly in its tooltip and accessible label.
+- **Player profiles** — The roster is public and opens read-only details for other participants.
+  The current device identity is marked as „Mein Profil“ and opens the dedicated self-service
+  profile editor. Foreign profiles expose neither edit/delete actions nor the private agent key;
+  the API omits the private agent key and rejects profile-field updates when `x-player-id` does not
+  match the target player.
+  This device-local identity header is deliberately documented as the temporary boundary that
+  future authenticated user management must replace.
 - **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the
   same restrained accent-rail panels as team and tournament workflows.
   The latest result and Bock ranking form a one-column/two-column overview inside one parent card,

@@ -1,47 +1,31 @@
-// Players view (FR-05..08, FR-15): roster management + per-game skill
-// ratings. Tapping a player opens their detail sheet (rename, recolor, copy
-// their agent API key, adjust skills, delete).
+// Players view (FR-05..08, FR-15): public roster with read-only profile
+// details. Editing stays in "Mein Profil" so a device can only change the
+// identity it currently represents.
 
 import { api } from '../api.js';
 import { state, playerById } from '../state.js';
 import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
-import { openModal, confirmDialog } from '../modal.js';
+import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 import { AVATAR_PALETTE } from '../avatarPalette.js';
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
+import { getMyId } from '../whoami.js';
 
 function randomColor() {
   return AVATAR_PALETTE[Math.floor(Math.random() * AVATAR_PALETTE.length)];
 }
 
-function ratingFor(playerId, gameId) {
-  const entry = state.skills.find((s) => s.player_id === playerId && s.game_id === gameId);
-  return entry ? entry.rating : 5;
-}
-
-function preferenceFor(playerId, gameId) {
-  const entry = state.preferences.find((p) => p.player_id === playerId && p.game_id === gameId);
-  return entry ? entry.rating : 5;
-}
-
-function lastSeenLabel(timestamp) {
-  if (!timestamp) return 'Noch kein Agent-Report';
-  const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
-  if (minutes < 1) return 'gerade eben';
-  if (minutes < 60) return `vor ${minutes} Min.`;
-  const hours = Math.floor(minutes / 60);
-  return `vor ${hours} Std.${minutes % 60 ? ` ${minutes % 60} Min.` : ''}`;
-}
-
 export function renderPlayers(container, ctx) {
+  const myId = getMyId();
   const rows = state.players
     .map(
       (p) => `
       <button type="button" class="card row list-row" data-player="${p.id}">
         ${avatarHtml(p, 36)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
-        <span class="muted">›</span>
+        ${p.id === myId ? '<span class="muted">Mein Profil</span>' : ''}
+        <span class="muted">${icon('chevronRight')}</span>
       </button>`
     )
     .join('');
@@ -61,7 +45,13 @@ export function renderPlayers(container, ctx) {
 
   container.querySelector('#add-player-btn').addEventListener('click', () => openAddPlayerModal(ctx));
   container.querySelectorAll('[data-player]').forEach((btn) => {
-    btn.addEventListener('click', () => openPlayerDetail(btn.dataset.player, ctx));
+    btn.addEventListener('click', () => {
+      if (btn.dataset.player === getMyId()) {
+        window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'profile' }));
+        return;
+      }
+      openPlayerDetail(btn.dataset.player);
+    });
   });
 }
 
@@ -99,121 +89,37 @@ function openAddPlayerModal(ctx) {
   );
 }
 
-function openPlayerDetail(playerId, ctx) {
+function openPlayerDetail(playerId) {
   const player = playerById(playerId);
   if (!player) return;
 
   const ratingRows = (kind) => state.games
     .map((g) => {
-      const rating = kind === 'bock' ? preferenceFor(playerId, g.id) : ratingFor(playerId, g.id);
+      const stored = kind === 'bock'
+        ? state.preferences.find((entry) => entry.player_id === playerId && entry.game_id === g.id)
+        : state.skills.find((entry) => entry.player_id === playerId && entry.game_id === g.id);
       return `
-        <div class="skill-row" data-game="${g.id}" data-rating-kind="${kind}">
+        <div class="skill-row">
           <span class="row" style="gap:var(--space-2);">${gameBadgeHtml(g, 24)} ${escapeHtml(g.name)}</span>
-          <span class="skill-value">${rating}</span>
-          <input type="range" class="skill-row-slider ${kind === 'bock' ? 'preference-row-slider' : ''}" min="1" max="10" step="1" value="${rating}" />
+          <span class="skill-value">${stored?.rating ?? '–'}</span>
         </div>`;
     })
     .join('');
 
-  const { close } = openModal(
+  openModal(
     escapeHtml(player.name),
     `
       <div class="stack">
         <div class="row">
-          <input type="color" id="detail-color" value="${player.color}" />
-          <input type="text" id="detail-name" value="${escapeHtml(player.name)}" maxlength="60" style="flex:1;" placeholder="Gamer-Name" />
+          ${avatarHtml(player, 48)}
+          <div class="stack" style="gap:var(--space-1);">
+            <strong class="player-name">${escapeHtml(player.name)}</strong>
+            ${player.real_name ? `<span class="muted">${escapeHtml(player.real_name)}</span>` : ''}
+          </div>
         </div>
-        <input type="text" id="detail-real-name" value="${escapeHtml(player.real_name || '')}" maxlength="60" placeholder="Richtiger Name (optional)" />
-        <button type="button" class="btn btn-primary" id="detail-save">Speichern</button>
-
-        <div class="section-title">Agent-API-Key</div>
-        <div class="row">
-          <input type="text" id="detail-apikey" readonly value="Laden…" style="flex:1;font-family:monospace;" />
-          <button type="button" class="btn btn-sm" id="detail-copy-key">Kopieren</button>
-        </div>
-        <p class="muted" style="font-size:var(--font-size-xs);">Diesen Key in die Config des Agenten auf dem PC des Spielers eintragen.</p>
-        <div class="muted" id="detail-agent-last-seen" style="font-size:var(--font-size-xs);">Agent zuletzt gesehen: Lädt…</div>
-
+        <p class="muted" style="font-size:var(--font-size-xs);margin:0;">Dieses Profil kann nur von ${escapeHtml(player.name)} selbst bearbeitet werden.</p>
         ${state.games.length > 0 ? `<div class="section-title">Bock-o-Meter</div>${ratingRows('bock')}<div class="section-title">Skill-Ratings</div>${ratingRows('skill')}` : ''}
-
-        <button type="button" class="btn btn-danger btn-block" id="detail-delete">Spieler löschen</button>
       </div>
-    `,
-    {
-      onMount: async (el) => {
-        // Fetch the API key lazily (list view intentionally omits it).
-        try {
-          const full = await api.players.get(playerId);
-          el.querySelector('#detail-apikey').value = full.api_key;
-          el.querySelector('#detail-agent-last-seen').textContent = `Agent zuletzt gesehen: ${lastSeenLabel(full.agent_last_seen)}`;
-        } catch {
-          el.querySelector('#detail-apikey').value = 'Fehler beim Laden';
-          el.querySelector('#detail-agent-last-seen').textContent = 'Agent zuletzt gesehen: Fehler beim Laden';
-        }
-
-        el.querySelector('#detail-copy-key').addEventListener('click', async () => {
-          const value = el.querySelector('#detail-apikey').value;
-          try {
-            await navigator.clipboard.writeText(value);
-            showToast('API-Key kopiert.');
-          } catch {
-            showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
-          }
-        });
-
-        el.querySelector('#detail-save').addEventListener('click', async () => {
-          const name = el.querySelector('#detail-name').value.trim();
-          const realName = el.querySelector('#detail-real-name').value.trim();
-          const color = el.querySelector('#detail-color').value;
-          if (!name) return showToast('Name darf nicht leer sein.', { error: true });
-          try {
-            await api.players.update(playerId, { name, realName: realName || null, color });
-            close();
-            await ctx.refresh();
-            showToast('Gespeichert.');
-          } catch (err) {
-            showToast(err.message, { error: true });
-          }
-        });
-
-        el.querySelectorAll('.skill-row').forEach((row) => {
-          const gameId = row.dataset.game;
-          const kind = row.dataset.ratingKind;
-          const slider = row.querySelector('input[type="range"]');
-          const valueEl = row.querySelector('.skill-value');
-          const updateSliderTone = () => {
-            slider.style.setProperty('--slider-pct', `${((Number(slider.value) - 1) / 9) * 100}%`);
-          };
-          updateSliderTone();
-          let debounceTimer = null;
-          slider.addEventListener('input', () => {
-            valueEl.textContent = slider.value;
-            updateSliderTone();
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(async () => {
-              try {
-                if (kind === 'bock') await api.preferences.set(playerId, gameId, parseInt(slider.value, 10));
-                else await api.skills.set(playerId, gameId, parseInt(slider.value, 10));
-                await ctx.refresh();
-              } catch (err) {
-                showToast(err.message, { error: true });
-              }
-            }, 250);
-          });
-        });
-
-        el.querySelector('#detail-delete').addEventListener('click', async () => {
-          if (!(await confirmDialog(`${player.name} wirklich löschen?`))) return;
-          try {
-            await api.players.remove(playerId);
-            close();
-            await ctx.refresh();
-            showToast('Spieler gelöscht.');
-          } catch (err) {
-            showToast(err.message, { error: true });
-          }
-        });
-      },
-    }
+    `
   );
 }

@@ -170,13 +170,14 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.click('#add-player-form button[type="submit"]');
   await page.waitForSelector('text=E2E Bob');
 
-  // Player detail: API key loads.
-  await page.click('button[data-player] >> text=E2E Alice');
-  await page.waitForFunction(() => {
-    const el = document.querySelector('#detail-apikey') as HTMLInputElement | null;
-    return !!el && el.value.length > 10;
-  });
+  // Other profiles are read-only; the current identity opens its own editor.
+  await page.click('button[data-player] >> text=E2E Bob');
+  await page.waitForSelector('text=Dieses Profil kann nur von E2E Bob selbst bearbeitet werden.');
+  assert.equal(await page.locator('#detail-save, #detail-delete, #detail-apikey').count(), 0);
   await page.click('[data-close]');
+  await page.click('button[data-player] >> text=E2E Alice');
+  await page.waitForSelector('#profile-name');
+  assert.equal(await page.inputValue('#profile-name'), 'E2E Alice');
 
   // Matchmaking: draw teams for both players.
   await page.click('[data-view="matchmaking"]');

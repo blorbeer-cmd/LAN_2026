@@ -11,6 +11,10 @@ import { db } from '../db';
 const app = createApp();
 let createdId: string;
 
+function patchPlayer(id: string, body: Record<string, unknown>, actorId: string = id) {
+  return request(app).patch(`/api/players/${id}`).set('x-player-id', actorId).send(body);
+}
+
 test('POST /api/players rejects an empty name', async () => {
   const res = await request(app).post('/api/players').send({ name: '   ' });
   assert.equal(res.status, 400);
@@ -41,9 +45,15 @@ test('GET /api/players lists players WITHOUT exposing api_key', async () => {
 });
 
 test('GET /api/players/:id returns the single player WITH api_key', async () => {
-  const res = await request(app).get(`/api/players/${createdId}`);
+  const res = await request(app).get(`/api/players/${createdId}`).set('x-player-id', createdId);
   assert.equal(res.status, 200);
   assert.ok(res.body.api_key);
+});
+
+test('GET /api/players/:id hides api_key from another identity', async () => {
+  const res = await request(app).get(`/api/players/${createdId}`).set('x-player-id', 'someone-else');
+  assert.equal(res.status, 200);
+  assert.equal('api_key' in res.body, false);
 });
 
 test('GET /api/players/:id includes the most recent agent report time', async () => {
@@ -60,16 +70,28 @@ test('GET /api/players/:id 404s for an unknown id', async () => {
 });
 
 test('PATCH /api/players/:id renames and recolors', async () => {
-  const res = await request(app)
-    .patch(`/api/players/${createdId}`)
-    .send({ name: 'Alexandra', color: '#ff0000' });
+  const res = await patchPlayer(createdId, { name: 'Alexandra', color: '#ff0000' });
   assert.equal(res.status, 200);
   assert.equal(res.body.name, 'Alexandra');
   assert.equal(res.body.color, '#ff0000');
 });
 
+test('PATCH /api/players/:id rejects profile changes from another identity', async () => {
+  const other = await request(app).post('/api/players').send({ name: 'Fremder Spieler' });
+  const missingIdentity = await request(app).patch(`/api/players/${createdId}`).send({ name: 'Übernommen' });
+  assert.equal(missingIdentity.status, 403);
+
+  const foreignIdentity = await patchPlayer(createdId, { name: 'Übernommen' }, other.body.id);
+  assert.equal(foreignIdentity.status, 403);
+  assert.match(foreignIdentity.body.error, /eigenes Profil/);
+
+  const unchanged = await request(app).get(`/api/players/${createdId}`);
+  assert.equal(unchanged.body.name, 'Alexandra');
+  await request(app).delete(`/api/players/${other.body.id}`);
+});
+
 test('PATCH /api/players/:id rejects an invalid color', async () => {
-  const res = await request(app).patch(`/api/players/${createdId}`).send({ color: 'nope' });
+  const res = await patchPlayer(createdId, { color: 'nope' });
   assert.equal(res.status, 400);
 });
 
@@ -81,18 +103,18 @@ test('POST /api/players rejects a name that is already taken (case-insensitive)'
 
 test('PATCH /api/players/:id rejects renaming to a name already taken by someone else', async () => {
   const other = await request(app).post('/api/players').send({ name: 'Bine' });
-  const res = await request(app).patch(`/api/players/${other.body.id}`).send({ name: 'ALEXANDRA' });
+  const res = await patchPlayer(other.body.id, { name: 'ALEXANDRA' });
   assert.equal(res.status, 409);
   await request(app).delete(`/api/players/${other.body.id}`);
 });
 
 test('PATCH /api/players/:id keeping your own name (same casing or not) is not a conflict', async () => {
-  const res = await request(app).patch(`/api/players/${createdId}`).send({ name: 'Alexandra' });
+  const res = await patchPlayer(createdId, { name: 'Alexandra' });
   assert.equal(res.status, 200);
 });
 
 test('PATCH /api/players/:id rejects an invalid avatar value', async () => {
-  const res = await request(app).patch(`/api/players/${createdId}`).send({ avatar: 'not-a-data-url' });
+  const res = await patchPlayer(createdId, { avatar: 'not-a-data-url' });
   assert.equal(res.status, 400);
 });
 
@@ -112,7 +134,7 @@ test('POST /api/players rejects a too-long realName', async () => {
 });
 
 test('PATCH /api/players/:id sets, then clears, realName (null and empty string both clear it)', async () => {
-  const set = await request(app).patch(`/api/players/${createdId}`).send({ realName: 'Alexandra Musterfrau' });
+  const set = await patchPlayer(createdId, { realName: 'Alexandra Musterfrau' });
   assert.equal(set.status, 200);
   assert.equal(set.body.real_name, 'Alexandra Musterfrau');
 
@@ -120,28 +142,28 @@ test('PATCH /api/players/:id sets, then clears, realName (null and empty string 
   assert.equal(stillSet.body.real_name, 'Alexandra Musterfrau');
 
   // Omitting the field entirely leaves it untouched.
-  const untouched = await request(app).patch(`/api/players/${createdId}`).send({ color: '#123456' });
+  const untouched = await patchPlayer(createdId, { color: '#123456' });
   assert.equal(untouched.body.real_name, 'Alexandra Musterfrau');
 
-  const clearedByNull = await request(app).patch(`/api/players/${createdId}`).send({ realName: null });
+  const clearedByNull = await patchPlayer(createdId, { realName: null });
   assert.equal(clearedByNull.status, 200);
   assert.equal(clearedByNull.body.real_name, null);
 
-  await request(app).patch(`/api/players/${createdId}`).send({ realName: 'Set again' });
-  const clearedByEmptyString = await request(app).patch(`/api/players/${createdId}`).send({ realName: '  ' });
+  await patchPlayer(createdId, { realName: 'Set again' });
+  const clearedByEmptyString = await patchPlayer(createdId, { realName: '  ' });
   assert.equal(clearedByEmptyString.status, 200);
   assert.equal(clearedByEmptyString.body.real_name, null);
 });
 
 test('PATCH /api/players/:id rejects a too-long realName', async () => {
-  const res = await request(app).patch(`/api/players/${createdId}`).send({ realName: 'x'.repeat(61) });
+  const res = await patchPlayer(createdId, { realName: 'x'.repeat(61) });
   assert.equal(res.status, 400);
   assert.match(res.body.error, /Richtiger Name/);
 });
 
 test('PATCH /api/players/:id accepts and stores a valid avatar data URL', async () => {
   const avatar = 'data:image/png;base64,aGVsbG8=';
-  const res = await request(app).patch(`/api/players/${createdId}`).send({ avatar });
+  const res = await patchPlayer(createdId, { avatar });
   assert.equal(res.status, 200);
   assert.equal(res.body.avatar, avatar);
 

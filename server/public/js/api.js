@@ -5,6 +5,7 @@
 import { filterTestUsers } from './testFilter.js';
 
 const TOKEN_KEY = 'respawn_access_token';
+const PLAYER_ID_KEY = 'respawn_my_player_id';
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY) || '';
@@ -18,6 +19,8 @@ export async function apiFetch(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   const token = getToken();
   if (token) headers['x-access-token'] = token;
+  const playerId = localStorage.getItem(PLAYER_ID_KEY);
+  if (playerId) headers['x-player-id'] = playerId;
   // Tells the server this device currently sees test players (admin mode).
   // Needed for replace-style writes like the seating layout: a non-admin
   // client's state has test users filtered out, so its saves must not be
@@ -56,6 +59,8 @@ export async function fetchText(path) {
   const headers = {};
   const token = getToken();
   if (token) headers['x-access-token'] = token;
+  const playerId = localStorage.getItem(PLAYER_ID_KEY);
+  if (playerId) headers['x-player-id'] = playerId;
   const res = await fetch(path, { headers });
   const text = await res.text();
   if (!res.ok) {
@@ -78,6 +83,8 @@ export async function fetchBlob(path) {
   const headers = {};
   const token = getToken();
   if (token) headers['x-access-token'] = token;
+  const playerId = localStorage.getItem(PLAYER_ID_KEY);
+  if (playerId) headers['x-player-id'] = playerId;
   const res = await fetch(path, { headers });
   if (!res.ok) {
     let message = `Fehler ${res.status}`;

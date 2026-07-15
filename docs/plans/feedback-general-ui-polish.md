@@ -136,6 +136,10 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   Bereits erfasste Sieger und Punktestände lassen sich über eine eindeutige Bearbeiten-Aktion
   korrigieren. Abhängige K.O.-Ergebnisse werden dabei zurückgesetzt und Gruppen-Korrekturen bauen
   die K.O.-Phase neu auf, damit Rangliste und Turnierbaum konsistent bleiben.
+- Die Spielerübersicht zeigt fremde Profile nur lesbar; ausschließlich die lokal gewählte eigene
+  Identität gelangt in „Mein Profil“ und darf die Profilfelder ändern. Die API weist fremde
+  Profiländerungen mit `403` zurück. Die Geräteidentität per Header bleibt bis zu einem späteren
+  authentifizierten Usermanagement ausdrücklich eine Übergangslösung.
 - Die Teams-Seite übernimmt Spieler-Raster, Auslosungsbereich, Beschriftungen und Teamkarten aus
   dem Turnierformular. Ausgeloste Gamer wechseln auch dort per Drag-and-drop, Touch-Auswahl oder
   Pfeiltasten das Team; das alte Team-Dropdown entfällt. Auslosung und Captain Draft liegen als

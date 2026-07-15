@@ -68,7 +68,8 @@ playersRouter.get('/', (_req, res) => {
   res.json(rows.map(toPublicPlayer));
 });
 
-// GET /api/players/:id - single player including their API key.
+// GET /api/players/:id - public profile details for everyone; the private
+// agent API key is included only for the matching device identity.
 playersRouter.get('/:id', (req, res) => {
   const row = db.prepare(
     `SELECT p.*, ls.last_seen AS agent_last_seen
@@ -78,7 +79,7 @@ playersRouter.get('/:id', (req, res) => {
     | PlayerRow
     | undefined;
   if (!row) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  res.json(row);
+  res.json(req.header('x-player-id') === row.id ? row : toPublicPlayer(row));
 });
 
 // POST /api/players - create a player. Returns the API key once here (and via
@@ -127,9 +128,11 @@ playersRouter.post('/', (req, res) => {
 });
 
 // PATCH /api/players/:id - rename, recolor, update the avatar, and/or
-// pause/resume tracking. Also used by players managing their own profile
-// (no separate ownership check — this tool trusts the friend group it's
-// built for; see auth.ts). trackingPaused is the player-side opt-out: while
+// pause/resume tracking. Profile fields may only be changed by the device
+// identity currently assigned to that player. The x-player-id header is the
+// temporary identity boundary until future user management replaces the
+// device-local "who am I" selection with authenticated sessions.
+// trackingPaused is the player-side opt-out: while
 // true, the agent's reports for this player are received but silently
 // dropped (see routes/agent.ts) — no live status, no playtime, regardless
 // of whether an event is tracking.
@@ -140,6 +143,10 @@ playersRouter.patch('/:id', (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const { name, realName, color, avatar, trackingPaused, isAdmin } = req.body ?? {};
+  const changesProfile = [name, realName, color, avatar, trackingPaused].some((value) => value !== undefined);
+  if (changesProfile && req.header('x-player-id') !== existing.id) {
+    return res.status(403).json({ error: 'Du kannst nur dein eigenes Profil bearbeiten.' });
+  }
   if (name !== undefined && !isNonEmptyString(name)) {
     return res.status(400).json({ error: 'Name muss 1-60 Zeichen lang sein.' });
   }
