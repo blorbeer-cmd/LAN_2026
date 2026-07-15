@@ -287,7 +287,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Arrival carpools** — Anreise and Abreise remain separate full-width accented panels. Their
   carpool cards use two columns from `--bp-md`, but an odd final card deliberately keeps one-column
   width instead of spanning the row; phones stay single-column. Every card repeats Start and
-  Ankunft vertically. Below the current passengers, every available passenger seat has its own
+  Ankunft vertically and proceeds directly into the passenger rows without a redundant
+  „Mitfahrende“ caption. Below the current passengers, every available passenger seat has its own
   compact „Frei“ row with a direct „Mitfahren“ action for eligible players. The driver row uses the
   same right-hand action column for a neutral „Fahrer“ label. Occupied passenger rows and free rows
   without an available join action show the parallel neutral „Mitfahrer“ role. All member and free

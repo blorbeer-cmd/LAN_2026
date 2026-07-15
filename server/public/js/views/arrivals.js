@@ -106,7 +106,6 @@ function renderCarpool(c, direction, myId) {
       </div>
       <div class="arrivals-time-pair">${planLines}</div>
       <div class="arrivals-carpool-members">
-        <span class="field-label">Mitfahrende</span>
         ${memberHtml}
       </div>
       ${
