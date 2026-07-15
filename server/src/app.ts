@@ -28,11 +28,7 @@ export function createApp(): express.Express {
   // Public endpoint so the frontend can choose the legacy shared-token gate
   // or the required per-user login gate.
   app.get('/api/meta', (_req, res) => {
-    res.json({
-      accessProtection: accessProtectionEnabled(),
-      authMode: config.authMode,
-      multiGroupsEnabled: config.multiGroupsEnabled,
-    });
+    res.json({ accessProtection: accessProtectionEnabled(), authMode: config.authMode });
   });
 
   // Agent reports authenticate via the player's own API key (NFR-15), not the

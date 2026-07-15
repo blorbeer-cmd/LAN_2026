@@ -291,10 +291,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 30);
+  assert.equal(migrations.length, 29);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 30 }, (_, index) => index + 1),
+    Array.from({ length: 29 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -313,12 +313,7 @@ test('records the complete migration history and does not duplicate it on restar
   assert.ok(pushSeen, 'push_log_seen should be created for legacy databases');
   const playerColumns = migrated.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
   assert.ok(playerColumns.some((column) => column.name === 'deactivated_at'));
-  assert.ok(playerColumns.some((column) => column.name === 'test_owner_group_id'));
   assert.ok(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'admin_log'").get());
-  for (const table of ['groups', 'group_memberships', 'group_invites']) {
-    assert.ok(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
-  }
-  assert.ok(migrated.prepare("SELECT id FROM groups WHERE id = 'default-group'").get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

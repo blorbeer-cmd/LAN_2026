@@ -51,11 +51,6 @@ export const config = {
   // invite first (see accounts.ts). Empty = bootstrap via recovery code is
   // disabled entirely.
   adminRecoveryCode: process.env.ADMIN_RECOVERY_CODE ?? '',
-
-  // Phase 5a builds and tests the multi-group foundation without exposing a
-  // second production tenant before every feature, socket and push path is
-  // group-scoped. The migrated default group remains available either way.
-  multiGroupsEnabled: process.env.MULTI_GROUPS_ENABLED === '1',
 } as const;
 
 // Production must have one complete access model: legacy needs its shared

@@ -975,7 +975,6 @@ runMigration({ version: 17, name: 'add event location and description', up: migr
 // `events` table comment above for why this exists. Exported so events.ts
 // can recognize/exclude it without duplicating the constant.
 export const OUTSIDE_EVENTS_ID = 'outside-events';
-export const DEFAULT_GROUP_ID = 'default-group';
 
 // Migration: older databases predate the tracking_enabled/ended_at event
 // columns, event_participants, and players.tracking_paused (all added
@@ -1289,94 +1288,6 @@ function addAccountDeactivationAndAdminLog(): void {
   db.prepare('UPDATE players SET is_admin = 0 WHERE password_hash IS NULL OR is_test = 1').run();
 }
 runMigration({ version: 29, name: 'add account deactivation and admin log', up: addAccountDeactivationAndAdminLog });
-
-// Phase 5a multi-group foundation. Existing feature tables intentionally stay
-// on the single migrated default group until the later data-scoping phases;
-// creating additional production groups is feature-flagged off meanwhile.
-function addGroupFoundation(): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS groups (
-      id          TEXT PRIMARY KEY,
-      name        TEXT NOT NULL,
-      description TEXT,
-      created_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
-      created_at  INTEGER NOT NULL,
-      archived_at INTEGER
-    );
-
-    CREATE TABLE IF NOT EXISTS group_memberships (
-      group_id                TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-      player_id               TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-      role                    TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'member')),
-      status                  TEXT NOT NULL CHECK (status IN ('invited', 'active', 'removed', 'left')),
-      joined_at               INTEGER,
-      ended_at                INTEGER,
-      outside_tracking_enabled INTEGER NOT NULL DEFAULT 0 CHECK (outside_tracking_enabled IN (0, 1)),
-      invited_by              TEXT REFERENCES players(id) ON DELETE SET NULL,
-      PRIMARY KEY (group_id, player_id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_group_memberships_player
-      ON group_memberships(player_id, status, group_id);
-    CREATE INDEX IF NOT EXISTS idx_group_memberships_group_role
-      ON group_memberships(group_id, status, role);
-
-    CREATE TABLE IF NOT EXISTS group_invites (
-      code             TEXT PRIMARY KEY,
-      group_id         TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-      target_player_id TEXT REFERENCES players(id) ON DELETE CASCADE,
-      created_by       TEXT REFERENCES players(id) ON DELETE SET NULL,
-      created_at       INTEGER NOT NULL,
-      expires_at       INTEGER NOT NULL,
-      revoked_at       INTEGER,
-      used_at          INTEGER,
-      used_by          TEXT REFERENCES players(id) ON DELETE SET NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_group_invites_group
-      ON group_invites(group_id, created_at);
-  `);
-
-  const playerColumns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
-  if (!playerColumns.some((column) => column.name === 'test_owner_group_id')) {
-    db.exec('ALTER TABLE players ADD COLUMN test_owner_group_id TEXT REFERENCES groups(id) ON DELETE SET NULL');
-  }
-
-  const now = Date.now();
-  const owner = db
-    .prepare(
-      `SELECT id
-       FROM players
-       WHERE password_hash IS NOT NULL AND deactivated_at IS NULL AND is_test = 0
-       ORDER BY is_admin DESC, created_at, id
-       LIMIT 1`
-    )
-    .get() as { id: string } | undefined;
-
-  db.prepare(
-    `INSERT OR IGNORE INTO groups (id, name, description, created_by, created_at, archived_at)
-     VALUES (?, 'RespawnHQ', 'Automatisch migrierte Startgruppe', ?, ?, NULL)`
-  ).run(DEFAULT_GROUP_ID, owner?.id ?? null, now);
-
-  const players = db
-    .prepare(
-      `SELECT id, is_admin, is_test, tracking_paused
-       FROM players
-       WHERE deactivated_at IS NULL`
-    )
-    .all() as Array<{ id: string; is_admin: number; is_test: number; tracking_paused: number }>;
-  const insertMembership = db.prepare(
-    `INSERT OR IGNORE INTO group_memberships
-       (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
-     VALUES (?, ?, ?, 'active', ?, NULL, ?, NULL)`
-  );
-  for (const player of players) {
-    const role = player.id === owner?.id ? 'owner' : player.is_admin && !player.is_test ? 'admin' : 'member';
-    insertMembership.run(DEFAULT_GROUP_ID, player.id, role, now, player.tracking_paused ? 0 : 1);
-    if (player.is_test) {
-      db.prepare('UPDATE players SET test_owner_group_id = ? WHERE id = ?').run(DEFAULT_GROUP_ID, player.id);
-    }
-  }
-}
-runMigration({ version: 30, name: 'add multi-group foundation', up: addGroupFoundation });
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.

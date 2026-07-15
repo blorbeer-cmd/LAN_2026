@@ -31,7 +31,6 @@ import {
   markSessionReauthenticated,
 } from '../sessions';
 import { createInvite, findValidInvite, markInviteUsed, voidOutstandingInvites, revokeInvite, type InvitePurpose } from '../invites';
-import { ensureDefaultGroupMembership } from '../groups';
 import {
   consumeGlobalAuthRequest,
   isLoginLocked,
@@ -160,7 +159,6 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
       ).run(player.id, player.name, player.color, player.avatar, nanoid(24), player.is_admin, player.password_hash, now, now);
 
       if (invite && !markInviteUsed(invite.code, player.id, 'register')) throw new InvalidInviteError();
-      ensureDefaultGroupMembership(player.id);
     })();
   } catch (error) {
     if (error instanceof InvalidInviteError) {
@@ -229,7 +227,6 @@ authRouter.post('/claim', limitAnonymousAuthAttempts, (req, res) => {
         .run(passwordHash, nextIsAdmin, now, existing.id);
       if (result.changes !== 1) throw new InvalidInviteError();
       voidOutstandingInvites(existing.id, 'claim');
-      ensureDefaultGroupMembership(existing.id);
     })();
   } catch (error) {
     if (error instanceof InvalidInviteError) {

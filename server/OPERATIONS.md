@@ -79,11 +79,6 @@ wird zuerst über `/?claim=<RECOVERY_CODE>` ein bestehendes Profil als Admin bea
 werden die übrigen persönlichen Claim-Links verteilt. `ACCESS_TOKEN` bleibt ausschließlich für
 Rollbacks auf Legacy-Images in der `.env` und wird vom aktuellen Required-Modus ignoriert.
 
-`MULTI_GROUPS_ENABLED` bleibt in Produktion auf dem Standardwert `0`, solange die Fach- und
-Trackingtabellen noch nicht vollständig nach Gruppen isoliert sind. Die Migration legt bereits die
-dauerhafte Startgruppe an und ordnet bestehende Konten zu; `1` schaltet nur in Entwicklungs- und
-Testumgebungen das Anlegen weiterer Gruppen und deren Einladungslinks frei.
-
 Die in Workflows verwendeten Actions werden über `.github/dependabot.yml` wöchentlich auf Updates
 geprüft. Runtime-Deprecation-Warnungen in Action-Post-Steps stammen aus der jeweiligen Action und
 nicht automatisch aus dem Node-Prozess der Anwendung; sie werden durch zeitnahe Action-Upgrades
