@@ -21,7 +21,8 @@ abschließendes Arbeitspaket umgesetzt; ein Push oder Merge ist damit weiterhin 
 1. Erklärtexte werden nicht pauschal versteckt. Ein Tooltip bleibt nur dort erhalten, wo der
    entfernte Text eine nicht offensichtliche Bedienregel erklärt. Reine Wiederholungen entfallen.
 2. Das sogenannte Tooltip ist ein touch-tauglicher Info-Popover: ein Lucide-Infosymbol neben Titel
-   oder Feldname, kein nur per Hover erreichbares natives `title`-Attribut.
+   oder Feldname, kein nur per Hover erreichbares natives `title`-Attribut. Das Infosymbol steht
+   immer direkt rechts neben dem sichtbaren Text, den es erklärt.
 3. Seitentitel und farbige Aktionsbuttons werden entsprechend der Feedbackliste von dekorativen
    Symbolen befreit. Status-, Warn- und rein ikonische Bedienelemente behalten notwendige Symbole.
 4. Die Kacheln unter „Mehr“ werden alphabetisch sortiert. Das schafft eine objektive, dauerhaft
@@ -100,6 +101,9 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   darunter; die Spielauswahl bleibt ein kompaktes Dropdown. Teamanzahl und Auswahlaktionen teilen
   sich dieselbe Steuerelementhöhe; Sitznachbarn, Punktestand und der gemeinsame Lobby-Hinweis
   verwenden die touch-tauglichen Info-Popovers statt dauerhaft sichtbarer Erklärtexte.
+- Anzahl Teams erhält denselben Label-Abstand wie die Spielauswahl. Der gemeinsame Lobby-Zugangstitel
+  entfällt; „(optional)“ steht direkt hinter Lobby-Name und Lobby-Passwort. Zwischen aktueller
+  Turnierreihe, geöffnetem Formular und abgeschlossener Reihe gilt derselbe vertikale Abstand.
 - Auch Vorschauen mit vielen ausgelosten Teams brechen in ausreichend breite Kartenzeilen um;
   Gamer-Name und Teamwechsel-Auswahl bleiben innerhalb ihrer jeweiligen Karte.
 

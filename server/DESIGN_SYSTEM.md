@@ -206,7 +206,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Spieler/Spiele/Turniere lists and the "Mehr" hub.
 - **Contextual help** — `.info-tooltip` with `.info-tooltip-trigger` and
   `.info-tooltip-panel`, rendered/wired through `infoTooltip.js`; works with pointer, keyboard and
-  touch instead of relying on the native `title` attribute.
+  touch instead of relying on the native `title` attribute. A tooltip trigger always follows
+  directly to the right of the visible text it explains; it does not precede a checkbox or float
+  independently at the far edge of a row.
 - **Notification center** — `.notification-highlight` exposes the newest active unread entry as a
   brand-gradient direct link below the topbar and follows its domain/expiry lifecycle;
   `.notification-center` with `.notification-center-panel`, `.notification-center-toolbar` and

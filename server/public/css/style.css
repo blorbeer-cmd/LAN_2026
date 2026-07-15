@@ -927,6 +927,9 @@ input[type='number']::-webkit-inner-spin-button {
 .tournament-team-count-field input[type='number'] {
   width: 100%;
 }
+.tournament-team-count-field .field-label {
+  margin-bottom: var(--space-1);
+}
 .player-selection-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -990,6 +993,9 @@ input[type='number']::-webkit-inner-spin-button {
 .tournament-list-section {
   margin-top: var(--space-4);
 }
+.tournament-create-slot:not(:empty) {
+  margin-top: var(--space-4);
+}
 .tournament-list-section.is-active {
   border-color: var(--accent);
 }
@@ -1051,10 +1057,18 @@ input[type='number']::-webkit-inner-spin-button {
 .tournament-team-preview-grid .team-move-select {
   max-width: var(--assignment-select-width);
 }
-.tournament-field-heading {
-  margin-bottom: calc(var(--space-2) * -1);
+.tournament-option-label {
+  flex: 1;
 }
-.tournament-field-heading .field-label {
+.tournament-option-label label {
+  cursor: pointer;
+}
+.tournament-field-label {
+  min-height: var(--tap-target-size);
+  display: flex;
+  align-items: center;
+}
+.tournament-field-label .field-label {
   margin: 0;
 }
 .tournament-lobby-info {
