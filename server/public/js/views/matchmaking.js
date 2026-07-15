@@ -641,9 +641,16 @@ export function renderMatchmaking(container, ctx) {
           <button type="button" class="btn btn-sm" id="draft-select-none">Auswahl aufheben</button>
         </div>
         <div class="player-selection-grid tournament-player-grid captain-selection-grid">${draftPlayerRows}</div>
-        <div class="field-label">Captains</div>
+        <div class="field-label title-with-info">
+          <span>Captains</span>
+          ${infoTooltipHtml(
+              'captain-selection-help',
+              'Captains',
+              'Aus den oben markierten Spielern 2–4 Captains benennen. Sie wählen anschließend abwechselnd aus den übrigen Spielern.'
+            )}
+        </div>
         <div class="player-selection-grid tournament-player-grid captain-selection-grid">
-          ${captainRows || '<span class="muted" style="font-size:var(--font-size-sm);">Zuerst Spieler für den Draft markieren.</span>'}
+          ${captainRows}
         </div>
         <button type="button" class="btn btn-primary" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten${draftReady ? ` (${draftCaptainIds.size} Captains, ${draftPoolSize} Spieler)` : ''}</button>
       </section>

@@ -142,7 +142,8 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   gleichwertige Bereiche mit Akzentkante in einer gemeinsamen Hauptkarte. Eine gemeinsame
   Spielauswahl oberhalb der beiden Bereiche gilt für Auslosung, Captain Draft und Historie, ohne
   optisch einem Ablauf zugeordnet zu sein. Der Captain Draft erhält eine eigene Teilnehmerauswahl;
-  erst daraus werden die Captains im selben zweispaltigen Kartenraster benannt. Auch der Live-Pool
+  erst daraus werden die Captains im selben zweispaltigen Kartenraster benannt. Der Tooltip direkt
+  neben „Captains“ erklärt diese Abhängigkeit; ein zusätzlicher Leerzustandstext entfällt. Auch der Live-Pool
   verwendet breite Spielerkarten statt Pills. Dekorative Draft-Symbole und der Hinweis „Du bist am
   Zug“ entfallen. In Auslosung, Draft-Auswahl, Live-Draft und ausgelosten Teams steht bei jedem Gamer
   das Skill-Level für das ausgewählte Spiel; eine fehlende Bewertung wird als „Skill –“ ausgewiesen.
