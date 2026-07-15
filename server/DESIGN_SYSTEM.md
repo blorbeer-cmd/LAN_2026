@@ -227,11 +227,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   a single card stretches across the available width and further cards wrap. `.tournament-list-section` presents
   active and completed tournaments as two prominent status rows without separate summary-stat
   cards. `.tournament-player-grid` keeps the player picker at two cards per row, while
-  `.tournament-detail-stats` and
-  `.tournament-team-grid` expose real progress and roster information above a centered, locally
-  scrollable bracket. `.tournament-team-preview-grid` wraps large proposals into comfortably wide
-  cards so player names and reassignment controls stay inside each card. The create form uses two
-  numbered `.tournament-create-step` panels to separate „Auslosung“ from „Turniermodus“.
+  `.tournament-detail-stats` and `.tournament-team-grid` expose real progress and roster information
+  above a centered, locally scrollable bracket; team cards use at most two columns. The proposal
+  grid follows the same two-column cap and uses draggable `.tournament-drag-player` rows, with
+  touch selection and keyboard arrows as equivalent input paths. The create form separates
+  „Auslosung“ from „Turniermodus“ through two bordered `.tournament-create-step` panels with a
+  restrained accent rail instead of numbered badges.
 
 Prefer composition of these primitives over view-specific copies. A new component
 class needs a distinct reusable purpose; a one-page selector that merely restates a

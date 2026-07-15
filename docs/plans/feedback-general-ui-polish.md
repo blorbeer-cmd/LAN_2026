@@ -105,11 +105,14 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
 - Anzahl Teams erhält denselben Label-Abstand wie die Spielauswahl. Der gemeinsame Lobby-Zugangstitel
   entfällt; „(optional)“ steht direkt hinter Lobby-Name und Lobby-Passwort. Zwischen aktueller
   Turnierreihe, geöffnetem Formular und abgeschlossener Reihe gilt derselbe vertikale Abstand.
-- Auch Vorschauen mit vielen ausgelosten Teams brechen in ausreichend breite Kartenzeilen um;
-  Gamer-Name und Teamwechsel-Auswahl bleiben innerhalb ihrer jeweiligen Karte.
-- Das Anlageformular trennt Auslosung und Turniermodus als zwei nummerierte, umrandete Schritte:
-  Spiel, Teilnehmende und Teamvorschau gehören zu Schritt 1; Format, Ergebnisoptionen, Lobby und
-  die finale Erstellung zu Schritt 2.
+- Teamkarten in der Detailansicht und in der Auslosung nutzen höchstens zwei Spalten. In der
+  Auslosung lassen sich Gamer per Drag-and-drop, Touch-Auswahl oder Pfeiltasten zwischen Teams
+  verschieben; das bisherige Team-Dropdown entfällt.
+- Das Anlageformular trennt Auslosung und Turniermodus als zwei umrandete Bereiche mit dezenter
+  Akzentkante und kurzer Unterzeile statt nummerierter Kreise. Spiel, Teilnehmende und Teamvorschau
+  gehören zur Auslosung; Format, Ergebnisoptionen, Lobby und Erstellung zum Turniermodus.
+- Die Erklärung zu „Gruppenphase + K.O.“ liegt als Info-Popover neben dem Turnierformat. Gruppe und
+  Tabelle verwenden textliche Überschriften ohne zusätzliche dekorative Symbole.
 
 Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 `server/public/js/views/tournament.js`, `server/public/js/views/votes.js`,

@@ -12,6 +12,7 @@ import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { domainIcon } from '../domainIcons.js';
+import { moveTournamentDraftPlayer } from '../tournamentTeamDraft.js';
 
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
@@ -41,6 +42,7 @@ let createTeamCount = ''; // persisted across re-rolls, so "Teams auslosen" acts
 let createLobbyName = '';
 let createLobbyPassword = '';
 let createProposedTeams = null; // [{ name, playerIds, players (for display), totalRating }]
+let createSelectedPlayerId = null; // touch/keyboard fallback for moving a proposed player
 let createSeatConflicts = null; // { conflicts, considered } from the last proposal, for the seating note
 let createAvoidPairs = []; // seat-neighbor pairs from the last proposal, to re-flag conflicts after a manual move
 
@@ -140,6 +142,7 @@ function resetCreateForm() {
   createLobbyName = '';
   createLobbyPassword = '';
   createProposedTeams = null;
+  createSelectedPlayerId = null;
   createSeatConflicts = null;
   createAvoidPairs = [];
 }
@@ -257,31 +260,35 @@ function renderCreateForm(el, ctx) {
         : `<div class="muted" style="font-size:var(--font-size-xs);">${icon('armchair')} Alle Sitznachbarn sind im selben Team.</div>`
       : '';
 
+  const selectedTeamIndex = createProposedTeams && createSelectedPlayerId
+    ? createProposedTeams.findIndex((team) => team.players.some((player) => player.id === createSelectedPlayerId))
+    : -1;
+
   const teamsPreview = createProposedTeams
     ? `
-      <div class="section-title">Teams (Namen anpassbar)</div>
+      <div class="title-with-info tournament-preview-heading">
+        <div class="section-title" style="margin:0;">Teams</div>
+        ${infoTooltipHtml(
+            'tournament-team-drag-help',
+            'Spieler verschieben',
+            'Spieler mit der Maus in ein anderes Team ziehen. Auf Touch-Geräten einen Spieler und danach das Zielteam antippen; mit der Tastatur verschieben die Pfeiltasten nach links und rechts.'
+          )}
+      </div>
       <div class="tournament-team-preview-grid">
         ${createProposedTeams
           .map(
             (t, i) => `
-          <div class="team-card">
+          <div class="team-card tournament-draft-team${selectedTeamIndex !== -1 && selectedTeamIndex !== i ? ' is-select-target' : ''}" data-tourn-drop-team="${i}" role="group" aria-label="${escapeHtml(t.name)}">
             <input type="text" data-team-name="${i}" value="${escapeHtml(t.name)}" maxlength="60" style="margin-bottom:var(--space-1);font-weight:var(--font-weight-bold);" />
             <div class="muted" style="font-size:var(--font-size-xs);margin-bottom:var(--space-2);">Score ${t.totalRating}</div>
             ${t.players
               .map(
                 (p) => `
-              <div class="team-player">
+              <button type="button" class="team-player tournament-drag-player${createSelectedPlayerId === p.id ? ' is-selected' : ''}" draggable="true" data-tourn-drag-player="${p.id}" data-team-index="${i}" aria-pressed="${createSelectedPlayerId === p.id}" aria-label="${escapeHtml(p.name)} verschieben">
                 ${avatarHtml(p, 18)}
                 <span class="player-name team-player-name" style="flex:1;">${escapeHtml(p.name)}</span>
                 ${seatConflictIconHtml(p)}
-                ${
-                  createProposedTeams.length > 1
-                    ? `<select class="team-move-select" data-tourn-move-player="${p.id}" aria-label="Team ändern">
-                        ${createProposedTeams.map((_, ti) => `<option value="${ti}" ${ti === i ? 'selected' : ''}>Team ${ti + 1}</option>`).join('')}
-                      </select>`
-                    : ''
-                }
-              </div>`
+              </button>`
               )
               .join('')}
           </div>`
@@ -300,8 +307,8 @@ function renderCreateForm(el, ctx) {
       </div>
       <section class="tournament-create-step stack" aria-labelledby="tournament-draw-step-title">
         <div class="tournament-create-step-title">
-          <span class="tournament-create-step-number" aria-hidden="true">1</span>
           <h3 id="tournament-draw-step-title">Auslosung</h3>
+          <span class="muted">Teams zusammenstellen</span>
         </div>
         <label class="field-label" for="tourn-game">Spiel auswählen</label>
         <select id="tourn-game">${gameOptions}</select>
@@ -332,10 +339,21 @@ function renderCreateForm(el, ctx) {
 
       <section class="tournament-create-step stack" aria-labelledby="tournament-mode-step-title">
         <div class="tournament-create-step-title">
-          <span class="tournament-create-step-number" aria-hidden="true">2</span>
           <h3 id="tournament-mode-step-title">Turniermodus</h3>
+          <span class="muted">Ablauf festlegen</span>
         </div>
-        <label class="field-label" for="tourn-format">Turnierformat</label>
+        <div class="title-with-info tournament-format-label">
+          <label class="field-label" for="tourn-format">Turnierformat</label>
+          ${
+            createFormat === 'group_knockout'
+              ? infoTooltipHtml(
+                  'tournament-group-format-help',
+                  'Gruppenphase + K.O.',
+                  'Die Teams spielen zuerst in Gruppen jeder gegen jeden, danach ziehen die besten Teams je Gruppe automatisch in ein K.O.-Turnier ein.'
+                )
+              : ''
+          }
+        </div>
         <select id="tourn-format">
           ${Object.entries(FORMAT_LABELS).map(([v, label]) => `<option value="${v}" ${v === createFormat ? 'selected' : ''}>${label}</option>`).join('')}
         </select>
@@ -350,11 +368,7 @@ function renderCreateForm(el, ctx) {
                    <label for="tourn-advancers" class="field-label">Aufsteiger pro Gruppe</label>
                    <input type="number" id="tourn-advancers" min="1" value="${createAdvancersPerGroup}" />
                  </div>
-               </div>
-               <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
-                 Die Teams spielen zuerst in Gruppen jeder gegen jeden, danach ziehen die besten
-                 Teams je Gruppe automatisch in ein K.O.-Turnier ein.
-               </p>`
+               </div>`
             : ''
         }
         ${
@@ -499,6 +513,7 @@ function renderCreateForm(el, ctx) {
         playerIds: t.players.map((p) => p.id),
         totalRating: t.totalRating,
       }));
+      createSelectedPlayerId = null;
       createAvoidPairs = result.avoidPairs ?? [];
       createSeatConflicts = result.seatPairsConsidered
         ? { conflicts: result.seatConflicts, considered: result.seatPairsConsidered }
@@ -517,38 +532,79 @@ function renderCreateForm(el, ctx) {
     });
   });
 
-  // Feinschliff, same as Team-Historie's move select in matchmaking.js —
-  // these teams aren't persisted yet (only "Turnier erstellen" writes them),
-  // so this is a plain client-side reassignment, no API call needed.
-  el.querySelectorAll('[data-tourn-move-player]').forEach((sel) => {
-    sel.addEventListener('change', () => {
-      const playerId = sel.dataset.tournMovePlayer;
-      const toIndex = parseInt(sel.value, 10);
-      const fromIndex = createProposedTeams.findIndex((t) => t.players.some((p) => p.id === playerId));
-      if (fromIndex === -1 || fromIndex === toIndex) return;
-
-      const fromTeam = createProposedTeams[fromIndex];
-      // A team hitting zero players here would let a tournament get created
-      // with an empty team (the format generators/bracket assume every team
-      // has at least one player) — block the move and reset the dropdown.
-      if (fromTeam.players.length <= 1) {
-        showToast('Ein Team kann nicht komplett leer werden.', { error: true });
-        sel.value = String(fromIndex);
-        return;
-      }
-
-      const [player] = fromTeam.players.splice(
-        fromTeam.players.findIndex((p) => p.id === playerId),
-        1
-      );
-      const toTeam = createProposedTeams[toIndex];
-      toTeam.players.push(player);
-      for (const t of [fromTeam, toTeam]) {
-        t.playerIds = t.players.map((p) => p.id);
-        t.totalRating = t.players.reduce((sum, p) => sum + (p.rating ?? 0), 0);
-      }
-      recomputeSeatConflicts();
+  // Proposed teams only exist client-side until the tournament is created.
+  // Pointer drag/drop, touch selection and keyboard arrows all share this
+  // guarded mutation so no interaction path can leave an empty team behind.
+  function moveDraftPlayer(playerId, toIndex) {
+    const result = moveTournamentDraftPlayer(createProposedTeams, playerId, toIndex);
+    if (result.error) {
+      createSelectedPlayerId = null;
+      showToast(result.error, { error: true });
       ctx.rerender();
+      return false;
+    }
+    if (!result.moved) return false;
+    createSelectedPlayerId = null;
+    recomputeSeatConflicts();
+    ctx.rerender();
+    return true;
+  }
+
+  let draggedPlayerId = null;
+  const clearDragState = () => {
+    el.querySelectorAll('.is-drag-target, .is-dragging').forEach((element) => {
+      element.classList.remove('is-drag-target', 'is-dragging');
+    });
+    draggedPlayerId = null;
+  };
+
+  el.querySelectorAll('[data-tourn-drag-player]').forEach((playerRow) => {
+    playerRow.addEventListener('dragstart', (event) => {
+      createSelectedPlayerId = null;
+      draggedPlayerId = playerRow.dataset.tournDragPlayer;
+      playerRow.classList.add('is-dragging');
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', draggedPlayerId);
+    });
+    playerRow.addEventListener('dragend', clearDragState);
+    playerRow.addEventListener('click', (event) => {
+      event.stopPropagation();
+      createSelectedPlayerId = createSelectedPlayerId === playerRow.dataset.tournDragPlayer
+        ? null
+        : playerRow.dataset.tournDragPlayer;
+      ctx.rerender();
+    });
+    playerRow.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      const currentIndex = Number(playerRow.dataset.teamIndex);
+      const direction = event.key === 'ArrowLeft' ? -1 : 1;
+      const toIndex = (currentIndex + direction + createProposedTeams.length) % createProposedTeams.length;
+      moveDraftPlayer(playerRow.dataset.tournDragPlayer, toIndex);
+    });
+  });
+
+  el.querySelectorAll('[data-tourn-drop-team]').forEach((teamCard) => {
+    const toIndex = Number(teamCard.dataset.tournDropTeam);
+    teamCard.addEventListener('dragover', (event) => {
+      if (!draggedPlayerId) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      teamCard.classList.add('is-drag-target');
+    });
+    teamCard.addEventListener('dragleave', (event) => {
+      if (event.relatedTarget && teamCard.contains(event.relatedTarget)) return;
+      teamCard.classList.remove('is-drag-target');
+    });
+    teamCard.addEventListener('drop', (event) => {
+      event.preventDefault();
+      const playerId = draggedPlayerId || event.dataTransfer.getData('text/plain');
+      clearDragState();
+      if (playerId) moveDraftPlayer(playerId, toIndex);
+    });
+    teamCard.addEventListener('click', (event) => {
+      if (!createSelectedPlayerId || event.target.closest('input, [data-tourn-drag-player]')) return;
+      moveDraftPlayer(createSelectedPlayerId, toIndex);
     });
   });
 
@@ -779,7 +835,7 @@ function renderRoundRobinBoard(t, teamsById, matches, standings) {
     .join('');
 
   return `
-    <div class="section-title">${icon('chart')} Tabelle</div>
+    <div class="section-title">Tabelle</div>
     <div class="card">${standingsRows}</div>
     ${fixturesHtml}
   `;
@@ -798,7 +854,7 @@ function renderGroupKnockout(t, ctx) {
   const groupBlocks = (t.groups || [])
     .map((g) => {
       const groupMatches = t.matches.filter((m) => m.stage === 'group' && m.groupIndex === g.groupIndex);
-      return `<div class="section-title">${icon('users')} Gruppe ${g.groupIndex + 1}</div>${renderRoundRobinBoard(t, teamsById, groupMatches, g.standings)}`;
+      return `<div class="section-title">Gruppe ${g.groupIndex + 1}</div>${renderRoundRobinBoard(t, teamsById, groupMatches, g.standings)}`;
     })
     .join('');
 
