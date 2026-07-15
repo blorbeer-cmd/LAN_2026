@@ -43,6 +43,17 @@ async function openTeamHistory(): Promise<void> {
   if (!(await details.getAttribute('open'))) await details.locator('summary').click();
 }
 
+async function switchIdentityAndOpenArrivals(label: string): Promise<void> {
+  await page.click('#profile-btn');
+  await page.waitForSelector('#profile-not-me');
+  await page.click('#profile-not-me');
+  await page.selectOption('#profile-whoami', { label });
+  await page.waitForSelector('#profile-not-me');
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="arrivals"]');
+  await page.waitForSelector('[data-new-carpool="arrival"]');
+}
+
 before(async () => {
   serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
     env: { ...process.env, PORT: String(PORT), DB_FILE: ':memory:', ACCESS_TOKEN: '' },
@@ -75,7 +86,7 @@ test('fresh device lands on self-onboarding and creates its profile there', asyn
   await page.goto(BASE_URL);
   await page.waitForSelector('#app:not([hidden])');
 
-  const topbarWordmark = page.locator('.topbar-wordmark');
+  const topbarWordmark = page.locator('.topbar-title .brand-title');
   assert.equal((await topbarWordmark.textContent())?.trim(), 'Respawn');
   assert.deepEqual(
     await topbarWordmark.evaluate((element) => {
@@ -87,7 +98,7 @@ test('fresh device lands on self-onboarding and creates its profile there', asyn
 
   // No identity stored on this device yet -> the app must route straight to
   // the profile/onboarding view, not the Live board.
-  assert.equal((await page.textContent('.view-title'))?.trim(), 'Willkommen bei RespawnHQ');
+  assert.equal((await page.textContent('.view-title'))?.trim(), 'Willkommen bei Respawn');
 
   await page.fill('#profile-new-name', 'E2E Alice');
   await page.click('#profile-new-form button[type="submit"]');
@@ -157,7 +168,8 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   // (bars/counts) may be visible anywhere — only total participation and the
   // voter's own pick.
   await page.click('[data-view="votes"]');
-  await page.waitForSelector('text=Du bist E2E Alice');
+  await page.waitForSelector('#votes-start');
+  assert.equal(await page.getByText('Du bist E2E Alice', { exact: true }).count(), 0);
   await page.click('#votes-start');
   await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
   const submitBox = await page.locator('#votes-submit').boundingBox();
@@ -534,7 +546,7 @@ test('Info-Board: create an entry, see it rendered', async () => {
   await page.waitForSelector('#info-new-btn');
   await page.click('#info-new-btn');
   await page.fill('#info-title', 'WLAN');
-  await page.fill('#info-content', 'Netz: LAN2026\nPasswort: kartoffel');
+  await page.fill('#info-content', 'Netz: Respawn\nPasswort: kartoffel');
   await page.click('#info-form button[type="submit"]');
   await page.waitForSelector('text=kartoffel');
 });
@@ -589,7 +601,7 @@ test('Arcade: open a quiz lobby, see it listed and on Home, then close it again'
   const guestPage = await guestContext.newPage();
   t.after(async () => guestContext.close());
   await guestPage.goto(BASE_URL);
-  await guestPage.evaluate((id) => localStorage.setItem('lan2026_my_player_id', id), guest.id);
+  await guestPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), guest.id);
   await guestPage.reload();
   await guestPage.waitForSelector('.nav-btn[data-view="home"]');
 
@@ -647,7 +659,7 @@ test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', as
   const guestPage = await guestContext.newPage();
   try {
     await guestPage.goto(BASE_URL);
-    await guestPage.evaluate((id) => localStorage.setItem('lan2026_my_player_id', id), guest!.id);
+    await guestPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), guest!.id);
     await guestPage.reload();
     await guestPage.waitForSelector('.nav-btn[data-view="more"]');
     await guestPage.click('[data-view="more"]');
@@ -710,7 +722,7 @@ test('Arcade: a lobby guest flags themselves ready and the host sees it', async 
   guestPage.on('pageerror', (err) => console.error('[guest pageerror]', err.message));
   try {
     await guestPage.goto(BASE_URL);
-    await guestPage.evaluate((id) => localStorage.setItem('lan2026_my_player_id', id), guest!.id);
+    await guestPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), guest!.id);
     await guestPage.reload();
     await guestPage.waitForSelector('.nav-btn[data-view="more"]');
     await guestPage.click('[data-view="more"]');
@@ -759,7 +771,7 @@ test('Arcade: a non-player can watch a running quiz without seeing the question'
   const spectatorPage = await spectatorContext.newPage();
   try {
     await guestPage.goto(BASE_URL);
-    await guestPage.evaluate((id) => localStorage.setItem('lan2026_my_player_id', id), guest!.id);
+    await guestPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), guest!.id);
     await guestPage.reload();
     await guestPage.waitForSelector('.nav-btn[data-view="more"]');
     await guestPage.click('[data-view="more"]');
@@ -779,7 +791,7 @@ test('Arcade: a non-player can watch a running quiz without seeing the question'
     await page.waitForSelector('#quiz-answer-form');
 
     await spectatorPage.goto(BASE_URL);
-    await spectatorPage.evaluate((id) => localStorage.setItem('lan2026_my_player_id', id), spectator!.id);
+    await spectatorPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), spectator!.id);
     await spectatorPage.reload();
     await spectatorPage.waitForSelector('.nav-btn[data-view="more"]');
     await spectatorPage.click('[data-view="more"]');
@@ -825,7 +837,7 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
   spectatorPage.on('pageerror', (err) => console.error('[spectator pageerror]', err.message));
   try {
     await guesserPage.goto(BASE_URL);
-    await guesserPage.evaluate((id) => localStorage.setItem('lan2026_my_player_id', id), guesser!.id);
+    await guesserPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), guesser!.id);
     await guesserPage.reload();
     await guesserPage.waitForSelector('.nav-btn[data-view="more"]');
     await guesserPage.click('[data-view="more"]');
@@ -833,7 +845,7 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     await guesserPage.click('[data-game="scribble"]');
 
     await spectatorPage.goto(BASE_URL);
-    await spectatorPage.evaluate((id) => localStorage.setItem('lan2026_my_player_id', id), spectator!.id);
+    await spectatorPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), spectator!.id);
     await spectatorPage.reload();
     await spectatorPage.waitForSelector('.nav-btn[data-view="more"]');
     await spectatorPage.click('[data-view="more"]');
@@ -1165,27 +1177,23 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
   assert.equal(await page.locator('[data-leave-carpool]').count(), 0);
 
   // Switch identity to Bob: he joins, taking the last seat.
-  await page.click('[data-whoami-change]');
-  await page.selectOption('#arrivals-whoami', { label: 'E2E Bob' });
+  await switchIdentityAndOpenArrivals('E2E Bob');
   await page.waitForSelector('[data-join-carpool]');
   await page.click('[data-join-carpool]');
   await page.waitForSelector('text=0/1 frei');
   await page.waitForSelector('[data-leave-carpool]');
 
   // A third player finds the carpool full and can't join.
-  await page.click('[data-whoami-change]');
-  await page.selectOption('#arrivals-whoami', { label: 'E2E Carol' });
+  await switchIdentityAndOpenArrivals('E2E Carol');
   await page.waitForSelector('text=Voll');
   assert.equal(await page.locator('[data-join-carpool]').count(), 0);
 
   // Bob leaves, freeing the seat back up; the driver deletes the group.
-  await page.click('[data-whoami-change]');
-  await page.selectOption('#arrivals-whoami', { label: 'E2E Bob' });
+  await switchIdentityAndOpenArrivals('E2E Bob');
   await page.click('[data-leave-carpool]');
   await page.waitForSelector('text=1/1 frei');
 
-  await page.click('[data-whoami-change]');
-  await page.selectOption('#arrivals-whoami', { label: 'E2E Alice Pro' });
+  await switchIdentityAndOpenArrivals('E2E Alice Pro');
   await page.click('[data-remove-carpool]');
   await page.click('[data-confirm]');
   await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
@@ -1359,7 +1367,7 @@ test('Kiosk: shows an open food order (when/where only), and the last-push banne
   });
 
   await page.goto(`${BASE_URL}/kiosk.html`);
-  assert.equal((await page.locator('.topbar-wordmark').textContent())?.trim(), 'Respawn');
+  assert.equal((await page.locator('.kiosk-header .brand-title').textContent())?.trim(), 'Respawn');
 
   // The food banner shows only the when/where (send time + menu link) — the
   // items themselves stay on everyone's own phone, never on the shared screen.

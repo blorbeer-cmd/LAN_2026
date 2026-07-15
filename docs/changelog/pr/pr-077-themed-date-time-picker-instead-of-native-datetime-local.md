@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-09
 - Branch: `fix/themed-datetime-picker`
-- Merge-Commit: [`cce4686`](https://github.com/blorbeer-cmd/LAN_2026/commit/cce4686036a59673d4d816827df786b92ca1bb80)
-- Pull Request: [#77](https://github.com/blorbeer-cmd/LAN_2026/pull/77)
+- Merge-Commit: [`cce4686`](https://github.com/blorbeer-cmd/Respawn/commit/cce4686036a59673d4d816827df786b92ca1bb80)
+- Pull Request: [#77](https://github.com/blorbeer-cmd/Respawn/pull/77)
 
 ## Changelog
 

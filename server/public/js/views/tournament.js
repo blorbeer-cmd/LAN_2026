@@ -336,7 +336,7 @@ function renderCreateForm(el, ctx) {
       <div class="row" style="align-items:flex-start;">
         <div style="flex:1;">
           <label for="tourn-lobby-name" class="field-label">Lobby-Name (optional)</label>
-          <input type="text" id="tourn-lobby-name" maxlength="60" value="${escapeHtml(createLobbyName)}" placeholder="z. B. LAN2026" />
+          <input type="text" id="tourn-lobby-name" maxlength="60" value="${escapeHtml(createLobbyName)}" placeholder="z. B. Respawn" />
         </div>
         <div style="flex:1;">
           <label for="tourn-lobby-password" class="field-label">Lobby-Passwort (optional)</label>

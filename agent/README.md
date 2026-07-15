@@ -1,4 +1,4 @@
-# RespawnHQ – Agent
+# Respawn – Agent
 
 Kleines Programm, das auf jedem Spieler-PC läuft. Es kennt nur drei Dinge: die Server-URL, den
 eigenen API-Key und wie oft es nachschauen soll. Es scannt periodisch die laufenden Prozesse und
@@ -20,14 +20,14 @@ Läuft die installierte `.exe` unter Windows, verschwindet das Konsolenfenster n
 System-Tray. Doppelklick darauf (oder Rechtsklick → „Steuerung oeffnen") öffnet die eigentliche
 Steuerung – eine kleine Weboberfläche unter `http://127.0.0.1:47813`, solange der Agent läuft.
 Rechtsklick → „Beenden" beendet den Agent direkt aus dem Tray. `install.bat` legt zusätzlich eine
-Verknüpfung „RespawnHQ-Agent Steuerung" auf dem Desktop an, die zur selben Weboberfläche führt.
+Verknüpfung „Respawn-Agent Steuerung" auf dem Desktop an, die zur selben Weboberfläche führt.
 Klappt das Tray-Icon aus irgendeinem Grund nicht (z. B. sehr alte Windows-Version ohne .NET), bleibt
 das Konsolenfenster einfach sichtbar und die Desktop-Verknüpfung funktioniert unverändert. Läuft der
 Agent per `npm start` (nicht als `.exe`), bleibt die Konsole immer sichtbar – das Tray-Icon ist nur
 etwas für die gepackte Variante.
 
 Nach dem Ausblenden landet die Log-Ausgabe zusätzlich in `agent.log` im Installationsordner
-(`%LOCALAPPDATA%\RespawnHQ-Agent`), damit sich Verbindungsprobleme trotzdem nachvollziehen lassen.
+(`%LOCALAPPDATA%\Respawn-Agent`), damit sich Verbindungsprobleme trotzdem nachvollziehen lassen.
 
 In der Weboberfläche gibt es vier Aktionen:
 
@@ -39,7 +39,7 @@ In der Weboberfläche gibt es vier Aktionen:
 - **Autostart an/aus** – entfernt bzw. erstellt die Verknüpfung im Windows-Autostart-Ordner. Nur
   mit der installierten `.exe` verfügbar (nicht beim manuellen `npm start`).
 - **Komplett deinstallieren** – entfernt den Autostart-Eintrag, beendet den Agent-Prozess und löscht
-  den gesamten Installationsordner (`%LOCALAPPDATA%\RespawnHQ-Agent`) von diesem PC.
+  den gesamten Installationsordner (`%LOCALAPPDATA%\Respawn-Agent`) von diesem PC.
 
 Ist der Port belegt (z. B. zwei Agenten auf demselben PC), probiert der Agent automatisch die
 nächsten Ports (47814, 47815, …) und loggt, welchen er tatsächlich benutzt.
@@ -92,13 +92,13 @@ damit unterscheiden, ob ein Spiel nur im Hintergrund lief oder tatsächlich akti
 ## Als eigenständige `.exe` paketieren
 
 Für den Ein-Klick-Download oben braucht der Server eine gebaute `.exe` unter
-`server/agent-dist/lan2026-agent.exe` (siehe dessen README). Gebaut wird sie mit
+`server/agent-dist/respawn-agent.exe` (siehe dessen README). Gebaut wird sie mit
 [`pkg`](https://github.com/yao-pkg/pkg) (gepflegter Fork), auf einer Maschine mit normalem
 Internetzugang (pkg lädt beim ersten Lauf eine Node-Runtime für das Ziel-Betriebssystem herunter):
 
 ```bash
 npm install -g @yao-pkg/pkg
-npx pkg src/index.js --targets node18-win-x64 --output ../server/agent-dist/lan2026-agent.exe
+npx pkg src/index.js --targets node24-win-x64 --output ../server/agent-dist/respawn-agent.exe
 ```
 
 Alternativ direkt neben eine `agent.config.json` legen und manuell starten – fertig.

@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-11
 - Branch: `claude/live-page-home-redesign-ailuxo`
-- Merge-Commit: [`eeaa2ca`](https://github.com/blorbeer-cmd/LAN_2026/commit/eeaa2ca)
-- Pull Request: [#132](https://github.com/blorbeer-cmd/LAN_2026/pull/132)
+- Merge-Commit: [`eeaa2ca`](https://github.com/blorbeer-cmd/Respawn/commit/eeaa2ca)
+- Pull Request: [#132](https://github.com/blorbeer-cmd/Respawn/pull/132)
 
 ## Changelog
 

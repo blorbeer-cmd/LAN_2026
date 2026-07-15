@@ -58,7 +58,7 @@ async function openArcadeAs(
   await page.goto(BASE_URL);
   await page.evaluate(
     ({ id, expand }) => {
-      localStorage.setItem('lan2026_my_player_id', id);
+      localStorage.setItem('respawn_my_player_id', id);
       // The expand preference must already exist before the game view first
       // renders — that ordering is exactly what the geometry regressions
       // below are about (see wireArcadeExpandControl).

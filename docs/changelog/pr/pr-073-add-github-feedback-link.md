@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-09
 - Branch: `feat/github-feedback-link`
-- Merge-Commit: [`dccb978`](https://github.com/blorbeer-cmd/LAN_2026/commit/dccb97838652b5df7870ee689ccc06ff6707b0f6)
-- Pull Request: [#73](https://github.com/blorbeer-cmd/LAN_2026/pull/73)
+- Merge-Commit: [`dccb978`](https://github.com/blorbeer-cmd/Respawn/commit/dccb97838652b5df7870ee689ccc06ff6707b0f6)
+- Pull Request: [#73](https://github.com/blorbeer-cmd/Respawn/pull/73)
 
 ## Changelog
 

@@ -83,7 +83,7 @@ async function markSeen(entryId, { navigate } = {}) {
     await api.push.seen(entryId, playerId);
     if (navigate) {
       setOpen(false);
-      window.dispatchEvent(new CustomEvent('lan:navigate', { detail: navigate }));
+      window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: navigate }));
     }
   } catch (err) {
     entry.seen = false;
@@ -203,7 +203,7 @@ export function initNotificationBanner() {
     setOpen(false);
     button.focus();
   });
-  window.addEventListener('lan:identity-changed', () => {
+  window.addEventListener('respawn:identity-changed', () => {
     isOpen = false;
     entries = [];
     loadedForId = null;

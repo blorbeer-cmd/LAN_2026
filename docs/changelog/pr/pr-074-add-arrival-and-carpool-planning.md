@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-09
 - Branch: `feat/arrival-carpools`
-- Merge-Commit: [`f079222`](https://github.com/blorbeer-cmd/LAN_2026/commit/f0792228c4ac599c7f220963ba3d582fa3d9d257)
-- Pull Request: [#74](https://github.com/blorbeer-cmd/LAN_2026/pull/74)
+- Merge-Commit: [`f079222`](https://github.com/blorbeer-cmd/Respawn/commit/f0792228c4ac599c7f220963ba3d582fa3d9d257)
+- Pull Request: [#74](https://github.com/blorbeer-cmd/Respawn/pull/74)
 
 ## Changelog
 

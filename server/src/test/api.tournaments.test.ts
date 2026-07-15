@@ -81,7 +81,7 @@ test('POST /api/tournaments creates a single-elimination bracket for 4 teams', a
     .send({
       gameId,
       format: 'single_elimination',
-      lobbyName: 'LAN2026',
+      lobbyName: 'Respawn',
       lobbyPassword: 'geheim',
       teams: soloTeams(playerIds),
     });
@@ -91,7 +91,7 @@ test('POST /api/tournaments creates a single-elimination bracket for 4 teams', a
   assert.equal(res.body.teams.length, 4);
   assert.equal(res.body.matches.length, 3); // 2 round-1 + 1 final
   assert.ok(res.body.matches.every((m: { isBye: boolean }) => !m.isBye));
-  assert.equal(res.body.lobbyName, 'LAN2026');
+  assert.equal(res.body.lobbyName, 'Respawn');
   assert.equal(res.body.lobbyPassword, 'geheim');
 
   bracketId = res.body.id;

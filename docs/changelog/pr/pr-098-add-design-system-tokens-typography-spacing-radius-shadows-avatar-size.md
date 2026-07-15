@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-10
 - Branch: `claude/design-system-setup-7m45xk`
-- Merge-Commit: [`40013e6`](https://github.com/blorbeer-cmd/LAN_2026/commit/40013e6cd14013b25a87953445155a40343d418e)
-- Pull Request: [#98](https://github.com/blorbeer-cmd/LAN_2026/pull/98)
+- Merge-Commit: [`40013e6`](https://github.com/blorbeer-cmd/Respawn/commit/40013e6cd14013b25a87953445155a40343d418e)
+- Pull Request: [#98](https://github.com/blorbeer-cmd/Respawn/pull/98)
 
 ## Changelog
 

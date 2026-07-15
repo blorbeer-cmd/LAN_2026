@@ -10,4 +10,4 @@ Bugfixes für Agent-abhängige Live-Status-Daten und die Agent-Konfiguration:
 
 ## Pull Request
 
-- [PR #145](https://github.com/blorbeer-cmd/LAN_2026/pull/145), gemergt am 2026-07-12.
+- [PR #145](https://github.com/blorbeer-cmd/Respawn/pull/145), gemergt am 2026-07-12.

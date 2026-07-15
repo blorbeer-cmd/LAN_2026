@@ -1,7 +1,7 @@
 {
-  "name": "lan-2026-agent",
+  "name": "respawn-agent",
   "version": "1.0.0",
-  "description": "Kleiner Client fuer Spieler-PCs: erkennt laufende Spiele und meldet sie an den LAN-2026-Server.",
+  "description": "Kleiner Client fuer Spieler-PCs: erkennt laufende Spiele und meldet sie an den Respawn-Server.",
   "private": true,
   "main": "src/index.js",
   "type": "commonjs",

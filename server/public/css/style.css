@@ -1,4 +1,4 @@
-/* RespawnHQ — design system. Always dark (LAN parties happen in dim rooms —
+/* Respawn — design system. Always dark (LAN parties happen in dim rooms —
    there is no light variant to fall back to, on purpose). No framework, just
    custom properties + a handful of components reused across every view. */
 
@@ -395,29 +395,17 @@ input {
   box-shadow: var(--shadow), 0 0 52px rgba(145, 99, 245, 0.45);
 }
 
-/* The wordmark: a gradient-filled, slightly slanted logotype instead of
-   plain bold text, so the brand reads as a LAN-party/esports mark rather
-   than a generic app title. Reuses the same accent gradient as everything
-   else (buttons, the topbar stripe) so it doesn't introduce a new color. */
+/* The wordmark reuses the accent gradient and stays upright in every context. */
 .brand-title {
   display: inline-block;
   font-weight: var(--font-weight-black);
   letter-spacing: -0.02em;
-  font-style: italic;
-  transform: skewX(-4deg);
   background: var(--accent-gradient);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   -webkit-text-fill-color: transparent;
   filter: drop-shadow(var(--shadow-glow-brand));
-}
-
-/* The compact wordmark in page headers is deliberately straight and drops
-   the HQ suffix; the remaining product rename is tracked separately. */
-.topbar-wordmark {
-  font-style: normal;
-  transform: none;
 }
 
 .topbar-actions {

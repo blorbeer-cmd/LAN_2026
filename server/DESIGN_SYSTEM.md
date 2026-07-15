@@ -218,7 +218,7 @@ space pattern rather than content-dependent card heights.
 - New or changed interface icons must use the local Lucide-style helper in
   `server/public/js/icons.js` (`icon(...)` or a suitable specialized helper).
 - Do not use emoji, Unicode pictograms or external icon CDNs in navigation, headings,
-  buttons, status badges, chips, empty states or toasts. The RespawnHQ logo is the
+  buttons, status badges, chips, empty states or toasts. The Respawn logo is the
   intentional exception; user-authored content such as game names may contain emoji.
 - Decorative icons are hidden from assistive technology. Icon-only controls require
   a German accessible name (`aria-label` or visible equivalent) and a discoverable

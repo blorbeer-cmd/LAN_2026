@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-09
 - Branch: `worktree-hetzner-cicd`
-- Merge-Commit: [`dcaf854`](https://github.com/blorbeer-cmd/LAN_2026/commit/dcaf8549045015103fb83c0508adcd021a4818da)
-- Pull Request: [#83](https://github.com/blorbeer-cmd/LAN_2026/pull/83)
+- Merge-Commit: [`dcaf854`](https://github.com/blorbeer-cmd/Respawn/commit/dcaf8549045015103fb83c0508adcd021a4818da)
+- Pull Request: [#83](https://github.com/blorbeer-cmd/Respawn/pull/83)
 
 ## Changelog
 

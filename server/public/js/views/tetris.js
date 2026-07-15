@@ -58,10 +58,10 @@ function myId() {
 // without this module needing a handle on app.js — both are thin CustomEvent
 // hooks app.js listens for.
 function rerender() {
-  window.dispatchEvent(new CustomEvent('lan:rerender'));
+  window.dispatchEvent(new CustomEvent('respawn:rerender'));
 }
 function navigate(view) {
-  window.dispatchEvent(new CustomEvent('lan:navigate', { detail: view }));
+  window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view }));
 }
 
 function amPlayer() {
@@ -142,7 +142,7 @@ export function ensureTetrisSocket() {
     cancelCountdown();
     // A finished match adds a new highscore row — let the Arcade view know its
     // cached stats are stale so they refresh when the player heads back.
-    window.dispatchEvent(new CustomEvent('lan:arcade-stats-dirty'));
+    window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
     if (tetrisViewMounted()) rerender();
   });
 

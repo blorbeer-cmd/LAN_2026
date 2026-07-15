@@ -30,8 +30,8 @@ let impact = null;
 const trail = [];
 
 const myId = () => getMyId();
-const rerender = () => window.dispatchEvent(new CustomEvent('lan:rerender'));
-const navigate = (view) => window.dispatchEvent(new CustomEvent('lan:navigate', { detail: view }));
+const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
+const navigate = (view) => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view }));
 const emitAck = (event, payload) => new Promise((resolve) => socket.emit(event, payload, resolve));
 const currentView = () => document.getElementById('view-container')?.dataset.view;
 
@@ -92,7 +92,7 @@ export function ensurePongSocket() {
     match.winner = payload.winner ?? null;
     match.scores = payload.scores ?? [];
     cancelCountdown();
-    window.dispatchEvent(new CustomEvent('lan:arcade-stats-dirty'));
+    window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
     stopAnimation();
     if (currentView() === 'pong' || currentView() === 'arcade') rerender();
   });

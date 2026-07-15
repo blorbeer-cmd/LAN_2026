@@ -24,12 +24,12 @@ let watchReactions = {};
 let watchFavoriteDrawingId = null;
 let lastRenderSignature = '';
 
-const rerender = () => window.dispatchEvent(new CustomEvent('lan:rerender'));
-const navigate = (view) => window.dispatchEvent(new CustomEvent('lan:navigate', { detail: view }));
+const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
+const navigate = (view) => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view }));
 // Replaces the current history entry instead of pushing — used when leaving
 // a watch view whose match is gone, so the stale entry never stays reachable
 // via back/forward (see switchView in app.js).
-const navigateReplace = (view) => window.dispatchEvent(new CustomEvent('lan:navigate', { detail: { view, replace: true } }));
+const navigateReplace = (view) => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: { view, replace: true } }));
 const isArcadeWatchView = () => document.getElementById('view-container')?.dataset.view === 'arcadeWatch';
 
 function resetVoting() {
@@ -264,7 +264,7 @@ export function renderArcadeWatch(container) {
   // and replace the stale entry instead of pushing on top of it (a pushed
   // entry would make the back button bounce between both states).
   if (!watchedMatchId) {
-    window.dispatchEvent(new CustomEvent('lan:navigate', { detail: { view: 'arcade', replace: true } }));
+    window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: { view: 'arcade', replace: true } }));
     return;
   }
   const state = watchedState;

@@ -5,12 +5,12 @@
 // it just remembers "this phone is in admin mode" and controls whether test
 // players are visible (see testFilter.js).
 //
-// Every toggle fires 'lan:admin-changed' on window so app.js can update the
+// Every toggle fires 'respawn:admin-changed' on window so app.js can update the
 // persistent admin banner and refetch data with the new visibility, without
 // this leaf module having to import anything.
 
-const ADMIN_KEY = 'lan2026_admin';
-const ADMIN_PIN_KEY = 'lan2026_admin_pin';
+const ADMIN_KEY = 'respawn_admin';
+const ADMIN_PIN_KEY = 'respawn_admin_pin';
 
 export function isAdmin() {
   return localStorage.getItem(ADMIN_KEY) === '1';
@@ -31,5 +31,5 @@ export function setAdmin(unlocked) {
     localStorage.removeItem(ADMIN_KEY);
     localStorage.removeItem(ADMIN_PIN_KEY);
   }
-  window.dispatchEvent(new CustomEvent('lan:admin-changed'));
+  window.dispatchEvent(new CustomEvent('respawn:admin-changed'));
 }

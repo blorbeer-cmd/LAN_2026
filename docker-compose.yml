@@ -1,4 +1,4 @@
-# Production compose file, deployed to /opt/lan2026 on the Hetzner box by
+# Production compose file, deployed to /opt/respawn on the Hetzner box by
 # infra/cloud-init.yaml.tpl and re-pulled by .github/workflows/deploy.yml on
 # every push to main. Not used for local development (use `npm run dev` in
 # server/ instead) — this expects the .env this repo does NOT ship (see
@@ -8,7 +8,7 @@
 # reaching it over the internal compose network by service name.
 services:
   app:
-    image: ${IMAGE:-ghcr.io/blorbeer-cmd/lan_2026:latest}
+    image: ${IMAGE:-ghcr.io/blorbeer-cmd/respawn:latest}
     restart: unless-stopped
     env_file: .env
     environment:

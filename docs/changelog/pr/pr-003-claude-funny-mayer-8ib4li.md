@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-07
 - Branch: `claude/funny-mayer-8ib4li`
-- Merge-Commit: [`1e6895b`](https://github.com/blorbeer-cmd/LAN_2026/commit/1e6895b4bdc2d3924d9e1f5260ab1117cad5e305)
-- Pull Request: [#3](https://github.com/blorbeer-cmd/LAN_2026/pull/3)
+- Merge-Commit: [`1e6895b`](https://github.com/blorbeer-cmd/Respawn/commit/1e6895b4bdc2d3924d9e1f5260ab1117cad5e305)
+- Pull Request: [#3](https://github.com/blorbeer-cmd/Respawn/pull/3)
 
 ## Changelog
 

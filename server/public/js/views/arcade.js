@@ -59,7 +59,7 @@ function rerenderIfView(ctx, view) {
 
 // The Tetris view lives in its own module; when one of its matches finishes it
 // fires this so our cached highscores refetch the next time Arcade renders.
-window.addEventListener('lan:arcade-stats-dirty', () => {
+window.addEventListener('respawn:arcade-stats-dirty', () => {
   stats = null;
   scribbleGallery = [];
 });
@@ -175,7 +175,7 @@ function ensureSocket(ctx) {
 }
 
 function navigate(view) {
-  window.dispatchEvent(new CustomEvent('lan:navigate', { detail: view }));
+  window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view }));
 }
 
 function emitWithAck(event, payload) {

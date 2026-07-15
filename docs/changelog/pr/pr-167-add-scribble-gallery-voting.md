@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-13
 - Branch: `codex/fix-scribble-watch-rerender`
-- Merge-Commit: [`7b3832a`](https://github.com/blorbeer-cmd/LAN_2026/commit/7b3832ace7b76807e9b832137a157af24d9003f4)
-- Pull Request: [#167](https://github.com/blorbeer-cmd/LAN_2026/pull/167)
+- Merge-Commit: [`7b3832a`](https://github.com/blorbeer-cmd/Respawn/commit/7b3832ace7b76807e9b832137a157af24d9003f4)
+- Pull Request: [#167](https://github.com/blorbeer-cmd/Respawn/pull/167)
 
 ## Changelog
 

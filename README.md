@@ -1,4 +1,4 @@
-# RespawnHQ – LAN-Party Tool
+# Respawn – LAN-Party Tool
 
 Ein kleines, selbst gehostetes Web-Tool für unsere jährliche LAN-Party (~15 Leute, 3 Tage).
 Alles Wichtige an einem Ort: **Teams auslosen**, **abstimmen was als Nächstes gespielt wird**,
@@ -81,7 +81,7 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 ## Verzeichnisstruktur
 
 ```
-LAN_2026/
+Respawn/
 ├── server/            # Zentraler Server (Node.js + TypeScript)
 │   ├── src/           # Quellcode (API, DB, WebSocket, PDF-Export)
 │   ├── public/        # Web-Oberfläche (HTML/CSS/JS) + Kiosk-Ansicht
@@ -148,10 +148,10 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
 
 1. **Deploy-Keypair erzeugen** (lokal, einmalig):
    ```bash
-   ssh-keygen -t ed25519 -f lan2026-deploy -N "" -C "lan2026-deploy"
+   ssh-keygen -t ed25519 -f respawn-deploy -N "" -C "respawn-deploy"
    ```
 2. **Cloudflare Tunnel anlegen** (einmalig, im [Zero Trust Dashboard](https://one.dash.cloudflare.com/)
-   → Networks → Tunnels → Create a tunnel → "Cloudflared"): Name z. B. `lan2026`, Public Hostname
+   → Networks → Tunnels → Create a tunnel → "Cloudflared"): Name z. B. `respawn`, Public Hostname
    `lan.dbehnke.dev` → Service `HTTP` → `app:3000` (der Service-Name `app` ist der Compose-Service,
    nicht die Server-IP). Den angezeigten **Tunnel-Token** kopieren.
 3. **GitHub Secrets anlegen** (Repo → Settings → Secrets and variables → Actions → *Secrets*, bewusst
@@ -160,8 +160,8 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
    | Secret | Wert |
    |---|---|
    | `HETZNER_API_TOKEN` | Hetzner Cloud Projekt → Security → API Tokens (Read & Write) |
-   | `HETZNER_SSH_PUBLIC_KEY` | Inhalt von `lan2026-deploy.pub` |
-   | `SSH_PRIVATE_KEY` | Inhalt von `lan2026-deploy` (**ohne** `.pub`) |
+   | `HETZNER_SSH_PUBLIC_KEY` | Inhalt von `respawn-deploy.pub` |
+   | `SSH_PRIVATE_KEY` | Inhalt von `respawn-deploy` (**ohne** `.pub`) |
    | `CF_TUNNEL_TOKEN` | Token aus Schritt 2 |
    | `APP_ACCESS_TOKEN` | starkes Zufallstoken, z. B. `openssl rand -hex 24` |
    | `GHCR_PULL_TOKEN` | GitHub → Settings → Developer settings → **Tokens (classic)** (fine-grained Tokens haben **kein** Packages-Permission – GitHub-seitige Lücke, nicht behebbar; und da das Repo nicht dir gehört, tauchte es dort im Repo-Auswahldialog ohnehin nicht auf). Scopes: `read:packages` + `repo` (`repo` sorgt dafür, dass GitHub deine bestehenden Collaborator-Rechte auf dem privaten Repo für das Package durchreicht). Ablaufdatum setzen und dir merken, das Secret + `.env` auf dem Server (siehe "Alltag" unten) danach zu erneuern. **Bewusst kein Fix "Package auf public stellen"** – das Image bleibt privat, der Server authentifiziert sich stattdessen selbst beim Pullen. |
@@ -170,7 +170,7 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
    "Run workflow"). Legt SSH-Key + Firewall (nur Port 22 offen) + einen `cx23`-Server in Helsinki
    (`hel1`) in Hetzner an, installiert Docker via Cloud-Init, loggt sich per `GHCR_PULL_TOKEN` bei
    GHCR ein und startet `cloudflared` direkt beim ersten Boot. Läuft **einmalig** – ein zweiter Lauf
-   überspringt die Server-Erstellung, wenn `lan2026` schon existiert.
+   überspringt die Server-Erstellung, wenn `respawn` schon existiert.
 
    Der `app`-Container startet bei diesem allerersten Boot noch **nicht** – es gibt ja noch kein
    gepushtes Image (das entsteht erst in Schritt 6). Das ist erwartet und kein Fehler; `cloudflared`
@@ -189,13 +189,13 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
   erneuten Image-Build oder Produktionsneustart aus. Der Deploy wartet auf den
   Container-Healthcheck und zeigt bei einem Startfehler automatisch Status und die letzten 100
   App-Logzeilen; anschließend stellt er das zuvor laufende Image wieder her.
-- **Rollback:** auf dem Server (`ssh deploy@<HETZNER_HOST>`) `/opt/lan2026/rollback.sh <git-sha>`
+- **Rollback:** auf dem Server (`ssh deploy@<HETZNER_HOST>`) `/opt/respawn/rollback.sh <git-sha>`
   ausführen – pinnt das Docker-Image auf einen früheren, bereits gebauten Stand.
 - **Backups:** noch nicht eingerichtet (siehe Security-Review) – für echte Daten vor der ersten
   "richtigen" LAN auf dem neuen Server unbedingt einen Cron-Job mit `sqlite3 .backup` ergänzen.
 - **`GHCR_PULL_TOKEN` erneuern** (Fine-grained Tokens laufen ggf. ab): neuen Token erzeugen, das
   GitHub-Secret aktualisieren, dann auf dem Server (`ssh deploy@<HETZNER_HOST>`) die Zeile in
-  `/opt/lan2026/.env` von Hand ersetzen und `/opt/lan2026/docker-login.sh` erneut ausführen –
+  `/opt/respawn/.env` von Hand ersetzen und `/opt/respawn/docker-login.sh` erneut ausführen –
   `provision.yml` läuft nach dem ersten Mal nicht automatisch nochmal.
 
 ### Lokale Entwicklung / manuelles Hosting (unverändert möglich)
@@ -250,7 +250,7 @@ anzufassen.
 ## Agent-Steuerung (Kontroll-Tool)
 
 Läuft die installierte `.exe` unter Windows, erscheint kein Konsolenfenster, sondern ein kleines
-Icon im System-Tray. Doppelklick darauf (oder die Desktop-Verknüpfung „RespawnHQ-Agent Steuerung",
+Icon im System-Tray. Doppelklick darauf (oder die Desktop-Verknüpfung „Respawn-Agent Steuerung",
 die `install.bat` anlegt) öffnet eine kleine Weboberfläche unter `http://127.0.0.1:47813` – **rein
 lokal**, nie über das LAN erreichbar, also nichts, worauf ein Mitspieler zugreifen könnte. Von dort
 lässt sich alles einstellen/aktualisieren, ohne die ZIP neu herunterzuladen oder Dateien von Hand
@@ -261,7 +261,7 @@ anzufassen:
 | **Pausieren / Fortsetzen** | Stoppt sofort das Melden an den Server (Spieler erscheint nach dem üblichen Timeout als „offline"), ohne den Agent-Prozess zu beenden. Übersteht auch einen PC-Neustart. Dasselbe Pausieren geht auch direkt im Web-Tool über „Tracking pausieren" im Profil – beide Wege zeigen denselben Stand. |
 | **Erweiterte Daten senden an/aus** | Schaltet das optionale Aktivitäts-Tracking (aktives Fenster + Leerlaufzeit, für „davon aktiv gespielt") live um. |
 | **Autostart an/aus** | Entfernt bzw. erstellt die Verknüpfung im Windows-Autostart-Ordner. Nur mit der installierten `.exe` verfügbar. |
-| **Komplett deinstallieren** | Entfernt den Autostart-Eintrag, beendet den Agent-Prozess und löscht den gesamten Installationsordner (`%LOCALAPPDATA%\RespawnHQ-Agent`) von diesem PC. |
+| **Komplett deinstallieren** | Entfernt den Autostart-Eintrag, beendet den Agent-Prozess und löscht den gesamten Installationsordner (`%LOCALAPPDATA%\Respawn-Agent`) von diesem PC. |
 
 Ist der Port belegt (z. B. zwei Agenten auf demselben PC), probiert der Agent automatisch die
 nächsten Ports (47814, 47815, …). Klappt das Tray-Icon aus irgendeinem Grund nicht, bleibt das

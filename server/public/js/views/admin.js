@@ -89,7 +89,7 @@ function renderActivate(container) {
   `;
 
   container.querySelector('#admin-activate').addEventListener('click', () => {
-    setAdmin(true); // app.js reacts to lan:admin-changed: banner + refresh
+    setAdmin(true); // app.js reacts to respawn:admin-changed: banner + refresh
     showToast('Admin-Modus aktiv.');
   });
 }

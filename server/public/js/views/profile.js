@@ -37,7 +37,7 @@ let pushBusy = false;
 function renderIdentityPicker(container, ctx) {
   const myId = getMyId();
   container.innerHTML = `
-    <h1 class="view-title">Willkommen bei RespawnHQ</h1>
+    <h1 class="view-title">Willkommen bei Respawn</h1>
     <div class="card stack">
       <div class="player-name">Neu hier? Leg dir dein Profil an:</div>
       <form id="profile-new-form" class="row">
@@ -230,7 +230,7 @@ export function renderProfile(container, ctx) {
         Spielfenster wirklich im Vordergrund ist statt nur im Hintergrund zu laufen – zeigt sich z. B.
         als „davon aktiv gespielt" in deiner Statistik. Das hier ist nur der Startwert für den
         nächsten Download – danach lässt sich das jederzeit in der Steuerungs-Oberfläche des Agents
-        (Desktop-Verknüpfung „RespawnHQ-Agent Steuerung") umschalten, ohne neu herunterzuladen.
+        (Desktop-Verknüpfung „Respawn-Agent Steuerung") umschalten, ohne neu herunterzuladen.
       </p>
       <button type="button" class="btn btn-primary btn-block" id="agent-download">📥 Agent für Windows herunterladen</button>
       <p class="muted" style="font-size:var(--font-size-xs);">

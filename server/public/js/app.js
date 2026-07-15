@@ -155,7 +155,7 @@ function wireAdminMode() {
     setAdmin(false);
     showToast('Admin-Modus verlassen.');
   });
-  window.addEventListener('lan:admin-changed', () => {
+  window.addEventListener('respawn:admin-changed', () => {
     updateAdminIndicator();
     ctx.refresh();
   });
@@ -234,11 +234,11 @@ function wireNav() {
   // when a realtime match starts, or refreshing its inline lobby on a socket
   // update). Kept as plain CustomEvents so modules stay decoupled from app.js.
   // detail is either the view name or { view, replace } (see switchView).
-  window.addEventListener('lan:navigate', (e) => {
+  window.addEventListener('respawn:navigate', (e) => {
     const detail = typeof e.detail === 'string' ? { view: e.detail } : e.detail ?? {};
     if (VIEWS[detail.view]) switchView(detail.view, { replace: detail.replace === true });
   });
-  window.addEventListener('lan:rerender', () => renderCurrent());
+  window.addEventListener('respawn:rerender', () => renderCurrent());
 
   // Back/forward: jump to whichever view is recorded on the popped entry
   // instead of re-pushing it (see switchView's fromHistory param). No

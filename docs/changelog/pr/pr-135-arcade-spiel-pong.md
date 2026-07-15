@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-11
 - Branch: `feat/46-arcade-pong`
-- Merge-Commit: [`ea40ad8`](https://github.com/blorbeer-cmd/LAN_2026/commit/ea40ad86d6346703c4f22ddc037725ca84c090c4)
-- Pull Request: [#135](https://github.com/blorbeer-cmd/LAN_2026/pull/135)
+- Merge-Commit: [`ea40ad8`](https://github.com/blorbeer-cmd/Respawn/commit/ea40ad86d6346703c4f22ddc037725ca84c090c4)
+- Pull Request: [#135](https://github.com/blorbeer-cmd/Respawn/pull/135)
 
 ## Changelog
 

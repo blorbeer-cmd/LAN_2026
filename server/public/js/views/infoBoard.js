@@ -47,7 +47,7 @@ function openEntryForm(ctx, existing) {
     `
       <form id="info-form" class="stack">
         <input type="text" id="info-title" maxlength="80" required autofocus placeholder="z.B. WLAN" value="${escapeHtml(existing?.title ?? '')}" />
-        <textarea id="info-content" maxlength="1000" rows="4" required placeholder="z.B. Netz: LAN2026 / Passwort: …">${escapeHtml(existing?.content ?? '')}</textarea>
+        <textarea id="info-content" maxlength="1000" rows="4" required placeholder="z.B. Netz: Respawn / Passwort: …">${escapeHtml(existing?.content ?? '')}</textarea>
         <button type="submit" class="btn btn-primary btn-block">${isEdit ? 'Speichern' : 'Anlegen'}</button>
       </form>
     `,

@@ -6,4 +6,4 @@ Dieser Branch ist mit einem PR in der GitHub-Historie vertreten.
 
 | PR | Status | Titel |
 |---:|---|---|
-| [#84](https://github.com/blorbeer-cmd/LAN_2026/pull/84) | gemergt am 2026-07-09 | Claude/games features reorganization k3lbwv |
+| [#84](https://github.com/blorbeer-cmd/Respawn/pull/84) | gemergt am 2026-07-09 | Claude/games features reorganization k3lbwv |

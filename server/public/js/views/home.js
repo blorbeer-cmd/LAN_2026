@@ -61,7 +61,7 @@ function renderHomeSeating(ctx) {
 // their own. This view just re-renders whenever that shared data changes.
 let lastCtx = null;
 
-window.addEventListener('lan:aktuell-changed', () => lastCtx?.rerender());
+window.addEventListener('respawn:aktuell-changed', () => lastCtx?.rerender());
 
 // Compact single-line row (the "Mehr" hub's list-row component, see
 // more.js) instead of a full card with its own button: the prominent header

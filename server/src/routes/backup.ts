@@ -16,8 +16,8 @@ backupRouter.get('/', async (_req, res, next) => {
     return res.status(409).json({ error: 'Für die In-Memory-Datenbank ist kein Datei-Backup verfügbar.' });
   }
 
-  const filename = `respawnhq-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.sqlite`;
-  const backupPath = path.join(os.tmpdir(), `respawnhq-backup-${nanoid()}.sqlite`);
+  const filename = `respawn-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.sqlite`;
+  const backupPath = path.join(os.tmpdir(), `respawn-backup-${nanoid()}.sqlite`);
   try {
     await db.backup(backupPath);
     res.download(backupPath, filename, () => {

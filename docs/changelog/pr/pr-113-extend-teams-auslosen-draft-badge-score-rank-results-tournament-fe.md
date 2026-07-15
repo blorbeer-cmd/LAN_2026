@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-11
 - Branch: `claude/team-draw-feature-rni1xs`
-- Merge-Commit: [`0a7e364`](https://github.com/blorbeer-cmd/LAN_2026/commit/0a7e3641a682b9165b558c1b6012398e6141c631)
-- Pull Request: [#113](https://github.com/blorbeer-cmd/LAN_2026/pull/113)
+- Merge-Commit: [`0a7e364`](https://github.com/blorbeer-cmd/Respawn/commit/0a7e3641a682b9165b558c1b6012398e6141c631)
+- Pull Request: [#113](https://github.com/blorbeer-cmd/Respawn/pull/113)
 
 ## Changelog
 

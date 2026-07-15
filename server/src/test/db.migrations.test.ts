@@ -19,7 +19,7 @@ import Database from 'better-sqlite3';
 const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
 
 function makeTempDbPath(name: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lan2026-migration-test-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-migration-test-'));
   return path.join(dir, `${name}.db`);
 }
 

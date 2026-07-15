@@ -404,7 +404,7 @@ test('a match-ready push names the lobby and its default host (the upper bracket
     .send({
       gameId,
       format: 'single_elimination',
-      lobbyName: 'LAN2026',
+      lobbyName: 'Respawn',
       lobbyPassword: 'geheim',
       teams: [
         { name: 'HostTeam', playerIds: [playerId] },
@@ -429,7 +429,7 @@ test('a match-ready push names the lobby and its default host (the upper bracket
   const payloads = sendMock.mock.calls.map((c) => JSON.parse(c.arguments[1] as string));
   const matchReady = payloads.find((p) => /nächstes Match/.test(p.body));
   assert.ok(matchReady, 'expected a match-ready push once the final\'s teams were known');
-  assert.match(matchReady.body, /Lobby "LAN2026"/);
+  assert.match(matchReady.body, /Lobby "Respawn"/);
   assert.match(matchReady.body, /PW: geheim/);
   assert.match(matchReady.body, /HostTeam eröffnet die Lobby/);
 
@@ -452,7 +452,7 @@ test('a match-ready push names the lobby and its default host (the upper bracket
     .send({ winnerTeamId: finalMatch.teamAId });
 
   const afterResult = await request(app).get(`/api/push/current?playerId=${playerId}`);
-  assert.ok(!/Lobby "LAN2026"/.test(afterResult.body.entry?.body ?? ''));
+  assert.ok(!/Lobby "Respawn"/.test(afterResult.body.entry?.body ?? ''));
 
   const unresolvedTournamentTopics = db
     .prepare("SELECT COUNT(*) AS count FROM push_log WHERE topic_key LIKE ? AND resolved_at IS NULL")

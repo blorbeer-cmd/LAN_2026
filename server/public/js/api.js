@@ -4,7 +4,7 @@
 
 import { filterTestUsers } from './testFilter.js';
 
-const TOKEN_KEY = 'lan2026_access_token';
+const TOKEN_KEY = 'respawn_access_token';
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY) || '';
@@ -22,7 +22,7 @@ export async function apiFetch(path, options = {}) {
   // Needed for replace-style writes like the seating layout: a non-admin
   // client's state has test users filtered out, so its saves must not be
   // allowed to silently unseat them (see seating.ts).
-  if (localStorage.getItem('lan2026_admin') === '1') headers['x-admin-mode'] = '1';
+  if (localStorage.getItem('respawn_admin') === '1') headers['x-admin-mode'] = '1';
 
   const res = await fetch(path, { ...options, headers });
 

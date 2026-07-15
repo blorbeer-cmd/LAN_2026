@@ -30,7 +30,7 @@ function ensureVapidKeys(): { publicKey: string; privateKey: string } {
 }
 
 const vapidKeys = ensureVapidKeys();
-webpush.setVapidDetails('mailto:admin@respawnhq.local', vapidKeys.publicKey, vapidKeys.privateKey);
+webpush.setVapidDetails('mailto:admin@respawn.local', vapidKeys.publicKey, vapidKeys.privateKey);
 
 export function getVapidPublicKey(): string {
   return vapidKeys.publicKey;

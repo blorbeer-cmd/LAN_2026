@@ -30,8 +30,8 @@ courtBackground.src = '/img/blobby-beach-court.png';
 let targetScore = 7;
 
 const myId = () => getMyId();
-const rerender = () => window.dispatchEvent(new CustomEvent('lan:rerender'));
-const navigate = (view) => window.dispatchEvent(new CustomEvent('lan:navigate', { detail: view }));
+const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
+const navigate = (view) => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view }));
 const emitAck = (event, payload) => new Promise((resolve) => socket.emit(event, payload, resolve));
 const currentView = () => document.getElementById('view-container')?.dataset.view;
 
@@ -72,7 +72,7 @@ export function ensureBlobbySocket() {
     if (!match) return;
     match.ended = true; match.running = false; match.winner = payload.winner ?? null; match.scores = payload.scores ?? [];
     cancelCountdown();
-    window.dispatchEvent(new CustomEvent('lan:arcade-stats-dirty'));
+    window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
     stopAnimation();
     if (currentView() === 'blobby' || currentView() === 'arcade') rerender();
   });
@@ -241,7 +241,7 @@ function drawVolleyball(ctx, ball) {
   ctx.clip();
 
   // Variant 1: an off-white ball with understated purple/blue seams that
-  // picks up the RespawnHQ palette without fighting the beach background.
+  // picks up the Respawn palette without fighting the beach background.
   ctx.strokeStyle = '#9163f5';
   ctx.lineWidth = 3;
   ctx.beginPath();

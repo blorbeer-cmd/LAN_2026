@@ -176,7 +176,7 @@ exportRouter.get('/pdf', (req, res) => {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader(
     'Content-Disposition',
-    `attachment; filename="respawnhq-${sanitizeForFilename(snapshot.event.name)}.pdf"`
+    `attachment; filename="respawn-${sanitizeForFilename(snapshot.event.name)}.pdf"`
   );
   doc.pipe(res);
   renderExportPdf(doc, snapshot);

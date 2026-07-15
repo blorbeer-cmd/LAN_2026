@@ -17,7 +17,7 @@ let missingSkillsLoading = false;
 // Fired whenever a (re)load completes, so Home can re-render without its own
 // poll loop.
 function notifyChanged() {
-  window.dispatchEvent(new CustomEvent('lan:aktuell-changed'));
+  window.dispatchEvent(new CustomEvent('respawn:aktuell-changed'));
 }
 
 async function loadStatus() {

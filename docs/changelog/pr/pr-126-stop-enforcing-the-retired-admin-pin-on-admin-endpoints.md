@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-11
 - Branch: `claude/test-user-admin-setup-4ntv3z`
-- Merge-Commit: [`926ca72`](https://github.com/blorbeer-cmd/LAN_2026/commit/926ca7277aeac6297c55998b1dff175457a57f70)
-- Pull Request: [#126](https://github.com/blorbeer-cmd/LAN_2026/pull/126)
+- Merge-Commit: [`926ca72`](https://github.com/blorbeer-cmd/Respawn/commit/926ca7277aeac6297c55998b1dff175457a57f70)
+- Pull Request: [#126](https://github.com/blorbeer-cmd/Respawn/pull/126)
 
 ## Changelog
 

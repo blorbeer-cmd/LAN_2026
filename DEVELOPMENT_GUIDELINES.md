@@ -1,7 +1,7 @@
 # Gemeinsame Entwicklungsrichtlinien
 
 Diese Datei ist die **verbindliche gemeinsame Quelle** für alle Coding-Agents und Menschen, die an
-RespawnHQ arbeiten. `AGENTS.md` und `CLAUDE.md` sind lediglich agent-spezifische Einstiegspunkte und
+Respawn arbeiten. `AGENTS.md` und `CLAUDE.md` sind lediglich agent-spezifische Einstiegspunkte und
 verweisen hierher. Gemeinsame Regeln werden nicht in mehreren Dateien dupliziert.
 
 ## 1. Arbeitsweise mit diesen Richtlinien

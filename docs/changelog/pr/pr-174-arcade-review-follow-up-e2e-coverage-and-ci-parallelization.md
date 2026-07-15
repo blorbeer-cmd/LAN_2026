@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-13
 - Branch: `claude/arcade-e2e-testing-gn96bz`
-- Merge-Commit: [`0d10088`](https://github.com/blorbeer-cmd/LAN_2026/commit/0d1008808dc9801f3d1bbb097c5ae161f8619679)
-- Pull Request: [#174](https://github.com/blorbeer-cmd/LAN_2026/pull/174)
+- Merge-Commit: [`0d10088`](https://github.com/blorbeer-cmd/Respawn/commit/0d1008808dc9801f3d1bbb097c5ae161f8619679)
+- Pull Request: [#174](https://github.com/blorbeer-cmd/Respawn/pull/174)
 
 ## Changelog
 
@@ -13,7 +13,7 @@
   2:1 zurückzufallen; expandierte Tetris-Boards clippen den dekorativen Glow und erzeugen
   kein horizontales Scrollen mehr.
 - Stale Watch-History-Einträge (Match endete nach Verlassen der Zuschauer-Ansicht) leiten
-  per `history.replaceState` zum Arcade um; `lan:navigate` unterstützt dafür
+  per `history.replaceState` zum Arcade um; `respawn:navigate` unterstützt dafür
   `{ view, replace }` ohne Back-Falle.
 - Scribble: Rejoin-Syncs außerhalb der Drawing-Phase parken keine alten Strokes mehr für
   die nächste Runde; nach einer aufgelösten Rundengalerie ist das gekürte Bild nicht mehr

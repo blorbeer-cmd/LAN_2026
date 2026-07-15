@@ -1,6 +1,6 @@
 // Integration tests for the personalized agent-download ZIP. Whether the
 // success path (streamed ZIP) or the graceful "not built yet" 503 applies
-// depends on whether a prebuilt server/agent-dist/lan2026-agent.exe is
+// depends on whether a prebuilt server/agent-dist/respawn-agent.exe is
 // present — the repo ships one, but a stripped-down deployment might not —
 // so the test asserts whichever branch matches the actual repo state
 // instead of hardcoding one of them.
@@ -13,11 +13,11 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { buildAgentConfig, resolveAgentServerUrl } from '../routes/agentDownload';
 
-const EXE_PATH = path.join(__dirname, '..', '..', 'agent-dist', 'lan2026-agent.exe');
+const EXE_PATH = path.join(__dirname, '..', '..', 'agent-dist', 'respawn-agent.exe');
 
 const app = createApp();
 const exeExists = fs.existsSync(
-  path.join(__dirname, '..', '..', 'agent-dist', 'lan2026-agent.exe')
+  path.join(__dirname, '..', '..', 'agent-dist', 'respawn-agent.exe')
 );
 let playerId: string;
 
@@ -70,7 +70,7 @@ test('GET /api/agent-download streams a ZIP (or a clear 503 while the exe is mis
   if (exeExists) {
     assert.equal(res.status, 200);
     assert.equal(res.headers['content-type'], 'application/zip');
-    assert.match(res.headers['content-disposition'] ?? '', /RespawnHQ-Agent-Download_Tester\.zip/);
+    assert.match(res.headers['content-disposition'] ?? '', /Respawn-Agent-Download_Tester\.zip/);
     // ZIP local-file-header magic ("PK\x03\x04") proves a real archive got
     // streamed, not an error page with ZIP headers.
     assert.equal((res.body as Buffer).subarray(0, 4).toString('binary'), 'PK\x03\x04');
@@ -93,7 +93,7 @@ test('GET /api/agent-download returns a clean 503 when the exe is not deployed',
   try {
     const res = await request(app).get(`/api/agent-download?playerId=${playerId}`);
     assert.equal(res.status, 503);
-    assert.match(res.body.error, /agent-dist\/lan2026-agent\.exe fehlt/);
+    assert.match(res.body.error, /agent-dist\/respawn-agent\.exe fehlt/);
   } finally {
     fs.existsSync = originalExistsSync;
   }

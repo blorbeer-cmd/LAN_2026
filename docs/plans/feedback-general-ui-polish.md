@@ -12,8 +12,9 @@ die Phasen aus `docs/KONZEPT-USER-MANAGEMENT.md`.
 
 Vorgeschlagener Arbeitstitel: **Refine general UI copy, layouts and contextual help**.
 
-Der PR darf mehrere kleine Commits enthalten, bleibt aber ein lokaler Arbeitsbranch. Kein Push,
-kein GitHub-PR und kein Umbenennen des entfernten Repositories ohne gesonderten Auftrag.
+Der PR darf mehrere kleine Commits enthalten und bleibt bis zur Abnahme ein lokaler Arbeitsbranch.
+Der inzwischen ausdrücklich beauftragte vollständige Produkt- und Repository-Rename wird als
+abschließendes Arbeitspaket umgesetzt; ein Push oder Merge ist damit weiterhin nicht beauftragt.
 
 ## Leitentscheidungen
 
@@ -128,9 +129,10 @@ Betroffene Dateien: `server/public/js/views/home.js`, `server/public/js/views/se
   An-/Abreise verwenden.
 - An-/Abreise: Felder umbenennen, falsche Fahrgemeinschaftssymbole entfernen und Zeitangaben mit
   einer responsiven Feldreihe nebeneinanderstellen.
-- Spieler und Admin sowie alle „Du bist …“-Hinweise nicht anfassen. Bei „Durchsage“ nur den sicheren
-  visuellen Punkt an der Historienüberschrift umsetzen; die markierten Usermanagement-Punkte bleiben
-  unverändert.
+- Spieler und Admin nicht anfassen. Die wiederholten „Du bist …“-Karten zentral ausblenden, sobald
+  lokal bereits eine Identität gewählt ist; Erstauswahl und Wechsel über „Mein Profil“ bleiben
+  erhalten. Bei „Durchsage“ darüber hinaus nur den sicheren visuellen Punkt an der
+  Historienüberschrift umsetzen; die übrigen Usermanagement-Punkte bleiben unverändert.
 
 Betroffene Dateien vor allem: `server/public/js/views/more.js`, `infoBoard.js`, `gameCatalog.js`,
 `foodOrders.js`, `arcade.js`, `arrivals.js`, `broadcast.js`, `hallOfFame.js` und
@@ -157,17 +159,17 @@ Betroffene Dateien: `server/public/js/views/analytics.js`, gegebenenfalls
 `server/public/js/views/myStats.js`, `server/public/js/views/games.js` und
 `server/public/css/style.css`.
 
-### 7. Produktname separat koordinieren
+### 7. Produkt und Repository vollständig in „Respawn“ umbenennen
 
-- Die kompakte Wortmarke oben links heißt auf ausdrücklichen Wunsch bereits „Respawn“ und ist nicht
-  kursiv. Das ist bewusst noch kein vollständiger Produkt-Rename.
-- Übrige sichtbare Produkttexte, PWA-Metadaten, Kiosk-Titel, Service Worker, Tests und Agent-Artefaktnamen
-  können in einem eigenen Rename-Commit von „RespawnHQ“ zu „Respawn“ wechseln.
-- Das Repository selbst lässt sich nicht durch einen lokalen Code-PR umbenennen. Repo-Slug,
-  Clone-URLs, Deploy-/Badge-Referenzen und externe Integrationen werden erst nach ausdrücklicher
-  Freigabe koordiniert. Bis dahin keine halbe Umbenennung mergen.
-- Empfehlung: den Rename als separaten PR behandeln, damit UI-Review und externe Umstellung nicht
-  voneinander abhängen.
+- Sichtbare Produkttexte, Wortmarke, Logo-Beschriftungen, PWA-Metadaten, Kiosk, Service Worker,
+  Exporte, Backups und Tests auf „Respawn“ vereinheitlichen.
+- Technische Bezeichner wie Paketnamen, Browser-Speicher, interne Events, Agent-Dateien,
+  Installationspfade, Container-Referenzen und Deployment-Verzeichnisse ebenfalls umbenennen.
+- Den Windows-Agent unter dem neuen Namen neu bauen; Dokumentation und Download-Tests folgen dem
+  neuen Artefaktnamen.
+- Den bestehenden Produktionspfad beim ersten Deployment verlustfrei auf `/opt/respawn` migrieren.
+- Nach vollständig grünen lokalen Prüfungen das GitHub-Repository in `Respawn` umbenennen und erst
+  danach die lokale `origin`-URL aktualisieren. Push und Merge bleiben separate Schritte.
 
 ## Test- und Abnahmeplan
 
@@ -205,11 +207,11 @@ E2E-Abdeckung ergänzt mindestens:
 
 ## Bewusst nicht Bestandteil dieses PRs
 
-- Alle mit `Kommentar (Usermanagement)` markierten Punkte.
+- Alle weiterhin mit `Kommentar (Usermanagement)` markierten Punkte.
 - Neue Login-, Session-, Rollen-, Rechte-, Invite-, Kiosk-Token- oder Event-Scoping-Logik.
 - Löschen oder Deaktivieren von Spielern sowie Änderungen an Agent-Key-Sichtbarkeit/-Rotation.
 - Authentifizierte Session-Zuordnung des vorläufig spielerbezogenen Meldungsstatus.
-- Remote-Repository umbenennen, Branch pushen, GitHub-PR eröffnen oder mergen.
+- Branch pushen, GitHub-PR eröffnen oder mergen.
 - Backend-Analytics-Endpunkte nur deshalb löschen, weil ihre aktuelle UI ausgeblendet wird.
 
 ## Reviewbare Commit-Reihenfolge
@@ -220,7 +222,7 @@ E2E-Abdeckung ergänzt mindestens:
 4. `refactor: streamline analytics profile and settings views`
 5. `test: cover general UI polish flows`
 6. `feat: add personal header notification center`
-7. optional separat: `chore: rename RespawnHQ product references`
+7. `chore: rename product and technical references to Respawn`
 
 Nach jedem Commit bleibt die App lauffähig; Dokumentation und Tests werden spätestens im selben
 Arbeitspaket aktualisiert. Sachfremde oder bereits vorhandene Nutzeränderungen werden nicht gestaged.

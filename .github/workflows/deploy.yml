@@ -213,6 +213,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Preserve the existing production data on the first deploy after the
+      # product rename. Later deploys simply keep using the new directory.
+      - uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: deploy
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -euo pipefail
+            if [ ! -d /opt/respawn ] && [ -d /opt/lan2026 ]; then
+              sudo mv /opt/lan2026 /opt/respawn
+            fi
+            sudo mkdir -p /opt/respawn
+            sudo chown -R deploy:deploy /opt/respawn
+
       # Keep the live service definition in sync as deploy safeguards (for
       # example logging limits) evolve; secrets remain exclusively in the
       # server-side .env and are never copied from the repository.
@@ -222,7 +237,7 @@ jobs:
           username: deploy
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: docker-compose.yml
-          target: /opt/lan2026
+          target: /opt/respawn
           overwrite: true
 
       # Pinning the box to this exact sha (not a floating :latest tag) keeps
@@ -236,7 +251,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -euo pipefail
-            cd /opt/lan2026
+            cd /opt/respawn
             previous_image="$(sed -n 's/^IMAGE=//p' .env)"
             next_image="${{ needs.publish.outputs.image }}:${{ github.sha }}"
             sed -i "s#^IMAGE=.*#IMAGE=${next_image}#" .env

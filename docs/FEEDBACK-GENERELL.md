@@ -1,4 +1,4 @@
-# Feedback – RespawnHQ
+# Feedback – Respawn
 
 Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung.
 
@@ -17,9 +17,9 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 
 ## Generell
 
-- [ ] [ ] Produktname von „RespawnHQ“ zu „Respawn“ ändern
+- [x] [ ] Produktname vollständig auf „Respawn“ vereinheitlichen
   - [x] [ ] Wortmarke oben links bereits als „Respawn“ und nicht kursiv darstellen
-  - [ ] [ ] Repo und alle Referenzen zu RespawnHQ ebenfalls umbenennen
+  - [ ] [ ] Repo und alle Referenzen zu Respawn ebenfalls umbenennen
 - [x] [ ] Kreuz zum Schließen der Meldungen reparieren; aktuell reagiert es nicht
   - Kommentar: Der vorhandene Schließpfad funktioniert im E2E-Test; kein zusätzlicher Code-Fix war nötig.
 - [x] [ ] Symbole in den Untermenüs unter „Mehr“ entfernen und dort nur den Titel anzeigen
@@ -89,9 +89,9 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 
 ## Vote
 
-- [ ] [ ] Hinweis „Du bist …“ entfernen
-  - Kommentar (Usermanagement): Zurückstellen. `whoami.js` und damit dieser Hinweis entfallen in
-    Phase 2 ohnehin zugunsten der Session-Identität.
+- [x] [ ] Hinweis „Du bist …“ entfernen
+  - Kommentar: Bei bekannter lokaler Identität wird die gemeinsame `whoami.js`-Karte nicht mehr
+    angezeigt. Erstauswahl und Profilwechsel bleiben bis zur Session-Identität verfügbar.
 - [x] [ ] Symbol bei „Neue Abstimmung starten“ entfernen
 - [x] [ ] Buttons „Bewertung abschicken“ und „Beenden und Gewinner küren“ sauber aufeinander ausrichten
 - [x] [ ] Beschreibung kürzen auf: „Punkte frei verteilen, höchste Summe gewinnt.“
@@ -135,9 +135,8 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 
 - [x] [ ] Symbol im Seitentitel entfernen
 - [x] [ ] „Essen bestellen“ in „Essen“ umbenennen
-- [ ] [ ] Hinweis „Du bist …“ entfernen
-  - Kommentar (Usermanagement): Zurückstellen. `whoami.js` und damit dieser Hinweis entfallen in
-    Phase 2 ohnehin zugunsten der Session-Identität.
+- [x] [ ] Hinweis „Du bist …“ entfernen
+  - Kommentar: Zentral über `whoami.js` umgesetzt; Profilwechsel bleibt unter „Mein Profil“ möglich.
 - [x] [ ] „+ Info & Link“ in „Info“ umbenennen
 - [x] [ ] Bezeichnungen in den Infos vereinfachen
   - [x] [ ] „Geht raus um“ in „Versand“ umbenennen
@@ -147,9 +146,8 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 
 ## Arcade
 
-- [ ] [ ] Hinweis „Du bist …“ entfernen
-  - Kommentar (Usermanagement): Zurückstellen. `whoami.js` und damit dieser Hinweis entfallen in
-    Phase 2 ohnehin zugunsten der Session-Identität.
+- [x] [ ] Hinweis „Du bist …“ entfernen
+  - Kommentar: Zentral über `whoami.js` umgesetzt; Profilwechsel bleibt unter „Mein Profil“ möglich.
 - [x] [ ] Symbol beim Seitentitel „Spiele“ entfernen
 - [x] [ ] Beschreibung der Kachel „… aktuell mit Mehrspieler-Gaming-Quiz.“ in „Minigame-Lobbies“ ändern
   - Notiz: Die Anordnung wirkt grundsätzlich gut; die Spiele selbst wurden zuletzt nicht erneut geprüft.
@@ -157,9 +155,8 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 ## An- und Abreise
 
 - [x] [ ] Symbol im Seitentitel entfernen
-- [ ] [ ] Hinweis „Du bist …“ entfernen
-  - Kommentar (Usermanagement): Zurückstellen. `whoami.js` und damit dieser Hinweis entfallen in
-    Phase 2 ohnehin zugunsten der Session-Identität.
+- [x] [ ] Hinweis „Du bist …“ entfernen
+  - Kommentar: Zentral über `whoami.js` umgesetzt; Profilwechsel bleibt unter „Mein Profil“ möglich.
 - [x] [ ] „Notiz, z. B. komme nach der Arbeit“ in „Notiz (optional)“ umbenennen
 - [x] [ ] „ETA (Ankunft ca.)“ in „Ankunft“ umbenennen
 - [x] [ ] Kleine, falsche Symbole bei Fahrgemeinschaften entfernen
@@ -169,9 +166,8 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 
 ## Durchsage
 
-- [ ] [ ] Hinweis „Du bist …“ entfernen
-  - Kommentar (Usermanagement): Zurückstellen. `whoami.js` und damit dieser Hinweis entfallen in
-    Phase 2 ohnehin zugunsten der Session-Identität.
+- [x] [ ] Hinweis „Du bist …“ entfernen
+  - Kommentar: Zentral über `whoami.js` umgesetzt; Profilwechsel bleibt unter „Mein Profil“ möglich.
 - [ ] [ ] Erklärung „Erscheint sofort auf allen offenen Geräten, auf dem Kiosk-Bildschirm und als Push-Benachrichtigung bei allen, die Push aktiviert haben.“ entfernen
   - Kommentar (Usermanagement): Zurückstellen. Empfängerkreis, Realtime-Rooms, Push und Kiosk
     werden in Phase 5 eventbezogen; der heutige Erklärungstext wäre dann fachlich überholt.
