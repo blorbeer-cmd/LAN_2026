@@ -1451,6 +1451,9 @@ button.draft-pool-player {
   .card-grid {
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   }
+  .card-grid.more-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .view-title {
@@ -1586,6 +1589,22 @@ button.card {
   overflow: hidden;
   min-height: 2.4em;
   font-size: var(--font-size-xs);
+}
+.more-card {
+  min-height: calc(var(--row-min-h) + var(--space-5));
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+.more-card .list-row-icon {
+  width: calc(var(--row-icon-size) + var(--space-2));
+  height: calc(var(--row-icon-size) + var(--space-2));
+}
+.more-card .list-row-icon .ui-icon {
+  width: calc(var(--row-icon-size) - var(--space-2));
+  height: calc(var(--row-icon-size) - var(--space-2));
+}
+.more-card .player-name {
+  font-size: var(--font-size-lg);
 }
 .info-board-title {
   font-size: var(--font-size-lg);

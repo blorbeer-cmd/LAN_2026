@@ -23,7 +23,7 @@ const ITEMS = [
 export function renderMore(container) {
   const rows = ITEMS.map(
     (item) => `
-    <button type="button" class="card row list-row" data-navigate="${item.view}">
+    <button type="button" class="card row list-row more-card" data-navigate="${item.view}">
       <span class="list-row-icon">${icon(domainIcon(item.view))}</span>
       <span style="flex:1;">
         <div class="player-name">${item.title}</div>
@@ -35,6 +35,6 @@ export function renderMore(container) {
 
   container.innerHTML = `
     <h1 class="view-title">Mehr</h1>
-    <div class="card-grid">${rows}</div>
+    <div class="card-grid more-grid">${rows}</div>
   `;
 }
