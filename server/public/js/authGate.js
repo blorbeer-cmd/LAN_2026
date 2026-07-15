@@ -86,11 +86,20 @@ function renderRegisterForm() {
   );
 }
 
-function renderClaimForm() {
+function renderClaimForm(bootstrapAccounts = null) {
+  const accountPicker = bootstrapAccounts
+    ? `<div>
+        <label for="auth-player" class="field-label">Bestehendes Profil</label>
+        <select id="auth-player" required ${bootstrapAccounts.length ? '' : 'disabled'}>
+          ${bootstrapAccounts.map((player) => `<option value="${escapeHtml(player.id)}">${escapeHtml(player.name)}</option>`).join('')}
+        </select>
+        ${bootstrapAccounts.length ? '' : '<p class="muted">Es gibt kein unbeanspruchtes Profil. Nutze den Recovery-Code stattdessen als Registrierungslink.</p>'}
+      </div>`
+    : '';
   return cardShell(
     'RespawnHQ',
     'Setze ein Passwort für dein bestehendes Konto.',
-    `${passwordField({ autofocus: true, autocomplete: 'new-password', label: 'Passwort (mind. 15 Zeichen)', passphraseHint: true })}<button type="submit" class="btn btn-primary">Passwort setzen</button>`
+    `${accountPicker}${passwordField({ autofocus: !bootstrapAccounts, autocomplete: 'new-password', label: 'Passwort (mind. 15 Zeichen)', passphraseHint: true })}<button type="submit" class="btn btn-primary" ${bootstrapAccounts && !bootstrapAccounts.length ? 'disabled' : ''}>Passwort setzen</button>`
   );
 }
 
@@ -112,6 +121,14 @@ export async function ensureLogin() {
   const claimCode = paramFromUrl('claim');
   const resetCode = paramFromUrl('reset');
   const mode = inviteCode ? 'register' : claimCode ? 'claim' : resetCode ? 'reset' : 'login';
+  let bootstrapAccounts = null;
+  if (claimCode) {
+    try {
+      bootstrapAccounts = await api.auth.bootstrapAccounts(claimCode);
+    } catch {
+      // A normal personal claim code intentionally cannot list other profiles.
+    }
+  }
 
   // Process action links even when this browser already holds a session.
   // Shared party devices commonly still have somebody else logged in.
@@ -132,7 +149,7 @@ export async function ensureLogin() {
     mode === 'register'
       ? renderRegisterForm()
       : mode === 'claim'
-        ? renderClaimForm()
+        ? renderClaimForm(bootstrapAccounts)
         : mode === 'reset'
           ? renderResetForm()
           : renderLoginForm();
@@ -165,7 +182,8 @@ export async function ensureLogin() {
           const name = screen.querySelector('#auth-name').value.trim();
           me = await api.auth.register({ code: inviteCode, name, password });
         } else if (mode === 'claim') {
-          me = await api.auth.claim({ code: claimCode, password });
+          const playerId = screen.querySelector('#auth-player')?.value;
+          me = await api.auth.claim({ code: claimCode, password, ...(playerId ? { playerId } : {}) });
         } else if (mode === 'reset') {
           me = await api.auth.reset({ code: resetCode, newPassword: password });
         } else {

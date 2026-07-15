@@ -714,7 +714,12 @@ geschützt, echte Konten werden deaktiviert statt gelöscht, Agent-Keys sind les
 rotierbar, kritische Aktionen verlangen Step-up-Reauth und `admin_log` protokolliert Änderungen
 sowie Zugriffsfehler. Die bestehenden DELETE-Routen sind geschützt; die im Konzept zusätzlich
 vorgesehenen Löschpfade für Vote-Runden, Draws, einzelne Play-Sessions und Durchsagen samt UI
-bleiben als abgegrenzter Rest von Phase 3 offen.
+bleiben als abgegrenzter Rest von Phase 3 offen. Phase 4 ist technisch umgesetzt: Admins können
+Registrierungs-, Claim- und Reset-Links erstellen, als QR-Code anzeigen und widerrufen; aktive
+Links sind verwaltbar, der Recovery-Link kann vor dem ersten Admin ein vorhandenes Legacy-Profil
+auswählen, und `AUTH_MODE=required` ersetzt den Shared Token durch einen globalen Session-Gate.
+Der tatsächliche Produktiv-Cutover bleibt ein koordinierter Betriebsschritt, weil vorher das
+Recovery-Secret in der nicht versionierten Server-Konfiguration gesetzt werden muss.
 
 | Phase | Inhalt | Größe |
 |---|---|---|
@@ -722,7 +727,7 @@ bleiben als abgegrenzter Rest von Phase 3 offen.
 | **1 – Auth-Fundament ✅** | Schema (Spalten, `sessions`, `invites`), scrypt-Hashing, `/api/auth/*` inkl. vollständigem Reset-Flow, `/api/me`, `requireUser`-Middleware, Session-Cookie inkl. `COOKIE_SECURE`-Flag, Socket.IO-Handshake + Socket-Kick bei Logout/Passwortwechsel/Reset, Login-/Register-/Claim-/Reset-Screen, Rate-Limit. Alles hinter `AUTH_MODE` | L |
 | **2 – Identität fest verdrahten ✅** | `whoami.js` als Legacy-Adapter, `player_id` unter Required-Auth überall aus der Session statt aus Query/Body (inkl. Digest, Meine Stats, Skills/Bock-Schreibpfade), Profil-Screen (Passwort ändern, Logout), Push-Subscription-Neubindung bei Logout/Login | M |
 | **3 – Rollen & Admin-Härtung (Kern umgesetzt)** | `requireAdmin` auf Session-Rolle, PIN-Flow im Required-Modus entfernen, Reset unbeanspruchter Alt-Admin-Flags + Bootstrap/Recovery-Code, transaktionale Letzter-Admin-Guards inkl. Concurrency-Test, bestehende DELETE-Endpoints gaten, Spieler-Deaktivierung statt Hard-Delete (inkl. Session-/Socket-/Push-Abo-Invalidierung + Agent-Ignore), `api_key` nur noch für Inhaber/Admin lesbar + Key-Rotation, Step-up-Reauth für kritische Aktionen, `admin_log`, Admin-UI. Offen: zusätzliche DELETE-Pfade für Vote-Runden, Draws, Play-Sessions und Durchsagen samt UI | M–L |
-| **4 – Onboarding & Migration** | Invite-/Claim-Codes mit Ablauf/Widerruf + UI (Links/QR im Admin-Bereich), Claim-Flow für Bestandsspieler, Namens-Kollisions-Check (NOCASE), Umstellung `AUTH_MODE=required`, Alt-Token/PIN entfernen | M |
+| **4 – Onboarding & Migration ✅ (Rollout vorbereitet)** | Invite-/Claim-/Reset-Codes mit Ablauf/Widerruf + Admin-UI (Links/QR/aktive Links), Claim-Flow für Bestandsspieler inkl. Recovery-Auswahl, Namens-Kollisions-Check (NOCASE), globaler Session-Gate unter `AUTH_MODE=required`, Shared Token dort deaktiviert, Admin-PIN entfernt. Offen bleibt nur der koordinierte Produktionsschalter samt Setzen von `ADMIN_RECOVERY_CODE` außerhalb des Repos | M |
 | **5 – Event-Sichtbarkeit** | `requireEventAccess`, `getEventContextFor`/`getEventAudience` als zentrale Helfer in allen Schreib-/Versandpfaden, Validierung aller `?eventId=`-Filter, Kontext-Badge im Header, Socket.IO-Rooms inkl. Live-Rejoin bei Roster-/Rollen-/Impersonations-Änderung, Roster-Entfernung schließt offene Sessions, historisierte Mitgliedschaft (`event_participants.removed_at` statt Zeilen-Löschung, 8.5), Push-Scoping, Kiosk-Token inkl. Read-only-Socket, Event-CRUD admin-only, Event-Löschen mit Kaskaden-Warnung. **Dazu gehören die Voraussetzungen der Grenze selbst:** `event_id` für `broadcasts` und `push_log`, Vote-/Draft-Guards pro Event **und die Arcade-Live-Fläche** (`GET /api/arcade/lobbies` aggregiert heute alle offenen Lobbys, die Lobby-Listen gehen per globalem `io.emit` raus – Lobbys bekommen denselben Event-Kontext/Room wie alles andere, sonst sehen und joinen Nicht-Mitglieder weiter die Lobbys des Events). Ohne diese Punkte wäre die frisch eingeführte Sichtbarkeit löchrig | L |
 | **6 – Scoping-Lücken & Feinschliff** | `event_id` für `info_entries` (inkl. „global"-Fall fürs Info-Board) und `arcade_results` – beide bleiben bis dahin bewusst global (reine Anzeige-Historie, innerhalb eines Freundeskreises kein Leak); Test-User-Ausschluss aus Aggregationen/Push, Impersonation (`acting_as`), Tracking-Erinnerung; optional: „Daten umziehen"-Werkzeug | M |
 

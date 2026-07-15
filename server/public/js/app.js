@@ -171,11 +171,8 @@ async function tokenWorks(candidate) {
   }
 }
 
-// Gates the whole app behind two independent, orthogonal checks — the
-// shared access token (NFR-16, if configured) and, separately, real
-// per-user login (only once the server has authMode: 'required', see
-// docs/KONZEPT-USER-MANAGEMENT.md). Either, both, or neither may be active
-// depending on server config; each resolves once satisfied.
+// Legacy deployments use the shared-token gate; required auth replaces it
+// with the personal login gate.
 async function ensureAccess() {
   const meta = await api.meta();
   if (meta.accessProtection) await ensureToken();

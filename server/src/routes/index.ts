@@ -32,7 +32,7 @@ import { arrivalsRouter } from './arrivals';
 import { adminRouter } from './admin';
 import { backupRouter } from './backup';
 import { authRouter } from './auth';
-import { requireUser } from '../sessions';
+import { requireConfiguredUser, requireUser } from '../sessions';
 
 export const apiRouter = Router();
 
@@ -43,10 +43,13 @@ apiRouter.get('/health', (_req, res) => {
 
 apiRouter.use('/auth', authRouter);
 
+// Once required auth is enabled, every browser-facing feature API is behind
+// the verified session. Health and the anonymous auth flows above stay public;
+// legacy mode keeps the existing shared-token behavior unchanged.
+apiRouter.use(requireConfiguredUser);
+
 // GET /api/me - the logged-in account, per the real per-user login system
-// (see docs/KONZEPT-USER-MANAGEMENT.md). Not used anywhere in the app yet —
-// identity still comes from whoami.js/localStorage until that's wired over
-// in a later change.
+// (see docs/KONZEPT-USER-MANAGEMENT.md).
 apiRouter.get('/me', requireUser, (req, res) => {
   const p = req.player!;
   res.json({

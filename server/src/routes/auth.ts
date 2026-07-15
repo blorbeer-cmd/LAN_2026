@@ -3,7 +3,7 @@
 // and (admin-only) issue/revoke the invite codes that gate all of the above.
 //
 // Feature routes enforce these sessions when AUTH_MODE=required; legacy mode
-// preserves the existing shared-token behavior during the rollout.
+// preserves the existing shared-token behavior for explicit rollbacks.
 
 import { Router, type RequestHandler } from 'express';
 import { nanoid } from 'nanoid';
@@ -27,6 +27,7 @@ import {
   getSessionToken,
   requireUser,
   requireSessionAdmin,
+  requireRecentReauthentication,
   markSessionReauthenticated,
 } from '../sessions';
 import { createInvite, findValidInvite, markInviteUsed, voidOutstandingInvites, revokeInvite, type InvitePurpose } from '../invites';
@@ -90,6 +91,23 @@ function toPublicAccount(row: PlayerRow) {
 function recoveryCodeUsable(code: string): boolean {
   return Boolean(config.adminRecoveryCode) && code === config.adminRecoveryCode && !hasClaimedAdmin();
 }
+
+// Lets the one-time recovery link select an existing legacy profile without
+// making the normal roster public. The recovery code is the authorization;
+// once any claimed admin exists this endpoint closes permanently.
+authRouter.get('/bootstrap-accounts', limitAnonymousAuthAttempts, (req, res) => {
+  const code = typeof req.query.code === 'string' ? req.query.code : '';
+  if (!recoveryCodeUsable(code)) return res.status(404).json({ error: 'Bootstrap-Link ist nicht gültig.' });
+  const players = db
+    .prepare(
+      `SELECT id, name, color, avatar
+       FROM players
+       WHERE password_hash IS NULL AND is_test = 0 AND deactivated_at IS NULL
+       ORDER BY name COLLATE NOCASE`
+    )
+    .all();
+  res.json(players);
+});
 
 // POST /api/auth/register - creates a brand-new player via a 'register'
 // invite (or the recovery code, while no admin has claimed an account yet).
@@ -386,8 +404,24 @@ authRouter.post('/reset', limitAnonymousAuthAttempts, (req, res) => {
 
 const INVITE_PURPOSES: InvitePurpose[] = ['register', 'claim', 'reset'];
 
+// GET /api/auth/invites - active, still-shareable links for the admin UI.
+// Used/revoked/expired codes stay in the DB audit trail but are not returned.
+authRouter.get('/invites', ...requireSessionAdmin, (_req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT i.code, i.purpose, i.player_id AS playerId, p.name AS playerName,
+              i.created_at AS createdAt, i.expires_at AS expiresAt
+       FROM invites i
+       LEFT JOIN players p ON p.id = i.player_id
+       WHERE i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > ?
+       ORDER BY i.created_at DESC`
+    )
+    .all(Date.now());
+  res.json(rows);
+});
+
 // POST /api/auth/invites - admin-only. Body: { purpose, playerId?, expiresInMs? }
-authRouter.post('/invites', ...requireSessionAdmin, (req, res) => {
+authRouter.post('/invites', ...requireSessionAdmin, requireRecentReauthentication, (req, res) => {
   const { purpose, playerId, expiresInMs } = req.body ?? {};
   if (typeof purpose !== 'string' || !INVITE_PURPOSES.includes(purpose as InvitePurpose)) {
     return res.status(400).json({ error: `purpose muss eines von ${INVITE_PURPOSES.join(', ')} sein.` });
@@ -404,10 +438,12 @@ authRouter.post('/invites', ...requireSessionAdmin, (req, res) => {
     if (typeof playerId !== 'string' || !playerId) {
       return res.status(400).json({ error: 'playerId ist erforderlich.' });
     }
-    const target = db.prepare('SELECT id, password_hash FROM players WHERE id = ?').get(playerId) as
-      | { id: string; password_hash: string | null }
+    const target = db.prepare('SELECT id, password_hash, is_test, deactivated_at FROM players WHERE id = ?').get(playerId) as
+      | { id: string; password_hash: string | null; is_test: number; deactivated_at: number | null }
       | undefined;
     if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+    if (target.is_test) return res.status(409).json({ error: 'Test-Spieler erhalten keine Anmeldelinks.' });
+    if (target.deactivated_at !== null) return res.status(409).json({ error: 'Dieses Konto ist deaktiviert.' });
     if (purpose === 'claim' && target.password_hash) {
       return res.status(409).json({ error: 'Dieser Spieler hat bereits ein Passwort gesetzt.' });
     }
@@ -422,14 +458,36 @@ authRouter.post('/invites', ...requireSessionAdmin, (req, res) => {
     createdBy: req.player!.id,
     expiresInMs,
   });
-  res.status(201).json({ code: invite.code, purpose: invite.purpose, expiresAt: invite.expires_at });
+  writeAdminAudit({
+    actorPlayerId: req.player!.id,
+    action: 'invite_created',
+    targetType: purpose === 'register' ? 'registration' : 'player',
+    targetId: purpose === 'register' ? undefined : playerId,
+    details: { purpose, expiresAt: invite.expires_at },
+  });
+  res.status(201).json({
+    code: invite.code,
+    purpose: invite.purpose,
+    playerId: invite.player_id,
+    expiresAt: invite.expires_at,
+  });
 });
 
 // DELETE /api/auth/invites/:code - admin-only. Revoking an already-used or
 // already-revoked code is a no-op 404, not an error worth retrying.
-authRouter.delete('/invites/:code', ...requireSessionAdmin, (req, res) => {
+authRouter.delete('/invites/:code', ...requireSessionAdmin, requireRecentReauthentication, (req, res) => {
+  const invite = db.prepare('SELECT purpose, player_id FROM invites WHERE code = ?').get(req.params.code) as
+    | { purpose: InvitePurpose; player_id: string | null }
+    | undefined;
   if (!revokeInvite(req.params.code)) {
     return res.status(404).json({ error: 'Einladungscode nicht gefunden oder bereits verbraucht.' });
   }
+  writeAdminAudit({
+    actorPlayerId: req.player!.id,
+    action: 'invite_revoked',
+    targetType: invite?.player_id ? 'player' : 'registration',
+    targetId: invite?.player_id ?? undefined,
+    details: { purpose: invite?.purpose },
+  });
   res.status(204).end();
 });

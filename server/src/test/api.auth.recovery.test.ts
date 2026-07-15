@@ -66,6 +66,12 @@ test('recovery code can instead claim an existing unclaimed player as admin, the
       const playerA = await request(app).post('/api/players').send({ name: 'Unclaimed Legacy Player' });
       assert.equal(playerA.status, 201);
 
+      const bootstrapAccounts = await request(app).get('/api/auth/bootstrap-accounts').query({
+        code: ${JSON.stringify(RECOVERY_CODE)},
+      });
+      assert.equal(bootstrapAccounts.status, 200);
+      assert.deepEqual(bootstrapAccounts.body.map((player) => player.id), [playerA.body.id]);
+
       const claimed = await request(app).post('/api/auth/claim').send({
         code: ${JSON.stringify(RECOVERY_CODE)},
         playerId: playerA.body.id,
@@ -73,6 +79,11 @@ test('recovery code can instead claim an existing unclaimed player as admin, the
       });
       assert.equal(claimed.status, 200, 'recovery-code claim should succeed: ' + JSON.stringify(claimed.body));
       assert.equal(claimed.body.isAdmin, true, 'claimed account should become admin');
+      assert.equal(
+        (await request(app).get('/api/auth/bootstrap-accounts').query({ code: ${JSON.stringify(RECOVERY_CODE)} })).status,
+        404,
+        'bootstrap account listing must close with the recovery path'
+      );
 
       const playerB = await request(app).post('/api/players').send({ name: 'Second Unclaimed Player' });
       const secondClaim = await request(app).post('/api/auth/claim').send({

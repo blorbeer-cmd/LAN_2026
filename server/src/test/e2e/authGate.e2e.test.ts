@@ -52,6 +52,13 @@ async function mintRegisterInviteCode(): Promise<string> {
   assert.ok(setCookie, 'bootstrap register should set a session cookie');
   adminCookie = setCookie!.split(';')[0];
 
+  const reauth = await fetch(`${BASE_URL}/api/auth/reauth`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    body: JSON.stringify({ password: 'e2e bootstrap password' }),
+  });
+  assert.equal(reauth.status, 204);
+
   const invite = await fetch(`${BASE_URL}/api/auth/invites`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
@@ -69,6 +76,12 @@ async function mintResetInviteCode(): Promise<string> {
   });
   assert.equal(login.status, 200);
   const account = (await login.json()) as { id: string };
+  const reauth = await fetch(`${BASE_URL}/api/auth/reauth`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    body: JSON.stringify({ password: 'e2e bootstrap password' }),
+  });
+  assert.equal(reauth.status, 204);
   const invite = await fetch(`${BASE_URL}/api/auth/invites`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
@@ -81,7 +94,14 @@ async function mintResetInviteCode(): Promise<string> {
 
 before(async () => {
   serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
-    env: { ...process.env, PORT: String(PORT), DB_FILE: ':memory:', AUTH_MODE: 'required', ADMIN_RECOVERY_CODE: RECOVERY_CODE },
+    env: {
+      ...process.env,
+      PORT: String(PORT),
+      DB_FILE: ':memory:',
+      AUTH_MODE: 'required',
+      ACCESS_TOKEN: 'obsolete-shared-token',
+      ADMIN_RECOVERY_CODE: RECOVERY_CODE,
+    },
     stdio: 'ignore',
   });
   await waitForServer(`${BASE_URL}/api/health`);
@@ -178,4 +198,53 @@ test('a reset link replaces the password and signs the browser in with a fresh s
     body: JSON.stringify({ name: NAME, password: PASSWORD_AFTER_RESET }),
   });
   assert.equal(newLogin.status, 200);
+});
+
+test('admin creates, displays and revokes a registration link in the UI', async () => {
+  const adminPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  try {
+    await adminPage.goto(BASE_URL);
+    await adminPage.waitForSelector('#auth-screen:not([hidden])');
+    await adminPage.fill('#auth-name', 'E2E Bootstrap Admin');
+    await adminPage.fill('#auth-password', 'e2e bootstrap password');
+    await adminPage.click('#auth-form button[type="submit"]');
+    await adminPage.waitForSelector('#app:not([hidden])');
+    await adminPage.waitForTimeout(500);
+
+    await adminPage.click('[data-view="more"]');
+    await adminPage.click('[data-navigate="admin"]');
+    await adminPage.waitForSelector('#admin-register-link');
+    assert.equal(
+      await adminPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      true,
+      'mobile onboarding must not introduce horizontal page scrolling'
+    );
+    await adminPage.click('#admin-register-link');
+
+    await adminPage.waitForSelector('#reauth-form');
+    await adminPage.fill('#reauth-password', 'e2e bootstrap password');
+    await adminPage.click('#reauth-form button[type="submit"]');
+    await adminPage.waitForSelector('#admin-invite-link');
+    const link = await adminPage.inputValue('#admin-invite-link');
+    assert.equal(new URL(link).searchParams.has('invite'), true);
+
+    await adminPage.click('#admin-invite-qr-toggle');
+    await adminPage.waitForSelector('#admin-invite-qr svg');
+    await adminPage.click('.modal-backdrop [data-close]');
+
+    await adminPage.setViewportSize({ width: 1024, height: 800 });
+    assert.equal(
+      await adminPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      true,
+      'desktop onboarding must not introduce horizontal page scrolling'
+    );
+
+    const activeLink = adminPage.locator('[data-show-login-link]').first();
+    await activeLink.waitFor();
+    await adminPage.locator('[data-revoke-login-link]').first().click();
+    await adminPage.click('[data-confirm]');
+    await activeLink.waitFor({ state: 'detached' });
+  } finally {
+    await adminPage.close();
+  }
 });

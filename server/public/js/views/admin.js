@@ -5,7 +5,7 @@
 // for testing and moderation.
 
 import { api } from '../api.js';
-import { confirmDialog } from '../modal.js';
+import { confirmDialog, openModal } from '../modal.js';
 import { state } from '../state.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
@@ -20,6 +20,77 @@ let diagnosticsLoading = false;
 let seedBusy = false;
 let adminPlayers = null;
 let adminPlayersLoading = false;
+let activeInvites = null;
+let activeInvitesLoading = false;
+
+function inviteUrl(invite) {
+  const param = invite.purpose === 'register' ? 'invite' : invite.purpose;
+  return `${location.origin}/?${param}=${encodeURIComponent(invite.code)}`;
+}
+
+function invitePurposeLabel(purpose) {
+  if (purpose === 'claim') return 'Konto übernehmen';
+  if (purpose === 'reset') return 'Passwort zurücksetzen';
+  return 'Neue Person';
+}
+
+function openInviteModal(invite) {
+  const url = inviteUrl(invite);
+  const target = invite.playerName ? ` für ${invite.playerName}` : '';
+  const { el } = openModal(
+    `${invitePurposeLabel(invite.purpose)}${escapeHtml(target)}`,
+    `<div class="stack">
+      <label for="admin-invite-link">Einmal-Link</label>
+      <div class="row" style="gap:var(--space-2);">
+        <input type="text" id="admin-invite-link" readonly value="${escapeHtml(url)}" style="flex:1;font-family:monospace;font-size:var(--font-size-xs);" />
+        <button type="button" class="btn btn-sm" id="admin-invite-copy">Kopieren</button>
+      </div>
+      <button type="button" class="btn btn-sm" id="admin-invite-qr-toggle">${icon('scanQrCode')} QR-Code anzeigen</button>
+      <div id="admin-invite-qr" style="text-align:center;" hidden></div>
+      <p class="muted" style="font-size:var(--font-size-xs);">Gültig bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}. Der Link funktioniert nur einmal.</p>
+    </div>`
+  );
+  el.querySelector('#admin-invite-copy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast('Einmal-Link kopiert.');
+    } catch {
+      showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+    }
+  });
+  el.querySelector('#admin-invite-qr-toggle').addEventListener('click', async (event) => {
+    const qr = el.querySelector('#admin-invite-qr');
+    if (!qr.hidden) {
+      qr.hidden = true;
+      event.currentTarget.innerHTML = `${icon('scanQrCode')} QR-Code anzeigen`;
+      return;
+    }
+    qr.hidden = false;
+    event.currentTarget.innerHTML = `${icon('scanQrCode')} QR-Code ausblenden`;
+    if (qr.dataset.loaded) return;
+    try {
+      qr.innerHTML = await api.qrcode.svg(url);
+      qr.dataset.loaded = '1';
+    } catch (error) {
+      qr.textContent = 'QR-Code konnte nicht geladen werden.';
+      showToast(error.message, { error: true });
+    }
+  });
+}
+
+async function loadActiveInvites(ctx, force = false) {
+  if (!authRequired || activeInvitesLoading || (activeInvites && !force)) return;
+  activeInvitesLoading = true;
+  try {
+    activeInvites = await api.auth.invites();
+  } catch (error) {
+    showToast(error.message, { error: true });
+    activeInvites = [];
+  } finally {
+    activeInvitesLoading = false;
+    ctx.rerender();
+  }
+}
 
 async function loadAdminPlayers(ctx, force = false) {
   if (adminPlayersLoading || (adminPlayers && !force)) return;
@@ -37,7 +108,36 @@ async function loadAdminPlayers(ctx, force = false) {
 
 async function refreshAdminData(ctx) {
   await ctx.refresh();
-  if (authRequired) await loadAdminPlayers(ctx, true);
+  if (authRequired) await Promise.all([loadAdminPlayers(ctx, true), loadActiveInvites(ctx, true)]);
+}
+
+async function createLoginInvite(purpose, player, ctx) {
+  try {
+    const invite = await withStepUp(() => api.auth.createInvite({ purpose, ...(player ? { playerId: player.id } : {}) }));
+    if (invite === undefined) return;
+    const enriched = { ...invite, playerName: player?.name || null };
+    showToast('Einmal-Link erstellt.');
+    openInviteModal(enriched);
+    await loadActiveInvites(ctx, true);
+  } catch (error) {
+    showToast(error.message, { error: true });
+  }
+}
+
+async function revokeLoginInvite(invite, ctx) {
+  if (!(await confirmDialog('Diesen Einmal-Link wirklich widerrufen?', {
+    title: 'Link widerrufen',
+    confirmText: 'Widerrufen',
+    danger: true,
+  }))) return;
+  try {
+    const result = await withStepUp(() => api.auth.revokeInvite(invite.code));
+    if (result === undefined) return;
+    showToast('Einmal-Link widerrufen.');
+    await loadActiveInvites(ctx, true);
+  } catch (error) {
+    showToast(error.message, { error: true });
+  }
 }
 
 async function loadAgentDiagnostics(ctx, force = false) {
@@ -150,6 +250,7 @@ function renderActivate(container) {
 
 function renderPanel(container, ctx) {
   if (authRequired && adminPlayers === null && !adminPlayersLoading) loadAdminPlayers(ctx);
+  if (authRequired && activeInvites === null && !activeInvitesLoading) loadActiveInvites(ctx);
   const players = authRequired ? adminPlayers || [] : state.players || [];
   const testCount = players.filter((p) => p.is_test).length;
   if (agentDiagnostics === null && !diagnosticsLoading) loadAgentDiagnostics(ctx);
@@ -167,6 +268,36 @@ function renderPanel(container, ctx) {
         <span class="row" style="gap:var(--space-2);">
           ${p.deactivated_at ? `<button type="button" class="btn btn-sm" data-reactivate-player="${p.id}">Reaktivieren</button>` : `<button type="button" class="btn btn-sm" data-toggle-admin="${p.id}" ${p.is_test ? 'disabled' : ''}>${p.is_admin ? 'Admin entziehen' : 'Admin machen'}</button>`}
           ${p.deactivated_at ? '' : p.is_test ? `<button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">Löschen</button>` : `<button type="button" class="btn btn-sm btn-danger" data-deactivate-player="${p.id}">Deaktivieren</button>`}
+        </span>
+      </div>`
+    )
+    .join('');
+
+  const accountRows = players
+    .filter((player) => !player.is_test && !player.deactivated_at)
+    .map(
+      (player) => `<div class="row-between" style="gap:var(--space-2);">
+        <span>
+          <strong>${escapeHtml(player.name)}</strong>
+          <span class="badge ${player.is_claimed ? 'badge-playing' : 'badge-paused'}">${player.is_claimed ? 'Aktiv' : 'Noch nicht übernommen'}</span>
+        </span>
+        <button type="button" class="btn btn-sm" data-create-login-link="${player.is_claimed ? 'reset' : 'claim'}" data-player-id="${player.id}">
+          ${player.is_claimed ? 'Reset-Link' : 'Claim-Link'}
+        </button>
+      </div>`
+    )
+    .join('');
+
+  const inviteRows = (activeInvites || [])
+    .map(
+      (invite) => `<div class="row-between" style="gap:var(--space-2);">
+        <span>
+          <strong>${escapeHtml(invite.playerName || invitePurposeLabel(invite.purpose))}</strong>
+          <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(invitePurposeLabel(invite.purpose))} · bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}</span>
+        </span>
+        <span class="row" style="gap:var(--space-2);">
+          <button type="button" class="btn btn-sm" data-show-login-link="${invite.code}">Anzeigen</button>
+          <button type="button" class="btn btn-sm btn-danger" data-revoke-login-link="${invite.code}">Widerrufen</button>
         </span>
       </div>`
     )
@@ -202,6 +333,15 @@ function renderPanel(container, ctx) {
       ${authRequired ? '' : '<button type="button" class="btn btn-sm" id="admin-leave">Modus verlassen</button>'}
     </div>
 
+    ${authRequired ? `<div class="section-title">Onboarding &amp; Kontozugang</div>
+    <div class="card stack">
+      <p class="muted">Neue Personen registrieren sich über einen allgemeinen Einmal-Link. Bestehende Profile erhalten einen persönlichen Claim-Link; für vergessene Passwörter gibt es einen Reset-Link.</p>
+      <button type="button" class="btn btn-primary" id="admin-register-link">Link für neue Person erstellen</button>
+      <div class="stack">${accountRows || '<span class="muted">Keine aktiven echten Konten vorhanden.</span>'}</div>
+      <div class="section-title">Aktive Einmal-Links</div>
+      <div class="stack">${activeInvitesLoading && activeInvites === null ? '<span class="muted">Links werden geladen…</span>' : inviteRows || '<span class="muted">Keine aktiven Links.</span>'}</div>
+    </div>` : ''}
+
     <div class="section-title">Test-Spieler</div>
     <div class="card stack">
       <p class="muted">Kommen fertig eingerichtet: Platz im Sitzplan samt sichtbarer Monitore,
@@ -232,6 +372,26 @@ function renderPanel(container, ctx) {
   container.querySelector('#admin-leave')?.addEventListener('click', () => {
     setAdmin(false);
     showToast('Admin-Modus verlassen.');
+  });
+
+  container.querySelector('#admin-register-link')?.addEventListener('click', () => createLoginInvite('register', null, ctx));
+  container.querySelectorAll('[data-create-login-link]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const player = players.find((entry) => entry.id === button.dataset.playerId);
+      if (player) createLoginInvite(button.dataset.createLoginLink, player, ctx);
+    });
+  });
+  container.querySelectorAll('[data-show-login-link]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const invite = (activeInvites || []).find((entry) => entry.code === button.dataset.showLoginLink);
+      if (invite) openInviteModal(invite);
+    });
+  });
+  container.querySelectorAll('[data-revoke-login-link]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const invite = (activeInvites || []).find((entry) => entry.code === button.dataset.revokeLoginLink);
+      if (invite) revokeLoginInvite(invite, ctx);
+    });
   });
 
   container.querySelector('#admin-bulk').addEventListener('click', () => {

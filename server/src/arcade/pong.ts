@@ -185,7 +185,7 @@ export function registerPongSockets(io: Server): void {
       ack?.({ ok: true, lobbyId: lobby.id });
     });
 
-    socket.on('pong:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (result: unknown) => void) => {
+    socket.on('pong:lobby:bot', (payload: { playerId?: string }, ack?: (result: unknown) => void) => {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });

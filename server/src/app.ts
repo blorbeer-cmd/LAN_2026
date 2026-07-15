@@ -25,12 +25,8 @@ export function createApp(): express.Express {
   // the 400 KB validation limit and return a useful 413 when it is exceeded.
   app.use(express.json({ limit: '1mb' }));
 
-  // Public endpoint so the login screen knows whether a token is required.
-  // Intentionally NOT behind requireAccess. authMode tells the frontend
-  // whether to show the real per-user login/register gate on top of (or,
-  // once AUTH_MODE=required, only after) the shared-token gate — see
-  // docs/KONZEPT-USER-MANAGEMENT.md. 'legacy' (the default) means: behave
-  // exactly like before, the gate never appears.
+  // Public endpoint so the frontend can choose the legacy shared-token gate
+  // or the required per-user login gate.
   app.get('/api/meta', (_req, res) => {
     res.json({ accessProtection: accessProtectionEnabled(), authMode: config.authMode });
   });
@@ -40,7 +36,8 @@ export function createApp(): express.Express {
   // before the requireAccess gate below so it isn't blocked by it.
   app.use('/api/agent', agentRouter);
 
-  // All browser-facing feature APIs sit behind the shared-token gate.
+  // Legacy browser APIs sit behind the shared-token gate. In required mode
+  // requireAccess is a compatibility no-op and apiRouter enforces sessions.
   app.use('/api', requireAccess, apiRouter);
 
   // Static frontend. The login screen itself is static and handles token entry

@@ -192,21 +192,14 @@ export function registerArcadeKioskSockets(server: Server): void {
   });
 }
 
-// Socket.IO connections bypass Express middleware entirely, so the REST
-// access-token gate (requireAccess) never sees them. Without this, realtime
-// data (live status, votes, leaderboard) would leak to anyone who opens a
-// WebSocket, even with ACCESS_TOKEN set — enforce the same shared token here.
+// Socket.IO connections bypass Express middleware entirely, so their access
+// rules mirror the REST API here: required mode accepts only a valid user
+// session, while legacy mode also supports the shared ACCESS_TOKEN.
 // Parameterized (defaulting to config.accessToken) so the exact matching
 // logic is unit-testable without depending on process-wide env state.
 //
-// A valid per-user session cookie (see sessions.ts) is accepted as an
-// alternative to the token: a browser that already holds one got there by
-// passing this exact gate once already (the login/register gate only shows
-// up after the shared-token screen, see public/js/authGate.js), and
-// same-origin requests carry cookies automatically — nothing extra for the
-// Socket.IO client to do. This does not replace the token — both still
-// coexist until the shared token is retired (see
-// docs/KONZEPT-USER-MANAGEMENT.md phase 4).
+// Same-origin clients send the session cookie automatically. In legacy mode,
+// an existing user session remains a valid alternative to the shared token.
 export function createSocketAuthGuard(
   accessToken: string = config.accessToken,
   authMode: 'legacy' | 'required' = config.authMode

@@ -1,4 +1,4 @@
-// Fetch wrapper: attaches the shared access token (if any) and normalizes
+// Fetch wrapper: attaches the legacy shared access token (if any) and normalizes
 // errors so callers always get either parsed JSON or a thrown Error with the
 // server's German error message.
 
@@ -108,6 +108,10 @@ export const api = {
     logout: () => apiFetch('/api/auth/logout', { method: 'POST' }),
     changePassword: (data) => apiFetch('/api/auth/password', { method: 'POST', body: JSON.stringify(data) }),
     reauth: (password) => apiFetch('/api/auth/reauth', { method: 'POST', body: JSON.stringify({ password }) }),
+    bootstrapAccounts: (code) => apiFetch(`/api/auth/bootstrap-accounts?code=${encodeURIComponent(code)}`),
+    invites: () => apiFetch('/api/auth/invites'),
+    createInvite: (data) => apiFetch('/api/auth/invites', { method: 'POST', body: JSON.stringify(data) }),
+    revokeInvite: (code) => apiFetch(`/api/auth/invites/${encodeURIComponent(code)}`, { method: 'DELETE' }),
   },
 
   players: {

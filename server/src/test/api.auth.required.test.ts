@@ -23,6 +23,9 @@ test('required auth binds personal APIs to the session and protects API keys', (
 
     (async () => {
       const app = createApp();
+      const meta = await request(app).get('/api/meta');
+      assert.equal(meta.status, 200);
+      assert.equal(meta.body.accessProtection, false);
       const admin = await request(app).post('/api/auth/register').send({
         code: ${JSON.stringify(RECOVERY_CODE)},
         name: 'Required Admin',
@@ -30,9 +33,19 @@ test('required auth binds personal APIs to the session and protects API keys', (
       });
       assert.equal(admin.status, 201, JSON.stringify(admin.body));
       const adminCookie = cookie(admin);
+      const inviteAdminLogin = await request(app).post('/api/auth/login').send({
+        name: 'Required Admin',
+        password: 'required admin password',
+      });
+      assert.equal(inviteAdminLogin.status, 200);
+      const inviteAdminCookie = cookie(inviteAdminLogin);
+      const inviteAdminStepUp = await request(app).post('/api/auth/reauth').set('Cookie', inviteAdminCookie).send({
+        password: 'required admin password',
+      });
+      assert.equal(inviteAdminStepUp.status, 204);
 
       async function register(name) {
-        const invite = await request(app).post('/api/auth/invites').set('Cookie', adminCookie).send({ purpose: 'register' });
+        const invite = await request(app).post('/api/auth/invites').set('Cookie', inviteAdminCookie).send({ purpose: 'register' });
         assert.equal(invite.status, 201, JSON.stringify(invite.body));
         const registered = await request(app).post('/api/auth/register').send({
           code: invite.body.code,
@@ -138,7 +151,7 @@ test('required auth binds personal APIs to the session and protects API keys', (
       assert.equal(deactivate.status, 204, JSON.stringify(deactivate.body));
       assert.equal((await request(app).get('/api/me').set('Cookie', bob.cookie)).status, 401);
       assert.equal((await request(app).post('/api/agent/report').set('x-api-key', bobFull.body.api_key).send({ processNames: [] })).status, 401);
-      const activeRoster = await request(app).get('/api/players');
+      const activeRoster = await request(app).get('/api/players').set('Cookie', alice.cookie);
       assert.equal(activeRoster.body.some((player) => player.id === bob.account.id), false);
       const adminRoster = await request(app).get('/api/admin/players').set('Cookie', adminCookie);
       assert.ok(adminRoster.body.find((player) => player.id === bob.account.id).deactivated_at);
@@ -181,6 +194,7 @@ test('required auth binds personal APIs to the session and protects API keys', (
       env: {
         ...process.env,
         AUTH_MODE: 'required',
+        ACCESS_TOKEN: 'legacy-token-that-must-not-be-required',
         ADMIN_RECOVERY_CODE: RECOVERY_CODE,
         COOKIE_SECURE: '0',
         DB_FILE: ':memory:',

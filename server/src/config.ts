@@ -37,10 +37,6 @@ export const config = {
   // is shut down without a clean stop message.
   offlineTimeoutMs: intFromEnv('OFFLINE_TIMEOUT_MS', 60_000),
 
-  // Deprecated compatibility setting. Required auth derives admin access
-  // exclusively from the session role; legacy keeps its old trust model.
-  adminPin: process.env.ADMIN_PIN ?? '',
-
   // 'legacy' (default) preserves the pre-account behavior. 'required' makes
   // session identity and roles authoritative across feature/admin routes.
   authMode: (process.env.AUTH_MODE === 'required' ? 'required' : 'legacy') as 'legacy' | 'required',
@@ -57,16 +53,17 @@ export const config = {
   adminRecoveryCode: process.env.ADMIN_RECOVERY_CODE ?? '',
 } as const;
 
-// In production (the public-internet deploy) an empty ACCESS_TOKEN silently
-// means "no protection" — fine for a LAN party run by hand, a
-// launch-blocking footgun for a 24/7 public host. ADMIN_PIN is deliberately
-// NOT required while the admin PIN is retired (see adminPin above). Pure so
-// index.ts's boot check is directly unit-testable without spawning a real
-// process.
+// Production must have one complete access model: legacy needs its shared
+// token; required auth needs the recovery secret that bootstraps and recovers
+// the first/last admin. Pure so index.ts can test this without starting.
 export function productionConfigError(
-  cfg: Pick<typeof config, 'accessToken' | 'adminPin'> = config
+  cfg: Pick<typeof config, 'accessToken' | 'authMode' | 'adminRecoveryCode'> = config
 ): string | null {
-  if (!cfg.accessToken) {
+  if (cfg.authMode === 'required') {
+    if (!cfg.adminRecoveryCode) {
+      return 'AUTH_MODE=required erfordert ADMIN_RECOVERY_CODE. Server wird nicht gestartet.';
+    }
+  } else if (!cfg.accessToken) {
     return 'NODE_ENV=production erfordert ACCESS_TOKEN. Server wird nicht gestartet.';
   }
   return null;

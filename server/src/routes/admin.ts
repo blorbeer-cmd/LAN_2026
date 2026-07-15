@@ -1,9 +1,7 @@
-// Admin extras are session-role protected in required mode. Status/unlock
-// remain no-op-compatible adapters for legacy clients while ADMIN_PIN is
-// retired from deployments.
+// Admin extras are session-role protected in required mode.
 
 import { Router } from 'express';
-import { adminUnlockValid, adminPinRequired, requireAdmin } from '../auth';
+import { requireAdmin } from '../auth';
 import { db } from '../db';
 import { config } from '../config';
 import { broadcast, Events } from '../realtime';
@@ -13,22 +11,6 @@ import { writeAdminAudit } from '../adminAudit';
 import { requireRecentReauthentication } from '../sessions';
 
 export const adminRouter = Router();
-
-// GET /api/admin/status - does admin mode need a PIN at all? The frontend
-// uses this to decide whether to prompt for one before enabling admin mode.
-adminRouter.get('/status', (_req, res) => {
-  res.json({ pinRequired: adminPinRequired() });
-});
-
-// POST /api/admin/unlock - body: { pin }. Returns ok if the PIN matches (or
-// if no PIN is configured). The client remembers this locally, like whoami.
-adminRouter.post('/unlock', (req, res) => {
-  const { pin } = req.body ?? {};
-  if (!adminUnlockValid(pin)) {
-    return res.status(403).json({ error: 'Falscher Admin-PIN.' });
-  }
-  res.json({ ok: true });
-});
 
 // POST /api/admin/test-users - body: { count }. Creates fully seeded test
 // players (seats + visible monitors, skill/Bock per game, play sessions,
@@ -112,7 +94,7 @@ adminRouter.get('/players', requireAdmin, (_req, res) => {
   const rows = db
     .prepare(
       `SELECT id, name, real_name, color, avatar, tracking_paused, is_admin, is_test,
-              deactivated_at, created_at
+              password_hash IS NOT NULL AS is_claimed, deactivated_at, created_at
        FROM players
        ORDER BY deactivated_at IS NOT NULL, name COLLATE NOCASE`
     )

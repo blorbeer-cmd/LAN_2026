@@ -76,6 +76,18 @@ test('POST /api/auth/invites is rejected for a non-admin session', async () => {
   assert.equal(res.status, 403);
 });
 
+test('POST /api/auth/invites requires recent admin reauthentication', async () => {
+  const blocked = await request(app).post('/api/auth/invites').set('Cookie', adminCookie).send({ purpose: 'register' });
+  assert.equal(blocked.status, 403);
+  assert.equal(blocked.body.code, 'reauth_required');
+
+  const reauthenticated = await request(app)
+    .post('/api/auth/reauth')
+    .set('Cookie', adminCookie)
+    .send({ password: 'admin password one' });
+  assert.equal(reauthenticated.status, 204);
+});
+
 test('POST /api/auth/invites rejects playerId for purpose "register"', async () => {
   const res = await request(app)
     .post('/api/auth/invites')
@@ -92,6 +104,15 @@ test('POST /api/auth/invites creates a register code as admin', async () => {
   assert.equal(res.body.purpose, 'register');
   assert.ok(res.body.code);
   registerCode = res.body.code;
+});
+
+test('GET /api/auth/invites lists active codes without exposing used history', async () => {
+  const res = await request(app).get('/api/auth/invites').set('Cookie', adminCookie);
+  assert.equal(res.status, 200);
+  const listed = res.body.find((invite: { code: string }) => invite.code === registerCode);
+  assert.equal(listed.purpose, 'register');
+  assert.equal(listed.playerId, null);
+  assert.ok(listed.expiresAt > Date.now());
 });
 
 test('POST /api/auth/invites rejects a non-expiring code', async () => {
@@ -123,6 +144,9 @@ test('POST /api/auth/register creates a non-admin player and logs it in', async 
   assert.equal(res.body.name, 'New Person');
   newPersonId = res.body.id;
   newPersonCookie = sessionCookie(res);
+
+  const active = await request(app).get('/api/auth/invites').set('Cookie', adminCookie);
+  assert.equal(active.body.some((invite: { code: string }) => invite.code === registerCode), false);
 });
 
 test('the register code cannot be reused', async () => {
@@ -136,7 +160,7 @@ test('registering with an already-taken name is rejected', async () => {
   const invite = createInvite({ purpose: 'register', createdBy: adminId });
   const res = await request(app)
     .post('/api/auth/register')
-    .send({ code: invite.code, name: 'New Person', password: 'yet another password' });
+    .send({ code: invite.code, name: 'new person', password: 'yet another password' });
   assert.equal(res.status, 409);
 });
 
