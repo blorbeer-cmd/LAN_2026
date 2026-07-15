@@ -585,9 +585,9 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
   const neighborHelp = page.locator('[aria-controls="tournament-neighbors-help"]');
   const scoreHelp = page.locator('[aria-controls="tournament-score-help"]');
   const lobbyHelp = page.locator('[aria-controls="tournament-lobby-help"]');
-  assert.ok((await page.locator('input[name="tourn-game"]').count()) >= 2);
+  assert.ok((await page.locator('[data-create-player]').count()) >= 2);
   assert.equal(
-    await page.locator('.tournament-game-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
+    await page.locator('.tournament-player-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
     2,
   );
   await neighborHelp.click();

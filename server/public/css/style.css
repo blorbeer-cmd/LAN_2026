@@ -969,7 +969,7 @@ input[type='number']::-webkit-inner-spin-button {
 
 /* Tournament overview and creation deliberately use their available width:
    one or two entries stretch instead of reserving empty auto-fill columns,
-   while game choices stay in the requested two-column picker. */
+   while the tournament player picker stays at two cards per row. */
 .tournament-overview-grid,
 .tournament-detail-stats,
 .tournament-team-grid {
@@ -1018,34 +1018,8 @@ input[type='number']::-webkit-inner-spin-button {
   align-items: center;
   gap: var(--space-2);
 }
-.tournament-game-grid {
-  display: grid;
+.player-selection-grid.tournament-player-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
-}
-.tournament-game-option {
-  min-width: 0;
-  min-height: var(--tap-target-size);
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
-  cursor: pointer;
-}
-.tournament-game-option.is-selected {
-  border-color: var(--accent);
-}
-.tournament-game-option input {
-  margin: 0;
-  accent-color: var(--accent);
-}
-.tournament-game-option .player-name {
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 .tournament-field-heading {
   margin-bottom: calc(var(--space-2) * -1);

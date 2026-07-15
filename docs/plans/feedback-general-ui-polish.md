@@ -95,9 +95,10 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   laufende Turniere beim geöffneten Anlageformular weiterhin davor und ordnet abgeschlossene
   Turniere danach ein. Die Detailansicht ergänzt Fortschritt, Teams und Teilnehmende; kleine
   Turnierbäume werden im verfügbaren Bereich zentriert.
-- Die Spielauswahl beim Anlegen erscheint zweispaltig. Teamanzahl und Auswahlaktionen teilen sich
-  dieselbe Steuerelementhöhe; Sitznachbarn, Punktestand und der gemeinsame Lobby-Hinweis verwenden
-  die touch-tauglichen Info-Popovers statt dauerhaft sichtbarer Erklärtexte.
+- Die Spielerauswahl beim Anlegen erscheint mit zwei Kacheln pro Zeile und beliebig vielen Zeilen
+  darunter; die Spielauswahl bleibt ein kompaktes Dropdown. Teamanzahl und Auswahlaktionen teilen
+  sich dieselbe Steuerelementhöhe; Sitznachbarn, Punktestand und der gemeinsame Lobby-Hinweis
+  verwenden die touch-tauglichen Info-Popovers statt dauerhaft sichtbarer Erklärtexte.
 
 Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 `server/public/js/views/tournament.js`, `server/public/js/views/votes.js`,

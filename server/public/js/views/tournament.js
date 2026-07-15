@@ -234,14 +234,7 @@ function renderCreateForm(el, ctx) {
   state.selectedGameId = selectedGameId;
 
   const gameOptions = state.games
-    .map(
-      (g) => `
-      <label class="tournament-game-option${g.id === selectedGameId ? ' is-selected' : ''}">
-        <input type="radio" name="tourn-game" value="${g.id}" ${g.id === selectedGameId ? 'checked' : ''} />
-        ${gameBadgeHtml(g, 32)}
-        <span class="player-name">${escapeHtml(g.name)}</span>
-      </label>`
-    )
+    .map((g) => `<option value="${g.id}" ${g.id === selectedGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`)
     .join('');
 
   const playerRows = state.players
@@ -303,8 +296,8 @@ function renderCreateForm(el, ctx) {
         <div class="section-title" style="margin:0;">Neues Turnier</div>
         <button type="button" class="icon-btn" id="tourn-create-close" aria-label="Schließen">${icon('x')}</button>
       </div>
-      <div class="field-label">Spiel auswählen</div>
-      <div class="tournament-game-grid" role="radiogroup" aria-label="Spiel auswählen">${gameOptions}</div>
+      <label class="field-label" for="tourn-game">Spiel auswählen</label>
+      <select id="tourn-game">${gameOptions}</select>
       <div class="selection-toolbar">
         <div class="tournament-team-count-field">
           <label class="field-label" for="tourn-teamcount">Anzahl Teams</label>
@@ -313,7 +306,7 @@ function renderCreateForm(el, ctx) {
         <button type="button" class="btn btn-sm" id="tourn-select-all">Alle markieren</button>
         <button type="button" class="btn btn-sm" id="tourn-select-none">Auswahl aufheben</button>
       </div>
-      <div class="player-selection-grid">${playerRows}</div>
+      <div class="player-selection-grid tournament-player-grid">${playerRows}</div>
       <div class="check-row">
         ${infoTooltipHtml(
             'tournament-neighbors-help',
@@ -399,12 +392,10 @@ function renderCreateForm(el, ctx) {
     ctx.rerender();
   });
 
-  el.querySelectorAll('input[name="tourn-game"]').forEach((radio) => {
-    radio.addEventListener('change', (e) => {
-      state.selectedGameId = e.target.value;
-      createProposedTeams = null;
-      ctx.rerender();
-    });
+  el.querySelector('#tourn-game').addEventListener('change', (e) => {
+    state.selectedGameId = e.target.value;
+    createProposedTeams = null;
+    ctx.rerender();
   });
 
   el.querySelectorAll('[data-create-player]').forEach((cb) => {
