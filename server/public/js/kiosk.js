@@ -214,7 +214,7 @@ function renderVotes(votes) {
   return `
     <div class="empty-state">
       <span class="empty-state-icon">${icon(domainIcon('votes'))}</span>
-      Abstimmung läuft${votes.mode === 'points' ? ' (Punkte-Modus)' : ''}.<br />
+      Abstimmung läuft.<br />
       <span class="muted">${label} – Ergebnis erst nach dem Ende.</span>
     </div>`;
 }

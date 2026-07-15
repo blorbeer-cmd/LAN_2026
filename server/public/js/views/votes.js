@@ -302,7 +302,7 @@ function renderCurrentVote() {
   if (!h.totalVoters) {
     return `<div class="empty-state vote-empty-state" style="padding:var(--space-4);">Niemand hat abgestimmt.</div>`;
   }
-  const meta = [h.title, formatDateTime(h.closedAt), h.mode === 'points' ? 'Punkte-Modus' : 'Stichwahl']
+  const meta = [h.title, formatDateTime(h.closedAt), h.mode === 'single' ? 'Stichwahl' : null]
     .filter(Boolean)
     .map(escapeHtml)
     .join(' · ');
@@ -325,13 +325,13 @@ function renderHistory() {
   return historyCache
     .map((h) => {
       const title = h.title ? escapeHtml(h.title) : `Abstimmung Runde ${h.round}`;
-      const mode = h.mode === 'points' ? 'Punkte-Modus' : 'Stichwahl';
+      const mode = h.mode === 'single' ? ' · Stichwahl' : '';
       return `
         <div class="card stack vote-history-round" style="margin-bottom:var(--space-3);">
           <div class="row-between">
             <div class="stack" style="gap:var(--space-1);min-width:0;">
               <div class="player-name">${title}</div>
-              <span class="muted vote-result-meta">${formatDateTime(h.closedAt)} · ${mode} · ${submissionCountLabel(h.totalVoters, h.mode)}</span>
+              <span class="muted vote-result-meta">${formatDateTime(h.closedAt)}${mode} · ${submissionCountLabel(h.totalVoters, h.mode)}</span>
             </div>
             <button type="button" class="btn btn-sm" data-open-history-round="${h.round}">Details</button>
           </div>
@@ -352,7 +352,7 @@ async function openHistoryRoundDetail(round) {
     if (bodyEl) {
       bodyEl.innerHTML = `
         <div class="muted" style="font-size:var(--font-size-xs);margin-bottom:var(--space-3);">
-          ${formatDateTime(detail.closedAt)} · ${detail.mode === 'points' ? 'Punkte-Modus' : 'Stichwahl'} ·
+          ${formatDateTime(detail.closedAt)}${detail.mode === 'single' ? ' · Stichwahl' : ''} ·
           ${detail.mode === 'points' ? `${detail.totalPoints} Punkt(e)` : `${detail.totalVotes} Stimme(n)`}
           von ${detail.totalVoters} Teilnehmer(n)
         </div>
@@ -403,7 +403,7 @@ export function renderVotes(container, ctx) {
   let openSectionHtml = '';
   let runoffSectionHtml = '';
   if (votes.open) {
-    const modeLabel = votes.mode === 'points' ? 'Punkte-Modus' : 'Stichwahl';
+    const modeLabel = votes.mode === 'single' ? 'Stichwahl' : '';
     const resultHelp =
       votes.mode === 'points'
         ? 'Die Punkteverteilung bleibt bis zum Ende der Abstimmung verborgen.'
@@ -419,7 +419,7 @@ export function renderVotes(container, ctx) {
             <span>${votes.title ? escapeHtml(votes.title) : 'Abstimmung läuft'}</span>
             ${infoTooltipHtml('vote-result-visibility-help', 'Verdeckte Auswertung', resultHelp)}
           </h2>
-          <span class="muted">${modeLabel}</span>
+          ${modeLabel ? `<span class="muted">${modeLabel}</span>` : ''}
         </div>
         <div class="vote-participation-status" aria-label="${participationLabel}: ${votes.totalVoters} von ${totalPlayers}">
           <span>${participationLabel}</span>
