@@ -19,6 +19,11 @@ const FORMAT_LABELS = {
   round_robin: 'Liga (jeder gegen jeden)',
   group_knockout: 'Gruppenphase + K.O.',
 };
+const SHORT_FORMAT_LABELS = {
+  single_elimination: 'K.O.-Turnier',
+  round_robin: 'Liga',
+  group_knockout: 'Gruppenphase + K.O.',
+};
 
 // ---------- module state ----------
 
@@ -169,7 +174,7 @@ function renderList(container, ctx) {
         <span class="tournament-list-card-main">
           <span class="player-name">${escapeHtml(t.name)}</span>
           <span class="muted tournament-list-game">${escapeHtml(t.gameName)}</span>
-          <span class="muted tournament-list-meta">${FORMAT_LABELS[t.format]} · ${t.teamCount} Teams</span>
+          <span class="muted tournament-list-meta">${SHORT_FORMAT_LABELS[t.format]} · ${t.teamCount} Teams</span>
         </span>
         <span class="tournament-list-card-end">
           <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
@@ -991,7 +996,7 @@ function renderDetail(container, ctx) {
     .join(' · ');
   const formatExplanation = `${FORMAT_LABELS[t.format]}${formatMeta ? ` · ${formatMeta}` : ''}`;
   const compactFormatLabel =
-    t.format === 'round_robin' ? 'Liga' : t.format === 'group_knockout' ? 'Gruppenphase + K.O.' : null;
+    t.format === 'round_robin' || t.format === 'group_knockout' ? SHORT_FORMAT_LABELS[t.format] : null;
   const formatDisplay = compactFormatLabel
     ? `<span class="title-with-info tournament-detail-format">
          <span>${compactFormatLabel}</span>

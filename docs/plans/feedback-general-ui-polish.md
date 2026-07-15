@@ -114,7 +114,7 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
 - Die Detailansicht kürzt die sichtbaren Formatangaben auf „Liga“ beziehungsweise „Gruppenphase +
   K.O.“ und verschiebt Modusdetails, Gruppenanzahl, Aufsteiger und Punktestand in das direkt
   anschließende Info-Popover. Liga-Runden verwenden dieselbe umrandete Akzentgruppe wie Gruppen- und
-  K.O.-Phasen.
+  K.O.-Phasen. Auch die Turnierübersicht verwendet nur die kompakten Formatnamen ohne Klammerzusatz.
 - Teamkarten in der Detailansicht und in der Auslosung nutzen höchstens zwei Spalten. In der
   Auslosung lassen sich Gamer per Drag-and-drop, Touch-Auswahl oder Pfeiltasten zwischen Teams
   verschieben; das bisherige Team-Dropdown entfällt.

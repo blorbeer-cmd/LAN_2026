@@ -242,9 +242,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   they remain visually distinct from the lobby card.
   Bracket matches reserve an internal action area so score inputs and their save/edit control never
   overlap. Tournament details shorten the visible formats to „Liga“ and „Gruppenphase + K.O.“;
-  their full configuration remains available from the adjacent info popover. Standalone league
-  rounds reuse `.tournament-section-panel` so their accent rail matches the grouped tournament
-  stages.
+  their full configuration remains available from the adjacent info popover. Tournament overview
+  cards use the same compact format names without explanatory parentheses. Standalone league rounds
+  reuse `.tournament-section-panel` so their accent rail matches the grouped tournament stages.
 
 Prefer composition of these primitives over view-specific copies. A new component
 class needs a distinct reusable purpose; a one-page selector that merely restates a
