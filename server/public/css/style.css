@@ -2856,6 +2856,9 @@ input[type='number'].bracket-score-input {
 .check-row:last-child {
   border-bottom: none;
 }
+.player-selection-grid .check-row:last-child {
+  border-bottom: 1px solid var(--border);
+}
 .check-row input[type='checkbox'] {
   width: 20px;
   height: 20px;
