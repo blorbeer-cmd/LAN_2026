@@ -19,6 +19,7 @@ import {
   computeRoundRobinStandings,
   assignGroups,
   selectAdvancers,
+  deriveTournamentLobbyName,
   type BracketMatchSlot,
   type TournamentFormat,
 } from '../tournament';
@@ -205,6 +206,12 @@ function buildDetail(tournamentId: string) {
     isBye: Boolean(m.is_bye),
     matchId: m.match_id,
     playedAt: m.played_at,
+    lobbyName: deriveTournamentLobbyName(tournament.lobby_name, tournament.format, {
+      round: m.round,
+      slot: m.slot,
+      stage: m.stage,
+      groupIndex: m.group_index,
+    }),
   }));
 
   const decidedResultsOf = (rows: TournamentMatchRow[]) =>
@@ -758,8 +765,8 @@ function saveTournamentResult(req: Request, res: Response) {
   // Looks up a match's two teams and, if both are known, sends the "your
   // match is up" push + returns the notify payload for the socket broadcast.
   function buildMatchReadyNotify(matchId: string): { playerIds: string[]; message: string } | undefined {
-    const nextMatch = db.prepare('SELECT team_a_id, team_b_id FROM tournament_matches WHERE id = ?').get(matchId) as
-      | { team_a_id: string; team_b_id: string }
+    const nextMatch = db.prepare('SELECT * FROM tournament_matches WHERE id = ?').get(matchId) as
+      | TournamentMatchRow
       | undefined;
     if (!nextMatch || !nextMatch.team_a_id || !nextMatch.team_b_id) return undefined;
     const nextTeams = db
@@ -772,8 +779,14 @@ function saveTournamentResult(req: Request, res: Response) {
     // propagateWinner in tournament.ts — the winner of the even-numbered
     // feeder slot becomes team A), so it's the natural default for "who
     // hosts" — no separate data field needed for this yet.
+    const lobbyName = deriveTournamentLobbyName(tournament!.lobby_name, tournament!.format, {
+      round: nextMatch.round,
+      slot: nextMatch.slot,
+      stage: nextMatch.stage,
+      groupIndex: nextMatch.group_index,
+    });
     const lobbyBits = [
-      tournament!.lobby_name ? `Lobby "${tournament!.lobby_name}"` : null,
+      lobbyName ? `Lobby "${lobbyName}"` : null,
       tournament!.lobby_password ? `PW: ${tournament!.lobby_password}` : null,
     ].filter(Boolean);
     const lobbyText = lobbyBits.length > 0 ? ` (${lobbyBits.join(', ')})` : '';

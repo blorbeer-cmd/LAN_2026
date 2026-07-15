@@ -1162,12 +1162,35 @@ input[type='number']::-webkit-inner-spin-button {
 }
 .tournament-lobby-info {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: var(--space-3);
-  margin-bottom: var(--space-4);
   border-color: var(--accent);
   background: var(--bg-elevated-2);
+}
+.tournament-active-lobby-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.tournament-lobby-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.tournament-lobby-phase {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-wide);
+  text-transform: uppercase;
+}
+.tournament-lobby-matchup {
+  color: var(--text);
+  font-size: var(--font-size-md);
 }
 .tournament-lobby-access {
   display: flex;
@@ -1223,6 +1246,9 @@ input[type='number']::-webkit-inner-spin-button {
   }
   .tournament-team-grid,
   .tournament-team-preview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .tournament-active-lobby-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

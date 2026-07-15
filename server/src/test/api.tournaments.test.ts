@@ -93,6 +93,8 @@ test('POST /api/tournaments creates a single-elimination bracket for 4 teams', a
   assert.ok(res.body.matches.every((m: { isBye: boolean }) => !m.isBye));
   assert.equal(res.body.lobbyName, 'Respawn');
   assert.equal(res.body.lobbyPassword, 'geheim');
+  const generatedLobbyNames = res.body.matches.map((m: { lobbyName: string }) => m.lobbyName);
+  assert.deepEqual(generatedLobbyNames, ['Respawn-KO-R1-M1', 'Respawn-KO-R1-M2', 'Respawn-KO-R2-M1']);
 
   bracketId = res.body.id;
   bracketTeamIds = res.body.teams.map((t: { id: string }) => t.id);

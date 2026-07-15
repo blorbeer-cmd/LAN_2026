@@ -234,13 +234,16 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   „Auslosung“ from „Modus“ through reusable bordered `.tournament-section-panel` sections with a
   restrained accent rail instead of numbered badges. The same section pattern groups each
   tournament group with its table and rounds. Result controls remain compact and decided matches
-  expose an explicit edit action. The standard `.section-title` introduces „Lobby-Zugang“ while
-  `.tournament-lobby-info` presents lobby name and password as a prominent access card below it.
-  Each credential uses a centered label/value/action grid and provides Lucide's `copy` action with
-  a full touch target. The lobby-host rule lives in the info popover directly beside the section
-  title instead of occupying a permanent line in the card.
+  expose an explicit edit action. The standard `.section-title` introduces „Aktive Lobbys“ while
+  `.tournament-active-lobby-grid` presents up to two currently playable pairings per row. Each
+  `.tournament-lobby-info` card names the phase, matchup and hosting team. A stored lobby base name
+  receives a deterministic phase/round/match suffix, so parallel pairings always have distinct
+  lobby names without mutable lobby assignments. League and group modes show only the earliest
+  unfinished round; knockout modes show every open match whose two teams are known. Each credential
+  uses a centered label/value/action grid and provides Lucide's `copy` action with a full touch
+  target. The general lobby-host rule lives in the info popover beside the section title.
   A separate „Turnierstatus“ section groups the team, participant and decided-match counters so
-  they remain visually distinct from the lobby card.
+  they remain visually distinct from the lobby cards.
   Bracket matches reserve an internal action area so score inputs and their save/edit control never
   overlap. Tournament details shorten the visible formats to „Liga“ and „Gruppenphase + K.O.“;
   their full configuration remains available from the adjacent info popover. Tournament overview

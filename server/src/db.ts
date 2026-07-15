@@ -319,7 +319,7 @@ db.exec(`
     advancers_per_group  INTEGER,                     -- only for group_knockout
     status               TEXT NOT NULL DEFAULT 'active', -- 'active' | 'completed'
     created_at           INTEGER NOT NULL,
-    lobby_name           TEXT,                         -- optional: in-game lobby name used throughout the tournament
+    lobby_name           TEXT,                         -- optional base name; each match receives a deterministic unique suffix
     lobby_password       TEXT                          -- optional: in-game lobby password used throughout the tournament
   );
 

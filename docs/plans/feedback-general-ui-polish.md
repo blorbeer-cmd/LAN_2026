@@ -102,14 +102,17 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   darunter; die Spielauswahl bleibt ein kompaktes Dropdown. Teamanzahl und Auswahlaktionen teilen
   sich dieselbe Steuerelementhöhe; Sitznachbarn, Punktestand und der gemeinsame Lobby-Hinweis
   verwenden die touch-tauglichen Info-Popovers statt dauerhaft sichtbarer Erklärtexte.
-- Anzahl Teams erhält denselben Label-Abstand wie die Spielauswahl. Der gemeinsame Lobby-Zugangstitel
-  entfällt; „(optional)“ steht direkt hinter Lobby-Name und Lobby-Passwort. Zwischen aktueller
+- Anzahl Teams erhält denselben Label-Abstand wie die Spielauswahl. „(optional)“ steht direkt hinter
+  Lobby-Basisname und Lobby-Passwort. Zwischen aktueller
   Turnierreihe, geöffnetem Formular und abgeschlossener Reihe gilt derselbe vertikale Abstand.
-- In der Turnierdetailansicht erscheinen Lobby-Name und Passwort als eigener prominenter
-  Zugangsbereich und lassen sich dort jeweils über eine eigene Symbolaktion kopieren. Ergebnisfelder
-  und Speichern-/Bearbeiten-Aktion im Turnierbaum belegen getrennte Flächen innerhalb der Matchbox
-  und überlappen auch bei einem einzelnen Finale nicht. Der Hinweis, dass das obere Team die Lobby
-  eröffnet, liegt im Info-Popover direkt neben „Lobby-Zugang“.
+- Aus dem optionalen Lobby-Basisnamen wird je Paarung ein stabiler Name mit Phase, Runde und
+  Matchnummer erzeugt. Die Turnierdetailansicht zeigt unter „Aktive Lobbys“ alle aktuell spielbaren
+  Paarungen mit eigenem Lobby-Namen, gemeinsamem Passwort, Gastgeber-Team und Kopieraktionen in
+  höchstens zwei Karten pro Reihe. Liga und Gruppenphase begrenzen die Anzeige auf die aktuelle
+  Runde; im K.O.-Baum erscheinen alle vollständig besetzten offenen Matches. Ergebnisfelder und
+  Speichern-/Bearbeiten-Aktion im Turnierbaum belegen getrennte Flächen innerhalb der Matchbox und
+  überlappen auch bei einem einzelnen Finale nicht. Die allgemeine Gastgeber-Regel liegt im
+  Info-Popover direkt neben „Aktive Lobbys“.
 - Teams, Teilnehmende und entschiedene Partien bilden unter „Turnierstatus“ einen eigenen Abschnitt,
   statt optisch zum darüberliegenden Lobby-Zugang zu gehören.
 - Die Detailansicht kürzt die sichtbaren Formatangaben auf „Liga“ beziehungsweise „Gruppenphase +

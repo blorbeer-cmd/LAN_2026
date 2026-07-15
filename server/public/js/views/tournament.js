@@ -13,6 +13,7 @@ import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { domainIcon } from '../domainIcons.js';
 import { moveTournamentDraftPlayer } from '../tournamentTeamDraft.js';
+import { selectActiveLobbyMatches } from '../tournamentLobbies.js';
 
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
@@ -407,14 +408,14 @@ function renderCreateForm(el, ctx) {
         <div class="field-row">
           <div>
             <div class="title-with-info tournament-field-label">
-              <label for="tourn-lobby-name" class="field-label">Lobby-Name (optional)</label>
+              <label for="tourn-lobby-name" class="field-label">Lobby-Basisname (optional)</label>
               ${infoTooltipHtml(
                   'tournament-lobby-help',
-                  'Lobby-Name',
-                  'Wird bei jeder Paarung mitgeschickt — das obere Team im Turnierbaum eröffnet standardmäßig die Lobby.'
+                  'Lobby-Basisname',
+                  'Aus dem Basisnamen wird für jede gleichzeitig spielbare Paarung ein eindeutiger Lobbyname erzeugt. Das zuerst genannte Team eröffnet die Lobby.'
                 )}
             </div>
-            <input type="text" id="tourn-lobby-name" maxlength="60" value="${escapeHtml(createLobbyName)}" placeholder="z. B. Respawn" />
+            <input type="text" id="tourn-lobby-name" maxlength="60" value="${escapeHtml(createLobbyName)}" placeholder="z. B. LAN26" />
           </div>
           <div>
             <div class="tournament-field-label">
@@ -660,6 +661,67 @@ function bracketRoundLabel(round, totalRounds) {
 function teamLabel(teamsById, teamId) {
   const t = teamsById.get(teamId);
   return t ? escapeHtml(t.name) : 'TBD';
+}
+
+function activeLobbyPhaseLabel(tournament, match) {
+  if (tournament.format === 'round_robin') return `Runde ${match.round}`;
+  if (tournament.format === 'group_knockout' && match.stage === 'group') {
+    return `Gruppe ${(match.groupIndex ?? 0) + 1} · Runde ${match.round}`;
+  }
+
+  const knockoutMatches = tournament.matches.filter(
+    (candidate) => tournament.format === 'single_elimination' || candidate.stage === 'knockout'
+  );
+  const totalRounds = Math.max(...knockoutMatches.map((candidate) => candidate.round));
+  return bracketRoundLabel(match.round, totalRounds);
+}
+
+function renderActiveLobbies(tournament) {
+  const matches = selectActiveLobbyMatches(tournament);
+  if (matches.length === 0) return '';
+
+  const teamsById = new Map(tournament.teams.map((team) => [team.id, team]));
+  const cards = matches
+    .map((match) => {
+      const teamA = teamLabel(teamsById, match.teamAId);
+      const teamB = teamLabel(teamsById, match.teamBId);
+      return `<section class="card tournament-lobby-info" aria-label="Lobby für ${teamA} gegen ${teamB}">
+        <div class="tournament-lobby-header">
+          <span class="tournament-lobby-phase">${escapeHtml(activeLobbyPhaseLabel(tournament, match))}</span>
+          <span class="badge badge-playing">Eröffnet: ${teamA}</span>
+        </div>
+        <strong class="tournament-lobby-matchup">${teamA} <span class="muted">vs</span> ${teamB}</strong>
+        <div class="tournament-lobby-access">
+          ${
+            match.lobbyName
+              ? `<div class="tournament-lobby-credential">
+                   <span>Lobby</span><strong>${escapeHtml(match.lobbyName)}</strong>
+                   <button type="button" class="icon-btn tournament-lobby-copy" data-copy-lobby-match="${escapeHtml(match.id)}" data-copy-lobby-kind="name" title="Lobbyname kopieren" aria-label="Lobbyname für ${teamA} gegen ${teamB} kopieren">${icon('copy')}</button>
+                 </div>`
+              : ''
+          }
+          ${
+            tournament.lobbyPassword
+              ? `<div class="tournament-lobby-credential">
+                   <span>Passwort</span><strong>${escapeHtml(tournament.lobbyPassword)}</strong>
+                   <button type="button" class="icon-btn tournament-lobby-copy" data-copy-lobby-match="${escapeHtml(match.id)}" data-copy-lobby-kind="password" title="Passwort kopieren" aria-label="Passwort für ${teamA} gegen ${teamB} kopieren">${icon('copy')}</button>
+                 </div>`
+              : ''
+          }
+        </div>
+      </section>`;
+    })
+    .join('');
+
+  return `<div class="section-title title-with-info">
+      <span>Aktive Lobbys</span>
+      ${infoTooltipHtml(
+          `tournament-lobby-detail-${tournament.id}`,
+          'Aktive Lobbys',
+          'Jede gleichzeitig spielbare Paarung erhält eine eigene Lobby. Das zuerst genannte Team eröffnet sie.'
+        )}
+    </div>
+    <div class="tournament-active-lobby-grid">${cards}</div>`;
 }
 
 async function copyTournamentText(value) {
@@ -1008,37 +1070,7 @@ function renderDetail(container, ctx) {
        </span>`
     : `<span>${formatExplanation}</span>`;
 
-  const lobbyInfo =
-    t.lobbyName || t.lobbyPassword
-      ? `<div class="section-title title-with-info">
-           <span>Lobby-Zugang</span>
-           ${infoTooltipHtml(
-               `tournament-lobby-detail-${t.id}`,
-               'Lobby-Zugang',
-               'Das obere Team im Turnierbaum eröffnet die Lobby.'
-             )}
-         </div>
-         <section class="card tournament-lobby-info" aria-label="Lobby-Zugang">
-          <div class="tournament-lobby-access">
-            ${
-              t.lobbyName
-                ? `<div class="tournament-lobby-credential">
-                     <span>Lobby</span><strong>${escapeHtml(t.lobbyName)}</strong>
-                     <button type="button" class="icon-btn tournament-lobby-copy" data-copy-lobby="name" title="Lobbyname kopieren" aria-label="Lobbyname kopieren">${icon('copy')}</button>
-                   </div>`
-                : ''
-            }
-            ${
-              t.lobbyPassword
-                ? `<div class="tournament-lobby-credential">
-                     <span>Passwort</span><strong>${escapeHtml(t.lobbyPassword)}</strong>
-                     <button type="button" class="icon-btn tournament-lobby-copy" data-copy-lobby="password" title="Passwort kopieren" aria-label="Passwort kopieren">${icon('copy')}</button>
-                   </div>`
-                : ''
-            }
-          </div>
-        </section>`
-      : '';
+  const activeLobbies = renderActiveLobbies(t);
 
   container.innerHTML = `
     <div class="row-between">
@@ -1050,7 +1082,7 @@ function renderDetail(container, ctx) {
       ${formatDisplay}
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
     </div>
-    ${lobbyInfo}
+    ${activeLobbies}
     <div class="section-title">Turnierstatus</div>
     <div class="tournament-detail-stats" aria-label="Turnierstatus">
       <div class="card tournament-stat"><span class="muted">Teams</span><strong>${t.teams.length}</strong></div>
@@ -1063,10 +1095,11 @@ function renderDetail(container, ctx) {
 
   wireInfoTooltips(container);
 
-  container.querySelectorAll('[data-copy-lobby]').forEach((btn) => {
+  container.querySelectorAll('[data-copy-lobby-match]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const isPassword = btn.dataset.copyLobby === 'password';
-      const value = isPassword ? t.lobbyPassword : t.lobbyName;
+      const isPassword = btn.dataset.copyLobbyKind === 'password';
+      const match = t.matches.find((candidate) => candidate.id === btn.dataset.copyLobbyMatch);
+      const value = isPassword ? t.lobbyPassword : match?.lobbyName;
       if (!value) return;
       try {
         await copyTournamentText(value);
