@@ -41,6 +41,7 @@ interface GameRow {
 // nominal start/end (agent clock skew, a session still open when the next
 // event starts, etc.).
 function loadAllSessions(
+  groupId: string,
   gameId: string | null,
   eventId: string | null = null
 ): Array<{
@@ -50,8 +51,8 @@ function loadAllSessions(
   ended_at: number | null;
   active_ms: number;
 }> {
-  const clauses: string[] = [];
-  const params: string[] = [];
+  const clauses: string[] = ['group_id = ?'];
+  const params: string[] = [groupId];
   if (gameId) {
     clauses.push('game_id = ?');
     params.push(gameId);
@@ -60,9 +61,8 @@ function loadAllSessions(
     clauses.push('event_id = ?');
     params.push(eventId);
   }
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   return db
-    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions ${where}`)
+    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${clauses.join(' AND ')}`)
     .all(...params) as Array<{
     player_id: string;
     game_id: string;
@@ -116,7 +116,7 @@ analyticsRouter.get('/overview', (req, res) => {
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(filterGameId, filterEventId);
+  const rawRows = loadAllSessions(req.group!.id, filterGameId, filterEventId);
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -168,7 +168,7 @@ analyticsRouter.get('/sessions', (req, res) => {
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(filterGameId, filterEventId).filter(
+  const rawRows = loadAllSessions(req.group!.id, filterGameId, filterEventId).filter(
     (r) => !filterPlayerId || r.player_id === filterPlayerId
   );
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
@@ -212,7 +212,7 @@ analyticsRouter.get('/concurrency', (req, res) => {
   }
 
   const now = Date.now();
-  const rawRows = loadAllSessions(gameId);
+  const rawRows = loadAllSessions(req.group!.id, gameId);
   const sessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -234,7 +234,7 @@ analyticsRouter.get('/awards', (req, res) => {
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(null, filterEventId);
+  const rawRows = loadAllSessions(req.group!.id, null, filterEventId);
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -279,7 +279,7 @@ analyticsRouter.get('/games', (req, res) => {
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(null, filterEventId);
+  const rawRows = loadAllSessions(req.group!.id, null, filterEventId);
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -319,15 +319,14 @@ interface MatchRow {
   result: string;
 }
 
-function loadAllMatches(eventId: string | null): MatchForUnderdog[] {
-  const clauses: string[] = [];
-  const params: string[] = [];
+function loadAllMatches(groupId: string, eventId: string | null): MatchForUnderdog[] {
+  const clauses: string[] = ['group_id = ?'];
+  const params: string[] = [groupId];
   if (eventId) {
     clauses.push('event_id = ?');
     params.push(eventId);
   }
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  const rows = db.prepare(`SELECT id, game_id, result FROM matches ${where}`).all(...params) as MatchRow[];
+  const rows = db.prepare(`SELECT id, game_id, result FROM matches WHERE ${clauses.join(' AND ')}`).all(...params) as MatchRow[];
   return rows.map((r) => {
     const parsed = JSON.parse(r.result) as { teams: Array<{ playerIds: string[] }>; winnerTeamIndex: number | null };
     return { id: r.id, gameId: r.game_id, teams: parsed.teams, winnerTeamIndex: parsed.winnerTeamIndex };
@@ -348,21 +347,21 @@ analyticsRouter.get('/games-tournaments', (req, res) => {
   const { eventId } = req.query;
   const filterEventId = typeof eventId === 'string' && eventId ? eventId : null;
 
-  const matches = loadAllMatches(filterEventId);
+  const matches = loadAllMatches(req.group!.id, filterEventId);
   const matchCounts = matchCountsByGame(matches);
 
-  const eventClause = filterEventId ? 'WHERE event_id = ?' : '';
+  const eventClause = filterEventId ? 'AND event_id = ?' : '';
   const eventParams = filterEventId ? [filterEventId] : [];
 
   const tournamentRows = db
-    .prepare(`SELECT format, status, game_id FROM tournaments ${eventClause}`)
-    .all(...eventParams) as Array<{ format: string; status: string; game_id: string }>;
+    .prepare(`SELECT format, status, game_id FROM tournaments WHERE group_id = ? ${eventClause}`)
+    .all(req.group!.id, ...eventParams) as Array<{ format: string; status: string; game_id: string }>;
   const tournamentByGame = countBy(tournamentRows, (t) => t.game_id);
   const tournamentByFormat = countBy(tournamentRows, (t) => t.format);
 
   const drawRows = db
-    .prepare(`SELECT game_id, seat_conflicts, seat_pairs_considered FROM matchmaking_draws ${eventClause}`)
-    .all(...eventParams) as Array<{ game_id: string; seat_conflicts: number; seat_pairs_considered: number }>;
+    .prepare(`SELECT game_id, seat_conflicts, seat_pairs_considered FROM matchmaking_draws WHERE group_id = ? ${eventClause}`)
+    .all(req.group!.id, ...eventParams) as Array<{ game_id: string; seat_conflicts: number; seat_pairs_considered: number }>;
   const drawsByGame = countBy(drawRows, (d) => d.game_id);
   const totalSeatPairsConsidered = drawRows.reduce((sum, d) => sum + d.seat_pairs_considered, 0);
   const totalSeatConflicts = drawRows.reduce((sum, d) => sum + d.seat_conflicts, 0);
@@ -373,7 +372,7 @@ analyticsRouter.get('/games-tournaments', (req, res) => {
   // Same neutral default rating as matchmaking.ts's DEFAULT_RATING — a
   // player who's never rated a game isn't meaningfully "weaker" than one
   // who is.
-  const skillRows = db.prepare('SELECT player_id, game_id, rating FROM skills').all() as Array<{
+  const skillRows = db.prepare('SELECT player_id, game_id, rating FROM skills WHERE group_id = ?').all(req.group!.id) as Array<{
     player_id: string;
     game_id: string;
     rating: number;

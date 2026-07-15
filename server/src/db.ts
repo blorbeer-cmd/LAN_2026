@@ -1488,6 +1488,46 @@ function addCatalogAndPresenceGroupScoping(): void {
 }
 runMigration({ version: 32, name: 'add catalog and presence group scoping', up: addCatalogAndPresenceGroupScoping });
 
+// Phase 5c (cluster 2): matches, matchmaking draws and tournaments become
+// group-owned. All three already carry event_id, and events have had
+// group_id since 5b, so the backfill joins through that instead of games
+// (unlike cluster 1's games-owned tables) — a match/draw/tournament's group
+// is its event's group, not necessarily its game's owning group under any
+// future cross-group game sharing. tournament_teams/tournament_matches stay
+// without their own column: they're always reached via tournament_id, so
+// their group is resolved with a join to tournaments rather than a
+// denormalized copy that could drift.
+function addCompetitionGroupScoping(): void {
+  const addGroupIdColumn = (table: string): void => {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((c) => c.name === 'group_id')) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN group_id TEXT REFERENCES groups(id) ON DELETE RESTRICT`);
+    }
+  };
+
+  addGroupIdColumn('matches');
+  db.prepare(
+    `UPDATE matches SET group_id = (SELECT e.group_id FROM events e WHERE e.id = matches.event_id)
+     WHERE group_id IS NULL`,
+  ).run();
+  db.exec('CREATE INDEX IF NOT EXISTS idx_matches_group_played ON matches(group_id, played_at DESC)');
+
+  addGroupIdColumn('matchmaking_draws');
+  db.prepare(
+    `UPDATE matchmaking_draws SET group_id = (SELECT e.group_id FROM events e WHERE e.id = matchmaking_draws.event_id)
+     WHERE group_id IS NULL`,
+  ).run();
+  db.exec('CREATE INDEX IF NOT EXISTS idx_matchmaking_draws_group ON matchmaking_draws(group_id, generated_at DESC)');
+
+  addGroupIdColumn('tournaments');
+  db.prepare(
+    `UPDATE tournaments SET group_id = (SELECT e.group_id FROM events e WHERE e.id = tournaments.event_id)
+     WHERE group_id IS NULL`,
+  ).run();
+  db.exec('CREATE INDEX IF NOT EXISTS idx_tournaments_group_created ON tournaments(group_id, created_at DESC)');
+}
+runMigration({ version: 33, name: 'add competition group scoping', up: addCompetitionGroupScoping });
+
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.
 function seedGames(): void {

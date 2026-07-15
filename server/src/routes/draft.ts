@@ -258,9 +258,12 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
       players: t.players.map((p) => ({ ...p, rating: null })),
       totalRating: 0,
     }));
+    const game = db.prepare('SELECT group_id FROM games WHERE id = ?').get(row.game_id) as
+      | { group_id: string | null }
+      | undefined;
     db.prepare(
-      "INSERT INTO matchmaking_draws (id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source) VALUES (?, ?, ?, ?, 0, 0, ?, 'draft')"
-    ).run(nanoid(), row.game_id, row.event_id, JSON.stringify(teamsSnapshot), now);
+      "INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source) VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'draft')"
+    ).run(nanoid(), row.game_id, row.event_id, game?.group_id ?? null, JSON.stringify(teamsSnapshot), now);
     resolvePushTopic(`draft:${row.id}`);
   }
 

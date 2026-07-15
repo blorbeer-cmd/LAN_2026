@@ -487,8 +487,8 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
   const filterEventId = typeof eventId === 'string' ? eventId : null;
   const now = Date.now();
 
-  const ownClauses = ['player_id = ?'];
-  const ownParams: string[] = [player.id];
+  const ownClauses = ['player_id = ?', 'group_id = ?'];
+  const ownParams: string[] = [player.id, req.group!.id];
   if (filterEventId) {
     ownClauses.push('event_id = ?');
     ownParams.push(filterEventId);
@@ -582,15 +582,14 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
 
   // Awards are computed across everyone (a "record" only means something
   // relative to the rest of the group), then filtered down to this player's.
-  const allClauses: string[] = [];
-  const allParams: string[] = [];
+  const allClauses: string[] = ['group_id = ?'];
+  const allParams: string[] = [req.group!.id];
   if (filterEventId) {
     allClauses.push('event_id = ?');
     allParams.push(filterEventId);
   }
-  const allWhere = allClauses.length ? `WHERE ${allClauses.join(' AND ')}` : '';
   const allRows = db
-    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions ${allWhere}`)
+    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${allClauses.join(' AND ')}`)
     .all(...allParams) as SessionRow[];
   const allSessions: PlaySession[] = allRows.map((r) => ({
     playerId: r.player_id,

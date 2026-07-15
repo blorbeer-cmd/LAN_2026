@@ -14,6 +14,7 @@ import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getTrackingEventId } from '../events';
 import { applySeatConflicts, buildTeamsSnapshot } from './matchmaking';
+import { resolveGroupResource } from '../groupAuthorization';
 
 export const matchesRouter = Router();
 
@@ -46,6 +47,7 @@ interface MatchRow {
   event_id: string;
   played_at: number;
   result: string;
+  group_id: string | null;
 }
 
 function parseMatch(row: MatchRow) {
@@ -125,11 +127,13 @@ function allPlayersExist(playerIds: string[]): boolean {
 }
 
 // GET /api/matches - list, newest first, optionally filtered by ?gameId=
-// and/or ?eventId=.
+// and/or ?eventId=. Always scoped to the caller's current group, so an
+// ?eventId= from a foreign group simply matches nothing rather than leaking
+// its matches.
 matchesRouter.get('/', (req, res) => {
   const { gameId, eventId } = req.query;
-  const clauses: string[] = [];
-  const params: string[] = [];
+  const clauses: string[] = ['group_id = ?'];
+  const params: string[] = [req.group!.id];
   if (typeof gameId === 'string') {
     clauses.push('game_id = ?');
     params.push(gameId);
@@ -138,8 +142,7 @@ matchesRouter.get('/', (req, res) => {
     clauses.push('event_id = ?');
     params.push(eventId);
   }
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  const rows = db.prepare(`SELECT * FROM matches ${where} ORDER BY played_at DESC`).all(...params) as MatchRow[];
+  const rows = db.prepare(`SELECT * FROM matches WHERE ${clauses.join(' AND ')} ORDER BY played_at DESC`).all(...params) as MatchRow[];
   res.json(rows.map(parseMatch));
 });
 
@@ -154,7 +157,7 @@ matchesRouter.post('/', (req, res) => {
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
   }
-  const game = db.prepare('SELECT id FROM games WHERE id = ?').get(gameId);
+  const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id);
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
 
   const validated = validateTeams(teams, winnerTeamIndex);
@@ -173,8 +176,8 @@ matchesRouter.post('/', (req, res) => {
   let draw: DrawLinkRow | undefined;
   if (drawId) {
     draw = db
-      .prepare('SELECT id, match_id, event_id, seat_pairs_considered FROM matchmaking_draws WHERE id = ?')
-      .get(drawId) as DrawLinkRow | undefined;
+      .prepare('SELECT id, match_id, event_id, seat_pairs_considered FROM matchmaking_draws WHERE id = ? AND group_id = ?')
+      .get(drawId, req.group!.id) as DrawLinkRow | undefined;
     if (!draw) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
     if (draw.match_id) return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
   }
@@ -185,13 +188,15 @@ matchesRouter.post('/', (req, res) => {
     event_id: getTrackingEventId(),
     played_at: playedAt ?? Date.now(),
     result: JSON.stringify({ teams: validated.teams, winnerTeamIndex: validated.winnerTeamIndex }),
+    group_id: req.group!.id,
   };
-  db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result) VALUES (?, ?, ?, ?, ?)').run(
+  db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result, group_id) VALUES (?, ?, ?, ?, ?, ?)').run(
     row.id,
     row.game_id,
     row.event_id,
     row.played_at,
-    row.result
+    row.result,
+    row.group_id
   );
 
   if (drawId && draw) {
@@ -224,13 +229,18 @@ matchesRouter.post('/', (req, res) => {
   res.status(201).json(parseMatch(row));
 });
 
+const resolveMatch = resolveGroupResource<MatchRow>({
+  resourceType: 'Match',
+  load: (id) => {
+    const row = db.prepare('SELECT * FROM matches WHERE id = ?').get(id) as MatchRow | undefined;
+    return row ? { resource: row, groupId: row.group_id } : undefined;
+  },
+});
+
 // PATCH /api/matches/:id - correct a mistaken entry. event_id never changes —
 // a match stays tagged to the LAN it was actually played at.
-matchesRouter.patch('/:id', (req, res) => {
-  const existing = db.prepare('SELECT * FROM matches WHERE id = ?').get(req.params.id) as
-    | MatchRow
-    | undefined;
-  if (!existing) return res.status(404).json({ error: 'Match nicht gefunden.' });
+matchesRouter.patch('/:id', resolveMatch, (req, res) => {
+  const existing = req.groupResource as MatchRow;
 
   const { gameId, teams, winnerTeamIndex, playedAt } = req.body ?? {};
   const prevResult = JSON.parse(existing.result) as MatchResult;
@@ -240,7 +250,7 @@ matchesRouter.patch('/:id', (req, res) => {
     if (typeof gameId !== 'string' || !gameId) {
       return res.status(400).json({ error: 'gameId ist ungültig.' });
     }
-    const game = db.prepare('SELECT id FROM games WHERE id = ?').get(gameId);
+    const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id);
     if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
     nextGameId = gameId;
   }
@@ -276,15 +286,28 @@ matchesRouter.patch('/:id', (req, res) => {
 
   broadcast(Events.leaderboardChanged, null);
   res.json(
-    parseMatch({ id: existing.id, game_id: nextGameId, event_id: existing.event_id, played_at: nextPlayedAt, result: nextResult })
+    parseMatch({
+      id: existing.id,
+      game_id: nextGameId,
+      event_id: existing.event_id,
+      played_at: nextPlayedAt,
+      result: nextResult,
+      group_id: existing.group_id,
+    })
   );
 });
 
 // DELETE /api/matches/:id
-matchesRouter.delete('/:id', requireAdmin, requireRecentReauthentication, (req, res) => {
-  const result = db.prepare('DELETE FROM matches WHERE id = ?').run(req.params.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Match nicht gefunden.' });
-  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'match_deleted', targetType: 'match', targetId: req.params.id });
+matchesRouter.delete('/:id', requireAdmin, requireRecentReauthentication, resolveMatch, (req, res) => {
+  const existing = req.groupResource as MatchRow;
+  db.prepare('DELETE FROM matches WHERE id = ?').run(existing.id);
+  writeAdminAudit({
+    actorPlayerId: req.player?.id,
+    groupId: req.group!.id,
+    action: 'match_deleted',
+    targetType: 'match',
+    targetId: existing.id,
+  });
   broadcast(Events.leaderboardChanged, null);
   res.status(204).end();
 });

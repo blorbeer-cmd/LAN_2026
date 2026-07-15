@@ -146,7 +146,7 @@ matchmakingRouter.post('/', (req, res) => {
     return res.status(400).json({ error: 'avoidAdjacentOpponents muss ein Boolean sein.' });
   }
 
-  const game = db.prepare('SELECT id, name, max_team_size FROM games WHERE id = ?').get(gameId) as
+  const game = db.prepare('SELECT id, name, max_team_size FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
     | GameRow
     | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
@@ -217,9 +217,9 @@ matchmakingRouter.post('/', (req, res) => {
   // matchmaking_draws comment in db.ts for why this is separate from the
   // actually-recorded `matches`).
   db.prepare(
-    `INSERT INTO matchmaking_draws (id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(drawId, gameId, getTrackingEventId(), JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt);
+    `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(drawId, gameId, getTrackingEventId(), req.group!.id, JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt);
 
   broadcast(Events.matchmakingGenerated, result);
   res.json(result);
@@ -254,7 +254,7 @@ matchmakingRouter.post('/rematch', (req, res) => {
     return res.status(400).json({ error: 'Ein Spieler ist in mehreren Teams.' });
   }
 
-  const game = db.prepare('SELECT id, name, max_team_size FROM games WHERE id = ?').get(gameId) as
+  const game = db.prepare('SELECT id, name, max_team_size FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
     | GameRow
     | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
@@ -283,9 +283,9 @@ matchmakingRouter.post('/rematch', (req, res) => {
   };
 
   db.prepare(
-    `INSERT INTO matchmaking_draws (id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source)
-     VALUES (?, ?, ?, ?, 0, 0, ?, 'rematch')`
-  ).run(drawId, gameId, getTrackingEventId(), JSON.stringify(teams), result.generatedAt);
+    `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source)
+     VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'rematch')`
+  ).run(drawId, gameId, getTrackingEventId(), req.group!.id, JSON.stringify(teams), result.generatedAt);
 
   broadcast(Events.matchmakingGenerated, result);
   res.json(result);
@@ -364,8 +364,8 @@ matchmakingRouter.get('/history', (req, res) => {
   const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
   const limitNum = Math.min(50, Math.max(1, parseInt(typeof limit === 'string' ? limit : '', 10) || 20));
 
-  const clauses = ['md.event_id = ?'];
-  const params: Array<string | number> = [filterEventId];
+  const clauses = ['md.group_id = ?', 'md.event_id = ?'];
+  const params: Array<string | number> = [req.group!.id, filterEventId];
   if (typeof gameId === 'string' && gameId) {
     clauses.push('md.game_id = ?');
     params.push(gameId);
@@ -403,7 +403,7 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
     return res.status(400).json({ error: 'toTeamIndex ist ungültig.' });
   }
 
-  const row = db.prepare('SELECT * FROM matchmaking_draws WHERE id = ?').get(req.params.id) as
+  const row = db.prepare('SELECT * FROM matchmaking_draws WHERE id = ? AND group_id = ?').get(req.params.id, req.group!.id) as
     | { id: string; game_id: string; event_id: string; teams: string; match_id: string | null; seat_pairs_considered: number }
     | undefined;
   if (!row) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });

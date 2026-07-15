@@ -50,19 +50,23 @@ export interface ExportSnapshot {
 }
 
 // Builds the full "Andenken" snapshot for one event — shared by the JSON
-// and PDF export endpoints so they can never drift apart.
-export function buildExportSnapshot(filterEventId: string): ExportSnapshot | undefined {
-  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(filterEventId) as EventRow | undefined;
+// and PDF export endpoints so they can never drift apart. groupId is
+// required so a foreign group's ?eventId= 404s instead of handing back that
+// group's leaderboard/playtime/tournament data.
+export function buildExportSnapshot(filterEventId: string, groupId: string): ExportSnapshot | undefined {
+  const event = db.prepare('SELECT * FROM events WHERE id = ? AND group_id = ?').get(filterEventId, groupId) as
+    | EventRow
+    | undefined;
   if (!event) return undefined;
 
   const players = db.prepare('SELECT id, name, color FROM players').all() as PlayerRow[];
   const playerById = new Map(players.map((p) => [p.id, p]));
-  const games = db.prepare('SELECT id, name, icon FROM games').all() as GameRow[];
+  const games = db.prepare('SELECT id, name, icon FROM games WHERE group_id = ?').all(groupId) as GameRow[];
   const gameById = new Map(games.map((g) => [g.id, g]));
   const now = Date.now();
 
   // ---------- Leaderboard, scoped to this event's matches ----------
-  const matchRows = db.prepare('SELECT result FROM matches WHERE event_id = ?').all(filterEventId) as Array<{
+  const matchRows = db.prepare('SELECT result FROM matches WHERE event_id = ? AND group_id = ?').all(filterEventId, groupId) as Array<{
     result: string;
   }>;
   const matches: MatchForScoring[] = matchRows.map((r) => JSON.parse(r.result));
@@ -130,7 +134,7 @@ export function buildExportSnapshot(filterEventId: string): ExportSnapshot | und
   }));
 
   // ---------- Tournament champions ----------
-  const tournaments = getCompletedTournamentSummaries(filterEventId).map((t) => ({
+  const tournaments = getCompletedTournamentSummaries(filterEventId, groupId).map((t) => ({
     name: t.name,
     format: t.format,
     gameName: t.gameName,
@@ -155,7 +159,7 @@ export function buildExportSnapshot(filterEventId: string): ExportSnapshot | und
 exportRouter.get('/', (req, res) => {
   const { eventId } = req.query;
   const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
-  const snapshot = buildExportSnapshot(filterEventId);
+  const snapshot = buildExportSnapshot(filterEventId, req.group!.id);
   if (!snapshot) return res.status(404).json({ error: 'Event nicht gefunden.' });
   res.json(snapshot);
 });
@@ -169,7 +173,7 @@ function sanitizeForFilename(name: string): string {
 exportRouter.get('/pdf', (req, res) => {
   const { eventId } = req.query;
   const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
-  const snapshot = buildExportSnapshot(filterEventId);
+  const snapshot = buildExportSnapshot(filterEventId, req.group!.id);
   if (!snapshot) return res.status(404).json({ error: 'Event nicht gefunden.' });
 
   const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true });

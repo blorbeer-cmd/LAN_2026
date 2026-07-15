@@ -36,8 +36,8 @@ statsRouter.get('/playtime', (req, res) => {
   const range = parseTimeRangeQuery(req.query as Record<string, unknown>);
   if ('error' in range) return res.status(400).json({ error: range.error });
 
-  const clauses: string[] = [];
-  const sqlParams: string[] = [];
+  const clauses: string[] = ['group_id = ?'];
+  const sqlParams: string[] = [req.group!.id];
   if (filterGameId) {
     clauses.push('game_id = ?');
     sqlParams.push(filterGameId);
@@ -46,9 +46,8 @@ statsRouter.get('/playtime', (req, res) => {
     clauses.push('event_id = ?');
     sqlParams.push(filterEventId);
   }
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const rows = db
-    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions ${where}`)
+    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${clauses.join(' AND ')}`)
     .all(...sqlParams) as Array<{
     player_id: string;
     game_id: string;
