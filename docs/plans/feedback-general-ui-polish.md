@@ -159,6 +159,7 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   Gewinner-Team. Gewinner, Wert und Platzierung lassen sich über „Ergebnis bearbeiten“ am
   bestehenden Match korrigieren, ohne einen zweiten Ergebniseintrag anzulegen. Auf abgeschlossenen
   Einträgen ist „Rematch“ die hervorgehobene Primäraktion, „Ergebnis bearbeiten“ bleibt sekundär.
+  Der Seitentitel lautet kompakt „Teams“; „Teams auslosen“ bleibt die konkrete Aktionsbeschriftung.
 - Die Turnierseite nutzt dieselbe spielbezogene Skill-Anzeige wie die Teams-Seite: in der
   Teilnehmerauswahl, der ausgelosten Teamvorschau und den Teams der Turnierdetails. Beide Ansichten
   teilen dafür einen Helper, damit Symbol, fehlender Wert, Tooltip und Screenreader-Text gleich bleiben.
@@ -205,11 +206,14 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 - Vote-Beschreibung auf „Punkte frei verteilen, höchste Summe gewinnt.“ kürzen, Aktionsbuttons
   ausrichten und Spiele ab `--bp-md` zweispaltig darstellen; auf dem Handy bleibt eine Spalte.
 - Vote übernimmt die neuen Seitenmuster aus Home, Turniere und Teams: Ergebnis und Bock-Rangliste
-  bilden eine responsive ein-/zweispaltige Übersicht, laufende, neue und Stichwahl-Runden nutzen
-  vollbreite Akzentgruppen ohne dekorative Titel-Symbole und die Spieleauswahl bleibt auch mobil als
+  bilden innerhalb einer gemeinsamen Elternkarte eine responsive ein-/zweispaltige Übersicht mit
+  eigener Akzentkante je Teilbereich. Die neue Abstimmung liegt als vollbreite Gruppe ohne Akzentkante
+  und dekoratives Titel-Symbol vor; die Spieleauswahl bleibt auch mobil als
   umrandetes Kartenraster erkennbar. Der Erklärtext zur verdeckten Auswertung steht als Tooltip direkt
-  neben dem Titel. Teilnehmer- und Beenden-Aktion teilen ein gleich breites responsives Raster,
-  wobei die Teilnehmeraktion primär bleibt.
+  neben dem Titel, die Punkte-Erklärung entsprechend am Titel der neuen Abstimmung. Titel- und
+  Infofeld starten gleich hoch; Filterleiste und Auswahlbutton verwenden konsistente Abstände.
+  Die Teilnehmeraktion bleibt vollbreit und primär, darunter stehen „Abbrechen“ und „Beenden“ gleich breit.
+  Vote-Leerzustände zentrieren Symbol und Text vertikal. Der Seitentitel lautet kompakt „Vote“.
 - Die Vote-Historie nutzt den neuen gemeinsamen, symbolfreien Collapse-Stil, startet geschlossen und
   behält ihren geöffneten Zustand bei Live-Aktualisierungen; der alte Antipp-Erklärtext entfällt.
 

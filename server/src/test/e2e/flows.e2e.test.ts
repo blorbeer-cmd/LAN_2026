@@ -130,9 +130,9 @@ test('global search filters areas, supports keyboard navigation and restores foc
 
   await page.keyboard.press('Control+K');
   await page.fill('#global-search-input', 'Captain Draft');
-  await page.waitForSelector('.global-search-result:has-text("Teams auslosen")');
-  await page.click('.global-search-result:has-text("Teams auslosen")');
-  await page.waitForSelector('.view-title:text("Teams auslosen")');
+  await page.waitForSelector('.global-search-result:has-text("Teams")');
+  await page.click('.global-search-result:has-text("Teams")');
+  await page.waitForSelector('.view-title:text("Teams")');
 
   await page.keyboard.press('Control+K');
   await page.fill('#global-search-input', 'Statistik');
@@ -223,7 +223,9 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
   const submitBox = await page.locator('#votes-submit').boundingBox();
   const closeBox = await page.locator('#votes-close').boundingBox();
-  assert.equal(Math.round(submitBox?.width || 0), Math.round(closeBox?.width || 0));
+  const cancelBox = await page.locator('#votes-cancel').boundingBox();
+  assert.ok((submitBox?.width || 0) > (closeBox?.width || 0));
+  assert.equal(Math.round(cancelBox?.width || 0), Math.round(closeBox?.width || 0));
   assert.equal(await page.locator('.vote-game-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 1);
   await page.setViewportSize({ width: 900, height: 844 });
   assert.equal(await page.locator('.vote-game-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 2);

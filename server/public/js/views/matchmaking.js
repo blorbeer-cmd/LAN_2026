@@ -480,7 +480,7 @@ function wireDraftBoard(container, ctx) {
 export function renderMatchmaking(container, ctx) {
   if (state.games.length === 0 || state.players.length === 0) {
     container.innerHTML = `
-      <h1 class="view-title">Teams auslosen</h1>
+      <h1 class="view-title">Teams</h1>
       <div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('matchmaking'))}</span>Dafür braucht es mindestens ein Spiel und 2 Spieler.</div>`;
     return;
   }
@@ -496,7 +496,7 @@ export function renderMatchmaking(container, ctx) {
   const draft = draftCache?.draft;
   if (draft && draft.status === 'active') {
     container.innerHTML = `
-      <h1 class="view-title">Teams auslosen</h1>
+      <h1 class="view-title">Teams</h1>
       ${renderDraftBoard(draft, ctx)}`;
     wireDraftBoard(container, ctx);
     return;
@@ -562,7 +562,7 @@ export function renderMatchmaking(container, ctx) {
   const draftReady = draftCaptainIds.size >= 2 && draftCaptainIds.size <= 4 && draftPoolSize >= 1;
 
   container.innerHTML = `
-    <h1 class="view-title">Teams auslosen</h1>
+    <h1 class="view-title">Teams</h1>
     <div class="card stack">
       <div>
         <label class="field-label" for="mm-game">Spiel auswählen</label>

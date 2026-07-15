@@ -282,10 +282,10 @@ function winnerChipsHtml(h, badgeSize) {
 
 function renderLastResult() {
   if (historyLoading || historyCache === null) {
-    return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
+    return `<div class="empty-state vote-empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   if (historyCache.length === 0) {
-    return `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon(domainIcon('votes'))}</span>Noch keine Abstimmung durchgeführt.</div>`;
+    return `<div class="empty-state vote-empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon(domainIcon('votes'))}</span><span>Noch keine Abstimmung durchgeführt.</span></div>`;
   }
   const h = historyCache[0];
   const winners = winnerChipsHtml(h, 24);
@@ -303,10 +303,10 @@ function renderLastResult() {
 
 function renderHistory() {
   if (historyLoading || historyCache === null) {
-    return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
+    return `<div class="empty-state vote-empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   if (historyCache.length === 0) {
-    return `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon(domainIcon('votes'))}</span>Noch keine vergangenen Abstimmungen.</div>`;
+    return `<div class="empty-state vote-empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon(domainIcon('votes'))}</span><span>Noch keine vergangenen Abstimmungen.</span></div>`;
   }
   // Each round is its own card (not a shared list of rows) — a round carries
   // enough of its own detail (title, several winner chips, mode) that lumping
@@ -360,7 +360,7 @@ export function renderVotes(container, ctx) {
 
   const votes = state.votes;
   if (!votes) {
-    container.innerHTML = `<h1 class="view-title">Abstimmung</h1><div class="empty-state">Lädt…</div>`;
+    container.innerHTML = `<h1 class="view-title">Vote</h1><div class="empty-state">Lädt…</div>`;
     return;
   }
 
@@ -407,11 +407,13 @@ export function renderVotes(container, ctx) {
         </div>
         ${votes.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0;">${escapeHtml(votes.info)}</p>` : ''}
         ${rows}
-        <div class="vote-action-grid">
+        <div class="vote-action-stack">
           <button type="button" class="btn btn-primary btn-block" id="votes-submit" ${mineReady ? '' : 'disabled'}>${submitLabel}</button>
-          <button type="button" class="btn btn-block" id="votes-close">Beenden &amp; Gewinner küren</button>
+          <div class="vote-secondary-actions">
+            <button type="button" class="btn btn-danger btn-block" id="votes-cancel">Abbrechen</button>
+            <button type="button" class="btn btn-block" id="votes-close">Beenden</button>
+          </div>
         </div>
-        <button type="button" class="btn btn-danger btn-sm" id="votes-cancel" style="align-self:center;">Abbrechen</button>
       </section>`;
   } else {
     // Only offered right after a round closed in a tie (several games sharing
@@ -440,27 +442,33 @@ export function renderVotes(container, ctx) {
       )
       .join('');
     openSectionHtml = `
-      <section class="tournament-section-panel vote-page-section vote-workflow-section stack" aria-labelledby="vote-start-title">
-        <div class="tournament-create-step-title"><h2 id="vote-start-title">Neue Abstimmung starten</h2></div>
-        <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
-          Punkte frei verteilen, höchste Summe gewinnt.
-        </p>
+      <section class="card vote-page-section vote-workflow-section stack" aria-labelledby="vote-start-title">
+        <div class="tournament-create-step-title">
+          <h2 id="vote-start-title" class="title-with-info">
+            <span>Neue Abstimmung starten</span>
+            ${infoTooltipHtml(
+                'vote-points-help',
+                'Neue Abstimmung starten',
+                'Punkte frei verteilen, höchste Summe gewinnt.'
+              )}
+          </h2>
+        </div>
         <label class="stack" style="gap:var(--space-1);">
           <span class="muted" style="font-size:var(--font-size-xs);">Titel (optional)</span>
           <input type="text" id="votes-title" maxlength="80" placeholder="z.B. Samstagabend" />
         </label>
         <label class="stack" style="gap:var(--space-1);">
           <span class="muted" style="font-size:var(--font-size-xs);">Info (optional)</span>
-          <textarea id="votes-info" maxlength="500" rows="2" placeholder="z.B. Nur Spiele für 4 Leute"></textarea>
+          <textarea class="vote-info-input" id="votes-info" maxlength="500" rows="1" placeholder="z.B. Nur Spiele für 4 Leute"></textarea>
         </label>
-        <div class="stack" style="gap:var(--space-1);">
+        <div class="stack vote-game-filter">
           <label class="check-row">
             <input type="checkbox" id="votes-limit-games" />
             <span style="flex:1;">Nur bestimmte Spiele zur Wahl stellen</span>
           </label>
-          <div id="votes-game-select-wrap" style="display:none;">
-            <div class="row-between">
-              <span class="muted" style="font-size:var(--font-size-xs);">Welche Spiele stehen zur Wahl?</span>
+          <div id="votes-game-select-wrap" class="stack vote-game-select-wrap" hidden>
+            <div class="row-between vote-game-select-toolbar">
+              <span class="field-label">Welche Spiele stehen zur Wahl?</span>
               <button type="button" class="btn btn-sm" id="votes-select-toggle">Alle abwählen</button>
             </div>
             <div id="votes-game-select" class="vote-game-grid">${gameCheckboxes}</div>
@@ -471,18 +479,20 @@ export function renderVotes(container, ctx) {
   }
 
   container.innerHTML = `
-    <h1 class="view-title">Was zocken wir als Nächstes?</h1>
+    <h1 class="view-title">Vote</h1>
     ${whoAmI}
 
-    <div class="vote-overview-grid">
-      <section class="tournament-section-panel stack" aria-labelledby="vote-last-result-title">
-        <div class="tournament-create-step-title"><h2 id="vote-last-result-title">Letztes Ergebnis</h2></div>
-        ${renderLastResult()}
-      </section>
-      <section class="tournament-section-panel stack" aria-labelledby="vote-top-games-title">
-        <div class="tournament-create-step-title"><h2 id="vote-top-games-title">Top 5 nach Bock-Level</h2></div>
-        ${renderTop5(votes.catalogResults)}
-      </section>
+    <div class="card vote-overview-group">
+      <div class="vote-overview-grid">
+        <section class="tournament-section-panel stack" aria-labelledby="vote-last-result-title">
+          <div class="tournament-create-step-title"><h2 id="vote-last-result-title">Letztes Ergebnis</h2></div>
+          ${renderLastResult()}
+        </section>
+        <section class="tournament-section-panel stack" aria-labelledby="vote-top-games-title">
+          <div class="tournament-create-step-title"><h2 id="vote-top-games-title">Top 5 nach Bock-Level</h2></div>
+          ${renderTop5(votes.catalogResults)}
+        </section>
+      </div>
     </div>
 
     ${runoffSectionHtml}
@@ -566,7 +576,7 @@ export function renderVotes(container, ctx) {
   const gameSelectWrap = container.querySelector('#votes-game-select-wrap');
   if (limitGamesCheckbox && gameSelectWrap) {
     limitGamesCheckbox.addEventListener('change', () => {
-      gameSelectWrap.style.display = limitGamesCheckbox.checked ? '' : 'none';
+      gameSelectWrap.hidden = !limitGamesCheckbox.checked;
     });
   }
 

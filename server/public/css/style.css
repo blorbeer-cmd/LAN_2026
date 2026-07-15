@@ -3172,15 +3172,49 @@ input[type='number'].tournament-score-input {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
+}
+.vote-overview-group {
   margin-top: var(--space-4);
 }
 .vote-page-section {
   margin-top: var(--space-4);
 }
-.vote-action-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(var(--selection-card-min-width), 1fr));
+.vote-action-stack {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
+}
+.vote-secondary-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.vote-empty-state {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: calc(var(--row-min-h) * 2);
+}
+.vote-empty-state .empty-state-icon {
+  margin-right: 0;
+}
+.vote-info-input {
+  height: var(--tap-target-size);
+  min-height: var(--tap-target-size);
+}
+.vote-game-filter,
+.vote-game-select-wrap {
+  gap: var(--space-2);
+}
+.vote-game-select-toolbar {
+  align-items: center;
+  gap: var(--space-3);
+}
+.vote-game-select-toolbar .field-label {
+  margin: 0;
 }
 .vote-workflow-section .tournament-create-step-title h2,
 .vote-overview-grid .tournament-create-step-title h2,

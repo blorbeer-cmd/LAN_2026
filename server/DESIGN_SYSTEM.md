@@ -261,12 +261,16 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the icon's tooltip and accessible label retain the full „Skill-Level“ meaning. Team headers show
   the same icon with a dynamically calculated total; missing ratings contribute `0`, stated
   explicitly in its tooltip and accessible label.
-- **Voting** — Vote uses the same restrained accent-rail panels as team and tournament workflows.
-  The latest result and Bock ranking form a one-column/two-column overview; current, new and runoff
-  rounds use full-width workflow panels without decorative heading icons. Game rows remain one
+- **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the
+  same restrained accent-rail panels as team and tournament workflows.
+  The latest result and Bock ranking form a one-column/two-column overview inside one parent card,
+  retaining an accent rail per subpanel. New-round controls use a plain full-width parent card without
+  an accent rail or decorative heading icon. Game rows remain one
   column on phones and two from `--bp-md`, with the same bordered card treatment at both sizes.
-  The running-round explanation sits in an info tooltip immediately beside its title. Submit and
-  close actions share a responsive equal-width grid, with the participant action remaining primary.
+  Explanations sit in info tooltips immediately beside their titles. Title and info fields start at
+  the same control height; the optional game filter uses an aligned toolbar and consistent gaps.
+  The participant action spans the full width, with equal-width „Abbrechen“ and „Beenden“ actions below.
+  Vote-specific empty states center icon and copy vertically in both overview and history.
   Vote history uses the shared icon-free collapsible header, starts closed and retains its open state
   across live re-renders.
 - **Tournament overview** — `.tournament-list-grid` shows at most two tournament cards per row;
