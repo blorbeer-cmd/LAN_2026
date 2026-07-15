@@ -258,7 +258,7 @@ function renderCreateForm(el, ctx) {
   const teamsPreview = createProposedTeams
     ? `
       <div class="section-title">Teams (Namen anpassbar)</div>
-      <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));">
+      <div class="tournament-team-preview-grid">
         ${createProposedTeams
           .map(
             (t, i) => `
@@ -270,7 +270,7 @@ function renderCreateForm(el, ctx) {
                 (p) => `
               <div class="team-player">
                 ${avatarHtml(p, 18)}
-                <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
+                <span class="player-name team-player-name" style="flex:1;">${escapeHtml(p.name)}</span>
                 ${seatConflictIconHtml(p)}
                 ${
                   createProposedTeams.length > 1

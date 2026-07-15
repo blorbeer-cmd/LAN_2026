@@ -99,6 +99,8 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   darunter; die Spielauswahl bleibt ein kompaktes Dropdown. Teamanzahl und Auswahlaktionen teilen
   sich dieselbe Steuerelementhöhe; Sitznachbarn, Punktestand und der gemeinsame Lobby-Hinweis
   verwenden die touch-tauglichen Info-Popovers statt dauerhaft sichtbarer Erklärtexte.
+- Auch Vorschauen mit vielen ausgelosten Teams brechen in ausreichend breite Kartenzeilen um;
+  Gamer-Name und Teamwechsel-Auswahl bleiben innerhalb ihrer jeweiligen Karte.
 
 Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 `server/public/js/views/tournament.js`, `server/public/js/views/votes.js`,

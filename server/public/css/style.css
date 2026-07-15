@@ -1021,6 +1021,14 @@ input[type='number']::-webkit-inner-spin-button {
 .player-selection-grid.tournament-player-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+.tournament-team-preview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+}
+.tournament-team-preview-grid .team-move-select {
+  max-width: var(--assignment-select-width);
+}
 .tournament-field-heading {
   margin-bottom: calc(var(--space-2) * -1);
 }
@@ -1044,6 +1052,9 @@ input[type='number']::-webkit-inner-spin-button {
 @media (min-width: 640px) { /* --bp-md */
   .tournament-list-grid {
     grid-template-columns: repeat(auto-fit, minmax(calc(var(--selection-card-min-width) * 2), 1fr));
+  }
+  .tournament-team-preview-grid {
+    grid-template-columns: repeat(auto-fit, minmax(calc(var(--selection-card-min-width) + var(--space-8) * 2), 1fr));
   }
 }
 

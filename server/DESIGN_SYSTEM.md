@@ -225,7 +225,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the available width instead of reserving empty columns. `.tournament-player-grid` keeps the
   player picker at two cards per row, while `.tournament-detail-stats` and
   `.tournament-team-grid` expose real progress and roster information above a centered, locally
-  scrollable bracket.
+  scrollable bracket. `.tournament-team-preview-grid` wraps large proposals into comfortably wide
+  cards so player names and reassignment controls stay inside each card.
 
 Prefer composition of these primitives over view-specific copies. A new component
 class needs a distinct reusable purpose; a one-page selector that merely restates a
