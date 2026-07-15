@@ -235,7 +235,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   complete participant/captain/pick sequence; the Captains label has no duplicate tooltip or empty-state
   instruction. `.captain-selection-group` keeps its label close to the associated player grid.
   Both selections use the standard checkbox-card state without an additional selected-card highlight.
-  The captain action stretches like the draw action.
+  The captain action stretches like the draw action and stays labeled simply „Draft starten“ without
+  repeating participant counts already visible in the selections.
   One shared game picker sits above both sections and controls draw, draft and the loaded history;
   it does not visually belong to either workflow. The remaining live-draft participants appear under
   the heading „Spieler“ in the same full-width player cards instead of chips; the drafted teams are

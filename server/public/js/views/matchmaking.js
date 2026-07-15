@@ -634,7 +634,7 @@ export function renderMatchmaking(container, ctx) {
             ${captainRows}
           </div>
         </div>
-        <button type="button" class="btn btn-primary" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten${draftReady ? ` (${draftCaptainIds.size} Captains, ${draftPoolSize} Spieler)` : ''}</button>
+        <button type="button" class="btn btn-primary" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten</button>
       </section>
     </div>
     <div id="mm-result">${renderResult(state.lastMatchmaking)}</div>
