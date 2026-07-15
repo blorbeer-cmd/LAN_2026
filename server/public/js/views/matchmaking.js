@@ -91,7 +91,7 @@ function findDrawById(id) {
 // draggable player rows and the button to record a result — which is what
 // turns this into an Ergebnis-Historie entry. Selecting a player and then a
 // team is the touch equivalent; arrow keys provide the keyboard path.
-function renderDrawCard(draw, { editable }) {
+function renderDrawCard(draw, { editable, showGame = false }) {
   const selectedTeamIndex =
     editable && selectedDrawPlayer?.drawId === draw.id
       ? draw.teams.findIndex((team) => team.players.some((player) => player.id === selectedDrawPlayer.playerId))
@@ -136,8 +136,14 @@ function renderDrawCard(draw, { editable }) {
 
   return `
     <div class="card stack" style="margin-bottom:var(--space-3);" data-draw-card="${draw.id}">
-      <div class="row-between">
-        <div class="row" style="gap:var(--space-2);">
+      <div class="row-between" style="flex-wrap:wrap;">
+        <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
+          ${
+            showGame
+              ? `${gameBadgeHtml(gameById(draw.gameId) || { id: draw.gameId, icon: draw.gameIcon }, 22)}
+                 <span class="player-name">${escapeHtml(draw.gameName)}</span>`
+              : ''
+          }
           <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(draw.generatedAt)}</span>
           ${draw.source === 'draft' ? `<span class="badge">${icon('crown')} Captain-Draft</span>` : ''}
         </div>
@@ -301,7 +307,7 @@ function renderHistory() {
   const resultSection = resultHistory.length
     ? `<details class="history-details">
          <summary class="section-title">Ergebnis-Historie</summary>
-         ${resultHistory.map((d) => renderDrawCard(d, { editable: false })).join('')}
+         ${resultHistory.map((d) => renderDrawCard(d, { editable: false, showGame: true })).join('')}
        </details>`
     : '';
 
@@ -310,7 +316,7 @@ function renderHistory() {
       <summary class="section-title">Team-Historie</summary>
       ${
         teamHistory.length
-          ? teamHistory.map((d) => renderDrawCard(d, { editable: true })).join('')
+          ? teamHistory.map((d) => renderDrawCard(d, { editable: true, showGame: true })).join('')
           : `<div class="empty-state" style="padding:var(--space-4);">Noch keine offenen Auslosungen.</div>`
       }
     </details>
@@ -438,6 +444,10 @@ export function renderMatchmaking(container, ctx) {
     loadHistory(selectedGameId, ctx);
   }
 
+  const gameOptions = state.games
+    .map((g) => `<option value="${g.id}" ${g.id === selectedGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`)
+    .join('');
+
   const playerRows = state.players
     .map(
       (p) => `
@@ -467,6 +477,10 @@ export function renderMatchmaking(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Teams auslosen</h1>
     <div class="card stack">
+      <div>
+        <label class="field-label" for="mm-game">Spiel auswählen</label>
+        <select id="mm-game">${gameOptions}</select>
+      </div>
       <section class="tournament-section-panel tournament-create-step stack" aria-labelledby="matchmaking-draw-title">
         <div class="tournament-create-step-title">
           <h3 id="matchmaking-draw-title">Auslosung</h3>
@@ -560,6 +574,11 @@ export function renderMatchmaking(container, ctx) {
     } catch (err) {
       showToast(err.message, { error: true });
     }
+  });
+
+  container.querySelector('#mm-game').addEventListener('change', (event) => {
+    state.selectedGameId = event.target.value;
+    ctx.rerender();
   });
 
   container.querySelectorAll('[data-player]').forEach((cb) => {

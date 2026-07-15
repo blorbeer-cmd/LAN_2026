@@ -137,10 +137,12 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
 - Die Teams-Seite übernimmt Spieler-Raster, Auslosungsbereich, Beschriftungen und Teamkarten aus
   dem Turnierformular. Ausgeloste Gamer wechseln auch dort per Drag-and-drop, Touch-Auswahl oder
   Pfeiltasten das Team; das alte Team-Dropdown entfällt. Auslosung und Captain Draft liegen als
-  gleichwertige Bereiche mit Akzentkante in einer gemeinsamen Hauptkarte. Die Spielauswahl entfällt
-  zugunsten des global gewählten Spiels; Captains werden im selben zweispaltigen Kartenraster wie
-  die Auslosung gewählt. Ergebnis-Historie ist standardmäßig geschlossen und ohne Symbol; statt
-  „Ergebnis erfasst“ kennzeichnet ein verstärkter Rahmen das Gewinner-Team.
+  gleichwertige Bereiche mit Akzentkante in einer gemeinsamen Hauptkarte. Eine gemeinsame
+  Spielauswahl oberhalb der beiden Bereiche gilt für Auslosung, Captain Draft und Historie, ohne
+  optisch einem Ablauf zugeordnet zu sein. Captains werden im selben zweispaltigen Kartenraster wie
+  die Auslosung gewählt. Ergebnis-Historie ist standardmäßig geschlossen und ohne Symbol; jeder
+  Eintrag nennt Spielsymbol und Spielname. Statt „Ergebnis erfasst“ kennzeichnet ein verstärkter
+  Rahmen das Gewinner-Team.
 
 Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 `server/public/js/views/tournament.js`, `server/public/js/views/votes.js`,
