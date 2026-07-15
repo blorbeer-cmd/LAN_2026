@@ -5,7 +5,7 @@
 
 import { api } from '../api.js';
 import { icon } from '../icons.js';
-import { confirmDialog } from '../modal.js';
+import { confirmDialog, openModal } from '../modal.js';
 import { state, gameById } from '../state.js';
 import { escapeHtml, avatarHtml, gameBadgeHtml, formatDateTime, seatConflictIconHtml } from '../format.js';
 import { showToast } from '../toast.js';
@@ -153,8 +153,82 @@ function renderDrawCard(draw, { editable, showGame = false }) {
       <div class="tournament-team-preview-grid">${teamsHtml}</div>
       ${seatingNote}
       ${editable ? `<button type="button" class="btn btn-primary btn-sm" data-record-draw="${draw.id}">Ergebnis eintragen</button>` : ''}
-      ${!editable ? `<button type="button" class="btn btn-primary btn-sm" data-rematch-draw="${draw.id}">${icon('shuffle')} Rematch</button>` : ''}
+      ${
+        !editable
+          ? `<div class="row" style="flex-wrap:wrap;">
+               <button type="button" class="btn btn-primary btn-sm" style="flex:1 1 var(--selection-card-min-width);" data-edit-draw-result="${draw.id}">Ergebnis bearbeiten</button>
+               <button type="button" class="btn btn-sm" style="flex:1 1 var(--selection-card-min-width);" data-rematch-draw="${draw.id}">${icon('shuffle')} Rematch</button>
+             </div>`
+          : ''
+      }
     </div>`;
+}
+
+function openDrawResultEdit(draw, ctx) {
+  if (!draw.matchId) return;
+  const teamFields = draw.teams
+    .map(
+      (team, index) => `<div class="team-card stack">
+        <label class="check-row">
+          <input type="radio" name="edit-draw-winner" value="${index}" ${draw.winnerTeamIndex === index ? 'checked' : ''} />
+          <strong>Team ${index + 1} gewinnt</strong>
+        </label>
+        <div class="muted" style="font-size:var(--font-size-xs);">${team.players.map((player) => escapeHtml(player.name)).join(', ')}</div>
+        <div class="field-row">
+          <div>
+            <label class="field-label" for="edit-draw-score-${index}">Wert (optional)</label>
+            <input type="number" id="edit-draw-score-${index}" data-edit-draw-score="${index}" step="any" value="${team.score ?? ''}" />
+          </div>
+          <div>
+            <label class="field-label" for="edit-draw-rank-${index}">Platz (optional)</label>
+            <input type="number" id="edit-draw-rank-${index}" data-edit-draw-rank="${index}" min="1" value="${team.rank ?? ''}" />
+          </div>
+        </div>
+      </div>`
+    )
+    .join('');
+
+  const { close, el } = openModal(
+    'Ergebnis bearbeiten',
+    `<form id="edit-draw-result-form" class="stack">
+      ${teamFields}
+      <label class="check-row">
+        <input type="radio" name="edit-draw-winner" value="" ${draw.winnerTeamIndex === null ? 'checked' : ''} />
+        <span>Unentschieden</span>
+      </label>
+      <button type="submit" class="btn btn-primary btn-block">Änderung speichern</button>
+    </form>`
+  );
+
+  el.querySelector('#edit-draw-result-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const submitButton = event.currentTarget.querySelector('button[type="submit"]');
+    if (submitButton.disabled) return;
+    submitButton.disabled = true;
+    const teams = draw.teams.map((team, index) => {
+      const scoreRaw = el.querySelector(`[data-edit-draw-score="${index}"]`).value;
+      const rankRaw = el.querySelector(`[data-edit-draw-rank="${index}"]`).value;
+      return {
+        playerIds: team.players.map((player) => player.id),
+        score: scoreRaw === '' ? null : Number(scoreRaw),
+        rank: rankRaw === '' ? null : Number(rankRaw),
+      };
+    });
+    const winnerRaw = el.querySelector('input[name="edit-draw-winner"]:checked')?.value ?? '';
+    try {
+      await api.matches.update(draw.matchId, {
+        teams,
+        winnerTeamIndex: winnerRaw === '' ? null : Number(winnerRaw),
+      });
+      historyForGameId = null;
+      close();
+      await ctx.refresh();
+      showToast('Ergebnis aktualisiert.');
+    } catch (err) {
+      submitButton.disabled = false;
+      showToast(err.message, { error: true });
+    }
+  });
 }
 
 // Wires D&D/touch/keyboard player moves and result buttons for every draw
@@ -257,6 +331,13 @@ function wireDrawCards(container, ctx) {
         presetTeams: draw.teams.map((t) => ({ playerIds: t.players.map((p) => p.id) })),
         presetDrawId: draw.id,
       });
+    });
+  });
+
+  container.querySelectorAll('[data-edit-draw-result]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const draw = findDrawById(btn.dataset.editDrawResult);
+      if (draw) openDrawResultEdit(draw, ctx);
     });
   });
 

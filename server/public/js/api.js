@@ -179,6 +179,7 @@ export const api = {
       return apiFetch(`/api/matches${qs ? `?${qs}` : ''}`);
     },
     create: (data) => apiFetch('/api/matches', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id, data) => apiFetch(`/api/matches/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     remove: (id) => apiFetch(`/api/matches/${id}`, { method: 'DELETE' }),
   },
 

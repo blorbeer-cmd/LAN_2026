@@ -146,7 +146,8 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   verwendet breite Spielerkarten statt Pills. Dekorative Draft-Symbole und der Hinweis „Du bist am
   Zug“ entfallen. Ergebnis-Historie ist standardmäßig geschlossen und ohne Symbol; jeder Eintrag
   nennt Spielsymbol und Spielname. Statt „Ergebnis erfasst“ kennzeichnet ein verstärkter Rahmen das
-  Gewinner-Team.
+  Gewinner-Team. Gewinner, Wert und Platzierung lassen sich über „Ergebnis bearbeiten“ am
+  bestehenden Match korrigieren, ohne einen zweiten Ergebniseintrag anzulegen.
 
 Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 `server/public/js/views/tournament.js`, `server/public/js/views/votes.js`,

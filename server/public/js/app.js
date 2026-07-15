@@ -310,6 +310,9 @@ function wireSocket() {
       // leaderboard:changed, the only one that actually changes match
       // history) — the next time the Spiele view opens it just refetches.
       invalidateSkillSuggestions();
+      // Match corrections also change the Teams result history. Invalidate
+      // its separate cache so every open client shows the corrected winner.
+      invalidateMatchmakingHistory();
       // players:changed covers a renamed gamer/real name or new avatar —
       // both the Home board and the Sitzplan editor embed a snapshot of
       // player data alongside the layout, so they need the same treatment
