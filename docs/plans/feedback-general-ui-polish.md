@@ -91,8 +91,10 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   verschieben; doppelte sichtbare Erklärtexte entfallen.
 - „Draft starten“ übernimmt Breite und primäre Gestaltung von „Teams auslosen“ und wird erst bei
   gültiger Auswahl aktiv; `disabled` bleibt nicht nur farblich erkennbar.
-- Team- und Vote-Historie standardmäßig einklappen; Lade-, Leer- und Ergebniszustände müssen auch im
-  eingeklappten Aufbau stabil bleiben.
+- Eingeklappte Historien, abgeschlossene Turniere und geschlossene Bestellungen verwenden
+  einheitlich die voll umrandete Kopfzeile mit Anzahl beziehungsweise Status und drehendem Pfeil.
+  Team- und Vote-Historie sind standardmäßig eingeklappt; Lade-, Leer- und Ergebniszustände müssen
+  auch im eingeklappten Aufbau stabil bleiben.
 - Die Turnierübersicht zeigt maximal zwei Turnierkarten pro Zeile; eine einzelne Karte nutzt die
   volle Breite und weitere Karten brechen in die nächste Zeile um. Sie zeigt
   laufende Turniere beim geöffneten Anlageformular weiterhin davor und ordnet abgeschlossene
@@ -139,10 +141,12 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   Pfeiltasten das Team; das alte Team-Dropdown entfällt. Auslosung und Captain Draft liegen als
   gleichwertige Bereiche mit Akzentkante in einer gemeinsamen Hauptkarte. Eine gemeinsame
   Spielauswahl oberhalb der beiden Bereiche gilt für Auslosung, Captain Draft und Historie, ohne
-  optisch einem Ablauf zugeordnet zu sein. Captains werden im selben zweispaltigen Kartenraster wie
-  die Auslosung gewählt. Ergebnis-Historie ist standardmäßig geschlossen und ohne Symbol; jeder
-  Eintrag nennt Spielsymbol und Spielname. Statt „Ergebnis erfasst“ kennzeichnet ein verstärkter
-  Rahmen das Gewinner-Team.
+  optisch einem Ablauf zugeordnet zu sein. Der Captain Draft erhält eine eigene Teilnehmerauswahl;
+  erst daraus werden die Captains im selben zweispaltigen Kartenraster benannt. Auch der Live-Pool
+  verwendet breite Spielerkarten statt Pills. Dekorative Draft-Symbole und der Hinweis „Du bist am
+  Zug“ entfallen. Ergebnis-Historie ist standardmäßig geschlossen und ohne Symbol; jeder Eintrag
+  nennt Spielsymbol und Spielname. Statt „Ergebnis erfasst“ kennzeichnet ein verstärkter Rahmen das
+  Gewinner-Team.
 
 Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 `server/public/js/views/tournament.js`, `server/public/js/views/votes.js`,

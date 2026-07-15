@@ -389,9 +389,15 @@ function renderPlaytimeContent() {
     <div class="section-title">Längste individuelle Session pro Spiel</div>
     <div class="card">${longestPerGameHtml}</div>
 
-    <details class="history-details">
-      <summary class="section-title">Session-Protokoll</summary>
-      <div class="card">
+    <details class="card history-details collapsible-section">
+      <summary class="collapsible-section-header">
+        <h2>Session-Protokoll</h2>
+        <span class="collapsible-section-summary-end">
+          <span class="badge badge-offline">${sessions.length}</span>
+          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+        </span>
+      </summary>
+      <div class="collapsible-section-content">
         ${sessionRows || `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions in diesem Zeitraum.</div>`}
       </div>
     </details>

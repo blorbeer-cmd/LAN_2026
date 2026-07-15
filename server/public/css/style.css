@@ -958,11 +958,11 @@ input[type='number']::-webkit-inner-spin-button {
 .player-assignment-row select {
   width: 100%;
 }
-.history-details > summary {
-  cursor: pointer;
+.history-details {
+  margin-top: var(--space-4);
 }
-.history-details[open] > summary {
-  margin-bottom: var(--space-2);
+.history-details + .history-details {
+  margin-top: var(--space-3);
 }
 .matchmaking-draw-team.is-winner {
   border-color: var(--state-playing);
@@ -975,6 +975,22 @@ input[type='number']::-webkit-inner-spin-button {
 .captain-selection-grid .captain-selection-card:has(input:checked) {
   border-color: var(--accent);
   background: var(--bg-elevated-2);
+}
+.draft-pool-player {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: var(--bg-elevated);
+}
+button.draft-pool-player {
+  cursor: pointer;
+}
+@media (hover: hover) {
+  button.draft-pool-player:hover {
+    border-color: var(--accent);
+    background: var(--bg-elevated-2);
+  }
 }
 @media (min-width: 640px) { /* --bp-md */
   .player-selection-grid {
@@ -1037,29 +1053,37 @@ input[type='number']::-webkit-inner-spin-button {
   margin: 0;
   font-size: var(--font-size-lg);
 }
-.tournament-list-section-collapsible > summary {
+.collapsible-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
   min-height: var(--tap-target-size);
   margin-bottom: 0;
   cursor: pointer;
   list-style: none;
 }
-.tournament-list-section-collapsible > summary::-webkit-details-marker {
+.collapsible-section-header h2 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+.collapsible-section-header::-webkit-details-marker {
   display: none;
 }
-.tournament-list-section-collapsible[open] > summary {
+.collapsible-section[open] > .collapsible-section-header {
   margin-bottom: var(--space-3);
 }
-.tournament-list-section-summary-end {
+.collapsible-section-summary-end {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
 }
-.tournament-list-section-chevron {
+.collapsible-section-chevron {
   display: inline-flex;
   color: var(--text-muted);
   transition: transform 0.15s ease;
 }
-.tournament-list-section-collapsible[open] .tournament-list-section-chevron {
+.collapsible-section[open] .collapsible-section-chevron {
   transform: rotate(90deg);
 }
 .tournament-list-section .tournament-list-card {

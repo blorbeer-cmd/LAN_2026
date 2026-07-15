@@ -219,23 +219,31 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.global-search-result`, wired through `searchPalette.js`; opens from the topbar or with
   `Strg/Cmd + K`, searches both areas and current app content without an external service, and uses
   `.search-target-highlight` to expose a concrete result after navigation.
+- **Collapsible section** — `.collapsible-section` uses a native `details` element with
+  `.collapsible-section-header`, a count/status badge and `.collapsible-section-chevron`. It is the
+  standard presentation for collapsed histories, completed tournament lists and closed order
+  cards: a full bordered card whose chevron rotates when opened. Section-specific content lives in
+  `.collapsible-section-content`; decorative heading icons are omitted.
 - **Seating status** — `.seating-status-indicator` sits directly after the gamer name and mirrors
   the shared live state as green „Spielt“, yellow „Pause“ or red „Offline“. Its German title and
   accessible label preserve the meaning beyond color. Playing and pause indicators pulse gently,
   while offline stays static; the global reduced-motion rule disables that motion when requested.
 - **Team formation** — the Teams view places „Auslosung“ and „Captain Draft“ inside one main card
-  as equal `.tournament-section-panel` sections with the shared accent rail. Both player choices
-  use `.tournament-player-grid` checkbox cards; the captain action stretches like the draw action.
+  as equal `.tournament-section-panel` sections with the shared accent rail. Draw participants and
+  draft participants are independent `.tournament-player-grid` checkbox selections; captains are
+  then chosen only from the prepared draft roster. The captain action stretches like the draw action.
   One shared game picker sits above both sections and controls draw, draft and the loaded history;
-  it does not visually belong to either workflow. Team and result histories start collapsed and
-  use text-only summaries. Every history card repeats its game badge and name. Recorded results
-  omit a status badge; `.matchmaking-draw-team.is-winner` identifies the winner through a reinforced
-  border and an accessible group label.
+  it does not visually belong to either workflow. The live draft pool also uses the same full-width
+  player cards instead of chips and omits decorative draft icons and the redundant local-turn hint.
+  Team and result histories start collapsed through the shared collapsible-section component.
+  Every history card repeats its game badge and name. Recorded results omit a status badge;
+  `.matchmaking-draw-team.is-winner` identifies the winner through a reinforced border and an
+  accessible group label.
 - **Tournament overview** — `.tournament-list-grid` shows at most two tournament cards per row;
   a single card stretches across the available width and further cards wrap. `.tournament-list-section` presents
   active and completed tournaments as two prominent status rows without separate summary-stat
-  cards. The completed row uses a native disclosure, starts collapsed and retains its open state
-  across view re-renders. `.tournament-player-grid` keeps the player picker at two cards per row, while
+  cards. The completed row uses the shared collapsible-section presentation, starts collapsed and
+  retains its open state across view re-renders. `.tournament-player-grid` keeps the player picker at two cards per row, while
   `.tournament-detail-stats` and `.tournament-team-grid` expose real progress and roster information
   above a centered, locally scrollable bracket; team cards use at most two columns. The proposal
   grid follows the same two-column cap and uses draggable `.tournament-drag-player` rows, with

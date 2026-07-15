@@ -30,6 +30,7 @@ let selectedDrawPlayer = null;
 // they show up in Team-Historie below like any other draw.
 let draftCache = null; // { draft: {...} | null }
 let draftLoading = false;
+let draftPlayerIds = null; // independently selected participants for the next draft
 let draftCaptainIds = new Set(); // captains chosen in the start form
 
 async function loadDraft(ctx) {
@@ -145,7 +146,7 @@ function renderDrawCard(draw, { editable, showGame = false }) {
               : ''
           }
           <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(draw.generatedAt)}</span>
-          ${draw.source === 'draft' ? `<span class="badge">${icon('crown')} Captain-Draft</span>` : ''}
+          ${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}
         </div>
         ${!editable && draw.winnerTeamIndex === null ? `<span class="badge">${icon('users')} Unentschieden</span>` : ''}
       </div>
@@ -284,18 +285,33 @@ function wireDrawCards(container, ctx) {
   });
 }
 
+function renderHistoryDetails(title, count, content) {
+  return `<details class="card history-details collapsible-section">
+    <summary class="collapsible-section-header">
+      <h2>${title}</h2>
+      <span class="collapsible-section-summary-end">
+        <span class="badge badge-offline">${count}</span>
+        <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+      </span>
+    </summary>
+    <div class="collapsible-section-content">${content}</div>
+  </details>`;
+}
+
 function renderHistory() {
   if (historyLoading || historyCache === null) {
-    return `<details class="history-details">
-      <summary class="section-title">Team-Historie</summary>
-      <div class="empty-state" style="padding:var(--space-4);">Lädt…</div>
-    </details>`;
+    return renderHistoryDetails(
+      'Team-Historie',
+      0,
+      '<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>'
+    );
   }
   if (historyCache.length === 0) {
-    return `<details class="history-details">
-      <summary class="section-title">Team-Historie</summary>
-      <div class="empty-state" style="padding:var(--space-4);">Noch keine Auslosungen für dieses Spiel.</div>
-    </details>`;
+    return renderHistoryDetails(
+      'Team-Historie',
+      0,
+      '<div class="empty-state" style="padding:var(--space-4);">Noch keine Auslosungen für dieses Spiel.</div>'
+    );
   }
 
   // Ergebnis-Historie (ein Ergebnis wurde eingetragen) kommt vor die
@@ -305,22 +321,20 @@ function renderHistory() {
   const teamHistory = historyCache.filter((d) => !d.matchId);
 
   const resultSection = resultHistory.length
-    ? `<details class="history-details">
-         <summary class="section-title">Ergebnis-Historie</summary>
-         ${resultHistory.map((d) => renderDrawCard(d, { editable: false, showGame: true })).join('')}
-       </details>`
+    ? renderHistoryDetails(
+        'Ergebnis-Historie',
+        resultHistory.length,
+        resultHistory.map((d) => renderDrawCard(d, { editable: false, showGame: true })).join('')
+      )
     : '';
 
-  const teamSection = `
-    <details class="history-details">
-      <summary class="section-title">Team-Historie</summary>
-      ${
-        teamHistory.length
-          ? teamHistory.map((d) => renderDrawCard(d, { editable: true, showGame: true })).join('')
-          : `<div class="empty-state" style="padding:var(--space-4);">Noch keine offenen Auslosungen.</div>`
-      }
-    </details>
-  `;
+  const teamSection = renderHistoryDetails(
+    'Team-Historie',
+    teamHistory.length,
+    teamHistory.length
+      ? teamHistory.map((d) => renderDrawCard(d, { editable: true, showGame: true })).join('')
+      : '<div class="empty-state" style="padding:var(--space-4);">Noch keine offenen Auslosungen.</div>'
+  );
 
   return resultSection + teamSection;
 }
@@ -350,7 +364,7 @@ function renderDraftBoard(draft, ctx) {
     .map(
       (t, i) => `
       <div class="team-card" ${draft.turnCaptainIndex === i ? 'style="border-color:var(--accent);"' : ''}>
-        <div class="team-card-header"><span>${icon('crown')} ${escapeHtml(t.captain.name)}</span>${draft.turnCaptainIndex === i ? '<span style="color:var(--accent);">am Zug</span>' : ''}</div>
+        <div class="team-card-header"><span>${escapeHtml(t.captain.name)}</span>${draft.turnCaptainIndex === i ? '<span style="color:var(--accent);">am Zug</span>' : ''}</div>
         ${t.players.map((p) => `<div class="team-player">${avatarHtml(p, 20)} ${escapeHtml(p.name)}${draftPlayerRatingHtml(p.id, draft.gameId)}</div>`).join('')}
       </div>`
     )
@@ -359,24 +373,22 @@ function renderDraftBoard(draft, ctx) {
   const poolHtml = draft.pool
     .map((p) =>
       isMyTurn
-        ? `<button type="button" class="chip" data-draft-pick="${p.id}" style="cursor:pointer;">${avatarHtml(p, 18)} ${escapeHtml(p.name)}${draftPlayerRatingHtml(p.id, draft.gameId)}</button>`
-        : `<span class="chip" style="opacity:0.85;">${avatarHtml(p, 18)} ${escapeHtml(p.name)}${draftPlayerRatingHtml(p.id, draft.gameId)}</span>`
+        ? `<button type="button" class="check-row draft-pool-player" data-draft-pick="${p.id}">${avatarHtml(p, 20)} <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>${draftPlayerRatingHtml(p.id, draft.gameId)}</button>`
+        : `<div class="check-row draft-pool-player">${avatarHtml(p, 20)} <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>${draftPlayerRatingHtml(p.id, draft.gameId)}</div>`
     )
     .join('');
 
   return `
     <div class="card stack">
       <div class="row-between">
-        <strong>${icon('crown')} Captain-Draft läuft</strong>
+        <strong>Captain Draft läuft</strong>
         <span class="badge badge-playing">Live</span>
       </div>
-      <div class="row" style="gap:var(--space-2);">${gameBadgeHtml(gameById(draft.gameId) || { id: draft.gameId, icon: draft.gameIcon }, 24)} ${escapeHtml(draft.gameName)}</div>
-      <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));">${teamsHtml}</div>
+      <div class="player-name">${escapeHtml(draft.gameName)}</div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(var(--selection-card-min-width), 1fr));">${teamsHtml}</div>
       <div class="section-title" style="margin:var(--space-2) 0 0;">Pool</div>
-      <div class="chip-list">${poolHtml}</div>
-      <div class="muted" style="font-size:var(--font-size-sm);">
-        ${isMyTurn ? `${icon('user')} Du bist am Zug – tippe einen Spieler an!` : `Warten auf <strong>${escapeHtml(turnCaptain?.name ?? '?')}</strong>…`}
-      </div>
+      <div class="player-selection-grid tournament-player-grid draft-pool-grid">${poolHtml}</div>
+      ${isMyTurn ? '' : `<div class="muted" style="font-size:var(--font-size-sm);">Warten auf <strong>${escapeHtml(turnCaptain?.name ?? '?')}</strong>…</div>`}
       <button type="button" class="btn btn-danger btn-sm" id="draft-cancel">Draft abbrechen</button>
     </div>`;
 }
@@ -437,6 +449,10 @@ export function renderMatchmaking(container, ctx) {
     checkedIds = new Set(state.live.filter((p) => p.state === 'playing').map((p) => p.player_id));
     if (checkedIds.size === 0) checkedIds = new Set(state.players.map((p) => p.id));
   }
+  if (draftPlayerIds === null) draftPlayerIds = new Set(checkedIds);
+  const availablePlayerIds = new Set(state.players.map((player) => player.id));
+  draftPlayerIds = new Set([...draftPlayerIds].filter((id) => availablePlayerIds.has(id)));
+  draftCaptainIds = new Set([...draftCaptainIds].filter((id) => draftPlayerIds.has(id)));
 
   const selectedGameId = state.selectedGameId || state.games[0].id;
 
@@ -459,10 +475,20 @@ export function renderMatchmaking(container, ctx) {
     )
     .join('');
 
-  // Captain cards: pick 2-4 captains from the currently checked players —
-  // the rest of the checked players become the pool the captains pick from.
-  const checkedPlayers = state.players.filter((p) => checkedIds.has(p.id));
-  const captainRows = checkedPlayers
+  const draftPlayerRows = state.players
+    .map(
+      (p) => `<label class="check-row captain-selection-card">
+        <input type="checkbox" data-draft-player="${p.id}" ${draftPlayerIds.has(p.id) ? 'checked' : ''} />
+        ${avatarHtml(p, 20)}
+        <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
+      </label>`
+    )
+    .join('');
+
+  // Captains are selected only from the independently prepared draft roster;
+  // every other selected participant becomes part of the live pick pool.
+  const draftPlayers = state.players.filter((p) => draftPlayerIds.has(p.id));
+  const captainRows = draftPlayers
     .map(
       (p) => `<label class="check-row captain-selection-card">
         <input type="checkbox" data-captain-toggle="${p.id}" ${draftCaptainIds.has(p.id) ? 'checked' : ''} />
@@ -471,7 +497,7 @@ export function renderMatchmaking(container, ctx) {
       </label>`
     )
     .join('');
-  const draftPoolSize = checkedPlayers.length - draftCaptainIds.size;
+  const draftPoolSize = draftPlayers.length - draftCaptainIds.size;
   const draftReady = draftCaptainIds.size >= 2 && draftCaptainIds.size <= 4 && draftPoolSize >= 1;
 
   container.innerHTML = `
@@ -519,8 +545,15 @@ export function renderMatchmaking(container, ctx) {
               )}
           </h3>
         </div>
+        <div class="selection-toolbar">
+          <span class="field-label">Spieler</span>
+          <button type="button" class="btn btn-sm" id="draft-select-all">Alle markieren</button>
+          <button type="button" class="btn btn-sm" id="draft-select-none">Auswahl aufheben</button>
+        </div>
+        <div class="player-selection-grid tournament-player-grid captain-selection-grid">${draftPlayerRows}</div>
+        <div class="field-label">Captains</div>
         <div class="player-selection-grid tournament-player-grid captain-selection-grid">
-          ${captainRows || '<span class="muted" style="font-size:var(--font-size-sm);">Für den Draft zuerst Spieler in der Auslosung markieren.</span>'}
+          ${captainRows || '<span class="muted" style="font-size:var(--font-size-sm);">Zuerst Spieler für den Draft markieren.</span>'}
         </div>
         <button type="button" class="btn btn-primary" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten${draftReady ? ` (${draftCaptainIds.size} Captains, ${draftPoolSize} Spieler)` : ''}</button>
       </section>
@@ -543,8 +576,29 @@ export function renderMatchmaking(container, ctx) {
   });
   container.querySelector('#mm-select-none').addEventListener('click', () => {
     checkedIds.clear();
+    ctx.rerender();
+  });
+
+  container.querySelector('#draft-select-all').addEventListener('click', () => {
+    draftPlayerIds = new Set(state.players.map((player) => player.id));
+    ctx.rerender();
+  });
+  container.querySelector('#draft-select-none').addEventListener('click', () => {
+    draftPlayerIds.clear();
     draftCaptainIds.clear();
     ctx.rerender();
+  });
+
+  container.querySelectorAll('[data-draft-player]').forEach((checkbox) => {
+    checkbox.addEventListener('change', () => {
+      const id = checkbox.dataset.draftPlayer;
+      if (checkbox.checked) draftPlayerIds.add(id);
+      else {
+        draftPlayerIds.delete(id);
+        draftCaptainIds.delete(id);
+      }
+      ctx.rerender();
+    });
   });
 
   container.querySelectorAll('[data-captain-toggle]').forEach((checkbox) => {
@@ -562,7 +616,7 @@ export function renderMatchmaking(container, ctx) {
 
   container.querySelector('#draft-start').addEventListener('click', async () => {
     const captainIds = [...draftCaptainIds];
-    const poolPlayerIds = [...checkedIds].filter((id) => !draftCaptainIds.has(id));
+    const poolPlayerIds = [...draftPlayerIds].filter((id) => !draftCaptainIds.has(id));
     try {
       draftCache = await api.draft.start({
         gameId: selectedGameId,
@@ -587,10 +641,7 @@ export function renderMatchmaking(container, ctx) {
         checkedIds.add(cb.dataset.player);
       } else {
         checkedIds.delete(cb.dataset.player);
-        // Someone unchecked can't stay captain of the draft-to-be.
-        draftCaptainIds.delete(cb.dataset.player);
       }
-      // Captain cards derive from the checked set — keep them in sync.
       ctx.rerender();
     });
   });

@@ -153,13 +153,18 @@ function renderOpenOrder(order, myId) {
 
 function renderClosedOrder(order) {
   return `
-    <details class="card" style="margin-bottom:var(--space-3);" data-closed-order="${order.id}" ${expandedClosedOrderIds.has(order.id) ? 'open' : ''}>
-      <summary style="cursor:pointer;" class="row-between">
-        <span><strong>${escapeHtml(order.title)}</strong> <span class="muted" style="font-size:var(--font-size-xs);">· ${order.items.length} Position(en)${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}</span></span>
-        <span class="badge badge-offline">Geschlossen</span>
+    <details class="card collapsible-section" style="margin-bottom:var(--space-3);" data-closed-order="${order.id}" ${expandedClosedOrderIds.has(order.id) ? 'open' : ''}>
+      <summary class="collapsible-section-header">
+        <h2>${escapeHtml(order.title)} <span class="muted" style="font-size:var(--font-size-xs);font-weight:var(--font-weight-regular);">· ${order.items.length} Position(en)${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}</span></h2>
+        <span class="collapsible-section-summary-end">
+          <span class="badge badge-offline">Geschlossen</span>
+          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+        </span>
       </summary>
-      <div style="margin-top:var(--space-3);">${renderDetails(order)}</div>
-      <div style="margin-top:var(--space-3);">${renderItems(order, null)}</div>
+      <div class="collapsible-section-content">
+        <div>${renderDetails(order)}</div>
+        <div style="margin-top:var(--space-3);">${renderItems(order, null)}</div>
+      </div>
     </details>`;
 }
 

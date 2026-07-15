@@ -473,9 +473,15 @@ export function renderVotes(container, ctx) {
     ${runoffSectionHtml}
     ${openSectionHtml}
 
-    <details class="history-details">
-      <summary class="section-title">${icon('timer')} Vote-Historie</summary>
-      ${renderHistory()}
+    <details class="card history-details collapsible-section">
+      <summary class="collapsible-section-header">
+        <h2>Vote-Historie</h2>
+        <span class="collapsible-section-summary-end">
+          <span class="badge badge-offline">${historyCache?.length ?? 0}</span>
+          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+        </span>
+      </summary>
+      <div class="collapsible-section-content">${renderHistory()}</div>
     </details>
   `;
 

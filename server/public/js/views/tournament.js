@@ -190,15 +190,15 @@ function renderList(container, ctx) {
       ? tournamentCards(tournaments)
       : `<div class="muted tournament-list-empty">${active ? 'Gerade läuft kein Turnier.' : 'Noch keine abgeschlossenen Turniere.'}</div>`;
     if (collapsible) {
-      return `<details class="card tournament-list-section tournament-list-section-collapsible" data-completed-tournaments ${completedSectionOpen ? 'open' : ''}>
-        <summary class="tournament-list-section-header">
+      return `<details class="card tournament-list-section collapsible-section" data-completed-tournaments ${completedSectionOpen ? 'open' : ''}>
+        <summary class="collapsible-section-header">
           <h2>${title}</h2>
-          <span class="tournament-list-section-summary-end">
+          <span class="collapsible-section-summary-end">
             <span class="badge badge-offline">${tournaments.length}</span>
-            <span class="tournament-list-section-chevron">${icon('chevronRight')}</span>
+            <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
           </span>
         </summary>
-        <div class="tournament-list-section-content">${content}</div>
+        <div class="collapsible-section-content">${content}</div>
       </details>`;
     }
 
