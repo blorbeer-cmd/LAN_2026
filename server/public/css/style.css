@@ -1455,6 +1455,14 @@ button.draft-pool-player {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+@media (min-width: 1280px) { /* --bp-xl */
+  .card-grid.more-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .more-grid > :last-child:nth-child(3n + 1) {
+    grid-column: 2;
+  }
+}
 
 .view-title {
   font-size: var(--font-size-xl);
