@@ -47,8 +47,8 @@ async function loadSeating(ctx) {
 
 function renderHomeSeating(ctx) {
   if (seatingCache === null && !seatingLoading) loadSeating(ctx);
-  return `<section class="live-seating">
-    <div class="section-title">Sitzplan</div>
+  return `<section class="card home-page-section live-seating stack" aria-labelledby="home-seating-title">
+    <h2 id="home-seating-title">Sitzplan</h2>
     ${seatingLoading || seatingCache === null
       ? '<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>'
       : renderSeatingPlan(seatingCache.layout, seatingCache.players)}
@@ -92,8 +92,10 @@ function renderStatus() {
 
   if (rows.length === 0) return '';
   return `
-    <div class="section-title">Aktuell</div>
-    <div class="card-grid" style="margin-bottom:var(--space-4);">${rows.join('')}</div>
+    <section class="card home-page-section stack" aria-labelledby="home-current-title">
+      <h2 id="home-current-title">Aktuell</h2>
+      <div class="card-grid">${rows.join('')}</div>
+    </section>
   `;
 }
 
@@ -123,8 +125,10 @@ function renderActiveGroups(players) {
     .join('');
 
   return `
-    <div class="section-title">Gerade aktiv</div>
-    <div class="chip-list" style="margin-bottom:var(--space-4);">${groups}</div>
+    <div class="home-page-subsection stack">
+      <h3>Gerade aktiv</h3>
+      <div class="chip-list">${groups}</div>
+    </div>
   `;
 }
 
@@ -151,11 +155,11 @@ function renderLeaderboardTop() {
     )
     .join('');
   return `
-    <div class="section-title">Rangliste</div>
-    <div class="card" style="margin-bottom:var(--space-4);">
+    <section class="card home-page-section stack" aria-labelledby="home-leaderboard-title">
+      <h2 id="home-leaderboard-title">Rangliste</h2>
       <div class="home-leaderboard-columns">${columns}</div>
-      <button type="button" class="btn btn-sm btn-block" data-navigate="leaderboard" style="margin-top:var(--space-3);">Gesamte Rangliste ${icon('chevronRight')}</button>
-    </div>
+      <button type="button" class="btn btn-sm btn-block" data-navigate="leaderboard">Gesamte Rangliste ${icon('chevronRight')}</button>
+    </section>
   `;
 }
 
@@ -168,7 +172,7 @@ function renderMyStatus(myId, players) {
   if (!me) return '';
   const badgeClass = `badge-${me.state}`;
   return `
-    <div class="card row-between" style="margin-bottom:var(--space-4);">
+    <div class="card row-between home-my-status">
       <span class="row" style="gap:var(--space-2);">
         <span>Dein Status:</span>
         <span class="badge ${badgeClass}">${stateLabel(me.state)}</span>
@@ -200,7 +204,7 @@ export function renderHome(container, ctx) {
   }
 
   const myId = getMyId();
-  const whoAmI = whoAmICardHtml('home-whoami', { marginBottom: '16px' });
+  const whoAmI = whoAmICardHtml('home-whoami', { marginBottom: 'var(--space-4)' });
 
   ensureAktuellLoaded();
   const cards = players
@@ -232,13 +236,17 @@ export function renderHome(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Home</h1>
     ${whoAmI}
-    ${renderStatus()}
-    ${renderActiveGroups(players)}
-    ${renderMyStatus(myId, players)}
-    <div class="section-title">Live-Status</div>
-    <div class="card-grid">${cards}</div>
-    ${renderLeaderboardTop()}
-    ${renderHomeSeating(ctx)}
+    <div class="home-page-sections">
+      ${renderStatus()}
+      <section class="card home-page-section stack" aria-labelledby="home-live-title">
+        <h2 id="home-live-title">Live-Status</h2>
+        ${renderActiveGroups(players)}
+        ${renderMyStatus(myId, players)}
+        <div class="card-grid">${cards}</div>
+      </section>
+      ${renderLeaderboardTop()}
+      ${renderHomeSeating(ctx)}
+    </div>
   `;
 
   wireWhoAmICard(container, 'home-whoami', ctx);

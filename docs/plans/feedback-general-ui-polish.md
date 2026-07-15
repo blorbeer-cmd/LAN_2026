@@ -178,8 +178,11 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 
 ### 4. Home, Rang und Vote aufräumen
 
-- Home-Reihenfolge auf „Aktuell“, Live-Inhalte, Rangliste/Sitzplan und danach „Dein Status“ umstellen;
-  „Aktuell“ nutzt die bereits responsive `card-grid` für mehrere Kacheln.
+- Home verwendet wie Turniere, Teams und Vote vollbreite gruppierte Hauptkarten für „Aktuell“,
+  „Live-Status“, „Rangliste“ und „Sitzplan“. Überschriften liegen innerhalb der jeweiligen Fläche;
+  Aktuell-Einträge, eigener Status und Spieler bleiben als ruhigere Unterkarten erkennbar.
+  „Gerade aktiv“ gehört als Unterbereich zum Live-Status. Die vorhandenen internen Grids bleiben
+  responsiv.
 - Sitzplan erhält eine Überschrift analog zu Rangliste und Status; „Gesamte Rangliste“ ersetzt
   „Ganze Rangliste“.
 - Die Meldungshistorie in die Glocke der Kopfzeile verschieben. Die neueste aktive, ungelesene

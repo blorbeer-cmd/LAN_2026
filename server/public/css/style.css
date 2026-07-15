@@ -3324,6 +3324,31 @@ input[type='number'].tournament-score-input {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
+.home-page-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.home-page-section {
+  min-width: 0;
+}
+.home-page-section > h2,
+.home-page-subsection > h3 {
+  margin: 0;
+}
+.home-page-section > h2 {
+  font-size: var(--font-size-lg);
+}
+.home-page-subsection > h3 {
+  color: var(--text-muted);
+  font-size: var(--font-size-md);
+}
+.home-page-section .card {
+  background: var(--bg-elevated-2);
+}
+.home-my-status {
+  flex-wrap: wrap;
+}
 .home-leaderboard-column {
   min-width: 0;
 }
@@ -3866,8 +3891,6 @@ input[type='number'].tournament-score-input {
   color: var(--text);
   font-size: var(--font-size-sm);
 }
-.live-seating { margin-top: var(--space-5); }
-
 @media (max-width: 639px) {
   .seating-plan {
     grid-template-columns: minmax(52px, .6fr) minmax(130px, 1.5fr) minmax(52px, .6fr);

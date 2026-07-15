@@ -289,6 +289,13 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.click('[data-view="home"]');
   await page.waitForSelector('.player-card');
   assert.equal(await page.locator('.player-card').count(), 2);
+  for (const title of ['Live-Status', 'Rangliste', 'Sitzplan']) {
+    assert.equal(
+      await page.locator(`section.home-page-section:has(h2:text-is("${title}"))`).count(),
+      1,
+      `${title} should be presented as a grouped Home section`
+    );
+  }
   const liveNameTypography = await page.locator('.player-card .player-name').first().evaluate((element) => {
     const style = getComputedStyle(element);
     return { family: style.fontFamily, size: style.fontSize, weight: style.fontWeight };
@@ -1458,7 +1465,7 @@ test('Aktuell: an open vote\'s title (if set) shows on Home\'s status card', asy
   await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
 
   await page.click('[data-view="home"]');
-  await page.waitForSelector('.section-title:has-text("Aktuell")');
+  await page.waitForSelector('section.home-page-section:has(h2:text-is("Aktuell"))');
   await page.waitForSelector('text=Freitagabend-Runde');
 
   // Leave no open round behind for later tests.

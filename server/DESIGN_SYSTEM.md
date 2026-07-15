@@ -268,6 +268,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   match the target player.
   This device-local identity header is deliberately documented as the temporary boundary that
   future authenticated user management must replace.
+- **Home overview** — Home follows the same full-width grouped-card hierarchy as Tournaments,
+  Teams and Vote. „Aktuell“, „Live-Status“, „Rangliste“ and „Sitzplan“ are separate main cards with
+  their heading inside the surface. Tappable current items, the personal status and player entries
+  remain nested cards on the secondary elevated background; „Gerade aktiv“ is a subsection of
+  „Live-Status“ rather than a competing page-level group. Main groups stay in one continuous column
+  at phone and laptop widths while their existing internal grids remain responsive.
 - **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the
   same card grouping as the other polished workflows without an accent rail.
   New/current-round controls come first, followed by separate full-width cards for „Aktueller Vote“
