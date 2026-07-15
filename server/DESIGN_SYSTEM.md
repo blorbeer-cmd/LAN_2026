@@ -236,7 +236,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   restrained accent rail instead of numbered badges. The same section pattern groups each
   tournament group with its table and rounds. Result controls remain compact and decided matches
   expose an explicit edit action. The standard `.section-title` introduces „Aktive Lobbys“ while
-  `.tournament-active-lobby-grid` presents up to two currently playable pairings per row. Each
+  `.tournament-active-lobby-grid` presents up to two currently playable pairings per row; a single
+  active lobby spans the full row. Each
   `.tournament-lobby-info` card names the phase, matchup and hosting team. A stored lobby base name
   receives a deterministic phase/round/match suffix, so parallel pairings always have distinct
   lobby names without mutable lobby assignments. League and group modes show only the earliest

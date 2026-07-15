@@ -1276,6 +1276,9 @@ input[type='number']::-webkit-inner-spin-button {
   .tournament-active-lobby-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .tournament-active-lobby-grid .tournament-lobby-info:only-child {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (hover: hover) {
