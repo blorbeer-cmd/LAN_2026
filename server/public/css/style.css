@@ -970,7 +970,6 @@ input[type='number']::-webkit-inner-spin-button {
 /* Tournament overview and creation deliberately use their available width:
    one or two entries stretch instead of reserving empty auto-fill columns,
    while the tournament player picker stays at two cards per row. */
-.tournament-overview-grid,
 .tournament-detail-stats,
 .tournament-team-grid {
   display: grid;
@@ -987,6 +986,29 @@ input[type='number']::-webkit-inner-spin-button {
 }
 .tournament-list-grid {
   grid-template-columns: minmax(0, 1fr);
+}
+.tournament-list-section {
+  margin-top: var(--space-4);
+}
+.tournament-list-section.is-active {
+  border-color: var(--accent);
+}
+.tournament-list-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.tournament-list-section-header h2 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+.tournament-list-section .tournament-list-card {
+  background: var(--bg-elevated-2);
+}
+.tournament-list-empty {
+  padding: var(--space-3) 0;
 }
 .tournament-list-card {
   width: 100%;

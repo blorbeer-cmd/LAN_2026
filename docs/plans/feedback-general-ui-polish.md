@@ -93,8 +93,9 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   eingeklappten Aufbau stabil bleiben.
 - Die Turnierübersicht nutzt ein oder zwei vorhandene Turniere über die volle Kartenbreite, zeigt
   laufende Turniere beim geöffneten Anlageformular weiterhin davor und ordnet abgeschlossene
-  Turniere danach ein. Die Detailansicht ergänzt Fortschritt, Teams und Teilnehmende; kleine
-  Turnierbäume werden im verfügbaren Bereich zentriert.
+  Turniere danach in einer zweiten prominenten Statusreihe ein. Separate Statistik-Kacheln für
+  Gesamtzahl, laufende Turniere und Teams entfallen. Die Detailansicht ergänzt Fortschritt, Teams
+  und Teilnehmende; kleine Turnierbäume werden im verfügbaren Bereich zentriert.
 - Die Spielerauswahl beim Anlegen erscheint mit zwei Kacheln pro Zeile und beliebig vielen Zeilen
   darunter; die Spielauswahl bleibt ein kompaktes Dropdown. Teamanzahl und Auswahlaktionen teilen
   sich dieselbe Steuerelementhöhe; Sitznachbarn, Punktestand und der gemeinsame Lobby-Hinweis

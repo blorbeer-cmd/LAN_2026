@@ -166,6 +166,18 @@ function renderList(container, ctx) {
       </button>`
     )
     .join('')}</div>`;
+  const tournamentSection = (title, tournaments, { active = false } = {}) => `
+    <section class="card tournament-list-section${active ? ' is-active' : ''}" aria-label="${title}">
+      <div class="tournament-list-section-header">
+        <h2>${title}</h2>
+        <span class="badge ${active ? 'badge-playing' : 'badge-offline'}">${tournaments.length}</span>
+      </div>
+      ${
+        tournaments.length
+          ? tournamentCards(tournaments)
+          : `<div class="muted tournament-list-empty">${active ? 'Gerade läuft kein Turnier.' : 'Noch keine abgeschlossenen Turniere.'}</div>`
+      }
+    </section>`;
 
   let currentListHtml;
   let completedListHtml = '';
@@ -176,18 +188,8 @@ function renderList(container, ctx) {
   } else {
     const activeTournaments = listCache.filter((t) => t.status !== 'completed');
     const completedTournaments = listCache.filter((t) => t.status === 'completed');
-    const totalTeams = listCache.reduce((sum, tournament) => sum + Number(tournament.teamCount || 0), 0);
-    currentListHtml = `
-      <div class="tournament-overview-grid" aria-label="Turnierübersicht">
-        <div class="card tournament-stat"><span class="muted">Turniere</span><strong>${listCache.length}</strong></div>
-        <div class="card tournament-stat"><span class="muted">Laufend</span><strong>${activeTournaments.length}</strong></div>
-        <div class="card tournament-stat"><span class="muted">Teams insgesamt</span><strong>${totalTeams}</strong></div>
-      </div>
-      ${activeTournaments.length ? `<div class="section-title">Aktuelle Turniere</div>${tournamentCards(activeTournaments)}` : ''}
-    `;
-    completedListHtml = completedTournaments.length
-      ? `<div class="section-title">Abgeschlossene Turniere</div>${tournamentCards(completedTournaments)}`
-      : '';
+    currentListHtml = tournamentSection('Aktuelle Turniere', activeTournaments, { active: true });
+    completedListHtml = tournamentSection('Abgeschlossene Turniere', completedTournaments);
   }
 
   container.innerHTML = `
