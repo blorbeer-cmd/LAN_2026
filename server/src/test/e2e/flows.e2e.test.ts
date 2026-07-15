@@ -294,6 +294,22 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
     1,
     'the game filter belongs to the ranking section'
   );
+  for (const grid of await page.locator('.leaderboard-list-grid').all()) {
+    assert.equal(
+      await grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
+      1,
+      'leaderboard lists should stay single-column on phones'
+    );
+  }
+  await page.setViewportSize({ width: 900, height: 844 });
+  for (const grid of await page.locator('.leaderboard-list-grid').all()) {
+    assert.equal(
+      await grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
+      2,
+      'leaderboard lists should use two columns when space is available'
+    );
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.click('#add-match-btn');
   await page.waitForSelector('#match-players');
   assert.deepEqual(

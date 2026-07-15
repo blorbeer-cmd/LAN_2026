@@ -3337,6 +3337,22 @@ input[type='number'].tournament-score-input {
 .lb-row:last-child {
   border-bottom: none;
 }
+.leaderboard-list-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+.leaderboard-list-grid > .lb-row {
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.leaderboard-list-grid > .lb-row:only-child,
+.leaderboard-list-grid > .empty-state {
+  grid-column: 1 / -1;
+}
 .lb-rank {
   font-weight: var(--font-weight-black);
   color: var(--text-muted);
@@ -3388,6 +3404,11 @@ input[type='number'].tournament-score-input {
 }
 .match-result-row + .match-result-row {
   margin-top: var(--space-2);
+}
+@media (min-width: 640px) { /* --bp-md */
+  .leaderboard-list-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .home-leaderboard-columns {
   display: grid;

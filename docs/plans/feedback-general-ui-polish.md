@@ -210,7 +210,8 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   kompakten grünen, gelben oder roten Indikator.
 - Rang verwendet die neue vollbreite Kartenhierarchie für „Rangliste“, „Spielzeit“ und „Spielzeit
   pro Spiel“; der Spielfilter gehört in die Ranglisten-Gruppe. Rang-Titel, Kurztexte und
-  Leerzustände sind bereinigt. Lange Namen bleiben innerhalb der Zeilen, und Siege sowie Spiele
+  Leerzustände sind bereinigt. Alle drei Listen stehen ab `--bp-md` in zwei Spalten; auf Handys
+  bleibt eine Spalte, einzelne Einträge nutzen die volle Breite. Lange Namen bleiben innerhalb der Zeilen, und Siege sowie Spiele
   stehen sichtbar in einer zweiten Zeile statt in einem nativen Hover-Text. Das Ergebnisformular
   trennt Modus, Spieler-Zuordnung beziehungsweise Teilnehmende und Ergebnis als umrandete Bereiche.
   Für Zuordnung und Zahlenfelder werden stabile Grid-/Spaltenstrukturen verwendet, damit Controls

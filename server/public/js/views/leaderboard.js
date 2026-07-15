@@ -98,7 +98,7 @@ export function renderLeaderboard(container, ctx) {
           <span class="field-label">Spiel auswählen</span>
           <select id="lb-filter">${gameOptions}</select>
         </label>
-        <div>
+        <div class="leaderboard-list-grid">
           ${standings.length === 0 ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('leaderboard'))}</span>Noch keine Ergebnisse.</div>` : rows}
         </div>
       </section>
@@ -107,7 +107,7 @@ export function renderLeaderboard(container, ctx) {
         <div class="grouped-page-section-title">
           <h2 id="leaderboard-playtime-title">Spielzeit</h2>
         </div>
-        <div>
+        <div class="leaderboard-list-grid">
           ${playtime.length === 0 ? `<div class="empty-state"><span class="empty-state-icon">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeRows}
         </div>
       </section>
@@ -116,7 +116,7 @@ export function renderLeaderboard(container, ctx) {
         <div class="grouped-page-section-title">
           <h2 id="leaderboard-games-playtime-title">Spielzeit pro Spiel</h2>
         </div>
-        <div>
+        <div class="leaderboard-list-grid">
           ${playtimeByGame.length === 0 ? `<div class="empty-state"><span class="empty-state-icon">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeByGameRows}
         </div>
       </section>
