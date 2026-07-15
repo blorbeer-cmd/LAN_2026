@@ -17,6 +17,7 @@ import { config } from './config';
 export const SESSION_COOKIE_NAME = config.cookieSecure ? '__Host-lan2026_session' : 'lan2026_session';
 export const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 export const SESSION_ABSOLUTE_TTL_MS = 180 * 24 * 60 * 60 * 1000;
+export const REAUTH_TTL_MS = 5 * 60 * 1000;
 
 export interface AuthPlayer {
   id: string;
@@ -156,6 +157,18 @@ export function isSessionActive(sessionId: string): boolean {
   return session.expires_at > now && session.created_at + SESSION_ABSOLUTE_TTL_MS > now;
 }
 
+export function markSessionReauthenticated(sessionId: string): void {
+  db.prepare('UPDATE sessions SET reauthenticated_at = ? WHERE id = ?').run(Date.now(), sessionId);
+}
+
+export function hasRecentReauthentication(sessionId: string | undefined): boolean {
+  if (!sessionId) return false;
+  const row = db
+    .prepare('SELECT reauthenticated_at FROM sessions WHERE id = ?')
+    .get(sessionId) as { reauthenticated_at: number | null } | undefined;
+  return Boolean(row?.reauthenticated_at && row.reauthenticated_at > Date.now() - REAUTH_TTL_MS);
+}
+
 // Used on password change ("invalidates all OTHER sessions") and account
 // deactivation ("invalidates all sessions"). exceptSessionId lets password
 // change keep the session that just made the request alive.
@@ -181,6 +194,38 @@ export const requireUser: RequestHandler = (req: Request, res: Response, next: N
   req.sessionId = resolved.session.id;
   next();
 };
+
+// Phase 2 compatibility bridge: personal feature routes use these stacks so
+// AUTH_MODE=required makes the verified session authoritative while legacy
+// deployments keep accepting their existing client-selected playerId.
+export const requireConfiguredUser: RequestHandler = (req, res, next): void => {
+  if (config.authMode === 'legacy') {
+    next();
+    return;
+  }
+  requireUser(req, res, next);
+};
+
+const bindBodyPlayerId: RequestHandler = (req, _res, next): void => {
+  if (req.player) req.body = { ...(req.body ?? {}), playerId: req.player.id };
+  next();
+};
+
+const bindQueryPlayerId: RequestHandler = (req, _res, next): void => {
+  if (req.player) req.query.playerId = req.player.id;
+  next();
+};
+
+export const withBodyPlayerIdentity: RequestHandler[] = [requireConfiguredUser, bindBodyPlayerId];
+export const withQueryPlayerIdentity: RequestHandler[] = [requireConfiguredUser, bindQueryPlayerId];
+
+export function withParamPlayerIdentity(paramName = 'playerId'): RequestHandler[] {
+  const bindParam: RequestHandler = (req, _res, next): void => {
+    if (req.player) req.params[paramName] = req.player.id;
+    next();
+  };
+  return [requireConfiguredUser, bindParam];
+}
 
 // Stacks on top of requireUser for the small number of endpoints only an
 // admin may call. Kept separate from the legacy PIN-based requireAdmin in

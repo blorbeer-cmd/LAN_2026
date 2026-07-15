@@ -2,9 +2,8 @@
 // brand-new player, claim an existing one, log in/out, change a password,
 // and (admin-only) issue/revoke the invite codes that gate all of the above.
 //
-// Nothing here is wired into the rest of the app yet — these are new
-// endpoints that don't touch any existing behavior (see config.authMode).
-// Enforcing login across feature routes is a separate, later change.
+// Feature routes enforce these sessions when AUTH_MODE=required; legacy mode
+// preserves the existing shared-token behavior during the rollout.
 
 import { Router, type RequestHandler } from 'express';
 import { nanoid } from 'nanoid';
@@ -28,6 +27,7 @@ import {
   getSessionToken,
   requireUser,
   requireSessionAdmin,
+  markSessionReauthenticated,
 } from '../sessions';
 import { createInvite, findValidInvite, markInviteUsed, voidOutstandingInvites, revokeInvite, type InvitePurpose } from '../invites';
 import {
@@ -199,7 +199,11 @@ authRouter.post('/claim', limitAnonymousAuthAttempts, (req, res) => {
     })();
   } catch (error) {
     if (error instanceof InvalidInviteError) {
-      return res.status(400).json({ error: 'Einladungscode ist ungültig, abgelaufen oder bereits verbraucht.' });
+      return res.status(400).json({
+        error: isBootstrap
+          ? 'Bootstrap-Code ist nicht mehr gültig oder das Konto wurde bereits beansprucht.'
+          : 'Einladungscode ist ungültig, abgelaufen oder bereits verbraucht.',
+      });
     }
     throw error;
   }
@@ -270,9 +274,28 @@ authRouter.post('/password', requireUser, (req, res) => {
   }
 
   db.prepare('UPDATE players SET password_hash = ? WHERE id = ?').run(hashPassword(newPassword), existing.id);
+  markSessionReauthenticated(req.sessionId!);
   deleteAllSessionsForPlayer(existing.id, req.sessionId);
   disconnectPlayerSockets(existing.id, req.sessionId);
   voidOutstandingInvites(existing.id, 'reset');
+  res.status(204).end();
+});
+
+// POST /api/auth/reauth - confirms the password for this session for a short
+// step-up window. The window is intentionally session-local so a party phone
+// left unlocked cannot inherit a confirmation made on another device.
+authRouter.post('/reauth', requireUser, (req, res) => {
+  const { password } = req.body ?? {};
+  if (typeof password !== 'string' || !password) {
+    return res.status(400).json({ error: 'Passwort ist erforderlich.' });
+  }
+  const existing = db.prepare('SELECT password_hash FROM players WHERE id = ?').get(req.player!.id) as {
+    password_hash: string | null;
+  };
+  if (!verifyPasswordConstantTime(password, existing.password_hash)) {
+    return res.status(401).json({ error: 'Passwort ist falsch.' });
+  }
+  markSessionReauthenticated(req.sessionId!);
   res.status(204).end();
 });
 

@@ -10,6 +10,7 @@ import { state } from '../state.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { isAdmin, setAdmin } from '../admin.js';
+import { withStepUp } from '../reauth.js';
 import { icon } from '../icons.js';
 
 let agentDiagnostics = null;
@@ -57,7 +58,8 @@ async function cleanupTestUsers(ctx) {
 
 async function toggleAdmin(player, ctx) {
   try {
-    await api.players.update(player.id, { isAdmin: !player.is_admin });
+    const updated = await withStepUp(() => api.players.update(player.id, { isAdmin: !player.is_admin }));
+    if (updated === undefined) return;
     showToast(player.is_admin ? `${player.name} ist kein Admin mehr.` : `${player.name} ist jetzt Admin.`);
     await ctx.refresh();
   } catch (err) {
@@ -68,7 +70,8 @@ async function toggleAdmin(player, ctx) {
 async function deletePlayer(player, ctx) {
   if (!(await confirmDialog(`Spieler "${player.name}" wirklich löschen?`))) return;
   try {
-    await api.players.remove(player.id);
+    const removed = await withStepUp(() => api.players.remove(player.id));
+    if (removed === undefined) return;
     showToast('Spieler gelöscht.');
     await ctx.refresh();
   } catch (err) {

@@ -15,6 +15,7 @@ import {
   getPushLogEntriesFor,
   markPushSeen,
 } from '../push';
+import { withBodyPlayerIdentity, withQueryPlayerIdentity } from '../sessions';
 
 export const pushRouter = Router();
 
@@ -34,7 +35,7 @@ pushRouter.get('/last', (_req, res) => {
 // GET /api/push/current?playerId=... - the newest still-actionable entry for
 // the personal app-header banner. Closed topics are skipped; the full /log
 // endpoint below intentionally remains an unfiltered notification history.
-pushRouter.get('/current', (req, res) => {
+pushRouter.get('/current', ...withQueryPlayerIdentity, (req, res) => {
   const { playerId } = req.query;
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -48,7 +49,7 @@ pushRouter.get('/current', (req, res) => {
 // player (they were on the recipient list), newest first, for the Home
 // view's "Mitteilungen" feed. Each entry carries the deep-link url the
 // notification would open, so the feed can offer the same jump-off point.
-pushRouter.get('/log', (req, res) => {
+pushRouter.get('/log', ...withQueryPlayerIdentity, (req, res) => {
   const { playerId } = req.query;
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -60,7 +61,7 @@ pushRouter.get('/log', (req, res) => {
 
 // POST /api/push/:id/seen - dismiss one notification from this player's
 // persistent header banner. It intentionally remains in /log as history.
-pushRouter.post('/:id/seen', (req, res) => {
+pushRouter.post('/:id/seen', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -76,7 +77,7 @@ pushRouter.post('/:id/seen', (req, res) => {
 
 // POST /api/push/subscribe - register (or re-point) a browser subscription
 // for a player. Body: { playerId, subscription: PushSubscriptionJSON }
-pushRouter.post('/subscribe', (req, res) => {
+pushRouter.post('/subscribe', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId, subscription } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -92,11 +93,11 @@ pushRouter.post('/subscribe', (req, res) => {
 });
 
 // POST /api/push/unsubscribe - drop a subscription (opt-out). Body: { endpoint }
-pushRouter.post('/unsubscribe', (req, res) => {
-  const { endpoint } = req.body ?? {};
+pushRouter.post('/unsubscribe', ...withBodyPlayerIdentity, (req, res) => {
+  const { endpoint, playerId } = req.body ?? {};
   if (typeof endpoint !== 'string' || !endpoint) {
     return res.status(400).json({ error: 'endpoint ist erforderlich.' });
   }
-  removeSubscription(endpoint);
+  removeSubscription(endpoint, req.player ? playerId : undefined);
   res.status(204).end();
 });

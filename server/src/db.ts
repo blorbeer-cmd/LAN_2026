@@ -1213,6 +1213,55 @@ function migrateAccountsAuth(): void {
 }
 runMigration({ version: 26, name: 'add accounts auth (sessions, invites)', up: migrateAccountsAuth });
 
+// Early development databases may already have recorded migration 26 with
+// created_by NOT NULL and without ON DELETE actions. Rebuild the table once
+// instead of asking developers to delete their database: migration history
+// is immutable, so a corrected CREATE TABLE in migration 26 alone would not
+// repair an already-upgraded installation.
+function repairInviteAuditForeignKeys(): void {
+  const table = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'invites'")
+    .get() as { sql: string } | undefined;
+  if (!table) {
+    migrateAccountsAuth();
+    return;
+  }
+
+  db.exec(`
+    ALTER TABLE invites RENAME TO invites_migration_27;
+    CREATE TABLE invites (
+      code        TEXT PRIMARY KEY,
+      purpose     TEXT NOT NULL,
+      player_id   TEXT REFERENCES players(id) ON DELETE CASCADE,
+      created_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
+      created_at  INTEGER NOT NULL,
+      expires_at  INTEGER NOT NULL,
+      revoked_at  INTEGER,
+      used_at     INTEGER,
+      used_by     TEXT REFERENCES players(id) ON DELETE SET NULL
+    );
+    INSERT INTO invites (code, purpose, player_id, created_by, created_at, expires_at, revoked_at, used_at, used_by)
+      SELECT code, purpose, player_id, created_by, created_at,
+             COALESCE(expires_at, created_at + 1209600000),
+             revoked_at, used_at, used_by
+      FROM invites_migration_27;
+    DROP TABLE invites_migration_27;
+    CREATE INDEX idx_invites_player ON invites(player_id);
+  `);
+}
+runMigration({ version: 27, name: 'repair invite audit foreign keys', up: repairInviteAuditForeignKeys });
+
+// Critical admin actions require a freshly confirmed password. Keeping the
+// timestamp on the individual session (rather than the player) means a
+// confirmation on one phone never unlocks another unattended device.
+function addSessionReauthentication(): void {
+  const columns = db.prepare('PRAGMA table_info(sessions)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'reauthenticated_at')) {
+    db.exec('ALTER TABLE sessions ADD COLUMN reauthenticated_at INTEGER');
+  }
+}
+runMigration({ version: 28, name: 'add session reauthentication', up: addSessionReauthentication });
+
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.
 function seedGames(): void {

@@ -291,10 +291,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 26);
+  assert.equal(migrations.length, 28);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 26 }, (_, index) => index + 1),
+    Array.from({ length: 28 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -311,6 +311,66 @@ test('records the complete migration history and does not duplicate it on restar
   }
   const pushSeen = migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'push_log_seen'").get();
   assert.ok(pushSeen, 'push_log_seen should be created for legacy databases');
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('repairs databases that already recorded the original invite migration', () => {
+  const dbFile = makeTempDbPath('invite-fk-repair');
+  const now = Date.now();
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = OFF');
+  fixture.exec(`
+    DELETE FROM schema_migrations WHERE version = 27;
+    DROP INDEX idx_invites_player;
+    DROP TABLE invites;
+    CREATE TABLE invites (
+      code TEXT PRIMARY KEY,
+      purpose TEXT NOT NULL,
+      player_id TEXT REFERENCES players(id) ON DELETE CASCADE,
+      created_by TEXT NOT NULL REFERENCES players(id),
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER,
+      revoked_at INTEGER,
+      used_at INTEGER,
+      used_by TEXT REFERENCES players(id)
+    );
+    CREATE INDEX idx_invites_player ON invites(player_id);
+  `);
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('invite-creator', 'Invite Creator', 'invite-creator-key', now);
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('invite-user', 'Invite User', 'invite-user-key', now);
+  fixture
+    .prepare(
+      'INSERT INTO invites (code, purpose, created_by, created_at, expires_at, used_at, used_by) VALUES (?, ?, ?, ?, NULL, ?, ?)',
+    )
+    .run('legacy-invite', 'register', 'invite-creator', now, now, 'invite-user');
+  fixture.close();
+
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile);
+  migrated.pragma('foreign_keys = ON');
+  const foreignKeys = migrated.prepare('PRAGMA foreign_key_list(invites)').all() as Array<{
+    from: string;
+    on_delete: string;
+  }>;
+  assert.equal(foreignKeys.find((key) => key.from === 'created_by')?.on_delete, 'SET NULL');
+  assert.equal(foreignKeys.find((key) => key.from === 'used_by')?.on_delete, 'SET NULL');
+
+  const repaired = migrated.prepare('SELECT expires_at FROM invites WHERE code = ?').get('legacy-invite') as {
+    expires_at: number;
+  };
+  assert.equal(repaired.expires_at, now + 14 * 24 * 60 * 60 * 1000);
+
+  migrated.prepare('DELETE FROM players WHERE id IN (?, ?)').run('invite-creator', 'invite-user');
+  const audit = migrated.prepare('SELECT created_by, used_by FROM invites WHERE code = ?').get('legacy-invite');
+  assert.deepEqual(audit, { created_by: null, used_by: null });
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

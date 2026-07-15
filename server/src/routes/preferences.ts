@@ -8,6 +8,7 @@ import { Router } from 'express';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isIntInRange } from '../validation';
+import { withBodyPlayerIdentity, withParamPlayerIdentity } from '../sessions';
 
 export const preferencesRouter = Router();
 
@@ -39,7 +40,7 @@ preferencesRouter.get('/', (req, res) => {
 
 // PUT /api/preferences - upsert a single rating. Idempotent by design so the
 // frontend can fire-and-forget on every slider change.
-preferencesRouter.put('/', (req, res) => {
+preferencesRouter.put('/', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId, gameId, rating } = req.body ?? {};
 
   if (typeof playerId !== 'string' || !playerId) {
@@ -70,7 +71,7 @@ preferencesRouter.put('/', (req, res) => {
 });
 
 // DELETE /api/preferences/:playerId/:gameId - clear a rating.
-preferencesRouter.delete('/:playerId/:gameId', (req, res) => {
+preferencesRouter.delete('/:playerId/:gameId', ...withParamPlayerIdentity(), (req, res) => {
   const { playerId, gameId } = req.params;
   const result = db.prepare('DELETE FROM preferences WHERE player_id = ? AND game_id = ?').run(playerId, gameId);
   if (result.changes === 0) {

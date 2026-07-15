@@ -15,6 +15,7 @@ import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getTrackingEventId } from '../events';
 import { notifyPlayers, resolvePushTopic } from '../push';
+import { withBodyPlayerIdentity } from '../sessions';
 
 export const draftRouter = Router();
 
@@ -203,7 +204,7 @@ draftRouter.post('/start', (req, res) => {
 // Only the captain whose turn it is may pick, and only players still in the
 // pool — both re-checked here so two captains tapping simultaneously (or one
 // double-tapping) resolve to exactly one pick and a clean 409.
-draftRouter.post('/pick', (req, res) => {
+draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId, pickPlayerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });

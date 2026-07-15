@@ -207,15 +207,27 @@ export function registerArcadeKioskSockets(server: Server): void {
 // Socket.IO client to do. This does not replace the token — both still
 // coexist until the shared token is retired (see
 // docs/KONZEPT-USER-MANAGEMENT.md phase 4).
-export function createSocketAuthGuard(accessToken: string = config.accessToken) {
+export function createSocketAuthGuard(
+  accessToken: string = config.accessToken,
+  authMode: 'legacy' | 'required' = config.authMode
+) {
   return (socket: Socket, next: (err?: Error) => void): void => {
     const sessionToken = parseCookieHeader(socket.handshake.headers.cookie)[SESSION_COOKIE_NAME];
     const resolved = sessionToken ? verifySession(sessionToken) : undefined;
     if (resolved) {
       socket.data.authSessionId = resolved.session.id;
       socket.data.authPlayerId = resolved.player.id;
+      if (authMode === 'required') {
+        socket.use(([_, payload], proceed) => {
+          if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+            (payload as Record<string, unknown>).playerId = resolved.player.id;
+          }
+          proceed();
+        });
+      }
       return next();
     }
+    if (authMode === 'required') return next(new Error('unauthorized'));
     if (!accessToken) return next();
     const token = socket.handshake.auth?.token ?? socket.handshake.query?.token;
     if (token === accessToken) return next();

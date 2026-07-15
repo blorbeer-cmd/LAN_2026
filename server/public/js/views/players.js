@@ -8,6 +8,7 @@ import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { AVATAR_PALETTE } from '../avatarPalette.js';
+import { withStepUp } from '../reauth.js';
 
 function randomColor() {
   return AVATAR_PALETTE[Math.floor(Math.random() * AVATAR_PALETTE.length)];
@@ -203,7 +204,8 @@ function openPlayerDetail(playerId, ctx) {
         el.querySelector('#detail-delete').addEventListener('click', async () => {
           if (!(await confirmDialog(`${player.name} wirklich löschen?`))) return;
           try {
-            await api.players.remove(playerId);
+            const removed = await withStepUp(() => api.players.remove(playerId));
+            if (removed === undefined) return;
             close();
             await ctx.refresh();
             showToast('Spieler gelöscht.');

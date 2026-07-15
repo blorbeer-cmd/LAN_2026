@@ -1,16 +1,15 @@
 // Real per-user login gate (see docs/KONZEPT-USER-MANAGEMENT.md). Only ever
 // runs once the server reports authMode: 'required' via /api/meta — while
 // AUTH_MODE stays 'legacy' (the default), app.js never calls ensureLogin()
-// at all, so nothing about today's whoami.js-based identity changes.
-//
-// Once logged in, bridges into that same whoami.js identity via setMyId()
-// so the rest of the app keeps working unchanged — replacing whoami.js's
-// client-picked identity with the session's is a separate, later change
-// (Phase 2), not this one.
+// at all, so legacy deployments keep today's whoami.js-based identity.
+// Required mode locks the compatibility adapter to /api/me; feature routes
+// independently bind every actor playerId to that verified server session.
 
 import { api } from './api.js';
-import { setMyId } from './whoami.js';
+import { lockMyIdToSession } from './whoami.js';
 import { escapeHtml } from './format.js';
+import { icon } from './icons.js';
+import { detachPushSubscription, rebindExistingPushSubscription } from './push.js';
 
 function paramFromUrl(name) {
   return new URLSearchParams(location.search).get(name);
@@ -25,6 +24,7 @@ export let authRequired = false;
 
 export async function logout() {
   try {
+    await detachPushSubscription().catch(() => {});
     await api.auth.logout();
   } finally {
     // Simplest correct reset: every piece of client state that assumed a
@@ -55,11 +55,15 @@ function nameField() {
   `;
 }
 
-function passwordField({ autofocus = false, autocomplete = 'current-password', label = 'Passwort' } = {}) {
+function passwordField({ autofocus = false, autocomplete = 'current-password', label = 'Passwort', passphraseHint = false } = {}) {
   return `
     <div>
       <label for="auth-password" class="field-label">${escapeHtml(label)}</label>
-      <input id="auth-password" type="password" autocomplete="${autocomplete}" required minlength="15" ${autofocus ? 'autofocus' : ''} />
+      <div class="row">
+        <input id="auth-password" style="flex:1;min-width:0;" type="password" autocomplete="${autocomplete}" required minlength="15" ${autofocus ? 'autofocus' : ''} />
+        <button type="button" class="btn btn-sm" data-password-toggle aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
+      </div>
+      ${passphraseHint ? '<p class="muted" style="font-size:var(--font-size-xs);">Drei Wörter reichen – eine lange Passphrase ist besser als Zeichensalat.</p>' : ''}
     </div>
   `;
 }
@@ -76,7 +80,7 @@ function renderRegisterForm() {
   return cardShell(
     'RespawnHQ',
     'Willkommen! Leg dein Konto an.',
-    `${nameField()}${passwordField({ autocomplete: 'new-password', label: 'Passwort (mind. 15 Zeichen)' })}<button type="submit" class="btn btn-primary">Konto anlegen</button>`
+    `${nameField()}${passwordField({ autocomplete: 'new-password', label: 'Passwort (mind. 15 Zeichen)', passphraseHint: true })}<button type="submit" class="btn btn-primary">Konto anlegen</button>`
   );
 }
 
@@ -84,7 +88,7 @@ function renderClaimForm() {
   return cardShell(
     'RespawnHQ',
     'Setze ein Passwort für dein bestehendes Konto.',
-    `${passwordField({ autofocus: true, autocomplete: 'new-password', label: 'Passwort (mind. 15 Zeichen)' })}<button type="submit" class="btn btn-primary">Passwort setzen</button>`
+    `${passwordField({ autofocus: true, autocomplete: 'new-password', label: 'Passwort (mind. 15 Zeichen)', passphraseHint: true })}<button type="submit" class="btn btn-primary">Passwort setzen</button>`
   );
 }
 
@@ -92,7 +96,7 @@ function renderResetForm() {
   return cardShell(
     'RespawnHQ',
     'Lege ein neues Passwort für dein Konto fest.',
-    `${passwordField({ autofocus: true, autocomplete: 'new-password', label: 'Neues Passwort (mind. 15 Zeichen)' })}<button type="submit" class="btn btn-primary">Passwort zurücksetzen</button>`
+    `${passwordField({ autofocus: true, autocomplete: 'new-password', label: 'Neues Passwort (mind. 15 Zeichen)', passphraseHint: true })}<button type="submit" class="btn btn-primary">Passwort zurücksetzen</button>`
   );
 }
 
@@ -112,7 +116,8 @@ export async function ensureLogin() {
   if (mode === 'login') {
     try {
       const me = await api.me();
-      setMyId(me.id);
+      lockMyIdToSession(me.id);
+      await rebindExistingPushSubscription(me.id).catch(() => {});
       return;
     } catch {
       // No valid session yet; fall through to the login gate below.
@@ -129,6 +134,18 @@ export async function ensureLogin() {
           ? renderResetForm()
           : renderLoginForm();
   screen.hidden = false;
+
+  screen.querySelectorAll('[data-password-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const input = screen.querySelector('#auth-password');
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      const label = show ? 'Passwort verbergen' : 'Passwort anzeigen';
+      button.setAttribute('aria-label', label);
+      button.setAttribute('title', label);
+      button.innerHTML = icon(show ? 'eyeOff' : 'eye');
+    });
+  });
 
   return new Promise((resolve) => {
     const form = screen.querySelector('#auth-form');
@@ -152,7 +169,8 @@ export async function ensureLogin() {
           const name = screen.querySelector('#auth-name').value.trim();
           me = await api.auth.login({ name, password });
         }
-        setMyId(me.id);
+        lockMyIdToSession(me.id);
+        await rebindExistingPushSubscription(me.id).catch(() => {});
         // Drop the invite/claim/reset code from the URL once it's been used —
         // reloading the page must not re-attempt (and fail) the same
         // already-consumed code.

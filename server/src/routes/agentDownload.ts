@@ -13,6 +13,7 @@ import path from 'path';
 import archiver from 'archiver';
 import { db } from '../db';
 import { config } from '../config';
+import { withQueryPlayerIdentity } from '../sessions';
 
 export const agentDownloadRouter = Router();
 
@@ -112,7 +113,7 @@ function buildUninstallBat(): string {
 
 // GET /api/agent-download?playerId=...&trackActivity=1 - streams a
 // personalized ZIP.
-agentDownloadRouter.get('/', (req, res) => {
+agentDownloadRouter.get('/', ...withQueryPlayerIdentity, (req, res) => {
   const { playerId, trackActivity } = req.query;
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });

@@ -66,7 +66,11 @@ export function saveSubscription(playerId: string, sub: SubscriptionInput): void
   ).run(nanoid(), playerId, sub.endpoint, sub.keys.p256dh, sub.keys.auth, Date.now());
 }
 
-export function removeSubscription(endpoint: string): void {
+export function removeSubscription(endpoint: string, playerId?: string): void {
+  if (playerId) {
+    db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND player_id = ?').run(endpoint, playerId);
+    return;
+  }
   db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);
 }
 

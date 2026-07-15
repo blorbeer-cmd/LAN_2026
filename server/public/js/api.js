@@ -42,6 +42,7 @@ export async function apiFetch(path, options = {}) {
     const message = (body && body.error) || `Fehler ${res.status}`;
     const err = new Error(message);
     err.status = res.status;
+    err.code = body?.code;
     throw err;
   }
   // Test players are visible in admin mode only — strip them out of every
@@ -105,6 +106,8 @@ export const api = {
     reset: (data) => apiFetch('/api/auth/reset', { method: 'POST', body: JSON.stringify(data) }),
     login: (data) => apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify(data) }),
     logout: () => apiFetch('/api/auth/logout', { method: 'POST' }),
+    changePassword: (data) => apiFetch('/api/auth/password', { method: 'POST', body: JSON.stringify(data) }),
+    reauth: (password) => apiFetch('/api/auth/reauth', { method: 'POST', body: JSON.stringify({ password }) }),
   },
 
   players: {

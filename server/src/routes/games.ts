@@ -10,6 +10,7 @@ import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString, isIntInRange, isValidAvatar } from '../validation';
 import { requireAdmin } from '../auth';
+import { withBodyPlayerIdentity } from '../sessions';
 
 export const gamesRouter = Router();
 
@@ -126,7 +127,7 @@ function validateTeamSizes(
 // tracked game (name, team size, no status = defaults to 'catalog'), or a
 // player suggestion from the Spiele view (name + optional platform/trailer,
 // status: 'suggestion', playerId so it's attributed as createdBy).
-gamesRouter.post('/', (req, res) => {
+gamesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, status, playerId } =
     req.body ?? {};
 

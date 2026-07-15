@@ -197,6 +197,51 @@ test('createSocketAuthGuard accepts a socket carrying a valid session cookie ins
   });
 });
 
+test('required socket auth rejects shared-token-only clients and binds payload identity to the session', async () => {
+  const playerId = nanoid();
+  const spoofedPlayerId = nanoid();
+  db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(
+    playerId,
+    `Required Socket Player ${playerId}`,
+    nanoid(24),
+    Date.now()
+  );
+  const sessionToken = createSession(playerId);
+
+  const httpServer = http.createServer();
+  const io = new Server(httpServer);
+  io.use(createSocketAuthGuard('secret-token', 'required'));
+  io.on('connection', (socket) => {
+    socket.on('identity:test', (payload: { playerId?: string }, ack: (value: string | undefined) => void) => {
+      ack(payload.playerId);
+    });
+  });
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const port = (httpServer.address() as AddressInfo).port;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const tokenOnly = ioClient(baseUrl, {
+      transports: ['websocket'],
+      reconnection: false,
+      auth: { token: 'secret-token' },
+    });
+    const rejected = await new Promise<Error>((resolve) => tokenOnly.once('connect_error', resolve));
+    assert.match(rejected.message, /unauthorized/);
+    tokenOnly.close();
+
+    const sessionClient = await connectClient(baseUrl, sessionToken);
+    const resolvedPlayerId = await new Promise<string | undefined>((resolve) => {
+      sessionClient.emit('identity:test', { playerId: spoofedPlayerId }, resolve);
+    });
+    assert.equal(resolvedPlayerId, playerId);
+    sessionClient.close();
+  } finally {
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+  }
+});
+
 test('logging out actively disconnects sockets authenticated by that session', async () => {
   const playerId = nanoid();
   db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(

@@ -102,6 +102,11 @@ test('an invite link registers a new account and logs it straight in', async () 
 
   await page.fill('#auth-name', NAME);
   await page.fill('#auth-password', PASSWORD);
+  assert.equal(await page.getAttribute('#auth-password', 'type'), 'password');
+  await page.click('[data-password-toggle]');
+  assert.equal(await page.getAttribute('#auth-password', 'type'), 'text');
+  assert.equal(await page.getAttribute('[data-password-toggle]', 'aria-label'), 'Passwort verbergen');
+  await page.click('[data-password-toggle]');
   await page.click('#auth-form button[type="submit"]');
 
   await page.waitForSelector('#app:not([hidden])');

@@ -6,6 +6,7 @@ import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isIntInRange } from '../validation';
 import { computeSkillSuggestionsForGame, MIN_RESULTS_FOR_SUGGESTION, type SkillSuggestionMatch } from '../skillSuggestion';
+import { withBodyPlayerIdentity, withParamPlayerIdentity } from '../sessions';
 
 export const skillsRouter = Router();
 
@@ -71,7 +72,7 @@ skillsRouter.get('/suggestions', (_req, res) => {
 
 // PUT /api/skills - upsert a single rating. Idempotent by design so the
 // frontend can fire-and-forget on every slider change.
-skillsRouter.put('/', (req, res) => {
+skillsRouter.put('/', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId, gameId, rating } = req.body ?? {};
 
   if (typeof playerId !== 'string' || !playerId) {
@@ -99,7 +100,7 @@ skillsRouter.put('/', (req, res) => {
 });
 
 // DELETE /api/skills/:playerId/:gameId - clear a rating.
-skillsRouter.delete('/:playerId/:gameId', (req, res) => {
+skillsRouter.delete('/:playerId/:gameId', ...withParamPlayerIdentity(), (req, res) => {
   const result = db
     .prepare('DELETE FROM skills WHERE player_id = ? AND game_id = ?')
     .run(req.params.playerId, req.params.gameId);

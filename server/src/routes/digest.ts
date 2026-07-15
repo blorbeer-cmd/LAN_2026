@@ -9,6 +9,7 @@
 
 import { Router } from 'express';
 import { db } from '../db';
+import { withQueryPlayerIdentity } from '../sessions';
 
 export const digestRouter = Router();
 
@@ -20,7 +21,7 @@ interface GameRow {
 
 // GET /api/digest?playerId=... - this player's currently-unrated, currently-
 // live games.
-digestRouter.get('/', (req, res) => {
+digestRouter.get('/', ...withQueryPlayerIdentity, (req, res) => {
   const { playerId } = req.query;
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });

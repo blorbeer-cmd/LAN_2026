@@ -44,6 +44,17 @@ export function recordLoginFailure(name: string): void {
     if (entryValue.lastFailureAt <= now - ENTRY_RETENTION_MS) entries.delete(entryKey);
   }
   const key = keyFor(name);
+  if (!entries.has(key) && entries.size >= MAX_TRACKED_ACCOUNTS) {
+    let evictionKey: string | undefined;
+    let oldestFailure = Number.POSITIVE_INFINITY;
+    for (const [candidateKey, candidate] of entries) {
+      if (candidate.lockedUntil > now || candidate.lastFailureAt >= oldestFailure) continue;
+      evictionKey = candidateKey;
+      oldestFailure = candidate.lastFailureAt;
+    }
+    if (evictionKey) entries.delete(evictionKey);
+    else return;
+  }
   const entry = entries.get(key) ?? { failCount: 0, lockedUntil: 0, lastFailureAt: now };
   entry.failCount += 1;
   entry.lastFailureAt = now;
@@ -52,7 +63,6 @@ export function recordLoginFailure(name: string): void {
     entry.lockedUntil = now + lockoutMs;
   }
   entries.set(key, entry);
-  if (entries.size > MAX_TRACKED_ACCOUNTS) entries.delete(entries.keys().next().value!);
 }
 
 export function recordLoginSuccess(name: string): void {
