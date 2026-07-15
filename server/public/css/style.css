@@ -1176,8 +1176,10 @@ input[type='number']::-webkit-inner-spin-button {
   gap: var(--space-2);
 }
 .tournament-lobby-credential {
-  display: inline-flex;
-  align-items: baseline;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) var(--tap-target-size);
+  align-items: center;
+  flex: 1 1 var(--selection-card-min-width);
   gap: var(--space-2);
   padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
   border: 1px solid var(--border);
@@ -1191,12 +1193,12 @@ input[type='number']::-webkit-inner-spin-button {
 .tournament-lobby-credential strong {
   color: var(--text);
   font-size: var(--font-size-lg);
+  line-height: var(--line-height-tight);
 }
 .tournament-lobby-copy {
   width: var(--tap-target-size);
   height: var(--tap-target-size);
   flex: 0 0 var(--tap-target-size);
-  margin-left: var(--space-1);
   color: var(--text-muted);
 }
 @media (hover: hover) {

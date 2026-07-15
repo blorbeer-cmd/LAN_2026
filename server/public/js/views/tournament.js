@@ -1012,7 +1012,7 @@ function renderDetail(container, ctx) {
               t.lobbyName
                 ? `<div class="tournament-lobby-credential">
                      <span>Lobby</span><strong>${escapeHtml(t.lobbyName)}</strong>
-                     <button type="button" class="icon-btn tournament-lobby-copy" data-copy-lobby="name" title="Lobbyname kopieren" aria-label="Lobbyname kopieren">${icon('clipboard')}</button>
+                     <button type="button" class="icon-btn tournament-lobby-copy" data-copy-lobby="name" title="Lobbyname kopieren" aria-label="Lobbyname kopieren">${icon('copy')}</button>
                    </div>`
                 : ''
             }
@@ -1020,7 +1020,7 @@ function renderDetail(container, ctx) {
               t.lobbyPassword
                 ? `<div class="tournament-lobby-credential">
                      <span>Passwort</span><strong>${escapeHtml(t.lobbyPassword)}</strong>
-                     <button type="button" class="icon-btn tournament-lobby-copy" data-copy-lobby="password" title="Passwort kopieren" aria-label="Passwort kopieren">${icon('clipboard')}</button>
+                     <button type="button" class="icon-btn tournament-lobby-copy" data-copy-lobby="password" title="Passwort kopieren" aria-label="Passwort kopieren">${icon('copy')}</button>
                    </div>`
                 : ''
             }
