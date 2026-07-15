@@ -96,8 +96,8 @@ Die Ideen aus der Anfrage sind alle machbar – an diesen Stellen empfehle ich P
    davon unberührt.)
 2. **Passwort ja – aber die Hürde klein halten.** Produktziel Nr. 2 ist „Handy raus, URL auf,
    loslegen". Deshalb: Registrierung nur über **Einladungslink mit Einmal-Code** (ersetzt den
-   heutigen geteilten Token-Link), Passwort mit milden Regeln (min. 8 Zeichen, keine
-   Sonderzeichen-Pflicht), **lange Sessions** (~90 Tage, gleitend verlängert) – man loggt sich
+   heutigen geteilten Token-Link), Passwort mit milden Regeln (min. 15 Zeichen, keine
+   Sonderzeichen-Pflicht), **lange Sessions** (90 Tage gleitend, 180 Tage absolut) – man loggt sich
    pro Gerät praktisch einmal ein und ist die ganze LAN (und die nächste) drin. Details und
    verworfene Alternativen: Abschnitt 5.
 3. **„Nicht mehr wechseln" heißt nicht „kein Logout".** Logout muss bleiben (geteilte Geräte,
@@ -161,12 +161,12 @@ CREATE TABLE invites (
   purpose     TEXT NOT NULL,             -- 'register' | 'claim' | 'reset' (siehe unten)
   player_id   TEXT REFERENCES players(id) ON DELETE CASCADE, -- gesetzt bei claim/reset
   event_id    TEXT REFERENCES events(id) ON DELETE CASCADE,  -- optional: direkt in dieses Event
-  created_by  TEXT REFERENCES players(id), -- NULL = System (Recovery-Bootstrap, s. 4.3)
+  created_by  TEXT REFERENCES players(id) ON DELETE SET NULL, -- NULL = System/gelöschter Ersteller
   created_at  INTEGER NOT NULL,
-  expires_at  INTEGER,                   -- Empfehlung: Default 14 Tage
+  expires_at  INTEGER NOT NULL,          -- Default 14 Tage, Reset 24 Stunden
   revoked_at  INTEGER,                   -- Admin kann Codes zurückziehen
   used_at     INTEGER,
-  used_by     TEXT REFERENCES players(id)
+  used_by     TEXT REFERENCES players(id) ON DELETE SET NULL
 );
 ```
 
@@ -181,14 +181,18 @@ entwertet alle offenen Reset-Codes des Kontos.
 
 **Passwort-Hashing:** `crypto.scrypt` aus Node-Bordmitteln (Format `scrypt$N$r$p$salt$hash`).
 Kein neues natives Paket, kein Build-Risiko – bewusst gegen `bcrypt`/`argon2`-Dependencies
-entschieden. Für 15 Nutzer auf LAN-Hardware ist scrypt mit Standardparametern mehr als genug.
+entschieden. Phase 1 behält die synchronen Node-Standardparameter bei; vor einer Erhöhung der
+Kosten muss das Hashing vom Event Loop entkoppelt werden, damit parallele Logins den LAN-Server
+nicht blockieren. Das selbstbeschreibende Format erlaubt diese spätere Migration.
 
 **Session-Mechanik:**
 - Login liefert einen zufälligen Token (256 bit), gespeichert wird nur dessen Hash.
-- Transport als **HTTP-only-Cookie** (`SameSite=Lax`, `Secure`): funktioniert automatisch für
+- Transport als **HTTP-only-Cookie** (`SameSite=Lax`, `Secure`, im HTTPS-Modus mit
+  `__Host-`-Präfix): funktioniert automatisch für
   `fetch`, Socket.IO-Handshake **und** den Service Worker (Web-Push-Setup), ohne dass das
   Frontend Token-Handling betreiben muss. Der bisherige `x-access-token`-Header entfällt.
-- Lebensdauer ~90 Tage, `last_seen_at` gleitend aktualisiert; Logout löscht die Session-Zeile.
+- Lebensdauer 90 Tage gleitend, maximal 180 Tage absolut; Logout löscht die Session-Zeile und
+  trennt die zugehörigen Socket-Verbindungen.
 - Passwortänderung invalidiert alle anderen Sessions des Kontos.
 - Login-Endpoint mit einfachem Rate-Limit (siehe 5.3) gegen Durchprobieren.
 
@@ -200,6 +204,7 @@ entschieden. Für 15 Nutzer auf LAN-Hardware ist scrypt mit Standardparametern m
 | `POST /api/auth/claim` | Bestandsspieler-Konto beanspruchen (`code`, `password`) |
 | `POST /api/auth/login` | `name` + `password` → Session-Cookie |
 | `POST /api/auth/logout` | Session beenden |
+| `POST /api/auth/reset` | Reset-Code verbrauchen, Passwort ersetzen, alte Sessions beenden |
 | `GET  /api/me` | Eigenes Profil + Rolle + ggf. Impersonations-Status |
 | `POST /api/auth/password` | Eigenes Passwort ändern |
 
@@ -406,7 +411,8 @@ nachrüstbar), nicht Mail.
 
 ### 5.2 Transport & Browser-Integration
 
-- **Cookie:** `HttpOnly`, `SameSite=Lax`, `Secure`, Pfad `/`. `SameSite=Lax` blockt
+- **Cookie:** `HttpOnly`, `SameSite=Lax`, `Secure`, Pfad `/`, im HTTPS-Modus mit
+  `__Host-`-Präfix. `SameSite=Lax` blockt
   Cross-Site-POSTs, damit ist CSRF für die JSON-API praktisch abgedeckt (zusätzlich: Server
   akzeptiert nur `Content-Type: application/json`).
 - **Betrieb ohne HTTPS** (reines LAN ohne Cloud): `Secure`-Cookies funktionieren dann nicht.
@@ -436,11 +442,11 @@ nachrüstbar), nicht Mail.
 
 ### 5.3 Missbrauchs- und Ausfall-Szenarien
 
-- **Brute-Force:** Rate-Limit auf `POST /api/auth/login` pro Konto **und** pro IP (z. B.
-  10 Fehlversuche → 60 s Sperre, exponentiell). Wichtig: hinter einem Cloud-Proxy teilen sich
-  alle Partygäste ggf. eine IP – die Sperre pro IP darf deshalb nie so scharf sein, dass ein
-  Scherzkeks mit absichtlichen Fehl-Logins die ganze Party aussperrt; die Konto-Sperre
-  wiederum meldet im UI klar „zu viele Versuche, warte kurz".
+- **Brute-Force:** Exponentielle Sperre pro Konto (10 Fehlversuche → zunächst 60 s) plus ein
+  großzügiges globales Limit auf anonyme Login-/Register-/Claim-/Reset-Versuche
+  (300 Requests/Minute). Bewusst kein IP-Limit:
+  Hinter einem Cloud-Proxy können alle Partygäste dieselbe IP teilen; eine IP-Sperre könnte
+  deshalb die gesamte Party aussperren.
 - **Session läuft mitten auf der LAN ab:** durch gleitende Verlängerung praktisch
   ausgeschlossen; falls doch (Gerät lag 90 Tage im Schrank), landet man auf dem Login-Screen
   mit vorausgefülltem Namen – ein Feld tippen, weiter.
@@ -698,7 +704,7 @@ das Produktivverhalten bis zum Schluss unangetastet lässt.
 | Phase | Inhalt | Größe |
 |---|---|---|
 | **0 – Bugfix Event-Anlage** | `openModal`-Import in `games.js` (in diesem Branch bereits enthalten) | XS ✅ |
-| **1 – Auth-Fundament** | Schema (Spalten, `sessions`, `invites`), scrypt-Hashing, `/api/auth/*`, `/api/me`, `requireUser`-Middleware, Session-Cookie inkl. `COOKIE_SECURE`-Flag, Socket.IO-Handshake + Socket-Kick bei Logout, Login-/Register-Screen, Rate-Limit. Alles hinter `AUTH_MODE` | L |
+| **1 – Auth-Fundament** | Schema (Spalten, `sessions`, `invites`), scrypt-Hashing, `/api/auth/*` inkl. vollständigem Reset-Flow, `/api/me`, `requireUser`-Middleware, Session-Cookie inkl. `COOKIE_SECURE`-Flag, Socket.IO-Handshake + Socket-Kick bei Logout/Passwortwechsel/Reset, Login-/Register-/Claim-/Reset-Screen, Rate-Limit. Alles hinter `AUTH_MODE` | L |
 | **2 – Identität fest verdrahten** | `whoami.js` raus, `player_id` überall aus der Session statt aus Query/Body (inkl. Digest, Meine Stats, Skills/Bock-Schreibpfade), Profil-Screen (Passwort ändern, Logout), Push-Subscription-Neubindung bei Logout/Login | M |
 | **3 – Rollen & Admin-Härtung** | `requireAdmin` auf Session-Rolle, PIN-Flow entfernen, **Reset der Alt-Admin-Flags** (heute ist jeder Admin – ohne Reset sind alle Gates No-ops) + Bootstrap + Recovery-Code, Letzter-Admin-Guards (+ Concurrency-Test), DELETE-Endpoints gaten & fehlende ergänzen, Spieler-Deaktivierung statt Hard-Delete (inkl. Session-/Socket-/Push-Abo-Invalidierung + Agent-Ignore), `api_key` nur noch für Inhaber/Admin lesbar + Key-Rotation, `admin_log`, Admin-UI aufräumen | M–L |
 | **4 – Onboarding & Migration** | Invite-/Claim-Codes mit Ablauf/Widerruf + UI (Links/QR im Admin-Bereich), Claim-Flow für Bestandsspieler, Namens-Kollisions-Check (NOCASE), Umstellung `AUTH_MODE=required`, Alt-Token/PIN entfernen | M |

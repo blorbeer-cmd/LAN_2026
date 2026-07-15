@@ -6,11 +6,11 @@
 // endpoints that don't touch any existing behavior (see config.authMode).
 // Enforcing login across feature routes is a separate, later change.
 
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { config } from '../config';
-import { broadcast, Events } from '../realtime';
+import { broadcast, disconnectPlayerSockets, disconnectSessionSockets, Events } from '../realtime';
 import { isNonEmptyString, isHexColor, isValidAvatar } from '../validation';
 import {
   hashPassword,
@@ -30,11 +30,29 @@ import {
   requireSessionAdmin,
 } from '../sessions';
 import { createInvite, findValidInvite, markInviteUsed, voidOutstandingInvites, revokeInvite, type InvitePurpose } from '../invites';
-import { isLoginLocked, loginRetryAfterMs, recordLoginFailure, recordLoginSuccess } from '../loginRateLimit';
+import {
+  consumeGlobalAuthRequest,
+  isLoginLocked,
+  loginRetryAfterMs,
+  recordLoginFailure,
+  recordLoginSuccess,
+} from '../loginRateLimit';
 
 export const authRouter = Router();
 
+const limitAnonymousAuthAttempts: RequestHandler = (_req, res, next) => {
+  const rate = consumeGlobalAuthRequest();
+  if (!rate.allowed) {
+    res.setHeader('Retry-After', String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ error: 'Zu viele Authentifizierungsanfragen – bitte kurz warten.' });
+    return;
+  }
+  next();
+};
+
 const DEFAULT_COLOR = '#4f9dff';
+
+class InvalidInviteError extends Error {}
 
 interface PlayerRow {
   id: string;
@@ -74,7 +92,7 @@ function recoveryCodeUsable(code: string): boolean {
 // POST /api/auth/register - creates a brand-new player via a 'register'
 // invite (or the recovery code, while no admin has claimed an account yet).
 // Body: { code, name, password, color?, avatar? }
-authRouter.post('/register', (req, res) => {
+authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
   const { code, name, password, color, avatar } = req.body ?? {};
 
   if (!isNonEmptyString(code, 200)) return res.status(400).json({ error: 'Einladungscode ist erforderlich.' });
@@ -112,12 +130,21 @@ authRouter.post('/register', (req, res) => {
     created_at: now,
   };
 
-  db.prepare(
-    `INSERT INTO players (id, name, color, avatar, api_key, tracking_paused, is_admin, is_test, password_hash, last_login_at, created_at)
-     VALUES (?, ?, ?, ?, ?, 0, ?, 0, ?, ?, ?)`
-  ).run(player.id, player.name, player.color, player.avatar, nanoid(24), player.is_admin, player.password_hash, now, now);
+  try {
+    db.transaction(() => {
+      db.prepare(
+        `INSERT INTO players (id, name, color, avatar, api_key, tracking_paused, is_admin, is_test, password_hash, last_login_at, created_at)
+         VALUES (?, ?, ?, ?, ?, 0, ?, 0, ?, ?, ?)`
+      ).run(player.id, player.name, player.color, player.avatar, nanoid(24), player.is_admin, player.password_hash, now, now);
 
-  if (invite) markInviteUsed(invite.code, player.id);
+      if (invite && !markInviteUsed(invite.code, player.id, 'register')) throw new InvalidInviteError();
+    })();
+  } catch (error) {
+    if (error instanceof InvalidInviteError) {
+      return res.status(400).json({ error: 'Einladungscode ist ungültig oder abgelaufen.' });
+    }
+    throw error;
+  }
 
   broadcast(Events.playersChanged, null);
   const token = createSession(player.id);
@@ -130,7 +157,7 @@ authRouter.post('/register', (req, res) => {
 // from before real login existed). Body: { code, password, playerId? }
 // (playerId is only read for the recovery-code bootstrap path, where there
 // is no invite row to say which player is being claimed.)
-authRouter.post('/claim', (req, res) => {
+authRouter.post('/claim', limitAnonymousAuthAttempts, (req, res) => {
   const { code, password, playerId } = req.body ?? {};
 
   if (!isNonEmptyString(code, 200)) return res.status(400).json({ error: 'Einladungscode ist erforderlich.' });
@@ -160,15 +187,22 @@ authRouter.post('/claim', (req, res) => {
 
   const now = Date.now();
   const nextIsAdmin = isBootstrap ? 1 : existing.is_admin;
-  db.prepare('UPDATE players SET password_hash = ?, is_admin = ?, last_login_at = ? WHERE id = ?').run(
-    hashPassword(password),
-    nextIsAdmin,
-    now,
-    existing.id
-  );
-
-  if (invite) markInviteUsed(invite.code, existing.id);
-  voidOutstandingInvites(existing.id, 'claim');
+  const passwordHash = hashPassword(password);
+  try {
+    db.transaction(() => {
+      if (invite && !markInviteUsed(invite.code, existing.id, 'claim')) throw new InvalidInviteError();
+      const result = db
+        .prepare('UPDATE players SET password_hash = ?, is_admin = ?, last_login_at = ? WHERE id = ? AND password_hash IS NULL')
+        .run(passwordHash, nextIsAdmin, now, existing.id);
+      if (result.changes !== 1) throw new InvalidInviteError();
+      voidOutstandingInvites(existing.id, 'claim');
+    })();
+  } catch (error) {
+    if (error instanceof InvalidInviteError) {
+      return res.status(400).json({ error: 'Einladungscode ist ungültig, abgelaufen oder bereits verbraucht.' });
+    }
+    throw error;
+  }
 
   broadcast(Events.playersChanged, null);
   const token = createSession(existing.id);
@@ -177,7 +211,7 @@ authRouter.post('/claim', (req, res) => {
 });
 
 // POST /api/auth/login - Body: { name, password }
-authRouter.post('/login', (req, res) => {
+authRouter.post('/login', limitAnonymousAuthAttempts, (req, res) => {
   const { name, password } = req.body ?? {};
   if (typeof name !== 'string' || !name.trim() || typeof password !== 'string' || !password) {
     return res.status(400).json({ error: 'Name und Passwort sind erforderlich.' });
@@ -212,7 +246,8 @@ authRouter.post('/login', (req, res) => {
 // succeeds (a missing/already-invalid cookie is not an error here).
 authRouter.post('/logout', (req, res) => {
   const token = getSessionToken(req);
-  if (token) deleteSessionByToken(token);
+  const deleted = token ? deleteSessionByToken(token) : undefined;
+  if (deleted) disconnectSessionSockets(deleted.id);
   clearSessionCookie(res);
   res.status(204).end();
 });
@@ -236,8 +271,52 @@ authRouter.post('/password', requireUser, (req, res) => {
 
   db.prepare('UPDATE players SET password_hash = ? WHERE id = ?').run(hashPassword(newPassword), existing.id);
   deleteAllSessionsForPlayer(existing.id, req.sessionId);
+  disconnectPlayerSockets(existing.id, req.sessionId);
   voidOutstandingInvites(existing.id, 'reset');
   res.status(204).end();
+});
+
+// POST /api/auth/reset - consumes an admin-issued reset code, replaces the
+// password, invalidates every old session and logs this device in with a new
+// session. Body: { code, newPassword }
+authRouter.post('/reset', limitAnonymousAuthAttempts, (req, res) => {
+  const { code, newPassword } = req.body ?? {};
+  if (!isNonEmptyString(code, 200)) {
+    return res.status(400).json({ error: 'Reset-Code ist erforderlich.' });
+  }
+  if (!isValidPassword(newPassword)) {
+    return res.status(400).json({ error: `Neues Passwort muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen lang sein.` });
+  }
+
+  const invite = findValidInvite(code, 'reset');
+  if (!invite?.player_id) {
+    return res.status(400).json({ error: 'Reset-Code ist ungültig oder abgelaufen.' });
+  }
+  const existing = db.prepare('SELECT * FROM players WHERE id = ?').get(invite.player_id) as PlayerRow | undefined;
+  if (!existing?.password_hash) {
+    return res.status(400).json({ error: 'Reset-Code ist ungültig oder abgelaufen.' });
+  }
+
+  const passwordHash = hashPassword(newPassword);
+  const reset = db.transaction(() => {
+    if (!markInviteUsed(invite.code, existing.id, 'reset')) return false;
+    db.prepare('UPDATE players SET password_hash = ?, last_login_at = ? WHERE id = ?').run(
+      passwordHash,
+      Date.now(),
+      existing.id
+    );
+    deleteAllSessionsForPlayer(existing.id);
+    voidOutstandingInvites(existing.id, 'reset');
+    return true;
+  })();
+  if (!reset) {
+    return res.status(400).json({ error: 'Reset-Code ist ungültig oder abgelaufen.' });
+  }
+
+  disconnectPlayerSockets(existing.id);
+  const token = createSession(existing.id);
+  setSessionCookie(res, token);
+  res.json(toPublicAccount(existing));
 });
 
 const INVITE_PURPOSES: InvitePurpose[] = ['register', 'claim', 'reset'];
@@ -248,7 +327,7 @@ authRouter.post('/invites', ...requireSessionAdmin, (req, res) => {
   if (typeof purpose !== 'string' || !INVITE_PURPOSES.includes(purpose as InvitePurpose)) {
     return res.status(400).json({ error: `purpose muss eines von ${INVITE_PURPOSES.join(', ')} sein.` });
   }
-  if (expiresInMs !== undefined && (typeof expiresInMs !== 'number' || !Number.isFinite(expiresInMs) || expiresInMs < 0)) {
+  if (expiresInMs !== undefined && (typeof expiresInMs !== 'number' || !Number.isFinite(expiresInMs) || expiresInMs <= 0)) {
     return res.status(400).json({ error: 'expiresInMs muss eine positive Zahl sein.' });
   }
 

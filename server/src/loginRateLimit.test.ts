@@ -2,7 +2,13 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isLoginLocked, loginRetryAfterMs, recordLoginFailure, recordLoginSuccess } from './loginRateLimit';
+import {
+  consumeGlobalAuthRequest,
+  isLoginLocked,
+  loginRetryAfterMs,
+  recordLoginFailure,
+  recordLoginSuccess,
+} from './loginRateLimit';
 
 test('an account is not locked before reaching the failure threshold', () => {
   const name = `Rate Test A ${Date.now()}`;
@@ -40,4 +46,15 @@ test('lockout duration grows with repeated failures beyond the threshold', () =>
   for (let i = 0; i < 5; i++) recordLoginFailure(name);
   const laterRetry = loginRetryAfterMs(name);
   assert.ok(laterRetry > firstRetry, `expected growing lockout, got ${firstRetry} then ${laterRetry}`);
+});
+
+test('global auth limiting is bounded to a window and recovers afterwards', () => {
+  const start = Date.now() + 100_000;
+  for (let index = 0; index < 300; index++) {
+    assert.equal(consumeGlobalAuthRequest(start + index).allowed, true);
+  }
+  const limited = consumeGlobalAuthRequest(start + 300);
+  assert.equal(limited.allowed, false);
+  assert.ok(limited.retryAfterMs > 0);
+  assert.equal(consumeGlobalAuthRequest(start + 60_001).allowed, true);
 });

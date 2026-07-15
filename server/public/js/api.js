@@ -102,6 +102,7 @@ export const api = {
   auth: {
     register: (data) => apiFetch('/api/auth/register', { method: 'POST', body: JSON.stringify(data) }),
     claim: (data) => apiFetch('/api/auth/claim', { method: 'POST', body: JSON.stringify(data) }),
+    reset: (data) => apiFetch('/api/auth/reset', { method: 'POST', body: JSON.stringify(data) }),
     login: (data) => apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify(data) }),
     logout: () => apiFetch('/api/auth/logout', { method: 'POST' }),
   },

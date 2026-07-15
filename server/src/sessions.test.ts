@@ -17,6 +17,7 @@ import {
   requireUser,
   requireSessionAdmin,
   SESSION_COOKIE_NAME,
+  SESSION_ABSOLUTE_TTL_MS,
 } from './sessions';
 
 function makePlayer(opts: { isAdmin?: boolean } = {}): string {
@@ -52,7 +53,7 @@ function fakeRes(): Response & { statusCode: number; body: unknown } {
 }
 
 test('parseCookieHeader reads one cookie among several', () => {
-  const cookies = parseCookieHeader('a=1; lan2026_session=abc123; b=2');
+  const cookies = parseCookieHeader(`a=1; ${SESSION_COOKIE_NAME}=abc123; b=2`);
   assert.equal(cookies[SESSION_COOKIE_NAME], 'abc123');
 });
 
@@ -82,6 +83,18 @@ test('verifySession rejects (and cleans up) an expired session', () => {
   assert.equal(verifySession(token), undefined);
   const remaining = db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE player_id = ?').get(playerId) as { n: number };
   assert.equal(remaining.n, 0, 'expired session row should be deleted on lookup');
+});
+
+test('verifySession enforces the absolute lifetime even when idle expiry is still in the future', () => {
+  const playerId = makePlayer();
+  const token = createSession(playerId);
+  db.prepare('UPDATE sessions SET created_at = ?, expires_at = ? WHERE player_id = ?').run(
+    Date.now() - SESSION_ABSOLUTE_TTL_MS - 1,
+    Date.now() + 60_000,
+    playerId
+  );
+
+  assert.equal(verifySession(token), undefined);
 });
 
 test('verifySession slides the expiry forward on each successful lookup', () => {

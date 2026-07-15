@@ -9,13 +9,19 @@
 const FAILURE_THRESHOLD = 10;
 const BASE_LOCKOUT_MS = 60_000;
 const MAX_LOCKOUT_MS = 60 * 60_000;
+const ENTRY_RETENTION_MS = 24 * 60 * 60_000;
+const MAX_TRACKED_ACCOUNTS = 10_000;
+const GLOBAL_AUTH_WINDOW_MS = 60_000;
+const GLOBAL_AUTH_REQUESTS_PER_WINDOW = 300;
 
 interface Entry {
   failCount: number;
   lockedUntil: number;
+  lastFailureAt: number;
 }
 
 const entries = new Map<string, Entry>();
+const globalAuthRequests: number[] = [];
 
 function keyFor(name: string): string {
   return name.trim().toLowerCase();
@@ -33,16 +39,37 @@ export function loginRetryAfterMs(name: string): number {
 }
 
 export function recordLoginFailure(name: string): void {
+  const now = Date.now();
+  for (const [entryKey, entryValue] of entries) {
+    if (entryValue.lastFailureAt <= now - ENTRY_RETENTION_MS) entries.delete(entryKey);
+  }
   const key = keyFor(name);
-  const entry = entries.get(key) ?? { failCount: 0, lockedUntil: 0 };
+  const entry = entries.get(key) ?? { failCount: 0, lockedUntil: 0, lastFailureAt: now };
   entry.failCount += 1;
+  entry.lastFailureAt = now;
   if (entry.failCount >= FAILURE_THRESHOLD) {
     const lockoutMs = Math.min(BASE_LOCKOUT_MS * 2 ** (entry.failCount - FAILURE_THRESHOLD), MAX_LOCKOUT_MS);
-    entry.lockedUntil = Date.now() + lockoutMs;
+    entry.lockedUntil = now + lockoutMs;
   }
   entries.set(key, entry);
+  if (entries.size > MAX_TRACKED_ACCOUNTS) entries.delete(entries.keys().next().value!);
 }
 
 export function recordLoginSuccess(name: string): void {
   entries.delete(keyFor(name));
+}
+
+// Generous server-wide protection against password spraying across many
+// account names. It is intentionally not IP-based because all guests may
+// share one cloud-proxy address. The bounded one-minute queue cannot grow
+// without limit.
+export function consumeGlobalAuthRequest(now: number = Date.now()): { allowed: boolean; retryAfterMs: number } {
+  while (globalAuthRequests.length > 0 && globalAuthRequests[0] <= now - GLOBAL_AUTH_WINDOW_MS) {
+    globalAuthRequests.shift();
+  }
+  if (globalAuthRequests.length >= GLOBAL_AUTH_REQUESTS_PER_WINDOW) {
+    return { allowed: false, retryAfterMs: Math.max(1, globalAuthRequests[0] + GLOBAL_AUTH_WINDOW_MS - now) };
+  }
+  globalAuthRequests.push(now);
+  return { allowed: true, retryAfterMs: 0 };
 }

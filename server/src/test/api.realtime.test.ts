@@ -24,6 +24,7 @@ async function withServer(fn: (baseUrl: string) => Promise<void>): Promise<void>
   const app = createApp();
   const httpServer = http.createServer(app);
   const io = new Server(httpServer);
+  io.use(createSocketAuthGuard(''));
   setIo(io);
 
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
@@ -35,13 +36,17 @@ async function withServer(fn: (baseUrl: string) => Promise<void>): Promise<void>
   } finally {
     io.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
-    setIo(null as any);
+    setIo(null);
   }
 }
 
-function connectClient(baseUrl: string): Promise<ClientSocket> {
+function connectClient(baseUrl: string, sessionToken?: string): Promise<ClientSocket> {
   return new Promise((resolve, reject) => {
-    const socket = ioClient(baseUrl, { transports: ['websocket'], reconnection: false });
+    const socket = ioClient(baseUrl, {
+      transports: ['websocket'],
+      reconnection: false,
+      ...(sessionToken ? { extraHeaders: { Cookie: `${SESSION_COOKIE_NAME}=${sessionToken}` } } : {}),
+    });
     socket.on('connect', () => resolve(socket));
     socket.on('connect_error', reject);
   });
@@ -189,6 +194,28 @@ test('createSocketAuthGuard accepts a socket carrying a valid session cookie ins
     } finally {
       socket.close();
     }
+  });
+});
+
+test('logging out actively disconnects sockets authenticated by that session', async () => {
+  const playerId = nanoid();
+  db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(
+    playerId,
+    `Realtime Logout Test ${playerId}`,
+    nanoid(24),
+    Date.now()
+  );
+  const sessionToken = createSession(playerId);
+
+  await withServer(async (baseUrl) => {
+    const socket = await connectClient(baseUrl, sessionToken);
+    const disconnected = new Promise<string>((resolve) => socket.once('disconnect', resolve));
+    const logout = await request(baseUrl)
+      .post('/api/auth/logout')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${sessionToken}`);
+    assert.equal(logout.status, 204);
+    assert.equal(await disconnected, 'io server disconnect');
+    assert.equal(socket.connected, false);
   });
 });
 

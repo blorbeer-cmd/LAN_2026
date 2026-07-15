@@ -59,7 +59,7 @@ function passwordField({ autofocus = false, autocomplete = 'current-password', l
   return `
     <div>
       <label for="auth-password" class="field-label">${escapeHtml(label)}</label>
-      <input id="auth-password" type="password" autocomplete="${autocomplete}" required minlength="8" ${autofocus ? 'autofocus' : ''} />
+      <input id="auth-password" type="password" autocomplete="${autocomplete}" required minlength="15" ${autofocus ? 'autofocus' : ''} />
     </div>
   `;
 }
@@ -76,7 +76,7 @@ function renderRegisterForm() {
   return cardShell(
     'RespawnHQ',
     'Willkommen! Leg dein Konto an.',
-    `${nameField()}${passwordField({ autocomplete: 'new-password', label: 'Passwort (mind. 8 Zeichen)' })}<button type="submit" class="btn btn-primary">Konto anlegen</button>`
+    `${nameField()}${passwordField({ autocomplete: 'new-password', label: 'Passwort (mind. 15 Zeichen)' })}<button type="submit" class="btn btn-primary">Konto anlegen</button>`
   );
 }
 
@@ -84,30 +84,50 @@ function renderClaimForm() {
   return cardShell(
     'RespawnHQ',
     'Setze ein Passwort für dein bestehendes Konto.',
-    `${passwordField({ autofocus: true, autocomplete: 'new-password', label: 'Passwort (mind. 8 Zeichen)' })}<button type="submit" class="btn btn-primary">Passwort setzen</button>`
+    `${passwordField({ autofocus: true, autocomplete: 'new-password', label: 'Passwort (mind. 15 Zeichen)' })}<button type="submit" class="btn btn-primary">Passwort setzen</button>`
+  );
+}
+
+function renderResetForm() {
+  return cardShell(
+    'RespawnHQ',
+    'Lege ein neues Passwort für dein Konto fest.',
+    `${passwordField({ autofocus: true, autocomplete: 'new-password', label: 'Neues Passwort (mind. 15 Zeichen)' })}<button type="submit" class="btn btn-primary">Passwort zurücksetzen</button>`
   );
 }
 
 // Resolves once this device is logged in — either because a still-valid
 // session already exists (GET /api/me succeeds), or after the visitor
 // completes whichever form applies (login by default, or register/claim
-// when the URL carries the matching invite code).
+// when the URL carries the matching invite/reset code).
 export async function ensureLogin() {
   authRequired = true;
-  try {
-    const me = await api.me();
-    setMyId(me.id);
-    return;
-  } catch {
-    // No valid session yet — fall through to the gate below.
-  }
-
   const inviteCode = paramFromUrl('invite');
   const claimCode = paramFromUrl('claim');
-  const mode = inviteCode ? 'register' : claimCode ? 'claim' : 'login';
+  const resetCode = paramFromUrl('reset');
+  const mode = inviteCode ? 'register' : claimCode ? 'claim' : resetCode ? 'reset' : 'login';
+
+  // Process action links even when this browser already holds a session.
+  // Shared party devices commonly still have somebody else logged in.
+  if (mode === 'login') {
+    try {
+      const me = await api.me();
+      setMyId(me.id);
+      return;
+    } catch {
+      // No valid session yet; fall through to the login gate below.
+    }
+  }
 
   const screen = document.getElementById('auth-screen');
-  screen.innerHTML = mode === 'register' ? renderRegisterForm() : mode === 'claim' ? renderClaimForm() : renderLoginForm();
+  screen.innerHTML =
+    mode === 'register'
+      ? renderRegisterForm()
+      : mode === 'claim'
+        ? renderClaimForm()
+        : mode === 'reset'
+          ? renderResetForm()
+          : renderLoginForm();
   screen.hidden = false;
 
   return new Promise((resolve) => {
@@ -126,12 +146,14 @@ export async function ensureLogin() {
           me = await api.auth.register({ code: inviteCode, name, password });
         } else if (mode === 'claim') {
           me = await api.auth.claim({ code: claimCode, password });
+        } else if (mode === 'reset') {
+          me = await api.auth.reset({ code: resetCode, newPassword: password });
         } else {
           const name = screen.querySelector('#auth-name').value.trim();
           me = await api.auth.login({ name, password });
         }
         setMyId(me.id);
-        // Drop the invite/claim code from the URL once it's been used —
+        // Drop the invite/claim/reset code from the URL once it's been used —
         // reloading the page must not re-attempt (and fail) the same
         // already-consumed code.
         history.replaceState(null, '', `${location.pathname}${location.hash}`);

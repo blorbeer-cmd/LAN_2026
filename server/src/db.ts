@@ -1201,12 +1201,12 @@ function migrateAccountsAuth(): void {
       code        TEXT PRIMARY KEY,
       purpose     TEXT NOT NULL, -- 'register' | 'claim' | 'reset'
       player_id   TEXT REFERENCES players(id) ON DELETE CASCADE, -- set for claim/reset
-      created_by  TEXT NOT NULL REFERENCES players(id),
+      created_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
       created_at  INTEGER NOT NULL,
-      expires_at  INTEGER,
+      expires_at  INTEGER NOT NULL,
       revoked_at  INTEGER,
       used_at     INTEGER,
-      used_by     TEXT REFERENCES players(id)
+      used_by     TEXT REFERENCES players(id) ON DELETE SET NULL
     );
     CREATE INDEX IF NOT EXISTS idx_invites_player ON invites(player_id);
   `);

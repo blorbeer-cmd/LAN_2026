@@ -18,10 +18,12 @@ const BASE_URL = `http://localhost:${PORT}`;
 const RECOVERY_CODE = 'e2e-admin-recovery-code';
 const NAME = 'E2E New Person';
 const PASSWORD = 'e2e new person password';
+const PASSWORD_AFTER_RESET = 'e2e password after reset';
 
 let serverProcess: ChildProcess;
 let browser: Browser;
 let page: Page;
+let adminCookie: string;
 
 async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
   const start = Date.now();
@@ -48,13 +50,31 @@ async function mintRegisterInviteCode(): Promise<string> {
   });
   const setCookie = bootstrap.headers.get('set-cookie');
   assert.ok(setCookie, 'bootstrap register should set a session cookie');
-  const adminCookie = setCookie!.split(';')[0];
+  adminCookie = setCookie!.split(';')[0];
 
   const invite = await fetch(`${BASE_URL}/api/auth/invites`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
     body: JSON.stringify({ purpose: 'register' }),
   });
+  const body = (await invite.json()) as { code: string };
+  return body.code;
+}
+
+async function mintResetInviteCode(): Promise<string> {
+  const login = await fetch(`${BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: NAME, password: PASSWORD }),
+  });
+  assert.equal(login.status, 200);
+  const account = (await login.json()) as { id: string };
+  const invite = await fetch(`${BASE_URL}/api/auth/invites`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    body: JSON.stringify({ purpose: 'reset', playerId: account.id }),
+  });
+  assert.equal(invite.status, 201);
   const body = (await invite.json()) as { code: string };
   return body.code;
 }
@@ -129,4 +149,28 @@ test('a wrong password on the login gate shows an error and does not proceed', a
   await page.fill('#auth-password', PASSWORD);
   await page.click('#auth-form button[type="submit"]');
   await page.waitForSelector('#app:not([hidden])');
+});
+
+test('a reset link replaces the password and signs the browser in with a fresh session', async () => {
+  const code = await mintResetInviteCode();
+  await page.goto(`${BASE_URL}/?reset=${code}`);
+  await page.waitForSelector('#auth-screen:not([hidden])');
+  await page.fill('#auth-password', PASSWORD_AFTER_RESET);
+  await page.click('#auth-form button[type="submit"]');
+
+  await page.waitForSelector('#app:not([hidden])');
+  assert.equal(new URL(page.url()).search, '');
+
+  const oldLogin = await fetch(`${BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: NAME, password: PASSWORD }),
+  });
+  assert.equal(oldLogin.status, 401);
+  const newLogin = await fetch(`${BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: NAME, password: PASSWORD_AFTER_RESET }),
+  });
+  assert.equal(newLogin.status, 200);
 });

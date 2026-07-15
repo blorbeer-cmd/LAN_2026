@@ -31,7 +31,8 @@ test('verifyPasswordConstantTime rejects when stored is null (unclaimed account)
 
 test('isValidPassword enforces the length bounds', () => {
   assert.equal(isValidPassword('short'), false);
-  assert.equal(isValidPassword('exactly8'), true);
+  assert.equal(isValidPassword('a'.repeat(14)), false);
+  assert.equal(isValidPassword('a'.repeat(15)), true);
   assert.equal(isValidPassword('a'.repeat(200)), true);
   assert.equal(isValidPassword('a'.repeat(201)), false);
   assert.equal(isValidPassword(12345678), false);

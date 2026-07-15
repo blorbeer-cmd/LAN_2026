@@ -11,8 +11,12 @@ import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { db } from './db';
 import { config } from './config';
 
-export const SESSION_COOKIE_NAME = 'lan2026_session';
+// __Host- prevents sibling subdomains from overwriting the production
+// session cookie. Plain-HTTP LAN deployments cannot use that prefix because
+// browsers require __Host- cookies to be Secure.
+export const SESSION_COOKIE_NAME = config.cookieSecure ? '__Host-lan2026_session' : 'lan2026_session';
 export const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+export const SESSION_ABSOLUTE_TTL_MS = 180 * 24 * 60 * 60 * 1000;
 
 export interface AuthPlayer {
   id: string;
@@ -89,9 +93,10 @@ export function createSession(playerId: string): string {
   return token;
 }
 
-interface SessionRow {
+export interface SessionRow {
   id: string;
   player_id: string;
+  created_at: number;
   expires_at: number;
 }
 
@@ -102,13 +107,14 @@ interface SessionRow {
 // separate sweep.
 export function verifySession(rawToken: string): { session: SessionRow; player: AuthPlayer } | undefined {
   const tokenHash = hashToken(rawToken);
-  const session = db.prepare('SELECT id, player_id, expires_at FROM sessions WHERE token_hash = ?').get(tokenHash) as
+  const session = db.prepare('SELECT id, player_id, created_at, expires_at FROM sessions WHERE token_hash = ?').get(tokenHash) as
     | SessionRow
     | undefined;
   if (!session) return undefined;
 
   const now = Date.now();
-  if (session.expires_at <= now) {
+  const absoluteExpiresAt = session.created_at + SESSION_ABSOLUTE_TTL_MS;
+  if (session.expires_at <= now || absoluteExpiresAt <= now) {
     db.prepare('DELETE FROM sessions WHERE id = ?').run(session.id);
     return undefined;
   }
@@ -123,12 +129,31 @@ export function verifySession(rawToken: string): { session: SessionRow; player: 
     return undefined;
   }
 
-  db.prepare('UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE id = ?').run(now, now + SESSION_TTL_MS, session.id);
+  const nextExpiresAt = Math.min(now + SESSION_TTL_MS, absoluteExpiresAt);
+  db.prepare('UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE id = ?').run(now, nextExpiresAt, session.id);
+  session.expires_at = nextExpiresAt;
   return { session, player };
 }
 
-export function deleteSessionByToken(rawToken: string): void {
-  db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashToken(rawToken));
+export function deleteSessionByToken(rawToken: string): SessionRow | undefined {
+  const tokenHash = hashToken(rawToken);
+  const session = db
+    .prepare('SELECT id, player_id, created_at, expires_at FROM sessions WHERE token_hash = ?')
+    .get(tokenHash) as SessionRow | undefined;
+  if (session) db.prepare('DELETE FROM sessions WHERE id = ?').run(session.id);
+  return session;
+}
+
+// Read-only check used by the Socket.IO sweeper. Unlike verifySession(), it
+// deliberately does not slide the idle timeout merely because a socket is
+// connected and receiving broadcasts.
+export function isSessionActive(sessionId: string): boolean {
+  const session = db
+    .prepare('SELECT id, player_id, created_at, expires_at FROM sessions WHERE id = ?')
+    .get(sessionId) as SessionRow | undefined;
+  if (!session) return false;
+  const now = Date.now();
+  return session.expires_at > now && session.created_at + SESSION_ABSOLUTE_TTL_MS > now;
 }
 
 // Used on password change ("invalidates all OTHER sessions") and account

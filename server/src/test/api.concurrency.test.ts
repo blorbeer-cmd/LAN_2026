@@ -354,6 +354,28 @@ test('simultaneous claims with the same claim code: exactly one succeeds', async
   assert.equal(counts[200], 1, JSON.stringify(counts));
 });
 
+test('simultaneous password resets with the same code: exactly one succeeds', async () => {
+  const admin = await request(app).post('/api/players').send({ name: 'Auth Reset Race Admin' });
+  const target = await request(app).post('/api/players').send({ name: 'Race Reset Target' });
+  const claim = createInvite({ purpose: 'claim', playerId: target.body.id, createdBy: admin.body.id });
+  const claimed = await request(app)
+    .post('/api/auth/claim')
+    .send({ code: claim.code, password: 'race reset original password' });
+  assert.equal(claimed.status, 200);
+
+  const reset = createInvite({ purpose: 'reset', playerId: target.body.id, createdBy: admin.body.id });
+  const results = await Promise.all(
+    Array.from({ length: 6 }, (_, index) =>
+      request(app)
+        .post('/api/auth/reset')
+        .send({ code: reset.code, newPassword: `race reset password ${index}` })
+    )
+  );
+  const counts = statusCounts(results.map((result) => result.status));
+  assert.equal(counts[200], 1, JSON.stringify(counts));
+  assert.equal(counts[400], 5, JSON.stringify(counts));
+});
+
 test('a second claim code for an already-claimed player is voided, not just rejected', async () => {
   // Regression pin for the invite-purpose-separation guarantee (see
   // docs/KONZEPT-USER-MANAGEMENT.md 4.1): once a player is claimed, every

@@ -1,21 +1,24 @@
 // Password hashing for real per-user login (see
 // docs/KONZEPT-USER-MANAGEMENT.md). Uses Node's built-in scrypt rather than
-// pulling in bcrypt/argon2 — for ~15 accounts on LAN-party hardware the
-// default cost parameters are more than strong enough, and it keeps the
-// dependency list unchanged.
+// pulling in bcrypt/argon2. The self-describing hash format allows a later
+// cost increase without invalidating existing passwords.
 
 import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import { db } from './db';
 
 const KEY_LENGTH = 64;
-// Node's scrypt defaults (N=16384, r=8, p=1) — the OWASP-recommended
-// minimum. Stored alongside the hash so a future cost bump doesn't break
-// verification of existing hashes.
+// Node's scrypt defaults (N=16384, r=8, p=1), retained for this phase while
+// hashing is synchronous. A cost increase must move hashing off the event
+// loop first so login traffic cannot stall the LAN server. Parameters are
+// stored with each hash so that migration remains possible.
 const SCRYPT_N = 16384;
 const SCRYPT_R = 8;
 const SCRYPT_P = 1;
 
-export const MIN_PASSWORD_LENGTH = 8;
+// This deployment intentionally uses password-only authentication. OWASP's
+// current guidance recommends at least 15 characters when MFA is absent;
+// passphrases remain unrestricted by composition rules.
+export const MIN_PASSWORD_LENGTH = 15;
 export const MAX_PASSWORD_LENGTH = 200;
 
 export function isValidPassword(value: unknown): value is string {

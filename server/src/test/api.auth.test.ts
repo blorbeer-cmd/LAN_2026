@@ -9,12 +9,13 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
 import { createInvite } from '../invites';
+import { SESSION_COOKIE_NAME } from '../sessions';
 
 const app = createApp();
 
 function sessionCookie(res: request.Response): string {
   const raw = res.headers['set-cookie'] as unknown as string[] | undefined;
-  const cookie = raw?.find((c) => c.startsWith('lan2026_session='));
+  const cookie = raw?.find((c) => c.startsWith(`${SESSION_COOKIE_NAME}=`));
   assert.ok(cookie, 'response should set a session cookie');
   return cookie!.split(';')[0];
 }
@@ -92,6 +93,14 @@ test('POST /api/auth/invites creates a register code as admin', async () => {
   registerCode = res.body.code;
 });
 
+test('POST /api/auth/invites rejects a non-expiring code', async () => {
+  const res = await request(app)
+    .post('/api/auth/invites')
+    .set('Cookie', adminCookie)
+    .send({ purpose: 'register', expiresInMs: 0 });
+  assert.equal(res.status, 400);
+});
+
 // --- register ---
 
 test('POST /api/auth/register rejects a short password', async () => {
@@ -102,6 +111,7 @@ test('POST /api/auth/register rejects a short password', async () => {
 });
 
 let newPersonCookie: string;
+let newPersonId: string;
 
 test('POST /api/auth/register creates a non-admin player and logs it in', async () => {
   const res = await request(app)
@@ -110,6 +120,7 @@ test('POST /api/auth/register creates a non-admin player and logs it in', async 
   assert.equal(res.status, 201);
   assert.equal(res.body.isAdmin, false);
   assert.equal(res.body.name, 'New Person');
+  newPersonId = res.body.id;
   newPersonCookie = sessionCookie(res);
 });
 
@@ -197,6 +208,55 @@ test('password change invalidates every OTHER session but keeps the current one'
   assert.equal(loginWithNewPassword.status, 200);
 });
 
+// --- password reset ---
+
+test('password reset consumes one code, revokes sibling codes, invalidates old sessions and logs this device in', async () => {
+  const oldSession = await request(app)
+    .post('/api/auth/login')
+    .send({ name: 'New Person', password: 'brand new password' });
+  const oldCookie = sessionCookie(oldSession);
+
+  const resetA = await request(app)
+    .post('/api/auth/invites')
+    .set('Cookie', adminCookie)
+    .send({ purpose: 'reset', playerId: newPersonId });
+  const resetB = await request(app)
+    .post('/api/auth/invites')
+    .set('Cookie', adminCookie)
+    .send({ purpose: 'reset', playerId: newPersonId });
+  assert.equal(resetA.status, 201);
+  assert.equal(resetB.status, 201);
+
+  const reset = await request(app)
+    .post('/api/auth/reset')
+    .send({ code: resetA.body.code, newPassword: 'password after reset' });
+  assert.equal(reset.status, 200);
+  assert.equal(reset.body.id, newPersonId);
+  const resetCookie = sessionCookie(reset);
+
+  assert.equal((await request(app).get('/api/me').set('Cookie', oldCookie)).status, 401);
+  assert.equal((await request(app).get('/api/me').set('Cookie', newPersonCookie)).status, 401);
+  assert.equal((await request(app).get('/api/me').set('Cookie', resetCookie)).status, 200);
+
+  const reused = await request(app)
+    .post('/api/auth/reset')
+    .send({ code: resetA.body.code, newPassword: 'should never be accepted' });
+  assert.equal(reused.status, 400);
+  const sibling = await request(app)
+    .post('/api/auth/reset')
+    .send({ code: resetB.body.code, newPassword: 'should also be rejected' });
+  assert.equal(sibling.status, 400);
+
+  assert.equal(
+    (await request(app).post('/api/auth/login').send({ name: 'New Person', password: 'brand new password' })).status,
+    401
+  );
+  assert.equal(
+    (await request(app).post('/api/auth/login').send({ name: 'New Person', password: 'password after reset' })).status,
+    200
+  );
+});
+
 // --- invite revocation ---
 
 test('a revoked invite can no longer be consumed', async () => {
@@ -213,4 +273,16 @@ test('a revoked invite can no longer be consumed', async () => {
 test('revoking a nonexistent invite code 404s', async () => {
   const res = await request(app).delete('/api/auth/invites/not-a-real-code').set('Cookie', adminCookie);
   assert.equal(res.status, 404);
+});
+
+test('registered players and invite creators remain deletable', async () => {
+  const creator = await request(app).post('/api/players').send({ name: 'Disposable Invite Creator' });
+  const invite = createInvite({ purpose: 'register', createdBy: creator.body.id });
+  const registered = await request(app)
+    .post('/api/auth/register')
+    .send({ code: invite.code, name: 'Disposable Registered Player', password: 'disposable password' });
+  assert.equal(registered.status, 201);
+
+  assert.equal((await request(app).delete(`/api/players/${creator.body.id}`)).status, 204);
+  assert.equal((await request(app).delete(`/api/players/${registered.body.id}`)).status, 204);
 });
