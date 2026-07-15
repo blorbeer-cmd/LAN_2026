@@ -1716,6 +1716,9 @@ button.card {
 .arcade-lobby-header {
   flex-wrap: wrap;
 }
+.arcade-lobby-card {
+  gap: var(--space-3);
+}
 .arcade-lobby-title {
   min-width: 0;
   gap: var(--space-2);
@@ -1724,6 +1727,77 @@ button.card {
   margin-left: auto;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+.arcade-lobby-entry {
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-elevated-2);
+}
+.arcade-lobby-entry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.arcade-lobby-entry-head > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.arcade-lobby-player-count {
+  flex-shrink: 0;
+}
+.arcade-lobby-member-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+}
+.arcade-lobby-member-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--row-icon-size);
+  min-width: 0;
+}
+.arcade-lobby-member-row + .arcade-lobby-member-row {
+  border-top: 1px solid var(--border);
+}
+.arcade-lobby-member-row .player-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.arcade-lobby-member-role {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--space-8) + var(--space-8));
+  gap: var(--space-1);
+  margin-left: auto;
+  padding: var(--space-1) var(--space-2);
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+.arcade-lobby-free-row {
+  justify-content: space-between;
+}
+.arcade-lobby-free-label {
+  padding-left: calc(var(--avatar-size-sm) + var(--space-2));
+}
+.arcade-lobby-free-row .btn {
+  width: calc(var(--space-8) + var(--space-8));
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+}
+.arcade-lobby-entry-actions {
+  display: flex;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+.arcade-lobby-entry-actions .btn {
+  flex: 1 1 0;
 }
 .arcade-winner-card {
   display: grid;
@@ -2585,14 +2659,8 @@ button.card {
   }
 }
 
-/* Arcade lobby "Bereit"-status: reuses the live-status green so "ready" reads
-   the same as "playing" elsewhere. .btn-ready is the pressed state of the
-   guest's ready toggle (see lobbyReady.js). */
-.chip-ready {
-  color: var(--state-playing);
-  background: var(--state-playing-bg);
-  border-color: var(--state-playing);
-}
+/* Arcade lobby "Bereit" status reuses the live-status green so readiness
+   reads consistently with active states elsewhere. */
 .btn-ready {
   background: var(--state-playing-bg);
   color: var(--state-playing);

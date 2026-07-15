@@ -22,7 +22,7 @@ import { arcadeExpandControlHtml, arcadeLobbyTitleHtml, matchRosterHtml, wireArc
 import { startArcadeWatch } from './arcadeWatch.js';
 import { confirmDialog } from '../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { lobbyPlayerChipsHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { wireInfoTooltips } from '../infoTooltip.js';
 
 // The Arcade opens as a launcher: a compact grid of playable game tiles.
@@ -296,20 +296,15 @@ function renderLobbyList() {
     .map((l) => {
       const isHost = l.host.id === getMyId();
       const joined = l.players.some((p) => p.id === getMyId());
-      const action = isHost
+      const footerActions = isHost
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-close-lobby="${l.id}">Schließen</button>`
         : joined
           ? readyToggleHtml(l, getMyId(), 'quiz-ready')
-          : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-join-lobby="${l.id}">Beitreten</button>`;
-      return `
-        <div class="lb-row" style="align-items:flex-start;">
-          <div class="stack" style="gap:var(--space-2);flex:1;">
-            <strong>${escapeHtml(l.host.name)}s Quiz-Lobby</strong>
-            <div class="chip-list">${lobbyPlayerChipsHtml(l)}</div>
-            <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length} Spieler · ${readySummaryText(l)}</div>
-          </div>
-          ${action}
-        </div>`;
+          : '';
+      const joinAction = !joined && !isHost
+        ? `<button type="button" class="btn btn-sm btn-equal btn-primary" data-join-lobby="${l.id}">Beitreten</button>`
+        : '';
+      return arcadeLobbyEntryHtml(l, { joinAction, footerActions });
     })
     .join('');
 }
@@ -532,9 +527,9 @@ function activeGameHtml() {
   if (game === 'quiz') {
     const lobby = myLobby();
     return `
-      <div class="card stack">
+      <div class="card stack arcade-lobby-card">
         <div class="row-between arcade-lobby-header" style="gap:var(--space-3);">
-          ${arcadeLobbyTitleHtml('quiz', 'Quiz-Lobby', [
+          ${arcadeLobbyTitleHtml('quiz', 'Lobby', [
             { label: 'Ziel', text: 'Richtige Antworten sammeln.' },
             { label: 'Steuerung', text: 'Antwort tippen und senden.' },
           ])}

@@ -20,7 +20,7 @@ import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { getToken } from '../api.js';
 import { icon } from '../icons.js';
-import { lobbyPlayerChipsHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeExpandControlHtml, arcadeLobbyTitleHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
 const SWATCHES = [
@@ -905,23 +905,16 @@ function renderLobbyList() {
     .map((l) => {
       const isHost = l.host.id === myId();
       const joined = l.players.some((p) => p.id === myId());
-      const action = isHost
+      const footerActions = isHost
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-close="${l.id}">Schließen</button>`
         : joined
-          ? `<div class="stack" style="gap:var(--space-2);">
-              ${readyToggleHtml(l, myId(), 'scribble-ready')}
-              <button type="button" class="btn btn-sm btn-equal" data-scribble-leave="${l.id}">Verlassen</button>
-            </div>`
-          : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-scribble-join="${l.id}">Beitreten</button>`;
-      return `
-        <div class="lb-row" style="align-items:flex-start;">
-          <div class="stack" style="gap:var(--space-2);flex:1;">
-            <strong>${escapeHtml(l.host.name)}s Scribble-Lobby</strong>
-            <div class="chip-list">${lobbyPlayerChipsHtml(l)}</div>
-            <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length} Spieler · ${readySummaryText(l)}</div>
-          </div>
-          ${action}
-        </div>`;
+          ? `${readyToggleHtml(l, myId(), 'scribble-ready')}
+            <button type="button" class="btn btn-sm btn-equal" data-scribble-leave="${l.id}">Verlassen</button>`
+          : '';
+      const joinAction = !joined && !isHost
+        ? `<button type="button" class="btn btn-sm btn-equal btn-primary" data-scribble-join="${l.id}">Beitreten</button>`
+        : '';
+      return arcadeLobbyEntryHtml(l, { joinAction, footerActions });
     })
     .join('');
 }
@@ -960,9 +953,9 @@ export function renderScribbleLobbyCard() {
   const lobby = myScribbleLobby();
   const noMe = !myId();
   return `
-    <div class="card stack">
+    <div class="card stack arcade-lobby-card">
       <div class="row-between arcade-lobby-header" style="gap:var(--space-3);">
-        ${arcadeLobbyTitleHtml('scribble', 'Scribble-Lobby', [
+        ${arcadeLobbyTitleHtml('scribble', 'Lobby', [
           { label: 'Ziel', text: 'Wörter erraten und Punkte sammeln.' },
           { label: 'Steuerung', text: 'Zeichnen + Tippen.' },
         ])}

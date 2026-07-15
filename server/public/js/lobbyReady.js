@@ -1,18 +1,42 @@
-import { escapeHtml } from './format.js';
+import { avatarHtml, escapeHtml } from './format.js';
 import { icon } from './icons.js';
 
-// Shared "Bereit" UI for all arcade lobby cards (quiz, tetris, scribble,
-// blobby): player chips that turn green with a check once someone is ready,
-// an "x/y bereit" summary for the host, and the guest's own ready toggle.
-// The server marks the host as always ready (they decide when to start).
+// Shared lobby UI for every arcade game: stable player rows, the lobby card
+// shell, readiness summaries and the guest's own ready toggle. The server
+// marks the host as always ready because they decide when to start.
 
-export function lobbyPlayerChipsHtml(lobby) {
+function lobbyPlayerRowsHtml(lobby) {
   return lobby.players
-    .map(
-      (p) =>
-        `<span class="chip${p.ready ? ' chip-ready' : ''}">${p.ready ? icon('check') : ''}${escapeHtml(p.name)}</span>`
-    )
+    .map((player) => {
+      const role = player.id === lobby.host.id ? 'Host' : player.ready ? `${icon('check')} Bereit` : 'Mitspieler';
+      return `<div class="arcade-lobby-member-row">
+        ${avatarHtml(player, 24)}
+        <span class="player-name">${escapeHtml(player.name)}</span>
+        <span class="arcade-lobby-member-role">${role}</span>
+      </div>`;
+    })
     .join('');
+}
+
+export function arcadeLobbyEntryHtml(
+  lobby,
+  { playerLimit = null, joinAction = '', footerActions = '', full = false } = {}
+) {
+  const countText = `${lobby.players.length}${playerLimit ? `/${playerLimit}` : ''} Spieler`;
+  const availableRow = joinAction
+    ? `<div class="arcade-lobby-member-row arcade-lobby-free-row">
+        <span class="muted arcade-lobby-free-label">${full ? 'Voll' : 'Frei'}</span>
+        ${joinAction}
+      </div>`
+    : '';
+  return `<div class="card stack arcade-lobby-entry">
+    <div class="arcade-lobby-entry-head">
+      <strong>${escapeHtml(lobby.host.name)}s Lobby</strong>
+      <span class="badge arcade-lobby-player-count">${escapeHtml(countText)}</span>
+    </div>
+    <div class="arcade-lobby-member-list">${lobbyPlayerRowsHtml(lobby)}${availableRow}</div>
+    ${footerActions ? `<div class="arcade-lobby-entry-actions">${footerActions}</div>` : ''}
+  </div>`;
 }
 
 export function readySummaryText(lobby) {

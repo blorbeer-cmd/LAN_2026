@@ -20,7 +20,7 @@ import { getMyId } from '../whoami.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
-import { allLobbyReady, lobbyPlayerChipsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { allLobbyReady, arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeExpandControlHtml, arcadeLobbyTitleHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
 const COLS = 10;
@@ -401,23 +401,16 @@ function renderLobbyList() {
       const joined = l.players.some((p) => p.id === myId());
       const full = l.players.length >= 2 && !joined;
       // Host can close their lobby; a joined guest can leave; otherwise join.
-      const action = isHost
+      const footerActions = isHost
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-tetris-close="${l.id}">Schließen</button>`
         : joined
-          ? `<div class="stack" style="gap:var(--space-2);">
-              ${readyToggleHtml(l, myId(), 'tetris-ready')}
-              <button type="button" class="btn btn-sm btn-equal" data-tetris-leave="${l.id}">Verlassen</button>
-            </div>`
-          : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-tetris-join="${l.id}" ${full ? 'disabled' : ''}>Beitreten</button>`;
-      return `
-        <div class="lb-row" style="align-items:flex-start;">
-          <div class="stack" style="gap:var(--space-2);flex:1;">
-            <strong>${escapeHtml(l.host.name)}s Tetris-Lobby</strong>
-            <div class="chip-list">${lobbyPlayerChipsHtml(l)}</div>
-            <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length}/2 Spieler${full ? ' · voll' : ''}</div>
-          </div>
-          ${action}
-        </div>`;
+          ? `${readyToggleHtml(l, myId(), 'tetris-ready')}
+            <button type="button" class="btn btn-sm btn-equal" data-tetris-leave="${l.id}">Verlassen</button>`
+          : '';
+      const joinAction = !joined && !isHost
+        ? `<button type="button" class="btn btn-sm btn-equal btn-primary" data-tetris-join="${l.id}" ${full ? 'disabled' : ''}>Beitreten</button>`
+        : '';
+      return arcadeLobbyEntryHtml(l, { playerLimit: 2, joinAction, footerActions, full });
     })
     .join('');
 }
@@ -446,9 +439,9 @@ export function renderTetrisLobbyCard() {
   // which reads as "nothing happened".
   const noMe = !myId();
   return `
-    <div class="card stack">
+    <div class="card stack arcade-lobby-card">
       <div class="row-between arcade-lobby-header" style="gap:var(--space-3);">
-        ${arcadeLobbyTitleHtml('tetris', 'Tetris-Lobby', [
+        ${arcadeLobbyTitleHtml('tetris', 'Lobby', [
           { label: 'Ziel', text: 'Überleben.' },
           { label: 'Steuerung', text: 'Pfeiltasten + Leertaste.' },
         ])}

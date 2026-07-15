@@ -1,11 +1,10 @@
 import { getToken } from '../api.js';
-import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
-import { allLobbyReady, lobbyPlayerChipsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { allLobbyReady, arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeExpandControlHtml, arcadeLobbyTitleHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
 const W = 1000;
@@ -109,20 +108,16 @@ function lobbyList() {
     const isHost = l.host.id === myId();
     const joined = l.players.some((p) => p.id === myId());
     const full = l.players.length >= 2 && !joined;
-    const action = isHost
+    const footerActions = isHost
       ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-blobby-close="${l.id}">Schließen</button>`
       : joined
-        ? `<div class="stack" style="gap:var(--space-2);">
-            ${readyToggleHtml(l, myId(), 'blobby-ready')}
-            <button type="button" class="btn btn-sm btn-equal" data-blobby-leave="${l.id}">Verlassen</button>
-          </div>`
-        : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-blobby-join="${l.id}" ${full ? 'disabled' : ''}>Beitreten</button>`;
-    return `<div class="lb-row" style="align-items:flex-start;">
-      <div class="stack" style="gap:var(--space-2);flex:1;">
-        <strong>${escapeHtml(l.host.name)}s Blobby-Volley-Lobby</strong>
-        <div class="chip-list">${lobbyPlayerChipsHtml(l)}</div>
-        <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length}/2 Spieler${full ? ' · voll' : ''}</div>
-      </div>${action}</div>`;
+        ? `${readyToggleHtml(l, myId(), 'blobby-ready')}
+          <button type="button" class="btn btn-sm btn-equal" data-blobby-leave="${l.id}">Verlassen</button>`
+        : '';
+    const joinAction = !joined && !isHost
+      ? `<button type="button" class="btn btn-sm btn-equal btn-primary" data-blobby-join="${l.id}" ${full ? 'disabled' : ''}>Beitreten</button>`
+      : '';
+    return arcadeLobbyEntryHtml(l, { playerLimit: 2, joinAction, footerActions, full });
   }).join('');
 }
 function hostStart() {
@@ -141,7 +136,7 @@ function hostStart() {
 }
 export function renderBlobbyLobbyCard() {
   const lobby = myBlobbyLobby(); const noMe = !myId();
-  return `<div class="card stack"><div class="row-between arcade-lobby-header" style="gap:var(--space-3);">${arcadeLobbyTitleHtml('blobby', 'Blobby-Volley-Lobby', [
+  return `<div class="card stack arcade-lobby-card"><div class="row-between arcade-lobby-header" style="gap:var(--space-3);">${arcadeLobbyTitleHtml('blobby', 'Lobby', [
       { label: 'Ziel', text: 'Erreiche zuerst die Punktzahl.' },
       { label: 'Steuerung', text: 'Pfeiltasten.' },
     ])}

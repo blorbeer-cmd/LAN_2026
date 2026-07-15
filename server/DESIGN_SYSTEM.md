@@ -301,7 +301,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Game choices are horizontal nested cards with their Lucide game icon, name and an explicit
   „… offen“ lobby badge; they form one column on phones and exactly two from `--bp-md`. Running
   games and open-lobby cards reuse the same responsive two-column rhythm. Selecting a game keeps
-  its lobby workflow inside a dedicated main group. Goal and controls are explanation text, so one
+  its lobby workflow inside a dedicated main group. The selected game name is not repeated inside
+  that group: its concise heading is „Lobby“. Every open lobby is a nested card modeled on the
+  carpool cards, with the host's lobby name and player count in the header, stable player rows with
+  role/readiness at the right, a direct join action in a free-slot row and host/member actions in a
+  separated full-width footer. Goal and controls are explanation text, so one
   info tooltip directly beside the lobby title replaces the former standalone information cards.
   Statistics use the concise title „Statistiken“ and place the selected game's results in an
   accented `.tournament-section-panel`; player rows reuse `.leaderboard-list-grid` for the shared
