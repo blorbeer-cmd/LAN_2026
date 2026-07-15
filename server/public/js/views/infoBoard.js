@@ -86,7 +86,7 @@ export function renderInfoBoard(container, ctx) {
         : `<div class="card-grid">${cache
             .map(
               (e) => `
-            <div class="card stack" style="gap:var(--space-2);">
+            <div class="card stack" style="gap:var(--space-2);" data-info-entry="${e.id}">
               <div class="row-between">
                 <strong class="info-board-title">${escapeHtml(e.title)}</strong>
                 <span class="row" style="gap:var(--space-1);">

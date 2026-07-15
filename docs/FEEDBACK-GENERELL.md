@@ -36,13 +36,17 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
   - Notiz: Beispiel „Captain Draft“: sichtbar bleibt „2–4 Captains wählen“; das Infosymbol erklärt
     „2–4 Captains antippen – sie picken dann abwechselnd live aus den übrigen angehakten Spielern.
     Alle können auf ihrem Handy zusehen.“
-- [x] [ ] Globale interaktive Suche für Bereiche und Tools ergänzen
+- [x] [ ] Globale interaktive Suche für Bereiche und Inhalte ergänzen
   - [x] [ ] Suchsymbol in der Kopfzeile und Tastenkürzel `Strg/Cmd + K` anbieten
   - [x] [ ] Treffer während der Eingabe filtern und direkt zum gewählten Bereich navigieren
+  - [x] [ ] Spieler, Spiele, Events, Bestellungen inklusive Positionen, Info-Board, Durchsagen,
+    Fahrgemeinschaften, Turniere und persönliche Mitteilungen durchsuchen
+  - [x] [ ] Konkrete Spieler, Spiele, Bestellungen, Info-Einträge, Durchsagen und
+    Fahrgemeinschaften nach der Navigation hervorheben
+  - [x] [ ] „Häufig genutzte Bereiche“ und die Tastaturerklärung im Suchdialog entfernen
   - [x] [ ] Bedienung per Touch, Pfeiltasten, Enter und Escape sicherstellen
-  - Kommentar: Die lokale Command-Palette durchsucht Titel, Beschreibungen und Synonyme ohne
-    externen Suchdienst. Inhalte innerhalb einzelner Bereiche können später als eigener Index
-    ergänzt werden.
+  - Kommentar: Der lokale Index wird beim Öffnen aus dem aktuellen App-State und den vorhandenen
+    APIs aufgebaut; ein externer Suchdienst oder zusätzlicher Serverindex ist nicht nötig.
 
 ## Home
 
@@ -58,12 +62,14 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 - [x] [ ] „Dein Status“ nach unten verschieben, direkt über die anderen Statusinformationen
 - [x] [ ] „Aktuell“ für mehrere nebeneinanderstehende Kacheln vorbereiten
 - [x] [ ] „Ganze Rangliste“ in „Gesamte Rangliste“ umbenennen
+- [x] [ ] Ranglisten-Vorschau auf größeren Displays zweispaltig mit den ersten sechs Plätzen darstellen
 - [x] [ ] Sitzplan mit einem Titel oben links versehen, analog zu Rangliste und Status
 - [x] [ ] „Mitteilungen“ aus dem unteren Seitenbereich herauslösen
   - [x] [ ] Glocken-Symbol in der oberen Leiste bei Profil, Einstellungen und GitHub ergänzen
   - [x] [ ] Mitteilungen dort als Liste anzeigen
   - [x] [ ] Mitteilungen als gelesen markieren können
   - [x] [ ] Mitteilungen entfernen können
+  - [x] [ ] Neueste aktive Mitteilung zusätzlich als hervorgehobenen Direktlink unter der Kopfzeile anzeigen
   - Kommentar (Usermanagement): Gelesen- und Ausblendestatus sind vorläufig an die aktuell lokal
     gewählte Spieleridentität gebunden. Ein künftiges Usermanagement muss diese Bindung auf die
     authentifizierte Session migrieren; Push-Abos und Event-Sichtbarkeit bleiben unverändert.

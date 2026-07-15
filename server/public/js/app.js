@@ -26,7 +26,7 @@ import { renderScribbleRoom } from './views/arcadeScribble.js';
 import { renderBlobby } from './views/blobby.js';
 import { renderPong } from './views/pong.js';
 import { renderSnake } from './views/snake.js';
-import { renderGameCatalog, invalidateSkillSuggestions } from './views/gameCatalog.js';
+import { renderGameCatalog, invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
 import { renderArrivals, invalidateArrivals } from './views/arrivals.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
@@ -75,6 +75,7 @@ const VIEWS = {
 
 let currentView = 'home';
 const viewContainer = document.getElementById('view-container');
+let pendingSearchTarget = null;
 
 // Tracks the last vote round we've seen, so the socket handler can tell a
 // genuinely new round (round number just changed while open) apart from a
@@ -98,6 +99,30 @@ const ctx = {
 function renderCurrent() {
   const renderFn = VIEWS[currentView];
   if (renderFn) renderFn(viewContainer, ctx);
+  focusPendingSearchTarget();
+}
+
+function focusPendingSearchTarget() {
+  if (!pendingSearchTarget || pendingSearchTarget.view !== currentView) return;
+  const { type, id } = pendingSearchTarget.target;
+  const candidates = {
+    player: [...viewContainer.querySelectorAll('[data-player]')].filter((el) => el.dataset.player === id),
+    game: [...viewContainer.querySelectorAll('[data-search-game]')].filter((el) => el.dataset.searchGame === id),
+    order: [
+      ...viewContainer.querySelectorAll('[data-order-card], [data-closed-order]'),
+    ].filter((el) => el.dataset.orderCard === id || el.dataset.closedOrder === id),
+    info: [...viewContainer.querySelectorAll('[data-info-entry]')].filter((el) => el.dataset.infoEntry === id),
+    broadcast: [...viewContainer.querySelectorAll('[data-broadcast]')].filter((el) => el.dataset.broadcast === id),
+    carpool: [...viewContainer.querySelectorAll('[data-carpool]')].filter((el) => el.dataset.carpool === id),
+  }[type] ?? [];
+  const element = candidates[0];
+  if (!element) return;
+  if (element instanceof HTMLDetailsElement) element.open = true;
+  element.classList.add('search-target-highlight');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  element.scrollIntoView({ block: 'center', behavior: reducedMotion ? 'auto' : 'smooth' });
+  if (element.matches('button, a, input, [tabindex]')) element.focus({ preventScroll: true });
+  pendingSearchTarget = null;
 }
 
 // Every deliberate tab switch pushes a browser history entry (see main()'s
@@ -113,8 +138,9 @@ function renderCurrent() {
 // reachable via the back button (e.g. a watch view whose match has ended;
 // re-pushing would trap back/forward between the stale entry and its
 // redirect target).
-function switchView(view, { fromHistory = false, replace = false } = {}) {
+function switchView(view, { fromHistory = false, replace = false, searchTarget = null } = {}) {
   const changed = view !== currentView;
+  pendingSearchTarget = searchTarget ? { view, target: searchTarget } : null;
   currentView = view;
   // Realtime game modules use this marker to ignore updates while another
   // view is active. Without it, a running game can rebuild the current DOM
@@ -473,7 +499,13 @@ async function main() {
   await ensureAccess();
   document.getElementById('app').hidden = false;
   wireNav();
-  initGlobalSearch((view) => switchView(view));
+  initGlobalSearch((entry) => {
+    if (entry.target?.type === 'tournament') focusTournament(entry.target.id);
+    if (entry.target?.type === 'game') focusGameCatalog(entry.target.id);
+    switchView(entry.view, {
+      searchTarget: entry.target?.type === 'tournament' ? null : entry.target,
+    });
+  });
   wireAdminMode();
   wireSocket();
   initNotificationBanner();

@@ -1,8 +1,6 @@
-// Header notification center: the bell next to profile/settings loads the
-// current identity's relevant push-log entries, keeps unread state on the
-// server, and lets that player hide an entry without deleting it for anyone
-// else. The old always-visible strip and Home history intentionally no
-// longer render the same notification in parallel.
+// Header notifications have two complementary layers: the newest active,
+// unread entry is an obvious deep link directly below the topbar, while the
+// bell keeps the complete personal history.
 
 import { api } from './api.js';
 import { getMyId } from './whoami.js';
@@ -15,6 +13,7 @@ const FEED_LIMIT = 20;
 
 let epoch = 0;
 let entries = [];
+let highlightEntry = null;
 let loadedForId = null;
 let loading = false;
 let loadError = false;
@@ -30,6 +29,10 @@ function panelEl() {
 
 function countEl() {
   return document.getElementById('notifications-count');
+}
+
+function highlightEl() {
+  return document.getElementById('notification-highlight');
 }
 
 function setOpen(nextOpen) {
@@ -78,6 +81,7 @@ async function markSeen(entryId, { navigate } = {}) {
   const entry = entries.find((item) => item.id === entryId);
   if (!playerId || !entry) return;
   entry.seen = true;
+  if (highlightEntry?.id === entryId) highlightEntry = null;
   renderBanner();
   try {
     await api.push.seen(entryId, playerId);
@@ -96,15 +100,46 @@ async function hideEntry(entryId) {
   const playerId = getMyId();
   if (!playerId) return;
   const previousEntries = entries;
+  const previousHighlight = highlightEntry;
   entries = entries.filter((item) => item.id !== entryId);
+  if (highlightEntry?.id === entryId) highlightEntry = null;
   renderBanner();
   try {
     await api.push.hide(entryId, playerId);
   } catch (err) {
     entries = previousEntries;
+    highlightEntry = previousHighlight;
     renderBanner();
     showToast(err.message, { error: true });
   }
+}
+
+function renderHighlight() {
+  const container = highlightEl();
+  if (!container) return;
+  const view = highlightEntry ? feedLinkView(highlightEntry.url) : null;
+  if (!highlightEntry || !getMyId()) {
+    container.hidden = true;
+    container.innerHTML = '';
+    return;
+  }
+  container.hidden = false;
+  container.innerHTML = `
+    <button type="button" class="notification-highlight-link" ${view ? `data-notification-highlight-navigate="${view}"` : 'data-notification-highlight-open'} data-notification-id="${highlightEntry.id}">
+      ${icon('bell')}
+      <span class="notification-highlight-text"><strong>${escapeHtml(highlightEntry.title)}</strong><span>${escapeHtml(highlightEntry.body)}</span></span>
+      ${view ? icon('chevronRight') : ''}
+    </button>
+    <button type="button" class="icon-btn notification-highlight-dismiss" data-notification-highlight-dismiss="${highlightEntry.id}" aria-label="Aktuelle Mitteilung schließen" title="Schließen">${icon('x')}</button>`;
+  container.querySelector('[data-notification-highlight-navigate]')?.addEventListener('click', (event) => {
+    markSeen(event.currentTarget.dataset.notificationId, {
+      navigate: event.currentTarget.dataset.notificationHighlightNavigate,
+    });
+  });
+  container.querySelector('[data-notification-highlight-open]')?.addEventListener('click', () => setOpen(true));
+  container.querySelector('[data-notification-highlight-dismiss]')?.addEventListener('click', (event) => {
+    markSeen(event.currentTarget.dataset.notificationHighlightDismiss);
+  });
 }
 
 // Kept under the established export name so app.js and realtime consumers
@@ -114,6 +149,8 @@ export function renderBanner() {
   const panel = panelEl();
   const count = countEl();
   if (!button || !panel || !count) return;
+
+  renderHighlight();
 
   const myId = getMyId();
   const unreadCount = myId === loadedForId ? entries.filter((entry) => !entry.seen).length : 0;
@@ -158,6 +195,7 @@ export async function refreshNotificationBanner() {
   const thisEpoch = ++epoch;
   if (!myId) {
     entries = [];
+    highlightEntry = null;
     loadedForId = null;
     loading = false;
     loadError = false;
@@ -169,13 +207,15 @@ export async function refreshNotificationBanner() {
   loadError = false;
   renderBanner();
   try {
-    const res = await api.push.log(myId);
+    const [res, current] = await Promise.all([api.push.log(myId), api.push.current(myId)]);
     if (thisEpoch !== epoch) return;
     entries = res.entries;
+    highlightEntry = current.entry;
     loadedForId = myId;
   } catch {
     if (thisEpoch !== epoch) return;
     entries = [];
+    highlightEntry = null;
     loadedForId = myId;
     loadError = true;
   } finally {
@@ -206,6 +246,7 @@ export function initNotificationBanner() {
   window.addEventListener('respawn:identity-changed', () => {
     isOpen = false;
     entries = [];
+    highlightEntry = null;
     loadedForId = null;
     loadError = false;
     refreshNotificationBanner();

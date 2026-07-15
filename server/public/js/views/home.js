@@ -128,27 +128,32 @@ function renderActiveGroups(players) {
   `;
 }
 
-// Leaderboard snapshot (kiosk parity): the top three, one tap from the full
-// standings.
+// Leaderboard snapshot: the top six use the otherwise empty card width as
+// two compact columns on larger screens and stay a single list on phones.
 function renderLeaderboardTop() {
   const standings = state.leaderboard?.standings || [];
   if (standings.length === 0) return '';
-  const rows = standings
-    .slice(0, 3)
+  const columns = [standings.slice(0, 3), standings.slice(3, 6)]
+    .filter((column) => column.length > 0)
     .map(
-      (s, i) => `
-      <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
-        <span class="lb-rank">${i + 1}</span>
+      (column, columnIndex) => `<div class="home-leaderboard-column">${column
+        .map((s, rowIndex) => {
+          const rank = columnIndex * 3 + rowIndex + 1;
+          return `
+      <div class="lb-row ${rank === 1 ? 'rank-1' : ''}">
+        <span class="lb-rank">${rank}</span>
         ${avatarHtml(s, 28)}
         <span style="flex:1;">${escapeHtml(s.name)}</span>
         <span class="lb-points">${s.points} P</span>
-      </div>`
+      </div>`;
+        })
+        .join('')}</div>`
     )
     .join('');
   return `
     <div class="section-title">Rangliste</div>
     <div class="card" style="margin-bottom:var(--space-4);">
-      ${rows}
+      <div class="home-leaderboard-columns">${columns}</div>
       <button type="button" class="btn btn-sm btn-block" data-navigate="leaderboard" style="margin-top:var(--space-3);">Gesamte Rangliste ${icon('chevronRight')}</button>
     </div>
   `;

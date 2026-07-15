@@ -91,7 +91,7 @@ function renderCarpool(c, direction, myId) {
   }
 
   return `
-    <div class="arrivals-carpool-row">
+    <div class="arrivals-carpool-row" data-carpool="${c.id}">
       <div class="arrivals-carpool-head">
         <div>
           <strong>${escapeHtml(c.label)}</strong>

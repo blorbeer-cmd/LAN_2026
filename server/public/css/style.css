@@ -271,8 +271,63 @@ input {
   width: 100%;
 }
 
-/* Header notification center: one bell replaces the duplicated persistent
-   strip and Home history. Entries stay personal to the selected identity. */
+/* Current notification as a prominent direct link below the header. The
+   bell beside it remains the full personal history. */
+.notification-highlight {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(90deg, rgba(91, 140, 255, .2), rgba(145, 99, 245, .13));
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.notification-highlight-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  flex: 1;
+  padding: var(--space-2) var(--space-4);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.notification-highlight-link > .ui-icon {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+.notification-highlight-text {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1;
+  font-size: var(--font-size-sm);
+}
+.notification-highlight-text strong,
+.notification-highlight-text span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notification-highlight-text span {
+  color: var(--text-muted);
+}
+.notification-highlight-dismiss {
+  flex: 0 0 auto;
+  margin: var(--space-1) var(--space-2) var(--space-1) 0;
+}
+@media (max-width: 639px) {
+  .notification-highlight-text {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+  }
+}
+
+/* Header notification center. Entries stay personal to the selected identity. */
 .notification-center {
   position: relative;
 }
@@ -2730,6 +2785,19 @@ input[type='number'].bracket-score-input {
   margin-left: auto;
   font-weight: var(--font-weight-bold);
 }
+.home-leaderboard-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.home-leaderboard-column {
+  min-width: 0;
+}
+@media (min-width: 640px) {
+  .home-leaderboard-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-6);
+  }
+}
 
 /* ---------- Login screen ---------- */
 
@@ -3007,29 +3075,10 @@ input[type='number'].bracket-score-input {
   color: var(--text-muted);
   text-align: center;
 }
-.global-search-shortcuts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-}
-.global-search-shortcuts span {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-.global-search-shortcuts kbd {
-  min-width: var(--space-5);
-  padding: var(--space-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
-  color: var(--text);
-  font: inherit;
-  text-align: center;
+
+.search-target-highlight {
+  border-color: var(--accent) !important;
+  box-shadow: var(--shadow-glow-accent);
 }
 
 /* ---------- Shared physical seating plan ---------- */

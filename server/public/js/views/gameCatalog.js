@@ -87,6 +87,11 @@ export function invalidateSkillSuggestions() {
   suggestionsEpoch += 1;
 }
 
+export function focusGameCatalog(gameId) {
+  const game = state.games.find((entry) => entry.id === gameId);
+  if (game) activeTab = game.isSuggestion ? 'suggestions' : 'catalog';
+}
+
 async function loadSuggestions(ctx) {
   suggestionsLoading = true;
   const epoch = suggestionsEpoch;
@@ -275,7 +280,7 @@ function gameRowHtml(game, myId) {
       ];
 
   return `
-    <div class="card game-table-row">
+    <div class="card game-table-row" data-search-game="${game.id}">
       <div class="game-row-name">
         ${gameBadgeHtml(game, 28)}
         <strong class="game-row-title">${escapeHtml(game.name)}</strong>

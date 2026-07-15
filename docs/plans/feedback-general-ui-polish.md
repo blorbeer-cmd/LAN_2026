@@ -102,9 +102,12 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   „Aktuell“ nutzt die bereits responsive `card-grid` für mehrere Kacheln.
 - Sitzplan erhält eine Überschrift analog zu Rangliste und Status; „Gesamte Rangliste“ ersetzt
   „Ganze Rangliste“.
-- Den doppelten Home-/Kopfzeilen-Meldungsbereich durch eine Glocke in der Kopfzeile ersetzen. Die
-  Liste ist nach neuesten Meldungen sortiert; gelesen und persönlich ausgeblendet wird vorläufig
-  anhand der lokal gewählten Spieleridentität. Die Home-Historie und der dauerhafte Banner entfallen.
+- Die Meldungshistorie in die Glocke der Kopfzeile verschieben. Die neueste aktive, ungelesene
+  Mitteilung bleibt zusätzlich als hervorgehobener Direktlink unter der Kopfzeile sichtbar; die
+  frühere doppelte Home-Historie entfällt. Gelesen und persönlich ausgeblendet wird vorläufig anhand
+  der lokal gewählten Spieleridentität.
+- Die Ranglisten-Vorschau zeigt auf größeren Displays die ersten sechs Plätze in zwei Spalten und
+  fällt auf schmalen Handys in eine fortlaufende Liste zurück.
 - Rang-Titel, Kurztexte und Ergebnisformular bereinigen. Für die Spieler-Zuordnung eine stabile
   Grid-/Spaltenstruktur verwenden, damit Selects unabhängig von Namenslängen fluchten.
 - Vote-Beschreibung auf „Punkte frei verteilen, höchste Summe gewinnt.“ kürzen, Aktionsbuttons
@@ -176,13 +179,16 @@ Betroffene Dateien: `server/public/js/views/analytics.js`, gegebenenfalls
 - Ein Suchsymbol in der Kopfzeile öffnet eine responsive Command-Palette; `Strg/Cmd + K` und `/`
   bieten denselben schnellen Einstieg per Tastatur.
 - Der lokale Index umfasst alle Hauptbereiche, Tools und persönliche Ziele sowie verständliche
-  Synonyme wie „Captain Draft“, „Voting“, „Anreise“ oder „WLAN“.
+  Synonyme wie „Captain Draft“, „Voting“, „Anreise“ oder „WLAN“. Zusätzlich werden Spieler, Spiele,
+  Events, Bestellungen samt Positionen, Info-Board-Einträge, Durchsagen, Fahrgemeinschaften,
+  Turniere und persönliche Mitteilungen aus State und bestehenden APIs indexiert.
+- Vor der Eingabe bleibt die Ergebnisliste leer; Startvorschläge und eine separate
+  Tastaturerklärung entfallen.
 - Treffer werden während der Eingabe gefiltert und lassen sich per Touch, Maus, Pfeiltasten und
   Enter öffnen. Escape, Klick auf den Hintergrund und der Schließen-Button schließen die Palette
   und geben den Fokus an den Auslöser zurück.
-- Die erste Ausbaustufe navigiert bewusst auf Bereiche. Eine spätere Inhaltssuche kann Spieler,
-  Spiele oder Info-Board-Einträge als eigene Treffer ergänzen, sobald dafür klare Zielzustände in
-  den jeweiligen Ansichten existieren.
+- Inhaltstreffer navigieren in den passenden Bereich und markieren dort das konkrete Ziel, sofern
+  die Ansicht eine stabile Zielkarte oder -zeile besitzt; Turniertreffer öffnen direkt das Turnier.
 
 ## Test- und Abnahmeplan
 

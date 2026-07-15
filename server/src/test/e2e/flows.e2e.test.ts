@@ -115,7 +115,16 @@ test('global search filters areas, supports keyboard navigation and restores foc
   await page.click('#global-search-btn');
   await page.waitForSelector('.global-search-modal');
   assert.equal(await page.locator('#global-search-input').evaluate((element) => element === document.activeElement), true);
+  assert.equal(await page.locator('.global-search-result').count(), 0, 'search must not show frequent areas before input');
+  assert.equal(await page.locator('.global-search-shortcuts').count(), 0, 'keyboard legend is intentionally omitted');
 
+  await page.fill('#global-search-input', 'E2E Alice');
+  await page.waitForSelector('.global-search-result:has-text("E2E Alice")');
+  await page.click('.global-search-result:has-text("E2E Alice")');
+  await page.waitForSelector('.view-title:text("Spieler")');
+  await page.waitForSelector('[data-player].search-target-highlight:has-text("E2E Alice")');
+
+  await page.keyboard.press('Control+K');
   await page.fill('#global-search-input', 'Captain Draft');
   await page.waitForSelector('.global-search-result:has-text("Teams auslosen")');
   await page.click('.global-search-result:has-text("Teams auslosen")');
@@ -129,7 +138,7 @@ test('global search filters areas, supports keyboard navigation and restores foc
 
   await page.click('#global-search-btn');
   await page.fill('#global-search-input', 'gibt es nicht');
-  await page.waitForSelector('text=Kein passender Bereich gefunden.');
+  await page.waitForSelector('text=Kein passender Inhalt gefunden.');
   await page.keyboard.press('Escape');
   assert.equal(await page.locator('.global-search-modal').count(), 0);
   assert.equal(await page.locator('#global-search-btn').evaluate((element) => element === document.activeElement), true);
@@ -264,6 +273,13 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.click('[data-view="home"]');
   await page.waitForSelector('.player-card');
   assert.equal(await page.locator('.player-card').count(), 2);
+  await page.setViewportSize({ width: 900, height: 844 });
+  assert.equal(
+    await page.locator('.home-leaderboard-columns').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
+    2,
+    'home leaderboard should use two columns when the card has enough width'
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
 
   // Manual pause override (FR-28): the pause toggle lives in the "Dein
   // Status" bar, not on the player's own tile. Toggle pause, see the badge
@@ -615,6 +631,14 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.click('[data-add-item-form] button[type="submit"]');
   await page.waitForSelector('text=Margherita');
   await page.waitForSelector('text=9,50 €');
+
+  // Content search resolves an item description to its parent order and
+  // highlights that concrete order instead of only opening the Essen area.
+  await page.keyboard.press('Control+K');
+  await page.fill('#global-search-input', 'Margherita groß');
+  await page.waitForSelector('.global-search-result:has-text("Pizza bei Luigi")');
+  await page.click('.global-search-result:has-text("Pizza bei Luigi")');
+  await page.waitForSelector('[data-order-card].search-target-highlight');
 
   await page.click('[data-close-order]');
   // confirmDialog is an in-app modal (not a native browser dialog).
@@ -1256,10 +1280,16 @@ test('Durchsage: notification center can navigate, mark read and remove without 
     throw err;
   }
 
-  // The header bell shows the same push on any view and deep-links back into
-  // Durchsagen. Opening the target also marks this entry as read.
+  // The highlighted strip shows the newest active push on any view and
+  // deep-links back into Durchsagen. Opening it marks the entry as read,
+  // while the bell keeps it in the durable history.
   await page.click('[data-view="leaderboard"]');
-  await page.waitForSelector('#notifications-count:not([hidden])');
+  const highlight = page.locator('#notification-highlight:has-text("Essen ist da!")');
+  await highlight.waitFor();
+  await highlight.locator('[data-notification-highlight-navigate]').click();
+  await page.waitForSelector('#broadcast-message');
+  await page.waitForSelector('#notification-highlight', { state: 'hidden' });
+
   await page.click('#notifications-btn');
   assert.equal(await page.getAttribute('#notifications-btn', 'aria-expanded'), 'true');
   assert.equal(
@@ -1276,18 +1306,11 @@ test('Durchsage: notification center can navigate, mark read and remove without 
   await page.click('#notifications-btn');
   const foodNotification = page.locator('.notification-center-entry:has-text("Essen ist da!")');
   await foodNotification.waitFor();
-  await foodNotification.locator('.badge:has-text("Neu")').waitFor();
-  await foodNotification.locator('[data-notification-navigate]').click();
-  await page.waitForSelector('#broadcast-message');
-
-  await page.click('#notifications-btn');
-  const readFoodNotification = page.locator('.notification-center-entry:has-text("Essen ist da!")');
-  await readFoodNotification.waitFor();
-  assert.equal(await readFoodNotification.locator('.badge:has-text("Neu")').count(), 0);
+  assert.equal(await foodNotification.locator('.badge:has-text("Neu")').count(), 0);
 
   // Removing is personal and leaves the durable Durchsage itself intact.
-  await readFoodNotification.locator('[data-notification-hide]').click();
-  await readFoodNotification.waitFor({ state: 'detached' });
+  await foodNotification.locator('[data-notification-hide]').click();
+  await foodNotification.waitFor({ state: 'detached' });
   await page.click('[data-notification-close]');
   await page.waitForSelector('.lb-row >> text=Essen ist da!');
 

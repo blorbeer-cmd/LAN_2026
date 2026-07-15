@@ -48,7 +48,7 @@ function renderHistory(myId) {
           ? `Sichtbar bis ${formatDateTime(b.endsAt)} Uhr`
           : `Abgelaufen am ${formatDateTime(b.endsAt)} Uhr`;
       return `
-      <div class="lb-row" style="align-items:flex-start;">
+      <div class="lb-row" style="align-items:flex-start;" data-broadcast="${b.id}">
         <div class="stack" style="gap:var(--space-1);flex:1;">
           <div><strong>${escapeHtml(b.playerName)}</strong>: ${escapeHtml(b.message)}</div>
           <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(b.createdAt)} Uhr · ${status}</span>

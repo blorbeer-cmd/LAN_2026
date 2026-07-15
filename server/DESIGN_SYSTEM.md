@@ -205,12 +205,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Contextual help** — `.info-tooltip` with `.info-tooltip-trigger` and
   `.info-tooltip-panel`, rendered/wired through `infoTooltip.js`; works with pointer, keyboard and
   touch instead of relying on the native `title` attribute.
-- **Notification center** — `.notification-center` with `.notification-center-panel` and
-  `.notification-center-entry`; its bell lives in the shared topbar and personal read/remove state
-  stays server-backed.
+- **Notification center** — `.notification-highlight` exposes the newest active unread entry as a
+  direct link below the topbar; `.notification-center` with `.notification-center-panel` and
+  `.notification-center-entry` keeps the full personal history and server-backed read/remove state.
 - **Global search** — `.global-search` with `.global-search-results` and
   `.global-search-result`, wired through `searchPalette.js`; opens from the topbar or with
-  `Strg/Cmd + K` and navigates across all areas without an external search service.
+  `Strg/Cmd + K`, searches both areas and current app content without an external service, and uses
+  `.search-target-highlight` to expose a concrete result after navigation.
 
 Prefer composition of these primitives over view-specific copies. A new component
 class needs a distinct reusable purpose; a one-page selector that merely restates a

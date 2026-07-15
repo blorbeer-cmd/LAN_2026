@@ -1,28 +1,32 @@
+import { api } from './api.js';
 import { escapeHtml } from './format.js';
 import { icon } from './icons.js';
 import { openModal } from './modal.js';
+import { feedLinkView } from './pushFeed.js';
+import { state } from './state.js';
+import { getMyId } from './whoami.js';
 
 export const SEARCH_ENTRIES = [
-  { view: 'home', title: 'Home', category: 'Hauptbereich', description: 'Aktuelles, Live-Status und Überblick', aliases: 'start übersicht dashboard', priority: 100 },
-  { view: 'tournaments', title: 'Turniere', category: 'Hauptbereich', description: 'Turniere anlegen und Ergebnisse verwalten', aliases: 'tournament ko runde bracket', priority: 99 },
-  { view: 'matchmaking', title: 'Teams auslosen', category: 'Hauptbereich', description: 'Auslosen, Captain Draft und Team-Historie', aliases: 'teams matchmaking captain draft kraft', priority: 98 },
-  { view: 'votes', title: 'Abstimmung', category: 'Hauptbereich', description: 'Gemeinsam das nächste Spiel wählen', aliases: 'vote voting punkte spielwahl', priority: 97 },
-  { view: 'leaderboard', title: 'Rangliste', category: 'Hauptbereich', description: 'Ergebnisse, Punkte und Platzierungen', aliases: 'rang leaderboard ergebnis match', priority: 96 },
-  { view: 'more', title: 'Mehr', category: 'Hauptbereich', description: 'Alle weiteren Bereiche und Tools', aliases: 'menü tools', priority: 95 },
-  { view: 'profile', title: 'Mein Profil', category: 'Persönlich', description: 'Profil, Agent und Push-Benachrichtigungen', aliases: 'account ich agent benachrichtigung', priority: 90 },
-  { view: 'myStats', title: 'Meine Statistiken', category: 'Persönlich', description: 'Eigene Spielzeit und persönliche Werte', aliases: 'stats spielzeit auswertung', priority: 80 },
-  { view: 'settings', title: 'Einstellungen', category: 'Verwaltung', description: 'Events, Spiele und Sicherungen verwalten', aliases: 'setup konfiguration backup event', priority: 85 },
-  { view: 'admin', title: 'Admin', category: 'Verwaltung', description: 'Test-Spieler, Rechte und Diagnose', aliases: 'moderation verwaltung diagnose', priority: 60 },
-  { view: 'players', title: 'Spieler', category: 'Tool', description: 'Teilnehmende verwalten und Agent-Status prüfen', aliases: 'teilnehmer roster personen agent', priority: 70 },
-  { view: 'gameCatalog', title: 'Spiele', category: 'Tool', description: 'Bock, Skill und Spielekatalog', aliases: 'games katalog bewertung skill bock', priority: 75 },
-  { view: 'arrivals', title: 'An- & Abreise', category: 'Tool', description: 'Zeiten und Fahrgemeinschaften planen', aliases: 'anreise abreise ankunft abfahrt fahrt carpool', priority: 65 },
-  { view: 'arcade', title: 'Arcade', category: 'Tool', description: 'Minigame-Lobbies öffnen und mitspielen', aliases: 'quiz tetris scribble pong blobby snake minigame', priority: 74 },
-  { view: 'analytics', title: 'Auswertungen', category: 'Tool', description: 'Awards und gemeinsame Statistiken', aliases: 'analytics statistik awards spielzeit', priority: 64 },
-  { view: 'broadcast', title: 'Durchsage', category: 'Tool', description: 'Eine Mitteilung an alle Geräte senden', aliases: 'ansage nachricht push kiosk', priority: 63 },
-  { view: 'foodOrders', title: 'Essen', category: 'Tool', description: 'Sammelbestellungen koordinieren', aliases: 'bestellung food pizza lieferdienst', priority: 68 },
-  { view: 'hallOfFame', title: 'Hall of Fame', category: 'Tool', description: 'Champions vergangener Events', aliases: 'champions sieger historie ruhmeshalle', priority: 61 },
-  { view: 'infoBoard', title: 'Info-Board', category: 'Tool', description: 'WLAN, Discord, Server und Hausregeln', aliases: 'info board information wlan discord server hausregeln', priority: 69 },
-  { view: 'seating', title: 'Sitzplan', category: 'Tool', description: 'Plätze und sichtbare Monitore verwalten', aliases: 'sitzplatz tisch monitore nachbarn', priority: 67 },
+  { view: 'home', title: 'Home', category: 'Bereich', description: 'Aktuelles, Live-Status und Überblick', aliases: 'start übersicht dashboard', priority: 100 },
+  { view: 'tournaments', title: 'Turniere', category: 'Bereich', description: 'Turniere anlegen und Ergebnisse verwalten', aliases: 'tournament ko runde bracket', priority: 99 },
+  { view: 'matchmaking', title: 'Teams auslosen', category: 'Bereich', description: 'Auslosen, Captain Draft und Team-Historie', aliases: 'teams matchmaking captain draft kraft', priority: 98 },
+  { view: 'votes', title: 'Abstimmung', category: 'Bereich', description: 'Gemeinsam das nächste Spiel wählen', aliases: 'vote voting punkte spielwahl', priority: 97 },
+  { view: 'leaderboard', title: 'Rangliste', category: 'Bereich', description: 'Ergebnisse, Punkte und Platzierungen', aliases: 'rang leaderboard ergebnis match', priority: 96 },
+  { view: 'more', title: 'Mehr', category: 'Bereich', description: 'Alle weiteren Bereiche und Tools', aliases: 'menü tools', priority: 95 },
+  { view: 'profile', title: 'Mein Profil', category: 'Bereich', description: 'Profil, Agent und Push-Benachrichtigungen', aliases: 'account ich agent benachrichtigung', priority: 90 },
+  { view: 'myStats', title: 'Meine Statistiken', category: 'Bereich', description: 'Eigene Spielzeit und persönliche Werte', aliases: 'stats spielzeit auswertung', priority: 80 },
+  { view: 'settings', title: 'Einstellungen', category: 'Bereich', description: 'Events, Spiele und Sicherungen verwalten', aliases: 'setup konfiguration backup event', priority: 85 },
+  { view: 'admin', title: 'Admin', category: 'Bereich', description: 'Test-Spieler, Rechte und Diagnose', aliases: 'moderation verwaltung diagnose', priority: 60 },
+  { view: 'players', title: 'Spieler', category: 'Bereich', description: 'Teilnehmende verwalten und Agent-Status prüfen', aliases: 'teilnehmer roster personen agent', priority: 70 },
+  { view: 'gameCatalog', title: 'Spiele', category: 'Bereich', description: 'Bock, Skill und Spielekatalog', aliases: 'games katalog bewertung skill bock', priority: 75 },
+  { view: 'arrivals', title: 'An- & Abreise', category: 'Bereich', description: 'Zeiten und Fahrgemeinschaften planen', aliases: 'anreise abreise ankunft abfahrt fahrt carpool', priority: 65 },
+  { view: 'arcade', title: 'Arcade', category: 'Bereich', description: 'Minigame-Lobbies öffnen und mitspielen', aliases: 'quiz tetris scribble pong blobby snake minigame', priority: 74 },
+  { view: 'analytics', title: 'Auswertungen', category: 'Bereich', description: 'Awards und gemeinsame Statistiken', aliases: 'analytics statistik awards spielzeit', priority: 64 },
+  { view: 'broadcast', title: 'Durchsage', category: 'Bereich', description: 'Eine Mitteilung an alle Geräte senden', aliases: 'ansage nachricht push kiosk', priority: 63 },
+  { view: 'foodOrders', title: 'Essen', category: 'Bereich', description: 'Sammelbestellungen koordinieren', aliases: 'bestellung food pizza lieferdienst', priority: 68 },
+  { view: 'hallOfFame', title: 'Hall of Fame', category: 'Bereich', description: 'Champions vergangener Events', aliases: 'champions sieger historie ruhmeshalle', priority: 61 },
+  { view: 'infoBoard', title: 'Info-Board', category: 'Bereich', description: 'WLAN, Discord, Server und Hausregeln', aliases: 'info board information wlan discord server hausregeln', priority: 69 },
+  { view: 'seating', title: 'Sitzplan', category: 'Bereich', description: 'Plätze und sichtbare Monitore verwalten', aliases: 'sitzplatz tisch monitore nachbarn', priority: 67 },
 ];
 
 export function normalizeSearchText(value) {
@@ -35,28 +39,151 @@ export function normalizeSearchText(value) {
     .trim();
 }
 
-export function searchEntries(query, limit = 12) {
+export function searchEntries(query, entries = SEARCH_ENTRIES, limit = 20) {
   const normalizedQuery = normalizeSearchText(query);
-  if (!normalizedQuery) {
-    return [...SEARCH_ENTRIES].sort((a, b) => b.priority - a.priority).slice(0, limit);
-  }
+  if (!normalizedQuery) return [];
 
   const terms = normalizedQuery.split(/\s+/);
-  return SEARCH_ENTRIES.map((entry) => {
-    const title = normalizeSearchText(entry.title);
-    const haystack = normalizeSearchText(`${entry.title} ${entry.category} ${entry.description} ${entry.aliases}`);
-    if (!terms.every((term) => haystack.includes(term))) return null;
+  return entries
+    .map((entry) => {
+      const title = normalizeSearchText(entry.title);
+      const haystack = normalizeSearchText(`${entry.title} ${entry.category} ${entry.description} ${entry.aliases ?? ''}`);
+      if (!terms.every((term) => haystack.includes(term))) return null;
 
-    let score = entry.priority;
-    if (title === normalizedQuery) score += 1000;
-    else if (title.startsWith(normalizedQuery)) score += 700;
-    else if (title.split(' ').some((word) => word.startsWith(normalizedQuery))) score += 500;
-    score += terms.filter((term) => title.includes(term)).length * 100;
-    return { ...entry, score };
-  })
+      let score = entry.priority ?? 0;
+      if (title === normalizedQuery) score += 1000;
+      else if (title.startsWith(normalizedQuery)) score += 700;
+      else if (title.split(' ').some((word) => word.startsWith(normalizedQuery))) score += 500;
+      score += terms.filter((term) => title.includes(term)).length * 100;
+      return { ...entry, score };
+    })
     .filter(Boolean)
     .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title, 'de'))
     .slice(0, limit);
+}
+
+function compactText(value, maxLength = 100) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+export function createContentSearchEntries(appState, content = {}) {
+  const playerEntries = (appState.players ?? []).map((player) => ({
+    view: 'players',
+    title: player.name,
+    category: 'Spieler',
+    description: player.real_name ? `${player.real_name} · Spielerprofil` : 'Spielerprofil öffnen',
+    aliases: `${player.real_name ?? ''} ${player.note ?? ''}`,
+    priority: 88,
+    target: { type: 'player', id: player.id },
+  }));
+  const gameEntries = (appState.games ?? []).map((game) => ({
+    view: 'gameCatalog',
+    title: game.name,
+    category: 'Spiel',
+    description: game.platform ? `${game.platform} · Spiel im Katalog` : 'Spiel im Katalog',
+    aliases: `${game.processNames?.join(' ') ?? ''} ${game.genre ?? ''}`,
+    priority: 82,
+    target: { type: 'game', id: game.id },
+  }));
+  const eventEntries = (appState.events ?? []).map((event) => ({
+    view: 'settings',
+    title: event.name,
+    category: 'Event',
+    description: compactText(event.location || event.description || 'Event verwalten'),
+    aliases: `${event.location ?? ''} ${event.description ?? ''}`,
+    priority: 70,
+  }));
+  const orderEntries = (content.orders ?? []).map((order) => ({
+    view: 'foodOrders',
+    title: order.title,
+    category: 'Bestellung',
+    description: `${order.open ? 'Offen' : 'Geschlossen'}${order.createdByName ? ` · von ${order.createdByName}` : ''}`,
+    aliases: `${order.notes ?? ''} ${(order.items ?? []).map((item) => `${item.playerName ?? ''} ${item.description ?? ''}`).join(' ')}`,
+    priority: 92,
+    target: { type: 'order', id: order.id },
+  }));
+  const infoEntries = (content.infoEntries ?? []).map((entry) => ({
+    view: 'infoBoard',
+    title: entry.title,
+    category: 'Info-Board',
+    description: compactText(entry.content),
+    aliases: entry.content,
+    priority: 84,
+    target: { type: 'info', id: entry.id },
+  }));
+  const broadcastEntries = (content.broadcasts ?? []).map((entry) => ({
+    view: 'broadcast',
+    title: compactText(entry.message, 80),
+    category: 'Durchsage',
+    description: entry.playerName ? `von ${entry.playerName}` : 'Mitteilung an alle',
+    aliases: `${entry.playerName ?? ''} ${entry.message ?? ''}`,
+    priority: 78,
+    target: { type: 'broadcast', id: entry.id },
+  }));
+  const carpools = ['arrival', 'departure'].flatMap((direction) =>
+    (content.carpools?.[direction] ?? []).map((carpool) => ({
+      view: 'arrivals',
+      title: carpool.label,
+      category: direction === 'arrival' ? 'Anreise' : 'Abreise',
+      description: compactText(carpool.startLocation || `${carpool.seatsFree}/${carpool.seatsTotal} Plätze frei`),
+      aliases: `${carpool.createdByName ?? ''} ${carpool.startLocation ?? ''} ${(carpool.members ?? []).map((member) => member.name).join(' ')}`,
+      priority: 76,
+      target: { type: 'carpool', id: carpool.id },
+    }))
+  );
+  const tournamentEntries = (content.tournaments ?? []).map((tournament) => ({
+    view: 'tournaments',
+    title: tournament.name,
+    category: 'Turnier',
+    description: compactText(tournament.gameName || tournament.status || 'Turnier öffnen'),
+    aliases: `${tournament.gameName ?? ''} ${tournament.status ?? ''}`,
+    priority: 86,
+    target: { type: 'tournament', id: tournament.id },
+  }));
+  const notificationEntries = (content.notifications ?? []).map((entry) => ({
+    view: feedLinkView(entry.url) || 'home',
+    title: entry.title,
+    category: 'Mitteilung',
+    description: compactText(entry.body),
+    aliases: entry.body,
+    priority: 74,
+  }));
+
+  return [
+    ...playerEntries,
+    ...gameEntries,
+    ...eventEntries,
+    ...orderEntries,
+    ...infoEntries,
+    ...broadcastEntries,
+    ...carpools,
+    ...tournamentEntries,
+    ...notificationEntries,
+  ];
+}
+
+async function loadContentSearchEntries() {
+  const myId = getMyId();
+  const requests = [
+    api.foodOrders.list(),
+    api.info.list(),
+    api.broadcasts.list(),
+    api.arrivals.list(),
+    api.tournaments.list(),
+    myId ? api.push.log(myId) : Promise.resolve({ entries: [] }),
+  ];
+  const [orders, info, broadcasts, arrivals, tournaments, notifications] = await Promise.allSettled(requests);
+  const value = (result, fallback) => (result.status === 'fulfilled' ? result.value : fallback);
+
+  return createContentSearchEntries(state, {
+    orders: value(orders, { orders: [] }).orders ?? [],
+    infoEntries: value(info, { entries: [] }).entries ?? [],
+    broadcasts: value(broadcasts, { broadcasts: [] }).broadcasts ?? [],
+    carpools: value(arrivals, { carpools: {} }).carpools ?? {},
+    tournaments: value(tournaments, []),
+    notifications: value(notifications, { entries: [] }).entries ?? [],
+  });
 }
 
 function isEditableTarget(target) {
@@ -79,11 +206,10 @@ export function initGlobalSearch(onNavigate) {
     openModal(
       'Suchen',
       `<div class="global-search">
-        <label class="global-search-label" for="global-search-input">Bereiche und Tools durchsuchen</label>
-        <input id="global-search-input" type="search" autocomplete="off" spellcheck="false" placeholder="Zum Beispiel Captain Draft, Essen oder Sitzplan" aria-controls="global-search-results" />
+        <label class="global-search-label" for="global-search-input">Bereiche und Inhalte durchsuchen</label>
+        <input id="global-search-input" type="search" autocomplete="off" spellcheck="false" placeholder="Spieler, Bestellung, Spiel, WLAN …" aria-controls="global-search-results" />
         <div id="global-search-summary" class="global-search-summary" aria-live="polite"></div>
         <div id="global-search-results" class="global-search-results" role="listbox" aria-label="Suchergebnisse"></div>
-        <div class="global-search-shortcuts" aria-hidden="true"><span><kbd>↑</kbd><kbd>↓</kbd> auswählen</span><span><kbd>Enter</kbd> öffnen</span><span><kbd>Esc</kbd> schließen</span></div>
       </div>`,
       {
         onClose: () => {
@@ -95,6 +221,7 @@ export function initGlobalSearch(onNavigate) {
           const input = backdrop.querySelector('#global-search-input');
           const summary = backdrop.querySelector('#global-search-summary');
           const resultsContainer = backdrop.querySelector('#global-search-results');
+          let allEntries = [...SEARCH_ENTRIES, ...createContentSearchEntries(state)];
           let results = [];
           let selectedIndex = 0;
 
@@ -106,17 +233,23 @@ export function initGlobalSearch(onNavigate) {
               button.setAttribute('aria-selected', String(selected));
             });
             const selected = buttons[selectedIndex];
-            input.setAttribute('aria-activedescendant', selected?.id || '');
+            if (selected) input.setAttribute('aria-activedescendant', selected.id);
+            else input.removeAttribute('aria-activedescendant');
             selected?.scrollIntoView({ block: 'nearest' });
           };
 
           const renderResults = () => {
-            results = searchEntries(input.value);
-            selectedIndex = 0;
             const hasQuery = normalizeSearchText(input.value).length > 0;
-            summary.textContent = hasQuery ? `${results.length} Treffer` : 'Häufig genutzte Bereiche';
+            results = searchEntries(input.value, allEntries);
+            selectedIndex = 0;
+            summary.textContent = hasQuery ? `${results.length} Treffer` : '';
+            if (!hasQuery) {
+              resultsContainer.innerHTML = '';
+              input.removeAttribute('aria-activedescendant');
+              return;
+            }
             if (results.length === 0) {
-              resultsContainer.innerHTML = '<div class="global-search-empty">Kein passender Bereich gefunden.</div>';
+              resultsContainer.innerHTML = '<div class="global-search-empty">Kein passender Inhalt gefunden.</div>';
               input.removeAttribute('aria-activedescendant');
               return;
             }
@@ -135,7 +268,7 @@ export function initGlobalSearch(onNavigate) {
             const entry = results[selectedIndex];
             if (!entry) return;
             close();
-            onNavigate(entry.view);
+            onNavigate(entry);
           };
 
           input.addEventListener('input', renderResults);
@@ -168,6 +301,11 @@ export function initGlobalSearch(onNavigate) {
 
           renderResults();
           input.focus();
+          loadContentSearchEntries().then((contentEntries) => {
+            if (!backdrop.isConnected) return;
+            allEntries = [...SEARCH_ENTRIES, ...contentEntries];
+            renderResults();
+          });
         },
       }
     );
