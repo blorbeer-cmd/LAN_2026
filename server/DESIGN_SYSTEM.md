@@ -234,7 +234,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   „Auslosung“ from „Modus“ through reusable bordered `.tournament-section-panel` sections with a
   restrained accent rail instead of numbered badges. The same section pattern groups each
   tournament group with its table and rounds. Result controls remain compact and decided matches
-  expose an explicit edit action.
+  expose an explicit edit action. `.tournament-lobby-info` presents lobby name and password as a
+  prominent access card in the detail view. Bracket matches reserve an internal action area so
+  score inputs and their save/edit control never overlap.
 
 Prefer composition of these primitives over view-specific copies. A new component
 class needs a distinct reusable purpose; a one-page selector that merely restates a

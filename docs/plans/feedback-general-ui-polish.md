@@ -105,6 +105,9 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
 - Anzahl Teams erhält denselben Label-Abstand wie die Spielauswahl. Der gemeinsame Lobby-Zugangstitel
   entfällt; „(optional)“ steht direkt hinter Lobby-Name und Lobby-Passwort. Zwischen aktueller
   Turnierreihe, geöffnetem Formular und abgeschlossener Reihe gilt derselbe vertikale Abstand.
+- In der Turnierdetailansicht erscheinen Lobby-Name und Passwort als eigener prominenter
+  Zugangsbereich. Ergebnisfelder und Speichern-/Bearbeiten-Aktion im Turnierbaum belegen getrennte
+  Flächen innerhalb der Matchbox und überlappen auch bei einem einzelnen Finale nicht.
 - Teamkarten in der Detailansicht und in der Auslosung nutzen höchstens zwei Spalten. In der
   Auslosung lassen sich Gamer per Drag-and-drop, Touch-Auswahl oder Pfeiltasten zwischen Teams
   verschieben; das bisherige Team-Dropdown entfällt.

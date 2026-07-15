@@ -1147,10 +1147,47 @@ input[type='number']::-webkit-inner-spin-button {
   margin: 0;
 }
 .tournament-lobby-info {
-  margin-bottom: var(--space-3);
-  font-size: var(--font-size-sm);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  border-color: var(--accent);
+  background: var(--bg-elevated-2);
+}
+.tournament-lobby-title {
+  flex-basis: 100%;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.tournament-lobby-access {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.tournament-lobby-credential {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+}
+.tournament-lobby-credential span {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+.tournament-lobby-credential strong {
+  color: var(--text);
+  font-size: var(--font-size-lg);
 }
 .tournament-lobby-note {
+  flex: 1 1 100%;
   font-size: var(--font-size-xs);
 }
 .tournament-team-card .team-card-header .muted {
@@ -2782,7 +2819,7 @@ input[type='range'].preference-row-slider {
    a bye or a score line made one box taller than its neighbor. */
 
 :root {
-  --bracket-match-w: 200px;
+  --bracket-match-w: 240px;
   --bracket-match-h: 76px;
   --bracket-pair-gap: 20px;
   --bracket-round-gap: 40px;
@@ -2903,6 +2940,9 @@ input[type='range'].preference-row-slider {
 .bracket-team-row:last-child {
   border-radius: 0 0 var(--radius) var(--radius);
 }
+.bracket-match.has-result-action .bracket-team-row {
+  padding-right: calc(var(--space-7) + var(--space-3));
+}
 .bracket-team-name {
   flex: 1;
   min-width: 0;
@@ -2957,7 +2997,7 @@ input[type='number'].tournament-score-input {
 .bracket-score-submit,
 .bracket-result-edit {
   position: absolute;
-  right: calc(var(--bracket-pair-gap) * -1 + 2px);
+  right: var(--space-1);
   top: 50%;
   transform: translateY(-50%);
   z-index: 1;

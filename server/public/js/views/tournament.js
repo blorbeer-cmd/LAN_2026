@@ -734,7 +734,8 @@ function renderBracketMatchBox(m, t, teamsById) {
       ? `<button type="button" class="bracket-result-edit btn" data-edit-result="${m.id}" aria-label="Ergebnis bearbeiten">${icon('pencil')}</button>`
       : '';
 
-  return `<div class="bracket-match">${teamRow(m.teamAId, m.scoreA)}${teamRow(m.teamBId, m.scoreB)}${submitBtn}${editBtn}</div>`;
+  const actionClass = submitBtn || editBtn ? ' has-result-action' : '';
+  return `<div class="bracket-match${actionClass}">${teamRow(m.teamAId, m.scoreA)}${teamRow(m.teamBId, m.scoreB)}${submitBtn}${editBtn}</div>`;
 }
 
 // Recursively renders the bracket as nested pairs instead of flat per-round
@@ -961,10 +962,22 @@ function renderDetail(container, ctx) {
 
   const lobbyInfo =
     t.lobbyName || t.lobbyPassword
-      ? `<div class="muted tournament-lobby-info">
-           ${t.lobbyName ? `Lobby "${escapeHtml(t.lobbyName)}"` : 'Lobby'}${t.lobbyPassword ? ` · PW: ${escapeHtml(t.lobbyPassword)}` : ''}
-           <span class="muted tournament-lobby-note"> — das obere Team im Baum eröffnet</span>
-         </div>`
+      ? `<section class="card tournament-lobby-info" aria-label="Lobby-Zugang">
+           <div class="tournament-lobby-title">Lobby-Zugang</div>
+           <div class="tournament-lobby-access">
+             ${
+               t.lobbyName
+                 ? `<div class="tournament-lobby-credential"><span>Lobby</span><strong>${escapeHtml(t.lobbyName)}</strong></div>`
+                 : ''
+             }
+             ${
+               t.lobbyPassword
+                 ? `<div class="tournament-lobby-credential"><span>Passwort</span><strong>${escapeHtml(t.lobbyPassword)}</strong></div>`
+                 : ''
+             }
+           </div>
+           <div class="muted tournament-lobby-note">Das obere Team im Turnierbaum eröffnet die Lobby.</div>
+         </section>`
       : '';
 
   container.innerHTML = `
