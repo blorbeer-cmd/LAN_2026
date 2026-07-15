@@ -20,7 +20,7 @@ import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { getToken } from '../api.js';
 import { icon } from '../icons.js';
-import { arcadeLobbyEntryHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
 const SWATCHES = [
@@ -905,47 +905,40 @@ function renderLobbyList() {
     .map((l) => {
       const isHost = l.host.id === myId();
       const joined = l.players.some((p) => p.id === myId());
+      const ready = l.players.length >= 2;
+      const settingsHtml = isHost
+        ? `<div class="field-label">Runden</div>
+          <div class="arcade-lobby-setting-options">
+            ${[1, 2, 3]
+              .map(
+                (n) =>
+                  `<label class="check-row"><input type="radio" name="scribble-rounds" value="${n}" ${n === scribbleRounds ? 'checked' : ''} />${n}</label>`
+              )
+              .join('')}
+          </div>
+          <div class="field-label">Zeit pro Runde</div>
+          <div class="arcade-lobby-setting-options">
+            ${[40, 60, 80]
+              .map(
+                (n) =>
+                  `<label class="check-row"><input type="radio" name="scribble-turn-seconds" value="${n}" ${n === scribbleTurnSeconds ? 'checked' : ''} />${n}s</label>`
+              )
+              .join('')}
+          </div>`
+        : '';
       const footerActions = isHost
-        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-close="${l.id}">Schließen</button>`
+        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-close="${l.id}">Schließen</button>
+          <button type="button" class="btn btn-sm btn-equal btn-primary" id="scribble-start" ${ready ? '' : 'disabled'}>Start</button>`
         : joined
           ? `${readyToggleHtml(l, myId(), 'scribble-ready')}
-            <button type="button" class="btn btn-sm btn-equal" data-scribble-leave="${l.id}">Verlassen</button>`
+            <button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-leave="${l.id}">Verlassen</button>`
           : '';
       const joinAction = !joined && !isHost
         ? `<button type="button" class="btn btn-sm btn-primary" data-scribble-join="${l.id}">Beitreten</button>`
         : '';
-      return arcadeLobbyEntryHtml(l, { joinAction, footerActions });
+      return arcadeLobbyEntryHtml(l, { joinAction, settingsHtml, footerActions });
     })
     .join('');
-}
-
-function hostStartHtml() {
-  const lobby = myScribbleLobby();
-  if (!lobby || lobby.host.id !== myId()) return '';
-  const ready = lobby.players.length >= 2;
-  return `
-    <div class="stack" style="gap:var(--space-2);border-top:1px solid var(--border);padding-top:var(--space-3);">
-      <div class="field-label">Runden</div>
-      <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
-        ${[1, 2, 3]
-          .map(
-            (n) =>
-              `<label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="scribble-rounds" value="${n}" ${n === scribbleRounds ? 'checked' : ''} />${n}</label>`
-          )
-          .join('')}
-      </div>
-      <div class="field-label">Zeit pro Runde</div>
-      <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
-        ${[40, 60, 80]
-          .map(
-            (n) =>
-              `<label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="scribble-turn-seconds" value="${n}" ${n === scribbleTurnSeconds ? 'checked' : ''} />${n}s</label>`
-          )
-          .join('')}
-      </div>
-      <div class="muted" style="font-size:var(--font-size-xs);">${ready ? `${readySummaryText(lobby)} — Start möglich.` : 'Warte auf weitere Spieler…'}</div>
-      <button type="button" class="btn btn-primary btn-block" id="scribble-start" ${ready ? '' : 'disabled'}>Start</button>
-    </div>`;
 }
 
 // The Arcade view embeds this whole card in place of a separate sub-view.
@@ -957,10 +950,9 @@ export function renderScribbleLobbyCard() {
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
       ${renderLobbyList()}
       <div class="arcade-lobby-create-actions">
-        ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="scribble-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
         <button type="button" class="btn btn-primary btn-sm" id="scribble-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+        ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="scribble-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
       </div>
-      ${hostStartHtml()}
     </div>`;
 }
 

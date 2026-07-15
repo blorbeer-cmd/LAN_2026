@@ -1721,12 +1721,13 @@ button.card {
 }
 .arcade-lobby-create-actions {
   display: flex;
+  flex-direction: column;
   gap: var(--space-2);
   padding-top: var(--space-2);
   border-top: 1px solid var(--border);
 }
 .arcade-lobby-create-actions .btn {
-  flex: 1 1 0;
+  width: 100%;
 }
 .arcade-lobby-entry {
   gap: var(--space-2);
@@ -1752,9 +1753,10 @@ button.card {
   gap: var(--space-1);
 }
 .arcade-lobby-member-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: var(--avatar-size-sm) minmax(0, 1fr) calc(var(--space-8) + var(--space-8));
   align-items: center;
-  gap: var(--space-2);
+  column-gap: var(--space-2);
   min-height: var(--row-icon-size);
   min-width: 0;
 }
@@ -1770,30 +1772,44 @@ button.card {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: calc(var(--space-8) + var(--space-8));
+  width: 100%;
   gap: var(--space-1);
-  margin-left: auto;
   padding: var(--space-1) var(--space-2);
-  flex-shrink: 0;
   color: var(--text-muted);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
 }
-.arcade-lobby-free-row {
-  justify-content: space-between;
+.arcade-lobby-avatar-slot {
+  width: var(--avatar-size-sm);
+  height: var(--avatar-size-sm);
 }
 .arcade-lobby-free-label {
-  display: inline-flex;
-  align-self: stretch;
-  align-items: center;
-  padding-left: calc(var(--avatar-size-sm) + var(--space-2));
+  align-self: center;
 }
 .arcade-lobby-free-row .btn {
-  width: calc(var(--space-8) + var(--space-8));
-  margin-left: auto;
+  width: 100%;
   align-self: center;
   padding-top: var(--space-1);
   padding-bottom: var(--space-1);
+}
+.arcade-lobby-settings {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+.arcade-lobby-setting-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.arcade-lobby-setting-options .check-row {
+  justify-content: center;
+  padding: var(--space-2) var(--space-3);
+}
+.arcade-lobby-custom-score {
+  width: 100%;
+  min-width: 0;
 }
 .arcade-lobby-entry-actions {
   display: flex;
@@ -1803,6 +1819,11 @@ button.card {
 }
 .arcade-lobby-entry-actions .btn {
   flex: 1 1 0;
+}
+@media (min-width: 640px) { /* --bp-md */
+  .arcade-lobby-setting-options {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 .arcade-winner-card {
   display: grid;

@@ -5,7 +5,7 @@ import { confirmDialog } from '../modal.js';
 import { getMyId } from '../whoami.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { allLobbyReady, arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
 const COLS = 32;
@@ -73,28 +73,19 @@ function lobbyList() {
     const isHost = lobby.host.id === myId();
     const joined = lobby.players.some((player) => player.id === myId());
     const full = lobby.players.length >= 2 && !joined;
+    const ready = lobby.players.length === 2;
     const footerActions = isHost
-      ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-snake-close="${lobby.id}">Schließen</button>`
+      ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-snake-close="${lobby.id}">Schließen</button>
+        <button type="button" class="btn btn-sm btn-equal btn-primary" id="snake-start" ${ready ? '' : 'disabled'}>Start</button>`
       : joined
         ? `${readyToggleHtml(lobby, myId(), 'snake-ready')}
-          <button type="button" class="btn btn-sm btn-equal" data-snake-leave="${lobby.id}">Verlassen</button>`
+          <button type="button" class="btn btn-sm btn-equal btn-danger" data-snake-leave="${lobby.id}">Verlassen</button>`
         : '';
     const joinAction = !joined && !isHost
       ? `<button type="button" class="btn btn-sm btn-primary" data-snake-join="${lobby.id}" ${full ? 'disabled' : ''}>Beitreten</button>`
       : '';
     return arcadeLobbyEntryHtml(lobby, { playerLimit: 2, joinAction, footerActions, full });
   }).join('');
-}
-
-function hostStart() {
-  const lobby = mySnakeLobby();
-  if (!lobby || lobby.host.id !== myId()) return '';
-  const joined = lobby.players.length === 2;
-  const hint = joined ? (allLobbyReady(lobby) ? 'Gegner ist bereit.' : 'Gegner ist da — noch nicht bereit.') : '';
-  return `<div class="stack" style="gap:var(--space-2);border-top:1px solid var(--border);padding-top:var(--space-3);">
-    ${hint ? `<div class="muted" style="font-size:var(--font-size-xs);">${hint}</div>` : ''}
-    <button type="button" class="btn btn-primary btn-block" id="snake-start" ${joined ? '' : 'disabled'}>Start</button>
-  </div>`;
 }
 
 export function renderSnakeLobbyCard() {
@@ -104,10 +95,9 @@ export function renderSnakeLobbyCard() {
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
     ${lobbyList()}
     <div class="arcade-lobby-create-actions">
-      ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="snake-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
       <button type="button" class="btn btn-primary btn-sm" id="snake-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+      ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="snake-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
     </div>
-    ${hostStart()}
   </div>`;
 }
 

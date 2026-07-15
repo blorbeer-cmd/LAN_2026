@@ -22,7 +22,7 @@ import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } fro
 import { startArcadeWatch } from './arcadeWatch.js';
 import { confirmDialog } from '../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { arcadeLobbyEntryHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 // The Arcade opens as a launcher: a compact grid of playable game tiles.
@@ -300,41 +300,34 @@ function arcadeStatsHtml() {
     ${game.gameType === 'scribble' ? scribbleArtStatsHtml(game) : ''}`;
 }
 
-function targetControls(lobby) {
-  const myId = getMyId();
-  if (!lobby || lobby.host.id !== myId) return '';
-  return `
-    <div class="card stack" style="margin-top:var(--space-3);">
-      <strong>Start</strong>
-      <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
-        <label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="target-score" value="5" checked />5</label>
-        <label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="target-score" value="10" />10</label>
-        <label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="target-score" value="20" />20</label>
-        <label class="row" style="gap:var(--space-2);align-items:center;">
-          <input type="radio" name="target-score" value="custom" />
-          <input type="number" id="target-custom" min="1" max="100" value="${escapeHtml(customTarget)}" placeholder="frei" style="width:78px;" />
-        </label>
-      </div>
-      <div class="muted" style="font-size:var(--font-size-xs);">${readySummaryText(lobby)}</div>
-      <button type="button" class="btn btn-primary btn-block" id="quiz-start-lobby" ${lobby.players.length < 2 ? 'disabled' : ''}>Start</button>
-    </div>`;
-}
-
 function renderLobbyList() {
   if (lobbies.length === 0) return `<div class="empty-state" style="padding:var(--space-4);">Keine offene Quiz-Lobby.</div>`;
   return lobbies
     .map((l) => {
       const isHost = l.host.id === getMyId();
       const joined = l.players.some((p) => p.id === getMyId());
+      const settingsHtml = isHost
+        ? `<div class="field-label">Punkte bis Sieg</div>
+          <div class="arcade-lobby-setting-options">
+            <label class="check-row"><input type="radio" name="target-score" value="5" checked />5</label>
+            <label class="check-row"><input type="radio" name="target-score" value="10" />10</label>
+            <label class="check-row"><input type="radio" name="target-score" value="20" />20</label>
+            <label class="check-row">
+              <input type="radio" name="target-score" value="custom" />
+              <input type="number" class="arcade-lobby-custom-score" id="target-custom" min="1" max="100" value="${escapeHtml(customTarget)}" placeholder="frei" />
+            </label>
+          </div>`
+        : '';
       const footerActions = isHost
-        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-close-lobby="${l.id}">Schließen</button>`
+        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-close-lobby="${l.id}">Schließen</button>
+          <button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-start-lobby" ${l.players.length < 2 ? 'disabled' : ''}>Start</button>`
         : joined
           ? readyToggleHtml(l, getMyId(), 'quiz-ready')
           : '';
       const joinAction = !joined && !isHost
         ? `<button type="button" class="btn btn-sm btn-primary" data-join-lobby="${l.id}">Beitreten</button>`
         : '';
-      return arcadeLobbyEntryHtml(l, { joinAction, footerActions });
+      return arcadeLobbyEntryHtml(l, { joinAction, settingsHtml, footerActions });
     })
     .join('');
 }
@@ -519,16 +512,14 @@ function runningMatchesOverviewHtml() {
 function activeGameHtml() {
   const game = currentGame();
   if (game === 'quiz') {
-    const lobby = myLobby();
     return `
       <div class="card stack arcade-lobby-card">
         ${renderLobbyList()}
         <div class="arcade-lobby-create-actions">
-          ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="quiz-bot" ${match ? 'disabled' : ''}>Gegen KI</button>` : ''}
           <button type="button" class="btn btn-primary btn-sm" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button>
+          ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="quiz-bot" ${match ? 'disabled' : ''}>Gegen KI</button>` : ''}
         </div>
-      </div>
-      ${targetControls(lobby)}`;
+      </div>`;
   }
   if (game === 'tetris') {
     return `<div>${renderTetrisLobbyCard()}</div>`;

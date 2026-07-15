@@ -306,9 +306,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   „Lobby“ heading. Every open lobby is a nested card modeled on the
   carpool cards, with the host's lobby name and player count in the header, stable player rows with
   role/readiness at the right, a direct join action in a free-slot row and host/member actions in a
-  separated full-width footer. Host labels, free labels and join actions share one aligned action
-  column and row height. The „Gegen KI“ and „Lobby öffnen“ actions follow the lobby cards in one
-  equal-width action row; an empty lobby no longer adds a redundant waiting sentence.
+  separated full-width footer. Host labels, free labels and join actions share an exact three-column
+  grid and row height. A host's game settings belong inside that lobby card; „Start“ sits beside the
+  destructive „Schließen“ action in its footer. Readiness is communicated in the player rows without
+  a duplicate status sentence. „Lobby öffnen“ follows the lobby cards at full width, while the
+  temporary „Gegen KI“ mode occupies its own full-width row below it. An empty lobby no longer adds
+  a redundant waiting sentence. Member actions use the same destructive treatment for „Verlassen“
+  as the host's „Schließen“ action.
   Statistics use the concise title „Statistiken“ and place the selected game's results in a plain
   nested card without an accent rail; player rows reuse `.leaderboard-list-grid` for the shared
   one-/two-column ranking presentation and spell out wins and losses in German.

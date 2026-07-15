@@ -6,7 +6,7 @@ import { getAdminPin } from '../admin.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
-import { allLobbyReady, arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
 const W = 960;
@@ -106,32 +106,25 @@ function lobbyList() {
     const isHost = lobby.host.id === myId();
     const joined = lobby.players.some((player) => player.id === myId());
     const full = lobby.players.length >= 2 && !joined;
+    const ready = lobby.players.length === 2;
+    const settingsHtml = isHost
+      ? `<div class="field-label">Punkte bis Sieg</div>
+        <div class="arcade-lobby-setting-options">
+          ${[5, 7, 10, 15].map((score) => `<label class="check-row"><input type="radio" name="pong-target" value="${score}" ${score === targetScore ? 'checked' : ''} />${score}</label>`).join('')}
+        </div>`
+      : '';
     const footerActions = isHost
-      ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-pong-close="${lobby.id}">Schließen</button>`
+      ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-pong-close="${lobby.id}">Schließen</button>
+        <button type="button" class="btn btn-sm btn-equal btn-primary" id="pong-start" ${ready ? '' : 'disabled'}>Start</button>`
       : joined
         ? `${readyToggleHtml(lobby, myId(), 'pong-ready')}
-          <button type="button" class="btn btn-sm btn-equal" data-pong-leave="${lobby.id}">Verlassen</button>`
+          <button type="button" class="btn btn-sm btn-equal btn-danger" data-pong-leave="${lobby.id}">Verlassen</button>`
         : '';
     const joinAction = !joined && !isHost
       ? `<button type="button" class="btn btn-sm btn-primary" data-pong-join="${lobby.id}" ${full ? 'disabled' : ''}>Beitreten</button>`
       : '';
-    return arcadeLobbyEntryHtml(lobby, { playerLimit: 2, joinAction, footerActions, full });
+    return arcadeLobbyEntryHtml(lobby, { playerLimit: 2, joinAction, settingsHtml, footerActions, full });
   }).join('');
-}
-
-function hostStart() {
-  const lobby = myPongLobby();
-  if (!lobby || lobby.host.id !== myId()) return '';
-  const ready = lobby.players.length === 2;
-  const hint = ready ? (allLobbyReady(lobby) ? 'Gegner ist bereit.' : 'Gegner ist da — noch nicht bereit.') : '';
-  return `<div class="stack" style="gap:var(--space-2);border-top:1px solid var(--border);padding-top:var(--space-3);">
-    <div class="field-label">Punkte bis Sieg</div>
-    <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
-      ${[5, 7, 10, 15].map((score) => `<label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="pong-target" value="${score}" ${score === targetScore ? 'checked' : ''} />${score}</label>`).join('')}
-    </div>
-    ${hint ? `<div class="muted" style="font-size:var(--font-size-xs);">${hint}</div>` : ''}
-    <button type="button" class="btn btn-primary btn-block" id="pong-start" ${ready ? '' : 'disabled'}>Start</button>
-  </div>`;
 }
 
 export function renderPongLobbyCard() {
@@ -141,10 +134,9 @@ export function renderPongLobbyCard() {
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
     ${lobbyList()}
     <div class="arcade-lobby-create-actions">
-      ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="pong-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
       <button type="button" class="btn btn-primary btn-sm" id="pong-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+      ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="pong-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
     </div>
-    ${hostStart()}
   </div>`;
 }
 

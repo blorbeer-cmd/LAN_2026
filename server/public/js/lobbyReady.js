@@ -2,7 +2,7 @@ import { avatarHtml, escapeHtml } from './format.js';
 import { icon } from './icons.js';
 
 // Shared lobby UI for every arcade game: stable player rows, the lobby card
-// shell, readiness summaries and the guest's own ready toggle. The server
+// shell and the guest's own ready toggle. The server
 // marks the host as always ready because they decide when to start.
 
 function lobbyPlayerRowsHtml(lobby) {
@@ -20,11 +20,12 @@ function lobbyPlayerRowsHtml(lobby) {
 
 export function arcadeLobbyEntryHtml(
   lobby,
-  { playerLimit = null, joinAction = '', footerActions = '', full = false } = {}
+  { playerLimit = null, joinAction = '', settingsHtml = '', footerActions = '', full = false } = {}
 ) {
   const countText = `${lobby.players.length}${playerLimit ? `/${playerLimit}` : ''} Spieler`;
   const availableRow = joinAction
     ? `<div class="arcade-lobby-member-row arcade-lobby-free-row">
+        <span class="arcade-lobby-avatar-slot" aria-hidden="true"></span>
         <span class="muted arcade-lobby-free-label">${full ? 'Voll' : 'Frei'}</span>
         ${joinAction}
       </div>`
@@ -35,17 +36,9 @@ export function arcadeLobbyEntryHtml(
       <span class="badge arcade-lobby-player-count">${escapeHtml(countText)}</span>
     </div>
     <div class="arcade-lobby-member-list">${lobbyPlayerRowsHtml(lobby)}${availableRow}</div>
+    ${settingsHtml ? `<div class="arcade-lobby-settings">${settingsHtml}</div>` : ''}
     ${footerActions ? `<div class="arcade-lobby-entry-actions">${footerActions}</div>` : ''}
   </div>`;
-}
-
-export function readySummaryText(lobby) {
-  const ready = lobby.players.filter((p) => p.ready).length;
-  return `${ready}/${lobby.players.length} bereit`;
-}
-
-export function allLobbyReady(lobby) {
-  return lobby.players.every((p) => p.ready);
 }
 
 // Toggle button for the current player (guests only — the host has no ready
