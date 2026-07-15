@@ -15,6 +15,8 @@ import {
   getPushLogEntriesFor,
   markPushSeen,
   hidePushForPlayer,
+  markAllPushSeen,
+  hideAllPushForPlayer,
 } from '../push';
 
 export const pushRouter = Router();
@@ -56,6 +58,28 @@ pushRouter.get('/log', (req, res) => {
   const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   res.json({ entries: getPushLogEntriesFor(playerId) });
+});
+
+// Bulk variants retain the same temporary local-player scoping as the
+// single-entry actions. They never mutate another recipient's history.
+pushRouter.post('/seen-all', (req, res) => {
+  const { playerId } = req.body ?? {};
+  if (typeof playerId !== 'string' || !playerId) {
+    return res.status(400).json({ error: 'playerId ist erforderlich.' });
+  }
+  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
+  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  res.json({ changed: markAllPushSeen(playerId) });
+});
+
+pushRouter.delete('/', (req, res) => {
+  const { playerId } = req.body ?? {};
+  if (typeof playerId !== 'string' || !playerId) {
+    return res.status(400).json({ error: 'playerId ist erforderlich.' });
+  }
+  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
+  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  res.json({ changed: hideAllPushForPlayer(playerId) });
 });
 
 // POST /api/push/:id/seen - mark one notification read for this player. It

@@ -106,8 +106,14 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   Mitteilung bleibt zusätzlich als hervorgehobener Direktlink unter der Kopfzeile sichtbar; die
   frühere doppelte Home-Historie entfällt. Gelesen und persönlich ausgeblendet wird vorläufig anhand
   der lokal gewählten Spieleridentität.
+- Die Glocken-Historie bietet persönliche Sammelaktionen für „Alle als gelesen markieren“ und
+  „Alle löschen“. Die hervorgehobene Meldung nutzt wieder den Markenverlauf der Primärbuttons und
+  verschwindet bei fachlicher Auflösung beziehungsweise exakt am hinterlegten Ablaufzeitpunkt.
 - Die Ranglisten-Vorschau zeigt auf größeren Displays die ersten sechs Plätze in zwei Spalten und
   fällt auf schmalen Handys in eine fortlaufende Liste zurück.
+- Spieler-Namen verwenden in Live-Status, Rangliste und Auswahlansichten denselben Namensstil;
+  Formfelder erben seitenweit dieselbe Systemschrift. Der Home-Sitzplan richtet Avatar und Namen
+  sauber aus und hebt Gamer-Namen lesbarer hervor.
 - Rang-Titel, Kurztexte und Ergebnisformular bereinigen. Für die Spieler-Zuordnung eine stabile
   Grid-/Spaltenstruktur verwenden, damit Selects unabhängig von Namenslängen fluchten.
 - Vote-Beschreibung auf „Punkte frei verteilen, höchste Summe gewinnt.“ kürzen, Aktionsbuttons
@@ -184,6 +190,8 @@ Betroffene Dateien: `server/public/js/views/analytics.js`, gegebenenfalls
   Turniere und persönliche Mitteilungen aus State und bestehenden APIs indexiert.
 - Vor der Eingabe bleibt die Ergebnisliste leer; Startvorschläge und eine separate
   Tastaturerklärung entfallen.
+- Das Suchfeld verwendet die gemeinsame Eingabegrundlage, erhält innerhalb des großen Dialogs aber
+  den Kartenradius, damit es nicht eckiger als die umgebende Oberfläche wirkt.
 - Treffer werden während der Eingabe gefiltert und lassen sich per Touch, Maus, Pfeiltasten und
   Enter öffnen. Escape, Klick auf den Hintergrund und der Schließen-Button schließen die Palette
   und geben den Fokus an den Auslöser zurück.

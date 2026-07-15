@@ -8,6 +8,7 @@ import { icon } from './icons.js';
 import { escapeHtml, formatDateTime } from './format.js';
 import { feedLinkView, FEED_LINK_LABELS } from './pushFeed.js';
 import { showToast } from './toast.js';
+import { confirmDialog } from './modal.js';
 
 const FEED_LIMIT = 20;
 
@@ -18,6 +19,7 @@ let loadedForId = null;
 let loading = false;
 let loadError = false;
 let isOpen = false;
+let highlightExpiryTimer = null;
 
 function buttonEl() {
   return document.getElementById('notifications-btn');
@@ -38,6 +40,20 @@ function highlightEl() {
 function setOpen(nextOpen) {
   isOpen = nextOpen;
   renderBanner();
+}
+
+function clearHighlightExpiryTimer() {
+  if (highlightExpiryTimer !== null) window.clearTimeout(highlightExpiryTimer);
+  highlightExpiryTimer = null;
+}
+
+function scheduleHighlightExpiry() {
+  clearHighlightExpiryTimer();
+  if (!highlightEntry?.expiresAt) return;
+  const delay = Math.max(0, highlightEntry.expiresAt - Date.now());
+  // Browser timers cap at a signed 32-bit integer. Very distant deadlines
+  // simply re-check and schedule the remaining interval later.
+  highlightExpiryTimer = window.setTimeout(refreshNotificationBanner, Math.min(delay, 2_147_483_647));
 }
 
 function entryHtml(entry) {
@@ -81,7 +97,11 @@ async function markSeen(entryId, { navigate } = {}) {
   const entry = entries.find((item) => item.id === entryId);
   if (!playerId || !entry) return;
   entry.seen = true;
-  if (highlightEntry?.id === entryId) highlightEntry = null;
+  const previousHighlight = highlightEntry;
+  if (highlightEntry?.id === entryId) {
+    highlightEntry = null;
+    clearHighlightExpiryTimer();
+  }
   renderBanner();
   try {
     await api.push.seen(entryId, playerId);
@@ -91,6 +111,8 @@ async function markSeen(entryId, { navigate } = {}) {
     }
   } catch (err) {
     entry.seen = false;
+    highlightEntry = previousHighlight;
+    scheduleHighlightExpiry();
     renderBanner();
     showToast(err.message, { error: true });
   }
@@ -102,13 +124,63 @@ async function hideEntry(entryId) {
   const previousEntries = entries;
   const previousHighlight = highlightEntry;
   entries = entries.filter((item) => item.id !== entryId);
-  if (highlightEntry?.id === entryId) highlightEntry = null;
+  if (highlightEntry?.id === entryId) {
+    highlightEntry = null;
+    clearHighlightExpiryTimer();
+  }
   renderBanner();
   try {
     await api.push.hide(entryId, playerId);
   } catch (err) {
     entries = previousEntries;
     highlightEntry = previousHighlight;
+    scheduleHighlightExpiry();
+    renderBanner();
+    showToast(err.message, { error: true });
+  }
+}
+
+async function markAllSeen() {
+  const playerId = getMyId();
+  if (!playerId || entries.every((entry) => entry.seen)) return;
+  const previousEntries = entries.map((entry) => ({ ...entry }));
+  const previousHighlight = highlightEntry;
+  entries.forEach((entry) => {
+    entry.seen = true;
+  });
+  highlightEntry = null;
+  clearHighlightExpiryTimer();
+  renderBanner();
+  try {
+    await api.push.seenAll(playerId);
+  } catch (err) {
+    entries = previousEntries;
+    highlightEntry = previousHighlight;
+    scheduleHighlightExpiry();
+    renderBanner();
+    showToast(err.message, { error: true });
+  }
+}
+
+async function hideAllEntries() {
+  const playerId = getMyId();
+  if (!playerId || entries.length === 0) return;
+  if (!(await confirmDialog('Alle Mitteilungen aus deiner Historie entfernen?', {
+    confirmText: 'Alle löschen',
+    danger: true,
+  }))) return;
+  const previousEntries = entries;
+  const previousHighlight = highlightEntry;
+  entries = [];
+  highlightEntry = null;
+  clearHighlightExpiryTimer();
+  renderBanner();
+  try {
+    await api.push.hideAll(playerId);
+  } catch (err) {
+    entries = previousEntries;
+    highlightEntry = previousHighlight;
+    scheduleHighlightExpiry();
     renderBanner();
     showToast(err.message, { error: true });
   }
@@ -119,6 +191,7 @@ function renderHighlight() {
   if (!container) return;
   const view = highlightEntry ? feedLinkView(highlightEntry.url) : null;
   if (!highlightEntry || !getMyId()) {
+    clearHighlightExpiryTimer();
     container.hidden = true;
     container.innerHTML = '';
     return;
@@ -166,9 +239,15 @@ export function renderBanner() {
   panel.hidden = !isOpen;
   if (!isOpen) return;
   panel.innerHTML = `
-    <div class="notification-center-header row-between">
-      <strong>Mitteilungen</strong>
-      <button type="button" class="icon-btn" data-notification-close aria-label="Mitteilungen schließen" title="Schließen">${icon('x')}</button>
+    <div class="notification-center-header">
+      <div class="row-between">
+        <strong>Mitteilungen</strong>
+        <button type="button" class="icon-btn" data-notification-close aria-label="Mitteilungen schließen" title="Schließen">${icon('x')}</button>
+      </div>
+      ${entries.length > 0 ? `<div class="notification-center-toolbar">
+        <button type="button" class="btn btn-sm" data-notifications-seen-all ${entries.every((entry) => entry.seen) ? 'disabled' : ''}>Alle als gelesen markieren</button>
+        <button type="button" class="btn btn-sm btn-danger" data-notifications-hide-all>Alle löschen</button>
+      </div>` : ''}
     </div>
     ${panelContentHtml(myId)}
   `;
@@ -177,6 +256,8 @@ export function renderBanner() {
     setOpen(false);
     button.focus();
   });
+  panel.querySelector('[data-notifications-seen-all]')?.addEventListener('click', markAllSeen);
+  panel.querySelector('[data-notifications-hide-all]')?.addEventListener('click', hideAllEntries);
   panel.querySelectorAll('[data-notification-seen]').forEach((control) => {
     control.addEventListener('click', () => markSeen(control.dataset.notificationSeen));
   });
@@ -196,6 +277,7 @@ export async function refreshNotificationBanner() {
   if (!myId) {
     entries = [];
     highlightEntry = null;
+    clearHighlightExpiryTimer();
     loadedForId = null;
     loading = false;
     loadError = false;
@@ -211,11 +293,13 @@ export async function refreshNotificationBanner() {
     if (thisEpoch !== epoch) return;
     entries = res.entries;
     highlightEntry = current.entry;
+    scheduleHighlightExpiry();
     loadedForId = myId;
   } catch {
     if (thisEpoch !== epoch) return;
     entries = [];
     highlightEntry = null;
+    clearHighlightExpiryTimer();
     loadedForId = myId;
     loadError = true;
   } finally {
@@ -247,6 +331,7 @@ export function initNotificationBanner() {
     isOpen = false;
     entries = [];
     highlightEntry = null;
+    clearHighlightExpiryTimer();
     loadedForId = null;
     loadError = false;
     refreshNotificationBanner();

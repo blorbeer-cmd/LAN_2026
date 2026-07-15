@@ -185,6 +185,37 @@ export function hidePushForPlayer(pushId: string, playerId: string): HidePushRes
   return 'hidden';
 }
 
+function visiblePushIdsFor(playerId: string): Array<{ id: string; seen: boolean }> {
+  return getPushLogEntriesFor(playerId, PUSH_LOG_LIMIT).map((entry) => ({ id: entry.id, seen: entry.seen }));
+}
+
+// Bulk actions stay personal, just like their single-entry counterparts.
+// One transaction and one realtime signal avoid a burst of up to 50 writes
+// and socket refreshes when someone clears the whole center.
+export function markAllPushSeen(playerId: string): number {
+  const entries = visiblePushIdsFor(playerId).filter((entry) => !entry.seen);
+  if (entries.length === 0) return 0;
+  const insert = db.prepare('INSERT OR IGNORE INTO push_log_seen (push_id, player_id, seen_at) VALUES (?, ?, ?)');
+  const seenAt = Date.now();
+  const changes = db.transaction(() =>
+    entries.reduce((sum, entry) => sum + insert.run(entry.id, playerId, seenAt).changes, 0)
+  )();
+  if (changes > 0) broadcast(Events.pushSeen, { playerId });
+  return changes;
+}
+
+export function hideAllPushForPlayer(playerId: string): number {
+  const entries = visiblePushIdsFor(playerId);
+  if (entries.length === 0) return 0;
+  const insert = db.prepare('INSERT OR IGNORE INTO push_log_hidden (push_id, player_id, hidden_at) VALUES (?, ?, ?)');
+  const hiddenAt = Date.now();
+  const changes = db.transaction(() =>
+    entries.reduce((sum, entry) => sum + insert.run(entry.id, playerId, hiddenAt).changes, 0)
+  )();
+  if (changes > 0) broadcast(Events.pushSeen, { playerId });
+  return changes;
+}
+
 // Recent log entries relevant to one player, newest first, for the header
 // notification center. "Relevant" = the player was on the recipient
 // list; rows from before recipients were recorded (player_ids NULL) show

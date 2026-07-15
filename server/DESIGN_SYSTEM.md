@@ -105,7 +105,9 @@ what had drifted into ~17 near-duplicate raw values).
 | `--line-height-tight` | 1 | Icons, badges, single-line chips |
 
 Font family is `--font` (system font stack) — set once on `body`, no need to
-reference it elsewhere.
+reference it elsewhere. All native form controls inherit that same stack. Use `.player-name` for a
+player's standalone display name across cards, rankings and selection rows; technical keys may
+remain monospace where the distinction carries meaning.
 
 ## Radius
 
@@ -206,8 +208,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.info-tooltip-panel`, rendered/wired through `infoTooltip.js`; works with pointer, keyboard and
   touch instead of relying on the native `title` attribute.
 - **Notification center** — `.notification-highlight` exposes the newest active unread entry as a
-  direct link below the topbar; `.notification-center` with `.notification-center-panel` and
-  `.notification-center-entry` keeps the full personal history and server-backed read/remove state.
+  brand-gradient direct link below the topbar and follows its domain/expiry lifecycle;
+  `.notification-center` with `.notification-center-panel`, `.notification-center-toolbar` and
+  `.notification-center-entry` keeps the full personal history plus single/bulk read/remove state.
 - **Global search** — `.global-search` with `.global-search-results` and
   `.global-search-result`, wired through `searchPalette.js`; opens from the topbar or with
   `Strg/Cmd + K`, searches both areas and current app content without an external service, and uses

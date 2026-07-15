@@ -33,7 +33,7 @@ function rankedRows(entries, suffix) {
       <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
         <span class="lb-rank">${i + 1}</span>
         ${avatarHtml(r, 24)}
-        <span style="flex:1;">${escapeHtml(r.name)}</span>
+        <span class="player-name" style="flex:1;">${escapeHtml(r.name)}</span>
         <span class="lb-points">${r.count}× ${suffix}</span>
       </div>`
     )

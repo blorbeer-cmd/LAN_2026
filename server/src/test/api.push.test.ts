@@ -174,6 +174,36 @@ test('DELETE /api/push/:id hides a notification only for that player', async () 
   assert.ok(otherAfter.body.entries.some((entry: { id: string }) => entry.id === pushId));
 });
 
+test('bulk notification actions stay scoped to one player', async () => {
+  const other = await request(app).post('/api/players').send({ name: 'Push Bulk Other' });
+  await request(app).post('/api/broadcasts').send({ playerId, message: 'Bulk-Aktion eins' });
+  await request(app).post('/api/broadcasts').send({ playerId, message: 'Bulk-Aktion zwei' });
+
+  assert.equal((await request(app).post('/api/push/seen-all').send({})).status, 400);
+  assert.equal((await request(app).post('/api/push/seen-all').send({ playerId: 'ghost' })).status, 404);
+  const seen = await Promise.all([
+    request(app).post('/api/push/seen-all').send({ playerId }),
+    request(app).post('/api/push/seen-all').send({ playerId }),
+  ]);
+  assert.ok(seen.every((response) => response.status === 200));
+  assert.ok(seen.reduce((sum, response) => sum + response.body.changed, 0) >= 2);
+  const ownSeen = await request(app).get(`/api/push/log?playerId=${playerId}`);
+  assert.ok(ownSeen.body.entries.every((entry: { seen: boolean }) => entry.seen));
+  const otherUnseen = await request(app).get(`/api/push/log?playerId=${other.body.id}`);
+  assert.ok(otherUnseen.body.entries.some((entry: { seen: boolean }) => !entry.seen));
+
+  assert.equal((await request(app).delete('/api/push').send({})).status, 400);
+  assert.equal((await request(app).delete('/api/push').send({ playerId: 'ghost' })).status, 404);
+  const hidden = await Promise.all([
+    request(app).delete('/api/push').send({ playerId }),
+    request(app).delete('/api/push').send({ playerId }),
+  ]);
+  assert.ok(hidden.every((response) => response.status === 200));
+  assert.ok(hidden.reduce((sum, response) => sum + response.body.changed, 0) >= 2);
+  assert.deepEqual((await request(app).get(`/api/push/log?playerId=${playerId}`)).body.entries, []);
+  assert.ok((await request(app).get(`/api/push/log?playerId=${other.body.id}`)).body.entries.length >= 2);
+});
+
 test('broadcast pushes disappear when ended by their creator or after their deadline', async () => {
   const ended = await request(app).post('/api/broadcasts').send({ playerId, message: 'Vorzeitig beenden' });
   assert.equal(ended.status, 201);

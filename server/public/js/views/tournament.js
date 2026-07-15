@@ -216,7 +216,7 @@ function renderCreateForm(el, ctx) {
       <label class="check-row">
         <input type="checkbox" data-create-player="${p.id}" ${createCheckedIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
-        <span style="flex:1;">${escapeHtml(p.name)}</span>
+        <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
       </label>`
     )
     .join('');
@@ -243,7 +243,7 @@ function renderCreateForm(el, ctx) {
                 (p) => `
               <div class="team-player">
                 ${avatarHtml(p, 18)}
-                <span style="flex:1;">${escapeHtml(p.name)}</span>
+                <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
                 ${seatConflictIconHtml(p)}
                 ${
                   createProposedTeams.length > 1

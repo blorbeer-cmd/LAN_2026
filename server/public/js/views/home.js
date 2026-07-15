@@ -143,7 +143,7 @@ function renderLeaderboardTop() {
       <div class="lb-row ${rank === 1 ? 'rank-1' : ''}">
         <span class="lb-rank">${rank}</span>
         ${avatarHtml(s, 28)}
-        <span style="flex:1;">${escapeHtml(s.name)}</span>
+        <span class="player-name" style="flex:1;">${escapeHtml(s.name)}</span>
         <span class="lb-points">${s.points} P</span>
       </div>`;
         })

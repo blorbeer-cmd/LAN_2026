@@ -311,7 +311,7 @@ function openParticipantsForm(ctx, event) {
       (p) => `
       <label class="check-row">
         <input type="checkbox" data-participant="${p.id}" ${checked.has(p.id) ? 'checked' : ''} />
-        <span style="flex:1;">${escapeHtml(p.name)}</span>
+        <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
       </label>`
     )
     .join('');

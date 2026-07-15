@@ -28,7 +28,7 @@ export function renderLeaderboard(container, ctx) {
         <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
           <span class="lb-rank">${i + 1}</span>
           ${avatarHtml(player || { color }, 24)}
-          <span style="flex:1;">${escapeHtml(name)}</span>
+          <span class="player-name" style="flex:1;">${escapeHtml(name)}</span>
           <span class="muted" style="font-size:var(--font-size-xs);" title="${s.wins} Siege von ${s.matchesPlayed} Matches">${s.wins}S / ${s.matchesPlayed}M</span>
           <span class="lb-points" title="${s.points} Punkte">${s.points} P</span>
         </div>`;
@@ -56,7 +56,7 @@ export function renderLeaderboard(container, ctx) {
       <div class="lb-row">
         ${avatarHtml(state.players.find((pl) => pl.id === p.playerId) || { color: p.playerColor }, 24)}
         <span style="flex:1;">
-          ${escapeHtml(p.playerName)}
+          <span class="player-name">${escapeHtml(p.playerName)}</span>
           ${activeHint(p.activeMs, p.totalMs, p.activeFormatted)}
         </span>
         <span class="lb-points">${escapeHtml(p.formatted)}</span>
@@ -201,7 +201,7 @@ export function openMatchForm(ctx, options = {}) {
               (p) => `
               <div class="player-assignment-row" style="padding:var(--space-1) 0;">
                 ${avatarHtml(p, 20)}
-                <span>${escapeHtml(p.name)}</span>
+                <span class="player-name">${escapeHtml(p.name)}</span>
                 <select data-team-for="${p.id}">
                   <option value="" ${presetTeamIndexByPlayer.has(p.id) ? '' : 'selected'}>–</option>
                   ${teamOptions(p.id)}
@@ -273,7 +273,7 @@ export function openMatchForm(ctx, options = {}) {
             .map(
               (p) => `
               <div class="row" style="align-items:center;">
-                <span style="flex:1;">${escapeHtml(p.name)}</span>
+                <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
                 <input type="number" data-ffa-score="${p.id}" placeholder="Wert" step="any" style="width:90px;" />
                 <input type="number" data-ffa-rank="${p.id}" placeholder="Platz" min="1" style="width:80px;" />
               </div>`
@@ -291,7 +291,7 @@ export function openMatchForm(ctx, options = {}) {
                 <label class="check-row">
                   <input type="checkbox" data-ffa-player="${p.id}" ${ffaCheckedIds.has(p.id) ? 'checked' : ''} />
                   ${avatarHtml(p, 20)}
-                  <span style="flex:1;">${escapeHtml(p.name)}</span>
+                  <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
                 </label>`
                 )
                 .join('')}

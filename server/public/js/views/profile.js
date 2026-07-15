@@ -114,7 +114,7 @@ function renderNeighbors(myId) {
       <label class="check-row">
         <input type="checkbox" data-neighbor="${p.id}" ${checked.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
-        <span style="flex:1;">${escapeHtml(p.name)}</span>
+        <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
       </label>`
     )
     .join('');

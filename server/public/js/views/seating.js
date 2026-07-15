@@ -48,7 +48,7 @@ function seatNamesHtml(player) {
   const realName = player.real_name;
   return `<span class="seating-seat-names">
     <span class="seating-seat-name">${escapeHtml(player.name)}</span>
-    <span class="seating-seat-realname"${realName ? '' : ' style="visibility:hidden;"'}>${escapeHtml(realName || ' ')}</span>
+    <span class="seating-seat-realname${realName ? '' : ' is-empty'}"${realName ? '' : ' style="visibility:hidden;"'}>${escapeHtml(realName || ' ')}</span>
   </span>`;
 }
 

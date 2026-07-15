@@ -115,6 +115,10 @@ test('global search filters areas, supports keyboard navigation and restores foc
   await page.click('#global-search-btn');
   await page.waitForSelector('.global-search-modal');
   assert.equal(await page.locator('#global-search-input').evaluate((element) => element === document.activeElement), true);
+  assert.ok(
+    await page.locator('#global-search-input').evaluate((element) => parseFloat(getComputedStyle(element).borderRadius) >= 14),
+    'search input should use the rounded modal/card radius'
+  );
   assert.equal(await page.locator('.global-search-result').count(), 0, 'search must not show frequent areas before input');
   assert.equal(await page.locator('.global-search-shortcuts').count(), 0, 'keyboard legend is intentionally omitted');
 
@@ -267,12 +271,21 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.click('#match-form button[type="submit"]');
   await page.waitForSelector('.lb-row');
   assert.ok((await page.locator('.lb-row').count()) >= 2);
+  const leaderboardNameTypography = await page.locator('.lb-row .player-name').first().evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { family: style.fontFamily, size: style.fontSize, weight: style.fontWeight };
+  });
   await page.waitForSelector('text=Spielzeit');
 
   // Back to Home: should now show both players (offline, since no agent ran).
   await page.click('[data-view="home"]');
   await page.waitForSelector('.player-card');
   assert.equal(await page.locator('.player-card').count(), 2);
+  const liveNameTypography = await page.locator('.player-card .player-name').first().evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { family: style.fontFamily, size: style.fontSize, weight: style.fontWeight };
+  });
+  assert.deepEqual(liveNameTypography, leaderboardNameTypography, 'player names should use one shared typography');
   await page.setViewportSize({ width: 900, height: 844 });
   assert.equal(
     await page.locator('.home-leaderboard-columns').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
@@ -475,9 +488,17 @@ test('Sitzplan: the real name set in Mein Profil shows in small everywhere the s
   await page.waitForSelector('.seating-seat.is-occupied .seating-seat-realname:has-text("Alice Musterfrau")');
 
   // Same shared renderSeatingPlan() component also feeds Home's read-only
-  // board - the real name must show up there too, unprompted.
+  // board - the real name must show up there too, unprompted. Check the
+  // requested side-by-side desktop layout separately from the intentionally
+  // stacked narrow-screen variant used by the rest of this suite.
+  await page.setViewportSize({ width: 900, height: 844 });
   await page.click('[data-view="home"]');
   await page.waitForSelector('.seating-seat-realname:has-text("Alice Musterfrau")');
+  const homeSeatName = page.locator('.live-seating .seating-seat.is-occupied .seating-seat-name', { hasText: 'E2E Alice Pro' });
+  await homeSeatName.waitFor();
+  assert.equal(await homeSeatName.evaluate((element) => getComputedStyle(element).fontWeight), '600');
+  assert.equal(await homeSeatName.evaluate((element) => getComputedStyle(element).textAlign), 'left');
+  await page.setViewportSize({ width: 390, height: 844 });
 });
 
 test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bock/Skill inline', async () => {
@@ -1332,8 +1353,25 @@ test('Durchsage: notification center can navigate, mark read and remove without 
   await page.click('#notifications-btn');
   const endedNotification = page.locator('.notification-center-entry:has-text("Turnier startet gleich!")');
   await endedNotification.waitFor();
-  await endedNotification.locator('[data-notification-hide]').click();
-  await endedNotification.waitFor({ state: 'detached' });
+  await endedNotification.locator('.badge:has-text("Neu")').waitFor();
+  await page.click('[data-notifications-seen-all]');
+  await page.waitForFunction(() => document.querySelectorAll('.notification-center-entry .badge:where(.badge-playing)').length === 0);
+  await page.click('[data-notifications-hide-all]');
+  await page.click('[data-confirm]');
+  await page.click('#notifications-btn');
+  await page.waitForSelector('text=Keine Mitteilungen.');
+  await page.click('[data-notification-close]');
+
+  // A visible time-limited banner removes itself at its deadline even when
+  // no later socket event happens and the user never clicks it.
+  const myId = await page.evaluate(() => localStorage.getItem('respawn_my_player_id'));
+  assert.ok(myId);
+  const expiring = await page.request.post(`${BASE_URL}/api/broadcasts`, {
+    data: { playerId: myId, message: 'Läuft automatisch ab', endsAt: Date.now() + 2000 },
+  });
+  assert.equal(expiring.status(), 201);
+  await page.waitForSelector('#notification-highlight:has-text("Läuft automatisch ab")');
+  await page.waitForSelector('#notification-highlight', { state: 'hidden', timeout: 5000 });
 });
 
 test('Captain-Draft: pick captains, run the live draft to completion', async () => {

@@ -297,8 +297,12 @@ export const api = {
     log: (playerId) => apiFetch(`/api/push/log?playerId=${encodeURIComponent(playerId)}`),
     seen: (id, playerId) =>
       apiFetch(`/api/push/${id}/seen`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    seenAll: (playerId) =>
+      apiFetch('/api/push/seen-all', { method: 'POST', body: JSON.stringify({ playerId }) }),
     hide: (id, playerId) =>
       apiFetch(`/api/push/${id}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
+    hideAll: (playerId) =>
+      apiFetch('/api/push', { method: 'DELETE', body: JSON.stringify({ playerId }) }),
   },
 
   agent: {
