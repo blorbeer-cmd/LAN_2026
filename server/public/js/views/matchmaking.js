@@ -121,7 +121,7 @@ function renderDrawCard(draw, { editable, showGame = false }) {
             ${avatarHtml(p, 18)}
             <span class="team-player-name" style="flex:1;">${escapeHtml(p.name)}</span>
             ${seatConflictIconHtml(p)}
-            ${p.rating != null ? `<span class="rating">${p.rating}</span>` : ''}
+            ${playerSkillHtml(p.id, draw.gameId)}
           ${editable ? '</button>' : '</div>'}`
           )
           .join('')}
@@ -423,17 +423,23 @@ function renderHistory() {
 // ---------- captain draft: live board ----------
 
 // The draft itself stays skill-blind (snake order is the fairness
-// mechanism, see the file header comment) — this is purely a display aid so
-// captains can see who they're picking. Looked up client-side from the
-// already-loaded skills cache, same pattern as players.js's ratingFor.
+// mechanism, see the file header comment). The selected game's self-rating
+// is a display aid throughout the Teams view and comes from the already-
+// loaded skills cache, same pattern as players.js's ratingFor.
 function skillRatingFor(playerId, gameId) {
   const entry = state.skills.find((s) => s.player_id === playerId && s.game_id === gameId);
   return entry ? entry.rating : null;
 }
 
-function draftPlayerRatingHtml(playerId, gameId) {
+function skillLevelHtml(rating) {
+  const label = rating == null ? 'Skill –' : `Skill ${rating}`;
+  const title = rating == null ? 'Noch kein Skill-Level eingetragen' : `Skill-Level ${rating} von 10`;
+  return `<span class="rating" title="${title}" aria-label="${title}">${label}</span>`;
+}
+
+function playerSkillHtml(playerId, gameId) {
   const rating = skillRatingFor(playerId, gameId);
-  return rating != null ? ` <span class="rating">${rating}</span>` : '';
+  return skillLevelHtml(rating);
 }
 
 function renderDraftBoard(draft, ctx) {
@@ -446,7 +452,7 @@ function renderDraftBoard(draft, ctx) {
       (t, i) => `
       <div class="team-card" ${draft.turnCaptainIndex === i ? 'style="border-color:var(--accent);"' : ''}>
         <div class="team-card-header"><span>${escapeHtml(t.captain.name)}</span>${draft.turnCaptainIndex === i ? '<span style="color:var(--accent);">am Zug</span>' : ''}</div>
-        ${t.players.map((p) => `<div class="team-player">${avatarHtml(p, 20)} ${escapeHtml(p.name)}${draftPlayerRatingHtml(p.id, draft.gameId)}</div>`).join('')}
+        ${t.players.map((p) => `<div class="team-player">${avatarHtml(p, 20)} <span class="team-player-name">${escapeHtml(p.name)}</span>${playerSkillHtml(p.id, draft.gameId)}</div>`).join('')}
       </div>`
     )
     .join('');
@@ -454,8 +460,8 @@ function renderDraftBoard(draft, ctx) {
   const poolHtml = draft.pool
     .map((p) =>
       isMyTurn
-        ? `<button type="button" class="check-row draft-pool-player" data-draft-pick="${p.id}">${avatarHtml(p, 20)} <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>${draftPlayerRatingHtml(p.id, draft.gameId)}</button>`
-        : `<div class="check-row draft-pool-player">${avatarHtml(p, 20)} <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>${draftPlayerRatingHtml(p.id, draft.gameId)}</div>`
+        ? `<button type="button" class="check-row draft-pool-player" data-draft-pick="${p.id}">${avatarHtml(p, 20)} <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>${playerSkillHtml(p.id, draft.gameId)}</button>`
+        : `<div class="check-row draft-pool-player">${avatarHtml(p, 20)} <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>${playerSkillHtml(p.id, draft.gameId)}</div>`
     )
     .join('');
 
@@ -552,6 +558,7 @@ export function renderMatchmaking(container, ctx) {
         <input type="checkbox" data-player="${p.id}" ${checkedIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
+        ${playerSkillHtml(p.id, selectedGameId)}
       </label>`
     )
     .join('');
@@ -562,6 +569,7 @@ export function renderMatchmaking(container, ctx) {
         <input type="checkbox" data-draft-player="${p.id}" ${draftPlayerIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
+        ${playerSkillHtml(p.id, selectedGameId)}
       </label>`
     )
     .join('');
@@ -575,6 +583,7 @@ export function renderMatchmaking(container, ctx) {
         <input type="checkbox" data-captain-toggle="${p.id}" ${draftCaptainIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
+        ${playerSkillHtml(p.id, selectedGameId)}
       </label>`
     )
     .join('');

@@ -235,6 +235,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   One shared game picker sits above both sections and controls draw, draft and the loaded history;
   it does not visually belong to either workflow. The live draft pool also uses the same full-width
   player cards instead of chips and omits decorative draft icons and the redundant local-turn hint.
+  Every player row in both setup flows, the live draft and the drawn teams labels the skill level for
+  the selected game as `Skill 1–10`; an en dash makes a missing self-rating explicit instead of silently
+  presenting the matchmaking fallback as a real rating.
   Team and result histories start collapsed through the shared collapsible-section component.
   Every history card repeats its game badge and name. Recorded results omit a status badge;
   `.matchmaking-draw-team.is-winner` identifies the winner through a reinforced border and an

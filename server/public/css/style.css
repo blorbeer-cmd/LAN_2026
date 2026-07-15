@@ -2891,7 +2891,9 @@ input[type='range'].preference-row-slider {
 }
 .rating {
   color: var(--text-muted);
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .team-player-name {
   overflow: hidden;
