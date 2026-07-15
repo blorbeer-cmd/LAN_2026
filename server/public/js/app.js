@@ -40,6 +40,7 @@ import { renderMyStats } from './views/myStats.js';
 import { renderMore } from './views/more.js';
 import { renderAdmin } from './views/admin.js';
 import { installIconReplacement } from './icons.js';
+import { initGroupContext, refreshGroupContext } from './groupContext.js';
 
 installIconReplacement();
 
@@ -177,6 +178,7 @@ async function ensureAccess() {
   const meta = await api.meta();
   if (meta.accessProtection) await ensureToken();
   if (meta.authMode === 'required') await ensureLogin();
+  return meta;
 }
 
 // Invite links carry the token in the URL (?token=...): opening one logs in
@@ -477,11 +479,13 @@ function wireSocket() {
     invalidateArrivals();
     if (currentView === 'arrivals') renderCurrent();
   });
+  socket.on('groups:changed', () => refreshGroupContext());
 }
 
 async function main() {
-  await ensureAccess();
+  const meta = await ensureAccess();
   document.getElementById('app').hidden = false;
+  await initGroupContext(meta);
   wireNav();
   wireAdminMode();
   wireSocket();

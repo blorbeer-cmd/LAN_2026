@@ -230,6 +230,7 @@ export function createSocketAuthGuard(
 
 // Event name constants keep client and server in sync and avoid typos.
 export const Events = {
+  groupsChanged: 'groups:changed',
   playersChanged: 'players:changed',
   gamesChanged: 'games:changed',
   skillsChanged: 'skills:changed',

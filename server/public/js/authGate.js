@@ -196,7 +196,9 @@ export async function ensureLogin() {
         // Drop the invite/claim/reset code from the URL once it's been used —
         // reloading the page must not re-attempt (and fail) the same
         // already-consumed code.
-        history.replaceState(null, '', `${location.pathname}${location.hash}`);
+        const cleanUrl = new URL(location.href);
+        for (const parameter of ['invite', 'claim', 'reset']) cleanUrl.searchParams.delete(parameter);
+        history.replaceState(null, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
         screen.hidden = true;
         resolve();
       } catch (err) {
