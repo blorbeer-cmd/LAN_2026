@@ -204,8 +204,14 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   Grid-/Spaltenstruktur verwenden, damit Selects unabhängig von Namenslängen fluchten.
 - Vote-Beschreibung auf „Punkte frei verteilen, höchste Summe gewinnt.“ kürzen, Aktionsbuttons
   ausrichten und Spiele ab `--bp-md` zweispaltig darstellen; auf dem Handy bleibt eine Spalte.
-- Die Vote-Historie als eingeklapptes `<details>` mit dem ausdrücklich gewünschten lokalen
-  Historien-Symbol ausführen; den alten Antipp-Erklärungstext entfernen.
+- Vote übernimmt die neuen Seitenmuster aus Home, Turniere und Teams: Ergebnis und Bock-Rangliste
+  bilden eine responsive ein-/zweispaltige Übersicht, laufende, neue und Stichwahl-Runden nutzen
+  vollbreite Akzentgruppen ohne dekorative Titel-Symbole und die Spieleauswahl bleibt auch mobil als
+  umrandetes Kartenraster erkennbar. Der Erklärtext zur verdeckten Auswertung steht als Tooltip direkt
+  neben dem Titel. Teilnehmer- und Beenden-Aktion teilen ein gleich breites responsives Raster,
+  wobei die Teilnehmeraktion primär bleibt.
+- Die Vote-Historie nutzt den neuen gemeinsamen, symbolfreien Collapse-Stil, startet geschlossen und
+  behält ihren geöffneten Zustand bei Live-Aktualisierungen; der alte Antipp-Erklärtext entfällt.
 
 Betroffene Dateien: `server/public/js/views/home.js`, `server/public/js/views/seating.js`,
 `server/public/js/views/leaderboard.js`, `server/public/js/views/votes.js` und

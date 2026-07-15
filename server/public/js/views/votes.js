@@ -39,11 +39,13 @@ import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { domainIcon } from '../domainIcons.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 // Cached separately from `state` (like analytics.js does) since it's fetched
 // from its own endpoint, not part of the main loadAll() round-trip.
 let historyCache = null;
 let historyLoading = false;
+let historyOpen = false;
 
 async function loadHistory(ctx) {
   historyLoading = true;
@@ -387,22 +389,30 @@ export function renderVotes(container, ctx) {
   let openSectionHtml = '';
   let runoffSectionHtml = '';
   if (votes.open) {
-    const summary =
+    const modeLabel = votes.mode === 'points' ? 'Punkte-Modus' : 'Stichwahl';
+    const resultHelp =
       votes.mode === 'points'
-        ? `Abstimmung läuft (Punkte-Modus) · ${votes.totalVoters} von ${totalPlayers} haben abgestimmt – Verteilung gibt's erst nach dem Ende`
-        : `Stichwahl läuft · ${votes.totalVoters} von ${totalPlayers} haben abgestimmt – Ergebnis gibt's erst nach dem Ende`;
+        ? 'Die Punkteverteilung bleibt bis zum Ende der Abstimmung verborgen.'
+        : 'Das Ergebnis bleibt bis zum Ende der Stichwahl verborgen.';
     const rows = `<div class="vote-game-grid">${renderOpenRows(votes, mineReady)}</div>`;
     const submitLabel = votes.mode === 'points' ? 'Bewertung abschicken' : 'Stimme abschicken';
     openSectionHtml = `
-      <div class="section-title">${icon(domainIcon('votes'))} ${votes.title ? escapeHtml(votes.title) : 'Abstimmung'}</div>
-      <div class="card stack">
-        <div class="muted">${summary}</div>
+      <section class="tournament-section-panel vote-page-section vote-workflow-section stack" aria-labelledby="vote-current-title">
+        <div class="tournament-create-step-title">
+          <h2 id="vote-current-title" class="title-with-info">
+            <span>${votes.title ? escapeHtml(votes.title) : 'Abstimmung läuft'}</span>
+            ${infoTooltipHtml('vote-result-visibility-help', 'Verdeckte Auswertung', resultHelp)}
+          </h2>
+          <span class="muted">${modeLabel} · ${votes.totalVoters} von ${totalPlayers} haben abgestimmt</span>
+        </div>
         ${votes.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0;">${escapeHtml(votes.info)}</p>` : ''}
         ${rows}
-        <button type="button" class="btn btn-primary btn-block" id="votes-submit" ${mineReady ? '' : 'disabled'}>${submitLabel}</button>
-        <button type="button" class="btn btn-primary btn-block" id="votes-close">Beenden &amp; Gewinner küren</button>
+        <div class="vote-action-grid">
+          <button type="button" class="btn btn-primary btn-block" id="votes-submit" ${mineReady ? '' : 'disabled'}>${submitLabel}</button>
+          <button type="button" class="btn btn-block" id="votes-close">Beenden &amp; Gewinner küren</button>
+        </div>
         <button type="button" class="btn btn-danger btn-sm" id="votes-cancel" style="align-self:center;">Abbrechen</button>
-      </div>`;
+      </section>`;
   } else {
     // Only offered right after a round closed in a tie (several games sharing
     // top score) — a one-tap way to settle it instead of manually starting
@@ -413,11 +423,11 @@ export function renderVotes(container, ctx) {
         .map((w) => `<span class="chip">${gameBadgeHtml({ id: w.gameId, icon: w.icon }, 24)} ${escapeHtml(w.gameName)}</span>`)
         .join('');
       runoffSectionHtml = `
-        <div class="section-title">${icon('users')} Unentschieden</div>
-        <div class="card stack">
+        <section class="tournament-section-panel vote-page-section stack" aria-labelledby="vote-runoff-title">
+          <div class="tournament-create-step-title"><h2 id="vote-runoff-title">Unentschieden</h2></div>
           <div class="chip-list">${tiedChips}</div>
           <button type="button" class="btn btn-primary btn-block" id="votes-runoff">Stichwahl starten</button>
-        </div>`;
+        </section>`;
     }
 
     const gameCheckboxes = state.games
@@ -430,8 +440,8 @@ export function renderVotes(container, ctx) {
       )
       .join('');
     openSectionHtml = `
-      <div class="section-title">Neue Abstimmung starten</div>
-      <div class="card stack">
+      <section class="tournament-section-panel vote-page-section vote-workflow-section stack" aria-labelledby="vote-start-title">
+        <div class="tournament-create-step-title"><h2 id="vote-start-title">Neue Abstimmung starten</h2></div>
         <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
           Punkte frei verteilen, höchste Summe gewinnt.
         </p>
@@ -457,23 +467,28 @@ export function renderVotes(container, ctx) {
           </div>
         </div>
         <button type="button" class="btn btn-primary btn-block" id="votes-start">Abstimmung starten</button>
-      </div>`;
+      </section>`;
   }
 
   container.innerHTML = `
     <h1 class="view-title">Was zocken wir als Nächstes?</h1>
     ${whoAmI}
 
-    <div class="section-title">${icon('trophy')} Letztes Ergebnis</div>
-    <div class="card">${renderLastResult()}</div>
-
-    <div class="section-title">${icon('flame')} Top 5 nach Bock-Level</div>
-    <div class="card">${renderTop5(votes.catalogResults)}</div>
+    <div class="vote-overview-grid">
+      <section class="tournament-section-panel stack" aria-labelledby="vote-last-result-title">
+        <div class="tournament-create-step-title"><h2 id="vote-last-result-title">Letztes Ergebnis</h2></div>
+        ${renderLastResult()}
+      </section>
+      <section class="tournament-section-panel stack" aria-labelledby="vote-top-games-title">
+        <div class="tournament-create-step-title"><h2 id="vote-top-games-title">Top 5 nach Bock-Level</h2></div>
+        ${renderTop5(votes.catalogResults)}
+      </section>
+    </div>
 
     ${runoffSectionHtml}
     ${openSectionHtml}
 
-    <details class="card history-details collapsible-section">
+    <details class="card history-details collapsible-section" data-vote-history ${historyOpen ? 'open' : ''}>
       <summary class="collapsible-section-header">
         <h2>Vote-Historie</h2>
         <span class="collapsible-section-summary-end">
@@ -486,6 +501,11 @@ export function renderVotes(container, ctx) {
   `;
 
   wireWhoAmICard(container, 'whoami', ctx);
+  wireInfoTooltips(container);
+
+  container.querySelector('[data-vote-history]')?.addEventListener('toggle', (event) => {
+    historyOpen = event.currentTarget.open;
+  });
 
   container.querySelectorAll('[data-vote-select]').forEach((btn) => {
     btn.addEventListener('click', () => {

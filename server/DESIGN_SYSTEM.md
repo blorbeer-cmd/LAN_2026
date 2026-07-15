@@ -261,6 +261,14 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the icon's tooltip and accessible label retain the full „Skill-Level“ meaning. Team headers show
   the same icon with a dynamically calculated total; missing ratings contribute `0`, stated
   explicitly in its tooltip and accessible label.
+- **Voting** — Vote uses the same restrained accent-rail panels as team and tournament workflows.
+  The latest result and Bock ranking form a one-column/two-column overview; current, new and runoff
+  rounds use full-width workflow panels without decorative heading icons. Game rows remain one
+  column on phones and two from `--bp-md`, with the same bordered card treatment at both sizes.
+  The running-round explanation sits in an info tooltip immediately beside its title. Submit and
+  close actions share a responsive equal-width grid, with the participant action remaining primary.
+  Vote history uses the shared icon-free collapsible header, starts closed and retains its open state
+  across live re-renders.
 - **Tournament overview** — `.tournament-list-grid` shows at most two tournament cards per row;
   a single card stretches across the available width and further cards wrap. `.tournament-list-section` presents
   active and completed tournaments as two prominent status rows without separate summary-stat
