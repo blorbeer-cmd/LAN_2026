@@ -19,7 +19,10 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 
 - [x] [ ] Produktname vollständig auf „Respawn“ vereinheitlichen
   - [x] [ ] Wortmarke oben links bereits als „Respawn“ und nicht kursiv darstellen
-  - [ ] [ ] Repo und alle Referenzen zu Respawn ebenfalls umbenennen
+  - [x] [ ] Alle versionierten und technischen Referenzen zu Respawn umbenennen
+  - [ ] [ ] GitHub-Repository selbst in `Respawn` umbenennen
+    - Kommentar: Wartet ausschließlich auf eine erneute GitHub-CLI-Anmeldung; die lokal
+      hinterlegten Tokens sind ungültig. `origin` wird erst nach erfolgreichem Rename aktualisiert.
 - [x] [ ] Kreuz zum Schließen der Meldungen reparieren; aktuell reagiert es nicht
   - Kommentar: Der vorhandene Schließpfad funktioniert im E2E-Test; kein zusätzlicher Code-Fix war nötig.
 - [x] [ ] Symbole in den Untermenüs unter „Mehr“ entfernen und dort nur den Titel anzeigen
