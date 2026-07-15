@@ -142,7 +142,9 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   gleichwertige Bereiche mit Akzentkante in einer gemeinsamen Hauptkarte. Eine gemeinsame
   Spielauswahl oberhalb der beiden Bereiche gilt für Auslosung, Captain Draft und Historie, ohne
   optisch einem Ablauf zugeordnet zu sein. Der Captain Draft erhält eine eigene Teilnehmerauswahl;
-  erst daraus werden die Captains im selben zweispaltigen Kartenraster benannt. Der Tooltip direkt
+  erst daraus werden die Captains im selben zweispaltigen Kartenraster benannt. Auswahlzustände
+  werden wie bei der Auslosung nur über die Checkbox gezeigt, ohne zusätzlichen Karten-Highlight.
+  Der Tooltip direkt
   neben „Captains“ erklärt diese Abhängigkeit; ein zusätzlicher Leerzustandstext entfällt. Die im
   laufenden Draft verbliebenen Gamer stehen unter „Spieler“ in breiten Spielerkarten statt Pills.
   Dekorative Draft-Symbole und der Hinweis „Du bist am

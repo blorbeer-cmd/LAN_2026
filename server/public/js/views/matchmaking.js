@@ -551,7 +551,7 @@ export function renderMatchmaking(container, ctx) {
 
   const draftPlayerRows = state.players
     .map(
-      (p) => `<label class="check-row captain-selection-card">
+      (p) => `<label class="check-row">
         <input type="checkbox" data-draft-player="${p.id}" ${draftPlayerIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
@@ -565,7 +565,7 @@ export function renderMatchmaking(container, ctx) {
   const draftPlayers = state.players.filter((p) => draftPlayerIds.has(p.id));
   const captainRows = draftPlayers
     .map(
-      (p) => `<label class="check-row captain-selection-card">
+      (p) => `<label class="check-row">
         <input type="checkbox" data-captain-toggle="${p.id}" ${draftCaptainIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>

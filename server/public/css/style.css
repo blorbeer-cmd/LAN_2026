@@ -968,14 +968,6 @@ input[type='number']::-webkit-inner-spin-button {
   border-color: var(--state-playing);
   box-shadow: inset 0 0 0 1px var(--state-playing);
 }
-.captain-selection-grid .captain-selection-card {
-  cursor: pointer;
-  background: var(--bg-elevated);
-}
-.captain-selection-grid .captain-selection-card:has(input:checked) {
-  border-color: var(--accent);
-  background: var(--bg-elevated-2);
-}
 .draft-pool-player {
   width: 100%;
   color: inherit;

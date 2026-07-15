@@ -233,6 +233,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   draft participants are independent `.tournament-player-grid` checkbox selections; captains are
   then chosen only from the prepared draft roster. The Captains label explains that dependency in
   an adjacent info tooltip instead of rendering an empty-state instruction in the selection grid.
+  Both selections use the standard checkbox-card state without an additional selected-card highlight.
   The captain action stretches like the draw action.
   One shared game picker sits above both sections and controls draw, draft and the loaded history;
   it does not visually belong to either workflow. The remaining live-draft participants appear under
