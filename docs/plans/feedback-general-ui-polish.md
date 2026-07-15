@@ -144,8 +144,9 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   optisch einem Ablauf zugeordnet zu sein. Der Captain Draft erhält eine eigene Teilnehmerauswahl;
   erst daraus werden die Captains im selben zweispaltigen Kartenraster benannt. Auswahlzustände
   werden wie bei der Auslosung nur über die Checkbox gezeigt, ohne zusätzlichen Karten-Highlight.
-  Der Tooltip direkt
-  neben „Captains“ erklärt diese Abhängigkeit; ein zusätzlicher Leerzustandstext entfällt. Die im
+  Ein einzelner Tooltip neben „Captain Draft“ erklärt die Reihenfolge aus Teilnehmern, Captains und
+  Spielerwahl; bei „Captains“ gibt es keinen doppelten Tooltip oder Leerzustandstext. Titel und
+  Auswahlraster erhalten dort denselben kompakten Abstand wie im Spielerblock. Die im
   laufenden Draft verbliebenen Gamer stehen unter „Spieler“ in breiten Spielerkarten statt Pills.
   Dekorative Draft-Symbole und der Hinweis „Du bist am
   Zug“ entfallen. In Auslosung, Draft-Auswahl, Live-Draft und ausgelosten Teams steht bei jedem Gamer

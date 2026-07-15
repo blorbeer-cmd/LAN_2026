@@ -231,8 +231,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Team formation** — the Teams view places „Auslosung“ and „Captain Draft“ inside one main card
   as equal `.tournament-section-panel` sections with the shared accent rail. Draw participants and
   draft participants are independent `.tournament-player-grid` checkbox selections; captains are
-  then chosen only from the prepared draft roster. The Captains label explains that dependency in
-  an adjacent info tooltip instead of rendering an empty-state instruction in the selection grid.
+  then chosen only from the prepared draft roster. One tooltip beside „Captain Draft“ explains the
+  complete participant/captain/pick sequence; the Captains label has no duplicate tooltip or empty-state
+  instruction. `.captain-selection-group` keeps its label close to the associated player grid.
   Both selections use the standard checkbox-card state without an additional selected-card highlight.
   The captain action stretches like the draw action.
   One shared game picker sits above both sections and controls draw, draft and the loaded history;
