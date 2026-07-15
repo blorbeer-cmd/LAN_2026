@@ -242,9 +242,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the heading „Spieler“ in the same full-width player cards instead of chips; the drafted teams are
   introduced by the parallel heading „Captains“. Decorative draft icons and the redundant local-turn
   hint are omitted.
-  Every player row in both setup flows, the live draft and the drawn teams labels the skill level for
-  the selected game as `Skill 1–10`; an en dash makes a missing self-rating explicit instead of silently
-  presenting the matchmaking fallback as a real rating.
+  Every player row in both setup flows, the live draft and the drawn teams shows the shared activity
+  icon followed by the selected game's `1–10` skill value; an en dash makes a missing self-rating
+  explicit instead of silently presenting the matchmaking fallback as a real rating. The title and
+  accessible label retain the full term „Skill-Level“.
   Open draws and recorded results share one newest-first „Historie“ because they are two states of
   the same lineup. It starts collapsed through the shared collapsible-section component. Every
   history card repeats its game badge and name. Recorded results omit a status badge;

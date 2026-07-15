@@ -151,7 +151,8 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   laufenden Draft verbliebenen Gamer stehen unter „Spieler“ in breiten Spielerkarten statt Pills;
   die Captain-Teams erhalten parallel die Überschrift „Captains“. Dekorative Draft-Symbole und der Hinweis „Du bist am
   Zug“ entfallen. In Auslosung, Draft-Auswahl, Live-Draft und ausgelosten Teams steht bei jedem Gamer
-  das Skill-Level für das ausgewählte Spiel; eine fehlende Bewertung wird als „Skill –“ ausgewiesen.
+  das vereinheitlichte Skill-Symbol mit dem Wert für das ausgewählte Spiel; eine fehlende Bewertung
+  wird mit einem Gedankenstrich ausgewiesen, Tooltip und Screenreader-Text nennen weiterhin „Skill-Level“.
   Offene Auslosungen und erfasste Ergebnisse werden chronologisch in einer gemeinsamen, standardmäßig
   geschlossenen „Historie“ ohne Symbol gezeigt; jeder Eintrag nennt Spielsymbol und Spielname.
   Statt „Ergebnis erfasst“ kennzeichnet ein verstärkter Rahmen das

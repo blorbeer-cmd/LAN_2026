@@ -418,9 +418,9 @@ function skillRatingFor(playerId, gameId) {
 }
 
 function skillLevelHtml(rating) {
-  const label = rating == null ? 'Skill –' : `Skill ${rating}`;
+  const value = rating == null ? '–' : rating;
   const title = rating == null ? 'Noch kein Skill-Level eingetragen' : `Skill-Level ${rating} von 10`;
-  return `<span class="rating" title="${title}" aria-label="${title}">${label}</span>`;
+  return `<span class="rating" title="${title}" aria-label="${title}">${icon(domainIcon('skill'))}<span>${value}</span></span>`;
 }
 
 function playerSkillHtml(playerId, gameId) {

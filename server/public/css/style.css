@@ -2890,6 +2890,9 @@ input[type='range'].preference-row-slider {
   min-width: 0;
 }
 .rating {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
