@@ -289,8 +289,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   width instead of spanning the row; phones stay single-column. Every card repeats Start and
   Ankunft vertically. Below the current passengers, every available passenger seat has its own
   compact „Frei“ row with a direct „Mitfahren“ action for eligible players. The driver row uses the
-  same right-hand action column for a neutral „Fahrer“ label; drivers and existing passengers leave
-  the free rows' action column empty instead of repeating „Frei“ or allowing duplicate joins.
+  same right-hand action column for a neutral „Fahrer“ label. Occupied passenger rows and free rows
+  without an available join action show the parallel neutral „Mitfahrer“ role. All member and free
+  rows share one minimum height; the join action stays compact inside it. A driver's „Bearbeiten“
+  action uses the primary button treatment next to the destructive delete action.
 - **Leaderboard** — The concise page title is „Rang“. The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
   each remains a distinct `.tournament-section-panel` with the shared accent rail. „Spielzeit pro

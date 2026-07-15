@@ -71,7 +71,7 @@ function renderCarpool(c, direction, myId) {
       (m) => `<div class="arrivals-member-row">
               ${avatarHtml(m, 24)}
               <span class="player-name">${escapeHtml(m.name)}</span>
-              ${m.id === c.driverId ? '<span class="arrivals-member-role">Fahrer</span>' : ''}
+              <span class="arrivals-member-role">${m.id === c.driverId ? 'Fahrer' : 'Mitfahrer'}</span>
             </div>`
     )
     .join('');
@@ -80,7 +80,7 @@ function renderCarpool(c, direction, myId) {
       ? `<button type="button" class="btn btn-sm btn-primary" data-join-carpool="${c.id}">Mitfahren</button>`
       : !myId
         ? '<button type="button" class="btn btn-sm" disabled>Mitfahren</button>'
-        : '';
+        : '<span class="arrivals-member-role">Mitfahrer</span>';
     return `<div class="arrivals-member-row arrivals-free-seat-row">
       <span class="muted arrivals-free-seat-label">Frei</span>
       ${control}
@@ -113,7 +113,7 @@ function renderCarpool(c, direction, myId) {
         joinAction || isDriver
           ? `<div class="arrivals-carpool-actions${isDriver ? ' is-driver' : ''}">
                ${joinAction}
-               ${isDriver ? `<button type="button" class="btn btn-sm" data-edit-carpool="${c.id}">Bearbeiten</button>` : ''}
+               ${isDriver ? `<button type="button" class="btn btn-sm btn-primary" data-edit-carpool="${c.id}">Bearbeiten</button>` : ''}
                ${isDriver ? `<button type="button" class="btn btn-sm btn-danger" data-remove-carpool="${c.id}">Löschen</button>` : ''}
              </div>`
           : ''
