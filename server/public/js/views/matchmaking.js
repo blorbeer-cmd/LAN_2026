@@ -133,7 +133,7 @@ function renderDrawCard(draw, { editable, showGame = false }) {
   const seatingNote = draw.seatPairsConsidered
     ? draw.seatConflicts > 0
       ? `<div class="muted" style="font-size:var(--font-size-xs);">${icon('armchair')} ${draw.seatConflicts} von ${draw.seatPairsConsidered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten (sonst wäre es zu unfair geworden).</div>`
-      : `<div class="muted" style="font-size:var(--font-size-xs);">${icon('armchair')} Alle Sitznachbarn sind im selben Team.</div>`
+      : ''
     : '';
 
   return `

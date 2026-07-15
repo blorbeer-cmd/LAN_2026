@@ -293,7 +293,7 @@ function renderCreateForm(el, ctx) {
     createSeatConflicts && createSeatConflicts.considered
       ? createSeatConflicts.conflicts > 0
         ? `<div class="muted" style="font-size:var(--font-size-xs);">${icon('armchair')} ${createSeatConflicts.conflicts} von ${createSeatConflicts.considered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten (sonst wäre es zu unfair geworden).</div>`
-        : `<div class="muted" style="font-size:var(--font-size-xs);">${icon('armchair')} Alle Sitznachbarn sind im selben Team.</div>`
+        : ''
       : '';
 
   const selectedTeamIndex = createProposedTeams && createSelectedPlayerId

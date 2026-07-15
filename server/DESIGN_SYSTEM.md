@@ -253,6 +253,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   accessible group label. „Ergebnis bearbeiten“ opens a correction form for winner, value and
   placement and updates the existing match instead of creating a duplicate result. On recorded
   history cards, „Rematch“ is the primary action while editing remains visually secondary.
+  Successful seat-neighbor grouping stays silent; a note appears only when requested seat neighbors
+  still had to be placed in opposing teams.
 - **Player skill display** — `skillDisplay.js` renders the shared activity icon plus the selected
   game's current self-rating, or an en dash when no rating exists. Teams and Tournaments reuse it
   in participant selection, drawn-team previews, live drafts, histories and tournament detail teams;

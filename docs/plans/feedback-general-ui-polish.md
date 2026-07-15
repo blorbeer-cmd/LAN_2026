@@ -164,6 +164,8 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   teilen dafür einen Helper, damit Symbol, fehlender Wert, Tooltip und Screenreader-Text gleich bleiben.
   In den Teamüberschriften steht zusätzlich der dynamisch aus den zugeordneten Spielern summierte
   Gesamt-Skill. Fehlende Einzelbewertungen zählen dabei mit `0`.
+- Erfolgreich zusammengehaltene Sitznachbarn erzeugen keinen zusätzlichen Bestätigungstext; nur
+  unvermeidbare Trennungen werden nach der Auslosung als Hinweis angezeigt.
 
 Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 `server/public/js/views/tournament.js`, `server/public/js/views/votes.js`,
