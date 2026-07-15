@@ -1599,16 +1599,24 @@ button.card {
     calc(var(--row-icon-size) + var(--space-2));
   align-items: center;
   min-height: calc(var(--row-min-h) + var(--space-5));
-  gap: var(--space-4);
+  gap: 0;
   padding: var(--space-5);
 }
+.more-card-label {
+  grid-column: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  gap: var(--space-2);
+}
 .more-card .list-row-icon {
-  width: calc(var(--row-icon-size) + var(--space-2));
-  height: calc(var(--row-icon-size) + var(--space-2));
+  width: var(--row-icon-size);
+  height: var(--row-icon-size);
 }
 .more-card .list-row-icon .ui-icon {
-  width: calc(var(--row-icon-size) - var(--space-2));
-  height: calc(var(--row-icon-size) - var(--space-2));
+  width: var(--row-icon-size);
+  height: var(--row-icon-size);
 }
 .more-card .player-name {
   font-size: var(--font-size-lg);
@@ -1618,6 +1626,7 @@ button.card {
   text-align: center;
 }
 .more-card-chevron {
+  grid-column: 3;
   width: calc(var(--row-icon-size) + var(--space-2));
   height: calc(var(--row-icon-size) + var(--space-2));
   display: inline-flex;

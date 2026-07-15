@@ -24,8 +24,10 @@ export function renderMore(container) {
   const rows = ITEMS.map(
     (item) => `
     <button type="button" class="card row list-row more-card" data-navigate="${item.view}">
-      <span class="list-row-icon">${icon(domainIcon(item.view))}</span>
-      <span class="player-name more-card-title">${item.title}</span>
+      <span class="more-card-label">
+        <span class="list-row-icon">${icon(domainIcon(item.view))}</span>
+        <span class="player-name more-card-title">${item.title}</span>
+      </span>
       <span class="muted more-card-chevron">${icon('chevronRight')}</span>
     </button>`
   ).join('');
