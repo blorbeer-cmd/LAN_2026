@@ -61,7 +61,7 @@ function renderEvent(e) {
     : '';
 
   return `
-    <div class="card" style="margin-bottom:var(--space-3);">
+    <div class="card">
       <div class="row-between">
         <span class="player-name">${escapeHtml(e.eventName)}</span>
         <span class="muted" style="font-size:var(--font-size-xs);">${range}</span>
@@ -76,24 +76,30 @@ export function renderHallOfFame(container, ctx) {
   if (cache === null && !loading) load(ctx);
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Hall of Fame</h1>
     ${
       loading || cache === null
         ? `<div class="empty-state">Lädt…</div>`
         : `
-      <div class="section-title">Meiste Gesamtsiege</div>
-      <div class="card">${rankedRows(cache.allTime.mostOverallWins, 'Gesamtsieg')}</div>
-
-      <div class="section-title">Meiste Turniersiege</div>
-      <div class="card">${rankedRows(cache.allTime.mostTournamentWins, 'Turnier')}</div>
-
-      <div class="section-title">Nach LAN</div>
-      ${
-        cache.events.length === 0
-          ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('hallOfFame'))}</span>Noch keine Events.</div>`
-          : cache.events.map(renderEvent).join('')
-      }
+      <div class="grouped-page-sections">
+        <section class="card stack grouped-page-section" aria-labelledby="hall-overall-title">
+          <div class="grouped-page-section-title"><h2 id="hall-overall-title">Meiste Gesamtsiege</h2></div>
+          <div class="leaderboard-list-grid">${rankedRows(cache.allTime.mostOverallWins, 'Gesamtsieg')}</div>
+        </section>
+        <section class="card stack grouped-page-section" aria-labelledby="hall-tournaments-title">
+          <div class="grouped-page-section-title"><h2 id="hall-tournaments-title">Meiste Turniersiege</h2></div>
+          <div class="leaderboard-list-grid">${rankedRows(cache.allTime.mostTournamentWins, 'Turnier')}</div>
+        </section>
+        <section class="card stack grouped-page-section" aria-labelledby="hall-events-title">
+          <div class="grouped-page-section-title"><h2 id="hall-events-title">Nach LAN</h2></div>
+          ${
+            cache.events.length === 0
+              ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('hallOfFame'))}</span>Noch keine Events.</div>`
+              : `<div class="two-column-card-grid">${cache.events.map(renderEvent).join('')}</div>`
+          }
+        </section>
+      </div>
     `
     }
   `;

@@ -77,29 +77,33 @@ export function renderBroadcast(container, ctx) {
   const displayEndsAt = Number.isFinite(parsedEndsAt) ? parsedEndsAt : Date.now() + 60 * 60 * 1000;
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Durchsage</h1>
     ${whoAmICardHtml('broadcast-whoami', { marginBottom: '12px' })}
-    <div class="card stack">
-      <form id="broadcast-form" class="stack">
-        <div>
-          <label for="broadcast-message" class="field-label">Nachricht</label>
-          <input type="text" id="broadcast-message" placeholder="z.B. Essen ist da!" maxlength="200" ${myId ? '' : 'disabled'} />
-        </div>
-        <div>
-          <label for="broadcast-ends-at" class="field-label">Sichtbar bis</label>
-          ${dateTimeFieldHtml('broadcast-ends-at', displayEndsAt, { disabled: !myId })}
-        </div>
-        <button type="submit" class="btn btn-primary" ${myId ? '' : 'disabled'}>Senden</button>
-      </form>
-      <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
-        Erscheint sofort auf allen offenen Geräten, auf dem Kiosk-Bildschirm und als
-        Push-Benachrichtigung bei allen, die Push aktiviert haben.
-      </p>
+    <div class="grouped-page-sections">
+      <section class="card stack grouped-page-section" aria-labelledby="broadcast-new-title">
+        <div class="grouped-page-section-title"><h2 id="broadcast-new-title">Neue Durchsage</h2></div>
+        <form id="broadcast-form" class="stack">
+          <div>
+            <label for="broadcast-message" class="field-label">Nachricht</label>
+            <input type="text" id="broadcast-message" placeholder="z.B. Essen ist da!" maxlength="200" ${myId ? '' : 'disabled'} />
+          </div>
+          <div>
+            <label for="broadcast-ends-at" class="field-label">Sichtbar bis</label>
+            ${dateTimeFieldHtml('broadcast-ends-at', displayEndsAt, { disabled: !myId })}
+          </div>
+          <button type="submit" class="btn btn-primary" ${myId ? '' : 'disabled'}>Senden</button>
+        </form>
+        <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
+          Erscheint sofort auf allen offenen Geräten, auf dem Kiosk-Bildschirm und als
+          Push-Benachrichtigung bei allen, die Push aktiviert haben.
+        </p>
+      </section>
+      <section class="card stack grouped-page-section" aria-labelledby="broadcast-history-title">
+        <div class="grouped-page-section-title"><h2 id="broadcast-history-title">Letzte Durchsagen</h2></div>
+        ${renderHistory(myId)}
+      </section>
     </div>
-
-    <div class="section-title">Letzte Durchsagen</div>
-    <div class="card">${renderHistory(myId)}</div>
   `;
 
   wireWhoAmICard(container, 'broadcast-whoami', ctx);

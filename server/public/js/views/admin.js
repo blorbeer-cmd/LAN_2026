@@ -11,7 +11,6 @@ import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { isAdmin, setAdmin } from '../admin.js';
 import { icon } from '../icons.js';
-import { domainIcon } from '../domainIcons.js';
 
 let agentDiagnostics = null;
 let diagnosticsLoading = false;
@@ -79,13 +78,16 @@ async function deletePlayer(player, ctx) {
 
 function renderActivate(container) {
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
-    <h1 class="view-title">${icon(domainIcon('admin'))} Admin</h1>
-    <div class="card stack">
-      <p class="muted">Im Admin-Modus kannst du Test-Spieler mit fertigen Daten anlegen,
-      Admin-Rechte vergeben und Spieler löschen. Test-Spieler sind nur sichtbar,
-      solange der Admin-Modus aktiv ist.</p>
-      <button type="button" class="btn btn-primary btn-block" id="admin-activate">Admin-Modus aktivieren</button>
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+    <h1 class="view-title">Admin</h1>
+    <div class="grouped-page-sections">
+      <section class="card stack grouped-page-section" aria-labelledby="admin-mode-title">
+        <div class="grouped-page-section-title"><h2 id="admin-mode-title">Admin-Modus</h2></div>
+        <p class="muted">Im Admin-Modus kannst du Test-Spieler mit fertigen Daten anlegen,
+        Admin-Rechte vergeben und Spieler löschen. Test-Spieler sind nur sichtbar,
+        solange der Admin-Modus aktiv ist.</p>
+        <button type="button" class="btn btn-primary btn-block" id="admin-activate">Admin-Modus aktivieren</button>
+      </section>
     </div>
   `;
 
@@ -102,14 +104,14 @@ function renderPanel(container, ctx) {
   const rows = players
     .map(
       (p) => `
-      <div class="row-between" style="padding:var(--space-2) 0;border-bottom:1px solid var(--border);">
-        <span class="row" style="gap:var(--space-2);">
+      <div class="row-between admin-player-row" style="padding:var(--space-2) 0;border-bottom:1px solid var(--border);">
+        <span class="row admin-player-identity" style="gap:var(--space-2);">
           <span class="avatar-dot" style="background:${escapeHtml(p.color)};"></span>
           <span class="player-name">${escapeHtml(p.name)}</span>
           ${p.is_admin ? '<span class="badge badge-playing">Admin</span>' : ''}
           ${p.is_test ? '<span class="badge badge-paused">Test</span>' : ''}
         </span>
-        <span class="row" style="gap:var(--space-2);">
+        <span class="row admin-player-actions" style="gap:var(--space-2);">
           <button type="button" class="btn btn-sm" data-toggle-admin="${p.id}">${p.is_admin ? 'Admin entziehen' : 'Admin machen'}</button>
           <button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">Löschen</button>
         </span>
@@ -141,36 +143,39 @@ function renderPanel(container, ctx) {
     .join('');
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <div class="row-between">
-      <h1 class="view-title">${icon(domainIcon('admin'))} Admin</h1>
+      <h1 class="view-title">Admin</h1>
       <button type="button" class="btn btn-sm" id="admin-leave">Modus verlassen</button>
     </div>
-
-    <div class="section-title">Test-Spieler</div>
-    <div class="card stack">
-      <p class="muted">Kommen fertig eingerichtet: Platz im Sitzplan samt sichtbarer Monitore,
-      Skill- und Bock-Werte pro Spiel, Spielzeit fürs aktive Event – zwei davon spielen gerade.
-      Nur im Admin-Modus sichtbar.</p>
-      <div class="row" style="gap:var(--space-2);">
-        <input type="number" id="admin-count" value="5" min="1" max="20" style="max-width:90px;" />
-        <button type="button" class="btn btn-primary" id="admin-bulk" style="flex:1;" ${seedBusy ? 'disabled' : ''}>Test-Spieler anlegen</button>
-      </div>
-      <div class="row-between">
-        <span class="muted">${testCount} Test-Spieler vorhanden</span>
-        <button type="button" class="btn btn-sm btn-danger" id="admin-cleanup" ${testCount === 0 ? 'disabled' : ''}>Test-Daten aufräumen</button>
-      </div>
-    </div>
-
-    <div class="section-title">Spieler (${players.length})</div>
-    <div class="card">${rows || '<span class="muted">Noch keine Spieler.</span>'}</div>
-
-    <div class="row-between" style="margin-top:var(--space-5);">
-      <div class="section-title" style="margin:0;">Agent-Diagnose</div>
-      <button type="button" class="btn btn-sm" id="agent-diagnostics-refresh">Aktualisieren</button>
-    </div>
-    <div class="card stack" style="margin-top:var(--space-2);">
-      ${diagnosticsLoading && agentDiagnostics === null ? '<div class="muted">Diagnose laden…</div>' : diagnosticRows || '<span class="muted">Noch keine Spieler.</span>'}
+    <div class="grouped-page-sections">
+      <section class="card stack grouped-page-section" aria-labelledby="admin-test-players-title">
+        <div class="grouped-page-section-title"><h2 id="admin-test-players-title">Test-Spieler</h2></div>
+        <p class="muted">Kommen fertig eingerichtet: Platz im Sitzplan samt sichtbarer Monitore,
+        Skill- und Bock-Werte pro Spiel, Spielzeit fürs aktive Event – zwei davon spielen gerade.
+        Nur im Admin-Modus sichtbar.</p>
+        <div class="row" style="gap:var(--space-2);">
+          <input type="number" id="admin-count" value="5" min="1" max="20" style="max-width:calc(var(--space-8) * 2);" />
+          <button type="button" class="btn btn-primary" id="admin-bulk" style="flex:1;" ${seedBusy ? 'disabled' : ''}>Test-Spieler anlegen</button>
+        </div>
+        <div class="row-between">
+          <span class="muted">${testCount} Test-Spieler vorhanden</span>
+          <button type="button" class="btn btn-sm btn-danger" id="admin-cleanup" ${testCount === 0 ? 'disabled' : ''}>Test-Daten aufräumen</button>
+        </div>
+      </section>
+      <section class="card stack grouped-page-section" aria-labelledby="admin-players-title">
+        <div class="grouped-page-section-title"><h2 id="admin-players-title">Spieler (${players.length})</h2></div>
+        <div class="card">${rows || '<span class="muted">Noch keine Spieler.</span>'}</div>
+      </section>
+      <section class="card stack grouped-page-section" aria-labelledby="admin-agent-title">
+        <div class="grouped-page-section-title">
+          <h2 id="admin-agent-title">Agent-Diagnose</h2>
+          <button type="button" class="btn btn-sm" id="agent-diagnostics-refresh">Aktualisieren</button>
+        </div>
+        <div class="card stack">
+          ${diagnosticsLoading && agentDiagnostics === null ? '<div class="muted">Diagnose laden…</div>' : diagnosticRows || '<span class="muted">Noch keine Spieler.</span>'}
+        </div>
+      </section>
     </div>
   `;
 

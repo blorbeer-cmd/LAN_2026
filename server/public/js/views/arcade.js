@@ -460,47 +460,51 @@ function openLobbiesOverviewHtml() {
     .filter(({ lobbies: gl }) => gl.length > 0);
   if (rows.length === 0) return '';
   return `
-    <div class="section-title">Offene Lobbys</div>
-    <div class="arcade-lobby-grid" style="margin-bottom:var(--space-3);">
-      ${rows
-        .map(({ game, lobbies: gl }) => {
-          const hostsSummary = gl
-            .map((l) => `${escapeHtml(l.host.name)} · ${l.players.length} Spieler`)
-            .join(', ');
-          return `
-        <button type="button" class="card row list-row" data-game="${game.id}">
-          <span class="list-row-icon" aria-hidden="true">${game.icon}</span>
-          <span style="flex:1;min-width:0;">
-            <div class="player-name">${escapeHtml(game.name)}</div>
-            <div class="muted list-row-desc">${hostsSummary}</div>
-          </span>
-          <span class="badge">${gl.length} offen</span>
-        </button>`;
-        })
-        .join('')}
-    </div>`;
+    <section class="card stack grouped-page-section" aria-labelledby="arcade-open-lobbies-title">
+      <div class="grouped-page-section-title"><h2 id="arcade-open-lobbies-title">Offene Lobbys</h2></div>
+      <div class="arcade-lobby-grid">
+        ${rows
+          .map(({ game, lobbies: gl }) => {
+            const hostsSummary = gl
+              .map((l) => `${escapeHtml(l.host.name)} · ${l.players.length} Spieler`)
+              .join(', ');
+            return `
+          <button type="button" class="card row list-row" data-game="${game.id}">
+            <span class="list-row-icon" aria-hidden="true">${game.icon}</span>
+            <span style="flex:1;min-width:0;">
+              <div class="player-name">${escapeHtml(game.name)}</div>
+              <div class="muted list-row-desc">${hostsSummary}</div>
+            </span>
+            <span class="badge">${gl.length} offen</span>
+          </button>`;
+          })
+          .join('')}
+      </div>
+    </section>`;
 }
 
 function runningMatchesOverviewHtml() {
   if (watchMatches.length === 0) return '';
   return `
-    <div class="section-title">Laufende Spiele</div>
-    <div class="arcade-watch-list" style="margin-bottom:var(--space-3);">
-      ${watchMatches
-        .map((live) => {
-          const game = GAMES.find((entry) => entry.id === live.gameType);
-          const players = (live.players ?? []).map((player) => escapeHtml(player.name ?? player.ref?.name ?? 'Spieler')).join(' · ');
-          const scoreText = (live.scores ?? []).map((score) => `${escapeHtml(score.name ?? 'Spieler')}: ${score.score ?? 0}`).join(' · ');
-          return `<div class="card arcade-watch-list-row">
-            <div class="stack" style="gap:var(--space-1);min-width:0;">
-              <strong>${game?.icon ?? ''} ${escapeHtml(game?.name ?? live.gameType)}</strong>
-              <span class="muted list-row-desc">${players || 'Spiel läuft'}${scoreText ? ` · ${scoreText}` : ''}</span>
-            </div>
-            <button type="button" class="btn btn-sm btn-primary" data-watch-match="${escapeHtml(live.matchId)}">Zuschauen</button>
-          </div>`;
-        })
-        .join('')}
-    </div>`;
+    <section class="card stack grouped-page-section" aria-labelledby="arcade-running-title">
+      <div class="grouped-page-section-title"><h2 id="arcade-running-title">Laufende Spiele</h2></div>
+      <div class="arcade-watch-list">
+        ${watchMatches
+          .map((live) => {
+            const game = GAMES.find((entry) => entry.id === live.gameType);
+            const players = (live.players ?? []).map((player) => escapeHtml(player.name ?? player.ref?.name ?? 'Spieler')).join(' · ');
+            const scoreText = (live.scores ?? []).map((score) => `${escapeHtml(score.name ?? 'Spieler')}: ${score.score ?? 0}`).join(' · ');
+            return `<div class="card arcade-watch-list-row">
+              <div class="stack" style="gap:var(--space-1);min-width:0;">
+                <strong>${game?.icon ?? ''} ${escapeHtml(game?.name ?? live.gameType)}</strong>
+                <span class="muted list-row-desc">${players || 'Spiel läuft'}${scoreText ? ` · ${scoreText}` : ''}</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-primary" data-watch-match="${escapeHtml(live.matchId)}">Zuschauen</button>
+            </div>`;
+          })
+          .join('')}
+      </div>
+    </section>`;
 }
 
 // The lobby/match UI for the currently selected game, shown under the tiles.
@@ -511,7 +515,7 @@ function activeGameHtml() {
   if (game === 'quiz') {
     const lobby = myLobby();
     return `
-      <div class="card stack" style="margin-top:var(--space-3);">
+      <div class="card stack">
         <div class="row-between" style="gap:var(--space-3);">
           <strong>Quiz-Lobby</strong>
           <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="quiz-bot" ${match ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button></div>
@@ -525,14 +529,14 @@ function activeGameHtml() {
       ${targetControls(lobby)}`;
   }
   if (game === 'tetris') {
-    return `<div style="margin-top:var(--space-3);">${renderTetrisLobbyCard()}</div>`;
+    return `<div>${renderTetrisLobbyCard()}</div>`;
   }
   if (game === 'scribble') {
-    return `<div style="margin-top:var(--space-3);">${renderScribbleLobbyCard()}</div>`;
+    return `<div>${renderScribbleLobbyCard()}</div>`;
   }
-  if (game === 'pong') return `<div style="margin-top:var(--space-3);">${renderPongLobbyCard()}</div>`;
-  if (game === 'blobby') return `<div style="margin-top:var(--space-3);">${renderBlobbyLobbyCard()}</div>`;
-  if (game === 'snake') return `<div style="margin-top:var(--space-3);">${renderSnakeLobbyCard()}</div>`;
+  if (game === 'pong') return `<div>${renderPongLobbyCard()}</div>`;
+  if (game === 'blobby') return `<div>${renderBlobbyLobbyCard()}</div>`;
+  if (game === 'snake') return `<div>${renderSnakeLobbyCard()}</div>`;
   return '';
 }
 
@@ -547,19 +551,33 @@ export function renderArcade(container, ctx) {
   const lobby = myLobby();
 
   const cg = currentGame();
+  const activeGameName = GAMES.find((game) => game.id === cg)?.name;
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Arcade</h1>
     ${whoAmICardHtml('whoami')}
-    <div class="section-title">Spiele</div>
-    <div class="arcade-tiles">
-      ${GAMES.map((g) => gameTileHtml(g, cg, openLobbyCount(g.id))).join('')}
+    <div class="grouped-page-sections" style="margin-top:var(--space-3);">
+      <section class="card stack grouped-page-section" aria-labelledby="arcade-games-title">
+        <div class="grouped-page-section-title"><h2 id="arcade-games-title">Spiele</h2></div>
+        <div class="arcade-tiles">
+          ${GAMES.map((g) => gameTileHtml(g, cg, openLobbyCount(g.id))).join('')}
+        </div>
+      </section>
+      ${runningMatchesOverviewHtml()}
+      ${openLobbiesOverviewHtml()}
+      ${
+        activeGameName
+          ? `<section class="card stack grouped-page-section" aria-labelledby="arcade-active-game-title">
+               <div class="grouped-page-section-title"><h2 id="arcade-active-game-title">${escapeHtml(activeGameName)}</h2></div>
+               ${activeGameHtml()}
+             </section>`
+          : ''
+      }
+      <section class="card stack grouped-page-section" aria-labelledby="arcade-stats-title">
+        <div class="grouped-page-section-title"><h2 id="arcade-stats-title">Arcade-Statistiken</h2></div>
+        ${arcadeStatsHtml()}
+      </section>
     </div>
-    ${runningMatchesOverviewHtml()}
-    ${openLobbiesOverviewHtml()}
-    ${activeGameHtml()}
-    <div class="section-title">${icon('chart')} Arcade-Statistiken</div>
-    <div class="card stack">${arcadeStatsHtml()}</div>
   `;
 
   wireWhoAmICard(container, 'whoami', ctx);

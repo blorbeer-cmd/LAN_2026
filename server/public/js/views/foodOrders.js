@@ -300,17 +300,29 @@ export function renderFoodOrders(container, ctx) {
       : openOrders.length === 0
         ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('foodOrders'))}</span><br />Gerade keine offene Bestellung.<br />
            <span class="muted" style="font-size:var(--font-size-sm);">Starte eine, wenn ihr was bestellen wollt – alle können sich dann selbst eintragen.</span></div>`
-        : `<div class="stack">${openOrders.map((o) => renderOpenOrder(o, myId)).join('')}</div>`;
+        : `<div class="two-column-card-grid">${openOrders.map((o) => renderOpenOrder(o, myId)).join('')}</div>`;
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <div class="row-between">
       <h1 class="view-title">Essen</h1>
       <button type="button" class="btn btn-primary btn-sm" id="order-new-btn" ${myId ? '' : 'disabled'}>Bestellung öffnen</button>
     </div>
     ${whoAmICardHtml('food-whoami', { marginBottom: '12px' })}
-    ${openHtml}
-    ${closedOrders.length ? `<div class="section-title">Frühere Bestellungen</div>${closedOrders.map(renderClosedOrder).join('')}` : ''}
+    <div class="grouped-page-sections">
+      <section class="card stack grouped-page-section" aria-labelledby="food-open-title">
+        <div class="grouped-page-section-title"><h2 id="food-open-title">Offene Bestellungen</h2></div>
+        ${openHtml}
+      </section>
+      ${
+        closedOrders.length
+          ? `<section class="card stack grouped-page-section" aria-labelledby="food-history-title">
+               <div class="grouped-page-section-title"><h2 id="food-history-title">Frühere Bestellungen</h2></div>
+               ${closedOrders.map(renderClosedOrder).join('')}
+             </section>`
+          : ''
+      }
+    </div>
   `;
 
   wireWhoAmICard(container, 'food-whoami', ctx);

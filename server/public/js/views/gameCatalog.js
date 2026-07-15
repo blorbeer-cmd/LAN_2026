@@ -524,28 +524,33 @@ export function renderGameCatalog(container, ctx) {
   const rows = sortedGames(games, myId);
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
-    <h1 class="view-title">Spiele</h1>
-    ${whoAmICardHtml('whoami')}
-    <div class="row-between" style="margin-top:var(--space-3);gap:var(--space-3);align-items:center;">
-      <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
-        <button type="button" class="btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}" data-tab="catalog">Alle</button>
-        <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
-      </div>
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+    <div class="row-between">
+      <h1 class="view-title">Spiele</h1>
       <button type="button" class="btn btn-primary btn-sm" id="suggest-new">Spiel vorschlagen</button>
     </div>
-    <div class="row" style="gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3);">
-      ${sortButton('name', 'Name')}
-      ${sortButton('myBock', 'Mein Bock')}
-      ${sortButton('avgBock', 'Ø Bock')}
-      ${activeTab === 'catalog' ? sortButton('avgSkill', 'Ø Skill') : ''}
-    </div>
-    <div class="game-table" style="margin-top:var(--space-3);">
-      ${
-        rows.length === 0
-          ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('gameCatalog'))}</span>${activeTab === 'suggestions' ? 'Noch keine vorgeschlagenen Spiele.' : 'Noch keine Spiele im Katalog.'}</div>`
-          : rows.map((g) => gameRowHtml(g, myId)).join('')
-      }
+    ${whoAmICardHtml('whoami')}
+    <div class="grouped-page-sections" style="margin-top:var(--space-3);">
+      <section class="card stack grouped-page-section" aria-labelledby="game-catalog-list-title">
+        <div class="grouped-page-section-title"><h2 id="game-catalog-list-title">${activeTab === 'catalog' ? 'Spielekatalog' : 'Vorschläge'}</h2></div>
+        <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}" data-tab="catalog">Alle</button>
+          <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
+        </div>
+        <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
+          ${sortButton('name', 'Name')}
+          ${sortButton('myBock', 'Mein Bock')}
+          ${sortButton('avgBock', 'Ø Bock')}
+          ${activeTab === 'catalog' ? sortButton('avgSkill', 'Ø Skill') : ''}
+        </div>
+        <div class="game-table">
+          ${
+            rows.length === 0
+              ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('gameCatalog'))}</span>${activeTab === 'suggestions' ? 'Noch keine vorgeschlagenen Spiele.' : 'Noch keine Spiele im Katalog.'}</div>`
+              : rows.map((g) => gameRowHtml(g, myId)).join('')
+          }
+        </div>
+      </section>
     </div>
   `;
 

@@ -273,6 +273,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   heading lives inside the surface through `.grouped-page-section-title`, while filters and
   subordinate rows remain part of that same group. This is the default hierarchy for overview
   pages with several related datasets instead of headings that float between unrelated cards.
+  Nested `.card` surfaces use the secondary elevated background so their hierarchy remains visible.
+  `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
+  `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
+  The destinations below „Mehr“ follow this same hierarchy without adding decorative accent rails:
+  their major workflows and datasets are main groups, while entries, players, orders and results
+  remain subordinate cards or rows inside those groups.
 - **Leaderboard** — The concise page title is „Rang“. The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
   each remains a distinct `.tournament-section-panel` with the shared accent rail. „Spielzeit pro

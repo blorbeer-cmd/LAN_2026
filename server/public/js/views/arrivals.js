@@ -9,6 +9,7 @@ import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
+import { icon } from '../icons.js';
 
 let cache = null;
 let loading = false;
@@ -39,9 +40,9 @@ function parseDatetimeValue(value) {
 function renderMyForm(myId) {
   const own = (cache?.arrivals || []).find((a) => a.player_id === myId);
   return `
-    <div class="arrivals-block">
-      <div class="section-title">Meine An-/Abreise</div>
-      <form class="card stack" id="arrival-form">
+    <section class="card stack grouped-page-section arrivals-block" aria-labelledby="arrivals-mine-title">
+      <div class="grouped-page-section-title"><h2 id="arrivals-mine-title">Meine An-/Abreise</h2></div>
+      <form class="stack" id="arrival-form">
         <div class="field-row">
           <div>
             <label for="arrival-at" class="field-label">Anreise</label>
@@ -55,7 +56,7 @@ function renderMyForm(myId) {
         <textarea id="arrival-note" maxlength="240" rows="2" placeholder="Notiz (optional)" ${myId ? '' : 'disabled'}>${escapeHtml(own?.note || '')}</textarea>
         <button type="submit" class="btn btn-primary btn-block" ${myId ? '' : 'disabled'}>Speichern</button>
       </form>
-    </div>
+    </section>
   `;
 }
 
@@ -123,8 +124,8 @@ function renderCarpoolSection(direction, title, myId) {
 
 function renderCarpools(myId) {
   return `
-    <div class="arrivals-block">
-      <div class="section-title">Fahrgemeinschaften</div>
+    <section class="card stack grouped-page-section arrivals-block" aria-labelledby="arrivals-carpools-title">
+      <div class="grouped-page-section-title"><h2 id="arrivals-carpools-title">Fahrgemeinschaften</h2></div>
       <div class="card stack arrivals-carpool-card">
         ${renderCarpoolSection('arrival', 'Anreise', myId)}
         ${renderCarpoolSection('departure', 'Abreise', myId)}
@@ -134,7 +135,7 @@ function renderCarpools(myId) {
             : `<div class="muted" style="font-size:var(--font-size-sm);padding:0 12px 12px;">Wähle oben, wer du bist, um Fahrgemeinschaften anzulegen oder beizutreten.</div>`
         }
       </div>
-    </div>`;
+    </section>`;
 }
 
 function renderPeopleList() {
@@ -166,8 +167,10 @@ function renderPeopleList() {
     .join('');
 
   return `
-    <div class="section-title">Alle Zeiten</div>
-    <div class="card arrivals-people-card">${rows || '<div class="empty-state">Noch keine Spieler.</div>'}</div>`;
+    <section class="card stack grouped-page-section" aria-labelledby="arrivals-times-title">
+      <div class="grouped-page-section-title"><h2 id="arrivals-times-title">Alle Zeiten</h2></div>
+      <div class="card arrivals-people-card">${rows || '<div class="empty-state">Noch keine Spieler.</div>'}</div>
+    </section>`;
 }
 
 // Shared create/edit form: `existing` is null for a new carpool (direction
@@ -244,12 +247,12 @@ export function renderArrivals(container, ctx) {
   const loaded = cache !== null && !loading;
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">An- & Abreise</h1>
     ${whoAmICardHtml('arrivals-whoami', { marginBottom: '12px' })}
     ${
       loaded
-        ? `<div class="arrivals-layout">
+        ? `<div class="arrivals-layout grouped-page-sections">
              ${renderMyForm(myId)}
              ${renderCarpools(myId)}
              ${renderPeopleList()}

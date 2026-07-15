@@ -31,16 +31,23 @@ export function renderPlayers(container, ctx) {
     .join('');
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <div class="row-between">
       <h1 class="view-title">Spieler</h1>
       <button type="button" class="btn btn-primary btn-sm" id="add-player-btn">+ Spieler</button>
     </div>
-    ${
-      state.players.length === 0
-        ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('players'))}</span>Noch keine Spieler.<br />Leg den ersten an.</div>`
-        : `<div class="card-grid">${rows}</div>`
-    }
+    <div class="grouped-page-sections">
+      <section class="card stack grouped-page-section" aria-labelledby="players-list-title">
+        <div class="grouped-page-section-title">
+          <h2 id="players-list-title">Teilnehmende</h2>
+        </div>
+        ${
+          state.players.length === 0
+            ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('players'))}</span>Noch keine Spieler.<br />Leg den ersten an.</div>`
+            : `<div class="two-column-card-grid">${rows}</div>`
+        }
+      </section>
+    </div>
   `;
 
   container.querySelector('#add-player-btn').addEventListener('click', () => openAddPlayerModal(ctx));

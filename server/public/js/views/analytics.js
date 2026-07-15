@@ -160,31 +160,34 @@ export function renderAnalytics(container, ctx) {
   const displayRange = filters.from && filters.to ? { from: filters.from, to: filters.to } : selectedEventRange();
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Auswertungen</h1>
-    <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-3);">
-      <button type="button" class="btn btn-sm ${activeTab === 'playtime' ? 'btn-primary' : ''}" data-an-tab="playtime">Spielzeit</button>
-      <button type="button" class="btn btn-sm ${activeTab === 'matches' ? 'btn-primary' : ''}" data-an-tab="matches">Matches & Turniere</button>
-      <button type="button" class="btn btn-sm ${activeTab === 'arcade' ? 'btn-primary' : ''}" data-an-tab="arcade">Arcade</button>
+    <div class="grouped-page-sections">
+      <section class="card stack grouped-page-section" aria-labelledby="analytics-controls-title">
+        <div class="grouped-page-section-title"><h2 id="analytics-controls-title">${activeTab === 'arcade' ? 'Ansicht' : 'Ansicht & Zeitraum'}</h2></div>
+        <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm ${activeTab === 'playtime' ? 'btn-primary' : ''}" data-an-tab="playtime">Spielzeit</button>
+          <button type="button" class="btn btn-sm ${activeTab === 'matches' ? 'btn-primary' : ''}" data-an-tab="matches">Matches & Turniere</button>
+          <button type="button" class="btn btn-sm ${activeTab === 'arcade' ? 'btn-primary' : ''}" data-an-tab="arcade">Arcade</button>
+        </div>
+        ${
+          activeTab === 'arcade'
+            ? ''
+            : `<select id="an-event">${renderEventOptions()}</select>
+               ${
+                 activeTab === 'playtime'
+                   ? `<div class="field-row">
+                        <div>${dateTimeFieldHtml('an-from', displayRange.from, { clearable: true })}</div>
+                        <div>${dateTimeFieldHtml('an-to', displayRange.to, { clearable: true })}</div>
+                      </div>
+                      <button type="button" class="btn btn-primary btn-block" id="an-apply">Zeitraum zusätzlich eingrenzen</button>
+                      <div class="muted" style="font-size:var(--font-size-xs);">Event wählen zeigt genau dessen Daten. Die Felder darüber grenzen innerhalb des Events optional weiter ein (z.B. nur Samstagnacht).</div>`
+                   : `<div class="muted" style="font-size:var(--font-size-xs);">Event wählen zeigt genau dessen Daten.</div>`
+               }`
+        }
+      </section>
+      <div id="an-content" class="grouped-page-sections">${renderActiveTabContent()}</div>
     </div>
-    ${
-      activeTab === 'arcade'
-        ? ''
-        : `<div class="card stack">
-             <select id="an-event">${renderEventOptions()}</select>
-             ${
-               activeTab === 'playtime'
-                 ? `<div class="field-row">
-                      <div>${dateTimeFieldHtml('an-from', displayRange.from, { clearable: true })}</div>
-                      <div>${dateTimeFieldHtml('an-to', displayRange.to, { clearable: true })}</div>
-                    </div>
-                    <button type="button" class="btn btn-primary btn-block" id="an-apply">Zeitraum zusätzlich eingrenzen</button>
-                    <div class="muted" style="font-size:var(--font-size-xs);">Event wählen zeigt genau dessen Daten. Die Felder darüber grenzen innerhalb des Events optional weiter ein (z.B. nur Samstagnacht).</div>`
-                 : `<div class="muted" style="font-size:var(--font-size-xs);">Event wählen zeigt genau dessen Daten.</div>`
-             }
-           </div>`
-    }
-    <div id="an-content">${renderActiveTabContent()}</div>
   `;
 
   if (activeTab === 'playtime') {
@@ -256,31 +259,23 @@ function renderArcadeContent() {
     : `<div class="empty-state" style="padding:var(--space-4);">Noch keine abgeschlossenen Arcade-Matches.</div>`;
 
   return `
-    <div class="section-title">Arcade insgesamt</div>
-    <div class="card">
-      <div class="lb-row">
-        <span style="flex:1;">Matches</span>
-        <span class="lb-points">${totals.matches}</span>
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-arcade-total-title">
+      <div class="grouped-page-section-title"><h2 id="analytics-arcade-total-title">Arcade insgesamt</h2></div>
+      <div>
+        <div class="lb-row"><span style="flex:1;">Matches</span><span class="lb-points">${totals.matches}</span></div>
+        <div class="lb-row"><span style="flex:1;">Beteiligte Spieler</span><span class="lb-points">${totals.players}</span></div>
+        <div class="lb-row"><span style="flex:1;">Ø Matchdauer</span><span class="lb-points">${escapeHtml(totals.avgDurationFormatted)}</span></div>
+        <div class="lb-row"><span style="flex:1;">Gesamte Matchzeit</span><span class="lb-points">${escapeHtml(totals.totalDurationFormatted)}</span></div>
       </div>
-      <div class="lb-row">
-        <span style="flex:1;">Beteiligte Spieler</span>
-        <span class="lb-points">${totals.players}</span>
-      </div>
-      <div class="lb-row">
-        <span style="flex:1;">Ø Matchdauer</span>
-        <span class="lb-points">${escapeHtml(totals.avgDurationFormatted)}</span>
-      </div>
-      <div class="lb-row">
-        <span style="flex:1;">Gesamte Matchzeit</span>
-        <span class="lb-points">${escapeHtml(totals.totalDurationFormatted)}</span>
-      </div>
-    </div>
-
-    <div class="section-title">Pro Spiel</div>
-    <div class="card">${gameRows}</div>
-
-    <div class="section-title">Matches pro Tag</div>
-    <div class="card">${renderArcadeTimelineChart(timeline)}</div>
+    </section>
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-arcade-games-title">
+      <div class="grouped-page-section-title"><h2 id="analytics-arcade-games-title">Pro Spiel</h2></div>
+      ${gameRows}
+    </section>
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-arcade-timeline-title">
+      <div class="grouped-page-section-title"><h2 id="analytics-arcade-timeline-title">Matches pro Tag</h2></div>
+      ${renderArcadeTimelineChart(timeline)}
+    </section>
   `;
 }
 
@@ -380,16 +375,19 @@ function renderPlaytimeContent() {
     .join('');
 
   return `
-    <div class="section-title">Beliebteste Spiele</div>
-    <div class="card">${popularGamesHtml}</div>
-
-    <div class="section-title">Awards</div>
-    <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));">${awardsHtml}</div>
-
-    <div class="section-title">Längste individuelle Session pro Spiel</div>
-    <div class="card">${longestPerGameHtml}</div>
-
-    <details class="card history-details collapsible-section">
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-popular-games-title">
+      <div class="grouped-page-section-title"><h2 id="analytics-popular-games-title">Beliebteste Spiele</h2></div>
+      ${popularGamesHtml}
+    </section>
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-awards-title">
+      <div class="grouped-page-section-title"><h2 id="analytics-awards-title">Awards</h2></div>
+      <div class="two-column-card-grid">${awardsHtml}</div>
+    </section>
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-longest-title">
+      <div class="grouped-page-section-title"><h2 id="analytics-longest-title">Längste individuelle Session pro Spiel</h2></div>
+      ${longestPerGameHtml}
+    </section>
+    <details class="card history-details collapsible-section grouped-page-section">
       <summary class="collapsible-section-header">
         <h2>Session-Protokoll</h2>
         <span class="collapsible-section-summary-end">
@@ -511,17 +509,31 @@ function renderMatchesContent() {
     : `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon('sparkles')}</span>Noch nicht genug Ergebnisse für witzige Rekorde.</div>`;
 
   return `
-    <div class="section-title">Ergebnisse pro Spiel <span class="muted" style="font-weight:var(--font-weight-regular);">(${matches.total} insgesamt)</span></div>
-    <div class="card">${matchRows}</div>
-
-    <div class="section-title">Turniere <span class="muted" style="font-weight:var(--font-weight-regular);">(${tournaments.total} insgesamt · ${tournaments.completed} beendet · ${tournaments.active} laufend)</span></div>
-    ${formatRows ? `<div class="card" style="margin-bottom:var(--space-3);">${formatRows}</div>` : ''}
-    <div class="card">${tournamentByGameRows}</div>
-
-    <div class="section-title">Team-Auslosungen <span class="muted" style="font-weight:var(--font-weight-regular);">(${draws.total} insgesamt${draws.seatConflictRatePercent !== null ? ` · ${draws.seatConflictRatePercent}% Sitznachbarn mussten gegeneinander` : ''})</span></div>
-    <div class="card">${drawRows}</div>
-
-    <div class="section-title">Witzige Rekorde</div>
-    ${funHtml}
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-match-results-title">
+      <div class="grouped-page-section-title">
+        <h2 id="analytics-match-results-title">Ergebnisse pro Spiel</h2>
+        <span class="muted">${matches.total} insgesamt</span>
+      </div>
+      ${matchRows}
+    </section>
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-tournaments-title">
+      <div class="grouped-page-section-title">
+        <h2 id="analytics-tournaments-title">Turniere</h2>
+        <span class="muted">${tournaments.total} insgesamt · ${tournaments.completed} beendet · ${tournaments.active} laufend</span>
+      </div>
+      ${formatRows ? `<div class="card">${formatRows}</div>` : ''}
+      <div class="card">${tournamentByGameRows}</div>
+    </section>
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-draws-title">
+      <div class="grouped-page-section-title">
+        <h2 id="analytics-draws-title">Team-Auslosungen</h2>
+        <span class="muted">${draws.total} insgesamt${draws.seatConflictRatePercent !== null ? ` · ${draws.seatConflictRatePercent}% Sitznachbarn mussten gegeneinander` : ''}</span>
+      </div>
+      ${drawRows}
+    </section>
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-fun-title">
+      <div class="grouped-page-section-title"><h2 id="analytics-fun-title">Witzige Rekorde</h2></div>
+      ${funHtml}
+    </section>
   `;
 }

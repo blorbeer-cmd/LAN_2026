@@ -83,7 +83,7 @@ export function renderInfoBoard(container, ctx) {
       : cache.length === 0
         ? `<div class="empty-state">Noch keine Einträge.<br />
            <span class="muted" style="font-size:var(--font-size-sm);">Gut aufgehoben hier: WLAN-Passwort, Discord-Link, Server-IPs, Hausregeln.</span></div>`
-        : `<div class="card-grid">${cache
+        : `<div class="two-column-card-grid">${cache
             .map(
               (e) => `
             <div class="card stack" style="gap:var(--space-2);" data-info-entry="${e.id}">
@@ -101,12 +101,19 @@ export function renderInfoBoard(container, ctx) {
             .join('')}</div>`;
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <div class="row-between">
       <h1 class="view-title">Info-Board</h1>
       <button type="button" class="btn btn-primary btn-sm" id="info-new-btn">Eintrag anlegen</button>
     </div>
-    ${entries}
+    <div class="grouped-page-sections">
+      <section class="card stack grouped-page-section" aria-labelledby="info-board-entries-title">
+        <div class="grouped-page-section-title">
+          <h2 id="info-board-entries-title">Einträge</h2>
+        </div>
+        ${entries}
+      </section>
+    </div>
   `;
 
   container.querySelector('#info-new-btn').addEventListener('click', () => openEntryForm(ctx, null));
