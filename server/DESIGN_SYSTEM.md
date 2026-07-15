@@ -282,7 +282,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
   `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
   The „Mehr“ hub keeps each destination's canonical icon directly beside its centered title so
-  both read as one label; only the navigation chevron remains independently aligned at the right.
+  both read as one label; those icons are one spacing step smaller than standard list-row icons and
+  use the wider section gap to keep icon and text visually distinct. Only the navigation chevron
+  remains independently aligned at the right.
   The destinations below „Mehr“ follow this same hierarchy without adding decorative accent rails:
   their major workflows and datasets are main groups, while entries, players, orders and results
   remain subordinate cards or rows inside those groups.
