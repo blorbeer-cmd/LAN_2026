@@ -58,13 +58,12 @@ function scheduleHighlightExpiry() {
 
 function entryHtml(entry) {
   const view = feedLinkView(entry.url);
-  const unreadBadge = entry.seen ? '' : '<span class="badge badge-playing">Neu</span>';
   const directBadge = entry.audience === 'direct' ? '<span class="badge badge-paused">Für dich</span>' : '';
   return `<article class="notification-center-entry${entry.seen ? '' : ' is-unread'}" data-notification-entry="${entry.id}">
     <div class="row-between notification-center-entry-head">
       <span class="row notification-center-entry-title">
         <span class="notification-center-entry-icon">${icon(feedEntryIcon(entry))}</span>
-        <strong>${escapeHtml(feedEntryTitle(entry))}</strong>${unreadBadge}${directBadge}
+        <strong>${escapeHtml(feedEntryTitle(entry))}</strong>${directBadge}
       </span>
       <time class="muted notification-center-time">${formatDateTime(entry.createdAt)}</time>
     </div>

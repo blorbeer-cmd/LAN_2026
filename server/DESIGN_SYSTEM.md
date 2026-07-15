@@ -211,6 +211,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   brand-gradient direct link below the topbar and follows its domain/expiry lifecycle;
   `.notification-center` with `.notification-center-panel`, `.notification-center-toolbar` and
   `.notification-center-entry` keeps the full personal history plus single/bulk read/remove state;
+  unread entries use the accent edge and elevated background without an additional „Neu“ badge;
   the two bulk actions share the complete sticky footer width in equal columns below the history.
 - **Global search** — `.global-search` with `.global-search-results` and
   `.global-search-result`, wired through `searchPalette.js`; opens from the topbar or with

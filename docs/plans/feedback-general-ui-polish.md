@@ -112,7 +112,8 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 - Einzelne ungelesene Mitteilungen nutzen eine kompakte Icon-Aktion direkt links neben Löschen,
   damit Aktionszeilen auf schmalen Displays nicht umbrechen. Mitteilungskategorien verwenden das
   gemeinsame Lucide-Set; Sammelbestellungen erhalten das Bestell- statt des alten Pizza-Symbols.
-  Bereits gespeicherte Einträge mit Emoji-Präfix werden bei der Anzeige normalisiert.
+  Bereits gespeicherte Einträge mit Emoji-Präfix werden bei der Anzeige normalisiert. Der redundante
+  „Neu“-Badge entfällt; ungelesene Einträge bleiben durch Rand und Hintergrund klar erkennbar.
 - Wiederkehrende Fachsymbole werden zentral in `domainIcons.js` zugeordnet und von Navigation,
   Aktuell-Karten, Kiosk und Mitteilungen wiederverwendet: Schwerter stehen für laufende Turniere,
   der Aktivitäts-Puls für Skill und der Pokal ausschließlich für Ergebnisse beziehungsweise Siege.
