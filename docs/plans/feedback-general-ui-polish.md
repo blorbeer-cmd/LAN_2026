@@ -108,7 +108,8 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
 - In der Turnierdetailansicht erscheinen Lobby-Name und Passwort als eigener prominenter
   Zugangsbereich und lassen sich dort jeweils über eine eigene Symbolaktion kopieren. Ergebnisfelder
   und Speichern-/Bearbeiten-Aktion im Turnierbaum belegen getrennte Flächen innerhalb der Matchbox
-  und überlappen auch bei einem einzelnen Finale nicht.
+  und überlappen auch bei einem einzelnen Finale nicht. Der Hinweis, dass das obere Team die Lobby
+  eröffnet, liegt im Info-Popover direkt neben „Lobby-Zugang“.
 - Teams, Teilnehmende und entschiedene Partien bilden unter „Turnierstatus“ einen eigenen Abschnitt,
   statt optisch zum darüberliegenden Lobby-Zugang zu gehören.
 - Die Detailansicht kürzt die sichtbaren Formatangaben auf „Liga“ beziehungsweise „Gruppenphase +

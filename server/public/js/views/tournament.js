@@ -1010,7 +1010,14 @@ function renderDetail(container, ctx) {
 
   const lobbyInfo =
     t.lobbyName || t.lobbyPassword
-      ? `<div class="section-title">Lobby-Zugang</div>
+      ? `<div class="section-title title-with-info">
+           <span>Lobby-Zugang</span>
+           ${infoTooltipHtml(
+               `tournament-lobby-detail-${t.id}`,
+               'Lobby-Zugang',
+               'Das obere Team im Turnierbaum eröffnet die Lobby.'
+             )}
+         </div>
          <section class="card tournament-lobby-info" aria-label="Lobby-Zugang">
           <div class="tournament-lobby-access">
             ${
@@ -1030,7 +1037,6 @@ function renderDetail(container, ctx) {
                 : ''
             }
           </div>
-          <div class="muted tournament-lobby-note">Das obere Team im Turnierbaum eröffnet die Lobby.</div>
         </section>`
       : '';
 
