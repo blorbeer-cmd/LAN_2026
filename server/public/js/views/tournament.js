@@ -882,7 +882,7 @@ function renderDetail(container, ctx) {
   const lobbyInfo =
     t.lobbyName || t.lobbyPassword
       ? `<div class="muted tournament-lobby-info">
-           ${icon('key')} ${t.lobbyName ? `Lobby "${escapeHtml(t.lobbyName)}"` : 'Lobby'}${t.lobbyPassword ? ` · PW: ${escapeHtml(t.lobbyPassword)}` : ''}
+           ${t.lobbyName ? `Lobby "${escapeHtml(t.lobbyName)}"` : 'Lobby'}${t.lobbyPassword ? ` · PW: ${escapeHtml(t.lobbyPassword)}` : ''}
            <span class="muted tournament-lobby-note"> — das obere Team im Baum eröffnet</span>
          </div>`
       : '';
