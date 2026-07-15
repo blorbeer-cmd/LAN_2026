@@ -1713,6 +1713,36 @@ button.card {
 .arcade-stat-game {
   min-width: 0;
 }
+.arcade-stats-tabs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+.arcade-stats-tab {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  text-align: center;
+}
+.arcade-stats-tab-count {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+}
+.arcade-stats-tab.btn-primary .arcade-stats-tab-count {
+  color: var(--accent-text);
+}
+@media (min-width: 640px) { /* --bp-md */
+  .arcade-stats-tabs-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .arcade-stats-tabs-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
 .arcade-lobby-card {
   gap: var(--space-3);
 }

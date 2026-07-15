@@ -263,15 +263,16 @@ function arcadeStatsHtml() {
   if (!games.length) return `<div class="empty-state" style="padding:var(--space-4);">Noch keine abgeschlossenen Arcade-Runden.</div>`;
   if (!games.some((g) => g.gameType === activeStatsGame)) activeStatsGame = games[0].gameType;
 
-  const tabs =
-    games.length > 1
-      ? `<div class="row" style="gap:var(--space-2);flex-wrap:wrap;">${games
-          .map(
-            (g) =>
-              `<button type="button" class="btn btn-sm ${g.gameType === activeStatsGame ? 'btn-primary' : ''}" data-stats-tab="${g.gameType}">${escapeHtml(g.title)}</button>`
-          )
-          .join('')}</div>`
-      : '';
+  const tabColumns = Math.min(games.length, 3);
+  const tabs = `<div class="arcade-stats-tabs arcade-stats-tabs-${tabColumns}" aria-label="Spiel für die Statistiken wählen">${games
+    .map(
+      (g) =>
+        `<button type="button" class="btn btn-sm arcade-stats-tab ${g.gameType === activeStatsGame ? 'btn-primary' : ''}" data-stats-tab="${g.gameType}" aria-pressed="${g.gameType === activeStatsGame}">
+          <span>${escapeHtml(g.title)}</span>
+          <span class="arcade-stats-tab-count">${arcadeMatchCountLabel(g.matches)}</span>
+        </button>`
+    )
+    .join('')}</div>`;
 
   const game = games.find((g) => g.gameType === activeStatsGame);
   const rows = game.players
@@ -290,13 +291,9 @@ function arcadeStatsHtml() {
     .join('');
   return `
     ${tabs}
-    <section class="card stack arcade-stat-game">
-      <div class="row-between">
-        <strong>${escapeHtml(game.title)}</strong>
-        <span class="badge">${arcadeMatchCountLabel(game.matches)}</span>
-      </div>
+    <div class="arcade-stat-game">
       <div class="leaderboard-list-grid">${rows}</div>
-    </section>
+    </div>
     ${game.gameType === 'scribble' ? scribbleArtStatsHtml(game) : ''}`;
 }
 

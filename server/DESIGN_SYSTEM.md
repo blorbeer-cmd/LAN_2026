@@ -315,9 +315,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   temporary „Gegen KI“ mode occupies its own full-width row below it. An empty lobby no longer adds
   a redundant waiting sentence. Member actions use the same destructive treatment for „Verlassen“
   as the host's „Schließen“ action.
-  Statistics use the concise title „Statistiken“ and place the selected game's results in a plain
-  nested card without an accent rail; player rows reuse `.leaderboard-list-grid` for the shared
-  one-/two-column ranking presentation and spell out wins and losses in German.
+  Statistics use the concise title „Statistiken“. Their game selector spans the available width:
+  one column on phones and up to three equal columns from `--bp-md`, with the match count directly
+  below each game name. The selected game is not repeated above its results. Those results follow directly
+  without another enclosing card or accent rail; player rows reuse `.leaderboard-list-grid` for the
+  shared one-/two-column ranking presentation and spell out wins and losses in German.
 - **Leaderboard** — The concise page title is „Rang“. The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
   each remains a distinct `.tournament-section-panel` with the shared accent rail. „Spielzeit pro
