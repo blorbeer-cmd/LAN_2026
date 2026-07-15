@@ -3214,7 +3214,7 @@ input[type='number'].bracket-score-input {
 .seating-seat-name-line {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
   min-width: 0;
   max-width: 100%;
 }
@@ -3234,8 +3234,31 @@ input[type='number'].bracket-score-input {
   border-radius: var(--radius-full);
   background: var(--danger);
 }
-.seating-status-indicator.is-playing { background: var(--state-playing); }
-.seating-status-indicator.is-paused { background: var(--state-paused); }
+.seating-status-indicator.is-playing,
+.seating-status-indicator.is-paused {
+  animation: seating-status-pulse 1.8s ease-in-out infinite;
+  will-change: transform, box-shadow;
+}
+.seating-status-indicator.is-playing {
+  --seating-status-halo: var(--state-playing-bg);
+  background: var(--state-playing);
+}
+.seating-status-indicator.is-paused {
+  --seating-status-halo: var(--state-paused-bg);
+  background: var(--state-paused);
+  animation-duration: 2.4s;
+}
+@keyframes seating-status-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 var(--seating-status-halo);
+  }
+  50% {
+    transform: scale(1.12);
+    box-shadow: 0 0 0 var(--space-1) var(--seating-status-halo);
+  }
+}
 .seating-plan.is-readonly .seating-seat-realname.is-empty {
   display: none;
 }

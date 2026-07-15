@@ -218,7 +218,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.search-target-highlight` to expose a concrete result after navigation.
 - **Seating status** — `.seating-status-indicator` sits directly after the gamer name and mirrors
   the shared live state as green „Spielt“, yellow „Pause“ or red „Offline“. Its German title and
-  accessible label preserve the meaning beyond color.
+  accessible label preserve the meaning beyond color. Playing and pause indicators pulse gently,
+  while offline stays static; the global reduced-motion rule disables that motion when requested.
 
 Prefer composition of these primitives over view-specific copies. A new component
 class needs a distinct reusable purpose; a one-page selector that merely restates a
