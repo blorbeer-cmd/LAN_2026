@@ -28,7 +28,7 @@ import { lobbyPlayerChipsHtml, readySummaryText, readyToggleHtml, wireReadyToggl
 // Picking one reveals that game's lobby below.
 const GAMES = [
   { id: 'quiz', icon: icon('brain'), name: 'Gaming-Quiz' },
-  { id: 'tetris', icon: '🧩', name: 'Tetris' },
+  { id: 'tetris', icon: icon('blocks'), name: 'Tetris' },
   { id: 'scribble', icon: icon('pencil'), name: 'Scribble' },
   { id: 'pong', icon: icon('gitCommitVertical'), name: 'Pong' },
   { id: 'blobby', icon: icon('volleyball'), name: 'Blobby Volley' },
@@ -231,13 +231,12 @@ function arcadeStatsHtml() {
       : '';
 
   const game = games.find((g) => g.gameType === activeStatsGame);
-  const medals = ['🥇', '🥈', '🥉'];
   const rows = game.players
     .slice(0, 5)
     .map(
       (p, i) => `
         <div class="lb-row">
-          <span>${medals[i] ?? `${i + 1}.`} ${escapeHtml(p.name)}</span>
+          <span>${i + 1}. ${escapeHtml(p.name)}</span>
           <span class="muted" style="font-variant-numeric:tabular-nums;">${p.wins}–${p.losses} · ${Math.round(p.winRate * 100)}%</span>
         </div>`
     )
@@ -559,7 +558,7 @@ export function renderArcade(container, ctx) {
     ${runningMatchesOverviewHtml()}
     ${openLobbiesOverviewHtml()}
     ${activeGameHtml()}
-    <div class="section-title">📊 Arcade-Statistiken</div>
+    <div class="section-title">${icon('chart')} Arcade-Statistiken</div>
     <div class="card stack">${arcadeStatsHtml()}</div>
   `;
 

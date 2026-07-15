@@ -457,12 +457,12 @@ tournamentsRouter.post('/', (req, res) => {
     gameIcon: game.icon,
     notify: {
       playerIds: allPlayerIds,
-      message: `🏆 Neues Turnier: ${tournamentName}`,
+      message: `Neues Turnier: ${tournamentName}`,
     },
   });
   notifyPlayers(
     allPlayerIds,
-    { title: '🏆 Neues Turnier', body: tournamentName, url: '/#tournaments' },
+    { title: 'Neues Turnier', body: tournamentName, url: '/#tournaments' },
     'all',
     { key: `tournament:${tournamentId}` }
   );
@@ -718,11 +718,11 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
     const lobbyText = lobbyBits.length > 0 ? ` (${lobbyBits.join(', ')})` : '';
     const matchNotify = {
       playerIds: [...JSON.parse(nextTeamA.player_ids), ...JSON.parse(nextTeamB.player_ids)],
-      message: `⚔️ Dein nächstes Match steht an: ${nextTeamA.name} vs ${nextTeamB.name} — ${nextTeamA.name} eröffnet die Lobby${lobbyText}`,
+      message: `Dein nächstes Match steht an: ${nextTeamA.name} vs ${nextTeamB.name} — ${nextTeamA.name} eröffnet die Lobby${lobbyText}`,
     };
     notifyPlayers(
       matchNotify.playerIds,
-      { title: '⚔️ Dein Match ist bereit', body: matchNotify.message, url: '/#tournaments' },
+      { title: 'Dein Match ist bereit', body: matchNotify.message, url: '/#tournaments' },
       'direct',
       { key: `tournament:${tournament!.id}:match:${matchId}` }
     );
@@ -741,11 +741,11 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
     const playerIds = [...new Set(advancingTeams.flatMap((t) => JSON.parse(t.player_ids) as string[]))];
     const knockoutNotify = {
       playerIds,
-      message: `🏆 Gruppenphase von ${tournament!.name} beendet – die K.O.-Runde steht!`,
+      message: `Gruppenphase von ${tournament!.name} beendet – die K.O.-Runde steht!`,
     };
     notifyPlayers(
       playerIds,
-      { title: '🏆 K.O.-Runde steht', body: knockoutNotify.message, url: '/#tournaments' },
+      { title: 'K.O.-Runde steht', body: knockoutNotify.message, url: '/#tournaments' },
       'direct',
       { key: `tournament:${tournament!.id}:stage:knockout` }
     );

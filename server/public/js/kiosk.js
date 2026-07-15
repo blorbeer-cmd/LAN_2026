@@ -12,6 +12,9 @@ import { bannerContentHtml } from './pushFeed.js';
 import { drawArcadeStreamCanvas } from './arcadeStreamRenderer.js';
 
 installIconReplacement();
+document.querySelectorAll('[data-kiosk-icon]').forEach((element) => {
+  element.innerHTML = icon(element.dataset.kioskIcon);
+});
 
 const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
 const GAME_NAMES = { quiz: 'Gaming-Quiz', tetris: 'Tetris', scribble: 'Scribble', blobby: 'Blobby Volley', pong: 'Pong', snake: 'Snake' };
@@ -211,7 +214,7 @@ function renderVotes(votes) {
   const label = votes.mode === 'points' ? `${votes.totalVoters} Teilnehmer bisher` : `${votes.totalVoters} Stimme(n) bisher`;
   return `
     <div class="empty-state">
-      <span class="emoji">🗳️</span>
+      <span class="empty-state-icon">${icon('vote')}</span>
       Abstimmung läuft${votes.mode === 'points' ? ' (Punkte-Modus)' : ''}.<br />
       <span class="muted">${label} – Ergebnis erst nach dem Ende.</span>
     </div>`;
@@ -293,20 +296,20 @@ function renderTournament(t) {
       if (m.isBye) {
         return `
           <div class="lb-row">
-            <span style="flex:1;">👑 ${teamName(m.winnerTeamId)} <span class="muted">(Freilos)</span></span>
+            <span style="flex:1;">${icon('crown')} ${teamName(m.winnerTeamId)} <span class="muted">(Freilos)</span></span>
           </div>`;
       }
       return `
         <div class="lb-row">
           <span style="flex:1;">
-            ${m.winnerTeamId === m.teamAId ? '👑 ' : ''}${teamName(m.teamAId)}
+            ${m.winnerTeamId === m.teamAId ? `${icon('crown')} ` : ''}${teamName(m.teamAId)}
             <span class="muted">vs</span>
-            ${m.winnerTeamId === m.teamBId ? '👑 ' : ''}${teamName(m.teamBId)}
+            ${m.winnerTeamId === m.teamBId ? `${icon('crown')} ` : ''}${teamName(m.teamBId)}
           </span>
         </div>`;
     })
     .join('');
-  return `<div class="muted" style="margin-bottom:var(--space-2);">${escapeHtml(t.gameName)} — Runde ${currentRound}/${totalRounds}${t.status === 'completed' ? ' · Beendet 🏆' : ''}</div>${rows}`;
+  return `<div class="muted" style="margin-bottom:var(--space-2);">${escapeHtml(t.gameName)} — Runde ${currentRound}/${totalRounds}${t.status === 'completed' ? ` · ${icon('trophy')} Beendet` : ''}</div>${rows}`;
 }
 
 // Food-order banner: just enough for someone glancing at the shared screen
@@ -322,11 +325,11 @@ function renderFoodBanner(orders) {
   }
   el.innerHTML = open
     .map((o) => {
-      const when = o.sendAt ? `🕒 geht raus um ${formatDateTime(o.sendAt)} Uhr` : '🕒 Zeitpunkt noch offen';
+      const when = `${icon('timer')} ${o.sendAt ? `geht raus um ${formatDateTime(o.sendAt)} Uhr` : 'Zeitpunkt noch offen'}`;
       const where = o.link
-        ? ` · <a href="${escapeHtml(o.link)}" target="_blank" rel="noopener">🔗 Zur Karte/Lieferdienst</a>`
+        ? ` · <a href="${escapeHtml(o.link)}" target="_blank" rel="noopener">${icon('link')} Zur Karte/Lieferdienst</a>`
         : '';
-      return `<div>🍕 Sammelbestellung „${escapeHtml(o.title)}" läuft – ${when}${where}</div>`;
+      return `<div>${icon('hamburger')} Sammelbestellung „${escapeHtml(o.title)}" läuft – ${when}${where}</div>`;
     })
     .join('');
   el.hidden = false;

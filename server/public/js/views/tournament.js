@@ -551,7 +551,7 @@ function renderScoreForm(m) {
     <input type="number" min="0" inputmode="numeric" data-score-a="${m.id}" style="width:52px;" placeholder="0" />
     <span class="muted">:</span>
     <input type="number" min="0" inputmode="numeric" data-score-b="${m.id}" style="width:52px;" placeholder="0" />
-    <button type="button" class="btn btn-sm" data-submit-score="${m.id}">✓</button>`;
+    <button type="button" class="btn btn-sm" data-submit-score="${m.id}" aria-label="Ergebnis speichern">${icon('check')}</button>`;
 }
 
 // Must match the CSS custom properties --bracket-match-h / --bracket-pair-gap
@@ -609,7 +609,7 @@ function renderBracketMatchBox(m, t, teamsById) {
   // itself exactly 2 rows tall even while a score is being entered.
   const submitBtn =
     canRecord && t.trackScore
-      ? `<button type="button" class="bracket-score-submit btn" data-submit-score="${m.id}" aria-label="Ergebnis speichern">✓</button>`
+      ? `<button type="button" class="bracket-score-submit btn" data-submit-score="${m.id}" aria-label="Ergebnis speichern">${icon('check')}</button>`
       : '';
 
   return `<div class="bracket-match">${teamRow(m.teamAId, m.scoreA)}${teamRow(m.teamBId, m.scoreB)}${submitBtn}</div>`;
@@ -720,7 +720,7 @@ function renderRoundRobinBoard(t, teamsById, matches, standings) {
     .join('');
 
   return `
-    <div class="section-title">📊 Tabelle</div>
+    <div class="section-title">${icon('chart')} Tabelle</div>
     <div class="card">${standingsRows}</div>
     ${fixturesHtml}
   `;
@@ -739,7 +739,7 @@ function renderGroupKnockout(t, ctx) {
   const groupBlocks = (t.groups || [])
     .map((g) => {
       const groupMatches = t.matches.filter((m) => m.stage === 'group' && m.groupIndex === g.groupIndex);
-      return `<div class="section-title">👥 Gruppe ${g.groupIndex + 1}</div>${renderRoundRobinBoard(t, teamsById, groupMatches, g.standings)}`;
+      return `<div class="section-title">${icon('users')} Gruppe ${g.groupIndex + 1}</div>${renderRoundRobinBoard(t, teamsById, groupMatches, g.standings)}`;
     })
     .join('');
 
@@ -787,7 +787,7 @@ function renderDetail(container, ctx) {
   const lobbyInfo =
     t.lobbyName || t.lobbyPassword
       ? `<div class="muted" style="margin-bottom:12px;font-size:0.85rem;">
-           🔑 ${t.lobbyName ? `Lobby "${escapeHtml(t.lobbyName)}"` : 'Lobby'}${t.lobbyPassword ? ` · PW: ${escapeHtml(t.lobbyPassword)}` : ''}
+           ${icon('key')} ${t.lobbyName ? `Lobby "${escapeHtml(t.lobbyName)}"` : 'Lobby'}${t.lobbyPassword ? ` · PW: ${escapeHtml(t.lobbyPassword)}` : ''}
            <span class="muted" style="font-size:0.78rem;"> — das obere Team im Baum eröffnet</span>
          </div>`
       : '';

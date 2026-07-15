@@ -154,7 +154,7 @@ function statusBadgeHtml(game) {
   return `<span class="badge badge-offline">${icon('library')} Katalog</span>`;
 }
 
-// The 🧠 suggestion chip: only rendered once there's actually a suggestion
+// The process suggestion chip: only rendered once there's actually a suggestion
 // for this player+game (see suggestionFor/loadSuggestions above). Deliberately
 // plain — no pill background/border — so it reads as part of the label line
 // next to the Ø note instead of another button competing with the sliders;
@@ -351,7 +351,7 @@ function openGameDetail(gameId, ctx) {
   const processChips = game.processNames
     .map(
       (pn) => `
-      <span class="chip">${escapeHtml(pn)} <button type="button" class="icon-btn" data-remove-proc="${escapeHtml(pn)}" aria-label="Entfernen" style="font-size:var(--font-size-xs);padding:0 2px;">✕</button></span>`
+      <span class="chip">${escapeHtml(pn)} <button type="button" class="icon-btn" data-remove-proc="${escapeHtml(pn)}" aria-label="Entfernen" style="font-size:var(--font-size-xs);padding:0 2px;">${icon('x')}</button></span>`
     )
     .join('');
   const suggestedProcessNames = game.processNames.length === 0 ? suggestProcessNames(game.name) : [];
@@ -395,7 +395,7 @@ function openGameDetail(gameId, ctx) {
         <div class="chip-list">${processChips || '<span class="muted">Noch keine.</span>'}</div>
         ${
           suggestedProcessNames.length
-            ? `<button type="button" class="btn btn-sm" id="use-suggested-process" style="align-self:flex-start;">💡 Vorschlag übernehmen: ${escapeHtml(suggestedProcessNames.join(', '))}</button>`
+            ? `<button type="button" class="btn btn-sm" id="use-suggested-process" style="align-self:flex-start;">${icon('lightbulb')} Vorschlag übernehmen: ${escapeHtml(suggestedProcessNames.join(', '))}</button>`
             : ''
         }
         <div class="row" style="align-items:stretch;">
@@ -542,7 +542,7 @@ export function renderGameCatalog(container, ctx) {
     <div class="game-table" style="margin-top:var(--space-3);">
       ${
         rows.length === 0
-          ? `<div class="empty-state"><span class="emoji">🎮</span>${activeTab === 'suggestions' ? 'Noch keine vorgeschlagenen Spiele.' : 'Noch keine Spiele im Katalog.'}</div>`
+          ? `<div class="empty-state"><span class="empty-state-icon">${icon('gamepad')}</span>${activeTab === 'suggestions' ? 'Noch keine vorgeschlagenen Spiele.' : 'Noch keine Spiele im Katalog.'}</div>`
           : rows.map((g) => gameRowHtml(g, myId)).join('')
       }
     </div>

@@ -1471,7 +1471,7 @@ test('Kiosk: shows an open food order (when/where only), and the last-push banne
   await page.waitForSelector('#kiosk-food-banner:not([hidden]) >> text=Kiosk-Test-Pizza');
   await page.waitForSelector('a[href="https://kiosk-test.example/karte"]');
 
-  // The last-push banner shows the food order's own push (title "🍕 Neue
+  // The last-push banner shows the food order's own push (title "Neue
   // Sammelbestellung"), not the earlier Durchsage — with a timestamp, and
   // it stays up permanently rather than auto-hiding after a few minutes.
   await page.waitForSelector('#kiosk-broadcast:not([hidden]) >> text=Neue Sammelbestellung');

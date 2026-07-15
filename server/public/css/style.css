@@ -421,6 +421,10 @@ textarea {
   min-width: 0;
   flex-wrap: wrap;
 }
+.notification-center-entry-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
 .notification-center-time {
   flex-shrink: 0;
   font-size: var(--font-size-xs);
@@ -436,8 +440,16 @@ textarea {
   flex-wrap: wrap;
   margin-top: var(--space-3);
 }
-.notification-center-remove {
+.notification-center-entry-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   margin-left: auto;
+}
+.notification-center-seen {
+  color: var(--state-playing);
+}
+.notification-center-remove {
   color: var(--danger);
 }
 .notification-center-empty {

@@ -188,7 +188,7 @@ draftRouter.post('/start', (req, res) => {
   notifyPlayers(
     allIds,
     {
-      title: '👑 Captain-Draft gestartet',
+      title: 'Captain-Draft gestartet',
       body: `${game.name}: Die Captains picken jetzt ihre Teams.`,
       url: '/#matchmaking',
     },

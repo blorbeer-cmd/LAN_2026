@@ -803,7 +803,7 @@ export function registerScribbleSockets(io: Server): void {
         notifyPlayers(
           otherPlayerIds,
           {
-            title: '✏️ Neue Scribble-Lobby',
+            title: 'Neue Scribble-Lobby',
             body: `${player.name} hat eine Scribble-Lobby geöffnet – jetzt beitreten!`,
             url: '/#arcade',
           },

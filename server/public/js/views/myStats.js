@@ -8,6 +8,7 @@ import { state } from '../state.js';
 import { escapeHtml, formatDateTime } from '../format.js';
 import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
+import { icon } from '../icons.js';
 
 let statsCache = null;
 let statsLoading = false;
@@ -42,7 +43,7 @@ function renderEventOptions() {
   const options = sorted
     .map((e) => `<option value="${e.id}" ${e.id === statsEventId ? 'selected' : ''}>${escapeHtml(e.name)}</option>`)
     .join('');
-  return `<option value="" ${statsEventId === '' ? 'selected' : ''}>🌐 Gesamt (alle Events)</option>${options}`;
+  return `<option value="" ${statsEventId === '' ? 'selected' : ''}>Gesamt (alle Events)</option>${options}`;
 }
 
 function renderStats() {
@@ -95,7 +96,7 @@ function renderStats() {
           )
           .join('')}
       </div>`
-    : `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">🏅</span>Noch keine eigenen Awards.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon('award')}</span>Noch keine eigenen Awards.</div>`;
 
   const gamesHtml = s.games.length
     ? s.games
@@ -166,7 +167,7 @@ export function renderMyStats(container, ctx) {
   if (!me) {
     container.innerHTML = `
       <button type="button" class="btn btn-sm" data-navigate="profile">‹ Zurück zum Profil</button>
-      <div class="empty-state" style="margin-top:var(--space-4);"><span class="emoji">👤</span>Bitte erst dein Profil einrichten.</div>
+      <div class="empty-state" style="margin-top:var(--space-4);"><span class="empty-state-icon">${icon('user')}</span>Bitte erst dein Profil einrichten.</div>
     `;
     return;
   }

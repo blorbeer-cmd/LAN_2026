@@ -109,6 +109,10 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 - Die Glocken-Historie bietet persönliche Sammelaktionen für „Alle als gelesen markieren“ und
   „Alle löschen“. Die hervorgehobene Meldung nutzt wieder den Markenverlauf der Primärbuttons und
   verschwindet bei fachlicher Auflösung beziehungsweise exakt am hinterlegten Ablaufzeitpunkt.
+- Einzelne ungelesene Mitteilungen nutzen eine kompakte Icon-Aktion direkt links neben Löschen,
+  damit Aktionszeilen auf schmalen Displays nicht umbrechen. Mitteilungskategorien verwenden das
+  gemeinsame Lucide-Set; Sammelbestellungen erhalten das Bestell- statt des alten Pizza-Symbols.
+  Bereits gespeicherte Einträge mit Emoji-Präfix werden bei der Anzeige normalisiert.
 - Die Ranglisten-Vorschau zeigt auf größeren Displays die ersten sechs Plätze in zwei Spalten und
   fällt auf schmalen Handys in eine fortlaufende Liste zurück.
 - Spieler-Namen verwenden in Live-Status, Rangliste und Auswahlansichten denselben Namensstil;

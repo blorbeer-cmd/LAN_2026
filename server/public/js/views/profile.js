@@ -19,6 +19,7 @@ import { showToast } from '../toast.js';
 import { getPushSubscriptionState, enablePush, disablePush } from '../push.js';
 import { invalidateMyStats } from './myStats.js';
 import { resizeImageFile } from '../imageUtils.js';
+import { icon } from '../icons.js';
 
 // Whose monitor you've declared you can see ("Sichtbare Monitore") for the
 // active event (FR-18 extension) — pre-filled from same-edge seat placements
@@ -199,7 +200,7 @@ export function renderProfile(container, ctx) {
           ? ''
           : `<div class="card stack" style="border-color:rgba(91,140,255,0.55);">
                <div class="row" style="gap:var(--space-2);align-items:center;">
-                 <span style="font-size:var(--font-size-xl);">🎮</span>
+                 <span class="inline-icon">${icon('gamepad')}</span>
                  <strong>Bock & Skill eintragen</strong>
                </div>
                <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
@@ -210,11 +211,11 @@ export function renderProfile(container, ctx) {
              </div>`
     }
 
-    <div class="section-title">🖥️ Live-Status-Agent</div>
+    <div class="section-title">${icon('monitor')} Live-Status-Agent</div>
     <div class="card stack">
       <label class="check-row">
         <input type="checkbox" id="tracking-paused" ${me.tracking_paused ? 'checked' : ''} />
-        <span style="flex:1;">🚫 Tracking pausieren</span>
+        <span style="flex:1;">Tracking pausieren</span>
       </label>
       <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-1) * -1);">
         Dein Agent darf weiterlaufen und meldet sich weiter beim Server, aber nichts davon wird
@@ -232,7 +233,7 @@ export function renderProfile(container, ctx) {
         nächsten Download – danach lässt sich das jederzeit in der Steuerungs-Oberfläche des Agents
         (Desktop-Verknüpfung „Respawn-Agent Steuerung") umschalten, ohne neu herunterzuladen.
       </p>
-      <button type="button" class="btn btn-primary btn-block" id="agent-download">📥 Agent für Windows herunterladen</button>
+      <button type="button" class="btn btn-primary btn-block" id="agent-download">${icon('download')} Agent für Windows herunterladen</button>
       <p class="muted" style="font-size:var(--font-size-xs);">
         ZIP entpacken, <code>install.bat</code> doppelklicken – Server-Adresse und dein API-Key sind
         schon eingetragen. Der Agent startet danach automatisch bei jedem Windows-Login und erkennt,

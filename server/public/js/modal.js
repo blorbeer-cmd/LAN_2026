@@ -2,6 +2,8 @@
 // (player detail, game editor, match entry). Bottom-sheet on mobile, centered
 // dialog on wider screens (handled purely in CSS).
 
+import { icon } from './icons.js';
+
 export function openModal(title, bodyHtml, { onMount, onClose } = {}) {
   const previousFocus = document.activeElement;
   const backdrop = document.createElement('div');
@@ -10,7 +12,7 @@ export function openModal(title, bodyHtml, { onMount, onClose } = {}) {
     <div class="modal" role="dialog" aria-modal="true" aria-label="${title}">
       <div class="modal-header">
         <h2>${title}</h2>
-        <button type="button" class="icon-btn" data-close aria-label="Schließen">✕</button>
+        <button type="button" class="icon-btn" data-close aria-label="Schließen">${icon('x')}</button>
       </div>
       <div class="modal-body">${bodyHtml}</div>
     </div>
@@ -67,7 +69,7 @@ export function openModal(title, bodyHtml, { onMount, onClose } = {}) {
 // Themed replacement for the browser's native confirm() — the same dark
 // bottom-sheet/dialog as every other modal, so "are you sure?" prompts stop
 // looking like a jarring OS pop-up. Resolves true if confirmed, false otherwise
-// (cancel button, ✕, backdrop tap, or Escape).
+// (cancel button, close icon, backdrop tap, or Escape).
 export function confirmDialog(message, { title = 'Bestätigen', confirmText = 'OK', cancelText = 'Abbrechen', danger = false } = {}) {
   return new Promise((resolve) => {
     const backdrop = document.createElement('div');
@@ -76,7 +78,7 @@ export function confirmDialog(message, { title = 'Bestätigen', confirmText = 'O
       <div class="modal" role="alertdialog" aria-modal="true" aria-label="${escapeAttr(title)}">
         <div class="modal-header">
           <h2>${escapeHtml(title)}</h2>
-          <button type="button" class="icon-btn" data-cancel aria-label="Schließen">✕</button>
+          <button type="button" class="icon-btn" data-cancel aria-label="Schließen">${icon('x')}</button>
         </div>
         <div class="modal-body">
           <p style="margin:0 0 var(--space-4);">${escapeHtml(message)}</p>

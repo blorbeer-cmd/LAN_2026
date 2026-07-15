@@ -8,6 +8,7 @@ import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { AVATAR_PALETTE } from '../avatarPalette.js';
+import { icon } from '../icons.js';
 
 function randomColor() {
   return AVATAR_PALETTE[Math.floor(Math.random() * AVATAR_PALETTE.length)];
@@ -52,7 +53,7 @@ export function renderPlayers(container, ctx) {
     </div>
     ${
       state.players.length === 0
-        ? `<div class="empty-state"><span class="emoji">🧑‍🤝‍🧑</span>Noch keine Spieler.<br />Leg den ersten an.</div>`
+        ? `<div class="empty-state"><span class="empty-state-icon">${icon('users')}</span>Noch keine Spieler.<br />Leg den ersten an.</div>`
         : `<div class="card-grid">${rows}</div>`
     }
   `;

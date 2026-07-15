@@ -2,7 +2,7 @@ import { api } from './api.js';
 import { escapeHtml } from './format.js';
 import { icon } from './icons.js';
 import { openModal } from './modal.js';
-import { feedLinkView } from './pushFeed.js';
+import { feedEntryTitle, feedLinkView } from './pushFeed.js';
 import { state } from './state.js';
 import { getMyId } from './whoami.js';
 
@@ -105,7 +105,7 @@ export function createContentSearchEntries(appState, content = {}) {
   }));
   const infoEntries = (content.infoEntries ?? []).map((entry) => ({
     view: 'infoBoard',
-    title: entry.title,
+    title: feedEntryTitle(entry),
     category: 'Info-Board',
     description: compactText(entry.content),
     aliases: entry.content,

@@ -1,5 +1,5 @@
 // Settings view (FR-30): event management and the invite link. Reached via
-// the ⚙️ icon, not the main bottom nav — this is setup work, not something
+// the settings icon, not the main bottom nav — this is setup work, not something
 // people touch during actual play. Game management (including the
 // process-name mappings the agent uses) lives in the Spiele view now — see
 // server/CLAUDE.md games reorg.
@@ -76,7 +76,7 @@ function wireInviteLinkBody(root) {
 // ready to send, instead of making the admin go find "Einladungslink" again.
 function openShareLinkModal(eventName) {
   const { el } = openModal(
-    `🎉 ${escapeHtml(eventName)} gestartet`,
+    `${escapeHtml(eventName)} gestartet`,
     `
       <div class="stack">
         ${renderInviteLinkBody()}
@@ -129,11 +129,11 @@ function renderEventCard(e) {
   const trackingBtn = e.isEnded
     ? ''
     : e.trackingEnabled
-      ? `<button type="button" class="btn btn-sm" data-stop-tracking="${e.id}">⏸ Tracking stoppen</button>`
-      : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${e.id}">▶️ Tracking starten</button>`;
+      ? `<button type="button" class="btn btn-sm" data-stop-tracking="${e.id}">${icon('pause')} Tracking stoppen</button>`
+      : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${e.id}">${icon('play')} Tracking starten</button>`;
   const endBtn = e.isEnded
     ? ''
-    : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${e.id}">🏁 Beenden</button>`;
+    : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${e.id}">${icon('flag')} Beenden</button>`;
 
   return `
     <div class="card stack" style="gap:var(--space-3);">
@@ -142,16 +142,16 @@ function renderEventCard(e) {
         ${eventStatusBadge(e)}
       </div>
       <div class="stack" style="gap:var(--space-1);">
-        ${e.location ? `<div class="muted" style="font-size:var(--font-size-sm);">📍 ${escapeHtml(e.location)}</div>` : ''}
-        <div class="muted" style="font-size:var(--font-size-sm);">🗓️ ${dateRange} · 👥 ${participantCount} Teilnehmer</div>
+        ${e.location ? `<div class="muted" style="font-size:var(--font-size-sm);">${icon('mapPin')} ${escapeHtml(e.location)}</div>` : ''}
+        <div class="muted" style="font-size:var(--font-size-sm);">${icon('calendar')} ${dateRange} · ${icon('users')} ${participantCount} Teilnehmer</div>
         ${e.description ? `<div class="muted" style="font-size:var(--font-size-sm);">${escapeHtml(e.description)}</div>` : ''}
       </div>
       <div class="row event-card-actions" style="gap:var(--space-2);flex-wrap:wrap;">
         ${trackingBtn}
         ${endBtn}
-        <button type="button" class="btn btn-sm" data-participants-event="${e.id}">👥 Teilnehmer</button>
-        <button type="button" class="btn btn-sm" data-edit-event="${e.id}">✏️ Bearbeiten</button>
-        <button type="button" class="btn btn-sm" data-export-event="${e.id}" title="Als PDF exportieren">📄 PDF</button>
+        <button type="button" class="btn btn-sm" data-participants-event="${e.id}">${icon('users')} Teilnehmer</button>
+        <button type="button" class="btn btn-sm" data-edit-event="${e.id}">${icon('pencil')} Bearbeiten</button>
+        <button type="button" class="btn btn-sm" data-export-event="${e.id}" title="Als PDF exportieren">${icon('file')} PDF</button>
       </div>
     </div>
   `;
@@ -173,7 +173,7 @@ function renderEventSection() {
     </p>
     ${
       realEvents.length === 0
-        ? `<div class="empty-state"><span class="emoji">🎪</span>Noch keine Events angelegt.</div>`
+        ? `<div class="empty-state"><span class="empty-state-icon">${icon('calendar')}</span>Noch keine Events angelegt.</div>`
         : `<div class="card-grid" style="gap:var(--space-4);">${cards}</div>`
     }
   `;
@@ -317,7 +317,7 @@ function openParticipantsForm(ctx, event) {
     .join('');
 
   const { close } = openModal(
-    `👥 Teilnehmer – ${escapeHtml(event.name)}`,
+    `Teilnehmer – ${escapeHtml(event.name)}`,
     `
       <div class="stack">
         <p class="muted" style="font-size:var(--font-size-xs);">

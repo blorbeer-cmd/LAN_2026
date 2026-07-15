@@ -14,7 +14,7 @@ import { icon } from '../icons.js';
 
 export function renderLeaderboard(container, ctx) {
   const filterGameId = state.selectedGameId || '';
-  const gameOptions = `<option value="">🏆 Gesamt</option>${state.games
+  const gameOptions = `<option value="">Gesamt</option>${state.games
     .map((g) => `<option value="${g.id}" ${g.id === filterGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`)
     .join('')}`;
 
@@ -88,7 +88,7 @@ export function renderLeaderboard(container, ctx) {
     </div>
     <select id="lb-filter" style="margin-bottom:var(--space-3);">${gameOptions}</select>
     <div class="card">
-      ${standings.length === 0 ? `<div class="empty-state"><span class="emoji">🏆</span>Noch keine Ergebnisse.</div>` : rows}
+      ${standings.length === 0 ? `<div class="empty-state"><span class="empty-state-icon">${icon('trophy')}</span>Noch keine Ergebnisse.</div>` : rows}
     </div>
 
     <div class="section-title">Spielzeit</div>

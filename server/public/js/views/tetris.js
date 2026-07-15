@@ -334,7 +334,7 @@ function updateStatLine(prefix, playerState) {
   const warn = document.querySelector(`#${prefix}-incoming`);
   if (warn) {
     const n = playerState?.incoming ?? 0;
-    warn.textContent = n > 0 ? `⚠ ${n}` : '';
+    warn.textContent = n > 0 ? `Gefahr: ${n}` : '';
     warn.classList.toggle('tetris-incoming-hot', n >= 4);
   }
 }

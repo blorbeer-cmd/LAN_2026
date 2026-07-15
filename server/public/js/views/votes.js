@@ -123,9 +123,9 @@ function ensureDragGuardInstalled() {
 
 function preferenceChipHtml(r) {
   if (!r.preferenceCount) {
-    return `<span class="muted" style="font-size:var(--font-size-xs);">🔥 –</span>`;
+    return `<span class="muted" style="font-size:var(--font-size-xs);">${icon('flame')} –</span>`;
   }
-  return `<span class="muted" style="font-size:var(--font-size-xs);">🔥 Ø ${r.avgPreference.toFixed(1)} (${r.preferenceCount})</span>`;
+  return `<span class="muted" style="font-size:var(--font-size-xs);">${icon('flame')} Ø ${r.avgPreference.toFixed(1)} (${r.preferenceCount})</span>`;
 }
 
 function lastPlayedHtml(r) {
@@ -137,7 +137,7 @@ function playtimeChipHtml(r) {
 }
 
 function winCountChipHtml(r) {
-  return `<span class="muted" style="font-size:var(--font-size-xs);">🏆 ${r.voteWinCount}× gewonnen</span>`;
+  return `<span class="muted" style="font-size:var(--font-size-xs);">${icon('trophy')} ${r.voteWinCount}× gewonnen</span>`;
 }
 
 function statsRowHtml(r) {
@@ -172,7 +172,7 @@ function topMetaHtml(r) {
   const parts = [
     r.playCount > 0 ? `zuletzt ${formatDate(r.lastPlayedAt)}` : 'noch nie gespielt',
     r.totalPlaytimeMs > 0 ? r.totalPlaytimeFormatted : null,
-    r.voteWinCount > 0 ? `🏆 ${r.voteWinCount}×` : null,
+    r.voteWinCount > 0 ? `${icon('trophy')} ${r.voteWinCount}×` : null,
   ].filter(Boolean);
   return parts.join(' · ');
 }
@@ -196,7 +196,7 @@ function renderTop5(results) {
             <div class="player-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.gameName)}</div>
             <div class="muted" style="font-size:var(--font-size-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${topMetaHtml(r)}</div>
           </span>
-          <span class="lb-points">${r.preferenceCount ? `🔥 ${r.avgPreference.toFixed(1)}` : '🔥 –'}</span>
+          <span class="lb-points">${icon('flame')} ${r.preferenceCount ? r.avgPreference.toFixed(1) : '–'}</span>
         </div>`
     )
     .join('');
@@ -213,7 +213,7 @@ function renderOpenRows(votes, draftReady) {
         pointsSliderRow = `<div class="muted" style="font-size:var(--font-size-xs);padding:var(--space-1) 0 0;">Lädt deine Auswahl…</div>`;
       } else if (votes.mode === 'single') {
         const isSelected = draftSingleGameId === r.gameId;
-        action = `<button type="button" class="btn btn-sm ${isSelected ? 'btn-primary' : ''}" data-vote-select="${r.gameId}">${isSelected ? '✓ Ausgewählt' : 'Auswählen'}</button>`;
+        action = `<button type="button" class="btn btn-sm ${isSelected ? 'btn-primary' : ''}" data-vote-select="${r.gameId}">${isSelected ? `${icon('check')} Ausgewählt` : 'Auswählen'}</button>`;
       } else {
         const pointsVal = draftPoints.get(r.gameId) ?? 0;
         pointsSliderRow = `
@@ -282,7 +282,7 @@ function renderLastResult() {
     return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   if (historyCache.length === 0) {
-    return `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">🗳️</span>Noch keine Abstimmung durchgeführt.</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon('vote')}</span>Noch keine Abstimmung durchgeführt.</div>`;
   }
   const h = historyCache[0];
   const winners = winnerChipsHtml(h, 24);
@@ -303,7 +303,7 @@ function renderHistory() {
     return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   if (historyCache.length === 0) {
-    return `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">🗳️</span>Noch keine vergangenen Abstimmungen.</div>`;
+    return `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon('vote')}</span>Noch keine vergangenen Abstimmungen.</div>`;
   }
   // Each round is its own card (not a shared list of rows) — a round carries
   // enough of its own detail (title, several winner chips, mode) that lumping
@@ -331,7 +331,7 @@ async function openHistoryRoundDetail(round) {
   try {
     const detail = await api.votes.historyRound(round);
     const titleEl = el.querySelector('.modal-header h2');
-    if (titleEl) titleEl.textContent = detail.title ? `🗳️ ${detail.title}` : `🗳️ Abstimmung Runde ${detail.round}`;
+    if (titleEl) titleEl.textContent = detail.title || `Abstimmung Runde ${detail.round}`;
     const bodyEl = el.querySelector('.modal-body');
     if (bodyEl) {
       bodyEl.innerHTML = `
@@ -388,12 +388,12 @@ export function renderVotes(container, ctx) {
   if (votes.open) {
     const summary =
       votes.mode === 'points'
-        ? `🟢 Abstimmung läuft (Punkte-Modus) · ${votes.totalVoters} von ${totalPlayers} haben abgestimmt – Verteilung gibt's erst nach dem Ende`
-        : `🟢 Stichwahl läuft · ${votes.totalVoters} von ${totalPlayers} haben abgestimmt – Ergebnis gibt's erst nach dem Ende`;
+        ? `Abstimmung läuft (Punkte-Modus) · ${votes.totalVoters} von ${totalPlayers} haben abgestimmt – Verteilung gibt's erst nach dem Ende`
+        : `Stichwahl läuft · ${votes.totalVoters} von ${totalPlayers} haben abgestimmt – Ergebnis gibt's erst nach dem Ende`;
     const rows = `<div class="vote-game-grid">${renderOpenRows(votes, mineReady)}</div>`;
     const submitLabel = votes.mode === 'points' ? 'Bewertung abschicken' : 'Stimme abschicken';
     openSectionHtml = `
-      <div class="section-title">🗳️ ${votes.title ? escapeHtml(votes.title) : 'Abstimmung'}</div>
+      <div class="section-title">${icon('vote')} ${votes.title ? escapeHtml(votes.title) : 'Abstimmung'}</div>
       <div class="card stack">
         <div class="muted">${summary}</div>
         ${votes.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0;">${escapeHtml(votes.info)}</p>` : ''}
@@ -412,7 +412,7 @@ export function renderVotes(container, ctx) {
         .map((w) => `<span class="chip">${gameBadgeHtml({ id: w.gameId, icon: w.icon }, 24)} ${escapeHtml(w.gameName)}</span>`)
         .join('');
       runoffSectionHtml = `
-        <div class="section-title">🤝 Unentschieden</div>
+        <div class="section-title">${icon('users')} Unentschieden</div>
         <div class="card stack">
           <div class="chip-list">${tiedChips}</div>
           <button type="button" class="btn btn-primary btn-block" id="votes-runoff">Stichwahl starten</button>
@@ -463,10 +463,10 @@ export function renderVotes(container, ctx) {
     <h1 class="view-title">Was zocken wir als Nächstes?</h1>
     ${whoAmI}
 
-    <div class="section-title">🏆 Letztes Ergebnis</div>
+    <div class="section-title">${icon('trophy')} Letztes Ergebnis</div>
     <div class="card">${renderLastResult()}</div>
 
-    <div class="section-title">🔥 Top 5 nach Bock-Level</div>
+    <div class="section-title">${icon('flame')} Top 5 nach Bock-Level</div>
     <div class="card">${renderTop5(votes.catalogResults)}</div>
 
     ${runoffSectionHtml}

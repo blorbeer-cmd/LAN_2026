@@ -317,7 +317,7 @@ votesRouter.post('/start', (req, res) => {
   notifyPlayers(
     voteNotificationPlayerIds(),
     {
-      title: cleanTitle ? `🗳️ ${cleanTitle}` : '🗳️ Neue Abstimmung',
+      title: cleanTitle || 'Neue Abstimmung',
       body:
         nextMode === 'single'
           ? 'Stichwahl: jetzt für einen der Gewinner abstimmen.'

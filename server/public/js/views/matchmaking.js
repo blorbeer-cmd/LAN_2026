@@ -139,10 +139,10 @@ function renderDrawCard(draw, { editable }) {
       <div class="row-between">
         <div class="row" style="gap:var(--space-2);">
           <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(draw.generatedAt)}</span>
-          ${draw.source === 'draft' ? `<span class="badge">👑 Captain-Draft</span>` : ''}
+          ${draw.source === 'draft' ? `<span class="badge">${icon('crown')} Captain-Draft</span>` : ''}
         </div>
-        ${draw.matchId ? `<span class="badge badge-offline">✅ Ergebnis erfasst</span>` : ''}
-        ${!editable && draw.winnerTeamIndex === null ? `<span class="badge">🤝 Unentschieden</span>` : ''}
+        ${draw.matchId ? `<span class="badge badge-offline">${icon('circleCheck')} Ergebnis erfasst</span>` : ''}
+        ${!editable && draw.winnerTeamIndex === null ? `<span class="badge">${icon('users')} Unentschieden</span>` : ''}
       </div>
       <div class="team-results-scroll">
         <div class="grid" style="grid-template-columns:repeat(${draw.teams.length}, minmax(190px, 1fr));">${teamsHtml}</div>
@@ -235,7 +235,7 @@ function renderHistory() {
   const teamHistory = historyCache.filter((d) => !d.matchId);
 
   const resultSection = resultHistory.length
-    ? `<div class="section-title">🏆 Ergebnis-Historie</div>${resultHistory.map((d) => renderDrawCard(d, { editable: false })).join('')}`
+    ? `<div class="section-title">${icon('trophy')} Ergebnis-Historie</div>${resultHistory.map((d) => renderDrawCard(d, { editable: false })).join('')}`
     : '';
 
   const teamSection = `
@@ -277,7 +277,7 @@ function renderDraftBoard(draft, ctx) {
     .map(
       (t, i) => `
       <div class="team-card" ${draft.turnCaptainIndex === i ? 'style="border-color:var(--accent);"' : ''}>
-        <div class="team-card-header"><span>👑 ${escapeHtml(t.captain.name)}</span>${draft.turnCaptainIndex === i ? '<span style="color:var(--accent);">am Zug</span>' : ''}</div>
+        <div class="team-card-header"><span>${icon('crown')} ${escapeHtml(t.captain.name)}</span>${draft.turnCaptainIndex === i ? '<span style="color:var(--accent);">am Zug</span>' : ''}</div>
         ${t.players.map((p) => `<div class="team-player">${avatarHtml(p, 20)} ${escapeHtml(p.name)}${draftPlayerRatingHtml(p.id, draft.gameId)}</div>`).join('')}
       </div>`
     )
@@ -294,7 +294,7 @@ function renderDraftBoard(draft, ctx) {
   return `
     <div class="card stack">
       <div class="row-between">
-        <strong>👑 Captain-Draft läuft</strong>
+        <strong>${icon('crown')} Captain-Draft läuft</strong>
         <span class="badge badge-playing">Live</span>
       </div>
       <div class="row" style="gap:var(--space-2);">${gameBadgeHtml(gameById(draft.gameId) || { id: draft.gameId, icon: draft.gameIcon }, 24)} ${escapeHtml(draft.gameName)}</div>
@@ -302,7 +302,7 @@ function renderDraftBoard(draft, ctx) {
       <div class="section-title" style="margin:var(--space-2) 0 0;">Pool</div>
       <div class="chip-list">${poolHtml}</div>
       <div class="muted" style="font-size:var(--font-size-sm);">
-        ${isMyTurn ? '🫵 Du bist am Zug – tippe einen Spieler an!' : `Warten auf <strong>${escapeHtml(turnCaptain?.name ?? '?')}</strong>…`}
+        ${isMyTurn ? `${icon('user')} Du bist am Zug – tippe einen Spieler an!` : `Warten auf <strong>${escapeHtml(turnCaptain?.name ?? '?')}</strong>…`}
       </div>
       <button type="button" class="btn btn-danger btn-sm" id="draft-cancel">Draft abbrechen</button>
     </div>`;
@@ -338,7 +338,7 @@ export function renderMatchmaking(container, ctx) {
   if (state.games.length === 0 || state.players.length === 0) {
     container.innerHTML = `
       <h1 class="view-title">Teams auslosen</h1>
-      <div class="empty-state"><span class="emoji">⚖️</span>Dafür braucht es mindestens ein Spiel und 2 Spieler.</div>`;
+      <div class="empty-state"><span class="empty-state-icon">${icon('shuffle')}</span>Dafür braucht es mindestens ein Spiel und 2 Spieler.</div>`;
     return;
   }
 
@@ -394,7 +394,7 @@ export function renderMatchmaking(container, ctx) {
       const isCaptain = draftCaptainIds.has(p.id);
       return `<button type="button" class="chip" data-captain-toggle="${p.id}"
         style="cursor:pointer;${isCaptain ? 'border-color:var(--accent);color:var(--accent);font-weight:var(--font-weight-bold);' : ''}">
-        ${isCaptain ? '👑 ' : ''}${escapeHtml(p.name)}
+        ${isCaptain ? `${icon('crown')} ` : ''}${escapeHtml(p.name)}
       </button>`;
     })
     .join('');

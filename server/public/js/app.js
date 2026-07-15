@@ -340,7 +340,7 @@ function wireSocket() {
     // on Votes: the view itself just updated in place, a toast on top would
     // just be noise.
     if (isNewRound && getMyId() && currentView !== 'votes') {
-      showToast('🗳️ Neue Abstimmung gestartet – tippen zum Mitmachen', {
+      showToast('Neue Abstimmung gestartet – tippen zum Mitmachen', {
         duration: 4500,
         onClick: () => switchView('votes'),
       });
@@ -444,13 +444,13 @@ function wireSocket() {
     invalidateMatchmakingHistory();
     if (currentView === 'matchmaking') renderCurrent();
     if (payload?.started && getMyId() && currentView !== 'matchmaking') {
-      showToast('👑 Captain-Draft gestartet – tippen zum Zusehen', {
+      showToast('Captain-Draft gestartet – tippen zum Zusehen', {
         duration: 5000,
         onClick: () => switchView('matchmaking'),
       });
     }
     if (payload?.completed) {
-      showToast('👑 Draft abgeschlossen – Teams stehen in der Team-Historie', {
+      showToast('Draft abgeschlossen – Teams stehen in der Team-Historie', {
         duration: 5000,
         onClick: () => switchView('matchmaking'),
       });
@@ -463,7 +463,7 @@ function wireSocket() {
     invalidateBroadcasts();
     if (currentView === 'broadcast') renderCurrent();
     if (payload && payload.playerId !== getMyId()) {
-      showToast(`📢 ${payload.playerName}: ${payload.message}`, { duration: 8000 });
+      showToast(`${payload.playerName}: ${payload.message}`, { duration: 8000 });
     }
   });
   socket.on('broadcasts:changed', () => {

@@ -1,4 +1,4 @@
-// "Durchsage" view: one message out to everyone at once ("🍕 Essen ist
+// "Durchsage" view: one message out to everyone at once ("Essen ist
 // da!") — lands as a toast on every open device, as a banner on the kiosk
 // screen, and as a push notification on opted-in phones. Needs an identity
 // (the sender's name is always attached), reuses the shared whoami card.
@@ -8,6 +8,7 @@ import { escapeHtml, formatDateTime } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
+import { icon } from '../icons.js';
 
 let historyCache = null;
 let historyLoading = false;
@@ -36,7 +37,7 @@ function renderHistory(myId) {
     return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   if (historyCache.length === 0) {
-    return `<div class="empty-state"><span class="emoji">📢</span>Noch keine Durchsagen.</div>`;
+    return `<div class="empty-state"><span class="empty-state-icon">${icon('megaphone')}</span>Noch keine Durchsagen.</div>`;
   }
   const now = Date.now();
   return historyCache

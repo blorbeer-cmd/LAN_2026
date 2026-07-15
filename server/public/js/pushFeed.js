@@ -14,6 +14,20 @@ export const FEED_LINK_LABELS = {
   broadcast: 'Zu den Durchsagen',
 };
 
+export const FEED_ICONS = {
+  votes: 'vote',
+  tournaments: 'trophy',
+  matchmaking: 'users',
+  foodOrders: 'hamburger',
+  arcade: 'joystick',
+  broadcast: 'megaphone',
+};
+
+// Older persisted push rows used a leading emoji as UI chrome. Keep their
+// wording readable, but render the category through the shared icon set so
+// history entries look the same as newly-created notifications.
+const LEGACY_FEED_PREFIX = /^(?:🍕|🏆|🗳️?|⚔️?|👑|📢|🕹️?|✏️?)\s*/u;
+
 // A push url like "/#votes" deep-links into a view; anything else (or a
 // hash we don't know) just gets no jump-off button.
 export function feedLinkView(url) {
@@ -23,7 +37,15 @@ export function feedLinkView(url) {
   return FEED_LINK_LABELS[view] ? view : null;
 }
 
+export function feedEntryTitle(entry) {
+  return String(entry?.title ?? '').replace(LEGACY_FEED_PREFIX, '');
+}
+
+export function feedEntryIcon(entry) {
+  return FEED_ICONS[feedLinkView(entry?.url)] || 'bell';
+}
+
 // Bell + title + body markup for the read-only Kiosk banner.
 export function bannerContentHtml(entry) {
-  return `${icon('bell')}<span class="notification-banner-text"><strong>${escapeHtml(entry.title)}</strong> ${escapeHtml(entry.body)}</span>`;
+  return `${icon(feedEntryIcon(entry))}<span class="notification-banner-text"><strong>${escapeHtml(feedEntryTitle(entry))}</strong> ${escapeHtml(entry.body)}</span>`;
 }

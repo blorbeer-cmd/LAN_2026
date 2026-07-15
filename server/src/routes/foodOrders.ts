@@ -164,7 +164,7 @@ foodOrdersRouter.post('/', (req, res) => {
   // (they just tapped the button themselves).
   broadcast(Events.foodOrdersChanged, {
     notify: {
-      message: `🍕 Neue Sammelbestellung: ${row.title}${sendAtNote} – jetzt eintragen!`,
+      message: `Neue Sammelbestellung: ${row.title}${sendAtNote} – jetzt eintragen!`,
       excludePlayerId: playerId,
     },
   });
@@ -172,7 +172,7 @@ foodOrdersRouter.post('/', (req, res) => {
   notifyPlayers(
     allPlayerIds,
     {
-      title: '🍕 Neue Sammelbestellung',
+      title: 'Neue Sammelbestellung',
       body: `${row.title}${sendAtNote} (von ${player.name}) – jetzt eintragen!`,
       url: '/#foodOrders',
     },

@@ -87,7 +87,7 @@ test('GET /api/push/last reflects the most recently sent notification, regardles
 
   const afterBroadcast = await request(app).get('/api/push/last');
   assert.equal(afterBroadcast.status, 200);
-  assert.match(afterBroadcast.body.entry.title, /📢/);
+  assert.equal(afterBroadcast.body.entry.title, 'Push Tester');
   assert.match(afterBroadcast.body.entry.body, /Pizza ist da!/);
   assert.ok(afterBroadcast.body.entry.createdAt > 0);
 });

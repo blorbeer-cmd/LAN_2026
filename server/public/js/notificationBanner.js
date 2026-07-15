@@ -6,7 +6,7 @@ import { api } from './api.js';
 import { getMyId } from './whoami.js';
 import { icon } from './icons.js';
 import { escapeHtml, formatDateTime } from './format.js';
-import { feedLinkView, FEED_LINK_LABELS } from './pushFeed.js';
+import { feedEntryIcon, feedEntryTitle, feedLinkView, FEED_LINK_LABELS } from './pushFeed.js';
 import { showToast } from './toast.js';
 import { confirmDialog } from './modal.js';
 
@@ -63,15 +63,18 @@ function entryHtml(entry) {
   return `<article class="notification-center-entry${entry.seen ? '' : ' is-unread'}" data-notification-entry="${entry.id}">
     <div class="row-between notification-center-entry-head">
       <span class="row notification-center-entry-title">
-        <strong>${escapeHtml(entry.title)}</strong>${unreadBadge}${directBadge}
+        <span class="notification-center-entry-icon">${icon(feedEntryIcon(entry))}</span>
+        <strong>${escapeHtml(feedEntryTitle(entry))}</strong>${unreadBadge}${directBadge}
       </span>
       <time class="muted notification-center-time">${formatDateTime(entry.createdAt)}</time>
     </div>
     <div class="muted notification-center-body">${escapeHtml(entry.body)}</div>
     <div class="notification-center-actions">
       ${view ? `<button type="button" class="btn btn-sm" data-notification-navigate="${view}" data-notification-id="${entry.id}">${FEED_LINK_LABELS[view]}</button>` : ''}
-      ${entry.seen ? '' : `<button type="button" class="btn btn-sm" data-notification-seen="${entry.id}">Als gelesen markieren</button>`}
-      <button type="button" class="icon-btn notification-center-remove" data-notification-hide="${entry.id}" aria-label="Mitteilung entfernen" title="Mitteilung entfernen">${icon('trash')}</button>
+      <span class="notification-center-entry-tools">
+        ${entry.seen ? '' : `<button type="button" class="icon-btn notification-center-seen" data-notification-seen="${entry.id}" aria-label="Als gelesen markieren" title="Als gelesen markieren">${icon('circleCheck')}</button>`}
+        <button type="button" class="icon-btn notification-center-remove" data-notification-hide="${entry.id}" aria-label="Mitteilung entfernen" title="Mitteilung entfernen">${icon('trash')}</button>
+      </span>
     </div>
   </article>`;
 }
@@ -199,8 +202,8 @@ function renderHighlight() {
   container.hidden = false;
   container.innerHTML = `
     <button type="button" class="notification-highlight-link" ${view ? `data-notification-highlight-navigate="${view}"` : 'data-notification-highlight-open'} data-notification-id="${highlightEntry.id}">
-      ${icon('bell')}
-      <span class="notification-highlight-text"><strong>${escapeHtml(highlightEntry.title)}</strong><span>${escapeHtml(highlightEntry.body)}</span></span>
+      ${icon(feedEntryIcon(highlightEntry))}
+      <span class="notification-highlight-text"><strong>${escapeHtml(feedEntryTitle(highlightEntry))}</strong><span>${escapeHtml(highlightEntry.body)}</span></span>
       ${view ? icon('chevronRight') : ''}
     </button>
     <button type="button" class="icon-btn notification-highlight-dismiss" data-notification-highlight-dismiss="${highlightEntry.id}" aria-label="Aktuelle Mitteilung schließen" title="Schließen">${icon('x')}</button>`;

@@ -653,7 +653,7 @@ function appendChatLine(payload) {
   const line = document.createElement('div');
   if (payload.correct) {
     line.className = 'scribble-chat-correct';
-    line.textContent = `✅ ${payload.name} hat's erraten! (+${payload.points})`;
+    line.textContent = `${payload.name} hat's erraten! (+${payload.points})`;
   } else {
     line.textContent = `${payload.name}: ${payload.text}`;
   }

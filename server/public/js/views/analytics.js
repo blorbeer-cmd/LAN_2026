@@ -23,6 +23,7 @@ import { state } from '../state.js';
 import { escapeHtml, formatDateTime, avatarHtml, gameBadgeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
+import { icon } from '../icons.js';
 
 let activeTab = 'playtime'; // 'playtime' | 'matches' | 'arcade'
 
@@ -90,9 +91,9 @@ async function loadPlaytimeData(ctx) {
 }
 
 const FORMAT_LABELS = {
-  single_elimination: '🏆 K.O.-Turnier',
-  round_robin: '🔁 Liga',
-  group_knockout: '👥 Gruppenphase + K.O.',
+  single_elimination: 'K.O.-Turnier',
+  round_robin: 'Liga',
+  group_knockout: 'Gruppenphase + K.O.',
 };
 
 async function loadMatchesData(ctx) {
@@ -142,7 +143,7 @@ function renderEventOptions() {
       return `<option value="${e.id}" ${e.id === filters.eventId ? 'selected' : ''}>${escapeHtml(e.name)} (${range})</option>`;
     })
     .join('');
-  return `<option value="" ${filters.eventId === '' ? 'selected' : ''}>🌐 Gesamt (alle Events)</option>${options}`;
+  return `<option value="" ${filters.eventId === '' ? 'selected' : ''}>Gesamt (alle Events)</option>${options}`;
 }
 
 export function renderAnalytics(container, ctx) {
@@ -348,7 +349,7 @@ function renderPlaytimeContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">🏅</span>Noch keine Awards in diesem Zeitraum.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon('award')}</span>Noch keine Awards in diesem Zeitraum.</div>`;
 
   const longestPerGameHtml = overview.longestSessionsPerGame.length
     ? overview.longestSessionsPerGame
@@ -465,7 +466,7 @@ function renderMatchesContent() {
   if (fun.biggestRivalry) {
     funCards.push(`
       <div class="card">
-        <div class="row-between"><span style="font-size:var(--font-size-xl);">🥊</span><span class="lb-points">${fun.biggestRivalry.count}×</span></div>
+        <div class="row-between"><span class="inline-icon">${icon('activity')}</span><span class="lb-points">${fun.biggestRivalry.count}×</span></div>
         <div class="player-name">Größte Rivalität</div>
         <div class="muted" style="font-size:var(--font-size-xs);">Sind sich am häufigsten als Gegner begegnet.</div>
         <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
@@ -478,7 +479,7 @@ function renderMatchesContent() {
     const winRate = fun.bestDuo.gamesTogether > 0 ? Math.round((fun.bestDuo.winsTogether / fun.bestDuo.gamesTogether) * 100) : 0;
     funCards.push(`
       <div class="card">
-        <div class="row-between"><span style="font-size:var(--font-size-xl);">🤝</span><span class="lb-points">${winRate}%</span></div>
+        <div class="row-between"><span class="inline-icon">${icon('users')}</span><span class="lb-points">${winRate}%</span></div>
         <div class="player-name">Bestes Duo</div>
         <div class="muted" style="font-size:var(--font-size-xs);">${fun.bestDuo.gamesTogether}× zusammen im Team, ${fun.bestDuo.winsTogether}× gewonnen.</div>
         <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
@@ -491,7 +492,7 @@ function renderMatchesContent() {
     const u = fun.biggestUnderdogWin;
     funCards.push(`
       <div class="card">
-        <div class="row-between"><span style="font-size:var(--font-size-xl);">😱</span><span class="lb-points">${u.winnerAvgRating} vs ${u.loserAvgRating}</span></div>
+        <div class="row-between"><span class="inline-icon">${icon('sparkles')}</span><span class="lb-points">${u.winnerAvgRating} vs ${u.loserAvgRating}</span></div>
         <div class="player-name">Krasseste Überraschung</div>
         <div class="muted" style="font-size:var(--font-size-xs);">${gameBadgeHtml({ id: u.gameId, icon: u.gameIcon }, 16)} ${escapeHtml(u.gameName)} — als klarer Außenseiter gewonnen (Skill-Wertung).</div>
         <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
@@ -501,7 +502,7 @@ function renderMatchesContent() {
   }
   const funHtml = funCards.length
     ? `<div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));">${funCards.join('')}</div>`
-    : `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">🎉</span>Noch nicht genug Ergebnisse für witzige Rekorde.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon('sparkles')}</span>Noch nicht genug Ergebnisse für witzige Rekorde.</div>`;
 
   return `
     <div class="section-title">Ergebnisse pro Spiel <span class="muted" style="font-weight:var(--font-weight-regular);">(${matches.total} insgesamt)</span></div>
