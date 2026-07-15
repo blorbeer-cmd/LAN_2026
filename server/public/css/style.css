@@ -964,6 +964,18 @@ input[type='number']::-webkit-inner-spin-button {
 .history-details[open] > summary {
   margin-bottom: var(--space-2);
 }
+.matchmaking-draw-team.is-winner {
+  border-color: var(--state-playing);
+  box-shadow: inset 0 0 0 1px var(--state-playing);
+}
+.captain-selection-grid .captain-selection-card {
+  cursor: pointer;
+  background: var(--bg-elevated);
+}
+.captain-selection-grid .captain-selection-card:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--bg-elevated-2);
+}
 @media (min-width: 640px) { /* --bp-md */
   .player-selection-grid {
     grid-template-columns: repeat(auto-fit, minmax(var(--selection-card-min-width), 1fr));

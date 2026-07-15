@@ -223,6 +223,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the shared live state as green „Spielt“, yellow „Pause“ or red „Offline“. Its German title and
   accessible label preserve the meaning beyond color. Playing and pause indicators pulse gently,
   while offline stays static; the global reduced-motion rule disables that motion when requested.
+- **Team formation** — the Teams view places „Auslosung“ and „Captain Draft“ inside one main card
+  as equal `.tournament-section-panel` sections with the shared accent rail. Both player choices
+  use `.tournament-player-grid` checkbox cards; the captain action stretches like the draw action.
+  The view reuses the globally selected game instead of repeating a local game picker. Team and
+  result histories start collapsed and use text-only summaries. Recorded results omit a status
+  badge; `.matchmaking-draw-team.is-winner` identifies the winner through a reinforced border and
+  an accessible group label.
 - **Tournament overview** — `.tournament-list-grid` shows at most two tournament cards per row;
   a single card stretches across the available width and further cards wrap. `.tournament-list-section` presents
   active and completed tournaments as two prominent status rows without separate summary-stat

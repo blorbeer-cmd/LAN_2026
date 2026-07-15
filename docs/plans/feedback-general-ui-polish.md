@@ -67,7 +67,8 @@ Statusfehler die vorhandenen Live-State-Tests.
   Border, Radius, Shadow, lesbare maximale Breite und sichere Positionierung ohne horizontalen
   Seiten-Overflow auf dem Handy.
 - Erste konkrete Nutzung:
-  - „Captain Draft“: sichtbar „2–4 Captains wählen“, vollständiger Ablauf im Info-Popover.
+  - „Captain Draft“: der gekürzte Ablauf „2–4 Captains benennen und abwechselnd aus den übrigen
+    Spielern wählen.“ liegt im Info-Popover.
   - Turnieroptionen „Sitznachbarn zusammen“, „Hin- und Rückspiel“ und „Ergebnisse inkl.
     Punktestand“ nur dann mit Hinweis versehen, wenn die gekürzte Beschriftung die Auswirkung nicht
     ausreichend erklärt.
@@ -86,10 +87,10 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   Buttons ändern nur die lokale Auswahl und erhalten den bereits eingegebenen Teamwert.
 - Teamanzahl in „Teams“ mit `2` vorbelegen; den bisherigen Automatik-Hinweis entfernen.
 - Beschriftungen und Symbole gemäß Feedback bereinigen, ohne Checkbox-Semantik zu ändern.
-- Captain-Draft in „Captain Draft“ umbenennen, sichtbaren Kurztext einsetzen und den Langtext in den
-  neuen Info-Popover verschieben.
-- „Draft starten“ mittig unter „Teams auslosen“ ausrichten und erst bei gültiger Auswahl als primäre
-  Aktion darstellen; `disabled` bleibt nicht nur farblich erkennbar.
+- Captain-Draft in „Captain Draft“ umbenennen und den gekürzten Ablauf in den neuen Info-Popover
+  verschieben; doppelte sichtbare Erklärtexte entfallen.
+- „Draft starten“ übernimmt Breite und primäre Gestaltung von „Teams auslosen“ und wird erst bei
+  gültiger Auswahl aktiv; `disabled` bleibt nicht nur farblich erkennbar.
 - Team- und Vote-Historie standardmäßig einklappen; Lade-, Leer- und Ergebniszustände müssen auch im
   eingeklappten Aufbau stabil bleiben.
 - Die Turnierübersicht zeigt maximal zwei Turnierkarten pro Zeile; eine einzelne Karte nutzt die
@@ -135,7 +136,11 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   die K.O.-Phase neu auf, damit Rangliste und Turnierbaum konsistent bleiben.
 - Die Teams-Seite übernimmt Spieler-Raster, Auslosungsbereich, Beschriftungen und Teamkarten aus
   dem Turnierformular. Ausgeloste Gamer wechseln auch dort per Drag-and-drop, Touch-Auswahl oder
-  Pfeiltasten das Team; das alte Team-Dropdown entfällt.
+  Pfeiltasten das Team; das alte Team-Dropdown entfällt. Auslosung und Captain Draft liegen als
+  gleichwertige Bereiche mit Akzentkante in einer gemeinsamen Hauptkarte. Die Spielauswahl entfällt
+  zugunsten des global gewählten Spiels; Captains werden im selben zweispaltigen Kartenraster wie
+  die Auslosung gewählt. Ergebnis-Historie ist standardmäßig geschlossen und ohne Symbol; statt
+  „Ergebnis erfasst“ kennzeichnet ein verstärkter Rahmen das Gewinner-Team.
 
 Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 `server/public/js/views/tournament.js`, `server/public/js/views/votes.js`,

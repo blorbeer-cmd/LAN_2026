@@ -102,15 +102,15 @@ function renderDrawCard(draw, { editable }) {
       // — the skill-balance "Score" above is a different number (the draw's
       // rating total), so this is labeled distinctly to avoid confusion.
       const resultParts = [];
-      if (!editable && draw.winnerTeamIndex === i) resultParts.push(`${icon('trophy')} Sieger`);
       if (t.rank != null) resultParts.push(`Platz ${t.rank}`);
       if (t.score != null) resultParts.push(`Wert ${t.score}`);
       const resultLine = resultParts.length
         ? `<div class="muted" style="font-size:var(--font-size-xs);">${resultParts.join(' · ')}</div>`
         : '';
+      const isWinner = !editable && draw.winnerTeamIndex === i;
 
       return `
-      <div class="team-card tournament-draft-team${selectedTeamIndex !== -1 && selectedTeamIndex !== i ? ' is-select-target' : ''}" ${editable ? `data-draw-drop-team="${i}" data-draw-id="${draw.id}"` : ''}>
+      <div class="team-card tournament-draft-team matchmaking-draw-team${isWinner ? ' is-winner' : ''}${selectedTeamIndex !== -1 && selectedTeamIndex !== i ? ' is-select-target' : ''}" role="group" aria-label="Team ${i + 1}${isWinner ? ', Gewinner' : ''}" ${editable ? `data-draw-drop-team="${i}" data-draw-id="${draw.id}"` : ''}>
         <div class="team-card-header"><span>Team ${i + 1}</span><span>Score ${t.totalRating}</span></div>
         ${resultLine}
         ${t.players
@@ -141,7 +141,6 @@ function renderDrawCard(draw, { editable }) {
           <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(draw.generatedAt)}</span>
           ${draw.source === 'draft' ? `<span class="badge">${icon('crown')} Captain-Draft</span>` : ''}
         </div>
-        ${draw.matchId ? `<span class="badge badge-offline">${icon('circleCheck')} Ergebnis erfasst</span>` : ''}
         ${!editable && draw.winnerTeamIndex === null ? `<span class="badge">${icon('users')} Unentschieden</span>` : ''}
       </div>
       <div class="tournament-team-preview-grid">${teamsHtml}</div>
@@ -300,7 +299,10 @@ function renderHistory() {
   const teamHistory = historyCache.filter((d) => !d.matchId);
 
   const resultSection = resultHistory.length
-    ? `<div class="section-title">${icon('trophy')} Ergebnis-Historie</div>${resultHistory.map((d) => renderDrawCard(d, { editable: false })).join('')}`
+    ? `<details class="history-details">
+         <summary class="section-title">Ergebnis-Historie</summary>
+         ${resultHistory.map((d) => renderDrawCard(d, { editable: false })).join('')}
+       </details>`
     : '';
 
   const teamSection = `
@@ -436,10 +438,6 @@ export function renderMatchmaking(container, ctx) {
     loadHistory(selectedGameId, ctx);
   }
 
-  const gameOptions = state.games
-    .map((g) => `<option value="${g.id}" ${g.id === selectedGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`)
-    .join('');
-
   const playerRows = state.players
     .map(
       (p) => `
@@ -451,17 +449,17 @@ export function renderMatchmaking(container, ctx) {
     )
     .join('');
 
-  // Captain chips: pick 2-4 captains from the currently checked players —
+  // Captain cards: pick 2-4 captains from the currently checked players —
   // the rest of the checked players become the pool the captains pick from.
   const checkedPlayers = state.players.filter((p) => checkedIds.has(p.id));
-  const captainChips = checkedPlayers
-    .map((p) => {
-      const isCaptain = draftCaptainIds.has(p.id);
-      return `<button type="button" class="chip" data-captain-toggle="${p.id}"
-        style="cursor:pointer;${isCaptain ? 'border-color:var(--accent);color:var(--accent);font-weight:var(--font-weight-bold);' : ''}">
-        ${isCaptain ? `${icon('crown')} ` : ''}${escapeHtml(p.name)}
-      </button>`;
-    })
+  const captainRows = checkedPlayers
+    .map(
+      (p) => `<label class="check-row captain-selection-card">
+        <input type="checkbox" data-captain-toggle="${p.id}" ${draftCaptainIds.has(p.id) ? 'checked' : ''} />
+        ${avatarHtml(p, 20)}
+        <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
+      </label>`
+    )
     .join('');
   const draftPoolSize = checkedPlayers.length - draftCaptainIds.size;
   const draftReady = draftCaptainIds.size >= 2 && draftCaptainIds.size <= 4 && draftPoolSize >= 1;
@@ -472,10 +470,7 @@ export function renderMatchmaking(container, ctx) {
       <section class="tournament-section-panel tournament-create-step stack" aria-labelledby="matchmaking-draw-title">
         <div class="tournament-create-step-title">
           <h3 id="matchmaking-draw-title">Auslosung</h3>
-          <span class="muted">Teams zusammenstellen</span>
         </div>
-        <label class="field-label" for="mm-game">Spiel auswählen</label>
-        <select id="mm-game">${gameOptions}</select>
         <div class="selection-toolbar">
           <div class="tournament-team-count-field">
             <label class="field-label" for="mm-teamcount">Anzahl Teams</label>
@@ -499,19 +494,22 @@ export function renderMatchmaking(container, ctx) {
         <button type="button" class="btn btn-primary" id="mm-generate">Teams auslosen</button>
       </section>
 
-      <div class="section-title title-with-info" style="margin:var(--space-2) 0 0;">
-        <span>Captain Draft</span>
-        ${infoTooltipHtml(
-          'captain-draft-help',
-          'Captain Draft',
-          '2–4 Captains antippen – sie picken dann abwechselnd live aus den übrigen angehakten Spielern. Alle können auf ihrem Handy zusehen.'
-        )}
-      </div>
-      <div class="muted" style="font-size:var(--font-size-xs);">2–4 Captains wählen</div>
-      <div class="chip-list">${captainChips || '<span class="muted" style="font-size:var(--font-size-sm);">Oben Spieler anhaken, dann hier Captains wählen.</span>'}</div>
-      <div class="action-row-centered">
-        <button type="button" class="btn ${draftReady ? 'btn-primary' : ''}" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten${draftReady ? ` (${draftCaptainIds.size} Captains, ${draftPoolSize} im Pool)` : ''}</button>
-      </div>
+      <section class="tournament-section-panel tournament-create-step stack" aria-labelledby="matchmaking-draft-title">
+        <div class="tournament-create-step-title">
+          <h3 id="matchmaking-draft-title" class="title-with-info">
+            <span>Captain Draft</span>
+            ${infoTooltipHtml(
+                'captain-draft-help',
+                'Captain Draft',
+                '2–4 Captains benennen und abwechselnd aus den übrigen Spielern wählen.'
+              )}
+          </h3>
+        </div>
+        <div class="player-selection-grid tournament-player-grid captain-selection-grid">
+          ${captainRows || '<span class="muted" style="font-size:var(--font-size-sm);">Für den Draft zuerst Spieler in der Auslosung markieren.</span>'}
+        </div>
+        <button type="button" class="btn btn-primary" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten${draftReady ? ` (${draftCaptainIds.size} Captains, ${draftPoolSize} Spieler)` : ''}</button>
+      </section>
     </div>
     <div id="mm-result">${renderResult(state.lastMatchmaking)}</div>
 
@@ -535,12 +533,15 @@ export function renderMatchmaking(container, ctx) {
     ctx.rerender();
   });
 
-  container.querySelectorAll('[data-captain-toggle]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.captainToggle;
-      if (draftCaptainIds.has(id)) draftCaptainIds.delete(id);
+  container.querySelectorAll('[data-captain-toggle]').forEach((checkbox) => {
+    checkbox.addEventListener('change', () => {
+      const id = checkbox.dataset.captainToggle;
+      if (!checkbox.checked) draftCaptainIds.delete(id);
       else if (draftCaptainIds.size < 4) draftCaptainIds.add(id);
-      else return showToast('Maximal 4 Captains.', { error: true });
+      else {
+        checkbox.checked = false;
+        return showToast('Maximal 4 Captains.', { error: true });
+      }
       ctx.rerender();
     });
   });
@@ -550,7 +551,7 @@ export function renderMatchmaking(container, ctx) {
     const poolPlayerIds = [...checkedIds].filter((id) => !draftCaptainIds.has(id));
     try {
       draftCache = await api.draft.start({
-        gameId: container.querySelector('#mm-game').value,
+        gameId: selectedGameId,
         captainIds,
         poolPlayerIds,
       });
@@ -559,11 +560,6 @@ export function renderMatchmaking(container, ctx) {
     } catch (err) {
       showToast(err.message, { error: true });
     }
-  });
-
-  container.querySelector('#mm-game').addEventListener('change', (e) => {
-    state.selectedGameId = e.target.value;
-    ctx.rerender();
   });
 
   container.querySelectorAll('[data-player]').forEach((cb) => {
@@ -575,7 +571,7 @@ export function renderMatchmaking(container, ctx) {
         // Someone unchecked can't stay captain of the draft-to-be.
         draftCaptainIds.delete(cb.dataset.player);
       }
-      // Captain chips derive from the checked set — keep them in sync.
+      // Captain cards derive from the checked set — keep them in sync.
       ctx.rerender();
     });
   });
@@ -585,7 +581,7 @@ export function renderMatchmaking(container, ctx) {
   });
 
   container.querySelector('#mm-generate').addEventListener('click', async () => {
-    const gameId = container.querySelector('#mm-game').value;
+    const gameId = selectedGameId;
     const playerIds = [...checkedIds];
     if (playerIds.length < 2) {
       return showToast('Mindestens 2 Spieler auswählen.', { error: true });
