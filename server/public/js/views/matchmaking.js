@@ -13,6 +13,7 @@ import { openMatchForm } from './leaderboard.js';
 import { getMyId } from '../whoami.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { domainIcon } from '../domainIcons.js';
+import { playerSkillHtml } from '../skillDisplay.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -407,26 +408,6 @@ function renderHistory() {
 }
 
 // ---------- captain draft: live board ----------
-
-// The draft itself stays skill-blind (snake order is the fairness
-// mechanism, see the file header comment). The selected game's self-rating
-// is a display aid throughout the Teams view and comes from the already-
-// loaded skills cache, same pattern as players.js's ratingFor.
-function skillRatingFor(playerId, gameId) {
-  const entry = state.skills.find((s) => s.player_id === playerId && s.game_id === gameId);
-  return entry ? entry.rating : null;
-}
-
-function skillLevelHtml(rating) {
-  const value = rating == null ? '–' : rating;
-  const title = rating == null ? 'Noch kein Skill-Level eingetragen' : `Skill-Level ${rating} von 10`;
-  return `<span class="rating" title="${title}" aria-label="${title}">${icon(domainIcon('skill'))}<span>${value}</span></span>`;
-}
-
-function playerSkillHtml(playerId, gameId) {
-  const rating = skillRatingFor(playerId, gameId);
-  return skillLevelHtml(rating);
-}
 
 function renderDraftBoard(draft, ctx) {
   const myId = getMyId();

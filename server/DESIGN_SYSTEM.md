@@ -253,6 +253,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   accessible group label. „Ergebnis bearbeiten“ opens a correction form for winner, value and
   placement and updates the existing match instead of creating a duplicate result. On recorded
   history cards, „Rematch“ is the primary action while editing remains visually secondary.
+- **Player skill display** — `skillDisplay.js` renders the shared activity icon plus the selected
+  game's current self-rating, or an en dash when no rating exists. Teams and Tournaments reuse it
+  in participant selection, drawn-team previews, live drafts, histories and tournament detail teams;
+  the icon's tooltip and accessible label retain the full „Skill-Level“ meaning.
 - **Tournament overview** — `.tournament-list-grid` shows at most two tournament cards per row;
   a single card stretches across the available width and further cards wrap. `.tournament-list-section` presents
   active and completed tournaments as two prominent status rows without separate summary-stat

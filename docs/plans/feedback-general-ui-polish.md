@@ -159,6 +159,9 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   Gewinner-Team. Gewinner, Wert und Platzierung lassen sich über „Ergebnis bearbeiten“ am
   bestehenden Match korrigieren, ohne einen zweiten Ergebniseintrag anzulegen. Auf abgeschlossenen
   Einträgen ist „Rematch“ die hervorgehobene Primäraktion, „Ergebnis bearbeiten“ bleibt sekundär.
+- Die Turnierseite nutzt dieselbe spielbezogene Skill-Anzeige wie die Teams-Seite: in der
+  Teilnehmerauswahl, der ausgelosten Teamvorschau und den Teams der Turnierdetails. Beide Ansichten
+  teilen dafür einen Helper, damit Symbol, fehlender Wert, Tooltip und Screenreader-Text gleich bleiben.
 
 Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 `server/public/js/views/tournament.js`, `server/public/js/views/votes.js`,

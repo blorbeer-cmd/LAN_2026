@@ -14,6 +14,7 @@ import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { domainIcon } from '../domainIcons.js';
 import { moveTournamentDraftPlayer } from '../tournamentTeamDraft.js';
 import { selectActiveLobbyMatches } from '../tournamentLobbies.js';
+import { playerSkillHtml } from '../skillDisplay.js';
 
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
@@ -283,6 +284,7 @@ function renderCreateForm(el, ctx) {
         <input type="checkbox" data-create-player="${p.id}" ${createCheckedIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
+        ${playerSkillHtml(p.id, selectedGameId)}
       </label>`
     )
     .join('');
@@ -315,6 +317,7 @@ function renderCreateForm(el, ctx) {
                 ${avatarHtml(p, 18)}
                 <span class="player-name team-player-name" style="flex:1;">${escapeHtml(p.name)}</span>
                 ${seatConflictIconHtml(p)}
+                ${playerSkillHtml(p.id, selectedGameId)}
               </button>`
               )
               .join('')}
@@ -1024,7 +1027,8 @@ function renderTournamentTeams(t) {
                   (player) => `
                   <div class="team-player">
                     ${avatarHtml(player, 24)}
-                    <span class="player-name">${escapeHtml(player.name)}</span>
+                    <span class="player-name team-player-name" style="flex:1;">${escapeHtml(player.name)}</span>
+                    ${playerSkillHtml(player.id, t.gameId)}
                   </div>`
                 )
                 .join('')
