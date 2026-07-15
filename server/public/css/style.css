@@ -3181,6 +3181,30 @@ input[type='number'].tournament-score-input {
 .vote-ranking-column:only-child {
   grid-column: 1 / -1;
 }
+.vote-participation-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.vote-participation-status strong {
+  flex-shrink: 0;
+  font-size: var(--font-size-lg);
+}
+.vote-result-meta {
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+.vote-history-round > .row-between {
+  align-items: flex-start;
+}
+.vote-history-round [data-open-history-round] {
+  flex-shrink: 0;
+}
 .vote-action-stack {
   display: flex;
   flex-direction: column;

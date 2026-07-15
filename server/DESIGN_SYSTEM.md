@@ -271,9 +271,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the
   same card grouping as the other polished workflows without an accent rail.
   New/current-round controls come first, followed by separate full-width cards for „Aktueller Vote“
-  and „Top 10 nach Bock-Level“. The latest winner uses the same compact leaderboard row as the Bock
-  ranking. The Top 10 form two ordered five-item columns from `--bp-md`, while phones keep one
-  continuous list. Game rows remain one
+  and „Top 10 nach Bock-Level“. An open round exposes a bordered participation counter with the
+  submitted and eligible-player totals, updated through the existing realtime refresh. The latest
+  result and every history card show the ten highest-ranked games with the same compact rows and
+  responsive columns as the Bock ranking; history keeps an explicit detail action for the complete
+  bar view.
+  The Top 10 form two ordered five-item columns from `--bp-md`, while phones keep one continuous
+  list. Game rows remain one
   column on phones and two from `--bp-md`, with the same bordered card treatment at both sizes.
   Explanations sit in info tooltips immediately beside their titles. Title and info fields start at
   the same control height; the optional game filter uses an aligned toolbar and consistent gaps.

@@ -177,6 +177,21 @@ function topMetaHtml(r) {
   return parts.join(' · ');
 }
 
+function renderRankingColumns(items, rowHtml) {
+  const splitAt = Math.ceil(items.length / 2);
+  const secondColumn = items.slice(splitAt);
+  return `
+    <div class="vote-ranking-columns">
+      <div class="vote-ranking-column">${items.slice(0, splitAt).map(rowHtml).join('')}</div>
+      ${secondColumn.length ? `<div class="vote-ranking-column">${secondColumn.map((item, i) => rowHtml(item, i + splitAt)).join('')}</div>` : ''}
+    </div>`;
+}
+
+function submissionCountLabel(count, mode) {
+  if (mode === 'points') return `${count} ${count === 1 ? 'Bewertung' : 'Bewertungen'}`;
+  return `${count} ${count === 1 ? 'Stimme' : 'Stimmen'}`;
+}
+
 // Reuses the leaderboard's .lb-row (icon-led, single line, rank + a value
 // pinned right) instead of the old full .vote-row block — a "Bock" ranking
 // doesn't need its own two-line stats block per game to be useful at a
@@ -196,13 +211,7 @@ function renderTop10(results) {
       </span>
       <span class="lb-points">${icon('flame')} ${r.preferenceCount ? r.avgPreference.toFixed(1) : '–'}</span>
     </div>`;
-  const splitAt = Math.ceil(top10.length / 2);
-  const secondColumn = top10.slice(splitAt);
-  return `
-    <div class="vote-ranking-columns">
-      <div class="vote-ranking-column">${top10.slice(0, splitAt).map(rowHtml).join('')}</div>
-      ${secondColumn.length ? `<div class="vote-ranking-column">${secondColumn.map((r, i) => rowHtml(r, i + splitAt)).join('')}</div>` : ''}
-    </div>`;
+  return renderRankingColumns(top10, rowHtml);
 }
 
 // ---------- open round: stage a local draft, submit explicitly ----------
@@ -263,18 +272,21 @@ function renderClosedRows(results, mode, winnerGameIds) {
     .join('');
 }
 
-// A round's winner chips, points/vote-count suffix included — used by the
-// history list so a Stichwahl's vote count isn't accidentally dropped
-// (points mode shows points, 'single'/Stichwahl mode shows the vote count).
-function winnerChipsHtml(h, badgeSize) {
-  if (!h.winners.length) return `<span class="muted">Niemand hat abgestimmt</span>`;
-  return h.winners
-    .map((w) => {
-      const points = h.mode === 'points' && w.points > 0 ? ` · ${w.points} Pkt.` : '';
-      const voteCount = h.mode !== 'points' && w.votes > 0 ? ` · ${w.votes} Stimme(n)` : '';
-      return `<span class="chip">${gameBadgeHtml({ id: w.gameId, icon: w.icon }, badgeSize)} ${escapeHtml(w.gameName)}${points}${voteCount}</span>`;
-    })
-    .join('');
+function renderVoteRanking(results, mode, winnerGameIds) {
+  const winners = new Set(winnerGameIds ?? []);
+  return renderRankingColumns(results.slice(0, 10), (result, index) => {
+    const score = mode === 'points' ? `${result.points} Pkt.` : submissionCountLabel(result.votes, 'single');
+    return `
+      <div class="lb-row ${winners.has(result.gameId) ? 'rank-1' : ''}">
+        <span class="lb-rank">${index + 1}</span>
+        ${gameBadgeHtml({ id: result.gameId, icon: result.icon }, 28)}
+        <span style="flex:1;min-width:0;">
+          <div class="player-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(result.gameName)}</div>
+          <div class="muted" style="font-size:var(--font-size-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${topMetaHtml(result)}</div>
+        </span>
+        <span class="lb-points">${score}</span>
+      </div>`;
+  });
 }
 
 // ---------- current vote: the most recent closed round, straight from history ----------
@@ -287,28 +299,16 @@ function renderCurrentVote() {
     return `<div class="empty-state vote-empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon(domainIcon('votes'))}</span><span>Noch keine Abstimmung durchgeführt.</span></div>`;
   }
   const h = historyCache[0];
-  if (!h.winners.length) {
-    return `<div class="lb-row"><span class="muted">Niemand hat abgestimmt</span></div>`;
+  if (!h.totalVoters) {
+    return `<div class="empty-state vote-empty-state" style="padding:var(--space-4);">Niemand hat abgestimmt.</div>`;
   }
-  return h.winners
-    .map((winner) => {
-      const score = h.mode === 'points' ? `${winner.points} Pkt.` : `${winner.votes} Stimme(n)`;
-      const meta = [h.title, formatDateTime(h.closedAt), h.mode === 'points' ? 'Punkte-Modus' : 'Stichwahl']
-        .filter(Boolean)
-        .map(escapeHtml)
-        .join(' · ');
-      return `
-        <div class="lb-row rank-1">
-          <span class="lb-rank">1</span>
-          ${gameBadgeHtml({ id: winner.gameId, icon: winner.icon }, 28)}
-          <span style="flex:1;min-width:0;">
-            <div class="player-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(winner.gameName)}</div>
-            <div class="muted" style="font-size:var(--font-size-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${meta}</div>
-          </span>
-          <span class="lb-points">${score}</span>
-        </div>`;
-    })
-    .join('');
+  const meta = [h.title, formatDateTime(h.closedAt), h.mode === 'points' ? 'Punkte-Modus' : 'Stichwahl']
+    .filter(Boolean)
+    .map(escapeHtml)
+    .join(' · ');
+  return `
+    <div class="muted vote-result-meta">${meta} · ${submissionCountLabel(h.totalVoters, h.mode)}</div>
+    ${renderVoteRanking(h.results, h.mode, h.winnerGameIds)}`;
 }
 
 // ---------- history: list + reopen a past round's full detail ----------
@@ -320,23 +320,24 @@ function renderHistory() {
   if (historyCache.length === 0) {
     return `<div class="empty-state vote-empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon(domainIcon('votes'))}</span><span>Noch keine vergangenen Abstimmungen.</span></div>`;
   }
-  // Each round is its own card (not a shared list of rows) — a round carries
-  // enough of its own detail (title, several winner chips, mode) that lumping
-  // them into one big box made every past round bleed into the next instead
-  // of reading as separate results. Same "card stack list" shape as e.g.
-  // matchmaking.js's Historie.
+  // Each round stays visually separate and repeats the same compact ranking
+  // used by "Aktueller Vote". The detail action retains the full bar view.
   return historyCache
     .map((h) => {
-      const winners = winnerChipsHtml(h, 20);
+      const title = h.title ? escapeHtml(h.title) : `Abstimmung Runde ${h.round}`;
+      const mode = h.mode === 'points' ? 'Punkte-Modus' : 'Stichwahl';
       return `
-        <button type="button" class="card stack" style="margin-bottom:var(--space-3);width:100%;text-align:left;" data-open-history-round="${h.round}">
+        <div class="card stack vote-history-round" style="margin-bottom:var(--space-3);">
           <div class="row-between">
-            ${h.title ? `<div class="player-name">${escapeHtml(h.title)}</div>` : `<div class="muted">Abstimmung Runde ${h.round}</div>`}
-            <span class="muted" style="font-size:var(--font-size-xs);flex-shrink:0;">${h.totalVotes} Stimme(n) ›</span>
+            <div class="stack" style="gap:var(--space-1);min-width:0;">
+              <div class="player-name">${title}</div>
+              <span class="muted vote-result-meta">${formatDateTime(h.closedAt)} · ${mode} · ${submissionCountLabel(h.totalVoters, h.mode)}</span>
+            </div>
+            <button type="button" class="btn btn-sm" data-open-history-round="${h.round}">Details</button>
           </div>
-          <div class="chip-list">${winners}</div>
-          <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(h.closedAt)} · ${h.mode === 'points' ? 'Punkte-Modus' : 'Stichwahl'}</span>
-        </button>`;
+          ${h.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0;">${escapeHtml(h.info)}</p>` : ''}
+          ${h.totalVoters ? renderVoteRanking(h.results, h.mode, h.winnerGameIds) : '<div class="empty-state">Niemand hat abgestimmt.</div>'}
+        </div>`;
     })
     .join('');
 }
@@ -410,6 +411,7 @@ export function renderVotes(container, ctx) {
     const rows = `<div class="vote-game-grid">${renderOpenRows(votes, mineReady, hasSubmitted)}</div>`;
     const submitLabel = votes.mode === 'points' ? 'Bewertung abschicken' : 'Stimme abschicken';
     const submittedLabel = votes.mode === 'points' ? 'Bewertung abgegeben' : 'Stimme abgegeben';
+    const participationLabel = votes.mode === 'points' ? 'Bewertungen abgegeben' : 'Stimmen abgegeben';
     openSectionHtml = `
       <section class="card vote-page-section vote-workflow-section stack" aria-labelledby="vote-current-title">
         <div class="tournament-create-step-title">
@@ -417,7 +419,11 @@ export function renderVotes(container, ctx) {
             <span>${votes.title ? escapeHtml(votes.title) : 'Abstimmung läuft'}</span>
             ${infoTooltipHtml('vote-result-visibility-help', 'Verdeckte Auswertung', resultHelp)}
           </h2>
-          <span class="muted">${modeLabel} · ${votes.totalVoters} von ${totalPlayers} haben abgestimmt</span>
+          <span class="muted">${modeLabel}</span>
+        </div>
+        <div class="vote-participation-status" aria-label="${participationLabel}: ${votes.totalVoters} von ${totalPlayers}">
+          <span>${participationLabel}</span>
+          <strong>${votes.totalVoters} / ${totalPlayers}</strong>
         </div>
         ${votes.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0;">${escapeHtml(votes.info)}</p>` : ''}
         ${rows}

@@ -222,6 +222,7 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   assert.equal(await page.getByText('Du bist E2E Alice', { exact: true }).count(), 0);
   await page.click('#votes-start');
   await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
+  await page.waitForSelector('.vote-participation-status:has-text("Bewertungen abgegeben"):has-text("0 / 2")');
   const submitBox = await page.locator('#votes-submit').boundingBox();
   const closeBox = await page.locator('#votes-close').boundingBox();
   const cancelBox = await page.locator('#votes-cancel').boundingBox();
@@ -238,12 +239,12 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   });
   await page.waitForSelector('.skill-value:text("5")'); // staged locally
   assert.equal(
-    await page.locator('text=0 von 2 haben abgestimmt').count(),
+    await page.locator('.vote-participation-status:has-text("0 / 2")').count(),
     1,
     'moving a slider must not submit it by itself'
   );
   await page.click('#votes-submit');
-  await page.waitForFunction(() => document.body.textContent?.includes('1 von 2'));
+  await page.waitForSelector('.vote-participation-status:has-text("1 / 2")');
   await page.waitForSelector('.vote-submitted-state:has-text("Bewertung abgegeben")');
   assert.equal(await page.locator('#votes-submit').count(), 0);
   assert.ok(await page.locator('[data-points-slider]').first().isDisabled());
@@ -251,16 +252,17 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
 
   await page.click('#votes-close');
   await page.waitForSelector('#votes-start');
-  // Closing reveals the winner in the compact "Aktueller Vote" group
-  // of the page — the full per-game breakdown only appears in the history
-  // detail modal, not on the main page.
+  // Closing reveals every ranked game in the compact "Aktueller Vote" group;
+  // the optional detail modal retains the full bar presentation.
   await page.waitForSelector('text=Aktueller Vote');
+  await page.waitForFunction(() => document.querySelectorAll('section[aria-labelledby="vote-current-result-title"] .lb-row').length >= 2);
   assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars on the main page, even after closing');
   assert.equal(await page.locator('details.history-details:has(summary:has-text("Vote-Historie"))').getAttribute('open'), null);
 
   // The just-closed round can be reopened from the history list for the
   // full detailed breakdown.
   await page.click('details.history-details:has(summary:has-text("Vote-Historie")) > summary');
+  await page.waitForFunction(() => document.querySelectorAll('.vote-history-round .lb-row').length >= 2);
   await page.click('[data-open-history-round]');
   await page.waitForSelector('text=Abstimmung Runde 1');
   await page.waitForSelector('.modal .vote-bar-track');

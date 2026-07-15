@@ -211,8 +211,11 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   ausrichten und Spiele ab `--bp-md` zweispaltig darstellen; auf dem Handy bleibt eine Spalte.
 - Vote übernimmt die neuen Seitenmuster aus Home, Turniere und Teams: Die neue beziehungsweise
   laufende Abstimmung steht zuerst. Darunter folgen „Aktueller Vote“ und „Top 10 nach Bock-Level“
-  als eigene vollbreite Gruppen ohne Akzentkante. Das aktuelle Ergebnis verwendet kompakte
-  Ranglistenzeilen; die Top 10 teilen sich ab `--bp-md` in zwei geordnete Fünferlisten. Die
+  als eigene vollbreite Gruppen ohne Akzentkante. Ein klarer Status zählt während der Abstimmung
+  abgegebene Bewertungen gegen alle teilnehmenden Gamer. Das aktuelle Ergebnis und jeder Eintrag
+  der eingeklappten Vote-Historie zeigen die zehn bestplatzierten Spiele in kompakten
+  Ranglistenzeilen; die Detailaktion mit allen Balken bleibt erhalten. Die Top 10 teilen sich ab
+  `--bp-md` in zwei geordnete Fünferlisten. Die
   Spieleauswahl bleibt auch mobil als
   umrandetes Kartenraster erkennbar. Der Erklärtext zur verdeckten Auswertung steht als Tooltip direkt
   neben dem Titel, die Punkte-Erklärung entsprechend am Titel der neuen Abstimmung. Titel- und

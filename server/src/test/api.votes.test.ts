@@ -120,6 +120,11 @@ test('GET /api/votes/history lists closed rounds, newest first, with their winne
   const [entry] = res.body.history;
   assert.equal(entry.round, 1);
   assert.equal(entry.totalVotes, 2);
+  assert.equal(entry.totalVoters, 2);
+  assert.ok(entry.results.length >= 2);
+  assert.ok(entry.results.some((result: { gameId: string }) => result.gameId === gameCs2));
+  assert.ok(entry.results.some((result: { gameId: string }) => result.gameId === gameRl));
+  assert.deepEqual(entry.winnerGameIds, [gameCs2]);
   assert.deepEqual(
     entry.winners.map((w: { gameId: string }) => w.gameId),
     [gameCs2]

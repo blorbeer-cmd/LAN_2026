@@ -505,9 +505,9 @@ interface VoteRoundRow {
 }
 
 // GET /api/votes/history - past (closed) rounds for the active event, newest
-// first: when it happened, how many votes were cast, and who won. Rounds
-// nobody voted in still show up (with an empty winners list) since they come
-// from vote_rounds, not from the votes table itself.
+// first: when it happened, how many players submitted, the compact per-game
+// ranking, and who won. Rounds nobody voted in still show up (with an empty
+// winners list) since they come from vote_rounds, not from votes itself.
 votesRouter.get('/history', (req, res) => {
   const { eventId, limit } = req.query;
   const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
@@ -532,6 +532,9 @@ votesRouter.get('/history', (req, res) => {
     const selectedGameIds: string[] | null = r.selectedGameIdsJson ? JSON.parse(r.selectedGameIdsJson) : null;
     const results = buildResults(r.round, r.mode, selectedGameIds);
     const totalVotes = results.reduce((sum, x) => sum + x.votes, 0);
+    const totalVoters = (
+      db.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM votes WHERE round = ?').get(r.round) as { n: number }
+    ).n;
     const winners = results
       .filter((x) => winnerIds.includes(x.gameId))
       .map((x) => ({ gameId: x.gameId, gameName: x.gameName, icon: x.icon, votes: x.votes, points: x.points }));
@@ -545,6 +548,9 @@ votesRouter.get('/history', (req, res) => {
       title: r.title,
       info: r.info,
       totalVotes,
+      totalVoters,
+      winnerGameIds: winnerIds,
+      results,
       winners,
     };
   });
