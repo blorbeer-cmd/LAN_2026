@@ -16,6 +16,9 @@ export const adminRouter = Router();
 // players (seats + visible monitors, skill/Bock per game, play sessions,
 // two of them live) in one transaction — see testUsers.ts.
 adminRouter.post('/test-users', requireAdmin, (req, res) => {
+  if (config.authMode === 'required') {
+    return res.status(403).json({ error: 'Test-Spieler werden über die aktive Gruppe verwaltet.' });
+  }
   const { count } = req.body ?? {};
   if (!Number.isInteger(count) || count < 1 || count > MAX_TEST_USERS_PER_CALL) {
     return res.status(400).json({ error: `count muss eine ganze Zahl zwischen 1 und ${MAX_TEST_USERS_PER_CALL} sein.` });
@@ -36,6 +39,9 @@ adminRouter.post('/test-users', requireAdmin, (req, res) => {
 // DELETE /api/admin/test-users - removes every test player and everything
 // hanging off them (skills, Bock, sessions, seats, neighbors, live rows).
 adminRouter.delete('/test-users', requireAdmin, requireRecentReauthentication, (req, res) => {
+  if (config.authMode === 'required') {
+    return res.status(403).json({ error: 'Test-Spieler werden über die aktive Gruppe verwaltet.' });
+  }
   const deleted = deleteTestUsers();
   writeAdminAudit({
     actorPlayerId: req.player?.id,
@@ -111,6 +117,7 @@ adminRouter.get('/audit', requireAdmin, (req, res) => {
               l.target_id, l.details, l.created_at
        FROM admin_log l
        LEFT JOIN players p ON p.id = l.actor_player_id
+       WHERE l.group_id IS NULL
        ORDER BY l.created_at DESC
        LIMIT ?`
     )

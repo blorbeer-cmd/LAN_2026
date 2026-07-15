@@ -44,19 +44,20 @@ export function getGroup(groupId: string): GroupRow | undefined {
 }
 
 export function getGroupMembership(groupId: string, playerId: string): GroupMembershipRow | undefined {
-  return db
-    .prepare('SELECT * FROM group_memberships WHERE group_id = ? AND player_id = ?')
-    .get(groupId, playerId) as GroupMembershipRow | undefined;
+  return db.prepare('SELECT * FROM group_memberships WHERE group_id = ? AND player_id = ?').get(groupId, playerId) as
+    GroupMembershipRow | undefined;
 }
 
-export function listGroupsForPlayer(playerId: string): Array<GroupRow & { role: GroupRole; outsideTrackingEnabled: boolean }> {
+export function listGroupsForPlayer(
+  playerId: string,
+): Array<GroupRow & { role: GroupRole; outsideTrackingEnabled: boolean }> {
   return db
     .prepare(
       `SELECT g.*, gm.role, gm.outside_tracking_enabled AS outsideTrackingEnabled
        FROM groups g
        JOIN group_memberships gm ON gm.group_id = g.id
-       WHERE gm.player_id = ? AND gm.status = 'active'
-       ORDER BY g.archived_at IS NOT NULL, g.created_at, g.name COLLATE NOCASE`
+       WHERE gm.player_id = ? AND gm.status = 'active' AND g.archived_at IS NULL
+       ORDER BY g.created_at, g.name COLLATE NOCASE`,
     )
     .all(playerId)
     .map((row) => {
@@ -73,14 +74,21 @@ export function ensureDefaultGroupMembership(playerId: string): GroupMembershipR
     const player = db
       .prepare('SELECT id, is_test, deactivated_at, tracking_paused, password_hash FROM players WHERE id = ?')
       .get(playerId) as
-      | { id: string; is_test: number; deactivated_at: number | null; tracking_paused: number; password_hash: string | null }
+      | {
+          id: string;
+          is_test: number;
+          deactivated_at: number | null;
+          tracking_paused: number;
+          password_hash: string | null;
+        }
       | undefined;
-    if (!player || player.deactivated_at !== null) throw new Error('Active player required for default group membership');
+    if (!player || player.deactivated_at !== null)
+      throw new Error('Active player required for default group membership');
 
     const hasOwner = Boolean(
       db
         .prepare("SELECT 1 FROM group_memberships WHERE group_id = ? AND status = 'active' AND role = 'owner'")
-        .get(DEFAULT_GROUP_ID)
+        .get(DEFAULT_GROUP_ID),
     );
     const existing = getGroupMembership(DEFAULT_GROUP_ID, playerId);
     // Legacy players are backfilled before they claim their personal account.
@@ -91,7 +99,7 @@ export function ensureDefaultGroupMembership(playerId: string): GroupMembershipR
         db.prepare(
           `UPDATE group_memberships
            SET role = 'owner', status = 'active', ended_at = NULL, joined_at = COALESCE(joined_at, ?)
-           WHERE group_id = ? AND player_id = ?`
+           WHERE group_id = ? AND player_id = ?`,
         ).run(Date.now(), DEFAULT_GROUP_ID, playerId);
         return getGroupMembership(DEFAULT_GROUP_ID, playerId)!;
       }
@@ -103,7 +111,7 @@ export function ensureDefaultGroupMembership(playerId: string): GroupMembershipR
     db.prepare(
       `INSERT INTO group_memberships
          (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
-       VALUES (?, ?, ?, 'active', ?, NULL, ?, NULL)`
+       VALUES (?, ?, ?, 'active', ?, NULL, ?, NULL)`,
     ).run(DEFAULT_GROUP_ID, playerId, role, now, player.tracking_paused ? 0 : 1);
     if (player.is_test) {
       db.prepare('UPDATE players SET test_owner_group_id = ? WHERE id = ?').run(DEFAULT_GROUP_ID, playerId);
@@ -112,37 +120,140 @@ export function ensureDefaultGroupMembership(playerId: string): GroupMembershipR
   })();
 }
 
-export function createGroup(
-  name: string,
-  description: string | null,
-  creatorPlayerId: string
-): GroupRow {
+export function createGroup(name: string, description: string | null, creatorPlayerId: string): GroupRow {
   return db.transaction(() => {
     const id = nanoid();
     const now = Date.now();
     db.prepare(
       `INSERT INTO groups (id, name, description, created_by, created_at, archived_at)
-       VALUES (?, ?, ?, ?, ?, NULL)`
+       VALUES (?, ?, ?, ?, ?, NULL)`,
     ).run(id, name, description, creatorPlayerId, now);
     db.prepare(
       `INSERT INTO group_memberships
          (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
-       VALUES (?, ?, 'owner', 'active', ?, NULL, 0, NULL)`
+       VALUES (?, ?, 'owner', 'active', ?, NULL, 0, NULL)`,
     ).run(id, creatorPlayerId, now);
     return getGroup(id)!;
   })();
 }
 
-export function listGroupMembers(groupId: string): Array<
-  GroupMembershipRow & { name: string; color: string; avatar: string | null; isTest: boolean }
-> {
+export function updateGroupDetails(
+  groupId: string,
+  fields: { name?: string; description?: string | null },
+): GroupRow | undefined {
+  const existing = getGroup(groupId);
+  if (!existing || existing.archived_at !== null) return undefined;
+  db.prepare('UPDATE groups SET name = ?, description = ? WHERE id = ?').run(
+    fields.name ?? existing.name,
+    fields.description !== undefined ? fields.description : existing.description,
+    groupId,
+  );
+  return getGroup(groupId);
+}
+
+export type MembershipMutationResult =
+  | { ok: true; membership: GroupMembershipRow }
+  | { ok: false; code: 'not_found' | 'forbidden' | 'last_owner' | 'test_role' | 'self_removal' };
+
+function activeOwnerCount(groupId: string): number {
+  return (
+    db
+      .prepare(
+        "SELECT COUNT(*) AS count FROM group_memberships WHERE group_id = ? AND status = 'active' AND role = 'owner'",
+      )
+      .get(groupId) as { count: number }
+  ).count;
+}
+
+export function changeGroupMemberRole(
+  groupId: string,
+  actorPlayerId: string,
+  targetPlayerId: string,
+  nextRole: GroupRole,
+): MembershipMutationResult {
+  return db.transaction(() => {
+    const actor = getGroupMembership(groupId, actorPlayerId);
+    const target = getGroupMembership(groupId, targetPlayerId);
+    if (actor?.status !== 'active' || target?.status !== 'active') return { ok: false, code: 'not_found' } as const;
+    if (actor.role === 'member') return { ok: false, code: 'forbidden' } as const;
+    if (actor.role !== 'owner' && (target.role === 'owner' || nextRole === 'owner')) {
+      return { ok: false, code: 'forbidden' } as const;
+    }
+    const targetPlayer = db.prepare('SELECT is_test FROM players WHERE id = ?').get(targetPlayerId) as
+      { is_test: number } | undefined;
+    if (!targetPlayer) return { ok: false, code: 'not_found' } as const;
+    if (targetPlayer.is_test && nextRole !== 'member') return { ok: false, code: 'test_role' } as const;
+    if (target.role === 'owner' && nextRole !== 'owner' && activeOwnerCount(groupId) <= 1) {
+      return { ok: false, code: 'last_owner' } as const;
+    }
+    db.prepare('UPDATE group_memberships SET role = ? WHERE group_id = ? AND player_id = ? AND status = ?').run(
+      nextRole,
+      groupId,
+      targetPlayerId,
+      'active',
+    );
+    return { ok: true, membership: getGroupMembership(groupId, targetPlayerId)! } as const;
+  })();
+}
+
+export function removeGroupMember(
+  groupId: string,
+  actorPlayerId: string,
+  targetPlayerId: string,
+): MembershipMutationResult {
+  return db.transaction(() => {
+    if (actorPlayerId === targetPlayerId) return { ok: false, code: 'self_removal' } as const;
+    const actor = getGroupMembership(groupId, actorPlayerId);
+    const target = getGroupMembership(groupId, targetPlayerId);
+    if (actor?.status !== 'active' || target?.status !== 'active') return { ok: false, code: 'not_found' } as const;
+    if (actor.role === 'member' || (target.role === 'owner' && actor.role !== 'owner')) {
+      return { ok: false, code: 'forbidden' } as const;
+    }
+    if (target.role === 'owner' && activeOwnerCount(groupId) <= 1) {
+      return { ok: false, code: 'last_owner' } as const;
+    }
+    db.prepare(
+      `UPDATE group_memberships
+       SET status = 'removed', ended_at = ?, outside_tracking_enabled = 0
+       WHERE group_id = ? AND player_id = ? AND status = 'active'`,
+    ).run(Date.now(), groupId, targetPlayerId);
+    return { ok: true, membership: getGroupMembership(groupId, targetPlayerId)! } as const;
+  })();
+}
+
+export function leaveGroup(groupId: string, playerId: string): MembershipMutationResult {
+  return db.transaction(() => {
+    const membership = getGroupMembership(groupId, playerId);
+    if (membership?.status !== 'active') return { ok: false, code: 'not_found' } as const;
+    if (membership.role === 'owner' && activeOwnerCount(groupId) <= 1) {
+      return { ok: false, code: 'last_owner' } as const;
+    }
+    db.prepare(
+      `UPDATE group_memberships
+       SET status = 'left', ended_at = ?, outside_tracking_enabled = 0
+       WHERE group_id = ? AND player_id = ? AND status = 'active'`,
+    ).run(Date.now(), groupId, playerId);
+    return { ok: true, membership: getGroupMembership(groupId, playerId)! } as const;
+  })();
+}
+
+export function archiveGroup(groupId: string): GroupRow | undefined {
+  const group = getGroup(groupId);
+  if (!group || group.archived_at !== null) return undefined;
+  db.prepare('UPDATE groups SET archived_at = ? WHERE id = ? AND archived_at IS NULL').run(Date.now(), groupId);
+  return getGroup(groupId);
+}
+
+export function listGroupMembers(
+  groupId: string,
+): Array<GroupMembershipRow & { name: string; color: string; avatar: string | null; isTest: boolean }> {
   return db
     .prepare(
       `SELECT gm.*, p.name, p.color, p.avatar, p.is_test AS isTest
        FROM group_memberships gm
        JOIN players p ON p.id = gm.player_id
        WHERE gm.group_id = ? AND gm.status = 'active' AND p.deactivated_at IS NULL
-       ORDER BY p.name COLLATE NOCASE`
+       ORDER BY p.name COLLATE NOCASE`,
     )
     .all(groupId)
     .map((row) => {
@@ -165,7 +276,7 @@ export function createGroupInvite(options: {
   db.prepare(
     `INSERT INTO group_invites
        (code, group_id, target_player_id, created_by, created_at, expires_at, revoked_at, used_at, used_by)
-     VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL)`
+     VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL)`,
   ).run(code, options.groupId, options.targetPlayerId ?? null, options.createdBy, now, expiresAt);
   return db.prepare('SELECT * FROM group_invites WHERE code = ?').get(code) as GroupInviteRow;
 }
@@ -177,7 +288,7 @@ export function findValidGroupInvite(code: string): GroupInviteRow | undefined {
        FROM group_invites gi
        JOIN groups g ON g.id = gi.group_id
        WHERE gi.code = ? AND gi.used_at IS NULL AND gi.revoked_at IS NULL
-         AND gi.expires_at > ? AND g.archived_at IS NULL`
+         AND gi.expires_at > ? AND g.archived_at IS NULL`,
     )
     .get(code, Date.now()) as GroupInviteRow | undefined;
   return row;
@@ -201,7 +312,7 @@ export function acceptGroupInvite(code: string, playerId: string): AcceptGroupIn
       .prepare(
         `UPDATE group_invites
          SET used_at = ?, used_by = ?
-         WHERE code = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?`
+         WHERE code = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?`,
       )
       .run(Date.now(), playerId, code, Date.now());
     if (consumed.changes !== 1) return { ok: false, code: 'invalid' } as const;
@@ -213,7 +324,7 @@ export function acceptGroupInvite(code: string, playerId: string): AcceptGroupIn
        VALUES (?, ?, 'member', 'active', ?, NULL, 0, ?)
        ON CONFLICT(group_id, player_id) DO UPDATE SET
          role = 'member', status = 'active', joined_at = excluded.joined_at,
-         ended_at = NULL, outside_tracking_enabled = 0, invited_by = excluded.invited_by`
+         ended_at = NULL, outside_tracking_enabled = 0, invited_by = excluded.invited_by`,
     ).run(invite.group_id, playerId, now, invite.created_by);
     return {
       ok: true,
@@ -230,7 +341,7 @@ export function listActiveGroupInvites(groupId: string): Array<GroupInviteRow & 
        FROM group_invites gi
        LEFT JOIN players p ON p.id = gi.target_player_id
        WHERE gi.group_id = ? AND gi.used_at IS NULL AND gi.revoked_at IS NULL AND gi.expires_at > ?
-       ORDER BY gi.created_at DESC`
+       ORDER BY gi.created_at DESC`,
     )
     .all(groupId, Date.now()) as Array<GroupInviteRow & { targetPlayerName: string | null }>;
 }
@@ -240,7 +351,7 @@ export function revokeGroupInvite(code: string, groupId: string): boolean {
     db
       .prepare(
         `UPDATE group_invites SET revoked_at = ?
-         WHERE code = ? AND group_id = ? AND used_at IS NULL AND revoked_at IS NULL`
+         WHERE code = ? AND group_id = ? AND used_at IS NULL AND revoked_at IS NULL`,
       )
       .run(Date.now(), code, groupId).changes === 1
   );
