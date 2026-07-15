@@ -6,9 +6,15 @@ import { filterTestUsers } from './testFilter.js';
 
 const TOKEN_KEY = 'lan2026_access_token';
 let kioskMode = false;
+export const GROUP_KEY = 'lan2026_group_id';
 
 export function setKioskMode(enabled) {
   kioskMode = Boolean(enabled);
+}
+
+function addGroupHeader(headers) {
+  const groupId = sessionStorage.getItem(GROUP_KEY);
+  if (groupId) headers['x-group-id'] = groupId;
 }
 
 export function getToken() {
@@ -24,6 +30,7 @@ export async function apiFetch(path, options = {}) {
   const token = getToken();
   if (token) headers['x-access-token'] = token;
   if (kioskMode) headers['x-kiosk-mode'] = '1';
+  addGroupHeader(headers);
   // Tells the server this device currently sees test players (admin mode).
   // Needed for replace-style writes like the seating layout: a non-admin
   // client's state has test users filtered out, so its saves must not be
@@ -63,6 +70,7 @@ export async function fetchText(path) {
   const headers = {};
   const token = getToken();
   if (token) headers['x-access-token'] = token;
+  addGroupHeader(headers);
   const res = await fetch(path, { headers });
   const text = await res.text();
   if (!res.ok) {
@@ -85,6 +93,7 @@ export async function fetchBlob(path) {
   const headers = {};
   const token = getToken();
   if (token) headers['x-access-token'] = token;
+  addGroupHeader(headers);
   const res = await fetch(path, { headers });
   if (!res.ok) {
     let message = `Fehler ${res.status}`;
@@ -109,6 +118,23 @@ export async function fetchBlob(path) {
 export const api = {
   meta: () => apiFetch('/api/meta'),
   me: () => apiFetch('/api/me'),
+
+  groups: {
+    list: () => apiFetch('/api/groups'),
+    create: (data) => apiFetch('/api/groups', { method: 'POST', body: JSON.stringify(data) }),
+    members: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/members`),
+    invitePreview: (code) => apiFetch(`/api/groups/invites/${encodeURIComponent(code)}`),
+    acceptInvite: (code) => apiFetch(`/api/groups/invites/${encodeURIComponent(code)}/accept`, { method: 'POST' }),
+    invites: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/invites`),
+    createInvite: (groupId, data = {}) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/invites`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    revokeInvite: (groupId, code) => apiFetch(
+      `/api/groups/${encodeURIComponent(groupId)}/invites/${encodeURIComponent(code)}`,
+      { method: 'DELETE' },
+    ),
+  },
 
   // Real per-user login (see docs/KONZEPT-USER-MANAGEMENT.md). Only used by
   // authGate.js, and only once the server reports authMode: 'required'.

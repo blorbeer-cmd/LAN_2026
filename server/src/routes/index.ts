@@ -32,6 +32,7 @@ import { arrivalsRouter } from './arrivals';
 import { adminRouter } from './admin';
 import { backupRouter } from './backup';
 import { authRouter } from './auth';
+import { groupsRouter } from './groups';
 import { requireConfiguredUser, requireUser } from '../sessions';
 import { config } from '../config';
 import { extractToken } from '../auth';
@@ -81,6 +82,8 @@ apiRouter.get('/me', requireUser, (req, res) => {
     isTest: Boolean(p.is_test),
   });
 });
+
+apiRouter.use('/groups', groupsRouter);
 
 apiRouter.use('/players', playersRouter);
 apiRouter.use('/games', gamesRouter);
