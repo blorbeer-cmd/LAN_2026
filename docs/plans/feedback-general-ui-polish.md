@@ -222,7 +222,7 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   laufende Abstimmung steht zuerst. Darunter folgen „Aktueller Vote“ und „Top 10 nach Bock-Level“
   als eigene vollbreite Gruppen ohne Akzentkante. Ein klarer Status zählt während der Abstimmung
   abgegebene Bewertungen gegen alle teilnehmenden Gamer. Das aktuelle Ergebnis und jeder Eintrag
-  der eingeklappten Vote-Historie zeigen die zehn bestplatzierten Spiele in kompakten
+  der eingeklappten „Historie“ zeigen die zehn bestplatzierten Spiele in kompakten
   Ranglistenzeilen; die Detailaktion mit allen Balken bleibt erhalten. Bei einem Unentschieden
   tragen die punktgleichen Sieger denselben Rang und einen sichtbaren Rahmen. Der Textstatus und
   der zusätzliche Erklärungstext entfallen; „Stichwahl starten“ steht direkt unten in derselben
@@ -237,8 +237,9 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   Pro Gamer und Runde ist genau eine Abgabe erlaubt. Die API schützt dies atomar auch gegen
   Doppeltaps oder ein zweites Gerät; leere Punkteabgaben sind ungültig. Nach erfolgreicher Abgabe
   sperrt die UI die Auswahl und ersetzt den Button durch „Bewertung/Stimme abgegeben“.
-- Die Vote-Historie nutzt den neuen gemeinsamen, symbolfreien Collapse-Stil, startet geschlossen und
-  behält ihren geöffneten Zustand bei Live-Aktualisierungen; der alte Antipp-Erklärtext entfällt.
+- Die Vote-Historie heißt sichtbar nur „Historie“, nutzt den neuen gemeinsamen, symbolfreien
+  Collapse-Stil, startet geschlossen und behält ihren geöffneten Zustand bei
+  Live-Aktualisierungen; der alte Antipp-Erklärtext entfällt.
 
 Betroffene Dateien: `server/public/js/views/home.js`, `server/public/js/views/seating.js`,
 `server/public/js/views/leaderboard.js`, `server/public/js/views/votes.js` und

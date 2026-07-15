@@ -521,7 +521,7 @@ export function renderVotes(container, ctx) {
 
     <details class="card history-details collapsible-section" data-vote-history ${historyOpen ? 'open' : ''}>
       <summary class="collapsible-section-header">
-        <h2>Vote-Historie</h2>
+        <h2>Historie</h2>
         <span class="collapsible-section-summary-end">
           <span class="badge badge-offline">${historyCache?.length ?? 0}</span>
           <span class="collapsible-section-chevron">${icon('chevronRight')}</span>

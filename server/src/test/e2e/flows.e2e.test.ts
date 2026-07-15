@@ -268,11 +268,11 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   assert.equal(await currentVote.locator('#votes-runoff').count(), 1, 'the runoff action belongs to the current Vote card');
   assert.equal(await page.locator('section[aria-labelledby="vote-runoff-title"]').count(), 0, 'no separate runoff card remains');
   assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars on the main page, even after closing');
-  assert.equal(await page.locator('details.history-details:has(summary:has-text("Vote-Historie"))').getAttribute('open'), null);
+  assert.equal(await page.locator('details.history-details:has(summary:has-text("Historie"))').getAttribute('open'), null);
 
   // The just-closed round can be reopened from the history list for the
   // full detailed breakdown.
-  await page.click('details.history-details:has(summary:has-text("Vote-Historie")) > summary');
+  await page.click('details.history-details:has(summary:has-text("Historie")) > summary');
   await page.waitForFunction(() => document.querySelectorAll('.vote-history-round .lb-row').length >= 2);
   await page.click('[data-open-history-round]');
   await page.waitForSelector('text=Abstimmung Runde 1');

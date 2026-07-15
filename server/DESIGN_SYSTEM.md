@@ -308,8 +308,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Every identity can submit only once per round: the server enforces this atomically with `409`,
   empty points submissions are invalid, and the client replaces the submit action with a green
   „Bewertung/Stimme abgegeben“ state while locking that identity's controls.
-  Vote history uses the shared icon-free collapsible header, starts closed and retains its open state
-  across live re-renders.
+  Vote history is labeled simply „Historie“, uses the shared icon-free collapsible header, starts
+  closed and retains its open state across live re-renders.
 - **Tournament overview** — `.tournament-list-grid` shows at most two tournament cards per row;
   a single card stretches across the available width and further cards wrap. `.tournament-list-section` presents
   active and completed tournaments as two prominent status rows without separate summary-stat
