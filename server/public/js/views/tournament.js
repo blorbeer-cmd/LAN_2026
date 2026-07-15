@@ -657,6 +657,31 @@ function teamLabel(teamsById, teamId) {
   return t ? escapeHtml(t.name) : 'TBD';
 }
 
+async function copyTournamentText(value) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+  } catch {
+    // Browsers can expose Clipboard but still reject it on an HTTP LAN URL.
+    // Fall through to the selection-based copy path below.
+  }
+
+  const field = document.createElement('textarea');
+  field.value = value;
+  field.setAttribute('readonly', '');
+  field.style.position = 'fixed';
+  field.style.inset = '0';
+  field.style.opacity = '0';
+  document.body.appendChild(field);
+  field.select();
+  field.setSelectionRange(0, value.length);
+  const copied = document.execCommand('copy');
+  field.remove();
+  if (!copied) throw new Error('Copy failed');
+}
+
 // A team's score-entry mini-form for round-robin fixtures (the bracket has
 // its own inline variant, see renderBracketMatchBox) — shown instead of the
 // plain winner-pick buttons whenever the tournament tracks a real score, the
@@ -967,12 +992,18 @@ function renderDetail(container, ctx) {
           <div class="tournament-lobby-access">
             ${
               t.lobbyName
-                ? `<div class="tournament-lobby-credential"><span>Lobby</span><strong>${escapeHtml(t.lobbyName)}</strong></div>`
+                ? `<div class="tournament-lobby-credential">
+                     <span>Lobby</span><strong>${escapeHtml(t.lobbyName)}</strong>
+                     <button type="button" class="icon-btn tournament-lobby-copy" data-copy-lobby="name" title="Lobbyname kopieren" aria-label="Lobbyname kopieren">${icon('clipboard')}</button>
+                   </div>`
                 : ''
             }
             ${
               t.lobbyPassword
-                ? `<div class="tournament-lobby-credential"><span>Passwort</span><strong>${escapeHtml(t.lobbyPassword)}</strong></div>`
+                ? `<div class="tournament-lobby-credential">
+                     <span>Passwort</span><strong>${escapeHtml(t.lobbyPassword)}</strong>
+                     <button type="button" class="icon-btn tournament-lobby-copy" data-copy-lobby="password" title="Passwort kopieren" aria-label="Passwort kopieren">${icon('clipboard')}</button>
+                   </div>`
                 : ''
             }
           </div>
@@ -999,6 +1030,20 @@ function renderDetail(container, ctx) {
     ${renderTournamentTeams(t)}
     ${board}
   `;
+
+  container.querySelectorAll('[data-copy-lobby]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const isPassword = btn.dataset.copyLobby === 'password';
+      const value = isPassword ? t.lobbyPassword : t.lobbyName;
+      if (!value) return;
+      try {
+        await copyTournamentText(value);
+        showToast(isPassword ? 'Passwort kopiert.' : 'Lobbyname kopiert.');
+      } catch {
+        showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+      }
+    });
+  });
 
   container.querySelector('#tourn-back').addEventListener('click', () => {
     currentTournamentId = null;

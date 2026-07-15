@@ -236,6 +236,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   tournament group with its table and rounds. Result controls remain compact and decided matches
   expose an explicit edit action. The standard `.section-title` introduces „Lobby-Zugang“ while
   `.tournament-lobby-info` presents lobby name and password as a prominent access card below it.
+  Each credential provides a labeled clipboard action with a full touch target.
   Bracket matches reserve an internal action area so score inputs and their save/edit control never
   overlap.
 
