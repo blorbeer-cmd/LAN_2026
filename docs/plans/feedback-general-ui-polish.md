@@ -217,7 +217,9 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   als eigene vollbreite Gruppen ohne Akzentkante. Ein klarer Status zählt während der Abstimmung
   abgegebene Bewertungen gegen alle teilnehmenden Gamer. Das aktuelle Ergebnis und jeder Eintrag
   der eingeklappten Vote-Historie zeigen die zehn bestplatzierten Spiele in kompakten
-  Ranglistenzeilen; die Detailaktion mit allen Balken bleibt erhalten. Die Top 10 teilen sich ab
+  Ranglistenzeilen; die Detailaktion mit allen Balken bleibt erhalten. Bei einem Unentschieden
+  tragen die punktgleichen Sieger denselben Rang und einen sichtbaren Rahmen. Der Textstatus und
+  „Stichwahl starten“ stehen unten in derselben „Aktueller Vote“-Karte. Die Top 10 teilen sich ab
   `--bp-md` in zwei geordnete Fünferlisten. Die
   Spieleauswahl bleibt auch mobil als
   umrandetes Kartenraster erkennbar. Der Erklärtext zur verdeckten Auswertung steht als Tooltip direkt

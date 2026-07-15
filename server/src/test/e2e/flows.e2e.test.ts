@@ -188,12 +188,13 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   assert.equal(await page.locator('[data-player]:checked').count(), 2);
   assert.equal(await page.locator('details.history-details:has(summary:has-text("Historie"))').getAttribute('open'), null);
 
-  const mobileSelectionColumns = await page.locator('.player-selection-grid').evaluate((element) =>
+  const drawPlayerGrid = page.locator('section[aria-labelledby="matchmaking-draw-title"] .player-selection-grid');
+  const mobileSelectionColumns = await drawPlayerGrid.evaluate((element) =>
     getComputedStyle(element).gridTemplateColumns.split(' ').length
   );
-  assert.equal(mobileSelectionColumns, 1);
+  assert.equal(mobileSelectionColumns, 2);
   await page.setViewportSize({ width: 900, height: 844 });
-  const desktopSelectionColumns = await page.locator('.player-selection-grid').evaluate((element) =>
+  const desktopSelectionColumns = await drawPlayerGrid.evaluate((element) =>
     getComputedStyle(element).gridTemplateColumns.split(' ').length
   );
   assert.ok(desktopSelectionColumns >= 2);
@@ -237,6 +238,10 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
     (el as HTMLInputElement).value = '5';
     el.dispatchEvent(new Event('input', { bubbles: true }));
   });
+  await page.locator('[data-points-slider] >> nth=1').evaluate((el) => {
+    (el as HTMLInputElement).value = '5';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
   await page.waitForSelector('.skill-value:text("5")'); // staged locally
   assert.equal(
     await page.locator('.vote-participation-status:has-text("0 / 2")').count(),
@@ -256,6 +261,11 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   // the optional detail modal retains the full bar presentation.
   await page.waitForSelector('text=Aktueller Vote');
   await page.waitForFunction(() => document.querySelectorAll('section[aria-labelledby="vote-current-result-title"] .lb-row').length >= 2);
+  const currentVote = page.locator('section[aria-labelledby="vote-current-result-title"]');
+  assert.equal(await currentVote.locator('.lb-row.is-tied').count(), 2);
+  assert.deepEqual(await currentVote.locator('.lb-row.is-tied .lb-rank').allTextContents(), ['1', '1']);
+  assert.equal(await currentVote.locator('#votes-runoff').count(), 1, 'the runoff action belongs to the current Vote card');
+  assert.equal(await page.locator('section[aria-labelledby="vote-runoff-title"]').count(), 0, 'no separate runoff card remains');
   assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars on the main page, even after closing');
   assert.equal(await page.locator('details.history-details:has(summary:has-text("Vote-Historie"))').getAttribute('open'), null);
 

@@ -274,11 +274,21 @@ function renderClosedRows(results, mode, winnerGameIds) {
 
 function renderVoteRanking(results, mode, winnerGameIds) {
   const winners = new Set(winnerGameIds ?? []);
-  return renderRankingColumns(results.slice(0, 10), (result, index) => {
+  const tiedWinners = winners.size > 1;
+  let previousScore = null;
+  let currentRank = 0;
+  const rankedResults = results.slice(0, 10).map((result, index) => {
+    if (previousScore === null || result.score !== previousScore) currentRank = index + 1;
+    previousScore = result.score;
+    return { result, rank: currentRank };
+  });
+  return renderRankingColumns(rankedResults, ({ result, rank }) => {
     const score = mode === 'points' ? `${result.points} Pkt.` : submissionCountLabel(result.votes, 'single');
+    const isWinner = winners.has(result.gameId);
+    const isTiedWinner = tiedWinners && isWinner;
     return `
-      <div class="lb-row ${winners.has(result.gameId) ? 'rank-1' : ''}">
-        <span class="lb-rank">${index + 1}</span>
+      <div class="lb-row ${isWinner ? 'rank-1' : ''}${isTiedWinner ? ' is-tied' : ''}">
+        <span class="lb-rank">${rank}</span>
         ${gameBadgeHtml({ id: result.gameId, icon: result.icon }, 28)}
         <span style="flex:1;min-width:0;">
           <div class="player-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(result.gameName)}</div>
@@ -291,7 +301,7 @@ function renderVoteRanking(results, mode, winnerGameIds) {
 
 // ---------- current vote: the most recent closed round, straight from history ----------
 
-function renderCurrentVote() {
+function renderCurrentVote({ allowRunoff = false } = {}) {
   if (historyLoading || historyCache === null) {
     return `<div class="empty-state vote-empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
@@ -306,9 +316,21 @@ function renderCurrentVote() {
     .filter(Boolean)
     .map(escapeHtml)
     .join(' · ');
+  const hasTie = h.winnerGameIds?.length > 1;
   return `
     <div class="muted vote-result-meta">${meta} · ${submissionCountLabel(h.totalVoters, h.mode)}</div>
-    ${renderVoteRanking(h.results, h.mode, h.winnerGameIds)}`;
+    ${renderVoteRanking(h.results, h.mode, h.winnerGameIds)}
+    ${
+      hasTie && allowRunoff
+        ? `<div class="vote-tie-action stack">
+            <div>
+              <div class="player-name">Unentschieden</div>
+              <div class="muted vote-result-meta">${h.winnerGameIds.length} Spiele teilen sich den ersten Platz.</div>
+            </div>
+            <button type="button" class="btn btn-primary btn-block" id="votes-runoff">Stichwahl starten</button>
+          </div>`
+        : ''
+    }`;
 }
 
 // ---------- history: list + reopen a past round's full detail ----------
@@ -401,7 +423,6 @@ export function renderVotes(container, ctx) {
   const totalPlayers = state.players.length;
 
   let openSectionHtml = '';
-  let runoffSectionHtml = '';
   if (votes.open) {
     const modeLabel = votes.mode === 'single' ? 'Stichwahl' : '';
     const resultHelp =
@@ -440,22 +461,6 @@ export function renderVotes(container, ctx) {
         </div>
       </section>`;
   } else {
-    // Only offered right after a round closed in a tie (several games sharing
-    // top score) — a one-tap way to settle it instead of manually starting
-    // a fresh round and re-picking the games by hand.
-    const lastClosed = historyCache && historyCache.length ? historyCache[0] : null;
-    if (lastClosed && lastClosed.winners.length > 1) {
-      const tiedChips = lastClosed.winners
-        .map((w) => `<span class="chip">${gameBadgeHtml({ id: w.gameId, icon: w.icon }, 24)} ${escapeHtml(w.gameName)}</span>`)
-        .join('');
-      runoffSectionHtml = `
-        <section class="card vote-page-section stack" aria-labelledby="vote-runoff-title">
-          <div class="tournament-create-step-title"><h2 id="vote-runoff-title">Unentschieden</h2></div>
-          <div class="chip-list">${tiedChips}</div>
-          <button type="button" class="btn btn-primary btn-block" id="votes-runoff">Stichwahl starten</button>
-        </section>`;
-    }
-
     const gameCheckboxes = state.games
       .map(
         (g) => `
@@ -510,10 +515,8 @@ export function renderVotes(container, ctx) {
 
     <section class="card vote-page-section stack" aria-labelledby="vote-current-result-title">
       <div class="tournament-create-step-title"><h2 id="vote-current-result-title">Aktueller Vote</h2></div>
-      ${renderCurrentVote()}
+      ${renderCurrentVote({ allowRunoff: !votes.open })}
     </section>
-
-    ${runoffSectionHtml}
 
     <section class="card vote-page-section stack" aria-labelledby="vote-top-games-title">
       <div class="tournament-create-step-title"><h2 id="vote-top-games-title">Top 10 nach Bock-Level</h2></div>

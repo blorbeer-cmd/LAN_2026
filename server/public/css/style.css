@@ -3181,6 +3181,17 @@ input[type='number'].tournament-score-input {
 .vote-ranking-column:only-child {
   grid-column: 1 / -1;
 }
+.vote-ranking-column .lb-row.is-tied {
+  margin: var(--space-1) 0;
+  padding: var(--space-3) var(--space-2);
+  border: 1px solid var(--rank-1-gold);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.vote-tie-action {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
 .vote-participation-status {
   display: flex;
   align-items: center;

@@ -281,7 +281,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   submitted and eligible-player totals, updated through the existing realtime refresh. The latest
   result and every history card show the ten highest-ranked games with the same compact rows and
   responsive columns as the Bock ranking; history keeps an explicit detail action for the complete
-  bar view.
+  bar view. Equal top scores use the same visible rank and a reinforced gold border on every tied
+  row. „Unentschieden“ provides a textual equivalent, and the full-width „Stichwahl starten“ action
+  sits at the bottom of the same „Aktueller Vote“ card instead of opening a separate group.
   The Top 10 form two ordered five-item columns from `--bp-md`, while phones keep one continuous
   list. Game rows remain one
   column on phones and two from `--bp-md`, with the same bordered card treatment at both sizes.
