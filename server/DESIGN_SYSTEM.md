@@ -268,6 +268,17 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   match the target player.
   This device-local identity header is deliberately documented as the temporary boundary that
   future authenticated user management must replace.
+- **Grouped page sections** — `.grouped-page-sections` stacks the page's major areas with the
+  shared vertical rhythm. Every `.grouped-page-section` is a full-width `.card`; its visible
+  heading lives inside the surface through `.grouped-page-section-title`, while filters and
+  subordinate rows remain part of that same group. This is the default hierarchy for overview
+  pages with several related datasets instead of headings that float between unrelated cards.
+- **Leaderboard** — The concise page title is „Rang“. „Rangliste“, „Spielzeit“ and „Spielzeit pro
+  Spiel“ are separate grouped page sections, and the game filter belongs to the ranking section.
+  Player and game names truncate safely without pushing points or controls outside the card; wins
+  and matches remain visible as a second text line rather than depending on native hover text.
+  The result dialog reuses `.tournament-section-panel` to separate „Modus“, player assignment and
+  result entry. Team and free-for-all result inputs use the same aligned responsive grid.
 - **Home overview** — Home follows the same full-width grouped-card hierarchy as Tournaments,
   Teams and Vote. „Aktuell“, „Live-Status“, „Rangliste“ and „Sitzplan“ are separate main cards with
   their heading inside the surface. Tappable current items, the personal status and player entries

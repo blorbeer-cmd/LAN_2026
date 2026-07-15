@@ -281,8 +281,38 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
 
   // Leaderboard: record a match and see it reflected.
   await page.click('[data-view="leaderboard"]');
+  await page.waitForSelector('h1:text-is("Rang")');
+  for (const title of ['Rangliste', 'Spielzeit', 'Spielzeit pro Spiel']) {
+    assert.equal(
+      await page.locator(`section.grouped-page-section:has(h2:text-is("${title}"))`).count(),
+      1,
+      `${title} should be presented as a grouped leaderboard section`
+    );
+  }
+  assert.equal(
+    await page.locator('section[aria-labelledby="leaderboard-ranking-title"] #lb-filter').count(),
+    1,
+    'the game filter belongs to the ranking section'
+  );
   await page.click('#add-match-btn');
   await page.waitForSelector('#match-players');
+  assert.deepEqual(
+    await page.locator('#match-form .match-form-section h2').allTextContents(),
+    ['Modus', 'Spieler-Zuordnung', 'Ergebnis']
+  );
+  assert.equal(
+    await page.locator('#match-form').evaluate((element) => element.scrollWidth <= element.clientWidth),
+    true,
+    'the result form should not overflow at phone width'
+  );
+  await page.check('#match-advanced');
+  assert.equal(await page.locator('.match-result-row').count(), 2);
+  assert.equal(
+    await page.locator('#match-form').evaluate((element) => element.scrollWidth <= element.clientWidth),
+    true,
+    'advanced result fields should remain inside the result group'
+  );
+  await page.uncheck('#match-advanced');
   const teamSelects = page.locator('[data-team-for]');
   await teamSelects.nth(0).selectOption('0');
   await teamSelects.nth(1).selectOption('1');

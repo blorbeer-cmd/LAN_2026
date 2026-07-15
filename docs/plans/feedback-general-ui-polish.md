@@ -208,8 +208,13 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   Formfelder erben seitenweit dieselbe Systemschrift. Der Home-Sitzplan richtet Avatar und Namen
   sauber aus, hebt Gamer-Namen lesbarer hervor und zeigt ihren Live-Status direkt dahinter als
   kompakten grünen, gelben oder roten Indikator.
-- Rang-Titel, Kurztexte und Ergebnisformular bereinigen. Für die Spieler-Zuordnung eine stabile
-  Grid-/Spaltenstruktur verwenden, damit Selects unabhängig von Namenslängen fluchten.
+- Rang verwendet die neue vollbreite Kartenhierarchie für „Rangliste“, „Spielzeit“ und „Spielzeit
+  pro Spiel“; der Spielfilter gehört in die Ranglisten-Gruppe. Rang-Titel, Kurztexte und
+  Leerzustände sind bereinigt. Lange Namen bleiben innerhalb der Zeilen, und Siege sowie Spiele
+  stehen sichtbar in einer zweiten Zeile statt in einem nativen Hover-Text. Das Ergebnisformular
+  trennt Modus, Spieler-Zuordnung beziehungsweise Teilnehmende und Ergebnis als umrandete Bereiche.
+  Für Zuordnung und Zahlenfelder werden stabile Grid-/Spaltenstrukturen verwendet, damit Controls
+  unabhängig von Namenslängen fluchten.
 - Vote-Beschreibung auf „Punkte frei verteilen, höchste Summe gewinnt.“ kürzen, Aktionsbuttons
   ausrichten und Spiele ab `--bp-md` zweispaltig darstellen; auf dem Handy bleibt eine Spalte.
 - Vote übernimmt die neuen Seitenmuster aus Home, Turniere und Teams: Die neue beziehungsweise
