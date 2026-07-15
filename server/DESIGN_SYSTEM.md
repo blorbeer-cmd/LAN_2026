@@ -235,8 +235,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   an adjacent info tooltip instead of rendering an empty-state instruction in the selection grid.
   The captain action stretches like the draw action.
   One shared game picker sits above both sections and controls draw, draft and the loaded history;
-  it does not visually belong to either workflow. The live draft pool also uses the same full-width
-  player cards instead of chips and omits decorative draft icons and the redundant local-turn hint.
+  it does not visually belong to either workflow. The remaining live-draft participants appear under
+  the heading „Spieler“ in the same full-width player cards instead of chips; decorative draft icons
+  and the redundant local-turn hint are omitted.
   Every player row in both setup flows, the live draft and the drawn teams labels the skill level for
   the selected game as `Skill 1–10`; an en dash makes a missing self-rating explicit instead of silently
   presenting the matchmaking fallback as a real rating.

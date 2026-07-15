@@ -473,7 +473,7 @@ function renderDraftBoard(draft, ctx) {
       </div>
       <div class="player-name">${escapeHtml(draft.gameName)}</div>
       <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(var(--selection-card-min-width), 1fr));">${teamsHtml}</div>
-      <div class="section-title" style="margin:var(--space-2) 0 0;">Pool</div>
+      <div class="section-title" style="margin:var(--space-2) 0 0;">Spieler</div>
       <div class="player-selection-grid tournament-player-grid draft-pool-grid">${poolHtml}</div>
       ${isMyTurn ? '' : `<div class="muted" style="font-size:var(--font-size-sm);">Warten auf <strong>${escapeHtml(turnCaptain?.name ?? '?')}</strong>…</div>`}
       <button type="button" class="btn btn-danger btn-sm" id="draft-cancel">Draft abbrechen</button>
