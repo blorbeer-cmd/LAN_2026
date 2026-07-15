@@ -113,7 +113,7 @@ Betroffene Dateien: `server/public/js/views/matchmaking.js`,
   Mitteilung bleibt zusätzlich als hervorgehobener Direktlink unter der Kopfzeile sichtbar; die
   frühere doppelte Home-Historie entfällt. Gelesen und persönlich ausgeblendet wird vorläufig anhand
   der lokal gewählten Spieleridentität.
-- Die Glocken-Historie bietet persönliche Sammelaktionen für „Alle als gelesen markieren“ und
+- Die Glocken-Historie bietet persönliche Sammelaktionen für „Alle gelesen“ und
   „Alle löschen“. Die hervorgehobene Meldung nutzt wieder den Markenverlauf der Primärbuttons und
   verschwindet bei fachlicher Auflösung beziehungsweise exakt am hinterlegten Ablaufzeitpunkt.
 - Einzelne ungelesene Mitteilungen nutzen eine kompakte Icon-Aktion direkt links neben Löschen,

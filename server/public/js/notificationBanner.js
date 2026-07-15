@@ -249,7 +249,7 @@ export function renderBanner() {
     </div>
     ${panelContentHtml(myId)}
     ${entries.length > 0 ? `<div class="notification-center-toolbar">
-      <button type="button" class="btn btn-sm" data-notifications-seen-all ${entries.every((entry) => entry.seen) ? 'disabled' : ''}>Alle als gelesen markieren</button>
+      <button type="button" class="btn btn-sm" data-notifications-seen-all ${entries.every((entry) => entry.seen) ? 'disabled' : ''}>Alle gelesen</button>
       <button type="button" class="btn btn-sm btn-danger" data-notifications-hide-all>Alle löschen</button>
     </div>` : ''}
   `;
