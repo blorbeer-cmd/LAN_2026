@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { state } from './state.js';
-import { DEFAULT_SKILL_RATING, teamSkillHtml, teamSkillTotal } from './skillDisplay.js';
+import { teamSkillHtml, teamSkillTotal, UNRATED_SKILL_VALUE } from './skillDisplay.js';
 
-test('teamSkillTotal sums the selected game and uses the neutral fallback for missing ratings', () => {
+test('teamSkillTotal sums the selected game and counts missing ratings as zero', () => {
   const previousSkills = state.skills;
   state.skills = [
     { player_id: 'p1', game_id: 'g1', rating: 8 },
@@ -12,8 +12,8 @@ test('teamSkillTotal sums the selected game and uses the neutral fallback for mi
   ];
 
   try {
-    assert.equal(teamSkillTotal([{ id: 'p1' }, { id: 'p2' }], 'g1'), 8 + DEFAULT_SKILL_RATING);
-    assert.match(teamSkillHtml([{ id: 'p1' }, { id: 'p2' }], 'g1'), /Gesamt-Skill 13/);
+    assert.equal(teamSkillTotal([{ id: 'p1' }, { id: 'p2' }], 'g1'), 8 + UNRATED_SKILL_VALUE);
+    assert.match(teamSkillHtml([{ id: 'p1' }, { id: 'p2' }], 'g1'), /Gesamt-Skill 8/);
   } finally {
     state.skills = previousSkills;
   }

@@ -6,7 +6,7 @@ import { domainIcon } from './domainIcons.js';
 import { icon } from './icons.js';
 import { state } from './state.js';
 
-export const DEFAULT_SKILL_RATING = 5;
+export const UNRATED_SKILL_VALUE = 0;
 
 export function skillRatingFor(playerId, gameId) {
   const entry = state.skills.find((skill) => skill.player_id === playerId && skill.game_id === gameId);
@@ -25,13 +25,13 @@ export function playerSkillHtml(playerId, gameId) {
 
 export function teamSkillTotal(players, gameId) {
   return players.reduce(
-    (total, player) => total + (skillRatingFor(player.id, gameId) ?? DEFAULT_SKILL_RATING),
+    (total, player) => total + (skillRatingFor(player.id, gameId) ?? UNRATED_SKILL_VALUE),
     0
   );
 }
 
 export function teamSkillHtml(players, gameId) {
   const total = teamSkillTotal(players, gameId);
-  const title = `Gesamt-Skill ${total}. Fehlende Bewertungen zählen mit ${DEFAULT_SKILL_RATING}.`;
+  const title = `Gesamt-Skill ${total}. Fehlende Bewertungen zählen mit ${UNRATED_SKILL_VALUE}.`;
   return `<span class="rating team-skill-total" title="${title}" aria-label="${title}">${icon(domainIcon('skill'))}<span>${total}</span></span>`;
 }

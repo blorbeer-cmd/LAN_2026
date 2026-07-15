@@ -257,8 +257,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   game's current self-rating, or an en dash when no rating exists. Teams and Tournaments reuse it
   in participant selection, drawn-team previews, live drafts, histories and tournament detail teams;
   the icon's tooltip and accessible label retain the full „Skill-Level“ meaning. Team headers show
-  the same icon with a dynamically calculated total; missing ratings use the matchmaking-neutral
-  value `5`, stated explicitly in its tooltip and accessible label.
+  the same icon with a dynamically calculated total; missing ratings contribute `0`, stated
+  explicitly in its tooltip and accessible label.
 - **Tournament overview** — `.tournament-list-grid` shows at most two tournament cards per row;
   a single card stretches across the available width and further cards wrap. `.tournament-list-section` presents
   active and completed tournaments as two prominent status rows without separate summary-stat
