@@ -19,6 +19,7 @@ import { domainIcon } from '../domainIcons.js';
 let checkedIds = null;
 let avoidAdjacentOpponents = false;
 let teamCountValue = '2';
+let selectedDrawPlayer = null;
 
 // Captain-draft state: the latest draft (active or finished) as delivered by
 // GET /api/draft or the draft:changed socket event. A running draft takes
@@ -87,9 +88,14 @@ function findDrawById(id) {
 }
 
 // One drawn/recorded lineup: team cards plus, for a still-unrecorded draw,
-// per-player "move to another team" selects (Feinschliff) and the button to
-// record a result — which is what turns this into an Ergebnis-Historie entry.
+// draggable player rows and the button to record a result — which is what
+// turns this into an Ergebnis-Historie entry. Selecting a player and then a
+// team is the touch equivalent; arrow keys provide the keyboard path.
 function renderDrawCard(draw, { editable }) {
+  const selectedTeamIndex =
+    editable && selectedDrawPlayer?.drawId === draw.id
+      ? draw.teams.findIndex((team) => team.players.some((player) => player.id === selectedDrawPlayer.playerId))
+      : -1;
   const teamsHtml = draw.teams
     .map((t, i) => {
       // Only meaningful once a result is actually recorded (read-only cards)
@@ -104,25 +110,18 @@ function renderDrawCard(draw, { editable }) {
         : '';
 
       return `
-      <div class="team-card">
+      <div class="team-card tournament-draft-team${selectedTeamIndex !== -1 && selectedTeamIndex !== i ? ' is-select-target' : ''}" ${editable ? `data-draw-drop-team="${i}" data-draw-id="${draw.id}"` : ''}>
         <div class="team-card-header"><span>Team ${i + 1}</span><span>Score ${t.totalRating}</span></div>
         ${resultLine}
         ${t.players
           .map(
             (p) => `
-          <div class="team-player">
+          ${editable ? `<button type="button" class="team-player tournament-drag-player${selectedDrawPlayer?.drawId === draw.id && selectedDrawPlayer.playerId === p.id ? ' is-selected' : ''}" draggable="true" data-move-draw="${draw.id}" data-move-player="${p.id}" data-team-index="${i}" aria-pressed="${selectedDrawPlayer?.drawId === draw.id && selectedDrawPlayer.playerId === p.id}" aria-label="${escapeHtml(p.name)} verschieben">` : '<div class="team-player">'}
             ${avatarHtml(p, 18)}
             <span class="team-player-name" style="flex:1;">${escapeHtml(p.name)}</span>
             ${seatConflictIconHtml(p)}
             ${p.rating != null ? `<span class="rating">${p.rating}</span>` : ''}
-            ${
-              editable && draw.teams.length > 1
-                ? `<select class="team-move-select" data-move-draw="${draw.id}" data-move-player="${p.id}" aria-label="Team ändern">
-                    ${draw.teams.map((_, ti) => `<option value="${ti}" ${ti === i ? 'selected' : ''}>Team ${ti + 1}</option>`).join('')}
-                  </select>`
-                : ''
-            }
-          </div>`
+          ${editable ? '</button>' : '</div>'}`
           )
           .join('')}
       </div>`;
@@ -145,36 +144,101 @@ function renderDrawCard(draw, { editable }) {
         ${draw.matchId ? `<span class="badge badge-offline">${icon('circleCheck')} Ergebnis erfasst</span>` : ''}
         ${!editable && draw.winnerTeamIndex === null ? `<span class="badge">${icon('users')} Unentschieden</span>` : ''}
       </div>
-      <div class="team-results-scroll">
-        <div class="grid" style="grid-template-columns:repeat(${draw.teams.length}, minmax(190px, 1fr));">${teamsHtml}</div>
-      </div>
+      <div class="tournament-team-preview-grid">${teamsHtml}</div>
       ${seatingNote}
       ${editable ? `<button type="button" class="btn btn-primary btn-sm" data-record-draw="${draw.id}">Ergebnis eintragen</button>` : ''}
       ${!editable ? `<button type="button" class="btn btn-primary btn-sm" data-rematch-draw="${draw.id}">${icon('shuffle')} Rematch</button>` : ''}
     </div>`;
 }
 
-// Wires the "move player" selects and "Ergebnis eintragen" buttons for every
-// draw card currently in the DOM — shared between the just-generated result
-// and the Team-Historie list, since both render the same card markup.
+// Wires D&D/touch/keyboard player moves and result buttons for every draw
+// card currently in the DOM — shared between the fresh result and history.
 function wireDrawCards(container, ctx) {
-  container.querySelectorAll('[data-move-draw]').forEach((sel) => {
-    sel.addEventListener('change', async () => {
-      const drawId = sel.dataset.moveDraw;
-      const playerId = sel.dataset.movePlayer;
-      const toTeamIndex = parseInt(sel.value, 10);
-      try {
-        const updated = await api.matchmaking.moveDrawPlayer(drawId, playerId, toTeamIndex);
-        if (state.lastMatchmaking?.id === drawId) state.lastMatchmaking = updated;
-        if (historyCache) {
-          const idx = historyCache.findIndex((d) => d.id === drawId);
-          if (idx !== -1) historyCache[idx] = updated;
-        }
-        ctx.rerender();
-      } catch (err) {
-        showToast(err.message, { error: true });
-        ctx.rerender(); // reset the select back to its actual team
+  async function moveDrawPlayer(drawId, playerId, toTeamIndex) {
+    try {
+      const updated = await api.matchmaking.moveDrawPlayer(drawId, playerId, toTeamIndex);
+      if (state.lastMatchmaking?.id === drawId) state.lastMatchmaking = updated;
+      if (historyCache) {
+        const idx = historyCache.findIndex((draw) => draw.id === drawId);
+        if (idx !== -1) historyCache[idx] = updated;
       }
+      selectedDrawPlayer = null;
+      ctx.rerender();
+    } catch (err) {
+      selectedDrawPlayer = null;
+      showToast(err.message, { error: true });
+      ctx.rerender();
+    }
+  }
+
+  let draggedPlayer = null;
+  const clearDragState = () => {
+    container.querySelectorAll('.is-drag-target, .is-dragging').forEach((element) => {
+      element.classList.remove('is-drag-target', 'is-dragging');
+    });
+    draggedPlayer = null;
+  };
+
+  container.querySelectorAll('[data-move-draw]').forEach((playerRow) => {
+    playerRow.addEventListener('dragstart', (event) => {
+      selectedDrawPlayer = null;
+      draggedPlayer = { drawId: playerRow.dataset.moveDraw, playerId: playerRow.dataset.movePlayer };
+      playerRow.classList.add('is-dragging');
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', JSON.stringify(draggedPlayer));
+    });
+    playerRow.addEventListener('dragend', clearDragState);
+    playerRow.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const next = { drawId: playerRow.dataset.moveDraw, playerId: playerRow.dataset.movePlayer };
+      selectedDrawPlayer =
+        selectedDrawPlayer?.drawId === next.drawId && selectedDrawPlayer.playerId === next.playerId ? null : next;
+      ctx.rerender();
+    });
+    playerRow.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      const draw = findDrawById(playerRow.dataset.moveDraw);
+      if (!draw) return;
+      const currentIndex = Number(playerRow.dataset.teamIndex);
+      const direction = event.key === 'ArrowLeft' ? -1 : 1;
+      const toTeamIndex = (currentIndex + direction + draw.teams.length) % draw.teams.length;
+      moveDrawPlayer(draw.id, playerRow.dataset.movePlayer, toTeamIndex);
+    });
+  });
+
+  container.querySelectorAll('[data-draw-drop-team]').forEach((teamCard) => {
+    const drawId = teamCard.dataset.drawId;
+    const toTeamIndex = Number(teamCard.dataset.drawDropTeam);
+    teamCard.addEventListener('dragover', (event) => {
+      if (!draggedPlayer || draggedPlayer.drawId !== drawId) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      teamCard.classList.add('is-drag-target');
+    });
+    teamCard.addEventListener('dragleave', (event) => {
+      if (event.relatedTarget && teamCard.contains(event.relatedTarget)) return;
+      teamCard.classList.remove('is-drag-target');
+    });
+    teamCard.addEventListener('drop', (event) => {
+      event.preventDefault();
+      let player = draggedPlayer;
+      if (!player) {
+        try {
+          player = JSON.parse(event.dataTransfer.getData('text/plain'));
+        } catch {
+          player = null;
+        }
+      }
+      clearDragState();
+      if (player?.drawId === drawId) moveDrawPlayer(drawId, player.playerId, toTeamIndex);
+    });
+    teamCard.addEventListener('click', (event) => {
+      if (
+        selectedDrawPlayer?.drawId !== drawId ||
+        event.target.closest('[data-move-draw]')
+      ) return;
+      moveDrawPlayer(drawId, selectedDrawPlayer.playerId, toTeamIndex);
     });
   });
 
@@ -405,21 +469,35 @@ export function renderMatchmaking(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Teams auslosen</h1>
     <div class="card stack">
-      <select id="mm-game">${gameOptions}</select>
-      <div class="selection-toolbar">
-        <label class="field-label" for="mm-teamcount">Anzahl Teams</label>
-        <input type="number" id="mm-teamcount" min="2" value="${escapeHtml(teamCountValue)}" />
-        <button type="button" class="btn btn-sm" id="mm-select-all">Alle markieren</button>
-        <button type="button" class="btn btn-sm" id="mm-select-none">Auswahl aufheben</button>
-      </div>
-      <div class="player-selection-grid">${playerRows}</div>
-      <div class="row">
-        <button type="button" class="btn btn-primary" id="mm-generate" style="flex:1;">Teams auslosen</button>
-      </div>
-      <label class="check-row">
-        <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
-        <span>Sitznachbarn zusammen</span>
-      </label>
+      <section class="tournament-section-panel tournament-create-step stack" aria-labelledby="matchmaking-draw-title">
+        <div class="tournament-create-step-title">
+          <h3 id="matchmaking-draw-title">Auslosung</h3>
+          <span class="muted">Teams zusammenstellen</span>
+        </div>
+        <label class="field-label" for="mm-game">Spiel auswählen</label>
+        <select id="mm-game">${gameOptions}</select>
+        <div class="selection-toolbar">
+          <div class="tournament-team-count-field">
+            <label class="field-label" for="mm-teamcount">Anzahl Teams</label>
+            <input type="number" id="mm-teamcount" min="2" value="${escapeHtml(teamCountValue)}" />
+          </div>
+          <button type="button" class="btn btn-sm" id="mm-select-all">Alle markieren</button>
+          <button type="button" class="btn btn-sm" id="mm-select-none">Auswahl aufheben</button>
+        </div>
+        <div class="player-selection-grid tournament-player-grid">${playerRows}</div>
+        <div class="check-row">
+          <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
+          <span class="title-with-info tournament-option-label">
+            <label for="mm-avoid-adjacent">Sitznachbarn</label>
+            ${infoTooltipHtml(
+                'matchmaking-neighbors-help',
+                'Sitznachbarn',
+                'Sitznachbarn werden nach Möglichkeit in dasselbe Team gelost. Die Skill-Balance hat Vorrang, wenn beides nicht gleichzeitig möglich ist.'
+              )}
+          </span>
+        </div>
+        <button type="button" class="btn btn-primary" id="mm-generate">Teams auslosen</button>
+      </section>
 
       <div class="section-title title-with-info" style="margin:var(--space-2) 0 0;">
         <span>Captain Draft</span>

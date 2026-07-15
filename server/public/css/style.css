@@ -1053,14 +1053,14 @@ input[type='number']::-webkit-inner-spin-button {
 .player-selection-grid.tournament-player-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-.tournament-create-step {
+.tournament-section-panel {
   position: relative;
   padding: var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);
 }
-.tournament-create-step::before {
+.tournament-section-panel::before {
   content: '';
   position: absolute;
   inset: var(--space-3) auto var(--space-3) 0;
@@ -1081,12 +1081,19 @@ input[type='number']::-webkit-inner-spin-button {
 .tournament-create-step-title .muted {
   font-size: var(--font-size-xs);
 }
+.tournament-group-stage {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+.tournament-group-panel > .section-title {
+  margin-top: 0;
+}
 .tournament-team-preview-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
 }
-.tournament-preview-heading,
 .tournament-format-label {
   align-items: center;
 }
@@ -2871,7 +2878,7 @@ input[type='range'].preference-row-slider {
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--bg-elevated);
-  overflow: hidden;
+  overflow: visible;
   position: relative;
 }
 .bracket-team-row {
@@ -2891,6 +2898,10 @@ input[type='range'].preference-row-slider {
 }
 .bracket-team-row:first-child {
   border-bottom: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.bracket-team-row:last-child {
+  border-radius: 0 0 var(--radius) var(--radius);
 }
 .bracket-team-name {
   flex: 1;
@@ -2924,22 +2935,31 @@ button.bracket-team-row {
    attribute selector counts as a class for specificity purposes, so a bare
    `.bracket-score-input` class (0,1,0) alone loses to it. Repeat the type
    selector to win outright instead of reaching for !important. */
-input[type='number'].bracket-score-input {
-  width: 34px;
-  flex-shrink: 0;
-  padding: 4px 2px; /* design-token-ok: tuned to fit two digits inside this input's fixed 34px width */
+input[type='number'].bracket-score-input,
+input[type='number'].tournament-score-input {
+  width: var(--space-7);
+  height: var(--space-7);
+  flex: 0 0 var(--space-7);
+  padding: 0;
   text-align: center;
   font-size: var(--font-size-sm);
 }
-.bracket-score-submit {
+.tournament-score-submit,
+.tournament-result-edit,
+.bracket-score-submit,
+.bracket-result-edit {
+  width: var(--space-7);
+  height: var(--space-7);
+  flex: 0 0 var(--space-7);
+  padding: 0;
+  border-radius: var(--radius-sm);
+}
+.bracket-score-submit,
+.bracket-result-edit {
   position: absolute;
   right: calc(var(--bracket-pair-gap) * -1 + 2px);
   top: 50%;
   transform: translateY(-50%);
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border-radius: 50%;
   z-index: 1;
 }
 

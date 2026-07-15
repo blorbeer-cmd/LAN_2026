@@ -32,7 +32,7 @@ import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
 import { renderProfile } from './views/profile.js';
-import { renderTournaments, invalidateTournaments, focusTournament } from './views/tournament.js';
+import { renderTournaments, invalidateTournaments, focusTournament, showTournamentLanding } from './views/tournament.js';
 import { renderHallOfFame } from './views/hallOfFame.js';
 import { renderSeating, invalidateSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
@@ -245,7 +245,10 @@ async function ensureAccess() {
 
 function wireNav() {
   document.querySelectorAll('.nav-btn').forEach((btn) => {
-    btn.addEventListener('click', () => switchView(btn.dataset.view));
+    btn.addEventListener('click', () => {
+      if (btn.dataset.view === 'tournaments') showTournamentLanding();
+      switchView(btn.dataset.view);
+    });
   });
   document.getElementById('settings-btn').addEventListener('click', () => switchView('settings'));
   document.getElementById('profile-btn').addEventListener('click', () => switchView('profile'));

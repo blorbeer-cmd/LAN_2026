@@ -139,6 +139,40 @@ test('conflicting simultaneous tournament reports: one result, one leaderboard m
   assert.equal(final.teamAId, decided.winnerTeamId);
 });
 
+test('simultaneous tournament corrections accept one current version only', async () => {
+  const create = await request(app)
+    .post('/api/tournaments')
+    .send({
+      gameId: gameIds[0],
+      format: 'round_robin',
+      teams: [
+        { name: 'C1', playerIds: [playerIds[0]] },
+        { name: 'C2', playerIds: [playerIds[1]] },
+      ],
+    });
+  const match = create.body.matches[0];
+  const recorded = await request(app)
+    .post(`/api/tournaments/${create.body.id}/matches/${match.id}/result`)
+    .send({ winnerTeamId: match.teamAId });
+  const version = recorded.body.matches[0].playedAt;
+  const before = (await request(app).get(`/api/matches?gameId=${gameIds[0]}`)).body.length;
+
+  const results = await Promise.all([
+    request(app)
+      .put(`/api/tournaments/${create.body.id}/matches/${match.id}/result`)
+      .send({ winnerTeamId: match.teamAId, expectedPlayedAt: version }),
+    request(app)
+      .put(`/api/tournaments/${create.body.id}/matches/${match.id}/result`)
+      .send({ winnerTeamId: match.teamBId, expectedPlayedAt: version }),
+  ]);
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[200], 1, JSON.stringify(counts));
+  assert.equal(counts[409], 1, JSON.stringify(counts));
+
+  const after = (await request(app).get(`/api/matches?gameId=${gameIds[0]}`)).body.length;
+  assert.equal(after, before);
+});
+
 test('simultaneous draft starts: exactly one draft opens', async () => {
   const results = await Promise.all(
     Array.from({ length: 6 }, () =>

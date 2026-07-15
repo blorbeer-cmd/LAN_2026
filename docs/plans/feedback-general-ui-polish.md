@@ -108,11 +108,19 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
 - Teamkarten in der Detailansicht und in der Auslosung nutzen höchstens zwei Spalten. In der
   Auslosung lassen sich Gamer per Drag-and-drop, Touch-Auswahl oder Pfeiltasten zwischen Teams
   verschieben; das bisherige Team-Dropdown entfällt.
-- Das Anlageformular trennt Auslosung und Turniermodus als zwei umrandete Bereiche mit dezenter
+- Das Anlageformular trennt Auslosung und Modus als zwei umrandete Bereiche mit dezenter
   Akzentkante und kurzer Unterzeile statt nummerierter Kreise. Spiel, Teilnehmende und Teamvorschau
-  gehören zur Auslosung; Format, Ergebnisoptionen, Lobby und Erstellung zum Turniermodus.
+  gehören zur Auslosung; Format, Ergebnisoptionen, Lobby und Erstellung zum Modus.
 - Die Erklärung zu „Gruppenphase + K.O.“ liegt als Info-Popover neben dem Turnierformat. Gruppe und
-  Tabelle verwenden textliche Überschriften ohne zusätzliche dekorative Symbole.
+  Tabelle verwenden textliche Überschriften ohne zusätzliche dekorative Symbole. Jede Gruppe fasst
+  ihre Tabelle und Runden in einem gemeinsamen umrandeten Bereich zusammen.
+- Ein erneuter Klick auf den aktiven unteren Turnier-Tab führt immer zur Turnierübersicht zurück.
+  Bereits erfasste Sieger und Punktestände lassen sich über eine eindeutige Bearbeiten-Aktion
+  korrigieren. Abhängige K.O.-Ergebnisse werden dabei zurückgesetzt und Gruppen-Korrekturen bauen
+  die K.O.-Phase neu auf, damit Rangliste und Turnierbaum konsistent bleiben.
+- Die Teams-Seite übernimmt Spieler-Raster, Auslosungsbereich, Beschriftungen und Teamkarten aus
+  dem Turnierformular. Ausgeloste Gamer wechseln auch dort per Drag-and-drop, Touch-Auswahl oder
+  Pfeiltasten das Team; das alte Team-Dropdown entfällt.
 
 Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 `server/public/js/views/tournament.js`, `server/public/js/views/votes.js`,

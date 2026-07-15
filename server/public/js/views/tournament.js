@@ -29,6 +29,7 @@ let currentTournamentId = null; // null = list/create view
 let detailCache = null;
 let detailLoading = false;
 let detailForId = null;
+let editingResultMatchId = null;
 
 let createOpen = false;
 let createCheckedIds = null;
@@ -127,6 +128,14 @@ export function invalidateTournaments() {
 export function focusTournament(id) {
   currentTournamentId = id;
   detailForId = null;
+  editingResultMatchId = null;
+}
+
+export function showTournamentLanding() {
+  currentTournamentId = null;
+  detailCache = null;
+  detailForId = null;
+  editingResultMatchId = null;
 }
 
 function resetCreateForm() {
@@ -266,14 +275,7 @@ function renderCreateForm(el, ctx) {
 
   const teamsPreview = createProposedTeams
     ? `
-      <div class="title-with-info tournament-preview-heading">
-        <div class="section-title" style="margin:0;">Teams</div>
-        ${infoTooltipHtml(
-            'tournament-team-drag-help',
-            'Spieler verschieben',
-            'Spieler mit der Maus in ein anderes Team ziehen. Auf Touch-Geräten einen Spieler und danach das Zielteam antippen; mit der Tastatur verschieben die Pfeiltasten nach links und rechts.'
-          )}
-      </div>
+      <div class="section-title" style="margin:0;">Teams</div>
       <div class="tournament-team-preview-grid">
         ${createProposedTeams
           .map(
@@ -305,7 +307,7 @@ function renderCreateForm(el, ctx) {
         <div class="section-title" style="margin:0;">Neues Turnier</div>
         <button type="button" class="icon-btn" id="tourn-create-close" aria-label="Schließen">${icon('x')}</button>
       </div>
-      <section class="tournament-create-step stack" aria-labelledby="tournament-draw-step-title">
+      <section class="tournament-section-panel tournament-create-step stack" aria-labelledby="tournament-draw-step-title">
         <div class="tournament-create-step-title">
           <h3 id="tournament-draw-step-title">Auslosung</h3>
           <span class="muted">Teams zusammenstellen</span>
@@ -337,9 +339,9 @@ function renderCreateForm(el, ctx) {
         ${teamsPreview}
       </section>
 
-      <section class="tournament-create-step stack" aria-labelledby="tournament-mode-step-title">
+      <section class="tournament-section-panel tournament-create-step stack" aria-labelledby="tournament-mode-step-title">
         <div class="tournament-create-step-title">
-          <h3 id="tournament-mode-step-title">Turniermodus</h3>
+          <h3 id="tournament-mode-step-title">Modus</h3>
           <span class="muted">Ablauf festlegen</span>
         </div>
         <div class="title-with-info tournament-format-label">
@@ -659,12 +661,12 @@ function teamLabel(teamsById, teamId) {
 // its own inline variant, see renderBracketMatchBox) — shown instead of the
 // plain winner-pick buttons whenever the tournament tracks a real score, the
 // winner itself is derived server-side from whichever number is higher.
-function renderScoreForm(m) {
+function renderScoreForm(m, { editing = false } = {}) {
   return `
-    <input type="number" min="0" inputmode="numeric" data-score-a="${m.id}" style="width:52px;" placeholder="0" />
+    <input type="number" min="0" inputmode="numeric" class="tournament-score-input" data-score-a="${m.id}" value="${editing && m.scoreA != null ? m.scoreA : ''}" placeholder="0" />
     <span class="muted">:</span>
-    <input type="number" min="0" inputmode="numeric" data-score-b="${m.id}" style="width:52px;" placeholder="0" />
-    <button type="button" class="btn btn-sm" data-submit-score="${m.id}" aria-label="Ergebnis speichern">${icon('check')}</button>`;
+    <input type="number" min="0" inputmode="numeric" class="tournament-score-input" data-score-b="${m.id}" value="${editing && m.scoreB != null ? m.scoreB : ''}" placeholder="0" />
+    <button type="button" class="btn tournament-score-submit" data-submit-score="${m.id}" ${editing ? 'data-update-result="true"' : ''} aria-label="${editing ? 'Änderung speichern' : 'Ergebnis speichern'}">${icon('check')}</button>`;
 }
 
 // Must match the CSS custom properties --bracket-match-h / --bracket-pair-gap
@@ -696,7 +698,9 @@ function renderBracketMatchBox(m, t, teamsById) {
       </div>`;
   }
 
-  const canRecord = t.status === 'active' && m.teamAId && m.teamBId && !m.winnerTeamId;
+  const decided = m.winnerTeamId !== null || m.isDraw;
+  const editing = editingResultMatchId === m.id;
+  const canRecord = m.teamAId && m.teamBId && ((!decided && t.status === 'active') || (decided && editing));
 
   const teamRow = (teamId, score) => {
     const isWinner = m.winnerTeamId && m.winnerTeamId === teamId;
@@ -704,14 +708,15 @@ function renderBracketMatchBox(m, t, teamsById) {
     const cls = `bracket-team-row${isWinner ? ' is-winner' : ''}${!teamId ? ' is-tbd' : ''}`;
     if (canRecord && t.trackScore) {
       const side = teamId === m.teamAId ? 'a' : 'b';
+      const value = editing && score !== null ? ` value="${score}"` : '';
       return `
         <div class="${cls}">
           <span class="bracket-team-name">${label}</span>
-          <input type="number" min="0" inputmode="numeric" class="bracket-score-input" data-score-${side}="${m.id}" placeholder="0" />
+          <input type="number" min="0" inputmode="numeric" class="bracket-score-input" data-score-${side}="${m.id}"${value} placeholder="0" />
         </div>`;
     }
     if (canRecord && teamId) {
-      return `<button type="button" class="${cls}" data-match="${m.id}" data-winner="${teamId}"><span class="bracket-team-name">${label}</span></button>`;
+      return `<button type="button" class="${cls}" data-match="${m.id}" data-winner="${teamId}" ${editing ? 'data-update-result="true"' : ''}><span class="bracket-team-name">${label}</span></button>`;
     }
     const scoreReadout = t.trackScore && score !== null ? `<span class="bracket-score">${score}</span>` : '';
     return `<div class="${cls}"><span class="bracket-team-name">${label}</span>${scoreReadout}</div>`;
@@ -722,10 +727,14 @@ function renderBracketMatchBox(m, t, teamsById) {
   // itself exactly 2 rows tall even while a score is being entered.
   const submitBtn =
     canRecord && t.trackScore
-      ? `<button type="button" class="bracket-score-submit btn" data-submit-score="${m.id}" aria-label="Ergebnis speichern">${icon('check')}</button>`
+      ? `<button type="button" class="bracket-score-submit btn" data-submit-score="${m.id}" ${editing ? 'data-update-result="true"' : ''} aria-label="${editing ? 'Änderung speichern' : 'Ergebnis speichern'}">${icon('check')}</button>`
+      : '';
+  const editBtn =
+    decided && !editing
+      ? `<button type="button" class="bracket-result-edit btn" data-edit-result="${m.id}" aria-label="Ergebnis bearbeiten">${icon('pencil')}</button>`
       : '';
 
-  return `<div class="bracket-match">${teamRow(m.teamAId, m.scoreA)}${teamRow(m.teamBId, m.scoreB)}${submitBtn}</div>`;
+  return `<div class="bracket-match">${teamRow(m.teamAId, m.scoreA)}${teamRow(m.teamBId, m.scoreB)}${submitBtn}${editBtn}</div>`;
 }
 
 // Recursively renders the bracket as nested pairs instead of flat per-round
@@ -788,7 +797,8 @@ function renderRoundRobinBoard(t, teamsById, matches, standings) {
       const rows = roundMatches
         .map((m) => {
           const decided = m.winnerTeamId !== null || m.isDraw;
-          const canRecord = t.status === 'active' && !decided;
+          const editing = editingResultMatchId === m.id;
+          const canRecord = (!decided && t.status === 'active') || (decided && editing);
           const nameA = teamLabel(teamsById, m.teamAId);
           const nameB = teamLabel(teamsById, m.teamBId);
           const aWon = m.winnerTeamId === m.teamAId;
@@ -800,21 +810,22 @@ function renderRoundRobinBoard(t, teamsById, matches, standings) {
               <div class="lb-row">
                 <span style="flex:1;">${nameA} <span class="muted">vs</span> ${nameB}</span>
                 <span class="muted" style="font-size:var(--font-size-xs);">${resultText}</span>
+                ${decided ? `<button type="button" class="btn tournament-result-edit" data-edit-result="${m.id}" aria-label="Ergebnis bearbeiten">${icon('pencil')}</button>` : ''}
               </div>`;
           }
           if (t.trackScore) {
             return `
               <div class="lb-row" style="flex-wrap:wrap;gap:var(--space-2);">
                 <span style="flex:1 1 100%;">${nameA} <span class="muted">vs</span> ${nameB}</span>
-                ${renderScoreForm(m)}
+                ${renderScoreForm(m, { editing })}
               </div>`;
           }
           return `
             <div class="lb-row" style="flex-wrap:wrap;gap:var(--space-2);">
               <span style="flex:1 1 100%;">${nameA} <span class="muted">vs</span> ${nameB}</span>
-              <button type="button" class="btn btn-sm" data-match="${m.id}" data-winner="${m.teamAId}">${nameA}</button>
-              <button type="button" class="btn btn-sm" data-match="${m.id}" data-winner="${m.teamBId}">${nameB}</button>
-              <button type="button" class="btn btn-sm" data-match="${m.id}" data-winner="">Unentschieden</button>
+              <button type="button" class="btn btn-sm" data-match="${m.id}" data-winner="${m.teamAId}" ${editing ? 'data-update-result="true"' : ''}>${nameA}</button>
+              <button type="button" class="btn btn-sm" data-match="${m.id}" data-winner="${m.teamBId}" ${editing ? 'data-update-result="true"' : ''}>${nameB}</button>
+              <button type="button" class="btn btn-sm" data-match="${m.id}" data-winner="" ${editing ? 'data-update-result="true"' : ''}>Unentschieden</button>
             </div>`;
         })
         .join('');
@@ -854,18 +865,30 @@ function renderGroupKnockout(t, ctx) {
   const groupBlocks = (t.groups || [])
     .map((g) => {
       const groupMatches = t.matches.filter((m) => m.stage === 'group' && m.groupIndex === g.groupIndex);
-      return `<div class="section-title">Gruppe ${g.groupIndex + 1}</div>${renderRoundRobinBoard(t, teamsById, groupMatches, g.standings)}`;
+      return `
+        <section class="tournament-section-panel tournament-group-panel stack" aria-labelledby="tournament-group-${g.groupIndex}">
+          <div class="tournament-create-step-title">
+            <h3 id="tournament-group-${g.groupIndex}">Gruppe ${g.groupIndex + 1}</h3>
+            <span class="muted">Tabelle und Spielrunden</span>
+          </div>
+          ${renderRoundRobinBoard(t, teamsById, groupMatches, g.standings)}
+        </section>`;
     })
     .join('');
 
   const knockoutMatches = t.matches.filter((m) => m.stage === 'knockout');
   const knockoutHtml =
     knockoutMatches.length === 0
-      ? `<div class="section-title" style="margin-top:var(--space-4);">K.O.-Runde</div>
-         <div class="empty-state">Startet automatisch, sobald alle Gruppenspiele entschieden sind.</div>`
-      : `<div class="section-title" style="margin-top:var(--space-4);">K.O.-Runde</div>${renderBracket(t, ctx, knockoutMatches)}`;
+      ? `<section class="tournament-section-panel tournament-group-panel stack">
+           <div class="tournament-create-step-title"><h3>K.O.-Runde</h3><span class="muted">Entscheidungsphase</span></div>
+           <div class="empty-state">Startet automatisch, sobald alle Gruppenspiele entschieden sind.</div>
+         </section>`
+      : `<section class="tournament-section-panel tournament-group-panel stack">
+           <div class="tournament-create-step-title"><h3>K.O.-Runde</h3><span class="muted">Entscheidungsphase</span></div>
+           ${renderBracket(t, ctx, knockoutMatches)}
+         </section>`;
 
-  return `${groupBlocks}${knockoutHtml}`;
+  return `<div class="tournament-group-stage">${groupBlocks}${knockoutHtml}</div>`;
 }
 
 function renderTournamentTeams(t) {
@@ -907,6 +930,7 @@ function renderDetail(container, ctx) {
       <div class="empty-state">Lädt…</div>`;
     container.querySelector('#tourn-back').addEventListener('click', () => {
       currentTournamentId = null;
+      editingResultMatchId = null;
       ctx.rerender();
     });
     return;
@@ -965,6 +989,7 @@ function renderDetail(container, ctx) {
 
   container.querySelector('#tourn-back').addEventListener('click', () => {
     currentTournamentId = null;
+    editingResultMatchId = null;
     ctx.rerender();
   });
 
@@ -973,6 +998,7 @@ function renderDetail(container, ctx) {
     try {
       await api.tournaments.remove(t.id);
       currentTournamentId = null;
+      editingResultMatchId = null;
       listCache = null;
       showToast('Turnier gelöscht.');
       ctx.rerender();
@@ -984,8 +1010,15 @@ function renderDetail(container, ctx) {
   container.querySelectorAll('[data-match]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const winnerTeamId = btn.dataset.winner || null;
+      const match = t.matches.find((candidate) => candidate.id === btn.dataset.match);
       try {
-        detailCache = await api.tournaments.recordResult(t.id, btn.dataset.match, { winnerTeamId });
+        detailCache = btn.dataset.updateResult
+          ? await api.tournaments.updateResult(t.id, btn.dataset.match, {
+              winnerTeamId,
+              expectedPlayedAt: match?.playedAt,
+            })
+          : await api.tournaments.recordResult(t.id, btn.dataset.match, { winnerTeamId });
+        editingResultMatchId = null;
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });
@@ -1004,11 +1037,26 @@ function renderDetail(container, ctx) {
         return showToast('Bitte beide Ergebnisse eintragen.', { error: true });
       }
       try {
-        detailCache = await api.tournaments.recordResult(t.id, matchId, { scoreA, scoreB });
+        const match = t.matches.find((candidate) => candidate.id === matchId);
+        detailCache = btn.dataset.updateResult
+          ? await api.tournaments.updateResult(t.id, matchId, {
+              scoreA,
+              scoreB,
+              expectedPlayedAt: match?.playedAt,
+            })
+          : await api.tournaments.recordResult(t.id, matchId, { scoreA, scoreB });
+        editingResultMatchId = null;
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });
       }
+    });
+  });
+
+  container.querySelectorAll('[data-edit-result]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      editingResultMatchId = btn.dataset.editResult;
+      ctx.rerender();
     });
   });
 }

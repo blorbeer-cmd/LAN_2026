@@ -231,8 +231,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   above a centered, locally scrollable bracket; team cards use at most two columns. The proposal
   grid follows the same two-column cap and uses draggable `.tournament-drag-player` rows, with
   touch selection and keyboard arrows as equivalent input paths. The create form separates
-  „Auslosung“ from „Turniermodus“ through two bordered `.tournament-create-step` panels with a
-  restrained accent rail instead of numbered badges.
+  „Auslosung“ from „Modus“ through reusable bordered `.tournament-section-panel` sections with a
+  restrained accent rail instead of numbered badges. The same section pattern groups each
+  tournament group with its table and rounds. Result controls remain compact and decided matches
+  expose an explicit edit action.
 
 Prefer composition of these primitives over view-specific copies. A new component
 class needs a distinct reusable purpose; a one-page selector that merely restates a
@@ -338,8 +340,6 @@ The current, complete list of such exceptions in `server/public`:
 
 - **`analytics.js`'s Arcade timeline chart** (`renderArcadeTimelineChart`) — its 2px bar
   corner-radius is sized against the chart's own thin bars, not the radius scale.
-- **`.bracket-score-input`** (`style.css`) — its 4px/2px padding is tuned to
-  fit two digits inside the input's fixed 34px width.
 - **`.dt-time-select`** and the native `select` chevron padding (`style.css`)
   — the wider side clears each element's own chevron icon; the 11px vertical
   rhythm matches the other inputs' `11px var(--space-3)` padding exactly, it's

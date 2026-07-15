@@ -244,6 +244,11 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(payload),
       }),
+    updateResult: (tournamentId, matchId, payload) =>
+      apiFetch(`/api/tournaments/${tournamentId}/matches/${matchId}/result`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }),
     remove: (id) => apiFetch(`/api/tournaments/${id}`, { method: 'DELETE' }),
   },
 

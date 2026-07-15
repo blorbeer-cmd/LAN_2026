@@ -425,6 +425,9 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
   }
 
   if (fromTeamIndex !== toTeamIndex) {
+    if (teams[fromTeamIndex].players.length <= 1) {
+      return res.status(409).json({ error: 'Ein Team kann nicht komplett leer werden.' });
+    }
     const [player] = teams[fromTeamIndex].players.splice(
       teams[fromTeamIndex].players.findIndex((p) => p.id === playerId),
       1
