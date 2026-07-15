@@ -58,6 +58,10 @@
   --tap-target-size: 44px;
   --info-popover-max-width: 320px;
   --selection-card-min-width: 160px;
+  --seating-seat-width: var(--selection-card-min-width);
+  --seating-seat-height: calc(var(--avatar-size-lg) + var(--space-2));
+  --seating-seat-width-compact: calc(var(--avatar-size-lg) + var(--space-4));
+  --seating-seat-height-compact: calc(var(--row-min-h) + var(--space-5));
   --assignment-select-width: 112px;
   --notification-panel-width: 360px;
   --search-panel-width: 640px;
@@ -4011,6 +4015,7 @@ input[type='number'].tournament-score-input {
 }
 .seating-side-seats {
   display: flex;
+  align-items: center;
   justify-content: center;
   gap: var(--space-2);
 }
@@ -4038,8 +4043,12 @@ input[type='number'].tournament-score-input {
   color: var(--text);
 }
 .seating-seat {
-  min-width: 76px;
-  min-height: 56px; /* fits the gamer name plus the small real-name line below it */
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: var(--seating-seat-width);
+  height: var(--seating-seat-height); /* fits the gamer name plus the small real-name line below it */
+  min-width: var(--seating-seat-width);
+  min-height: var(--seating-seat-height);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4211,13 +4220,27 @@ input[type='number'].tournament-score-input {
   color: var(--text);
   font-size: var(--font-size-sm);
 }
-@media (max-width: 639px) {
+@media (max-width: 859px) { /* --bp-lg */
   .seating-plan {
-    grid-template-columns: minmax(52px, .6fr) minmax(130px, 1.5fr) minmax(52px, .6fr);
-    padding: var(--space-2);
+    --seating-seat-width: calc(var(--selection-card-min-width) - var(--space-8));
   }
-  .seating-seat { min-width: 0; min-height: 50px; flex-direction: column; }
-  .seating-seat-names { max-width: 62px; align-items: center; text-align: center; }
+}
+
+@media (max-width: 639px) { /* --bp-md */
+  .seating-plan {
+    --seating-seat-width: var(--seating-seat-width-compact);
+    --seating-seat-height: var(--seating-seat-height-compact);
+    grid-template-columns: var(--seating-seat-width) minmax(130px, 1.5fr) var(--seating-seat-width);
+    padding: var(--space-2);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .seating-seat { flex-direction: column; }
+  .seating-seat-names {
+    max-width: calc(var(--seating-seat-width) - var(--space-2));
+    align-items: center;
+    text-align: center;
+  }
   .seating-control-grid { grid-template-columns: repeat(2, 1fr); }
 }
 

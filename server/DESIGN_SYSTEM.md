@@ -164,6 +164,8 @@ scale step worth adding here instead).
 responsive on smaller screens.
 `--selection-card-min-width` (160px) controls when player checkbox cards reflow into additional
 columns without making names or avatars too cramped.
+`--seating-seat-width` / `--seating-seat-height` and their compact counterparts keep every place
+around the physical seating plan the same size; the compact size preserves that equality on phones.
 `--assignment-select-width` (112px) keeps repeated player-to-team selectors aligned independently
 of player-name length.
 `--notification-panel-width` (360px) caps the header notification center while it remains
@@ -228,6 +230,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the shared live state as green „Spielt“, yellow „Pause“ or red „Offline“. Its German title and
   accessible label preserve the meaning beyond color. Playing and pause indicators pulse gently,
   while offline stays static; the global reduced-motion rule disables that motion when requested.
+  Every `.seating-seat` uses the same width and height on all four table sides, so vertical sides
+  no longer stretch into wide rows. Phones switch all four sides to one shared compact size and
+  keep exceptionally narrow layouts locally scrollable instead of widening the page.
 - **Team formation** — the Teams view places „Auslosung“ and „Captain Draft“ inside one main card
   as equal `.tournament-section-panel` sections with the shared accent rail. Draw participants and
   draft participants are independent `.tournament-player-grid` checkbox selections; captains are
