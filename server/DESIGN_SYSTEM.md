@@ -307,8 +307,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   role/readiness at the right, a direct join action in a free-slot row and host/member actions in a
   separated full-width footer. Goal and controls are explanation text, so one
   info tooltip directly beside the lobby title replaces the former standalone information cards.
-  Statistics use the concise title „Statistiken“ and place the selected game's results in an
-  accented `.tournament-section-panel`; player rows reuse `.leaderboard-list-grid` for the shared
+  Statistics use the concise title „Statistiken“ and place the selected game's results in a plain
+  nested card without an accent rail; player rows reuse `.leaderboard-list-grid` for the shared
   one-/two-column ranking presentation and spell out wins and losses in German.
 - **Leaderboard** — The concise page title is „Rang“. The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;

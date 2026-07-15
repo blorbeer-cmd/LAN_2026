@@ -260,7 +260,7 @@ function arcadeStatsHtml() {
     .join('');
   return `
     ${tabs}
-    <section class="tournament-section-panel stack arcade-stat-game">
+    <section class="card stack arcade-stat-game">
       <div class="row-between">
         <strong>${escapeHtml(game.title)}</strong>
         <span class="badge">${arcadeMatchCountLabel(game.matches)}</span>
