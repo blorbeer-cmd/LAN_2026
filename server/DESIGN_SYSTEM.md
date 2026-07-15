@@ -279,6 +279,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   The destinations below „Mehr“ follow this same hierarchy without adding decorative accent rails:
   their major workflows and datasets are main groups, while entries, players, orders and results
   remain subordinate cards or rows inside those groups.
+- **Arrival carpools** — Anreise and Abreise remain separate full-width accented panels. Their
+  carpool cards use two columns from `--bp-md`, but an odd final card deliberately keeps one-column
+  width instead of spanning the row; phones stay single-column. Every card repeats Start and
+  Ankunft vertically and pairs the textual free-seat count with a Lucide armchair map, where free
+  and occupied passenger seats remain visually distinct.
 - **Leaderboard** — The concise page title is „Rang“. The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
   each remains a distinct `.tournament-section-panel` with the shared accent rail. „Spielzeit pro

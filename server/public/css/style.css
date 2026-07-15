@@ -2113,6 +2113,31 @@ button.card {
 .arrivals-carpool-seats {
   flex-shrink: 0;
 }
+.arrivals-carpool-seat-map {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.arrivals-carpool-seat {
+  display: inline-flex;
+  width: var(--space-6);
+  height: var(--space-6);
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+.arrivals-carpool-seat.is-free {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg);
+}
+.arrivals-carpool-seat .ui-icon {
+  width: var(--space-4);
+  height: var(--space-4);
+}
 .arrivals-carpool-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -2225,6 +2250,12 @@ button.card {
 @media (hover: hover) {
   .arrivals-sort-button:hover {
     color: var(--accent);
+  }
+}
+@media (min-width: 640px) { /* --bp-md */
+  .two-column-card-grid.arrivals-carpool-grid > :only-child,
+  .two-column-card-grid.arrivals-carpool-grid > :last-child:nth-child(odd) {
+    grid-column: auto;
   }
 }
 @media (max-width: 639px) {

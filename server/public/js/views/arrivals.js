@@ -66,6 +66,10 @@ function renderCarpool(c, direction, myId) {
   const isDriver = c.driverId === myId;
   const amIn = Boolean(myId && c.members.some((m) => m.id === myId));
   const full = c.seatsFree <= 0;
+  const seatMapHtml = Array.from({ length: c.seatsTotal }, (_, index) => {
+    const isFree = index < c.seatsFree;
+    return `<span class="arrivals-carpool-seat ${isFree ? 'is-free' : 'is-occupied'}">${icon('armchair')}</span>`;
+  }).join('');
   const memberHtml =
     c.members.length > 0
       ? `<div class="arrivals-member-list">${c.members
@@ -102,6 +106,9 @@ function renderCarpool(c, direction, myId) {
         <span class="badge arrivals-carpool-seats">${c.seatsFree}/${c.seatsTotal} frei</span>
       </div>
       <div class="arrivals-time-pair">${planLines}</div>
+      <div class="arrivals-carpool-seat-map" role="img" aria-label="${c.seatsFree} von ${c.seatsTotal} Plätzen frei">
+        ${seatMapHtml}
+      </div>
       <div class="arrivals-carpool-members">
         <span class="field-label">Mitfahrende</span>
         ${memberHtml}
@@ -129,7 +136,7 @@ function renderCarpoolSection(direction, title, myId) {
       </div>
       ${
         rows.length
-          ? `<div class="two-column-card-grid">${rows.map((c) => renderCarpool(c, direction, myId)).join('')}</div>`
+          ? `<div class="two-column-card-grid arrivals-carpool-grid">${rows.map((c) => renderCarpool(c, direction, myId)).join('')}</div>`
           : `<div class="muted arrivals-carpool-empty">Noch keine Fahrgemeinschaft.</div>`
       }
     </section>`;
