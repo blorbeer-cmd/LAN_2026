@@ -109,6 +109,8 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
   Zugangsbereich und lassen sich dort jeweils über eine eigene Symbolaktion kopieren. Ergebnisfelder
   und Speichern-/Bearbeiten-Aktion im Turnierbaum belegen getrennte Flächen innerhalb der Matchbox
   und überlappen auch bei einem einzelnen Finale nicht.
+- Teams, Teilnehmende und entschiedene Partien bilden unter „Turnierstatus“ einen eigenen Abschnitt,
+  statt optisch zum darüberliegenden Lobby-Zugang zu gehören.
 - Teamkarten in der Detailansicht und in der Auslosung nutzen höchstens zwei Spalten. In der
   Auslosung lassen sich Gamer per Drag-and-drop, Touch-Auswahl oder Pfeiltasten zwischen Teams
   verschieben; das bisherige Team-Dropdown entfällt.

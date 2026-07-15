@@ -1022,6 +1022,7 @@ function renderDetail(container, ctx) {
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
     </div>
     ${lobbyInfo}
+    <div class="section-title">Turnierstatus</div>
     <div class="tournament-detail-stats" aria-label="Turnierstatus">
       <div class="card tournament-stat"><span class="muted">Teams</span><strong>${t.teams.length}</strong></div>
       <div class="card tournament-stat"><span class="muted">Teilnehmende</span><strong>${participantCount}</strong></div>
