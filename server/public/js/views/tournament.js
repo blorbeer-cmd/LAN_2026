@@ -962,22 +962,22 @@ function renderDetail(container, ctx) {
 
   const lobbyInfo =
     t.lobbyName || t.lobbyPassword
-      ? `<section class="card tournament-lobby-info" aria-label="Lobby-Zugang">
-           <div class="tournament-lobby-title">Lobby-Zugang</div>
-           <div class="tournament-lobby-access">
-             ${
-               t.lobbyName
-                 ? `<div class="tournament-lobby-credential"><span>Lobby</span><strong>${escapeHtml(t.lobbyName)}</strong></div>`
-                 : ''
-             }
-             ${
-               t.lobbyPassword
-                 ? `<div class="tournament-lobby-credential"><span>Passwort</span><strong>${escapeHtml(t.lobbyPassword)}</strong></div>`
-                 : ''
-             }
-           </div>
-           <div class="muted tournament-lobby-note">Das obere Team im Turnierbaum eröffnet die Lobby.</div>
-         </section>`
+      ? `<div class="section-title">Lobby-Zugang</div>
+         <section class="card tournament-lobby-info" aria-label="Lobby-Zugang">
+          <div class="tournament-lobby-access">
+            ${
+              t.lobbyName
+                ? `<div class="tournament-lobby-credential"><span>Lobby</span><strong>${escapeHtml(t.lobbyName)}</strong></div>`
+                : ''
+            }
+            ${
+              t.lobbyPassword
+                ? `<div class="tournament-lobby-credential"><span>Passwort</span><strong>${escapeHtml(t.lobbyPassword)}</strong></div>`
+                : ''
+            }
+          </div>
+          <div class="muted tournament-lobby-note">Das obere Team im Turnierbaum eröffnet die Lobby.</div>
+        </section>`
       : '';
 
   container.innerHTML = `

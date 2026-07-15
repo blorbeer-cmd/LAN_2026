@@ -1155,14 +1155,6 @@ input[type='number']::-webkit-inner-spin-button {
   border-color: var(--accent);
   background: var(--bg-elevated-2);
 }
-.tournament-lobby-title {
-  flex-basis: 100%;
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
 .tournament-lobby-access {
   display: flex;
   flex: 1 1 auto;
