@@ -14,7 +14,7 @@ import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { domainIcon } from '../domainIcons.js';
 import { moveTournamentDraftPlayer } from '../tournamentTeamDraft.js';
 import { selectActiveLobbyMatches } from '../tournamentLobbies.js';
-import { playerSkillHtml } from '../skillDisplay.js';
+import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
 
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
@@ -308,8 +308,10 @@ function renderCreateForm(el, ctx) {
           .map(
             (t, i) => `
           <div class="team-card tournament-draft-team${selectedTeamIndex !== -1 && selectedTeamIndex !== i ? ' is-select-target' : ''}" data-tourn-drop-team="${i}" role="group" aria-label="${escapeHtml(t.name)}">
-            <input type="text" data-team-name="${i}" value="${escapeHtml(t.name)}" maxlength="60" style="margin-bottom:var(--space-1);font-weight:var(--font-weight-bold);" />
-            <div class="muted" style="font-size:var(--font-size-xs);margin-bottom:var(--space-2);">Score ${t.totalRating}</div>
+            <div class="team-card-header tournament-team-skill-header">
+              <input type="text" data-team-name="${i}" value="${escapeHtml(t.name)}" maxlength="60" />
+              ${teamSkillHtml(t.players, selectedGameId)}
+            </div>
             ${t.players
               .map(
                 (p) => `
@@ -1018,7 +1020,10 @@ function renderTournamentTeams(t) {
       <div class="team-card tournament-team-card">
         <div class="team-card-header">
           <span>${escapeHtml(team.name)}</span>
-          <span class="muted">${team.players.length} Spieler</span>
+          <span class="row" style="gap:var(--space-2);">
+            <span class="muted">${team.players.length} Spieler</span>
+            ${teamSkillHtml(team.players, t.gameId)}
+          </span>
         </div>
         ${
           team.players.length

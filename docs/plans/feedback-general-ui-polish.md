@@ -162,6 +162,8 @@ Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.j
 - Die Turnierseite nutzt dieselbe spielbezogene Skill-Anzeige wie die Teams-Seite: in der
   Teilnehmerauswahl, der ausgelosten Teamvorschau und den Teams der Turnierdetails. Beide Ansichten
   teilen dafür einen Helper, damit Symbol, fehlender Wert, Tooltip und Screenreader-Text gleich bleiben.
+  In den Teamüberschriften steht zusätzlich der dynamisch aus den zugeordneten Spielern summierte
+  Gesamt-Skill. Fehlende Einzelbewertungen zählen dabei wie in der Auslosungslogik neutral mit `5`.
 
 Betroffene Dateien: `server/public/js/views/matchmaking.js`,
 `server/public/js/views/tournament.js`, `server/public/js/views/votes.js`,

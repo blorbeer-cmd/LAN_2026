@@ -13,7 +13,7 @@ import { openMatchForm } from './leaderboard.js';
 import { getMyId } from '../whoami.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { domainIcon } from '../domainIcons.js';
-import { playerSkillHtml } from '../skillDisplay.js';
+import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -113,7 +113,7 @@ function renderDrawCard(draw, { editable, showGame = false }) {
 
       return `
       <div class="team-card tournament-draft-team matchmaking-draw-team${isWinner ? ' is-winner' : ''}${selectedTeamIndex !== -1 && selectedTeamIndex !== i ? ' is-select-target' : ''}" role="group" aria-label="Team ${i + 1}${isWinner ? ', Gewinner' : ''}" ${editable ? `data-draw-drop-team="${i}" data-draw-id="${draw.id}"` : ''}>
-        <div class="team-card-header"><span>Team ${i + 1}</span><span>Score ${t.totalRating}</span></div>
+        <div class="team-card-header"><span>Team ${i + 1}</span>${teamSkillHtml(t.players, draw.gameId)}</div>
         ${resultLine}
         ${t.players
           .map(
@@ -418,7 +418,10 @@ function renderDraftBoard(draft, ctx) {
     .map(
       (t, i) => `
       <div class="team-card" ${draft.turnCaptainIndex === i ? 'style="border-color:var(--accent);"' : ''}>
-        <div class="team-card-header"><span>${escapeHtml(t.captain.name)}</span>${draft.turnCaptainIndex === i ? '<span style="color:var(--accent);">am Zug</span>' : ''}</div>
+        <div class="team-card-header">
+          <span>${escapeHtml(t.captain.name)}</span>
+          <span class="row" style="gap:var(--space-2);">${teamSkillHtml(t.players, draft.gameId)}${draft.turnCaptainIndex === i ? '<span style="color:var(--accent);">am Zug</span>' : ''}</span>
+        </div>
         ${t.players.map((p) => `<div class="team-player">${avatarHtml(p, 20)} <span class="team-player-name">${escapeHtml(p.name)}</span>${playerSkillHtml(p.id, draft.gameId)}</div>`).join('')}
       </div>`
     )

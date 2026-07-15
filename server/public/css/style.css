@@ -2878,9 +2878,21 @@ input[type='range'].preference-row-slider {
 }
 .team-card-header {
   display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: var(--space-2);
   font-weight: var(--font-weight-bold);
   margin-bottom: var(--space-2);
+}
+.tournament-team-skill-header input {
+  width: auto;
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  font-weight: var(--font-weight-bold);
+}
+.team-skill-total {
+  flex: 0 0 auto;
 }
 .team-player {
   display: flex;
