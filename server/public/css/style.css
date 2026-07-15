@@ -1578,10 +1578,8 @@ button.card {
   font-size: var(--font-size-2xl);
   line-height: var(--line-height-tight);
 }
-/* Reserves space for a 2-line description regardless of whether this
-   particular row's text actually wraps that far, so a list of otherwise
-   identical rows (the "Mehr" hub) doesn't have some entries visibly taller
-   than others just because their blurb is a few words longer. */
+/* Reserves space for a 2-line description so repeated status and overview
+   cards stay the same height when individual blurbs wrap differently. */
 .list-row-desc {
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -1591,6 +1589,11 @@ button.card {
   font-size: var(--font-size-xs);
 }
 .more-card {
+  display: grid;
+  grid-template-columns:
+    calc(var(--row-icon-size) + var(--space-2)) minmax(0, 1fr)
+    calc(var(--row-icon-size) + var(--space-2));
+  align-items: center;
   min-height: calc(var(--row-min-h) + var(--space-5));
   gap: var(--space-4);
   padding: var(--space-5);
@@ -1605,6 +1608,17 @@ button.card {
 }
 .more-card .player-name {
   font-size: var(--font-size-lg);
+}
+.more-card-title {
+  min-width: 0;
+  text-align: center;
+}
+.more-card-chevron {
+  width: calc(var(--row-icon-size) + var(--space-2));
+  height: calc(var(--row-icon-size) + var(--space-2));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .info-board-title {
   font-size: var(--font-size-lg);
