@@ -83,7 +83,6 @@ function renderCarpool(c, direction, myId) {
       ? `<div class="arrivals-time-line"><span>Start</span><strong>${c.startAt ? formatDateTime(c.startAt) : 'Zeit offen'}${c.startLocation ? ` ab ${escapeHtml(c.startLocation)}` : ''}</strong></div>`
       : '',
     c.etaAt ? `<div class="arrivals-time-line"><span>Ankunft</span><strong>${formatDateTime(c.etaAt)}</strong></div>` : '',
-    `<div class="arrivals-time-line"><span>Plätze</span><strong>${c.seatsFree}/${c.seatsTotal} frei</strong></div>`,
   ]
     .filter(Boolean)
     .join('');
@@ -102,12 +101,10 @@ function renderCarpool(c, direction, myId) {
   return `
     <div class="card stack arrivals-carpool-row" data-carpool="${c.id}">
       <div class="arrivals-carpool-head">
-        <div>
-          <strong>${escapeHtml(c.label)}</strong>
-          <div class="muted" style="font-size:var(--font-size-xs);">Angelegt ${formatDateTime(c.createdAt)}</div>
-        </div>
+        <strong>${escapeHtml(c.label)}</strong>
+        <span class="badge arrivals-carpool-seats">${c.seatsFree}/${c.seatsTotal} frei</span>
       </div>
-      <div class="arrivals-time-pair">${planLines}</div>
+      ${planLines ? `<div class="arrivals-time-pair">${planLines}</div>` : ''}
       <div class="arrivals-carpool-members">
         <span class="field-label">Mitfahrende</span>
         ${memberHtml}
