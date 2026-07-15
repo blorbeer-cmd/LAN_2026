@@ -987,7 +987,7 @@ input[type='number']::-webkit-inner-spin-button {
 .tournament-stat strong {
   font-size: var(--font-size-xl);
 }
-.tournament-list-grid {
+.card-grid.tournament-list-grid {
   grid-template-columns: minmax(0, 1fr);
 }
 .tournament-list-section {
@@ -1020,7 +1020,7 @@ input[type='number']::-webkit-inner-spin-button {
   width: 100%;
   min-height: calc(var(--row-min-h) + var(--space-4));
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-3);
   text-align: left;
@@ -1114,7 +1114,7 @@ input[type='number']::-webkit-inner-spin-button {
   overflow: hidden;
 }
 @media (min-width: 640px) { /* --bp-md */
-  .tournament-list-grid {
+  .card-grid.tournament-list-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .tournament-list-grid .tournament-list-card:only-child {
