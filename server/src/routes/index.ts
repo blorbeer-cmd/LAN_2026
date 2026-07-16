@@ -56,6 +56,7 @@ apiRouter.use('/auth', authRouter);
 const KIOSK_GET_PATHS = [
   /^\/live\/?$/,
   /^\/votes\/?$/,
+  /^\/votes\/kiosk\/?$/,
   /^\/leaderboard\/?$/,
   /^\/tournaments(?:\/[^/]+)?\/?$/,
   /^\/food-orders\/?$/,

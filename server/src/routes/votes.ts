@@ -283,18 +283,24 @@ votesRouter.get('/', (req, res) => {
 // The regular GET /api/votes stays redacted while open, so this does not
 // change the anti-bandwagoning behavior on phones; the room display's masks
 // prevent its live ranking from influencing those votes too.
-votesRouter.get('/kiosk', (_req, res) => {
-  const state = readRoundState();
-  const meta = getRoundMeta(state.round);
-  const currentResults = state.open ? buildResults(state.round, state.mode, meta.selectedGameIds) : [];
+votesRouter.get('/kiosk', (req, res) => {
+  const groupId = req.group!.id;
+  const state = readRoundState(groupId);
+  const meta = getRoundMeta(groupId, state.round);
+  const currentResults = state.open ? buildResults(groupId, state.round, state.mode, meta.selectedGameIds) : [];
   const currentTotalVoters = state.open
-    ? (db.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM votes WHERE round = ?').get(state.round) as { n: number }).n
+    ? (
+        db.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM votes WHERE group_id = ? AND round = ?').get(
+          groupId,
+          state.round,
+        ) as { n: number }
+      ).n
     : 0;
   const closedRound = state.open
     ? undefined
-    : (db.prepare('SELECT closed_at AS closedAt FROM vote_rounds WHERE round = ?').get(state.round) as
-        | { closedAt: number | null }
-        | undefined);
+    : (db
+        .prepare('SELECT closed_at AS closedAt FROM vote_rounds WHERE group_id = ? AND round = ?')
+        .get(groupId, state.round) as { closedAt: number | null } | undefined);
   const resultRevealAt = closedRound?.closedAt ? closedRound.closedAt + KIOSK_RESULT_REVEAL_DELAY_MS : null;
   const resultExpiresAt = resultRevealAt ? resultRevealAt + KIOSK_RESULT_DURATION_MS : null;
   const recentResult = resultExpiresAt && resultExpiresAt > Date.now()
@@ -304,9 +310,12 @@ votesRouter.get('/kiosk', (_req, res) => {
         closedAt: closedRound!.closedAt,
         revealAt: resultRevealAt,
         expiresAt: resultExpiresAt,
-        results: buildResults(state.round, state.mode, meta.selectedGameIds),
+        results: buildResults(groupId, state.round, state.mode, meta.selectedGameIds),
         totalVoters: (
-          db.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM votes WHERE round = ?').get(state.round) as { n: number }
+          db.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM votes WHERE group_id = ? AND round = ?').get(
+            groupId,
+            state.round,
+          ) as { n: number }
         ).n,
       }
     : null;

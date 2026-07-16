@@ -4,7 +4,7 @@
 // removed atomically without touching a real LAN.
 
 import { nanoid } from 'nanoid';
-import { db } from './db';
+import { db, DEFAULT_GROUP_ID } from './db';
 import { deleteTestUsers } from './testUsers';
 
 const FIRST_TEST_YEAR = 2015;
@@ -55,20 +55,20 @@ export function seedHallOfFameTestData(): HallOfFameSeedResult {
 
     const insertEvent = db.prepare(
       `INSERT INTO events
-       (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at, is_test)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, 1)`
+       (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at, is_test, group_id)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, 1, ?)`
     );
     const insertParticipant = db.prepare(
       'INSERT INTO event_participants (event_id, player_id) VALUES (?, ?)'
     );
     const insertMatch = db.prepare(
-      'INSERT INTO matches (id, game_id, event_id, played_at, result) VALUES (?, ?, ?, ?, ?)'
+      'INSERT INTO matches (id, game_id, event_id, played_at, result, group_id) VALUES (?, ?, ?, ?, ?, ?)'
     );
     const insertTournament = db.prepare(
       `INSERT INTO tournaments
        (id, event_id, game_id, name, format, two_legged, track_score, group_count,
-        advancers_per_group, status, created_at, lobby_name, lobby_password)
-       VALUES (?, ?, ?, ?, 'single_elimination', 0, 1, NULL, NULL, 'completed', ?, NULL, NULL)`
+        advancers_per_group, status, created_at, lobby_name, lobby_password, group_id)
+       VALUES (?, ?, ?, ?, 'single_elimination', 0, 1, NULL, NULL, 'completed', ?, NULL, NULL, ?)`
     );
     const insertTeam = db.prepare(
       'INSERT INTO tournament_teams (id, tournament_id, name, player_ids, group_index) VALUES (?, ?, ?, ?, NULL)'
@@ -93,7 +93,8 @@ export function seedHallOfFameTestData(): HallOfFameSeedResult {
         endsAt,
         year % 2 === 0 ? 'Hamburg' : 'Melle',
         'Historische Testdaten für die Hall of Fame.',
-        endsAt
+        endsAt,
+        DEFAULT_GROUP_ID
       );
       for (const player of players) insertParticipant.run(eventId, player.id);
 
@@ -113,7 +114,8 @@ export function seedHallOfFameTestData(): HallOfFameSeedResult {
           games[(index + year) % games.length].id,
           eventId,
           startsAt + (index + 1) * 2 * 60 * 60 * 1000,
-          JSON.stringify(result)
+          JSON.stringify(result),
+          DEFAULT_GROUP_ID
         );
         matchCount += 1;
       }
@@ -124,7 +126,7 @@ export function seedHallOfFameTestData(): HallOfFameSeedResult {
         const game = games[(year + index * 2) % games.length];
         const tournamentId = nanoid();
         const playedAt = startsAt + (index + 1) * 12 * 60 * 60 * 1000;
-        insertTournament.run(tournamentId, eventId, game.id, `${game.name} Cup ${year}`, playedAt);
+        insertTournament.run(tournamentId, eventId, game.id, `${game.name} Cup ${year}`, playedAt, DEFAULT_GROUP_ID);
 
         const teams = ['Blau', 'Pink', 'Violett', 'Grün'].map((label, teamIndex) => {
           const first = players[(year + index + teamIndex * 2) % players.length];
