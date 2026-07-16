@@ -1848,8 +1848,15 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
   await page.waitForSelector('.kiosk-vote-final >> text=Ergebnis im Detail', { timeout: 7_000 });
   assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result').count(), 10);
   assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result.is-concealed').count(), 0);
+  assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result.is-leading').count(), 0);
+  assert.deepEqual(await page.locator('.kiosk-vote-final-title').allTextContents(), ['Gewinner', 'Ergebnis im Detail']);
+  assert.equal(
+    await page.locator('.kiosk-vote-final-title').evaluateAll((titles) => titles.every((title) => getComputedStyle(title).fontSize === getComputedStyle(titles[0]).fontSize)),
+    true,
+  );
   await page.waitForSelector(`.kiosk-vote-winner:has-text("${games[0].name}")`);
-  assert.equal(await page.locator('.kiosk-vote-final > :first-child').getAttribute('class'), 'kiosk-vote-winner');
+  assert.equal(await page.locator('.kiosk-vote-final > :first-child').getAttribute('class'), 'kiosk-vote-winner-section');
+  assert.ok((await page.locator('.kiosk-vote-winner').evaluate((winner) => getComputedStyle(winner).backgroundImage)).includes('linear-gradient'));
   await page.waitForSelector(`.kiosk-vote-final .kiosk-vote-result:has-text("${games[0].name}")`);
   assert.ok(await page.locator('.kiosk-vote-final').evaluate((result) => {
     const resultBox = result.getBoundingClientRect();

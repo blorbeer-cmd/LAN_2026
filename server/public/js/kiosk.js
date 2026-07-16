@@ -217,7 +217,7 @@ function kioskVoteScore(vote, result) {
   return vote.mode === 'points' ? `${result.points} P` : `${result.votes} ${result.votes === 1 ? 'Stimme' : 'Stimmen'}`;
 }
 
-function renderKioskVoteRows(vote, { concealed = false } = {}) {
+function renderKioskVoteRows(vote, { concealed = false, highlightLeading = true } = {}) {
   const scored = vote.results.filter((result) => result.score > 0);
   if (scored.length === 0) return `<div class="muted kiosk-vote-empty">Noch keine Stimmen.</div>`;
   const maxScore = Math.max(...scored.map((result) => result.score));
@@ -231,7 +231,7 @@ function renderKioskVoteRows(vote, { concealed = false } = {}) {
       const highlighted = result.score === maxScore;
       const score = kioskVoteScore(vote, result);
       const gameName = concealed ? concealedGameLabel(result.gameId, vote.round) : escapeHtml(result.gameName);
-      return `<div class="kiosk-vote-result ${highlighted ? 'is-leading' : ''} ${concealed ? 'is-concealed' : ''}">
+      return `<div class="kiosk-vote-result ${highlighted && highlightLeading ? 'is-leading' : ''} ${concealed ? 'is-concealed' : ''}">
         <span class="lb-rank">${rank}</span>
         <strong ${concealed ? 'aria-label="Spiel verborgen"' : ''}>${gameName}</strong>
         <span class="lb-points">${score}</span>
@@ -246,12 +246,14 @@ function renderKioskVoteWinners(vote) {
   const winners = scored.filter((result) => result.score === maxScore);
   if (winners.length === 0) return '';
   return `
-    <div class="kiosk-vote-winner">
-      <span class="muted">Gewinner</span>
-      <div class="kiosk-vote-winner-games">
-        ${winners.map((winner) => `<strong>${escapeHtml(winner.gameName)}</strong>`).join('')}
+    <div class="kiosk-vote-winner-section">
+      <div class="section-title kiosk-vote-final-title">Gewinner</div>
+      <div class="kiosk-vote-winner">
+        <div class="kiosk-vote-winner-games">
+          ${winners.map((winner) => `<strong>${escapeHtml(winner.gameName)}</strong>`).join('')}
+        </div>
+        <span class="lb-points">${kioskVoteScore(vote, winners[0])}</span>
       </div>
-      <span class="lb-points">${kioskVoteScore(vote, winners[0])}</span>
     </div>`;
 }
 
@@ -294,10 +296,10 @@ function renderVotes(votes) {
       <div class="kiosk-vote-final">
         ${renderKioskVoteWinners(result)}
         <div class="kiosk-vote-final-header">
-          <strong>Ergebnis im Detail</strong>
+          <div class="section-title kiosk-vote-final-title">Ergebnis im Detail</div>
           <span class="muted">${result.title ? `${escapeHtml(result.title)} · ` : ''}${result.totalVoters} Teilnehmer</span>
         </div>
-        ${renderKioskVoteRows(result)}
+        ${renderKioskVoteRows(result, { highlightLeading: false })}
       </div>`;
   } else {
     clearVoteDisplayTimer();

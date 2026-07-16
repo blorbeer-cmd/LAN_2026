@@ -319,8 +319,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   canvases reduce only row padding and gaps so the fixed dashboard still needs no scrollbar. After
   a round closes, a five-second countdown hides every result and reuses Arcade's large layered
   gradient/glow number with its per-second pop effect. The revealed view starts at the top rather
-  than floating vertically centered: a gold-bordered winner surface comes first (including every
-  tied winner), followed by the complete ranking under „Ergebnis im Detail“. It remains visible for ten minutes,
+  than floating vertically centered: the standard section title „Gewinner“ introduces a separately
+  purple-pink gradient-bordered winner surface (including every tied winner). The smaller standard
+  section title „Ergebnis im Detail“ then introduces the complete neutral ranking; its leading rows
+  do not repeat the winner border. The result remains visible for ten minutes,
   based on the persisted close timestamp; then the card switches to the empty state. A new
   open round replaces that result immediately. Without an open or recently closed round, the card
   only states that no vote is running. The regular personal Vote
