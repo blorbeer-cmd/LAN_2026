@@ -300,7 +300,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   without touching real events.
   The seating editor follows the same grouped-page hierarchy: the editable plan comes first, followed
   by „Spieler“ and „Konfiguration“. Unassigned players use the shared rectangular two-column player
-  rows instead of pills; phones keep one column.
+  rows instead of pills; phones keep one column. Empty seats use an accent border, gradient number
+  marker and explicit „Frei“ label. Players without a real name omit that empty second line so their
+  gamertag remains vertically centered with the avatar. The automatic monitor-neighbor and save
+  behavior use short visible labels with their explanations in adjacent info tooltips.
 - **Kiosk dashboard** — Kiosk is a fixed, read-only TV canvas with no page or card scrollbars. Its
   four primary cards remain a 2×2 grid and distribute live players, rankings, tournament standings,
   groups and matches across internal columns, ordered Live-Status and Rangliste above Abstimmung

@@ -4565,13 +4565,18 @@ input[type='number'].tournament-score-input {
   justify-content: center;
   gap: var(--space-1);
   padding: var(--space-1);
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-md);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
   background: var(--bg-elevated);
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   text-align: center;
   transition: border-color .15s ease, background .15s ease, transform .15s ease;
+}
+.seating-seat:not(.is-occupied) {
+  border-color: var(--accent);
+  background: var(--bg-elevated-2);
+  color: var(--text);
 }
 .seating-seat.is-occupied {
   border: 1px solid var(--border);
@@ -4646,7 +4651,7 @@ input[type='number'].tournament-score-input {
     box-shadow: 0 0 0 var(--space-1) var(--seating-status-halo);
   }
 }
-.seating-plan.is-readonly .seating-seat-realname.is-empty {
+.seating-seat-realname.is-empty {
   display: none;
 }
 .seating-seat.is-drag-target {
@@ -4675,8 +4680,13 @@ input[type='number'].tournament-score-input {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: var(--bg-surface);
-  color: var(--text-muted);
+  background: var(--accent-gradient);
+  color: var(--accent-text);
+  font-weight: var(--font-weight-bold);
+}
+.seating-seat-free-label {
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
 }
 .seating-plan.is-editable .seating-seat.is-occupied,
 .seating-pool-player {
@@ -4692,6 +4702,8 @@ input[type='number'].tournament-score-input {
   }
 }
 .seating-hint {
+  display: flex;
+  align-items: center;
   margin: 0;
   font-size: var(--font-size-xs);
 }
@@ -4709,7 +4721,11 @@ input[type='number'].tournament-score-input {
   font-size: var(--font-size-xs);
 }
 .seating-control-grid input { min-width: 0; }
-.seating-save-status { font-size: var(--font-size-xs); }
+.seating-save-status {
+  display: flex;
+  align-items: center;
+  font-size: var(--font-size-xs);
+}
 .seating-player-pool {
   min-height: calc(var(--tap-target-size) + var(--space-3));
   display: grid;

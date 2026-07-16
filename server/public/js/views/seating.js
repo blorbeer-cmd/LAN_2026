@@ -12,6 +12,7 @@ import { escapeHtml, avatarHtml, stateLabel } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { isAdmin } from '../admin.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 const SIDES = ['top', 'right', 'bottom', 'left'];
 const LABELS = { top: 'Oben', right: 'Rechts', bottom: 'Unten', left: 'Links' };
@@ -66,7 +67,7 @@ function seatHtml(layout, players, side, seat, editable) {
   const title = player ? `${player.name}${player.real_name ? ` (${player.real_name})` : ''}` : 'Freier Sitzplatz';
   return `<div class="seating-seat ${player ? 'is-occupied' : ''} ${isSelected ? 'is-selected' : ''}" data-seat-side="${side}" data-seat-index="${seat}" ${player ? `data-player-id="${player.id}"` : ''}
       ${editable && player ? 'draggable="true"' : ''} title="${escapeHtml(title)}">
-    ${player ? `${avatarHtml(player, 30)}${seatNamesHtml(player)}` : `<span class="seating-seat-number">${seat + 1}</span><span class="muted">frei</span>`}
+    ${player ? `${avatarHtml(player, 30)}${seatNamesHtml(player)}` : `<span class="seating-seat-number">${seat + 1}</span><span class="seating-seat-free-label">Frei</span>`}
   </div>`;
 }
 
@@ -98,7 +99,10 @@ function renderSideControls(layout) {
       <label>${LABELS[side]}
         <input type="number" min="0" max="12" value="${layout[`${side}Seats`]}" data-seat-count="${side}" />
       </label>`).join('')}</div>
-    <div class="muted seating-save-status">${saving ? 'Speichert…' : 'Änderungen werden automatisch gespeichert.'}</div>
+    <div class="seating-save-status title-with-info">
+      <span class="muted">${saving ? 'Speichert…' : 'Automatisch gespeichert'}</span>
+      ${infoTooltipHtml('seating-save-help', 'automatischem Speichern', 'Änderungen werden direkt gespeichert.')}
+    </div>
   </section>`;
 }
 
@@ -119,8 +123,10 @@ function renderEditor() {
     <section class="card stack grouped-page-section" aria-labelledby="seating-plan-title">
       <div class="grouped-page-section-title"><h2 id="seating-plan-title">Sitzplan</h2></div>
       ${renderSeatingPlan(layout, players, { editable: true })}
-      <p class="muted seating-hint">${icon('monitor')} Wer an derselben Tischkante nebeneinander sitzt, bekommt sich gegenseitig
-        automatisch als „Sichtbare Monitore" im Profil vorausgefüllt.</p>
+      <div class="muted seating-hint title-with-info">
+        <span>Sichtbare Monitore</span>
+        ${infoTooltipHtml('seating-monitors-help', 'sichtbaren Monitoren', 'Sitznachbarn werden automatisch als sichtbare Monitore eingetragen.')}
+      </div>
     </section>
     ${renderPool(layout, players)}
     ${renderSideControls(layout)}
@@ -287,5 +293,8 @@ export function renderSeating(container, ctx) {
     <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Sitzplan</h1>
     ${loading || cache === null ? '<div class="empty-state">Lädt…</div>' : renderEditor()}`;
-  if (cache) wireEditor(container, ctx);
+  if (cache) {
+    wireInfoTooltips(container);
+    wireEditor(container, ctx);
+  }
 }

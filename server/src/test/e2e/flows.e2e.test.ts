@@ -245,6 +245,24 @@ test('Admin mode owns the seating editor and backup tools', async () => {
   assert.deepEqual(await page.locator('.seating-editor > .grouped-page-section h2').allTextContents(), ['Sitzplan', 'Spieler', 'Konfiguration']);
   assert.equal(await page.locator('.seating-pool-player').evaluateAll((players) => players.every((player) => getComputedStyle(player).borderRadius !== '999px')), true);
   assert.equal(await page.locator('.seating-player-pool').evaluate((pool) => getComputedStyle(pool).gridTemplateColumns.split(' ').length), 2);
+  assert.ok((await page.locator('.seating-seat:not(.is-occupied)').count()) > 0);
+  assert.equal(await page.locator('.seating-seat:not(.is-occupied)').first().getByText('Frei', { exact: true }).count(), 1);
+  assert.equal(await page.locator('.seating-seat:not(.is-occupied)').first().evaluate((seat) => getComputedStyle(seat).borderStyle), 'dashed');
+  assert.notEqual(await page.locator('.seating-seat-number').first().evaluate((number) => getComputedStyle(number).backgroundImage), 'none');
+  assert.equal(await page.locator('.seating-pool-player').first().evaluate((player) => {
+    const avatar = player.querySelector('.avatar-dot, .avatar-img')!.getBoundingClientRect();
+    const name = player.querySelector('.seating-seat-name-line')!.getBoundingClientRect();
+    return Math.abs(avatar.top + avatar.height / 2 - (name.top + name.height / 2)) < 2;
+  }), true);
+  assert.equal(await page.locator('.seating-seat-realname.is-empty').first().evaluate((element) => getComputedStyle(element).display), 'none');
+  assert.equal(await page.getByText('Sichtbare Monitore', { exact: true }).count(), 1);
+  assert.equal(await page.getByText('Automatisch gespeichert', { exact: true }).count(), 1);
+  assert.equal(await page.locator('#seating-monitors-help').count(), 1);
+  assert.equal(await page.locator('#seating-save-help').count(), 1);
+  await page.click('[aria-label="Mehr Informationen zu sichtbaren Monitoren"]');
+  await page.waitForSelector('#seating-monitors-help:not([hidden])');
+  await page.click('[aria-label="Mehr Informationen zu automatischem Speichern"]');
+  await page.waitForSelector('#seating-save-help:not([hidden])');
   await page.click('[data-navigate="admin"]');
   await page.click('#admin-leave');
   await page.waitForSelector('#admin-banner', { state: 'hidden' });
