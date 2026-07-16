@@ -23,7 +23,25 @@ Bereich tatsächlich betrifft.
   Widersprüche zwischen Einstiegspunkten nicht stillschweigend auslegen, sondern melden oder im
   Rahmen eines passenden Dokumentationsauftrags beheben.
 
-## 2. Produktziele – in dieser Reihenfolge
+## 2. Session-Hygiene
+
+Vor der Bearbeitung eines neuen Nutzerauftrags still prüfen, ob der aktuelle Arbeitskontext noch
+passt:
+
+- Bei derselben Aufgabe, Phase, demselben PR und Branch in der aktuellen Session fortfahren.
+- Innerhalb derselben Aufgabe einmalig `/compact` empfehlen, wenn lange Logs, Fehlversuche oder
+  viele Zwischenschritte den relevanten Kontext deutlich überlagern.
+- Bei einer neuen Phase, einem neuen PR, einem anderen Branch oder einem wesentlich anderen Ziel die
+  Bearbeitung pausieren, eine kurze dauerhafte Übergabe sicherstellen und eine neue Session
+  empfehlen.
+- Vor einer neuen Session nicht zusätzlich `/compact` verlangen; beides sind für diesen Fall
+  Alternativen.
+- Modell und Denkstufe nur zu Beginn eines neuen Arbeitsabschnitts oder bei deutlich veränderter
+  Aufgabenart prüfen. Nur auf eine klar ungeeignete Auswahl hinweisen.
+- Wenn keine Maßnahme erforderlich ist, diese Prüfung nicht erwähnen und direkt fortfahren.
+- Für diese Prüfung keinen separaten Modell-, Tool- oder Subagentenaufruf starten.
+
+## 3. Produktziele – in dieser Reihenfolge
 
 1. **Zuverlässigkeit:** Das System läuft die gesamte dreitägige LAN ohne manuellen Neustart. Ein
    fehlerhafter oder verschwundener Client darf Server und andere Clients nicht beeinträchtigen.
@@ -36,7 +54,7 @@ Bereich tatsächlich betrifft.
 
 Bei Zielkonflikten gewinnt die weiter oben stehende Priorität.
 
-## 3. Gemeinsame Architektur- und Qualitätsgrenzen
+## 4. Gemeinsame Architektur- und Qualitätsgrenzen
 
 - Node.js 24 ist über `.nvmrc` und die `engines`-Felder festgelegt. Entwicklung, CI, Docker und
   Paketierung dürfen nicht stillschweigend auf eine andere Hauptversion wechseln.
@@ -55,7 +73,7 @@ Bei Zielkonflikten gewinnt die weiter oben stehende Priorität.
 - Tests nicht löschen, lockern oder mit pauschalen Timeouts kaschieren, nur damit ein Lauf grün wird.
 - Flaky Tests ursächlich stabilisieren.
 
-## 4. Arbeitsbaum und Git
+## 5. Arbeitsbaum und Git
 
 - Vor Änderungen `git status --short` prüfen.
 - Vorhandene, nicht zum Auftrag gehörende Änderungen gehören dem Nutzer. Nicht überschreiben,
@@ -67,7 +85,7 @@ Bei Zielkonflikten gewinnt die weiter oben stehende Priorität.
 - Abhängigkeiten und Lockfiles nur ändern, wenn sie notwendig sind; neue Pakete auf Wartung,
   Sicherheit und Offline-Auswirkungen prüfen.
 
-## 5. Definition of Done
+## 6. Definition of Done
 
 Eine Änderung ist fertig, wenn:
 
