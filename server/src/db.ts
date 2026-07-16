@@ -1534,6 +1534,244 @@ function addCompetitionGroupScoping(): void {
 }
 runMigration({ version: 33, name: 'add competition group scoping', up: addCompetitionGroupScoping });
 
+// Phase 5c (cluster 3): votes, vote rounds and captain drafts become strict
+// group resources. These tables are rebuilt instead of receiving nullable
+// compatibility columns: their event link is now optional (NULL means the
+// permanent group room), while composite foreign keys guarantee that a real
+// event and the selected game belong to the same group. Player references
+// retain immutable display snapshots and also reference the corresponding
+// group-membership row; application writers additionally require that the
+// membership is active at write time.
+function addVotesAndDraftsGroupScoping(): void {
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_events_group_pk ON events(group_id, id)');
+
+  const ensureHistoricalMembership = (groupId: string, playerId: string, timestamp: number): void => {
+    db.prepare(
+      `INSERT OR IGNORE INTO group_memberships
+         (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
+       VALUES (?, ?, 'member', 'removed', ?, ?, 0, NULL)`,
+    ).run(groupId, playerId, timestamp, timestamp);
+  };
+
+  const voteColumns = db.prepare('PRAGMA table_info(votes)').all() as Array<{ name: string }>;
+  const roundsColumns = db.prepare('PRAGMA table_info(vote_rounds)').all() as Array<{ name: string }>;
+  const votesAreScoped = voteColumns.some((column) => column.name === 'group_id');
+  const roundsAreScoped = roundsColumns.some((column) => column.name === 'group_id');
+
+  if (!votesAreScoped || !roundsAreScoped) {
+    const historicalVoters = db
+      .prepare(
+        `SELECT DISTINCT COALESCE(e.group_id, ?) AS group_id, v.player_id, v.created_at
+         FROM votes v
+         LEFT JOIN events e ON e.id = v.event_id`,
+      )
+      .all(DEFAULT_GROUP_ID) as Array<{ group_id: string; player_id: string; created_at: number }>;
+    for (const voter of historicalVoters) {
+      ensureHistoricalMembership(voter.group_id, voter.player_id, voter.created_at);
+    }
+
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE vote_rounds_scoped (
+          group_id          TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+          round             INTEGER NOT NULL,
+          event_id          TEXT,
+          started_at        INTEGER NOT NULL,
+          closed_at         INTEGER,
+          winner_game_ids   TEXT,
+          mode              TEXT NOT NULL DEFAULT 'single' CHECK (mode IN ('single', 'points')),
+          title             TEXT,
+          info              TEXT,
+          selected_game_ids TEXT,
+          PRIMARY KEY (group_id, round),
+          FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE votes_scoped (
+          id                   TEXT PRIMARY KEY,
+          group_id             TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+          player_id            TEXT NOT NULL,
+          player_name_snapshot TEXT NOT NULL,
+          game_id              TEXT NOT NULL,
+          event_id             TEXT,
+          round                INTEGER NOT NULL,
+          points               INTEGER CHECK (points IS NULL OR points BETWEEN 1 AND 10),
+          created_at           INTEGER NOT NULL,
+          UNIQUE (group_id, player_id, round, game_id),
+          FOREIGN KEY (group_id, player_id) REFERENCES group_memberships(group_id, player_id) ON DELETE RESTRICT,
+          FOREIGN KEY (group_id, game_id) REFERENCES games(group_id, id) ON DELETE CASCADE,
+          FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE,
+          FOREIGN KEY (group_id, round) REFERENCES vote_rounds_scoped(group_id, round) ON DELETE CASCADE
+        );
+      `);
+
+      db.prepare(
+        `INSERT INTO vote_rounds_scoped
+           (group_id, round, event_id, started_at, closed_at, winner_game_ids, mode, title, info, selected_game_ids)
+         SELECT COALESCE(e.group_id, ?), vr.round,
+                CASE WHEN vr.event_id = ? THEN NULL ELSE vr.event_id END,
+                vr.started_at, vr.closed_at, vr.winner_game_ids, vr.mode, vr.title, vr.info, vr.selected_game_ids
+         FROM vote_rounds vr
+         LEFT JOIN events e ON e.id = vr.event_id`,
+      ).run(DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID);
+
+      db.prepare(
+        `INSERT INTO votes_scoped
+           (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
+         SELECT v.id, COALESCE(e.group_id, ?), v.player_id, p.name, v.game_id,
+                CASE WHEN v.event_id = ? THEN NULL ELSE v.event_id END,
+                v.round, v.points, v.created_at
+         FROM votes v
+         JOIN players p ON p.id = v.player_id
+         LEFT JOIN events e ON e.id = v.event_id`,
+      ).run(DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID);
+
+      db.exec(`
+        DROP TABLE votes;
+        DROP TABLE vote_rounds;
+        ALTER TABLE vote_rounds_scoped RENAME TO vote_rounds;
+        ALTER TABLE votes_scoped RENAME TO votes;
+      `);
+    })();
+  }
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_votes_group_round ON votes(group_id, round);
+    CREATE INDEX IF NOT EXISTS idx_votes_group_event ON votes(group_id, event_id);
+    CREATE INDEX IF NOT EXISTS idx_vote_rounds_group_event ON vote_rounds(group_id, event_id, round DESC);
+
+    DROP TRIGGER IF EXISTS trg_votes_round_scope_insert;
+    CREATE TRIGGER trg_votes_round_scope_insert
+    BEFORE INSERT ON votes
+    WHEN NOT EXISTS (
+      SELECT 1 FROM vote_rounds vr
+      WHERE vr.group_id = NEW.group_id AND vr.round = NEW.round AND vr.event_id IS NEW.event_id
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'vote round group/event mismatch');
+    END;
+
+    DROP TRIGGER IF EXISTS trg_votes_round_scope_update;
+    CREATE TRIGGER trg_votes_round_scope_update
+    BEFORE UPDATE OF group_id, round, event_id ON votes
+    WHEN NOT EXISTS (
+      SELECT 1 FROM vote_rounds vr
+      WHERE vr.group_id = NEW.group_id AND vr.round = NEW.round AND vr.event_id IS NEW.event_id
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'vote round group/event mismatch');
+    END;
+  `);
+
+  for (const key of ['vote_round', 'vote_open', 'vote_started_at', 'vote_mode']) {
+    db.prepare(
+      `INSERT OR IGNORE INTO app_state (key, value)
+       SELECT ?, value FROM app_state WHERE key = ?`,
+    ).run(`${key}:${DEFAULT_GROUP_ID}`, key);
+  }
+
+  const draftColumns = db.prepare('PRAGMA table_info(drafts)').all() as Array<{ name: string }>;
+  if (!draftColumns.some((column) => column.name === 'group_id')) {
+    const historicalDrafts = db.prepare('SELECT * FROM drafts').all() as Array<{
+      id: string;
+      event_id: string;
+      captain_ids: string;
+      pool_ids: string;
+      picks: string;
+      created_at: number;
+    }>;
+    for (const draft of historicalDrafts) {
+      const event = db.prepare('SELECT group_id FROM events WHERE id = ?').get(draft.event_id) as
+        { group_id: string | null } | undefined;
+      const groupId = event?.group_id ?? DEFAULT_GROUP_ID;
+      const picks = JSON.parse(draft.picks) as Array<{ playerId: string }>;
+      const playerIds = [
+        ...(JSON.parse(draft.captain_ids) as string[]),
+        ...(JSON.parse(draft.pool_ids) as string[]),
+        ...picks.map((pick) => pick.playerId),
+      ];
+      for (const playerId of new Set(playerIds)) {
+        ensureHistoricalMembership(groupId, playerId, draft.created_at);
+      }
+    }
+
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE drafts_scoped (
+          id          TEXT PRIMARY KEY,
+          group_id    TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+          event_id    TEXT,
+          game_id     TEXT NOT NULL,
+          status      TEXT NOT NULL CHECK (status IN ('active', 'completed', 'cancelled')),
+          captain_ids TEXT NOT NULL,
+          pool_ids    TEXT NOT NULL,
+          picks       TEXT NOT NULL,
+          created_at  INTEGER NOT NULL,
+          FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE,
+          FOREIGN KEY (group_id, game_id) REFERENCES games(group_id, id) ON DELETE CASCADE
+        );
+      `);
+      db.prepare(
+        `INSERT INTO drafts_scoped
+           (id, group_id, event_id, game_id, status, captain_ids, pool_ids, picks, created_at)
+         SELECT d.id, COALESCE(e.group_id, ?),
+                CASE WHEN d.event_id = ? THEN NULL ELSE d.event_id END,
+                d.game_id, d.status, d.captain_ids, d.pool_ids, d.picks, d.created_at
+         FROM drafts d
+         LEFT JOIN events e ON e.id = d.event_id`,
+      ).run(DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID);
+      db.exec('DROP TABLE drafts; ALTER TABLE drafts_scoped RENAME TO drafts;');
+    })();
+  }
+
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_drafts_group_pk ON drafts(group_id, id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_drafts_one_active_per_group ON drafts(group_id) WHERE status = 'active';
+    CREATE INDEX IF NOT EXISTS idx_drafts_group_status ON drafts(group_id, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_drafts_group_event ON drafts(group_id, event_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS draft_player_refs (
+      draft_id             TEXT NOT NULL,
+      group_id             TEXT NOT NULL,
+      player_id            TEXT NOT NULL,
+      role                 TEXT NOT NULL CHECK (role IN ('captain', 'pool')),
+      player_name_snapshot TEXT NOT NULL,
+      player_color_snapshot TEXT NOT NULL,
+      player_avatar_snapshot TEXT,
+      PRIMARY KEY (draft_id, player_id),
+      FOREIGN KEY (group_id, draft_id) REFERENCES drafts(group_id, id) ON DELETE CASCADE,
+      FOREIGN KEY (group_id, player_id) REFERENCES group_memberships(group_id, player_id) ON DELETE RESTRICT
+    );
+    CREATE INDEX IF NOT EXISTS idx_draft_player_refs_group_player
+      ON draft_player_refs(group_id, player_id);
+  `);
+
+  const drafts = db.prepare('SELECT * FROM drafts').all() as Array<{
+    id: string;
+    group_id: string;
+    captain_ids: string;
+    pool_ids: string;
+  }>;
+  const insertDraftPlayer = db.prepare(
+    `INSERT OR IGNORE INTO draft_player_refs
+       (draft_id, group_id, player_id, role, player_name_snapshot, player_color_snapshot, player_avatar_snapshot)
+     SELECT ?, ?, p.id, ?, p.name, p.color, p.avatar FROM players p WHERE p.id = ?`,
+  );
+  for (const draft of drafts) {
+    for (const playerId of JSON.parse(draft.captain_ids) as string[]) {
+      insertDraftPlayer.run(draft.id, draft.group_id, 'captain', playerId);
+    }
+    for (const playerId of JSON.parse(draft.pool_ids) as string[]) {
+      insertDraftPlayer.run(draft.id, draft.group_id, 'pool', playerId);
+    }
+    const pickedIds = db.prepare('SELECT picks FROM drafts WHERE id = ?').get(draft.id) as { picks: string };
+    for (const pick of JSON.parse(pickedIds.picks) as Array<{ playerId: string }>) {
+      insertDraftPlayer.run(draft.id, draft.group_id, 'pool', pick.playerId);
+    }
+  }
+}
+runMigration({ version: 34, name: 'add votes and drafts group scoping', up: addVotesAndDraftsGroupScoping });
+
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.
 function seedGames(): void {
