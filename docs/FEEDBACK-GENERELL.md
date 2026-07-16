@@ -17,13 +17,13 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 
 ## Generell
 
-- [x] [ ] Produktname vollständig auf „Respawn“ vereinheitlichen
-  - [x] [ ] Wortmarke oben links bereits als „Respawn“ und nicht kursiv darstellen
-  - [x] [ ] Alle versionierten und technischen Referenzen zu Respawn umbenennen
+- [x] [x] Produktname vollständig auf „Respawn“ vereinheitlichen
+  - [x] [x] Wortmarke oben links bereits als „Respawn“ und nicht kursiv darstellen
+  - [x] [x] Alle versionierten und technischen Referenzen zu Respawn umbenennen
   - [ ] [ ] GitHub-Repository selbst in `Respawn` umbenennen
     - Kommentar: Wartet ausschließlich auf eine erneute GitHub-CLI-Anmeldung; die lokal
       hinterlegten Tokens sind ungültig. `origin` wird erst nach erfolgreichem Rename aktualisiert.
-- [x] [ ] Kreuz zum Schließen der Meldungen reparieren; aktuell reagiert es nicht
+- [x] [x] Kreuz zum Schließen der Meldungen reparieren; aktuell reagiert es nicht
   - Kommentar: Der vorhandene Schließpfad funktioniert im E2E-Test; kein zusätzlicher Code-Fix war nötig.
 - [x] [ ] Symbole in den Untermenüs unter „Mehr“ entfernen und dort nur den Titel anzeigen
   - [x] [ ] Darstellung über alle in diesem UI-PR bearbeiteten Untermenüs konsistent machen
@@ -36,21 +36,21 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
   - Notiz: Beispiel „Captain Draft“: sichtbar bleibt „2–4 Captains wählen“; das Infosymbol erklärt
     „2–4 Captains antippen – sie picken dann abwechselnd live aus den übrigen angehakten Spielern.
     Alle können auf ihrem Handy zusehen.“
-- [x] [ ] Globale interaktive Suche für Bereiche und Inhalte ergänzen
-  - [x] [ ] Suchsymbol in der Kopfzeile und Tastenkürzel `Strg/Cmd + K` anbieten
-  - [x] [ ] Treffer während der Eingabe filtern und direkt zum gewählten Bereich navigieren
-  - [x] [ ] Spieler, Spiele, Events, Bestellungen inklusive Positionen, Info-Board, Durchsagen,
+- [x] [x] Globale interaktive Suche für Bereiche und Inhalte ergänzen
+  - [x] [x] Suchsymbol in der Kopfzeile und Tastenkürzel `Strg/Cmd + K` anbieten
+  - [x] [x] Treffer während der Eingabe filtern und direkt zum gewählten Bereich navigieren
+  - [x] [x] Spieler, Spiele, Events, Bestellungen inklusive Positionen, Info-Board, Durchsagen,
     Fahrgemeinschaften, Turniere und persönliche Mitteilungen durchsuchen
-  - [x] [ ] Konkrete Spieler, Spiele, Bestellungen, Info-Einträge, Durchsagen und
+  - [x] [x] Konkrete Spieler, Spiele, Bestellungen, Info-Einträge, Durchsagen und
     Fahrgemeinschaften nach der Navigation hervorheben
-  - [x] [ ] „Häufig genutzte Bereiche“ und die Tastaturerklärung im Suchdialog entfernen
-  - [x] [ ] Bedienung per Touch, Pfeiltasten, Enter und Escape sicherstellen
+  - [x] [x] „Häufig genutzte Bereiche“ und die Tastaturerklärung im Suchdialog entfernen
+  - [x] [x] Bedienung per Touch, Pfeiltasten, Enter und Escape sicherstellen
   - Kommentar: Der lokale Index wird beim Öffnen aus dem aktuellen App-State und den vorhandenen
     APIs aufgebaut; ein externer Suchdienst oder zusätzlicher Serverindex ist nicht nötig.
 
 ## Home
 
-- [x] [ ] Meldungsbereich vereinheitlichen und grundsätzlich nur die neueste Meldung anzeigen
+- [x] [x] Meldungsbereich vereinheitlichen und grundsätzlich nur die neueste Meldung anzeigen
   - Notiz: Aktuell erscheinen unter anderem Admin-Modus, „Neue Sammelbestellung“ und die Sammelbestellung selbst mehrfach bzw. in unterschiedlichen Stilen.
   - Kommentar (Usermanagement): Auf ausdrücklichen Wunsch bereits mit der aktuell lokal gewählten
     Spieleridentität umgesetzt. Ein künftiges Usermanagement muss diese Zuordnung auf die echte
@@ -58,66 +58,66 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 - [ ] [ ] Prüfen, warum der Status immer „Offline“ ist
   - [ ] [ ] Agent-Anbindung prüfen
   - [ ] [ ] Falls der Status nicht zuverlässig über den Browser ermittelt werden kann: Statusanzeige entfernen
-- [x] [ ] „Aktuell“ nach oben setzen
-- [x] [ ] „Dein Status“ nach unten verschieben, direkt über die anderen Statusinformationen
-- [x] [ ] „Aktuell“ für mehrere nebeneinanderstehende Kacheln vorbereiten
-- [x] [ ] „Ganze Rangliste“ in „Gesamte Rangliste“ umbenennen
-- [x] [ ] Ranglisten-Vorschau auf größeren Displays zweispaltig mit den ersten sechs Plätzen darstellen
-- [x] [ ] Sitzplan mit einem Titel oben links versehen, analog zu Rangliste und Status
-- [x] [ ] „Mitteilungen“ aus dem unteren Seitenbereich herauslösen
-  - [x] [ ] Glocken-Symbol in der oberen Leiste bei Profil, Einstellungen und GitHub ergänzen
-  - [x] [ ] Mitteilungen dort als Liste anzeigen
-  - [x] [ ] Mitteilungen als gelesen markieren können
-  - [x] [ ] Mitteilungen entfernen können
-  - [x] [ ] Neueste aktive Mitteilung zusätzlich als hervorgehobenen Direktlink unter der Kopfzeile anzeigen
+- [x] [x] „Aktuell“ nach oben setzen
+- [x] [x] „Dein Status“ nach unten verschieben, direkt über die anderen Statusinformationen
+- [x] [x] „Aktuell“ für mehrere nebeneinanderstehende Kacheln vorbereiten
+- [x] [x] „Ganze Rangliste“ in „Gesamte Rangliste“ umbenennen
+- [x] [x] Ranglisten-Vorschau auf größeren Displays zweispaltig mit den ersten sechs Plätzen darstellen
+- [x] [x] Sitzplan mit einem Titel oben links versehen, analog zu Rangliste und Status
+- [x] [x] „Mitteilungen“ aus dem unteren Seitenbereich herauslösen
+  - [x] [x] Glocken-Symbol in der oberen Leiste bei Profil, Einstellungen und GitHub ergänzen
+  - [x] [x] Mitteilungen dort als Liste anzeigen
+  - [x] [x] Mitteilungen als gelesen markieren können
+  - [x] [x] Mitteilungen entfernen können
+  - [x] [x] Neueste aktive Mitteilung zusätzlich als hervorgehobenen Direktlink unter der Kopfzeile anzeigen
   - Kommentar (Usermanagement): Gelesen- und Ausblendestatus sind vorläufig an die aktuell lokal
     gewählte Spieleridentität gebunden. Ein künftiges Usermanagement muss diese Bindung auf die
     authentifizierte Session migrieren; Push-Abos und Event-Sichtbarkeit bleiben unverändert.
 
 ## Turniere
 
-- [x] [ ] Spielerauswahl beim Erstellen eines Turniers in 2–4 Kachelbreiten nebeneinander darstellen
+- [x] [x] Spielerauswahl beim Erstellen eines Turniers in 2–4 Kachelbreiten nebeneinander darstellen
   - Notiz: Dadurch wird weniger gescrollt und die Auswahl übersichtlicher.
-- [x] [ ] Button „Alle markieren“ neben „Anzahl Teams“ ergänzen
-- [x] [ ] Button „Auswahl aufheben“ neben „Anzahl Teams“ ergänzen
-- [x] [ ] „Sitznachbarn bevorzugt ins selbe Team losen“ in „Sitznachbarn zusammen“ umbenennen
-- [x] [ ] Symbole bei den Checkboxen entfernen
-  - [x] [ ] Sitznachbarn
-  - [x] [ ] Hin- und Rückspiel
-  - [x] [ ] Ergebnisse mit Punktestand
-- [x] [ ] „Hin- und Rückspiele (jeder spielt zweimal gegen jeden)“ in „Hin- und Rückspiel“ umbenennen
-- [x] [ ] „Ergebnisse mit Punktestand erfassen (statt nur Sieg/Niederlage)“ in „Ergebnisse inkl. Punktestand“ umbenennen
+- [x] [x] Button „Alle markieren“ neben „Anzahl Teams“ ergänzen
+- [x] [x] Button „Auswahl aufheben“ neben „Anzahl Teams“ ergänzen
+- [x] [x] „Sitznachbarn bevorzugt ins selbe Team losen“ in „Sitznachbarn zusammen“ umbenennen
+- [x] [x] Symbole bei den Checkboxen entfernen
+  - [x] [x] Sitznachbarn
+  - [x] [x] Hin- und Rückspiel
+  - [x] [x] Ergebnisse mit Punktestand
+- [x] [x] „Hin- und Rückspiele (jeder spielt zweimal gegen jeden)“ in „Hin- und Rückspiel“ umbenennen
+- [x] [x] „Ergebnisse mit Punktestand erfassen (statt nur Sieg/Niederlage)“ in „Ergebnisse inkl. Punktestand“ umbenennen
 
 ## Teams
 
-- [x] [ ] Aufbau und allgemeines Feedback aus dem Bereich „Turniere“ auch auf „Teams“ übertragen
-- [x] [ ] Hinweis „Anzahl Teams leer lassen für automatisch (Standard: 2)“ entfernen
-- [x] [ ] Stattdessen standardmäßig die Zahl 2 eintragen
-- [x] [ ] „Oder: Captain-Draft“ in „Captain Draft“ umbenennen
-  - [x] [ ] Symbol entfernen
-  - [x] [ ] „Oder“ entfernen
-- [x] [ ] „2–4 Captains antippen – sie picken dann abwechselnd live aus den übrigen angehakten Spielern. Alle können auf ihrem Handy zusehen.“ auf „2–4 Captains wählen“ kürzen
-- [x] [ ] „Kraft starten“ mittig unter „Teams auslosen“ ausrichten
-- [x] [ ] „Kraft starten“ bei einer gültigen Draft-Auswahl visuell wie „Teams auslosen“ gestalten
-- [x] [ ] Symbol bei „Team-Historie“ entfernen
-- [x] [ ] „Team-Historie“ standardmäßig einklappen
+- [x] [x] Aufbau und allgemeines Feedback aus dem Bereich „Turniere“ auch auf „Teams“ übertragen
+- [x] [x] Hinweis „Anzahl Teams leer lassen für automatisch (Standard: 2)“ entfernen
+- [x] [x] Stattdessen standardmäßig die Zahl 2 eintragen
+- [x] [x] „Oder: Captain-Draft“ in „Captain Draft“ umbenennen
+  - [x] [x] Symbol entfernen
+  - [x] [x] „Oder“ entfernen
+- [x] [x] „2–4 Captains antippen – sie picken dann abwechselnd live aus den übrigen angehakten Spielern. Alle können auf ihrem Handy zusehen.“ auf „2–4 Captains wählen“ kürzen
+- [x] [x] „Kraft starten“ mittig unter „Teams auslosen“ ausrichten
+- [x] [x] „Kraft starten“ bei einer gültigen Draft-Auswahl visuell wie „Teams auslosen“ gestalten
+- [x] [x] Symbol bei „Team-Historie“ entfernen
+- [x] [x] „Team-Historie“ standardmäßig einklappen
   - Notiz: Die Historie kann schnell sehr lang werden.
 
 ## Vote
 
-- [x] [ ] Hinweis „Du bist …“ entfernen
+- [x] [x] Hinweis „Du bist …“ entfernen
   - Kommentar: Bei bekannter lokaler Identität wird die gemeinsame `whoami.js`-Karte nicht mehr
     angezeigt. Erstauswahl und Profilwechsel bleiben bis zur Session-Identität verfügbar.
-- [x] [ ] Symbol bei „Neue Abstimmung starten“ entfernen
-- [x] [ ] Buttons „Bewertung abschicken“ und „Beenden und Gewinner küren“ sauber aufeinander ausrichten
-- [x] [ ] Beschreibung kürzen auf: „Punkte frei verteilen, höchste Summe gewinnt.“
-  - [x] [ ] Symbol entfernen
-  - [x] [ ] Einmalige Gender-Formulierung in diesem Text entfernen
-- [x] [ ] Prüfen, ob grundsätzlich zwei Spiele nebeneinander dargestellt werden können
+- [x] [x] Symbol bei „Neue Abstimmung starten“ entfernen
+- [x] [x] Buttons „Bewertung abschicken“ und „Beenden und Gewinner küren“ sauber aufeinander ausrichten
+- [x] [x] Beschreibung kürzen auf: „Punkte frei verteilen, höchste Summe gewinnt.“
+  - [x] [x] Symbol entfernen
+  - [x] [x] Einmalige Gender-Formulierung in diesem Text entfernen
+- [x] [x] Prüfen, ob grundsätzlich zwei Spiele nebeneinander dargestellt werden können
   - Notiz: Der Platz dafür scheint vorhanden zu sein.
-- [x] [ ] „Vote-Historie“ standardmäßig einklappen
-- [x] [ ] Symbol in der Überschrift der „Vote-Historie“ ergänzen
-- [x] [ ] Erklärung „Antippen für die genaue Punkteverteilung dieser Runde.“ entfernen
+- [x] [x] „Vote-Historie“ standardmäßig einklappen
+- [x] [x] Symbol in der Überschrift der „Vote-Historie“ ergänzen
+- [x] [x] Erklärung „Antippen für die genaue Punkteverteilung dieser Runde.“ entfernen
 
 ## Rang
 

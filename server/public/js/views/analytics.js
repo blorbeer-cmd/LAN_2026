@@ -401,8 +401,7 @@ function renderMatchesContent() {
   if (fun.biggestRivalry) {
     funCards.push(`
       <div class="card">
-        <div class="row-between"><span class="inline-icon">${icon('activity')}</span><span class="lb-points">${fun.biggestRivalry.count}×</span></div>
-        <div class="player-name">Größte Rivalität</div>
+        <div class="row-between"><div class="player-name">Größte Rivalität</div><span class="lb-points">${fun.biggestRivalry.count}×</span></div>
         <div class="muted" style="font-size:var(--font-size-xs);">Sind sich am häufigsten als Gegner begegnet.</div>
         <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
           <div class="row">${playerChip(fun.biggestRivalry.playerA)}</div>
@@ -414,8 +413,7 @@ function renderMatchesContent() {
     const winRate = fun.bestDuo.gamesTogether > 0 ? Math.round((fun.bestDuo.winsTogether / fun.bestDuo.gamesTogether) * 100) : 0;
     funCards.push(`
       <div class="card">
-        <div class="row-between"><span class="inline-icon">${icon('users')}</span><span class="lb-points">${winRate}%</span></div>
-        <div class="player-name">Bestes Duo</div>
+        <div class="row-between"><div class="player-name">Bestes Duo</div><span class="lb-points">${winRate}%</span></div>
         <div class="muted" style="font-size:var(--font-size-xs);">${fun.bestDuo.gamesTogether}× zusammen im Team, ${fun.bestDuo.winsTogether}× gewonnen.</div>
         <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
           <div class="row">${playerChip(fun.bestDuo.playerA)}</div>
@@ -427,8 +425,7 @@ function renderMatchesContent() {
     const u = fun.biggestUnderdogWin;
     funCards.push(`
       <div class="card">
-        <div class="row-between"><span class="inline-icon">${icon('sparkles')}</span><span class="lb-points">${u.winnerAvgRating} vs ${u.loserAvgRating}</span></div>
-        <div class="player-name">Krasseste Überraschung</div>
+        <div class="row-between"><div class="player-name">Krasseste Überraschung</div><span class="lb-points">${u.winnerAvgRating} vs ${u.loserAvgRating}</span></div>
         <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(u.gameName)} — als klarer Außenseiter gewonnen (Skill-Wertung).</div>
         <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
           ${u.winners.map((w) => `<div class="row">${playerChip(w)}</div>`).join('')}
