@@ -78,8 +78,8 @@ function lobbyList() {
       ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-snake-close="${lobby.id}">Schließen</button>
         <button type="button" class="btn btn-sm btn-equal btn-primary" id="snake-start" ${ready ? '' : 'disabled'}>Start</button>`
       : joined
-        ? `${readyToggleHtml(lobby, myId(), 'snake-ready')}
-          <button type="button" class="btn btn-sm btn-equal btn-danger" data-snake-leave="${lobby.id}">Verlassen</button>`
+        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-snake-leave="${lobby.id}">Verlassen</button>
+          ${readyToggleHtml(lobby, myId(), 'snake-ready')}`
         : '';
     const joinAction = !joined && !isHost
       ? `<button type="button" class="btn btn-sm btn-primary" data-snake-join="${lobby.id}" ${full ? 'disabled' : ''}>Beitreten</button>`

@@ -291,8 +291,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the settings page. Backup and seating-plan editing are absent from regular settings and live
   together as nested tool cards in the active Admin mode. Each tool card keeps its title, adjacent
   help tooltip and colorful primary action on one row; the seating editor returns to Admin and blocks
-  editing outside that mode. The Admin test-data group can generate a dense 2015–2026 Hall-of-Fame
-  history. The test-data fixture explanation and the existing test-player count live in adjacent
+  editing outside that mode. Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and
+  need no separate Admin action. The test-data fixture explanation and the existing test-player count live in adjacent
   tooltips; the compact count input, „Test-Daten aufräumen“ and create action share one control row
   in that order. Cleanup removes every marked test player and test LAN
   without touching real events.
@@ -333,14 +333,16 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   symbols. The responsive add-item row keeps description, explicit quantity, unit price with euro
   suffix and the compact action together. Item totals multiply unit price by quantity; clearly
   labeled subtotals per player and the order-wide total use consistent German currency formatting.
+  Quantity starts empty with the explicit placeholder „Anzahl“ instead of implying one item.
   An absent send time is plain text without a misleading timer icon. Closing an order is the
   colorful full-width primary action below a divider; the compact neutral „Hinzufügen“ action does
   not stretch to the input height. Closed orders live inside one standard, initially collapsed
   „Historie“ section whose open state survives live re-renders.
 - **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
-  grid. „Nach LAN“ uses one event dropdown and shows every overall placement for the selected LAN,
-  followed by its tournament winners; tournament game names have no decorative game symbols. Admin
-  fixtures cover twelve years with full standings and three tournament winners per LAN so dense
+  grid. „Nach LAN“ uses one directly labeled event dropdown and shows every overall placement for
+  the selected LAN, followed by tournament winners in the same leaderboard-row structure. Blue and
+  pink accent rails distinguish the two result groups; tournament game names have no decorative
+  game symbols. Admin fixtures cover twelve years with full standings and three tournament winners per LAN so dense
   long-term states remain testable. The
   visible short name for the former Info-Board is „Info“ throughout navigation, search and the page
   itself; entries remain alphabetically sorted responsive two-column nested cards.
@@ -371,7 +373,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   a duplicate status sentence. „Lobby öffnen“ follows the lobby cards at full width, while the
   temporary „Gegen KI“ mode occupies its own full-width row below it. An empty lobby no longer adds
   a redundant waiting sentence. Member actions use the same destructive treatment for „Verlassen“
-  as the host's „Schließen“ action.
+  as the host's „Schließen“ action. Guest footers place „Verlassen“ before the readiness toggle;
+  compact score selectors use the smaller shared row height.
   Statistics use the concise title „Statistiken“ and one full-width game dropdown whose options
   include each game's match count. The selected game is not repeated above its results. Those
   results follow directly without another enclosing card or accent rail; player rows reuse

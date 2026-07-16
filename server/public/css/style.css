@@ -1898,8 +1898,9 @@ button.card {
 }
 .arcade-lobby-target-score select,
 .arcade-lobby-target-score input {
-  padding-top: var(--space-2);
-  padding-bottom: var(--space-2);
+  height: var(--space-7);
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
   text-align: center;
 }
 .arcade-lobby-setting-options {
@@ -3909,11 +3910,6 @@ input[type='number'].tournament-score-input {
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
-.hall-of-fame-tournaments {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
 .hall-of-fame-event-header {
   align-items: flex-start;
   flex-wrap: wrap;
@@ -3921,34 +3917,41 @@ input[type='number'].tournament-score-input {
 .hall-of-fame-selected-event {
   margin-top: var(--space-1);
 }
-.hall-of-fame-subtitle {
-  margin: var(--space-2) 0 0;
-}
-.hall-of-fame-result {
+.hall-of-fame-event-section {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-3);
+  gap: var(--space-3);
+  padding: var(--space-4);
+  overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
+  border-radius: var(--radius);
+  background: var(--bg);
 }
-.hall-of-fame-result.row {
-  display: flex;
-  flex-wrap: wrap;
+.hall-of-fame-event-section::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--space-1);
+  background: var(--accent);
+  content: '';
 }
-.hall-of-fame-game {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: var(--space-1);
+.hall-of-fame-event-section.is-tournaments::before {
+  background: var(--accent-3);
+}
+.hall-of-fame-subtitle {
+  margin: 0;
 }
 .hall-of-fame-tournament-winner {
   display: flex;
   min-width: 0;
   flex-direction: column;
+  align-items: flex-end;
   gap: var(--space-1);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.hall-of-fame-tournament-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
 }
 @media (min-width: 640px) { /* --bp-md */
   .food-order-item-form {
@@ -3956,9 +3959,6 @@ input[type='number'].tournament-score-input {
   }
   .food-order-item-form > [data-item-desc] {
     grid-column: auto;
-  }
-  .hall-of-fame-result:not(.row) {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 .lb-rank {

@@ -121,8 +121,8 @@ function lobbyList() {
       ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-blobby-close="${l.id}">Schließen</button>
         <button type="button" class="btn btn-sm btn-equal btn-primary" id="blobby-start" ${ready ? '' : 'disabled'}>Start</button>`
       : joined
-        ? `${readyToggleHtml(l, myId(), 'blobby-ready')}
-          <button type="button" class="btn btn-sm btn-equal btn-danger" data-blobby-leave="${l.id}">Verlassen</button>`
+        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-blobby-leave="${l.id}">Verlassen</button>
+          ${readyToggleHtml(l, myId(), 'blobby-ready')}`
         : '';
     const joinAction = !joined && !isHost
       ? `<button type="button" class="btn btn-sm btn-primary" data-blobby-join="${l.id}" ${full ? 'disabled' : ''}>Beitreten</button>`

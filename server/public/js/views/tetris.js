@@ -406,8 +406,8 @@ function renderLobbyList() {
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-tetris-close="${l.id}">Schließen</button>
           <button type="button" class="btn btn-sm btn-equal btn-primary" id="tetris-start" ${ready ? '' : 'disabled'}>Start</button>`
         : joined
-          ? `${readyToggleHtml(l, myId(), 'tetris-ready')}
-            <button type="button" class="btn btn-sm btn-equal btn-danger" data-tetris-leave="${l.id}">Verlassen</button>`
+          ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-tetris-leave="${l.id}">Verlassen</button>
+            ${readyToggleHtml(l, myId(), 'tetris-ready')}`
           : '';
       const joinAction = !joined && !isHost
         ? `<button type="button" class="btn btn-sm btn-primary" data-tetris-join="${l.id}" ${full ? 'disabled' : ''}>Beitreten</button>`

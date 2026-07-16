@@ -65,20 +65,6 @@ async function cleanupTestUsers(ctx) {
   }
 }
 
-async function seedHallOfFame(ctx) {
-  if (seedBusy) return;
-  seedBusy = true;
-  try {
-    const res = await api.admin.seedHallOfFame();
-    showToast(`${res.events} Test-LANs mit ${res.matches} Ergebnissen und ${res.tournaments} Turnieren angelegt.`);
-    await ctx.refresh();
-  } catch (err) {
-    showToast(err.message, { error: true });
-  } finally {
-    seedBusy = false;
-  }
-}
-
 async function toggleAdmin(player, ctx) {
   try {
     await api.players.update(player.id, { isAdmin: !player.is_admin });
@@ -225,7 +211,6 @@ function renderPanel(container, ctx) {
           <button type="button" class="btn btn-sm btn-danger" id="admin-cleanup">Test-Daten aufräumen</button>
           <button type="button" class="btn btn-primary btn-sm" id="admin-bulk" ${seedBusy ? 'disabled' : ''}>Test-Spieler anlegen</button>
         </div>
-        <button type="button" class="btn btn-primary btn-block" id="admin-seed-hall" ${seedBusy ? 'disabled' : ''}>Hall-of-Fame-Testdaten anlegen</button>
       </section>
       <section class="card stack grouped-page-section" aria-labelledby="admin-players-title">
         <div class="grouped-page-section-title"><h2 id="admin-players-title">Spieler (${players.length})</h2></div>
@@ -254,7 +239,6 @@ function renderPanel(container, ctx) {
   });
 
   container.querySelector('#admin-cleanup').addEventListener('click', () => cleanupTestUsers(ctx));
-  container.querySelector('#admin-seed-hall').addEventListener('click', () => seedHallOfFame(ctx));
 
   container.querySelector('#download-backup').addEventListener('click', downloadBackup);
   wireInfoTooltips(container);

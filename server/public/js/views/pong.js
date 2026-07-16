@@ -119,8 +119,8 @@ function lobbyList() {
       ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-pong-close="${lobby.id}">Schließen</button>
         <button type="button" class="btn btn-sm btn-equal btn-primary" id="pong-start" ${ready ? '' : 'disabled'}>Start</button>`
       : joined
-        ? `${readyToggleHtml(lobby, myId(), 'pong-ready')}
-          <button type="button" class="btn btn-sm btn-equal btn-danger" data-pong-leave="${lobby.id}">Verlassen</button>`
+        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-pong-leave="${lobby.id}">Verlassen</button>
+          ${readyToggleHtml(lobby, myId(), 'pong-ready')}`
         : '';
     const joinAction = !joined && !isHost
       ? `<button type="button" class="btn btn-sm btn-primary" data-pong-join="${lobby.id}" ${full ? 'disabled' : ''}>Beitreten</button>`

@@ -60,6 +60,21 @@ function renderEventStanding(r, index) {
     </div>`;
 }
 
+function renderTournamentChampion(t, index) {
+  return `
+    <div class="lb-row hall-of-fame-tournament-row">
+      <span class="lb-rank">${index + 1}</span>
+      <span class="leaderboard-row-main">
+        <strong class="player-name leaderboard-row-name">${escapeHtml(t.name)}</strong>
+        <span class="muted leaderboard-row-stat">${escapeHtml(t.gameName)}</span>
+      </span>
+      <span class="hall-of-fame-tournament-winner">
+        <strong>${escapeHtml(t.championTeamName || '–')}</strong>
+        <span class="muted">${escapeHtml(t.championPlayers.join(', '))}</span>
+      </span>
+    </div>`;
+}
+
 function renderEvent(e) {
   const range = `${formatDate(e.startsAt)}${e.endsAt ? ' – ' + formatDate(e.endsAt) : ' (läuft)'}`;
   const standings = e.overallStandings ?? [];
@@ -68,21 +83,7 @@ function renderEvent(e) {
     : `<div class="muted hall-of-fame-empty-result">Noch keine Platzierungen.</div>`;
 
   const tournamentsHtml = e.tournamentChampions.length
-    ? e.tournamentChampions
-        .map(
-          (t) => `
-        <div class="hall-of-fame-result">
-          <span class="hall-of-fame-game">
-            <strong>${escapeHtml(t.name)}</strong>
-            <span class="muted">${escapeHtml(t.gameName)}</span>
-          </span>
-          <span class="hall-of-fame-tournament-winner">
-            <strong>${escapeHtml(t.championTeamName || '–')}</strong>
-            <span class="muted">${escapeHtml(t.championPlayers.join(', '))}</span>
-          </span>
-        </div>`
-        )
-        .join('')
+    ? `<div class="leaderboard-list-grid">${e.tournamentChampions.map(renderTournamentChampion).join('')}</div>`
     : '';
 
   return `
@@ -91,9 +92,11 @@ function renderEvent(e) {
         <span class="player-name">${escapeHtml(e.eventName)}</span>
         <span class="muted" style="font-size:var(--font-size-xs);">${range}</span>
       </div>
-      <div class="section-title hall-of-fame-subtitle">Gesamtplatzierungen</div>
-      ${standingsHtml}
-      ${tournamentsHtml ? `<div class="section-title hall-of-fame-subtitle">Turniere</div><div class="hall-of-fame-tournaments">${tournamentsHtml}</div>` : ''}
+      <section class="hall-of-fame-event-section is-overall">
+        <div class="section-title hall-of-fame-subtitle">Gesamtplatzierungen</div>
+        ${standingsHtml}
+      </section>
+      ${tournamentsHtml ? `<section class="hall-of-fame-event-section is-tournaments"><div class="section-title hall-of-fame-subtitle">Turniere</div>${tournamentsHtml}</section>` : ''}
     </div>
   `;
 }
@@ -125,8 +128,7 @@ export function renderHallOfFame(container, ctx) {
           ${
             events.length === 0
               ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('hallOfFame'))}</span>Noch keine Events.</div>`
-              : `<label for="hall-event-select" class="field-label">LAN auswählen</label>
-                 <select id="hall-event-select">
+              : `<select id="hall-event-select" aria-label="LAN">
                    ${events.map((event) => `<option value="${event.eventId}" ${event.eventId === selectedEventId ? 'selected' : ''}>${escapeHtml(event.eventName)}</option>`).join('')}
                  </select>
                  <div class="card hall-of-fame-selected-event">${renderEvent(selectedEvent)}</div>`

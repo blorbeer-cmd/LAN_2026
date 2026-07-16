@@ -844,6 +844,8 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.waitForSelector('text=Versand 24.12., 21:30 Uhr');
   await page.waitForSelector('text=Doch Kartenzahlung möglich');
 
+  assert.equal(await page.locator('[data-item-quantity]').inputValue(), '');
+  assert.equal(await page.locator('[data-item-quantity]').getAttribute('placeholder'), 'Anzahl');
   await page.fill('[data-item-desc]', 'Margherita groß');
   await page.fill('[data-item-quantity]', '2');
   await page.fill('[data-item-price]', '9,50');
@@ -933,8 +935,15 @@ test('Arcade: open a quiz lobby, see it on Home, then close it again', async (t)
 
 test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', async () => {
   const players = (await (await fetch(`${BASE_URL}/api/players`)).json()) as Array<{ id: string; name: string }>;
-  const guest = players.find((p) => p.name === 'E2E Bob');
-  assert.ok(guest, 'expected "E2E Bob" (added by an earlier test) to exist');
+  let guest = players.find((p) => p.name === 'E2E Bob');
+  if (!guest) {
+    const created = await page.request.post(`${BASE_URL}/api/players`, { data: { name: 'E2E Bob' } });
+    assert.equal(created.status(), 201);
+    guest = await created.json() as { id: string; name: string };
+  }
+
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="arcade"]');
 
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const guestPage = await guestContext.newPage();
@@ -967,6 +976,7 @@ test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', as
         await guestPage.locator(`.arcade-lobby-control-bar select[name="${game}-target"]`).inputValue(),
         '7',
       );
+      assert.equal(await guestPage.locator(`.arcade-lobby-control-bar select[name="${game}-target"]`).evaluate((select) => select.getBoundingClientRect().height), 32);
 
       await page.click(`[data-game="${game}"]`);
       await page.waitForSelector(`[data-${game}-join]`);
@@ -982,6 +992,10 @@ test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', as
       await page.click(`[data-${game}-join]`);
       await page.click('[data-confirm]');
       await page.waitForSelector(`[data-${game}-leave]`);
+      assert.deepEqual(
+        await page.locator('.arcade-lobby-entry-actions > button').allTextContents(),
+        ['Verlassen', 'Bereit?'],
+      );
 
       await page.click('[data-game="quiz"]');
       await page.waitForSelector('text=Keine offene Quiz-Lobby.');
@@ -1756,17 +1770,20 @@ test('Admin: one-tap mode with banner, seeded test users visible only in admin m
   await page.keyboard.press('Escape');
   await page.waitForSelector('.badge-paused >> text=Test');
 
-  const hallSeedResponse = page.waitForResponse(
-    (response) => response.url().endsWith('/api/admin/test-data/hall-of-fame') && response.request().method() === 'POST'
-  );
-  await page.click('#admin-seed-hall');
-  const hallSeeded = await hallSeedResponse;
+  assert.equal(await page.locator('#admin-seed-hall').count(), 0);
+  const hallSeeded = await page.request.post(`${BASE_URL}/api/admin/test-data/hall-of-fame`);
   assert.ok(hallSeeded.ok(), `hall-of-fame seed failed (${hallSeeded.status()}): ${await hallSeeded.text()}`);
   const hallData = await page.request.get(`${BASE_URL}/api/hall-of-fame`);
   const hallBody = await hallData.json() as { events: Array<{ eventName: string; overallStandings: unknown[]; tournamentChampions: unknown[] }> };
   const testLans = hallBody.events.filter((event) => event.eventName.startsWith('Respawn Test-LAN'));
   assert.equal(testLans.length, 12);
   assert.ok(testLans.every((event) => event.overallStandings.length >= 4 && event.tournamentChampions.length === 3));
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="hallOfFame"]');
+  await page.waitForSelector('#hall-event-select');
+  assert.equal(await page.getByText('LAN auswählen', { exact: true }).count(), 0);
+  assert.equal(await page.locator('.hall-of-fame-event-section').count(), 2);
+  assert.equal(await page.locator('.hall-of-fame-event-section.is-tournaments .hall-of-fame-tournament-row').count(), 3);
 
   // The shared seating plan exposes the real live state compactly after the
   // gamer name: seeded players cover playing + paused while the regular

@@ -930,8 +930,8 @@ function renderLobbyList() {
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-close="${l.id}">Schließen</button>
           <button type="button" class="btn btn-sm btn-equal btn-primary" id="scribble-start" ${ready ? '' : 'disabled'}>Start</button>`
         : joined
-          ? `${readyToggleHtml(l, myId(), 'scribble-ready')}
-            <button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-leave="${l.id}">Verlassen</button>`
+          ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-leave="${l.id}">Verlassen</button>
+            ${readyToggleHtml(l, myId(), 'scribble-ready')}`
           : '';
       const joinAction = !joined && !isHost
         ? `<button type="button" class="btn btn-sm btn-primary" data-scribble-join="${l.id}">Beitreten</button>`
