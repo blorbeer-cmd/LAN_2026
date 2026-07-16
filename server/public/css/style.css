@@ -536,11 +536,6 @@ textarea {
   height: 44px;
   padding: var(--space-3);
 }
-.github-icon {
-  width: 24px;
-  height: 24px;
-  display: block;
-}
 .icon-btn.needs-setup {
   position: relative;
 }
