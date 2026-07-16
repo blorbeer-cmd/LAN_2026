@@ -140,6 +140,9 @@
 .kiosk-tournament-bracket {
   justify-content: flex-start;
 }
+.kiosk-tournament-stage {
+  justify-content: flex-start;
+}
 .kiosk-tournament-bracket-body {
   display: flex;
   min-height: 0;

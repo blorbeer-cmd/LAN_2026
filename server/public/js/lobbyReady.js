@@ -20,9 +20,8 @@ function lobbyPlayerRowsHtml(lobby) {
 
 export function arcadeLobbyEntryHtml(
   lobby,
-  { playerLimit = null, joinAction = '', settingsHtml = '', footerActions = '', full = false } = {}
+  { joinAction = '', settingsHtml = '', footerActions = '', full = false } = {}
 ) {
-  const countText = `${lobby.players.length}${playerLimit ? `/${playerLimit}` : ''} Spieler`;
   const availableRow = joinAction
     ? `<div class="arcade-lobby-member-row arcade-lobby-free-row">
         <span class="arcade-lobby-avatar-slot" aria-hidden="true"></span>
@@ -33,7 +32,6 @@ export function arcadeLobbyEntryHtml(
   return `<div class="card stack arcade-lobby-entry">
     <div class="arcade-lobby-entry-head">
       <strong>${escapeHtml(lobby.host.name)}s Lobby</strong>
-      <span class="badge arcade-lobby-player-count">${escapeHtml(countText)}</span>
     </div>
     <div class="arcade-lobby-member-list">${lobbyPlayerRowsHtml(lobby)}${availableRow}</div>
     ${settingsHtml || footerActions ? `<div class="arcade-lobby-control-bar">

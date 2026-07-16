@@ -301,10 +301,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   rows instead of pills; phones keep one column.
 - **Kiosk dashboard** — Kiosk is a fixed, read-only TV canvas with no page or card scrollbars. Its
   four primary cards remain a 2×2 grid and distribute live players, rankings, tournament standings,
-  groups and matches across internal columns. Vote status is a centered icon/text stack. Only the
+  groups and matches across internal columns, ordered Live-Status and Rangliste above Abstimmung
+  and Turnier. Vote status is a centered icon/text stack. Only the
   newest active system notification appears above the dashboard as one full-width brand-gradient
   banner; separate food-order summary cards are omitted because order pushes already use that banner.
-  Tournament standings and groups are centered vertically and horizontally inside their card. In a
+  Tournament standings and group phases start directly below their metadata. In a
   knockout view, game and round remain fixed at the top while the bracket round itself is centered in
   the remaining card area. All variants use bordered standing, group or match cards with textual winner
   states, matching the main app's nested-surface hierarchy. An open Vote shows only its concise
@@ -335,7 +336,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   symbols. The responsive add-item row keeps description, explicit quantity, unit price with euro
   suffix and the compact action together. Item totals multiply unit price by quantity; clearly
   labeled subtotals per player and the order-wide total use consistent German currency formatting.
-  Quantity starts empty with the explicit placeholder „Anzahl“ instead of implying one item.
+  Quantity starts empty with the explicit placeholder „Anzahl“ instead of implying one item. Quantity
+  and price use the same wider field width; the euro suffix sits inside the price field so neither
+  placeholder is squeezed.
   An absent send time is plain text without a misleading timer icon. Closing an order is the
   colorful full-width primary action below a divider; the compact neutral „Hinzufügen“ action does
   not stretch to the input height. Closed orders live inside one standard, initially collapsed
@@ -366,7 +369,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   overview; selecting a game reveals all of its lobbies in the dedicated main group. Goal and
   controls live in one tooltip directly beside that selected game's title instead of a second
   „Lobby“ heading. Every open lobby is a nested card modeled on the
-  carpool cards, with the host's lobby name and player count in the header, stable player rows with
+  carpool cards, with the host's lobby name in the header, stable player rows with
   role/readiness at the right, a direct join action in a free-slot row and host/member actions in a
   separated full-width footer. Host labels, free labels and join actions share an exact three-column
   grid and row height. A host's game settings belong inside that lobby card; the compact
@@ -376,7 +379,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   temporary „Gegen KI“ mode occupies its own full-width row below it. An empty lobby no longer adds
   a redundant waiting sentence. Member actions use the same destructive treatment for „Verlassen“
   as the host's „Schließen“ action. Guest footers place „Verlassen“ before the readiness toggle;
-  compact score selectors use the smaller shared row height.
+  compact score selectors use the smaller shared row height. Create actions use the same inset as
+  lobby footer actions, so „Lobby öffnen“ and readiness controls align exactly.
   Statistics use the concise title „Statistiken“ and one full-width game dropdown whose options
   include each game's match count. The selected game is not repeated above its results. Those
   results follow directly without another enclosing card or accent rail; player rows reuse

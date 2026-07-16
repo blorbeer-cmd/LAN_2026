@@ -1696,6 +1696,10 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`${BASE_URL}/kiosk.html`);
   assert.equal((await page.locator('.kiosk-header .brand-title').textContent())?.trim(), 'Respawn');
+  assert.deepEqual(
+    await page.locator('#kiosk-dashboard > .kiosk-card > div').evaluateAll((contents) => contents.map((content) => content.id)),
+    ['kiosk-live', 'kiosk-leaderboard', 'kiosk-votes', 'kiosk-tournament'],
+  );
 
   // The last-push banner shows the food order's own push (title "Neue
   // Sammelbestellung"), not the earlier Durchsage — with a timestamp, and

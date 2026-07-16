@@ -1807,6 +1807,8 @@ button.card {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  margin-right: var(--space-3);
+  margin-left: var(--space-3);
   padding-top: var(--space-2);
   border-top: 1px solid var(--border);
 }
@@ -1827,9 +1829,6 @@ button.card {
 .arcade-lobby-entry-head > strong {
   min-width: 0;
   overflow-wrap: anywhere;
-}
-.arcade-lobby-player-count {
-  flex-shrink: 0;
 }
 .arcade-lobby-member-list {
   display: grid;
@@ -3884,7 +3883,7 @@ input[type='number'].tournament-score-input {
 }
 .food-order-item-form {
   display: grid;
-  grid-template-columns: calc(var(--space-8) + var(--space-3)) minmax(0, 1fr) auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
   gap: var(--space-2);
 }
 .food-order-item-form > [data-item-desc] {
@@ -3894,14 +3893,21 @@ input[type='number'].tournament-score-input {
   text-align: center;
 }
 .food-order-price-field {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-2);
+  position: relative;
+  display: block;
   min-width: 0;
 }
 .food-order-price-input {
   width: 100%;
+  padding-right: var(--space-7);
+}
+.food-order-price-field > span {
+  position: absolute;
+  top: 50%;
+  right: var(--space-3);
+  color: var(--text-muted);
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 .food-order-add-button {
   align-self: center;
@@ -3955,7 +3961,7 @@ input[type='number'].tournament-score-input {
 }
 @media (min-width: 640px) { /* --bp-md */
   .food-order-item-form {
-    grid-template-columns: minmax(0, 1fr) calc(var(--space-8) + var(--space-3)) calc(var(--space-8) + var(--space-8)) auto;
+    grid-template-columns: minmax(0, 1fr) repeat(2, var(--assignment-select-width)) auto;
   }
   .food-order-item-form > [data-item-desc] {
     grid-column: auto;

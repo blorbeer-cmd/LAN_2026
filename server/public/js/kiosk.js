@@ -256,7 +256,7 @@ function renderTournament(t) {
     const rows = (t.standings || [])
       .map((s, i) => tournamentStandingRow(teamName(s.teamId), s, i))
       .join('');
-    return `<div class="kiosk-tournament-overview">
+    return `<div class="kiosk-tournament-overview kiosk-tournament-stage">
       <div class="kiosk-tournament-meta"><strong>${escapeHtml(t.gameName)}</strong><span class="badge">Liga</span></div>
       <div class="kiosk-tournament-standings-grid">${rows}</div>
     </div>`;
@@ -278,7 +278,7 @@ function renderTournament(t) {
         return `<div class="kiosk-tournament-group"><strong>Gruppe ${g.groupIndex + 1}</strong>${rows}</div>`;
       })
       .join('');
-    return `<div class="kiosk-tournament-overview">
+    return `<div class="kiosk-tournament-overview kiosk-tournament-stage">
       <div class="kiosk-tournament-meta"><strong>${escapeHtml(t.gameName)}</strong><span class="badge">Gruppenphase</span></div>
       <div class="kiosk-tournament-group-grid">${groupBlocks}</div>
     </div>`;
