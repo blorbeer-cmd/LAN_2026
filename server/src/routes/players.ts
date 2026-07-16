@@ -8,11 +8,7 @@ import { broadcast, disconnectPlayerSockets, Events } from '../realtime';
 import { isNonEmptyString, isHexColor, isValidAvatar } from '../validation';
 import { getTrackingEventId } from '../events';
 import { formatDurationMs, computePlaytime, type PlaySession } from '../playtime';
-import {
-  sessionDurations,
-  computeSimultaneousGameTime,
-  type SessionDuration,
-} from '../sessionStats';
+import { sessionDurations, computeSimultaneousGameTime, type SessionDuration } from '../sessionStats';
 import { computeAwards } from '../awards';
 import { hasRecentReauthentication, requireConfiguredUser, withParamPlayerIdentity } from '../sessions';
 import { requireAdmin } from '../auth';
@@ -86,13 +82,13 @@ playersRouter.get('/', (_req, res) => {
 // only visible to its owner or an admin; legacy mode keeps the old response
 // until deployments complete the migration.
 playersRouter.get('/:id', requireConfiguredUser, (req, res) => {
-  const row = db.prepare(
-    `SELECT p.*, ls.last_seen AS agent_last_seen
+  const row = db
+    .prepare(
+      `SELECT p.*, ls.last_seen AS agent_last_seen
      FROM players p LEFT JOIN live_status ls ON ls.player_id = p.id
-     WHERE p.id = ?`
-  ).get(req.params.id) as
-    | PlayerRow
-    | undefined;
+     WHERE p.id = ?`,
+    )
+    .get(req.params.id) as PlayerRow | undefined;
   if (!row) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   if (row.deactivated_at !== null && !req.player?.is_admin) {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
@@ -144,8 +140,18 @@ playersRouter.post('/', requireConfiguredUser, (req, res) => {
   };
 
   db.prepare(
-    'INSERT INTO players (id, name, real_name, color, avatar, api_key, tracking_paused, is_admin, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(row.id, row.name, row.real_name, row.color, row.avatar, row.api_key, row.tracking_paused, row.is_admin, row.created_at);
+    'INSERT INTO players (id, name, real_name, color, avatar, api_key, tracking_paused, is_admin, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).run(
+    row.id,
+    row.name,
+    row.real_name,
+    row.color,
+    row.avatar,
+    row.api_key,
+    row.tracking_paused,
+    row.is_admin,
+    row.created_at,
+  );
 
   broadcast(Events.playersChanged, null);
   res.status(201).json(row);
@@ -159,9 +165,7 @@ playersRouter.post('/', requireConfiguredUser, (req, res) => {
 // dropped (see routes/agent.ts) — no live status, no playtime, regardless
 // of whether an event is tracking.
 playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
-  const existing = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id) as
-    | PlayerRow
-    | undefined;
+  const existing = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id) as PlayerRow | undefined;
   if (!existing) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   if (req.player && req.player.id !== existing.id && !req.player.is_admin) {
@@ -223,7 +227,7 @@ playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
       const adminCount = (
         db
           .prepare(
-            'SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL AND (? = 0 OR password_hash IS NOT NULL)'
+            'SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL AND (? = 0 OR password_hash IS NOT NULL)',
           )
           .get(req.player ? 1 : 0) as {
           count: number;
@@ -231,15 +235,9 @@ playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
       ).count;
       if (adminCount <= 1) return false;
     }
-    db.prepare('UPDATE players SET name = ?, real_name = ?, color = ?, avatar = ?, tracking_paused = ?, is_admin = ? WHERE id = ?').run(
-      nextName,
-      nextRealName,
-      nextColor,
-      nextAvatar,
-      nextTrackingPaused,
-      nextIsAdmin,
-      existing.id
-    );
+    db.prepare(
+      'UPDATE players SET name = ?, real_name = ?, color = ?, avatar = ?, tracking_paused = ?, is_admin = ? WHERE id = ?',
+    ).run(nextName, nextRealName, nextColor, nextAvatar, nextTrackingPaused, nextIsAdmin, existing.id);
     if (roleChanged) {
       writeAdminAudit({
         actorPlayerId: req.player?.id,
@@ -263,7 +261,7 @@ playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
       avatar: nextAvatar,
       tracking_paused: nextTrackingPaused,
       is_admin: nextIsAdmin,
-    })
+    }),
   );
 });
 
@@ -274,9 +272,9 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
       code: 'reauth_required',
     });
   }
-  const target = db.prepare('SELECT id, is_admin, is_test, deactivated_at FROM players WHERE id = ?').get(req.params.id) as
-    | Pick<PlayerRow, 'id' | 'is_admin' | 'is_test' | 'deactivated_at'>
-    | undefined;
+  const target = db
+    .prepare('SELECT id, is_admin, is_test, deactivated_at FROM players WHERE id = ?')
+    .get(req.params.id) as Pick<PlayerRow, 'id' | 'is_admin' | 'is_test' | 'deactivated_at'> | undefined;
   if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   if (target.is_test) return res.status(409).json({ error: 'Test-Spieler werden vollständig gelöscht.' });
   if (target.deactivated_at !== null) return res.status(409).json({ error: 'Dieses Konto ist bereits deaktiviert.' });
@@ -287,7 +285,7 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
       const adminCount = (
         db
           .prepare(
-            'SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL AND (? = 0 OR password_hash IS NOT NULL)'
+            'SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL AND (? = 0 OR password_hash IS NOT NULL)',
           )
           .get(req.player ? 1 : 0) as {
           count: number;
@@ -312,14 +310,22 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
       )
       .get(target.id);
     if (soleOwnedGroup) return 'last_group_owner';
-    db.prepare('UPDATE players SET deactivated_at = ?, is_admin = 0, tracking_paused = 1 WHERE id = ?').run(now, target.id);
+    db.prepare('UPDATE players SET deactivated_at = ?, is_admin = 0, tracking_paused = 1 WHERE id = ?').run(
+      now,
+      target.id,
+    );
     db.prepare('DELETE FROM sessions WHERE player_id = ?').run(target.id);
     db.prepare('DELETE FROM push_subscriptions WHERE player_id = ?').run(target.id);
     db.prepare('DELETE FROM agent_diagnostics WHERE player_id = ?').run(target.id);
     clearPlayerLiveStatus(target.id, now);
     voidOutstandingInvites(target.id, 'claim');
     voidOutstandingInvites(target.id, 'reset');
-    writeAdminAudit({ actorPlayerId: req.player?.id, action: 'player_deactivated', targetType: 'player', targetId: target.id });
+    writeAdminAudit({
+      actorPlayerId: req.player?.id,
+      action: 'player_deactivated',
+      targetType: 'player',
+      targetId: target.id,
+    });
     return 'ok';
   })();
   if (deactivated === 'last_admin') {
@@ -341,17 +347,23 @@ playersRouter.post('/:id/reactivate', requireAdmin, (req, res) => {
       code: 'reauth_required',
     });
   }
-  const result = db.prepare('UPDATE players SET deactivated_at = NULL WHERE id = ? AND deactivated_at IS NOT NULL').run(req.params.id);
+  const result = db
+    .prepare('UPDATE players SET deactivated_at = NULL WHERE id = ? AND deactivated_at IS NOT NULL')
+    .run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Deaktiviertes Konto nicht gefunden.' });
-  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'player_reactivated', targetType: 'player', targetId: req.params.id });
+  writeAdminAudit({
+    actorPlayerId: req.player?.id,
+    action: 'player_reactivated',
+    targetType: 'player',
+    targetId: req.params.id,
+  });
   broadcast(Events.playersChanged, null);
   res.status(204).end();
 });
 
 playersRouter.post('/:id/api-key/rotate', requireConfiguredUser, (req, res) => {
   const target = db.prepare('SELECT id, deactivated_at FROM players WHERE id = ?').get(req.params.id) as
-    | { id: string; deactivated_at: number | null }
-    | undefined;
+    { id: string; deactivated_at: number | null } | undefined;
   if (!target || target.deactivated_at !== null) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   if (req.player && req.player.id !== target.id && !req.player.is_admin) {
     return res.status(403).json({ error: 'Du kannst nur deinen eigenen Agent-Key erneuern.' });
@@ -362,7 +374,12 @@ playersRouter.post('/:id/api-key/rotate', requireConfiguredUser, (req, res) => {
   const apiKey = nanoid(24);
   db.prepare('UPDATE players SET api_key = ? WHERE id = ?').run(apiKey, target.id);
   clearPlayerLiveStatus(target.id);
-  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'api_key_rotated', targetType: 'player', targetId: target.id });
+  writeAdminAudit({
+    actorPlayerId: req.player?.id,
+    action: 'api_key_rotated',
+    targetType: 'player',
+    targetId: target.id,
+  });
   broadcast(Events.liveStatusChanged, null);
   res.json({ apiKey });
 });
@@ -373,7 +390,8 @@ playersRouter.delete('/:id', requireAdmin, (req, res) => {
   if (req.player && !hasRecentReauthentication(req.sessionId)) {
     return res.status(403).json({ error: 'Bitte bestätige dein Passwort.', code: 'reauth_required' });
   }
-  const target = db.prepare('SELECT is_test FROM players WHERE id = ?').get(req.params.id) as { is_test: number } | undefined;
+  const target = db.prepare('SELECT is_test FROM players WHERE id = ?').get(req.params.id) as
+    { is_test: number } | undefined;
   if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   if (!target.is_test) return res.status(409).json({ error: 'Echte Spieler werden deaktiviert statt gelöscht.' });
   const result = db.prepare('DELETE FROM players WHERE id = ?').run(req.params.id);
@@ -381,7 +399,12 @@ playersRouter.delete('/:id', requireAdmin, (req, res) => {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   }
   disconnectPlayerSockets(req.params.id);
-  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'test_player_deleted', targetType: 'player', targetId: req.params.id });
+  writeAdminAudit({
+    actorPlayerId: req.player?.id,
+    action: 'test_player_deleted',
+    targetType: 'player',
+    targetId: req.params.id,
+  });
   broadcast(Events.playersChanged, null);
   res.status(204).end();
 });
@@ -414,9 +437,7 @@ playersRouter.get('/:id/neighbors', ...withParamPlayerIdentity('id'), (req, res)
 // confirmation and the next seating-plan save won't override it. Body:
 // { eventId?, neighborIds: string[] }
 playersRouter.put('/:id/neighbors', ...withParamPlayerIdentity('id'), (req, res) => {
-  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(req.params.id) as
-    | { id: string }
-    | undefined;
+  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(req.params.id) as { id: string } | undefined;
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const { eventId, neighborIds } = req.body ?? {};
@@ -432,17 +453,16 @@ playersRouter.put('/:id/neighbors', ...withParamPlayerIdentity('id'), (req, res)
   const validIds =
     uniqueIds.length === 0
       ? []
-      : (db
-          .prepare(`SELECT id FROM players WHERE id IN (${uniqueIds.map(() => '?').join(',')})`)
-          .all(...uniqueIds) as Array<{ id: string }>).map((r) => r.id);
+      : (
+          db
+            .prepare(`SELECT id FROM players WHERE id IN (${uniqueIds.map(() => '?').join(',')})`)
+            .all(...uniqueIds) as Array<{ id: string }>
+        ).map((r) => r.id);
 
   const replace = db.transaction(() => {
-    db.prepare('DELETE FROM seat_neighbors WHERE event_id = ? AND player_id = ?').run(
-      filterEventId,
-      player.id
-    );
+    db.prepare('DELETE FROM seat_neighbors WHERE event_id = ? AND player_id = ?').run(filterEventId, player.id);
     const insert = db.prepare(
-      "INSERT INTO seat_neighbors (event_id, player_id, neighbor_id, source) VALUES (?, ?, ?, 'manual')"
+      "INSERT INTO seat_neighbors (event_id, player_id, neighbor_id, source) VALUES (?, ?, ?, 'manual')",
     );
     for (const neighborId of validIds) {
       insert.run(filterEventId, player.id, neighborId);
@@ -478,24 +498,22 @@ interface SessionRow {
 // ownership-gated for the same reason the rest of this API isn't (see
 // PATCH above) — it's just as visible to everyone as the roster already is.
 playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => {
-  const player = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id) as
-    | PlayerRow
-    | undefined;
+  const player = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id) as PlayerRow | undefined;
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const { eventId } = req.query;
   const filterEventId = typeof eventId === 'string' ? eventId : null;
   const now = Date.now();
 
-  const ownClauses = ['player_id = ?'];
-  const ownParams: string[] = [player.id];
+  const ownClauses = ['player_id = ?', 'group_id = ?'];
+  const ownParams: string[] = [player.id, req.group!.id];
   if (filterEventId) {
     ownClauses.push('event_id = ?');
     ownParams.push(filterEventId);
   }
   const ownRows = db
     .prepare(
-      `SELECT player_id, game_id, event_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${ownClauses.join(' AND ')}`
+      `SELECT player_id, game_id, event_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${ownClauses.join(' AND ')}`,
     )
     .all(...ownParams) as SessionRow[];
 
@@ -512,7 +530,9 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
   let games: GameRow[] = [];
   if (gameIds.length > 0) {
     const ph = gameIds.map(() => '?').join(',');
-    games = db.prepare(`SELECT id, name, icon FROM games WHERE id IN (${ph})`).all(...gameIds) as GameRow[];
+    games = db
+      .prepare(`SELECT id, name, icon FROM games WHERE id IN (${ph}) AND (group_id = ? OR arcade_key IS NOT NULL)`)
+      .all(...gameIds, req.group!.id) as GameRow[];
   }
   let events: EventRow[] = [];
   if (eventIds.length > 0) {
@@ -582,8 +602,8 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
 
   // Awards are computed across everyone (a "record" only means something
   // relative to the rest of the group), then filtered down to this player's.
-  const allClauses: string[] = [];
-  const allParams: string[] = [];
+  const allClauses: string[] = ['group_id = ?'];
+  const allParams: string[] = [req.group!.id];
   if (filterEventId) {
     allClauses.push('event_id = ?');
     allParams.push(filterEventId);

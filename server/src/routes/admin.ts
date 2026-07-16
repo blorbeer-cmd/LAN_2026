@@ -32,7 +32,7 @@ adminRouter.post('/test-users', requireAdmin, (req, res) => {
   });
   broadcast(Events.playersChanged, null);
   broadcast(Events.skillsChanged, null);
-  broadcast(Events.liveStatusChanged, getLiveBoard());
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
   res.status(201).json({ created, totalTestUsers: countTestUsers() });
 });
 
@@ -52,7 +52,7 @@ adminRouter.delete('/test-users', requireAdmin, requireRecentReauthentication, (
   if (deleted > 0) {
     broadcast(Events.playersChanged, null);
     broadcast(Events.skillsChanged, null);
-    broadcast(Events.liveStatusChanged, getLiveBoard());
+    broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
   }
   res.json({ deleted });
 });

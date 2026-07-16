@@ -36,8 +36,8 @@ statsRouter.get('/playtime', (req, res) => {
   const range = parseTimeRangeQuery(req.query as Record<string, unknown>);
   if ('error' in range) return res.status(400).json({ error: range.error });
 
-  const clauses: string[] = [];
-  const sqlParams: string[] = [];
+  const clauses: string[] = ['group_id = ?'];
+  const sqlParams: string[] = [req.group!.id];
   if (filterGameId) {
     clauses.push('game_id = ?');
     sqlParams.push(filterGameId);
@@ -80,7 +80,9 @@ statsRouter.get('/playtime', (req, res) => {
   let games: GameRow[] = [];
   if (gameIds.length > 0) {
     const gh = gameIds.map(() => '?').join(',');
-    games = db.prepare(`SELECT id, name, icon FROM games WHERE id IN (${gh})`).all(...gameIds) as GameRow[];
+    games = db
+      .prepare(`SELECT id, name, icon FROM games WHERE id IN (${gh}) AND (group_id = ? OR arcade_key IS NOT NULL)`)
+      .all(...gameIds, req.group!.id) as GameRow[];
   }
   const playerById = new Map(players.map((p) => [p.id, p]));
   const gameByIdMap = new Map(games.map((g) => [g.id, g]));

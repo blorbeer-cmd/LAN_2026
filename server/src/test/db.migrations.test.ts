@@ -279,6 +279,46 @@ test('legacy votes/vote_rounds schema is rebuilt for points-mode voting without 
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
+test('migration 32 keeps historical Arcade sessions visible in their event group', () => {
+  const dbFile = makeTempDbPath('arcade-session-group-backfill');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const arcade = fixture.prepare('SELECT id, group_id FROM games WHERE arcade_key IS NOT NULL LIMIT 1').get() as {
+    id: string;
+    group_id: string | null;
+  };
+  const event = fixture.prepare('SELECT id, group_id FROM events WHERE group_id = ? LIMIT 1').get('default-group') as {
+    id: string;
+    group_id: string;
+  };
+  assert.equal(arcade.group_id, null, 'Arcade fixtures intentionally have no catalog owner');
+  assert.equal(event.group_id, 'default-group');
+
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('historical-arcade-player', 'Historical Arcade Player', 'historical-arcade-key', Date.now());
+  fixture
+    .prepare(
+      `INSERT INTO play_sessions
+       (id, player_id, game_id, event_id, started_at, ended_at, active_ms, group_id)
+       VALUES (?, ?, ?, ?, ?, ?, 0, NULL)`,
+    )
+    .run('historical-arcade-session', 'historical-arcade-player', arcade.id, event.id, 1000, 2000);
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 32').run();
+  fixture.close();
+
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile, { readonly: true });
+  const session = migrated
+    .prepare('SELECT group_id FROM play_sessions WHERE id = ?')
+    .get('historical-arcade-session') as { group_id: string | null };
+  assert.equal(session.group_id, 'default-group');
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('records the complete migration history and does not duplicate it on restart', () => {
   const dbFile = makeTempDbPath('migration-history');
 
@@ -291,10 +331,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 31);
+  assert.equal(migrations.length, 32);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 31 }, (_, index) => index + 1),
+    Array.from({ length: 32 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -303,13 +343,21 @@ test('records the complete migration history and does not duplicate it on restar
   }
   const pushLogColumns = migrated.prepare('PRAGMA table_info(push_log)').all() as Array<{ name: string }>;
   for (const column of ['topic_key', 'expires_at', 'resolved_at']) {
-    assert.ok(pushLogColumns.some((entry) => entry.name === column), `${column} should be added to legacy push logs`);
+    assert.ok(
+      pushLogColumns.some((entry) => entry.name === column),
+      `${column} should be added to legacy push logs`,
+    );
   }
   const broadcastColumns = migrated.prepare('PRAGMA table_info(broadcasts)').all() as Array<{ name: string }>;
   for (const column of ['ends_at', 'ended_at']) {
-    assert.ok(broadcastColumns.some((entry) => entry.name === column), `${column} should be added to legacy broadcasts`);
+    assert.ok(
+      broadcastColumns.some((entry) => entry.name === column),
+      `${column} should be added to legacy broadcasts`,
+    );
   }
-  const pushSeen = migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'push_log_seen'").get();
+  const pushSeen = migrated
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'push_log_seen'")
+    .get();
   assert.ok(pushSeen, 'push_log_seen should be created for legacy databases');
   const playerColumns = migrated.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
   assert.ok(playerColumns.some((column) => column.name === 'deactivated_at'));
@@ -334,7 +382,7 @@ test('account hardening clears only unclaimed and test-user legacy admin flags',
 
   const fixture = new Database(dbFile);
   const insert = fixture.prepare(
-    'INSERT INTO players (id, name, api_key, is_admin, is_test, password_hash, created_at) VALUES (?, ?, ?, 1, ?, ?, ?)'
+    'INSERT INTO players (id, name, api_key, is_admin, is_test, password_hash, created_at) VALUES (?, ?, ?, 1, ?, ?, ?)',
   );
   insert.run('claimed-admin', 'Claimed Admin', 'claimed-admin-key', 0, 'stored-password-hash', Date.now());
   insert.run('legacy-admin', 'Legacy Admin', 'legacy-admin-key', 0, null, Date.now());
@@ -345,11 +393,9 @@ test('account hardening clears only unclaimed and test-user legacy admin flags',
   runMigrations(dbFile);
 
   const migrated = new Database(dbFile, { readonly: true });
-  const roles = migrated.prepare('SELECT id, is_admin FROM players WHERE id IN (?, ?, ?) ORDER BY id').all(
-    'claimed-admin',
-    'legacy-admin',
-    'test-admin'
-  );
+  const roles = migrated
+    .prepare('SELECT id, is_admin FROM players WHERE id IN (?, ?, ?) ORDER BY id')
+    .all('claimed-admin', 'legacy-admin', 'test-admin');
   assert.deepEqual(roles, [
     { id: 'claimed-admin', is_admin: 1 },
     { id: 'legacy-admin', is_admin: 0 },

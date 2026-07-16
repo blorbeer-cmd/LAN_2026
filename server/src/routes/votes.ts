@@ -52,9 +52,11 @@ export function voteNotificationPlayerIds(): string[] {
   if (eventId === OUTSIDE_EVENTS_ID) {
     return (db.prepare('SELECT id FROM players').all() as Array<{ id: string }>).map((player) => player.id);
   }
-  return (db.prepare('SELECT player_id AS id FROM event_participants WHERE event_id = ?').all(eventId) as Array<{ id: string }>).map(
-    (player) => player.id
-  );
+  return (
+    db.prepare('SELECT player_id AS id FROM event_participants WHERE event_id = ?').all(eventId) as Array<{
+      id: string;
+    }>
+  ).map((player) => player.id);
 }
 
 type VoteMode = 'single' | 'points';
@@ -88,9 +90,9 @@ interface RoundMeta {
 // request, so a small extra query is fine.
 function getRoundMeta(round: number): RoundMeta {
   if (round < 1) return { title: null, info: null, selectedGameIds: null };
-  const row = db.prepare('SELECT title, info, selected_game_ids AS selectedGameIdsJson FROM vote_rounds WHERE round = ?').get(round) as
-    | { title: string | null; info: string | null; selectedGameIdsJson: string | null }
-    | undefined;
+  const row = db
+    .prepare('SELECT title, info, selected_game_ids AS selectedGameIdsJson FROM vote_rounds WHERE round = ?')
+    .get(round) as { title: string | null; info: string | null; selectedGameIdsJson: string | null } | undefined;
   if (!row) return { title: null, info: null, selectedGameIds: null };
   return {
     title: row.title,
@@ -120,7 +122,9 @@ interface ResultRow {
 // row), not worth a dedicated join since round counts stay tiny at LAN scale.
 function voteWinCountsByGame(): Map<string, number> {
   const rows = db
-    .prepare("SELECT winner_game_ids AS winnerGameIdsJson FROM vote_rounds WHERE closed_at IS NOT NULL AND winner_game_ids IS NOT NULL")
+    .prepare(
+      'SELECT winner_game_ids AS winnerGameIdsJson FROM vote_rounds WHERE closed_at IS NOT NULL AND winner_game_ids IS NOT NULL',
+    )
     .all() as Array<{ winnerGameIdsJson: string }>;
   const counts = new Map<string, number>();
   for (const row of rows) {
@@ -135,7 +139,7 @@ function voteWinCountsByGame(): Map<string, number> {
 // a single call's underlying query/sort can be reused for both the
 // round-scoped view and the always-full-catalog "Bock" popularity view
 // (buildPayload's `catalogResults`) instead of querying twice.
-function buildAllResults(round: number, mode: VoteMode): ResultRow[] {
+function buildAllResults(groupId: string, round: number, mode: VoteMode): ResultRow[] {
   const now = Date.now();
   const rows = db
     .prepare(
@@ -153,16 +157,18 @@ function buildAllResults(round: number, mode: VoteMode): ResultRow[] {
        ) m ON m.game_id = g.id
        LEFT JOIN (
          SELECT game_id, AVG(rating) AS avgPreference, COUNT(*) AS preferenceCount
-         FROM preferences GROUP BY game_id
+         FROM preferences WHERE group_id = ? GROUP BY game_id
        ) p ON p.game_id = g.id
        LEFT JOIN (
          SELECT game_id, SUM(MAX(0, COALESCE(ended_at, ?) - started_at)) AS totalPlaytimeMs
-         FROM play_sessions GROUP BY game_id
+         FROM play_sessions WHERE group_id = ? GROUP BY game_id
        ) ps ON ps.game_id = g.id
-       WHERE g.arcade_key IS NULL
-       GROUP BY g.id`
+       WHERE g.arcade_key IS NULL AND g.group_id = ?
+       GROUP BY g.id`,
     )
-    .all(round, now) as Array<Omit<ResultRow, 'score' | 'totalPlaytimeFormatted' | 'voteWinCount'>>;
+    .all(round, groupId, now, groupId, groupId) as Array<
+    Omit<ResultRow, 'score' | 'totalPlaytimeFormatted' | 'voteWinCount'>
+  >;
 
   const winCounts = voteWinCountsByGame();
   const results: ResultRow[] = rows.map((r) => ({
@@ -190,8 +196,13 @@ function filterResults(results: ResultRow[], selectedGameIds: string[] | null): 
   return results.filter((r) => allowed.has(r.gameId));
 }
 
-function buildResults(round: number, mode: VoteMode, selectedGameIds: string[] | null = null): ResultRow[] {
-  return filterResults(buildAllResults(round, mode), selectedGameIds);
+function buildResults(
+  groupId: string,
+  round: number,
+  mode: VoteMode,
+  selectedGameIds: string[] | null = null,
+): ResultRow[] {
+  return filterResults(buildAllResults(groupId, round, mode), selectedGameIds);
 }
 
 // While a round is open, nobody — not even the person about to close it —
@@ -213,7 +224,7 @@ function redactOpenRoundResults(results: ResultRow[]): Array<Omit<ResultRow, 'vo
   return sorted.map(({ votes: _votes, points: _points, score: _score, ...rest }) => rest);
 }
 
-function buildPayload(extra: Record<string, unknown> = {}) {
+function buildPayload(groupId: string, extra: Record<string, unknown> = {}) {
   const state = readRoundState();
   const meta = getRoundMeta(state.round);
   // One query (buildAllResults) backs both views: the round-scoped
@@ -223,12 +234,18 @@ function buildPayload(extra: Record<string, unknown> = {}) {
   // bestimmte Spiele zur Wahl stellen" restriction, but recomputing the same
   // SQL join a second time just to drop that restriction would be redundant
   // — filtering the already-fetched rows in JS is enough.
-  const catalogFullResults = buildAllResults(state.round, state.mode);
+  const catalogFullResults = buildAllResults(groupId, state.round, state.mode);
   const fullResults = filterResults(catalogFullResults, meta.selectedGameIds);
   const totalVotes = fullResults.reduce((sum, r) => sum + r.votes, 0);
   const totalPoints = fullResults.reduce((sum, r) => sum + r.points, 0);
   const totalVoters = (
-    db.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM votes WHERE round = ?').get(state.round) as {
+    db
+      .prepare(
+        `SELECT COUNT(DISTINCT v.player_id) AS n
+       FROM votes v JOIN games g ON g.id = v.game_id
+       WHERE v.round = ? AND g.group_id = ?`,
+      )
+      .get(state.round, groupId) as {
       n: number;
     }
   ).n;
@@ -238,8 +255,8 @@ function buildPayload(extra: Record<string, unknown> = {}) {
 }
 
 // GET /api/votes - current round's state and tally.
-votesRouter.get('/', (_req, res) => {
-  res.json(buildPayload());
+votesRouter.get('/', (req, res) => {
+  res.json(buildPayload(req.group!.id));
 });
 
 // GET /api/votes/mine?playerId= - the given player's own entries in the
@@ -253,8 +270,12 @@ votesRouter.get('/mine', ...withQueryPlayerIdentity, (req, res) => {
   }
   const state = readRoundState();
   const entries = db
-    .prepare('SELECT game_id AS gameId, points FROM votes WHERE player_id = ? AND round = ?')
-    .all(playerId, state.round) as Array<{ gameId: string; points: number | null }>;
+    .prepare(
+      `SELECT v.game_id AS gameId, v.points
+       FROM votes v JOIN games g ON g.id = v.game_id
+       WHERE v.player_id = ? AND v.round = ? AND g.group_id = ?`,
+    )
+    .all(playerId, state.round, req.group!.id) as Array<{ gameId: string; points: number | null }>;
   res.json({ round: state.round, mode: state.mode, entries });
 });
 
@@ -295,7 +316,7 @@ votesRouter.post('/start', (req, res) => {
     const uniqueIds = [...new Set(gameIds)];
     for (const id of uniqueIds) {
       if (typeof id !== 'string' || !id) return res.status(400).json({ error: 'Ungültige gameId.' });
-      const game = db.prepare('SELECT id FROM games WHERE id = ?').get(id);
+      const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(id, req.group!.id);
       if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
     }
     selectedGameIds = uniqueIds as string[];
@@ -309,10 +330,18 @@ votesRouter.post('/start', (req, res) => {
   setState(MODE_KEY, nextMode);
 
   db.prepare(
-    'INSERT INTO vote_rounds (round, event_id, started_at, closed_at, winner_game_ids, mode, title, info, selected_game_ids) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?)'
-  ).run(nextRound, getTrackingEventId(), now, nextMode, cleanTitle, cleanInfo, selectedGameIds ? JSON.stringify(selectedGameIds) : null);
+    'INSERT INTO vote_rounds (round, event_id, started_at, closed_at, winner_game_ids, mode, title, info, selected_game_ids) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?)',
+  ).run(
+    nextRound,
+    getTrackingEventId(),
+    now,
+    nextMode,
+    cleanTitle,
+    cleanInfo,
+    selectedGameIds ? JSON.stringify(selectedGameIds) : null,
+  );
 
-  const payload = buildPayload();
+  const payload = buildPayload(req.group!.id);
   broadcast(Events.votesChanged, payload);
 
   notifyPlayers(
@@ -326,7 +355,7 @@ votesRouter.post('/start', (req, res) => {
       url: '/#votes',
     },
     'all',
-    { key: `vote:${nextRound}` }
+    { key: `vote:${nextRound}` },
   );
 
   res.status(201).json(payload);
@@ -352,7 +381,7 @@ votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   }
   const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  const game = db.prepare('SELECT id FROM games WHERE id = ?').get(gameId);
+  const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id);
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
   const meta = getRoundMeta(state.round);
   if (meta.selectedGameIds && !meta.selectedGameIds.includes(gameId)) {
@@ -362,12 +391,12 @@ votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   const castVote = db.transaction(() => {
     db.prepare('DELETE FROM votes WHERE player_id = ? AND round = ?').run(playerId, state.round);
     db.prepare(
-      'INSERT INTO votes (id, player_id, game_id, event_id, round, points, created_at) VALUES (?, ?, ?, ?, ?, NULL, ?)'
+      'INSERT INTO votes (id, player_id, game_id, event_id, round, points, created_at) VALUES (?, ?, ?, ?, ?, NULL, ?)',
     ).run(nanoid(), playerId, gameId, getTrackingEventId(), state.round, Date.now());
   });
   castVote();
 
-  const payload = buildPayload();
+  const payload = buildPayload(req.group!.id);
   broadcast(Events.votesChanged, payload);
   res.json(payload);
 });
@@ -412,7 +441,7 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
     if (!isIntInRange(points, 1, 10)) {
       return res.status(400).json({ error: 'Punkte müssen eine Ganzzahl zwischen 1 und 10 sein.' });
     }
-    const game = db.prepare('SELECT id FROM games WHERE id = ?').get(gameId);
+    const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id);
     if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
     if (meta.selectedGameIds && !meta.selectedGameIds.includes(gameId)) {
       return res.status(400).json({ error: 'Dieses Spiel ist in dieser Abstimmung nicht auswählbar.' });
@@ -425,7 +454,7 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
   const castPoints = db.transaction(() => {
     db.prepare('DELETE FROM votes WHERE player_id = ? AND round = ?').run(playerId, state.round);
     const insert = db.prepare(
-      'INSERT INTO votes (id, player_id, game_id, event_id, round, points, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO votes (id, player_id, game_id, event_id, round, points, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
     );
     for (const entry of clean) {
       insert.run(nanoid(), playerId, entry.gameId, eventId, state.round, entry.points, now);
@@ -433,14 +462,14 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
   });
   castPoints();
 
-  const payload = buildPayload();
+  const payload = buildPayload(req.group!.id);
   broadcast(Events.votesChanged, payload);
   res.json(payload);
 });
 
 // POST /api/votes/close - ends the round and reports the winner(s) (ties are
 // all reported so the group can decide/re-vote).
-votesRouter.post('/close', (_req, res) => {
+votesRouter.post('/close', (req, res) => {
   const state = readRoundState();
   if (!state.open) {
     return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
@@ -448,18 +477,18 @@ votesRouter.post('/close', (_req, res) => {
   setState(OPEN_KEY, '0');
 
   const meta = getRoundMeta(state.round);
-  const results = buildResults(state.round, state.mode, meta.selectedGameIds);
+  const results = buildResults(req.group!.id, state.round, state.mode, meta.selectedGameIds);
   const topScore = results[0]?.score ?? 0;
   const winnerGameIds = topScore > 0 ? results.filter((r) => r.score === topScore).map((r) => r.gameId) : [];
 
   db.prepare('UPDATE vote_rounds SET closed_at = ?, winner_game_ids = ? WHERE round = ?').run(
     Date.now(),
     JSON.stringify(winnerGameIds),
-    state.round
+    state.round,
   );
   resolvePushTopic(`vote:${state.round}`);
 
-  const payload = buildPayload({ winnerGameIds });
+  const payload = buildPayload(req.group!.id, { winnerGameIds });
   broadcast(Events.votesChanged, payload);
   res.json(payload);
 });
@@ -467,7 +496,7 @@ votesRouter.post('/close', (_req, res) => {
 // POST /api/votes/cancel - discards the current round entirely (e.g. started
 // by mistake), with no winner. Unlike /close, the votes themselves are
 // deleted so they don't linger as noise in the history.
-votesRouter.post('/cancel', (_req, res) => {
+votesRouter.post('/cancel', (req, res) => {
   const state = readRoundState();
   if (!state.open) {
     return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
@@ -477,7 +506,7 @@ votesRouter.post('/cancel', (_req, res) => {
   setState(OPEN_KEY, '0');
   resolvePushTopic(`vote:${state.round}`);
 
-  const payload = buildPayload();
+  const payload = buildPayload(req.group!.id);
   broadcast(Events.votesChanged, payload);
   res.json(payload);
 });
@@ -512,16 +541,16 @@ votesRouter.get('/history', (req, res) => {
               vr.selected_game_ids AS selectedGameIdsJson
        FROM vote_rounds vr
        JOIN events e ON e.id = vr.event_id
-       WHERE vr.closed_at IS NOT NULL AND vr.event_id = ?
+       WHERE vr.closed_at IS NOT NULL AND vr.event_id = ? AND e.group_id = ?
        ORDER BY vr.round DESC
-       LIMIT ?`
+       LIMIT ?`,
     )
-    .all(filterEventId, limitNum) as VoteRoundRow[];
+    .all(filterEventId, req.group!.id, limitNum) as VoteRoundRow[];
 
   const history = rows.map((r) => {
     const winnerIds: string[] = r.winnerGameIdsJson ? JSON.parse(r.winnerGameIdsJson) : [];
     const selectedGameIds: string[] | null = r.selectedGameIdsJson ? JSON.parse(r.selectedGameIdsJson) : null;
-    const results = buildResults(r.round, r.mode, selectedGameIds);
+    const results = buildResults(req.group!.id, r.round, r.mode, selectedGameIds);
     const totalVotes = results.reduce((sum, x) => sum + x.votes, 0);
     const winners = results
       .filter((x) => winnerIds.includes(x.gameId))
@@ -561,19 +590,25 @@ votesRouter.get('/history/:round', (req, res) => {
               vr.selected_game_ids AS selectedGameIdsJson
        FROM vote_rounds vr
        JOIN events e ON e.id = vr.event_id
-       WHERE vr.round = ?`
+       WHERE vr.round = ? AND e.group_id = ?`,
     )
-    .get(round) as VoteRoundRow | undefined;
+    .get(round, req.group!.id) as VoteRoundRow | undefined;
   if (!row || row.closedAt === null) {
     return res.status(404).json({ error: 'Abgeschlossene Abstimmungsrunde nicht gefunden.' });
   }
 
   const selectedGameIds: string[] | null = row.selectedGameIdsJson ? JSON.parse(row.selectedGameIdsJson) : null;
-  const results = buildResults(row.round, row.mode, selectedGameIds);
+  const results = buildResults(req.group!.id, row.round, row.mode, selectedGameIds);
   const totalVotes = results.reduce((sum, r) => sum + r.votes, 0);
   const totalPoints = results.reduce((sum, r) => sum + r.points, 0);
   const totalVoters = (
-    db.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM votes WHERE round = ?').get(row.round) as {
+    db
+      .prepare(
+        `SELECT COUNT(DISTINCT v.player_id) AS n
+       FROM votes v JOIN games g ON g.id = v.game_id
+       WHERE v.round = ? AND g.group_id = ?`,
+      )
+      .get(row.round, req.group!.id) as {
       n: number;
     }
   ).n;
