@@ -142,6 +142,7 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   await page.waitForSelector('#profile-name');
   assert.equal(await page.locator('.profile-agent-step').count(), 3);
   assert.equal(await page.locator('#push-toggle[type="checkbox"]').count(), 1);
+  assert.equal(await page.locator('label:has(#push-toggle) > span').getByText('Aktivieren', { exact: true }).count(), 1);
   assert.equal(await page.locator('#profile-tracking-pause-help').count(), 1);
   assert.equal(await page.locator('#profile-activity-tracking-help').count(), 1);
   assert.equal(await page.locator('.profile-agent-step').first().locator('#tracking-paused').count(), 1);

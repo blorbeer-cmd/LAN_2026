@@ -151,8 +151,8 @@ function renderPushSection() {
       <label class="check-row">
         <input type="checkbox" id="push-toggle" ${subscribed ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
         <span class="title-with-info" style="flex:1;">
-          <span>Push empfangen</span>
-          ${infoTooltipHtml('profile-push-help', 'Push empfangen', PUSH_HELP)}
+          <span>Aktivieren</span>
+          ${infoTooltipHtml('profile-push-help', 'Push-Benachrichtigungen aktivieren', PUSH_HELP)}
         </span>
       </label>
       ${pushBusy || status ? `<span class="muted" style="font-size:var(--font-size-xs);">${pushBusy ? 'Wird aktualisiert…' : status}</span>` : ''}
