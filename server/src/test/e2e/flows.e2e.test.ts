@@ -157,14 +157,15 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   assert.equal(await page.locator('label[for="profile-name"]').textContent(), 'Gamertag');
   assert.equal(await page.locator('label[for="profile-real-name"]').textContent(), 'Name');
   assert.equal(await page.locator('.profile-avatar-editor .field-label').count(), 0);
-  assert.equal(await page.locator('label[for="profile-color"]').textContent(), 'Farbe');
-  assert.equal(await page.locator('.profile-color-wheel').count(), 1);
-  assert.equal(await page.locator('.profile-color-wheel').evaluate((element) => getComputedStyle(element).borderRadius), '999px');
+  assert.equal(await page.locator('label[for="profile-color-trigger"]').textContent(), 'Farbe');
+  assert.equal(await page.locator('.profile-color-trigger').count(), 1);
+  assert.equal(await page.locator('.profile-color-trigger').evaluate((element) => getComputedStyle(element).borderRadius), '8px');
+  assert.equal(await page.locator('input[type="color"]').count(), 0);
   assert.equal(await page.locator('.profile-identity-fields').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 4);
   assert.ok(await page.locator('.profile-identity-fields').evaluate((editor) => {
     const controls = [
       editor.querySelector('.profile-avatar-control'),
-      editor.querySelector('.profile-color-wheel'),
+      editor.querySelector('.profile-color-trigger'),
       editor.querySelector('#profile-name'),
       editor.querySelector('#profile-real-name'),
     ];
@@ -175,6 +176,21 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
     });
     return Math.max(...centers) - Math.min(...centers) < 2;
   }));
+  const originalProfileColor = await page.inputValue('#profile-color');
+  await page.click('#profile-color-trigger');
+  await page.waitForSelector('.profile-color-picker-modal .profile-color-picker-wheel');
+  assert.equal(await page.locator('.profile-color-preset').count(), 8);
+  await page.locator('.profile-color-picker-modal .modal').evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
+  const colorModal = await page.locator('.profile-color-picker-modal .modal').boundingBox();
+  assert.ok(colorModal && Math.abs(colorModal.x + colorModal.width / 2 - 640) < 2 && Math.abs(colorModal.y + colorModal.height / 2 - 450) < 2);
+  await page.locator('.profile-color-preset').nth(1).click();
+  assert.equal(await page.locator('.profile-color-picker-value').textContent(), '#9163F5');
+  await page.click('[data-profile-color-cancel]');
+  assert.equal(await page.inputValue('#profile-color'), originalProfileColor);
+  await page.click('#profile-color-trigger');
+  await page.locator('.profile-color-preset').nth(1).click();
+  await page.click('[data-profile-color-apply]');
+  assert.equal(await page.inputValue('#profile-color'), '#9163f5');
   assert.equal(await page.getByText('Erweitertes Tracking', { exact: true }).count(), 1);
   assert.equal(await page.locator('.profile-identity-editor').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
   assert.equal(await page.getByText('Auf diesem Gerät aus.', { exact: true }).count(), 0);

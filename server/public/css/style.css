@@ -1003,36 +1003,93 @@ input[type='number']::-webkit-inner-spin-button {
   align-items: flex-start;
   gap: var(--space-1);
 }
-.profile-color-wheel {
-  position: relative;
+.profile-color-trigger {
+  width: var(--tap-target-size);
+  height: var(--tap-target-size);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--profile-color);
+  cursor: pointer;
+}
+.profile-color-picker-modal {
+  align-items: center;
+}
+.profile-color-picker-modal .modal {
+  width: calc(100% - var(--space-4) * 2);
+  max-width: calc(var(--space-8) * 8);
+  border-radius: var(--radius-lg);
+}
+.profile-color-picker {
   display: grid;
-  width: var(--avatar-size-lg);
-  height: var(--avatar-size-lg);
-  padding: var(--space-1);
-  place-items: center;
+  justify-items: center;
+  gap: var(--space-4);
+}
+.profile-color-picker-wheel {
+  position: relative;
+  width: min(70vw, calc(var(--space-8) * 5));
+  aspect-ratio: 1;
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
-  background: var(--color-wheel-gradient);
+  background:
+    radial-gradient(circle, var(--accent-text) 0%, transparent 72%),
+    var(--color-wheel-gradient);
   box-shadow: var(--shadow);
-  cursor: pointer;
+  cursor: crosshair;
+  touch-action: none;
 }
-.profile-color-wheel-swatch {
-  width: 100%;
-  height: 100%;
-  border: var(--space-1) solid var(--bg-elevated);
+.profile-color-picker-marker {
+  position: absolute;
+  width: var(--space-4);
+  height: var(--space-4);
+  border: var(--space-1) solid var(--accent-text);
   border-radius: var(--radius-full);
-  background: var(--profile-color);
+  box-shadow: var(--shadow);
+  transform: translate(-50%, -50%);
   pointer-events: none;
 }
-.profile-color-wheel input[type='color'] {
-  position: absolute;
-  inset: 0;
+.profile-color-picker-preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+}
+.profile-color-picker-preview,
+.profile-color-preset {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--profile-color);
+}
+.profile-color-picker-preview {
+  width: var(--tap-target-size);
+  height: var(--tap-target-size);
+}
+.profile-color-picker-value {
+  color: var(--text-muted);
+  font-weight: var(--font-weight-medium);
+}
+.profile-color-picker-presets {
+  display: grid;
   width: 100%;
-  height: 100%;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.profile-color-preset {
+  width: 100%;
+  height: var(--tap-target-size);
   padding: 0;
-  border: 0;
-  opacity: 0;
   cursor: pointer;
+}
+.profile-color-preset.is-selected {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+.profile-color-picker-actions {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
 }
 .profile-identity-fields .field-label {
   margin: 0;

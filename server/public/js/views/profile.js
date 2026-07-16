@@ -22,10 +22,129 @@ import { resizeImageFile } from '../imageUtils.js';
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { openModal } from '../modal.js';
+import { AVATAR_PALETTE } from '../avatarPalette.js';
 
 const TRACKING_PAUSE_HELP = 'Pausiert Live-Status und Spielzeit. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.';
 const ACTIVITY_TRACKING_HELP = 'Erfasst zusätzlich, ob das Spielfenster im Vordergrund ist. Der Wert lässt sich später in der Agent-Steuerung ändern.';
 const PUSH_HELP = 'Benachrichtigt dich auch, wenn Respawn nicht geöffnet ist.';
+
+function normalizedProfileColor(value) {
+  return /^#[0-9a-f]{6}$/i.test(value ?? '') ? value.toLowerCase() : AVATAR_PALETTE[0];
+}
+
+function hexToHsv(value) {
+  const hex = normalizedProfileColor(value).slice(1);
+  const [red, green, blue] = [0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16) / 255);
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const delta = max - min;
+  let hue = 0;
+  if (delta > 0) {
+    if (max === red) hue = 60 * (((green - blue) / delta) % 6);
+    else if (max === green) hue = 60 * ((blue - red) / delta + 2);
+    else hue = 60 * ((red - green) / delta + 4);
+  }
+  return { hue: (hue + 360) % 360, saturation: max === 0 ? 0 : delta / max };
+}
+
+function hsvToHex(hue, saturation) {
+  const chroma = saturation;
+  const section = hue / 60;
+  const secondary = chroma * (1 - Math.abs((section % 2) - 1));
+  const [red, green, blue] =
+    section < 1 ? [chroma, secondary, 0]
+      : section < 2 ? [secondary, chroma, 0]
+        : section < 3 ? [0, chroma, secondary]
+          : section < 4 ? [0, secondary, chroma]
+            : section < 5 ? [secondary, 0, chroma]
+              : [chroma, 0, secondary];
+  const match = 1 - chroma;
+  return `#${[red, green, blue]
+    .map((channel) => Math.round((channel + match) * 255).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
+function openProfileColorPicker(colorInput, colorTrigger) {
+  let selectedColor = normalizedProfileColor(colorInput.value);
+  const swatches = AVATAR_PALETTE.map(
+    (color) => `<button type="button" class="profile-color-preset" data-profile-color="${color}" style="--profile-color:${color};" aria-label="Farbe ${color}"></button>`
+  ).join('');
+  openModal(
+    'Profilfarbe wählen',
+    `<div class="profile-color-picker">
+       <div class="profile-color-picker-wheel" role="slider" tabindex="0" aria-label="Farbton und Sättigung wählen" aria-valuetext="${selectedColor}">
+         <span class="profile-color-picker-marker"></span>
+       </div>
+       <div class="profile-color-picker-preview-row">
+         <span class="profile-color-picker-preview" style="--profile-color:${selectedColor};"></span>
+         <output class="profile-color-picker-value">${selectedColor.toUpperCase()}</output>
+       </div>
+       <div class="profile-color-picker-presets" aria-label="Farbvorgaben">${swatches}</div>
+       <div class="profile-color-picker-actions">
+         <button type="button" class="btn btn-equal" data-profile-color-cancel>Abbrechen</button>
+         <button type="button" class="btn btn-primary btn-equal" data-profile-color-apply>Übernehmen</button>
+       </div>
+     </div>`,
+    {
+      onMount(backdrop, close) {
+        backdrop.classList.add('profile-color-picker-modal');
+        const wheel = backdrop.querySelector('.profile-color-picker-wheel');
+        const marker = backdrop.querySelector('.profile-color-picker-marker');
+        const preview = backdrop.querySelector('.profile-color-picker-preview');
+        const output = backdrop.querySelector('.profile-color-picker-value');
+        const presets = [...backdrop.querySelectorAll('[data-profile-color]')];
+
+        const updateSelection = (color) => {
+          selectedColor = normalizedProfileColor(color);
+          const { hue, saturation } = hexToHsv(selectedColor);
+          const angle = ((hue - 90) * Math.PI) / 180;
+          marker.style.left = `${50 + Math.cos(angle) * saturation * 46}%`;
+          marker.style.top = `${50 + Math.sin(angle) * saturation * 46}%`;
+          preview.style.setProperty('--profile-color', selectedColor);
+          output.value = selectedColor.toUpperCase();
+          wheel.setAttribute('aria-valuetext', selectedColor);
+          presets.forEach((preset) => preset.classList.toggle('is-selected', preset.dataset.profileColor.toLowerCase() === selectedColor));
+        };
+        const updateFromPointer = (event) => {
+          const box = wheel.getBoundingClientRect();
+          const x = event.clientX - (box.left + box.width / 2);
+          const y = event.clientY - (box.top + box.height / 2);
+          const hue = (Math.atan2(y, x) * 180 / Math.PI + 90 + 360) % 360;
+          const saturation = Math.min(1, Math.hypot(x, y) / (box.width / 2));
+          updateSelection(hsvToHex(hue, saturation));
+        };
+
+        wheel.addEventListener('pointerdown', (event) => {
+          wheel.setPointerCapture(event.pointerId);
+          updateFromPointer(event);
+        });
+        wheel.addEventListener('pointermove', (event) => {
+          if (wheel.hasPointerCapture(event.pointerId)) updateFromPointer(event);
+        });
+        wheel.addEventListener('keydown', (event) => {
+          if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+          event.preventDefault();
+          const current = hexToHsv(selectedColor);
+          if (event.key === 'ArrowLeft') current.hue = (current.hue + 355) % 360;
+          if (event.key === 'ArrowRight') current.hue = (current.hue + 5) % 360;
+          if (event.key === 'ArrowUp') current.saturation = Math.min(1, current.saturation + 0.05);
+          if (event.key === 'ArrowDown') current.saturation = Math.max(0, current.saturation - 0.05);
+          updateSelection(hsvToHex(current.hue, current.saturation));
+        });
+        presets.forEach((preset) => preset.addEventListener('click', () => updateSelection(preset.dataset.profileColor)));
+        backdrop.querySelector('[data-profile-color-cancel]').addEventListener('click', close);
+        backdrop.querySelector('[data-profile-color-apply]').addEventListener('click', () => {
+          colorInput.value = selectedColor;
+          colorTrigger.style.setProperty('--profile-color', selectedColor);
+          colorTrigger.setAttribute('aria-label', `Profilfarbe wählen, aktuell ${selectedColor}`);
+          close();
+        });
+        updateSelection(selectedColor);
+      },
+    }
+  );
+}
 
 // Whose monitor you've declared you can see ("Sichtbare Monitore") for the
 // active event (FR-18 extension) — pre-filled from same-edge seat placements
@@ -195,11 +314,9 @@ export function renderProfile(container, ctx) {
               <input type="file" id="profile-avatar-input" accept="image/*" hidden />
             </div>
             <div class="profile-color-field">
-              <label for="profile-color" class="field-label">Farbe</label>
-              <label class="profile-color-wheel" aria-label="Profilfarbe wählen">
-                <span class="profile-color-wheel-swatch" style="--profile-color:${escapeHtml(me.color)};"></span>
-                <input type="color" id="profile-color" value="${escapeHtml(me.color)}" aria-label="Profilfarbe" />
-              </label>
+              <label for="profile-color-trigger" class="field-label">Farbe</label>
+              <button type="button" id="profile-color-trigger" class="profile-color-trigger" style="--profile-color:${escapeHtml(me.color)};" aria-label="Profilfarbe wählen, aktuell ${escapeHtml(me.color)}"></button>
+              <input type="hidden" id="profile-color" value="${escapeHtml(me.color)}" />
             </div>
             <div class="profile-text-field">
               <label for="profile-name" class="field-label">Gamertag</label>
@@ -335,9 +452,8 @@ export function renderProfile(container, ctx) {
   });
 
   const profileColorInput = container.querySelector('#profile-color');
-  profileColorInput.addEventListener('input', () => {
-    container.querySelector('.profile-color-wheel-swatch').style.setProperty('--profile-color', profileColorInput.value);
-  });
+  const profileColorTrigger = container.querySelector('#profile-color-trigger');
+  profileColorTrigger.addEventListener('click', () => openProfileColorPicker(profileColorInput, profileColorTrigger));
 
   container.querySelector('#agent-download').addEventListener('click', async (e) => {
     const btn = e.currentTarget;

@@ -411,9 +411,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   and pink accent rails.
   The former „Witzige Rekorde“ section uses the concise title „Trivia“.
   Its empty state is symbol-free and avoids repeating that title.
-- **Profile** — The profile color uses a compact round color wheel with the selected color visible
-  in its center. It follows the shared accent spectrum instead of exposing the browser's rectangular
-  native color field.
+- **Profile** — The profile row uses the original compact square color preview. Activating it opens
+  a centered Respawn modal instead of the browser's native color dialog. The modal combines a
+  keyboard-, pointer- and touch-operable hue/saturation wheel, the shared avatar palette, a live
+  preview and explicit cancel/apply actions. The chosen value remains a draft until the profile's
+  main save action persists it.
 - **Leaderboard** — The concise page title is „Rang“. The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
   each remains a distinct `.tournament-section-panel` with the shared accent rail. „Spielzeit pro
