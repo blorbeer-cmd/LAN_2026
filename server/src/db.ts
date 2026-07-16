@@ -1393,10 +1393,9 @@ function addGroupAuthorizationFoundation(): void {
     );
   }
   db.prepare('UPDATE events SET group_id = ? WHERE group_id IS NULL').run(DEFAULT_GROUP_ID);
-  db.prepare('UPDATE events SET ends_at = starts_at + ? WHERE id != ? AND (ends_at IS NULL OR ends_at <= starts_at)').run(
-    24 * 60 * 60 * 1000,
-    OUTSIDE_EVENTS_ID,
-  );
+  db.prepare(
+    'UPDATE events SET ends_at = starts_at + ? WHERE id != ? AND (ends_at IS NULL OR ends_at <= starts_at)',
+  ).run(24 * 60 * 60 * 1000, OUTSIDE_EVENTS_ID);
   db.prepare("UPDATE events SET status = 'ended' WHERE ended_at IS NOT NULL").run();
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_group_start ON events(group_id, starts_at DESC)');
 
@@ -1428,7 +1427,7 @@ function addCatalogAndPresenceGroupScoping(): void {
   // The 5 built-in Arcade titles (arcade_key set) are system-wide fixtures
   // shared by every group, not a group's curated catalog entry — they stay
   // group_id = NULL forever; only real catalog/suggestion games get an owner.
-  db.prepare("UPDATE games SET group_id = ? WHERE group_id IS NULL AND arcade_key IS NULL").run(DEFAULT_GROUP_ID);
+  db.prepare('UPDATE games SET group_id = ? WHERE group_id IS NULL AND arcade_key IS NULL').run(DEFAULT_GROUP_ID);
   // Composite unique index so game_process_names (and future tables) can
   // enforce a composite foreign key of (group_id, game_id) -> (group_id, id),
   // guaranteeing a child row's group can never drift from its game's group.
@@ -1458,9 +1457,14 @@ function addCatalogAndPresenceGroupScoping(): void {
 
   addGroupIdColumn('play_sessions');
   db.prepare(
-    `UPDATE play_sessions SET group_id = (SELECT g.group_id FROM games g WHERE g.id = play_sessions.game_id)
+    `UPDATE play_sessions
+     SET group_id = COALESCE(
+       (SELECT g.group_id FROM games g WHERE g.id = play_sessions.game_id),
+       (SELECT e.group_id FROM events e WHERE e.id = play_sessions.event_id),
+       ?
+     )
      WHERE group_id IS NULL`,
-  ).run();
+  ).run(DEFAULT_GROUP_ID);
   db.exec('CREATE INDEX IF NOT EXISTS idx_play_sessions_group ON play_sessions(group_id, started_at DESC)');
 
   const processNameColumns = db.prepare('PRAGMA table_info(game_process_names)').all() as Array<{ name: string }>;
@@ -1482,7 +1486,9 @@ function addCatalogAndPresenceGroupScoping(): void {
     `);
     db.exec('DROP TABLE game_process_names');
     db.exec('ALTER TABLE game_process_names_new RENAME TO game_process_names');
-    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_game_process_names_group_process ON game_process_names(group_id, process_name)');
+    db.exec(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_game_process_names_group_process ON game_process_names(group_id, process_name)',
+    );
     db.exec('CREATE INDEX IF NOT EXISTS idx_game_process_names_game ON game_process_names(game_id)');
   }
 }

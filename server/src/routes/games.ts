@@ -9,10 +9,9 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString, isIntInRange, isValidAvatar } from '../validation';
-import { requireAdmin } from '../auth';
 import { writeAdminAudit } from '../adminAudit';
 import { requireRecentReauthentication, withBodyPlayerIdentity } from '../sessions';
-import { resolveGroupResource } from '../groupAuthorization';
+import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 
 export const gamesRouter = Router();
 
@@ -118,7 +117,7 @@ gamesRouter.get('/:id', (req, res) => {
 
 function validateTeamSizes(
   minTeamSize: unknown,
-  maxTeamSize: unknown
+  maxTeamSize: unknown,
 ): { min: number; max: number } | { error: string } {
   const min = minTeamSize ?? MIN_TEAM_SIZE_FLOOR;
   const max = maxTeamSize ?? 5;
@@ -138,77 +137,85 @@ function validateTeamSizes(
 // tracked game (name, team size, no status = defaults to 'catalog'), or a
 // player suggestion from the Spiele view (name + optional platform/trailer,
 // status: 'suggestion', playerId so it's attributed as createdBy).
-gamesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
-  const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, status, playerId } =
-    req.body ?? {};
+gamesRouter.post(
+  '/',
+  ...withBodyPlayerIdentity,
+  (req, res, next) => {
+    if (req.body?.status !== 'suggestion') {
+      return requireGroupRole('admin')(req, res, next);
+    }
+    next();
+  },
+  (req, res) => {
+    const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, status, playerId } =
+      req.body ?? {};
 
-  if (!isNonEmptyString(name, MAX_TITLE_LENGTH)) {
-    return res.status(400).json({ error: `Name ist erforderlich (1-${MAX_TITLE_LENGTH} Zeichen).` });
-  }
-  if (iconImage !== undefined && iconImage !== null && !isValidAvatar(iconImage)) {
-    return res.status(400).json({ error: 'iconImage muss ein gültiges Bild (data:image/...) sein.' });
-  }
-  const sizes = validateTeamSizes(minTeamSize, maxTeamSize);
-  if ('error' in sizes) return res.status(400).json({ error: sizes.error });
+    if (!isNonEmptyString(name, MAX_TITLE_LENGTH)) {
+      return res.status(400).json({ error: `Name ist erforderlich (1-${MAX_TITLE_LENGTH} Zeichen).` });
+    }
+    if (iconImage !== undefined && iconImage !== null && !isValidAvatar(iconImage)) {
+      return res.status(400).json({ error: 'iconImage muss ein gültiges Bild (data:image/...) sein.' });
+    }
+    const sizes = validateTeamSizes(minTeamSize, maxTeamSize);
+    if ('error' in sizes) return res.status(400).json({ error: sizes.error });
 
-  // ?? null: an omitted field means "no value", same as an explicit null —
-  // only an actually-too-long string or a malformed URL is an error here.
-  const parsedPlatform = optionalText(platform ?? null, MAX_PLATFORM_LENGTH);
-  if (parsedPlatform === undefined) return res.status(400).json({ error: 'Plattform ist zu lang.' });
-  const parsedPlatformUrl = optionalUrl(platformUrl ?? null);
-  if (parsedPlatformUrl === undefined) return res.status(400).json({ error: 'Plattform-Link muss mit http(s) beginnen.' });
-  const parsedTrailer = optionalUrl(trailerUrl ?? null);
-  if (parsedTrailer === undefined) return res.status(400).json({ error: 'Trailer-Link muss mit http(s) beginnen.' });
-  const resolvedStatus: GameStatus = status === 'suggestion' ? 'suggestion' : 'catalog';
-  if (req.player && resolvedStatus === 'catalog' && !req.player.is_admin) {
-    return res.status(403).json({ error: 'Nur Admins können Spiele direkt in den Katalog aufnehmen.' });
-  }
-  const createdBy = assertPlayer(playerId);
-  if (createdBy === undefined) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+    // ?? null: an omitted field means "no value", same as an explicit null —
+    // only an actually-too-long string or a malformed URL is an error here.
+    const parsedPlatform = optionalText(platform ?? null, MAX_PLATFORM_LENGTH);
+    if (parsedPlatform === undefined) return res.status(400).json({ error: 'Plattform ist zu lang.' });
+    const parsedPlatformUrl = optionalUrl(platformUrl ?? null);
+    if (parsedPlatformUrl === undefined)
+      return res.status(400).json({ error: 'Plattform-Link muss mit http(s) beginnen.' });
+    const parsedTrailer = optionalUrl(trailerUrl ?? null);
+    if (parsedTrailer === undefined) return res.status(400).json({ error: 'Trailer-Link muss mit http(s) beginnen.' });
+    const resolvedStatus: GameStatus = status === 'suggestion' ? 'suggestion' : 'catalog';
+    const createdBy = assertPlayer(playerId);
+    if (createdBy === undefined) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
-  const trimmedName = name.trim();
-  if (nameTaken(req.group!.id, trimmedName)) {
-    return res.status(409).json({ error: `Das Spiel "${trimmedName}" gibt es schon.` });
-  }
+    const trimmedName = name.trim();
+    if (nameTaken(req.group!.id, trimmedName)) {
+      return res.status(409).json({ error: `Das Spiel "${trimmedName}" gibt es schon.` });
+    }
 
-  const row: GameRow = {
-    id: nanoid(),
-    name: trimmedName,
-    icon: isNonEmptyString(icon, 8) ? icon : DEFAULT_ICON,
-    icon_image: iconImage ?? null,
-    min_team_size: sizes.min,
-    max_team_size: sizes.max,
-    platform: parsedPlatform ?? null,
-    platform_url: parsedPlatformUrl ?? null,
-    trailer_url: parsedTrailer ?? null,
-    status: resolvedStatus,
-    created_by: createdBy,
-    created_at: Date.now(),
-    group_id: req.group!.id,
-  };
+    const row: GameRow = {
+      id: nanoid(),
+      name: trimmedName,
+      icon: isNonEmptyString(icon, 8) ? icon : DEFAULT_ICON,
+      icon_image: iconImage ?? null,
+      min_team_size: sizes.min,
+      max_team_size: sizes.max,
+      platform: parsedPlatform ?? null,
+      platform_url: parsedPlatformUrl ?? null,
+      trailer_url: parsedTrailer ?? null,
+      status: resolvedStatus,
+      created_by: createdBy,
+      created_at: Date.now(),
+      group_id: req.group!.id,
+    };
 
-  db.prepare(
-    `INSERT INTO games (id, name, icon, icon_image, min_team_size, max_team_size, platform, platform_url, trailer_url, status, created_by, created_at, group_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    row.id,
-    row.name,
-    row.icon,
-    row.icon_image,
-    row.min_team_size,
-    row.max_team_size,
-    row.platform,
-    row.platform_url,
-    row.trailer_url,
-    row.status,
-    row.created_by,
-    row.created_at,
-    row.group_id
-  );
+    db.prepare(
+      `INSERT INTO games (id, name, icon, icon_image, min_team_size, max_team_size, platform, platform_url, trailer_url, status, created_by, created_at, group_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      row.id,
+      row.name,
+      row.icon,
+      row.icon_image,
+      row.min_team_size,
+      row.max_team_size,
+      row.platform,
+      row.platform_url,
+      row.trailer_url,
+      row.status,
+      row.created_by,
+      row.created_at,
+      row.group_id,
+    );
 
-  broadcast(Events.gamesChanged, null);
-  res.status(201).json(withProcessNames(row));
-});
+    broadcast(Events.gamesChanged, null);
+    res.status(201).json(withProcessNames(row));
+  },
+);
 
 // Resolves :id to a game owned by the caller's current group, 404-ing
 // (existence hidden) for a foreign group's game or an arcade fixture
@@ -222,7 +229,7 @@ const resolveGame = resolveGroupResource<GameRow>({
 });
 
 // PATCH /api/games/:id - edit name/icon/team sizes/platform/trailer.
-gamesRouter.patch('/:id', resolveGame, (req, res) => {
+gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => {
   const existing = req.groupResource as GameRow;
 
   const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl } = req.body ?? {};
@@ -237,12 +244,13 @@ gamesRouter.patch('/:id', resolveGame, (req, res) => {
   }
   const sizes = validateTeamSizes(
     minTeamSize !== undefined ? minTeamSize : existing.min_team_size,
-    maxTeamSize !== undefined ? maxTeamSize : existing.max_team_size
+    maxTeamSize !== undefined ? maxTeamSize : existing.max_team_size,
   );
   if ('error' in sizes) return res.status(400).json({ error: sizes.error });
 
   const parsedPlatform = optionalText(platform, MAX_PLATFORM_LENGTH);
-  if (parsedPlatform === undefined && platform !== undefined) return res.status(400).json({ error: 'Plattform ist zu lang.' });
+  if (parsedPlatform === undefined && platform !== undefined)
+    return res.status(400).json({ error: 'Plattform ist zu lang.' });
   const parsedPlatformUrl = optionalUrl(platformUrl);
   if (parsedPlatformUrl === undefined && platformUrl !== undefined) {
     return res.status(400).json({ error: 'Plattform-Link muss mit http(s) beginnen.' });
@@ -263,15 +271,15 @@ gamesRouter.patch('/:id', resolveGame, (req, res) => {
     icon_image: iconImage !== undefined ? iconImage : existing.icon_image,
     min_team_size: sizes.min,
     max_team_size: sizes.max,
-    platform: platform !== undefined ? parsedPlatform ?? null : existing.platform,
-    platform_url: platformUrl !== undefined ? parsedPlatformUrl ?? null : existing.platform_url,
-    trailer_url: trailerUrl !== undefined ? parsedTrailer ?? null : existing.trailer_url,
+    platform: platform !== undefined ? (parsedPlatform ?? null) : existing.platform,
+    platform_url: platformUrl !== undefined ? (parsedPlatformUrl ?? null) : existing.platform_url,
+    trailer_url: trailerUrl !== undefined ? (parsedTrailer ?? null) : existing.trailer_url,
   };
 
   db.prepare(
     `UPDATE games
      SET name = ?, icon = ?, icon_image = ?, min_team_size = ?, max_team_size = ?, platform = ?, platform_url = ?, trailer_url = ?
-     WHERE id = ?`
+     WHERE id = ?`,
   ).run(
     next.name,
     next.icon,
@@ -281,7 +289,7 @@ gamesRouter.patch('/:id', resolveGame, (req, res) => {
     next.platform,
     next.platform_url,
     next.trailer_url,
-    next.id
+    next.id,
   );
 
   broadcast(Events.gamesChanged, null);
@@ -292,7 +300,7 @@ gamesRouter.patch('/:id', resolveGame, (req, res) => {
 // regular catalog entry. Guarded against a double-tap racing itself: the
 // second request finds status already 'catalog' and gets a clean 409 instead
 // of silently re-broadcasting.
-gamesRouter.post('/:id/promote', requireAdmin, resolveGame, (req, res) => {
+gamesRouter.post('/:id/promote', resolveGame, requireGroupRole('admin'), (req, res) => {
   const existing = req.groupResource as GameRow;
   if (existing.status !== 'suggestion') return res.status(409).json({ error: 'Spiel ist bereits im Katalog.' });
 
@@ -309,31 +317,37 @@ gamesRouter.post('/:id/promote', requireAdmin, resolveGame, (req, res) => {
 // votes, matches; sets live_status.game_id to NULL for anyone currently on it.
 // Checked ahead of the group-ownership resolver: an Arcade title (group_id
 // NULL) would otherwise 404 there before reaching this more specific 400.
-gamesRouter.delete('/:id', requireAdmin, requireRecentReauthentication, (req, res, next) => {
-  const existing = db.prepare('SELECT arcade_key FROM games WHERE id = ?').get(req.params.id) as
-    | { arcade_key: string | null }
-    | undefined;
-  if (existing?.arcade_key) {
-    return res.status(400).json({ error: 'Arcade-Spiele können nicht gelöscht werden.' });
-  }
-  next();
-}, resolveGame, (req, res) => {
-  const existing = req.groupResource as GameRow;
-  db.prepare('DELETE FROM games WHERE id = ?').run(existing.id);
-  writeAdminAudit({
-    actorPlayerId: req.player?.id,
-    groupId: req.group!.id,
-    action: 'game_deleted',
-    targetType: 'game',
-    targetId: existing.id,
-  });
-  broadcast(Events.gamesChanged, null);
-  broadcast(Events.liveStatusChanged, null);
-  res.status(204).end();
-});
+gamesRouter.delete(
+  '/:id',
+  (req, res, next) => {
+    const existing = db.prepare('SELECT arcade_key FROM games WHERE id = ?').get(req.params.id) as
+      { arcade_key: string | null } | undefined;
+    if (existing?.arcade_key) {
+      return res.status(400).json({ error: 'Arcade-Spiele können nicht gelöscht werden.' });
+    }
+    next();
+  },
+  resolveGame,
+  requireGroupRole('admin'),
+  requireRecentReauthentication,
+  (req, res) => {
+    const existing = req.groupResource as GameRow;
+    db.prepare('DELETE FROM games WHERE id = ?').run(existing.id);
+    writeAdminAudit({
+      actorPlayerId: req.player?.id,
+      groupId: req.group!.id,
+      action: 'game_deleted',
+      targetType: 'game',
+      targetId: existing.id,
+    });
+    broadcast(Events.gamesChanged, null);
+    broadcast(Events.liveStatusChanged, null);
+    res.status(204).end();
+  },
+);
 
 // POST /api/games/:id/processes - add a process-name mapping for agent scans.
-gamesRouter.post('/:id/processes', resolveGame, (req, res) => {
+gamesRouter.post('/:id/processes', resolveGame, requireGroupRole('admin'), (req, res) => {
   const game = req.groupResource as GameRow;
 
   const { processName } = req.body ?? {};
@@ -353,7 +367,7 @@ gamesRouter.post('/:id/processes', resolveGame, (req, res) => {
     nanoid(),
     game.id,
     req.group!.id,
-    normalized
+    normalized,
   );
 
   broadcast(Events.gamesChanged, null);
@@ -361,7 +375,7 @@ gamesRouter.post('/:id/processes', resolveGame, (req, res) => {
 });
 
 // DELETE /api/games/:id/processes/:processName - remove a mapping.
-gamesRouter.delete('/:id/processes/:processName', resolveGame, (req, res) => {
+gamesRouter.delete('/:id/processes/:processName', resolveGame, requireGroupRole('admin'), (req, res) => {
   const game = req.groupResource as GameRow;
   const result = db
     .prepare('DELETE FROM game_process_names WHERE game_id = ? AND process_name = ?')

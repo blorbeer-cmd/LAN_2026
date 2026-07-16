@@ -77,7 +77,9 @@ test('game catalog, process names, skills/preferences and live status stay isola
       // groups is not a 409, unlike within one group.
       const gameA = await scoped(app, 'post', '/api/games', alice.cookie, groupA).send({ name: 'Shared Title', status: 'catalog' });
       assert.equal(gameA.status, 201, JSON.stringify(gameA.body));
-      const gameB = await scoped(app, 'post', '/api/games', carol.cookie, groupB).send({ name: 'Shared Title', status: 'suggestion' });
+      // Carol is not an instance admin, but as Group B's owner she may
+      // manage that group's catalog.
+      const gameB = await scoped(app, 'post', '/api/games', carol.cookie, groupB).send({ name: 'Shared Title', status: 'catalog' });
       assert.equal(gameB.status, 201, JSON.stringify(gameB.body));
       const dupeInGroupA = await scoped(app, 'post', '/api/games', alice.cookie, groupA).send({ name: 'Shared Title', status: 'catalog' });
       assert.equal(dupeInGroupA.status, 409);
@@ -94,10 +96,21 @@ test('game catalog, process names, skills/preferences and live status stay isola
       const bobForeignPatch = await scoped(app, 'patch', '/api/games/' + gameB.body.id, bob.cookie, groupA).send({ name: 'Hijacked' });
       assert.equal(bobForeignPatch.status, 404);
 
+      // Vertical authorization: a regular group member may submit a
+      // suggestion, but every catalog/process mutation stays admin-only.
+      const bobSuggestion = await scoped(app, 'post', '/api/games', bob.cookie, groupA).send({ name: 'Bob Suggestion', status: 'suggestion' });
+      assert.equal(bobSuggestion.status, 201, JSON.stringify(bobSuggestion.body));
+      assert.equal((await scoped(app, 'post', '/api/games', bob.cookie, groupA).send({ name: 'Forbidden Catalog', status: 'catalog' })).status, 403);
+      assert.equal((await scoped(app, 'patch', '/api/games/' + gameA.body.id, bob.cookie, groupA).send({ name: 'Forbidden Rename' })).status, 403);
+      assert.equal((await scoped(app, 'post', '/api/games/' + bobSuggestion.body.id + '/promote', bob.cookie, groupA).send({})).status, 403);
+      assert.equal((await scoped(app, 'delete', '/api/games/' + bobSuggestion.body.id, bob.cookie, groupA)).status, 403);
+      assert.equal((await scoped(app, 'post', '/api/games/' + gameA.body.id + '/processes', bob.cookie, groupA).send({ processName: 'forbidden.exe' })).status, 403);
+
       // Process names: the same process name mapped in two different groups'
       // games must not collide (game_process_names uniqueness is per-group).
       const procA = await scoped(app, 'post', '/api/games/' + gameA.body.id + '/processes', alice.cookie, groupA).send({ processName: 'shared.exe' });
       assert.equal(procA.status, 201, JSON.stringify(procA.body));
+      assert.equal((await scoped(app, 'delete', '/api/games/' + gameA.body.id + '/processes/shared.exe', bob.cookie, groupA)).status, 403);
       const procB = await scoped(app, 'post', '/api/games/' + gameB.body.id + '/processes', carol.cookie, groupB).send({ processName: 'shared.exe' });
       assert.equal(procB.status, 201, JSON.stringify(procB.body));
       const procClashSameGroup = await scoped(app, 'post', '/api/games/' + gameA.body.id + '/processes', alice.cookie, groupA).send({ processName: 'shared.exe' });
@@ -125,7 +138,7 @@ test('game catalog, process names, skills/preferences and live status stay isola
       // group, not just "any group the player belongs to" — set up one
       // process name per group's own game, then flip which event tracks.
       const trackedA = await scoped(app, 'post', '/api/games', alice.cookie, groupA).send({ name: 'Tracked Game A', status: 'catalog' });
-      const trackedB = await scoped(app, 'post', '/api/games', carol.cookie, groupB).send({ name: 'Tracked Game B', status: 'suggestion' });
+      const trackedB = await scoped(app, 'post', '/api/games', carol.cookie, groupB).send({ name: 'Tracked Game B', status: 'catalog' });
       await scoped(app, 'post', '/api/games/' + trackedA.body.id + '/processes', alice.cookie, groupA).send({ processName: 'trackedgame.exe' });
       await scoped(app, 'post', '/api/games/' + trackedB.body.id + '/processes', carol.cookie, groupB).send({ processName: 'trackedgame.exe' });
 
@@ -151,6 +164,35 @@ test('game catalog, process names, skills/preferences and live status stay isola
       const reportDuringB = await request(app).post('/api/agent/report').set('x-api-key', aliceApiKey).send({ processNames: ['trackedgame.exe'] });
       assert.equal(reportDuringB.status, 200, JSON.stringify(reportDuringB.body));
       assert.deepEqual(reportDuringB.body.gameIds, [trackedB.body.id]);
+
+      // Every reader/aggregation over the newly group-owned presence tables
+      // must follow the selected group as well.
+      const statsA = await scoped(app, 'get', '/api/stats/playtime', alice.cookie, groupA);
+      const statsB = await scoped(app, 'get', '/api/stats/playtime', alice.cookie, groupB);
+      assert.ok(statsA.body.entries.some((entry) => entry.gameId === trackedA.body.id));
+      assert.equal(statsA.body.entries.some((entry) => entry.gameId === trackedB.body.id), false);
+      assert.ok(statsB.body.entries.some((entry) => entry.gameId === trackedB.body.id));
+      assert.equal(statsB.body.entries.some((entry) => entry.gameId === trackedA.body.id), false);
+
+      const analyticsA = await scoped(app, 'get', '/api/analytics/games', alice.cookie, groupA);
+      const analyticsB = await scoped(app, 'get', '/api/analytics/games', alice.cookie, groupB);
+      assert.equal(analyticsA.body.games.some((entry) => entry.gameId === trackedB.body.id), false);
+      assert.equal(analyticsB.body.games.some((entry) => entry.gameId === trackedA.body.id), false);
+
+      const playerStatsA = await scoped(app, 'get', '/api/players/' + alice.account.id + '/stats', alice.cookie, groupA);
+      const playerStatsB = await scoped(app, 'get', '/api/players/' + alice.account.id + '/stats', alice.cookie, groupB);
+      assert.equal(playerStatsA.body.games.some((entry) => entry.gameId === trackedB.body.id), false);
+      assert.equal(playerStatsB.body.games.some((entry) => entry.gameId === trackedA.body.id), false);
+
+      const digestA = await scoped(app, 'get', '/api/digest?playerId=' + alice.account.id, alice.cookie, groupA);
+      const digestB = await scoped(app, 'get', '/api/digest?playerId=' + alice.account.id, alice.cookie, groupB);
+      assert.equal(digestA.body.missingSkills.some((entry) => entry.id === trackedB.body.id), false);
+      assert.ok(digestB.body.missingSkills.some((entry) => entry.id === trackedB.body.id));
+
+      const votesA = await scoped(app, 'get', '/api/votes', alice.cookie, groupA);
+      const votesB = await scoped(app, 'get', '/api/votes', alice.cookie, groupB);
+      assert.equal(votesA.body.catalogResults.some((entry) => entry.gameId === gameB.body.id), false);
+      assert.equal(votesB.body.catalogResults.some((entry) => entry.gameId === gameA.body.id), false);
     })().catch((error) => {
       console.error(error);
       process.exit(1);
@@ -173,6 +215,63 @@ test('game catalog, process names, skills/preferences and live status stay isola
     const child = error as { stdout?: Buffer; stderr?: Buffer };
     throw new Error(
       `group catalog/presence child failed:\n${child.stderr?.toString() ?? ''}\n${child.stdout?.toString() ?? ''}`,
+    );
+  }
+});
+
+test('catalog administration keeps working in required single-group mode', () => {
+  const script = `
+    const assert = require('assert/strict');
+    const request = require('supertest');
+    const { createApp } = require(${JSON.stringify(APP_JS_PATH)});
+
+    (async () => {
+      const app = createApp();
+      const registered = await request(app).post('/api/auth/register').send({
+        code: ${JSON.stringify(RECOVERY_CODE)},
+        name: 'Single Group Owner',
+        password: 'single group secure passphrase',
+      });
+      assert.equal(registered.status, 201, JSON.stringify(registered.body));
+      const cookie = registered.headers['set-cookie'][0].split(';')[0];
+
+      const game = await request(app)
+        .post('/api/games')
+        .set('Cookie', cookie)
+        .send({ name: 'Single Group Catalog Game', status: 'catalog' });
+      assert.equal(game.status, 201, JSON.stringify(game.body));
+
+      const processName = await request(app)
+        .post('/api/games/' + game.body.id + '/processes')
+        .set('Cookie', cookie)
+        .send({ processName: 'single-group.exe' });
+      assert.equal(processName.status, 201, JSON.stringify(processName.body));
+
+      const games = await request(app).get('/api/games').set('Cookie', cookie);
+      assert.equal(games.status, 200);
+      assert.ok(games.body.some((entry) => entry.id === game.body.id));
+    })().catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+  `;
+
+  try {
+    execFileSync(process.execPath, ['-e', script], {
+      env: {
+        ...process.env,
+        AUTH_MODE: 'required',
+        ADMIN_RECOVERY_CODE: RECOVERY_CODE,
+        COOKIE_SECURE: '0',
+        DB_FILE: ':memory:',
+        MULTI_GROUPS_ENABLED: '0',
+      },
+      stdio: 'pipe',
+    });
+  } catch (error) {
+    const child = error as { stdout?: Buffer; stderr?: Buffer };
+    throw new Error(
+      `single-group catalog child failed:\n${child.stderr?.toString() ?? ''}\n${child.stdout?.toString() ?? ''}`,
     );
   }
 });
