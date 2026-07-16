@@ -48,7 +48,7 @@ export function readyToggleHtml(lobby, myId, dataAttr) {
   const me = lobby.players.find((p) => p.id === myId);
   if (!me || lobby.host.id === myId) return '';
   return me.ready
-    ? `<button type="button" class="btn btn-sm btn-equal btn-ready" data-${dataAttr}="${lobby.id}" data-ready="0">${icon('check')} Bereit</button>`
+    ? `<button type="button" class="btn btn-sm btn-equal btn-ready" data-${dataAttr}="${lobby.id}" data-ready="0">Bereit</button>`
     : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-${dataAttr}="${lobby.id}" data-ready="1">Bereit?</button>`;
 }
 

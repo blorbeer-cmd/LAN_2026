@@ -6,16 +6,16 @@
   <meta name="theme-color" content="#0f1420" />
   <title>Respawn — Kiosk</title>
   <link rel="icon" type="image/svg+xml" href="/img/logo.svg" />
-  <link rel="stylesheet" href="/css/style.css?v=6" />
-  <link rel="stylesheet" href="/css/kiosk.css" />
+  <!-- bump ?v= when a stylesheet changes so no cached copy survives a reload
+       (keep the style.css version in sync with index.html) -->
+  <link rel="stylesheet" href="/css/style.css?v=36" />
+  <link rel="stylesheet" href="/css/kiosk.css?v=2" />
 </head>
 <body class="kiosk-body">
   <div id="kiosk-root">
     <header class="kiosk-header">
       <div class="topbar-title"><img class="topbar-logo" src="/img/logo.svg" alt="" width="32" height="32" /> <span class="brand-title">Respawn</span></div>
-      <div class="row" style="gap:14px;">
-        <span id="kiosk-clock" class="kiosk-clock"></span>
-      </div>
+      <span id="kiosk-clock" class="kiosk-clock"></span>
     </header>
 
     <div id="kiosk-alerts" class="kiosk-alerts" hidden>

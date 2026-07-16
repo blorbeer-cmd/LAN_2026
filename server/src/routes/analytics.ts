@@ -252,7 +252,6 @@ analyticsRouter.get('/awards', (req, res) => {
 
   const awards = rawAwards.map((a) => ({
     id: a.id,
-    emoji: a.emoji,
     title: a.title,
     description: a.description,
     playerId: a.playerId,

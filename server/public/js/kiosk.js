@@ -183,7 +183,7 @@ function renderLive(players) {
   });
   return `<div class="kiosk-live-grid">${sorted
     .map((p) => {
-      const games = gameChipsHtml(p.games, p.activity_tracked, 18);
+      const games = gameChipsHtml(p.games, p.activity_tracked);
       return `
         <div class="card player-card">
           ${avatarHtml(p, 32)}

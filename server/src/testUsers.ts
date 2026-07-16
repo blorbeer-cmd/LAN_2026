@@ -16,9 +16,12 @@ import { db } from './db';
 import { getTrackingEventId } from './events';
 import { addPlayersToLayout, removePlayersFromLayouts } from './seatingLayout';
 
-// Mirrors AVATAR_PALETTE in public/js/avatarPalette.js (the server can't
-// import from public/): seeded players reuse the same swatches real players
-// pick from.
+// Avatar color palette for generated players (single source of truth since
+// the profile editor moved to a free color picker without presets). Six of
+// the eight reuse the app's semantic accent/state colors (--accent,
+// --accent-2, --accent-3, --state-playing, --state-paused, --danger in
+// public/css/style.css) so a generated color never introduces a hue that
+// means something different elsewhere; cyan and lime are variety-only.
 const COLORS = ['#5b8cff', '#9163f5', '#ef5da8', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#84cc16'];
 
 const NAME_POOL = [

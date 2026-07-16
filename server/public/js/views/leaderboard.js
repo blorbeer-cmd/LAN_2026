@@ -7,7 +7,7 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
+import { escapeHtml, avatarHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
@@ -74,8 +74,7 @@ export function renderLeaderboard(container, ctx) {
     .map(
       (g) => `
       <div class="lb-row">
-        ${gameBadgeHtml({ id: g.gameId, icon: g.gameIcon }, 24)}
-        <span class="leaderboard-row-main">
+                <span class="leaderboard-row-main">
           <span class="leaderboard-row-name">${escapeHtml(g.gameName)}</span>
           ${activeHint(g.activeMs, g.totalMs, g.activeFormatted)}
         </span>

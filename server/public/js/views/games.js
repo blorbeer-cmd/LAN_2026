@@ -137,10 +137,10 @@ function renderEventCard(e) {
     ? ''
     : e.trackingEnabled
       ? `<button type="button" class="btn btn-sm" data-stop-tracking="${e.id}">${icon('pause')} Tracking stoppen</button>`
-      : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${e.id}">${icon('play')} Tracking starten</button>`;
+      : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${e.id}">Tracking starten</button>`;
   const endBtn = e.isEnded
     ? ''
-    : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${e.id}">${icon('flag')} Beenden</button>`;
+    : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${e.id}">Beenden</button>`;
 
   return `
     <div class="card stack" style="gap:var(--space-3);">
@@ -180,7 +180,7 @@ function renderEventSection() {
       ${
         realEvents.length === 0
           ? `<div class="empty-state"><span class="empty-state-icon">${icon('calendar')}</span>Noch keine Events angelegt.</div>`
-          : `<div class="two-column-card-grid">${cards}</div>`
+          : `<div class="two-column-card-grid settings-event-grid">${cards}</div>`
       }
     </section>
   `;

@@ -428,7 +428,6 @@ playersRouter.get('/:id/stats', (req, res) => {
     .filter((a) => a.playerId === player.id)
     .map((a) => ({
       id: a.id,
-      emoji: a.emoji,
       title: a.title,
       description: a.description,
       value:

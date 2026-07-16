@@ -8,7 +8,6 @@ import { computeSimultaneousGameTime, sessionDurations } from './sessionStats';
 
 export interface RawAward {
   id: string;
-  emoji: string;
   title: string;
   description: string;
   playerId: string;
@@ -102,7 +101,6 @@ export function computeAwards(sessions: PlaySession[], now: number): RawAward[] 
     const top = durations[0];
     awards.push({
       id: 'marathon',
-      emoji: '🏃',
       title: 'Marathon-Zocker',
       description: 'Längste durchgehende Einzelsession',
       playerId: top.playerId,
@@ -115,7 +113,6 @@ export function computeAwards(sessions: PlaySession[], now: number): RawAward[] 
     const top = overlaps[0];
     awards.push({
       id: 'multitasker',
-      emoji: '🤹',
       title: 'Multitasking-Meister',
       description: 'Meiste Zeit mit mehreren Spielen gleichzeitig offen',
       playerId: top.playerId,
@@ -127,7 +124,6 @@ export function computeAwards(sessions: PlaySession[], now: number): RawAward[] 
   if (night && night.value > 0) {
     awards.push({
       id: 'nachteule',
-      emoji: '🦉',
       title: 'Nachteule',
       description: 'Meiste Spielzeit zwischen 0 und 6 Uhr',
       playerId: night.playerId,
@@ -139,7 +135,6 @@ export function computeAwards(sessions: PlaySession[], now: number): RawAward[] 
   if (early && early.value > 0) {
     awards.push({
       id: 'fruehaufsteher',
-      emoji: '🐓',
       title: 'Frühaufsteher',
       description: 'Meiste Spielzeit zwischen 6 und 10 Uhr',
       playerId: early.playerId,
@@ -151,7 +146,6 @@ export function computeAwards(sessions: PlaySession[], now: number): RawAward[] 
   if (mostSessions && mostSessions.value > 1) {
     awards.push({
       id: 'zappelphilipp',
-      emoji: '🔄',
       title: 'Zappelphilipp',
       description: 'Häufigste Spielwechsel (meiste Sessions)',
       playerId: mostSessions.playerId,
@@ -163,7 +157,6 @@ export function computeAwards(sessions: PlaySession[], now: number): RawAward[] 
   if (mostGames && mostGames.value > 1) {
     awards.push({
       id: 'allrounder',
-      emoji: '🎮',
       title: 'Allrounder',
       description: 'Die meisten verschiedenen Spiele ausprobiert',
       playerId: mostGames.playerId,
@@ -189,7 +182,6 @@ export function computeAwards(sessions: PlaySession[], now: number): RawAward[] 
     if (mostFocused.ratio > 0) {
       awards.push({
         id: 'fokus',
-        emoji: '⚡',
         title: 'Fokus-Meister',
         description: 'Höchste Aktiv-Quote (wirklich gespielt, nicht nur nebenbei offen)',
         playerId: mostFocused.playerId,
@@ -199,7 +191,6 @@ export function computeAwards(sessions: PlaySession[], now: number): RawAward[] 
     if (leastFocused.playerId !== mostFocused.playerId) {
       awards.push({
         id: 'afk',
-        emoji: '😴',
         title: 'Chill-Gamer',
         description: 'Spiele liefen am längsten, ohne dass viel aktiv gespielt wurde',
         playerId: leastFocused.playerId,

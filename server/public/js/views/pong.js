@@ -1,5 +1,6 @@
 import { getToken } from '../api.js';
 import { escapeHtml } from '../format.js';
+import { icon } from '../icons.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
 import { getAdminPin } from '../admin.js';
@@ -354,7 +355,7 @@ function matchControlsHtml(isHost) {
 export function renderPong(container) {
   ensurePongSocket();
   if (!match) {
-    container.innerHTML = `<button class="btn btn-sm" data-navigate="arcade">‹ Zurück</button><h1 class="view-title">Pong</h1>${renderPongLobbyCard()}`;
+    container.innerHTML = `<button class="btn btn-sm" data-navigate="arcade">${icon('chevronLeft')} Zurück</button><h1 class="view-title">Pong</h1>${renderPongLobbyCard()}`;
     wirePongLobbyCard(container);
     return;
   }

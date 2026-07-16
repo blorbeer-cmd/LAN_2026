@@ -19,7 +19,7 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, formatDateTime, avatarHtml, gameBadgeHtml } from '../format.js';
+import { escapeHtml, formatDateTime, avatarHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 
@@ -251,8 +251,7 @@ function renderPlaytimeContent() {
           (g, i) => `
         <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
           <span class="lb-rank">${i + 1}</span>
-          ${gameBadgeHtml({ id: g.gameId, icon: g.gameIcon }, 24)}
-          <span style="flex:1;">
+                    <span style="flex:1;">
             ${escapeHtml(g.gameName)}
             <div class="muted" style="font-size:var(--font-size-xs);">${g.playerCount} Spieler · ${g.sessionCount} Session(s)</div>
           </span>
@@ -260,7 +259,7 @@ function renderPlaytimeContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions in diesem Zeitraum.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions für dieses Event.</div>`;
 
   const awardsHtml = awards.length
     ? awards
@@ -268,10 +267,9 @@ function renderPlaytimeContent() {
           (a) => `
         <div class="card award-card">
           <div class="row-between">
-            <span style="font-size:var(--font-size-xl);">${escapeHtml(a.emoji)}</span>
+            <div class="player-name">${escapeHtml(a.title)}</div>
             <span class="lb-points">${escapeHtml(a.value)}</span>
           </div>
-          <div class="player-name">${escapeHtml(a.title)}</div>
           <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(a.description)}</div>
           <div class="row award-card-player">
             ${avatarHtml(state.players.find((p) => p.id === a.playerId) || { color: a.playerColor }, 20)}
@@ -280,7 +278,7 @@ function renderPlaytimeContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon('award')}</span>Noch keine Awards in diesem Zeitraum.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon('award')}</span>Noch keine Awards für dieses Event.</div>`;
 
   const longestPerGameHtml = overview.longestSessionsPerGame.length
     ? overview.longestSessionsPerGame
@@ -288,12 +286,12 @@ function renderPlaytimeContent() {
           (r) => `
         <div class="lb-row">
           ${avatarHtml(state.players.find((p) => p.id === r.playerId) || { color: r.playerColor }, 20)}
-          <span class="row" style="flex:1;gap:var(--space-2);">${gameBadgeHtml({ id: r.gameId, icon: r.gameIcon }, 20)} ${escapeHtml(r.gameName)} — ${escapeHtml(r.playerName)}</span>
+          <span class="row" style="flex:1;gap:var(--space-2);">${escapeHtml(r.gameName)} — ${escapeHtml(r.playerName)}</span>
           <span class="lb-points">${escapeHtml(r.formatted)}</span>
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions in diesem Zeitraum.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions für dieses Event.</div>`;
 
   const sessionRows = sessions
     .slice(0, 100)
@@ -302,7 +300,7 @@ function renderPlaytimeContent() {
       <div class="lb-row">
         ${avatarHtml(state.players.find((p) => p.id === s.playerId) || { color: s.playerColor }, 20)}
         <span style="flex:1;">
-          ${escapeHtml(s.playerName)} — ${gameBadgeHtml({ id: s.gameId, icon: s.gameIcon }, 18)} ${escapeHtml(s.gameName)}
+          ${escapeHtml(s.playerName)} — ${escapeHtml(s.gameName)}
           <div class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(s.startedAt)} – ${s.endedAt ? formatDateTime(s.endedAt) : 'läuft noch'}</div>
         </span>
         <span class="lb-points">${escapeHtml(s.formatted)}</span>
@@ -332,7 +330,7 @@ function renderPlaytimeContent() {
         </span>
       </summary>
       <div class="collapsible-section-content">
-        ${sessionRows || `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions in diesem Zeitraum.</div>`}
+        ${sessionRows || `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions für dieses Event.</div>`}
       </div>
     </details>
   `;
@@ -353,8 +351,7 @@ function renderMatchesContent() {
         .map(
           (g) => `
         <div class="lb-row">
-          ${gameBadgeHtml({ id: g.gameId, icon: g.gameIcon }, 24)}
-          <span style="flex:1;">
+                    <span style="flex:1;">
             ${escapeHtml(g.gameName)}
             <div class="muted" style="font-size:var(--font-size-xs);">${g.decided} entschieden${g.undecided ? ` · ${g.undecided} ohne Sieger/Unentschieden` : ''}</div>
           </span>
@@ -369,8 +366,7 @@ function renderMatchesContent() {
         .map(
           (g) => `
         <div class="lb-row">
-          ${gameBadgeHtml({ id: g.gameId, icon: g.gameIcon }, 24)}
-          <span style="flex:1;">${escapeHtml(g.gameName)}</span>
+                    <span style="flex:1;">${escapeHtml(g.gameName)}</span>
           <span class="lb-points">${g.count}×</span>
         </div>`
         )
@@ -394,8 +390,7 @@ function renderMatchesContent() {
         .map(
           (g) => `
         <div class="lb-row">
-          ${gameBadgeHtml({ id: g.gameId, icon: g.gameIcon }, 24)}
-          <span style="flex:1;">${escapeHtml(g.gameName)}</span>
+                    <span style="flex:1;">${escapeHtml(g.gameName)}</span>
           <span class="lb-points">${g.count}×</span>
         </div>`
         )
@@ -434,7 +429,7 @@ function renderMatchesContent() {
       <div class="card">
         <div class="row-between"><span class="inline-icon">${icon('sparkles')}</span><span class="lb-points">${u.winnerAvgRating} vs ${u.loserAvgRating}</span></div>
         <div class="player-name">Krasseste Überraschung</div>
-        <div class="muted" style="font-size:var(--font-size-xs);">${gameBadgeHtml({ id: u.gameId, icon: u.gameIcon }, 16)} ${escapeHtml(u.gameName)} — als klarer Außenseiter gewonnen (Skill-Wertung).</div>
+        <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(u.gameName)} — als klarer Außenseiter gewonnen (Skill-Wertung).</div>
         <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
           ${u.winners.map((w) => `<div class="row">${playerChip(w)}</div>`).join('')}
         </div>

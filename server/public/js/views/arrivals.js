@@ -308,7 +308,7 @@ export function renderArrivals(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">An- & Abreise</h1>
-    ${whoAmICardHtml('arrivals-whoami', { marginBottom: '12px' })}
+    ${whoAmICardHtml('arrivals-whoami', { marginBottom: 'var(--space-3)' })}
     ${
       loaded
         ? `<div class="arrivals-layout grouped-page-sections">

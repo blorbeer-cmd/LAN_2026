@@ -87,10 +87,9 @@ function renderStats() {
             (a) => `
           <div class="card">
             <div class="row-between">
-              <span style="font-size:var(--font-size-xl);">${escapeHtml(a.emoji)}</span>
+              <div class="player-name">${escapeHtml(a.title)}</div>
               <span class="lb-points">${escapeHtml(a.value)}</span>
             </div>
-            <div class="player-name">${escapeHtml(a.title)}</div>
             <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(a.description)}</div>
           </div>`
           )

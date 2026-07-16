@@ -9,7 +9,7 @@
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { icon } from '../icons.js';
-import { escapeHtml, gameBadgeHtml } from '../format.js';
+import { escapeHtml } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { suggestProcessNames } from '../gameProcessSuggestions.js';
@@ -145,7 +145,7 @@ function sortedGames(games, myId) {
 }
 
 function sortButton(key, label) {
-  const mark = sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
+  const mark = sortKey === key ? ` ${icon(sortDir === 'asc' ? 'arrowUp' : 'arrowDown')}` : '';
   return `<button type="button" class="btn btn-sm" data-sort="${key}">${label}${mark}</button>`;
 }
 
@@ -283,8 +283,7 @@ function gameRowHtml(game, myId) {
   return `
     <div class="card game-table-row" data-search-game="${game.id}">
       <div class="game-row-name">
-        ${gameBadgeHtml(game, 28)}
-        <strong class="game-row-title">${escapeHtml(game.name)}</strong>
+                <strong class="game-row-title">${escapeHtml(game.name)}</strong>
         ${gameRowIconsHtml(game)}
       </div>
       <div class="game-row-sliders">
@@ -362,8 +361,7 @@ function openGameDetail(gameId, ctx) {
     `
       <div class="stack">
         <div class="row" style="align-items:center;">
-          ${gameBadgeHtml(game, 56)}
-          <input type="text" id="edit-name" value="${escapeHtml(game.name)}" maxlength="60" style="flex:1;" />
+                    <input type="text" id="edit-name" value="${escapeHtml(game.name)}" maxlength="60" style="flex:1;" />
         </div>
         <div class="row" style="gap:var(--space-2);flex-wrap:wrap;align-items:center;">
           ${statusBadgeHtml(game)}

@@ -32,7 +32,7 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
 import { state } from '../state.js';
-import { escapeHtml, formatDate, formatDateTime, gameBadgeHtml } from '../format.js';
+import { escapeHtml, formatDate, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
@@ -204,8 +204,7 @@ function renderTop10(results) {
   const rowHtml = (r, i) => `
     <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
       <span class="lb-rank">${i + 1}</span>
-      ${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 28)}
-      <span style="flex:1;min-width:0;">
+            <span style="flex:1;min-width:0;">
         <div class="player-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.gameName)}</div>
         <div class="muted" style="font-size:var(--font-size-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${topMetaHtml(r)}</div>
       </span>
@@ -225,7 +224,7 @@ function renderOpenRows(votes, draftReady, hasSubmitted) {
         pointsSliderRow = `<div class="muted" style="font-size:var(--font-size-xs);padding:var(--space-1) 0 0;">Lädt deine Auswahl…</div>`;
       } else if (votes.mode === 'single') {
         const isSelected = draftSingleGameId === r.gameId;
-        action = `<button type="button" class="btn btn-sm ${isSelected ? 'btn-primary' : ''}" data-vote-select="${r.gameId}" ${hasSubmitted ? 'disabled' : ''}>${isSelected ? `${icon('check')} Ausgewählt` : 'Auswählen'}</button>`;
+        action = `<button type="button" class="btn btn-sm ${isSelected ? 'btn-primary' : ''}" data-vote-select="${r.gameId}" ${hasSubmitted ? 'disabled' : ''}>${isSelected ? 'Ausgewählt' : 'Auswählen'}</button>`;
       } else {
         const pointsVal = draftPoints.get(r.gameId) ?? 0;
         pointsSliderRow = `
@@ -240,7 +239,7 @@ function renderOpenRows(votes, draftReady, hasSubmitted) {
       return `
         <div class="vote-row">
           <div class="row-between">
-            <span class="row" style="gap:var(--space-2);">${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 24)} ${escapeHtml(r.gameName)}</span>
+            <span class="row" style="gap:var(--space-2);">${escapeHtml(r.gameName)}</span>
             ${action}
           </div>
           ${statsRowHtml(r)}
@@ -263,7 +262,7 @@ function renderClosedRows(results, mode, winnerGameIds) {
       return `
         <div class="vote-row ${isWinner ? 'is-winner' : ''}">
           <div class="row-between">
-            <span class="row" style="gap:var(--space-2);">${gameBadgeHtml({ id: r.gameId, icon: r.icon }, 24)} ${escapeHtml(r.gameName)}</span>
+            <span class="row" style="gap:var(--space-2);">${escapeHtml(r.gameName)}</span>
             <span class="muted">${scoreLabel}</span>
           </div>
           <div class="vote-bar-track"><div class="vote-bar-mask" style="width:${100 - (r.score / maxScore) * 100}%"></div></div>
@@ -290,8 +289,7 @@ function renderVoteRanking(results, mode, winnerGameIds) {
     return `
       <div class="lb-row ${isWinner ? 'rank-1' : ''}${isTiedWinner ? ' is-tied' : ''}">
         <span class="lb-rank">${rank}</span>
-        ${gameBadgeHtml({ id: result.gameId, icon: result.icon }, 28)}
-        <span style="flex:1;min-width:0;">
+                <span style="flex:1;min-width:0;">
           <div class="player-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(result.gameName)}</div>
           <div class="muted" style="font-size:var(--font-size-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${topMetaHtml(result)}</div>
         </span>
@@ -463,7 +461,7 @@ export function renderVotes(container, ctx) {
         (g) => `
         <label class="check-row">
           <input type="checkbox" data-vote-game-checkbox value="${g.id}" checked />
-          <span class="row" style="flex:1;gap:var(--space-2);">${gameBadgeHtml(g, 24)} ${escapeHtml(g.name)}</span>
+          <span class="row" style="flex:1;gap:var(--space-2);">${escapeHtml(g.name)}</span>
         </label>`
       )
       .join('');

@@ -673,11 +673,6 @@ textarea {
   width: 24px;
   height: 24px;
 }
-.game-badge .ui-icon {
-  width: 58%;
-  height: 58%;
-  color: #fff;
-}
 .nav-icon .ui-icon {
   width: 22px;
   height: 22px;
@@ -796,7 +791,7 @@ textarea {
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 11px var(--space-3);
+  padding: 11px var(--space-3); /* design-token-ok: shared 11px control rhythm, see .dt-time-select exception in DESIGN_SYSTEM.md */
   font-size: var(--font-size-md);
   color: var(--text);
   width: 100%;
@@ -877,7 +872,7 @@ input[type='number']::-webkit-inner-spin-button {
   display: block;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-  margin: 0 0 4px 2px;
+  margin: 0 0 var(--space-1) 2px; /* design-token-ok: 2px optical indent aligns the label with the input's inset text */
 }
 
 /* ---------- Layout helpers ---------- */
@@ -948,10 +943,6 @@ input[type='number']::-webkit-inner-spin-button {
   padding: var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-}
-.action-row-centered {
-  display: flex;
-  justify-content: center;
 }
 .player-assignment-row {
   display: grid;
@@ -1451,8 +1442,8 @@ button.draft-pool-player {
 .tournament-lobby-phase {
   color: var(--text-muted);
   font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: var(--letter-spacing-wide);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 .tournament-lobby-matchup {
@@ -1548,7 +1539,7 @@ button.draft-pool-player {
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 11px var(--space-3);
+  padding: 11px var(--space-3); /* design-token-ok: shared 11px control rhythm, see .dt-time-select exception in DESIGN_SYSTEM.md */
   font-size: var(--font-size-md);
   color: var(--text);
   text-align: left;
@@ -2030,10 +2021,6 @@ button.card {
   justify-content: center;
   padding: var(--space-2) var(--space-3);
 }
-.arcade-lobby-custom-score {
-  width: 100%;
-  min-width: 0;
-}
 .arcade-lobby-entry-actions {
   display: flex;
   gap: var(--space-2);
@@ -2068,7 +2055,7 @@ button.card {
   position: relative;
   width: 100%;
   aspect-ratio: 8 / 5;
-  background: #ffffff;
+  background: #ffffff; /* design-token-ok: paper-white drawing surface regardless of app theme, like skribbl.io */
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   overflow: hidden;
@@ -2122,26 +2109,26 @@ button.card {
 }
 .scribble-word-mask {
   font-family: 'Courier New', monospace;
-  font-size: 1.3rem;
-  font-weight: 700;
-  letter-spacing: 2px;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 2px; /* design-token-ok: spreads the monospace underscore blanks so single letters stay countable */
   text-align: center;
 }
 .scribble-chat-log {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   max-height: 160px;
   overflow-y: auto;
-  font-size: 0.85rem;
+  font-size: var(--font-size-sm);
 }
 .scribble-chat-correct {
   color: var(--state-playing);
-  font-weight: 600;
+  font-weight: var(--font-weight-medium);
 }
 .scribble-word-choice-btn {
-  font-size: 1.05rem;
-  font-weight: 700;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
   padding: var(--space-3);
 }
 
@@ -2568,7 +2555,11 @@ button.card {
 }
 @media (min-width: 640px) { /* --bp-md */
   .two-column-card-grid.arrivals-carpool-grid > :only-child,
-  .two-column-card-grid.arrivals-carpool-grid > :last-child:nth-child(odd) {
+  .two-column-card-grid.arrivals-carpool-grid > :last-child:nth-child(odd),
+  .two-column-card-grid.settings-event-grid > :last-child:nth-child(odd),
+  .two-column-card-grid.home-live-grid > :last-child:nth-child(odd) {
+    /* Entity cards (carpools, events, player status) keep sibling width; an
+       odd final card must not stretch across the full row. */
     grid-column: auto;
   }
 }
@@ -2647,11 +2638,6 @@ button.card {
   align-items: center;
   gap: var(--space-2);
 }
-.tetris-board-label {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-bold);
-  color: var(--text-muted);
-}
 .tetris-canvas-wrap {
   position: relative;
   width: 100%;
@@ -2707,21 +2693,6 @@ button.card {
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-black);
   color: var(--text);
-}
-.tetris-countdown {
-  font-size: 3rem; /* design-token-ok: a full-board countdown number, deliberately far larger than any normal UI text token */
-  color: var(--accent);
-  animation: tetris-count 1s ease-out;
-}
-@keyframes tetris-count {
-  from {
-    opacity: 0.3;
-    transform: scale(1.5);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
 }
 @keyframes tetris-bg-pulse {
   0%,
@@ -2809,7 +2780,7 @@ button.card {
   max-width: 100%;
   height: auto;
   padding: var(--space-3);
-  background: #ffffff;
+  background: #ffffff; /* design-token-ok: QR codes need a true-white quiet zone for reliable scanning */
 }
 
 .empty-state {
@@ -2817,14 +2788,9 @@ button.card {
   padding: var(--space-8) var(--space-4);
   color: var(--text-muted);
 }
-.empty-state .emoji {
-  font-size: var(--font-size-3xl);
-  display: block;
-  margin-bottom: var(--space-2);
-}
 .mascot {
   display: block;
-  margin: 0 auto 10px;
+  margin: 0 auto var(--space-2);
   animation: mascot-bob 2.4s ease-in-out infinite;
 }
 @keyframes mascot-bob {
@@ -2868,27 +2834,6 @@ button.card {
 
 .player-name {
   font-weight: var(--font-weight-medium);
-}
-
-/* ---------- Game badge (small per-game visual identity) ---------- */
-
-.game-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-full);
-  flex-shrink: 0;
-  line-height: var(--line-height-tight);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-}
-.game-badge-img {
-  background: var(--bg-elevated-2);
-  overflow: hidden;
-}
-.game-badge-img img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 
 /* ---------- Status badges & chips ---------- */
@@ -3181,7 +3126,7 @@ button.card {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: linear-gradient(180deg, var(--bg-elevated), var(--bg-elevated-2));
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow);
 }
 .arcade-player-tile.is-winner {
   border-color: rgba(91, 140, 255, 0.82);
@@ -3224,10 +3169,6 @@ button.card {
   font-size: var(--font-size-lg);
 }
 
-.blobby-score {
-  justify-content: center;
-  margin-bottom: var(--space-3);
-}
 .blobby-court {
   position: relative;
   width: min(100%, 960px);
@@ -3235,7 +3176,7 @@ button.card {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow);
   background: var(--bg-elevated);
 }
 .blobby-court canvas {
@@ -3250,11 +3191,11 @@ button.card {
   inset: 50% auto auto 50%;
   transform: translate(-50%, -50%);
   padding: var(--space-3) var(--space-5);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-full);
   background: var(--accent-gradient);
   color: var(--accent-text);
-  font-weight: 800;
-  box-shadow: var(--shadow-card);
+  font-weight: var(--font-weight-black);
+  box-shadow: var(--shadow);
 }
 .blobby-pause-overlay {
   position: absolute;
@@ -3264,7 +3205,7 @@ button.card {
   background: color-mix(in srgb, var(--bg) 62%, transparent);
   color: var(--text);
   font-size: var(--font-size-xl);
-  font-weight: 800;
+  font-weight: var(--font-weight-black);
 }
 
 .pong-arena {
@@ -3275,7 +3216,7 @@ button.card {
   border-radius: var(--radius-lg);
   overflow: hidden;
   background: var(--bg-elevated);
-  box-shadow: var(--shadow-card), 0 0 36px rgba(145, 99, 245, 0.12);
+  box-shadow: var(--shadow), 0 0 36px rgba(145, 99, 245, 0.12);
 }
 .pong-arena canvas {
   display: block;
@@ -3289,11 +3230,11 @@ button.card {
   inset: 50% auto auto 50%;
   transform: translate(-50%, -50%);
   padding: var(--space-3) var(--space-5);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-full);
   background: var(--accent-gradient);
   color: var(--accent-text);
   font-weight: var(--font-weight-bold);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow);
 }
 .pong-overlay {
   position: absolute;
@@ -3371,15 +3312,6 @@ input[type='range'].preference-row-slider {
 
 /* ---------- Team results ---------- */
 
-/* Wraps the team-card grid below. With few teams the grid just fills the
-   available width like any other .grid; once enough teams are drawn that
-   each card would drop under its comfortable minimum width, the grid keeps
-   that minimum and this wrapper scrolls horizontally instead of squeezing
-   card content until it overflows its own borders — same "locally
-   scrollable" pattern as the tournament bracket. */
-.team-results-scroll {
-  overflow-x: auto;
-}
 .team-card {
   border-radius: var(--radius);
   border: 1px solid var(--border);
@@ -3430,16 +3362,6 @@ input[type='range'].preference-row-slider {
 .team-player .rating {
   margin-left: auto;
 }
-.team-move-select {
-  width: auto;
-  flex: 0 0 auto;
-  margin-left: auto;
-  padding: var(--space-1) 26px var(--space-1) var(--space-2);
-  font-size: var(--font-size-xs);
-}
-.team-player .rating + .team-move-select {
-  margin-left: var(--space-2);
-}
 
 /* ---------- Tournament bracket ----------
    Rendered as a recursively nested tree (see buildBracketNode in
@@ -3453,18 +3375,17 @@ input[type='range'].preference-row-slider {
    justify-content:space-around layout, which visibly misaligned as soon as
    a bye or a score line made one box taller than its neighbor. */
 
-:root {
+.bracket-tree-wrap {
+  /* Bracket-local layout constants, not app-wide design tokens — scoped here
+     so they inherit to every bracket descendant without polluting :root. */
   --bracket-match-w: 240px;
   --bracket-match-h: 76px;
   --bracket-pair-gap: 20px;
   --bracket-round-gap: 40px;
-}
-
-.bracket-tree-wrap {
   overflow-x: auto;
   overflow-y: hidden;
   padding: var(--space-1) var(--space-4) var(--space-5);
-  margin: 0 -16px;
+  margin: 0 calc(-1 * var(--space-4));
 }
 .bracket-tree-content {
   width: max-content;
@@ -3559,7 +3480,7 @@ input[type='range'].preference-row-slider {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 0 10px;
+  padding: 0 var(--space-2);
   border: none;
   background: none;
   color: var(--text);
@@ -4154,27 +4075,10 @@ input[type='number'].tournament-score-input {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
-.home-page-sections {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-.home-page-section {
-  min-width: 0;
-}
-.home-page-section > h2,
 .home-page-subsection > h3 {
   margin: 0;
-}
-.home-page-section > h2 {
-  font-size: var(--font-size-lg);
-}
-.home-page-subsection > h3 {
   color: var(--text-muted);
   font-size: var(--font-size-md);
-}
-.home-page-section .card {
-  background: var(--bg-elevated-2);
 }
 .home-my-status {
   flex-wrap: wrap;
@@ -4211,9 +4115,6 @@ input[type='number'].tournament-score-input {
   flex-direction: column;
   gap: var(--space-3);
 }
-.login-icon {
-  font-size: var(--font-size-3xl);
-}
 .login-card h1 {
   margin: var(--space-1) 0 0;
   font-size: var(--font-size-3xl);
@@ -4245,7 +4146,7 @@ input[type='number'].tournament-score-input {
      the glow child off at the wrap's own bounds, no matter how far the
      child's box extends beyond it. Symmetric padding keeps the text
      centered and gives the 16px blur (3σ ≈ 48px) room on every side. */
-  padding: 4.5rem;
+  padding: 4.5rem; /* design-token-ok: blur headroom sized to the glow's 3-sigma radius, see comment above */
 }
 .countdown-num {
   font-size: clamp(4rem, 22vw, 8rem);
@@ -4492,7 +4393,7 @@ input[type='number'].tournament-score-input {
   padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: radial-gradient(circle at center, rgba(91, 140, 255, 0.1), transparent 58%), var(--bg-surface);
+  background: radial-gradient(circle at center, rgba(91, 140, 255, 0.1), transparent 58%), var(--bg);
   overflow: hidden;
 }
 
@@ -4760,9 +4661,6 @@ input[type='number'].tournament-score-input {
   }
 }
 
-.snake-lobby-row { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding:var(--space-2); border:1px solid var(--border); border-radius:var(--radius-md); }
-.snake-lobby-row small { display:block; color:var(--text-muted); }
 .snake-game { position:relative; width:min(100%, 720px); margin:0 auto; padding:var(--space-2); overflow:hidden; background:linear-gradient(135deg,rgba(91,140,255,.12),rgba(239,93,168,.1)); }
-#snake-canvas { display:block; width:100%; aspect-ratio:8/5; border-radius:var(--radius-md); box-shadow:0 0 30px rgba(145,99,245,.18); touch-action:none; }
-.snake-score { justify-content:center; gap:var(--space-2); margin-bottom:var(--space-3); }
+#snake-canvas { display:block; width:100%; aspect-ratio:8/5; border-radius:var(--radius); box-shadow:0 0 30px rgba(145,99,245,.18); touch-action:none; }
 .snake-overlay { position:absolute; inset:0; display:grid; place-items:center; font-size:var(--font-size-xl); font-weight:var(--font-weight-bold); color:var(--text); background:rgba(10,13,27,.62); }

@@ -38,7 +38,7 @@ import { renderSeating, invalidateSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
 import { renderMore } from './views/more.js';
 import { renderAdmin } from './views/admin.js';
-import { installIconReplacement } from './icons.js';
+import { icon, installIconReplacement } from './icons.js';
 import { initGlobalSearch } from './searchPalette.js';
 import { installDomainIcons } from './domainIcons.js';
 
@@ -244,6 +244,14 @@ async function ensureAccess() {
 }
 
 function wireNav() {
+  // Topbar and admin-banner icons come from icons.js like everywhere else
+  // (index.html stays free of hand-copied SVG paths); the app shell is
+  // hidden until this boot code runs, so nothing renders icon-less.
+  document.getElementById('notifications-btn').insertAdjacentHTML('afterbegin', icon('bell'));
+  document.getElementById('profile-btn').innerHTML = icon('circleUser');
+  document.getElementById('settings-btn').innerHTML = icon('settings');
+  document.querySelector('.admin-banner-label').insertAdjacentHTML('afterbegin', icon('shield'));
+
   document.querySelectorAll('.nav-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       if (btn.dataset.view === 'tournaments') showTournamentLanding();

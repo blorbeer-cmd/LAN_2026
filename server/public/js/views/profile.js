@@ -401,7 +401,7 @@ export function renderProfile(container, ctx) {
             <span class="muted profile-agent-step-label">Schritt 2</span>
             <strong>Agent herunterladen</strong>
             <span class="muted">Das ZIP enthält bereits Server-Adresse und deinen persönlichen Key.</span>
-            <button type="button" class="btn btn-primary btn-block" id="agent-download">${icon('download')} Für Windows herunterladen</button>
+            <button type="button" class="btn btn-primary btn-block" id="agent-download">Für Windows herunterladen</button>
           </div>
           <div class="card stack profile-agent-step">
             <span class="muted profile-agent-step-label">Schritt 3</span>

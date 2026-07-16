@@ -7,7 +7,7 @@ import { api } from '../api.js';
 import { icon } from '../icons.js';
 import { confirmDialog, openModal } from '../modal.js';
 import { state, gameById } from '../state.js';
-import { escapeHtml, avatarHtml, gameBadgeHtml, formatDateTime, seatConflictIconHtml } from '../format.js';
+import { escapeHtml, avatarHtml, formatDateTime, seatConflictIconHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { openMatchForm } from './leaderboard.js';
 import { getMyId } from '../whoami.js';
@@ -142,8 +142,7 @@ function renderDrawCard(draw, { editable, showGame = false }) {
         <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
           ${
             showGame
-              ? `${gameBadgeHtml(gameById(draw.gameId) || { id: draw.gameId, icon: draw.gameIcon }, 22)}
-                 <span class="player-name">${escapeHtml(draw.gameName)}</span>`
+              ? `                 <span class="player-name">${escapeHtml(draw.gameName)}</span>`
               : ''
           }
           <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(draw.generatedAt)}</span>
@@ -158,7 +157,7 @@ function renderDrawCard(draw, { editable, showGame = false }) {
         !editable
           ? `<div class="row" style="flex-wrap:wrap;">
                <button type="button" class="btn btn-sm" style="flex:1 1 var(--selection-card-min-width);" data-edit-draw-result="${draw.id}">Ergebnis bearbeiten</button>
-               <button type="button" class="btn btn-primary btn-sm" style="flex:1 1 var(--selection-card-min-width);" data-rematch-draw="${draw.id}">${icon('shuffle')} Rematch</button>
+               <button type="button" class="btn btn-primary btn-sm" style="flex:1 1 var(--selection-card-min-width);" data-rematch-draw="${draw.id}">Rematch</button>
              </div>`
           : ''
       }
@@ -738,7 +737,7 @@ function renderResult(result) {
   // actions while the "gerade ausgelost" panel has nothing left to show.
   if (!result || result.matchId) return '';
   return `
-    <div class="section-title row" style="gap:var(--space-2);">${gameBadgeHtml(gameById(result.gameId), 22)} ${escapeHtml(result.gameName)} — gerade ausgelost</div>
+    <div class="section-title">${escapeHtml(result.gameName)} — gerade ausgelost</div>
     ${renderDrawCard(result, { editable: true })}
   `;
 }

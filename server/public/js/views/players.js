@@ -3,7 +3,7 @@
 // identity it currently represents.
 
 import { state, playerById } from '../state.js';
-import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
+import { escapeHtml, avatarHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
@@ -61,7 +61,7 @@ function openPlayerDetail(playerId) {
         : state.skills.find((entry) => entry.player_id === playerId && entry.game_id === g.id);
       return `
         <div class="skill-row">
-          <span class="row" style="gap:var(--space-2);">${gameBadgeHtml(g, 24)} ${escapeHtml(g.name)}</span>
+          <span class="row" style="gap:var(--space-2);">${escapeHtml(g.name)}</span>
           <span class="skill-value">${stored?.rating ?? '–'}</span>
         </div>`;
     })

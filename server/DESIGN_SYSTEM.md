@@ -60,11 +60,11 @@ accessibility issues, responsive regressions, shadows and breakpoint decisions.
 | `--state-offline` | `#6b7280` | "Offline" status |
 | `--state-offline-bg` | `rgba(107, 114, 128, 0.16)` | Background for the "Offline" badge |
 
-**Avatar color palette** — a separate, JS-side single source of truth
-(`server/public/js/avatarPalette.js`, `AVATAR_PALETTE`), used for generated player colors and bulk
-test-player generation. The profile editor itself accepts the full color space through its custom
-picker and therefore does not present this palette as presets. Six of its eight swatches
-deliberately reuse the semantic colors above (so a player's avatar color never
+**Avatar color palette** — a separate, server-side single source of truth
+(`server/src/testUsers.ts`, `COLORS`), used for bulk test-player generation. The profile editor
+accepts the full color space through its custom picker and presents no presets, so the frontend
+no longer ships a palette module of its own. Six of the eight swatches
+deliberately reuse the semantic colors above (so a generated avatar color never
 introduces a hue that means something different elsewhere in the UI); the
 remaining two (cyan `#06b6d4`, lime `#84cc16`) exist purely for swatch variety.
 
@@ -101,7 +101,7 @@ what had drifted into ~17 near-duplicate raw values).
 | `--font-size-lg` | 1.15rem | Subheadings, modal headers |
 | `--font-size-xl` | 1.3rem | View titles |
 | `--font-size-2xl` | 1.5rem | View titles (desktop, ≥ `--bp-sm`) |
-| `--font-size-3xl` | 2rem | Large hero icons/numbers (login icon, empty-state emoji) |
+| `--font-size-3xl` | 2rem | Large hero text (login-card wordmark) |
 | `--font-weight-regular` | 400 | De-emphasized inline text |
 | `--font-weight-medium` | 600 | Buttons, player names, badges |
 | `--font-weight-bold` | 700 | Section titles, card headers |
@@ -206,9 +206,9 @@ view and to new views unless a documented domain constraint requires a different
    fourth enclosing card that repeats the same title or selected value.
 2. **Use space deliberately.** Repeated players, games, rankings and comparable cards normally use
    one column on phones and two equal columns from `--bp-md`. Choose whether an odd final item spans
-   the row based on meaning: summary/list rows may span; entity cards such as players, carpools and
-   orders keep the same width as their siblings. Never let CSS auto-placement make that decision
-   accidentally.
+   the row based on meaning: summary/list rows may span; entity cards such as players, carpools,
+   events and orders keep the same width as their siblings. Never let CSS auto-placement make that
+   decision accidentally.
 3. **Use accent rails only to distinguish siblings.** Blue and pink left rails separate adjacent
    workflows or datasets such as Anreise/Abreise or tournament-format/game counts. They are not
    generic decoration and are omitted where card hierarchy already communicates the structure.
@@ -306,7 +306,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   accessible label retain the full term „Skill-Level“.
   Open draws and recorded results share one newest-first „Historie“ because they are two states of
   the same lineup. It starts collapsed through the shared collapsible-section component. Every
-  history card repeats its game badge and name. Recorded results omit a status badge;
+  history card repeats its game name. Recorded results omit a status badge;
   `.matchmaking-draw-team.is-winner` identifies the winner through a reinforced border and an
   accessible group label. „Ergebnis bearbeiten“ opens a correction form for winner, value and
   placement and updates the existing match instead of creating a duplicate result. On recorded
@@ -563,8 +563,11 @@ space pattern rather than content-dependent card heights.
   balancing, the activity pulse means Skill, the hamburger means a Sammelbestellung, and the trophy
   is reserved for rankings, results and wins.
 - Do not use emoji, Unicode pictograms or external icon CDNs in navigation, headings,
-  buttons, status badges, chips, empty states or toasts. The Respawn logo is the
-  intentional exception; user-authored content such as game names may contain emoji.
+  buttons, status badges, chips, empty states or toasts. The Respawn logo and the mascot
+  illustration (`img/mascot.svg`, Home's no-players empty state) are the intentional brand
+  exceptions; user-authored content such as game names may contain emoji.
+- Colorful buttons (`.btn-primary`, `.btn-danger`, `.btn-ready`) carry text only — no leading
+  icon; the color treatment already marks them as the significant action.
 - Decorative icons are hidden from assistive technology. Icon-only controls require
   a German accessible name (`aria-label` or visible equivalent) and a discoverable
   tooltip where the action would otherwise be ambiguous.
@@ -618,12 +621,6 @@ return `<div class="muted" style="font-size:var(--font-size-xs);margin-top:var(-
 </div>`;
 ```
 
-```js
-// Shared avatar color palette — import, don't hardcode a new hex array.
-import { AVATAR_PALETTE } from '../avatarPalette.js';
-const color = AVATAR_PALETTE[i % AVATAR_PALETTE.length];
-```
-
 ## Do / Don't
 
 | Don't | Do |
@@ -632,7 +629,7 @@ const color = AVATAR_PALETTE[i % AVATAR_PALETTE.length];
 | `style="padding:16px;"` | `style="padding:var(--space-4);"` |
 | `style="font-size:0.8rem;"` | `style="font-size:var(--font-size-xs);"` |
 | `style="border-radius:999px;"` | `style="border-radius:var(--radius-full);"` |
-| `const PALETTE = ['#5b8cff', ...]` in a new view file | `import { AVATAR_PALETTE } from '../avatarPalette.js';` |
+| `const PALETTE = ['#5b8cff', ...]` in a new view file | Reference the semantic tokens (`var(--accent)`, ...); generated-player swatches live server-side in `testUsers.ts` |
 | A new one-off `.my-thing-btn { padding: 6px 10px; }` override | Use `.btn` + `.btn-sm` (or `.chip`) as-is; only add a new component class if the existing ones genuinely can't express it |
 | Guessing a breakpoint (`@media (min-width: 700px)`) | Reuse `--bp-sm/md/lg/xl`'s literal value, with a `/* --bp-x */` comment |
 
@@ -647,16 +644,30 @@ check this line is intentional).
 
 The current, complete list of such exceptions in `server/public`:
 
-- **`.dt-time-select`** and the native `select` chevron padding (`style.css`)
-  — the wider side clears each element's own chevron icon; the 11px vertical
-  rhythm matches the other inputs' `11px var(--space-3)` padding exactly, it's
-  just not itself a token value.
+- **The 11px vertical control rhythm** — base inputs, `.dt-date-btn`,
+  `.dt-time-select` and the native `select` chevron padding (`style.css`) all
+  share `11px var(--space-3)`; the wider chevron side clears each element's
+  own icon. 11px is deliberate (12px makes the controls taller than the
+  compact buttons they sit next to), it's just not itself a token value.
 - **Avatar sizes at `avatarHtml()` call sites** — real, intentional variety
   (18px inline chips up to 64px on the profile hero); see "Avatar sizes"
   above.
 - **Three glow shadows** (topbar logo icon, the login-screen logo splash, the
   active nav icon) — each tuned to a different blur/alpha for a
   different-sized element; see "Shadows" above.
+- **`.countdown-num-wrap`'s `4.5rem` padding** — blur headroom sized to the
+  glow's own 3-sigma radius so GPU compositing never clips it; a spacing
+  token would couple it to the wrong scale.
+- **`.field-label`'s 2px left margin** — optical indent aligning the label
+  with the input's inset text.
+- **Paper-white surfaces** — the Scribble drawing canvas and the QR modal
+  keep literal `#ffffff` regardless of theme (drawing convention and QR
+  scan contrast respectively).
+- **`.scribble-word-mask`'s 2px letter-spacing** — spreads the monospace
+  underscore blanks so single letters stay countable.
+- **Bracket layout constants** (`--bracket-*` on `.bracket-tree-wrap`) —
+  match-box geometry for the connector math, scoped to the bracket and
+  deliberately not part of the global spacing scale.
 
 Everything else that was off-scale (values like 6px, 10px, 14px sitting
 between two spacing steps) has been rounded onto the scale.

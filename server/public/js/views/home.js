@@ -9,7 +9,7 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, stateLabel, avatarHtml, gameBadgeHtml, gameChipsHtml } from '../format.js';
+import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml } from '../format.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
@@ -47,8 +47,8 @@ async function loadSeating(ctx) {
 
 function renderHomeSeating(ctx) {
   if (seatingCache === null && !seatingLoading) loadSeating(ctx);
-  return `<section class="card home-page-section live-seating stack" aria-labelledby="home-seating-title">
-    <h2 id="home-seating-title">Sitzplan</h2>
+  return `<section class="card grouped-page-section live-seating stack" aria-labelledby="home-seating-title">
+    <div class="grouped-page-section-title"><h2 id="home-seating-title">Sitzplan</h2></div>
     ${seatingLoading || seatingCache === null
       ? '<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>'
       : renderSeatingPlan(seatingCache.layout, seatingCache.players)}
@@ -76,7 +76,7 @@ function statusRowHtml({ iconName, title, sub, navigate }) {
         <div class="player-name">${title}</div>
         ${sub ? `<div class="muted list-row-desc">${sub}</div>` : ''}
       </span>
-      <span class="muted">›</span>
+      <span class="muted">${icon('chevronRight')}</span>
     </button>`;
 }
 
@@ -92,8 +92,8 @@ function renderStatus() {
 
   if (rows.length === 0) return '';
   return `
-    <section class="card home-page-section stack" aria-labelledby="home-current-title">
-      <h2 id="home-current-title">Aktuell</h2>
+    <section class="card grouped-page-section stack" aria-labelledby="home-current-title">
+      <div class="grouped-page-section-title"><h2 id="home-current-title">Aktuell</h2></div>
       <div class="card-grid">${rows.join('')}</div>
     </section>
   `;
@@ -120,7 +120,7 @@ function renderActiveGroups(players) {
       const count = g.players.length;
       const namesList = g.players.slice().sort((a, b) => a.localeCompare(b, 'de')).join(', ');
       return `
-      <div class="chip" title="${escapeHtml(namesList)}">${gameBadgeHtml(g, 20)} <strong>${escapeHtml(g.name)}</strong> <span class="muted">· ${count} Spieler</span></div>`;
+      <div class="chip" title="${escapeHtml(namesList)}"><strong>${escapeHtml(g.name)}</strong> <span class="muted">· ${count} Spieler</span></div>`;
     })
     .join('');
 
@@ -155,8 +155,8 @@ function renderLeaderboardTop() {
     )
     .join('');
   return `
-    <section class="card home-page-section stack" aria-labelledby="home-leaderboard-title">
-      <h2 id="home-leaderboard-title">Rangliste</h2>
+    <section class="card grouped-page-section stack" aria-labelledby="home-leaderboard-title">
+      <div class="grouped-page-section-title"><h2 id="home-leaderboard-title">Rangliste</h2></div>
       <div class="home-leaderboard-columns">${columns}</div>
       <button type="button" class="btn btn-sm btn-block" data-navigate="leaderboard">Gesamte Rangliste ${icon('chevronRight')}</button>
     </section>
@@ -236,13 +236,13 @@ export function renderHome(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Home</h1>
     ${whoAmI}
-    <div class="home-page-sections">
+    <div class="grouped-page-sections">
       ${renderStatus()}
-      <section class="card home-page-section stack" aria-labelledby="home-live-title">
-        <h2 id="home-live-title">Live-Status</h2>
+      <section class="card grouped-page-section stack" aria-labelledby="home-live-title">
+        <div class="grouped-page-section-title"><h2 id="home-live-title">Live-Status</h2></div>
         ${renderActiveGroups(players)}
         ${renderMyStatus(myId, players)}
-        <div class="card-grid">${cards}</div>
+        <div class="two-column-card-grid home-live-grid">${cards}</div>
       </section>
       ${renderLeaderboardTop()}
       ${renderHomeSeating(ctx)}

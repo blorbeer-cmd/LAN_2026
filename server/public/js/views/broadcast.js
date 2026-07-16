@@ -82,7 +82,7 @@ export function renderBroadcast(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Durchsage</h1>
-    ${whoAmICardHtml('broadcast-whoami', { marginBottom: '12px' })}
+    ${whoAmICardHtml('broadcast-whoami', { marginBottom: 'var(--space-3)' })}
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="broadcast-new-title">
         <div class="grouped-page-section-title">

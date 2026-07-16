@@ -7,7 +7,7 @@
 import { api } from '../api.js';
 import { confirmDialog } from '../modal.js';
 import { state, gameById } from '../state.js';
-import { escapeHtml, avatarHtml, gameBadgeHtml, seatConflictIconHtml } from '../format.js';
+import { escapeHtml, avatarHtml, seatConflictIconHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
@@ -173,8 +173,7 @@ function renderList(container, ctx) {
     .map(
       (t) => `
       <button type="button" class="card tournament-list-card" data-open-tournament="${t.id}">
-        ${gameBadgeHtml({ id: t.gameId, icon: t.gameIcon }, 44)}
-        <span class="tournament-list-card-main">
+                <span class="tournament-list-card-main">
           <span class="player-name">${escapeHtml(t.name)}</span>
           <span class="muted tournament-list-game">${escapeHtml(t.gameName)}</span>
           <span class="muted tournament-list-meta">${SHORT_FORMAT_LABELS[t.format]} · ${t.teamCount} Teams</span>
@@ -1105,7 +1104,7 @@ function renderDetail(container, ctx) {
       <button type="button" class="btn btn-sm" id="tourn-back">‹ Zurück</button>
       <button type="button" class="btn btn-sm btn-danger" id="tourn-delete">Löschen</button>
     </div>
-    <h1 class="view-title row" style="gap:var(--space-2);">${gameBadgeHtml({ id: t.gameId, icon: t.gameIcon }, 26)} ${escapeHtml(t.name)}</h1>
+    <h1 class="view-title">${escapeHtml(t.name)}</h1>
     <div class="muted tournament-detail-meta">
       ${formatDisplay}
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
