@@ -304,9 +304,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   groups and matches across internal columns. Vote status is a centered icon/text stack. Only the
   newest active system notification appears above the dashboard as one full-width brand-gradient
   banner; separate food-order summary cards are omitted because order pushes already use that banner.
-  Tournament content is centered vertically and horizontally inside its card and uses a metadata row
-  plus bordered standing, group or match cards with textual winner states, matching the main app's
-  nested-surface hierarchy.
+  Tournament standings and groups are centered vertically and horizontally inside their card. In a
+  knockout view, game and round remain fixed at the top while the bracket round itself is centered in
+  the remaining card area. All variants use bordered standing, group or match cards with textual winner
+  states, matching the main app's nested-surface hierarchy. An open Vote shows only its concise
+  participant count below the centered status; the deferred-result explanation is omitted.
 - **Grouped page sections** — `.grouped-page-sections` stacks the page's major areas with the
   shared vertical rhythm. Every `.grouped-page-section` is a full-width `.card`; its visible
   heading lives inside the surface through `.grouped-page-section-title`, while filters and

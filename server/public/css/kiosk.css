@@ -131,10 +131,24 @@
 .kiosk-tournament-overview {
   display: flex;
   width: 100%;
+  height: 100%;
   min-height: 0;
   flex-direction: column;
   justify-content: center;
   gap: var(--space-3);
+}
+.kiosk-tournament-bracket {
+  justify-content: flex-start;
+}
+.kiosk-tournament-bracket-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+}
+.kiosk-tournament-bracket-body .kiosk-match-grid {
+  width: 100%;
 }
 #kiosk-tournament {
   display: flex;

@@ -210,12 +210,11 @@ function renderVotes(votes) {
   if (!votes || !votes.open) {
     return `<div class="empty-state">Keine offene Abstimmung.</div>`;
   }
-  const label = votes.mode === 'points' ? `${votes.totalVoters} Teilnehmer bisher` : `${votes.totalVoters} Stimme(n) bisher`;
   return `
     <div class="kiosk-vote-state">
       <span class="empty-state-icon">${icon(domainIcon('votes'))}</span>
       <strong>Abstimmung läuft</strong>
-      <span class="muted">${label} – Ergebnis erst nach dem Ende.</span>
+      <span class="muted">${votes.totalVoters} Teilnehmer</span>
     </div>`;
 }
 
@@ -308,12 +307,12 @@ function renderTournament(t) {
         </div>`;
     })
     .join('');
-  return `<div class="kiosk-tournament-overview">
+  return `<div class="kiosk-tournament-overview kiosk-tournament-bracket">
     <div class="kiosk-tournament-meta">
       <strong>${escapeHtml(t.gameName)}</strong>
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : `Runde ${currentRound}/${totalRounds}`}</span>
     </div>
-    <div class="kiosk-match-grid">${rows}</div>
+    <div class="kiosk-tournament-bracket-body"><div class="kiosk-match-grid">${rows}</div></div>
   </div>`;
 }
 

@@ -1705,6 +1705,8 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
   await page.waitForSelector('.kiosk-broadcast-time');
   await page.waitForSelector('.notification-banner-body');
   await page.waitForSelector('.kiosk-vote-state');
+  await page.waitForSelector('.kiosk-vote-state >> text=0 Teilnehmer');
+  assert.equal(await page.getByText('Ergebnis erst nach dem Ende.', { exact: false }).count(), 0);
   await page.waitForSelector('.kiosk-match-grid .kiosk-match-card');
   await page.locator('#kiosk-broadcast').evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
   assert.equal(await page.locator('#kiosk-alerts > *').count(), 1);
@@ -1716,13 +1718,19 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
     alertBox && bannerBox && Math.abs(alertBox.width - bannerBox.width) <= 1,
     `highlighted message should fill the alert row (${JSON.stringify({ alertBox, bannerBox })})`
   );
-  const [tournamentBox, overviewBox] = await Promise.all([
+  const [tournamentBox, metaBox, bracketBodyBox, matchGridBox] = await Promise.all([
     page.locator('#kiosk-tournament').boundingBox(),
-    page.locator('.kiosk-tournament-overview').boundingBox(),
+    page.locator('.kiosk-tournament-meta').boundingBox(),
+    page.locator('.kiosk-tournament-bracket-body').boundingBox(),
+    page.locator('.kiosk-match-grid').boundingBox(),
   ]);
   assert.ok(
-    tournamentBox && overviewBox && Math.abs(tournamentBox.y + tournamentBox.height / 2 - (overviewBox.y + overviewBox.height / 2)) < 4,
-    'tournament content should be vertically centered in its card content area'
+    tournamentBox && metaBox && Math.abs(tournamentBox.y - metaBox.y) < 4,
+    'tournament game and round should remain at the top of the card content area'
+  );
+  assert.ok(
+    bracketBodyBox && matchGridBox && Math.abs(bracketBodyBox.y + bracketBodyBox.height / 2 - (matchGridBox.y + matchGridBox.height / 2)) < 4,
+    'tournament bracket should be vertically centered below its metadata'
   );
   assert.equal(
     await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight && document.body.scrollHeight <= window.innerHeight),
