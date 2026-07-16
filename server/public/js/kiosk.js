@@ -217,10 +217,10 @@ function renderKioskVoteRows(vote, { concealed = false } = {}) {
   const scored = vote.results.filter((result) => result.score > 0);
   if (scored.length === 0) return `<div class="muted kiosk-vote-empty">Noch keine Stimmen.</div>`;
   const maxScore = Math.max(...scored.map((result) => result.score));
-  const visibleResults = scored.slice(0, 8);
+  const visibleResults = scored.slice(0, 10);
   let previousScore = null;
   let rank = 0;
-  return `<div class="kiosk-vote-results ${visibleResults.length > 6 ? 'is-dense' : ''}">${visibleResults
+  return `<div class="kiosk-vote-results">${visibleResults
     .map((result, index) => {
       if (previousScore === null || result.score !== previousScore) rank = index + 1;
       previousScore = result.score;

@@ -314,8 +314,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   vertically center their participant count in the status header and show their current ranking as
   „Zwischenstand“, but replace every game name with a stable, differently sized random-character
   mask plus blur so the room display cannot influence voting. Single-choice runoffs are explicitly labeled
-  „Stichwahl“. The two-column live ranking uses the available space for up to eight games without
-  introducing a scrollbar. After a round closes, a centered five-second countdown hides every
+  „Stichwahl“. The two-column live ranking uses the complete remaining card height for up to ten
+  games, distributing its five rows evenly instead of compressing them at the top. Low-height TV
+  canvases reduce only row padding and gaps so the fixed dashboard still needs no scrollbar. After
+  a round closes, a centered five-second countdown hides every
   result. The final ranking is revealed afterward and remains centered in the card for ten minutes,
   based on the persisted close timestamp; then the card switches to the empty state. A new
   open round replaces that result immediately. Without an open or recently closed round, the card

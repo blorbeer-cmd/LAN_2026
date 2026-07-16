@@ -1800,7 +1800,7 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
     'kiosk cards must not introduce internal scrollbars'
   );
   await page.request.post(`${BASE_URL}/api/votes/cancel`);
-  const kioskGames = games.slice(0, 8) as Array<{ id: string }>;
+  const kioskGames = games.slice(0, 10) as Array<{ id: string }>;
   await page.request.post(`${BASE_URL}/api/votes/start`, {
     data: { mode: 'points', title: 'Großer Kiosk Vote', gameIds: kioskGames.map((game) => game.id) },
   });
@@ -1810,9 +1810,9 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
       entries: kioskGames.map((game, index) => ({ gameId: game.id, points: 10 - index })),
     },
   });
-  await page.waitForSelector('.kiosk-vote-result:nth-child(8)');
-  assert.equal(await page.locator('.kiosk-vote-result').count(), 8);
-  assert.equal(await page.locator('.kiosk-vote-result.is-concealed').count(), 8);
+  await page.waitForSelector('.kiosk-vote-result:nth-child(10)');
+  assert.equal(await page.locator('.kiosk-vote-result').count(), 10);
+  assert.equal(await page.locator('.kiosk-vote-result.is-concealed').count(), 10);
   assert.ok(await page.locator('.kiosk-vote-result.is-concealed strong').evaluateAll((names) => {
     const lengths = names.map((name) => name.textContent?.length ?? 0);
     return new Set(lengths).size > 1;
@@ -1829,13 +1829,22 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
       allVisible: resultBoxes.every((result) => result.top >= contentBox.top && result.bottom <= contentBox.bottom),
     };
   });
-  assert.equal(voteBounds.allVisible, true, `eight live vote results should remain visible inside the kiosk card: ${JSON.stringify(voteBounds)}`);
+  assert.equal(voteBounds.allVisible, true, `ten live vote results should remain visible inside the kiosk card: ${JSON.stringify(voteBounds)}`);
+  assert.ok(await page.locator('.kiosk-vote-results').evaluate((results) => {
+    const resultBox = results.getBoundingClientRect();
+    const parentBox = results.parentElement!.getBoundingClientRect();
+    return Math.abs(resultBox.bottom - parentBox.bottom) < 2;
+  }), 'live vote results should use the remaining card height');
+  const compactVoteRowHeight = (await page.locator('.kiosk-vote-result').first().boundingBox())!.height;
+  await page.setViewportSize({ width: 1280, height: 1080 });
+  const tallVoteRowHeight = (await page.locator('.kiosk-vote-result').first().boundingBox())!.height;
+  assert.ok(tallVoteRowHeight > compactVoteRowHeight * 2, 'tall kiosk cards should distribute their free height across vote rows');
   await page.request.post(`${BASE_URL}/api/votes/close`);
   await page.waitForSelector('.kiosk-vote-countdown >> text=Ergebnis in');
   assert.equal(await page.locator('.kiosk-vote-countdown-value').textContent(), '5');
   assert.equal(await page.locator('.kiosk-vote-result').count(), 0);
   await page.waitForSelector('.kiosk-vote-final >> text=Ergebnis', { timeout: 7_000 });
-  assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result').count(), 8);
+  assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result').count(), 10);
   assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result.is-concealed').count(), 0);
   await page.waitForSelector(`.kiosk-vote-final .kiosk-vote-result:has-text("${games[0].name}")`);
   assert.ok(await page.locator('.kiosk-vote-final').evaluate((result) => {

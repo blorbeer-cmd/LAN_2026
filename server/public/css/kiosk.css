@@ -161,11 +161,11 @@
 }
 .kiosk-vote-results {
   display: grid;
+  min-height: 0;
+  flex: 1;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
   gap: var(--space-2);
-}
-.kiosk-vote-results.is-dense {
-  gap: var(--space-1);
 }
 .kiosk-vote-result {
   display: grid;
@@ -177,10 +177,6 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-elevated-2);
-}
-.kiosk-vote-results.is-dense .kiosk-vote-result {
-  padding: 0 var(--space-2);
-  line-height: var(--line-height-tight);
 }
 .kiosk-vote-result.is-leading {
   border-color: var(--rank-1-gold);
@@ -224,6 +220,15 @@
 .kiosk-vote-final-header > strong {
   flex-basis: 100%;
   font-size: var(--font-size-lg);
+}
+@media (max-height: 800px) {
+  .kiosk-vote-results {
+    gap: 0 var(--space-1);
+  }
+  .kiosk-vote-result {
+    padding: 0 var(--space-2);
+    line-height: var(--line-height-tight);
+  }
 }
 .kiosk-tournament-overview {
   display: flex;
