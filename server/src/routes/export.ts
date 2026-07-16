@@ -75,7 +75,7 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
   const now = Date.now();
 
   // ---------- Leaderboard, scoped to this event's matches ----------
-  const matchRows = db.prepare('SELECT result FROM matches WHERE event_id = ?').all(filterEventId) as Array<{
+  const matchRows = db.prepare('SELECT result FROM matches WHERE event_id = ? AND group_id = ?').all(filterEventId, groupId) as Array<{
     result: string;
   }>;
   const matches: MatchForScoring[] = matchRows.map((r) => JSON.parse(r.result));
@@ -147,7 +147,7 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
   }));
 
   // ---------- Tournament champions ----------
-  const tournaments = getCompletedTournamentSummaries(filterEventId).map((t) => ({
+  const tournaments = getCompletedTournamentSummaries(filterEventId, groupId).map((t) => ({
     name: t.name,
     format: t.format,
     gameName: t.gameName,

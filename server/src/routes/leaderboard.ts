@@ -19,8 +19,8 @@ leaderboardRouter.get('/', (req, res) => {
 
   const rows = (
     filterGameId
-      ? db.prepare('SELECT result FROM matches WHERE game_id = ?').all(filterGameId)
-      : db.prepare('SELECT result FROM matches').all()
+      ? db.prepare('SELECT result FROM matches WHERE group_id = ? AND game_id = ?').all(req.group!.id, filterGameId)
+      : db.prepare('SELECT result FROM matches WHERE group_id = ?').all(req.group!.id)
   ) as Array<{ result: string }>;
 
   const matches: MatchForScoring[] = rows.map((r) => JSON.parse(r.result));

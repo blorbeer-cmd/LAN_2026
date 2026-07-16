@@ -46,9 +46,8 @@ statsRouter.get('/playtime', (req, res) => {
     clauses.push('event_id = ?');
     sqlParams.push(filterEventId);
   }
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const rows = db
-    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions ${where}`)
+    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${clauses.join(' AND ')}`)
     .all(...sqlParams) as Array<{
     player_id: string;
     game_id: string;

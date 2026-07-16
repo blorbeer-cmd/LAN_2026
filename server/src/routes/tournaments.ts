@@ -5,7 +5,6 @@
 // row, so playing in a tournament counts toward the regular leaderboard too.
 
 import { Router } from 'express';
-import { requireAdmin } from '../auth';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { nanoid } from 'nanoid';
@@ -14,6 +13,8 @@ import { broadcast, Events } from '../realtime';
 import { getTrackingEventId } from '../events';
 import { isNonEmptyString } from '../validation';
 import { notifyPlayers, resolvePushTopic } from '../push';
+import { competitionPlayersBelongToGroup, trackingEventIdForGroup } from '../competitionScope';
+import { requireGroupRole } from '../groupAuthorization';
 import {
   generateBracket,
   applyBracketResult,
@@ -44,6 +45,7 @@ interface TournamentRow {
   created_at: number;
   lobby_name: string | null;
   lobby_password: string | null;
+  group_id: string | null;
 }
 
 interface TournamentTeamRow {
@@ -122,13 +124,15 @@ function progressBracketRows(
 }
 
 // Builds the full detail payload shared by create/list-one/record-result.
-function buildDetail(tournamentId: string) {
+// groupId is required so a foreign group's tournament id 404s the same way
+// every other group-owned resource does (existence hidden).
+function buildDetail(tournamentId: string, groupId: string) {
   const tournament = db.prepare('SELECT * FROM tournaments WHERE id = ?').get(tournamentId) as
     | TournamentRow
     | undefined;
-  if (!tournament) return undefined;
+  if (!tournament || tournament.group_id !== groupId) return undefined;
 
-  const game = db.prepare('SELECT id, name, icon FROM games WHERE id = ?').get(tournament.game_id) as
+  const game = db.prepare('SELECT id, name, icon FROM games WHERE id = ? AND group_id = ?').get(tournament.game_id, groupId) as
     | { id: string; name: string; icon: string }
     | undefined;
 
@@ -234,17 +238,17 @@ tournamentsRouter.get('/', (req, res) => {
               (SELECT COUNT(*) FROM tournament_teams tt WHERE tt.tournament_id = t.id) AS teamCount
        FROM tournaments t
        JOIN games g ON g.id = t.game_id
-       WHERE t.event_id = ?
+       WHERE t.group_id = ? AND t.event_id = ?
        ORDER BY t.created_at DESC`
     )
-    .all(filterEventId) as Array<Record<string, unknown>>;
+    .all(req.group!.id, filterEventId) as Array<Record<string, unknown>>;
 
   res.json(rows.map((r) => ({ ...r, twoLegged: Boolean(r.twoLegged) })));
 });
 
 // GET /api/tournaments/:id - full board: teams, bracket/fixtures, standings.
 tournamentsRouter.get('/:id', (req, res) => {
-  const detail = buildDetail(req.params.id);
+  const detail = buildDetail(req.params.id, req.group!.id);
   if (!detail) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
   res.json(detail);
 });
@@ -290,7 +294,7 @@ tournamentsRouter.post('/', (req, res) => {
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
   }
-  const game = db.prepare('SELECT id, name, icon FROM games WHERE id = ?').get(gameId) as
+  const game = db.prepare('SELECT id, name, icon FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
     | { id: string; name: string; icon: string }
     | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
@@ -341,6 +345,13 @@ tournamentsRouter.post('/', (req, res) => {
   }
 
   const allPlayerIds = teamsInput.flatMap((t) => t.playerIds);
+  const eventId = trackingEventIdForGroup(req.group!.id);
+  if (!eventId) {
+    return res.status(409).json({ error: 'Tracking läuft derzeit in einem anderen Gruppenkontext.' });
+  }
+  if (!competitionPlayersBelongToGroup(req.group!.id, eventId, allPlayerIds)) {
+    return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
+  }
   const placeholders = allPlayerIds.map(() => '?').join(',');
   const foundPlayers = db
     .prepare(`SELECT id FROM players WHERE id IN (${placeholders})`)
@@ -362,11 +373,11 @@ tournamentsRouter.post('/', (req, res) => {
   const create = db.transaction(() => {
     db.prepare(
       `INSERT INTO tournaments
-         (id, event_id, game_id, name, format, two_legged, track_score, group_count, advancers_per_group, status, created_at, lobby_name, lobby_password)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`
+         (id, event_id, game_id, name, format, two_legged, track_score, group_count, advancers_per_group, status, created_at, lobby_name, lobby_password, group_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`
     ).run(
       tournamentId,
-      getTrackingEventId(),
+      eventId,
       gameId,
       tournamentName,
       resolvedFormat,
@@ -376,7 +387,8 @@ tournamentsRouter.post('/', (req, res) => {
       resolvedAdvancersPerGroup,
       now,
       resolvedLobbyName,
-      resolvedLobbyPassword
+      resolvedLobbyPassword,
+      req.group!.id
     );
 
     // Team -> group assignment (group_knockout only) has to happen before
@@ -469,7 +481,7 @@ tournamentsRouter.post('/', (req, res) => {
     'all',
     { key: `tournament:${tournamentId}` }
   );
-  res.status(201).json(buildDetail(tournamentId));
+  res.status(201).json(buildDetail(tournamentId, req.group!.id));
 });
 
 // POST /api/tournaments/:id/matches/:matchId/result
@@ -477,7 +489,7 @@ tournamentsRouter.post('/', (req, res) => {
 // knockout-shaped matches), OR — if the tournament has trackScore set —
 // { scoreA: number, scoreB: number } with the winner derived from the score.
 tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
-  const tournament = db.prepare('SELECT * FROM tournaments WHERE id = ?').get(req.params.id) as
+  const tournament = db.prepare('SELECT * FROM tournaments WHERE id = ? AND group_id = ?').get(req.params.id, req.group!.id) as
     | TournamentRow
     | undefined;
   if (!tournament) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
@@ -555,6 +567,11 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
     | undefined;
   if (!teamA || !teamB) return res.status(404).json({ error: 'Team nicht gefunden.' });
 
+  const resultPlayerIds = [...JSON.parse(teamA.player_ids), ...JSON.parse(teamB.player_ids)] as string[];
+  if (!competitionPlayersBelongToGroup(req.group!.id, tournament.event_id, resultPlayerIds)) {
+    return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
+  }
+
   const now = Date.now();
   const winnerTeamIndex = winnerTeamId === null ? null : winnerTeamId === match.team_a_id ? 0 : 1;
   const leaderboardMatchId = nanoid();
@@ -578,7 +595,7 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
 
   const record = db.transaction(() => {
     db.prepare(
-      'INSERT INTO matches (id, game_id, event_id, played_at, result) VALUES (?, ?, ?, ?, ?)'
+      'INSERT INTO matches (id, game_id, event_id, played_at, result, group_id) VALUES (?, ?, ?, ?, ?, ?)'
     ).run(
       leaderboardMatchId,
       tournament.game_id,
@@ -588,7 +605,8 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
         teams: [{ playerIds: JSON.parse(teamA.player_ids) }, { playerIds: JSON.parse(teamB.player_ids) }],
         winnerTeamIndex,
         ...(scoreA !== null ? { score: [scoreA, scoreB] } : {}),
-      })
+      }),
+      tournament.group_id
     );
 
     db.prepare(
@@ -791,17 +809,23 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
     ...(notify ? { notify } : {}),
   });
   broadcast(Events.leaderboardChanged, null);
-  res.json(buildDetail(tournament.id));
+  res.json(buildDetail(tournament.id, req.group!.id));
 });
 
 // DELETE /api/tournaments/:id - removes the tournament and its teams/
 // matches (cascade); the `matches` rows already created for the leaderboard
 // are left untouched (match_id just goes stale, which is fine — they're
 // independent leaderboard history at that point).
-tournamentsRouter.delete('/:id', requireAdmin, requireRecentReauthentication, (req, res) => {
-  const result = db.prepare('DELETE FROM tournaments WHERE id = ?').run(req.params.id);
+tournamentsRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
+  const result = db.prepare('DELETE FROM tournaments WHERE id = ? AND group_id = ?').run(req.params.id, req.group!.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
-  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'tournament_deleted', targetType: 'tournament', targetId: req.params.id });
+  writeAdminAudit({
+    actorPlayerId: req.player?.id,
+    groupId: req.group!.id,
+    action: 'tournament_deleted',
+    targetType: 'tournament',
+    targetId: req.params.id,
+  });
   resolvePushTopic(`tournament:${req.params.id}`, true);
   broadcast(Events.tournamentsChanged, { type: 'deleted', tournamentId: req.params.id });
   res.status(204).end();
