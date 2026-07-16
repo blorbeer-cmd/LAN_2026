@@ -1760,7 +1760,9 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
   await page.waitForSelector('.kiosk-vote-overview >> text=Zwischenstand');
   await page.waitForSelector('.kiosk-vote-overview >> text=1 Teilnehmer');
   assert.equal(await page.locator('.kiosk-vote-header').evaluate((element) => getComputedStyle(element).alignItems), 'center');
-  await page.waitForSelector(`.kiosk-vote-result:has-text("${games[1].name}") >> text=1 Stimme`);
+  await page.waitForSelector('.kiosk-vote-result.is-concealed >> text=1 Stimme');
+  assert.equal(await page.locator(`.kiosk-vote-result:has-text("${games[1].name}")`).count(), 0);
+  assert.notEqual(await page.locator('.kiosk-vote-result.is-concealed strong').evaluate((element) => getComputedStyle(element).filter), 'none');
   assert.equal(await page.getByText('Ergebnis erst nach dem Ende.', { exact: false }).count(), 0);
   await page.waitForSelector('.kiosk-match-grid .kiosk-match-card');
   await page.locator('#kiosk-broadcast').evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
@@ -1810,6 +1812,11 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
   });
   await page.waitForSelector('.kiosk-vote-result:nth-child(8)');
   assert.equal(await page.locator('.kiosk-vote-result').count(), 8);
+  assert.equal(await page.locator('.kiosk-vote-result.is-concealed').count(), 8);
+  assert.ok(await page.locator('.kiosk-vote-result.is-concealed strong').evaluateAll((names) => {
+    const lengths = names.map((name) => name.textContent?.length ?? 0);
+    return new Set(lengths).size > 1;
+  }), 'concealed game labels should use varying character counts');
   const voteBounds = await page.locator('#kiosk-votes').evaluate((voteContent) => {
     const contentBox = voteContent.getBoundingClientRect();
     const resultBoxes = Array.from(voteContent.querySelectorAll('.kiosk-vote-result')).map((result) => {
@@ -1824,8 +1831,13 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
   });
   assert.equal(voteBounds.allVisible, true, `eight live vote results should remain visible inside the kiosk card: ${JSON.stringify(voteBounds)}`);
   await page.request.post(`${BASE_URL}/api/votes/close`);
-  await page.waitForSelector('.kiosk-vote-final >> text=Ergebnis');
+  await page.waitForSelector('.kiosk-vote-countdown >> text=Ergebnis in');
+  assert.equal(await page.locator('.kiosk-vote-countdown-value').textContent(), '5');
+  assert.equal(await page.locator('.kiosk-vote-result').count(), 0);
+  await page.waitForSelector('.kiosk-vote-final >> text=Ergebnis', { timeout: 7_000 });
   assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result').count(), 8);
+  assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result.is-concealed').count(), 0);
+  await page.waitForSelector(`.kiosk-vote-final .kiosk-vote-result:has-text("${games[0].name}")`);
   assert.ok(await page.locator('.kiosk-vote-final').evaluate((result) => {
     const resultBox = result.getBoundingClientRect();
     const contentBox = result.parentElement!.getBoundingClientRect();

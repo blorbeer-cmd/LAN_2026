@@ -312,10 +312,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the remaining card area. All variants use bordered standing, group or match cards with textual winner
   states, matching the main app's nested-surface hierarchy. Vote is a live room display: open rounds
   vertically center their participant count in the status header and show their current ranking as
-  „Zwischenstand“; single-choice runoffs are explicitly labeled
+  „Zwischenstand“, but replace every game name with a stable, differently sized random-character
+  mask plus blur so the room display cannot influence voting. Single-choice runoffs are explicitly labeled
   „Stichwahl“. The two-column live ranking uses the available space for up to eight games without
-  introducing a scrollbar. After a round closes, its final ranking is centered in the card for ten
-  minutes, based on the persisted close timestamp; then the card switches to the empty state. A new
+  introducing a scrollbar. After a round closes, a centered five-second countdown hides every
+  result. The final ranking is revealed afterward and remains centered in the card for ten minutes,
+  based on the persisted close timestamp; then the card switches to the empty state. A new
   open round replaces that result immediately. Without an open or recently closed round, the card
   only states that no vote is running. The regular personal Vote
   view keeps its open-round distribution hidden. Without a tournament, the tournament card uses

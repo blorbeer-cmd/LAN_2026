@@ -32,6 +32,7 @@ const ROUND_KEY = 'vote_round';
 const OPEN_KEY = 'vote_open';
 const STARTED_AT_KEY = 'vote_started_at';
 const MODE_KEY = 'vote_mode';
+export const KIOSK_RESULT_REVEAL_DELAY_MS = 5 * 1000;
 export const KIOSK_RESULT_DURATION_MS = 10 * 60 * 1000;
 
 const MAX_TITLE_LENGTH = 80;
@@ -243,11 +244,12 @@ votesRouter.get('/', (_req, res) => {
   res.json(buildPayload());
 });
 
-// GET /api/votes/kiosk - the shared room display is intentionally more
-// dynamic than personal voting devices: it shows the current per-game tally
-// live while a round is open.
+// GET /api/votes/kiosk - the shared room display receives the current tally
+// while a round is open, but kiosk.js masks every game identity until the
+// persisted post-close reveal time.
 // The regular GET /api/votes stays redacted while open, so this does not
-// change the anti-bandwagoning behavior on phones.
+// change the anti-bandwagoning behavior on phones; the room display's masks
+// prevent its live ranking from influencing those votes too.
 votesRouter.get('/kiosk', (_req, res) => {
   const state = readRoundState();
   const meta = getRoundMeta(state.round);
@@ -260,12 +262,14 @@ votesRouter.get('/kiosk', (_req, res) => {
     : (db.prepare('SELECT closed_at AS closedAt FROM vote_rounds WHERE round = ?').get(state.round) as
         | { closedAt: number | null }
         | undefined);
-  const resultExpiresAt = closedRound?.closedAt ? closedRound.closedAt + KIOSK_RESULT_DURATION_MS : null;
+  const resultRevealAt = closedRound?.closedAt ? closedRound.closedAt + KIOSK_RESULT_REVEAL_DELAY_MS : null;
+  const resultExpiresAt = resultRevealAt ? resultRevealAt + KIOSK_RESULT_DURATION_MS : null;
   const recentResult = resultExpiresAt && resultExpiresAt > Date.now()
     ? {
         ...state,
         ...meta,
         closedAt: closedRound!.closedAt,
+        revealAt: resultRevealAt,
         expiresAt: resultExpiresAt,
         results: buildResults(state.round, state.mode, meta.selectedGameIds),
         totalVoters: (

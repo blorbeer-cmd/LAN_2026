@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
 import { db } from '../db';
-import { KIOSK_RESULT_DURATION_MS, voteNotificationPlayerIds } from '../routes/votes';
+import { KIOSK_RESULT_DURATION_MS, KIOSK_RESULT_REVEAL_DELAY_MS, voteNotificationPlayerIds } from '../routes/votes';
 
 const app = createApp();
 let playerA: string;
@@ -110,9 +110,13 @@ test('a player cannot submit a second single-mode vote in the same round', async
     kiosk.body.recentResult.results.filter((result: { score: number }) => result.score > 0).map((result: { gameId: string }) => result.gameId),
     [gameCs2]
   );
-  assert.equal(kiosk.body.recentResult.expiresAt - kiosk.body.recentResult.closedAt, KIOSK_RESULT_DURATION_MS);
+  assert.equal(kiosk.body.recentResult.revealAt - kiosk.body.recentResult.closedAt, KIOSK_RESULT_REVEAL_DELAY_MS);
+  assert.equal(kiosk.body.recentResult.expiresAt - kiosk.body.recentResult.revealAt, KIOSK_RESULT_DURATION_MS);
 
-  db.prepare('UPDATE vote_rounds SET closed_at = ? WHERE round = ?').run(Date.now() - KIOSK_RESULT_DURATION_MS - 1, 1);
+  db.prepare('UPDATE vote_rounds SET closed_at = ? WHERE round = ?').run(
+    Date.now() - KIOSK_RESULT_REVEAL_DELAY_MS - KIOSK_RESULT_DURATION_MS - 1,
+    1
+  );
   const expiredKiosk = await request(app).get('/api/votes/kiosk');
   assert.equal(expiredKiosk.body.current, null);
   assert.equal(expiredKiosk.body.recentResult, null);

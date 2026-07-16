@@ -191,6 +191,15 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.kiosk-vote-result.is-concealed strong {
+  color: var(--text-muted);
+  filter: blur(var(--space-1));
+  user-select: none;
+}
+.kiosk-vote-countdown-value {
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-black);
+}
 .kiosk-vote-empty {
   display: grid;
   flex: 1;

@@ -199,7 +199,21 @@ function renderLive(players) {
     .join('')}</div>`;
 }
 
-function renderKioskVoteRows(vote) {
+function concealedGameLabel(gameId, round) {
+  const seedText = `${round}:${gameId}`;
+  let seed = 0;
+  for (const character of seedText) seed = (seed * 31 + character.charCodeAt(0)) >>> 0;
+  const length = 5 + (seed % 10);
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let label = '';
+  for (let index = 0; index < length; index += 1) {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    label += alphabet[seed % alphabet.length];
+  }
+  return label;
+}
+
+function renderKioskVoteRows(vote, { concealed = false } = {}) {
   const scored = vote.results.filter((result) => result.score > 0);
   if (scored.length === 0) return `<div class="muted kiosk-vote-empty">Noch keine Stimmen.</div>`;
   const maxScore = Math.max(...scored.map((result) => result.score));
@@ -212,37 +226,48 @@ function renderKioskVoteRows(vote) {
       previousScore = result.score;
       const highlighted = result.score === maxScore;
       const score = vote.mode === 'points' ? `${result.points} P` : `${result.votes} ${result.votes === 1 ? 'Stimme' : 'Stimmen'}`;
-      return `<div class="kiosk-vote-result ${highlighted ? 'is-leading' : ''}">
+      const gameName = concealed ? concealedGameLabel(result.gameId, vote.round) : escapeHtml(result.gameName);
+      return `<div class="kiosk-vote-result ${highlighted ? 'is-leading' : ''} ${concealed ? 'is-concealed' : ''}">
         <span class="lb-rank">${rank}</span>
-        <strong>${escapeHtml(result.gameName)}</strong>
+        <strong ${concealed ? 'aria-label="Spiel verborgen"' : ''}>${gameName}</strong>
         <span class="lb-points">${score}</span>
       </div>`;
     })
     .join('')}</div>`;
 }
 
-let voteResultResetTimer = null;
+let voteDisplayTimer = null;
 
-function clearVoteResultResetTimer() {
-  if (voteResultResetTimer !== null) clearTimeout(voteResultResetTimer);
-  voteResultResetTimer = null;
+function clearVoteDisplayTimer() {
+  if (voteDisplayTimer !== null) clearTimeout(voteDisplayTimer);
+  voteDisplayTimer = null;
 }
 
-function scheduleVoteResultReset(expiresAt) {
-  clearVoteResultResetTimer();
-  voteResultResetTimer = setTimeout(() => {
-    voteResultResetTimer = null;
+function scheduleVoteRefresh(at) {
+  clearVoteDisplayTimer();
+  voteDisplayTimer = setTimeout(() => {
+    voteDisplayTimer = null;
     refreshAll();
-  }, Math.max(0, expiresAt - Date.now()));
+  }, Math.max(0, at - Date.now()));
 }
 
 function renderVotes(votes) {
   const vote = votes?.current ?? null;
   if (vote) {
-    clearVoteResultResetTimer();
+    clearVoteDisplayTimer();
   } else if (votes?.recentResult) {
     const result = votes.recentResult;
-    scheduleVoteResultReset(result.expiresAt);
+    const now = Date.now();
+    if (now < result.revealAt) {
+      const seconds = Math.max(1, Math.ceil((result.revealAt - now) / 1000));
+      scheduleVoteRefresh(Math.min(result.revealAt, now + 1000));
+      return `
+        <div class="kiosk-vote-state kiosk-vote-countdown">
+          <strong>Ergebnis in</strong>
+          <span class="kiosk-vote-countdown-value">${seconds}</span>
+        </div>`;
+    }
+    scheduleVoteRefresh(result.expiresAt);
     return `
       <div class="kiosk-vote-final">
         <div class="kiosk-vote-final-header">
@@ -253,7 +278,7 @@ function renderVotes(votes) {
         ${renderKioskVoteRows(result)}
       </div>`;
   } else {
-    clearVoteResultResetTimer();
+    clearVoteDisplayTimer();
   }
   if (!vote) {
     return `<div class="empty-state kiosk-vote-state">Keine offene Abstimmung.</div>`;
@@ -269,7 +294,7 @@ function renderVotes(votes) {
         <span class="badge badge-playing">${vote.totalVoters} Teilnehmer</span>
       </div>
       <div class="section-title kiosk-vote-section-title">Zwischenstand</div>
-      ${renderKioskVoteRows(vote)}
+      ${renderKioskVoteRows(vote, { concealed: true })}
     </div>`;
 }
 
