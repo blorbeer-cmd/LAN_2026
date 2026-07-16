@@ -45,6 +45,10 @@ eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur d
   unzureichende Rollen (`403`), sofortige Rollenwirkung, gruppengebundene Events/Audits,
   Test-Spieler-Eigentum, den Last-Owner-Race, deaktivierte Owner, den Entfernungsschutz der
   Startgruppe und die Archivierungssperre bei laufendem Tracking.
+- Der Phase-5c-Cluster Votes/Drafts hat eine eigene Zwei-Gruppen-Suite in
+  `src/test/api.groupVotesDrafts.required.test.ts`. Sie deckt gruppenlokale CRUD-/Listen-Zustände,
+  Rollen, aktive Spieler-Mitgliedschaften, historische Snapshots, Aggregationen, Foreign Keys und
+  Event-Exporte ab.
 
 ## Datenbank-Migrationen
 

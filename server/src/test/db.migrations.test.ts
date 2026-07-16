@@ -232,10 +232,12 @@ test('legacy votes/vote_rounds schema is rebuilt for points-mode voting without 
   }
 
   const existingVotes = migrated
-    .prepare('SELECT id, player_id, game_id, round, points FROM votes ORDER BY id')
+    .prepare('SELECT id, group_id, player_id, player_name_snapshot, game_id, round, points FROM votes ORDER BY id')
     .all() as Array<{
     id: string;
+    group_id: string;
     player_id: string;
+    player_name_snapshot: string;
     game_id: string;
     round: number;
     points: number | null;
@@ -251,6 +253,12 @@ test('legacy votes/vote_rounds schema is rebuilt for points-mode voting without 
   assert.ok(
     existingVotes.every((v) => v.points === null),
     'migrated legacy rows have no points yet',
+  );
+  assert.ok(existingVotes.every((vote) => vote.group_id === 'default-group'));
+  assert.deepEqual(
+    existingVotes.map((vote) => vote.player_name_snapshot),
+    ['Voter A', 'Voter B'],
+    'historical votes gain immutable voter-name snapshots',
   );
 
   const migratedRound = migrated.prepare('SELECT mode, winner_game_ids FROM vote_rounds WHERE round = ?').get(1) as {
@@ -270,12 +278,103 @@ test('legacy votes/vote_rounds schema is rebuilt for points-mode voting without 
   assert.doesNotThrow(() => {
     writable
       .prepare(
-        'INSERT INTO votes (id, player_id, game_id, event_id, round, points, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        `INSERT INTO votes
+           (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run('v3', 'p1', 'g2', 'e1', 1, 5, now);
+      .run('v3', 'default-group', 'p1', 'Voter A', 'g2', 'e1', 1, 5, now);
   }, 'the widened constraint should allow a second game vote from the same player in the same round');
   writable.close();
 
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 34 backfills draft ownership, event binding and immutable player snapshots', () => {
+  const dbFile = makeTempDbPath('draft-group-backfill');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = OFF');
+  const now = Date.now();
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('draft-player-a', 'Draft Player A', 'draft-player-key-a', now);
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('draft-player-b', 'Draft Player B', 'draft-player-key-b', now);
+  fixture
+    .prepare(
+      `INSERT INTO group_memberships
+         (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+       VALUES ('default-group', ?, 'member', 'active', ?, 1)`,
+    )
+    .run('draft-player-a', now);
+  fixture
+    .prepare(
+      `INSERT INTO group_memberships
+         (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+       VALUES ('default-group', ?, 'member', 'active', ?, 1)`,
+    )
+    .run('draft-player-b', now);
+  const game = fixture.prepare('SELECT id FROM games WHERE group_id = ? LIMIT 1').get('default-group') as {
+    id: string;
+  };
+  const event = { id: 'legacy-draft-event' };
+  fixture
+    .prepare(
+      `INSERT INTO events
+         (id, name, starts_at, ends_at, tracking_enabled, group_id, status)
+       VALUES (?, 'Legacy Draft Event', ?, ?, 0, 'default-group', 'ended')`,
+    )
+    .run(event.id, now, now + 1000);
+  fixture.exec(`
+    DELETE FROM schema_migrations WHERE version = 34;
+    DROP TABLE draft_player_refs;
+    DROP TABLE drafts;
+    CREATE TABLE drafts (
+      id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      game_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      captain_ids TEXT NOT NULL,
+      pool_ids TEXT NOT NULL,
+      picks TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+  `);
+  fixture
+    .prepare(
+      `INSERT INTO drafts (id, event_id, game_id, status, captain_ids, pool_ids, picks, created_at)
+       VALUES (?, ?, ?, 'completed', ?, '[]', ?, ?)`,
+    )
+    .run(
+      'legacy-draft',
+      event.id,
+      game.id,
+      JSON.stringify(['draft-player-a']),
+      JSON.stringify([{ captainIndex: 0, playerId: 'draft-player-b', pickedAt: now }]),
+      now,
+    );
+  fixture.close();
+
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile);
+  migrated.pragma('foreign_keys = ON');
+  const draft = migrated.prepare('SELECT group_id, event_id FROM drafts WHERE id = ?').get('legacy-draft');
+  assert.deepEqual(draft, { group_id: 'default-group', event_id: event.id });
+  const refs = migrated
+    .prepare(
+      `SELECT player_id, player_name_snapshot FROM draft_player_refs
+       WHERE draft_id = ? ORDER BY player_id`,
+    )
+    .all('legacy-draft');
+  assert.deepEqual(refs, [
+    { player_id: 'draft-player-a', player_name_snapshot: 'Draft Player A' },
+    { player_id: 'draft-player-b', player_name_snapshot: 'Draft Player B' },
+  ]);
+  assert.deepEqual(migrated.prepare('PRAGMA foreign_key_check').all(), []);
+  migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
@@ -331,10 +430,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 33);
+  assert.equal(migrations.length, 34);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 33 }, (_, index) => index + 1),
+    Array.from({ length: 34 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {

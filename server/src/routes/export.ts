@@ -48,6 +48,25 @@ export interface ExportSnapshot {
     championTeamName: string | null;
     championPlayers: string[];
   }>;
+  voteRounds: Array<{
+    round: number;
+    mode: string;
+    title: string | null;
+    startedAt: number;
+    closedAt: number | null;
+    totalVoters: number;
+    totalVotes: number;
+    totalPoints: number;
+    winners: Array<{ gameId: string; gameName: string }>;
+  }>;
+  drafts: Array<{
+    id: string;
+    status: string;
+    gameId: string;
+    gameName: string;
+    createdAt: number;
+    teams: Array<{ captainId: string; players: Array<{ playerId: string; playerName: string }> }>;
+  }>;
 }
 
 // Builds the full "Andenken" snapshot for one event — shared by the JSON
@@ -75,7 +94,9 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
   const now = Date.now();
 
   // ---------- Leaderboard, scoped to this event's matches ----------
-  const matchRows = db.prepare('SELECT result FROM matches WHERE event_id = ? AND group_id = ?').all(filterEventId, groupId) as Array<{
+  const matchRows = db
+    .prepare('SELECT result FROM matches WHERE event_id = ? AND group_id = ?')
+    .all(filterEventId, groupId) as Array<{
     result: string;
   }>;
   const matches: MatchForScoring[] = matchRows.map((r) => JSON.parse(r.result));
@@ -156,6 +177,81 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
     championPlayers: t.championPlayerIds.map((id) => playerById.get(id)?.name ?? 'Unbekannt'),
   }));
 
+  // ---------- Vote rounds ----------
+  const voteRoundRows = db
+    .prepare(
+      `SELECT vr.round, vr.mode, vr.title, vr.started_at, vr.closed_at, vr.winner_game_ids,
+              COUNT(v.id) AS total_votes, COUNT(DISTINCT v.player_id) AS total_voters,
+              COALESCE(SUM(v.points), 0) AS total_points
+       FROM vote_rounds vr
+       LEFT JOIN votes v ON v.group_id = vr.group_id AND v.round = vr.round
+       WHERE vr.group_id = ? AND vr.event_id = ?
+       GROUP BY vr.group_id, vr.round
+       ORDER BY vr.round`,
+    )
+    .all(groupId, filterEventId) as Array<{
+    round: number;
+    mode: string;
+    title: string | null;
+    started_at: number;
+    closed_at: number | null;
+    winner_game_ids: string | null;
+    total_votes: number;
+    total_voters: number;
+    total_points: number;
+  }>;
+  const voteRounds = voteRoundRows.map((round) => ({
+    round: round.round,
+    mode: round.mode,
+    title: round.title,
+    startedAt: round.started_at,
+    closedAt: round.closed_at,
+    totalVoters: round.total_voters,
+    totalVotes: round.total_votes,
+    totalPoints: round.total_points,
+    winners: (round.winner_game_ids ? (JSON.parse(round.winner_game_ids) as string[]) : []).map((gameId) => ({
+      gameId,
+      gameName: gameById.get(gameId)?.name ?? 'Unbekannt',
+    })),
+  }));
+
+  // ---------- Captain drafts ----------
+  const draftRows = db
+    .prepare('SELECT * FROM drafts WHERE group_id = ? AND event_id = ? ORDER BY created_at')
+    .all(groupId, filterEventId) as Array<{
+    id: string;
+    game_id: string;
+    status: string;
+    captain_ids: string;
+    picks: string;
+    created_at: number;
+  }>;
+  const drafts = draftRows.map((draft) => {
+    const refs = db
+      .prepare(
+        `SELECT player_id, player_name_snapshot
+         FROM draft_player_refs WHERE draft_id = ? AND group_id = ?`,
+      )
+      .all(draft.id, groupId) as Array<{ player_id: string; player_name_snapshot: string }>;
+    const names = new Map(refs.map((ref) => [ref.player_id, ref.player_name_snapshot]));
+    const captainIds = JSON.parse(draft.captain_ids) as string[];
+    const picks = JSON.parse(draft.picks) as Array<{ captainIndex: number; playerId: string }>;
+    return {
+      id: draft.id,
+      status: draft.status,
+      gameId: draft.game_id,
+      gameName: gameById.get(draft.game_id)?.name ?? 'Unbekannt',
+      createdAt: draft.created_at,
+      teams: captainIds.map((captainId, captainIndex) => ({
+        captainId,
+        players: [
+          captainId,
+          ...picks.filter((pick) => pick.captainIndex === captainIndex).map((pick) => pick.playerId),
+        ].map((playerId) => ({ playerId, playerName: names.get(playerId) ?? 'Unbekannt' })),
+      })),
+    };
+  });
+
   return {
     event: { id: event.id, name: event.name, startsAt: event.starts_at, endsAt: event.ends_at },
     exportedAt: now,
@@ -164,6 +260,8 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
     playtimeByGame,
     awards,
     tournaments,
+    voteRounds,
+    drafts,
   };
 }
 
