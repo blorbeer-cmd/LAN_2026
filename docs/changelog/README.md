@@ -2,11 +2,11 @@
 
 Diese Übersicht dokumentiert die Entwicklung von Respawn aus der Git-Historie. Für jeden gemergten Pull Request gibt es eine eigene Datei unter `docs/changelog/pr/`; zusätzlich sind die zugehörigen Arbeitsbranches unter `docs/changelog/branches/` erfasst.
 
-Stand: 2026-07-13 · Basis: `main` auf `0d10088`
+Stand: 2026-07-16 · Basis: `main` auf `c586cec`
 
 ## Übersicht
 
-- Gemergte PRs dokumentiert: 91
+- Gemergte PRs dokumentiert: 92
 - Eindeutige PR-Branches dokumentiert: 63
 - Technische Synchronisations-Merges ohne eigenen PR sind nicht als eigene Feature-Einträge aufgeführt.
 
@@ -14,6 +14,7 @@ Stand: 2026-07-13 · Basis: `main` auf `0d10088`
 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
+| 2026-07-16 | [#209](https://github.com/blorbeer-cmd/Respawn/pull/209) | [UI-Polish-Durchgang mit User-Management-Integration](pr/pr-209-general-ui-polish-pass-with-user-management-merge-integration.md) | `codex/feedback-general-ui-polish` |
 | 2026-07-13 | [#180](https://github.com/blorbeer-cmd/Respawn/pull/180) | [Konzept: Auto-Resume von Agent-Sessions nach Token-Reset](pr/pr-180-add-concept-for-auto-resuming-agent-sessions-after-usage-limit-reset.md) | `claude/auto-resume-token-reset-0jl2dt` |
 | 2026-07-13 | [#174](https://github.com/blorbeer-cmd/Respawn/pull/174) | [Arcade-Review-Follow-up, Spectator-/Rapid-Fire-E2E und parallele CI](pr/pr-174-arcade-review-follow-up-e2e-coverage-and-ci-parallelization.md) | `claude/arcade-e2e-testing-gn96bz` |
 | 2026-07-13 | [#171](https://github.com/blorbeer-cmd/Respawn/pull/171) | [Prepare-Hook im Container-Build korrigiert](pr/pr-171-fix-prepare-hook-in-container-build.md) | `codex/docker-prepare-fix` |

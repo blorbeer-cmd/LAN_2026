@@ -9,4 +9,4 @@ auf `main` gemergten User-Managements (Migrationen 26 bis 28 auf 36 bis 38 umnum
 
 ## Pull Request
 
-- [PR #209](https://github.com/blorbeer-cmd/Respawn/pull/209), offen.
+- [PR #209](https://github.com/blorbeer-cmd/Respawn/pull/209), gemergt am 2026-07-16.
