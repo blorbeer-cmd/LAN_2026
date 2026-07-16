@@ -290,7 +290,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the settings page. Backup and seating-plan editing are absent from regular settings and live
   together as nested tool cards in the active Admin mode. Each tool card contains only its title,
   adjacent help tooltip and colorful primary action; the seating editor returns to Admin and blocks
-  editing outside that mode.
+  editing outside that mode. The Admin test-data group can generate a dense 2015–2026 Hall-of-Fame
+  history and removes every marked test player and test LAN through one explicit „Testdaten löschen“
+  action without touching real events.
 - **Kiosk dashboard** — Kiosk is a fixed, read-only TV canvas with no page or card scrollbars. Its
   four primary cards remain a 2×2 grid and distribute live players, rankings, tournament standings,
   groups and matches across internal columns. Vote status is a centered icon/text stack. System
@@ -320,13 +322,19 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   responsive two-column row grid.
 - **Food orders** — Open and historical orders use one full-width nested card per row so their
   metadata, player positions, add-item form, total and actions stay aligned regardless of content.
+  Consecutive cards alternate blue and pink accent rails and omit decorative order, timer and link
+  symbols. The responsive add-item row keeps description, explicit quantity, unit price with euro
+  suffix and the compact action together. Item totals multiply unit price by quantity; clearly
+  labeled subtotals per player and the order-wide total use consistent German currency formatting.
   An absent send time is plain text without a misleading timer icon. Closing an order is the
   colorful full-width primary action below a divider; the compact neutral „Hinzufügen“ action does
   not stretch to the input height. Closed orders live inside one standard, initially collapsed
   „Historie“ section whose open state survives live re-renders.
 - **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
   grid. „Nach LAN“ uses one event dropdown and shows every overall placement for the selected LAN,
-  followed by its tournament winners; tournament game names have no decorative game symbols. The
+  followed by its tournament winners; tournament game names have no decorative game symbols. Admin
+  fixtures cover twelve years with full standings and three tournament winners per LAN so dense
+  long-term states remain testable. The
   visible short name for the former Info-Board is „Info“ throughout navigation, search and the page
   itself; entries remain alphabetically sorted responsive two-column nested cards.
 - **Arrival carpools** — Anreise and Abreise remain separate full-width accented panels. Their
@@ -350,8 +358,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   carpool cards, with the host's lobby name and player count in the header, stable player rows with
   role/readiness at the right, a direct join action in a free-slot row and host/member actions in a
   separated full-width footer. Host labels, free labels and join actions share an exact three-column
-  grid and row height. A host's game settings belong inside that lobby card; „Start“ sits beside the
-  destructive „Schließen“ action in its footer. Readiness is communicated in the player rows without
+  grid and row height. A host's game settings belong inside that lobby card; the compact
+  „Punkte bis Sieg“ control shares the separated footer with „Schließen“ and „Start“ from `--bp-md`
+  instead of forming a wide radio-button block. Readiness is communicated in the player rows without
   a duplicate status sentence. „Lobby öffnen“ follows the lobby cards at full width, while the
   temporary „Gegen KI“ mode occupies its own full-width row below it. An empty lobby no longer adds
   a redundant waiting sentence. Member actions use the same destructive treatment for „Verlassen“

@@ -108,10 +108,12 @@ function lobbyList() {
     const full = lobby.players.length >= 2 && !joined;
     const ready = lobby.players.length === 2;
     const settingsHtml = isHost
-      ? `<div class="field-label">Punkte bis Sieg</div>
-        <div class="arcade-lobby-setting-options">
-          ${[5, 7, 10, 15].map((score) => `<label class="check-row"><input type="radio" name="pong-target" value="${score}" ${score === targetScore ? 'checked' : ''} />${score}</label>`).join('')}
-        </div>`
+      ? `<label class="arcade-lobby-target-score">
+          <span>Punkte bis Sieg</span>
+          <select name="pong-target" aria-label="Punkte bis Sieg">
+            ${[5, 7, 10, 15].map((score) => `<option value="${score}" ${score === targetScore ? 'selected' : ''}>${score}</option>`).join('')}
+          </select>
+        </label>`
       : '';
     const footerActions = isHost
       ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-pong-close="${lobby.id}">Schließen</button>
@@ -147,7 +149,7 @@ export async function leaveMyPongLobby() {
 }
 
 export function wirePongLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
-  container.querySelectorAll('input[name="pong-target"]').forEach((input) => input.addEventListener('change', () => { targetScore = Number(input.value); }));
+  container.querySelectorAll('select[name="pong-target"]').forEach((input) => input.addEventListener('change', () => { targetScore = Number(input.value); }));
   container.querySelector('#pong-create')?.addEventListener('click', async () => {
     if (beforeCreate && !(await beforeCreate())) return;
     const result = await emitAck('pong:lobby:create', { playerId: myId() });

@@ -13,7 +13,8 @@ import { db } from '../db';
 import { config } from '../config';
 import { broadcast, Events } from '../realtime';
 import { getLiveBoard } from '../liveStatus';
-import { createTestUsers, deleteTestUsers, countTestUsers, MAX_TEST_USERS_PER_CALL } from '../testUsers';
+import { createTestUsers, countTestUsers, MAX_TEST_USERS_PER_CALL } from '../testUsers';
+import { deleteAllTestData, seedHallOfFameTestData } from '../testData';
 
 export const adminRouter = Router();
 
@@ -48,16 +49,36 @@ adminRouter.post('/test-users', (req, res) => {
   res.status(201).json({ created, totalTestUsers: countTestUsers() });
 });
 
+// POST /api/admin/test-data/hall-of-fame - replaces the marked historical
+// fixtures with a dense deterministic 2015-2026 data set. Kept separate from
+// player creation so adding another test participant never rewrites history.
+adminRouter.post('/test-data/hall-of-fame', (_req, res) => {
+  try {
+    const created = seedHallOfFameTestData();
+    broadcast(Events.eventsChanged, null);
+    broadcast(Events.leaderboardChanged, null);
+    broadcast(Events.tournamentsChanged, null);
+    res.status(201).json(created);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Hall-of-Fame-Testdaten konnten nicht angelegt werden.';
+    res.status(409).json({ error: message });
+  }
+});
+
 // DELETE /api/admin/test-users - removes every test player and everything
 // hanging off them (skills, Bock, sessions, seats, neighbors, live rows).
 adminRouter.delete('/test-users', (_req, res) => {
-  const deleted = deleteTestUsers();
-  if (deleted > 0) {
+  const { deletedPlayers, deletedEvents } = deleteAllTestData();
+  if (deletedPlayers > 0 || deletedEvents > 0) {
     broadcast(Events.playersChanged, null);
     broadcast(Events.skillsChanged, null);
     broadcast(Events.liveStatusChanged, getLiveBoard());
+    broadcast(Events.eventsChanged, null);
+    broadcast(Events.leaderboardChanged, null);
+    broadcast(Events.tournamentsChanged, null);
   }
-  res.json({ deleted });
+  // `deleted` remains for older clients; it historically meant players.
+  res.json({ deleted: deletedPlayers, deletedPlayers, deletedEvents });
 });
 
 // GET /api/admin/agent-diagnostics — one compact troubleshooting row per

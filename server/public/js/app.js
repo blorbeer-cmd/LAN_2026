@@ -33,7 +33,7 @@ import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
 import { renderProfile } from './views/profile.js';
 import { renderTournaments, invalidateTournaments, focusTournament, showTournamentLanding } from './views/tournament.js';
-import { renderHallOfFame } from './views/hallOfFame.js';
+import { invalidateHallOfFame, renderHallOfFame } from './views/hallOfFame.js';
 import { renderSeating, invalidateSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
 import { renderMore } from './views/more.js';
@@ -313,6 +313,7 @@ function wireSocket() {
       // Match corrections also change the Teams result history. Invalidate
       // its separate cache so every open client shows the corrected winner.
       invalidateMatchmakingHistory();
+      invalidateHallOfFame();
       // players:changed covers a renamed gamer/real name or new avatar —
       // both the Home board and the Sitzplan editor embed a snapshot of
       // player data alongside the layout, so they need the same treatment

@@ -11,7 +11,6 @@ import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { icon } from '../icons.js';
-import { domainIcon } from '../domainIcons.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 
 let cache = null;
@@ -47,8 +46,10 @@ export function parsePriceToCents(raw) {
   return Math.round(value * 100);
 }
 
+const euroFormatter = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+
 function formatCents(cents) {
-  return `${(cents / 100).toFixed(2).replace('.', ',')} €`;
+  return euroFormatter.format(cents / 100);
 }
 
 function itemsGroupedByPlayer(order) {
@@ -68,30 +69,38 @@ function renderItems(order, myId) {
   return [...grouped.entries()]
     .map(([playerId, items]) => {
       const first = items[0];
-      const playerSum = items.reduce((sum, i) => sum + (i.priceCents ?? 0), 0);
+      const playerSum = items.reduce((sum, i) => sum + (i.priceCents ?? 0) * (i.quantity ?? 1), 0);
       const player = state.players.find((p) => p.id === playerId) || { color: first.playerColor };
       const rows = items
-        .map(
-          (i) => `
+        .map((i) => {
+          const quantity = i.quantity ?? 1;
+          const lineTotal = i.priceCents === null ? null : i.priceCents * quantity;
+          const priceHtml = lineTotal === null
+            ? ''
+            : `<span class="food-order-item-price">
+                <strong>${formatCents(lineTotal)}</strong>
+                ${quantity > 1 ? `<span class="muted">${quantity} × ${formatCents(i.priceCents)}</span>` : ''}
+              </span>`;
+          return `
           <div class="row food-order-item">
-            <span style="flex:1;">${escapeHtml(i.description)}</span>
-            ${i.priceCents !== null ? `<span class="muted" style="font-variant-numeric:tabular-nums;">${formatCents(i.priceCents)}</span>` : ''}
+            <span style="flex:1;"><strong>${quantity} ×</strong> ${escapeHtml(i.description)}</span>
+            ${priceHtml}
             ${
               order.open && i.playerId === myId
                 ? `<button type="button" class="icon-btn food-order-item-remove" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen">${icon('x')}</button>`
                 : ''
             }
-          </div>`
-        )
+          </div>`;
+        })
         .join('');
       return `
         <div class="stack food-order-player">
           <div class="row food-order-player-head">
             ${avatarHtml(player, 20)}
             <strong style="flex:1;">${escapeHtml(first.playerName)}</strong>
-            ${playerSum > 0 ? `<span class="muted" style="font-size:var(--font-size-xs);">${formatCents(playerSum)}</span>` : ''}
           </div>
           <div class="food-order-player-items">${rows}</div>
+          ${playerSum > 0 ? `<div class="row-between food-order-player-total"><span class="muted">Zwischensumme</span><strong>${formatCents(playerSum)}</strong></div>` : ''}
         </div>`;
     })
     .join('');
@@ -104,7 +113,7 @@ function renderItems(order, myId) {
 // items themselves.
 function renderDetails(order) {
   const sendAtLabel = order.sendAt
-    ? `${icon('timer')} Versand ${formatDateTime(order.sendAt)} Uhr`
+    ? `Versand ${formatDateTime(order.sendAt)} Uhr`
     : 'Kein Zeitpunkt festgelegt';
   const hasDetails = Boolean(order.sendAt || order.notes || order.link);
   return `
@@ -114,7 +123,7 @@ function renderDetails(order) {
         <button type="button" class="btn btn-sm" data-edit-details="${order.id}">${hasDetails ? 'Bearbeiten' : 'Info'}</button>
       </div>
       ${order.notes ? `<div class="muted" style="font-size:var(--font-size-sm);white-space:pre-wrap;word-break:break-word;">${escapeHtml(order.notes)}</div>` : ''}
-      ${order.link ? `<a href="${escapeHtml(order.link)}" target="_blank" rel="noopener" style="font-size:var(--font-size-sm);">${icon('link')} Link</a>` : ''}
+      ${order.link ? `<a href="${escapeHtml(order.link)}" target="_blank" rel="noopener" style="font-size:var(--font-size-sm);">Link öffnen</a>` : ''}
     </div>`;
 }
 
@@ -122,7 +131,7 @@ function renderOpenOrder(order, myId) {
   return `
     <div class="card stack food-order-card" data-order-card="${order.id}">
       <div class="row-between">
-        <strong>${icon(domainIcon('foodOrders'))} ${escapeHtml(order.title)}</strong>
+        <strong>${escapeHtml(order.title)}</strong>
         <span class="badge badge-playing">Offen</span>
       </div>
       <div class="muted food-order-meta">
@@ -130,12 +139,16 @@ function renderOpenOrder(order, myId) {
       </div>
       ${renderDetails(order)}
       <div class="food-order-items">${renderItems(order, myId)}</div>
-      ${order.totalCents > 0 ? `<div class="row-between food-order-total"><strong>Summe</strong><strong>${formatCents(order.totalCents)}</strong></div>` : ''}
+      ${order.totalCents > 0 ? `<div class="row-between food-order-total"><strong>Gesamtsumme</strong><strong>${formatCents(order.totalCents)}</strong></div>` : ''}
       ${
         myId
           ? `<form class="food-order-item-form" data-add-item-form="${order.id}">
-               <input type="text" data-item-desc placeholder="z.B. 1x Margherita groß" maxlength="120" required />
-               <input type="text" class="food-order-price-input" data-item-price placeholder="€" inputmode="decimal" />
+               <input type="text" data-item-desc placeholder="z.B. Margherita groß" maxlength="120" required />
+               <input type="number" class="food-order-quantity-input" data-item-quantity value="1" min="1" max="99" inputmode="numeric" aria-label="Anzahl" />
+               <label class="food-order-price-field">
+                 <input type="text" class="food-order-price-input" data-item-price placeholder="Preis" inputmode="decimal" aria-label="Einzelpreis" />
+                 <span aria-hidden="true">€</span>
+               </label>
                <button type="submit" class="btn btn-sm food-order-add-button">Hinzufügen</button>
              </form>`
           : `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um dich einzutragen.</div>`
@@ -147,6 +160,7 @@ function renderOpenOrder(order, myId) {
 }
 
 function renderClosedOrder(order) {
+  const itemCount = order.items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
   return `
     <article class="card stack food-order-card">
       <div class="row-between">
@@ -154,7 +168,7 @@ function renderClosedOrder(order) {
         <span class="badge badge-offline">Geschlossen</span>
       </div>
       <div class="muted food-order-meta">
-        ${order.items.length} Position(en)${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}
+        ${itemCount} ${itemCount === 1 ? 'Position' : 'Positionen'}${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}
       </div>
       ${renderDetails(order)}
       <div class="food-order-items">${renderItems(order, null)}</div>
@@ -271,16 +285,18 @@ export function renderFoodOrders(container, ctx) {
 
   // Every teammate adding an item fires foodOrders:changed and re-renders
   // this view on all devices — preserve what THIS user is mid-typing in the
-  // add-item forms, or their half-written "1x Margherita" vanishes whenever
+  // add-item forms, or their half-written "Margherita" vanishes whenever
   // someone else is faster.
   const prevForms = new Map();
   container.querySelectorAll('[data-add-item-form]').forEach((f) => {
     const desc = f.querySelector('[data-item-desc]');
+    const quantity = f.querySelector('[data-item-quantity]');
     const price = f.querySelector('[data-item-price]');
     prevForms.set(f.dataset.addItemForm, {
       desc: desc?.value ?? '',
+      quantity: quantity?.value ?? '1',
       price: price?.value ?? '',
-      focus: document.activeElement === desc ? 'desc' : document.activeElement === price ? 'price' : null,
+      focus: document.activeElement === desc ? 'desc' : document.activeElement === quantity ? 'quantity' : document.activeElement === price ? 'price' : null,
     });
   });
   const orders = cache || [];
@@ -291,7 +307,7 @@ export function renderFoodOrders(container, ctx) {
     loading || cache === null
       ? `<div class="empty-state">Lädt…</div>`
       : openOrders.length === 0
-        ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('foodOrders'))}</span><br />Gerade keine offene Bestellung.<br />
+        ? `<div class="empty-state">Gerade keine offene Bestellung.<br />
            <span class="muted" style="font-size:var(--font-size-sm);">Starte eine, wenn ihr was bestellen wollt – alle können sich dann selbst eintragen.</span></div>`
         : `<div class="two-column-card-grid food-order-grid">${openOrders.map((o) => renderOpenOrder(o, myId)).join('')}</div>`;
 
@@ -332,10 +348,13 @@ export function renderFoodOrders(container, ctx) {
     const prev = prevForms.get(f.dataset.addItemForm);
     if (!prev) return;
     const desc = f.querySelector('[data-item-desc]');
+    const quantity = f.querySelector('[data-item-quantity]');
     const price = f.querySelector('[data-item-price]');
     if (prev.desc) desc.value = prev.desc;
+    quantity.value = prev.quantity;
     if (prev.price) price.value = prev.price;
     if (prev.focus === 'desc') desc.focus();
+    if (prev.focus === 'quantity') quantity.focus();
     if (prev.focus === 'price') price.focus();
   });
 
@@ -349,9 +368,14 @@ export function renderFoodOrders(container, ctx) {
       e.preventDefault();
       const orderId = form.dataset.addItemForm;
       const descInput = form.querySelector('[data-item-desc]');
+      const quantityInput = form.querySelector('[data-item-quantity]');
       const priceInput = form.querySelector('[data-item-price]');
       const description = descInput.value.trim();
       if (!description) return;
+      const quantity = Number(quantityInput.value);
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) {
+        return showToast('Anzahl muss zwischen 1 und 99 liegen.', { error: true });
+      }
       const priceCents = parsePriceToCents(priceInput.value);
       if (Number.isNaN(priceCents)) {
         return showToast('Preis bitte als Betrag angeben, z.B. 4,50', { error: true });
@@ -360,7 +384,7 @@ export function renderFoodOrders(container, ctx) {
       if (submitBtn.disabled) return;
       submitBtn.disabled = true;
       try {
-        await api.foodOrders.addItem(orderId, { playerId: myId, description, priceCents: priceCents ?? undefined });
+        await api.foodOrders.addItem(orderId, { playerId: myId, description, quantity, priceCents: priceCents ?? undefined });
         cache = null;
         ctx.rerender();
       } catch (err) {

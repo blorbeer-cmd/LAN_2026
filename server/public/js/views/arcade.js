@@ -78,7 +78,7 @@ let match = null;
 let currentQuestion = null;
 let lastResult = null;
 let countdownInterval = null;
-let customTarget = '';
+let customTarget = '5';
 
 function currentView() {
   return document.getElementById('view-container')?.dataset.view;
@@ -305,16 +305,10 @@ function renderLobbyList() {
       const isHost = l.host.id === getMyId();
       const joined = l.players.some((p) => p.id === getMyId());
       const settingsHtml = isHost
-        ? `<div class="field-label">Punkte bis Sieg</div>
-          <div class="arcade-lobby-setting-options">
-            <label class="check-row"><input type="radio" name="target-score" value="5" checked />5</label>
-            <label class="check-row"><input type="radio" name="target-score" value="10" />10</label>
-            <label class="check-row"><input type="radio" name="target-score" value="20" />20</label>
-            <label class="check-row">
-              <input type="radio" name="target-score" value="custom" />
-              <input type="number" class="arcade-lobby-custom-score" id="target-custom" min="1" max="100" value="${escapeHtml(customTarget)}" placeholder="frei" />
-            </label>
-          </div>`
+        ? `<label class="arcade-lobby-target-score">
+            <span>Punkte bis Sieg</span>
+            <input type="number" id="target-score" min="1" max="100" value="${escapeHtml(customTarget)}" aria-label="Punkte bis Sieg" />
+          </label>`
         : '';
       const footerActions = isHost
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-close-lobby="${l.id}">Schließen</button>
@@ -646,14 +640,13 @@ export function renderArcade(container, ctx) {
     if (!res?.ok) showToast(res?.error || 'Bereit-Status konnte nicht gesetzt werden.', { error: true });
   });
 
-  container.querySelector('#target-custom')?.addEventListener('input', (e) => {
+  container.querySelector('#target-score')?.addEventListener('input', (e) => {
     customTarget = e.target.value;
   });
 
   container.querySelector('#quiz-start-lobby')?.addEventListener('click', async () => {
     const playerId = getMyId();
-    const selected = container.querySelector('input[name="target-score"]:checked')?.value ?? '5';
-    const targetScore = selected === 'custom' ? Number(container.querySelector('#target-custom').value) : Number(selected);
+    const targetScore = Number(container.querySelector('#target-score')?.value ?? 5);
     const res = await emitWithAck('arcade:lobby:start', { lobbyId: lobby.id, playerId, targetScore });
     if (!res?.ok) showToast(res?.error || 'Start fehlgeschlagen.', { error: true });
   });

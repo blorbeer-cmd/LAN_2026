@@ -36,8 +36,10 @@ export function arcadeLobbyEntryHtml(
       <span class="badge arcade-lobby-player-count">${escapeHtml(countText)}</span>
     </div>
     <div class="arcade-lobby-member-list">${lobbyPlayerRowsHtml(lobby)}${availableRow}</div>
-    ${settingsHtml ? `<div class="arcade-lobby-settings">${settingsHtml}</div>` : ''}
-    ${footerActions ? `<div class="arcade-lobby-entry-actions">${footerActions}</div>` : ''}
+    ${settingsHtml || footerActions ? `<div class="arcade-lobby-control-bar">
+      ${settingsHtml ? `<div class="arcade-lobby-settings">${settingsHtml}</div>` : ''}
+      ${footerActions ? `<div class="arcade-lobby-entry-actions">${footerActions}</div>` : ''}
+    </div>` : ''}
   </div>`;
 }
 

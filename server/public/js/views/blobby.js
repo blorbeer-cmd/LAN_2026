@@ -110,10 +110,12 @@ function lobbyList() {
     const full = l.players.length >= 2 && !joined;
     const ready = l.players.length === 2;
     const settingsHtml = isHost
-      ? `<div class="field-label">Punkte bis Sieg</div>
-        <div class="arcade-lobby-setting-options">
-          ${[5, 7, 10, 15].map((n) => `<label class="check-row"><input type="radio" name="blobby-target" value="${n}" ${n === targetScore ? 'checked' : ''} />${n}</label>`).join('')}
-        </div>`
+      ? `<label class="arcade-lobby-target-score">
+          <span>Punkte bis Sieg</span>
+          <select name="blobby-target" aria-label="Punkte bis Sieg">
+            ${[5, 7, 10, 15].map((n) => `<option value="${n}" ${n === targetScore ? 'selected' : ''}>${n}</option>`).join('')}
+          </select>
+        </label>`
       : '';
     const footerActions = isHost
       ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-blobby-close="${l.id}">Schließen</button>
@@ -146,7 +148,7 @@ export async function leaveMyBlobbyLobby() {
 }
 
 export function wireBlobbyLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
-  container.querySelectorAll('input[name="blobby-target"]').forEach((input) => input.addEventListener('change', () => { targetScore = Number(input.value); }));
+  container.querySelectorAll('select[name="blobby-target"]').forEach((input) => input.addEventListener('change', () => { targetScore = Number(input.value); }));
   container.querySelector('#blobby-create')?.addEventListener('click', async () => {
     if (beforeCreate && !(await beforeCreate())) return;
     const res = await emitAck('blobby:lobby:create', { playerId: myId() });

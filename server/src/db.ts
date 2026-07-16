@@ -61,7 +61,8 @@ db.exec(`
     location         TEXT,
     description      TEXT,
     tracking_enabled INTEGER NOT NULL DEFAULT 0,
-    ended_at         INTEGER
+    ended_at         INTEGER,
+    is_test          INTEGER NOT NULL DEFAULT 0 -- admin-generated historical fixture; removable without touching real LANs
   );
 
   -- An event's roster. Only participants get tracked while their event has
@@ -557,6 +558,7 @@ db.exec(`
     order_id    TEXT NOT NULL REFERENCES food_orders(id) ON DELETE CASCADE,
     player_id   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     description TEXT NOT NULL,
+    quantity    INTEGER NOT NULL DEFAULT 1,
     price_cents INTEGER,
     created_at  INTEGER NOT NULL
   );
@@ -1195,6 +1197,28 @@ function createPushLogHiddenTable(): void {
   `);
 }
 runMigration({ version: 26, name: 'add per-player hidden push log', up: createPushLogHiddenTable });
+
+// Admin-generated historical Hall-of-Fame fixtures must be distinguishable
+// from real LANs so the cleanup action can remove them without relying on a
+// display-name convention forever. Existing local fixtures used that exact
+// prefix, so mark them during the upgrade.
+function migrateEventTestColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  if (!columns.some((c) => c.name === 'is_test')) {
+    db.exec('ALTER TABLE events ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0');
+  }
+  db.prepare("UPDATE events SET is_test = 1 WHERE name LIKE 'Respawn Test-LAN %'").run();
+}
+runMigration({ version: 27, name: 'add events.is_test', up: migrateEventTestColumn });
+
+// Quantity is separate from the free-text item description so totals can be
+// calculated correctly and users no longer have to encode "2x" in the name.
+function migrateFoodOrderItemQuantityColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(food_order_items)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'quantity')) return;
+  db.exec('ALTER TABLE food_order_items ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1');
+}
+runMigration({ version: 28, name: 'add food order item quantity', up: migrateFoodOrderItemQuantityColumn });
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.

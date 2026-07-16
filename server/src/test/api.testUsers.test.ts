@@ -88,13 +88,36 @@ test('POST /api/admin/test-users seeds players with seats, neighbors, ratings, a
   assert.equal(liveStates.get(ids[1]), 'playing');
 });
 
-test('DELETE /api/admin/test-users removes players, seats, neighbors, and sessions', async () => {
+test('POST /api/admin/test-data/hall-of-fame creates dense marked history across years', async () => {
+  const seeded = await request(app).post('/api/admin/test-data/hall-of-fame');
+  assert.equal(seeded.status, 201);
+  assert.deepEqual(seeded.body, { events: 12, matches: 216, tournaments: 36 });
+
+  const events = db
+    .prepare('SELECT id, name, is_test FROM events WHERE is_test = 1 ORDER BY starts_at')
+    .all() as Array<{ id: string; name: string; is_test: number }>;
+  assert.equal(events.length, 12);
+  assert.equal(events[0].name, 'Respawn Test-LAN 2015');
+  assert.equal(events.at(-1)?.name, 'Respawn Test-LAN 2026');
+  assert.ok(events.every((event) => event.is_test === 1));
+
+  const hall = await request(app).get('/api/hall-of-fame');
+  assert.equal(hall.status, 200);
+  const testEvents = hall.body.events.filter((event: { eventName: string }) => event.eventName.startsWith('Respawn Test-LAN'));
+  assert.equal(testEvents.length, 12);
+  assert.ok(testEvents.every((event: { overallStandings: unknown[]; tournamentChampions: unknown[] }) =>
+    event.overallStandings.length >= 4 && event.tournamentChampions.length === 3));
+});
+
+test('DELETE /api/admin/test-users removes every marked player and historical test LAN', async () => {
   const ids = (db.prepare('SELECT id FROM players WHERE is_test = 1').all() as Array<{ id: string }>).map((r) => r.id);
   assert.ok(ids.length > 0, 'previous test should have seeded users');
 
   const res = await request(app).delete('/api/admin/test-users');
   assert.equal(res.status, 200);
   assert.equal(res.body.deleted, ids.length);
+  assert.equal(res.body.deletedPlayers, ids.length);
+  assert.equal(res.body.deletedEvents, 12);
 
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM players WHERE is_test = 1').get() as { n: number }).n, 0);
   const layout = await request(app).get('/api/seating/layout');
@@ -109,6 +132,7 @@ test('DELETE /api/admin/test-users removes players, seats, neighbors, and sessio
   // Idempotent: a second cleanup finds nothing.
   const again = await request(app).delete('/api/admin/test-users');
   assert.equal(again.body.deleted, 0);
+  assert.equal(again.body.deletedEvents, 0);
 });
 
 test('seeding respects existing seat assignments and grows the table when full', async () => {

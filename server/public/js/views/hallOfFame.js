@@ -13,6 +13,10 @@ let cache = null;
 let loading = false;
 let selectedEventId = null;
 
+export function invalidateHallOfFame() {
+  cache = null;
+}
+
 async function load(ctx) {
   loading = true;
   try {

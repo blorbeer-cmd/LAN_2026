@@ -349,6 +349,7 @@ export const api = {
   admin: {
     agentDiagnostics: () => apiFetch('/api/admin/agent-diagnostics'),
     createTestUsers: (count) => apiFetch('/api/admin/test-users', { method: 'POST', body: JSON.stringify({ count }) }),
+    seedHallOfFame: () => apiFetch('/api/admin/test-data/hall-of-fame', { method: 'POST' }),
     cleanupTestUsers: () => apiFetch('/api/admin/test-users', { method: 'DELETE' }),
   },
 

@@ -49,13 +49,32 @@ async function createTestUsers(count, ctx) {
 }
 
 async function cleanupTestUsers(ctx) {
-  if (!(await confirmDialog('Alle Test-Spieler und ihre Daten (Sitzplätze, Skills, Spielzeit) löschen?'))) return;
+  if (!(await confirmDialog('Alle markierten Testdaten löschen? Das entfernt Test-Spieler sowie historische Test-LANs mitsamt Ergebnissen und Turnieren.'))) return;
   try {
     const res = await api.admin.cleanupTestUsers();
-    showToast(res.deleted > 0 ? `${res.deleted} Test-Spieler entfernt.` : 'Keine Test-Spieler vorhanden.');
+    const removed = (res.deletedPlayers ?? res.deleted ?? 0) + (res.deletedEvents ?? 0);
+    showToast(
+      removed > 0
+        ? `${res.deletedPlayers ?? res.deleted ?? 0} Test-Spieler und ${res.deletedEvents ?? 0} Test-LANs entfernt.`
+        : 'Keine Testdaten vorhanden.'
+    );
     await ctx.refresh();
   } catch (err) {
     showToast(err.message, { error: true });
+  }
+}
+
+async function seedHallOfFame(ctx) {
+  if (seedBusy) return;
+  seedBusy = true;
+  try {
+    const res = await api.admin.seedHallOfFame();
+    showToast(`${res.events} Test-LANs mit ${res.matches} Ergebnissen und ${res.tournaments} Turnieren angelegt.`);
+    await ctx.refresh();
+  } catch (err) {
+    showToast(err.message, { error: true });
+  } finally {
+    seedBusy = false;
   }
 }
 
@@ -190,7 +209,7 @@ function renderPanel(container, ctx) {
         </div>
       </section>
       <section class="card stack grouped-page-section" aria-labelledby="admin-test-players-title">
-        <div class="grouped-page-section-title"><h2 id="admin-test-players-title">Test-Spieler</h2></div>
+        <div class="grouped-page-section-title"><h2 id="admin-test-players-title">Testdaten</h2></div>
         <p class="muted">Kommen fertig eingerichtet: Platz im Sitzplan samt sichtbarer Monitore,
         Skill- und Bock-Werte pro Spiel, Spielzeit fürs aktive Event – zwei davon spielen gerade.
         Nur im Admin-Modus sichtbar.</p>
@@ -198,9 +217,10 @@ function renderPanel(container, ctx) {
           <input type="number" id="admin-count" value="5" min="1" max="20" style="max-width:calc(var(--space-8) * 2);" />
           <button type="button" class="btn btn-primary" id="admin-bulk" style="flex:1;" ${seedBusy ? 'disabled' : ''}>Test-Spieler anlegen</button>
         </div>
+        <button type="button" class="btn btn-primary btn-block" id="admin-seed-hall" ${seedBusy ? 'disabled' : ''}>Hall-of-Fame-Testdaten anlegen</button>
         <div class="row-between">
           <span class="muted">${testCount} Test-Spieler vorhanden</span>
-          <button type="button" class="btn btn-sm btn-danger" id="admin-cleanup" ${testCount === 0 ? 'disabled' : ''}>Test-Daten aufräumen</button>
+          <button type="button" class="btn btn-sm btn-danger" id="admin-cleanup">Testdaten löschen</button>
         </div>
       </section>
       <section class="card stack grouped-page-section" aria-labelledby="admin-players-title">
@@ -230,6 +250,7 @@ function renderPanel(container, ctx) {
   });
 
   container.querySelector('#admin-cleanup').addEventListener('click', () => cleanupTestUsers(ctx));
+  container.querySelector('#admin-seed-hall').addEventListener('click', () => seedHallOfFame(ctx));
 
   container.querySelector('#download-backup').addEventListener('click', downloadBackup);
   wireInfoTooltips(container);

@@ -814,11 +814,14 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.waitForSelector('text=Versand 24.12., 21:30 Uhr');
   await page.waitForSelector('text=Doch Kartenzahlung möglich');
 
-  await page.fill('[data-item-desc]', '1x Margherita groß');
+  await page.fill('[data-item-desc]', 'Margherita groß');
+  await page.fill('[data-item-quantity]', '2');
   await page.fill('[data-item-price]', '9,50');
   await page.click('[data-add-item-form] button[type="submit"]');
   await page.waitForSelector('text=Margherita');
-  await page.waitForSelector('text=9,50 €');
+  await page.waitForSelector('text=19,00 €');
+  await page.waitForSelector('text=Zwischensumme');
+  await page.waitForSelector('text=Gesamtsumme');
 
   // Content search resolves an item description to its parent order and
   // highlights that concrete order instead of only opening the Essen area.
@@ -844,8 +847,12 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
 
 test('Arcade: open a quiz lobby, see it on Home, then close it again', async (t) => {
   const players = (await (await fetch(`${BASE_URL}/api/players`)).json()) as Array<{ id: string; name: string }>;
-  const guest = players.find((player) => player.name === 'E2E Bob');
-  assert.ok(guest, 'expected "E2E Bob" (added by an earlier test) to exist');
+  let guest = players.find((player) => player.name === 'E2E Bob');
+  if (!guest) {
+    const created = await page.request.post(`${BASE_URL}/api/players`, { data: { name: 'E2E Bob' } });
+    assert.ok(created.ok(), `guest setup failed (${created.status()}): ${await created.text()}`);
+    guest = await created.json() as { id: string; name: string };
+  }
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const guestPage = await guestContext.newPage();
   t.after(async () => guestContext.close());
@@ -925,6 +932,11 @@ test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', as
       await guestPage.click(`[data-game="${game}"]`);
       await guestPage.waitForSelector(`#${game}-create:not([disabled])`);
       await guestPage.click(`#${game}-create`);
+      await guestPage.waitForSelector(`.arcade-lobby-control-bar select[name="${game}-target"]`);
+      assert.equal(
+        await guestPage.locator(`.arcade-lobby-control-bar select[name="${game}-target"]`).inputValue(),
+        '7',
+      );
 
       await page.click(`[data-game="${game}"]`);
       await page.waitForSelector(`[data-${game}-join]`);
@@ -1683,7 +1695,7 @@ test('Admin: one-tap mode with banner, seeded test users visible only in admin m
   // Seed test users; the admin toggle triggers a refresh, so re-open the view.
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="admin"]');
-  await page.fill('#admin-count', '3');
+  await page.fill('#admin-count', '4');
   const seedResponse = page.waitForResponse(
     (response) => response.url().endsWith('/api/admin/test-users') && response.request().method() === 'POST'
   );
@@ -1697,8 +1709,20 @@ test('Admin: one-tap mode with banner, seeded test users visible only in admin m
     data: { note: 'Pause / Essen' },
   });
   assert.ok(pauseResponse.ok(), `test-user pause failed (${pauseResponse.status()}): ${await pauseResponse.text()}`);
-  await page.waitForSelector('text=3 Test-Spieler vorhanden');
+  await page.waitForSelector('text=4 Test-Spieler vorhanden');
   await page.waitForSelector('.badge-paused >> text=Test');
+
+  const hallSeedResponse = page.waitForResponse(
+    (response) => response.url().endsWith('/api/admin/test-data/hall-of-fame') && response.request().method() === 'POST'
+  );
+  await page.click('#admin-seed-hall');
+  const hallSeeded = await hallSeedResponse;
+  assert.ok(hallSeeded.ok(), `hall-of-fame seed failed (${hallSeeded.status()}): ${await hallSeeded.text()}`);
+  const hallData = await page.request.get(`${BASE_URL}/api/hall-of-fame`);
+  const hallBody = await hallData.json() as { events: Array<{ eventName: string; overallStandings: unknown[]; tournamentChampions: unknown[] }> };
+  const testLans = hallBody.events.filter((event) => event.eventName.startsWith('Respawn Test-LAN'));
+  assert.equal(testLans.length, 12);
+  assert.ok(testLans.every((event) => event.overallStandings.length >= 4 && event.tournamentChampions.length === 3));
 
   // The shared seating plan exposes the real live state compactly after the
   // gamer name: seeded players cover playing + paused while the regular
@@ -1734,5 +1758,7 @@ test('Admin: one-tap mode with banner, seeded test users visible only in admin m
   // confirmDialog is an in-app modal (not a native browser dialog).
   await page.click('[data-confirm]');
   await page.waitForSelector('text=0 Test-Spieler vorhanden');
+  const cleanedHall = await (await page.request.get(`${BASE_URL}/api/hall-of-fame`)).json() as { events: Array<{ eventName: string }> };
+  assert.equal(cleanedHall.events.filter((event) => event.eventName.startsWith('Respawn Test-LAN')).length, 0);
   await page.click('#admin-banner-leave');
 });

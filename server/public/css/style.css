@@ -1867,11 +1867,31 @@ button.card {
   padding-top: var(--space-1);
   padding-bottom: var(--space-1);
 }
-.arcade-lobby-settings {
+.arcade-lobby-control-bar {
   display: grid;
   gap: var(--space-2);
   padding-top: var(--space-2);
   border-top: 1px solid var(--border);
+}
+.arcade-lobby-settings {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.arcade-lobby-target-score {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) calc(var(--space-8) + var(--space-6));
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+.arcade-lobby-target-score select,
+.arcade-lobby-target-score input {
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+  text-align: center;
 }
 .arcade-lobby-setting-options {
   display: grid;
@@ -1889,13 +1909,16 @@ button.card {
 .arcade-lobby-entry-actions {
   display: flex;
   gap: var(--space-2);
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--border);
 }
 .arcade-lobby-entry-actions .btn {
   flex: 1 1 0;
+  min-width: 0;
 }
 @media (min-width: 640px) { /* --bp-md */
+  .arcade-lobby-control-bar:has(.arcade-lobby-settings):has(.arcade-lobby-entry-actions) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: end;
+  }
   .arcade-lobby-setting-options {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -3750,7 +3773,22 @@ input[type='number'].tournament-score-input {
   grid-column: 1 / -1;
 }
 .food-order-card {
+  position: relative;
   align-content: start;
+  overflow: hidden;
+}
+.food-order-card::before {
+  content: '';
+  position: absolute;
+  inset: var(--space-3) auto var(--space-3) 0;
+  width: var(--space-1);
+  border-radius: 0 var(--radius-full) var(--radius-full) 0;
+}
+.food-order-grid > .food-order-card:nth-child(odd)::before {
+  background: var(--accent);
+}
+.food-order-grid > .food-order-card:nth-child(even)::before {
+  background: var(--accent-3);
 }
 .food-order-meta,
 .hall-of-fame-empty-result {
@@ -3777,9 +3815,23 @@ input[type='number'].tournament-score-input {
 .food-order-player-items {
   padding-left: calc(var(--space-5) + var(--space-2));
 }
+.food-order-player-total {
+  margin-left: calc(var(--space-5) + var(--space-2));
+  padding-top: var(--space-1);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
 .food-order-item {
   min-height: var(--space-7);
   padding: var(--space-1) 0;
+}
+.food-order-item-price {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
 }
 .food-order-item-remove {
   padding: 0 var(--space-1);
@@ -3791,8 +3843,21 @@ input[type='number'].tournament-score-input {
 }
 .food-order-item-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: calc(var(--space-8) + var(--space-3)) minmax(0, 1fr) auto;
   gap: var(--space-2);
+}
+.food-order-item-form > [data-item-desc] {
+  grid-column: 1 / -1;
+}
+.food-order-quantity-input {
+  text-align: center;
+}
+.food-order-price-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
 }
 .food-order-price-input {
   width: 100%;
@@ -3847,7 +3912,10 @@ input[type='number'].tournament-score-input {
 }
 @media (min-width: 640px) { /* --bp-md */
   .food-order-item-form {
-    grid-template-columns: minmax(0, 1fr) calc(var(--space-8) + var(--space-6)) auto;
+    grid-template-columns: minmax(0, 1fr) calc(var(--space-8) + var(--space-3)) calc(var(--space-8) + var(--space-8)) auto;
+  }
+  .food-order-item-form > [data-item-desc] {
+    grid-column: auto;
   }
   .hall-of-fame-result:not(.row) {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
