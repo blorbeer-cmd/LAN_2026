@@ -546,7 +546,16 @@ async function main() {
   // app window existed yet) overrides that default so the tap actually lands
   // where the notification promised.
   const hashView = location.hash.slice(1);
-  const initialView = VIEWS[hashView] ? hashView : getMyId() ? 'home' : 'profile';
+  // A reload keeps the view the browser was on (stored on the history entry
+  // by switchView) instead of bouncing back to Home mid-workflow.
+  const restoredView = history.state?.view;
+  const initialView = VIEWS[hashView]
+    ? hashView
+    : VIEWS[restoredView]
+      ? restoredView
+      : getMyId()
+        ? 'home'
+        : 'profile';
   // Establishes the base history entry the very first popstate can land on
   // (replace, not push — this page load shouldn't cost an extra back-step)
   // before any tab switch starts pushing entries on top of it.

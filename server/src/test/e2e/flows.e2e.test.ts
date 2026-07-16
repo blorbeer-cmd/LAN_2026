@@ -679,7 +679,10 @@ test('Auswertungen (via Mehr) shows a real award and keeps detail logs collapsed
   assert.equal(await page.locator('.analytics-tournament-breakdown').count(), 2);
   await page.waitForSelector('#analytics-fun-title:text-is("Trivia")');
   const triviaSection = page.locator('section[aria-labelledby="analytics-fun-title"]');
-  assert.equal(await triviaSection.getByText('Noch nicht genug Ergebnisse.', { exact: true }).count(), 1);
+  // Earlier tests in this suite already recorded 1v1 results, so the biggest
+  // rivalry card exists and the empty state must be gone.
+  assert.equal(await triviaSection.getByText('Noch nicht genug Ergebnisse.', { exact: true }).count(), 0);
+  assert.ok((await triviaSection.locator('.card').count()) >= 1, 'trivia should show at least one fun record');
   assert.equal(await triviaSection.locator('.empty-state-icon').count(), 0);
   assert.equal(await page.locator('#an-event[aria-label="Veranstaltung"]').count(), 1);
 
@@ -1141,19 +1144,19 @@ test('Arcade: a lobby guest flags themselves ready and the host sees it', async 
     await guestPage.waitForSelector('[data-join-lobby]');
     await guestPage.click('[data-join-lobby]');
 
-    // Freshly joined guests are not ready; only the host counts as ready.
-    await page.waitForSelector('text=1/2 bereit');
+    // Freshly joined guests are not ready; readiness lives in the member
+    // rows (no summary sentence anymore, see DESIGN_SYSTEM.md arcade rules).
+    await page.waitForSelector('.arcade-lobby-member-row:has-text("E2E Bob"):has-text("Mitspieler")');
 
-    // Guest flags ready -> host sees the summary flip and the green chip.
+    // Guest flags ready -> host sees the member row flip to "Bereit".
     await guestPage.waitForSelector('[data-quiz-ready][data-ready="1"]');
     await guestPage.click('[data-quiz-ready][data-ready="1"]');
-    await page.waitForSelector('text=2/2 bereit');
-    await page.waitForSelector('.chip-ready >> text=E2E Bob');
+    await page.waitForSelector('.arcade-lobby-member-row:has-text("E2E Bob") .arcade-lobby-member-role:has-text("Bereit")');
 
     // The toggle works both ways: un-ready shows up at the host again.
     await guestPage.waitForSelector('[data-quiz-ready][data-ready="0"]');
     await guestPage.click('[data-quiz-ready][data-ready="0"]');
-    await page.waitForSelector('text=1/2 bereit');
+    await page.waitForSelector('.arcade-lobby-member-row:has-text("E2E Bob"):has-text("Mitspieler")');
   } finally {
     // Leave no lobby behind for the tests that follow.
     await page.click('[data-close-lobby]');
@@ -1190,7 +1193,7 @@ test('Arcade: a non-player can watch a running quiz without seeing the question'
     await page.waitForSelector('#quiz-start-lobby:not([disabled])');
     await guestPage.waitForSelector('[data-quiz-ready][data-ready="1"]');
     await guestPage.click('[data-quiz-ready][data-ready="1"]');
-    await page.waitForSelector('text=2/2 bereit');
+    await page.waitForSelector('.arcade-lobby-member-row:has-text("E2E Bob") .arcade-lobby-member-role:has-text("Bereit")');
     await page.click('#quiz-start-lobby');
     await page.waitForSelector('#quiz-answer-form');
 
@@ -1563,8 +1566,8 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
   await page.fill('#carpool-location', 'Hamburg');
   await page.fill('#carpool-seats', '1');
   await page.click('#carpool-form button[type="submit"]');
-  await page.waitForSelector('text=E2E Alice Pro fährt');
-  await page.waitForSelector('text=1/1 frei');
+  await page.waitForSelector('.arrivals-member-row:has-text("E2E Alice Pro"):has-text("Fahrer")');
+  await page.waitForSelector('.arrivals-free-seat-row');
   // The driver only ever gets Bearbeiten/Löschen, never a "Raus" button.
   await page.waitForSelector('[data-edit-carpool]');
   await page.waitForSelector('[data-remove-carpool]');
@@ -1574,18 +1577,19 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
   await switchIdentityAndOpenArrivals('E2E Bob');
   await page.waitForSelector('[data-join-carpool]');
   await page.click('[data-join-carpool]');
-  await page.waitForSelector('text=0/1 frei');
+  await page.waitForSelector('.arrivals-free-seat-row', { state: 'detached' });
   await page.waitForSelector('[data-leave-carpool]');
 
   // A third player finds the carpool full and can't join.
   await switchIdentityAndOpenArrivals('E2E Carol');
-  await page.waitForSelector('text=Voll');
+  await page.waitForSelector('.arrivals-member-row:has-text("E2E Bob"):has-text("Mitfahrer")');
+  assert.equal(await page.locator('.arrivals-free-seat-row').count(), 0);
   assert.equal(await page.locator('[data-join-carpool]').count(), 0);
 
   // Bob leaves, freeing the seat back up; the driver deletes the group.
   await switchIdentityAndOpenArrivals('E2E Bob');
   await page.click('[data-leave-carpool]');
-  await page.waitForSelector('text=1/1 frei');
+  await page.waitForSelector('.arrivals-free-seat-row');
 
   await switchIdentityAndOpenArrivals('E2E Alice Pro');
   await page.click('[data-remove-carpool]');
@@ -1605,6 +1609,7 @@ test('Durchsage: notification center can navigate, mark read and remove without 
   // Wait for the durable signal (the entry in "Letzte Durchsagen"), not the
   // 2.6s confirmation toast — too short-lived to assert on reliably.
   try {
+    await page.click('details[data-broadcast-history] summary');
     await page.waitForSelector('.lb-row >> text=Essen ist da!', { timeout: 8000 });
   } catch (err) {
     console.error('[debug] view:', (await page.innerText('#view-container')).slice(0, 500));
@@ -1640,7 +1645,7 @@ test('Durchsage: notification center can navigate, mark read and remove without 
   await page.click('#notifications-btn');
   const foodNotification = page.locator('.notification-center-entry:has-text("Essen ist da!")');
   await foodNotification.waitFor();
-  assert.equal(await foodNotification.locator('.badge:has-text("Neu")').count(), 0);
+  assert.ok(!((await foodNotification.getAttribute('class')) ?? '').includes('is-unread'));
 
   // Removing is personal and leaves the durable Durchsage itself intact.
   await foodNotification.locator('[data-notification-hide]').click();
@@ -1666,9 +1671,9 @@ test('Durchsage: notification center can navigate, mark read and remove without 
   await page.click('#notifications-btn');
   const endedNotification = page.locator('.notification-center-entry:has-text("Turnier startet gleich!")');
   await endedNotification.waitFor();
-  await endedNotification.locator('.badge:has-text("Neu")').waitFor();
+  await page.waitForSelector('.notification-center-entry.is-unread:has-text("Turnier startet gleich!")');
   await page.click('[data-notifications-seen-all]');
-  await page.waitForFunction(() => document.querySelectorAll('.notification-center-entry .badge:where(.badge-playing)').length === 0);
+  await page.waitForFunction(() => document.querySelectorAll('.notification-center-entry.is-unread').length === 0);
   await page.click('[data-notifications-hide-all]');
   await page.click('[data-confirm]');
   await page.click('#notifications-btn');
@@ -1693,8 +1698,8 @@ test('Captain-Draft: pick captains, run the live draft to completion', async () 
 
   // The device identity ("E2E Alice Pro") must be a captain so this page is
   // allowed to pick; E2E Bob is the second captain, everyone else is pool.
-  await page.click('button[data-captain-toggle]:has-text("E2E Alice Pro")');
-  await page.click('button[data-captain-toggle]:has-text("E2E Bob")');
+  await page.click('label.check-row:has-text("E2E Alice Pro") input[data-captain-toggle]');
+  await page.click('label.check-row:has-text("E2E Bob") input[data-captain-toggle]');
   await page.waitForSelector('#draft-start:not([disabled])');
   await page.click('#draft-start');
 
@@ -1702,15 +1707,15 @@ test('Captain-Draft: pick captains, run the live draft to completion', async () 
   // until the pool is empty — the last player is auto-assigned server-side,
   // which ends the draft and returns the view to the regular Teams-auslosen
   // page (no pinned "draft result" card — see matchmaking.js).
-  await page.waitForSelector('text=Captain-Draft läuft');
+  await page.waitForSelector('text=Captain Draft läuft');
   for (let i = 0; i < 8; i++) {
-    if ((await page.locator('text=Captain-Draft läuft').count()) === 0) break;
+    if ((await page.locator('text=Captain Draft läuft').count()) === 0) break;
     const pick = page.locator('button[data-draft-pick]').first();
     if ((await pick.count()) === 0) break;
     await pick.click();
     await page.waitForTimeout(300);
   }
-  await page.waitForSelector('text=Captain-Draft läuft', { state: 'detached', timeout: 5000 });
+  await page.waitForSelector('text=Captain Draft läuft', { state: 'detached', timeout: 5000 });
 
   // The finished draft landed in the shared Historie (not pinned to the
   // page top) with the usual "Ergebnis eintragen" follow-up available there.
@@ -1725,23 +1730,23 @@ test('the device back button steps back through in-app views instead of leaving 
   await page.click('[data-view="home"]');
   await page.waitForSelector('.view-title');
   await page.click('[data-view="votes"]');
-  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent?.includes('Nächstes'));
+  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Vote');
   await page.click('[data-view="leaderboard"]');
-  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Rangliste');
+  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Rang');
 
   // Back should undo the last switch (leaderboard -> votes), not leave the
   // single-page app (there is nowhere else to navigate to in this test, so
   // if this fell through to real browser navigation the page would end up
   // blank/erroring instead of showing the votes view).
   await page.goBack();
-  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent?.includes('Nächstes'));
+  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Vote');
 
   await page.goBack();
   await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Home');
 
   // Forward should redo the same steps.
   await page.goForward();
-  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent?.includes('Nächstes'));
+  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Vote');
 });
 
 test('Aktuell: an open vote\'s title (if set) shows on Home\'s status card', async () => {
