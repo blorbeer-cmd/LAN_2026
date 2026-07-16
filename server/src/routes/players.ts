@@ -15,6 +15,9 @@ import { requireAdmin } from '../auth';
 import { clearPlayerLiveStatus } from '../liveStatus';
 import { writeAdminAudit } from '../adminAudit';
 import { voidOutstandingInvites } from '../invites';
+import { activeGroupPlayers } from '../groupPlayers';
+import { resolveGroupEventScope } from '../groupEventScope';
+import { config } from '../config';
 
 export const playersRouter = Router();
 
@@ -416,17 +419,18 @@ playersRouter.delete('/:id', requireAdmin, (req, res) => {
 // source column in db.ts. Self-service, so this is always scoped to a single
 // player, never a roster-wide listing.
 playersRouter.get('/:id/neighbors', ...withParamPlayerIdentity('id'), (req, res) => {
-  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(req.params.id);
-  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  if (!activeGroupPlayers(req.group!.id, [req.params.id]).has(req.params.id)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
 
-  const { eventId } = req.query;
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
+  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
 
   const rows = db
-    .prepare('SELECT neighbor_id FROM seat_neighbors WHERE event_id = ? AND player_id = ?')
-    .all(filterEventId, req.params.id) as Array<{ neighbor_id: string }>;
+    .prepare('SELECT neighbor_id FROM seat_neighbors WHERE group_id = ? AND event_id IS ? AND player_id = ?')
+    .all(req.group!.id, scope.eventId, req.params.id) as Array<{ neighbor_id: string }>;
 
-  res.json({ eventId: filterEventId, neighborIds: rows.map((r) => r.neighbor_id) });
+  res.json({ groupId: req.group!.id, eventId: scope.eventId, neighborIds: rows.map((r) => r.neighbor_id) });
 });
 
 // PUT /api/players/:id/neighbors - replace whose monitor this player says
@@ -437,40 +441,51 @@ playersRouter.get('/:id/neighbors', ...withParamPlayerIdentity('id'), (req, res)
 // confirmation and the next seating-plan save won't override it. Body:
 // { eventId?, neighborIds: string[] }
 playersRouter.put('/:id/neighbors', ...withParamPlayerIdentity('id'), (req, res) => {
-  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(req.params.id) as { id: string } | undefined;
+  const player = activeGroupPlayers(req.group!.id, [req.params.id]).get(req.params.id);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const { eventId, neighborIds } = req.body ?? {};
   if (!Array.isArray(neighborIds) || !neighborIds.every((n) => typeof n === 'string')) {
     return res.status(400).json({ error: 'neighborIds muss ein String-Array sein.' });
   }
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
+  const scope = resolveGroupEventScope(req.group!.id, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
 
   // Silently drop yourself and anything that isn't actually a player, rather
   // than erroring — a stale id from a checkbox list a moment after someone
   // else got deleted shouldn't block saving the rest.
   const uniqueIds = [...new Set(neighborIds)].filter((id) => id !== player.id);
-  const validIds =
-    uniqueIds.length === 0
-      ? []
-      : (
-          db
-            .prepare(`SELECT id FROM players WHERE id IN (${uniqueIds.map(() => '?').join(',')})`)
-            .all(...uniqueIds) as Array<{ id: string }>
-        ).map((r) => r.id);
+  const validPlayers = activeGroupPlayers(req.group!.id, uniqueIds);
+  if (config.authMode !== 'legacy' && validPlayers.size !== uniqueIds.length) {
+    return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
+  }
+  const validIds = [...validPlayers.keys()];
 
   const replace = db.transaction(() => {
-    db.prepare('DELETE FROM seat_neighbors WHERE event_id = ? AND player_id = ?').run(filterEventId, player.id);
+    db.prepare('DELETE FROM seat_neighbors WHERE group_id = ? AND event_id IS ? AND player_id = ?').run(
+      req.group!.id,
+      scope.eventId,
+      player.id,
+    );
     const insert = db.prepare(
-      "INSERT INTO seat_neighbors (event_id, player_id, neighbor_id, source) VALUES (?, ?, ?, 'manual')",
+      `INSERT INTO seat_neighbors
+         (group_id, event_id, player_id, neighbor_id, player_name_snapshot, neighbor_name_snapshot, source)
+       VALUES (?, ?, ?, ?, ?, ?, 'manual')`,
     );
     for (const neighborId of validIds) {
-      insert.run(filterEventId, player.id, neighborId);
+      insert.run(
+        req.group!.id,
+        scope.eventId,
+        player.id,
+        neighborId,
+        player.name,
+        validPlayers.get(neighborId)!.name,
+      );
     }
   });
   replace();
 
-  res.json({ eventId: filterEventId, neighborIds: validIds });
+  res.json({ groupId: req.group!.id, eventId: scope.eventId, neighborIds: validIds });
 });
 
 interface GameRow {

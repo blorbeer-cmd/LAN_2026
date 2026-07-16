@@ -49,6 +49,9 @@ eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur d
   `src/test/api.groupVotesDrafts.required.test.ts`. Sie deckt gruppenlokale CRUD-/Listen-Zustände,
   Rollen, aktive Spieler-Mitgliedschaften, historische Snapshots, Aggregationen, Foreign Keys und
   Event-Exporte ab.
+- Seating/Pings wird entsprechend in `src/test/api.groupSeatingPings.required.test.ts` geprüft:
+  getrennte Gruppenraum-/Event-Historien, fremde Spieler- und Eventreferenzen, 403-Rollenpfade,
+  bekannte Fremd-IDs sowie Datenbank-Trigger und -Foreign-Keys.
 
 ## Datenbank-Migrationen
 

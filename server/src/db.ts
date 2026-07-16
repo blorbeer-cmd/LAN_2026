@@ -1097,7 +1097,9 @@ runMigration({ version: 21, name: 'add push log feed columns', up: migratePushLo
 // tables from databases that still carry them. Dropping a table drops its
 // indexes with it.
 function removeGamePingTables(): void {
-  db.exec('DROP TABLE IF EXISTS game_ping_interested; DROP TABLE IF EXISTS game_pings;');
+  // Kept as a no-op migration marker. Phase 5c restores this domain in
+  // migration 35; databases upgrading from before version 22 must retain
+  // their legacy rows so that migration can preserve them as group history.
 }
 runMigration({ version: 22, name: 'remove game ping tables', up: removeGamePingTables });
 
@@ -1771,6 +1773,284 @@ function addVotesAndDraftsGroupScoping(): void {
   }
 }
 runMigration({ version: 34, name: 'add votes and drafts group scoping', up: addVotesAndDraftsGroupScoping });
+
+function migrateScopedGamePings(
+  ensureHistoricalMembership: (groupId: string, playerId: string, timestamp: number) => void,
+): void {
+  const pingTable = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'game_pings'").get();
+  const pingColumns = pingTable ? (db.prepare('PRAGMA table_info(game_pings)').all() as Array<{ name: string }>) : [];
+  if (pingTable && !pingColumns.some((column) => column.name === 'group_id')) {
+    const legacyPings = db.prepare('SELECT id, player_id, event_id, created_at FROM game_pings').all() as Array<{
+      id: string;
+      player_id: string;
+      event_id: string;
+      created_at: number;
+    }>;
+    const legacyInterested = db.prepare('SELECT ping_id, player_id FROM game_ping_interested').all() as Array<{
+      ping_id: string;
+      player_id: string;
+    }>;
+    const pingById = new Map(legacyPings.map((ping) => [ping.id, ping]));
+    for (const ping of legacyPings) {
+      const event = db.prepare('SELECT group_id FROM events WHERE id = ?').get(ping.event_id) as
+        | { group_id: string | null }
+        | undefined;
+      ensureHistoricalMembership(event?.group_id ?? DEFAULT_GROUP_ID, ping.player_id, ping.created_at);
+    }
+    for (const interested of legacyInterested) {
+      const ping = pingById.get(interested.ping_id);
+      if (!ping) continue;
+      const event = db.prepare('SELECT group_id FROM events WHERE id = ?').get(ping.event_id) as
+        | { group_id: string | null }
+        | undefined;
+      ensureHistoricalMembership(event?.group_id ?? DEFAULT_GROUP_ID, interested.player_id, ping.created_at);
+    }
+    db.exec(
+      'ALTER TABLE game_ping_interested RENAME TO game_ping_interested_legacy; ALTER TABLE game_pings RENAME TO game_pings_legacy;',
+    );
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS game_pings (
+      id                     TEXT PRIMARY KEY,
+      group_id               TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      event_id               TEXT,
+      player_id              TEXT NOT NULL,
+      player_name_snapshot   TEXT NOT NULL,
+      player_color_snapshot  TEXT NOT NULL,
+      player_avatar_snapshot TEXT,
+      game_id                TEXT NOT NULL,
+      game_name_snapshot     TEXT NOT NULL,
+      game_icon_snapshot     TEXT NOT NULL,
+      message                TEXT,
+      created_at             INTEGER NOT NULL,
+      expires_at             INTEGER NOT NULL,
+      cancelled_at           INTEGER,
+      FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE,
+      FOREIGN KEY (group_id, player_id) REFERENCES group_memberships(group_id, player_id) ON DELETE CASCADE
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_game_pings_group_pk ON game_pings(group_id, id);
+    CREATE INDEX IF NOT EXISTS idx_game_pings_group_scope_created
+      ON game_pings(group_id, event_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_game_pings_group_active
+      ON game_pings(group_id, event_id, expires_at) WHERE cancelled_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS game_ping_interested (
+      ping_id                TEXT NOT NULL,
+      group_id               TEXT NOT NULL,
+      player_id              TEXT NOT NULL,
+      player_name_snapshot   TEXT NOT NULL,
+      player_color_snapshot  TEXT NOT NULL,
+      player_avatar_snapshot TEXT,
+      created_at             INTEGER NOT NULL,
+      PRIMARY KEY (ping_id, player_id),
+      FOREIGN KEY (group_id, ping_id) REFERENCES game_pings(group_id, id) ON DELETE CASCADE,
+      FOREIGN KEY (group_id, player_id) REFERENCES group_memberships(group_id, player_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_game_ping_interested_group_player
+      ON game_ping_interested(group_id, player_id);
+
+    DROP TRIGGER IF EXISTS trg_game_pings_game_scope_insert;
+    CREATE TRIGGER trg_game_pings_game_scope_insert
+    BEFORE INSERT ON game_pings
+    WHEN NOT EXISTS (SELECT 1 FROM games g WHERE g.group_id = NEW.group_id AND g.id = NEW.game_id)
+    BEGIN
+      SELECT RAISE(ABORT, 'ping game group mismatch');
+    END;
+
+    DROP TRIGGER IF EXISTS trg_game_pings_game_scope_update;
+    CREATE TRIGGER trg_game_pings_game_scope_update
+    BEFORE UPDATE OF group_id, game_id ON game_pings
+    WHEN NOT EXISTS (SELECT 1 FROM games g WHERE g.group_id = NEW.group_id AND g.id = NEW.game_id)
+    BEGIN
+      SELECT RAISE(ABORT, 'ping game group mismatch');
+    END;
+  `);
+
+  const legacyPingTable = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'game_pings_legacy'")
+    .get();
+  if (!legacyPingTable) return;
+
+  db.prepare(
+    `INSERT INTO game_pings
+       (id, group_id, event_id, player_id, player_name_snapshot, player_color_snapshot, player_avatar_snapshot,
+        game_id, game_name_snapshot, game_icon_snapshot, message, created_at, expires_at, cancelled_at)
+     SELECT gp.id, COALESCE(e.group_id, ?), CASE WHEN gp.event_id = ? THEN NULL ELSE gp.event_id END,
+            gp.player_id, p.name, p.color, p.avatar, gp.game_id, g.name, g.icon,
+            gp.message, gp.created_at, gp.expires_at, NULL
+     FROM game_pings_legacy gp
+     JOIN players p ON p.id = gp.player_id
+     JOIN games g ON g.id = gp.game_id
+     LEFT JOIN events e ON e.id = gp.event_id`,
+  ).run(DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID);
+  db.prepare(
+    `INSERT INTO game_ping_interested
+       (ping_id, group_id, player_id, player_name_snapshot, player_color_snapshot, player_avatar_snapshot, created_at)
+     SELECT i.ping_id, gp.group_id, i.player_id, p.name, p.color, p.avatar, gp.created_at
+     FROM game_ping_interested_legacy i
+     JOIN game_pings gp ON gp.id = i.ping_id
+     JOIN players p ON p.id = i.player_id`,
+  ).run();
+  db.exec('DROP TABLE game_ping_interested_legacy; DROP TABLE game_pings_legacy;');
+}
+
+// Phase 5c (Seating/Pings): both domains become strict group resources with
+// an optional same-group event. NULL event_id is the permanent group room.
+// Mutable writes require active members in the routes; composite foreign
+// keys and display snapshots retain the historical membership proof.
+function addSeatingAndPingsGroupScoping(): void {
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_events_group_pk ON events(group_id, id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_games_group_pk ON games(group_id, id);
+  `);
+
+  const ensureHistoricalMembership = (groupId: string, playerId: string, timestamp: number): void => {
+    db.prepare(
+      `INSERT OR IGNORE INTO group_memberships
+         (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
+       VALUES (?, ?, 'member', 'removed', ?, ?, 0, NULL)`,
+    ).run(groupId, playerId, timestamp, timestamp);
+  };
+
+  const seatingColumns = db.prepare('PRAGMA table_info(seating_layouts)').all() as Array<{ name: string }>;
+  if (!seatingColumns.some((column) => column.name === 'group_id')) {
+    const layouts = db.prepare('SELECT event_id, assignments, updated_at FROM seating_layouts').all() as Array<{
+      event_id: string;
+      assignments: string;
+      updated_at: number;
+    }>;
+    for (const layout of layouts) {
+      const event = db.prepare('SELECT group_id FROM events WHERE id = ?').get(layout.event_id) as
+        | { group_id: string | null }
+        | undefined;
+      let assignments: Array<{ playerId?: unknown }> = [];
+      try {
+        const parsed = JSON.parse(layout.assignments);
+        if (Array.isArray(parsed)) assignments = parsed;
+      } catch {
+        // Existing readLayout already treats invalid legacy JSON as empty.
+      }
+      for (const assignment of assignments) {
+        if (typeof assignment.playerId === 'string') {
+          ensureHistoricalMembership(event?.group_id ?? DEFAULT_GROUP_ID, assignment.playerId, layout.updated_at);
+        }
+      }
+    }
+
+    const neighborRows = db.prepare('SELECT event_id, player_id, neighbor_id FROM seat_neighbors').all() as Array<{
+      event_id: string;
+      player_id: string;
+      neighbor_id: string;
+    }>;
+    for (const row of neighborRows) {
+      const event = db.prepare('SELECT group_id FROM events WHERE id = ?').get(row.event_id) as
+        | { group_id: string | null }
+        | undefined;
+      const groupId = event?.group_id ?? DEFAULT_GROUP_ID;
+      ensureHistoricalMembership(groupId, row.player_id, Date.now());
+      ensureHistoricalMembership(groupId, row.neighbor_id, Date.now());
+    }
+
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE seating_layouts_scoped (
+          group_id     TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+          event_id     TEXT,
+          top_seats    INTEGER NOT NULL DEFAULT 2,
+          right_seats  INTEGER NOT NULL DEFAULT 2,
+          bottom_seats INTEGER NOT NULL DEFAULT 2,
+          left_seats   INTEGER NOT NULL DEFAULT 2,
+          assignments  TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(assignments) AND json_type(assignments) = 'array'),
+          updated_at   INTEGER NOT NULL,
+          FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE
+        );
+        CREATE TABLE seat_neighbors_scoped (
+          group_id               TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+          event_id               TEXT,
+          player_id              TEXT NOT NULL,
+          neighbor_id            TEXT NOT NULL,
+          player_name_snapshot   TEXT NOT NULL,
+          neighbor_name_snapshot TEXT NOT NULL,
+          source                 TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'auto')),
+          CHECK (player_id != neighbor_id),
+          FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE,
+          FOREIGN KEY (group_id, player_id) REFERENCES group_memberships(group_id, player_id) ON DELETE CASCADE,
+          FOREIGN KEY (group_id, neighbor_id) REFERENCES group_memberships(group_id, player_id) ON DELETE CASCADE
+        );
+      `);
+      db.prepare(
+        `INSERT INTO seating_layouts_scoped
+           (group_id, event_id, top_seats, right_seats, bottom_seats, left_seats, assignments, updated_at)
+         SELECT COALESCE(e.group_id, ?), CASE WHEN sl.event_id = ? THEN NULL ELSE sl.event_id END,
+                sl.top_seats, sl.right_seats, sl.bottom_seats, sl.left_seats, sl.assignments, sl.updated_at
+         FROM seating_layouts sl LEFT JOIN events e ON e.id = sl.event_id`,
+      ).run(DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID);
+      db.prepare(
+        `INSERT INTO seat_neighbors_scoped
+           (group_id, event_id, player_id, neighbor_id, player_name_snapshot, neighbor_name_snapshot, source)
+         SELECT COALESCE(e.group_id, ?), CASE WHEN sn.event_id = ? THEN NULL ELSE sn.event_id END,
+                sn.player_id, sn.neighbor_id, p.name, n.name, sn.source
+         FROM seat_neighbors sn
+         JOIN players p ON p.id = sn.player_id
+         JOIN players n ON n.id = sn.neighbor_id
+         LEFT JOIN events e ON e.id = sn.event_id`,
+      ).run(DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID);
+      db.exec(`
+        DROP TABLE seat_neighbors;
+        DROP TABLE seating_layouts;
+        ALTER TABLE seating_layouts_scoped RENAME TO seating_layouts;
+        ALTER TABLE seat_neighbors_scoped RENAME TO seat_neighbors;
+      `);
+    })();
+  }
+
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_seating_layouts_group_room
+      ON seating_layouts(group_id) WHERE event_id IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_seating_layouts_group_event
+      ON seating_layouts(group_id, event_id) WHERE event_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_seat_neighbors_group_room
+      ON seat_neighbors(group_id, player_id, neighbor_id) WHERE event_id IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_seat_neighbors_group_event
+      ON seat_neighbors(group_id, event_id, player_id, neighbor_id) WHERE event_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_seat_neighbors_group_scope_player
+      ON seat_neighbors(group_id, event_id, player_id);
+
+    DROP TRIGGER IF EXISTS trg_seating_layout_membership_insert;
+    CREATE TRIGGER trg_seating_layout_membership_insert
+    BEFORE INSERT ON seating_layouts
+    WHEN EXISTS (
+      SELECT 1 FROM json_each(NEW.assignments) assignment
+      WHERE NOT EXISTS (
+        SELECT 1 FROM group_memberships gm
+        WHERE gm.group_id = NEW.group_id
+          AND gm.player_id = json_extract(assignment.value, '$.playerId')
+      )
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'seating player group mismatch');
+    END;
+
+    DROP TRIGGER IF EXISTS trg_seating_layout_membership_update;
+    CREATE TRIGGER trg_seating_layout_membership_update
+    BEFORE UPDATE OF group_id, assignments ON seating_layouts
+    WHEN EXISTS (
+      SELECT 1 FROM json_each(NEW.assignments) assignment
+      WHERE NOT EXISTS (
+        SELECT 1 FROM group_memberships gm
+        WHERE gm.group_id = NEW.group_id
+          AND gm.player_id = json_extract(assignment.value, '$.playerId')
+      )
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'seating player group mismatch');
+    END;
+  `);
+
+  migrateScopedGamePings(ensureHistoricalMembership);
+}
+runMigration({ version: 35, name: 'add seating and pings group scoping', up: addSeatingAndPingsGroupScoping });
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.

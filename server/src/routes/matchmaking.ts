@@ -17,7 +17,7 @@ import {
   type SeatPair,
 } from '../matchmaking';
 import { isIntInRange } from '../validation';
-import { getTrackingEventId } from '../events';
+import { getTrackingEventId, OUTSIDE_EVENTS_ID } from '../events';
 import { competitionPlayersBelongToGroup, trackingEventIdForGroup } from '../competitionScope';
 
 export const matchmakingRouter = Router();
@@ -78,12 +78,13 @@ export function buildTeamsSnapshot(gameId: string, teamPlayerIdLists: string[][]
 // POST /api/matches re-snapshot below — both need to re-derive conflicts
 // after a team lineup changes post-draw.
 export function applySeatConflicts(
+  groupId: string,
   eventId: string,
   teams: Array<{ players: Array<{ id: string; name: string; seatConflict?: boolean; seatConflictNames?: string[] }> }>
 ): number {
   const allPlayers = teams.flatMap((t) => t.players);
   const nameById = new Map(allPlayers.map((p) => [p.id, p.name]));
-  const avoidPairs = loadAvoidPairs(eventId, allPlayers.map((p) => p.id));
+  const avoidPairs = loadAvoidPairs(groupId, eventId, allPlayers.map((p) => p.id));
   const teamIdLists = teams.map((t) => t.players.map((p) => p.id));
   const seatConflicts = countSeatConflicts(teamIdLists, avoidPairs);
   const conflictNeighbors = seatConflictNeighbors(teamIdLists, avoidPairs);
@@ -98,14 +99,18 @@ export function applySeatConflicts(
 // Declared seat-neighbor pairs among a set of players, deduped (neighbors are
 // stored per-direction — see seat_neighbors' comment in db.ts). Shared by the
 // initial draw and by re-deriving conflicts after a manual Feinschliff move.
-function loadAvoidPairs(eventId: string, playerIds: string[]): SeatPair[] {
+function loadAvoidPairs(groupId: string, eventId: string, playerIds: string[]): SeatPair[] {
   const placeholders = playerIds.map(() => '?').join(',');
   const neighborRows = db
     .prepare(
       `SELECT player_id, neighbor_id FROM seat_neighbors
-       WHERE event_id = ? AND player_id IN (${placeholders}) AND neighbor_id IN (${placeholders})`
+       WHERE group_id = ? AND event_id IS ?
+         AND player_id IN (${placeholders}) AND neighbor_id IN (${placeholders})`
     )
-    .all(eventId, ...playerIds, ...playerIds) as Array<{ player_id: string; neighbor_id: string }>;
+    .all(groupId, eventId === OUTSIDE_EVENTS_ID ? null : eventId, ...playerIds, ...playerIds) as Array<{
+      player_id: string;
+      neighbor_id: string;
+    }>;
   const seen = new Set<string>();
   const pairs: SeatPair[] = [];
   for (const r of neighborRows) {
@@ -180,7 +185,7 @@ matchmakingRouter.post('/', (req, res) => {
 
   // Seat neighbors only get looked up when this particular draw asked for
   // it (FR-18 extension) — skip the query entirely otherwise.
-  const avoidPairs: SeatPair[] = avoidAdjacentOpponents ? loadAvoidPairs(getTrackingEventId(), uniqueIds) : [];
+  const avoidPairs: SeatPair[] = avoidAdjacentOpponents ? loadAvoidPairs(req.group!.id, eventId, uniqueIds) : [];
 
   const resolvedTeamCount = computeTeamCount(teamCount, players.length, game.max_team_size);
   const teamIdLists = balanceTeams(ratings, resolvedTeamCount, avoidPairs);
@@ -455,7 +460,7 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
   // The move can turn a resolved seat-neighbor pair into a conflict (or fix
   // one) — only re-derive it when this draw actually considered seat
   // neighbors in the first place (avoidAdjacentOpponents was on for it).
-  const seatConflicts = row.seat_pairs_considered > 0 ? applySeatConflicts(row.event_id, teams) : 0;
+  const seatConflicts = row.seat_pairs_considered > 0 ? applySeatConflicts(req.group!.id, row.event_id, teams) : 0;
 
   db.prepare('UPDATE matchmaking_draws SET teams = ?, seat_conflicts = ? WHERE id = ?').run(
     JSON.stringify(teams),

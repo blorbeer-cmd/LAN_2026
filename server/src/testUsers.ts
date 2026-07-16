@@ -15,6 +15,7 @@ import { nanoid } from 'nanoid';
 import { db, DEFAULT_GROUP_ID } from './db';
 import { getTrackingEventId } from './events';
 import { addPlayersToLayout, removePlayersFromLayouts } from './seatingLayout';
+import { resolveGroupEventScope } from './groupEventScope';
 
 // Mirrors AVATAR_PALETTE in public/js/avatarPalette.js (the server can't
 // import from public/): seeded players reuse the same swatches real players
@@ -82,6 +83,8 @@ export function createTestUsers(count: number, ownerGroupId = DEFAULT_GROUP_ID):
   const seed = db.transaction((): CreatedTestUser[] => {
     const now = Date.now();
     const eventId = getTrackingEventId();
+    const resolvedSeatingScope = resolveGroupEventScope(ownerGroupId, undefined);
+    const seatingEventId = resolvedSeatingScope.ok ? resolvedSeatingScope.eventId : null;
     // Arcade titles (quiz/tetris/...) are excluded here just like in
     // GET /api/games — they aren't skill-rated or vote-eligible, see
     // routes/games.ts's arcade_key filter. Scoped to the owning group's own
@@ -174,7 +177,8 @@ export function createTestUsers(count: number, ownerGroupId = DEFAULT_GROUP_ID):
     // Seat everyone; persistLayout inside re-derives the auto seat neighbors
     // ("Sichtbare Monitore") exactly like the interactive editor would.
     addPlayersToLayout(
-      eventId,
+      ownerGroupId,
+      seatingEventId,
       created.map((c) => c.id),
     );
 
@@ -182,11 +186,13 @@ export function createTestUsers(count: number, ownerGroupId = DEFAULT_GROUP_ID):
     // distinction in the neighbors UI has data to show too.
     if (created.length >= 2) {
       const insertManual = db.prepare(
-        "INSERT OR IGNORE INTO seat_neighbors (event_id, player_id, neighbor_id, source) VALUES (?, ?, ?, 'manual')",
+        `INSERT OR IGNORE INTO seat_neighbors
+           (group_id, event_id, player_id, neighbor_id, player_name_snapshot, neighbor_name_snapshot, source)
+         VALUES (?, ?, ?, ?, ?, ?, 'manual')`,
       );
-      const [a, b] = [created[0].id, created[created.length - 1].id];
-      insertManual.run(eventId, a, b);
-      insertManual.run(eventId, b, a);
+      const [a, b] = [created[0], created[created.length - 1]];
+      insertManual.run(ownerGroupId, seatingEventId, a.id, b.id, a.name, b.name);
+      insertManual.run(ownerGroupId, seatingEventId, b.id, a.id, b.name, a.name);
     }
 
     return created;
