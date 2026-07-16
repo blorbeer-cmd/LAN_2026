@@ -608,9 +608,8 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
     allClauses.push('event_id = ?');
     allParams.push(filterEventId);
   }
-  const allWhere = allClauses.length ? `WHERE ${allClauses.join(' AND ')}` : '';
   const allRows = db
-    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions ${allWhere}`)
+    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${allClauses.join(' AND ')}`)
     .all(...allParams) as SessionRow[];
   const allSessions: PlaySession[] = allRows.map((r) => ({
     playerId: r.player_id,

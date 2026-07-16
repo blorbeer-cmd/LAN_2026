@@ -61,9 +61,8 @@ function loadAllSessions(
     clauses.push('event_id = ?');
     params.push(eventId);
   }
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   return db
-    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions ${where}`)
+    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${clauses.join(' AND ')}`)
     .all(...params) as Array<{
     player_id: string;
     game_id: string;
@@ -320,16 +319,13 @@ interface MatchRow {
 }
 
 function loadAllMatches(groupId: string, eventId: string | null): MatchForUnderdog[] {
-  const clauses: string[] = ['g.group_id = ?'];
+  const clauses: string[] = ['group_id = ?'];
   const params: string[] = [groupId];
   if (eventId) {
-    clauses.push('m.event_id = ?');
+    clauses.push('event_id = ?');
     params.push(eventId);
   }
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  const rows = db
-    .prepare(`SELECT m.id, m.game_id, m.result FROM matches m JOIN games g ON g.id = m.game_id ${where}`)
-    .all(...params) as MatchRow[];
+  const rows = db.prepare(`SELECT id, game_id, result FROM matches WHERE ${clauses.join(' AND ')}`).all(...params) as MatchRow[];
   return rows.map((r) => {
     const parsed = JSON.parse(r.result) as { teams: Array<{ playerIds: string[] }>; winnerTeamIndex: number | null };
     return { id: r.id, gameId: r.game_id, teams: parsed.teams, winnerTeamIndex: parsed.winnerTeamIndex };
@@ -353,26 +349,18 @@ analyticsRouter.get('/games-tournaments', (req, res) => {
   const matches = loadAllMatches(req.group!.id, filterEventId);
   const matchCounts = matchCountsByGame(matches);
 
-  const eventClause = filterEventId ? 'AND source.event_id = ?' : '';
-  const eventParams = filterEventId ? [req.group!.id, filterEventId] : [req.group!.id];
+  const eventClause = filterEventId ? 'AND event_id = ?' : '';
+  const eventParams = filterEventId ? [filterEventId] : [];
 
   const tournamentRows = db
-    .prepare(
-      `SELECT source.format, source.status, source.game_id
-       FROM tournaments source JOIN games g ON g.id = source.game_id
-       WHERE g.group_id = ? ${eventClause}`,
-    )
-    .all(...eventParams) as Array<{ format: string; status: string; game_id: string }>;
+    .prepare(`SELECT format, status, game_id FROM tournaments WHERE group_id = ? ${eventClause}`)
+    .all(req.group!.id, ...eventParams) as Array<{ format: string; status: string; game_id: string }>;
   const tournamentByGame = countBy(tournamentRows, (t) => t.game_id);
   const tournamentByFormat = countBy(tournamentRows, (t) => t.format);
 
   const drawRows = db
-    .prepare(
-      `SELECT source.game_id, source.seat_conflicts, source.seat_pairs_considered
-       FROM matchmaking_draws source JOIN games g ON g.id = source.game_id
-       WHERE g.group_id = ? ${eventClause}`,
-    )
-    .all(...eventParams) as Array<{ game_id: string; seat_conflicts: number; seat_pairs_considered: number }>;
+    .prepare(`SELECT game_id, seat_conflicts, seat_pairs_considered FROM matchmaking_draws WHERE group_id = ? ${eventClause}`)
+    .all(req.group!.id, ...eventParams) as Array<{ game_id: string; seat_conflicts: number; seat_pairs_considered: number }>;
   const drawsByGame = countBy(drawRows, (d) => d.game_id);
   const totalSeatPairsConsidered = drawRows.reduce((sum, d) => sum + d.seat_pairs_considered, 0);
   const totalSeatConflicts = drawRows.reduce((sum, d) => sum + d.seat_conflicts, 0);

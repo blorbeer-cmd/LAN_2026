@@ -16,6 +16,7 @@ import { broadcast, Events } from '../realtime';
 import { getTrackingEventId } from '../events';
 import { notifyPlayers, resolvePushTopic } from '../push';
 import { withBodyPlayerIdentity } from '../sessions';
+import { competitionPlayersBelongToGroup } from '../competitionScope';
 
 export const draftRouter = Router();
 
@@ -241,14 +242,30 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
   }
 
   const completed = remaining.length === 0;
+  const state = buildState({
+    ...row,
+    pool_ids: JSON.stringify(remaining),
+    picks: JSON.stringify(picks),
+    status: completed ? 'completed' : 'active',
+  });
+  const game = completed
+    ? (db.prepare('SELECT group_id FROM games WHERE id = ?').get(row.game_id) as
+        | { group_id: string | null }
+        | undefined)
+    : undefined;
+  if (completed && state.draft) {
+    const playerIds = state.draft.teams.flatMap((team) => team.players.map((player) => player.id));
+    if (!game?.group_id || !competitionPlayersBelongToGroup(game.group_id, row.event_id, playerIds)) {
+      return res.status(409).json({ error: 'Der Draft gehört nicht zu einem gültigen Gruppen-Event.' });
+    }
+  }
+
   db.prepare('UPDATE drafts SET pool_ids = ?, picks = ?, status = ? WHERE id = ?').run(
     JSON.stringify(remaining),
     JSON.stringify(picks),
     completed ? 'completed' : 'active',
     row.id
   );
-
-  const state = buildState({ ...row, pool_ids: JSON.stringify(remaining), picks: JSON.stringify(picks), status: completed ? 'completed' : 'active' });
 
   // A finished draft is a set of teams like any matchmaking draw — log it
   // into the same history so Team-Historie shows drafted teams too. Ratings
@@ -259,8 +276,8 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
       totalRating: 0,
     }));
     db.prepare(
-      "INSERT INTO matchmaking_draws (id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source) VALUES (?, ?, ?, ?, 0, 0, ?, 'draft')"
-    ).run(nanoid(), row.game_id, row.event_id, JSON.stringify(teamsSnapshot), now);
+      "INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source) VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'draft')"
+    ).run(nanoid(), row.game_id, row.event_id, game!.group_id, JSON.stringify(teamsSnapshot), now);
     resolvePushTopic(`draft:${row.id}`);
   }
 
