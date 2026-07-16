@@ -4673,17 +4673,6 @@ input[type='number'].tournament-score-input {
   border-color: var(--accent);
   background: rgba(91, 140, 255, .12);
 }
-.seating-seat-number {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--accent-gradient);
-  color: var(--accent-text);
-  font-weight: var(--font-weight-bold);
-}
 .seating-seat-free-label {
   color: var(--text);
   font-weight: var(--font-weight-medium);

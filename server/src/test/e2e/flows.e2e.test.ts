@@ -248,7 +248,15 @@ test('Admin mode owns the seating editor and backup tools', async () => {
   assert.ok((await page.locator('.seating-seat:not(.is-occupied)').count()) > 0);
   assert.equal(await page.locator('.seating-seat:not(.is-occupied)').first().getByText('Frei', { exact: true }).count(), 1);
   assert.equal(await page.locator('.seating-seat:not(.is-occupied)').first().evaluate((seat) => getComputedStyle(seat).borderStyle), 'dashed');
-  assert.notEqual(await page.locator('.seating-seat-number').first().evaluate((number) => getComputedStyle(number).backgroundImage), 'none');
+  assert.equal(await page.locator('.seating-seat-number').count(), 0);
+  assert.equal(await page.locator('.seating-seat-free-label').first().evaluate((label) => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--text)';
+    document.body.appendChild(probe);
+    const tokenColor = getComputedStyle(probe).color;
+    probe.remove();
+    return getComputedStyle(label).color === tokenColor;
+  }), true);
   assert.equal(await page.locator('.seating-pool-player').first().evaluate((player) => {
     const avatar = player.querySelector('.avatar-dot, .avatar-img')!.getBoundingClientRect();
     const name = player.querySelector('.seating-seat-name-line')!.getBoundingClientRect();

@@ -67,7 +67,7 @@ function seatHtml(layout, players, side, seat, editable) {
   const title = player ? `${player.name}${player.real_name ? ` (${player.real_name})` : ''}` : 'Freier Sitzplatz';
   return `<div class="seating-seat ${player ? 'is-occupied' : ''} ${isSelected ? 'is-selected' : ''}" data-seat-side="${side}" data-seat-index="${seat}" ${player ? `data-player-id="${player.id}"` : ''}
       ${editable && player ? 'draggable="true"' : ''} title="${escapeHtml(title)}">
-    ${player ? `${avatarHtml(player, 30)}${seatNamesHtml(player)}` : `<span class="seating-seat-number">${seat + 1}</span><span class="seating-seat-free-label">Frei</span>`}
+    ${player ? `${avatarHtml(player, 30)}${seatNamesHtml(player)}` : `<span class="seating-seat-free-label">Frei</span>`}
   </div>`;
 }
 
