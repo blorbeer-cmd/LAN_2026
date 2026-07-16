@@ -6,6 +6,9 @@
 // different event.
 
 import { Router } from 'express';
+import { requireAdmin } from '../auth';
+import { requireRecentReauthentication } from '../sessions';
+import { writeAdminAudit } from '../adminAudit';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
@@ -278,9 +281,10 @@ matchesRouter.patch('/:id', (req, res) => {
 });
 
 // DELETE /api/matches/:id
-matchesRouter.delete('/:id', (req, res) => {
+matchesRouter.delete('/:id', requireAdmin, requireRecentReauthentication, (req, res) => {
   const result = db.prepare('DELETE FROM matches WHERE id = ?').run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Match nicht gefunden.' });
+  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'match_deleted', targetType: 'match', targetId: req.params.id });
   broadcast(Events.leaderboardChanged, null);
   res.status(204).end();
 });

@@ -163,7 +163,9 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
    | `HETZNER_SSH_PUBLIC_KEY` | Inhalt von `lan2026-deploy.pub` |
    | `SSH_PRIVATE_KEY` | Inhalt von `lan2026-deploy` (**ohne** `.pub`) |
    | `CF_TUNNEL_TOKEN` | Token aus Schritt 2 |
-   | `APP_ACCESS_TOKEN` | starkes Zufallstoken, z. B. `openssl rand -hex 24` |
+   | `APP_ADMIN_RECOVERY_CODE` | starkes, einmaliges Bootstrap-/Recovery-Secret, z. B. `openssl rand -hex 32`; nicht an Teilnehmende verteilen |
+   | `APP_KIOSK_TOKEN` | eigener starker Read-only-Token für `/kiosk.html`; z. B. `openssl rand -hex 32` |
+   | `APP_ACCESS_TOKEN` | starkes Zufallstoken für Rollbacks auf alte Images; aktuelle Images mit `AUTH_MODE=required` verwenden es nicht mehr |
    | `GHCR_PULL_TOKEN` | GitHub → Settings → Developer settings → **Tokens (classic)** (fine-grained Tokens haben **kein** Packages-Permission – GitHub-seitige Lücke, nicht behebbar; und da das Repo nicht dir gehört, tauchte es dort im Repo-Auswahldialog ohnehin nicht auf). Scopes: `read:packages` + `repo` (`repo` sorgt dafür, dass GitHub deine bestehenden Collaborator-Rechte auf dem privaten Repo für das Package durchreicht). Ablaufdatum setzen und dir merken, das Secret + `.env` auf dem Server (siehe "Alltag" unten) danach zu erneuern. **Bewusst kein Fix "Package auf public stellen"** – das Image bleibt privat, der Server authentifiziert sich stattdessen selbst beim Pullen. |
 
 4. **`Provision Hetzner Server`-Workflow manuell starten** (Actions-Tab → Workflow auswählen →
@@ -191,6 +193,15 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
   App-Logzeilen; anschließend stellt er das zuvor laufende Image wieder her.
 - **Rollback:** auf dem Server (`ssh deploy@<HETZNER_HOST>`) `/opt/lan2026/rollback.sh <git-sha>`
   ausführen – pinnt das Docker-Image auf einen früheren, bereits gebauten Stand.
+- **Bestehenden Server auf persönliche Logins umstellen:** Vor dem ersten Required-Auth-Deploy in
+  `/opt/lan2026/.env` ein starkes `ADMIN_RECOVERY_CODE`, einen separaten `KIOSK_TOKEN` ergänzen und
+  `AUTH_MODE=required` setzen.
+  Anschließend `docker compose up -d --wait app`. Beim ersten Aufruf `/?claim=<RECOVERY_CODE>`
+  öffnen, das eigene bestehende Profil auswählen und ein Passwort setzen. Danach im Admin-Bereich
+  die persönlichen Claim-Links für alle übrigen Profile erzeugen. Der Bootstrap-Pfad schließt
+  sich, sobald das erste Admin-Konto beansprucht wurde; falls genau dieser einzige aktive Admin sein
+  Passwort vergisst, kann derselbe Recovery-Code sein Passwort zurücksetzen. `ACCESS_TOKEN` für
+  Rollbacks auf ältere Images in der `.env` belassen.
 - **Backups:** noch nicht eingerichtet (siehe Security-Review) – für echte Daten vor der ersten
   "richtigen" LAN auf dem neuen Server unbedingt einen Cron-Job mit `sqlite3 .backup` ergänzen.
 - **`GHCR_PULL_TOKEN` erneuern** (Fine-grained Tokens laufen ggf. ab): neuen Token erzeugen, das
@@ -210,19 +221,22 @@ bisher `npm install && npm run build && npm start` auf einem Laptop im WLAN.
 |---|---|---|
 | `PORT` | `3000` | Port, auf dem der Server lauscht. |
 | `DB_FILE` | `server/data/lan.db` | Pfad zur SQLite-Datei. Wird beim ersten Start angelegt. |
-| `ACCESS_TOKEN` | *(leer = kein Schutz)* | Geteiltes Zugangs-Token für die Web-Oberfläche. **Für den Live-Betrieb unbedingt setzen**, sonst ist das Tool für jeden im Internet offen. |
-| `ADMIN_PIN` | *(leer = offener Admin-Modus)* | Derzeit ungenutzt: Der Admin-Modus ist bewusst ohne PIN (Ein-Klick-Umschalter im Web-Tool, siehe `docs/KONZEPT-TEST-USER.md`). Leer lassen – mit gesetztem PIN würden Admin-Aktionen aus der Oberfläche fehlschlagen, bis die PIN-Abfrage im Frontend zurückkommt. |
+| `AUTH_MODE` | `legacy` | `required` aktiviert persönliche Logins und ersetzt den geteilten Web-Zugang vollständig durch Session-Authentifizierung. |
+| `ADMIN_RECOVERY_CODE` | *(leer)* | Starkes Bootstrap-/Recovery-Secret für den ersten beziehungsweise letzten Admin. In Produktion mit `AUTH_MODE=required` Pflicht. |
+| `KIOSK_TOKEN` | *(leer = Kiosk in Required-Mode gesperrt)* | Separater Read-only-Zugang für die Kiosk-GET-Endpunkte und `kiosk:subscribe`; Aufruf als `/kiosk.html?token=...`. |
+| `ACCESS_TOKEN` | *(leer = kein Schutz)* | Nur im Legacy-Modus: geteiltes Zugangs-Token für die Web-Oberfläche. Im Required-Modus wird es ignoriert. |
+| `COOKIE_SECURE` | `1` | Sichere Session-Cookies; nur für bewusstes lokales HTTP-Hosting mit `0` abschalten. |
 | `OFFLINE_TIMEOUT_MS` | `60000` | Nach wie vielen ms ohne Agent-Meldung ein Spieler als „offline" gilt. |
-| `NODE_ENV` | *(leer)* | Auf `production` gesetzt (macht der Docker-Container automatisch): verweigert den Start, wenn `ACCESS_TOKEN` leer ist, und beendet den Prozess statt weiterzulaufen, wenn ein unerwarteter Fehler durchschlägt (Docker startet ihn dann per `restart: unless-stopped` sofort neu). Für die LAN-Party selbst (kein Supervisor) bewusst **nicht** setzen. |
+| `NODE_ENV` | *(leer)* | Auf `production` gesetzt (macht der Docker-Container automatisch): verlangt im Legacy-Modus `ACCESS_TOKEN`, im Required-Modus `ADMIN_RECOVERY_CODE`, und beendet den Prozess bei unerwarteten Fehlern, damit Docker sauber neu startet. Für die LAN-Party selbst ohne Supervisor bewusst **nicht** setzen. |
 
 Beispiel:
 
 ```bash
-PORT=3000 ACCESS_TOKEN="party-passwort-2026" node dist/index.js
+PORT=3000 AUTH_MODE=required ADMIN_RECOVERY_CODE="$(openssl rand -hex 32)" KIOSK_TOKEN="$(openssl rand -hex 32)" node dist/index.js
 ```
 
-Das Token dann einmalig an alle Teilnehmer weitergeben (z. B. per Gruppenchat) – die Web-App fragt
-es beim ersten Öffnen ab und merkt es sich danach im Browser.
+Den Recovery-Code geheim halten: Er bootstrapt den ersten Admin und kann genau den einzigen aktiven
+Admin wiederherstellen. Weitere Teilnehmende erhalten persönliche Einmal-Links aus dem Admin-Bereich.
 
 ## Agent-Setup (auf jedem Spieler-PC)
 

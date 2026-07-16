@@ -34,6 +34,7 @@ db.exec(`
     tracking_paused INTEGER NOT NULL DEFAULT 0, -- player-side opt-out; agent reports for this player are dropped
     is_admin        INTEGER NOT NULL DEFAULT 0, -- moderation role; can be granted via PATCH /api/players/:id
     is_test         INTEGER NOT NULL DEFAULT 0, -- admin-seeded test player; hidden outside admin mode (see testUsers.ts)
+    deactivated_at  INTEGER, -- former participant: kept for history, denied login/agent access and hidden from active rosters
     created_at      INTEGER NOT NULL
   );
 
@@ -1171,6 +1172,122 @@ function migrateBroadcastLifecycleAndPushSeen(): void {
   `);
 }
 runMigration({ version: 25, name: 'add broadcast lifecycle and push seen', up: migrateBroadcastLifecycleAndPushSeen });
+
+// Real per-user login (see docs/KONZEPT-USER-MANAGEMENT.md): players gain a
+// password (NULL = not yet claimed/registered), sessions are looked up by the
+// hash of their token (the token itself is never stored), and invites are the
+// only way in — either claiming an existing player row or registering a new
+// one. purpose distinguishes 'register' | 'claim' | 'reset' so a stale claim
+// link can never double as a password-reset master key once the account is
+// claimed (see accounts.ts).
+function migrateAccountsAuth(): void {
+  const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  const has = (name: string) => columns.some((column) => column.name === name);
+  if (!has('password_hash')) db.exec('ALTER TABLE players ADD COLUMN password_hash TEXT');
+  if (!has('last_login_at')) db.exec('ALTER TABLE players ADD COLUMN last_login_at INTEGER');
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id           TEXT PRIMARY KEY,
+      player_id    TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      token_hash   TEXT NOT NULL UNIQUE,
+      created_at   INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL,
+      expires_at   INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_sessions_player ON sessions(player_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+
+    CREATE TABLE IF NOT EXISTS invites (
+      code        TEXT PRIMARY KEY,
+      purpose     TEXT NOT NULL, -- 'register' | 'claim' | 'reset'
+      player_id   TEXT REFERENCES players(id) ON DELETE CASCADE, -- set for claim/reset
+      created_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
+      created_at  INTEGER NOT NULL,
+      expires_at  INTEGER NOT NULL,
+      revoked_at  INTEGER,
+      used_at     INTEGER,
+      used_by     TEXT REFERENCES players(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_invites_player ON invites(player_id);
+  `);
+}
+runMigration({ version: 26, name: 'add accounts auth (sessions, invites)', up: migrateAccountsAuth });
+
+// Early development databases may already have recorded migration 26 with
+// created_by NOT NULL and without ON DELETE actions. Rebuild the table once
+// instead of asking developers to delete their database: migration history
+// is immutable, so a corrected CREATE TABLE in migration 26 alone would not
+// repair an already-upgraded installation.
+function repairInviteAuditForeignKeys(): void {
+  const table = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'invites'")
+    .get() as { sql: string } | undefined;
+  if (!table) {
+    migrateAccountsAuth();
+    return;
+  }
+
+  db.exec(`
+    ALTER TABLE invites RENAME TO invites_migration_27;
+    CREATE TABLE invites (
+      code        TEXT PRIMARY KEY,
+      purpose     TEXT NOT NULL,
+      player_id   TEXT REFERENCES players(id) ON DELETE CASCADE,
+      created_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
+      created_at  INTEGER NOT NULL,
+      expires_at  INTEGER NOT NULL,
+      revoked_at  INTEGER,
+      used_at     INTEGER,
+      used_by     TEXT REFERENCES players(id) ON DELETE SET NULL
+    );
+    INSERT INTO invites (code, purpose, player_id, created_by, created_at, expires_at, revoked_at, used_at, used_by)
+      SELECT code, purpose, player_id, created_by, created_at,
+             COALESCE(expires_at, created_at + 1209600000),
+             revoked_at, used_at, used_by
+      FROM invites_migration_27;
+    DROP TABLE invites_migration_27;
+    CREATE INDEX idx_invites_player ON invites(player_id);
+  `);
+}
+runMigration({ version: 27, name: 'repair invite audit foreign keys', up: repairInviteAuditForeignKeys });
+
+// Critical admin actions require a freshly confirmed password. Keeping the
+// timestamp on the individual session (rather than the player) means a
+// confirmation on one phone never unlocks another unattended device.
+function addSessionReauthentication(): void {
+  const columns = db.prepare('PRAGMA table_info(sessions)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'reauthenticated_at')) {
+    db.exec('ALTER TABLE sessions ADD COLUMN reauthenticated_at INTEGER');
+  }
+}
+runMigration({ version: 28, name: 'add session reauthentication', up: addSessionReauthentication });
+
+function addAccountDeactivationAndAdminLog(): void {
+  const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'deactivated_at')) {
+    db.exec('ALTER TABLE players ADD COLUMN deactivated_at INTEGER');
+  }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS admin_log (
+      id              TEXT PRIMARY KEY,
+      actor_player_id TEXT REFERENCES players(id) ON DELETE SET NULL,
+      action          TEXT NOT NULL,
+      target_type     TEXT NOT NULL,
+      target_id       TEXT,
+      details         TEXT,
+      created_at      INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_admin_log_created ON admin_log(created_at);
+    CREATE INDEX IF NOT EXISTS idx_admin_log_actor ON admin_log(actor_player_id, created_at);
+  `);
+  // The legacy test-user rollout deliberately marked every existing player as
+  // admin. Unclaimed identities never made an explicit role choice, so clear
+  // those compatibility flags before required auth is enabled. A claimed
+  // bootstrap admin (and any roles granted afterwards) remains untouched.
+  db.prepare('UPDATE players SET is_admin = 0 WHERE password_hash IS NULL OR is_test = 1').run();
+}
+runMigration({ version: 29, name: 'add account deactivation and admin log', up: addAccountDeactivationAndAdminLog });
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.

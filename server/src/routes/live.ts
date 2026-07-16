@@ -5,6 +5,7 @@ import { Router } from 'express';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getLiveBoard } from '../liveStatus';
+import { withParamPlayerIdentity } from '../sessions';
 
 export const liveRouter = Router();
 
@@ -17,7 +18,7 @@ liveRouter.get('/', (_req, res) => {
 // POST /api/live/:playerId/note - manual override (FR-28), e.g. "Pause/Essen"
 // when someone steps away without closing their game, or to clear it again.
 // Body: { note: string | null }
-liveRouter.post('/:playerId/note', (req, res) => {
+liveRouter.post('/:playerId/note', ...withParamPlayerIdentity(), (req, res) => {
   const player = db.prepare('SELECT id FROM players WHERE id = ?').get(req.params.playerId);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 

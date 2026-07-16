@@ -24,6 +24,7 @@ import { getTrackingEventId, OUTSIDE_EVENTS_ID } from '../events';
 import { notifyPlayers, resolvePushTopic } from '../push';
 import { isIntInRange } from '../validation';
 import { formatDurationMs } from '../playtime';
+import { withBodyPlayerIdentity, withQueryPlayerIdentity } from '../sessions';
 
 export const votesRouter = Router();
 
@@ -245,7 +246,7 @@ votesRouter.get('/', (_req, res) => {
 // current round, so the frontend can prefill/highlight their picks (mainly
 // needed for 'points' mode's multi-select UI, which can't be reconstructed
 // from the aggregated results alone).
-votesRouter.get('/mine', (req, res) => {
+votesRouter.get('/mine', ...withQueryPlayerIdentity, (req, res) => {
   const { playerId } = req.query;
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -333,7 +334,7 @@ votesRouter.post('/start', (req, res) => {
 
 // POST /api/votes - cast or change a vote in the current round ('single' mode only).
 // Body: { playerId, gameId }
-votesRouter.post('/', (req, res) => {
+votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   const state = readRoundState();
   if (!state.open) {
     return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
@@ -376,7 +377,7 @@ votesRouter.post('/', (req, res) => {
 // any number of distinct games (including none, to clear your points
 // entirely), 1-10 points each. Resubmitting replaces the player's whole
 // previous set so they can change their mind any time.
-votesRouter.post('/points', (req, res) => {
+votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
   const state = readRoundState();
   if (!state.open) {
     return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });

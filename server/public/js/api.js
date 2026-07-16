@@ -1,10 +1,15 @@
-// Fetch wrapper: attaches the shared access token (if any) and normalizes
+// Fetch wrapper: attaches the legacy shared access token (if any) and normalizes
 // errors so callers always get either parsed JSON or a thrown Error with the
 // server's German error message.
 
 import { filterTestUsers } from './testFilter.js';
 
 const TOKEN_KEY = 'lan2026_access_token';
+let kioskMode = false;
+
+export function setKioskMode(enabled) {
+  kioskMode = Boolean(enabled);
+}
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY) || '';
@@ -18,6 +23,7 @@ export async function apiFetch(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   const token = getToken();
   if (token) headers['x-access-token'] = token;
+  if (kioskMode) headers['x-kiosk-mode'] = '1';
   // Tells the server this device currently sees test players (admin mode).
   // Needed for replace-style writes like the seating layout: a non-admin
   // client's state has test users filtered out, so its saves must not be
@@ -42,6 +48,7 @@ export async function apiFetch(path, options = {}) {
     const message = (body && body.error) || `Fehler ${res.status}`;
     const err = new Error(message);
     err.status = res.status;
+    err.code = body?.code;
     throw err;
   }
   // Test players are visible in admin mode only — strip them out of every
@@ -81,12 +88,18 @@ export async function fetchBlob(path) {
   const res = await fetch(path, { headers });
   if (!res.ok) {
     let message = `Fehler ${res.status}`;
+    let code;
     try {
-      message = (await res.json()).error || message;
+      const body = await res.json();
+      message = body.error || message;
+      code = body.code;
     } catch {
       // body wasn't JSON either; keep the generic message
     }
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = res.status;
+    error.code = code;
+    throw error;
   }
   const disposition = res.headers.get('content-disposition') || '';
   const match = disposition.match(/filename="([^"]+)"/);
@@ -95,6 +108,23 @@ export async function fetchBlob(path) {
 
 export const api = {
   meta: () => apiFetch('/api/meta'),
+  me: () => apiFetch('/api/me'),
+
+  // Real per-user login (see docs/KONZEPT-USER-MANAGEMENT.md). Only used by
+  // authGate.js, and only once the server reports authMode: 'required'.
+  auth: {
+    register: (data) => apiFetch('/api/auth/register', { method: 'POST', body: JSON.stringify(data) }),
+    claim: (data) => apiFetch('/api/auth/claim', { method: 'POST', body: JSON.stringify(data) }),
+    reset: (data) => apiFetch('/api/auth/reset', { method: 'POST', body: JSON.stringify(data) }),
+    login: (data) => apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify(data) }),
+    logout: () => apiFetch('/api/auth/logout', { method: 'POST' }),
+    changePassword: (data) => apiFetch('/api/auth/password', { method: 'POST', body: JSON.stringify(data) }),
+    reauth: (password) => apiFetch('/api/auth/reauth', { method: 'POST', body: JSON.stringify({ password }) }),
+    bootstrapAccounts: (code) => apiFetch(`/api/auth/bootstrap-accounts?code=${encodeURIComponent(code)}`),
+    invites: () => apiFetch('/api/auth/invites'),
+    createInvite: (data) => apiFetch('/api/auth/invites', { method: 'POST', body: JSON.stringify(data) }),
+    revokeInvite: (code) => apiFetch(`/api/auth/invites/${encodeURIComponent(code)}`, { method: 'DELETE' }),
+  },
 
   players: {
     list: () => apiFetch('/api/players'),
@@ -102,6 +132,9 @@ export const api = {
     create: (data) => apiFetch('/api/players', { method: 'POST', body: JSON.stringify(data) }),
     update: (id, data) => apiFetch(`/api/players/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     remove: (id) => apiFetch(`/api/players/${id}`, { method: 'DELETE' }),
+    deactivate: (id) => apiFetch(`/api/players/${id}/deactivate`, { method: 'POST' }),
+    reactivate: (id) => apiFetch(`/api/players/${id}/reactivate`, { method: 'POST' }),
+    rotateApiKey: (id) => apiFetch(`/api/players/${id}/api-key/rotate`, { method: 'POST' }),
     stats: (id, params = {}) => {
       const qs = new URLSearchParams(params).toString();
       return apiFetch(`/api/players/${id}/stats${qs ? `?${qs}` : ''}`);
@@ -328,6 +361,8 @@ export const api = {
   },
 
   admin: {
+    players: () => apiFetch('/api/admin/players'),
+    audit: (limit = 100) => apiFetch(`/api/admin/audit?limit=${limit}`),
     agentDiagnostics: () => apiFetch('/api/admin/agent-diagnostics'),
     createTestUsers: (count) => apiFetch('/api/admin/test-users', { method: 'POST', body: JSON.stringify({ count }) }),
     cleanupTestUsers: () => apiFetch('/api/admin/test-users', { method: 'DELETE' }),

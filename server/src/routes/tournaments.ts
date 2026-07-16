@@ -5,6 +5,9 @@
 // row, so playing in a tournament counts toward the regular leaderboard too.
 
 import { Router } from 'express';
+import { requireAdmin } from '../auth';
+import { requireRecentReauthentication } from '../sessions';
+import { writeAdminAudit } from '../adminAudit';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
@@ -795,9 +798,10 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
 // matches (cascade); the `matches` rows already created for the leaderboard
 // are left untouched (match_id just goes stale, which is fine — they're
 // independent leaderboard history at that point).
-tournamentsRouter.delete('/:id', (req, res) => {
+tournamentsRouter.delete('/:id', requireAdmin, requireRecentReauthentication, (req, res) => {
   const result = db.prepare('DELETE FROM tournaments WHERE id = ?').run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
+  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'tournament_deleted', targetType: 'tournament', targetId: req.params.id });
   resolvePushTopic(`tournament:${req.params.id}`, true);
   broadcast(Events.tournamentsChanged, { type: 'deleted', tournamentId: req.params.id });
   res.status(204).end();

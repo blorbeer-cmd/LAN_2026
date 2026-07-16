@@ -8,6 +8,9 @@ import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { AVATAR_PALETTE } from '../avatarPalette.js';
+import { withStepUp } from '../reauth.js';
+import { authRequired } from '../authGate.js';
+import { getMyId } from '../whoami.js';
 
 function randomColor() {
   return AVATAR_PALETTE[Math.floor(Math.random() * AVATAR_PALETTE.length)];
@@ -100,6 +103,7 @@ function openAddPlayerModal(ctx) {
 function openPlayerDetail(playerId, ctx) {
   const player = playerById(playerId);
   if (!player) return;
+  const canEditRatings = !authRequired || playerId === getMyId();
 
   const ratingRows = (kind) => state.games
     .map((g) => {
@@ -108,7 +112,7 @@ function openPlayerDetail(playerId, ctx) {
         <div class="skill-row" data-game="${g.id}" data-rating-kind="${kind}">
           <span class="row" style="gap:var(--space-2);">${gameBadgeHtml(g, 24)} ${escapeHtml(g.name)}</span>
           <span class="skill-value">${rating}</span>
-          <input type="range" class="skill-row-slider ${kind === 'bock' ? 'preference-row-slider' : ''}" min="1" max="10" step="1" value="${rating}" />
+          ${canEditRatings ? `<input type="range" class="skill-row-slider ${kind === 'bock' ? 'preference-row-slider' : ''}" min="1" max="10" step="1" value="${rating}" />` : ''}
         </div>`;
     })
     .join('');
@@ -178,6 +182,7 @@ function openPlayerDetail(playerId, ctx) {
           const gameId = row.dataset.game;
           const kind = row.dataset.ratingKind;
           const slider = row.querySelector('input[type="range"]');
+          if (!slider) return;
           const valueEl = row.querySelector('.skill-value');
           const updateSliderTone = () => {
             slider.style.setProperty('--slider-pct', `${((Number(slider.value) - 1) / 9) * 100}%`);
@@ -203,7 +208,8 @@ function openPlayerDetail(playerId, ctx) {
         el.querySelector('#detail-delete').addEventListener('click', async () => {
           if (!(await confirmDialog(`${player.name} wirklich löschen?`))) return;
           try {
-            await api.players.remove(playerId);
+            const removed = await withStepUp(() => api.players.remove(playerId));
+            if (removed === undefined) return;
             close();
             await ctx.refresh();
             showToast('Spieler gelöscht.');

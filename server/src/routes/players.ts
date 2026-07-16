@@ -4,7 +4,7 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
-import { broadcast, Events } from '../realtime';
+import { broadcast, disconnectPlayerSockets, Events } from '../realtime';
 import { isNonEmptyString, isHexColor, isValidAvatar } from '../validation';
 import { getTrackingEventId } from '../events';
 import { formatDurationMs, computePlaytime, type PlaySession } from '../playtime';
@@ -14,6 +14,11 @@ import {
   type SessionDuration,
 } from '../sessionStats';
 import { computeAwards } from '../awards';
+import { hasRecentReauthentication, requireConfiguredUser, withParamPlayerIdentity } from '../sessions';
+import { requireAdmin } from '../auth';
+import { clearPlayerLiveStatus } from '../liveStatus';
+import { writeAdminAudit } from '../adminAudit';
+import { voidOutstandingInvites } from '../invites';
 
 export const playersRouter = Router();
 
@@ -28,8 +33,12 @@ interface PlayerRow {
   api_key: string;
   tracking_paused: number;
   is_admin: number;
+  is_test: number;
+  deactivated_at: number | null;
   created_at: number;
   agent_last_seen?: number | null;
+  password_hash?: string | null;
+  last_login_at?: number | null;
 }
 
 // realName is optional and clearable (unlike the required gamer `name`): a
@@ -56,20 +65,27 @@ function toPublicPlayer(row: PlayerRow) {
   // The API key is left out of bulk listings so a glance at the roster can't
   // be used to spoof someone else's live status; it's only returned when a
   // client explicitly asks for that one player (their own profile).
-  const { api_key: _apiKey, ...rest } = row;
+  const { api_key: _apiKey, password_hash: _passwordHash, last_login_at: _lastLoginAt, ...rest } = row;
+  return rest;
+}
+
+function toPrivatePlayer(row: PlayerRow) {
+  const { password_hash: _passwordHash, last_login_at: _lastLoginAt, ...rest } = row;
   return rest;
 }
 
 // GET /api/players - roster without API keys.
 playersRouter.get('/', (_req, res) => {
   const rows = db
-    .prepare('SELECT * FROM players ORDER BY name COLLATE NOCASE')
+    .prepare('SELECT * FROM players WHERE deactivated_at IS NULL ORDER BY name COLLATE NOCASE')
     .all() as PlayerRow[];
   res.json(rows.map(toPublicPlayer));
 });
 
-// GET /api/players/:id - single player including their API key.
-playersRouter.get('/:id', (req, res) => {
+// GET /api/players/:id - profile details. Under required auth the API key is
+// only visible to its owner or an admin; legacy mode keeps the old response
+// until deployments complete the migration.
+playersRouter.get('/:id', requireConfiguredUser, (req, res) => {
   const row = db.prepare(
     `SELECT p.*, ls.last_seen AS agent_last_seen
      FROM players p LEFT JOIN live_status ls ON ls.player_id = p.id
@@ -78,12 +94,19 @@ playersRouter.get('/:id', (req, res) => {
     | PlayerRow
     | undefined;
   if (!row) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  res.json(row);
+  if (row.deactivated_at !== null && !req.player?.is_admin) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
+  const maySeeApiKey = !req.player || req.player.id === row.id || Boolean(req.player.is_admin);
+  res.json(maySeeApiKey ? toPrivatePlayer(row) : toPublicPlayer(row));
 });
 
 // POST /api/players - create a player. Returns the API key once here (and via
 // the single-player GET) so the frontend can show/copy it.
-playersRouter.post('/', (req, res) => {
+playersRouter.post('/', requireConfiguredUser, (req, res) => {
+  if (req.player && !req.player.is_admin) {
+    return res.status(403).json({ error: 'Nur Admins können weitere Spielerprofile anlegen.' });
+  }
   const { name, realName, color, avatar } = req.body ?? {};
 
   if (!isNonEmptyString(name)) {
@@ -115,6 +138,8 @@ playersRouter.post('/', (req, res) => {
     // New players are regular participants until an existing admin grants
     // the moderation flag. Arcade AI matches rely on this flag too.
     is_admin: 0,
+    is_test: 0,
+    deactivated_at: null,
     created_at: Date.now(),
   };
 
@@ -133,11 +158,15 @@ playersRouter.post('/', (req, res) => {
 // true, the agent's reports for this player are received but silently
 // dropped (see routes/agent.ts) — no live status, no playtime, regardless
 // of whether an event is tracking.
-playersRouter.patch('/:id', (req, res) => {
+playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   const existing = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id) as
     | PlayerRow
     | undefined;
   if (!existing) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+
+  if (req.player && req.player.id !== existing.id && !req.player.is_admin) {
+    return res.status(403).json({ error: 'Du kannst nur dein eigenes Profil bearbeiten.' });
+  }
 
   const { name, realName, color, avatar, trackingPaused, isAdmin } = req.body ?? {};
   if (name !== undefined && !isNonEmptyString(name)) {
@@ -159,6 +188,23 @@ playersRouter.patch('/:id', (req, res) => {
   if (isAdmin !== undefined && typeof isAdmin !== 'boolean') {
     return res.status(400).json({ error: 'isAdmin muss ein Boolean sein.' });
   }
+  if (req.player && isAdmin !== undefined && !req.player.is_admin) {
+    return res.status(403).json({ error: 'Nur Admins können Rollen ändern.' });
+  }
+  if (isAdmin === true && existing.is_test) {
+    return res.status(409).json({ error: 'Test-Spieler können keine Admin-Rechte erhalten.' });
+  }
+  if (
+    req.player &&
+    isAdmin !== undefined &&
+    Number(isAdmin) !== existing.is_admin &&
+    !hasRecentReauthentication(req.sessionId)
+  ) {
+    return res.status(403).json({
+      error: 'Bitte bestätige dein Passwort, bevor du Rollen änderst.',
+      code: 'reauth_required',
+    });
+  }
   // Granting/revoking admin remains an admin-panel action in the UI; the
   // endpoint keeps the existing trusted-friend-group API shape.
 
@@ -171,35 +217,149 @@ playersRouter.patch('/:id', (req, res) => {
   const nextTrackingPaused = trackingPaused !== undefined ? (trackingPaused ? 1 : 0) : existing.tracking_paused;
   const nextIsAdmin = isAdmin !== undefined ? (isAdmin ? 1 : 0) : existing.is_admin;
 
-  db.prepare('UPDATE players SET name = ?, real_name = ?, color = ?, avatar = ?, tracking_paused = ?, is_admin = ? WHERE id = ?').run(
-    nextName,
-    nextRealName,
-    nextColor,
-    nextAvatar,
-    nextTrackingPaused,
-    nextIsAdmin,
-    existing.id
-  );
+  const roleChanged = nextIsAdmin !== existing.is_admin;
+  const update = db.transaction(() => {
+    if (roleChanged && existing.is_admin && nextIsAdmin === 0) {
+      const adminCount = (
+        db
+          .prepare(
+            'SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL AND (? = 0 OR password_hash IS NOT NULL)'
+          )
+          .get(req.player ? 1 : 0) as {
+          count: number;
+        }
+      ).count;
+      if (adminCount <= 1) return false;
+    }
+    db.prepare('UPDATE players SET name = ?, real_name = ?, color = ?, avatar = ?, tracking_paused = ?, is_admin = ? WHERE id = ?').run(
+      nextName,
+      nextRealName,
+      nextColor,
+      nextAvatar,
+      nextTrackingPaused,
+      nextIsAdmin,
+      existing.id
+    );
+    if (roleChanged) {
+      writeAdminAudit({
+        actorPlayerId: req.player?.id,
+        action: nextIsAdmin ? 'admin_granted' : 'admin_revoked',
+        targetType: 'player',
+        targetId: existing.id,
+      });
+    }
+    return true;
+  })();
+  if (!update) return res.status(409).json({ error: 'Der letzte Admin kann seine Rolle nicht verlieren.' });
 
   broadcast(Events.playersChanged, null);
-  res.json({
-    ...existing,
-    name: nextName,
-    real_name: nextRealName,
-    color: nextColor,
-    avatar: nextAvatar,
-    tracking_paused: nextTrackingPaused,
-    is_admin: nextIsAdmin,
-  });
+  if (roleChanged) disconnectPlayerSockets(existing.id);
+  res.json(
+    toPrivatePlayer({
+      ...existing,
+      name: nextName,
+      real_name: nextRealName,
+      color: nextColor,
+      avatar: nextAvatar,
+      tracking_paused: nextTrackingPaused,
+      is_admin: nextIsAdmin,
+    })
+  );
 });
 
-// DELETE /api/players/:id - removes the player and cascades to their skills/
-// live status/votes (enforced by SQLite foreign keys).
-playersRouter.delete('/:id', (req, res) => {
+playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
+  if (req.player && !hasRecentReauthentication(req.sessionId)) {
+    return res.status(403).json({
+      error: 'Bitte bestätige dein Passwort, bevor du ein Konto deaktivierst.',
+      code: 'reauth_required',
+    });
+  }
+  const target = db.prepare('SELECT id, is_admin, is_test, deactivated_at FROM players WHERE id = ?').get(req.params.id) as
+    | Pick<PlayerRow, 'id' | 'is_admin' | 'is_test' | 'deactivated_at'>
+    | undefined;
+  if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  if (target.is_test) return res.status(409).json({ error: 'Test-Spieler werden vollständig gelöscht.' });
+  if (target.deactivated_at !== null) return res.status(409).json({ error: 'Dieses Konto ist bereits deaktiviert.' });
+
+  const now = Date.now();
+  const deactivated = db.transaction(() => {
+    if (target.is_admin) {
+      const adminCount = (
+        db
+          .prepare(
+            'SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL AND (? = 0 OR password_hash IS NOT NULL)'
+          )
+          .get(req.player ? 1 : 0) as {
+          count: number;
+        }
+      ).count;
+      if (adminCount <= 1) return false;
+    }
+    db.prepare('UPDATE players SET deactivated_at = ?, is_admin = 0, tracking_paused = 1 WHERE id = ?').run(now, target.id);
+    db.prepare('DELETE FROM sessions WHERE player_id = ?').run(target.id);
+    db.prepare('DELETE FROM push_subscriptions WHERE player_id = ?').run(target.id);
+    db.prepare('DELETE FROM agent_diagnostics WHERE player_id = ?').run(target.id);
+    clearPlayerLiveStatus(target.id, now);
+    voidOutstandingInvites(target.id, 'claim');
+    voidOutstandingInvites(target.id, 'reset');
+    writeAdminAudit({ actorPlayerId: req.player?.id, action: 'player_deactivated', targetType: 'player', targetId: target.id });
+    return true;
+  })();
+  if (!deactivated) return res.status(409).json({ error: 'Der letzte Admin kann nicht deaktiviert werden.' });
+  disconnectPlayerSockets(target.id);
+  broadcast(Events.playersChanged, null);
+  broadcast(Events.liveStatusChanged, null);
+  res.status(204).end();
+});
+
+playersRouter.post('/:id/reactivate', requireAdmin, (req, res) => {
+  if (req.player && !hasRecentReauthentication(req.sessionId)) {
+    return res.status(403).json({
+      error: 'Bitte bestätige dein Passwort, bevor du ein Konto reaktivierst.',
+      code: 'reauth_required',
+    });
+  }
+  const result = db.prepare('UPDATE players SET deactivated_at = NULL WHERE id = ? AND deactivated_at IS NOT NULL').run(req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Deaktiviertes Konto nicht gefunden.' });
+  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'player_reactivated', targetType: 'player', targetId: req.params.id });
+  broadcast(Events.playersChanged, null);
+  res.status(204).end();
+});
+
+playersRouter.post('/:id/api-key/rotate', requireConfiguredUser, (req, res) => {
+  const target = db.prepare('SELECT id, deactivated_at FROM players WHERE id = ?').get(req.params.id) as
+    | { id: string; deactivated_at: number | null }
+    | undefined;
+  if (!target || target.deactivated_at !== null) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  if (req.player && req.player.id !== target.id && !req.player.is_admin) {
+    return res.status(403).json({ error: 'Du kannst nur deinen eigenen Agent-Key erneuern.' });
+  }
+  if (req.player?.is_admin && req.player.id !== target.id && !hasRecentReauthentication(req.sessionId)) {
+    return res.status(403).json({ error: 'Bitte bestätige dein Passwort.', code: 'reauth_required' });
+  }
+  const apiKey = nanoid(24);
+  db.prepare('UPDATE players SET api_key = ? WHERE id = ?').run(apiKey, target.id);
+  clearPlayerLiveStatus(target.id);
+  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'api_key_rotated', targetType: 'player', targetId: target.id });
+  broadcast(Events.liveStatusChanged, null);
+  res.json({ apiKey });
+});
+
+// Hard-delete is intentionally limited to disposable test identities. Real
+// participants are deactivated so historical matches and statistics remain.
+playersRouter.delete('/:id', requireAdmin, (req, res) => {
+  if (req.player && !hasRecentReauthentication(req.sessionId)) {
+    return res.status(403).json({ error: 'Bitte bestätige dein Passwort.', code: 'reauth_required' });
+  }
+  const target = db.prepare('SELECT is_test FROM players WHERE id = ?').get(req.params.id) as { is_test: number } | undefined;
+  if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  if (!target.is_test) return res.status(409).json({ error: 'Echte Spieler werden deaktiviert statt gelöscht.' });
   const result = db.prepare('DELETE FROM players WHERE id = ?').run(req.params.id);
   if (result.changes === 0) {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   }
+  disconnectPlayerSockets(req.params.id);
+  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'test_player_deleted', targetType: 'player', targetId: req.params.id });
   broadcast(Events.playersChanged, null);
   res.status(204).end();
 });
@@ -210,7 +370,7 @@ playersRouter.delete('/:id', (req, res) => {
 // adjacency and ones the player checked themselves — see seat_neighbors'
 // source column in db.ts. Self-service, so this is always scoped to a single
 // player, never a roster-wide listing.
-playersRouter.get('/:id/neighbors', (req, res) => {
+playersRouter.get('/:id/neighbors', ...withParamPlayerIdentity('id'), (req, res) => {
   const player = db.prepare('SELECT id FROM players WHERE id = ?').get(req.params.id);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
@@ -231,7 +391,7 @@ playersRouter.get('/:id/neighbors', (req, res) => {
 // plan — once a player has touched their own list, it's an explicit
 // confirmation and the next seating-plan save won't override it. Body:
 // { eventId?, neighborIds: string[] }
-playersRouter.put('/:id/neighbors', (req, res) => {
+playersRouter.put('/:id/neighbors', ...withParamPlayerIdentity('id'), (req, res) => {
   const player = db.prepare('SELECT id FROM players WHERE id = ?').get(req.params.id) as
     | { id: string }
     | undefined;
@@ -295,7 +455,7 @@ interface SessionRow {
 // player holds. Optionally narrowed to one ?eventId=. Read-only and not
 // ownership-gated for the same reason the rest of this API isn't (see
 // PATCH above) — it's just as visible to everyone as the roster already is.
-playersRouter.get('/:id/stats', (req, res) => {
+playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => {
   const player = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id) as
     | PlayerRow
     | undefined;

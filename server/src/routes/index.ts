@@ -31,12 +31,55 @@ import { arcadeRouter } from './arcade';
 import { arrivalsRouter } from './arrivals';
 import { adminRouter } from './admin';
 import { backupRouter } from './backup';
+import { authRouter } from './auth';
+import { requireConfiguredUser, requireUser } from '../sessions';
+import { config } from '../config';
+import { extractToken } from '../auth';
 
 export const apiRouter = Router();
 
 // Simple health check, handy for uptime monitoring on the cloud host.
 apiRouter.get('/health', (_req, res) => {
   res.json({ ok: true, time: Date.now() });
+});
+
+apiRouter.use('/auth', authRouter);
+
+// Once required auth is enabled, every browser-facing feature API is behind
+// the verified session. Health and the anonymous auth flows above stay public;
+// legacy mode keeps the existing shared-token behavior unchanged.
+const KIOSK_GET_PATHS = [
+  /^\/live\/?$/,
+  /^\/votes\/?$/,
+  /^\/leaderboard\/?$/,
+  /^\/tournaments(?:\/[^/]+)?\/?$/,
+  /^\/food-orders\/?$/,
+];
+
+apiRouter.use((req, res, next) => {
+  const kioskRead =
+    config.authMode === 'required' &&
+    req.method === 'GET' &&
+    req.header('x-kiosk-mode') === '1' &&
+    Boolean(config.kioskToken) &&
+    extractToken(req) === config.kioskToken &&
+    KIOSK_GET_PATHS.some((pattern) => pattern.test(req.path));
+  if (kioskRead) return next();
+  requireConfiguredUser(req, res, next);
+});
+
+// GET /api/me - the logged-in account, per the real per-user login system
+// (see docs/KONZEPT-USER-MANAGEMENT.md).
+apiRouter.get('/me', requireUser, (req, res) => {
+  const p = req.player!;
+  res.json({
+    id: p.id,
+    name: p.name,
+    color: p.color,
+    avatar: p.avatar,
+    isAdmin: Boolean(p.is_admin),
+    isTest: Boolean(p.is_test),
+  });
 });
 
 apiRouter.use('/players', playersRouter);

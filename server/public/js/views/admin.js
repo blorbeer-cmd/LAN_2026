@@ -5,16 +5,140 @@
 // for testing and moderation.
 
 import { api } from '../api.js';
-import { confirmDialog } from '../modal.js';
+import { confirmDialog, openModal } from '../modal.js';
 import { state } from '../state.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { isAdmin, setAdmin } from '../admin.js';
+import { withStepUp } from '../reauth.js';
 import { icon } from '../icons.js';
+import { authRequired } from '../authGate.js';
+import { getMyId } from '../whoami.js';
 
 let agentDiagnostics = null;
 let diagnosticsLoading = false;
 let seedBusy = false;
+let adminPlayers = null;
+let adminPlayersLoading = false;
+let activeInvites = null;
+let activeInvitesLoading = false;
+
+function inviteUrl(invite) {
+  const param = invite.purpose === 'register' ? 'invite' : invite.purpose;
+  return `${location.origin}/?${param}=${encodeURIComponent(invite.code)}`;
+}
+
+function invitePurposeLabel(purpose) {
+  if (purpose === 'claim') return 'Konto übernehmen';
+  if (purpose === 'reset') return 'Passwort zurücksetzen';
+  return 'Neue Person';
+}
+
+function openInviteModal(invite) {
+  const url = inviteUrl(invite);
+  const target = invite.playerName ? ` für ${invite.playerName}` : '';
+  const { el } = openModal(
+    `${invitePurposeLabel(invite.purpose)}${escapeHtml(target)}`,
+    `<div class="stack">
+      <label for="admin-invite-link">Einmal-Link</label>
+      <div class="row" style="gap:var(--space-2);">
+        <input type="text" id="admin-invite-link" readonly value="${escapeHtml(url)}" style="flex:1;font-family:monospace;font-size:var(--font-size-xs);" />
+        <button type="button" class="btn btn-sm" id="admin-invite-copy">Kopieren</button>
+      </div>
+      <button type="button" class="btn btn-sm" id="admin-invite-qr-toggle">${icon('scanQrCode')} QR-Code anzeigen</button>
+      <div id="admin-invite-qr" style="text-align:center;" hidden></div>
+      <p class="muted" style="font-size:var(--font-size-xs);">Gültig bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}. Der Link funktioniert nur einmal.</p>
+    </div>`
+  );
+  el.querySelector('#admin-invite-copy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast('Einmal-Link kopiert.');
+    } catch {
+      showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+    }
+  });
+  el.querySelector('#admin-invite-qr-toggle').addEventListener('click', async (event) => {
+    const qr = el.querySelector('#admin-invite-qr');
+    if (!qr.hidden) {
+      qr.hidden = true;
+      event.currentTarget.innerHTML = `${icon('scanQrCode')} QR-Code anzeigen`;
+      return;
+    }
+    qr.hidden = false;
+    event.currentTarget.innerHTML = `${icon('scanQrCode')} QR-Code ausblenden`;
+    if (qr.dataset.loaded) return;
+    try {
+      qr.innerHTML = await api.qrcode.svg(url);
+      qr.dataset.loaded = '1';
+    } catch (error) {
+      qr.textContent = 'QR-Code konnte nicht geladen werden.';
+      showToast(error.message, { error: true });
+    }
+  });
+}
+
+async function loadActiveInvites(ctx, force = false) {
+  if (!authRequired || activeInvitesLoading || (activeInvites && !force)) return;
+  activeInvitesLoading = true;
+  try {
+    activeInvites = await api.auth.invites();
+  } catch (error) {
+    showToast(error.message, { error: true });
+    activeInvites = [];
+  } finally {
+    activeInvitesLoading = false;
+    ctx.rerender();
+  }
+}
+
+async function loadAdminPlayers(ctx, force = false) {
+  if (adminPlayersLoading || (adminPlayers && !force)) return;
+  adminPlayersLoading = true;
+  try {
+    adminPlayers = await api.admin.players();
+  } catch (error) {
+    showToast(error.message, { error: true });
+    adminPlayers = [];
+  } finally {
+    adminPlayersLoading = false;
+    ctx.rerender();
+  }
+}
+
+async function refreshAdminData(ctx) {
+  await ctx.refresh();
+  await Promise.all([loadAdminPlayers(ctx, true), ...(authRequired ? [loadActiveInvites(ctx, true)] : [])]);
+}
+
+async function createLoginInvite(purpose, player, ctx) {
+  try {
+    const invite = await withStepUp(() => api.auth.createInvite({ purpose, ...(player ? { playerId: player.id } : {}) }));
+    if (invite === undefined) return;
+    const enriched = { ...invite, playerName: player?.name || null };
+    showToast('Einmal-Link erstellt.');
+    openInviteModal(enriched);
+    await loadActiveInvites(ctx, true);
+  } catch (error) {
+    showToast(error.message, { error: true });
+  }
+}
+
+async function revokeLoginInvite(invite, ctx) {
+  if (!(await confirmDialog('Diesen Einmal-Link wirklich widerrufen?', {
+    title: 'Link widerrufen',
+    confirmText: 'Widerrufen',
+    danger: true,
+  }))) return;
+  try {
+    const result = await withStepUp(() => api.auth.revokeInvite(invite.code));
+    if (result === undefined) return;
+    showToast('Einmal-Link widerrufen.');
+    await loadActiveInvites(ctx, true);
+  } catch (error) {
+    showToast(error.message, { error: true });
+  }
+}
 
 async function loadAgentDiagnostics(ctx, force = false) {
   if (diagnosticsLoading || (agentDiagnostics && !force)) return;
@@ -36,7 +160,7 @@ async function createTestUsers(count, ctx) {
   try {
     const res = await api.admin.createTestUsers(count);
     showToast(`${res.created.length} Test-Spieler angelegt – mit Sitzplatz, Skills, Bock und Spielzeit.`);
-    await ctx.refresh();
+    await refreshAdminData(ctx);
   } catch (err) {
     showToast(err.message, { error: true });
   } finally {
@@ -47,9 +171,10 @@ async function createTestUsers(count, ctx) {
 async function cleanupTestUsers(ctx) {
   if (!(await confirmDialog('Alle Test-Spieler und ihre Daten (Sitzplätze, Skills, Spielzeit) löschen?'))) return;
   try {
-    const res = await api.admin.cleanupTestUsers();
+    const res = await withStepUp(() => api.admin.cleanupTestUsers());
+    if (res === undefined) return;
     showToast(res.deleted > 0 ? `${res.deleted} Test-Spieler entfernt.` : 'Keine Test-Spieler vorhanden.');
-    await ctx.refresh();
+    await refreshAdminData(ctx);
   } catch (err) {
     showToast(err.message, { error: true });
   }
@@ -57,9 +182,10 @@ async function cleanupTestUsers(ctx) {
 
 async function toggleAdmin(player, ctx) {
   try {
-    await api.players.update(player.id, { isAdmin: !player.is_admin });
+    const updated = await withStepUp(() => api.players.update(player.id, { isAdmin: !player.is_admin }));
+    if (updated === undefined) return;
     showToast(player.is_admin ? `${player.name} ist kein Admin mehr.` : `${player.name} ist jetzt Admin.`);
-    await ctx.refresh();
+    await refreshAdminData(ctx);
   } catch (err) {
     showToast(err.message, { error: true });
   }
@@ -68,11 +194,39 @@ async function toggleAdmin(player, ctx) {
 async function deletePlayer(player, ctx) {
   if (!(await confirmDialog(`Spieler "${player.name}" wirklich löschen?`))) return;
   try {
-    await api.players.remove(player.id);
+    const removed = await withStepUp(() => api.players.remove(player.id));
+    if (removed === undefined) return;
     showToast('Spieler gelöscht.');
-    await ctx.refresh();
+    await refreshAdminData(ctx);
   } catch (err) {
     showToast(err.message, { error: true });
+  }
+}
+
+async function deactivatePlayer(player, ctx) {
+  if (!(await confirmDialog(`Konto „${player.name}“ deaktivieren? Login, Agent, Push und offene Sitzungen werden sofort beendet; Historie und Statistiken bleiben erhalten.`, {
+    title: 'Konto deaktivieren',
+    confirmText: 'Deaktivieren',
+    danger: true,
+  }))) return;
+  try {
+    const result = await withStepUp(() => api.players.deactivate(player.id));
+    if (result === undefined) return;
+    showToast('Konto deaktiviert.');
+    await refreshAdminData(ctx);
+  } catch (error) {
+    showToast(error.message, { error: true });
+  }
+}
+
+async function reactivatePlayer(player, ctx) {
+  try {
+    const result = await withStepUp(() => api.players.reactivate(player.id));
+    if (result === undefined) return;
+    showToast('Konto reaktiviert. Die Admin-Rolle bleibt aus Sicherheitsgründen entzogen.');
+    await refreshAdminData(ctx);
+  } catch (error) {
+    showToast(error.message, { error: true });
   }
 }
 
@@ -95,7 +249,9 @@ function renderActivate(container) {
 }
 
 function renderPanel(container, ctx) {
-  const players = state.players || [];
+  if (adminPlayers === null && !adminPlayersLoading) loadAdminPlayers(ctx);
+  if (authRequired && activeInvites === null && !activeInvitesLoading) loadActiveInvites(ctx);
+  const players = adminPlayers || [];
   const testCount = players.filter((p) => p.is_test).length;
   if (agentDiagnostics === null && !diagnosticsLoading) loadAgentDiagnostics(ctx);
   const rows = players
@@ -107,10 +263,41 @@ function renderPanel(container, ctx) {
           <span class="player-name">${escapeHtml(p.name)}</span>
           ${p.is_admin ? '<span class="badge badge-playing">Admin</span>' : ''}
           ${p.is_test ? '<span class="badge badge-paused">Test</span>' : ''}
+          ${p.deactivated_at ? '<span class="badge badge-offline">Deaktiviert</span>' : ''}
         </span>
         <span class="row" style="gap:var(--space-2);">
-          <button type="button" class="btn btn-sm" data-toggle-admin="${p.id}">${p.is_admin ? 'Admin entziehen' : 'Admin machen'}</button>
-          <button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">Löschen</button>
+          ${p.deactivated_at ? `<button type="button" class="btn btn-sm" data-reactivate-player="${p.id}">Reaktivieren</button>` : `<button type="button" class="btn btn-sm" data-toggle-admin="${p.id}" ${p.is_test ? 'disabled' : ''}>${p.is_admin ? 'Admin entziehen' : 'Admin machen'}</button>`}
+          ${p.deactivated_at ? '' : p.is_test ? `<button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">Löschen</button>` : `<button type="button" class="btn btn-sm btn-danger" data-deactivate-player="${p.id}">Deaktivieren</button>`}
+        </span>
+      </div>`
+    )
+    .join('');
+
+  const accountRows = players
+    .filter((player) => !player.is_test && !player.deactivated_at)
+    .map(
+      (player) => `<div class="row-between" style="gap:var(--space-2);">
+        <span>
+          <strong>${escapeHtml(player.name)}</strong>
+          <span class="badge ${player.is_claimed ? 'badge-playing' : 'badge-paused'}">${player.is_claimed ? 'Aktiv' : 'Noch nicht übernommen'}</span>
+        </span>
+        <button type="button" class="btn btn-sm" data-create-login-link="${player.is_claimed ? 'reset' : 'claim'}" data-player-id="${player.id}">
+          ${player.is_claimed ? 'Reset-Link' : 'Claim-Link'}
+        </button>
+      </div>`
+    )
+    .join('');
+
+  const inviteRows = (activeInvites || [])
+    .map(
+      (invite) => `<div class="row-between" style="gap:var(--space-2);">
+        <span>
+          <strong>${escapeHtml(invite.playerName || invitePurposeLabel(invite.purpose))}</strong>
+          <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(invitePurposeLabel(invite.purpose))} · bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}</span>
+        </span>
+        <span class="row" style="gap:var(--space-2);">
+          <button type="button" class="btn btn-sm" data-show-login-link="${invite.code}">Anzeigen</button>
+          <button type="button" class="btn btn-sm btn-danger" data-revoke-login-link="${invite.code}">Widerrufen</button>
         </span>
       </div>`
     )
@@ -143,8 +330,17 @@ function renderPanel(container, ctx) {
     <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
     <div class="row-between">
       <h1 class="view-title">${icon('shield')} Admin</h1>
-      <button type="button" class="btn btn-sm" id="admin-leave">Modus verlassen</button>
+      ${authRequired ? '' : '<button type="button" class="btn btn-sm" id="admin-leave">Modus verlassen</button>'}
     </div>
+
+    ${authRequired ? `<div class="section-title">Onboarding &amp; Kontozugang</div>
+    <div class="card stack">
+      <p class="muted">Neue Personen registrieren sich über einen allgemeinen Einmal-Link. Bestehende Profile erhalten einen persönlichen Claim-Link; für vergessene Passwörter gibt es einen Reset-Link.</p>
+      <button type="button" class="btn btn-primary" id="admin-register-link">Link für neue Person erstellen</button>
+      <div class="stack">${accountRows || '<span class="muted">Keine aktiven echten Konten vorhanden.</span>'}</div>
+      <div class="section-title">Aktive Einmal-Links</div>
+      <div class="stack">${activeInvitesLoading && activeInvites === null ? '<span class="muted">Links werden geladen…</span>' : inviteRows || '<span class="muted">Keine aktiven Links.</span>'}</div>
+    </div>` : ''}
 
     <div class="section-title">Test-Spieler</div>
     <div class="card stack">
@@ -173,9 +369,29 @@ function renderPanel(container, ctx) {
     </div>
   `;
 
-  container.querySelector('#admin-leave').addEventListener('click', () => {
-    setAdmin(false); // app.js reacts: banner disappears, data refetched
+  container.querySelector('#admin-leave')?.addEventListener('click', () => {
+    setAdmin(false);
     showToast('Admin-Modus verlassen.');
+  });
+
+  container.querySelector('#admin-register-link')?.addEventListener('click', () => createLoginInvite('register', null, ctx));
+  container.querySelectorAll('[data-create-login-link]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const player = players.find((entry) => entry.id === button.dataset.playerId);
+      if (player) createLoginInvite(button.dataset.createLoginLink, player, ctx);
+    });
+  });
+  container.querySelectorAll('[data-show-login-link]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const invite = (activeInvites || []).find((entry) => entry.code === button.dataset.showLoginLink);
+      if (invite) openInviteModal(invite);
+    });
+  });
+  container.querySelectorAll('[data-revoke-login-link]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const invite = (activeInvites || []).find((entry) => entry.code === button.dataset.revokeLoginLink);
+      if (invite) revokeLoginInvite(invite, ctx);
+    });
   });
 
   container.querySelector('#admin-bulk').addEventListener('click', () => {
@@ -189,20 +405,49 @@ function renderPanel(container, ctx) {
 
   container.querySelectorAll('[data-toggle-admin]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const player = (state.players || []).find((p) => p.id === btn.dataset.toggleAdmin);
+      const player = players.find((p) => p.id === btn.dataset.toggleAdmin);
       if (player) toggleAdmin(player, ctx);
     });
   });
 
   container.querySelectorAll('[data-delete-player]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const player = (state.players || []).find((p) => p.id === btn.dataset.deletePlayer);
+      const player = players.find((p) => p.id === btn.dataset.deletePlayer);
       if (player) deletePlayer(player, ctx);
+    });
+  });
+  container.querySelectorAll('[data-deactivate-player]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const player = players.find((p) => p.id === btn.dataset.deactivatePlayer);
+      if (player) deactivatePlayer(player, ctx);
+    });
+  });
+  container.querySelectorAll('[data-reactivate-player]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const player = players.find((p) => p.id === btn.dataset.reactivatePlayer);
+      if (player) reactivatePlayer(player, ctx);
     });
   });
 }
 
 export function renderAdmin(container, ctx) {
+  if (authRequired) {
+    const current = (state.players || []).find((player) => player.id === getMyId());
+    if (!current?.is_admin) {
+      if (isAdmin()) setAdmin(false);
+      container.innerHTML = `
+        <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
+        <h1 class="view-title">${icon('shield')} Admin</h1>
+        <div class="card"><p class="muted">Dieses Konto hat keine Admin-Rechte.</p></div>`;
+      return;
+    }
+    if (!isAdmin()) {
+      setAdmin(true);
+      return;
+    }
+    renderPanel(container, ctx);
+    return;
+  }
   if (isAdmin()) renderPanel(container, ctx);
   else renderActivate(container);
 }

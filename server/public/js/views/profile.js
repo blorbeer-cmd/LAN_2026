@@ -1,8 +1,5 @@
-// "Mein Profil" view: each invited player picks/creates their own identity
-// (reusing the whoami.js mechanism already used by the Live view for pausing
-// and by Votes for casting a vote — this tool has no real per-person login,
-// just a shared access token, so "who am I" is a convenience the browser
-// remembers locally, not a security boundary), then can maintain their own
+// "Mein Profil": required auth binds identity to the session; legacy mode
+// keeps whoami.js as a compatibility selector. Players can maintain their own
 // gamer name (unique across everyone), a profile picture and seat neighbors.
 // Bock/Skill-Ratings moved to the Spiele view (see server/CLAUDE.md games
 // reorg) — that's where the group averages live too, so this page just
@@ -15,11 +12,13 @@ import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, avatarHtml } from '../format.js';
 import { getMyId, setMyId } from '../whoami.js';
+import { authRequired, logout } from '../authGate.js';
 import { showToast } from '../toast.js';
 import { getPushSubscriptionState, enablePush, disablePush } from '../push.js';
 import { invalidateMyStats } from './myStats.js';
 import { resizeImageFile } from '../imageUtils.js';
 import { icon } from '../icons.js';
+import { confirmDialog } from '../modal.js';
 
 // Whose monitor you've declared you can see ("Sichtbare Monitore") for the
 // active event (FR-18 extension) — pre-filled from same-edge seat placements
@@ -167,7 +166,11 @@ export function renderProfile(container, ctx) {
   container.innerHTML = `
     <div class="row-between">
       <h1 class="view-title">👤 Mein Profil</h1>
-      <button type="button" class="btn btn-sm" id="profile-not-me">Nicht du?</button>
+      ${
+        authRequired
+          ? `<button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>`
+          : `<button type="button" class="btn btn-sm" id="profile-not-me">Nicht du?</button>`
+      }
     </div>
 
     <div class="card stack">
@@ -190,6 +193,24 @@ export function renderProfile(container, ctx) {
         optional und wird klein im Sitzplan angezeigt – hilft Neulingen, dich am Tisch zu finden.
       </div>
     </div>
+
+    ${
+      authRequired
+        ? `<div class="section-title">🔐 Passwort ändern</div>
+           <form class="card stack" id="profile-password-form">
+             <div class="row">
+               <input type="password" id="profile-current-password" autocomplete="current-password" required style="flex:1;" placeholder="Aktuelles Passwort" />
+               <button type="button" class="icon-btn" data-password-toggle="profile-current-password" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
+             </div>
+             <div class="row">
+               <input type="password" id="profile-new-password" autocomplete="new-password" minlength="15" maxlength="1024" required style="flex:1;" placeholder="Neues Passwort" />
+               <button type="button" class="icon-btn" data-password-toggle="profile-new-password" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
+             </div>
+             <p class="muted" style="font-size:var(--font-size-xs);margin:0;">Mindestens 15 Zeichen. Drei Wörter reichen – eine lange Passphrase ist besser als Zeichensalat.</p>
+             <button type="submit" class="btn btn-primary btn-sm">Passwort speichern</button>
+           </form>`
+        : ''
+    }
 
     ${
       state.games.length === 0
@@ -245,6 +266,7 @@ export function renderProfile(container, ctx) {
           <input type="text" id="profile-apikey" readonly value="Laden…" style="flex:1;font-family:monospace;" />
           <button type="button" class="btn btn-sm" id="profile-copy-key">Kopieren</button>
         </div>
+        <button type="button" class="btn btn-sm btn-danger" id="profile-rotate-key">Agent-Key erneuern</button>
         <p class="muted" style="font-size:var(--font-size-xs);margin-top:var(--space-2);">
           Diesen Key in die Config des Agenten (<code>agent/</code>-Ordner im Repo, mit Node.js
           gestartet) eintragen – siehe <code>agent/README.md</code>.
@@ -281,12 +303,41 @@ export function renderProfile(container, ctx) {
     </div>
   `;
 
-  container.querySelector('#profile-not-me').addEventListener('click', () => {
-    setMyId('');
-    invalidateMyStats();
-    neighborsForPlayerId = null;
-    ctx.rerender();
-  });
+  // "Nicht du?" (a passwordless identity switch) stops making sense once a
+  // real, password-backed session is active — the account IS the identity
+  // then, so the same button instead really signs out (see authGate.js).
+  if (authRequired) {
+    container.querySelector('#profile-logout').addEventListener('click', () => logout());
+    container.querySelectorAll('[data-password-toggle]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const input = container.querySelector(`#${button.dataset.passwordToggle}`);
+        const visible = input.type === 'password';
+        input.type = visible ? 'text' : 'password';
+        button.innerHTML = icon(visible ? 'eyeOff' : 'eye');
+        button.setAttribute('aria-label', visible ? 'Passwort verbergen' : 'Passwort anzeigen');
+        button.title = button.getAttribute('aria-label');
+      });
+    });
+    container.querySelector('#profile-password-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const currentPassword = container.querySelector('#profile-current-password');
+      const newPassword = container.querySelector('#profile-new-password');
+      try {
+        await api.auth.changePassword({ currentPassword: currentPassword.value, newPassword: newPassword.value });
+        event.currentTarget.reset();
+        showToast('Passwort geändert. Andere Geräte wurden abgemeldet.');
+      } catch (error) {
+        showToast(error.message, { error: true });
+      }
+    });
+  } else {
+    container.querySelector('#profile-not-me').addEventListener('click', () => {
+      setMyId('');
+      invalidateMyStats();
+      neighborsForPlayerId = null;
+      ctx.rerender();
+    });
+  }
 
   // Fetched lazily (the roster list intentionally omits API keys) and only
   // ever for your own profile — see the players.js detail modal for the
@@ -319,6 +370,21 @@ export function renderProfile(container, ctx) {
       showToast('API-Key kopiert.');
     } catch {
       showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+    }
+  });
+
+  container.querySelector('#profile-rotate-key').addEventListener('click', async () => {
+    if (!(await confirmDialog('Agent-Key wirklich erneuern? Der aktuell installierte Agent muss danach neu eingerichtet werden.', {
+      title: 'Agent-Key erneuern',
+      confirmText: 'Erneuern',
+      danger: true,
+    }))) return;
+    try {
+      const result = await api.players.rotateApiKey(myId);
+      container.querySelector('#profile-apikey').value = result.apiKey;
+      showToast('Agent-Key erneuert. Der alte Key ist sofort ungültig.');
+    } catch (error) {
+      showToast(error.message, { error: true });
     }
   });
 

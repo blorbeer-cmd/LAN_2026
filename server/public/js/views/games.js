@@ -11,6 +11,7 @@ import { icon } from '../icons.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
+import { withStepUp } from '../reauth.js';
 
 // The invite link is the shared access token, not tied to any one event —
 // same link always leads into whichever event is currently active. Factored
@@ -201,7 +202,9 @@ async function downloadExport(eventId) {
 
 async function downloadBackup() {
   try {
-    const { blob, filename } = await api.backup.download();
+    const result = await withStepUp(() => api.backup.download());
+    if (result === undefined) return;
+    const { blob, filename } = result;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

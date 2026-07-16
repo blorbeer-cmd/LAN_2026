@@ -3,6 +3,7 @@
 // focused on its own rendering logic.
 
 import { api, getToken, setToken } from './api.js';
+import { ensureLogin } from './authGate.js';
 import { connectSocket } from './socket.js';
 import { state } from './state.js';
 import { loadAll } from './data.js';
@@ -170,20 +171,24 @@ async function tokenWorks(candidate) {
   }
 }
 
-// Gates the whole app behind the shared access token, if one is configured
-// server-side (NFR-16). Resolves once a working token is stored.
-//
+// Legacy deployments use the shared-token gate; required auth replaces it
+// with the personal login gate.
+async function ensureAccess() {
+  const meta = await api.meta();
+  if (meta.accessProtection) await ensureToken();
+  if (meta.authMode === 'required') await ensureLogin();
+}
+
 // Invite links carry the token in the URL (?token=...): opening one logs in
 // automatically without anyone having to type or paste anything, which is
 // the whole point of sending a link instead of a password.
-async function ensureAccess() {
-  const meta = await api.meta();
-  if (!meta.accessProtection) return;
-
+async function ensureToken() {
   const fromUrl = new URLSearchParams(location.search).get('token');
   if (fromUrl && (await tokenWorks(fromUrl))) {
     setToken(fromUrl);
-    history.replaceState(null, '', `${location.pathname}${location.hash}`);
+    const cleanUrl = new URL(location.href);
+    cleanUrl.searchParams.delete('token');
+    history.replaceState(null, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
     return;
   }
 

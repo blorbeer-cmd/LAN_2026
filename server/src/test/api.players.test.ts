@@ -209,15 +209,22 @@ test('PUT /api/players/:id/neighbors 404s for an unknown player', async () => {
   assert.equal(res.status, 404);
 });
 
-test('DELETE /api/players/:id removes the player', async () => {
-  const res = await request(app).delete(`/api/players/${createdId}`);
+test('real players are deactivated instead of hard-deleted', async () => {
+  assert.equal((await request(app).delete(`/api/players/${createdId}`)).status, 409);
+  const res = await request(app).post(`/api/players/${createdId}/deactivate`);
   assert.equal(res.status, 204);
 
   const after = await request(app).get(`/api/players/${createdId}`);
   assert.equal(after.status, 404);
+  const stored = db.prepare('SELECT deactivated_at FROM players WHERE id = ?').get(createdId) as {
+    deactivated_at: number | null;
+  };
+  assert.ok(stored.deactivated_at);
+  const roster = await request(app).get('/api/players');
+  assert.equal(roster.body.some((player: { id: string }) => player.id === createdId), false);
 });
 
-test('DELETE /api/players/:id 404s when already gone', async () => {
-  const res = await request(app).delete(`/api/players/${createdId}`);
-  assert.equal(res.status, 404);
+test('deactivation rejects an already inactive player', async () => {
+  const res = await request(app).post(`/api/players/${createdId}/deactivate`);
+  assert.equal(res.status, 409);
 });

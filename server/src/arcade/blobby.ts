@@ -146,7 +146,7 @@ export function registerBlobbySockets(io: Server): void {
       removeFromLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby); emitLobbies(io); ack?.({ ok: true, lobbyId: lobby.id });
     });
-    socket.on('blobby:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (r: unknown) => void) => {
+    socket.on('blobby:lobby:bot', (payload: { playerId?: string }, ack?: (r: unknown) => void) => {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });

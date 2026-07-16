@@ -10,6 +10,8 @@ import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString, isIntInRange, isValidAvatar } from '../validation';
 import { requireAdmin } from '../auth';
+import { writeAdminAudit } from '../adminAudit';
+import { requireRecentReauthentication, withBodyPlayerIdentity } from '../sessions';
 
 export const gamesRouter = Router();
 
@@ -126,7 +128,7 @@ function validateTeamSizes(
 // tracked game (name, team size, no status = defaults to 'catalog'), or a
 // player suggestion from the Spiele view (name + optional platform/trailer,
 // status: 'suggestion', playerId so it's attributed as createdBy).
-gamesRouter.post('/', (req, res) => {
+gamesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, status, playerId } =
     req.body ?? {};
 
@@ -148,6 +150,9 @@ gamesRouter.post('/', (req, res) => {
   const parsedTrailer = optionalUrl(trailerUrl ?? null);
   if (parsedTrailer === undefined) return res.status(400).json({ error: 'Trailer-Link muss mit http(s) beginnen.' });
   const resolvedStatus: GameStatus = status === 'suggestion' ? 'suggestion' : 'catalog';
+  if (req.player && resolvedStatus === 'catalog' && !req.player.is_admin) {
+    return res.status(403).json({ error: 'Nur Admins können Spiele direkt in den Katalog aufnehmen.' });
+  }
   const createdBy = assertPlayer(playerId);
   if (createdBy === undefined) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
@@ -283,7 +288,7 @@ gamesRouter.post('/:id/promote', requireAdmin, (req, res) => {
 
 // DELETE /api/games/:id - cascades to process names, skills, preferences,
 // votes, matches; sets live_status.game_id to NULL for anyone currently on it.
-gamesRouter.delete('/:id', (req, res) => {
+gamesRouter.delete('/:id', requireAdmin, requireRecentReauthentication, (req, res) => {
   const existing = db.prepare('SELECT arcade_key FROM games WHERE id = ?').get(req.params.id) as
     | { arcade_key: string | null }
     | undefined;
@@ -294,6 +299,7 @@ gamesRouter.delete('/:id', (req, res) => {
   if (result.changes === 0) {
     return res.status(404).json({ error: 'Spiel nicht gefunden.' });
   }
+  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'game_deleted', targetType: 'game', targetId: req.params.id });
   broadcast(Events.gamesChanged, null);
   broadcast(Events.liveStatusChanged, null);
   res.status(204).end();

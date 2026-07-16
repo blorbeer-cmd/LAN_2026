@@ -2,7 +2,7 @@
 // (player detail, game editor, match entry). Bottom-sheet on mobile, centered
 // dialog on wider screens (handled purely in CSS).
 
-export function openModal(title, bodyHtml, { onMount } = {}) {
+export function openModal(title, bodyHtml, { onMount, onClose } = {}) {
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   backdrop.innerHTML = `
@@ -16,7 +16,13 @@ export function openModal(title, bodyHtml, { onMount } = {}) {
   `;
   document.body.appendChild(backdrop);
 
-  const close = () => backdrop.remove();
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    backdrop.remove();
+    onClose?.();
+  };
   backdrop.addEventListener('click', (e) => {
     if (e.target === backdrop) close();
   });

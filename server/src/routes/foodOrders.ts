@@ -13,6 +13,7 @@ import { broadcast, Events } from '../realtime';
 import { getTrackingEventId } from '../events';
 import { isNonEmptyString, isValidUrl } from '../validation';
 import { notifyPlayers, resolvePushTopic, updatePushTopicExpiry } from '../push';
+import { requireConfiguredUser, withBodyPlayerIdentity } from '../sessions';
 
 export const foodOrdersRouter = Router();
 
@@ -121,7 +122,7 @@ foodOrdersRouter.get('/', (_req, res) => {
 // placed/picked up, so everyone knows the cutoff for adding items instead of
 // guessing. notes/link are optional too: free-text info (e.g. Mindestbestell-
 // wert, "bar zahlen") and a link to the menu/delivery service.
-foodOrdersRouter.post('/', (req, res) => {
+foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId, title, sendAt, notes, link } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -189,9 +190,12 @@ foodOrdersRouter.post('/', (req, res) => {
 // even after the order closed, so none of this is gated on open/closed like
 // items are. Each field is independent: omit a field to leave it as-is,
 // pass null to clear it.
-foodOrdersRouter.patch('/:id', (req, res) => {
+foodOrdersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   const order = getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
+  if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung bearbeiten.' });
+  }
 
   const { sendAt, notes, link } = req.body ?? {};
   if (sendAt !== undefined && sendAt !== null && !isValidSendAt(sendAt)) {
@@ -221,7 +225,7 @@ foodOrdersRouter.patch('/:id', (req, res) => {
 });
 
 // POST /api/food-orders/:id/items - body: { playerId, description, priceCents? }
-foodOrdersRouter.post('/:id/items', (req, res) => {
+foodOrdersRouter.post('/:id/items', ...withBodyPlayerIdentity, (req, res) => {
   const order = getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   // The race guard: the order may have been closed between this device
@@ -257,7 +261,7 @@ foodOrdersRouter.post('/:id/items', (req, res) => {
 
 // DELETE /api/food-orders/:id/items/:itemId - body: { playerId }. Players
 // may only remove their own items (mis-taps happen), and only while open.
-foodOrdersRouter.delete('/:id/items/:itemId', (req, res) => {
+foodOrdersRouter.delete('/:id/items/:itemId', ...withBodyPlayerIdentity, (req, res) => {
   const order = getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (order.closed_at !== null) {
@@ -280,9 +284,12 @@ foodOrdersRouter.delete('/:id/items/:itemId', (req, res) => {
 
 // POST /api/food-orders/:id/close - freezes the list. Exactly one closer
 // wins; the second tap gets a 409 instead of double-notifying everyone.
-foodOrdersRouter.post('/:id/close', (req, res) => {
+foodOrdersRouter.post('/:id/close', requireConfiguredUser, (req, res) => {
   const order = getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
+  if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung schließen.' });
+  }
   if (order.closed_at !== null) {
     return res.status(409).json({ error: 'Diese Bestellung ist schon geschlossen.' });
   }
