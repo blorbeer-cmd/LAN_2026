@@ -1,28 +1,26 @@
-// Auswertungen view: three tabs — "Spielzeit" and "Matches & Turniere" share
-// one event/date filter (awards, longest sessions, a collapsed raw session
-// log; recorded results, tournament
+// Auswertungen view: all three tabs share one event filter (awards, longest
+// sessions, a collapsed raw session log; recorded results, tournament
 // counts, team-auslosen history, a few "witzige" head-to-head records).
-// "Arcade" has its own date range (arcade_results isn't tied to a single
-// event) and covers the arcade mini-games specifically: match durations and
-// the most-active player per game — on top of
+// Arcade results aren't tied to an event id, so that tab derives the selected
+// event's date bounds internally. It covers the arcade mini-games specifically:
+// match durations and the most-active player per game — on top of
 // the win/loss leaderboard already shown on the Arcade view's own stats tab.
 // Reached via the "Mehr" hub, not the main bottom nav — this is for browsing
 // after the fact, not something needed mid-game. Playtime/Matches used to be
 // two separate views; merged since both answer
 // "how did the LAN go", just from different angles (see server/CLAUDE.md
 // games reorg) — one entry in the Mehr hub instead of two, and switching
-// angles no longer means re-picking the event/date range from scratch.
+// angles no longer means re-picking the event from scratch.
 //
 // Data is fetched lazily per tab and cached in this module (not the shared
-// `state`, since it's filtered by its own date range independent of the
-// rest of the app) — loadPlaytimeData()/loadMatchesData()/loadArcadeData()
+// `state`, since it's filtered by this view's event selection) —
+// loadPlaytimeData()/loadMatchesData()/loadArcadeData()
 // fetch, then trigger a re-render.
 
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, formatDateTime, avatarHtml, gameBadgeHtml } from '../format.js';
 import { showToast } from '../toast.js';
-import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { icon } from '../icons.js';
 
 let activeTab = 'playtime'; // 'playtime' | 'matches' | 'arcade'
@@ -36,31 +34,25 @@ let arcadeLoading = false;
 
 function defaultFilters() {
   // eventId: 'active' resolves to the currently active event on first
-  // render; '' means "Gesamt, alle Events". from/to are an OPTIONAL extra
-  // narrowing on top of whichever event is selected (e.g. "just Saturday
-  // night of this LAN"), only meaningful for the Spielzeit tab — Matches &
-  // Turniere always queries the whole selected event.
-  return { eventId: 'active', from: null, to: null };
+  // render; '' means "Gesamt, alle Events".
+  return { eventId: 'active' };
 }
 let filters = defaultFilters();
-let arcadeRange = { from: null, to: null };
 
 // Resolves the 'active' sentinel to a real event id once the events list is
 // available, so the view opens pre-filtered to the current LAN by default.
 function resolveEventSelection() {
   if (filters.eventId !== 'active') return;
   const active = state.events.find((e) => e.isActive);
-  if (active) filters.eventId = active.id;
+  filters.eventId = active?.id ?? '';
 }
 
-// The event's own date range, used only to pre-fill the manual date/time
-// inputs with something sensible — the actual query scopes by eventId
-// directly (exact), not by this range, unless the user applies a narrower one.
+// Arcade results do not carry an event id. For that tab only, translate the
+// selected event into its date bounds before querying the shared endpoint.
 function selectedEventRange() {
   const ev = state.events.find((e) => e.id === filters.eventId);
   if (ev) return { from: ev.starts_at, to: ev.ends_at ?? Date.now() };
-  const to = Date.now();
-  return { from: to - 3 * 24 * 60 * 60 * 1000, to };
+  return null;
 }
 
 async function loadPlaytimeData(ctx) {
@@ -70,10 +62,6 @@ async function loadPlaytimeData(ctx) {
     resolveEventSelection();
     const params = {};
     if (filters.eventId) params.eventId = filters.eventId;
-    if (filters.from && filters.to) {
-      params.from = String(filters.from);
-      params.to = String(filters.to);
-    }
 
     const [overview, sessions, awards, popularGames] = await Promise.all([
       api.analytics.overview(params),
@@ -118,16 +106,17 @@ async function loadMatchesData(ctx) {
   }
 }
 
-// Arcade results have no event id, so their separate date range filters the
-// stored timestamps directly instead of pretending they belong to an event.
+// Arcade results have no event id, so the selected event's dates filter their
+// stored timestamps. "Gesamt" intentionally sends no range and returns all.
 async function loadArcadeData(ctx) {
   arcadeLoading = true;
   ctx.rerender();
   try {
     const params = {};
-    if (arcadeRange.from && arcadeRange.to) {
-      params.from = String(arcadeRange.from);
-      params.to = String(arcadeRange.to);
+    const eventRange = selectedEventRange();
+    if (eventRange) {
+      params.from = String(eventRange.from);
+      params.to = String(eventRange.to);
     }
     arcadeCache = await api.analytics.arcade(params);
   } catch (err) {
@@ -152,9 +141,6 @@ function renderEventOptions() {
 
 export function renderAnalytics(container, ctx) {
   resolveEventSelection();
-  if (activeTab === 'arcade' && (!arcadeRange.from || !arcadeRange.to)) {
-    arcadeRange = selectedEventRange();
-  }
   if (activeTab === 'playtime' && cache === null && !loading) {
     loadPlaytimeData(ctx);
   }
@@ -164,64 +150,23 @@ export function renderAnalytics(container, ctx) {
   if (activeTab === 'arcade' && arcadeCache === null && !arcadeLoading) {
     loadArcadeData(ctx);
   }
-  const displayRange = filters.from && filters.to ? { from: filters.from, to: filters.to } : selectedEventRange();
-
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Auswertungen</h1>
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="analytics-controls-title">
-        <div class="grouped-page-section-title"><h2 id="analytics-controls-title">Ansicht & Zeitraum</h2></div>
+        <div class="grouped-page-section-title"><h2 id="analytics-controls-title">Ansicht</h2></div>
         <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
           <button type="button" class="btn btn-sm ${activeTab === 'playtime' ? 'btn-primary' : ''}" data-an-tab="playtime">Spielzeit</button>
           <button type="button" class="btn btn-sm ${activeTab === 'matches' ? 'btn-primary' : ''}" data-an-tab="matches">Matches & Turniere</button>
           <button type="button" class="btn btn-sm ${activeTab === 'arcade' ? 'btn-primary' : ''}" data-an-tab="arcade">Arcade</button>
         </div>
-        ${
-          activeTab === 'arcade'
-            ? `<div class="field-row">
-                 <div>${dateTimeFieldHtml('an-arcade-from', arcadeRange.from)}</div>
-                 <div>${dateTimeFieldHtml('an-arcade-to', arcadeRange.to)}</div>
-               </div>
-               <button type="button" class="btn btn-primary btn-block" id="an-arcade-apply">Zeitraum anwenden</button>`
-            : `<select id="an-event" aria-label="Event">${renderEventOptions()}</select>
-               ${
-                 activeTab === 'playtime'
-                   ? `<div class="field-row">
-                        <div>${dateTimeFieldHtml('an-from', displayRange.from, { clearable: true })}</div>
-                        <div>${dateTimeFieldHtml('an-to', displayRange.to, { clearable: true })}</div>
-                      </div>
-                      <button type="button" class="btn btn-primary btn-block" id="an-apply">Zeitraum zusätzlich eingrenzen</button>`
-                   : ''
-               }`
-        }
+        <select id="an-event" aria-label="Veranstaltung">${renderEventOptions()}</select>
       </section>
       <div id="an-content" class="grouped-page-sections">${renderActiveTabContent()}</div>
     </div>
   `;
 
-  if (activeTab === 'playtime') {
-    wireDateTimeField(container, 'an-from');
-    wireDateTimeField(container, 'an-to');
-    container.querySelector('#an-apply').addEventListener('click', () => {
-      const fromVal = container.querySelector('#an-from').value;
-      const toVal = container.querySelector('#an-to').value;
-      filters.from = fromVal ? new Date(fromVal).getTime() : null;
-      filters.to = toVal ? new Date(toVal).getTime() : null;
-      cache = null;
-      ctx.rerender();
-    });
-  }
-  if (activeTab === 'arcade') {
-    wireDateTimeField(container, 'an-arcade-from');
-    wireDateTimeField(container, 'an-arcade-to');
-    container.querySelector('#an-arcade-apply').addEventListener('click', () => {
-      arcadeRange.from = new Date(container.querySelector('#an-arcade-from').value).getTime();
-      arcadeRange.to = new Date(container.querySelector('#an-arcade-to').value).getTime();
-      arcadeCache = null;
-      ctx.rerender();
-    });
-  }
   container.querySelectorAll('[data-an-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {
       activeTab = btn.dataset.anTab;
@@ -233,10 +178,9 @@ export function renderAnalytics(container, ctx) {
   if (eventSelect) {
     eventSelect.addEventListener('change', (e) => {
       filters.eventId = e.target.value; // '' selects "Gesamt (alle Events)"
-      filters.from = null;
-      filters.to = null;
       cache = null;
       matchesCache = null;
+      arcadeCache = null;
       ctx.rerender();
     });
   }

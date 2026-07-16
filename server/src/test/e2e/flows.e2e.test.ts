@@ -158,11 +158,13 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   assert.equal(await page.locator('label[for="profile-real-name"]').textContent(), 'Name');
   assert.equal(await page.locator('.profile-avatar-editor .field-label').count(), 0);
   assert.equal(await page.locator('label[for="profile-color"]').textContent(), 'Farbe');
+  assert.equal(await page.locator('.profile-color-wheel').count(), 1);
+  assert.equal(await page.locator('.profile-color-wheel').evaluate((element) => getComputedStyle(element).borderRadius), '999px');
   assert.equal(await page.locator('.profile-identity-fields').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 4);
   assert.ok(await page.locator('.profile-identity-fields').evaluate((editor) => {
     const controls = [
       editor.querySelector('.profile-avatar-control'),
-      editor.querySelector('#profile-color'),
+      editor.querySelector('.profile-color-wheel'),
       editor.querySelector('#profile-name'),
       editor.querySelector('#profile-real-name'),
     ];
@@ -600,6 +602,8 @@ test('Auswertungen (via Mehr) shows a real award and keeps detail logs collapsed
   await page.waitForSelector('text=Längste individuelle Session pro Spiel');
   assert.equal(await page.locator('#analytics-event-range-help').count(), 0);
   assert.equal(await page.getByText('Event wählen zeigt genau dessen Daten.', { exact: true }).count(), 0);
+  assert.equal(await page.locator('#an-event[aria-label="Veranstaltung"]').count(), 1);
+  assert.equal(await page.locator('[data-dt-field^="an-"]').count(), 0);
 
   // The "Matches & Turniere" tab (merged in from the old separate Spiele &
   // Turniere view) shares this same event filter and renders alongside it.
@@ -608,10 +612,12 @@ test('Auswertungen (via Mehr) shows a real award and keeps detail logs collapsed
   assert.equal(await page.locator('#analytics-event-help').count(), 0);
   assert.equal(await page.locator('.analytics-tournament-breakdown').count(), 2);
   await page.waitForSelector('#analytics-fun-title:text-is("Trivia")');
+  assert.equal(await page.locator('#an-event[aria-label="Veranstaltung"]').count(), 1);
 
   await page.click('[data-an-tab="arcade"]');
-  await page.waitForSelector('[data-dt-field="an-arcade-from"]');
-  assert.equal(await page.locator('#an-arcade-to').count(), 1);
+  await page.waitForSelector('#analytics-arcade-total-title');
+  assert.equal(await page.locator('#an-event[aria-label="Veranstaltung"]').count(), 1);
+  assert.equal(await page.locator('[data-dt-field^="an-"]').count(), 0);
   assert.equal(await page.locator('#analytics-arcade-range-help').count(), 0);
   assert.equal(await page.getByText('Matches pro Tag', { exact: true }).count(), 0);
 });

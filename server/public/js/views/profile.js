@@ -196,7 +196,10 @@ export function renderProfile(container, ctx) {
             </div>
             <div class="profile-color-field">
               <label for="profile-color" class="field-label">Farbe</label>
-              <input type="color" id="profile-color" value="${me.color}" aria-label="Profilfarbe" />
+              <label class="profile-color-wheel" aria-label="Profilfarbe wählen">
+                <span class="profile-color-wheel-swatch" style="--profile-color:${escapeHtml(me.color)};"></span>
+                <input type="color" id="profile-color" value="${escapeHtml(me.color)}" aria-label="Profilfarbe" />
+              </label>
             </div>
             <div class="profile-text-field">
               <label for="profile-name" class="field-label">Gamertag</label>
@@ -329,6 +332,11 @@ export function renderProfile(container, ctx) {
     } catch {
       showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
     }
+  });
+
+  const profileColorInput = container.querySelector('#profile-color');
+  profileColorInput.addEventListener('input', () => {
+    container.querySelector('.profile-color-wheel-swatch').style.setProperty('--profile-color', profileColorInput.value);
   });
 
   container.querySelector('#agent-download').addEventListener('click', async (e) => {

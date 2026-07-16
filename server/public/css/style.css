@@ -16,6 +16,15 @@
   --accent-2: #9163f5;
   --accent-3: #ef5da8;
   --accent-gradient: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 55%, var(--accent-3) 100%);
+  --color-wheel-gradient: conic-gradient(
+    var(--danger),
+    var(--state-paused),
+    var(--state-playing),
+    var(--accent),
+    var(--accent-2),
+    var(--accent-3),
+    var(--danger)
+  );
   --accent-text: #ffffff;
   --rank-1-gold: #ffd166;
   --danger: #ef4444;
@@ -993,6 +1002,37 @@ input[type='number']::-webkit-inner-spin-button {
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-1);
+}
+.profile-color-wheel {
+  position: relative;
+  display: grid;
+  width: var(--avatar-size-lg);
+  height: var(--avatar-size-lg);
+  padding: var(--space-1);
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--color-wheel-gradient);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+.profile-color-wheel-swatch {
+  width: 100%;
+  height: 100%;
+  border: var(--space-1) solid var(--bg-elevated);
+  border-radius: var(--radius-full);
+  background: var(--profile-color);
+  pointer-events: none;
+}
+.profile-color-wheel input[type='color'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 .profile-identity-fields .field-label {
   margin: 0;

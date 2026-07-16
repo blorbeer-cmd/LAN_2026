@@ -390,11 +390,15 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   results follow directly without another enclosing card or accent rail; player rows reuse
   `.leaderboard-list-grid` for the shared one-/two-column ranking presentation and spell out wins
   and losses in German.
-- **Analytics** — Event dropdowns and date controls stand without redundant filter labels or help
-  triggers. Arcade exposes its own direct date range
-  because arcade results have no event assignment; the daily match chart is omitted. Tournament
-  formats and per-game tournament counts are separate nested groups with blue and pink accent rails.
+- **Analytics** — All three tabs share the same event dropdown and show no additional date controls.
+  Playtime and tournament data use the selected event directly; Arcade internally derives the
+  event's date bounds because arcade results have no event assignment. The daily match chart is
+  omitted. Tournament formats and per-game tournament counts are separate nested groups with blue
+  and pink accent rails.
   The former „Witzige Rekorde“ section uses the concise title „Trivia“.
+- **Profile** — The profile color uses a compact round color wheel with the selected color visible
+  in its center. It follows the shared accent spectrum instead of exposing the browser's rectangular
+  native color field.
 - **Leaderboard** — The concise page title is „Rang“. The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
   each remains a distinct `.tournament-section-panel` with the shared accent rail. „Spielzeit pro
