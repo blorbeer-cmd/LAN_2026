@@ -62,13 +62,13 @@ test('POST /api/admin/test-users seeds players with seats, neighbors, ratings, a
   // least one adjacent pair must exist.
   const eventId = getTrackingEventId();
   const autoRows = db
-    .prepare("SELECT player_id, neighbor_id FROM seat_neighbors WHERE event_id = ? AND source = 'auto'")
-    .all(eventId) as Array<{ player_id: string; neighbor_id: string }>;
+    .prepare("SELECT player_id, neighbor_id FROM seat_neighbors WHERE group_id = 'default-group' AND event_id IS NULL AND source = 'auto'")
+    .all() as Array<{ player_id: string; neighbor_id: string }>;
   assert.ok(autoRows.some((r) => ids.includes(r.player_id) && ids.includes(r.neighbor_id)));
   // Plus the deliberately-manual extra pair from the seeder.
   const manualRows = db
-    .prepare("SELECT player_id FROM seat_neighbors WHERE event_id = ? AND source = 'manual'")
-    .all(eventId) as Array<{ player_id: string }>;
+    .prepare("SELECT player_id FROM seat_neighbors WHERE group_id = 'default-group' AND event_id IS NULL AND source = 'manual'")
+    .all() as Array<{ player_id: string }>;
   assert.ok(manualRows.some((r) => ids.includes(r.player_id)));
 
   // Finished play sessions in the tracking event for everyone.
@@ -105,7 +105,7 @@ test('DELETE /api/admin/test-users removes players, seats, neighbors, and sessio
   const eventId = getTrackingEventId();
   for (const id of ids) {
     assert.equal((db.prepare('SELECT COUNT(*) AS n FROM play_sessions WHERE player_id = ?').get(id) as { n: number }).n, 0);
-    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM seat_neighbors WHERE event_id = ? AND (player_id = ? OR neighbor_id = ?)').get(eventId, id, id) as { n: number }).n, 0);
+    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM seat_neighbors WHERE group_id = ? AND (player_id = ? OR neighbor_id = ?)').get('default-group', id, id) as { n: number }).n, 0);
   }
 
   // Idempotent: a second cleanup finds nothing.

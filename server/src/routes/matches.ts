@@ -209,7 +209,9 @@ matchesRouter.post('/', (req, res) => {
       // attachMatchResults' score/rank/winner enrichment.
       const teamPlayerIdLists = validated.teams.map((t) => t.playerIds);
       const snapshotTeams = buildTeamsSnapshot(gameId, teamPlayerIdLists);
-      const seatConflicts = draw.seat_pairs_considered > 0 ? applySeatConflicts(draw.event_id, snapshotTeams) : 0;
+      const seatConflicts = draw.seat_pairs_considered > 0
+        ? applySeatConflicts(req.group!.id, draw.event_id, snapshotTeams)
+        : 0;
       db.prepare('UPDATE matchmaking_draws SET teams = ?, seat_conflicts = ? WHERE id = ?').run(
         JSON.stringify(snapshotTeams),
         seatConflicts,

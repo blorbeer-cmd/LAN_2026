@@ -7,7 +7,9 @@
 
 import { Router } from 'express';
 import { db } from '../db';
-import { getTrackingEventId } from '../events';
+import { activeGroupPlayers } from '../groupPlayers';
+import { groupPlayerRows, resolveGroupEventScope, type GroupEventScope } from '../groupEventScope';
+import { requireGroupRole } from '../groupAuthorization';
 import {
   SIDES,
   type Side,
@@ -28,49 +30,68 @@ interface PlayerRow {
   is_test: number;
 }
 
-function getPlayers(): PlayerRow[] {
-  return db
-    .prepare('SELECT id, name, real_name, color, avatar, is_test FROM players WHERE deactivated_at IS NULL ORDER BY name COLLATE NOCASE')
-    .all() as PlayerRow[];
+function getPlayers(groupId: string, includeHistorical = false): PlayerRow[] {
+  if (includeHistorical) {
+    return db
+      .prepare(
+        `SELECT p.id, p.name, p.real_name, p.color, p.avatar, p.is_test
+         FROM players p JOIN group_memberships gm ON gm.player_id = p.id
+         WHERE gm.group_id = ? ORDER BY p.name COLLATE NOCASE`,
+      )
+      .all(groupId) as PlayerRow[];
+  }
+  return groupPlayerRows<PlayerRow>(groupId, 'p.id, p.name, p.real_name, p.color, p.avatar, p.is_test');
 }
 
-function getLayoutResponse(eventId: string) {
-  const players = getPlayers();
-  return { eventId, players, layout: readLayout(eventId, new Set(players.map((p) => p.id))) };
+function getLayoutResponse(groupId: string, eventId: GroupEventScope) {
+  const players = getPlayers(groupId, eventId !== null);
+  return { groupId, eventId, players, layout: readLayout(groupId, eventId, new Set(players.map((p) => p.id))) };
 }
 
 // GET /api/seating/layout - the editable shared table plan.
 seatingRouter.get('/layout', (req, res) => {
-  const eventId = typeof req.query.eventId === 'string' && req.query.eventId ? req.query.eventId : getTrackingEventId();
-  res.json(getLayoutResponse(eventId));
+  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  res.json(getLayoutResponse(req.group!.id, scope.eventId));
 });
 
-// PUT /api/seating/layout - open to all participants for now; the feature may
-// later be gated behind the admin guard without changing the client contract.
-seatingRouter.put('/layout', (req, res) => {
-  const eventId = typeof req.body?.eventId === 'string' && req.body.eventId ? req.body.eventId : getTrackingEventId();
+// PUT /api/seating/layout - replacing the shared plan is a group moderation
+// action; personal visible-monitor choices remain self-service below.
+seatingRouter.put('/layout', requireGroupRole('admin'), (req, res) => {
+  const scope = resolveGroupEventScope(req.group!.id, req.body?.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  const eventId = scope.eventId;
   const body = req.body ?? {};
   const sideNames = { top: 'topSeats', right: 'rightSeats', bottom: 'bottomSeats', left: 'leftSeats' } as const;
   const counts = Object.fromEntries(SIDES.map((side) => [side, body[sideNames[side]]])) as Record<Side, unknown>;
   if (SIDES.some((side) => !Number.isInteger(counts[side]) || (counts[side] as number) < 0 || (counts[side] as number) > MAX_SEATS_PER_SIDE)) {
     return res.status(400).json({ error: `Jede Tischseite muss zwischen 0 und ${MAX_SEATS_PER_SIDE} Plätze haben.` });
   }
-  const players = getPlayers();
+  const players = getPlayers(req.group!.id);
   const playerIds = new Set(players.map((p) => p.id));
-  const assignments = Array.isArray(body.assignments) ? body.assignments : [];
+  const assignments: unknown[] = Array.isArray(body.assignments) ? body.assignments : [];
+  const referencedIds = assignments
+    .map((assignment) => (assignment && typeof assignment === 'object' ? (assignment as { playerId?: unknown }).playerId : undefined))
+    .filter((playerId): playerId is string => typeof playerId === 'string');
+  if (activeGroupPlayers(req.group!.id, referencedIds).size !== new Set(referencedIds).size) {
+    return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
+  }
   const seenSeats = new Set<string>();
   const seenPlayers = new Set<string>();
   const validAssignments: SeatingAssignment[] = [];
-  for (const assignment of assignments) {
+  for (const value of assignments) {
+    const assignment = value && typeof value === 'object' ? value as Partial<SeatingAssignment> : undefined;
     const side = assignment?.side as Side;
+    const seat = assignment?.seat;
+    const playerId = assignment?.playerId;
     const sideCount = counts[side] as number;
-    if (!assignment || !SIDES.includes(side) || !Number.isInteger(assignment.seat) ||
-      assignment.seat < 0 || assignment.seat >= sideCount || !playerIds.has(assignment.playerId)) continue;
-    const seatKey = `${side}:${assignment.seat}`;
-    if (seenSeats.has(seatKey) || seenPlayers.has(assignment.playerId)) continue;
+    if (!assignment || !SIDES.includes(side) || typeof seat !== 'number' || !Number.isInteger(seat) ||
+      seat < 0 || seat >= sideCount || typeof playerId !== 'string' || !playerIds.has(playerId)) continue;
+    const seatKey = `${side}:${seat}`;
+    if (seenSeats.has(seatKey) || seenPlayers.has(playerId)) continue;
     seenSeats.add(seatKey);
-    seenPlayers.add(assignment.playerId);
-    validAssignments.push({ side, seat: assignment.seat, playerId: assignment.playerId });
+    seenPlayers.add(playerId);
+    validAssignments.push({ side, seat, playerId });
   }
   // A non-admin client never sees test players (they're filtered client-side,
   // see public/js/testFilter.js), so its layout snapshot is missing their
@@ -82,7 +103,7 @@ seatingRouter.put('/layout', (req, res) => {
     const testIds = new Set(
       (db.prepare('SELECT id FROM players WHERE is_test = 1').all() as Array<{ id: string }>).map((r) => r.id)
     );
-    const stored = readLayout(eventId, playerIds);
+    const stored = readLayout(req.group!.id, eventId, playerIds);
     for (const assignment of stored.assignments) {
       if (!testIds.has(assignment.playerId)) continue;
       if (seenPlayers.has(assignment.playerId)) continue;
@@ -94,22 +115,29 @@ seatingRouter.put('/layout', (req, res) => {
       validAssignments.push(assignment);
     }
   }
-  persistLayout(eventId, counts as Record<Side, number>, validAssignments);
-  res.json(getLayoutResponse(eventId));
+  persistLayout(req.group!.id, eventId, counts as Record<Side, number>, validAssignments);
+  res.json(getLayoutResponse(req.group!.id, eventId));
 });
 
 // GET /api/seating - the active event's (or an explicit ?eventId=) seating
 // picture: deduped pairs, players grouped into connected clusters, and
 // whoever hasn't declared any neighbor at all.
 seatingRouter.get('/', (req, res) => {
-  const { eventId } = req.query;
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
+  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  const filterEventId = scope.eventId;
 
   const pairRows = db
-    .prepare('SELECT player_id, neighbor_id FROM seat_neighbors WHERE event_id = ?')
-    .all(filterEventId) as Array<{ player_id: string; neighbor_id: string }>;
+    .prepare(`SELECT player_id, neighbor_id, player_name_snapshot, neighbor_name_snapshot
+      FROM seat_neighbors WHERE group_id = ? AND event_id IS ?`)
+    .all(req.group!.id, filterEventId) as Array<{
+      player_id: string;
+      neighbor_id: string;
+      player_name_snapshot: string;
+      neighbor_name_snapshot: string;
+    }>;
 
-  const players = db.prepare('SELECT id, name, color, avatar, is_test FROM players WHERE deactivated_at IS NULL').all() as PlayerRow[];
+  const players = getPlayers(req.group!.id, filterEventId !== null);
   const playerById = new Map(players.map((p) => [p.id, p]));
 
   // Neighbors are declared per-direction (A says B, independent of whether
@@ -133,9 +161,9 @@ seatingRouter.get('/', (req, res) => {
     seen.add(key);
     pairs.push({
       playerAId: r.player_id,
-      playerAName: playerById.get(r.player_id)!.name,
+      playerAName: r.player_name_snapshot,
       playerBId: r.neighbor_id,
-      playerBName: playerById.get(r.neighbor_id)!.name,
+      playerBName: r.neighbor_name_snapshot,
     });
     addEdge(r.player_id, r.neighbor_id);
   }
@@ -169,5 +197,5 @@ seatingRouter.get('/', (req, res) => {
 
   const unplacedPlayers = players.filter((p) => !visited.has(p.id));
 
-  res.json({ eventId: filterEventId, groups, unplacedPlayers, pairs });
+  res.json({ groupId: req.group!.id, eventId: filterEventId, groups, unplacedPlayers, pairs });
 });

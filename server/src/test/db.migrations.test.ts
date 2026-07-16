@@ -430,10 +430,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 34);
+  assert.equal(migrations.length, 35);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 34 }, (_, index) => index + 1),
+    Array.from({ length: 35 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -470,6 +470,15 @@ test('records the complete migration history and does not duplicate it on restar
   assert.ok(eventColumns.some((column) => column.name === 'status'));
   const auditColumns = migrated.prepare('PRAGMA table_info(admin_log)').all() as Array<{ name: string }>;
   assert.ok(auditColumns.some((column) => column.name === 'group_id'));
+  for (const table of ['seating_layouts', 'seat_neighbors', 'game_pings', 'game_ping_interested']) {
+    const columns = migrated.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    assert.ok(columns.some((column) => column.name === 'group_id'), `${table} should be group-owned`);
+  }
+  const seatingEvent = migrated.prepare('PRAGMA table_info(seating_layouts)').all() as Array<{
+    name: string;
+    notnull: number;
+  }>;
+  assert.equal(seatingEvent.find((column) => column.name === 'event_id')?.notnull, 0);
   assert.ok(migrated.prepare("SELECT id FROM groups WHERE id = 'default-group'").get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
@@ -560,6 +569,78 @@ test('repairs databases that already recorded the original invite migration', ()
   migrated.prepare('DELETE FROM players WHERE id IN (?, ?)').run('invite-creator', 'invite-user');
   const audit = migrated.prepare('SELECT created_by, used_by FROM invites WHERE code = ?').get('legacy-invite');
   assert.deepEqual(audit, { created_by: null, used_by: null });
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 35 preserves legacy ping rows as scoped history', () => {
+  const dbFile = makeTempDbPath('legacy-pings');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = OFF');
+  fixture.exec(`
+    DELETE FROM schema_migrations WHERE version = 35;
+    DROP TABLE game_ping_interested;
+    DROP TABLE game_pings;
+    CREATE TABLE game_pings (
+      id TEXT PRIMARY KEY,
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      message TEXT,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE TABLE game_ping_interested (
+      ping_id TEXT NOT NULL REFERENCES game_pings(id) ON DELETE CASCADE,
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      PRIMARY KEY (ping_id, player_id)
+    );
+  `);
+  const now = Date.now();
+  fixture.prepare(
+    `INSERT INTO players (id, name, api_key, created_at) VALUES
+       ('legacy-ping-owner', 'Legacy Ping Owner', 'legacy-ping-owner-key', ?),
+       ('legacy-ping-friend', 'Legacy Ping Friend', 'legacy-ping-friend-key', ?)`,
+  ).run(now, now);
+  fixture.prepare(
+    `INSERT INTO group_memberships
+       (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+     VALUES ('default-group', ?, 'member', 'active', ?, 1),
+            ('default-group', ?, 'member', 'active', ?, 1)`,
+  ).run('legacy-ping-owner', now, 'legacy-ping-friend', now);
+  const game = fixture.prepare('SELECT id FROM games WHERE group_id = ? LIMIT 1').get('default-group') as { id: string };
+  fixture.prepare(
+    `INSERT INTO game_pings (id, player_id, game_id, event_id, message, created_at, expires_at)
+     VALUES ('legacy-ping', ?, ?, ?, 'legacy message', ?, ?)`,
+  ).run('legacy-ping-owner', game.id, 'outside-events', now, now + 60_000);
+  fixture.prepare('INSERT INTO game_ping_interested (ping_id, player_id) VALUES (?, ?)')
+    .run('legacy-ping', 'legacy-ping-friend');
+  fixture.close();
+
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile, { readonly: true });
+  const migratedGame = migrated.prepare('SELECT name FROM games WHERE id = ?').get(game.id) as { name: string };
+  assert.deepEqual(
+    migrated.prepare(
+      `SELECT group_id, event_id, player_name_snapshot, game_name_snapshot, message
+       FROM game_pings WHERE id = 'legacy-ping'`,
+    ).get(),
+    {
+      group_id: 'default-group',
+      event_id: null,
+      player_name_snapshot: 'Legacy Ping Owner',
+      game_name_snapshot: migratedGame.name,
+      message: 'legacy message',
+    },
+  );
+  assert.deepEqual(
+    migrated.prepare('SELECT group_id, player_name_snapshot FROM game_ping_interested WHERE ping_id = ?')
+      .get('legacy-ping'),
+    { group_id: 'default-group', player_name_snapshot: 'Legacy Ping Friend' },
+  );
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

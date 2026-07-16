@@ -26,12 +26,14 @@ export interface SeatingLayout {
   assignments: SeatingAssignment[];
 }
 
+export type SeatingEventId = string | null;
+
 // Reads the stored layout for an event (or the default empty one), dropping
 // assignments that no longer make sense: unknown players, out-of-range
 // seats, or duplicate seat claims.
-export function readLayout(eventId: string, playerIds: Set<string>): SeatingLayout {
-  const existing = db.prepare('SELECT * FROM seating_layouts WHERE event_id = ?').get(eventId) as
-    | { event_id: string; top_seats: number; right_seats: number; bottom_seats: number; left_seats: number; assignments: string }
+export function readLayout(groupId: string, eventId: SeatingEventId, playerIds: Set<string>): SeatingLayout {
+  const existing = db.prepare('SELECT * FROM seating_layouts WHERE group_id = ? AND event_id IS ?').get(groupId, eventId) as
+    | { group_id: string; event_id: string | null; top_seats: number; right_seats: number; bottom_seats: number; left_seats: number; assignments: string }
     | undefined;
   const source = existing ?? {
     event_id: eventId,
@@ -45,15 +47,15 @@ export function readLayout(eventId: string, playerIds: Set<string>): SeatingLayo
   let parsed: unknown = [];
   try { parsed = JSON.parse(source.assignments); } catch { /* use empty layout */ }
   const assignments = Array.isArray(parsed)
-    ? parsed.filter((a): a is SeatingAssignment => {
-        if (!a || typeof a !== 'object') return false;
+    ? parsed.flatMap((a): SeatingAssignment[] => {
+        if (!a || typeof a !== 'object') return [];
         const value = a as Partial<SeatingAssignment>;
         const count = source[`${value.side}_seats` as keyof typeof source];
         const key = `${value.side}:${value.seat}`;
         if (!SIDES.includes(value.side as Side) || !Number.isInteger(value.seat) || typeof value.seat !== 'number' || value.seat < 0 ||
-          typeof count !== 'number' || value.seat >= count || typeof value.playerId !== 'string' || !playerIds.has(value.playerId) || seen.has(key)) return false;
+          typeof count !== 'number' || value.seat >= count || typeof value.playerId !== 'string' || !playerIds.has(value.playerId) || seen.has(key)) return [];
         seen.add(key);
-        return true;
+        return [{ side: value.side as Side, seat: value.seat, playerId: value.playerId }];
       })
     : [];
   return {
@@ -90,41 +92,58 @@ export function computeAdjacentPairs(counts: Record<Side, number>, assignments: 
 // touches rows this function itself created — a player who has manually
 // confirmed or added to their own list (source = 'manual', see players.ts's
 // PUT /:id/neighbors) keeps that choice even if the table plan changes later.
-export function syncAutoSeatNeighbors(eventId: string, pairs: Array<[string, string]>): void {
+export function syncAutoSeatNeighbors(groupId: string, eventId: SeatingEventId, pairs: Array<[string, string]>): void {
   const newKeys = new Set(pairs.map(([x, y]) => [x, y].sort().join('::')));
   const existingAuto = db
-    .prepare("SELECT player_id, neighbor_id FROM seat_neighbors WHERE event_id = ? AND source = 'auto'")
-    .all(eventId) as Array<{ player_id: string; neighbor_id: string }>;
+    .prepare("SELECT player_id, neighbor_id FROM seat_neighbors WHERE group_id = ? AND event_id IS ? AND source = 'auto'")
+    .all(groupId, eventId) as Array<{ player_id: string; neighbor_id: string }>;
   const remove = db.prepare(
-    "DELETE FROM seat_neighbors WHERE event_id = ? AND player_id = ? AND neighbor_id = ? AND source = 'auto'"
+    "DELETE FROM seat_neighbors WHERE group_id = ? AND event_id IS ? AND player_id = ? AND neighbor_id = ? AND source = 'auto'"
   );
   for (const row of existingAuto) {
     const key = [row.player_id, row.neighbor_id].sort().join('::');
-    if (!newKeys.has(key)) remove.run(eventId, row.player_id, row.neighbor_id);
+    if (!newKeys.has(key)) remove.run(groupId, eventId, row.player_id, row.neighbor_id);
   }
   // INSERT OR IGNORE: if a manual row already claims this direction, leave it
   // as-is rather than downgrading it back to 'auto'.
-  const insert = db.prepare(
-    "INSERT OR IGNORE INTO seat_neighbors (event_id, player_id, neighbor_id, source) VALUES (?, ?, ?, 'auto')"
-  );
+  const insert = db.prepare(`INSERT OR IGNORE INTO seat_neighbors
+    (group_id, event_id, player_id, neighbor_id, player_name_snapshot, neighbor_name_snapshot, source)
+    SELECT ?, ?, p.id, n.id, p.name, n.name, 'auto' FROM players p, players n WHERE p.id = ? AND n.id = ?`);
   for (const [x, y] of pairs) {
-    insert.run(eventId, x, y);
-    insert.run(eventId, y, x);
+    insert.run(groupId, eventId, x, y);
+    insert.run(groupId, eventId, y, x);
   }
 }
 
 // Upserts the layout row and re-derives the auto seat neighbors, in one
 // transaction — the single write path shared by the editor's PUT handler and
 // the test-user seeding.
-export function persistLayout(eventId: string, counts: Record<Side, number>, assignments: SeatingAssignment[]): void {
+export function persistLayout(
+  groupId: string,
+  eventId: SeatingEventId,
+  counts: Record<Side, number>,
+  assignments: SeatingAssignment[],
+): void {
   const save = db.transaction(() => {
-    db.prepare(`INSERT INTO seating_layouts (event_id, top_seats, right_seats, bottom_seats, left_seats, assignments, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(event_id) DO UPDATE SET top_seats=excluded.top_seats,
-      right_seats=excluded.right_seats, bottom_seats=excluded.bottom_seats, left_seats=excluded.left_seats,
-      assignments=excluded.assignments, updated_at=excluded.updated_at`).run(
-      eventId, counts.top, counts.right, counts.bottom, counts.left, JSON.stringify(assignments), Date.now()
-    );
-    syncAutoSeatNeighbors(eventId, computeAdjacentPairs(counts, assignments));
+    const names = assignments.length === 0
+      ? []
+      : db.prepare(`SELECT id, name FROM players WHERE id IN (${assignments.map(() => '?').join(',')})`)
+          .all(...assignments.map((assignment) => assignment.playerId)) as Array<{ id: string; name: string }>;
+    const nameById = new Map(names.map((player) => [player.id, player.name]));
+    const storedAssignments = assignments.map((assignment) => ({
+      ...assignment,
+      playerNameSnapshot: nameById.get(assignment.playerId) ?? 'Unbekannt',
+    }));
+    const values = [counts.top, counts.right, counts.bottom, counts.left, JSON.stringify(storedAssignments), Date.now()];
+    const updated = db.prepare(`UPDATE seating_layouts SET top_seats = ?, right_seats = ?, bottom_seats = ?,
+      left_seats = ?, assignments = ?, updated_at = ? WHERE group_id = ? AND event_id IS ?`)
+      .run(...values, groupId, eventId);
+    if (updated.changes === 0) {
+      db.prepare(`INSERT INTO seating_layouts
+        (group_id, event_id, top_seats, right_seats, bottom_seats, left_seats, assignments, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(groupId, eventId, ...values);
+    }
+    syncAutoSeatNeighbors(groupId, eventId, computeAdjacentPairs(counts, assignments));
   });
   save();
 }
@@ -137,11 +156,12 @@ function layoutCounts(layout: SeatingLayout): Record<Side, number> {
 // layout, preferring consecutive seats along an edge so adjacency — and with
 // it "Sichtbare Monitore" — actually comes out of it. If the table is full,
 // sides grow up to MAX_SEATS_PER_SIDE before anyone stays unplaced.
-export function addPlayersToLayout(eventId: string, playerIds: string[]): void {
+export function addPlayersToLayout(groupId: string, eventId: SeatingEventId, playerIds: string[]): void {
   const allIds = new Set(
-    (db.prepare('SELECT id FROM players').all() as Array<{ id: string }>).map((r) => r.id)
+    (db.prepare(`SELECT p.id FROM players p JOIN group_memberships gm ON gm.player_id = p.id
+      WHERE gm.group_id = ? AND gm.status = 'active'`).all(groupId) as Array<{ id: string }>).map((r) => r.id)
   );
-  const layout = readLayout(eventId, allIds);
+  const layout = readLayout(groupId, eventId, allIds);
   const counts = layoutCounts(layout);
   const assignments = [...layout.assignments];
   const alreadyPlaced = new Set(assignments.map((a) => a.playerId));
@@ -163,23 +183,24 @@ export function addPlayersToLayout(eventId: string, playerIds: string[]): void {
     assignments.push({ side: growable, seat: counts[growable], playerId: queue.shift()! });
     counts[growable]++;
   }
-  persistLayout(eventId, counts, assignments);
+  persistLayout(groupId, eventId, counts, assignments);
 }
 
 // Drops the given players from every event's layout (used when test users
 // are cleaned up) and re-syncs each affected event's auto neighbors.
 export function removePlayersFromLayouts(playerIds: Set<string>): void {
-  const rows = db.prepare('SELECT event_id, assignments FROM seating_layouts').all() as Array<{
-    event_id: string;
+  const rows = db.prepare('SELECT group_id, event_id, assignments FROM seating_layouts').all() as Array<{
+    group_id: string;
+    event_id: string | null;
     assignments: string;
   }>;
-  const allIds = new Set(
-    (db.prepare('SELECT id FROM players').all() as Array<{ id: string }>).map((r) => r.id)
-  );
   for (const row of rows) {
-    const layout = readLayout(row.event_id, allIds);
+    const allIds = new Set(
+      (db.prepare('SELECT player_id FROM group_memberships WHERE group_id = ?').all(row.group_id) as Array<{ player_id: string }>).map((r) => r.player_id)
+    );
+    const layout = readLayout(row.group_id, row.event_id, allIds);
     const remaining = layout.assignments.filter((a) => !playerIds.has(a.playerId));
     if (remaining.length === layout.assignments.length) continue;
-    persistLayout(row.event_id, layoutCounts(layout), remaining);
+    persistLayout(row.group_id, row.event_id, layoutCounts(layout), remaining);
   }
 }
