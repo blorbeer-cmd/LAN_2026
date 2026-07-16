@@ -8,6 +8,7 @@
 
 import { Router } from 'express';
 import { db } from '../db';
+import { withQueryPlayerIdentity } from '../sessions';
 
 export const digestRouter = Router();
 
@@ -19,7 +20,7 @@ interface GameRow {
 
 // GET /api/digest?playerId=... - this player's currently-unrated, currently-
 // live games.
-digestRouter.get('/', (req, res) => {
+digestRouter.get('/', ...withQueryPlayerIdentity, (req, res) => {
   const { playerId } = req.query;
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -32,11 +33,14 @@ digestRouter.get('/', (req, res) => {
       `SELECT DISTINCT g.id, g.name, g.icon
        FROM live_status_games lsg
        JOIN games g ON g.id = lsg.game_id
-       WHERE g.arcade_key IS NULL
-         AND NOT EXISTS (SELECT 1 FROM skills s WHERE s.player_id = ? AND s.game_id = lsg.game_id)
-       ORDER BY g.name COLLATE NOCASE`
+       WHERE lsg.group_id = ? AND g.arcade_key IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM skills s
+           WHERE s.group_id = ? AND s.player_id = ? AND s.game_id = lsg.game_id
+         )
+       ORDER BY g.name COLLATE NOCASE`,
     )
-    .all(playerId) as GameRow[];
+    .all(req.group!.id, req.group!.id, playerId) as GameRow[];
 
   res.json({ missingSkills });
 });

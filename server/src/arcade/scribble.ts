@@ -18,7 +18,7 @@ import { notifyPlayers, resolvePushTopic } from '../push';
 import { matchesAnswer } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
-import { arcadeWatcherPlayerIds, broadcastArcadeKiosk, onArcadeWatcherChange } from '../realtime';
+import { broadcastArcadeKiosk } from '../realtime';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { shouldSendLobbyPush } from './lobbyPush';
 import {
@@ -30,7 +30,6 @@ import {
   pickWordChoices,
   pointsForDrawer,
   pointsForGuess,
-  selectRoundWinnerIds,
   wordMask,
 } from './scribbleLogic';
 
@@ -40,8 +39,6 @@ function scribbleLobbyPushKey(lobbyId: string): string {
 
 const CHOICE_MS = 15_000;
 const REVEAL_MS = 3_000;
-const GALLERY_MS = 30_000;
-const GALLERY_RESULT_MS = 4_000;
 const COUNTDOWN_MS = 3000; // "3, 2, 1" before the first turn's word choice
 const DEFAULT_ROUNDS = 2;
 const DEFAULT_TURN_MS = 60_000;
@@ -107,7 +104,7 @@ interface ScribbleMatchState {
   turnDurationMs: number;
   turnsPlayed: number;
   drawIndex: number;
-  phase: 'choosing' | 'drawing' | 'reveal' | 'gallery';
+  phase: 'choosing' | 'drawing' | 'reveal';
   currentWord: string | null;
   currentWordId: string | null;
   wordOptions: WordRow[] | null;
@@ -116,9 +113,6 @@ interface ScribbleMatchState {
   pendingHints: HintStep[];
   strokes: DrawOp[];
   currentDrawingId: string | null;
-  galleryRound: number | null;
-  galleryExpiresAt: number | null;
-  galleryResolved: boolean;
   choiceTimer: NodeJS.Timeout | null;
   choiceExpiresAt: number | null;
   turnTimer: NodeJS.Timeout | null;
@@ -129,24 +123,30 @@ interface ScribbleMatchState {
   nextTurnTimer: NodeJS.Timeout | null;
   startTimer: NodeJS.Timeout | null; // the pre-first-turn "3, 2, 1" delay
   botTimer: NodeJS.Timeout | null;
-  galleryTimer: NodeJS.Timeout | null;
   paused: boolean;
   startedAt: number;
-  // Live "thumbs up" — a lightweight, per-drawing pulse guessers can give
-  // while a picture is being drawn and until the next one is chosen. Never
-  // written to the DB: liveThumbsToken identifies whichever single drawing
-  // is currently votable, roundThumbs accumulates a count per drawing for
-  // the current round only (used to sort the round-end gallery), and both
-  // are discarded once that round's gallery closes.
+  // Live "thumbs up" — the only rating mechanic left: a lightweight,
+  // per-drawing pulse guessers can give while a picture is being drawn and
+  // until the next one is chosen. liveThumbsToken identifies whichever
+  // single drawing is currently votable. Never written to the DB while
+  // live; freezeLiveThumbs() marks a drawing that got at least one thumb as
+  // is_round_winner=true and remembers it in markedDrawingIds so only
+  // marked drawings re-enter the final, whole-match favorite vote.
   liveThumbsToken: string | null;
   liveThumbsDrawingId: string | null;
   liveThumbsArtistId: string | null;
   liveThumbs: Set<string>;
-  roundThumbs: Map<string, number>;
+  markedDrawingIds: Set<string>;
 }
 
 const lobbies = new Map<string, ScribbleLobby>();
 const matches = new Map<string, ScribbleMatchState>();
+// finishMatch() deletes the live match immediately, but the final-favorite
+// vote (see scribble:match:favorite-final) needs to know who was actually in
+// the match a while after that. A short-lived roster snapshot, cleaned up
+// after the window players realistically still have the result screen open.
+const FINAL_FAVORITE_WINDOW_MS = 30 * 60 * 1000;
+const recentMatchRosters = new Map<string, Set<string>>();
 
 function playerById(playerId: unknown): PlayerRef | null {
   if (typeof playerId !== 'string' || !playerId) return null;
@@ -211,39 +211,16 @@ function scorePayload(match: ScribbleMatchState) {
   return match.players.map((p) => ({ playerId: p.id, name: p.name, score: match.scores.get(p.id) ?? 0 }));
 }
 
-function spectatorDrawing(drawing: DrawingSummary) {
-  return {
-    id: drawing.id,
-    round: drawing.round,
-    artistId: drawing.artistId,
-    artistName: drawing.artistName,
-    strokes: drawing.strokes,
-    reactionCount: drawing.reactionCount,
-    reactions: drawing.reactions,
-    favoriteVotes: drawing.favoriteVotes,
-    isRoundWinner: drawing.isRoundWinner,
-    createdAt: drawing.createdAt,
-  };
-}
-
-function currentDrawingSummary(match: ScribbleMatchState): DrawingSummary | null {
-  if (!match.currentDrawingId || match.turnsPlayed === 0) return null;
-  const round = Math.max(1, Math.ceil(match.turnsPlayed / match.players.length));
-  return drawingSummaries(match.id, round).find((drawing) => drawing.id === match.currentDrawingId) ?? null;
-}
-
+// Spectator/kiosk projection of the live thumbs-up vote - the only rating
+// mechanic left. No drawing replay: watchers already see the live canvas
+// stream, this just exposes whether/how many thumbs the current drawing has.
 function spectatorVoting(match: ScribbleMatchState) {
-  if (match.phase === 'gallery' && match.galleryRound !== null) {
-    return {
-      mode: match.galleryResolved ? 'resolved' : 'favorite',
-      round: match.galleryRound,
-      rounds: match.rounds,
-      expiresAt: match.galleryExpiresAt,
-      drawings: drawingSummaries(match.id, match.galleryRound).map(spectatorDrawing),
-    };
-  }
-  const drawing = currentDrawingSummary(match);
-  return drawing ? { mode: 'reaction', round: drawing.round, drawings: [spectatorDrawing(drawing)] } : null;
+  if (!match.liveThumbsToken) return null;
+  return {
+    token: match.liveThumbsToken,
+    artistId: match.liveThumbsArtistId,
+    count: match.liveThumbs.size,
+  };
 }
 
 // Kiosk projection: intentionally contains only the drawing surface. Never
@@ -284,14 +261,12 @@ function clearAllTimers(match: ScribbleMatchState): void {
   if (match.nextTurnTimer) clearTimeout(match.nextTurnTimer);
   if (match.startTimer) clearTimeout(match.startTimer);
   if (match.botTimer) clearTimeout(match.botTimer);
-  if (match.galleryTimer) clearTimeout(match.galleryTimer);
   match.hintTimers.forEach(clearTimeout);
   match.choiceTimer = null;
   match.turnTimer = null;
   match.nextTurnTimer = null;
   match.startTimer = null;
   match.botTimer = null;
-  match.galleryTimer = null;
   match.hintTimers = [];
 }
 
@@ -433,22 +408,6 @@ function persistCurrentDrawing(match: ScribbleMatchState): DrawingSummary | null
   return drawingSummaries(match.id, round).find((drawing) => drawing.id === id) ?? null;
 }
 
-function selectedRatings(match: ScribbleMatchState, playerId: string): { reactions: Record<string, string>; favoriteDrawingId: string | null } {
-  const reactionRows = db.prepare(
-    `SELECT r.drawing_id, r.reaction
-     FROM scribble_drawing_reactions r
-     JOIN scribble_drawings d ON d.id = r.drawing_id
-     WHERE d.match_id = ? AND r.player_id = ?`
-  ).all(match.id, playerId) as Array<{ drawing_id: string; reaction: string }>;
-  const favorite = match.galleryRound === null ? undefined : db.prepare(
-    'SELECT drawing_id FROM scribble_drawing_favorites WHERE match_id = ? AND round_number = ? AND player_id = ?'
-  ).get(match.id, match.galleryRound, playerId) as { drawing_id: string } | undefined;
-  return {
-    reactions: Object.fromEntries(reactionRows.map((row) => [row.drawing_id, row.reaction])),
-    favoriteDrawingId: favorite?.drawing_id ?? null,
-  };
-}
-
 function ratingPlayer(match: ScribbleMatchState, socket: Socket, playerId: unknown): PlayerRef | null {
   if (typeof playerId !== 'string' || !playerId || playerId === BOT_ID) return null;
   const participant = match.players.find((entry) => entry.id === playerId);
@@ -463,8 +422,23 @@ function ratingPlayer(match: ScribbleMatchState, socket: Socket, playerId: unkno
   return playerById(playerId);
 }
 
+// Closes the current live-thumbs vote: a drawing that got at least one thumb
+// is marked is_round_winner (repurposed as "was marked" now that there's no
+// per-round gallery) and remembered so only marked drawings re-enter the
+// final, whole-match favorite vote once the match ends.
+function freezeLiveThumbs(match: ScribbleMatchState): void {
+  if (match.liveThumbsDrawingId && match.liveThumbs.size > 0) {
+    match.markedDrawingIds.add(match.liveThumbsDrawingId);
+    db.prepare('UPDATE scribble_drawings SET is_round_winner = 1 WHERE id = ?').run(match.liveThumbsDrawingId);
+  }
+  match.liveThumbsToken = null;
+  match.liveThumbsDrawingId = null;
+  match.liveThumbs = new Set();
+}
+
 function finishMatch(io: Server, match: ScribbleMatchState, winner: PlayerRef | null, reason: string): void {
   clearAllTimers(match);
+  freezeLiveThumbs(match);
   endArcadeSession(realPlayerIds(match.players), 'scribble');
   const scores = scorePayload(match);
   const bestScore = scores.reduce<(typeof scores)[number] | null>((best, s) => (!best || s.score > best.score ? s : best), null);
@@ -475,15 +449,24 @@ function finishMatch(io: Server, match: ScribbleMatchState, winner: PlayerRef | 
     `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(nanoid(), 'scribble', winnerId, JSON.stringify(match.players), JSON.stringify(scores), reason, match.startedAt, Date.now());
+  // Only drawings someone actually marked with a thumb re-enter the final
+  // vote - falling back to every drawing if nobody marked any, so the final
+  // step always has something to show instead of coming up empty.
+  const allDrawings = matchDrawingSummaries(match.id);
+  const finalCandidates = match.markedDrawingIds.size > 0
+    ? allDrawings.filter((drawing) => match.markedDrawingIds.has(drawing.id))
+    : allDrawings;
   io.to(match.room).emit('scribble:match:end', {
     matchId: match.id,
     winner: resolvedWinner,
     reason,
     scores,
-    drawings: matchDrawingSummaries(match.id),
+    drawings: finalCandidates,
   });
   broadcastArcadeKiosk(io, { gameType: null, matchId: match.id });
   matches.delete(match.id);
+  recentMatchRosters.set(match.id, new Set(realPlayerIds(match.players)));
+  setTimeout(() => recentMatchRosters.delete(match.id), FINAL_FAVORITE_WINDOW_MS).unref();
 }
 
 function startTurnTimers(io: Server, match: ScribbleMatchState, remainingMs: number, elapsedMs: number): void {
@@ -504,83 +487,6 @@ function fireHint(io: Server, match: ScribbleMatchState, hint: HintStep): void {
     matchId: match.id,
     mask: wordMask(match.currentWord ?? '', match.revealedIndices),
   });
-}
-
-// Merges the ephemeral live-thumbs tally onto the persisted drawing summaries
-// and sorts by it - the "Vorauswahl"/"Sortierung" the thumbs-up exists for.
-// thumbUps itself is never written to the DB and is gone once the round ends.
-function galleryDrawings(match: ScribbleMatchState, round: number) {
-  return drawingSummaries(match.id, round)
-    .map((drawing) => ({ ...drawing, thumbUps: match.roundThumbs.get(drawing.id) ?? 0 }))
-    .sort((a, b) => b.thumbUps - a.thumbUps || b.reactionCount - a.reactionCount);
-}
-
-function emitGallery(io: Server, match: ScribbleMatchState, resolved = match.galleryResolved): void {
-  if (match.galleryRound === null) return;
-  io.to(match.room).emit('scribble:gallery', {
-    matchId: match.id,
-    round: match.galleryRound,
-    rounds: match.rounds,
-    drawings: galleryDrawings(match, match.galleryRound),
-    expiresAt: match.galleryExpiresAt,
-    resolved,
-  });
-}
-
-function resolveRoundGallery(io: Server, match: ScribbleMatchState): void {
-  if (!matches.has(match.id) || match.phase !== 'gallery' || match.galleryResolved || match.galleryRound === null) return;
-  if (match.galleryTimer) clearTimeout(match.galleryTimer);
-  match.galleryTimer = null;
-  match.galleryExpiresAt = null;
-  const drawings = drawingSummaries(match.id, match.galleryRound);
-  const winnerIds = selectRoundWinnerIds(drawings);
-  const markWinner = db.transaction(() => {
-    db.prepare('UPDATE scribble_drawings SET is_round_winner = 0 WHERE match_id = ? AND round_number = ?').run(match.id, match.galleryRound);
-    const statement = db.prepare('UPDATE scribble_drawings SET is_round_winner = 1 WHERE id = ?');
-    for (const id of winnerIds) statement.run(id);
-  });
-  markWinner();
-  match.galleryResolved = true;
-  emitGallery(io, match, true);
-  kioskSnapshot(io, match);
-  match.nextTurnTimer = setTimeout(() => {
-    if (matches.has(match.id)) startNextTurn(io, match);
-  }, GALLERY_RESULT_MS);
-}
-
-function maybeResolveRoundGallery(io: Server, match: ScribbleMatchState): void {
-  if (match.galleryRound === null || match.galleryResolved) return;
-  const drawings = drawingSummaries(match.id, match.galleryRound);
-  if (drawings.length <= 1) return resolveRoundGallery(io, match);
-  const eligibleVoters = [...new Set([
-    ...realPlayerIds(match.players).filter((playerId) => match.online.has(playerId)),
-    ...arcadeWatcherPlayerIds(io, match.id),
-  ])];
-  if (eligibleVoters.length === 0) return;
-  const rows = db.prepare(
-    'SELECT player_id FROM scribble_drawing_favorites WHERE match_id = ? AND round_number = ?'
-  ).all(match.id, match.galleryRound) as Array<{ player_id: string }>;
-  const voters = new Set(rows.map((row) => row.player_id));
-  if (eligibleVoters.every((playerId) => voters.has(playerId))) resolveRoundGallery(io, match);
-}
-
-function startRoundGallery(io: Server, match: ScribbleMatchState): void {
-  clearAllTimers(match);
-  match.phase = 'gallery';
-  match.galleryRound = Math.ceil(match.turnsPlayed / match.players.length);
-  match.galleryResolved = false;
-  match.galleryExpiresAt = Date.now() + GALLERY_MS;
-  // The round's last drawing never rotates to a new token before the gallery
-  // opens (chooseWord, which normally freezes it, only runs for the next
-  // round) - freeze it here instead so its thumbs count toward the sort.
-  if (match.liveThumbsDrawingId) match.roundThumbs.set(match.liveThumbsDrawingId, match.liveThumbs.size);
-  match.liveThumbsToken = null;
-  match.liveThumbsDrawingId = null;
-  match.liveThumbs = new Set();
-  match.galleryTimer = setTimeout(() => resolveRoundGallery(io, match), GALLERY_MS);
-  emitGallery(io, match, false);
-  kioskSnapshot(io, match);
-  maybeResolveRoundGallery(io, match);
 }
 
 function startNextTurn(io: Server, match: ScribbleMatchState): void {
@@ -604,17 +510,6 @@ function startNextTurn(io: Server, match: ScribbleMatchState): void {
   match.revealedIndices = new Set();
   match.pendingHints = [];
   match.strokes = [];
-  // Leaving a resolved gallery closes that round's rating window for good:
-  // its last drawing must not stay the reaction target (spectatorVoting /
-  // scribble:reaction) into the next round. Mid-round turn changes keep it —
-  // "Letztes Bild bewerten" intentionally spans the following turn.
-  if (match.galleryResolved) {
-    match.currentDrawingId = null;
-    match.roundThumbs = new Map();
-  }
-  match.galleryRound = null;
-  match.galleryExpiresAt = null;
-  match.galleryResolved = false;
 
   const pool = loadWordPool();
   const seen = seenWordIds(match.players.map((p) => p.id));
@@ -672,14 +567,15 @@ function chooseWord(io: Server, match: ScribbleMatchState, wordId: string): void
 
   const drawer = match.players[match.drawIndex];
   // The previous drawing's voting window closes the moment the next word is
-  // chosen: freeze whatever thumbs it collected, then open a fresh token for
-  // the drawing about to start (not persisted yet, so no drawing id until
-  // endTurn -> persistCurrentDrawing tags it in below).
-  if (match.liveThumbsDrawingId) match.roundThumbs.set(match.liveThumbsDrawingId, match.liveThumbs.size);
+  // chosen: freeze whatever thumbs it collected (marks it for the final
+  // vote), then open a fresh token for the drawing about to start (not
+  // persisted yet, so no drawing id until endTurn -> persistCurrentDrawing
+  // tags it in below). currentDrawingId/lastDrawing also only ever spans up
+  // to this exact moment - rejoin sync must not keep offering it after that.
+  freezeLiveThumbs(match);
+  match.currentDrawingId = null;
   match.liveThumbsToken = nanoid();
-  match.liveThumbsDrawingId = null;
   match.liveThumbsArtistId = drawer.id;
-  match.liveThumbs = new Set();
 
   io.to(match.room).emit('scribble:turn', {
     matchId: match.id,
@@ -756,17 +652,11 @@ function endTurn(io: Server, match: ScribbleMatchState, reason: string): void {
   kioskSnapshot(io, match);
 
   match.nextTurnTimer = setTimeout(() => {
-    if (!matches.has(match.id)) return;
-    if (match.turnsPlayed % match.players.length === 0) startRoundGallery(io, match);
-    else startNextTurn(io, match);
+    if (matches.has(match.id)) startNextTurn(io, match);
   }, REVEAL_MS);
 }
 
 export function registerScribbleSockets(io: Server): void {
-  onArcadeWatcherChange((server, matchId) => {
-    const match = matches.get(matchId);
-    if (match?.phase === 'gallery') maybeResolveRoundGallery(server, match);
-  });
   io.on('connection', (socket: Socket) => {
     socket.emit('scribble:lobbies', { lobbies: publicLobbies() });
 
@@ -812,7 +702,7 @@ export function registerScribbleSockets(io: Server): void {
         );
       }
     });
-    socket.on('scribble:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (res: unknown) => void) => {
+    socket.on('scribble:lobby:bot', (payload: { playerId?: string }, ack?: (res: unknown) => void) => {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
@@ -897,9 +787,6 @@ export function registerScribbleSockets(io: Server): void {
           pendingHints: [],
           strokes: [],
           currentDrawingId: null,
-          galleryRound: null,
-          galleryExpiresAt: null,
-          galleryResolved: false,
           choiceTimer: null,
           choiceExpiresAt: null,
           turnTimer: null,
@@ -910,14 +797,13 @@ export function registerScribbleSockets(io: Server): void {
           nextTurnTimer: null,
           startTimer: null,
           botTimer: null,
-          galleryTimer: null,
           paused: false,
           startedAt: Date.now(),
           liveThumbsToken: null,
           liveThumbsDrawingId: null,
           liveThumbsArtistId: null,
           liveThumbs: new Set(),
-          roundThumbs: new Map(),
+          markedDrawingIds: new Set(),
         };
         matches.set(match.id, match);
         releaseLobbyMemberships(lobby.players.map((p) => p.id), 'scribble', lobby.id);
@@ -1089,37 +975,6 @@ export function registerScribbleSockets(io: Server): void {
     );
 
     socket.on(
-      'scribble:reaction',
-      (payload: { matchId?: string; playerId?: string; drawingId?: string; reaction?: string }, ack?: (res: unknown) => void) => {
-        const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-        const player = match ? ratingPlayer(match, socket, payload?.playerId) : null;
-        if (!match || !player) {
-          return ack?.({ ok: false, error: 'Bewertung nicht möglich.' });
-        }
-        if (!['cool', 'creative', 'funny'].includes(payload?.reaction ?? '') || typeof payload?.drawingId !== 'string') {
-          return ack?.({ ok: false, error: 'Ungültige Bewertung.' });
-        }
-        const drawing = db.prepare(
-          'SELECT id, round_number, artist_id FROM scribble_drawings WHERE id = ? AND match_id = ?'
-        ).get(payload.drawingId, match.id) as { id: string; round_number: number; artist_id: string | null } | undefined;
-        const allowed = drawing && (drawing.id === match.currentDrawingId || (match.phase === 'gallery' && drawing.round_number === match.galleryRound));
-        if (!allowed) return ack?.({ ok: false, error: 'Dieses Bild kann gerade nicht bewertet werden.' });
-        if (drawing.artist_id === player.id) return ack?.({ ok: false, error: 'Das eigene Bild kann nicht bewertet werden.' });
-
-        db.prepare(
-          `INSERT INTO scribble_drawing_reactions (drawing_id, player_id, reaction, created_at)
-           VALUES (?, ?, ?, ?)
-           ON CONFLICT(drawing_id, player_id) DO UPDATE SET reaction = excluded.reaction, created_at = excluded.created_at`
-        ).run(drawing.id, player.id, payload.reaction, Date.now());
-        const updated = drawingSummaries(match.id, drawing.round_number).find((entry) => entry.id === drawing.id)!;
-        io.to(match.room).emit('scribble:drawing-rating', { matchId: match.id, drawing: updated });
-        if (match.phase === 'gallery') emitGallery(io, match);
-        kioskSnapshot(io, match);
-        ack?.({ ok: true, reaction: payload.reaction });
-      }
-    );
-
-    socket.on(
       'scribble:thumb',
       (payload: { matchId?: string; playerId?: string; token?: string }, ack?: (res: unknown) => void) => {
         const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
@@ -1138,39 +993,6 @@ export function registerScribbleSockets(io: Server): void {
       }
     );
 
-    socket.on(
-      'scribble:favorite',
-      (payload: { matchId?: string; playerId?: string; drawingId?: string }, ack?: (res: unknown) => void) => {
-        const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-        const player = match ? ratingPlayer(match, socket, payload?.playerId) : null;
-        if (!match || !player) {
-          return ack?.({ ok: false, error: 'Favorit konnte nicht gewählt werden.' });
-        }
-        if (match.phase !== 'gallery' || match.galleryResolved || match.galleryRound === null || typeof payload?.drawingId !== 'string') {
-          return ack?.({ ok: false, error: 'Die Favoritenwahl ist nicht geöffnet.' });
-        }
-        const drawing = db.prepare(
-          'SELECT id, artist_id FROM scribble_drawings WHERE id = ? AND match_id = ? AND round_number = ?'
-        ).get(payload.drawingId, match.id, match.galleryRound) as { id: string; artist_id: string | null } | undefined;
-        if (!drawing) return ack?.({ ok: false, error: 'Bild nicht gefunden.' });
-        const hasOtherArtist = drawingSummaries(match.id, match.galleryRound).some((entry) => entry.artistId !== player.id);
-        if (drawing.artist_id === player.id && hasOtherArtist) {
-          return ack?.({ ok: false, error: 'Das eigene Bild kann nicht Favorit sein.' });
-        }
-
-        db.prepare(
-          `INSERT INTO scribble_drawing_favorites (match_id, round_number, player_id, drawing_id, created_at)
-           VALUES (?, ?, ?, ?, ?)
-           ON CONFLICT(match_id, round_number, player_id)
-           DO UPDATE SET drawing_id = excluded.drawing_id, created_at = excluded.created_at`
-        ).run(match.id, match.galleryRound, player.id, drawing.id, Date.now());
-        ack?.({ ok: true, drawingId: drawing.id });
-        emitGallery(io, match);
-        kioskSnapshot(io, match);
-        maybeResolveRoundGallery(io, match);
-      }
-    );
-
     // Post-match favorite: once the whole match has ended the live match
     // state above is already gone (finishMatch deletes it), so this looks
     // the roster and drawings up straight from the DB instead - the same
@@ -1184,6 +1006,13 @@ export function registerScribbleSockets(io: Server): void {
         const player = playerById(payload?.playerId);
         if (typeof matchId !== 'string' || !matchId || !player || typeof payload?.drawingId !== 'string') {
           return ack?.({ ok: false, error: 'Favorit konnte nicht gewählt werden.' });
+        }
+        // Unlike scribble:favorite (bound via ratingPlayer() to the live
+        // match's roster/socket), the live match is already gone here - the
+        // recentMatchRosters snapshot is the only membership check left, so
+        // only someone who actually played this match can cast this vote.
+        if (!recentMatchRosters.get(matchId)?.has(player.id)) {
+          return ack?.({ ok: false, error: 'Du warst kein Teilnehmer dieses Matches.' });
         }
         const drawing = db.prepare('SELECT id, artist_id FROM scribble_drawings WHERE id = ? AND match_id = ?').get(
           payload.drawingId,
@@ -1207,17 +1036,6 @@ export function registerScribbleSockets(io: Server): void {
       }
     );
 
-    socket.on(
-      'scribble:watch:selections',
-      (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
-        const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-        const player = match ? ratingPlayer(match, socket, payload?.playerId) : null;
-        if (!match || !player || match.players.some((entry) => entry.id === player.id)) {
-          return ack?.({ ok: false, error: 'Zuschauerstimmen sind nicht verfügbar.' });
-        }
-        ack?.({ ok: true, selectedRatings: selectedRatings(match, player.id) });
-      }
-    );
 
     socket.on('scribble:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
@@ -1283,31 +1101,20 @@ export function registerScribbleSockets(io: Server): void {
           rounds: match.rounds,
           turnDurationMs: match.turnDurationMs,
           phase: match.phase,
-          round: match.galleryRound ?? Math.floor(match.turnsPlayed / match.players.length) + 1,
+          round: Math.floor(match.turnsPlayed / match.players.length) + 1,
           drawer: match.drawIndex >= 0 ? match.players[match.drawIndex] : null,
           isDrawer: match.drawIndex >= 0 && match.players[match.drawIndex]?.id === player.id,
           mask: match.currentWord ? wordMask(match.currentWord, match.revealedIndices) : null,
           // Only ever the real word for the drawer themself — everyone else
           // (including this same payload's `mask` field) must stay masked.
           word: match.currentWord && match.players[match.drawIndex]?.id === player.id ? match.currentWord : null,
-          expiresAt: match.phase === 'choosing' ? match.choiceExpiresAt : match.phase === 'gallery' ? match.galleryExpiresAt : match.turnExpiresAt,
+          expiresAt: match.phase === 'choosing' ? match.choiceExpiresAt : match.turnExpiresAt,
           paused: match.paused,
           scores: scorePayload(match),
           strokes: match.strokes,
           lastDrawing: match.currentDrawingId
             ? drawingSummaries(match.id, Math.max(1, Math.ceil(match.turnsPlayed / match.players.length))).find((drawing) => drawing.id === match.currentDrawingId) ?? null
             : null,
-          gallery:
-            match.phase === 'gallery' && match.galleryRound !== null
-              ? {
-                  round: match.galleryRound,
-                  rounds: match.rounds,
-                  drawings: galleryDrawings(match, match.galleryRound),
-                  expiresAt: match.galleryExpiresAt,
-                  resolved: match.galleryResolved,
-                }
-              : null,
-          selectedRatings: selectedRatings(match, player.id),
           thumbsToken: match.liveThumbsToken,
           thumbsCount: match.liveThumbs.size,
           myThumbActive: match.liveThumbs.has(player.id),
@@ -1342,8 +1149,6 @@ export function registerScribbleSockets(io: Server): void {
       } else if (match.phase === 'drawing' && allEligibleGuessed(match)) {
         // The last remaining un-guessed rater just left — nothing left to wait for.
         endTurn(io, match, 'all-guessed');
-      } else if (match.phase === 'gallery') {
-        maybeResolveRoundGallery(io, match);
       }
     }
 

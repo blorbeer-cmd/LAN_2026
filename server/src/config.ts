@@ -10,6 +10,12 @@ function intFromEnv(name: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+export function parseAuthMode(value: string | undefined): 'legacy' | 'required' {
+  if (value === undefined || value === '' || value === 'legacy') return 'legacy';
+  if (value === 'required') return 'required';
+  throw new Error(`Ungültiger AUTH_MODE "${value}". Erlaubt sind "legacy" und "required".`);
+}
+
 export const config = {
   // Port the HTTP/WebSocket server listens on.
   port: intFromEnv('PORT', 3000),
@@ -37,24 +43,41 @@ export const config = {
   // is shut down without a clean stop message.
   offlineTimeoutMs: intFromEnv('OFFLINE_TIMEOUT_MS', 60_000),
 
-  // Optional PIN behind the admin-gated endpoints (grant admin, seed test
-  // users). Empty = open mode: the guard lets everyone through. The frontend
-  // currently never asks for a PIN — admin mode is a one-tap toggle (see
-  // docs/KONZEPT-TEST-USER.md) — so leave this empty until the PIN prompt
-  // returns; with a PIN set, admin actions from the UI would just fail.
-  adminPin: process.env.ADMIN_PIN ?? '',
+  // 'legacy' (default) preserves the pre-account behavior. 'required' makes
+  // session identity and roles authoritative across feature/admin routes.
+  authMode: parseAuthMode(process.env.AUTH_MODE),
+
+  // Dedicated read-only credential for the shared kiosk in required mode.
+  kioskToken: process.env.KIOSK_TOKEN ?? '',
+
+  // Session cookies are Secure by default (required for SameSite cookies to
+  // survive real browsers, and this server is reachable from the cloud).
+  // Set COOKIE_SECURE=0 for a plain-HTTP LAN-only deployment.
+  cookieSecure: process.env.COOKIE_SECURE !== '0',
+
+  // One-time bootstrap secret: lets the very first admin claim/register an
+  // account without needing an existing admin session to issue them an
+  // invite first (see accounts.ts). Empty = bootstrap via recovery code is
+  // disabled entirely.
+  adminRecoveryCode: process.env.ADMIN_RECOVERY_CODE ?? '',
+
+  // Phase 5a builds and tests the multi-group foundation without exposing a
+  // second production tenant before every feature, socket and push path is
+  // group-scoped. The migrated default group remains available either way.
+  multiGroupsEnabled: process.env.MULTI_GROUPS_ENABLED === '1',
 } as const;
 
-// In production (the public-internet deploy) an empty ACCESS_TOKEN silently
-// means "no protection" — fine for a LAN party run by hand, a
-// launch-blocking footgun for a 24/7 public host. ADMIN_PIN is deliberately
-// NOT required while the admin PIN is retired (see adminPin above). Pure so
-// index.ts's boot check is directly unit-testable without spawning a real
-// process.
+// Production must have one complete access model: legacy needs its shared
+// token; required auth needs the recovery secret that bootstraps and recovers
+// the first/last admin. Pure so index.ts can test this without starting.
 export function productionConfigError(
-  cfg: Pick<typeof config, 'accessToken' | 'adminPin'> = config
+  cfg: Pick<typeof config, 'accessToken' | 'authMode' | 'adminRecoveryCode'> = config
 ): string | null {
-  if (!cfg.accessToken) {
+  if (cfg.authMode === 'required') {
+    if (!cfg.adminRecoveryCode) {
+      return 'AUTH_MODE=required erfordert ADMIN_RECOVERY_CODE. Server wird nicht gestartet.';
+    }
+  } else if (!cfg.accessToken) {
     return 'NODE_ENV=production erfordert ACCESS_TOKEN. Server wird nicht gestartet.';
   }
   return null;

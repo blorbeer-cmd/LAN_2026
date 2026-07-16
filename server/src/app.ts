@@ -9,6 +9,7 @@ import path from 'path';
 import { requireAccess, accessProtectionEnabled } from './auth';
 import { apiRouter } from './routes';
 import { agentRouter } from './routes/agent';
+import { config } from './config';
 
 export function createApp(): express.Express {
   const app = express();
@@ -24,10 +25,15 @@ export function createApp(): express.Express {
   // the 400 KB validation limit and return a useful 413 when it is exceeded.
   app.use(express.json({ limit: '1mb' }));
 
-  // Public endpoint so the login screen knows whether a token is required.
-  // Intentionally NOT behind requireAccess.
+  // Public endpoint so the frontend can choose the legacy shared-token gate
+  // or the required per-user login gate.
   app.get('/api/meta', (_req, res) => {
-    res.json({ accessProtection: accessProtectionEnabled() });
+    res.json({
+      accessProtection: accessProtectionEnabled(),
+      authMode: config.authMode,
+      kioskProtection: config.authMode === 'required' && Boolean(config.kioskToken),
+      multiGroupsEnabled: config.multiGroupsEnabled,
+    });
   });
 
   // Agent reports authenticate via the player's own API key (NFR-15), not the
@@ -35,7 +41,8 @@ export function createApp(): express.Express {
   // before the requireAccess gate below so it isn't blocked by it.
   app.use('/api/agent', agentRouter);
 
-  // All browser-facing feature APIs sit behind the shared-token gate.
+  // Legacy browser APIs sit behind the shared-token gate. In required mode
+  // requireAccess is a compatibility no-op and apiRouter enforces sessions.
   app.use('/api', requireAccess, apiRouter);
 
   // Static frontend. The login screen itself is static and handles token entry

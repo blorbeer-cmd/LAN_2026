@@ -34,6 +34,7 @@ db.exec(`
     tracking_paused INTEGER NOT NULL DEFAULT 0, -- player-side opt-out; agent reports for this player are dropped
     is_admin        INTEGER NOT NULL DEFAULT 0, -- moderation role; can be granted via PATCH /api/players/:id
     is_test         INTEGER NOT NULL DEFAULT 0, -- admin-seeded test player; hidden outside admin mode (see testUsers.ts)
+    deactivated_at  INTEGER, -- former participant: kept for history, denied login/agent access and hidden from active rosters
     created_at      INTEGER NOT NULL
   );
 
@@ -985,6 +986,7 @@ runMigration({ version: 17, name: 'add event location and description', up: migr
 // `events` table comment above for why this exists. Exported so events.ts
 // can recognize/exclude it without duplicating the constant.
 export const OUTSIDE_EVENTS_ID = 'outside-events';
+export const DEFAULT_GROUP_ID = 'default-group';
 
 // Migration: older databases predate the tracking_enabled/ended_at event
 // columns, event_participants, and players.tracking_paused (all added
@@ -1106,7 +1108,9 @@ runMigration({ version: 21, name: 'add push log feed columns', up: migratePushLo
 // tables from databases that still carry them. Dropping a table drops its
 // indexes with it.
 function removeGamePingTables(): void {
-  db.exec('DROP TABLE IF EXISTS game_ping_interested; DROP TABLE IF EXISTS game_pings;');
+  // Kept as a no-op migration marker. Phase 5c restores this domain in
+  // migration 35; databases upgrading from before version 22 must retain
+  // their legacy rows so that migration can preserve them as group history.
 }
 runMigration({ version: 22, name: 'remove game ping tables', up: removeGamePingTables });
 
@@ -1183,8 +1187,886 @@ function migrateBroadcastLifecycleAndPushSeen(): void {
 }
 runMigration({ version: 25, name: 'add broadcast lifecycle and push seen', up: migrateBroadcastLifecycleAndPushSeen });
 
+// Real per-user login (see docs/KONZEPT-USER-MANAGEMENT.md): players gain a
+// password (NULL = not yet claimed/registered), sessions are looked up by the
+// hash of their token (the token itself is never stored), and invites are the
+// only way in — either claiming an existing player row or registering a new
+// one. purpose distinguishes 'register' | 'claim' | 'reset' so a stale claim
+// link can never double as a password-reset master key once the account is
+// claimed (see accounts.ts).
+function migrateAccountsAuth(): void {
+  const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  const has = (name: string) => columns.some((column) => column.name === name);
+  if (!has('password_hash')) db.exec('ALTER TABLE players ADD COLUMN password_hash TEXT');
+  if (!has('last_login_at')) db.exec('ALTER TABLE players ADD COLUMN last_login_at INTEGER');
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id           TEXT PRIMARY KEY,
+      player_id    TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      token_hash   TEXT NOT NULL UNIQUE,
+      created_at   INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL,
+      expires_at   INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_sessions_player ON sessions(player_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+
+    CREATE TABLE IF NOT EXISTS invites (
+      code        TEXT PRIMARY KEY,
+      purpose     TEXT NOT NULL, -- 'register' | 'claim' | 'reset'
+      player_id   TEXT REFERENCES players(id) ON DELETE CASCADE, -- set for claim/reset
+      created_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
+      created_at  INTEGER NOT NULL,
+      expires_at  INTEGER NOT NULL,
+      revoked_at  INTEGER,
+      used_at     INTEGER,
+      used_by     TEXT REFERENCES players(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_invites_player ON invites(player_id);
+  `);
+}
+runMigration({ version: 26, name: 'add accounts auth (sessions, invites)', up: migrateAccountsAuth });
+
+// Early development databases may already have recorded migration 26 with
+// created_by NOT NULL and without ON DELETE actions. Rebuild the table once
+// instead of asking developers to delete their database: migration history
+// is immutable, so a corrected CREATE TABLE in migration 26 alone would not
+// repair an already-upgraded installation.
+function repairInviteAuditForeignKeys(): void {
+  const table = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'invites'").get() as
+    { sql: string } | undefined;
+  if (!table) {
+    migrateAccountsAuth();
+    return;
+  }
+
+  db.exec(`
+    ALTER TABLE invites RENAME TO invites_migration_27;
+    CREATE TABLE invites (
+      code        TEXT PRIMARY KEY,
+      purpose     TEXT NOT NULL,
+      player_id   TEXT REFERENCES players(id) ON DELETE CASCADE,
+      created_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
+      created_at  INTEGER NOT NULL,
+      expires_at  INTEGER NOT NULL,
+      revoked_at  INTEGER,
+      used_at     INTEGER,
+      used_by     TEXT REFERENCES players(id) ON DELETE SET NULL
+    );
+    INSERT INTO invites (code, purpose, player_id, created_by, created_at, expires_at, revoked_at, used_at, used_by)
+      SELECT code, purpose, player_id, created_by, created_at,
+             COALESCE(expires_at, created_at + 1209600000),
+             revoked_at, used_at, used_by
+      FROM invites_migration_27;
+    DROP TABLE invites_migration_27;
+    CREATE INDEX idx_invites_player ON invites(player_id);
+  `);
+}
+runMigration({ version: 27, name: 'repair invite audit foreign keys', up: repairInviteAuditForeignKeys });
+
+// Critical admin actions require a freshly confirmed password. Keeping the
+// timestamp on the individual session (rather than the player) means a
+// confirmation on one phone never unlocks another unattended device.
+function addSessionReauthentication(): void {
+  const columns = db.prepare('PRAGMA table_info(sessions)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'reauthenticated_at')) {
+    db.exec('ALTER TABLE sessions ADD COLUMN reauthenticated_at INTEGER');
+  }
+}
+runMigration({ version: 28, name: 'add session reauthentication', up: addSessionReauthentication });
+
+function addAccountDeactivationAndAdminLog(): void {
+  const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'deactivated_at')) {
+    db.exec('ALTER TABLE players ADD COLUMN deactivated_at INTEGER');
+  }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS admin_log (
+      id              TEXT PRIMARY KEY,
+      actor_player_id TEXT REFERENCES players(id) ON DELETE SET NULL,
+      action          TEXT NOT NULL,
+      target_type     TEXT NOT NULL,
+      target_id       TEXT,
+      details         TEXT,
+      created_at      INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_admin_log_created ON admin_log(created_at);
+    CREATE INDEX IF NOT EXISTS idx_admin_log_actor ON admin_log(actor_player_id, created_at);
+  `);
+  // The legacy test-user rollout deliberately marked every existing player as
+  // admin. Unclaimed identities never made an explicit role choice, so clear
+  // those compatibility flags before required auth is enabled. A claimed
+  // bootstrap admin (and any roles granted afterwards) remains untouched.
+  db.prepare('UPDATE players SET is_admin = 0 WHERE password_hash IS NULL OR is_test = 1').run();
+}
+runMigration({ version: 29, name: 'add account deactivation and admin log', up: addAccountDeactivationAndAdminLog });
+
+// Phase 5a multi-group foundation. Existing feature tables intentionally stay
+// on the single migrated default group until the later data-scoping phases;
+// creating additional production groups is feature-flagged off meanwhile.
+function addGroupFoundation(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS groups (
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      description TEXT,
+      created_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
+      created_at  INTEGER NOT NULL,
+      archived_at INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS group_memberships (
+      group_id                TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      player_id               TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      role                    TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'member')),
+      status                  TEXT NOT NULL CHECK (status IN ('invited', 'active', 'removed', 'left')),
+      joined_at               INTEGER,
+      ended_at                INTEGER,
+      outside_tracking_enabled INTEGER NOT NULL DEFAULT 0 CHECK (outside_tracking_enabled IN (0, 1)),
+      invited_by              TEXT REFERENCES players(id) ON DELETE SET NULL,
+      PRIMARY KEY (group_id, player_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_group_memberships_player
+      ON group_memberships(player_id, status, group_id);
+    CREATE INDEX IF NOT EXISTS idx_group_memberships_group_role
+      ON group_memberships(group_id, status, role);
+
+    CREATE TABLE IF NOT EXISTS group_invites (
+      code             TEXT PRIMARY KEY,
+      group_id         TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      target_player_id TEXT REFERENCES players(id) ON DELETE CASCADE,
+      created_by       TEXT REFERENCES players(id) ON DELETE SET NULL,
+      created_at       INTEGER NOT NULL,
+      expires_at       INTEGER NOT NULL,
+      revoked_at       INTEGER,
+      used_at          INTEGER,
+      used_by          TEXT REFERENCES players(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_group_invites_group
+      ON group_invites(group_id, created_at);
+  `);
+
+  const playerColumns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  if (!playerColumns.some((column) => column.name === 'test_owner_group_id')) {
+    db.exec('ALTER TABLE players ADD COLUMN test_owner_group_id TEXT REFERENCES groups(id) ON DELETE SET NULL');
+  }
+
+  const now = Date.now();
+  const owner = db
+    .prepare(
+      `SELECT id
+       FROM players
+       WHERE password_hash IS NOT NULL AND deactivated_at IS NULL AND is_test = 0
+       ORDER BY is_admin DESC, created_at, id
+       LIMIT 1`,
+    )
+    .get() as { id: string } | undefined;
+
+  db.prepare(
+    `INSERT OR IGNORE INTO groups (id, name, description, created_by, created_at, archived_at)
+     VALUES (?, 'RespawnHQ', 'Automatisch migrierte Startgruppe', ?, ?, NULL)`,
+  ).run(DEFAULT_GROUP_ID, owner?.id ?? null, now);
+
+  const players = db
+    .prepare(
+      `SELECT id, is_admin, is_test, tracking_paused
+       FROM players
+       WHERE deactivated_at IS NULL`,
+    )
+    .all() as Array<{ id: string; is_admin: number; is_test: number; tracking_paused: number }>;
+  const insertMembership = db.prepare(
+    `INSERT OR IGNORE INTO group_memberships
+       (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
+     VALUES (?, ?, ?, 'active', ?, NULL, ?, NULL)`,
+  );
+  for (const player of players) {
+    const role = player.id === owner?.id ? 'owner' : player.is_admin && !player.is_test ? 'admin' : 'member';
+    insertMembership.run(DEFAULT_GROUP_ID, player.id, role, now, player.tracking_paused ? 0 : 1);
+    if (player.is_test) {
+      db.prepare('UPDATE players SET test_owner_group_id = ? WHERE id = ?').run(DEFAULT_GROUP_ID, player.id);
+    }
+  }
+}
+runMigration({ version: 30, name: 'add multi-group foundation', up: addGroupFoundation });
+
+// Phase 5b gives events and audit records an owning group. The broader feature
+// tables follow in 5c; columns stay nullable at the SQLite level during this
+// compatibility stage so the existing sentinel and instance-level audit can
+// coexist with group-owned rows. Application writes require a group for every
+// real event and every group action.
+function addGroupAuthorizationFoundation(): void {
+  const eventColumns = db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  if (!eventColumns.some((column) => column.name === 'group_id')) {
+    db.exec('ALTER TABLE events ADD COLUMN group_id TEXT REFERENCES groups(id) ON DELETE RESTRICT');
+  }
+  if (!eventColumns.some((column) => column.name === 'status')) {
+    db.exec(
+      "ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('draft', 'published', 'cancelled', 'ended'))",
+    );
+  }
+  db.prepare('UPDATE events SET group_id = ? WHERE group_id IS NULL').run(DEFAULT_GROUP_ID);
+  db.prepare(
+    'UPDATE events SET ends_at = starts_at + ? WHERE id != ? AND (ends_at IS NULL OR ends_at <= starts_at)',
+  ).run(24 * 60 * 60 * 1000, OUTSIDE_EVENTS_ID);
+  db.prepare("UPDATE events SET status = 'ended' WHERE ended_at IS NOT NULL").run();
+  db.exec('CREATE INDEX IF NOT EXISTS idx_events_group_start ON events(group_id, starts_at DESC)');
+
+  const auditColumns = db.prepare('PRAGMA table_info(admin_log)').all() as Array<{ name: string }>;
+  if (!auditColumns.some((column) => column.name === 'group_id')) {
+    db.exec('ALTER TABLE admin_log ADD COLUMN group_id TEXT REFERENCES groups(id) ON DELETE SET NULL');
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_admin_log_group_created ON admin_log(group_id, created_at DESC)');
+}
+runMigration({ version: 31, name: 'add group authorization foundation', up: addGroupAuthorizationFoundation });
+
+// Phase 5c (cluster 1): game catalog, skills, preferences and live/presence
+// data become group-owned. Columns stay nullable at the SQLite level (same
+// compatibility stance as 5b) and are backfilled to the migrated default
+// group; application code treats them as required for every real write.
+// game_process_names.process_name carried a column-level UNIQUE constraint
+// that SQLite cannot relax via ALTER TABLE, so that table is rebuilt to scope
+// uniqueness to (group_id, process_name) instead — different groups may
+// track the same process name against their own, independent game entries.
+function addCatalogAndPresenceGroupScoping(): void {
+  const addGroupIdColumn = (table: string, onDelete: 'RESTRICT' | 'CASCADE' = 'RESTRICT'): void => {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((c) => c.name === 'group_id')) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN group_id TEXT REFERENCES groups(id) ON DELETE ${onDelete}`);
+    }
+  };
+
+  addGroupIdColumn('games');
+  // The 5 built-in Arcade titles (arcade_key set) are system-wide fixtures
+  // shared by every group, not a group's curated catalog entry — they stay
+  // group_id = NULL forever; only real catalog/suggestion games get an owner.
+  db.prepare('UPDATE games SET group_id = ? WHERE group_id IS NULL AND arcade_key IS NULL').run(DEFAULT_GROUP_ID);
+  // Composite unique index so game_process_names (and future tables) can
+  // enforce a composite foreign key of (group_id, game_id) -> (group_id, id),
+  // guaranteeing a child row's group can never drift from its game's group.
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_games_group_pk ON games(group_id, id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_games_group_name ON games(group_id, name COLLATE NOCASE)');
+
+  addGroupIdColumn('skills');
+  db.prepare(
+    `UPDATE skills SET group_id = (SELECT g.group_id FROM games g WHERE g.id = skills.game_id)
+     WHERE group_id IS NULL`,
+  ).run();
+  db.exec('CREATE INDEX IF NOT EXISTS idx_skills_group ON skills(group_id)');
+
+  addGroupIdColumn('preferences');
+  db.prepare(
+    `UPDATE preferences SET group_id = (SELECT g.group_id FROM games g WHERE g.id = preferences.game_id)
+     WHERE group_id IS NULL`,
+  ).run();
+  db.exec('CREATE INDEX IF NOT EXISTS idx_preferences_group ON preferences(group_id)');
+
+  addGroupIdColumn('live_status_games');
+  db.prepare(
+    `UPDATE live_status_games SET group_id = (SELECT g.group_id FROM games g WHERE g.id = live_status_games.game_id)
+     WHERE group_id IS NULL`,
+  ).run();
+  db.exec('CREATE INDEX IF NOT EXISTS idx_live_status_games_group ON live_status_games(group_id)');
+
+  addGroupIdColumn('play_sessions');
+  db.prepare(
+    `UPDATE play_sessions
+     SET group_id = COALESCE(
+       (SELECT g.group_id FROM games g WHERE g.id = play_sessions.game_id),
+       (SELECT e.group_id FROM events e WHERE e.id = play_sessions.event_id),
+       ?
+     )
+     WHERE group_id IS NULL`,
+  ).run(DEFAULT_GROUP_ID);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_play_sessions_group ON play_sessions(group_id, started_at DESC)');
+
+  const processNameColumns = db.prepare('PRAGMA table_info(game_process_names)').all() as Array<{ name: string }>;
+  if (!processNameColumns.some((c) => c.name === 'group_id')) {
+    db.exec(`
+      CREATE TABLE game_process_names_new (
+        id           TEXT PRIMARY KEY,
+        game_id      TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        group_id     TEXT REFERENCES groups(id) ON DELETE RESTRICT,
+        process_name TEXT NOT NULL,
+        FOREIGN KEY (group_id, game_id) REFERENCES games(group_id, id) ON DELETE CASCADE
+      );
+    `);
+    db.exec(`
+      INSERT INTO game_process_names_new (id, game_id, group_id, process_name)
+      SELECT gpn.id, gpn.game_id, g.group_id, gpn.process_name
+      FROM game_process_names gpn
+      JOIN games g ON g.id = gpn.game_id
+    `);
+    db.exec('DROP TABLE game_process_names');
+    db.exec('ALTER TABLE game_process_names_new RENAME TO game_process_names');
+    db.exec(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_game_process_names_group_process ON game_process_names(group_id, process_name)',
+    );
+    db.exec('CREATE INDEX IF NOT EXISTS idx_game_process_names_game ON game_process_names(game_id)');
+  }
+}
+runMigration({ version: 32, name: 'add catalog and presence group scoping', up: addCatalogAndPresenceGroupScoping });
+
+// Phase 5c (cluster 2): matches, matchmaking draws and tournaments become
+// group-owned. All three already carry event_id, and events have had
+// group_id since 5b, so the backfill joins through that instead of games
+// (unlike cluster 1's games-owned tables) — a match/draw/tournament's group
+// is its event's group, not necessarily its game's owning group under any
+// future cross-group game sharing. tournament_teams/tournament_matches stay
+// without their own column: they're always reached via tournament_id, so
+// their group is resolved with a join to tournaments rather than a
+// denormalized copy that could drift.
+function addCompetitionGroupScoping(): void {
+  const addGroupIdColumn = (table: string): void => {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((c) => c.name === 'group_id')) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN group_id TEXT REFERENCES groups(id) ON DELETE RESTRICT`);
+    }
+  };
+
+  addGroupIdColumn('matches');
+  db.prepare(
+    `UPDATE matches SET group_id = (SELECT e.group_id FROM events e WHERE e.id = matches.event_id)
+     WHERE group_id IS NULL`,
+  ).run();
+  db.exec('CREATE INDEX IF NOT EXISTS idx_matches_group_played ON matches(group_id, played_at DESC)');
+
+  addGroupIdColumn('matchmaking_draws');
+  db.prepare(
+    `UPDATE matchmaking_draws SET group_id = (SELECT e.group_id FROM events e WHERE e.id = matchmaking_draws.event_id)
+     WHERE group_id IS NULL`,
+  ).run();
+  db.exec('CREATE INDEX IF NOT EXISTS idx_matchmaking_draws_group ON matchmaking_draws(group_id, generated_at DESC)');
+
+  addGroupIdColumn('tournaments');
+  db.prepare(
+    `UPDATE tournaments SET group_id = (SELECT e.group_id FROM events e WHERE e.id = tournaments.event_id)
+     WHERE group_id IS NULL`,
+  ).run();
+  db.exec('CREATE INDEX IF NOT EXISTS idx_tournaments_group_created ON tournaments(group_id, created_at DESC)');
+}
+runMigration({ version: 33, name: 'add competition group scoping', up: addCompetitionGroupScoping });
+
+// Phase 5c (cluster 3): votes, vote rounds and captain drafts become strict
+// group resources. These tables are rebuilt instead of receiving nullable
+// compatibility columns: their event link is now optional (NULL means the
+// permanent group room), while composite foreign keys guarantee that a real
+// event and the selected game belong to the same group. Player references
+// retain immutable display snapshots and also reference the corresponding
+// group-membership row; application writers additionally require that the
+// membership is active at write time.
+function addVotesAndDraftsGroupScoping(): void {
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_events_group_pk ON events(group_id, id)');
+
+  const ensureHistoricalMembership = (groupId: string, playerId: string, timestamp: number): void => {
+    db.prepare(
+      `INSERT OR IGNORE INTO group_memberships
+         (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
+       VALUES (?, ?, 'member', 'removed', ?, ?, 0, NULL)`,
+    ).run(groupId, playerId, timestamp, timestamp);
+  };
+
+  const voteColumns = db.prepare('PRAGMA table_info(votes)').all() as Array<{ name: string }>;
+  const roundsColumns = db.prepare('PRAGMA table_info(vote_rounds)').all() as Array<{ name: string }>;
+  const votesAreScoped = voteColumns.some((column) => column.name === 'group_id');
+  const roundsAreScoped = roundsColumns.some((column) => column.name === 'group_id');
+
+  if (!votesAreScoped || !roundsAreScoped) {
+    const historicalVoters = db
+      .prepare(
+        `SELECT DISTINCT COALESCE(e.group_id, ?) AS group_id, v.player_id, v.created_at
+         FROM votes v
+         LEFT JOIN events e ON e.id = v.event_id`,
+      )
+      .all(DEFAULT_GROUP_ID) as Array<{ group_id: string; player_id: string; created_at: number }>;
+    for (const voter of historicalVoters) {
+      ensureHistoricalMembership(voter.group_id, voter.player_id, voter.created_at);
+    }
+
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE vote_rounds_scoped (
+          group_id          TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+          round             INTEGER NOT NULL,
+          event_id          TEXT,
+          started_at        INTEGER NOT NULL,
+          closed_at         INTEGER,
+          winner_game_ids   TEXT,
+          mode              TEXT NOT NULL DEFAULT 'single' CHECK (mode IN ('single', 'points')),
+          title             TEXT,
+          info              TEXT,
+          selected_game_ids TEXT,
+          PRIMARY KEY (group_id, round),
+          FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE votes_scoped (
+          id                   TEXT PRIMARY KEY,
+          group_id             TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+          player_id            TEXT NOT NULL,
+          player_name_snapshot TEXT NOT NULL,
+          game_id              TEXT NOT NULL,
+          event_id             TEXT,
+          round                INTEGER NOT NULL,
+          points               INTEGER CHECK (points IS NULL OR points BETWEEN 1 AND 10),
+          created_at           INTEGER NOT NULL,
+          UNIQUE (group_id, player_id, round, game_id),
+          FOREIGN KEY (group_id, player_id) REFERENCES group_memberships(group_id, player_id) ON DELETE RESTRICT,
+          FOREIGN KEY (group_id, game_id) REFERENCES games(group_id, id) ON DELETE CASCADE,
+          FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE,
+          FOREIGN KEY (group_id, round) REFERENCES vote_rounds_scoped(group_id, round) ON DELETE CASCADE
+        );
+      `);
+
+      db.prepare(
+        `INSERT INTO vote_rounds_scoped
+           (group_id, round, event_id, started_at, closed_at, winner_game_ids, mode, title, info, selected_game_ids)
+         SELECT COALESCE(e.group_id, ?), vr.round,
+                CASE WHEN vr.event_id = ? THEN NULL ELSE vr.event_id END,
+                vr.started_at, vr.closed_at, vr.winner_game_ids, vr.mode, vr.title, vr.info, vr.selected_game_ids
+         FROM vote_rounds vr
+         LEFT JOIN events e ON e.id = vr.event_id`,
+      ).run(DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID);
+
+      db.prepare(
+        `INSERT INTO votes_scoped
+           (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
+         SELECT v.id, COALESCE(e.group_id, ?), v.player_id, p.name, v.game_id,
+                CASE WHEN v.event_id = ? THEN NULL ELSE v.event_id END,
+                v.round, v.points, v.created_at
+         FROM votes v
+         JOIN players p ON p.id = v.player_id
+         LEFT JOIN events e ON e.id = v.event_id`,
+      ).run(DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID);
+
+      db.exec(`
+        DROP TABLE votes;
+        DROP TABLE vote_rounds;
+        ALTER TABLE vote_rounds_scoped RENAME TO vote_rounds;
+        ALTER TABLE votes_scoped RENAME TO votes;
+      `);
+    })();
+  }
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_votes_group_round ON votes(group_id, round);
+    CREATE INDEX IF NOT EXISTS idx_votes_group_event ON votes(group_id, event_id);
+    CREATE INDEX IF NOT EXISTS idx_vote_rounds_group_event ON vote_rounds(group_id, event_id, round DESC);
+
+    DROP TRIGGER IF EXISTS trg_votes_round_scope_insert;
+    CREATE TRIGGER trg_votes_round_scope_insert
+    BEFORE INSERT ON votes
+    WHEN NOT EXISTS (
+      SELECT 1 FROM vote_rounds vr
+      WHERE vr.group_id = NEW.group_id AND vr.round = NEW.round AND vr.event_id IS NEW.event_id
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'vote round group/event mismatch');
+    END;
+
+    DROP TRIGGER IF EXISTS trg_votes_round_scope_update;
+    CREATE TRIGGER trg_votes_round_scope_update
+    BEFORE UPDATE OF group_id, round, event_id ON votes
+    WHEN NOT EXISTS (
+      SELECT 1 FROM vote_rounds vr
+      WHERE vr.group_id = NEW.group_id AND vr.round = NEW.round AND vr.event_id IS NEW.event_id
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'vote round group/event mismatch');
+    END;
+  `);
+
+  for (const key of ['vote_round', 'vote_open', 'vote_started_at', 'vote_mode']) {
+    db.prepare(
+      `INSERT OR IGNORE INTO app_state (key, value)
+       SELECT ?, value FROM app_state WHERE key = ?`,
+    ).run(`${key}:${DEFAULT_GROUP_ID}`, key);
+  }
+
+  const draftColumns = db.prepare('PRAGMA table_info(drafts)').all() as Array<{ name: string }>;
+  if (!draftColumns.some((column) => column.name === 'group_id')) {
+    const historicalDrafts = db.prepare('SELECT * FROM drafts').all() as Array<{
+      id: string;
+      event_id: string;
+      captain_ids: string;
+      pool_ids: string;
+      picks: string;
+      created_at: number;
+    }>;
+    for (const draft of historicalDrafts) {
+      const event = db.prepare('SELECT group_id FROM events WHERE id = ?').get(draft.event_id) as
+        { group_id: string | null } | undefined;
+      const groupId = event?.group_id ?? DEFAULT_GROUP_ID;
+      const picks = JSON.parse(draft.picks) as Array<{ playerId: string }>;
+      const playerIds = [
+        ...(JSON.parse(draft.captain_ids) as string[]),
+        ...(JSON.parse(draft.pool_ids) as string[]),
+        ...picks.map((pick) => pick.playerId),
+      ];
+      for (const playerId of new Set(playerIds)) {
+        ensureHistoricalMembership(groupId, playerId, draft.created_at);
+      }
+    }
+
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE drafts_scoped (
+          id          TEXT PRIMARY KEY,
+          group_id    TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+          event_id    TEXT,
+          game_id     TEXT NOT NULL,
+          status      TEXT NOT NULL CHECK (status IN ('active', 'completed', 'cancelled')),
+          captain_ids TEXT NOT NULL,
+          pool_ids    TEXT NOT NULL,
+          picks       TEXT NOT NULL,
+          created_at  INTEGER NOT NULL,
+          FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE,
+          FOREIGN KEY (group_id, game_id) REFERENCES games(group_id, id) ON DELETE CASCADE
+        );
+      `);
+      db.prepare(
+        `INSERT INTO drafts_scoped
+           (id, group_id, event_id, game_id, status, captain_ids, pool_ids, picks, created_at)
+         SELECT d.id, COALESCE(e.group_id, ?),
+                CASE WHEN d.event_id = ? THEN NULL ELSE d.event_id END,
+                d.game_id, d.status, d.captain_ids, d.pool_ids, d.picks, d.created_at
+         FROM drafts d
+         LEFT JOIN events e ON e.id = d.event_id`,
+      ).run(DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID);
+      db.exec('DROP TABLE drafts; ALTER TABLE drafts_scoped RENAME TO drafts;');
+    })();
+  }
+
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_drafts_group_pk ON drafts(group_id, id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_drafts_one_active_per_group ON drafts(group_id) WHERE status = 'active';
+    CREATE INDEX IF NOT EXISTS idx_drafts_group_status ON drafts(group_id, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_drafts_group_event ON drafts(group_id, event_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS draft_player_refs (
+      draft_id             TEXT NOT NULL,
+      group_id             TEXT NOT NULL,
+      player_id            TEXT NOT NULL,
+      role                 TEXT NOT NULL CHECK (role IN ('captain', 'pool')),
+      player_name_snapshot TEXT NOT NULL,
+      player_color_snapshot TEXT NOT NULL,
+      player_avatar_snapshot TEXT,
+      PRIMARY KEY (draft_id, player_id),
+      FOREIGN KEY (group_id, draft_id) REFERENCES drafts(group_id, id) ON DELETE CASCADE,
+      FOREIGN KEY (group_id, player_id) REFERENCES group_memberships(group_id, player_id) ON DELETE RESTRICT
+    );
+    CREATE INDEX IF NOT EXISTS idx_draft_player_refs_group_player
+      ON draft_player_refs(group_id, player_id);
+  `);
+
+  const drafts = db.prepare('SELECT * FROM drafts').all() as Array<{
+    id: string;
+    group_id: string;
+    captain_ids: string;
+    pool_ids: string;
+  }>;
+  const insertDraftPlayer = db.prepare(
+    `INSERT OR IGNORE INTO draft_player_refs
+       (draft_id, group_id, player_id, role, player_name_snapshot, player_color_snapshot, player_avatar_snapshot)
+     SELECT ?, ?, p.id, ?, p.name, p.color, p.avatar FROM players p WHERE p.id = ?`,
+  );
+  for (const draft of drafts) {
+    for (const playerId of JSON.parse(draft.captain_ids) as string[]) {
+      insertDraftPlayer.run(draft.id, draft.group_id, 'captain', playerId);
+    }
+    for (const playerId of JSON.parse(draft.pool_ids) as string[]) {
+      insertDraftPlayer.run(draft.id, draft.group_id, 'pool', playerId);
+    }
+    const pickedIds = db.prepare('SELECT picks FROM drafts WHERE id = ?').get(draft.id) as { picks: string };
+    for (const pick of JSON.parse(pickedIds.picks) as Array<{ playerId: string }>) {
+      insertDraftPlayer.run(draft.id, draft.group_id, 'pool', pick.playerId);
+    }
+  }
+}
+runMigration({ version: 34, name: 'add votes and drafts group scoping', up: addVotesAndDraftsGroupScoping });
+
+function migrateScopedGamePings(
+  ensureHistoricalMembership: (groupId: string, playerId: string, timestamp: number) => void,
+): void {
+  const pingTable = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'game_pings'").get();
+  const pingColumns = pingTable ? (db.prepare('PRAGMA table_info(game_pings)').all() as Array<{ name: string }>) : [];
+  if (pingTable && !pingColumns.some((column) => column.name === 'group_id')) {
+    const legacyPings = db.prepare('SELECT id, player_id, event_id, created_at FROM game_pings').all() as Array<{
+      id: string;
+      player_id: string;
+      event_id: string;
+      created_at: number;
+    }>;
+    const legacyInterested = db.prepare('SELECT ping_id, player_id FROM game_ping_interested').all() as Array<{
+      ping_id: string;
+      player_id: string;
+    }>;
+    const pingById = new Map(legacyPings.map((ping) => [ping.id, ping]));
+    for (const ping of legacyPings) {
+      const event = db.prepare('SELECT group_id FROM events WHERE id = ?').get(ping.event_id) as
+        | { group_id: string | null }
+        | undefined;
+      ensureHistoricalMembership(event?.group_id ?? DEFAULT_GROUP_ID, ping.player_id, ping.created_at);
+    }
+    for (const interested of legacyInterested) {
+      const ping = pingById.get(interested.ping_id);
+      if (!ping) continue;
+      const event = db.prepare('SELECT group_id FROM events WHERE id = ?').get(ping.event_id) as
+        | { group_id: string | null }
+        | undefined;
+      ensureHistoricalMembership(event?.group_id ?? DEFAULT_GROUP_ID, interested.player_id, ping.created_at);
+    }
+    db.exec(
+      'ALTER TABLE game_ping_interested RENAME TO game_ping_interested_legacy; ALTER TABLE game_pings RENAME TO game_pings_legacy;',
+    );
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS game_pings (
+      id                     TEXT PRIMARY KEY,
+      group_id               TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      event_id               TEXT,
+      player_id              TEXT NOT NULL,
+      player_name_snapshot   TEXT NOT NULL,
+      player_color_snapshot  TEXT NOT NULL,
+      player_avatar_snapshot TEXT,
+      game_id                TEXT NOT NULL,
+      game_name_snapshot     TEXT NOT NULL,
+      game_icon_snapshot     TEXT NOT NULL,
+      message                TEXT,
+      created_at             INTEGER NOT NULL,
+      expires_at             INTEGER NOT NULL,
+      cancelled_at           INTEGER,
+      FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE,
+      FOREIGN KEY (group_id, player_id) REFERENCES group_memberships(group_id, player_id) ON DELETE CASCADE
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_game_pings_group_pk ON game_pings(group_id, id);
+    CREATE INDEX IF NOT EXISTS idx_game_pings_group_scope_created
+      ON game_pings(group_id, event_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_game_pings_group_active
+      ON game_pings(group_id, event_id, expires_at) WHERE cancelled_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS game_ping_interested (
+      ping_id                TEXT NOT NULL,
+      group_id               TEXT NOT NULL,
+      player_id              TEXT NOT NULL,
+      player_name_snapshot   TEXT NOT NULL,
+      player_color_snapshot  TEXT NOT NULL,
+      player_avatar_snapshot TEXT,
+      created_at             INTEGER NOT NULL,
+      PRIMARY KEY (ping_id, player_id),
+      FOREIGN KEY (group_id, ping_id) REFERENCES game_pings(group_id, id) ON DELETE CASCADE,
+      FOREIGN KEY (group_id, player_id) REFERENCES group_memberships(group_id, player_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_game_ping_interested_group_player
+      ON game_ping_interested(group_id, player_id);
+
+    DROP TRIGGER IF EXISTS trg_game_pings_game_scope_insert;
+    CREATE TRIGGER trg_game_pings_game_scope_insert
+    BEFORE INSERT ON game_pings
+    WHEN NOT EXISTS (SELECT 1 FROM games g WHERE g.group_id = NEW.group_id AND g.id = NEW.game_id)
+    BEGIN
+      SELECT RAISE(ABORT, 'ping game group mismatch');
+    END;
+
+    DROP TRIGGER IF EXISTS trg_game_pings_game_scope_update;
+    CREATE TRIGGER trg_game_pings_game_scope_update
+    BEFORE UPDATE OF group_id, game_id ON game_pings
+    WHEN NOT EXISTS (SELECT 1 FROM games g WHERE g.group_id = NEW.group_id AND g.id = NEW.game_id)
+    BEGIN
+      SELECT RAISE(ABORT, 'ping game group mismatch');
+    END;
+  `);
+
+  const legacyPingTable = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'game_pings_legacy'")
+    .get();
+  if (!legacyPingTable) return;
+
+  db.prepare(
+    `INSERT INTO game_pings
+       (id, group_id, event_id, player_id, player_name_snapshot, player_color_snapshot, player_avatar_snapshot,
+        game_id, game_name_snapshot, game_icon_snapshot, message, created_at, expires_at, cancelled_at)
+     SELECT gp.id, COALESCE(e.group_id, ?), CASE WHEN gp.event_id = ? THEN NULL ELSE gp.event_id END,
+            gp.player_id, p.name, p.color, p.avatar, gp.game_id, g.name, g.icon,
+            gp.message, gp.created_at, gp.expires_at, NULL
+     FROM game_pings_legacy gp
+     JOIN players p ON p.id = gp.player_id
+     JOIN games g ON g.id = gp.game_id
+     LEFT JOIN events e ON e.id = gp.event_id`,
+  ).run(DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID);
+  db.prepare(
+    `INSERT INTO game_ping_interested
+       (ping_id, group_id, player_id, player_name_snapshot, player_color_snapshot, player_avatar_snapshot, created_at)
+     SELECT i.ping_id, gp.group_id, i.player_id, p.name, p.color, p.avatar, gp.created_at
+     FROM game_ping_interested_legacy i
+     JOIN game_pings gp ON gp.id = i.ping_id
+     JOIN players p ON p.id = i.player_id`,
+  ).run();
+  db.exec('DROP TABLE game_ping_interested_legacy; DROP TABLE game_pings_legacy;');
+}
+
+// Phase 5c (Seating/Pings): both domains become strict group resources with
+// an optional same-group event. NULL event_id is the permanent group room.
+// Mutable writes require active members in the routes; composite foreign
+// keys and display snapshots retain the historical membership proof.
+function addSeatingAndPingsGroupScoping(): void {
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_events_group_pk ON events(group_id, id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_games_group_pk ON games(group_id, id);
+  `);
+
+  const ensureHistoricalMembership = (groupId: string, playerId: string, timestamp: number): void => {
+    db.prepare(
+      `INSERT OR IGNORE INTO group_memberships
+         (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
+       VALUES (?, ?, 'member', 'removed', ?, ?, 0, NULL)`,
+    ).run(groupId, playerId, timestamp, timestamp);
+  };
+
+  const seatingColumns = db.prepare('PRAGMA table_info(seating_layouts)').all() as Array<{ name: string }>;
+  if (!seatingColumns.some((column) => column.name === 'group_id')) {
+    const layouts = db.prepare('SELECT event_id, assignments, updated_at FROM seating_layouts').all() as Array<{
+      event_id: string;
+      assignments: string;
+      updated_at: number;
+    }>;
+    for (const layout of layouts) {
+      const event = db.prepare('SELECT group_id FROM events WHERE id = ?').get(layout.event_id) as
+        | { group_id: string | null }
+        | undefined;
+      let assignments: Array<{ playerId?: unknown }> = [];
+      try {
+        const parsed = JSON.parse(layout.assignments);
+        if (Array.isArray(parsed)) assignments = parsed;
+      } catch {
+        // Existing readLayout already treats invalid legacy JSON as empty.
+      }
+      for (const assignment of assignments) {
+        if (typeof assignment.playerId === 'string') {
+          ensureHistoricalMembership(event?.group_id ?? DEFAULT_GROUP_ID, assignment.playerId, layout.updated_at);
+        }
+      }
+    }
+
+    const neighborRows = db.prepare('SELECT event_id, player_id, neighbor_id FROM seat_neighbors').all() as Array<{
+      event_id: string;
+      player_id: string;
+      neighbor_id: string;
+    }>;
+    for (const row of neighborRows) {
+      const event = db.prepare('SELECT group_id FROM events WHERE id = ?').get(row.event_id) as
+        | { group_id: string | null }
+        | undefined;
+      const groupId = event?.group_id ?? DEFAULT_GROUP_ID;
+      ensureHistoricalMembership(groupId, row.player_id, Date.now());
+      ensureHistoricalMembership(groupId, row.neighbor_id, Date.now());
+    }
+
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE seating_layouts_scoped (
+          group_id     TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+          event_id     TEXT,
+          top_seats    INTEGER NOT NULL DEFAULT 2,
+          right_seats  INTEGER NOT NULL DEFAULT 2,
+          bottom_seats INTEGER NOT NULL DEFAULT 2,
+          left_seats   INTEGER NOT NULL DEFAULT 2,
+          assignments  TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(assignments) AND json_type(assignments) = 'array'),
+          updated_at   INTEGER NOT NULL,
+          FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE
+        );
+        CREATE TABLE seat_neighbors_scoped (
+          group_id               TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+          event_id               TEXT,
+          player_id              TEXT NOT NULL,
+          neighbor_id            TEXT NOT NULL,
+          player_name_snapshot   TEXT NOT NULL,
+          neighbor_name_snapshot TEXT NOT NULL,
+          source                 TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'auto')),
+          CHECK (player_id != neighbor_id),
+          FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE,
+          FOREIGN KEY (group_id, player_id) REFERENCES group_memberships(group_id, player_id) ON DELETE CASCADE,
+          FOREIGN KEY (group_id, neighbor_id) REFERENCES group_memberships(group_id, player_id) ON DELETE CASCADE
+        );
+      `);
+      db.prepare(
+        `INSERT INTO seating_layouts_scoped
+           (group_id, event_id, top_seats, right_seats, bottom_seats, left_seats, assignments, updated_at)
+         SELECT COALESCE(e.group_id, ?), CASE WHEN sl.event_id = ? THEN NULL ELSE sl.event_id END,
+                sl.top_seats, sl.right_seats, sl.bottom_seats, sl.left_seats, sl.assignments, sl.updated_at
+         FROM seating_layouts sl LEFT JOIN events e ON e.id = sl.event_id`,
+      ).run(DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID);
+      db.prepare(
+        `INSERT INTO seat_neighbors_scoped
+           (group_id, event_id, player_id, neighbor_id, player_name_snapshot, neighbor_name_snapshot, source)
+         SELECT COALESCE(e.group_id, ?), CASE WHEN sn.event_id = ? THEN NULL ELSE sn.event_id END,
+                sn.player_id, sn.neighbor_id, p.name, n.name, sn.source
+         FROM seat_neighbors sn
+         JOIN players p ON p.id = sn.player_id
+         JOIN players n ON n.id = sn.neighbor_id
+         LEFT JOIN events e ON e.id = sn.event_id`,
+      ).run(DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID);
+      db.exec(`
+        DROP TABLE seat_neighbors;
+        DROP TABLE seating_layouts;
+        ALTER TABLE seating_layouts_scoped RENAME TO seating_layouts;
+        ALTER TABLE seat_neighbors_scoped RENAME TO seat_neighbors;
+      `);
+    })();
+  }
+
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_seating_layouts_group_room
+      ON seating_layouts(group_id) WHERE event_id IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_seating_layouts_group_event
+      ON seating_layouts(group_id, event_id) WHERE event_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_seat_neighbors_group_room
+      ON seat_neighbors(group_id, player_id, neighbor_id) WHERE event_id IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_seat_neighbors_group_event
+      ON seat_neighbors(group_id, event_id, player_id, neighbor_id) WHERE event_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_seat_neighbors_group_scope_player
+      ON seat_neighbors(group_id, event_id, player_id);
+
+    DROP TRIGGER IF EXISTS trg_seating_layout_membership_insert;
+    CREATE TRIGGER trg_seating_layout_membership_insert
+    BEFORE INSERT ON seating_layouts
+    WHEN EXISTS (
+      SELECT 1 FROM json_each(NEW.assignments) assignment
+      WHERE NOT EXISTS (
+        SELECT 1 FROM group_memberships gm
+        WHERE gm.group_id = NEW.group_id
+          AND gm.player_id = json_extract(assignment.value, '$.playerId')
+      )
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'seating player group mismatch');
+    END;
+
+    DROP TRIGGER IF EXISTS trg_seating_layout_membership_update;
+    CREATE TRIGGER trg_seating_layout_membership_update
+    BEFORE UPDATE OF group_id, assignments ON seating_layouts
+    WHEN EXISTS (
+      SELECT 1 FROM json_each(NEW.assignments) assignment
+      WHERE NOT EXISTS (
+        SELECT 1 FROM group_memberships gm
+        WHERE gm.group_id = NEW.group_id
+          AND gm.player_id = json_extract(assignment.value, '$.playerId')
+      )
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'seating player group mismatch');
+    END;
+  `);
+
+  migrateScopedGamePings(ensureHistoricalMembership);
+}
+runMigration({ version: 35, name: 'add seating and pings group scoping', up: addSeatingAndPingsGroupScoping });
+
 // Notification-center removal is personal: hiding an entry must never
 // delete the shared push-log row for its other recipients.
+// Versions 36-38 predate the group-scoping series on their original branch;
+// they are registered after it so databases that followed main never skip them.
 function createPushLogHiddenTable(): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS push_log_hidden (
@@ -1196,7 +2078,7 @@ function createPushLogHiddenTable(): void {
     CREATE INDEX IF NOT EXISTS idx_push_log_hidden_player ON push_log_hidden(player_id, push_id);
   `);
 }
-runMigration({ version: 26, name: 'add per-player hidden push log', up: createPushLogHiddenTable });
+runMigration({ version: 36, name: 'add per-player hidden push log', up: createPushLogHiddenTable });
 
 // Admin-generated historical Hall-of-Fame fixtures must be distinguishable
 // from real LANs so the cleanup action can remove them without relying on a
@@ -1209,7 +2091,7 @@ function migrateEventTestColumn(): void {
   }
   db.prepare("UPDATE events SET is_test = 1 WHERE name LIKE 'Respawn Test-LAN %'").run();
 }
-runMigration({ version: 27, name: 'add events.is_test', up: migrateEventTestColumn });
+runMigration({ version: 37, name: 'add events.is_test', up: migrateEventTestColumn });
 
 // Quantity is separate from the free-text item description so totals can be
 // calculated correctly and users no longer have to encode "2x" in the name.
@@ -1218,7 +2100,7 @@ function migrateFoodOrderItemQuantityColumn(): void {
   if (columns.some((c) => c.name === 'quantity')) return;
   db.exec('ALTER TABLE food_order_items ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1');
 }
-runMigration({ version: 28, name: 'add food order item quantity', up: migrateFoodOrderItemQuantityColumn });
+runMigration({ version: 38, name: 'add food order item quantity', up: migrateFoodOrderItemQuantityColumn });
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.
@@ -1228,11 +2110,11 @@ function seedGames(): void {
 
   const now = Date.now();
   const insertGame = db.prepare(
-    `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at, group_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertProc = db.prepare(
-    `INSERT OR IGNORE INTO game_process_names (id, game_id, process_name) VALUES (?, ?, ?)`,
+    `INSERT OR IGNORE INTO game_process_names (id, game_id, group_id, process_name) VALUES (?, ?, ?, ?)`,
   );
 
   const defaults: Array<{
@@ -1252,9 +2134,9 @@ function seedGames(): void {
   const seed = db.transaction(() => {
     for (const g of defaults) {
       const gameId = nanoid();
-      insertGame.run(gameId, g.name, g.icon, g.min, g.max, now);
+      insertGame.run(gameId, g.name, g.icon, g.min, g.max, now, DEFAULT_GROUP_ID);
       for (const p of g.procs) {
-        insertProc.run(nanoid(), gameId, p.toLowerCase());
+        insertProc.run(nanoid(), gameId, DEFAULT_GROUP_ID, p.toLowerCase());
       }
     }
   });
@@ -1483,10 +2365,13 @@ function seedCatalogGames(): void {
     { title: 'Wreckfest', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/228380/Wreckfest/' },
   ];
 
-  const findByName = db.prepare('SELECT id FROM games WHERE name = ? COLLATE NOCASE');
+  // This shared planning-sheet seed only ever targeted the single migrated
+  // group; scoping the lookup/insert to it keeps that intent correct even
+  // once other groups' catalogs can contain a same-named game.
+  const findByName = db.prepare('SELECT id FROM games WHERE name = ? COLLATE NOCASE AND group_id = ?');
   const insertGame = db.prepare(
-    `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at, platform, platform_url, trailer_url, status)
-     VALUES (?, ?, '🎮', 1, 5, ?, ?, ?, ?, 'catalog')`,
+    `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at, platform, platform_url, trailer_url, status, group_id)
+     VALUES (?, ?, '🎮', 1, 5, ?, ?, ?, ?, 'catalog', ?)`,
   );
   const fillMissing = db.prepare(
     `UPDATE games SET platform = COALESCE(platform, ?), platform_url = COALESCE(platform_url, ?), trailer_url = COALESCE(trailer_url, ?) WHERE id = ?`,
@@ -1495,11 +2380,11 @@ function seedCatalogGames(): void {
   db.transaction(() => {
     for (const g of defaults) {
       const trailerUrl = g.trailerUrl ?? trailer(g.title);
-      const existing = findByName.get(g.title) as { id: string } | undefined;
+      const existing = findByName.get(g.title, DEFAULT_GROUP_ID) as { id: string } | undefined;
       if (existing) {
         fillMissing.run(g.platform, g.platformUrl, trailerUrl, existing.id);
       } else {
-        insertGame.run(nanoid(), g.title, now, g.platform, g.platformUrl, trailerUrl);
+        insertGame.run(nanoid(), g.title, now, g.platform, g.platformUrl, trailerUrl, DEFAULT_GROUP_ID);
       }
     }
   })();
@@ -1532,9 +2417,10 @@ function seedOutsideEventsEvent(): void {
   const exists = db.prepare('SELECT 1 FROM events WHERE id = ?').get(OUTSIDE_EVENTS_ID);
   if (exists) return;
   db.prepare(
-    `INSERT INTO events (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at)
-     VALUES (?, ?, ?, NULL, NULL, NULL, 0, NULL)`,
-  ).run(OUTSIDE_EVENTS_ID, 'Außerhalb von Events', Date.now());
+    `INSERT INTO events
+       (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at, group_id, status)
+     VALUES (?, ?, ?, NULL, NULL, NULL, 0, NULL, ?, 'published')`,
+  ).run(OUTSIDE_EVENTS_ID, 'Außerhalb von Events', Date.now(), DEFAULT_GROUP_ID);
 }
 
 seedOutsideEventsEvent();

@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
   <!-- bump ?v= when the stylesheet changes so no cached copy survives a reload -->
-  <link rel="stylesheet" href="/css/style.css?v=36" />
+  <link rel="stylesheet" href="/css/style.css?v=37" />
 </head>
 <body>
   <div id="login-screen" class="login-screen" hidden>
@@ -26,6 +26,15 @@
     </form>
   </div>
 
+  <!-- Real per-user login/register/claim gate (see
+       docs/KONZEPT-USER-MANAGEMENT.md, public/js/authGate.js). Only ever
+       shown when the server reports authMode: 'required' via /api/meta —
+       stays empty and hidden otherwise, so nothing changes for today's
+       shared-token-only deployments. Content is rendered into it by
+       authGate.js, not hardcoded here, since which form (login/register/
+       claim) applies depends on the URL the visitor arrived with. -->
+  <div id="auth-screen" class="login-screen" hidden></div>
+
   <div id="app" class="app" hidden>
     <header class="topbar">
       <a class="topbar-title" href="/" aria-label="Zur Landingpage">
@@ -34,6 +43,9 @@
       </a>
       <div class="topbar-actions">
         <button id="global-search-btn" class="icon-btn" type="button" aria-label="Bereiche und Tools durchsuchen" aria-keyshortcuts="Control+K Meta+K" title="Suchen (Strg/⌘ K)"></button>
+        <button id="group-btn" class="group-switcher" type="button" aria-label="Gruppe wechseln" title="Gruppe wechseln" hidden>
+          <span id="group-btn-label"></span>
+        </button>
         <div class="notification-center" data-notification-center>
           <button id="notifications-btn" class="icon-btn" aria-label="Mitteilungen" aria-controls="notifications-panel" aria-expanded="false" title="Mitteilungen">
             <span id="notifications-count" class="notification-count" hidden></span>

@@ -14,16 +14,16 @@ ohne 15 Handys. Dazu gehört:
 2. Test-User sind **nur im Admin-Modus sichtbar** – normale Geräte sehen sie nirgends
    (Spielerliste, Sitzplan, Leaderboard, Live-Status, …).
 3. Der **Admin-Modus ist deutlich erkennbar** (dauerhafter Hinweis, nicht nur im Admin-Tab).
-4. Der **Admin-PIN entfällt vorerst** – ein Klick genügt, um in den Admin-Modus zu wechseln.
+4. Der **Admin-PIN entfällt**. Im Legacy-Modus genügt lokal ein Klick; unter Required-Auth
+   entscheidet ausschließlich die serverseitige Admin-Rolle der Session.
 
 ## Ist-Zustand (relevant)
 
 - „Test-Spieler anlegen" existiert bereits, aber rein clientseitig: `views/admin.js` ruft in
   einer Schleife `POST /api/players` auf. Die Spieler sind normale Spieler ohne Markierung,
   ohne Seed-Daten, für alle sichtbar.
-- Admin-Modus ist ein Gerät-lokales Flag (`localStorage`), optional per PIN
-  (`config.adminPin`, Header `x-admin-pin`). Leerer PIN = offener Modus. Kein sichtbarer
-  Dauer-Indikator.
+- Im damaligen Ausgangszustand war der Admin-Modus ein Gerät-lokales Flag (`localStorage`) mit
+  optionalem PIN. Required-Auth ersetzt diese Vertrauensannahme durch die Session-Rolle.
 - Sitzplan: `seating_layouts.assignments` (JSON `{side, seat, playerId}`), beim Speichern
   leitet `syncAutoSeatNeighbors` aus Kanten-Nachbarschaft automatisch `seat_neighbors`-Zeilen
   (`source='auto'`) ab → genau das ist „Sichtbare Monitore".
@@ -110,15 +110,13 @@ Solange der Admin-Modus aktiv ist:
 - zusätzlich `body.admin-mode`-Klasse als Styling-Hook (z. B. dezente Rahmenfarbe), damit
   auch Screenshots eindeutig sind.
 
-### 5. PIN vorerst raus
+### 5. PIN entfernt
 
 - `views/admin.js`: Unlock-Screen entfällt komplett; der Admin-Tab zeigt direkt einen
   „Admin-Modus aktivieren"-Schalter (ein Klick an/aus).
-- Server: `config.adminPin` und `requireAdmin` **bleiben bestehen** (offener Modus bei
-  leerem PIN existiert ja schon) – wir entfernen nur die Abfrage im Frontend und ignorieren
-  einen evtl. gesetzten PIN dort nicht mehr nötig zu machen: `GET /api/admin/status` +
-  `POST /api/admin/unlock` werden nicht mehr aufgerufen, können aber vorerst stehen bleiben
-  (kein API-Bruch, PIN später mit einem kleinen Frontend-Patch reaktivierbar).
+- Server: `requireAdmin` prüft unter Required-Auth die echte Session-Rolle. `ADMIN_PIN`,
+  `x-admin-pin` sowie `GET /api/admin/status` und `POST /api/admin/unlock` sind entfernt.
+  Der Legacy-Modus behält bis zum Cutover bewusst seinen lokalen Ein-Klick-Vertrauensmodus.
 
 ## Sinnvolle Ergänzungen (im Scope)
 

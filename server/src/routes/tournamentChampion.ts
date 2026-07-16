@@ -16,11 +16,13 @@ export interface TournamentChampionSummary {
 
 // All completed tournaments for one event, each resolved down to its
 // champion team (bracket: winner of the final round; round-robin: top of
-// the final standings).
-export function getCompletedTournamentSummaries(eventId: string): TournamentChampionSummary[] {
+// the final standings). groupId is redundant with eventId's own group (an
+// event can't belong to two groups) — kept as an explicit filter anyway,
+// matching every other group-owned query in this codebase.
+export function getCompletedTournamentSummaries(eventId: string, groupId: string): TournamentChampionSummary[] {
   const tournamentRows = db
-    .prepare("SELECT id, game_id, name, format FROM tournaments WHERE event_id = ? AND status = 'completed'")
-    .all(eventId) as Array<{ id: string; game_id: string; name: string; format: string }>;
+    .prepare("SELECT id, game_id, name, format FROM tournaments WHERE event_id = ? AND group_id = ? AND status = 'completed'")
+    .all(eventId, groupId) as Array<{ id: string; game_id: string; name: string; format: string }>;
 
   return tournamentRows.map((t) => {
     const teamRows = db

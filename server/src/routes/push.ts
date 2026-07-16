@@ -18,6 +18,7 @@ import {
   markAllPushSeen,
   hideAllPushForPlayer,
 } from '../push';
+import { withBodyPlayerIdentity, withQueryPlayerIdentity } from '../sessions';
 
 export const pushRouter = Router();
 
@@ -37,7 +38,7 @@ pushRouter.get('/last', (_req, res) => {
 // GET /api/push/current?playerId=... - legacy endpoint for the newest
 // still-actionable personal entry. The full /log endpoint below remains the
 // notification history used by the current header center.
-pushRouter.get('/current', (req, res) => {
+pushRouter.get('/current', ...withQueryPlayerIdentity, (req, res) => {
   const { playerId } = req.query;
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -50,7 +51,7 @@ pushRouter.get('/current', (req, res) => {
 // GET /api/push/log?playerId=... - recent notifications relevant to one
 // player (they were on the recipient list), newest first, for the header
 // notification center. Each entry carries its in-app deep link.
-pushRouter.get('/log', (req, res) => {
+pushRouter.get('/log', ...withQueryPlayerIdentity, (req, res) => {
   const { playerId } = req.query;
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -60,9 +61,9 @@ pushRouter.get('/log', (req, res) => {
   res.json({ entries: getPushLogEntriesFor(playerId) });
 });
 
-// Bulk variants retain the same temporary local-player scoping as the
-// single-entry actions. They never mutate another recipient's history.
-pushRouter.post('/seen-all', (req, res) => {
+// Bulk variants retain the same identity scoping as the single-entry
+// actions. They never mutate another recipient's history.
+pushRouter.post('/seen-all', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -72,7 +73,7 @@ pushRouter.post('/seen-all', (req, res) => {
   res.json({ changed: markAllPushSeen(playerId) });
 });
 
-pushRouter.delete('/', (req, res) => {
+pushRouter.delete('/', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -84,7 +85,7 @@ pushRouter.delete('/', (req, res) => {
 
 // POST /api/push/:id/seen - mark one notification read for this player. It
 // intentionally remains in /log as history.
-pushRouter.post('/:id/seen', (req, res) => {
+pushRouter.post('/:id/seen', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -100,7 +101,7 @@ pushRouter.post('/:id/seen', (req, res) => {
 
 // DELETE /api/push/:id - hide one notification for one player. This is a
 // per-recipient removal, never a global deletion from the shared push log.
-pushRouter.delete('/:id', (req, res) => {
+pushRouter.delete('/:id', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -116,7 +117,7 @@ pushRouter.delete('/:id', (req, res) => {
 
 // POST /api/push/subscribe - register (or re-point) a browser subscription
 // for a player. Body: { playerId, subscription: PushSubscriptionJSON }
-pushRouter.post('/subscribe', (req, res) => {
+pushRouter.post('/subscribe', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId, subscription } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -132,11 +133,11 @@ pushRouter.post('/subscribe', (req, res) => {
 });
 
 // POST /api/push/unsubscribe - drop a subscription (opt-out). Body: { endpoint }
-pushRouter.post('/unsubscribe', (req, res) => {
-  const { endpoint } = req.body ?? {};
+pushRouter.post('/unsubscribe', ...withBodyPlayerIdentity, (req, res) => {
+  const { endpoint, playerId } = req.body ?? {};
   if (typeof endpoint !== 'string' || !endpoint) {
     return res.status(400).json({ error: 'endpoint ist erforderlich.' });
   }
-  removeSubscription(endpoint);
+  removeSubscription(endpoint, req.player ? playerId : undefined);
   res.status(204).end();
 });

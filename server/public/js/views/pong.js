@@ -3,7 +3,6 @@ import { escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
-import { getAdminPin } from '../admin.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
@@ -158,7 +157,7 @@ export function wirePongLobbyCard(container, { beforeCreate, beforeJoin } = {}) 
   });
   container.querySelector('#pong-bot')?.addEventListener('click', async () => {
     if (beforeCreate && !(await beforeCreate())) return;
-    const result = await emitAck('pong:lobby:bot', { playerId: myId(), adminPin: getAdminPin() });
+    const result = await emitAck('pong:lobby:bot', { playerId: myId() });
     if (!result?.ok) showToast(result?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelectorAll('[data-pong-join]').forEach((button) => button.addEventListener('click', async () => {

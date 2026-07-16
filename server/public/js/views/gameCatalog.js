@@ -15,6 +15,7 @@ import { showToast } from '../toast.js';
 import { suggestProcessNames } from '../gameProcessSuggestions.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { domainIcon } from '../domainIcons.js';
+import { withStepUp } from '../reauth.js';
 
 let activeTab = 'catalog'; // 'catalog' | 'suggestions'
 let sortKey = 'name';
@@ -497,7 +498,8 @@ function openGameDetail(gameId, ctx) {
         el.querySelector('#edit-delete').addEventListener('click', async () => {
           if (!(await confirmDialog(`${game.name} wirklich löschen? Skill-/Bock-Wertungen und Ergebnisse dazu gehen verloren.`))) return;
           try {
-            await api.games.remove(gameId);
+            const removed = await withStepUp(() => api.games.remove(gameId));
+            if (removed === undefined) return;
             close();
             await ctx.refresh();
             showToast('Spiel gelöscht.');

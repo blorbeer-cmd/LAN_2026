@@ -8,6 +8,9 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString } from '../validation';
+import { requireAdmin } from '../auth';
+import { requireRecentReauthentication } from '../sessions';
+import { writeAdminAudit } from '../adminAudit';
 
 export const infoBoardRouter = Router();
 
@@ -87,9 +90,10 @@ infoBoardRouter.patch('/:id', (req, res) => {
 });
 
 // DELETE /api/info/:id
-infoBoardRouter.delete('/:id', (req, res) => {
+infoBoardRouter.delete('/:id', requireAdmin, requireRecentReauthentication, (req, res) => {
   const result = db.prepare('DELETE FROM info_entries WHERE id = ?').run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Eintrag nicht gefunden.' });
+  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'info_deleted', targetType: 'info_entry', targetId: req.params.id });
   broadcast(Events.infoChanged, null);
   res.status(204).end();
 });

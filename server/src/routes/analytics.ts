@@ -41,8 +41,9 @@ interface GameRow {
 // nominal start/end (agent clock skew, a session still open when the next
 // event starts, etc.).
 function loadAllSessions(
+  groupId: string,
   gameId: string | null,
-  eventId: string | null = null
+  eventId: string | null = null,
 ): Array<{
   player_id: string;
   game_id: string;
@@ -50,8 +51,8 @@ function loadAllSessions(
   ended_at: number | null;
   active_ms: number;
 }> {
-  const clauses: string[] = [];
-  const params: string[] = [];
+  const clauses: string[] = ['group_id = ?'];
+  const params: string[] = [groupId];
   if (gameId) {
     clauses.push('game_id = ?');
     params.push(gameId);
@@ -60,9 +61,8 @@ function loadAllSessions(
     clauses.push('event_id = ?');
     params.push(eventId);
   }
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   return db
-    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions ${where}`)
+    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${clauses.join(' AND ')}`)
     .all(...params) as Array<{
     player_id: string;
     game_id: string;
@@ -72,7 +72,7 @@ function loadAllSessions(
   }>;
 }
 
-function loadNamesFor(playerIds: string[], gameIds: string[]) {
+function loadNamesFor(groupId: string, playerIds: string[], gameIds: string[]) {
   let players: PlayerRow[] = [];
   if (playerIds.length > 0) {
     const ph = playerIds.map(() => '?').join(',');
@@ -81,16 +81,14 @@ function loadNamesFor(playerIds: string[], gameIds: string[]) {
   let games: GameRow[] = [];
   if (gameIds.length > 0) {
     const gh = gameIds.map(() => '?').join(',');
-    games = db.prepare(`SELECT id, name, icon FROM games WHERE id IN (${gh})`).all(...gameIds) as GameRow[];
+    games = db
+      .prepare(`SELECT id, name, icon FROM games WHERE id IN (${gh}) AND (group_id = ? OR arcade_key IS NOT NULL)`)
+      .all(...gameIds, groupId) as GameRow[];
   }
   return { playerById: new Map(players.map((p) => [p.id, p])), gameById: new Map(games.map((g) => [g.id, g])) };
 }
 
-function enrichDuration(
-  d: SessionDuration,
-  playerById: Map<string, PlayerRow>,
-  gameById: Map<string, GameRow>
-) {
+function enrichDuration(d: SessionDuration, playerById: Map<string, PlayerRow>, gameById: Map<string, GameRow>) {
   return {
     playerId: d.playerId,
     playerName: playerById.get(d.playerId)?.name ?? 'Unbekannt',
@@ -116,7 +114,7 @@ analyticsRouter.get('/overview', (req, res) => {
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(filterGameId, filterEventId);
+  const rawRows = loadAllSessions(req.group!.id, filterGameId, filterEventId);
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -129,10 +127,10 @@ analyticsRouter.get('/overview', (req, res) => {
   const durations = sessionDurations(sessions, now);
   const allPlayerIds = [...new Set(sessions.map((s) => s.playerId))];
   const allGameIds = [...new Set(sessions.map((s) => s.gameId))];
-  const { playerById, gameById } = loadNamesFor(allPlayerIds, allGameIds);
+  const { playerById, gameById } = loadNamesFor(req.group!.id, allPlayerIds, allGameIds);
 
   const longestPerPlayerGame = longestSessionPerPlayerGame(durations).map((d) =>
-    enrichDuration(d, playerById, gameById)
+    enrichDuration(d, playerById, gameById),
   );
   const longestPerGame = longestSessionPerGame(durations).map((d) => enrichDuration(d, playerById, gameById));
   const longestPerPlayer = longestSessionPerPlayer(durations).map((d) => enrichDuration(d, playerById, gameById));
@@ -168,8 +166,8 @@ analyticsRouter.get('/sessions', (req, res) => {
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(filterGameId, filterEventId).filter(
-    (r) => !filterPlayerId || r.player_id === filterPlayerId
+  const rawRows = loadAllSessions(req.group!.id, filterGameId, filterEventId).filter(
+    (r) => !filterPlayerId || r.player_id === filterPlayerId,
   );
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
@@ -183,7 +181,7 @@ analyticsRouter.get('/sessions', (req, res) => {
 
   const allPlayerIds = [...new Set(sessions.map((s) => s.playerId))];
   const allGameIds = [...new Set(sessions.map((s) => s.gameId))];
-  const { playerById, gameById } = loadNamesFor(allPlayerIds, allGameIds);
+  const { playerById, gameById } = loadNamesFor(req.group!.id, allPlayerIds, allGameIds);
 
   res.json(durations.map((d) => enrichDuration(d, playerById, gameById)));
 });
@@ -212,7 +210,7 @@ analyticsRouter.get('/concurrency', (req, res) => {
   }
 
   const now = Date.now();
-  const rawRows = loadAllSessions(gameId);
+  const rawRows = loadAllSessions(req.group!.id, gameId);
   const sessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -234,7 +232,7 @@ analyticsRouter.get('/awards', (req, res) => {
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(null, filterEventId);
+  const rawRows = loadAllSessions(req.group!.id, null, filterEventId);
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -245,10 +243,7 @@ analyticsRouter.get('/awards', (req, res) => {
   const sessions = clipSessionsToRange(rawSessions, now, range.from, range.to);
 
   const rawAwards = computeAwards(sessions, now);
-  const { playerById } = loadNamesFor(
-    [...new Set(rawAwards.map((a) => a.playerId))],
-    []
-  );
+  const { playerById } = loadNamesFor(req.group!.id, [...new Set(rawAwards.map((a) => a.playerId))], []);
 
   const awards = rawAwards.map((a) => ({
     id: a.id,
@@ -278,7 +273,7 @@ analyticsRouter.get('/games', (req, res) => {
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(null, filterEventId);
+  const rawRows = loadAllSessions(req.group!.id, null, filterEventId);
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -298,7 +293,11 @@ analyticsRouter.get('/games', (req, res) => {
     playersByGame.get(s.gameId)!.add(s.playerId);
   }
 
-  const { gameById } = loadNamesFor([], totals.map((t) => t.gameId));
+  const { gameById } = loadNamesFor(
+    req.group!.id,
+    [],
+    totals.map((t) => t.gameId),
+  );
 
   const games = totals.map((t) => ({
     gameId: t.gameId,
@@ -318,15 +317,14 @@ interface MatchRow {
   result: string;
 }
 
-function loadAllMatches(eventId: string | null): MatchForUnderdog[] {
-  const clauses: string[] = [];
-  const params: string[] = [];
+function loadAllMatches(groupId: string, eventId: string | null): MatchForUnderdog[] {
+  const clauses: string[] = ['group_id = ?'];
+  const params: string[] = [groupId];
   if (eventId) {
     clauses.push('event_id = ?');
     params.push(eventId);
   }
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  const rows = db.prepare(`SELECT id, game_id, result FROM matches ${where}`).all(...params) as MatchRow[];
+  const rows = db.prepare(`SELECT id, game_id, result FROM matches WHERE ${clauses.join(' AND ')}`).all(...params) as MatchRow[];
   return rows.map((r) => {
     const parsed = JSON.parse(r.result) as { teams: Array<{ playerIds: string[] }>; winnerTeamIndex: number | null };
     return { id: r.id, gameId: r.game_id, teams: parsed.teams, winnerTeamIndex: parsed.winnerTeamIndex };
@@ -347,21 +345,21 @@ analyticsRouter.get('/games-tournaments', (req, res) => {
   const { eventId } = req.query;
   const filterEventId = typeof eventId === 'string' && eventId ? eventId : null;
 
-  const matches = loadAllMatches(filterEventId);
+  const matches = loadAllMatches(req.group!.id, filterEventId);
   const matchCounts = matchCountsByGame(matches);
 
-  const eventClause = filterEventId ? 'WHERE event_id = ?' : '';
+  const eventClause = filterEventId ? 'AND event_id = ?' : '';
   const eventParams = filterEventId ? [filterEventId] : [];
 
   const tournamentRows = db
-    .prepare(`SELECT format, status, game_id FROM tournaments ${eventClause}`)
-    .all(...eventParams) as Array<{ format: string; status: string; game_id: string }>;
+    .prepare(`SELECT format, status, game_id FROM tournaments WHERE group_id = ? ${eventClause}`)
+    .all(req.group!.id, ...eventParams) as Array<{ format: string; status: string; game_id: string }>;
   const tournamentByGame = countBy(tournamentRows, (t) => t.game_id);
   const tournamentByFormat = countBy(tournamentRows, (t) => t.format);
 
   const drawRows = db
-    .prepare(`SELECT game_id, seat_conflicts, seat_pairs_considered FROM matchmaking_draws ${eventClause}`)
-    .all(...eventParams) as Array<{ game_id: string; seat_conflicts: number; seat_pairs_considered: number }>;
+    .prepare(`SELECT game_id, seat_conflicts, seat_pairs_considered FROM matchmaking_draws WHERE group_id = ? ${eventClause}`)
+    .all(req.group!.id, ...eventParams) as Array<{ game_id: string; seat_conflicts: number; seat_pairs_considered: number }>;
   const drawsByGame = countBy(drawRows, (d) => d.game_id);
   const totalSeatPairsConsidered = drawRows.reduce((sum, d) => sum + d.seat_pairs_considered, 0);
   const totalSeatConflicts = drawRows.reduce((sum, d) => sum + d.seat_conflicts, 0);
@@ -372,7 +370,9 @@ analyticsRouter.get('/games-tournaments', (req, res) => {
   // Same neutral default rating as matchmaking.ts's DEFAULT_RATING — a
   // player who's never rated a game isn't meaningfully "weaker" than one
   // who is.
-  const skillRows = db.prepare('SELECT player_id, game_id, rating FROM skills').all() as Array<{
+  const skillRows = db
+    .prepare('SELECT player_id, game_id, rating FROM skills WHERE group_id = ?')
+    .all(req.group!.id) as Array<{
     player_id: string;
     game_id: string;
     rating: number;
@@ -395,7 +395,7 @@ analyticsRouter.get('/games-tournaments', (req, res) => {
       ...(underdog ? [underdog.gameId] : []),
     ]),
   ];
-  const { playerById, gameById } = loadNamesFor(involvedPlayerIds, involvedGameIds);
+  const { playerById, gameById } = loadNamesFor(req.group!.id, involvedPlayerIds, involvedGameIds);
 
   const gameLabel = (gameId: string) => ({
     gameId,
@@ -411,7 +411,12 @@ analyticsRouter.get('/games-tournaments', (req, res) => {
   res.json({
     matches: {
       total: matches.length,
-      byGame: matchCounts.map((m) => ({ ...gameLabel(m.gameId), count: m.count, decided: m.decided, undecided: m.undecided })),
+      byGame: matchCounts.map((m) => ({
+        ...gameLabel(m.gameId),
+        count: m.count,
+        decided: m.decided,
+        undecided: m.undecided,
+      })),
     },
     tournaments: {
       total: tournamentRows.length,
@@ -487,7 +492,7 @@ analyticsRouter.get('/arcade', (req, res) => {
       `SELECT game_type, scores, started_at, ended_at
        FROM arcade_results
        WHERE ${clauses.join(' AND ')}
-       ORDER BY started_at ASC`
+       ORDER BY started_at ASC`,
     )
     .all(...params) as ArcadeResultFullRow[];
 
@@ -510,7 +515,7 @@ analyticsRouter.get('/arcade', (req, res) => {
     // Same legacy-row guard as GET /api/arcade/stats: bare score arrays with
     // no player attribution don't count as a match here either.
     const scores = (Array.isArray(parsed) ? parsed : []).filter(
-      (s): s is ArcadeScoreEntry => !!s && typeof (s as ArcadeScoreEntry).playerId === 'string'
+      (s): s is ArcadeScoreEntry => !!s && typeof (s as ArcadeScoreEntry).playerId === 'string',
     );
     if (scores.length === 0) continue;
     countedMatches += 1;
@@ -550,7 +555,7 @@ analyticsRouter.get('/arcade', (req, res) => {
     .map((g) => {
       const mostActive =
         [...g.matchesByPlayer.values()].sort(
-          (a, b) => b.matches - a.matches || a.name.localeCompare(b.name, 'de')
+          (a, b) => b.matches - a.matches || a.name.localeCompare(b.name, 'de'),
         )[0] ?? null;
       return {
         gameType: g.gameType,

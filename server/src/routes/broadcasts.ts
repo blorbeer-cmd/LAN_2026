@@ -10,6 +10,7 @@ import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString } from '../validation';
 import { notifyPlayers, resolvePushTopic } from '../push';
+import { withBodyPlayerIdentity } from '../sessions';
 
 export const broadcastsRouter = Router();
 
@@ -47,7 +48,7 @@ broadcastsRouter.get('/', (_req, res) => {
 });
 
 // POST /api/broadcasts - body: { playerId, message, endsAt? }
-broadcastsRouter.post('/', (req, res) => {
+broadcastsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId, message, endsAt } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -105,7 +106,7 @@ broadcastsRouter.post('/', (req, res) => {
 
 // POST /api/broadcasts/:id/end - only the creator may end an active
 // announcement before its configured deadline.
-broadcastsRouter.post('/:id/end', (req, res) => {
+broadcastsRouter.post('/:id/end', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });

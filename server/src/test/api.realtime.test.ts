@@ -17,11 +17,14 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { setIo, Events, createSocketAuthGuard, registerArcadeKioskSockets, broadcastArcadeKiosk, arcadeWatcherPlayerIds } from '../realtime';
 import { db } from '../db';
+import { createSession, SESSION_COOKIE_NAME } from '../sessions';
+import { nanoid } from 'nanoid';
 
 async function withServer(fn: (baseUrl: string) => Promise<void>): Promise<void> {
   const app = createApp();
   const httpServer = http.createServer(app);
   const io = new Server(httpServer);
+  io.use(createSocketAuthGuard(''));
   setIo(io);
 
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
@@ -33,13 +36,17 @@ async function withServer(fn: (baseUrl: string) => Promise<void>): Promise<void>
   } finally {
     io.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
-    setIo(null as any);
+    setIo(null);
   }
 }
 
-function connectClient(baseUrl: string): Promise<ClientSocket> {
+function connectClient(baseUrl: string, sessionToken?: string): Promise<ClientSocket> {
   return new Promise((resolve, reject) => {
-    const socket = ioClient(baseUrl, { transports: ['websocket'], reconnection: false });
+    const socket = ioClient(baseUrl, {
+      transports: ['websocket'],
+      reconnection: false,
+      ...(sessionToken ? { extraHeaders: { Cookie: `${SESSION_COOKIE_NAME}=${sessionToken}` } } : {}),
+    });
     socket.on('connect', () => resolve(socket));
     socket.on('connect_error', reject);
   });
@@ -159,6 +166,171 @@ test('createSocketAuthGuard lets any socket through when no access token is conf
     } finally {
       socket.close();
     }
+  });
+});
+
+test('createSocketAuthGuard accepts a socket carrying a valid session cookie instead of the token', async () => {
+  const playerId = nanoid();
+  db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(
+    playerId,
+    `Realtime Session Test ${playerId}`,
+    nanoid(24),
+    Date.now()
+  );
+  const sessionToken = createSession(playerId);
+
+  await withGuardedServer('secret-token', async (baseUrl) => {
+    const socket = ioClient(baseUrl, {
+      transports: ['websocket'],
+      reconnection: false,
+      extraHeaders: { Cookie: `${SESSION_COOKIE_NAME}=${sessionToken}` },
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        socket.on('connect', () => resolve());
+        socket.on('connect_error', reject);
+      });
+      assert.ok(socket.connected);
+    } finally {
+      socket.close();
+    }
+  });
+});
+
+test('required socket auth rejects shared-token-only clients and binds payload identity to the session', async () => {
+  const playerId = nanoid();
+  const spoofedPlayerId = nanoid();
+  db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(
+    playerId,
+    `Required Socket Player ${playerId}`,
+    nanoid(24),
+    Date.now()
+  );
+  const sessionToken = createSession(playerId);
+
+  const httpServer = http.createServer();
+  const io = new Server(httpServer);
+  io.use(createSocketAuthGuard('secret-token', 'required'));
+  io.on('connection', (socket) => {
+    socket.on('identity:test', (payload: { playerId?: string }, ack: (value: string | undefined) => void) => {
+      ack(payload.playerId);
+    });
+  });
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const port = (httpServer.address() as AddressInfo).port;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const tokenOnly = ioClient(baseUrl, {
+      transports: ['websocket'],
+      reconnection: false,
+      auth: { token: 'secret-token' },
+    });
+    const rejected = await new Promise<Error>((resolve) => tokenOnly.once('connect_error', resolve));
+    assert.match(rejected.message, /unauthorized/);
+    tokenOnly.close();
+
+    const sessionClient = await connectClient(baseUrl, sessionToken);
+    const resolvedPlayerId = await new Promise<string | undefined>((resolve) => {
+      sessionClient.emit('identity:test', { playerId: spoofedPlayerId }, resolve);
+    });
+    assert.equal(resolvedPlayerId, playerId);
+    sessionClient.close();
+  } finally {
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+  }
+});
+
+test('required socket auth accepts a read-only kiosk token and rejects mutation events', async () => {
+  const httpServer = http.createServer();
+  const io = new Server(httpServer);
+  io.use(createSocketAuthGuard('legacy-token', 'required', 'kiosk-token'));
+  let mutationReachedHandler = false;
+  io.on('connection', (socket) => {
+    socket.on('kiosk:subscribe', (ack?: (value: string) => void) => ack?.('ok'));
+    socket.on('identity:test', () => {
+      mutationReachedHandler = true;
+    });
+  });
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+  const socket = ioClient(baseUrl, {
+    transports: ['websocket'],
+    reconnection: false,
+    auth: { token: 'kiosk-token', kiosk: true },
+  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      socket.once('connect', resolve);
+      socket.once('connect_error', reject);
+    });
+    const subscribed = await new Promise<string>((resolve) => socket.emit('kiosk:subscribe', resolve));
+    assert.equal(subscribed, 'ok');
+    socket.emit('identity:test', {});
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(mutationReachedHandler, false);
+  } finally {
+    socket.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+  }
+});
+
+test('logging out actively disconnects sockets authenticated by that session', async () => {
+  const playerId = nanoid();
+  db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(
+    playerId,
+    `Realtime Logout Test ${playerId}`,
+    nanoid(24),
+    Date.now()
+  );
+  const sessionToken = createSession(playerId);
+
+  await withServer(async (baseUrl) => {
+    const socket = await connectClient(baseUrl, sessionToken);
+    const disconnected = new Promise<string>((resolve) => socket.once('disconnect', resolve));
+    const logout = await request(baseUrl)
+      .post('/api/auth/logout')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${sessionToken}`);
+    assert.equal(logout.status, 204);
+    assert.equal(await disconnected, 'io server disconnect');
+    assert.equal(socket.connected, false);
+  });
+});
+
+test('hard-deleting a test player immediately disconnects their authenticated sockets', async () => {
+  const playerId = nanoid();
+  db.prepare('INSERT INTO players (id, name, api_key, is_test, created_at) VALUES (?, ?, ?, 1, ?)').run(
+    playerId,
+    `Realtime Deleted Test ${playerId}`,
+    nanoid(24),
+    Date.now()
+  );
+  const sessionToken = createSession(playerId);
+
+  await withServer(async (baseUrl) => {
+    const socket = await connectClient(baseUrl, sessionToken);
+    const disconnected = new Promise<string>((resolve) => socket.once('disconnect', resolve));
+    const removed = await request(baseUrl).delete(`/api/players/${playerId}`);
+    assert.equal(removed.status, 204, JSON.stringify(removed.body));
+    assert.equal(await disconnected, 'io server disconnect');
+  });
+});
+
+test('createSocketAuthGuard rejects a socket with neither a valid token nor a valid session cookie', async () => {
+  await withGuardedServer('secret-token', async (baseUrl) => {
+    const rejected = new Promise<Error>((resolve) => {
+      const socket = ioClient(baseUrl, {
+        transports: ['websocket'],
+        reconnection: false,
+        extraHeaders: { Cookie: `${SESSION_COOKIE_NAME}=not-a-real-token` },
+      });
+      socket.on('connect_error', (err) => resolve(err));
+      socket.on('connect', () => socket.close());
+    });
+    const err = await rejected;
+    assert.match(err.message, /unauthorized/);
   });
 });
 

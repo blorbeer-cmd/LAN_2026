@@ -31,6 +31,15 @@ import { arcadeRouter } from './arcade';
 import { arrivalsRouter } from './arrivals';
 import { adminRouter } from './admin';
 import { backupRouter } from './backup';
+import { authRouter } from './auth';
+import { groupsRouter } from './groups';
+import { pingsRouter } from './pings';
+import { requireConfiguredUser, requireUser } from '../sessions';
+import { config } from '../config';
+import { extractToken } from '../auth';
+import { requireConfiguredGroupMembership } from '../groupAuthorization';
+import { getGroup } from '../groups';
+import { DEFAULT_GROUP_ID } from '../db';
 
 export const apiRouter = Router();
 
@@ -38,6 +47,60 @@ export const apiRouter = Router();
 apiRouter.get('/health', (_req, res) => {
   res.json({ ok: true, time: Date.now() });
 });
+
+apiRouter.use('/auth', authRouter);
+
+// Once required auth is enabled, every browser-facing feature API is behind
+// the verified session. Health and the anonymous auth flows above stay public;
+// legacy mode keeps the existing shared-token behavior unchanged.
+const KIOSK_GET_PATHS = [
+  /^\/live\/?$/,
+  /^\/votes\/?$/,
+  /^\/leaderboard\/?$/,
+  /^\/tournaments(?:\/[^/]+)?\/?$/,
+  /^\/food-orders\/?$/,
+];
+
+apiRouter.use((req, res, next) => {
+  const kioskRead =
+    config.authMode === 'required' &&
+    req.method === 'GET' &&
+    req.header('x-kiosk-mode') === '1' &&
+    Boolean(config.kioskToken) &&
+    extractToken(req) === config.kioskToken &&
+    KIOSK_GET_PATHS.some((pattern) => pattern.test(req.path));
+  if (kioskRead) {
+    // The kiosk token isn't group-scoped yet (Phase 5e); until then it reads
+    // the single migrated group, same as legacy mode's implicit context.
+    req.group = getGroup(DEFAULT_GROUP_ID);
+    return next();
+  }
+  requireConfiguredUser(req, res, next);
+});
+
+// Resolves req.group for every feature route below (the group-scoped data
+// added in Phase 5c reads it directly), skipping re-resolution when the
+// kiosk branch above already set it.
+apiRouter.use((req, res, next) => {
+  if (req.group) return next();
+  requireConfiguredGroupMembership(req, res, next);
+});
+
+// GET /api/me - the logged-in account, per the real per-user login system
+// (see docs/KONZEPT-USER-MANAGEMENT.md).
+apiRouter.get('/me', requireUser, (req, res) => {
+  const p = req.player!;
+  res.json({
+    id: p.id,
+    name: p.name,
+    color: p.color,
+    avatar: p.avatar,
+    isAdmin: Boolean(p.is_admin),
+    isTest: Boolean(p.is_test),
+  });
+});
+
+apiRouter.use('/groups', groupsRouter);
 
 apiRouter.use('/players', playersRouter);
 apiRouter.use('/games', gamesRouter);
@@ -56,6 +119,7 @@ apiRouter.use('/qrcode', qrcodeRouter);
 apiRouter.use('/export', exportRouter);
 apiRouter.use('/hall-of-fame', hallOfFameRouter);
 apiRouter.use('/seating', seatingRouter);
+apiRouter.use('/pings', pingsRouter);
 apiRouter.use('/digest', digestRouter);
 apiRouter.use('/push', pushRouter);
 apiRouter.use('/agent-download', agentDownloadRouter);

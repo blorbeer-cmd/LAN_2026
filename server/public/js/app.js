@@ -3,6 +3,7 @@
 // focused on its own rendering logic.
 
 import { api, getToken, setToken } from './api.js';
+import { ensureLogin } from './authGate.js';
 import { connectSocket } from './socket.js';
 import { state } from './state.js';
 import { loadAll } from './data.js';
@@ -41,6 +42,7 @@ import { renderAdmin } from './views/admin.js';
 import { icon, installIconReplacement } from './icons.js';
 import { initGlobalSearch } from './searchPalette.js';
 import { installDomainIcons } from './domainIcons.js';
+import { initGroupContext, refreshGroupContext } from './groupContext.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -199,20 +201,25 @@ async function tokenWorks(candidate) {
   }
 }
 
-// Gates the whole app behind the shared access token, if one is configured
-// server-side (NFR-16). Resolves once a working token is stored.
-//
+// Legacy deployments use the shared-token gate; required auth replaces it
+// with the personal login gate.
+async function ensureAccess() {
+  const meta = await api.meta();
+  if (meta.accessProtection) await ensureToken();
+  if (meta.authMode === 'required') await ensureLogin();
+  return meta;
+}
+
 // Invite links carry the token in the URL (?token=...): opening one logs in
 // automatically without anyone having to type or paste anything, which is
 // the whole point of sending a link instead of a password.
-async function ensureAccess() {
-  const meta = await api.meta();
-  if (!meta.accessProtection) return;
-
+async function ensureToken() {
   const fromUrl = new URLSearchParams(location.search).get('token');
   if (fromUrl && (await tokenWorks(fromUrl))) {
     setToken(fromUrl);
-    history.replaceState(null, '', `${location.pathname}${location.hash}`);
+    const cleanUrl = new URL(location.href);
+    cleanUrl.searchParams.delete('token');
+    history.replaceState(null, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
     return;
   }
 
@@ -248,6 +255,7 @@ function wireNav() {
   // (index.html stays free of hand-copied SVG paths); the app shell is
   // hidden until this boot code runs, so nothing renders icon-less.
   document.getElementById('notifications-btn').insertAdjacentHTML('afterbegin', icon('bell'));
+  document.getElementById('group-btn').insertAdjacentHTML('afterbegin', icon('users'));
   document.getElementById('profile-btn').innerHTML = icon('circleUser');
   document.getElementById('settings-btn').innerHTML = icon('settings');
   document.querySelector('.admin-banner-label').insertAdjacentHTML('afterbegin', icon('shield'));
@@ -279,6 +287,7 @@ function wireNav() {
     if (VIEWS[detail.view]) switchView(detail.view, { replace: detail.replace === true });
   });
   window.addEventListener('respawn:rerender', () => renderCurrent());
+  window.addEventListener('respawn:group-changed', () => ctx.refresh());
 
   // Back/forward: jump to whichever view is recorded on the popped entry
   // instead of re-pushing it (see switchView's fromHistory param). No
@@ -509,11 +518,13 @@ function wireSocket() {
     invalidateArrivals();
     if (currentView === 'arrivals') renderCurrent();
   });
+  socket.on('groups:changed', () => refreshGroupContext());
 }
 
 async function main() {
-  await ensureAccess();
+  const meta = await ensureAccess();
   document.getElementById('app').hidden = false;
+  await initGroupContext(meta);
   wireNav();
   initGlobalSearch((entry) => {
     if (entry.target?.type === 'tournament') focusTournament(entry.target.id);

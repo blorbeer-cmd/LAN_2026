@@ -12,9 +12,10 @@
 // real features (playtime, awards, matchmaking) without special cases.
 
 import { nanoid } from 'nanoid';
-import { db } from './db';
+import { db, DEFAULT_GROUP_ID } from './db';
 import { getTrackingEventId } from './events';
 import { addPlayersToLayout, removePlayersFromLayouts } from './seatingLayout';
+import { resolveGroupEventScope } from './groupEventScope';
 
 // Avatar color palette for generated players (single source of truth since
 // the profile editor moved to a free color picker without presets). Six of
@@ -25,10 +26,26 @@ import { addPlayersToLayout, removePlayersFromLayouts } from './seatingLayout';
 const COLORS = ['#5b8cff', '#9163f5', '#ef5da8', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#84cc16'];
 
 const NAME_POOL = [
-  'Test Alex', 'Test Kim', 'Test Sam', 'Test Mika', 'Test Toni', 'Test Charlie',
-  'Test Robin', 'Test Luca', 'Test Nico', 'Test Jona', 'Test Kai', 'Test Sascha',
-  'Test Jamie', 'Test Chris', 'Test Deniz', 'Test Elia', 'Test Finn', 'Test Noa',
-  'Test Rene', 'Test Yuki',
+  'Test Alex',
+  'Test Kim',
+  'Test Sam',
+  'Test Mika',
+  'Test Toni',
+  'Test Charlie',
+  'Test Robin',
+  'Test Luca',
+  'Test Nico',
+  'Test Jona',
+  'Test Kai',
+  'Test Sascha',
+  'Test Jamie',
+  'Test Chris',
+  'Test Deniz',
+  'Test Elia',
+  'Test Finn',
+  'Test Noa',
+  'Test Rene',
+  'Test Yuki',
 ];
 
 export const MAX_TEST_USERS_PER_CALL = 20;
@@ -65,44 +82,57 @@ function pickName(taken: Set<string>): string {
   }
 }
 
-export function createTestUsers(count: number): CreatedTestUser[] {
+export function createTestUsers(count: number, ownerGroupId = DEFAULT_GROUP_ID): CreatedTestUser[] {
   const seed = db.transaction((): CreatedTestUser[] => {
     const now = Date.now();
     const eventId = getTrackingEventId();
+    const resolvedSeatingScope = resolveGroupEventScope(ownerGroupId, undefined);
+    const seatingEventId = resolvedSeatingScope.ok ? resolvedSeatingScope.eventId : null;
     // Arcade titles (quiz/tetris/...) are excluded here just like in
     // GET /api/games — they aren't skill-rated or vote-eligible, see
-    // routes/games.ts's arcade_key filter.
-    const games = db.prepare('SELECT id FROM games WHERE arcade_key IS NULL').all() as GameRow[];
+    // routes/games.ts's arcade_key filter. Scoped to the owning group's own
+    // catalog, same as every other group-owned read.
+    const games = db.prepare('SELECT id FROM games WHERE arcade_key IS NULL AND group_id = ?').all(ownerGroupId) as GameRow[];
     const takenNames = new Set(
-      (db.prepare('SELECT name FROM players').all() as Array<{ name: string }>).map((r) => r.name.toLowerCase())
+      (db.prepare('SELECT name FROM players').all() as Array<{ name: string }>).map((r) => r.name.toLowerCase()),
     );
 
     const insertPlayer = db.prepare(
-      // is_admin follows the everyone-is-admin default (see routes/players.ts).
-      'INSERT INTO players (id, name, color, avatar, api_key, tracking_paused, is_admin, is_test, created_at) VALUES (?, ?, ?, ?, ?, 0, 1, 1, ?)'
+      // Test identities never carry real admin privileges. Admins can act as
+      // them later without leaking their own role into the test account.
+      `INSERT INTO players
+         (id, name, color, avatar, api_key, tracking_paused, is_admin, is_test, test_owner_group_id, created_at)
+       VALUES (?, ?, ?, ?, ?, 0, 0, 1, ?, ?)`,
     );
-    const insertSkill = db.prepare('INSERT INTO skills (player_id, game_id, rating) VALUES (?, ?, ?)');
-    const insertPreference = db.prepare('INSERT INTO preferences (player_id, game_id, rating) VALUES (?, ?, ?)');
+    const insertMembership = db.prepare(
+      `INSERT INTO group_memberships
+         (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
+       VALUES (?, ?, 'member', 'active', ?, NULL, 0, NULL)`,
+    );
+    const insertSkill = db.prepare('INSERT INTO skills (player_id, game_id, group_id, rating) VALUES (?, ?, ?, ?)');
+    const insertPreference = db.prepare('INSERT INTO preferences (player_id, game_id, group_id, rating) VALUES (?, ?, ?, ?)');
     const insertSession = db.prepare(
-      'INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at, active_ms) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO play_sessions (id, player_id, game_id, group_id, event_id, started_at, ended_at, active_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     );
     const insertLiveStatus = db.prepare(
       `INSERT INTO live_status (player_id, last_seen, manual_note, activity_tracked) VALUES (?, ?, NULL, 0)
-       ON CONFLICT(player_id) DO UPDATE SET last_seen = excluded.last_seen`
+       ON CONFLICT(player_id) DO UPDATE SET last_seen = excluded.last_seen`,
     );
     const insertLiveGame = db.prepare(
-      'INSERT OR IGNORE INTO live_status_games (player_id, game_id, since, is_foreground) VALUES (?, ?, ?, 1)'
+      'INSERT OR IGNORE INTO live_status_games (player_id, game_id, group_id, since, is_foreground) VALUES (?, ?, ?, ?, 1)',
     );
 
     const created: CreatedTestUser[] = [];
-    const existingTestCount = (db.prepare('SELECT COUNT(*) AS n FROM players WHERE is_test = 1').get() as { n: number }).n;
+    const existingTestCount = (db.prepare('SELECT COUNT(*) AS n FROM players WHERE is_test = 1').get() as { n: number })
+      .n;
 
     for (let i = 0; i < count; i++) {
       const id = nanoid();
       const name = pickName(takenNames);
       takenNames.add(name.toLowerCase());
       const color = COLORS[(existingTestCount + i) % COLORS.length];
-      insertPlayer.run(id, name, color, null, nanoid(24), now);
+      insertPlayer.run(id, name, color, null, nanoid(24), ownerGroupId, now);
+      insertMembership.run(ownerGroupId, id, now);
       created.push({ id, name });
 
       // Bock loosely follows skill (people usually feel like playing what
@@ -111,8 +141,8 @@ export function createTestUsers(count: number): CreatedTestUser[] {
       for (const game of games) {
         const skill = randInt(1, 10);
         const bock = clampRating(skill + randInt(-3, 3));
-        insertSkill.run(id, game.id, skill);
-        insertPreference.run(id, game.id, bock);
+        insertSkill.run(id, game.id, ownerGroupId, skill);
+        insertPreference.run(id, game.id, ownerGroupId, bock);
         bockByGame.set(game.id, bock);
       }
 
@@ -129,8 +159,8 @@ export function createTestUsers(count: number): CreatedTestUser[] {
           const endedAt = cursor;
           const startedAt = endedAt - durationMs;
           if (startedAt < now - 12 * HOUR_MS) break;
-          const activeMs = Math.round(durationMs * randInt(60, 95) / 100);
-          insertSession.run(nanoid(), id, gameId, eventId, startedAt, endedAt, activeMs);
+          const activeMs = Math.round((durationMs * randInt(60, 95)) / 100);
+          insertSession.run(nanoid(), id, gameId, ownerGroupId, eventId, startedAt, endedAt, activeMs);
           cursor = startedAt - randInt(10, 60) * MINUTE_MS;
         }
       }
@@ -141,25 +171,31 @@ export function createTestUsers(count: number): CreatedTestUser[] {
       if (i < 2 && games.length > 0) {
         const gameId = [...bockByGame.entries()].sort((a, b) => b[1] - a[1])[0][0];
         const since = now - randInt(10, 30) * MINUTE_MS;
-        insertSession.run(nanoid(), id, gameId, eventId, since, null, 0);
+        insertSession.run(nanoid(), id, gameId, ownerGroupId, eventId, since, null, 0);
         insertLiveStatus.run(id, now);
-        insertLiveGame.run(id, gameId, since);
+        insertLiveGame.run(id, gameId, ownerGroupId, since);
       }
     }
 
     // Seat everyone; persistLayout inside re-derives the auto seat neighbors
     // ("Sichtbare Monitore") exactly like the interactive editor would.
-    addPlayersToLayout(eventId, created.map((c) => c.id));
+    addPlayersToLayout(
+      ownerGroupId,
+      seatingEventId,
+      created.map((c) => c.id),
+    );
 
     // One extra manual pair (if two seeded users exist) so the auto/manual
     // distinction in the neighbors UI has data to show too.
     if (created.length >= 2) {
       const insertManual = db.prepare(
-        "INSERT OR IGNORE INTO seat_neighbors (event_id, player_id, neighbor_id, source) VALUES (?, ?, ?, 'manual')"
+        `INSERT OR IGNORE INTO seat_neighbors
+           (group_id, event_id, player_id, neighbor_id, player_name_snapshot, neighbor_name_snapshot, source)
+         VALUES (?, ?, ?, ?, ?, ?, 'manual')`,
       );
-      const [a, b] = [created[0].id, created[created.length - 1].id];
-      insertManual.run(eventId, a, b);
-      insertManual.run(eventId, b, a);
+      const [a, b] = [created[0], created[created.length - 1]];
+      insertManual.run(ownerGroupId, seatingEventId, a.id, b.id, a.name, b.name);
+      insertManual.run(ownerGroupId, seatingEventId, b.id, a.id, b.name, a.name);
     }
 
     return created;
@@ -170,17 +206,26 @@ export function createTestUsers(count: number): CreatedTestUser[] {
 // Deletes every test user; FK cascades clean up their skills, Bock ratings,
 // sessions, live status, and seat_neighbors, while the layout assignments
 // (JSON, no FK) are pruned explicitly with an auto-neighbor re-sync.
-export function deleteTestUsers(): number {
+export function deleteTestUsers(ownerGroupId?: string): number {
   const cleanup = db.transaction((): number => {
-    const ids = (db.prepare('SELECT id FROM players WHERE is_test = 1').all() as Array<{ id: string }>).map((r) => r.id);
+    const rows = (
+      ownerGroupId
+        ? db.prepare('SELECT id FROM players WHERE is_test = 1 AND test_owner_group_id = ?').all(ownerGroupId)
+        : db.prepare('SELECT id FROM players WHERE is_test = 1').all()
+    ) as Array<{ id: string }>;
+    const ids = rows.map((row) => row.id);
     if (ids.length === 0) return 0;
     removePlayersFromLayouts(new Set(ids));
-    db.prepare('DELETE FROM players WHERE is_test = 1').run();
+    const placeholders = ids.map(() => '?').join(',');
+    db.prepare(`DELETE FROM players WHERE id IN (${placeholders})`).run(...ids);
     return ids.length;
   });
   return cleanup();
 }
 
-export function countTestUsers(): number {
-  return (db.prepare('SELECT COUNT(*) AS n FROM players WHERE is_test = 1').get() as { n: number }).n;
+export function countTestUsers(ownerGroupId?: string): number {
+  const row = ownerGroupId
+    ? db.prepare('SELECT COUNT(*) AS n FROM players WHERE is_test = 1 AND test_owner_group_id = ?').get(ownerGroupId)
+    : db.prepare('SELECT COUNT(*) AS n FROM players WHERE is_test = 1').get();
+  return (row as { n: number }).n;
 }

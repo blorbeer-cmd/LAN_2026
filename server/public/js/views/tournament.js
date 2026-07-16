@@ -15,6 +15,7 @@ import { domainIcon } from '../domainIcons.js';
 import { moveTournamentDraftPlayer } from '../tournamentTeamDraft.js';
 import { selectActiveLobbyMatches } from '../tournamentLobbies.js';
 import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
+import { withStepUp } from '../reauth.js';
 
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
@@ -1146,7 +1147,8 @@ function renderDetail(container, ctx) {
   container.querySelector('#tourn-delete').addEventListener('click', async () => {
     if (!(await confirmDialog(`Turnier "${t.name}" wirklich löschen?`))) return;
     try {
-      await api.tournaments.remove(t.id);
+      const removed = await withStepUp(() => api.tournaments.remove(t.id));
+      if (removed === undefined) return;
       currentTournamentId = null;
       editingResultMatchId = null;
       listCache = null;

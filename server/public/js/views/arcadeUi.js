@@ -9,13 +9,16 @@ const ARCADE_EXPANDED_KEY = 'lan-arcade-expanded';
 // more of it. This measures the *actual* leftover space in the scrollable
 // view and, only when the guess overflows it, shrinks the shared budget by
 // exactly the overflow amount so every game's formula stays correct.
+const ARCADE_PLAYFIELD_SELECTOR = '.scribble-canvas-wrap, .blobby-court, .pong-arena, .snake-game, .tetris-canvas-wrap';
+
 function syncExpandedPlayfieldHeight(shell) {
   if (!shell.classList.contains('is-expanded')) {
     shell.style.removeProperty('--arcade-h-budget');
     return;
   }
   const viewContainer = shell.closest('.view-container');
-  if (!viewContainer) return;
+  const playfield = shell.querySelector(ARCADE_PLAYFIELD_SELECTOR);
+  if (!viewContainer || !playfield) return;
   // Reset to the CSS default before measuring so repeated calls (resize,
   // re-render) converge instead of ratcheting the height down each time.
   shell.style.removeProperty('--arcade-h-budget');
@@ -23,9 +26,14 @@ function syncExpandedPlayfieldHeight(shell) {
     if (!shell.isConnected || !shell.classList.contains('is-expanded')) return;
     const overflow = viewContainer.scrollHeight - viewContainer.clientHeight;
     if (overflow <= 0) return;
-    const remPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-    const cssBudget = window.innerHeight - 18 * remPx;
-    const target = Math.max(160, cssBudget - overflow - 8);
+    // The playfield's own current rendered height already *is* the CSS
+    // budget in pixels (each formula is `width: budget * ratio; height:
+    // auto` via aspect-ratio) — measuring it directly instead of
+    // reconstructing "100dvh - 18rem" from window.innerHeight avoids a
+    // second hardcoded 18rem and sidesteps dvh/innerHeight drift on mobile
+    // browsers with a collapsing address bar.
+    const currentHeight = playfield.getBoundingClientRect().height;
+    const target = Math.max(160, currentHeight - overflow - 8);
     shell.style.setProperty('--arcade-h-budget', `${target}px`);
   });
 }

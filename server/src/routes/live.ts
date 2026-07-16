@@ -5,19 +5,20 @@ import { Router } from 'express';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getLiveBoard } from '../liveStatus';
+import { withParamPlayerIdentity } from '../sessions';
 
 export const liveRouter = Router();
 
 const MAX_NOTE_LENGTH = 60;
 
-liveRouter.get('/', (_req, res) => {
-  res.json(getLiveBoard());
+liveRouter.get('/', (req, res) => {
+  res.json(getLiveBoard(req.group!.id));
 });
 
 // POST /api/live/:playerId/note - manual override (FR-28), e.g. "Pause/Essen"
 // when someone steps away without closing their game, or to clear it again.
 // Body: { note: string | null }
-liveRouter.post('/:playerId/note', (req, res) => {
+liveRouter.post('/:playerId/note', ...withParamPlayerIdentity(), (req, res) => {
   const player = db.prepare('SELECT id FROM players WHERE id = ?').get(req.params.playerId);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
@@ -38,6 +39,6 @@ liveRouter.post('/:playerId/note', (req, res) => {
      ON CONFLICT(player_id) DO UPDATE SET last_seen = excluded.last_seen, manual_note = excluded.manual_note`
   ).run(req.params.playerId, Date.now(), normalized);
 
-  broadcast(Events.liveStatusChanged, getLiveBoard());
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
   res.json({ ok: true });
 });

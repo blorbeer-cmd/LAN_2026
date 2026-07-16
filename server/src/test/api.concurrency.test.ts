@@ -9,6 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
+import { createInvite } from '../invites';
 
 const app = createApp();
 
@@ -340,4 +341,88 @@ test('simultaneous broadcast endings: exactly one request ends the announcement'
   const counts = statusCounts(results.map((result) => result.status));
   assert.equal(counts[200], 1, JSON.stringify(counts));
   assert.equal(counts[409], 5, JSON.stringify(counts));
+});
+
+test('simultaneous registrations with the same invite code: exactly one succeeds', async () => {
+  const admin = await request(app).post('/api/players').send({ name: 'Auth Race Admin' });
+  const invite = createInvite({ purpose: 'register', createdBy: admin.body.id });
+
+  const results = await Promise.all(
+    Array.from({ length: 6 }, (_, i) =>
+      request(app)
+        .post('/api/auth/register')
+        .send({ code: invite.code, name: `Race Reg ${i}`, password: 'race registration password' })
+    )
+  );
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[201], 1, JSON.stringify(counts));
+});
+
+test('simultaneous registrations with the same name (different codes): exactly one succeeds', async () => {
+  const admin = await request(app).post('/api/players').send({ name: 'Auth Race Admin Two' });
+  const invites = Array.from({ length: 6 }, () => createInvite({ purpose: 'register', createdBy: admin.body.id }));
+
+  const results = await Promise.all(
+    invites.map((invite) =>
+      request(app)
+        .post('/api/auth/register')
+        .send({ code: invite.code, name: 'Race Same Name', password: 'race registration password' })
+    )
+  );
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[201], 1, JSON.stringify(counts));
+  assert.equal(counts[409], 5, JSON.stringify(counts));
+});
+
+test('simultaneous claims with the same claim code: exactly one succeeds', async () => {
+  const admin = await request(app).post('/api/players').send({ name: 'Auth Race Admin Three' });
+  const target = await request(app).post('/api/players').send({ name: 'Race Claim Target' });
+  const invite = createInvite({ purpose: 'claim', playerId: target.body.id, createdBy: admin.body.id });
+
+  const results = await Promise.all(
+    Array.from({ length: 6 }, () =>
+      request(app).post('/api/auth/claim').send({ code: invite.code, password: 'race claim password' })
+    )
+  );
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[200], 1, JSON.stringify(counts));
+});
+
+test('simultaneous password resets with the same code: exactly one succeeds', async () => {
+  const admin = await request(app).post('/api/players').send({ name: 'Auth Reset Race Admin' });
+  const target = await request(app).post('/api/players').send({ name: 'Race Reset Target' });
+  const claim = createInvite({ purpose: 'claim', playerId: target.body.id, createdBy: admin.body.id });
+  const claimed = await request(app)
+    .post('/api/auth/claim')
+    .send({ code: claim.code, password: 'race reset original password' });
+  assert.equal(claimed.status, 200);
+
+  const reset = createInvite({ purpose: 'reset', playerId: target.body.id, createdBy: admin.body.id });
+  const results = await Promise.all(
+    Array.from({ length: 6 }, (_, index) =>
+      request(app)
+        .post('/api/auth/reset')
+        .send({ code: reset.code, newPassword: `race reset password ${index}` })
+    )
+  );
+  const counts = statusCounts(results.map((result) => result.status));
+  assert.equal(counts[200], 1, JSON.stringify(counts));
+  assert.equal(counts[400], 5, JSON.stringify(counts));
+});
+
+test('a second claim code for an already-claimed player is voided, not just rejected', async () => {
+  // Regression pin for the invite-purpose-separation guarantee (see
+  // docs/KONZEPT-USER-MANAGEMENT.md 4.1): once a player is claimed, every
+  // OTHER outstanding claim code for them stops working too, immediately —
+  // not just the one that was actually used.
+  const admin = await request(app).post('/api/players').send({ name: 'Auth Race Admin Four' });
+  const target = await request(app).post('/api/players').send({ name: 'Race Claim Target Two' });
+  const inviteA = createInvite({ purpose: 'claim', playerId: target.body.id, createdBy: admin.body.id });
+  const inviteB = createInvite({ purpose: 'claim', playerId: target.body.id, createdBy: admin.body.id });
+
+  const first = await request(app).post('/api/auth/claim').send({ code: inviteA.code, password: 'race claim password' });
+  assert.equal(first.status, 200);
+
+  const second = await request(app).post('/api/auth/claim').send({ code: inviteB.code, password: 'another password' });
+  assert.equal(second.status, 400, 'the other outstanding claim code should already be voided');
 });

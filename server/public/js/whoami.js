@@ -1,18 +1,31 @@
-// Shared "who am I" identity: the tool has no per-person login (just the
-// shared access token), so each phone remembers locally which player it
-// belongs to. Used by both the voting and live-status views.
+// Identity compatibility adapter. Legacy mode still remembers a locally
+// selected player; AUTH_MODE=required locks this module to the account from
+// /api/me so the many existing views can share one API without treating
+// localStorage as an authority.
 
 import { state } from './state.js';
 import { escapeHtml } from './format.js';
 
 const MY_ID_KEY = 'respawn_my_player_id';
+let sessionPlayerId = '';
 
 export function getMyId() {
-  return localStorage.getItem(MY_ID_KEY) || '';
+  return sessionPlayerId || localStorage.getItem(MY_ID_KEY) || '';
+}
+
+export function lockMyIdToSession(id) {
+  sessionPlayerId = id;
+  localStorage.removeItem(MY_ID_KEY);
+  signalIdentityChanged(id);
 }
 
 export function setMyId(id) {
+  if (sessionPlayerId) return;
   localStorage.setItem(MY_ID_KEY, id);
+  signalIdentityChanged(id);
+}
+
+function signalIdentityChanged(id) {
   // Clears/sets the "you still need to set yourself up" dot on the profile
   // icon right away, without waiting for the next view switch to notice.
   document.getElementById('profile-btn')?.classList.toggle('needs-setup', !id);
@@ -51,6 +64,7 @@ export function whoAmICardHtml(selectId, { marginBottom } = {}) {
 
 // Wires the picker when no local identity has been selected yet.
 export function wireWhoAmICard(container, selectId, ctx) {
+  if (sessionPlayerId) return;
   container.querySelector(`#${selectId}`)?.addEventListener('change', (e) => {
     setMyId(e.target.value);
     ctx.rerender();

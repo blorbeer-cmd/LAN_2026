@@ -1,8 +1,5 @@
-// "Mein Profil" view: each invited player picks/creates their own identity
-// (reusing the whoami.js mechanism already used by the Live view for pausing
-// and by Votes for casting a vote — this tool has no real per-person login,
-// just a shared access token, so "who am I" is a convenience the browser
-// remembers locally, not a security boundary), then can maintain their own
+// "Mein Profil": required auth binds identity to the session; legacy mode
+// keeps whoami.js as a compatibility selector. Players can maintain their own
 // gamer name (unique across everyone), a profile picture and seat neighbors.
 // Bock/Skill-Ratings moved to the Spiele view (see server/CLAUDE.md games
 // reorg) — that's where the group averages live too, so this page just
@@ -15,6 +12,7 @@ import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, avatarHtml } from '../format.js';
 import { getMyId, setMyId } from '../whoami.js';
+import { authRequired, logout } from '../authGate.js';
 import { showToast } from '../toast.js';
 import { getPushSubscriptionState, enablePush, disablePush } from '../push.js';
 import { invalidateMyStats } from './myStats.js';
@@ -22,7 +20,7 @@ import { resizeImageFile } from '../imageUtils.js';
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
-import { openModal } from '../modal.js';
+import { confirmDialog, openModal } from '../modal.js';
 
 const TRACKING_PAUSE_HELP = 'Pausiert Live-Status und Spielzeit. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.';
 const ACTIVITY_TRACKING_HELP = 'Erfasst zusätzlich, ob das Spielfenster im Vordergrund ist. Der Wert lässt sich später in der Agent-Steuerung ändern.';
@@ -330,7 +328,11 @@ export function renderProfile(container, ctx) {
   container.innerHTML = `
     <div class="row-between profile-page-header">
       <h1 class="view-title">Mein Profil</h1>
-      <button type="button" class="btn btn-sm" id="profile-not-me">Nicht du?</button>
+      ${
+        authRequired
+          ? `<button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>`
+          : `<button type="button" class="btn btn-sm" id="profile-not-me">Nicht du?</button>`
+      }
     </div>
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="profile-data-title">
@@ -360,6 +362,26 @@ export function renderProfile(container, ctx) {
           <button type="button" class="btn btn-primary btn-block" id="profile-save">Speichern</button>
         </div>
       </section>
+
+      ${
+        authRequired
+          ? `<section class="card stack grouped-page-section" aria-labelledby="profile-password-title">
+               <div class="grouped-page-section-title"><h2 id="profile-password-title">Passwort ändern</h2></div>
+               <form class="stack" id="profile-password-form">
+                 <div class="row">
+                   <input type="password" id="profile-current-password" autocomplete="current-password" required style="flex:1;" placeholder="Aktuelles Passwort" />
+                   <button type="button" class="icon-btn" data-password-toggle="profile-current-password" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
+                 </div>
+                 <div class="row">
+                   <input type="password" id="profile-new-password" autocomplete="new-password" minlength="15" maxlength="1024" required style="flex:1;" placeholder="Neues Passwort" />
+                   <button type="button" class="icon-btn" data-password-toggle="profile-new-password" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
+                 </div>
+                 <p class="muted" style="font-size:var(--font-size-xs);margin:0;">Mindestens 15 Zeichen. Drei Wörter reichen, eine lange Passphrase ist besser als Zeichensalat.</p>
+                 <button type="submit" class="btn btn-primary btn-sm">Passwort speichern</button>
+               </form>
+             </section>`
+          : ''
+      }
 
       ${
         state.games.length === 0 || hasAnyRating
@@ -414,6 +436,7 @@ export function renderProfile(container, ctx) {
           <div class="row profile-agent-key-row">
             <input type="text" id="profile-apikey" readonly value="Laden…" style="flex:1;font-family:monospace;" />
             <button type="button" class="btn btn-sm" id="profile-copy-key">Kopieren</button>
+            <button type="button" class="btn btn-sm btn-danger" id="profile-rotate-key">Erneuern</button>
           </div>
           <p class="muted" style="font-size:var(--font-size-xs);margin-bottom:0;">Key in die Agent-Konfiguration eintragen; Details stehen in <code>agent/README.md</code>.</p>
         </details>
@@ -440,12 +463,41 @@ export function renderProfile(container, ctx) {
 
   wireInfoTooltips(container);
 
-  container.querySelector('#profile-not-me').addEventListener('click', () => {
-    setMyId('');
-    invalidateMyStats();
-    neighborsForPlayerId = null;
-    ctx.rerender();
-  });
+  // "Nicht du?" (a passwordless identity switch) stops making sense once a
+  // real, password-backed session is active — the account IS the identity
+  // then, so the same button instead really signs out (see authGate.js).
+  if (authRequired) {
+    container.querySelector('#profile-logout').addEventListener('click', () => logout());
+    container.querySelectorAll('[data-password-toggle]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const input = container.querySelector(`#${button.dataset.passwordToggle}`);
+        const visible = input.type === 'password';
+        input.type = visible ? 'text' : 'password';
+        button.innerHTML = icon(visible ? 'eyeOff' : 'eye');
+        button.setAttribute('aria-label', visible ? 'Passwort verbergen' : 'Passwort anzeigen');
+        button.title = button.getAttribute('aria-label');
+      });
+    });
+    container.querySelector('#profile-password-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const currentPassword = container.querySelector('#profile-current-password');
+      const newPassword = container.querySelector('#profile-new-password');
+      try {
+        await api.auth.changePassword({ currentPassword: currentPassword.value, newPassword: newPassword.value });
+        event.currentTarget.reset();
+        showToast('Passwort geändert. Andere Geräte wurden abgemeldet.');
+      } catch (error) {
+        showToast(error.message, { error: true });
+      }
+    });
+  } else {
+    container.querySelector('#profile-not-me').addEventListener('click', () => {
+      setMyId('');
+      invalidateMyStats();
+      neighborsForPlayerId = null;
+      ctx.rerender();
+    });
+  }
 
   // Fetched lazily (the roster list intentionally omits API keys) and only
   // ever for your own profile — see the players.js detail modal for the
@@ -484,6 +536,21 @@ export function renderProfile(container, ctx) {
   const profileColorInput = container.querySelector('#profile-color');
   const profileColorTrigger = container.querySelector('#profile-color-trigger');
   profileColorTrigger.addEventListener('click', () => openProfileColorPicker(profileColorInput, profileColorTrigger));
+
+  container.querySelector('#profile-rotate-key').addEventListener('click', async () => {
+    if (!(await confirmDialog('Agent-Key wirklich erneuern? Der aktuell installierte Agent muss danach neu eingerichtet werden.', {
+      title: 'Agent-Key erneuern',
+      confirmText: 'Erneuern',
+      danger: true,
+    }))) return;
+    try {
+      const result = await api.players.rotateApiKey(myId);
+      container.querySelector('#profile-apikey').value = result.apiKey;
+      showToast('Agent-Key erneuert. Der alte Key ist sofort ungültig.');
+    } catch (error) {
+      showToast(error.message, { error: true });
+    }
+  });
 
   container.querySelector('#agent-download').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
