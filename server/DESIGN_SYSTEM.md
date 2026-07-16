@@ -25,8 +25,11 @@ then update both in the same work item so the discrepancy does not persist.
    keyboard input and a touch-sized viewport as well as pointer input.
 4. Verify loading, empty, error, disabled and long-content states that the component
    can actually reach. A happy-path screenshot alone is not sufficient.
-5. From `server/`, run `npm run check:tokens`, `npm run build`, `npm test` and
-   `npm run test:e2e`. If a command cannot run, report the exact reason and risk.
+5. Verify in proportion to the changed surface by following the matrix in
+   `../DEVELOPMENT_GUIDELINES.md` and the commands in `TESTING.md`. Documentation-only changes need
+   only link, path and command-name checks; frontend CSS or JS changes additionally require the
+   token check and the relevant browser/E2E coverage. If a required command cannot run, report the
+   exact reason and remaining risk.
 
 The staged-diff token checker is a guardrail, not proof of design-system compliance.
 Review still has to catch semantic token misuse, unnecessary component variants,
@@ -58,8 +61,9 @@ accessibility issues, responsive regressions, shadows and breakpoint decisions.
 | `--state-offline-bg` | `rgba(107, 114, 128, 0.16)` | Background for the "Offline" badge |
 
 **Avatar color palette** — a separate, JS-side single source of truth
-(`server/public/js/avatarPalette.js`, `AVATAR_PALETTE`), used for the player
-avatar-color picker and bulk test-player generation. Six of its eight swatches
+(`server/public/js/avatarPalette.js`, `AVATAR_PALETTE`), used for generated player colors and bulk
+test-player generation. The profile editor itself accepts the full color space through its custom
+picker and therefore does not present this palette as presets. Six of its eight swatches
 deliberately reuse the semantic colors above (so a player's avatar color never
 introduces a hue that means something different elsewhere in the UI); the
 remaining two (cyan `#06b6d4`, lime `#84cc16`) exist purely for swatch variety.
@@ -190,6 +194,55 @@ not consumed via `var()`.
 The kiosk dashboard's own breakpoint (900px, `kiosk.css`) is intentionally
 **not** `--bp-lg` — it's a different device class (TV/monitor) with its own
 layout needs, not a phone/laptop breakpoint that happens to be slightly off.
+
+## Core composition and content rules
+
+These rules are the durable outcome of the general UI-polish pass. They apply to every existing
+view and to new views unless a documented domain constraint requires a different presentation.
+
+1. **Build pages from three visible levels.** A page consists of full-width main groups, nested
+   cards for repeated entities or independent subflows, and stable rows inside those cards. Main
+   headings live inside their surface instead of floating between unrelated cards. Do not add a
+   fourth enclosing card that repeats the same title or selected value.
+2. **Use space deliberately.** Repeated players, games, rankings and comparable cards normally use
+   one column on phones and two equal columns from `--bp-md`. Choose whether an odd final item spans
+   the row based on meaning: summary/list rows may span; entity cards such as players, carpools and
+   orders keep the same width as their siblings. Never let CSS auto-placement make that decision
+   accidentally.
+3. **Use accent rails only to distinguish siblings.** Blue and pink left rails separate adjacent
+   workflows or datasets such as Anreise/Abreise or tournament-format/game counts. They are not
+   generic decoration and are omitted where card hierarchy already communicates the structure.
+4. **Keep visible copy short.** Remove repeated titles, counts, status sentences and instructions
+   that are already evident from controls or state. A non-obvious rule moves into the shared
+   contextual help component. Its info trigger sits immediately to the right of the exact title or
+   label it explains; it never lives in a detached help row or to the left of a checkbox.
+5. **Keep controls aligned.** Controls sharing a row use the same visual height and baseline.
+   Compact actions must not increase the height of data rows. A primary action uses the Respawn
+   gradient, destructive actions use the danger treatment, and parallel secondary actions share
+   the available width. Actions for a repeated card belong in a separated, consistently positioned
+   footer when variable content would otherwise make cards drift.
+6. **Prefer rectangular rows over pills for people and data.** Player selections, assigned players,
+   lobby members and similar records use the shared avatar/name/metadata row. Avatar, name, status,
+   role and trailing action remain vertically centered, and long user content may wrap or truncate
+   without pushing controls outside the card.
+7. **Use one history pattern.** Historical or completed datasets use the icon-free
+   `.collapsible-section` header, start collapsed when they are secondary to the active workflow,
+   and preserve their open state across live re-renders. Use the concise visible title „Historie“
+   unless the domain requires a more specific active/completed label.
+8. **Make states structural, not ornamental.** Empty states center their short text and optional
+   canonical icon in the available surface. Selection remains recognizable through its semantic
+   control; winner, unread, running and error states use border/background plus text or accessible
+   labeling rather than a redundant „Neu“ or result badge. Loading, disabled and long-content
+   states must retain the same geometry as the populated state.
+9. **Reuse canonical semantics.** Navigation and „Mehr“ define domain icons through
+   `domainIcons.js`; all other appearances reuse those mappings. Visible German page labels stay
+   concise (`Teams`, `Vote`, `Rang`, `Info`, `Trivia`, `Historie`), while longer explanations and
+   former labels may appear only in help text or technical documentation where needed.
+10. **Keep future user management behind a clear boundary.** The current roster is readable by
+    everyone, but only the device's selected identity can edit its own profile. Player creation,
+    deletion, roles and foreign-profile editing are not added to regular UI until authenticated
+    user management owns those actions. Document this temporary identity boundary whenever a new
+    profile-related flow depends on it.
 
 ## Components
 
@@ -652,6 +705,13 @@ nothing and produce a misleading success.
 ## UI review checklist
 
 - [ ] Existing tokens, helpers and base components are reused where appropriate.
+- [ ] Page hierarchy follows main group → nested card → stable row without repeated wrappers or
+  detached headings.
+- [ ] Repeated content uses the intended one-/two-column grid and an odd final entity has an
+  explicit, domain-appropriate width.
+- [ ] Explanations are either removed as redundant or placed in contextual help immediately to the
+  right of the text they explain.
+- [ ] Related controls share height and baseline; compact actions do not stretch their data rows.
 - [ ] No new raw color, spacing, radius or font values exist without a documented
   `design-token-ok` reason.
 - [ ] Icons come from `icons.js`; icon-only controls have accessible German names.

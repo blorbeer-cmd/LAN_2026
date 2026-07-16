@@ -16,6 +16,29 @@ Der PR darf mehrere kleine Commits enthalten und bleibt bis zur Abnahme ein loka
 Der inzwischen ausdrücklich beauftragte vollständige Produkt- und Repository-Rename wird als
 abschließendes Arbeitspaket umgesetzt; ein Push oder Merge ist damit weiterhin nicht beauftragt.
 
+## Status und verbindlicher Endstand
+
+Dieser Plan begann als Zuschnitt des Feedbacks und wurde während der lokalen Umsetzung mehrfach
+erweitert. Er dokumentiert deshalb weiterhin Motivation und PR-Umfang, ist aber **nicht** die
+verbindliche Quelle für wiederverwendbare UI-Regeln. Der tatsächlich umgesetzte Endstand ist in
+[`server/DESIGN_SYSTEM.md`](../../server/DESIGN_SYSTEM.md) festgeschrieben, insbesondere unter
+„Core composition and content rules“ und in den dortigen Komponentenverträgen. Bei abweichenden
+frühen Formulierungen in diesem Plan gilt das Design System.
+
+Der PR umfasst inzwischen neben Home, Turnieren, Teams, Vote und Rang auch die Navigation unter
+„Mehr“, An-/Abreise, Arcade, Durchsagen, Essen, Hall of Fame, Info, Auswertungen, Einstellungen,
+Profil, Admin/Sitzplan und die Kioskansicht. Dauerhafte Entscheidungen daraus sind unter anderem:
+
+- vollbreite gruppierte Hauptkarten mit ruhigeren Unterkarten und gezielt eingesetzten Akzentkanten,
+- responsive Zwei-Spalten-Raster, deren letztes Element je nach Entität bewusst streckt oder seine
+  Geschwisterbreite behält,
+- kurze sichtbare Texte mit touch-tauglicher Hilfe direkt rechts neben dem zugehörigen Titel,
+- ein symbolfreier, standardmäßig geschlossener Historien-/Abschlussstil,
+- zentrale Lucide-Domänensymbole, konsistente Aktionshierarchie und stabile Zeilenhöhen,
+- die vorläufige Selbstbearbeitungsgrenze für Profile bis zum authentifizierten Usermanagement,
+- ein scrollfreies 2×2-Kiosk-Dashboard mit anonymisiertem Live-Vote, Reveal-Countdown und
+  zeitlich begrenzter Ergebnisansicht.
+
 ## Leitentscheidungen
 
 1. Erklärtexte werden nicht pauschal versteckt. Ein Tooltip bleibt nur dort erhalten, wo der
@@ -69,11 +92,12 @@ Statusfehler die vorhandenen Live-State-Tests.
 - Erste konkrete Nutzung:
   - „Captain Draft“: der gekürzte Ablauf „2–4 Captains benennen und abwechselnd aus den übrigen
     Spielern wählen.“ liegt im Info-Popover.
-  - Turnieroptionen „Sitznachbarn zusammen“, „Hin- und Rückspiel“ und „Ergebnisse inkl.
+  - Turnieroptionen „Sitznachbarn“, „Hin- und Rückspiel“ und „Ergebnisse inkl.
     Punktestand“ nur dann mit Hinweis versehen, wenn die gekürzte Beschriftung die Auswirkung nicht
     ausreichend erklärt.
-- Texte, deren fachlicher Inhalt durch das Usermanagement wechselt (Einladung, Kiosk, Durchsage,
-  Agent-Key), bekommen in diesem PR bewusst noch kein Tooltip.
+- Stabile Bedienregeln für Einladung, Kiosk, Durchsage und Agent werden ebenfalls gekürzt und in
+  Info-Popover verschoben. Rollen-, Rechte- oder Identitätsaussagen, die erst das künftige
+  Usermanagement festlegt, werden dadurch nicht vorweggenommen.
 
 Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.js`,
 `server/public/css/style.css`, `server/public/js/views/matchmaking.js`,
@@ -256,16 +280,18 @@ Betroffene Dateien: `server/public/js/views/home.js`, `server/public/js/views/se
 - Auf den Zielseiten die in der Feedbackliste genannten dekorativen Seiten-/Abschnittssymbole und
   Symbole in farbigen Textbuttons entfernen. Rein ikonische Aktionen wie Bearbeiten, Kopieren,
   Schließen oder Löschen bleiben erhalten und bekommen weiterhin zugängliche Namen.
-- Info-Board-Inhalte durch eine klarere Typografie und Kartenhierarchie hervorheben, ohne die
+- Info-Inhalte durch eine klarere Typografie und Kartenhierarchie hervorheben, ohne die
   Aktionsbuttons zu vergrößern; das Seitentitel-Symbol entfällt.
 - Essen-Texte vereinfachen und für die Datumsauswahl den vorhandenen `dateTimeField`-Helper wie bei
   An-/Abreise verwenden.
 - An-/Abreise: Felder umbenennen, falsche Fahrgemeinschaftssymbole entfernen und Zeitangaben mit
   einer responsiven Feldreihe nebeneinanderstellen.
-- Spieler und Admin nicht anfassen. Die wiederholten „Du bist …“-Karten zentral ausblenden, sobald
-  lokal bereits eine Identität gewählt ist; Erstauswahl und Wechsel über „Mein Profil“ bleiben
-  erhalten. Bei „Durchsage“ darüber hinaus nur den sicheren visuellen Punkt an der
-  Historienüberschrift umsetzen; die übrigen Usermanagement-Punkte bleiben unverändert.
+- Spieler bleibt eine lesbare Übersicht ohne Anlegeaktion. Fremde Profile sind read-only;
+  Erstauswahl, Selbstbearbeitung und Identitätswechsel laufen über „Mein Profil“. Admin bündelt
+  Sitzplan, Backup und lokale Testdatenwerkzeuge, ohne daraus allgemeine Spieler- oder
+  Rollenverwaltung abzuleiten. Die wiederholten „Du bist …“-Karten entfallen, sobald lokal eine
+  Identität gewählt ist. Durchsagen verwenden den gemeinsamen gruppierten Aufbau und die
+  standardmäßig geschlossene „Historie“.
 
 Betroffene Dateien vor allem: `server/public/js/views/more.js`, `infoBoard.js`, `gameCatalog.js`,
 `foodOrders.js`, `arcade.js`, `arrivals.js`, `broadcast.js`, `hallOfFame.js` und
@@ -281,11 +307,16 @@ Betroffene Dateien vor allem: `server/public/js/views/more.js`, `infoBoard.js`, 
 - Multitasking-Liste und Belegungsdiagramm nicht mehr laden/rendern; das Backend bleibt für eine
   spätere Achievement- oder überarbeitete Analyse nutzbar. Das Session-Protokoll wird als
   standardmäßig geschlossener Nachbereitungsbereich geführt.
-- Die Zeit-/Event-Filterung selbst bleibt wegen des künftigen Event-Scopings unverändert.
-- Profil: rein visuelle/textliche Punkte umsetzen (Erklärung entfernen, Felder nebeneinander,
-  Sitzplan-Link bewerten, Abstände und Statistik-Titel). Der Agent-Bereich bleibt zurückgestellt.
-- Einstellungen: nur sichere Oberflächenpunkte wie Titel-/Sitzplan-Symbole und „Download Backup“
-  umsetzen. Event-, Einladungs- und Kiosk-Erklärungen bleiben zurückgestellt.
+- Alle drei Auswertungsbereiche verwenden dasselbe Event-Dropdown ohne zusätzliche Zeitraumfelder.
+  Spielzeit und Turniere filtern direkt nach Event; Arcade leitet den Zeitraum intern aus dem Event
+  ab. „Witzige Rekorde“ heißt sichtbar „Trivia“.
+- Profil verwendet die gemeinsame Gruppenhierarchie. Bild, Farbe, Gamertag und Name bilden eine
+  ausgerichtete Profilzeile. Die Farbauswahl öffnet ein zentriertes, zugängliches Modal mit
+  Farbfläche, Vorschau sowie editier- und kopierbarem Hex-Wert. Agent-Einrichtung ist in drei
+  nachvollziehbare Schritte gegliedert; Tracking-Pause und erweitertes Tracking gehören zu Schritt 1.
+- Einstellungen gruppiert Events, Einladungslink und Kiosk. Link, Kopieren und QR-Aktion teilen
+  eine Zeile; der QR-Code öffnet als Modal. Sitzplan und Backup liegen ausschließlich im
+  Admin-Modus. Erklärungen stehen als kurze Info-Popover direkt am jeweiligen Titel.
 
 Betroffene Dateien: `server/public/js/views/analytics.js`, gegebenenfalls
 `server/src/sessionStats.test.ts`, `server/public/js/views/profile.js`,
@@ -310,7 +341,7 @@ Betroffene Dateien: `server/public/js/views/analytics.js`, gegebenenfalls
   bieten denselben schnellen Einstieg per Tastatur.
 - Der lokale Index umfasst alle Hauptbereiche, Tools und persönliche Ziele sowie verständliche
   Synonyme wie „Captain Draft“, „Voting“, „Anreise“ oder „WLAN“. Zusätzlich werden Spieler, Spiele,
-  Events, Bestellungen samt Positionen, Info-Board-Einträge, Durchsagen, Fahrgemeinschaften,
+  Events, Bestellungen samt Positionen, Info-Einträge, Durchsagen, Fahrgemeinschaften,
   Turniere und persönliche Mitteilungen aus State und bestehenden APIs indexiert.
 - Vor der Eingabe bleibt die Ergebnisliste leer; Startvorschläge und eine separate
   Tastaturerklärung entfallen.
@@ -326,16 +357,11 @@ Betroffene Dateien: `server/public/js/views/analytics.js`, gegebenenfalls
 
 ### Automatisiert
 
-Aus `server/`:
-
-```bash
-npm run lint
-npm run format:check
-npm run check:tokens
-npm run build
-npm test
-npm run test:e2e
-```
+Die Verifikation folgt der risikobasierten Matrix in `DEVELOPMENT_GUIDELINES.md` und den konkreten
+Kommandos in `server/TESTING.md`. Für Frontend-JS/CSS gehören Token-Check und relevante E2E-Flows
+dazu; reine Dokumentationsänderungen werden über Links, Pfade und genannte Scripts geprüft. Ein
+vollständiger Lauf aller Suites ist für eine isolierte Text- oder Layoutkorrektur nicht automatisch
+erforderlich.
 
 E2E-Abdeckung ergänzt mindestens:
 
@@ -348,7 +374,7 @@ E2E-Abdeckung ergänzt mindestens:
 
 ### Manuell
 
-- Phone und Laptop, Browser-Zoom sowie lange Spieler-, Spiel- und Info-Board-Texte prüfen.
+- Phone und Laptop, Browser-Zoom sowie lange Spieler-, Spiel- und Info-Texte prüfen.
 - Fokusreihenfolge, sichtbaren Fokus, Touch-Zielgröße, Screenreader-Namen und `Escape`-Verhalten des
   Info-Popovers kontrollieren.
 - Lade-, Leer-, Fehler-, Disabled- und lange Historienzustände je betroffener Ansicht prüfen.

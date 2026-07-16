@@ -1,7 +1,7 @@
 # Respawn – LAN-Party Tool
 
 Ein kleines, selbst gehostetes Web-Tool für unsere jährliche LAN-Party (~15 Leute, 3 Tage).
-Alles Wichtige an einem Ort: **Teams auslosen**, **abstimmen was als Nächstes gespielt wird**,
+Alles Wichtige an einem Ort: **Teams zusammenstellen**, **abstimmen was als Nächstes gespielt wird**,
 **live sehen wer gerade was zockt**, **Turniere durchspielen** und ein **Wochenend-Leaderboard**.
 Jeder öffnet einfach die URL im Handy-Browser und legt sich in unter einer Minute selbst ein
 Profil an – keine App-Installation, kein Account, kein langes Formular.
@@ -12,13 +12,13 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 
 | Feature | Beschreibung |
 |---|---|
-| 🏠 **Home** | Die Startseite für jeden Spieler: Live-Status (wer zockt gerade was, via kleinem Agent auf jedem PC – auch mehrere Spiele gleichzeitig, inkl. Vordergrund-Erkennung), manuelles Pausieren („Pause/Essen"), die Kiosk-Inhalte zum Antippen – laufende Abstimmung (inkl. Titel), aktives Turnier, offene Essensbestellung, offene Arcade-Lobby, persönliche „Skill bewerten"-Erinnerung – Rangliste-Top-3, Sitzplan und ganz unten der Mitteilungs-Verlauf. Die jeweils neueste Mitteilung ist zusätzlich immer oben im App-Header sichtbar, auf jeder Seite, mit Direktlink in den passenden Bereich. |
+| 🏠 **Home** | Die gruppierte Startübersicht mit „Aktuell“, Live-Status, Rangliste und Sitzplan. Die neueste aktive Mitteilung erscheint als farbiger Direktlink unter der Kopfzeile; die Glocke öffnet die persönliche Historie mit Gelesen- und Löschaktionen. |
 | ⚔️ **Turniere** | K.O.-Baum, Liga „jeder gegen jeden" (optional mit Hin-/Rückspielen) oder Gruppenphase + K.O. – Teams werden skill-balanciert vorgeschlagen, Ergebnisse (mit oder ohne Punktestand) direkt im Turnierbaum eintragbar, der sich automatisch weiterentwickelt. Bei neuem/anstehendem Match gibt's einen Push-Hinweis an die Beteiligten. |
-| ⚖️ **Teams auslosen** | Für ein Spiel automatisch faire Teams aus den anwesenden Spielern auslosen (skill-basiert), optional unter Berücksichtigung der Sitznachbarn (nicht gegeneinander). Ergebnis lässt sich direkt als Match-Ergebnis übernehmen. |
-| 👑 **Captain-Draft** | Die soziale Alternative zum Auslosen: 2–4 Captains picken abwechselnd (Snake-Reihenfolge) live aus dem Pool – jeder verfolgt den Draft auf dem eigenen Handy, nur der Captain am Zug kann picken. Ergebnis landet in der Team-Historie und lässt sich direkt als Match eintragen. |
-| 🗳️ **Abstimmung** | „Was zocken wir als Nächstes?" – jeder gibt seine Stimme/Punkte ab, sieht dabei aber nur die eigene Wahl, nicht den Zwischenstand (kein Bandwagon-Voting). Die volle Punkteverteilung gibt's erst nach Rundenende. Historie vergangener Runden lässt sich jederzeit erneut öffnen, um das Detail-Ergebnis einer Runde nachträglich anzusehen. |
-| 🏆 **Rangliste** | Match-Ergebnisse eintragen (auch Frei-für-alle ohne Teams), Punkte übers ganze Wochenende, Gesamtsieger der LAN, Spielzeit pro Spieler und pro Spiel. |
-| ☰ **Mehr** | Sammelstelle für alles Weitere: Info-Board, Essensbestellung, Durchsage, Spieler-Verwaltung, Spielzeit-Auswertungen, Spiele-&-Turnier-Statistiken, Hall of Fame, Sitzplan. |
+| ⚖️ **Teams** | Für ein Spiel automatisch faire Teams aus den anwesenden Spielern auslosen (skill-basiert) oder per Captain Draft zusammenstellen, optional unter Berücksichtigung der Sitznachbarn. Ergebnisse und Rematches landen in einer gemeinsamen Historie. |
+| 👑 **Captain Draft** | Die soziale Alternative zur Auslosung innerhalb von „Teams“: erst Teilnehmer, dann 2–4 Captains festlegen und anschließend abwechselnd aus den übrigen Spielern wählen. Das Ergebnis landet in derselben Historie wie Auslosungen und Matches. |
+| 🗳️ **Vote** | Jeder gibt seine Stimme oder Punkte ab, sieht dabei aber nur die eigene Wahl und nicht den Zwischenstand. Die volle Punkteverteilung erscheint erst nach Rundenende; Unentschieden können direkt in eine Stichwahl übergehen. Vergangene Runden stehen in der eingeklappten Historie. |
+| 🏆 **Rang** | Match-Ergebnisse eintragen (auch Frei-für-alle ohne Teams), Punkte übers ganze Wochenende, Gesamtsieger der LAN, gefilterte Spieler-Spielzeit und ein ungefilterter Vergleich der Spielzeit pro Spiel. |
+| ☰ **Mehr** | Sammelstelle für An-/Abreise, Arcade, Auswertungen, Durchsage, Essen, Hall of Fame, Info, Spieler, Spiele, Einstellungen und weitere Werkzeuge. |
 
 ### Auswertungen & Erinnerungsstücke
 
@@ -35,13 +35,13 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 | Feature | Beschreibung |
 |---|---|
 | 📢 **Durchsage** | Eine Nachricht an alle auf einmal („Essen ist da!"): Toast auf jedem offenen Gerät, großes Banner auf dem Kiosk-Bildschirm, Push-Benachrichtigung an alle Opt-ins – immer mit Absender-Name. |
-| 📌 **Info-Board** | WLAN-Passwort, Discord-Link, Gameserver-IPs, Hausregeln: die Dinge, die sonst fünfmal pro Abend gefragt werden, als gepinnte Einträge mit Kopieren-Knopf. Jeder darf pflegen. |
+| 📌 **Info** | WLAN-Passwort, Discord-Link, Gameserver-IPs und Hausregeln als alphabetisch sortierte Einträge mit Kopieren-Knopf. |
 | 🍕 **Essen bestellen** | Sammelbestellung öffnen („Pizza bei Luigi's"), optional mit Zeitpunkt „geht raus um …" (später jederzeit änderbar, auch nach dem Schließen), jeder trägt seine Positionen (mit optionalem Preis) vom eigenen Handy ein, Schließen friert die Liste ein – gruppiert pro Person mit Summen, bereit zum Vorlesen am Telefon. |
 | 👤 **Selbst-Onboarding** | Neue Geräte landen automatisch auf der Profil-Seite statt auf Home: Name (eindeutig), Profilbild, Skill-Ratings und der eigene Agent-Download richten sich alle selbst ein. |
 | 🎪 **Events** | Mehrere LAN-Termine können nebeneinander in derselben Installation existieren; nur eines „trackt" gleichzeitig (Live-Status/Spielzeit). Was außerhalb eines getrackten Events passiert, läuft normal unter „Außerhalb von Events". |
 | 🔗 **Einladungslink & QR-Code** | Ein Link (trägt bei Bedarf das Zugangs-Token) führt neue Leute direkt zur Profil-Erstellung – auch als QR-Code zum Aushängen, serverseitig gerendert statt über einen Drittanbieter. |
-| 🖥️ **TV-/Kiosk-Ansicht** | Read-only Dashboard (`/kiosk.html`) für einen gemeinsamen Bildschirm/Beamer: Live-Status, Abstimmung, Rangliste, laufendes Turnier – aktualisiert sich von selbst, keine Bedienung nötig. |
-| 🔔 **Push-Benachrichtigungen** | Optionaler Web-Push-Opt-in fürs Handy: neue Abstimmung, neue Durchsage, anstehendes Turnier-Match – auch wenn die Seite gerade nicht offen ist. Ein Tipp auf die Benachrichtigung springt direkt in den passenden Bereich; verpasste Nachrichten stehen zusätzlich im Mitteilungs-Feed auf Home. |
+| 🖥️ **TV-/Kiosk-Ansicht** | Scrollfreies Read-only-Dashboard (`/kiosk.html`) im 2×2-Aufbau: Live-Status und Rangliste oben, Live-Vote und Turnier unten. Offene Votes maskieren die Spiele, zeigen nach dem Ende einen Countdown und halten das Ergebnis anschließend zeitlich begrenzt sichtbar. |
+| 🔔 **Push-Benachrichtigungen** | Optionaler Web-Push-Opt-in fürs Handy: neue Abstimmung, neue Durchsage, anstehendes Turnier-Match – auch wenn die Seite gerade nicht offen ist. Ein Tipp springt direkt in den passenden Bereich; verpasste Nachrichten stehen in der Glocke der Kopfzeile. |
 | ⚙️ **Spiele & Events verwalten** | Spiele, Icons/eigene Logos, Teamgrößen und Prozessname-Zuordnungen (für die Live-Erkennung) zentral pflegen; Events anlegen und Tracking gezielt starten/stoppen. |
 | 🔒 **Zugangsschutz** | Leichtes, geteiltes Zugangs-Token schützt die Web-Oberfläche, falls der Server im Internet erreichbar ist. |
 | 🛡️ **Race-sicher** | Gleichzeitige Aktionen mehrerer Geräte (zwei Leute starten dieselbe Abstimmung, zwei melden dasselbe Turnier-Match) werden serverseitig sauber aufgelöst statt Daten zu duplizieren/korrumpieren – siehe `CLAUDE.md` → „Race-Sicherheit". |
@@ -288,6 +288,7 @@ Details zur Teststrategie: [`server/TESTING.md`](server/TESTING.md).
 - **Server**: Node.js, TypeScript, Express, better-sqlite3, Socket.IO, `web-push` (Push-Benachrichtigungen),
   `qrcode` + `pdfkit` (Einladungs-QR-Code, Event-Export als PDF), `archiver` (personalisierte Agent-ZIP)
 - **Frontend**: Vanilla HTML/CSS/JS (kein Build-Schritt, bewusst schlank gehalten), eigenes kleines
-  Design-System (Spacing-Skala, wiederverwendete Komponenten – siehe `CLAUDE.md` → „Design-System")
+  Design-System mit Tokens, gruppierten Seitenflächen und wiederverwendeten Komponenten – siehe
+  [`server/DESIGN_SYSTEM.md`](server/DESIGN_SYSTEM.md)
 - **Agent**: Node.js (als `.exe` paketierbar via `pkg`, damit kein Node auf den Spieler-PCs nötig
   ist), inkl. eigenem lokalem HTTP-Kontrollserver für die Steuerungs-Oberfläche
