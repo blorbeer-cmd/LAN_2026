@@ -357,9 +357,9 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
 
   await page.click('#votes-close');
   await page.waitForSelector('#votes-start');
-  // Closing reveals every ranked game in the compact "Aktueller Vote" group;
+  // Closing reveals every ranked game in the compact "Letzter Vote" group;
   // the optional detail modal retains the full bar presentation.
-  await page.waitForSelector('text=Aktueller Vote');
+  await page.waitForSelector('text=Letzter Vote');
   await page.waitForFunction(() => document.querySelectorAll('section[aria-labelledby="vote-current-result-title"] .lb-row').length >= 2);
   const currentVote = page.locator('section[aria-labelledby="vote-current-result-title"]');
   assert.equal(await currentVote.locator('.lb-row.is-tied').count(), 2);

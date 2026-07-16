@@ -6,7 +6,7 @@
 // 1. Either "start a new round" controls (idle), or the full interactive
 //    game list plus a submit button (round open) — the rest of the catalog
 //    only appears once a round is actually running.
-// 2. The latest closed result as "Aktueller Vote", pulled from history.
+// 2. The latest closed result as "Letzter Vote", pulled from history.
 // 3. The current Top 10 by aggregate "Bock" rating, split into two compact
 //    five-item columns on wider screens.
 //
@@ -339,7 +339,7 @@ function renderHistory() {
     return `<div class="empty-state vote-empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon(domainIcon('votes'))}</span><span>Noch keine vergangenen Abstimmungen.</span></div>`;
   }
   // Each round stays visually separate and repeats the same compact ranking
-  // used by "Aktueller Vote". The detail action retains the full bar view.
+  // used by "Letzter Vote". The detail action retains the full bar view.
   return historyCache
     .map((h) => {
       const title = h.title ? escapeHtml(h.title) : `Abstimmung Runde ${h.round}`;
@@ -510,7 +510,7 @@ export function renderVotes(container, ctx) {
     ${openSectionHtml}
 
     <section class="card vote-page-section stack" aria-labelledby="vote-current-result-title">
-      <div class="tournament-create-step-title"><h2 id="vote-current-result-title">Aktueller Vote</h2></div>
+      <div class="tournament-create-step-title"><h2 id="vote-current-result-title">Letzter Vote</h2></div>
       ${renderCurrentVote({ allowRunoff: !votes.open })}
     </section>
 
