@@ -15,6 +15,7 @@ import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 const SEATING_HELP = 'Tisch, Plätze und Sitzordnung verwalten.';
 const BACKUP_HELP = 'Aktuellen Stand als SQLite-Datei sichern.';
+const TEST_DATA_HELP = 'Kommen fertig eingerichtet: Platz im Sitzplan samt sichtbarer Monitore, Skill- und Bock-Werte pro Spiel, Spielzeit fürs aktive Event – zwei davon spielen gerade. Nur im Admin-Modus sichtbar.';
 
 let agentDiagnostics = null;
 let diagnosticsLoading = false;
@@ -209,18 +210,20 @@ function renderPanel(container, ctx) {
         </div>
       </section>
       <section class="card stack grouped-page-section" aria-labelledby="admin-test-players-title">
-        <div class="grouped-page-section-title"><h2 id="admin-test-players-title">Testdaten</h2></div>
-        <p class="muted">Kommen fertig eingerichtet: Platz im Sitzplan samt sichtbarer Monitore,
-        Skill- und Bock-Werte pro Spiel, Spielzeit fürs aktive Event – zwei davon spielen gerade.
-        Nur im Admin-Modus sichtbar.</p>
+        <div class="grouped-page-section-title">
+          <span class="title-with-info">
+            <h2 id="admin-test-players-title">Testdaten</h2>
+            ${infoTooltipHtml('admin-test-data-help', 'Testdaten', TEST_DATA_HELP)}
+          </span>
+        </div>
         <div class="title-with-info">
           <strong>Test-Spieler</strong>
           ${infoTooltipHtml('admin-test-count-help', 'Vorhandene Test-Spieler', `${testCount} Test-Spieler vorhanden`)}
         </div>
         <div class="admin-test-controls">
           <input type="number" id="admin-count" value="5" min="1" max="20" aria-label="Anzahl Test-Spieler" />
-          <button type="button" class="btn btn-primary btn-sm" id="admin-bulk" ${seedBusy ? 'disabled' : ''}>Test-Spieler anlegen</button>
           <button type="button" class="btn btn-sm btn-danger" id="admin-cleanup">Test-Daten aufräumen</button>
+          <button type="button" class="btn btn-primary btn-sm" id="admin-bulk" ${seedBusy ? 'disabled' : ''}>Test-Spieler anlegen</button>
         </div>
         <button type="button" class="btn btn-primary btn-block" id="admin-seed-hall" ${seedBusy ? 'disabled' : ''}>Hall-of-Fame-Testdaten anlegen</button>
       </section>

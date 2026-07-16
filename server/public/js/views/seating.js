@@ -92,35 +92,38 @@ export function renderSeatingPlan(layout, players, { editable = false } = {}) {
 }
 
 function renderSideControls(layout) {
-  return `<div class="seating-controls card">
-    <div class="section-title">Plätze pro Tischseite</div>
+  return `<section class="seating-controls card stack grouped-page-section" aria-labelledby="seating-config-title">
+    <div class="grouped-page-section-title"><h2 id="seating-config-title">Konfiguration</h2></div>
     <div class="seating-control-grid">${SIDES.map((side) => `
       <label>${LABELS[side]}
         <input type="number" min="0" max="12" value="${layout[`${side}Seats`]}" data-seat-count="${side}" />
       </label>`).join('')}</div>
     <div class="muted seating-save-status">${saving ? 'Speichert…' : 'Änderungen werden automatisch gespeichert.'}</div>
-  </div>`;
+  </section>`;
 }
 
 function renderPool(layout, players) {
   const assigned = assignedIds(layout);
   const unassigned = players.filter((player) => !assigned.has(player.id));
-  return `<div class="seating-pool card">
-    <div class="row-between"><div class="section-title" style="margin:0;">Spieler</div><span class="muted">${unassigned.length} frei</span></div>
+  return `<section class="seating-pool card stack grouped-page-section" aria-labelledby="seating-players-title">
+    <div class="grouped-page-section-title"><h2 id="seating-players-title">Spieler</h2><span class="muted">${unassigned.length} frei</span></div>
     <div class="seating-player-pool" data-seat-pool>
       ${unassigned.length ? unassigned.map((player) => `<div class="seating-pool-player ${selected?.playerId === player.id ? 'is-selected' : ''}" draggable="true" data-player-id="${player.id}">${avatarHtml(player, 28)}${seatNamesHtml(player)}</div>`).join('') : '<span class="muted">Alle Spieler sitzen bereits am Tisch.</span>'}
     </div>
-  </div>`;
+  </section>`;
 }
 
 function renderEditor() {
   const { layout, players } = cache;
-  return `<div class="seating-editor">
-    ${renderSeatingPlan(layout, players, { editable: true })}
-    <p class="muted seating-hint">${icon('monitor')} Wer an derselben Tischkante nebeneinander sitzt, bekommt sich gegenseitig
-      automatisch als „Sichtbare Monitore" im Profil vorausgefüllt.</p>
-    ${renderSideControls(layout)}
+  return `<div class="seating-editor grouped-page-sections">
+    <section class="card stack grouped-page-section" aria-labelledby="seating-plan-title">
+      <div class="grouped-page-section-title"><h2 id="seating-plan-title">Sitzplan</h2></div>
+      ${renderSeatingPlan(layout, players, { editable: true })}
+      <p class="muted seating-hint">${icon('monitor')} Wer an derselben Tischkante nebeneinander sitzt, bekommt sich gegenseitig
+        automatisch als „Sichtbare Monitore" im Profil vorausgefüllt.</p>
+    </section>
     ${renderPool(layout, players)}
+    ${renderSideControls(layout)}
   </div>`;
 }
 

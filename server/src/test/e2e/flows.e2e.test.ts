@@ -129,6 +129,10 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
     3,
   );
   assert.equal(await page.locator('.invite-link-row').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
+  assert.deepEqual(
+    await page.locator('.invite-link-row > *').evaluateAll((controls) => controls.map((control) => control.getBoundingClientRect().height)),
+    [44, 44, 44],
+  );
   await page.click('[aria-label="Mehr Informationen zu Events"]');
   await page.waitForSelector('#settings-events-help:not([hidden])');
   await page.click('[aria-label="Mehr Informationen zu Events"]');
@@ -138,6 +142,7 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   assert.ok(qrModalBox && Math.abs(qrModalBox.y + qrModalBox.height / 2 - 422) < 24, 'QR modal should be vertically centered on the phone viewport');
   await page.click('.modal[aria-label="Einladungs-QR-Code"] [data-close]');
 
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.click('#profile-btn');
   await page.waitForSelector('#profile-name');
   assert.equal(await page.locator('.profile-agent-step').count(), 3);
@@ -148,11 +153,14 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   assert.equal(await page.locator('.profile-agent-step').first().locator('#tracking-paused').count(), 1);
   assert.equal(await page.locator('label[for="profile-name"]').textContent(), 'Gamertag');
   assert.equal(await page.locator('label[for="profile-real-name"]').textContent(), 'Name');
-  assert.equal(await page.locator('.profile-avatar-editor .field-label').textContent(), 'Profilbild');
-  assert.equal(await page.locator('label[for="profile-color"]').textContent(), 'Profilfarbe');
+  assert.equal(await page.locator('.profile-avatar-editor .field-label').textContent(), 'Bild');
+  assert.equal(await page.locator('label[for="profile-color"]').textContent(), 'Farbe');
+  assert.equal(await page.locator('.profile-identity-fields').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 4);
+  assert.equal(await page.locator('.profile-identity-fields > *').evaluateAll((fields) => new Set(fields.map((field) => field.getBoundingClientRect().top)).size), 1);
   assert.equal(await page.getByText('Erweitertes Tracking', { exact: true }).count(), 1);
   assert.equal(await page.locator('.profile-identity-editor').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
   assert.equal(await page.getByText('Auf diesem Gerät aus.', { exact: true }).count(), 0);
+  assert.equal(await page.getByText('Auf diesem Gerät aktiv.', { exact: true }).count(), 0);
 });
 
 test('Admin mode owns the seating editor and backup tools', async () => {
@@ -170,12 +178,19 @@ test('Admin mode owns the seating editor and backup tools', async () => {
   assert.equal(await page.locator('#admin-seating-help').count(), 1);
   assert.equal(await page.locator('#admin-backup-help').count(), 1);
   assert.equal(await page.locator('#admin-test-count-help').count(), 1);
+  assert.equal(await page.locator('#admin-test-data-help').count(), 1);
   assert.equal(await page.locator('.admin-tool-row').count(), 2);
   assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
   assert.equal(await page.locator('#admin-cleanup').textContent(), 'Test-Daten aufräumen');
+  assert.deepEqual(await page.locator('.admin-test-controls > *').evaluateAll((controls) => controls.map((control) => control.id)), ['admin-count', 'admin-cleanup', 'admin-bulk']);
+  assert.equal(await page.locator('#admin-count').evaluate((input) => input.getBoundingClientRect().height), 36);
   assert.equal(await page.locator('.admin-test-controls').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('.seating-plan.is-editable');
+  assert.equal(await page.locator('.seating-editor > .grouped-page-section').count(), 3);
+  assert.deepEqual(await page.locator('.seating-editor > .grouped-page-section h2').allTextContents(), ['Sitzplan', 'Spieler', 'Konfiguration']);
+  assert.equal(await page.locator('.seating-pool-player').evaluateAll((players) => players.every((player) => getComputedStyle(player).borderRadius !== '999px')), true);
+  assert.equal(await page.locator('.seating-player-pool').evaluate((pool) => getComputedStyle(pool).gridTemplateColumns.split(' ').length), 2);
   await page.click('[data-navigate="admin"]');
   await page.click('#admin-leave');
   await page.waitForSelector('#admin-banner', { state: 'hidden' });

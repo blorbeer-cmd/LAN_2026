@@ -143,9 +143,7 @@ function renderPushSection() {
         ? 'Im Browser blockiert – bitte in den Website-Einstellungen erlauben.'
         : pushState === null
           ? 'Status wird geladen…'
-          : subscribed
-            ? 'Auf diesem Gerät aktiv.'
-            : '';
+          : '';
   return `
     <div class="stack" style="gap:var(--space-2);">
       <label class="check-row">
@@ -189,25 +187,23 @@ export function renderProfile(container, ctx) {
       <section class="card stack grouped-page-section" aria-labelledby="profile-data-title">
         <div class="grouped-page-section-title"><h2 id="profile-data-title">Profil</h2></div>
         <div class="profile-identity-editor">
-          <div class="profile-visual-fields">
+          <div class="profile-identity-fields">
             <div class="profile-avatar-editor">
-              <span class="field-label">Profilbild</span>
+              <span class="field-label">Bild</span>
               <label for="profile-avatar-input" class="profile-avatar-control" aria-label="Profilbild ändern">
                 ${avatarHtml(me, 64)}
               </label>
               <input type="file" id="profile-avatar-input" accept="image/*" hidden />
             </div>
             <div class="profile-color-field">
-              <label for="profile-color" class="field-label">Profilfarbe</label>
+              <label for="profile-color" class="field-label">Farbe</label>
               <input type="color" id="profile-color" value="${me.color}" aria-label="Profilfarbe" />
             </div>
-          </div>
-          <div class="profile-text-fields">
-            <div>
+            <div class="profile-text-field">
               <label for="profile-name" class="field-label">Gamertag</label>
               <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" />
             </div>
-            <div>
+            <div class="profile-text-field">
               <label for="profile-real-name" class="field-label">Name</label>
               <input type="text" id="profile-real-name" value="${escapeHtml(me.real_name || '')}" maxlength="60" placeholder="Optional" />
             </div>

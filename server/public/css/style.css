@@ -958,8 +958,6 @@ input[type='number']::-webkit-inner-spin-button {
 
 .profile-identity-editor {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
   gap: var(--space-4);
 }
 .profile-page-header {
@@ -973,27 +971,31 @@ input[type='number']::-webkit-inner-spin-button {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--space-2);
+  gap: var(--space-1);
 }
 .profile-avatar-control {
   cursor: pointer;
 }
-.profile-visual-fields,
-.profile-text-fields {
-  display: flex;
-  flex-direction: column;
+.profile-identity-fields {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: start;
   gap: var(--space-3);
 }
-.profile-text-fields > div {
+.profile-text-field {
+  grid-column: 1 / -1;
   min-width: 0;
+  display: grid;
+  gap: var(--space-1);
 }
 .profile-color-field {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  gap: var(--space-1);
 }
-.profile-identity-editor #profile-save {
-  grid-column: 1 / -1;
+.profile-identity-fields .field-label {
+  margin: 0;
 }
 .profile-rating-nudge {
   border-color: var(--accent);
@@ -1025,9 +1027,11 @@ input[type='number']::-webkit-inner-spin-button {
   grid-template-columns: minmax(0, 1fr);
 }
 @media (min-width: 640px) { /* --bp-md */
-  .profile-identity-editor {
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: start;
+  .profile-identity-fields {
+    grid-template-columns: auto auto repeat(2, minmax(0, 1fr));
+  }
+  .profile-text-field {
+    grid-column: auto;
   }
   .player-selection-grid.profile-monitor-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2662,7 +2666,9 @@ button.card {
   align-items: center;
   gap: var(--space-2);
 }
+.invite-link-row > input,
 .invite-link-row .btn {
+  height: var(--tap-target-size);
   white-space: nowrap;
 }
 .invite-qr-modal {
@@ -3754,6 +3760,10 @@ input[type='number'].tournament-score-input {
   padding-left: var(--space-2);
   font-size: var(--font-size-xs);
 }
+.admin-test-controls input,
+.admin-test-controls .btn {
+  height: calc(var(--tap-target-size) - var(--space-2));
+}
 .admin-player-row {
   gap: var(--space-2);
 }
@@ -4564,23 +4574,22 @@ input[type='number'].tournament-score-input {
 .seating-control-grid input { min-width: 0; }
 .seating-save-status { font-size: var(--font-size-xs); }
 .seating-player-pool {
-  min-height: 58px;
+  min-height: calc(var(--tap-target-size) + var(--space-3));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: var(--space-2);
+}
+.seating-pool-player {
+  min-width: 0;
+  min-height: var(--tap-target-size);
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2);
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-md);
-}
-.seating-pool-player {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
   color: var(--text);
   font-size: var(--font-size-sm);
 }
@@ -4606,6 +4615,12 @@ input[type='number'].tournament-score-input {
     text-align: center;
   }
   .seating-control-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (min-width: 640px) { /* --bp-md */
+  .seating-player-pool {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (min-width: 480px) { /* --bp-sm */
