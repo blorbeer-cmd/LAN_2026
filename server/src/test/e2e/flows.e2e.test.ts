@@ -184,13 +184,31 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   const colorModal = await page.locator('.profile-color-picker-modal .modal').boundingBox();
   assert.ok(colorModal && Math.abs(colorModal.x + colorModal.width / 2 - 640) < 2 && Math.abs(colorModal.y + colorModal.height / 2 - 450) < 2);
   await page.locator('.profile-color-picker-wheel').press('ArrowRight');
-  const keyboardColor = await page.locator('.profile-color-picker-value').textContent();
+  const keyboardColor = await page.inputValue('.profile-color-picker-value');
   assert.notEqual(keyboardColor, originalProfileColor.toUpperCase());
+  await page.fill('.profile-color-picker-value', 'ungueltig');
+  assert.equal(await page.locator('.profile-color-picker-value').getAttribute('aria-invalid'), 'true');
+  assert.equal(await page.locator('.profile-color-picker-copy').isDisabled(), true);
+  assert.equal(await page.locator('[data-profile-color-apply]').isDisabled(), true);
+  assert.equal(await page.locator('.profile-color-picker-error').isVisible(), true);
+  await page.fill('.profile-color-picker-value', '12abef');
+  assert.equal(await page.locator('.profile-color-picker-value').getAttribute('aria-invalid'), 'false');
+  assert.equal(await page.locator('.profile-color-picker-copy').isEnabled(), true);
+  assert.equal(await page.locator('[data-profile-color-apply]').isEnabled(), true);
+  assert.equal(await page.locator('.profile-color-picker-error').isHidden(), true);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (value: string) => { (window as Window & { copiedProfileColor?: string }).copiedProfileColor = value; } },
+    });
+  });
+  await page.click('.profile-color-picker-copy');
+  assert.equal(await page.evaluate(() => (window as Window & { copiedProfileColor?: string }).copiedProfileColor), '#12ABEF');
   await page.click('[data-profile-color-cancel]');
   assert.equal(await page.inputValue('#profile-color'), originalProfileColor);
   await page.click('#profile-color-trigger');
-  await page.locator('.profile-color-picker-wheel').press('ArrowRight');
-  const appliedColor = (await page.locator('.profile-color-picker-value').textContent())!.toLowerCase();
+  await page.fill('.profile-color-picker-value', '#12ABEF');
+  const appliedColor = (await page.inputValue('.profile-color-picker-value')).toLowerCase();
   await page.click('[data-profile-color-apply]');
   assert.equal(await page.inputValue('#profile-color'), appliedColor);
   assert.equal(await page.getByText('Erweitertes Tracking', { exact: true }).count(), 1);

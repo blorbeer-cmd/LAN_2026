@@ -1049,9 +1049,10 @@ input[type='number']::-webkit-inner-spin-button {
   pointer-events: none;
 }
 .profile-color-picker-preview-row {
-  display: flex;
+  display: grid;
+  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr) var(--tap-target-size);
   align-items: center;
-  justify-content: center;
   gap: var(--space-3);
 }
 .profile-color-picker-preview {
@@ -1065,8 +1066,24 @@ input[type='number']::-webkit-inner-spin-button {
   height: var(--tap-target-size);
 }
 .profile-color-picker-value {
-  color: var(--text-muted);
+  width: 100%;
+  min-width: 0;
   font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+}
+.profile-color-picker-value[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.profile-color-picker-error {
+  width: 100%;
+  color: var(--danger);
+  font-size: var(--font-size-xs);
+}
+.profile-color-picker-copy {
+  width: var(--tap-target-size);
+  height: var(--tap-target-size);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated-2);
 }
 .profile-color-picker-actions {
   display: grid;

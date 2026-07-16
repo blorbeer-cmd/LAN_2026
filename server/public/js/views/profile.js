@@ -34,6 +34,12 @@ function normalizedProfileColor(value) {
     : getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
 }
 
+function parsedProfileColor(value) {
+  const trimmed = String(value ?? '').trim();
+  const withHash = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
+  return /^#[0-9a-f]{6}$/i.test(withHash) ? withHash.toLowerCase() : null;
+}
+
 function hexToHsv(value) {
   const hex = normalizedProfileColor(value).slice(1);
   const [red, green, blue] = [0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16) / 255);
@@ -76,8 +82,10 @@ function openProfileColorPicker(colorInput, colorTrigger) {
        </div>
        <div class="profile-color-picker-preview-row">
          <span class="profile-color-picker-preview" style="--profile-color:${selectedColor};"></span>
-         <output class="profile-color-picker-value">${selectedColor.toUpperCase()}</output>
+         <input type="text" class="profile-color-picker-value" value="${selectedColor.toUpperCase()}" maxlength="7" spellcheck="false" aria-label="Hex-Farbwert" aria-describedby="profile-color-picker-error" />
+         <button type="button" class="icon-btn profile-color-picker-copy" title="Farbwert kopieren" aria-label="Farbwert kopieren">${icon('copy')}</button>
        </div>
+       <span id="profile-color-picker-error" class="profile-color-picker-error" hidden>Bitte einen sechsstelligen Hex-Farbwert eingeben.</span>
        <div class="profile-color-picker-actions">
          <button type="button" class="btn btn-equal" data-profile-color-cancel>Abbrechen</button>
          <button type="button" class="btn btn-primary btn-equal" data-profile-color-apply>Übernehmen</button>
@@ -89,7 +97,17 @@ function openProfileColorPicker(colorInput, colorTrigger) {
         const wheel = backdrop.querySelector('.profile-color-picker-wheel');
         const marker = backdrop.querySelector('.profile-color-picker-marker');
         const preview = backdrop.querySelector('.profile-color-picker-preview');
-        const output = backdrop.querySelector('.profile-color-picker-value');
+        const valueInput = backdrop.querySelector('.profile-color-picker-value');
+        const copyButton = backdrop.querySelector('.profile-color-picker-copy');
+        const applyButton = backdrop.querySelector('[data-profile-color-apply]');
+        const error = backdrop.querySelector('.profile-color-picker-error');
+
+        const setValidity = (valid) => {
+          valueInput.setAttribute('aria-invalid', String(!valid));
+          copyButton.disabled = !valid;
+          applyButton.disabled = !valid;
+          error.hidden = valid;
+        };
 
         const updateSelection = (color) => {
           selectedColor = normalizedProfileColor(color);
@@ -98,8 +116,9 @@ function openProfileColorPicker(colorInput, colorTrigger) {
           marker.style.left = `${50 + Math.cos(angle) * saturation * 46}%`;
           marker.style.top = `${50 + Math.sin(angle) * saturation * 46}%`;
           preview.style.setProperty('--profile-color', selectedColor);
-          output.value = selectedColor.toUpperCase();
+          valueInput.value = selectedColor.toUpperCase();
           wheel.setAttribute('aria-valuetext', selectedColor);
+          setValidity(true);
         };
         const updateFromPointer = (event) => {
           const box = wheel.getBoundingClientRect();
@@ -127,8 +146,25 @@ function openProfileColorPicker(colorInput, colorTrigger) {
           if (event.key === 'ArrowDown') current.saturation = Math.max(0, current.saturation - 0.05);
           updateSelection(hsvToHex(current.hue, current.saturation));
         });
+        valueInput.addEventListener('input', () => {
+          const parsed = parsedProfileColor(valueInput.value);
+          setValidity(Boolean(parsed));
+          if (parsed) updateSelection(parsed);
+        });
+        valueInput.addEventListener('blur', () => {
+          const parsed = parsedProfileColor(valueInput.value);
+          if (parsed) valueInput.value = parsed.toUpperCase();
+        });
+        copyButton.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(selectedColor.toUpperCase());
+            showToast('Farbwert kopiert.');
+          } catch {
+            showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+          }
+        });
         backdrop.querySelector('[data-profile-color-cancel]').addEventListener('click', close);
-        backdrop.querySelector('[data-profile-color-apply]').addEventListener('click', () => {
+        applyButton.addEventListener('click', () => {
           colorInput.value = selectedColor;
           colorTrigger.style.setProperty('--profile-color', selectedColor);
           colorTrigger.setAttribute('aria-label', `Profilfarbe wählen, aktuell ${selectedColor}`);
