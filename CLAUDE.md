@@ -1,26 +1,10 @@
 # CLAUDE.md
 
-Verbindlicher Einstiegspunkt für Claude in diesem Repository.
+@AGENTS.md
 
-## Pflichtlektüre
+Claude-spezifische Hinweise:
 
-1. Vor Analyse, Planung oder Änderung die gemeinsame Richtlinie
-   **[`DEVELOPMENT_GUIDELINES.md`](DEVELOPMENT_GUIDELINES.md) vollständig lesen**.
-2. Vor jeder Änderung unter `server/public/` zusätzlich
-   **[`server/DESIGN_SYSTEM.md`](server/DESIGN_SYSTEM.md) vollständig lesen**.
-3. Für bereichsspezifische Details die dort verlinkte Dokumentation lesen, insbesondere
-   `server/TESTING.md` und `agent/README.md`, wenn der Auftrag den jeweiligen Bereich betrifft.
-
-`DEVELOPMENT_GUIDELINES.md` ist die einzige gemeinsame Quelle für Produkt-, Architektur-,
-Qualitäts- und Workflow-Regeln. Diese Datei enthält bewusst keine Kopie davon, damit Claude und
-andere Agents nach denselben Vorgaben arbeiten.
-
-## Geltung und Konflikte
-
-- Nutzer- und Systemanweisungen haben Vorrang.
-- Danach gelten diese Datei und die gemeinsame Richtlinie.
-- Bei einem Widerspruch zwischen dieser Datei, `AGENTS.md` und der gemeinsamen Richtlinie gilt
-  `DEVELOPMENT_GUIDELINES.md`. Den Widerspruch nicht stillschweigend auslegen, sondern im Rahmen
-  eines passenden Dokumentationsauftrags beheben oder dem Nutzer melden.
-- Vorhandene, nicht zum Auftrag gehörende Änderungen im Arbeitsbaum gehören dem Nutzer und werden
-  nicht überschrieben, zurückgesetzt, formatiert oder mitcommittet.
+- Verschachtelte `CLAUDE.md`-Dateien ergänzen die Regeln erst im jeweils betroffenen Unterbaum.
+- Ausgelagerte Bereichsdokumente nicht vorsorglich laden.
+- Bei Kompaktierung Testresultate, geänderte Dateien, offene Risiken und Nutzerentscheidungen
+  erhalten.
