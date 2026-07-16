@@ -145,7 +145,7 @@ function renderPushSection() {
           ? 'Status wird geladen…'
           : subscribed
             ? 'Auf diesem Gerät aktiv.'
-            : 'Auf diesem Gerät aus.';
+            : '';
   return `
     <div class="stack" style="gap:var(--space-2);">
       <label class="check-row">
@@ -155,7 +155,7 @@ function renderPushSection() {
           ${infoTooltipHtml('profile-push-help', 'Push empfangen', PUSH_HELP)}
         </span>
       </label>
-      <span class="muted" style="font-size:var(--font-size-xs);">${pushBusy ? 'Wird aktualisiert…' : status}</span>
+      ${pushBusy || status ? `<span class="muted" style="font-size:var(--font-size-xs);">${pushBusy ? 'Wird aktualisiert…' : status}</span>` : ''}
     </div>`;
 }
 
@@ -181,7 +181,7 @@ export function renderProfile(container, ctx) {
     state.skills.some((s) => s.player_id === myId) || state.preferences.some((p) => p.player_id === myId);
 
   container.innerHTML = `
-    <div class="row-between">
+    <div class="row-between profile-page-header">
       <h1 class="view-title">Mein Profil</h1>
       <button type="button" class="btn btn-sm" id="profile-not-me">Nicht du?</button>
     </div>
@@ -194,19 +194,21 @@ export function renderProfile(container, ctx) {
               ${avatarHtml(me, 64)}
             </label>
             <input type="file" id="profile-avatar-input" accept="image/*" hidden />
-            <label for="profile-color" class="field-label">Profilfarbe</label>
-            <input type="color" id="profile-color" value="${me.color}" aria-label="Profilfarbe" />
           </div>
           <div class="stack" style="gap:var(--space-3);">
-            <div class="field-row">
-              <div>
-                <label for="profile-name" class="field-label">Gamer-Name</label>
+            <div class="profile-gamertag-row">
+              <div class="profile-gamertag-field">
+                <label for="profile-name" class="field-label">Gamertag</label>
                 <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" />
               </div>
-              <div>
-                <label for="profile-real-name" class="field-label">Richtiger Name</label>
-                <input type="text" id="profile-real-name" value="${escapeHtml(me.real_name || '')}" maxlength="60" placeholder="Optional" />
+              <div class="profile-color-field">
+                <label for="profile-color" class="field-label">Profilfarbe</label>
+                <input type="color" id="profile-color" value="${me.color}" aria-label="Profilfarbe" />
               </div>
+            </div>
+            <div>
+              <label for="profile-real-name" class="field-label">Name</label>
+              <input type="text" id="profile-real-name" value="${escapeHtml(me.real_name || '')}" maxlength="60" placeholder="Optional" />
             </div>
             <button type="button" class="btn btn-primary btn-block" id="profile-save">Speichern</button>
           </div>
@@ -230,19 +232,17 @@ export function renderProfile(container, ctx) {
 
       <section class="card stack grouped-page-section" aria-labelledby="profile-agent-title">
         <div class="grouped-page-section-title"><h2 id="profile-agent-title">Live-Status-Agent</h2></div>
-        <div class="card">
-          <label class="check-row">
-            <input type="checkbox" id="tracking-paused" ${me.tracking_paused ? 'checked' : ''} />
-            <span class="title-with-info" style="flex:1;">
-              <span>Tracking pausieren</span>
-              ${infoTooltipHtml('profile-tracking-pause-help', 'Tracking pausieren', TRACKING_PAUSE_HELP)}
-            </span>
-          </label>
-        </div>
         <div class="profile-agent-steps">
           <div class="card stack profile-agent-step">
             <span class="muted profile-agent-step-label">Schritt 1</span>
-            <strong>Tracking wählen</strong>
+            <strong>Tracking festlegen</strong>
+            <label class="check-row">
+              <input type="checkbox" id="tracking-paused" ${me.tracking_paused ? 'checked' : ''} />
+              <span class="title-with-info" style="flex:1;">
+                <span>Tracking pausieren</span>
+                ${infoTooltipHtml('profile-tracking-pause-help', 'Tracking pausieren', TRACKING_PAUSE_HELP)}
+              </span>
+            </label>
             <label class="check-row">
               <input type="checkbox" id="agent-track-activity" />
               <span class="title-with-info" style="flex:1;">

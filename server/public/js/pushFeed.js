@@ -39,5 +39,5 @@ export function feedEntryIcon(entry) {
 
 // Bell + title + body markup for the read-only Kiosk banner.
 export function bannerContentHtml(entry) {
-  return `${icon(feedEntryIcon(entry))}<span class="notification-banner-text"><strong>${escapeHtml(feedEntryTitle(entry))}</strong> ${escapeHtml(entry.body)}</span>`;
+  return `${icon(feedEntryIcon(entry))}<span class="notification-banner-text"><strong>${escapeHtml(feedEntryTitle(entry))}</strong><span class="notification-banner-body">${escapeHtml(entry.body)}</span></span>`;
 }

@@ -34,8 +34,8 @@
 .kiosk-grid {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
   gap: var(--space-5);
   padding: var(--space-5);
   min-height: 0;
@@ -57,7 +57,7 @@
   flex-shrink: 0;
 }
 .kiosk-card > div {
-  overflow-y: auto;
+  overflow: hidden;
   min-height: 0;
 }
 
@@ -67,37 +67,172 @@
   font-size: var(--font-size-lg);
 }
 
-/* Narrower/portrait screens (a TV in portrait mode, or a smaller monitor):
-   stack the cards in one column and let the page scroll instead of
-   squeezing everything into a fixed 2x2 grid. */
-/* 900px is intentionally its own value, not --bp-lg (860px) — the kiosk
-   dashboard targets a TV/monitor, not the phone/laptop breakpoints below it
-   applies to. */
+/* 900px is intentionally its own value, not --bp-lg (860px): even a compact
+   kiosk stays a fixed 2x2 dashboard instead of introducing page scroll. */
 @media (max-width: 900px) {
   .kiosk-grid {
-    grid-template-columns: 1fr;
-    grid-template-rows: none;
-    overflow-y: auto;
+    gap: var(--space-2);
+    padding: var(--space-2);
   }
   .kiosk-card {
-    min-height: 260px;
+    padding: var(--space-3);
   }
+}
+
+.kiosk-live-grid,
+.kiosk-ranking-grid,
+.kiosk-tournament-standings-grid,
+.kiosk-tournament-group-grid,
+.kiosk-match-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: var(--space-2);
+}
+.kiosk-live-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.kiosk-live-grid .player-card {
+  min-width: 0;
+  padding: var(--space-2);
+}
+.kiosk-live-grid .player-card .row-between {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.kiosk-live-grid .player-name,
+.kiosk-standing-row strong,
+.kiosk-match-team strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kiosk-ranking-grid .lb-row {
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.kiosk-vote-state {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  text-align: center;
+}
+.kiosk-vote-state .empty-state-icon {
+  margin: 0;
+}
+.kiosk-tournament-overview {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.kiosk-tournament-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.kiosk-standing-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.kiosk-tournament-group {
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.kiosk-tournament-group > strong {
+  display: block;
+  margin-bottom: var(--space-2);
+}
+.kiosk-tournament-group .kiosk-standing-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  border-width: 1px 0 0;
+  border-radius: 0;
+  background: transparent;
+}
+.kiosk-match-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.kiosk-match-team {
+  display: flex;
+  min-height: var(--tap-target-size);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+.kiosk-match-team + .kiosk-match-team {
+  border-top: 1px solid var(--border);
+}
+.kiosk-match-team.is-winner {
+  box-shadow: inset var(--space-1) 0 0 var(--state-playing);
 }
 
 /* Durchsage banner: full-width, impossible to miss — the whole point of a
    kiosk announcement is that people look up from their own screens. Uses
    the brand gradient so it reads as "the system speaks", pulses briefly. */
+.kiosk-alerts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-3) var(--space-5) 0;
+}
+.kiosk-alerts.has-single-alert {
+  grid-template-columns: minmax(0, 1fr);
+}
 .kiosk-broadcast {
-  margin: var(--space-4) var(--space-6) 0;
-  padding: var(--space-4) var(--space-6);
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius);
   background: var(--accent-gradient);
   color: var(--accent-text);
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-bold);
-  text-align: center;
+  font-size: var(--font-size-md);
   box-shadow: 0 4px 24px rgba(91, 140, 255, 0.45);
   animation: kiosk-broadcast-in 0.4s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.kiosk-broadcast > .ui-icon {
+  flex: 0 0 auto;
+}
+.notification-banner-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.notification-banner-body {
+  overflow: hidden;
+  font-weight: var(--font-weight-regular);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 @keyframes kiosk-broadcast-in {
   from {
@@ -106,24 +241,50 @@
   }
 }
 .kiosk-broadcast-time {
+  flex: 0 0 auto;
   font-weight: var(--font-weight-regular);
   opacity: 0.85;
-  font-size: 0.85em;
+  font-size: var(--font-size-xs);
 }
 
 /* Food-order banner: same width/placement as the Durchsage banner but a
    quieter card style — it's ambient status, not an urgent announcement. */
 .kiosk-food-banner {
-  margin: var(--space-4) var(--space-6) 0;
-  padding: var(--space-3) var(--space-6);
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  font-size: var(--font-size-lg);
-  text-align: center;
+  font-size: var(--font-size-md);
 }
 .kiosk-food-banner a {
   color: var(--accent);
+}
+.kiosk-food-order-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--selection-card-min-width), 1fr));
+  gap: var(--space-2);
+}
+.kiosk-food-order {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.kiosk-food-order-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.kiosk-food-order-text strong,
+.kiosk-food-order-text span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .kiosk-game {

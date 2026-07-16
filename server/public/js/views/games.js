@@ -28,12 +28,11 @@ function inviteUrl() {
 
 function renderInviteLinkBody() {
   return `
-    <div class="row">
-      <input type="text" id="invite-link" readonly value="${escapeHtml(inviteUrl())}" style="flex:1;font-family:monospace;font-size:var(--font-size-xs);" />
+    <input type="text" id="invite-link" readonly value="${escapeHtml(inviteUrl())}" style="font-family:monospace;font-size:var(--font-size-xs);" />
+    <div class="invite-link-actions">
       <button type="button" class="btn btn-sm" id="invite-copy">Kopieren</button>
+      <button type="button" class="btn btn-sm" id="invite-qr-open">${icon('scanQrCode')} QR-Code</button>
     </div>
-    <button type="button" class="btn btn-sm" id="invite-qr-toggle">${icon('scanQrCode')} QR-Code anzeigen</button>
-    <div id="invite-qr" style="text-align:center;" hidden></div>
   `;
 }
 
@@ -50,29 +49,27 @@ function wireInviteLinkBody(root) {
     }
   });
 
-  root.querySelector('#invite-qr-toggle').addEventListener('click', async (e) => {
-    const qrEl = root.querySelector('#invite-qr');
-    if (!qrEl.hidden) {
-      qrEl.hidden = true;
-      e.target.innerHTML = `${icon('scanQrCode')} QR-Code anzeigen`;
-      return;
-    }
-    e.target.innerHTML = `${icon('scanQrCode')} QR-Code ausblenden`;
-    qrEl.hidden = false;
-    if (!qrEl.dataset.loaded) {
-      const url = root.querySelector('#invite-link').value;
-      try {
-        // Rendered server-side and injected as trusted markup (our own
-        // /api/qrcode response, not user input) so it displays inline
-        // without a network round trip to a third-party QR service that
-        // would otherwise see the access token embedded in the link.
-        qrEl.innerHTML = await api.qrcode.svg(url);
-        qrEl.dataset.loaded = '1';
-      } catch (err) {
-        qrEl.textContent = 'QR-Code konnte nicht geladen werden.';
-        showToast(err.message, { error: true });
+  root.querySelector('#invite-qr-open').addEventListener('click', () => {
+    const url = root.querySelector('#invite-link').value;
+    openModal(
+      'Einladungs-QR-Code',
+      '<div class="invite-qr-modal" data-invite-qr><div class="empty-state">QR-Code wird geladen…</div></div>',
+      {
+        onMount: async (modalEl) => {
+          modalEl.classList.add('invite-qr-backdrop');
+          const qrEl = modalEl.querySelector('[data-invite-qr]');
+          try {
+            // Rendered server-side and injected as trusted markup (our own
+            // /api/qrcode response, not user input), never via a third-party
+            // service that could see the access token embedded in the link.
+            qrEl.innerHTML = await api.qrcode.svg(url);
+          } catch (err) {
+            qrEl.innerHTML = '<div class="empty-state">QR-Code konnte nicht geladen werden.</div>';
+            showToast(err.message, { error: true });
+          }
+        },
       }
-    }
+    );
   });
 }
 

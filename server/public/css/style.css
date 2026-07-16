@@ -961,6 +961,13 @@ input[type='number']::-webkit-inner-spin-button {
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
 }
+.profile-page-header {
+  align-items: flex-start;
+  margin-bottom: var(--space-4);
+}
+.profile-page-header .view-title {
+  margin-bottom: 0;
+}
 .profile-avatar-editor {
   display: flex;
   flex-direction: column;
@@ -969,6 +976,19 @@ input[type='number']::-webkit-inner-spin-button {
 }
 .profile-avatar-control {
   cursor: pointer;
+}
+.profile-gamertag-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-3);
+}
+.profile-gamertag-field {
+  min-width: 0;
+}
+.profile-color-field {
+  display: flex;
+  flex-direction: column;
 }
 .profile-rating-nudge {
   border-color: var(--accent);
@@ -2608,7 +2628,25 @@ button.card {
 /* The QR code SVG already draws its own white background (needed for
    scanability regardless of theme) — just round its corners and give it
    some breathing room against the dark page behind it. */
-#invite-qr svg {
+.invite-link-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.invite-qr-modal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-backdrop.invite-qr-backdrop {
+  align-items: center;
+}
+.invite-qr-backdrop .modal {
+  border-radius: var(--radius-lg);
+  animation-name: dialog-in;
+  animation-duration: 0.18s;
+}
+.invite-qr-modal svg {
   border-radius: var(--radius);
   overflow: hidden;
   max-width: 100%;

@@ -11,6 +11,10 @@ import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { isAdmin, setAdmin } from '../admin.js';
 import { icon } from '../icons.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+
+const SEATING_HELP = 'Tisch, Plätze und Sitzordnung verwalten.';
+const BACKUP_HELP = 'Aktuellen Stand als SQLite-Datei sichern.';
 
 let agentDiagnostics = null;
 let diagnosticsLoading = false;
@@ -170,14 +174,18 @@ function renderPanel(container, ctx) {
         <div class="grouped-page-section-title"><h2 id="admin-tools-title">Werkzeuge</h2></div>
         <div class="two-column-card-grid">
           <div class="card stack">
-            <strong>Sitzplan</strong>
-            <span class="muted">Tisch, Plätze und Sitzordnung verwalten.</span>
-            <button type="button" class="btn btn-sm btn-block" data-navigate="seating">Sitzplan öffnen</button>
+            <span class="title-with-info">
+              <strong>Sitzplan</strong>
+              ${infoTooltipHtml('admin-seating-help', 'Sitzplan', SEATING_HELP)}
+            </span>
+            <button type="button" class="btn btn-primary btn-sm btn-block" data-navigate="seating">Öffnen</button>
           </div>
           <div class="card stack">
-            <strong>Backup</strong>
-            <span class="muted">Aktuellen Stand als SQLite-Datei sichern.</span>
-            <button type="button" class="btn btn-sm btn-block" id="download-backup">Backup herunterladen</button>
+            <span class="title-with-info">
+              <strong>Backup</strong>
+              ${infoTooltipHtml('admin-backup-help', 'Backup', BACKUP_HELP)}
+            </span>
+            <button type="button" class="btn btn-primary btn-sm btn-block" id="download-backup">Herunterladen</button>
           </div>
         </div>
       </section>
@@ -224,6 +232,7 @@ function renderPanel(container, ctx) {
   container.querySelector('#admin-cleanup').addEventListener('click', () => cleanupTestUsers(ctx));
 
   container.querySelector('#download-backup').addEventListener('click', downloadBackup);
+  wireInfoTooltips(container);
 
   container.querySelector('#agent-diagnostics-refresh').addEventListener('click', () => loadAgentDiagnostics(ctx, true));
 

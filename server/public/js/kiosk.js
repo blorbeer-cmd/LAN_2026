@@ -181,7 +181,7 @@ function renderLive(players) {
     const rankDiff = STATE_RANK[a.state] - STATE_RANK[b.state];
     return rankDiff !== 0 ? rankDiff : a.name.localeCompare(b.name, 'de');
   });
-  return `<div class="stack" style="gap:var(--space-2);">${sorted
+  return `<div class="kiosk-live-grid">${sorted
     .map((p) => {
       const games = gameChipsHtml(p.games, p.activity_tracked, 18);
       return `
@@ -212,9 +212,9 @@ function renderVotes(votes) {
   }
   const label = votes.mode === 'points' ? `${votes.totalVoters} Teilnehmer bisher` : `${votes.totalVoters} Stimme(n) bisher`;
   return `
-    <div class="empty-state">
+    <div class="kiosk-vote-state">
       <span class="empty-state-icon">${icon(domainIcon('votes'))}</span>
-      Abstimmung läuft.<br />
+      <strong>Abstimmung läuft</strong>
       <span class="muted">${label} – Ergebnis erst nach dem Ende.</span>
     </div>`;
 }
@@ -223,7 +223,7 @@ function renderLeaderboard(standings) {
   if (!standings || standings.length === 0) {
     return `<div class="empty-state">Noch keine Ergebnisse.</div>`;
   }
-  return standings
+  const rows = standings
     .slice(0, 8)
     .map(
       (s, i) => `
@@ -235,6 +235,17 @@ function renderLeaderboard(standings) {
       </div>`
     )
     .join('');
+  return `<div class="kiosk-ranking-grid">${rows}</div>`;
+}
+
+function tournamentStandingRow(name, standing, index, { compact = false } = {}) {
+  return `
+    <div class="kiosk-standing-row ${index === 0 ? 'rank-1' : ''}">
+      <span class="lb-rank">${index + 1}</span>
+      <strong>${name}</strong>
+      ${compact ? '' : `<span class="muted">${standing.wins}S · ${standing.draws}U · ${standing.losses}N</span>`}
+      <span class="lb-points">${standing.points} P</span>
+    </div>`;
 }
 
 function renderTournament(t) {
@@ -244,17 +255,12 @@ function renderTournament(t) {
 
   if (t.format === 'round_robin') {
     const rows = (t.standings || [])
-      .map(
-        (s, i) => `
-        <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
-          <span class="lb-rank">${i + 1}</span>
-          <span style="flex:1;">${teamName(s.teamId)}</span>
-          <span class="muted">${s.wins}S/${s.draws}U/${s.losses}N</span>
-          <span class="lb-points">${s.points} P</span>
-        </div>`
-      )
+      .map((s, i) => tournamentStandingRow(teamName(s.teamId), s, i))
       .join('');
-    return `<div class="muted" style="margin-bottom:var(--space-2);">${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)} — Liga</div>${rows}`;
+    return `<div class="kiosk-tournament-overview">
+      <div class="kiosk-tournament-meta"><strong>${escapeHtml(t.gameName)}</strong><span class="badge">Liga</span></div>
+      <div class="kiosk-tournament-standings-grid">${rows}</div>
+    </div>`;
   }
 
   // group_knockout has two distinct phases mixed into one `matches` list
@@ -268,19 +274,15 @@ function renderTournament(t) {
     const groupBlocks = (t.groups || [])
       .map((g) => {
         const rows = g.standings
-          .map(
-            (s, i) => `
-            <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
-              <span class="lb-rank">${i + 1}</span>
-              <span style="flex:1;">${teamName(s.teamId)}</span>
-              <span class="lb-points">${s.points} P</span>
-            </div>`
-          )
+          .map((s, i) => tournamentStandingRow(teamName(s.teamId), s, i, { compact: true }))
           .join('');
-        return `<div class="muted" style="margin:var(--space-2) 0 var(--space-1);">Gruppe ${g.groupIndex + 1}</div>${rows}`;
+        return `<div class="kiosk-tournament-group"><strong>Gruppe ${g.groupIndex + 1}</strong>${rows}</div>`;
       })
       .join('');
-    return `<div class="muted" style="margin-bottom:var(--space-2);">${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)} — Gruppenphase</div>${groupBlocks}`;
+    return `<div class="kiosk-tournament-overview">
+      <div class="kiosk-tournament-meta"><strong>${escapeHtml(t.gameName)}</strong><span class="badge">Gruppenphase</span></div>
+      <div class="kiosk-tournament-group-grid">${groupBlocks}</div>
+    </div>`;
   }
   const bracketMatches = t.format === 'group_knockout' ? knockoutMatches : t.matches;
 
@@ -294,21 +296,25 @@ function renderTournament(t) {
     .map((m) => {
       if (m.isBye) {
         return `
-          <div class="lb-row">
-            <span style="flex:1;">${icon('crown')} ${teamName(m.winnerTeamId)} <span class="muted">(Freilos)</span></span>
+          <div class="kiosk-match-card">
+            <div class="kiosk-match-team is-winner"><strong>${teamName(m.winnerTeamId)}</strong><span class="badge badge-playing">Weiter</span></div>
+            <div class="muted">Freilos</div>
           </div>`;
       }
       return `
-        <div class="lb-row">
-          <span style="flex:1;">
-            ${m.winnerTeamId === m.teamAId ? `${icon('crown')} ` : ''}${teamName(m.teamAId)}
-            <span class="muted">vs</span>
-            ${m.winnerTeamId === m.teamBId ? `${icon('crown')} ` : ''}${teamName(m.teamBId)}
-          </span>
+        <div class="kiosk-match-card">
+          <div class="kiosk-match-team ${m.winnerTeamId === m.teamAId ? 'is-winner' : ''}"><strong>${teamName(m.teamAId)}</strong>${m.winnerTeamId === m.teamAId ? '<span class="badge badge-playing">Sieger</span>' : ''}</div>
+          <div class="kiosk-match-team ${m.winnerTeamId === m.teamBId ? 'is-winner' : ''}"><strong>${teamName(m.teamBId)}</strong>${m.winnerTeamId === m.teamBId ? '<span class="badge badge-playing">Sieger</span>' : ''}</div>
         </div>`;
     })
     .join('');
-  return `<div class="muted" style="margin-bottom:var(--space-2);">${escapeHtml(t.gameName)} — Runde ${currentRound}/${totalRounds}${t.status === 'completed' ? ` · ${icon('trophy')} Beendet` : ''}</div>${rows}`;
+  return `<div class="kiosk-tournament-overview">
+    <div class="kiosk-tournament-meta">
+      <strong>${escapeHtml(t.gameName)}</strong>
+      <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : `Runde ${currentRound}/${totalRounds}`}</span>
+    </div>
+    <div class="kiosk-match-grid">${rows}</div>
+  </div>`;
 }
 
 // Food-order banner: just enough for someone glancing at the shared screen
@@ -320,18 +326,25 @@ function renderFoodBanner(orders) {
   const el = document.getElementById('kiosk-food-banner');
   if (open.length === 0) {
     el.hidden = true;
+    updateAlertLayout();
     return;
   }
-  el.innerHTML = open
+  const rows = open
     .map((o) => {
-      const when = `${icon('timer')} ${o.sendAt ? `geht raus um ${formatDateTime(o.sendAt)} Uhr` : 'Zeitpunkt noch offen'}`;
+      const when = o.sendAt ? `Bestellung um ${formatDateTime(o.sendAt)} Uhr` : 'Zeitpunkt noch offen';
       const where = o.link
-        ? ` · <a href="${escapeHtml(o.link)}" target="_blank" rel="noopener">${icon('link')} Zur Karte/Lieferdienst</a>`
+        ? `<a href="${escapeHtml(o.link)}" target="_blank" rel="noopener">${icon('link')} Karte öffnen</a>`
         : '';
-      return `<div>${icon(domainIcon('foodOrders'))} Sammelbestellung „${escapeHtml(o.title)}" läuft – ${when}${where}</div>`;
+      return `<div class="kiosk-food-order">
+        <span class="inline-icon">${icon(domainIcon('foodOrders'))}</span>
+        <span class="kiosk-food-order-text"><strong>${escapeHtml(o.title)}</strong><span class="muted">${when}</span></span>
+        ${where}
+      </div>`;
     })
     .join('');
+  el.innerHTML = `<div class="kiosk-food-order-list">${rows}</div>`;
   el.hidden = false;
+  updateAlertLayout();
 }
 
 // Last-push banner: shows whatever was most recently sent to (almost)
@@ -362,14 +375,24 @@ function renderBroadcastBanner(entry) {
   pushBannerExpiryTimer = null;
   if (!entry) {
     el.hidden = true;
+    updateAlertLayout();
     return;
   }
   if (entry.expiresAt) {
     const delay = Math.max(0, Math.min(entry.expiresAt - Date.now() + 50, 2_147_483_647));
     pushBannerExpiryTimer = setTimeout(refreshPushBanner, delay);
   }
-  el.innerHTML = `${bannerContentHtml(entry)} <span class="kiosk-broadcast-time">· ${formatDateTime(entry.createdAt)} Uhr</span>`;
+  el.innerHTML = `${bannerContentHtml(entry)} <span class="kiosk-broadcast-time">${formatDateTime(entry.createdAt)} Uhr</span>`;
   el.hidden = false;
+  updateAlertLayout();
+}
+
+function updateAlertLayout() {
+  const alerts = document.getElementById('kiosk-alerts');
+  if (!alerts) return;
+  const visibleCount = [...alerts.children].filter((element) => !element.hidden).length;
+  alerts.hidden = visibleCount === 0;
+  alerts.classList.toggle('has-single-alert', visibleCount === 1);
 }
 
 async function refreshAll() {

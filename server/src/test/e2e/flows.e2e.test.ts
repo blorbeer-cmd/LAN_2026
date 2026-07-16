@@ -126,6 +126,12 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   assert.equal(await page.locator('#download-backup').count(), 0);
   await page.click('[aria-label="Mehr Informationen zu Events"]');
   await page.waitForSelector('#settings-events-help:not([hidden])');
+  await page.click('[aria-label="Mehr Informationen zu Events"]');
+  await page.click('#invite-qr-open');
+  await page.waitForSelector('.modal[aria-label="Einladungs-QR-Code"] .invite-qr-modal svg');
+  const qrModalBox = await page.locator('.modal[aria-label="Einladungs-QR-Code"]').boundingBox();
+  assert.ok(qrModalBox && Math.abs(qrModalBox.y + qrModalBox.height / 2 - 422) < 24, 'QR modal should be vertically centered on the phone viewport');
+  await page.click('.modal[aria-label="Einladungs-QR-Code"] [data-close]');
 
   await page.click('#profile-btn');
   await page.waitForSelector('#profile-name');
@@ -133,6 +139,10 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   assert.equal(await page.locator('#push-toggle[type="checkbox"]').count(), 1);
   assert.equal(await page.locator('#profile-tracking-pause-help').count(), 1);
   assert.equal(await page.locator('#profile-activity-tracking-help').count(), 1);
+  assert.equal(await page.locator('.profile-agent-step').first().locator('#tracking-paused').count(), 1);
+  assert.equal(await page.locator('label[for="profile-name"]').textContent(), 'Gamertag');
+  assert.equal(await page.locator('label[for="profile-real-name"]').textContent(), 'Name');
+  assert.equal(await page.getByText('Auf diesem Gerät aus.', { exact: true }).count(), 0);
 });
 
 test('Admin mode owns the seating editor and backup tools', async () => {
@@ -145,6 +155,10 @@ test('Admin mode owns the seating editor and backup tools', async () => {
   await page.waitForSelector('#admin-tools-title');
   assert.equal(await page.locator('#download-backup').count(), 1);
   assert.equal(await page.locator('[data-navigate="seating"]').count(), 1);
+  assert.equal(await page.locator('[data-navigate="seating"]').textContent(), 'Öffnen');
+  assert.ok(await page.locator('[data-navigate="seating"]').evaluate((element) => element.classList.contains('btn-primary')));
+  assert.equal(await page.locator('#admin-seating-help').count(), 1);
+  assert.equal(await page.locator('#admin-backup-help').count(), 1);
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('.seating-plan.is-editable');
   await page.click('[data-navigate="admin"]');
@@ -1604,11 +1618,26 @@ test('Kiosk: shows an open food order (when/where only), and the last-push banne
   await page.request.post(`${BASE_URL}/api/broadcasts`, {
     data: { playerId, message: 'Kiosk-Test-Durchsage' },
   });
+  await page.request.post(`${BASE_URL}/api/votes/start`, { data: { mode: 'single' } });
+  const opponent = await page.request.post(`${BASE_URL}/api/players`, { data: { name: 'Kiosk Gegner' } });
+  const opponentId = (await opponent.json()).id;
+  const games = await (await page.request.get(`${BASE_URL}/api/games`)).json();
+  await page.request.post(`${BASE_URL}/api/tournaments`, {
+    data: {
+      gameId: games[0].id,
+      format: 'single_elimination',
+      teams: [
+        { name: 'Kiosk Team Blau', playerIds: [playerId] },
+        { name: 'Kiosk Team Pink', playerIds: [opponentId] },
+      ],
+    },
+  });
   const sendAt = Date.now() + 3600_000;
   await page.request.post(`${BASE_URL}/api/food-orders`, {
     data: { playerId, title: 'Kiosk-Test-Pizza', sendAt, link: 'https://kiosk-test.example/karte' },
   });
 
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`${BASE_URL}/kiosk.html`);
   assert.equal((await page.locator('.kiosk-header .brand-title').textContent())?.trim(), 'Respawn');
 
@@ -1616,6 +1645,7 @@ test('Kiosk: shows an open food order (when/where only), and the last-push banne
   // items themselves stay on everyone's own phone, never on the shared screen.
   await page.waitForSelector('#kiosk-food-banner:not([hidden]) >> text=Kiosk-Test-Pizza');
   await page.waitForSelector('a[href="https://kiosk-test.example/karte"]');
+  await page.waitForSelector('.kiosk-food-order');
 
   // The last-push banner shows the food order's own push (title "Neue
   // Sammelbestellung"), not the earlier Durchsage — with a timestamp, and
@@ -1623,6 +1653,21 @@ test('Kiosk: shows an open food order (when/where only), and the last-push banne
   await page.waitForSelector('#kiosk-broadcast:not([hidden]) >> text=Neue Sammelbestellung');
   await page.waitForSelector('#kiosk-broadcast >> text=Kiosk-Test-Pizza');
   await page.waitForSelector('.kiosk-broadcast-time');
+  await page.waitForSelector('.notification-banner-body');
+  await page.waitForSelector('.kiosk-vote-state');
+  await page.waitForSelector('.kiosk-match-grid .kiosk-match-card');
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight && document.body.scrollHeight <= window.innerHeight),
+    true,
+    'kiosk page must fit without page scrollbars'
+  );
+  assert.equal(
+    await page.locator('.kiosk-card > div').evaluateAll((elements) => elements.every((element) => getComputedStyle(element).overflowY !== 'auto' && getComputedStyle(element).overflowY !== 'scroll')),
+    true,
+    'kiosk cards must not introduce internal scrollbars'
+  );
+  await page.request.post(`${BASE_URL}/api/votes/cancel`);
+  await page.setViewportSize({ width: 390, height: 844 });
 });
 
 test('Admin: one-tap mode with banner, seeded test users visible only in admin mode', async () => {
