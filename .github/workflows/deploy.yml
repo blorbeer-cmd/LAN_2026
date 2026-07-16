@@ -228,6 +228,19 @@ jobs:
             sudo mkdir -p /opt/respawn
             sudo chown -R deploy:deploy /opt/respawn
 
+            # One-time cleanup for the pre-rename stack: Compose infers its
+            # project name from the containing directory, so the move above
+            # left any already-running lan2026-project containers (in
+            # particular cloudflared, which the deploy step below only ever
+            # restarts by service name within the *current* directory)
+            # orphaned on their own "lan2026_default" network, unable to
+            # reach the app container the next step creates on
+            # "respawn_default". docker-compose.yml now pins an explicit
+            # project name so this can't recur. Idempotent: a no-op once
+            # these are gone.
+            docker ps -aq --filter "label=com.docker.compose.project=lan2026" | xargs -r docker rm -f
+            docker network ls -q --filter "label=com.docker.compose.project=lan2026" | xargs -r docker network rm
+
       # Keep the live service definition in sync as deploy safeguards (for
       # example logging limits) evolve; secrets remain exclusively in the
       # server-side .env and are never copied from the repository.
@@ -255,16 +268,20 @@ jobs:
             previous_image="$(sed -n 's/^IMAGE=//p' .env)"
             next_image="${{ needs.publish.outputs.image }}:${{ github.sha }}"
             sed -i "s#^IMAGE=.*#IMAGE=${next_image}#" .env
-            if ! docker compose pull app || ! docker compose up -d --wait --wait-timeout 90 app; then
+            # Also (re)attach cloudflared on every deploy, not just app: cheap
+            # and idempotent when it's already healthy, and self-heals it onto
+            # the pinned project/network if it was ever left stranded (see the
+            # cleanup step above) instead of requiring a manual fix.
+            if ! docker compose pull app || ! docker compose up -d --wait --wait-timeout 90 app cloudflared; then
               docker compose ps app || true
               docker compose logs --tail=100 app || true
               if [ -n "$previous_image" ] && [ "$previous_image" != "$next_image" ]; then
                 echo "Deploy failed; restoring previous image."
                 sed -i "s#^IMAGE=.*#IMAGE=${previous_image}#" .env
-                docker compose up -d --wait --wait-timeout 90 app || true
+                docker compose up -d --wait --wait-timeout 90 app cloudflared || true
                 docker compose ps app || true
               fi
               exit 1
             fi
-            docker compose ps app
+            docker compose ps
             docker image prune -af --filter "until=720h"

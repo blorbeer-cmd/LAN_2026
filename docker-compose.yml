@@ -6,6 +6,14 @@
 #
 # The app container has no published ports: cloudflared is the only way in,
 # reaching it over the internal compose network by service name.
+#
+# Pin the project name explicitly. Compose otherwise infers it from the
+# containing directory (/opt/lan2026 -> /opt/respawn during the rename),
+# and app/cloudflared silently ended up on two different auto-named
+# networks (lan2026_default vs respawn_default) as a result — cloudflared
+# could no longer resolve/reach "app" at all. Pinning it means the project
+# name survives any future directory move.
+name: respawn
 services:
   app:
     image: ${IMAGE:-ghcr.io/blorbeer-cmd/respawn:latest}

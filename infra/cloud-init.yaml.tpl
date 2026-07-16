@@ -44,6 +44,9 @@ write_files:
   - path: /opt/respawn/docker-compose.yml
     permissions: '0600'
     content: |
+      # Pinned so the project name survives any future directory rename —
+      # see docker-compose.yml at the repo root for why this matters.
+      name: respawn
       services:
         app:
           image: ${IMAGE}
@@ -103,7 +106,7 @@ write_files:
       cd /opt/respawn
       sed -i "s#^IMAGE=.*#IMAGE=ghcr.io/blorbeer-cmd/respawn:${1}#" .env
       docker compose pull app
-      if ! docker compose up -d --wait --wait-timeout 90 app; then
+      if ! docker compose up -d --wait --wait-timeout 90 app cloudflared; then
         docker compose ps app || true
         docker compose logs --tail=100 app || true
         exit 1
