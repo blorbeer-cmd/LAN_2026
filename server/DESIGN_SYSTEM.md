@@ -280,8 +280,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Agent setup is split into three stable nested cards for choosing tracking, downloading and
   installing; tracking pause belongs to the first step beside foreground-activity tracking, and
   both explanations live in contextual tooltips beside their checkboxes. The profile header owns
-  its spacing to the first group. The unlabeled profile image, Farbe, Gamertag and optional name form one aligned row from
-  `--bp-md`; phones wrap the two text fields below the visual controls. The shared save action stays
+  its spacing to the first group. The unlabeled profile image, Farbe, Gamertag and optional name form one row from
+  `--bp-md`; the three controls align their own centers to the image while their labels sit above.
+  Phones wrap the two text fields below the visual controls. The shared save action stays
   below that row. The foreground option uses the concise label „Erweitertes Tracking“. Push uses the same checkbox language with its
   explanation in a tooltip instead of an action button and omits a redundant off-state sentence.
   Visible-monitor choices form exactly two columns from `--bp-md`, with phones kept to one column.
@@ -389,8 +390,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   results follow directly without another enclosing card or accent rail; player rows reuse
   `.leaderboard-list-grid` for the shared one-/two-column ranking presentation and spell out wins
   and losses in German.
-- **Analytics** — Playtime and match/tournament views explain their event scope through contextual
-  help beside the filter label instead of persistent copy. Arcade exposes its own direct date range
+- **Analytics** — Event dropdowns and date controls stand without redundant filter labels or help
+  triggers. Arcade exposes its own direct date range
   because arcade results have no event assignment; the daily match chart is omitted. Tournament
   formats and per-game tournament counts are separate nested groups with blue and pink accent rails.
   The former „Witzige Rekorde“ section uses the concise title „Trivia“.

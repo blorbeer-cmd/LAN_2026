@@ -997,9 +997,6 @@ input[type='number']::-webkit-inner-spin-button {
 .profile-identity-fields .field-label {
   margin: 0;
 }
-.analytics-filter-label .field-label {
-  margin: 0;
-}
 .analytics-tournament-breakdowns {
   display: grid;
   gap: var(--space-3);
@@ -1058,6 +1055,10 @@ input[type='number']::-webkit-inner-spin-button {
   }
   .profile-text-field {
     grid-column: auto;
+  }
+  .profile-color-field,
+  .profile-text-field {
+    transform: translateY(calc(-1 * var(--space-2)));
   }
   .player-selection-grid.profile-monitor-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

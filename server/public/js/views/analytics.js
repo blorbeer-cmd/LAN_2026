@@ -24,11 +24,6 @@ import { escapeHtml, formatDateTime, avatarHtml, gameBadgeHtml } from '../format
 import { showToast } from '../toast.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { icon } from '../icons.js';
-import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
-
-const EVENT_FILTER_HELP = 'Zeigt nur Daten des gewählten Events.';
-const EVENT_RANGE_HELP = 'Zeigt das gewählte Event; der Zeitraum grenzt es optional weiter ein.';
-const ARCADE_RANGE_HELP = 'Grenzt Arcade-Ergebnisse auf den gewählten Zeitraum ein.';
 
 let activeTab = 'playtime'; // 'playtime' | 'matches' | 'arcade'
 
@@ -184,24 +179,12 @@ export function renderAnalytics(container, ctx) {
         </div>
         ${
           activeTab === 'arcade'
-            ? `<div class="title-with-info analytics-filter-label">
-                 <span class="field-label">Zeitraum</span>
-                 ${infoTooltipHtml('analytics-arcade-range-help', 'Arcade-Zeitraum', ARCADE_RANGE_HELP)}
-               </div>
-               <div class="field-row">
+            ? `<div class="field-row">
                  <div>${dateTimeFieldHtml('an-arcade-from', arcadeRange.from)}</div>
                  <div>${dateTimeFieldHtml('an-arcade-to', arcadeRange.to)}</div>
                </div>
                <button type="button" class="btn btn-primary btn-block" id="an-arcade-apply">Zeitraum anwenden</button>`
-            : `<div class="title-with-info analytics-filter-label">
-                 <span class="field-label">Event${activeTab === 'playtime' ? ' & Zeitraum' : ''}</span>
-                 ${infoTooltipHtml(
-                   activeTab === 'playtime' ? 'analytics-event-range-help' : 'analytics-event-help',
-                   activeTab === 'playtime' ? 'Event und Zeitraum' : 'Event',
-                   activeTab === 'playtime' ? EVENT_RANGE_HELP : EVENT_FILTER_HELP
-                 )}
-               </div>
-               <select id="an-event">${renderEventOptions()}</select>
+            : `<select id="an-event" aria-label="Event">${renderEventOptions()}</select>
                ${
                  activeTab === 'playtime'
                    ? `<div class="field-row">
@@ -239,8 +222,6 @@ export function renderAnalytics(container, ctx) {
       ctx.rerender();
     });
   }
-  wireInfoTooltips(container);
-
   container.querySelectorAll('[data-an-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {
       activeTab = btn.dataset.anTab;
