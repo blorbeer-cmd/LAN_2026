@@ -2,9 +2,9 @@
 // one event/date filter (awards, longest sessions, a collapsed raw session
 // log; recorded results, tournament
 // counts, team-auslosen history, a few "witzige" head-to-head records).
-// "Arcade" has no filter of its own (arcade_results isn't tied to a single
-// event) and covers the arcade mini-games specifically: match durations,
-// the most-active player per game and a per-day match timeline — on top of
+// "Arcade" has its own date range (arcade_results isn't tied to a single
+// event) and covers the arcade mini-games specifically: match durations and
+// the most-active player per game — on top of
 // the win/loss leaderboard already shown on the Arcade view's own stats tab.
 // Reached via the "Mehr" hub, not the main bottom nav — this is for browsing
 // after the fact, not something needed mid-game. Playtime/Matches used to be
@@ -24,6 +24,11 @@ import { escapeHtml, formatDateTime, avatarHtml, gameBadgeHtml } from '../format
 import { showToast } from '../toast.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { icon } from '../icons.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+
+const EVENT_FILTER_HELP = 'Zeigt nur Daten des gewählten Events.';
+const EVENT_RANGE_HELP = 'Zeigt das gewählte Event; der Zeitraum grenzt es optional weiter ein.';
+const ARCADE_RANGE_HELP = 'Grenzt Arcade-Ergebnisse auf den gewählten Zeitraum ein.';
 
 let activeTab = 'playtime'; // 'playtime' | 'matches' | 'arcade'
 
@@ -43,6 +48,7 @@ function defaultFilters() {
   return { eventId: 'active', from: null, to: null };
 }
 let filters = defaultFilters();
+let arcadeRange = { from: null, to: null };
 
 // Resolves the 'active' sentinel to a real event id once the events list is
 // available, so the view opens pre-filtered to the current LAN by default.
@@ -117,15 +123,18 @@ async function loadMatchesData(ctx) {
   }
 }
 
-// Arcade tab: match durations, most-active player and a per-day timeline
-// for the arcade mini-games, on top of the win/loss leaderboard already
-// shown on the Arcade view's own stats tab. arcade_results has no event_id,
-// so this is always all-time — no event/date filter to wire up here.
+// Arcade results have no event id, so their separate date range filters the
+// stored timestamps directly instead of pretending they belong to an event.
 async function loadArcadeData(ctx) {
   arcadeLoading = true;
   ctx.rerender();
   try {
-    arcadeCache = await api.analytics.arcade();
+    const params = {};
+    if (arcadeRange.from && arcadeRange.to) {
+      params.from = String(arcadeRange.from);
+      params.to = String(arcadeRange.to);
+    }
+    arcadeCache = await api.analytics.arcade(params);
   } catch (err) {
     showToast(err.message, { error: true });
     arcadeCache = { totals: { matches: 0, players: 0, totalDurationFormatted: '0s', avgDurationFormatted: '0s' }, games: [], timeline: [] };
@@ -148,6 +157,9 @@ function renderEventOptions() {
 
 export function renderAnalytics(container, ctx) {
   resolveEventSelection();
+  if (activeTab === 'arcade' && (!arcadeRange.from || !arcadeRange.to)) {
+    arcadeRange = selectedEventRange();
+  }
   if (activeTab === 'playtime' && cache === null && !loading) {
     loadPlaytimeData(ctx);
   }
@@ -164,7 +176,7 @@ export function renderAnalytics(container, ctx) {
     <h1 class="view-title">Auswertungen</h1>
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="analytics-controls-title">
-        <div class="grouped-page-section-title"><h2 id="analytics-controls-title">${activeTab === 'arcade' ? 'Ansicht' : 'Ansicht & Zeitraum'}</h2></div>
+        <div class="grouped-page-section-title"><h2 id="analytics-controls-title">Ansicht & Zeitraum</h2></div>
         <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
           <button type="button" class="btn btn-sm ${activeTab === 'playtime' ? 'btn-primary' : ''}" data-an-tab="playtime">Spielzeit</button>
           <button type="button" class="btn btn-sm ${activeTab === 'matches' ? 'btn-primary' : ''}" data-an-tab="matches">Matches & Turniere</button>
@@ -172,17 +184,32 @@ export function renderAnalytics(container, ctx) {
         </div>
         ${
           activeTab === 'arcade'
-            ? ''
-            : `<select id="an-event">${renderEventOptions()}</select>
+            ? `<div class="title-with-info analytics-filter-label">
+                 <span class="field-label">Zeitraum</span>
+                 ${infoTooltipHtml('analytics-arcade-range-help', 'Arcade-Zeitraum', ARCADE_RANGE_HELP)}
+               </div>
+               <div class="field-row">
+                 <div>${dateTimeFieldHtml('an-arcade-from', arcadeRange.from)}</div>
+                 <div>${dateTimeFieldHtml('an-arcade-to', arcadeRange.to)}</div>
+               </div>
+               <button type="button" class="btn btn-primary btn-block" id="an-arcade-apply">Zeitraum anwenden</button>`
+            : `<div class="title-with-info analytics-filter-label">
+                 <span class="field-label">Event${activeTab === 'playtime' ? ' & Zeitraum' : ''}</span>
+                 ${infoTooltipHtml(
+                   activeTab === 'playtime' ? 'analytics-event-range-help' : 'analytics-event-help',
+                   activeTab === 'playtime' ? 'Event und Zeitraum' : 'Event',
+                   activeTab === 'playtime' ? EVENT_RANGE_HELP : EVENT_FILTER_HELP
+                 )}
+               </div>
+               <select id="an-event">${renderEventOptions()}</select>
                ${
                  activeTab === 'playtime'
                    ? `<div class="field-row">
                         <div>${dateTimeFieldHtml('an-from', displayRange.from, { clearable: true })}</div>
                         <div>${dateTimeFieldHtml('an-to', displayRange.to, { clearable: true })}</div>
                       </div>
-                      <button type="button" class="btn btn-primary btn-block" id="an-apply">Zeitraum zusätzlich eingrenzen</button>
-                      <div class="muted" style="font-size:var(--font-size-xs);">Event wählen zeigt genau dessen Daten. Die Felder darüber grenzen innerhalb des Events optional weiter ein (z.B. nur Samstagnacht).</div>`
-                   : `<div class="muted" style="font-size:var(--font-size-xs);">Event wählen zeigt genau dessen Daten.</div>`
+                      <button type="button" class="btn btn-primary btn-block" id="an-apply">Zeitraum zusätzlich eingrenzen</button>`
+                   : ''
                }`
         }
       </section>
@@ -202,6 +229,17 @@ export function renderAnalytics(container, ctx) {
       ctx.rerender();
     });
   }
+  if (activeTab === 'arcade') {
+    wireDateTimeField(container, 'an-arcade-from');
+    wireDateTimeField(container, 'an-arcade-to');
+    container.querySelector('#an-arcade-apply').addEventListener('click', () => {
+      arcadeRange.from = new Date(container.querySelector('#an-arcade-from').value).getTime();
+      arcadeRange.to = new Date(container.querySelector('#an-arcade-to').value).getTime();
+      arcadeCache = null;
+      ctx.rerender();
+    });
+  }
+  wireInfoTooltips(container);
 
   container.querySelectorAll('[data-an-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -237,7 +275,6 @@ function renderActiveTabContent() {
 function renderArcadeContent() {
   const totals = arcadeCache.totals;
   const games = arcadeCache.games;
-  const timeline = arcadeCache.timeline;
 
   const gameRows = games.length
     ? games
@@ -272,33 +309,7 @@ function renderArcadeContent() {
       <div class="grouped-page-section-title"><h2 id="analytics-arcade-games-title">Pro Spiel</h2></div>
       ${gameRows}
     </section>
-    <section class="card stack grouped-page-section" aria-labelledby="analytics-arcade-timeline-title">
-      <div class="grouped-page-section-title"><h2 id="analytics-arcade-timeline-title">Matches pro Tag</h2></div>
-      ${renderArcadeTimelineChart(timeline)}
-    </section>
   `;
-}
-
-// design-token-ok: bar-corner radius and gap are sized against this chart's
-// own thin bars, not the general spacing/radius scale — see "When a value
-// genuinely doesn't fit" in DESIGN_SYSTEM.md.
-function renderArcadeTimelineChart(timeline) {
-  if (!timeline.length) {
-    return `<div class="empty-state" style="padding:var(--space-4);">Noch keine Matches, aus denen sich ein Verlauf zeichnen ließe.</div>`;
-  }
-  const barRadius = '2px'; // design-token-ok: scaled to this chart's own thin bars
-  const max = timeline.reduce((m, b) => Math.max(m, b.count), 1);
-  const bars = timeline
-    .map((b) => {
-      const heightPct = Math.round((b.count / max) * 100);
-      const label = new Date(b.dayStart).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-      return `<div style="display:flex;flex-direction:column;align-items:center;gap:var(--space-1);flex:0 0 32px;">
-        <div title="${escapeHtml(label)}: ${b.count} Match(es)" style="width:20px;height:${Math.max(4, heightPct)}px;max-height:100px;background:var(--accent);border-radius:${barRadius};align-self:flex-end;"></div>
-        <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(label)}</span>
-      </div>`;
-    })
-    .join('');
-  return `<div style="display:flex;align-items:flex-end;gap:var(--space-2);height:130px;overflow-x:auto;padding-bottom:2px;">${bars}</div>`;
 }
 
 function renderPlaytimeContent() {
@@ -451,7 +462,7 @@ function renderMatchesContent() {
         </div>`
         )
         .join('')
-    : '';
+    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Turnierarten.</div>`;
 
   const drawRows = draws.byGame.length
     ? draws.byGame
@@ -521,8 +532,10 @@ function renderMatchesContent() {
         <h2 id="analytics-tournaments-title">Turniere</h2>
         <span class="muted">${tournaments.total} insgesamt · ${tournaments.completed} beendet · ${tournaments.active} laufend</span>
       </div>
-      ${formatRows ? `<div class="card">${formatRows}</div>` : ''}
-      <div class="card">${tournamentByGameRows}</div>
+      <div class="analytics-tournament-breakdowns">
+        <section class="card analytics-tournament-breakdown is-formats"><div class="section-title">Turnierarten</div>${formatRows}</section>
+        <section class="card analytics-tournament-breakdown is-games"><div class="section-title">Turniere pro Spiel</div>${tournamentByGameRows}</section>
+      </div>
     </section>
     <section class="card stack grouped-page-section" aria-labelledby="analytics-draws-title">
       <div class="grouped-page-section-title">
@@ -532,7 +545,7 @@ function renderMatchesContent() {
       ${drawRows}
     </section>
     <section class="card stack grouped-page-section" aria-labelledby="analytics-fun-title">
-      <div class="grouped-page-section-title"><h2 id="analytics-fun-title">Witzige Rekorde</h2></div>
+      <div class="grouped-page-section-title"><h2 id="analytics-fun-title">Trivia</h2></div>
       ${funHtml}
     </section>
   `;

@@ -14,6 +14,7 @@ import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 const EVENT_HELP = 'Mehrere Events sind möglich. Nur ein Event erfasst gleichzeitig Live-Status und Spielzeit; alles andere bleibt „Außerhalb von Events“.';
+const EVENT_CREATE_HELP = 'Legt das Event an, startet aber noch kein Tracking. Das startest du anschließend gezielt.';
 const INVITE_HELP = 'Link oder QR-Code teilen: öffnet Respawn eingeloggt und führt neue Spieler direkt zur Profil-Erstellung.';
 const KIOSK_HELP = 'Für gemeinsame Bildschirme: zeigt Live-Status, Vote, Rang und Turnier automatisch.';
 
@@ -242,7 +243,10 @@ function openEventForm(ctx, existing) {
         </div>
         ${
           !isEdit
-            ? `<p class="muted" style="font-size:var(--font-size-xs);">Legt das Event an, aber startet noch kein Tracking – das machst du danach gezielt über „Tracking starten“.</p>`
+            ? `<div class="title-with-info">
+                 <span class="field-label">Tracking</span>
+                 ${infoTooltipHtml('event-create-tracking-help', 'Tracking nach dem Anlegen', EVENT_CREATE_HELP)}
+               </div>`
             : ''
         }
         <button type="submit" class="btn btn-primary btn-block">${isEdit ? 'Speichern' : 'Event anlegen'}</button>
@@ -252,6 +256,7 @@ function openEventForm(ctx, existing) {
       onMount: (modalEl) => {
         wireDateTimeField(modalEl, 'event-starts');
         wireDateTimeField(modalEl, 'event-ends');
+        wireInfoTooltips(modalEl);
 
         modalEl.querySelector('#event-form').addEventListener('submit', async (e) => {
           e.preventDefault();

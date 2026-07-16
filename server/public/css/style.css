@@ -970,8 +970,8 @@ input[type='number']::-webkit-inner-spin-button {
 .profile-avatar-editor {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1);
+  align-items: center;
+  justify-content: center;
 }
 .profile-avatar-control {
   cursor: pointer;
@@ -996,6 +996,31 @@ input[type='number']::-webkit-inner-spin-button {
 }
 .profile-identity-fields .field-label {
   margin: 0;
+}
+.analytics-filter-label .field-label {
+  margin: 0;
+}
+.analytics-tournament-breakdowns {
+  display: grid;
+  gap: var(--space-3);
+}
+.analytics-tournament-breakdown {
+  position: relative;
+  overflow: hidden;
+  padding-left: var(--space-5);
+}
+.analytics-tournament-breakdown::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--space-1);
+  background: var(--accent);
+  content: '';
+}
+.analytics-tournament-breakdown.is-games::before {
+  background: var(--accent-3);
+}
+.analytics-tournament-breakdown > .section-title {
+  margin-top: 0;
 }
 .profile-rating-nudge {
   border-color: var(--accent);
@@ -1029,6 +1054,7 @@ input[type='number']::-webkit-inner-spin-button {
 @media (min-width: 640px) { /* --bp-md */
   .profile-identity-fields {
     grid-template-columns: auto auto repeat(2, minmax(0, 1fr));
+    align-items: center;
   }
   .profile-text-field {
     grid-column: auto;
@@ -3784,6 +3810,10 @@ input[type='number'].tournament-score-input {
   }
   .two-column-card-grid.food-order-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .two-column-card-grid.player-roster-grid > :only-child,
+  .two-column-card-grid.player-roster-grid > :last-child:nth-child(odd) {
+    grid-column: auto;
   }
 }
 .lb-row {

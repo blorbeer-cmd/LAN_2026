@@ -31,7 +31,7 @@ export function renderPlayers(container) {
         ${
           state.players.length === 0
             ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('players'))}</span>Noch keine Spieler.</div>`
-            : `<div class="two-column-card-grid">${rows}</div>`
+            : `<div class="two-column-card-grid player-roster-grid">${rows}</div>`
         }
       </section>
     </div>

@@ -272,14 +272,15 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the API omits the private agent key and rejects profile-field updates when `x-player-id` does not
   match the target player.
   The roster itself has no duplicate „Teilnehmende“ heading and no player-creation action. Player
-  creation stays deliberately deferred until authenticated user management owns that workflow.
+  creation stays deliberately deferred until authenticated user management owns that workflow. The
+  desktop roster keeps exactly two equal-width cards per row; an odd final player does not stretch.
   This device-local identity header is deliberately documented as the temporary boundary that
   future authenticated user management must replace. The self-service profile uses the shared
   grouped-page hierarchy for profile data, Agent setup, Push, visible monitors and personal stats.
   Agent setup is split into three stable nested cards for choosing tracking, downloading and
   installing; tracking pause belongs to the first step beside foreground-activity tracking, and
   both explanations live in contextual tooltips beside their checkboxes. The profile header owns
-  its spacing to the first group. Bild, Farbe, Gamertag and optional name form one aligned row from
+  its spacing to the first group. The unlabeled profile image, Farbe, Gamertag and optional name form one aligned row from
   `--bp-md`; phones wrap the two text fields below the visual controls. The shared save action stays
   below that row. The foreground option uses the concise label „Erweitertes Tracking“. Push uses the same checkbox language with its
   explanation in a tooltip instead of an action button and omits a redundant off-state sentence.
@@ -386,6 +387,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   results follow directly without another enclosing card or accent rail; player rows reuse
   `.leaderboard-list-grid` for the shared one-/two-column ranking presentation and spell out wins
   and losses in German.
+- **Analytics** — Playtime and match/tournament views explain their event scope through contextual
+  help beside the filter label instead of persistent copy. Arcade exposes its own direct date range
+  because arcade results have no event assignment; the daily match chart is omitted. Tournament
+  formats and per-game tournament counts are separate nested groups with blue and pink accent rails.
+  The former „Witzige Rekorde“ section uses the concise title „Trivia“.
 - **Leaderboard** — The concise page title is „Rang“. The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
   each remains a distinct `.tournament-section-panel` with the shared accent rail. „Spielzeit pro
@@ -558,8 +564,6 @@ check this line is intentional).
 
 The current, complete list of such exceptions in `server/public`:
 
-- **`analytics.js`'s Arcade timeline chart** (`renderArcadeTimelineChart`) — its 2px bar
-  corner-radius is sized against the chart's own thin bars, not the radius scale.
 - **`.dt-time-select`** and the native `select` chevron padding (`style.css`)
   — the wider side clears each element's own chevron icon; the 11px vertical
   rhythm matches the other inputs' `11px var(--space-3)` padding exactly, it's

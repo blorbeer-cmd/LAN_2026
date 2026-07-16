@@ -189,7 +189,6 @@ export function renderProfile(container, ctx) {
         <div class="profile-identity-editor">
           <div class="profile-identity-fields">
             <div class="profile-avatar-editor">
-              <span class="field-label">Bild</span>
               <label for="profile-avatar-input" class="profile-avatar-control" aria-label="Profilbild ändern">
                 ${avatarHtml(me, 64)}
               </label>

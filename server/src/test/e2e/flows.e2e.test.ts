@@ -141,6 +141,10 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   const qrModalBox = await page.locator('.modal[aria-label="Einladungs-QR-Code"]').boundingBox();
   assert.ok(qrModalBox && Math.abs(qrModalBox.y + qrModalBox.height / 2 - 422) < 24, 'QR modal should be vertically centered on the phone viewport');
   await page.click('.modal[aria-label="Einladungs-QR-Code"] [data-close]');
+  await page.click('#new-event-btn');
+  assert.equal(await page.locator('#event-create-tracking-help').count(), 1);
+  assert.equal(await page.locator('#event-form > p:has-text("Legt das Event an")').count(), 0);
+  await page.click('.modal[aria-label="Neues Event"] [data-close]');
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.click('#profile-btn');
@@ -153,10 +157,18 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   assert.equal(await page.locator('.profile-agent-step').first().locator('#tracking-paused').count(), 1);
   assert.equal(await page.locator('label[for="profile-name"]').textContent(), 'Gamertag');
   assert.equal(await page.locator('label[for="profile-real-name"]').textContent(), 'Name');
-  assert.equal(await page.locator('.profile-avatar-editor .field-label').textContent(), 'Bild');
+  assert.equal(await page.locator('.profile-avatar-editor .field-label').count(), 0);
   assert.equal(await page.locator('label[for="profile-color"]').textContent(), 'Farbe');
   assert.equal(await page.locator('.profile-identity-fields').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 4);
-  assert.equal(await page.locator('.profile-identity-fields > *').evaluateAll((fields) => new Set(fields.map((field) => field.getBoundingClientRect().top)).size), 1);
+  assert.ok(
+    await page.locator('.profile-identity-fields > *').evaluateAll((fields) => {
+      const centers = fields.map((field) => {
+        const box = field.getBoundingClientRect();
+        return box.top + box.height / 2;
+      });
+      return Math.max(...centers) - Math.min(...centers) < 2;
+    }),
+  );
   assert.equal(await page.getByText('Erweitertes Tracking', { exact: true }).count(), 1);
   assert.equal(await page.locator('.profile-identity-editor').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
   assert.equal(await page.getByText('Auf diesem Gerät aus.', { exact: true }).count(), 0);
@@ -582,11 +594,22 @@ test('Auswertungen (via Mehr) shows a real award and keeps detail logs collapsed
   const sessionLog = page.locator('details:has(summary:has-text("Session-Protokoll"))');
   assert.equal(await sessionLog.getAttribute('open'), null);
   await page.waitForSelector('text=Längste individuelle Session pro Spiel');
+  assert.equal(await page.locator('#analytics-event-range-help').count(), 1);
+  assert.equal(await page.getByText('Event wählen zeigt genau dessen Daten.', { exact: true }).count(), 0);
 
   // The "Matches & Turniere" tab (merged in from the old separate Spiele &
   // Turniere view) shares this same event filter and renders alongside it.
   await page.click('[data-an-tab="matches"]');
   await page.waitForSelector('text=Ergebnisse pro Spiel');
+  assert.equal(await page.locator('#analytics-event-help').count(), 1);
+  assert.equal(await page.locator('.analytics-tournament-breakdown').count(), 2);
+  await page.waitForSelector('#analytics-fun-title:text-is("Trivia")');
+
+  await page.click('[data-an-tab="arcade"]');
+  await page.waitForSelector('[data-dt-field="an-arcade-from"]');
+  assert.equal(await page.locator('#an-arcade-to').count(), 1);
+  assert.equal(await page.locator('#analytics-arcade-range-help').count(), 1);
+  assert.equal(await page.getByText('Matches pro Tag', { exact: true }).count(), 0);
 });
 
 test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statistiken reachable', async () => {
