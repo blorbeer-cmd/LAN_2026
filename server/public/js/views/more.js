@@ -1,5 +1,5 @@
 // "Mehr" hub: the secondary destinations (Spielerprofile, Auswertungen,
-// Hall of Fame, Sitzplan) each get their own clear entry point here, leaving
+// Hall of Fame, Info) each get their own clear entry point here, leaving
 // the bottom nav to the things people reach for constantly during the party
 // (tournaments earned that spot; the roster is mostly a setup-time concern
 // since everyone self-onboards through their profile).

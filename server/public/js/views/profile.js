@@ -21,6 +21,11 @@ import { invalidateMyStats } from './myStats.js';
 import { resizeImageFile } from '../imageUtils.js';
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+
+const TRACKING_PAUSE_HELP = 'Pausiert Live-Status und Spielzeit. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.';
+const ACTIVITY_TRACKING_HELP = 'Erfasst zusätzlich, ob das Spielfenster im Vordergrund ist. Der Wert lässt sich später in der Agent-Steuerung ändern.';
+const PUSH_HELP = 'Benachrichtigt dich auch, wenn Respawn nicht geöffnet ist.';
 
 // Whose monitor you've declared you can see ("Sichtbare Monitore") for the
 // active event (FR-18 extension) — pre-filled from same-edge seat placements
@@ -40,21 +45,22 @@ function renderIdentityPicker(container, ctx) {
   const myId = getMyId();
   container.innerHTML = `
     <h1 class="view-title">Willkommen bei Respawn</h1>
-    <div class="card stack">
-      <div class="player-name">Neu hier? Leg dir dein Profil an:</div>
-      <form id="profile-new-form" class="row">
-        <input type="text" id="profile-new-name" placeholder="Dein Gamer-Name" maxlength="60" style="flex:1;" required autofocus />
-        <button type="submit" class="btn btn-primary btn-sm">Los geht's</button>
-      </form>
-      <div class="muted" style="font-size:var(--font-size-xs);">Profilbild, Skills und dein Agent-Key richtest du direkt im Anschluss ein.</div>
-    </div>
-
-    <div class="section-title">Schon dabei?</div>
-    <div class="card">
-      <select id="profile-whoami">
-        <option value="">– deinen Namen wählen –</option>
-        ${state.players.map((p) => `<option value="${p.id}" ${p.id === myId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
-      </select>
+    <div class="grouped-page-sections">
+      <section class="card stack grouped-page-section" aria-labelledby="profile-create-title">
+        <div class="grouped-page-section-title"><h2 id="profile-create-title">Profil anlegen</h2></div>
+        <form id="profile-new-form" class="field-row">
+          <input type="text" id="profile-new-name" placeholder="Dein Gamer-Name" maxlength="60" required autofocus />
+          <button type="submit" class="btn btn-primary">Los geht's</button>
+        </form>
+        <div class="muted" style="font-size:var(--font-size-xs);">Profilbild, Skills und dein Agent-Key richtest du direkt im Anschluss ein.</div>
+      </section>
+      <section class="card stack grouped-page-section" aria-labelledby="profile-existing-title">
+        <div class="grouped-page-section-title"><h2 id="profile-existing-title">Schon dabei?</h2></div>
+        <select id="profile-whoami">
+          <option value="">– deinen Namen wählen –</option>
+          ${state.players.map((p) => `<option value="${p.id}" ${p.id === myId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
+        </select>
+      </section>
     </div>
   `;
 
@@ -110,9 +116,8 @@ function renderNeighbors(myId) {
     return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   const checked = new Set(neighborsCache.neighborIds);
-  return others
-    .map(
-      (p) => `
+  const rows = others
+    .map((p) => `
       <label class="check-row">
         <input type="checkbox" data-neighbor="${p.id}" ${checked.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
@@ -120,6 +125,7 @@ function renderNeighbors(myId) {
       </label>`
     )
     .join('');
+  return `<div class="player-selection-grid profile-monitor-grid">${rows}</div>`;
 }
 
 async function loadPushState(ctx) {
@@ -128,19 +134,28 @@ async function loadPushState(ctx) {
 }
 
 function renderPushSection() {
-  if (pushState === 'unsupported') {
-    return `<div class="muted" style="font-size:var(--font-size-sm);">Dieser Browser unterstützt keine Push-Benachrichtigungen.</div>`;
-  }
-  if (pushState === 'denied') {
-    return `<div class="muted" style="font-size:var(--font-size-sm);">Berechtigung wurde blockiert – in den Browser-Einstellungen für diese Seite wieder erlauben.</div>`;
-  }
   const subscribed = pushState === 'subscribed';
+  const disabled = pushBusy || pushState === null || pushState === 'unsupported' || pushState === 'denied';
+  const status =
+    pushState === 'unsupported'
+      ? 'Dieser Browser unterstützt keine Push-Benachrichtigungen.'
+      : pushState === 'denied'
+        ? 'Im Browser blockiert – bitte in den Website-Einstellungen erlauben.'
+        : pushState === null
+          ? 'Status wird geladen…'
+          : subscribed
+            ? 'Auf diesem Gerät aktiv.'
+            : 'Auf diesem Gerät aus.';
   return `
-    <div class="row-between">
-      <span class="muted" style="font-size:var(--font-size-sm);">${subscribed ? 'Aktiv auf diesem Gerät.' : 'Erhalte einen Hinweis auch, wenn die App nicht offen ist.'}</span>
-      <button type="button" class="btn btn-sm ${subscribed ? 'btn-danger' : 'btn-primary'}" id="push-toggle" ${pushBusy ? 'disabled' : ''}>
-        ${pushBusy ? 'Einen Moment…' : subscribed ? 'Deaktivieren' : 'Aktivieren'}
-      </button>
+    <div class="stack" style="gap:var(--space-2);">
+      <label class="check-row">
+        <input type="checkbox" id="push-toggle" ${subscribed ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
+        <span class="title-with-info" style="flex:1;">
+          <span>Push empfangen</span>
+          ${infoTooltipHtml('profile-push-help', 'Push empfangen', PUSH_HELP)}
+        </span>
+      </label>
+      <span class="muted" style="font-size:var(--font-size-xs);">${pushBusy ? 'Wird aktualisiert…' : status}</span>
     </div>`;
 }
 
@@ -170,101 +185,114 @@ export function renderProfile(container, ctx) {
       <h1 class="view-title">Mein Profil</h1>
       <button type="button" class="btn btn-sm" id="profile-not-me">Nicht du?</button>
     </div>
-
-    <div class="card stack">
-      <div class="row" style="align-items:center;">
-        <label for="profile-avatar-input" style="cursor:pointer;">
-          ${avatarHtml(me, 64)}
-        </label>
-        <input type="file" id="profile-avatar-input" accept="image/*" hidden />
-        <div class="stack" style="flex:1;gap:var(--space-2);">
-          <input type="color" id="profile-color" value="${me.color}" aria-label="Profilfarbe" />
-          <div class="field-row">
-            <div>
-              <label for="profile-name" class="field-label">Gamer-Name</label>
-              <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" />
-            </div>
-            <div>
-              <label for="profile-real-name" class="field-label">Richtiger Name</label>
-              <input type="text" id="profile-real-name" value="${escapeHtml(me.real_name || '')}" maxlength="60" placeholder="Optional" />
-            </div>
+    <div class="grouped-page-sections">
+      <section class="card stack grouped-page-section" aria-labelledby="profile-data-title">
+        <div class="grouped-page-section-title"><h2 id="profile-data-title">Profil</h2></div>
+        <div class="profile-identity-editor">
+          <div class="profile-avatar-editor">
+            <label for="profile-avatar-input" class="profile-avatar-control" aria-label="Profilbild ändern">
+              ${avatarHtml(me, 64)}
+            </label>
+            <input type="file" id="profile-avatar-input" accept="image/*" hidden />
+            <label for="profile-color" class="field-label">Profilfarbe</label>
+            <input type="color" id="profile-color" value="${me.color}" aria-label="Profilfarbe" />
           </div>
-          <button type="button" class="btn btn-primary btn-sm" id="profile-save">Speichern</button>
+          <div class="stack" style="gap:var(--space-3);">
+            <div class="field-row">
+              <div>
+                <label for="profile-name" class="field-label">Gamer-Name</label>
+                <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" />
+              </div>
+              <div>
+                <label for="profile-real-name" class="field-label">Richtiger Name</label>
+                <input type="text" id="profile-real-name" value="${escapeHtml(me.real_name || '')}" maxlength="60" placeholder="Optional" />
+              </div>
+            </div>
+            <button type="button" class="btn btn-primary btn-block" id="profile-save">Speichern</button>
+          </div>
         </div>
-      </div>
-    </div>
+      </section>
 
-    ${
-      state.games.length === 0
-        ? ''
-        : hasAnyRating
+      ${
+        state.games.length === 0 || hasAnyRating
           ? ''
-          : `<div class="card stack" style="border-color:rgba(91,140,255,0.55);">
-               <div class="row" style="gap:var(--space-2);align-items:center;">
-                 <span class="inline-icon">${icon(domainIcon('gameCatalog'))}</span>
-                 <strong>Bock & Skill eintragen</strong>
+          : `<section class="card stack grouped-page-section profile-rating-nudge" aria-labelledby="profile-rating-title">
+               <div class="grouped-page-section-title">
+                 <span class="title-with-info">
+                   <span class="inline-icon">${icon(domainIcon('gameCatalog'))}</span>
+                   <h2 id="profile-rating-title">Bock & Skill eintragen</h2>
+                 </span>
                </div>
-               <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
-                 Worauf hast du Lust, was kannst du gut? Trag das kurz in der Spiele-Liste ein – dauert
-                 eine Minute und hilft beim Voting und beim Teams-Auslosen.
-               </p>
+               <p class="muted" style="font-size:var(--font-size-xs);margin:0;">Hilft beim Voting und beim Teams-Auslosen und dauert nur eine Minute.</p>
                <button type="button" class="btn btn-primary btn-block" data-navigate="gameCatalog">Zu den Spielen</button>
-             </div>`
-    }
+             </section>`
+      }
 
-    <div class="section-title">${icon('monitor')} Live-Status-Agent</div>
-    <div class="card stack">
-      <label class="check-row">
-        <input type="checkbox" id="tracking-paused" ${me.tracking_paused ? 'checked' : ''} />
-        <span style="flex:1;">Tracking pausieren</span>
-      </label>
-      <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-1) * -1);">
-        Dein Agent darf weiterlaufen und meldet sich weiter beim Server, aber nichts davon wird
-        gespeichert – kein Live-Status, keine Spielzeit. Dasselbe Pausieren geht auch direkt am PC
-        über die Steuerungs-Oberfläche des Agents – beide Wege zeigen denselben Stand.
-      </p>
-      <label class="check-row">
-        <input type="checkbox" id="agent-track-activity" />
-        <span style="flex:1;">Erweitertes Aktivitäts-Tracking</span>
-      </label>
-      <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-1) * -1);">
-        Aus (Standard): der Server weiß nur „läuft Spiel X gerade". An: zusätzlich, ob das
-        Spielfenster wirklich im Vordergrund ist statt nur im Hintergrund zu laufen – zeigt sich z. B.
-        als „davon aktiv gespielt" in deiner Statistik. Das hier ist nur der Startwert für den
-        nächsten Download – danach lässt sich das jederzeit in der Steuerungs-Oberfläche des Agents
-        (Desktop-Verknüpfung „Respawn-Agent Steuerung") umschalten, ohne neu herunterzuladen.
-      </p>
-      <button type="button" class="btn btn-primary btn-block" id="agent-download">${icon('download')} Agent für Windows herunterladen</button>
-      <p class="muted" style="font-size:var(--font-size-xs);">
-        ZIP entpacken, <code>install.bat</code> doppelklicken – Server-Adresse und dein API-Key sind
-        schon eingetragen. Der Agent startet danach automatisch bei jedem Windows-Login und erkennt,
-        welches Spiel du gerade spielst. Im selben ZIP liegt auch <code>uninstall.bat</code>, falls du
-        den Agent später komplett wieder loswerden willst (für ein vorübergehendes Pausieren reicht
-        die Option oben).
-      </p>
-      <details>
-        <summary class="muted" style="font-size:var(--font-size-xs);cursor:pointer;">Kein Windows / manuelle Einrichtung</summary>
-        <div class="row" style="margin-top:var(--space-2);">
-          <input type="text" id="profile-apikey" readonly value="Laden…" style="flex:1;font-family:monospace;" />
-          <button type="button" class="btn btn-sm" id="profile-copy-key">Kopieren</button>
+      <section class="card stack grouped-page-section" aria-labelledby="profile-agent-title">
+        <div class="grouped-page-section-title"><h2 id="profile-agent-title">Live-Status-Agent</h2></div>
+        <div class="card">
+          <label class="check-row">
+            <input type="checkbox" id="tracking-paused" ${me.tracking_paused ? 'checked' : ''} />
+            <span class="title-with-info" style="flex:1;">
+              <span>Tracking pausieren</span>
+              ${infoTooltipHtml('profile-tracking-pause-help', 'Tracking pausieren', TRACKING_PAUSE_HELP)}
+            </span>
+          </label>
         </div>
-        <p class="muted" style="font-size:var(--font-size-xs);margin-top:var(--space-2);">
-          Diesen Key in die Config des Agenten (<code>agent/</code>-Ordner im Repo, mit Node.js
-          gestartet) eintragen – siehe <code>agent/README.md</code>.
-        </p>
-      </details>
-    </div>
+        <div class="profile-agent-steps">
+          <div class="card stack profile-agent-step">
+            <span class="muted profile-agent-step-label">Schritt 1</span>
+            <strong>Tracking wählen</strong>
+            <label class="check-row">
+              <input type="checkbox" id="agent-track-activity" />
+              <span class="title-with-info" style="flex:1;">
+                <span>Erweitertes Aktivitäts-Tracking</span>
+                ${infoTooltipHtml('profile-activity-tracking-help', 'Erweitertes Aktivitäts-Tracking', ACTIVITY_TRACKING_HELP)}
+              </span>
+            </label>
+          </div>
+          <div class="card stack profile-agent-step">
+            <span class="muted profile-agent-step-label">Schritt 2</span>
+            <strong>Agent herunterladen</strong>
+            <span class="muted">Das ZIP enthält bereits Server-Adresse und deinen persönlichen Key.</span>
+            <button type="button" class="btn btn-primary btn-block" id="agent-download">${icon('download')} Für Windows herunterladen</button>
+          </div>
+          <div class="card stack profile-agent-step">
+            <span class="muted profile-agent-step-label">Schritt 3</span>
+            <strong>Installieren</strong>
+            <span class="muted">ZIP entpacken und <code>install.bat</code> starten. Danach läuft der Agent automatisch bei jedem Windows-Login.</span>
+          </div>
+        </div>
+        <details class="card profile-agent-manual">
+          <summary>Kein Windows / manuelle Einrichtung</summary>
+          <div class="row profile-agent-key-row">
+            <input type="text" id="profile-apikey" readonly value="Laden…" style="flex:1;font-family:monospace;" />
+            <button type="button" class="btn btn-sm" id="profile-copy-key">Kopieren</button>
+          </div>
+          <p class="muted" style="font-size:var(--font-size-xs);margin-bottom:0;">Key in die Agent-Konfiguration eintragen; Details stehen in <code>agent/README.md</code>.</p>
+        </details>
+      </section>
 
-    <div class="section-title">Push-Benachrichtigungen</div>
-    <div class="card">${renderPushSection()}</div>
+      <section class="card stack grouped-page-section" aria-labelledby="profile-push-title">
+        <div class="grouped-page-section-title"><h2 id="profile-push-title">Push-Benachrichtigungen</h2></div>
+        ${renderPushSection()}
+      </section>
 
-    <div class="section-title">Sichtbare Monitore</div>
-    <div class="card">${renderNeighbors(myId)}</div>
-    <div class="card row-between profile-stats-link">
-      <strong>Meine Statistiken</strong>
-      <button type="button" class="btn btn-sm" data-navigate="myStats">Ansehen</button>
+      <section class="card stack grouped-page-section" aria-labelledby="profile-monitors-title">
+        <div class="grouped-page-section-title"><h2 id="profile-monitors-title">Sichtbare Monitore</h2></div>
+        ${renderNeighbors(myId)}
+      </section>
+
+      <section class="card grouped-page-section" aria-labelledby="profile-stats-title">
+        <div class="grouped-page-section-title">
+          <h2 id="profile-stats-title">Meine Statistiken</h2>
+          <button type="button" class="btn btn-sm" data-navigate="myStats">Ansehen</button>
+        </div>
+      </section>
     </div>
   `;
+
+  wireInfoTooltips(container);
 
   container.querySelector('#profile-not-me').addEventListener('click', () => {
     setMyId('');
@@ -310,7 +338,7 @@ export function renderProfile(container, ctx) {
   container.querySelector('#agent-download').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     btn.disabled = true;
-    const originalLabel = btn.textContent;
+    const originalLabel = btn.innerHTML;
     btn.textContent = 'Wird vorbereitet…';
     try {
       const trackActivity = container.querySelector('#agent-track-activity').checked;
@@ -325,7 +353,7 @@ export function renderProfile(container, ctx) {
       showToast(err.message, { error: true });
     } finally {
       btn.disabled = false;
-      btn.textContent = originalLabel;
+      btn.innerHTML = originalLabel;
     }
   });
 
@@ -370,16 +398,17 @@ export function renderProfile(container, ctx) {
 
   const pushToggle = container.querySelector('#push-toggle');
   if (pushToggle) {
-    pushToggle.addEventListener('click', async () => {
+    pushToggle.addEventListener('change', async (event) => {
+      const shouldEnable = event.currentTarget.checked;
       pushBusy = true;
       ctx.rerender();
       try {
-        if (pushState === 'subscribed') {
-          await disablePush();
-          showToast('Push-Benachrichtigungen deaktiviert.');
-        } else {
+        if (shouldEnable) {
           await enablePush(myId);
           showToast('Push-Benachrichtigungen aktiviert.');
+        } else {
+          await disablePush();
+          showToast('Push-Benachrichtigungen deaktiviert.');
         }
       } catch (err) {
         showToast(err.message, { error: true });

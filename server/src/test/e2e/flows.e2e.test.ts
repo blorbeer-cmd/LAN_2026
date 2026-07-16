@@ -118,6 +118,40 @@ test('fresh device lands on self-onboarding and creates its profile there', asyn
   await page.waitForSelector('text=Bock & Skill eintragen');
 });
 
+test('Einstellungen und Profil use grouped help while admin tools stay out of regular settings', async () => {
+  await page.click('#settings-btn');
+  await page.waitForSelector('#settings-events-title');
+  assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 3);
+  assert.equal(await page.locator('[data-navigate="seating"]').count(), 0);
+  assert.equal(await page.locator('#download-backup').count(), 0);
+  await page.click('[aria-label="Mehr Informationen zu Events"]');
+  await page.waitForSelector('#settings-events-help:not([hidden])');
+
+  await page.click('#profile-btn');
+  await page.waitForSelector('#profile-name');
+  assert.equal(await page.locator('.profile-agent-step').count(), 3);
+  assert.equal(await page.locator('#push-toggle[type="checkbox"]').count(), 1);
+  assert.equal(await page.locator('#profile-tracking-pause-help').count(), 1);
+  assert.equal(await page.locator('#profile-activity-tracking-help').count(), 1);
+});
+
+test('Admin mode owns the seating editor and backup tools', async () => {
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="admin"]');
+  await page.click('#admin-activate');
+  await page.waitForSelector('#admin-banner:not([hidden])');
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="admin"]');
+  await page.waitForSelector('#admin-tools-title');
+  assert.equal(await page.locator('#download-backup').count(), 1);
+  assert.equal(await page.locator('[data-navigate="seating"]').count(), 1);
+  await page.click('[data-navigate="seating"]');
+  await page.waitForSelector('.seating-plan.is-editable');
+  await page.click('[data-navigate="admin"]');
+  await page.click('#admin-leave');
+  await page.waitForSelector('#admin-banner', { state: 'hidden' });
+});
+
 test('global search filters areas, supports keyboard navigation and restores focus', async () => {
   await page.click('#global-search-btn');
   await page.waitForSelector('.global-search-modal');
@@ -583,7 +617,12 @@ test('Sitzplan: the real name set in Mein Profil shows in small everywhere the s
   // Seat her via the editor's tap-to-place path (select the pool chip, then
   // tap an empty seat) rather than HTML5 drag & drop, which Playwright can't
   // simulate reliably.
-  await page.click('#settings-btn');
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="admin"]');
+  await page.click('#admin-activate');
+  await page.waitForSelector('#admin-banner:not([hidden])');
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="admin"]');
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('[data-seat-pool] [data-player-id]');
   await page.locator('[data-seat-pool] [data-player-id]', { hasText: 'E2E Alice Pro' }).click();
@@ -602,6 +641,8 @@ test('Sitzplan: the real name set in Mein Profil shows in small everywhere the s
   assert.equal(await homeSeatName.evaluate((element) => getComputedStyle(element).fontWeight), '600');
   assert.equal(await homeSeatName.evaluate((element) => getComputedStyle(element).textAlign), 'left');
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.click('#admin-banner-leave');
+  await page.waitForSelector('#admin-banner', { state: 'hidden' });
 });
 
 test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bock/Skill inline', async () => {
@@ -776,10 +817,11 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.click('[data-close-order]');
   // confirmDialog is an in-app modal (not a native browser dialog).
   await page.click('[data-confirm]');
+  await page.waitForSelector('[data-food-history]');
+  await page.click('[data-food-history] > summary');
   await page.waitForSelector('.badge-offline >> text=Geschlossen');
 
   // Closing only freezes items — the details stay correctable afterward.
-  await page.click('details summary'); // expand the now-closed order
   await page.click('[data-edit-details]');
   await setDateTimeField('sendat-input', '2026-12-24T22:00');
   await page.click('#details-form button[type="submit"]');
@@ -1621,7 +1663,8 @@ test('Admin: one-tap mode with banner, seeded test users visible only in admin m
   await page.waitForSelector('.live-seating .seating-status-indicator.is-playing[aria-label="Status: Spielt"]');
   await page.waitForSelector(`.live-seating [data-player-id="${pausedTestPlayer.id}"] .seating-status-indicator.is-paused[aria-label="Status: Pause"]`);
   await page.waitForSelector('.live-seating .seating-status-indicator.is-offline[aria-label="Status: Offline"]');
-  await page.click('#settings-btn');
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="admin"]');
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector(`.seating-plan.is-editable [data-player-id="${pausedTestPlayer.id}"] .seating-status-indicator.is-paused`);
 

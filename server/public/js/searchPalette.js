@@ -5,6 +5,7 @@ import { openModal } from './modal.js';
 import { feedEntryTitle, feedLinkView } from './pushFeed.js';
 import { state } from './state.js';
 import { getMyId } from './whoami.js';
+import { isAdmin } from './admin.js';
 
 export const SEARCH_ENTRIES = [
   { view: 'home', title: 'Home', category: 'Bereich', description: 'Aktuelles, Live-Status und Überblick', aliases: 'start übersicht dashboard', priority: 100 },
@@ -15,8 +16,8 @@ export const SEARCH_ENTRIES = [
   { view: 'more', title: 'Mehr', category: 'Bereich', description: 'Alle weiteren Bereiche und Tools', aliases: 'menü tools', priority: 95 },
   { view: 'profile', title: 'Mein Profil', category: 'Bereich', description: 'Profil, Agent und Push-Benachrichtigungen', aliases: 'account ich agent benachrichtigung', priority: 90 },
   { view: 'myStats', title: 'Meine Statistiken', category: 'Bereich', description: 'Eigene Spielzeit und persönliche Werte', aliases: 'stats spielzeit auswertung', priority: 80 },
-  { view: 'settings', title: 'Einstellungen', category: 'Bereich', description: 'Events, Spiele und Sicherungen verwalten', aliases: 'setup konfiguration backup event', priority: 85 },
-  { view: 'admin', title: 'Admin', category: 'Bereich', description: 'Test-Spieler, Rechte und Diagnose', aliases: 'moderation verwaltung diagnose', priority: 60 },
+  { view: 'settings', title: 'Einstellungen', category: 'Bereich', description: 'Events, Einladungslink und Kiosk verwalten', aliases: 'setup konfiguration event einladung kiosk', priority: 85 },
+  { view: 'admin', title: 'Admin', category: 'Bereich', description: 'Sitzplan, Backup, Test-Spieler, Rechte und Diagnose', aliases: 'moderation verwaltung diagnose sitzplan backup', priority: 60 },
   { view: 'players', title: 'Spieler', category: 'Bereich', description: 'Spielerprofile und Bewertungen ansehen', aliases: 'teilnehmer roster personen profil', priority: 70 },
   { view: 'gameCatalog', title: 'Spiele', category: 'Bereich', description: 'Bock, Skill und Spielekatalog', aliases: 'games katalog bewertung skill bock', priority: 75 },
   { view: 'arrivals', title: 'An- & Abreise', category: 'Bereich', description: 'Zeiten und Fahrgemeinschaften planen', aliases: 'anreise abreise ankunft abfahrt fahrt carpool', priority: 65 },
@@ -26,7 +27,7 @@ export const SEARCH_ENTRIES = [
   { view: 'foodOrders', title: 'Essen', category: 'Bereich', description: 'Sammelbestellungen koordinieren', aliases: 'bestellung food pizza lieferdienst', priority: 68 },
   { view: 'hallOfFame', title: 'Hall of Fame', category: 'Bereich', description: 'Champions vergangener Events', aliases: 'champions sieger historie ruhmeshalle', priority: 61 },
   { view: 'infoBoard', title: 'Info', category: 'Bereich', description: 'WLAN, Discord, Server und Hausregeln', aliases: 'info board information wlan discord server hausregeln', priority: 69 },
-  { view: 'seating', title: 'Sitzplan', category: 'Bereich', description: 'Plätze und sichtbare Monitore verwalten', aliases: 'sitzplatz tisch monitore nachbarn', priority: 67 },
+  { view: 'seating', title: 'Sitzplan', category: 'Bereich', description: 'Plätze und sichtbare Monitore verwalten', aliases: 'sitzplatz tisch monitore nachbarn', priority: 67, adminOnly: true },
 ];
 
 export function normalizeSearchText(value) {
@@ -221,7 +222,8 @@ export function initGlobalSearch(onNavigate) {
           const input = backdrop.querySelector('#global-search-input');
           const summary = backdrop.querySelector('#global-search-summary');
           const resultsContainer = backdrop.querySelector('#global-search-results');
-          let allEntries = [...SEARCH_ENTRIES, ...createContentSearchEntries(state)];
+          const visibleAreaEntries = SEARCH_ENTRIES.filter((entry) => !entry.adminOnly || isAdmin());
+          let allEntries = [...visibleAreaEntries, ...createContentSearchEntries(state)];
           let results = [];
           let selectedIndex = 0;
 
@@ -303,7 +305,7 @@ export function initGlobalSearch(onNavigate) {
           input.focus();
           loadContentSearchEntries().then((contentEntries) => {
             if (!backdrop.isConnected) return;
-            allEntries = [...SEARCH_ENTRIES, ...contentEntries];
+            allEntries = [...visibleAreaEntries, ...contentEntries];
             renderResults();
           });
         },

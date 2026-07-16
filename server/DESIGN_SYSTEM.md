@@ -274,7 +274,18 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   The roster itself has no duplicate „Teilnehmende“ heading and no player-creation action. Player
   creation stays deliberately deferred until authenticated user management owns that workflow.
   This device-local identity header is deliberately documented as the temporary boundary that
-  future authenticated user management must replace.
+  future authenticated user management must replace. The self-service profile uses the shared
+  grouped-page hierarchy for profile data, Agent setup, Push, visible monitors and personal stats.
+  Agent setup is split into three stable nested cards for choosing tracking, downloading and
+  installing; pause and foreground-activity explanations live in contextual tooltips beside their
+  checkboxes. Push uses the same checkbox language with its explanation in a tooltip instead of an
+  action button. Visible-monitor choices form exactly two columns from `--bp-md`, with phones kept
+  to one column.
+- **Settings and admin tools** — Settings uses separate grouped cards for Events, the invitation
+  link and the TV/Kiosk view. Their concise explanations live in contextual tooltips beside each
+  heading. Event cards use the standard two-column nested-card grid. Backup and seating-plan
+  editing are absent from regular settings and live together as nested tool cards in the active
+  Admin mode; the seating editor returns to Admin and blocks editing outside that mode.
 - **Grouped page sections** — `.grouped-page-sections` stacks the page's major areas with the
   shared vertical rhythm. Every `.grouped-page-section` is a full-width `.card`; its visible
   heading lives inside the surface through `.grouped-page-section-title`, while filters and

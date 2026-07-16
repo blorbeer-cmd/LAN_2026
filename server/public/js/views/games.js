@@ -11,6 +11,11 @@ import { icon } from '../icons.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+
+const EVENT_HELP = 'Mehrere Events sind möglich. Nur ein Event erfasst gleichzeitig Live-Status und Spielzeit; alles andere bleibt „Außerhalb von Events“.';
+const INVITE_HELP = 'Link oder QR-Code teilen: öffnet Respawn eingeloggt und führt neue Spieler direkt zur Profil-Erstellung.';
+const KIOSK_HELP = 'Für gemeinsame Bildschirme: zeigt Live-Status, Vote, Rang und Turnier automatisch.';
 
 // The invite link is the shared access token, not tied to any one event —
 // same link always leads into whichever event is currently active. Factored
@@ -79,15 +84,19 @@ function openShareLinkModal(eventName) {
     `${escapeHtml(eventName)} gestartet`,
     `
       <div class="stack">
+        <div class="title-with-info">
+          <strong>Einladungslink</strong>
+          ${infoTooltipHtml('event-share-help', 'Einladungslink', INVITE_HELP)}
+        </div>
         ${renderInviteLinkBody()}
-        <p class="muted" style="font-size:var(--font-size-xs);">
-          Diesen Link verschicken (oder den QR-Code zeigen/aushängen) – öffnet die Seite direkt
-          eingeloggt und führt neue Leute direkt zur Profil-Erstellung. Name, Bild, Skills und der
-          eigene Agent-Key richten sich alle selbst ein.
-        </p>
       </div>
     `,
-    { onMount: (modalEl) => wireInviteLinkBody(modalEl) }
+    {
+      onMount: (modalEl) => {
+        wireInviteLinkBody(modalEl);
+        wireInfoTooltips(modalEl);
+      },
+    }
   );
   void el;
 }
@@ -95,24 +104,25 @@ function openShareLinkModal(eventName) {
 function renderInviteSection() {
   const token = getToken();
   return `
-    <div class="section-title">Einladungslink</div>
-    <div class="card stack">
+    <section class="card stack grouped-page-section" aria-labelledby="settings-invite-title">
+      <div class="grouped-page-section-title">
+        <span class="title-with-info">
+          <h2 id="settings-invite-title">Einladungslink</h2>
+          ${infoTooltipHtml('settings-invite-help', 'Einladungslink', INVITE_HELP)}
+        </span>
+      </div>
       ${renderInviteLinkBody()}
-      <p class="muted" style="font-size:var(--font-size-xs);">
-        Diesen Link verschicken (oder den QR-Code zeigen/aushängen) – öffnet die Seite direkt
-        eingeloggt und führt neue Leute direkt zur Profil-Erstellung. Name, Bild, Skills und der
-        eigene Agent-Key richten sich alle selbst ein.
-      </p>
-    </div>
+    </section>
 
-    <div class="section-title">TV-/Kiosk-Ansicht</div>
-    <div class="card stack">
+    <section class="card stack grouped-page-section" aria-labelledby="settings-kiosk-title">
+      <div class="grouped-page-section-title">
+        <span class="title-with-info">
+          <h2 id="settings-kiosk-title">TV-/Kiosk-Ansicht</h2>
+          ${infoTooltipHtml('settings-kiosk-help', 'TV-/Kiosk-Ansicht', KIOSK_HELP)}
+        </span>
+      </div>
       <a href="/kiosk.html${token ? `?token=${encodeURIComponent(token)}` : ''}" target="_blank" rel="noopener" class="btn btn-block">Kiosk-Ansicht öffnen</a>
-      <p class="muted" style="font-size:var(--font-size-xs);">
-        Für einen gemeinsamen Bildschirm/Beamer im Raum: Live-Status, Abstimmung, Rangliste und
-        laufendes Turnier, aktualisiert sich von selbst. Keine Bedienung nötig.
-      </p>
-    </div>
+    </section>
   `;
 }
 
@@ -162,20 +172,20 @@ function renderEventSection() {
   const cards = realEvents.map(renderEventCard).join('');
 
   return `
-    <div class="row-between" style="margin-top:var(--space-5);">
-      <div class="section-title" style="margin:0;">Events</div>
-      <button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>
-    </div>
-    <p class="muted" style="font-size:var(--font-size-xs);margin:0 0 14px;">
-      Mehrere Events können nebeneinander bestehen, aber nur eines gleichzeitig „tracken" (Live-Status
-      und Spielzeit automatisch erfassen). Was außerhalb eines getrackten Events passiert, läuft unter
-      „Außerhalb von Events" – ganz normal nutzbar, nur ohne festes Event zugeordnet.
-    </p>
-    ${
-      realEvents.length === 0
-        ? `<div class="empty-state"><span class="empty-state-icon">${icon('calendar')}</span>Noch keine Events angelegt.</div>`
-        : `<div class="card-grid" style="gap:var(--space-4);">${cards}</div>`
-    }
+    <section class="card stack grouped-page-section" aria-labelledby="settings-events-title">
+      <div class="grouped-page-section-title">
+        <span class="title-with-info">
+          <h2 id="settings-events-title">Events</h2>
+          ${infoTooltipHtml('settings-events-help', 'Events', EVENT_HELP)}
+        </span>
+        <button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>
+      </div>
+      ${
+        realEvents.length === 0
+          ? `<div class="empty-state"><span class="empty-state-icon">${icon('calendar')}</span>Noch keine Events angelegt.</div>`
+          : `<div class="two-column-card-grid">${cards}</div>`
+      }
+    </section>
   `;
 }
 
@@ -194,23 +204,6 @@ async function downloadExport(eventId) {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-  } catch (err) {
-    showToast(err.message, { error: true });
-  }
-}
-
-async function downloadBackup() {
-  try {
-    const { blob, filename } = await api.backup.download();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    showToast('Datenbank-Backup heruntergeladen.');
   } catch (err) {
     showToast(err.message, { error: true });
   }
@@ -252,7 +245,7 @@ function openEventForm(ctx, existing) {
         </div>
         ${
           !isEdit
-            ? `<p class="muted" style="font-size:var(--font-size-xs);">Legt das Event an, aber startet noch kein Tracking – das machst du danach gezielt über „▶️ Tracking starten".</p>`
+            ? `<p class="muted" style="font-size:var(--font-size-xs);">Legt das Event an, aber startet noch kein Tracking – das machst du danach gezielt über „Tracking starten“.</p>`
             : ''
         }
         <button type="submit" class="btn btn-primary btn-block">${isEdit ? 'Speichern' : 'Event anlegen'}</button>
@@ -349,26 +342,17 @@ function openParticipantsForm(ctx, event) {
 export function renderSettings(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Einstellungen</h1>
-    ${renderEventSection()}
-    ${renderInviteSection()}
-    <div class="section-title">Sitzplan</div>
-    <div class="card row-between">
-      <span class="muted">Tisch, Plätze und Sitzordnung gemeinsam festlegen.</span>
-      <button type="button" class="btn btn-sm" data-navigate="seating">Sitzplan öffnen</button>
-    </div>
-    <div class="section-title">Backup</div>
-    <div class="card row-between">
-      <span class="muted">Sichert den aktuellen Stand als SQLite-Datei.</span>
-      <button type="button" class="btn btn-sm" id="download-backup">Download Backup</button>
+    <div class="grouped-page-sections">
+      ${renderEventSection()}
+      ${renderInviteSection()}
     </div>
   `;
 
   container.querySelectorAll('[data-export-event]').forEach((btn) => {
     btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent));
   });
-  container.querySelector('#download-backup').addEventListener('click', downloadBackup);
-
   wireInviteLinkBody(container);
+  wireInfoTooltips(container);
 
   container.querySelector('#new-event-btn').addEventListener('click', () => openEventForm(ctx, null));
   container.querySelectorAll('[data-edit-event]').forEach((btn) => {

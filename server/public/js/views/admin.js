@@ -76,6 +76,23 @@ async function deletePlayer(player, ctx) {
   }
 }
 
+async function downloadBackup() {
+  try {
+    const { blob, filename } = await api.backup.download();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showToast('Datenbank-Backup heruntergeladen.');
+  } catch (err) {
+    showToast(err.message, { error: true });
+  }
+}
+
 function renderActivate(container) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
@@ -149,6 +166,21 @@ function renderPanel(container, ctx) {
       <button type="button" class="btn btn-sm" id="admin-leave">Modus verlassen</button>
     </div>
     <div class="grouped-page-sections">
+      <section class="card stack grouped-page-section" aria-labelledby="admin-tools-title">
+        <div class="grouped-page-section-title"><h2 id="admin-tools-title">Werkzeuge</h2></div>
+        <div class="two-column-card-grid">
+          <div class="card stack">
+            <strong>Sitzplan</strong>
+            <span class="muted">Tisch, Plätze und Sitzordnung verwalten.</span>
+            <button type="button" class="btn btn-sm btn-block" data-navigate="seating">Sitzplan öffnen</button>
+          </div>
+          <div class="card stack">
+            <strong>Backup</strong>
+            <span class="muted">Aktuellen Stand als SQLite-Datei sichern.</span>
+            <button type="button" class="btn btn-sm btn-block" id="download-backup">Backup herunterladen</button>
+          </div>
+        </div>
+      </section>
       <section class="card stack grouped-page-section" aria-labelledby="admin-test-players-title">
         <div class="grouped-page-section-title"><h2 id="admin-test-players-title">Test-Spieler</h2></div>
         <p class="muted">Kommen fertig eingerichtet: Platz im Sitzplan samt sichtbarer Monitore,
@@ -190,6 +222,8 @@ function renderPanel(container, ctx) {
   });
 
   container.querySelector('#admin-cleanup').addEventListener('click', () => cleanupTestUsers(ctx));
+
+  container.querySelector('#download-backup').addEventListener('click', downloadBackup);
 
   container.querySelector('#agent-diagnostics-refresh').addEventListener('click', () => loadAgentDiagnostics(ctx, true));
 

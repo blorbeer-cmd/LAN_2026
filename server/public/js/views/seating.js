@@ -11,6 +11,7 @@ import { state } from '../state.js';
 import { escapeHtml, avatarHtml, stateLabel } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
+import { isAdmin } from '../admin.js';
 
 const SIDES = ['top', 'right', 'bottom', 'left'];
 const LABELS = { top: 'Oben', right: 'Rechts', bottom: 'Unten', left: 'Links' };
@@ -267,9 +268,20 @@ async function load(ctx) {
 }
 
 export function renderSeating(container, ctx) {
+  if (!isAdmin()) {
+    container.innerHTML = `
+      <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
+      <h1 class="view-title">Sitzplan</h1>
+      <div class="card stack">
+        <strong>Nur im Admin-Modus verfügbar</strong>
+        <span class="muted">Aktiviere zuerst den Admin-Modus, um den Sitzplan zu bearbeiten.</span>
+        <button type="button" class="btn btn-primary btn-block" data-navigate="admin">Zum Admin-Modus</button>
+      </div>`;
+    return;
+  }
   if (cache === null && !loading) load(ctx);
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="settings">‹ Zurück</button>
+    <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Sitzplan</h1>
     ${loading || cache === null ? '<div class="empty-state">Lädt…</div>' : renderEditor()}`;
   if (cache) wireEditor(container, ctx);
