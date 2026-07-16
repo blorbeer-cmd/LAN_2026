@@ -3731,6 +3731,9 @@ input[type='number'].tournament-score-input {
 .food-order-price-input {
   width: 100%;
 }
+.food-order-add-button {
+  align-self: center;
+}
 .food-order-close-action {
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);

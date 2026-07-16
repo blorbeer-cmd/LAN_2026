@@ -83,7 +83,8 @@ export function renderInfoBoard(container, ctx) {
       : cache.length === 0
         ? `<div class="empty-state">Noch keine Einträge.<br />
            <span class="muted" style="font-size:var(--font-size-sm);">Gut aufgehoben hier: WLAN-Passwort, Discord-Link, Server-IPs, Hausregeln.</span></div>`
-        : `<div class="two-column-card-grid">${cache
+        : `<div class="two-column-card-grid">${[...cache]
+            .sort((a, b) => a.title.localeCompare(b.title, 'de', { sensitivity: 'base' }))
             .map(
               (e) => `
             <div class="card stack" style="gap:var(--space-2);" data-info-entry="${e.id}">

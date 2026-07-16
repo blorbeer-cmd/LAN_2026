@@ -143,12 +143,12 @@ function renderOpenOrder(order, myId) {
           ? `<form class="food-order-item-form" data-add-item-form="${order.id}">
                <input type="text" data-item-desc placeholder="z.B. 1x Margherita groß" maxlength="120" required />
                <input type="text" class="food-order-price-input" data-item-price placeholder="€" inputmode="decimal" />
-               <button type="submit" class="btn btn-primary btn-sm">Hinzufügen</button>
+               <button type="submit" class="btn btn-sm food-order-add-button">Hinzufügen</button>
              </form>`
           : `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um dich einzutragen.</div>`
       }
       <div class="food-order-close-action">
-        <button type="button" class="btn btn-danger btn-sm btn-block" data-close-order="${order.id}">Bestellung schließen</button>
+        <button type="button" class="btn btn-primary btn-sm btn-block" data-close-order="${order.id}">Bestellung abschließen</button>
       </div>
     </div>`;
 }
@@ -399,11 +399,11 @@ export function renderFoodOrders(container, ctx) {
 
   container.querySelectorAll('[data-close-order]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      if (!(await confirmDialog('Bestellung schließen? Danach kann niemand mehr etwas eintragen.'))) return;
+      if (!(await confirmDialog('Bestellung abschließen? Danach kann niemand mehr etwas eintragen.'))) return;
       try {
         await api.foodOrders.close(btn.dataset.closeOrder);
         cache = null;
-        showToast('Bestellung geschlossen.');
+        showToast('Bestellung abgeschlossen.');
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });

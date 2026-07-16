@@ -297,12 +297,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Food orders** — Open orders form a responsive two-column nested-card grid. Order information,
   per-player positions, the responsive add-item form, total and actions are visually separated
   inside each card. An absent send time is plain text without a misleading timer icon. Closing an
-  order is a destructive full-width action below a divider; closed orders use the standard
+  order is the colorful full-width primary action below a divider; the compact neutral
+  „Hinzufügen“ action does not stretch to the input height. Closed orders use the standard
   collapsible-card history presentation.
 - **Hall of Fame and Info** — Hall-of-Fame rankings use the shared two-column leaderboard grid;
   events are two-column cards whose overall and tournament winners are stable bordered rows rather
   than pills. The visible short name for the former Info-Board is „Info“ throughout navigation,
-  search and the page itself; entries remain responsive two-column nested cards.
+  search and the page itself; entries remain alphabetically sorted responsive two-column nested cards.
 - **Arrival carpools** — Anreise and Abreise remain separate full-width accented panels. Their
   carpool cards use two columns from `--bp-md`, but an odd final card deliberately keeps one-column
   width instead of spanning the row; phones stay single-column. Every card repeats Start and
