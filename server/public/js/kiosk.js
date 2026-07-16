@@ -225,7 +225,7 @@ function renderKioskVoteRows(vote) {
 function renderVotes(votes) {
   const vote = votes?.current ?? null;
   if (!vote) {
-    return `<div class="empty-state">Keine offene Abstimmung.</div>`;
+    return `<div class="empty-state kiosk-vote-state">Keine offene Abstimmung.</div>`;
   }
   const heading = vote.mode === 'single' ? 'Stichwahl läuft' : 'Abstimmung läuft';
   return `

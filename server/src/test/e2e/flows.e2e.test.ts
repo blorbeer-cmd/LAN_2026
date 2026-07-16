@@ -1756,6 +1756,7 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
   await page.waitForSelector('.kiosk-vote-overview >> text=Stichwahl läuft');
   await page.waitForSelector('.kiosk-vote-overview >> text=Zwischenstand');
   await page.waitForSelector('.kiosk-vote-overview >> text=1 Teilnehmer');
+  assert.equal(await page.locator('.kiosk-vote-header').evaluate((element) => getComputedStyle(element).alignItems), 'center');
   await page.waitForSelector(`.kiosk-vote-result:has-text("${games[1].name}") >> text=1 Stimme`);
   assert.equal(await page.getByText('Ergebnis erst nach dem Ende.', { exact: false }).count(), 0);
   await page.waitForSelector('.kiosk-match-grid .kiosk-match-card');
@@ -1796,6 +1797,11 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
   await page.request.post(`${BASE_URL}/api/votes/cancel`);
   await page.waitForSelector('#kiosk-votes >> text=Keine offene Abstimmung.');
   assert.equal(await page.locator('.kiosk-vote-overview').count(), 0);
+  assert.ok(await page.locator('#kiosk-votes .kiosk-vote-state').evaluate((emptyState) => {
+    const emptyBox = emptyState.getBoundingClientRect();
+    const contentBox = emptyState.parentElement!.getBoundingClientRect();
+    return Math.abs(emptyBox.y + emptyBox.height / 2 - (contentBox.y + contentBox.height / 2)) < 2;
+  }));
   await page.setViewportSize({ width: 390, height: 844 });
 });
 
