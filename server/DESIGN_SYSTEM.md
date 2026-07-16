@@ -306,17 +306,17 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   persistent explanation below the form. Recent broadcasts live in one standard, initially
   collapsed „Historie“ section whose open state survives live re-renders; its entries use the
   responsive two-column row grid.
-- **Food orders** — Open orders form a responsive two-column nested-card grid. Order information,
-  per-player positions, the responsive add-item form, total and actions are visually separated
-  inside each card. A lone or final odd order keeps regular half-row width on desktop instead of
-  stretching across both columns. An absent send time is plain text without a misleading timer
-  icon. Closing an order is the colorful full-width primary action below a divider; the compact
-  neutral „Hinzufügen“ action does not stretch to the input height. Closed orders live inside one
-  standard, initially collapsed „Historie“ section whose open state survives live re-renders.
-- **Hall of Fame and Info** — Hall-of-Fame rankings use the shared two-column leaderboard grid;
-  events are two-column cards whose overall and tournament winners are stable bordered rows rather
-  than pills. The visible short name for the former Info-Board is „Info“ throughout navigation,
-  search and the page itself; entries remain alphabetically sorted responsive two-column nested cards.
+- **Food orders** — Open and historical orders use one full-width nested card per row so their
+  metadata, player positions, add-item form, total and actions stay aligned regardless of content.
+  An absent send time is plain text without a misleading timer icon. Closing an order is the
+  colorful full-width primary action below a divider; the compact neutral „Hinzufügen“ action does
+  not stretch to the input height. Closed orders live inside one standard, initially collapsed
+  „Historie“ section whose open state survives live re-renders.
+- **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
+  grid. „Nach LAN“ uses one event dropdown and shows every overall placement for the selected LAN,
+  followed by its tournament winners; tournament game names have no decorative game symbols. The
+  visible short name for the former Info-Board is „Info“ throughout navigation, search and the page
+  itself; entries remain alphabetically sorted responsive two-column nested cards.
 - **Arrival carpools** — Anreise and Abreise remain separate full-width accented panels. Their
   carpool cards use two columns from `--bp-md`, but an odd final card deliberately keeps one-column
   width instead of spanning the row; phones stay single-column. Every card repeats Start and
@@ -344,11 +344,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   temporary „Gegen KI“ mode occupies its own full-width row below it. An empty lobby no longer adds
   a redundant waiting sentence. Member actions use the same destructive treatment for „Verlassen“
   as the host's „Schließen“ action.
-  Statistics use the concise title „Statistiken“. Their game selector spans the available width:
-  one column on phones and up to three equal columns from `--bp-md`, with the match count directly
-  below each game name. The selected game is not repeated above its results. Those results follow directly
-  without another enclosing card or accent rail; player rows reuse `.leaderboard-list-grid` for the
-  shared one-/two-column ranking presentation and spell out wins and losses in German.
+  Statistics use the concise title „Statistiken“ and one full-width game dropdown whose options
+  include each game's match count. The selected game is not repeated above its results. Those
+  results follow directly without another enclosing card or accent rail; player rows reuse
+  `.leaderboard-list-grid` for the shared one-/two-column ranking presentation and spell out wins
+  and losses in German.
 - **Leaderboard** — The concise page title is „Rang“. The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
   each remains a distinct `.tournament-section-panel` with the shared accent rail. „Spielzeit pro

@@ -53,6 +53,10 @@ test('GET /api/hall-of-fame includes this event with the right overall + tournam
   const entry = res.body.events.find((e: { eventId: string }) => e.eventId === activeEventId);
   assert.ok(entry, 'active event should be present');
   assert.equal(entry.overallChampion.playerId, playerA);
+  assert.equal(entry.overallStandings[0].playerId, playerA);
+  assert.equal(entry.overallStandings[1].playerId, playerB);
+  assert.ok(entry.overallStandings[0].points > entry.overallStandings[1].points);
+  assert.equal(entry.overallStandings[0].matchesPlayed, 2);
   assert.ok(entry.tournamentChampions.some((t: { championPlayers: string[] }) => t.championPlayers.includes('HoF Alice')));
 });
 
@@ -73,5 +77,6 @@ test('GET /api/hall-of-fame reports no champion for an event with no matches', a
   const entry = res.body.events.find((e: { eventId: string }) => e.eventId === created.body.id);
   assert.ok(entry);
   assert.equal(entry.overallChampion, null);
+  assert.deepEqual(entry.overallStandings, []);
   assert.deepEqual(entry.tournamentChampions, []);
 });

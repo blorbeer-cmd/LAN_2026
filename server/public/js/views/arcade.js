@@ -263,16 +263,17 @@ function arcadeStatsHtml() {
   if (!games.length) return `<div class="empty-state" style="padding:var(--space-4);">Noch keine abgeschlossenen Arcade-Runden.</div>`;
   if (!games.some((g) => g.gameType === activeStatsGame)) activeStatsGame = games[0].gameType;
 
-  const tabColumns = Math.min(games.length, 3);
-  const tabs = `<div class="arcade-stats-tabs arcade-stats-tabs-${tabColumns}" aria-label="Spiel für die Statistiken wählen">${games
-    .map(
-      (g) =>
-        `<button type="button" class="btn btn-sm arcade-stats-tab ${g.gameType === activeStatsGame ? 'btn-primary' : ''}" data-stats-tab="${g.gameType}" aria-pressed="${g.gameType === activeStatsGame}">
-          <span>${escapeHtml(g.title)}</span>
-          <span class="arcade-stats-tab-count">${arcadeMatchCountLabel(g.matches)}</span>
-        </button>`
-    )
-    .join('')}</div>`;
+  const gameSelect = `
+    <div>
+      <label for="arcade-stats-game" class="field-label">Spiel auswählen</label>
+      <select id="arcade-stats-game">
+        ${games
+          .map(
+            (g) => `<option value="${g.gameType}" ${g.gameType === activeStatsGame ? 'selected' : ''}>${escapeHtml(g.title)} · ${arcadeMatchCountLabel(g.matches)}</option>`
+          )
+          .join('')}
+      </select>
+    </div>`;
 
   const game = games.find((g) => g.gameType === activeStatsGame);
   const rows = game.players
@@ -290,7 +291,7 @@ function arcadeStatsHtml() {
     )
     .join('');
   return `
-    ${tabs}
+    ${gameSelect}
     <div class="arcade-stat-game">
       <div class="leaderboard-list-grid">${rows}</div>
     </div>
@@ -596,11 +597,9 @@ export function renderArcade(container, ctx) {
     btn.addEventListener('click', () => startArcadeWatch(btn.dataset.watchMatch));
   });
 
-  container.querySelectorAll('[data-stats-tab]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      activeStatsGame = btn.dataset.statsTab;
-      ctx.rerender();
-    });
+  container.querySelector('#arcade-stats-game')?.addEventListener('change', (event) => {
+    activeStatsGame = event.currentTarget.value;
+    ctx.rerender();
   });
 
   container.querySelectorAll('canvas[data-arcade-gallery-drawing]').forEach((canvas) => {
