@@ -4,7 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
-import { voteNotificationPlayerIds } from '../routes/votes';
+import { db } from '../db';
+import { KIOSK_RESULT_DURATION_MS, voteNotificationPlayerIds } from '../routes/votes';
 
 const app = createApp();
 let playerA: string;
@@ -103,7 +104,18 @@ test('a player cannot submit a second single-mode vote in the same round', async
 
   const kiosk = await request(app).get('/api/votes/kiosk');
   assert.equal(kiosk.body.current, null);
-  assert.equal('latest' in kiosk.body, false);
+  assert.equal(kiosk.body.recentResult.round, 1);
+  assert.equal(kiosk.body.recentResult.totalVoters, 2);
+  assert.deepEqual(
+    kiosk.body.recentResult.results.filter((result: { score: number }) => result.score > 0).map((result: { gameId: string }) => result.gameId),
+    [gameCs2]
+  );
+  assert.equal(kiosk.body.recentResult.expiresAt - kiosk.body.recentResult.closedAt, KIOSK_RESULT_DURATION_MS);
+
+  db.prepare('UPDATE vote_rounds SET closed_at = ? WHERE round = ?').run(Date.now() - KIOSK_RESULT_DURATION_MS - 1, 1);
+  const expiredKiosk = await request(app).get('/api/votes/kiosk');
+  assert.equal(expiredKiosk.body.current, null);
+  assert.equal(expiredKiosk.body.recentResult, null);
 });
 
 test('a new round starts fresh (previous votes do not carry over)', async () => {

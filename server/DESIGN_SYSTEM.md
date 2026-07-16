@@ -314,7 +314,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   vertically center their participant count in the status header and show their current ranking as
   „Zwischenstand“; single-choice runoffs are explicitly labeled
   „Stichwahl“. The two-column live ranking uses the available space for up to eight games without
-  introducing a scrollbar. Without an open round, the card only states that no vote is running. The regular personal Vote
+  introducing a scrollbar. After a round closes, its final ranking is centered in the card for ten
+  minutes, based on the persisted close timestamp; then the card switches to the empty state. A new
+  open round replaces that result immediately. Without an open or recently closed round, the card
+  only states that no vote is running. The regular personal Vote
   view keeps its open-round distribution hidden. Without a tournament, the tournament card uses
   the concise empty state „Kein offenes Turnier.“.
 - **Grouped page sections** — `.grouped-page-sections` stacks the page's major areas with the

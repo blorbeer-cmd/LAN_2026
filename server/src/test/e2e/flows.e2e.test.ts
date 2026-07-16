@@ -1823,6 +1823,18 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
     };
   });
   assert.equal(voteBounds.allVisible, true, `eight live vote results should remain visible inside the kiosk card: ${JSON.stringify(voteBounds)}`);
+  await page.request.post(`${BASE_URL}/api/votes/close`);
+  await page.waitForSelector('.kiosk-vote-final >> text=Ergebnis');
+  assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result').count(), 8);
+  assert.ok(await page.locator('.kiosk-vote-final').evaluate((result) => {
+    const resultBox = result.getBoundingClientRect();
+    const contentBox = result.parentElement!.getBoundingClientRect();
+    return Math.abs(resultBox.y + resultBox.height / 2 - (contentBox.y + contentBox.height / 2)) < 2;
+  }));
+  await page.request.post(`${BASE_URL}/api/votes/start`, {
+    data: { mode: 'single', title: 'Kiosk Ergebnis ausblenden', gameIds: [games[0].id] },
+  });
+  await page.waitForSelector('.kiosk-vote-overview >> text=Stichwahl läuft');
   await page.request.post(`${BASE_URL}/api/votes/cancel`);
   await page.waitForSelector('#kiosk-votes >> text=Keine offene Abstimmung.');
   assert.equal(await page.locator('.kiosk-vote-overview').count(), 0);

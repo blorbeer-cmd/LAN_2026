@@ -32,6 +32,7 @@ const ROUND_KEY = 'vote_round';
 const OPEN_KEY = 'vote_open';
 const STARTED_AT_KEY = 'vote_started_at';
 const MODE_KEY = 'vote_mode';
+export const KIOSK_RESULT_DURATION_MS = 10 * 60 * 1000;
 
 const MAX_TITLE_LENGTH = 80;
 const MAX_INFO_LENGTH = 500;
@@ -254,6 +255,24 @@ votesRouter.get('/kiosk', (_req, res) => {
   const currentTotalVoters = state.open
     ? (db.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM votes WHERE round = ?').get(state.round) as { n: number }).n
     : 0;
+  const closedRound = state.open
+    ? undefined
+    : (db.prepare('SELECT closed_at AS closedAt FROM vote_rounds WHERE round = ?').get(state.round) as
+        | { closedAt: number | null }
+        | undefined);
+  const resultExpiresAt = closedRound?.closedAt ? closedRound.closedAt + KIOSK_RESULT_DURATION_MS : null;
+  const recentResult = resultExpiresAt && resultExpiresAt > Date.now()
+    ? {
+        ...state,
+        ...meta,
+        closedAt: closedRound!.closedAt,
+        expiresAt: resultExpiresAt,
+        results: buildResults(state.round, state.mode, meta.selectedGameIds),
+        totalVoters: (
+          db.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM votes WHERE round = ?').get(state.round) as { n: number }
+        ).n,
+      }
+    : null;
 
   res.json({
     current: state.open
@@ -264,6 +283,7 @@ votesRouter.get('/kiosk', (_req, res) => {
           totalVoters: currentTotalVoters,
         }
       : null,
+    recentResult,
   });
 });
 

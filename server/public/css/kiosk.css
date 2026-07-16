@@ -196,6 +196,26 @@
   flex: 1;
   place-items: center;
 }
+.kiosk-vote-final {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-3);
+}
+.kiosk-vote-final-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  text-align: center;
+}
+.kiosk-vote-final-header > strong {
+  flex-basis: 100%;
+  font-size: var(--font-size-lg);
+}
 .kiosk-tournament-overview {
   display: flex;
   width: 100%;

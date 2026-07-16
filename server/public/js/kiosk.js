@@ -221,8 +221,40 @@ function renderKioskVoteRows(vote) {
     .join('')}</div>`;
 }
 
+let voteResultResetTimer = null;
+
+function clearVoteResultResetTimer() {
+  if (voteResultResetTimer !== null) clearTimeout(voteResultResetTimer);
+  voteResultResetTimer = null;
+}
+
+function scheduleVoteResultReset(expiresAt) {
+  clearVoteResultResetTimer();
+  voteResultResetTimer = setTimeout(() => {
+    voteResultResetTimer = null;
+    refreshAll();
+  }, Math.max(0, expiresAt - Date.now()));
+}
+
 function renderVotes(votes) {
   const vote = votes?.current ?? null;
+  if (vote) {
+    clearVoteResultResetTimer();
+  } else if (votes?.recentResult) {
+    const result = votes.recentResult;
+    scheduleVoteResultReset(result.expiresAt);
+    return `
+      <div class="kiosk-vote-final">
+        <div class="kiosk-vote-final-header">
+          <strong>Ergebnis</strong>
+          ${result.title ? `<span class="muted">${escapeHtml(result.title)}</span>` : ''}
+          <span class="muted">${result.totalVoters} Teilnehmer</span>
+        </div>
+        ${renderKioskVoteRows(result)}
+      </div>`;
+  } else {
+    clearVoteResultResetTimer();
+  }
   if (!vote) {
     return `<div class="empty-state kiosk-vote-state">Keine offene Abstimmung.</div>`;
   }
