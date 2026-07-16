@@ -213,6 +213,10 @@ function concealedGameLabel(gameId, round) {
   return label;
 }
 
+function kioskVoteScore(vote, result) {
+  return vote.mode === 'points' ? `${result.points} P` : `${result.votes} ${result.votes === 1 ? 'Stimme' : 'Stimmen'}`;
+}
+
 function renderKioskVoteRows(vote, { concealed = false } = {}) {
   const scored = vote.results.filter((result) => result.score > 0);
   if (scored.length === 0) return `<div class="muted kiosk-vote-empty">Noch keine Stimmen.</div>`;
@@ -225,7 +229,7 @@ function renderKioskVoteRows(vote, { concealed = false } = {}) {
       if (previousScore === null || result.score !== previousScore) rank = index + 1;
       previousScore = result.score;
       const highlighted = result.score === maxScore;
-      const score = vote.mode === 'points' ? `${result.points} P` : `${result.votes} ${result.votes === 1 ? 'Stimme' : 'Stimmen'}`;
+      const score = kioskVoteScore(vote, result);
       const gameName = concealed ? concealedGameLabel(result.gameId, vote.round) : escapeHtml(result.gameName);
       return `<div class="kiosk-vote-result ${highlighted ? 'is-leading' : ''} ${concealed ? 'is-concealed' : ''}">
         <span class="lb-rank">${rank}</span>
@@ -234,6 +238,21 @@ function renderKioskVoteRows(vote, { concealed = false } = {}) {
       </div>`;
     })
     .join('')}</div>`;
+}
+
+function renderKioskVoteWinners(vote) {
+  const scored = vote.results.filter((result) => result.score > 0);
+  const maxScore = Math.max(...scored.map((result) => result.score));
+  const winners = scored.filter((result) => result.score === maxScore);
+  if (winners.length === 0) return '';
+  return `
+    <div class="kiosk-vote-winner">
+      <span class="muted">Gewinner</span>
+      <div class="kiosk-vote-winner-games">
+        ${winners.map((winner) => `<strong>${escapeHtml(winner.gameName)}</strong>`).join('')}
+      </div>
+      <span class="lb-points">${kioskVoteScore(vote, winners[0])}</span>
+    </div>`;
 }
 
 let voteDisplayTimer = null;
@@ -264,16 +283,19 @@ function renderVotes(votes) {
       return `
         <div class="kiosk-vote-state kiosk-vote-countdown">
           <strong>Ergebnis in</strong>
-          <span class="kiosk-vote-countdown-value">${seconds}</span>
+          <div class="countdown-num-wrap kiosk-vote-countdown-number countdown-pop" aria-label="${seconds}">
+            <span class="countdown-num countdown-num-glow" aria-hidden="true">${seconds}</span>
+            <span class="countdown-num countdown-num-fill">${seconds}</span>
+          </div>
         </div>`;
     }
     scheduleVoteRefresh(result.expiresAt);
     return `
       <div class="kiosk-vote-final">
+        ${renderKioskVoteWinners(result)}
         <div class="kiosk-vote-final-header">
-          <strong>Ergebnis</strong>
-          ${result.title ? `<span class="muted">${escapeHtml(result.title)}</span>` : ''}
-          <span class="muted">${result.totalVoters} Teilnehmer</span>
+          <strong>Ergebnis im Detail</strong>
+          <span class="muted">${result.title ? `${escapeHtml(result.title)} · ` : ''}${result.totalVoters} Teilnehmer</span>
         </div>
         ${renderKioskVoteRows(result)}
       </div>`;

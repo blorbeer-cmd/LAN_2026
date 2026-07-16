@@ -1841,17 +1841,29 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
   assert.ok(tallVoteRowHeight > compactVoteRowHeight * 2, 'tall kiosk cards should distribute their free height across vote rows');
   await page.request.post(`${BASE_URL}/api/votes/close`);
   await page.waitForSelector('.kiosk-vote-countdown >> text=Ergebnis in');
-  assert.equal(await page.locator('.kiosk-vote-countdown-value').textContent(), '5');
+  assert.equal(await page.locator('.kiosk-vote-countdown .countdown-num-fill').textContent(), '5');
+  assert.equal(await page.locator('.kiosk-vote-countdown .countdown-num-glow').textContent(), '5');
+  assert.equal(await page.locator('.kiosk-vote-countdown .countdown-pop').count(), 1);
   assert.equal(await page.locator('.kiosk-vote-result').count(), 0);
-  await page.waitForSelector('.kiosk-vote-final >> text=Ergebnis', { timeout: 7_000 });
+  await page.waitForSelector('.kiosk-vote-final >> text=Ergebnis im Detail', { timeout: 7_000 });
   assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result').count(), 10);
   assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result.is-concealed').count(), 0);
+  await page.waitForSelector(`.kiosk-vote-winner:has-text("${games[0].name}")`);
+  assert.equal(await page.locator('.kiosk-vote-final > :first-child').getAttribute('class'), 'kiosk-vote-winner');
   await page.waitForSelector(`.kiosk-vote-final .kiosk-vote-result:has-text("${games[0].name}")`);
   assert.ok(await page.locator('.kiosk-vote-final').evaluate((result) => {
     const resultBox = result.getBoundingClientRect();
     const contentBox = result.parentElement!.getBoundingClientRect();
-    return Math.abs(resultBox.y + resultBox.height / 2 - (contentBox.y + contentBox.height / 2)) < 2;
+    return Math.abs(resultBox.top - contentBox.top) < 2;
   }));
+  await page.setViewportSize({ width: 1280, height: 720 });
+  assert.equal(await page.locator('#kiosk-votes').evaluate((voteContent) => {
+    const contentBox = voteContent.getBoundingClientRect();
+    return Array.from(voteContent.querySelectorAll('.kiosk-vote-winner, .kiosk-vote-result')).every((element) => {
+      const box = element.getBoundingClientRect();
+      return box.top >= contentBox.top && box.bottom <= contentBox.bottom;
+    });
+  }), true, 'winner and ten detailed results should remain visible at 720p');
   await page.request.post(`${BASE_URL}/api/votes/start`, {
     data: { mode: 'single', title: 'Kiosk Ergebnis ausblenden', gameIds: [games[0].id] },
   });

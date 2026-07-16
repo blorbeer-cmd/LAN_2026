@@ -317,8 +317,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   „Stichwahl“. The two-column live ranking uses the complete remaining card height for up to ten
   games, distributing its five rows evenly instead of compressing them at the top. Low-height TV
   canvases reduce only row padding and gaps so the fixed dashboard still needs no scrollbar. After
-  a round closes, a centered five-second countdown hides every
-  result. The final ranking is revealed afterward and remains centered in the card for ten minutes,
+  a round closes, a five-second countdown hides every result and reuses Arcade's large layered
+  gradient/glow number with its per-second pop effect. The revealed view starts at the top rather
+  than floating vertically centered: a gold-bordered winner surface comes first (including every
+  tied winner), followed by the complete ranking under „Ergebnis im Detail“. It remains visible for ten minutes,
   based on the persisted close timestamp; then the card switches to the empty state. A new
   open round replaces that result immediately. Without an open or recently closed round, the card
   only states that no vote is running. The regular personal Vote

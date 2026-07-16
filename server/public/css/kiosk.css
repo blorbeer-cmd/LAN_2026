@@ -192,9 +192,11 @@
   filter: blur(var(--space-1));
   user-select: none;
 }
-.kiosk-vote-countdown-value {
-  font-size: var(--font-size-3xl);
-  font-weight: var(--font-weight-black);
+.kiosk-vote-countdown-number {
+  padding: var(--space-5);
+}
+.kiosk-vote-countdown-number .countdown-num {
+  font-size: calc(var(--font-size-3xl) * 2);
 }
 .kiosk-vote-empty {
   display: grid;
@@ -206,20 +208,39 @@
   height: 100%;
   min-height: 0;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   gap: var(--space-3);
 }
 .kiosk-vote-final-header {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--space-2);
-  text-align: center;
 }
 .kiosk-vote-final-header > strong {
-  flex-basis: 100%;
   font-size: var(--font-size-lg);
+}
+.kiosk-vote-winner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--rank-1-gold);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.kiosk-vote-winner-games {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.kiosk-vote-winner-games strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 @media (max-height: 800px) {
   .kiosk-vote-results {
