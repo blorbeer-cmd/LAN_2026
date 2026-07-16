@@ -24,6 +24,7 @@ let serverProcess: ChildProcess;
 let browser: Browser;
 let page: Page;
 let adminCookie: string;
+let adminAccountId: string;
 
 async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
   const start = Date.now();
@@ -51,6 +52,7 @@ async function mintRegisterInviteCode(): Promise<string> {
   const setCookie = bootstrap.headers.get('set-cookie');
   assert.ok(setCookie, 'bootstrap register should set a session cookie');
   adminCookie = setCookie!.split(';')[0];
+  adminAccountId = ((await bootstrap.json()) as { id: string }).id;
 
   const reauth = await fetch(`${BASE_URL}/api/auth/reauth`, {
     method: 'POST',
@@ -99,6 +101,7 @@ before(async () => {
       PORT: String(PORT),
       DB_FILE: ':memory:',
       AUTH_MODE: 'required',
+      MULTI_GROUPS_ENABLED: '1',
       ACCESS_TOKEN: 'obsolete-shared-token',
       ADMIN_RECOVERY_CODE: RECOVERY_CODE,
       KIOSK_TOKEN: 'e2e-kiosk-token',
@@ -268,5 +271,58 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     await activeLink.waitFor({ state: 'detached' });
   } finally {
     await adminPage.close();
+  }
+});
+
+test('group switcher creates a group and preserves its invite through login', async () => {
+  await page.click('#group-btn');
+  await page.click('#group-create-btn');
+  await page.fill('#group-name', 'E2E Second Crew');
+  await page.fill('#group-description', 'Group context browser test');
+  await page.click('#group-create-form button[type="submit"]');
+  await page.waitForFunction(() => document.querySelector('#group-btn-label')?.textContent === 'E2E Second Crew');
+
+  await page.click('#group-btn');
+  await page.click('#group-invite-btn');
+  await page.waitForSelector('#reauth-form');
+  await page.fill('#reauth-password', PASSWORD_AFTER_RESET);
+  await page.click('#reauth-form button[type="submit"]');
+  await page.waitForSelector('#group-invite-link');
+  const inviteLink = await page.inputValue('#group-invite-link');
+  assert.equal(new URL(inviteLink).searchParams.has('groupInvite'), true);
+  await page.click('.modal-backdrop [data-close]');
+
+  const inviteePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  try {
+    await inviteePage.goto(inviteLink);
+    await inviteePage.waitForSelector('#auth-screen:not([hidden])');
+    assert.equal(new URL(inviteePage.url()).searchParams.has('groupInvite'), true);
+    await inviteePage.fill('#auth-name', 'E2E Bootstrap Admin');
+    await inviteePage.fill('#auth-password', 'e2e bootstrap password');
+    await inviteePage.click('#auth-form button[type="submit"]');
+    await inviteePage.waitForSelector('#group-accept-invite');
+    assert.equal(new URL(inviteePage.url()).searchParams.has('groupInvite'), true);
+    await inviteePage.click('#group-accept-invite');
+    await inviteePage.waitForFunction(() => document.querySelector('#group-btn-label')?.textContent === 'E2E Second Crew');
+    assert.equal(new URL(inviteePage.url()).searchParams.has('groupInvite'), false);
+    assert.equal(
+      await inviteePage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      true,
+      'the mobile group switcher must not introduce horizontal scrolling'
+    );
+
+    await page.click('#group-btn');
+    await page.click('#group-manage-btn');
+    const adminRole = page.locator(`[data-member-role="${adminAccountId}"]`);
+    await adminRole.waitFor();
+    await adminRole.selectOption('admin');
+    await page.waitForTimeout(250);
+
+    await inviteePage.click('#group-btn');
+    await inviteePage.click('#group-manage-btn');
+    await inviteePage.waitForSelector('#group-edit-form');
+    await inviteePage.waitForSelector('#group-test-users-form', { state: 'attached' });
+  } finally {
+    await inviteePage.close();
   }
 });
