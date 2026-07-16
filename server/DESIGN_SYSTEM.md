@@ -413,8 +413,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Its empty state is symbol-free and avoids repeating that title.
 - **Profile** — The profile row uses the original compact square color preview. Activating it opens
   a centered Respawn modal instead of the browser's native color dialog. The modal combines a
-  keyboard-, pointer- and touch-operable hue/saturation wheel, the shared avatar palette, a live
-  preview and explicit cancel/apply actions. The chosen value remains a draft until the profile's
+  keyboard-, pointer- and touch-operable hue/saturation wheel with a live preview and explicit
+  cancel/apply actions; it has no competing preset palette. The chosen value remains a draft until the profile's
   main save action persists it.
 - **Leaderboard** — The concise page title is „Rang“. The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;

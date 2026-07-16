@@ -23,14 +23,15 @@ import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { openModal } from '../modal.js';
-import { AVATAR_PALETTE } from '../avatarPalette.js';
 
 const TRACKING_PAUSE_HELP = 'Pausiert Live-Status und Spielzeit. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.';
 const ACTIVITY_TRACKING_HELP = 'Erfasst zusätzlich, ob das Spielfenster im Vordergrund ist. Der Wert lässt sich später in der Agent-Steuerung ändern.';
 const PUSH_HELP = 'Benachrichtigt dich auch, wenn Respawn nicht geöffnet ist.';
 
 function normalizedProfileColor(value) {
-  return /^#[0-9a-f]{6}$/i.test(value ?? '') ? value.toLowerCase() : AVATAR_PALETTE[0];
+  return /^#[0-9a-f]{6}$/i.test(value ?? '')
+    ? value.toLowerCase()
+    : getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
 }
 
 function hexToHsv(value) {
@@ -67,9 +68,6 @@ function hsvToHex(hue, saturation) {
 
 function openProfileColorPicker(colorInput, colorTrigger) {
   let selectedColor = normalizedProfileColor(colorInput.value);
-  const swatches = AVATAR_PALETTE.map(
-    (color) => `<button type="button" class="profile-color-preset" data-profile-color="${color}" style="--profile-color:${color};" aria-label="Farbe ${color}"></button>`
-  ).join('');
   openModal(
     'Profilfarbe wählen',
     `<div class="profile-color-picker">
@@ -80,7 +78,6 @@ function openProfileColorPicker(colorInput, colorTrigger) {
          <span class="profile-color-picker-preview" style="--profile-color:${selectedColor};"></span>
          <output class="profile-color-picker-value">${selectedColor.toUpperCase()}</output>
        </div>
-       <div class="profile-color-picker-presets" aria-label="Farbvorgaben">${swatches}</div>
        <div class="profile-color-picker-actions">
          <button type="button" class="btn btn-equal" data-profile-color-cancel>Abbrechen</button>
          <button type="button" class="btn btn-primary btn-equal" data-profile-color-apply>Übernehmen</button>
@@ -93,7 +90,6 @@ function openProfileColorPicker(colorInput, colorTrigger) {
         const marker = backdrop.querySelector('.profile-color-picker-marker');
         const preview = backdrop.querySelector('.profile-color-picker-preview');
         const output = backdrop.querySelector('.profile-color-picker-value');
-        const presets = [...backdrop.querySelectorAll('[data-profile-color]')];
 
         const updateSelection = (color) => {
           selectedColor = normalizedProfileColor(color);
@@ -104,7 +100,6 @@ function openProfileColorPicker(colorInput, colorTrigger) {
           preview.style.setProperty('--profile-color', selectedColor);
           output.value = selectedColor.toUpperCase();
           wheel.setAttribute('aria-valuetext', selectedColor);
-          presets.forEach((preset) => preset.classList.toggle('is-selected', preset.dataset.profileColor.toLowerCase() === selectedColor));
         };
         const updateFromPointer = (event) => {
           const box = wheel.getBoundingClientRect();
@@ -132,7 +127,6 @@ function openProfileColorPicker(colorInput, colorTrigger) {
           if (event.key === 'ArrowDown') current.saturation = Math.max(0, current.saturation - 0.05);
           updateSelection(hsvToHex(current.hue, current.saturation));
         });
-        presets.forEach((preset) => preset.addEventListener('click', () => updateSelection(preset.dataset.profileColor)));
         backdrop.querySelector('[data-profile-color-cancel]').addEventListener('click', close);
         backdrop.querySelector('[data-profile-color-apply]').addEventListener('click', () => {
           colorInput.value = selectedColor;
