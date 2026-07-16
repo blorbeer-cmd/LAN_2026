@@ -121,12 +121,13 @@ function renderEditor() {
   const { layout, players } = cache;
   return `<div class="seating-editor grouped-page-sections">
     <section class="card stack grouped-page-section" aria-labelledby="seating-plan-title">
-      <div class="grouped-page-section-title"><h2 id="seating-plan-title">Sitzplan</h2></div>
-      ${renderSeatingPlan(layout, players, { editable: true })}
-      <div class="muted seating-hint title-with-info">
-        <span>Sichtbare Monitore</span>
-        ${infoTooltipHtml('seating-monitors-help', 'sichtbaren Monitoren', 'Sitznachbarn werden automatisch als sichtbare Monitore eingetragen.')}
+      <div class="grouped-page-section-title">
+        <h2 id="seating-plan-title" class="title-with-info">
+          <span>Sitzplan</span>
+          ${infoTooltipHtml('seating-monitors-help', 'Sitzplan', 'Sitznachbarn werden automatisch als sichtbare Monitore eingetragen.')}
+        </h2>
       </div>
+      ${renderSeatingPlan(layout, players, { editable: true })}
     </section>
     ${renderPool(layout, players)}
     ${renderSideControls(layout)}

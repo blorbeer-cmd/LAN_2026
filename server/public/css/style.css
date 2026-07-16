@@ -4690,12 +4690,6 @@ input[type='number'].tournament-score-input {
     border-color: var(--accent);
   }
 }
-.seating-hint {
-  display: flex;
-  align-items: center;
-  margin: 0;
-  font-size: var(--font-size-xs);
-}
 .seating-controls,
 .seating-pool { display: grid; gap: var(--space-3); }
 .seating-control-grid {

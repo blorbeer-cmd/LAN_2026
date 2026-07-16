@@ -242,7 +242,7 @@ test('Admin mode owns the seating editor and backup tools', async () => {
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('.seating-plan.is-editable');
   assert.equal(await page.locator('.seating-editor > .grouped-page-section').count(), 3);
-  assert.deepEqual(await page.locator('.seating-editor > .grouped-page-section h2').allTextContents(), ['Sitzplan', 'Spieler', 'Konfiguration']);
+  assert.deepEqual(await page.locator('.seating-editor > .grouped-page-section h2 > span:first-child, .seating-editor > .grouped-page-section h2:not(:has(> span:first-child))').allTextContents(), ['Sitzplan', 'Spieler', 'Konfiguration']);
   assert.equal(await page.locator('.seating-pool-player').evaluateAll((players) => players.every((player) => getComputedStyle(player).borderRadius !== '999px')), true);
   assert.equal(await page.locator('.seating-player-pool').evaluate((pool) => getComputedStyle(pool).gridTemplateColumns.split(' ').length), 2);
   assert.ok((await page.locator('.seating-seat:not(.is-occupied)').count()) > 0);
@@ -263,11 +263,12 @@ test('Admin mode owns the seating editor and backup tools', async () => {
     return Math.abs(avatar.top + avatar.height / 2 - (name.top + name.height / 2)) < 2;
   }), true);
   assert.equal(await page.locator('.seating-seat-realname.is-empty').first().evaluate((element) => getComputedStyle(element).display), 'none');
-  assert.equal(await page.getByText('Sichtbare Monitore', { exact: true }).count(), 1);
+  assert.equal(await page.getByText('Sichtbare Monitore', { exact: true }).count(), 0);
   assert.equal(await page.getByText('Automatisch gespeichert', { exact: true }).count(), 1);
   assert.equal(await page.locator('#seating-monitors-help').count(), 1);
   assert.equal(await page.locator('#seating-save-help').count(), 1);
-  await page.click('[aria-label="Mehr Informationen zu sichtbaren Monitoren"]');
+  assert.equal(await page.locator('#seating-plan-title [data-info-tooltip-trigger]').count(), 1);
+  await page.click('[aria-label="Mehr Informationen zu Sitzplan"]');
   await page.waitForSelector('#seating-monitors-help:not([hidden])');
   await page.click('[aria-label="Mehr Informationen zu automatischem Speichern"]');
   await page.waitForSelector('#seating-save-help:not([hidden])');
