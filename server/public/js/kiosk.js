@@ -199,11 +199,10 @@ function renderLive(players) {
     .join('')}</div>`;
 }
 
-function renderKioskVoteRows(vote, { closed = false } = {}) {
+function renderKioskVoteRows(vote) {
   const scored = vote.results.filter((result) => result.score > 0);
   if (scored.length === 0) return `<div class="muted kiosk-vote-empty">Noch keine Stimmen.</div>`;
   const maxScore = Math.max(...scored.map((result) => result.score));
-  const winners = new Set(vote.winnerGameIds ?? []);
   let previousScore = null;
   let rank = 0;
   return `<div class="kiosk-vote-results">${scored
@@ -211,7 +210,7 @@ function renderKioskVoteRows(vote, { closed = false } = {}) {
     .map((result, index) => {
       if (previousScore === null || result.score !== previousScore) rank = index + 1;
       previousScore = result.score;
-      const highlighted = closed ? winners.has(result.gameId) : result.score === maxScore;
+      const highlighted = result.score === maxScore;
       const score = vote.mode === 'points' ? `${result.points} P` : `${result.votes} ${result.votes === 1 ? 'Stimme' : 'Stimmen'}`;
       return `<div class="kiosk-vote-result ${highlighted ? 'is-leading' : ''}">
         <span class="lb-rank">${rank}</span>
@@ -224,13 +223,11 @@ function renderKioskVoteRows(vote, { closed = false } = {}) {
 }
 
 function renderVotes(votes) {
-  const vote = votes?.current ?? votes?.latest ?? null;
+  const vote = votes?.current ?? null;
   if (!vote) {
     return `<div class="empty-state">Keine offene Abstimmung.</div>`;
   }
-  const isCurrent = Boolean(votes.current);
-  const heading = isCurrent ? (vote.mode === 'single' ? 'Stichwahl läuft' : 'Abstimmung läuft') : 'Letztes Ergebnis';
-  const subheading = isCurrent ? 'Zwischenstand' : vote.mode === 'single' ? 'Stichwahl' : 'Ergebnis';
+  const heading = vote.mode === 'single' ? 'Stichwahl läuft' : 'Abstimmung läuft';
   return `
     <div class="kiosk-vote-overview">
       <div class="kiosk-vote-header">
@@ -238,10 +235,10 @@ function renderVotes(votes) {
           <strong>${heading}</strong>
           ${vote.title ? `<span class="muted">${escapeHtml(vote.title)}</span>` : ''}
         </span>
-        <span class="badge ${isCurrent ? 'badge-playing' : 'badge-offline'}">${vote.totalVoters} Teilnehmer</span>
+        <span class="badge badge-playing">${vote.totalVoters} Teilnehmer</span>
       </div>
-      <div class="section-title kiosk-vote-section-title">${subheading}</div>
-      ${renderKioskVoteRows(vote, { closed: !isCurrent })}
+      <div class="section-title kiosk-vote-section-title">Zwischenstand</div>
+      ${renderKioskVoteRows(vote)}
     </div>`;
 }
 

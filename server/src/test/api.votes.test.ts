@@ -103,8 +103,7 @@ test('a player cannot submit a second single-mode vote in the same round', async
 
   const kiosk = await request(app).get('/api/votes/kiosk');
   assert.equal(kiosk.body.current, null);
-  assert.equal(kiosk.body.latest.round, 1);
-  assert.deepEqual(kiosk.body.latest.winnerGameIds, [gameCs2]);
+  assert.equal('latest' in kiosk.body, false);
 });
 
 test('a new round starts fresh (previous votes do not carry over)', async () => {

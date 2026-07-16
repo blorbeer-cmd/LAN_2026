@@ -1788,8 +1788,8 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
     'kiosk cards must not introduce internal scrollbars'
   );
   await page.request.post(`${BASE_URL}/api/votes/cancel`);
-  await page.waitForSelector('.kiosk-vote-overview >> text=Letztes Ergebnis');
-  await page.waitForSelector('.kiosk-vote-overview >> text=Kiosk Vote');
+  await page.waitForSelector('#kiosk-votes >> text=Keine offene Abstimmung.');
+  assert.equal(await page.locator('.kiosk-vote-overview').count(), 0);
   await page.setViewportSize({ width: 390, height: 844 });
 });
 

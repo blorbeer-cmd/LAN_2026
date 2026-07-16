@@ -244,7 +244,7 @@ votesRouter.get('/', (_req, res) => {
 
 // GET /api/votes/kiosk - the shared room display is intentionally more
 // dynamic than personal voting devices: it shows the current per-game tally
-// live and falls back to the latest closed result when no round is open.
+// live while a round is open.
 // The regular GET /api/votes stays redacted while open, so this does not
 // change the anti-bandwagoning behavior on phones.
 votesRouter.get('/kiosk', (_req, res) => {
@@ -255,48 +255,6 @@ votesRouter.get('/kiosk', (_req, res) => {
     ? (db.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM votes WHERE round = ?').get(state.round) as { n: number }).n
     : 0;
 
-  const latestRow = db
-    .prepare(
-      `SELECT round, started_at AS startedAt, closed_at AS closedAt, mode, title, info,
-              winner_game_ids AS winnerGameIdsJson, selected_game_ids AS selectedGameIdsJson
-       FROM vote_rounds
-       WHERE closed_at IS NOT NULL AND event_id = ?
-       ORDER BY round DESC
-       LIMIT 1`
-    )
-    .get(getTrackingEventId()) as
-    | {
-        round: number;
-        startedAt: number;
-        closedAt: number;
-        mode: VoteMode;
-        title: string | null;
-        info: string | null;
-        winnerGameIdsJson: string | null;
-        selectedGameIdsJson: string | null;
-      }
-    | undefined;
-
-  let latest = null;
-  if (latestRow) {
-    const selectedGameIds: string[] | null = latestRow.selectedGameIdsJson
-      ? JSON.parse(latestRow.selectedGameIdsJson)
-      : null;
-    latest = {
-      round: latestRow.round,
-      startedAt: latestRow.startedAt,
-      closedAt: latestRow.closedAt,
-      mode: latestRow.mode,
-      title: latestRow.title,
-      info: latestRow.info,
-      winnerGameIds: latestRow.winnerGameIdsJson ? JSON.parse(latestRow.winnerGameIdsJson) : [],
-      results: buildResults(latestRow.round, latestRow.mode, selectedGameIds),
-      totalVoters: (
-        db.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM votes WHERE round = ?').get(latestRow.round) as { n: number }
-      ).n,
-    };
-  }
-
   res.json({
     current: state.open
       ? {
@@ -306,7 +264,6 @@ votesRouter.get('/kiosk', (_req, res) => {
           totalVoters: currentTotalVoters,
         }
       : null,
-    latest,
   });
 });
 

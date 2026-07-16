@@ -311,8 +311,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   knockout view, game and round remain fixed at the top while the bracket round itself is centered in
   the remaining card area. All variants use bordered standing, group or match cards with textual winner
   states, matching the main app's nested-surface hierarchy. Vote is a live room display: open rounds
-  show their current ranking as „Zwischenstand“, single-choice runoffs are explicitly labeled
-  „Stichwahl“, and an idle card falls back to the latest completed result. The regular personal Vote
+  show their current ranking as „Zwischenstand“ and single-choice runoffs are explicitly labeled
+  „Stichwahl“. Without an open round, the card only states that no vote is running. The regular personal Vote
   view keeps its open-round distribution hidden.
 - **Grouped page sections** — `.grouped-page-sections` stacks the page's major areas with the
   shared vertical rhythm. Every `.grouped-page-section` is a full-width `.card`; its visible
