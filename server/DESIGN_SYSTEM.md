@@ -292,8 +292,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   remain subordinate cards or rows inside those groups.
 - **Broadcasts** — „Neue Durchsage“ and the recent history are separate grouped sections. Delivery
   channels live in the shared contextual tooltip directly beside „Neue Durchsage“ instead of a
-  persistent explanation below the form. History entries use the standard responsive two-column
-  row grid.
+  persistent explanation below the form. Recent broadcasts live in one standard, initially
+  collapsed „Historie“ section whose open state survives live re-renders; its entries use the
+  responsive two-column row grid.
 - **Food orders** — Open orders form a responsive two-column nested-card grid. Order information,
   per-player positions, the responsive add-item form, total and actions are visually separated
   inside each card. A lone or final odd order keeps regular half-row width on desktop instead of

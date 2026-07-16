@@ -14,6 +14,7 @@ import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let historyCache = null;
 let historyLoading = false;
+let historyOpen = false;
 
 async function loadHistory(ctx) {
   historyLoading = true;
@@ -106,16 +107,26 @@ export function renderBroadcast(container, ctx) {
           <button type="submit" class="btn btn-primary" ${myId ? '' : 'disabled'}>Senden</button>
         </form>
       </section>
-      <section class="card stack grouped-page-section" aria-labelledby="broadcast-history-title">
-        <div class="grouped-page-section-title"><h2 id="broadcast-history-title">Letzte Durchsagen</h2></div>
-        ${renderHistory(myId)}
-      </section>
+      <details class="card grouped-page-section collapsible-section" data-broadcast-history ${historyOpen ? 'open' : ''}>
+        <summary class="collapsible-section-header">
+          <h2>Historie</h2>
+          <span class="collapsible-section-summary-end">
+            <span class="badge badge-offline">${historyCache?.length ?? 0}</span>
+            <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+          </span>
+        </summary>
+        <div class="collapsible-section-content">${renderHistory(myId)}</div>
+      </details>
     </div>
   `;
 
   wireWhoAmICard(container, 'broadcast-whoami', ctx);
   wireDateTimeField(container, 'broadcast-ends-at');
   wireInfoTooltips(container);
+
+  container.querySelector('[data-broadcast-history]')?.addEventListener('toggle', (event) => {
+    historyOpen = event.currentTarget.open;
+  });
 
   const messageInput = container.querySelector('#broadcast-message');
   if (prevValue) messageInput.value = prevValue;
