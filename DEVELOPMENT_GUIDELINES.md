@@ -1,198 +1,82 @@
 # Gemeinsame Entwicklungsrichtlinien
 
-Diese Datei ist die **verbindliche gemeinsame Quelle** für alle Coding-Agents und Menschen, die an
-RespawnHQ arbeiten. `AGENTS.md` und `CLAUDE.md` sind lediglich agent-spezifische Einstiegspunkte und
-verweisen hierher. Gemeinsame Regeln werden nicht in mehreren Dateien dupliziert.
+Diese Datei enthält nur Regeln, die für praktisch jeden Auftrag im Repository gelten. Details
+werden über die nächstgelegenen `AGENTS.md`-Dateien bereichsbezogen geladen:
 
-## 1. Arbeitsweise mit diesen Richtlinien
+- `server/AGENTS.md`: Server, API, Datenbank, Realtime, Tests und Betrieb
+- `server/public/AGENTS.md`: Frontend und Designsystem
+- `agent/AGENTS.md`: Windows-Agent und lokales Kontroll-Tool
+- `docs/changelog/AGENTS.md`: Pflege der Projekthistorie
+
+So bleibt der Standardkontext klein. Bereichsdokumente nur lesen, wenn der Auftrag den jeweiligen
+Bereich tatsächlich betrifft.
+
+## 1. Arbeitsweise
 
 - Diese Datei vor Analyse, Planung oder Änderung vollständig lesen.
-- Bei Änderungen unter `server/public/` zusätzlich `server/DESIGN_SYSTEM.md` vollständig lesen.
-- Bereichsspezifische Dokumentation lesen, wenn sie für den Auftrag relevant ist:
-  - Server-Tests: `server/TESTING.md`
-  - Windows-Agent und lokales Kontroll-Tool: `agent/README.md`
-  - Serverbetrieb und Log-Rotation: `server/OPERATIONS.md`
-  - Geplante Versionierung der DB-Migrationen: `docs/plans/issue-29-db-migrations.md`
-  - Projekthistorie: `docs/changelog/README.md`
-- Dokumentation und Implementierung müssen gemeinsam aktuell bleiben. Ändert ein Feature ein hier
-  beschriebenes Verhalten, wird die passende Dokumentation im selben Arbeitspaket aktualisiert.
-- Quellcode und Schema sind für aktuelle Implementierungsdetails maßgeblich. Bei Abweichungen nicht
-  blind die Dokumentation nachbauen: Verhalten prüfen, Abweichung benennen und im erlaubten Umfang
-  korrigieren.
+- Quellcode und Schema sind für aktuelle Implementierungsdetails maßgeblich. Bei Abweichungen das
+  tatsächliche Verhalten prüfen und Dokumentation und Implementierung im selben Arbeitspaket
+  wieder in Einklang bringen.
+- Keine fachfremden Dokumente vorsorglich vollständig laden. Zuerst anhand des Auftrags und der
+  betroffenen Pfade die einschlägigen Bereichsrichtlinien bestimmen.
+- Nutzer- und Systemanweisungen haben Vorrang, danach die nächstgelegene `AGENTS.md` und diese Datei.
+  Widersprüche zwischen Einstiegspunkten nicht stillschweigend auslegen, sondern melden oder im
+  Rahmen eines passenden Dokumentationsauftrags beheben.
 
 ## 2. Produktziele – in dieser Reihenfolge
 
 1. **Zuverlässigkeit:** Das System läuft die gesamte dreitägige LAN ohne manuellen Neustart. Ein
    fehlerhafter oder verschwundener Client darf Server und andere Clients nicht beeinträchtigen.
-2. **Einfache und schnelle Bedienung:** Die wichtigen Aktionen sind auf Handy und Laptop ohne
-   Erklärung in wenigen Schritten erreichbar.
+2. **Einfache und schnelle Bedienung:** Wichtige Aktionen sind auf Handy und Laptop ohne Erklärung
+   in wenigen Schritten erreichbar.
 3. **Modernes, intuitives Design:** Aufgeräumt, dark-mode-freundlich, responsive und mit klaren,
    zugänglichen Zuständen für „spielt“, „pausiert“ und „offline“.
-4. **Schlanke Wartbarkeit:** Keine unnötigen Abstraktionen oder Abhängigkeiten. Lösungen sollen für
-   rund 15 Teilnehmende robust und verständlich sein, nicht auf Enterprise-Skalierung optimiert.
+4. **Schlanke Wartbarkeit:** Keine unnötigen Abstraktionen oder Abhängigkeiten. Für rund 15
+   Teilnehmende robust und verständlich bauen, nicht auf Enterprise-Skalierung optimieren.
 
-Wenn Ziele konkurrieren, gewinnt die weiter oben stehende Priorität. Eine optische Verbesserung
-darf beispielsweise keine zusätzliche Fehlerquelle oder kompliziertere Bedienung schaffen.
+Bei Zielkonflikten gewinnt die weiter oben stehende Priorität.
 
-## 3. Architekturgrenzen
+## 3. Gemeinsame Architektur- und Qualitätsgrenzen
 
-- **Server (`server/`):** Express für REST und statische Dateien, Socket.IO für Realtime-Push und
-  `better-sqlite3` als synchrone, dateibasierte Datenbank.
-- **Runtime:** Node.js 24 ist über `.nvmrc` und die `engines`-Felder festgelegt. Lokale Entwicklung,
-  CI, Docker und Agent-Paketierung dürfen nicht stillschweigend auf abweichende Hauptversionen
-  wechseln.
-- **Frontend (`server/public/`):** statische Single-Page-App mit Vanilla JavaScript und modernem
-  CSS. Kein Frontend-Framework, kein Bundler und kein zusätzlicher Build-Step.
-- **Agent (`agent/`):** eigenständiger, als Windows-EXE paketierbarer Node-Prozess. Er kennt nur
-  Server-URL, API-Key und die vom Server gelieferte Prozesszuordnung. Die zentrale Zuordnung
-  Prozessname → Spiel bleibt auf dem Server.
-- **Agent-Kontrolle:** Das lokale Kontroll-Tool bindet ausschließlich an `127.0.0.1:47813` und darf
-  nie über das LAN erreichbar werden. Aktivitäts-Tracking bleibt optional und standardmäßig aus.
-- **Datenbank:** Produktive DB-Dateien liegen außerhalb des Repositories oder unter dem ignorierten
-  Pfad `server/data/*.db`. Tests verwenden ausschließlich isolierte Test- bzw. In-Memory-Datenbanken.
-- **Aktuelles Schema:** `server/src/db.ts` ist die Quelle für Tabellen, Spalten und Migrationen.
-  Neue Schemaänderungen brauchen eine migrationssichere Behandlung bestehender Installationen.
-- **Migrationsplan:** Bis `schema_migrations` gemäß `docs/plans/issue-29-db-migrations.md`
-  implementiert ist, bleiben bestehende Upgrade-Pfade idempotent und in ihrer historischen
-  Reihenfolge erhalten. Keine produktive DB wird neu aufgebaut oder zurückgesetzt, um eine
-  Migration zu vereinfachen. Änderungen erhalten Legacy-Fixtures, Wiederholungs- und
-  Rollback-bei-Fehler-Tests.
+- Node.js 24 ist über `.nvmrc` und die `engines`-Felder festgelegt. Entwicklung, CI, Docker und
+  Paketierung dürfen nicht stillschweigend auf eine andere Hauptversion wechseln.
+- Architekturwechsel, neue Frameworks oder größere Produktionsabhängigkeiten nicht nebenbei
+  einführen. Sie brauchen klaren Nutzen, Folgenabschätzung und Zustimmung des Nutzers.
+- Externe Eingaben nach Typ, Format, Länge, erlaubten Werten und referenzierten Entitäten
+  validieren. Erwartbare Fehler dürfen keine ungefangenen Exceptions auslösen.
+- Keine Secrets, API-Keys, produktiven Datenbanken oder personalisierten Konfigurationen committen.
+- Bestehende Grenzen für Authentifizierung, Admin-Rechte, LAN-/Loopback-Bindung und Opt-in-
+  Einstellungen nicht aus Bequemlichkeit aufweichen.
+- Nutzerinhalte vor HTML-Ausgabe escapen und dynamische SQL-Werte parametrisieren.
+- SQL-Bezeichner oder SQL-Fragmente nur aus internen Allow-Lists zusammensetzen.
+- Neue oder geänderte Logik erhält Tests für Happy Path, relevante Validierungsfehler und
+  Zustandskonflikte. Tests verwenden keine produktiven Daten, fremden Ports oder echte
+  Nutzerkonfigurationen.
+- Tests nicht löschen, lockern oder mit pauschalen Timeouts kaschieren, nur damit ein Lauf grün wird.
+- Flaky Tests ursächlich stabilisieren.
 
-Architekturwechsel, neue Frameworks oder größere Produktionsabhängigkeiten werden nicht nebenbei
-eingeführt. Sie brauchen einen klaren Nutzen, eine Folgenabschätzung und die Zustimmung des Nutzers.
+## 4. Arbeitsbaum und Git
 
-## 4. Zuverlässigkeit, Sicherheit und Fehlerbehandlung
+- Vor Änderungen `git status --short` prüfen.
+- Vorhandene, nicht zum Auftrag gehörende Änderungen gehören dem Nutzer. Nicht überschreiben,
+  zurücksetzen, verstecken, formatieren oder in eigene Commits aufnehmen.
+- Nur Dateien im Auftragsscope ändern; keine beiläufigen Großformatierungen oder Refactorings.
+- Auf dem aktuell gewählten Branch arbeiten. Branchwechsel oder neue Branches nur auf Wunsch.
+- Commit und Push nur auf ausdrücklichen Wunsch. Commits klein, in sich geschlossen und imperativ
+  auf Englisch benennen.
+- Abhängigkeiten und Lockfiles nur ändern, wenn sie notwendig sind; neue Pakete auf Wartung,
+  Sicherheit und Offline-Auswirkungen prüfen.
 
-- Alle externen Eingaben an API-, Socket- und lokalen Agent-Endpunkten validieren: Typ, Format,
-  Länge, erlaubte Werte und referenzierte Entitäten.
-- Fehler als passendes HTTP-Ergebnis im Format `{ "error": "..." }` beantworten. Erwartbare
-  Eingabefehler oder Konflikte dürfen keine ungefangenen Exceptions erzeugen.
-- Fehler eines Socket-Handlers oder Clients lokal begrenzen. Kein einzelnes Event darf den Prozess
-  oder andere Verbindungen beschädigen.
-- Agent-Ausfälle sind normal: fehlende Heartbeats führen nach Timeout zu „offline“, nicht zu einem
-  Serverfehler. Wiederholte oder verspätete Meldungen müssen sicher verarbeitet werden.
-- Keine Secrets, API-Keys, produktiven Datenbanken oder personalisierten Agent-Konfigurationen
-  committen. Konfiguration erfolgt über Umgebungsvariablen oder lokale, ignorierte Dateien.
-- Bestehende Sicherheitsgrenzen wie Authentifizierung, Admin-Rechte, LAN-/Loopback-Bindung und
-  Opt-in-Einstellungen nicht aus Bequemlichkeit aufweichen.
-- Nutzerinhalte vor HTML-Ausgabe escapen. Dynamische SQL-Werte werden parametrisiert; Bezeichner
-  oder SQL-Fragmente nur aus internen Allow-Lists zusammensetzen.
+## 5. Definition of Done
 
-## 5. API, Realtime und Zeit
-
-- Öffentliche IDs sind kurze, URL-sichere `nanoid`-IDs; keine internen Auto-Increments nach außen
-  geben.
-- Zeitpunkte werden als UTC-Timestamps in Millisekunden gespeichert und im Frontend lokal
-  formatiert.
-- REST-Antworten sind JSON. Statuscodes unterscheiden mindestens Erfolg (`2xx`), ungültige Eingabe
-  (`400`), fehlende oder unzulässige Authentifizierung (`401`/`403`), nicht gefunden (`404`) und
-  Zustandskonflikt (`409`).
-- Zustandsänderungen, die für andere offene Clients sichtbar sind, werden nach erfolgreichem Commit
-  über Socket.IO gepusht. Das Frontend muss neue Events abonnieren und seinen Zustand ohne Reload
-  aktualisieren.
-- Realtime-Nachrichten sind ein Aktualisierungssignal, keine zweite widersprüchliche Wahrheit neben
-  der Datenbank. Nach Verbindungsabbruch muss der Client seinen Zustand sauber neu laden können.
-
-## 6. Race-Sicherheit und Transaktionen
-
-Auf einer LAN lösen mehrere Personen dieselbe Aktion nahezu gleichzeitig aus. Synchrones
-`better-sqlite3` serialisiert Zugriffe, verhindert aber keine logischen Check-dann-Schreiben-Races.
-
-- Jeder Handler mit gemeinsamem veränderlichem Zustand erhält einen atomaren Guard beziehungsweise
-  eine passende Transaktion oder Datenbank-Constraint.
-- Typische Fälle: eindeutige Namen, genau eine laufende Abstimmung, Event-Tracking-Konflikte,
-  Captain-Draft-Picks und einmalig entscheidbare Turnier-Matches.
-- Genau ein konkurrierender Request darf gewinnen. Verlierer erhalten einen sauberen `409`; sie
-  dürfen weder duplizieren noch fremden Zustand überschreiben.
-- Für jeden neuen oder geänderten Race-relevanten Handler kommt ein Integrationstest mit parallelen
-  Requests (`Promise.all`) nach `server/src/test/api.concurrency.test.ts` oder in die fachlich
-  zuständige Testdatei.
-- Mehrschrittige DB-Änderungen, die nur gemeinsam gültig sind, laufen in einer Transaktion. Socket-
-  Events werden erst nach erfolgreicher Transaktion ausgesendet.
-
-## 7. Frontend und Design
-
-- Für alle UI-Änderungen gilt `server/DESIGN_SYSTEM.md`; die CSS-Tokens in
-  `server/public/css/style.css` sind die visuelle Single Source of Truth.
-- Bestehende Basiskomponenten und Helfer wiederverwenden, bevor neue Varianten entstehen.
-- UI-Texte sind Deutsch. Code, Kommentare, Testnamen und Commit-Messages sind Englisch.
-- Neue oder geänderte UI-Symbole kommen ausschließlich aus dem lokalen Lucide-Style-Helper
-  `server/public/js/icons.js`. Keine Emoji oder Unicode-Piktogramme für UI-Chrome; freie
-  Nutzerinhalte dürfen sie enthalten.
-- Bedienpfade für Kernaktionen kurz halten. Mobile Nutzung ist kein nachträglicher Sonderfall,
-  sondern wird zusammen mit Desktop gestaltet und getestet.
-- Zustände dürfen nicht allein durch Farbe vermittelt werden. Tastaturbedienung, sichtbarer Fokus,
-  verständliche Beschriftungen und `prefers-reduced-motion` gehören zur Definition von „fertig“.
-
-## 8. Tests und Verifikation
-
-Tests laufen mit dem eingebauten `node:test`-Runner, Supertest und Playwright. Details stehen in
-`server/TESTING.md`.
-
-Die Pipeline in `.github/workflows/deploy.yml` führt die verbindlichen Prüfungen bei Pull Requests,
-Änderungen an `main` und manuellen Ausführungen aus. Ein fehlgeschlagener Pflichtcheck wird nicht
-ignoriert oder durch erneutes Ausführen ohne Ursachenklärung umgangen. Lokale Prüfung und CI
-ergänzen einander; keine von beiden ersetzt die andere.
-
-Ein manueller Workflow-Lauf führt standardmäßig nur die Prüfungen aus. Image-Veröffentlichung und
-Produktiv-Deployment benötigen bei manueller Ausführung die ausdrückliche Eingabe `deploy=true`;
-ein Push auf `main` behält den automatischen Build-und-Deploy-Ablauf bei.
-
-| Änderung | Mindestens ausführen |
-|---|---|
-| Nur Dokumentation | Links, Pfade und genannte Scripts manuell prüfen |
-| Server, DB, API oder gemeinsame Logik | `npm run lint`, `npm run build` und `npm test` in `server/` |
-| Frontend-CSS oder Frontend-JS | zusätzlich `npm run check:tokens` und `npm run test:e2e` |
-| Agent | `npm run lint` und `npm test` in `agent/`; Server-Vertragstests, falls Protokoll betroffen |
-| Tooling-/Format-Konfiguration | zusätzlich `npm run format:check` in `server/` |
-| Race-relevanter Zustand | zusätzlicher Parallel-Request-Integrationstest |
-
-- Neue Logik erhält Tests für Happy Path, relevante Validierungsfehler und Zustandskonflikte.
-- Ein Test darf keine produktive DB, keinen fremden Port und keine echte Nutzerkonfiguration nutzen.
-- Tests nicht löschen, lockern oder mit pauschalen Timeouts kaschieren, nur um einen Lauf grün zu
-  bekommen. Flaky Tests werden ursächlich stabilisiert.
-- Wenn eine erforderliche Prüfung nicht ausgeführt werden kann, im Abschluss konkret nennen: welche
-  Prüfung, warum und welches Restrisiko bleibt.
-
-## 9. Arbeitsbaum, Scope und Git
-
-- Vor Änderungen `git status --short` prüfen. Vorhandene Änderungen als Nutzereigentum behandeln.
-- Nur Dateien ändern, die zum Auftrag gehören. Keine beiläufigen Großformatierungen oder
-  Refactorings, die den Review erschweren.
-- Keine fremden Änderungen zurücksetzen, überschreiben, verstecken oder in den eigenen Commit
-  aufnehmen. Destruktive Git-Befehle sind ohne ausdrücklichen Auftrag tabu.
-- Auf dem aktuell vom Nutzer gewählten Branch arbeiten. Keine fest codierten Agent-Branches;
-  Branchwechsel oder neue Branches nur auf ausdrücklichen Wunsch.
-- Commits klein, in sich geschlossen und imperativ auf Englisch benennen. Commit und Push erfolgen
-  nur, wenn der Nutzer oder der aktuelle Auftrag dies verlangt; dabei den Scope vorher prüfen.
-- Abhängigkeiten und Lockfiles nur ändern, wenn sie für den Auftrag notwendig sind. Neue Pakete
-  begründen und auf Wartungs-, Sicherheits- und Offline-Auswirkungen prüfen.
-
-## 10. Projekthistorie und Betrieb
-
-- Die versionierte Projekthistorie liegt unter `docs/changelog/`. `docs/changelog/README.md` ist
-  der chronologische Einstiegspunkt; die neuesten Einträge stehen oben.
-- Für jeden in `main` gemergten Pull Request wird unter `docs/changelog/pr/` ein Eintrag mit
-  PR-Nummer, Datum, Branch, Merge-Commit und kurzer Zusammenfassung gepflegt. Merge-Metadaten erst
-  eintragen, wenn sie tatsächlich existieren; niemals Nummern oder SHAs erfinden.
-- Für jeden Arbeitsbranch in der PR-Historie hält `docs/changelog/branches/` die zugehörigen PRs und
-  ihren Status zusammen. Nach Abschluss eines Feature-Branches beziehungsweise nach dem Merge
-  werden PR-Datei, Branch-Datei und Übersicht gemeinsam aktualisiert.
-- Reine technische Synchronisations-Merges ohne eigene fachliche Änderung erhalten keinen
-  duplizierten Feature-Eintrag.
-- Änderungen an Deployment, Logging, Backups oder Prozessbetrieb aktualisieren
-  `server/OPERATIONS.md`. Log-Rotation liegt beim verwendeten Container-/Prozessmanager und bleibt
-  vom separaten SQLite-Backup-Prozess getrennt.
-
-## 11. Definition of Done
-
-Eine Änderung ist erst fertig, wenn:
+Eine Änderung ist fertig, wenn:
 
 - das gewünschte Verhalten vollständig umgesetzt und ohne Erklärung auffindbar ist,
-- Eingaben, Fehlerpfade und gegebenenfalls konkurrierende Requests abgesichert sind,
-- relevante Realtime-Verbraucher aktualisiert wurden,
-- erforderliche Unit-, Integrations- und E2E-Tests ergänzt und erfolgreich ausgeführt wurden,
-- Lint, Formatprüfung, Build und Design-Token-Check entsprechend der Matrix grün sind,
+- Eingaben, Fehlerpfade und gegebenenfalls konkurrierende Zugriffe abgesichert sind,
+- die einschlägigen Tests und statischen Prüfungen erfolgreich gelaufen sind,
 - Dokumentation und tatsächliches Verhalten übereinstimmen,
 - keine Secrets, produktiven Daten oder sachfremden Änderungen enthalten sind,
 - der Abschluss geänderte Bereiche, ausgeführte Prüfungen und verbleibende Einschränkungen nennt.
+
+Kann eine erforderliche Prüfung nicht laufen, konkret nennen: welche Prüfung, warum und welches
+Restrisiko bleibt.
