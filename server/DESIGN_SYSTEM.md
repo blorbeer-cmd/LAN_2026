@@ -296,10 +296,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   row grid.
 - **Food orders** — Open orders form a responsive two-column nested-card grid. Order information,
   per-player positions, the responsive add-item form, total and actions are visually separated
-  inside each card. An absent send time is plain text without a misleading timer icon. Closing an
-  order is the colorful full-width primary action below a divider; the compact neutral
-  „Hinzufügen“ action does not stretch to the input height. Closed orders use the standard
-  collapsible-card history presentation.
+  inside each card. A lone or final odd order keeps regular half-row width on desktop instead of
+  stretching across both columns. An absent send time is plain text without a misleading timer
+  icon. Closing an order is the colorful full-width primary action below a divider; the compact
+  neutral „Hinzufügen“ action does not stretch to the input height. Closed orders live inside one
+  standard, initially collapsed „Historie“ section whose open state survives live re-renders.
 - **Hall of Fame and Info** — Hall-of-Fame rankings use the shared two-column leaderboard grid;
   events are two-column cards whose overall and tournament winners are stable bordered rows rather
   than pills. The visible short name for the former Info-Board is „Info“ throughout navigation,

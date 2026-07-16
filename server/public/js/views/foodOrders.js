@@ -16,14 +16,7 @@ import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 
 let cache = null;
 let loading = false;
-
-// Which closed orders are expanded. Module-level rather than read off the
-// DOM: any mutation clears `cache` before calling ctx.rerender(), which
-// synchronously re-renders once with an empty list (cache still null) and
-// only picks up the reload's result on a second, later rerender — reading
-// "current DOM state" at render time would see nothing on that second pass,
-// since the first pass already wiped the <details> elements out.
-const expandedClosedOrderIds = new Set();
+let historyOpen = false;
 
 async function load(ctx) {
   loading = true;
@@ -155,19 +148,17 @@ function renderOpenOrder(order, myId) {
 
 function renderClosedOrder(order) {
   return `
-    <details class="card collapsible-section" data-closed-order="${order.id}" ${expandedClosedOrderIds.has(order.id) ? 'open' : ''}>
-      <summary class="collapsible-section-header">
-        <h2>${escapeHtml(order.title)} <span class="muted" style="font-size:var(--font-size-xs);font-weight:var(--font-weight-regular);">· ${order.items.length} Position(en)${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}</span></h2>
-        <span class="collapsible-section-summary-end">
-          <span class="badge badge-offline">Geschlossen</span>
-          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
-        </span>
-      </summary>
-      <div class="collapsible-section-content">
-        <div>${renderDetails(order)}</div>
-        <div style="margin-top:var(--space-3);">${renderItems(order, null)}</div>
+    <article class="card stack food-order-card">
+      <div class="row-between">
+        <strong>${escapeHtml(order.title)}</strong>
+        <span class="badge badge-offline">Geschlossen</span>
       </div>
-    </details>`;
+      <div class="muted food-order-meta">
+        ${order.items.length} Position(en)${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}
+      </div>
+      ${renderDetails(order)}
+      <div class="food-order-items">${renderItems(order, null)}</div>
+    </article>`;
 }
 
 function openNewOrderForm(ctx, myId) {
@@ -302,7 +293,7 @@ export function renderFoodOrders(container, ctx) {
       : openOrders.length === 0
         ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('foodOrders'))}</span><br />Gerade keine offene Bestellung.<br />
            <span class="muted" style="font-size:var(--font-size-sm);">Starte eine, wenn ihr was bestellen wollt – alle können sich dann selbst eintragen.</span></div>`
-        : `<div class="two-column-card-grid">${openOrders.map((o) => renderOpenOrder(o, myId)).join('')}</div>`;
+        : `<div class="two-column-card-grid food-order-grid">${openOrders.map((o) => renderOpenOrder(o, myId)).join('')}</div>`;
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
@@ -318,10 +309,18 @@ export function renderFoodOrders(container, ctx) {
       </section>
       ${
         closedOrders.length
-          ? `<section class="card stack grouped-page-section" aria-labelledby="food-history-title">
-               <div class="grouped-page-section-title"><h2 id="food-history-title">Frühere Bestellungen</h2></div>
-               <div class="food-order-history-list">${closedOrders.map(renderClosedOrder).join('')}</div>
-             </section>`
+          ? `<details class="card grouped-page-section collapsible-section" data-food-history ${historyOpen ? 'open' : ''}>
+               <summary class="collapsible-section-header">
+                 <h2>Historie</h2>
+                 <span class="collapsible-section-summary-end">
+                   <span class="badge badge-offline">${closedOrders.length}</span>
+                   <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+                 </span>
+               </summary>
+               <div class="collapsible-section-content">
+                 <div class="two-column-card-grid food-order-grid">${closedOrders.map(renderClosedOrder).join('')}</div>
+               </div>
+             </details>`
           : ''
       }
     </div>
@@ -383,11 +382,8 @@ export function renderFoodOrders(container, ctx) {
     });
   });
 
-  container.querySelectorAll('[data-closed-order]').forEach((details) => {
-    details.addEventListener('toggle', () => {
-      if (details.open) expandedClosedOrderIds.add(details.dataset.closedOrder);
-      else expandedClosedOrderIds.delete(details.dataset.closedOrder);
-    });
+  container.querySelector('[data-food-history]')?.addEventListener('toggle', (event) => {
+    historyOpen = event.currentTarget.open;
   });
 
   container.querySelectorAll('[data-edit-details]').forEach((btn) => {

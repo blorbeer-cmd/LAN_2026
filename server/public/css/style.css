@@ -3656,6 +3656,10 @@ input[type='number'].tournament-score-input {
   .two-column-card-grid > :last-child:nth-child(odd) {
     grid-column: 1 / -1;
   }
+  .two-column-card-grid.food-order-grid > :only-child,
+  .two-column-card-grid.food-order-grid > :last-child:nth-child(odd) {
+    grid-column: auto;
+  }
 }
 .lb-row {
   display: flex;
@@ -3738,7 +3742,6 @@ input[type='number'].tournament-score-input {
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
-.food-order-history-list,
 .hall-of-fame-tournaments {
   display: flex;
   flex-direction: column;
