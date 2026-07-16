@@ -314,7 +314,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   vertically center their participant count in the status header and show their current ranking as
   „Zwischenstand“; single-choice runoffs are explicitly labeled
   „Stichwahl“. Without an open round, the card only states that no vote is running. The regular personal Vote
-  view keeps its open-round distribution hidden.
+  view keeps its open-round distribution hidden. Without a tournament, the tournament card uses
+  the concise empty state „Kein offenes Turnier.“.
 - **Grouped page sections** — `.grouped-page-sections` stacks the page's major areas with the
   shared vertical rhythm. Every `.grouped-page-section` is a full-width `.card`; its visible
   heading lives inside the surface through `.grouped-page-section-title`, while filters and
@@ -397,6 +398,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   omitted. Tournament formats and per-game tournament counts are separate nested groups with blue
   and pink accent rails.
   The former „Witzige Rekorde“ section uses the concise title „Trivia“.
+  Its empty state is symbol-free and avoids repeating that title.
 - **Profile** — The profile color uses a compact round color wheel with the selected color visible
   in its center. It follows the shared accent spectrum instead of exposing the browser's rectangular
   native color field.

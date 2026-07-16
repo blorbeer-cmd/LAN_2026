@@ -406,7 +406,7 @@ async function refreshAll() {
       const detail = await api.tournaments.get(active.id);
       document.getElementById('kiosk-tournament').innerHTML = renderTournament(detail);
     } else {
-      document.getElementById('kiosk-tournament').innerHTML = `<div class="empty-state">Noch kein Turnier.</div>`;
+      document.getElementById('kiosk-tournament').innerHTML = `<div class="empty-state">Kein offenes Turnier.</div>`;
     }
   } catch (err) {
     // A kiosk screen has nobody to dismiss a toast — log and try again on

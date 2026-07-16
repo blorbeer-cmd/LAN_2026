@@ -612,6 +612,9 @@ test('Auswertungen (via Mehr) shows a real award and keeps detail logs collapsed
   assert.equal(await page.locator('#analytics-event-help').count(), 0);
   assert.equal(await page.locator('.analytics-tournament-breakdown').count(), 2);
   await page.waitForSelector('#analytics-fun-title:text-is("Trivia")');
+  const triviaSection = page.locator('section[aria-labelledby="analytics-fun-title"]');
+  assert.equal(await triviaSection.getByText('Noch nicht genug Ergebnisse.', { exact: true }).count(), 1);
+  assert.equal(await triviaSection.locator('.empty-state-icon').count(), 0);
   assert.equal(await page.locator('#an-event[aria-label="Veranstaltung"]').count(), 1);
 
   await page.click('[data-an-tab="arcade"]');

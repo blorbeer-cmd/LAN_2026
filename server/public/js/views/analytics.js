@@ -442,7 +442,7 @@ function renderMatchesContent() {
   }
   const funHtml = funCards.length
     ? `<div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));">${funCards.join('')}</div>`
-    : `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon('sparkles')}</span>Noch nicht genug Ergebnisse für witzige Rekorde.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);">Noch nicht genug Ergebnisse.</div>`;
 
   return `
     <section class="card stack grouped-page-section" aria-labelledby="analytics-match-results-title">
