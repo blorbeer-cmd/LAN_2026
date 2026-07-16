@@ -1798,6 +1798,32 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
     'kiosk cards must not introduce internal scrollbars'
   );
   await page.request.post(`${BASE_URL}/api/votes/cancel`);
+  const kioskGames = games.slice(0, 8) as Array<{ id: string }>;
+  await page.request.post(`${BASE_URL}/api/votes/start`, {
+    data: { mode: 'points', title: 'Großer Kiosk Vote', gameIds: kioskGames.map((game) => game.id) },
+  });
+  await page.request.post(`${BASE_URL}/api/votes/points`, {
+    data: {
+      playerId,
+      entries: kioskGames.map((game, index) => ({ gameId: game.id, points: 10 - index })),
+    },
+  });
+  await page.waitForSelector('.kiosk-vote-result:nth-child(8)');
+  assert.equal(await page.locator('.kiosk-vote-result').count(), 8);
+  const voteBounds = await page.locator('#kiosk-votes').evaluate((voteContent) => {
+    const contentBox = voteContent.getBoundingClientRect();
+    const resultBoxes = Array.from(voteContent.querySelectorAll('.kiosk-vote-result')).map((result) => {
+      const resultBox = result.getBoundingClientRect();
+      return { top: resultBox.top, bottom: resultBox.bottom };
+    });
+    return {
+      content: { top: contentBox.top, bottom: contentBox.bottom },
+      results: resultBoxes,
+      allVisible: resultBoxes.every((result) => result.top >= contentBox.top && result.bottom <= contentBox.bottom),
+    };
+  });
+  assert.equal(voteBounds.allVisible, true, `eight live vote results should remain visible inside the kiosk card: ${JSON.stringify(voteBounds)}`);
+  await page.request.post(`${BASE_URL}/api/votes/cancel`);
   await page.waitForSelector('#kiosk-votes >> text=Keine offene Abstimmung.');
   assert.equal(await page.locator('.kiosk-vote-overview').count(), 0);
   assert.ok(await page.locator('#kiosk-votes .kiosk-vote-state').evaluate((emptyState) => {

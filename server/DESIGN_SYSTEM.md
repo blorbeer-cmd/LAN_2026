@@ -313,7 +313,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   states, matching the main app's nested-surface hierarchy. Vote is a live room display: open rounds
   vertically center their participant count in the status header and show their current ranking as
   „Zwischenstand“; single-choice runoffs are explicitly labeled
-  „Stichwahl“. Without an open round, the card only states that no vote is running. The regular personal Vote
+  „Stichwahl“. The two-column live ranking uses the available space for up to eight games without
+  introducing a scrollbar. Without an open round, the card only states that no vote is running. The regular personal Vote
   view keeps its open-round distribution hidden. Without a tournament, the tournament card uses
   the concise empty state „Kein offenes Turnier.“.
 - **Grouped page sections** — `.grouped-page-sections` stacks the page's major areas with the

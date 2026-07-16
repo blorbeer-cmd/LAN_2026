@@ -6,7 +6,7 @@
 
 import { api, getToken, setToken } from './api.js';
 import { connectSocket } from './socket.js';
-import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml, gameBadgeHtml, formatDateTime } from './format.js';
+import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml, formatDateTime } from './format.js';
 import { installIconReplacement, icon } from './icons.js';
 import { bannerContentHtml } from './pushFeed.js';
 import { drawArcadeStreamCanvas } from './arcadeStreamRenderer.js';
@@ -203,10 +203,10 @@ function renderKioskVoteRows(vote) {
   const scored = vote.results.filter((result) => result.score > 0);
   if (scored.length === 0) return `<div class="muted kiosk-vote-empty">Noch keine Stimmen.</div>`;
   const maxScore = Math.max(...scored.map((result) => result.score));
+  const visibleResults = scored.slice(0, 8);
   let previousScore = null;
   let rank = 0;
-  return `<div class="kiosk-vote-results">${scored
-    .slice(0, 6)
+  return `<div class="kiosk-vote-results ${visibleResults.length > 6 ? 'is-dense' : ''}">${visibleResults
     .map((result, index) => {
       if (previousScore === null || result.score !== previousScore) rank = index + 1;
       previousScore = result.score;
@@ -214,7 +214,6 @@ function renderKioskVoteRows(vote) {
       const score = vote.mode === 'points' ? `${result.points} P` : `${result.votes} ${result.votes === 1 ? 'Stimme' : 'Stimmen'}`;
       return `<div class="kiosk-vote-result ${highlighted ? 'is-leading' : ''}">
         <span class="lb-rank">${rank}</span>
-        ${gameBadgeHtml({ id: result.gameId, icon: result.icon }, 24)}
         <strong>${escapeHtml(result.gameName)}</strong>
         <span class="lb-points">${score}</span>
       </div>`;
