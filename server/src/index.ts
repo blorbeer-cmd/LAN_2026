@@ -72,7 +72,7 @@ function start(): void {
 
   server.listen(config.port, () => {
     // eslint-disable-next-line no-console
-    console.log(`RespawnHQ server läuft auf http://localhost:${config.port}`);
+    console.log(`Respawn server läuft auf http://localhost:${config.port}`);
     if (config.authMode === 'legacy' && !accessProtectionEnabled()) {
       // eslint-disable-next-line no-console
       console.log('Hinweis: Kein ACCESS_TOKEN gesetzt – Zugangsschutz ist deaktiviert.');

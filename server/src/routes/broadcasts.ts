@@ -96,7 +96,7 @@ broadcastsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
 
   const allPlayerIds = (db.prepare('SELECT id FROM players').all() as Array<{ id: string }>).map((p) => p.id);
   notifyPlayers(allPlayerIds, {
-    title: `📢 ${player.name}`,
+    title: player.name,
     body: row.message,
     url: '/#broadcast',
   }, 'all', { key: broadcastTopicKey(row.id), expiresAt: row.ends_at });

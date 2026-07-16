@@ -4,9 +4,10 @@
 
 import { filterTestUsers } from './testFilter.js';
 
-const TOKEN_KEY = 'lan2026_access_token';
+const TOKEN_KEY = 'respawn_access_token';
+const PLAYER_ID_KEY = 'respawn_my_player_id';
 let kioskMode = false;
-export const GROUP_KEY = 'lan2026_group_id';
+export const GROUP_KEY = 'respawn_group_id';
 
 export function setKioskMode(enabled) {
   kioskMode = Boolean(enabled);
@@ -29,13 +30,15 @@ export async function apiFetch(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   const token = getToken();
   if (token) headers['x-access-token'] = token;
+  const playerId = localStorage.getItem(PLAYER_ID_KEY);
+  if (playerId) headers['x-player-id'] = playerId;
   if (kioskMode) headers['x-kiosk-mode'] = '1';
   addGroupHeader(headers);
   // Tells the server this device currently sees test players (admin mode).
   // Needed for replace-style writes like the seating layout: a non-admin
   // client's state has test users filtered out, so its saves must not be
   // allowed to silently unseat them (see seating.ts).
-  if (localStorage.getItem('lan2026_admin') === '1') headers['x-admin-mode'] = '1';
+  if (localStorage.getItem('respawn_admin') === '1') headers['x-admin-mode'] = '1';
 
   const res = await fetch(path, { ...options, headers });
 
@@ -70,6 +73,8 @@ export async function fetchText(path) {
   const headers = {};
   const token = getToken();
   if (token) headers['x-access-token'] = token;
+  const playerId = localStorage.getItem(PLAYER_ID_KEY);
+  if (playerId) headers['x-player-id'] = playerId;
   addGroupHeader(headers);
   const res = await fetch(path, { headers });
   const text = await res.text();
@@ -93,6 +98,8 @@ export async function fetchBlob(path) {
   const headers = {};
   const token = getToken();
   if (token) headers['x-access-token'] = token;
+  const playerId = localStorage.getItem(PLAYER_ID_KEY);
+  if (playerId) headers['x-player-id'] = playerId;
   addGroupHeader(headers);
   const res = await fetch(path, { headers });
   if (!res.ok) {
@@ -244,6 +251,7 @@ export const api = {
 
   votes: {
     get: () => apiFetch('/api/votes'),
+    kiosk: () => apiFetch('/api/votes/kiosk'),
     mine: (playerId) => apiFetch(`/api/votes/mine?playerId=${encodeURIComponent(playerId)}`),
     history: () => apiFetch('/api/votes/history'),
     historyRound: (round) => apiFetch(`/api/votes/history/${round}`),
@@ -261,6 +269,7 @@ export const api = {
       return apiFetch(`/api/matches${qs ? `?${qs}` : ''}`);
     },
     create: (data) => apiFetch('/api/matches', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id, data) => apiFetch(`/api/matches/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     remove: (id) => apiFetch(`/api/matches/${id}`, { method: 'DELETE' }),
   },
 
@@ -297,7 +306,10 @@ export const api = {
       const qs = new URLSearchParams(params).toString();
       return apiFetch(`/api/analytics/games-tournaments${qs ? `?${qs}` : ''}`);
     },
-    arcade: () => apiFetch('/api/analytics/arcade'),
+    arcade: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return apiFetch(`/api/analytics/arcade${qs ? `?${qs}` : ''}`);
+    },
   },
 
   events: {
@@ -325,6 +337,11 @@ export const api = {
     recordResult: (tournamentId, matchId, payload) =>
       apiFetch(`/api/tournaments/${tournamentId}/matches/${matchId}/result`, {
         method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    updateResult: (tournamentId, matchId, payload) =>
+      apiFetch(`/api/tournaments/${tournamentId}/matches/${matchId}/result`, {
+        method: 'PUT',
         body: JSON.stringify(payload),
       }),
     remove: (id) => apiFetch(`/api/tournaments/${id}`, { method: 'DELETE' }),
@@ -380,7 +397,14 @@ export const api = {
     last: () => apiFetch('/api/push/last'),
     current: (playerId) => apiFetch(`/api/push/current?playerId=${encodeURIComponent(playerId)}`),
     log: (playerId) => apiFetch(`/api/push/log?playerId=${encodeURIComponent(playerId)}`),
-    seen: (id, playerId) => apiFetch(`/api/push/${id}/seen`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    seen: (id, playerId) =>
+      apiFetch(`/api/push/${id}/seen`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    seenAll: (playerId) =>
+      apiFetch('/api/push/seen-all', { method: 'POST', body: JSON.stringify({ playerId }) }),
+    hide: (id, playerId) =>
+      apiFetch(`/api/push/${id}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
+    hideAll: (playerId) =>
+      apiFetch('/api/push', { method: 'DELETE', body: JSON.stringify({ playerId }) }),
   },
 
   agent: {
@@ -423,6 +447,7 @@ export const api = {
         ? api.groups.createTestUsers(groupId, count)
         : apiFetch('/api/admin/test-users', { method: 'POST', body: JSON.stringify({ count }) });
     },
+    seedHallOfFame: () => apiFetch('/api/admin/test-data/hall-of-fame', { method: 'POST' }),
     cleanupTestUsers: () => {
       const groupId = sessionStorage.getItem(GROUP_KEY);
       return groupId ? api.groups.cleanupTestUsers(groupId) : apiFetch('/api/admin/test-users', { method: 'DELETE' });

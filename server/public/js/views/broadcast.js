@@ -1,4 +1,4 @@
-// "Durchsage" view: one message out to everyone at once ("🍕 Essen ist
+// "Durchsage" view: one message out to everyone at once ("Essen ist
 // da!") — lands as a toast on every open device, as a banner on the kiosk
 // screen, and as a push notification on opted-in phones. Needs an identity
 // (the sender's name is always attached), reuses the shared whoami card.
@@ -9,9 +9,12 @@ import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { icon } from '../icons.js';
+import { domainIcon } from '../domainIcons.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let historyCache = null;
 let historyLoading = false;
+let historyOpen = false;
 
 async function loadHistory(ctx) {
   historyLoading = true;
@@ -37,10 +40,10 @@ function renderHistory(myId) {
     return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
   }
   if (historyCache.length === 0) {
-    return `<div class="empty-state"><span class="emoji">📢</span>Noch keine Durchsagen.</div>`;
+    return `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('broadcast'))}</span>Noch keine Durchsagen.</div>`;
   }
   const now = Date.now();
-  return historyCache
+  const rows = historyCache
     .map((b) => {
       const active = !b.endedAt && b.endsAt > now;
       const status = b.endedAt
@@ -49,15 +52,16 @@ function renderHistory(myId) {
           ? `Sichtbar bis ${formatDateTime(b.endsAt)} Uhr`
           : `Abgelaufen am ${formatDateTime(b.endsAt)} Uhr`;
       return `
-      <div class="lb-row" style="align-items:flex-start;">
+      <div class="lb-row" style="align-items:flex-start;" data-broadcast="${b.id}">
         <div class="stack" style="gap:var(--space-1);flex:1;">
           <div><strong>${escapeHtml(b.playerName)}</strong>: ${escapeHtml(b.message)}</div>
           <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(b.createdAt)} Uhr · ${status}</span>
         </div>
-        ${active && b.playerId === myId ? `<button type="button" class="btn btn-sm btn-danger" data-end-broadcast="${b.id}">${icon('x')} Beenden</button>` : ''}
+        ${active && b.playerId === myId ? `<button type="button" class="btn btn-sm btn-danger" data-end-broadcast="${b.id}">Beenden</button>` : ''}
       </div>`;
     })
     .join('');
+  return `<div class="leaderboard-list-grid">${rows}</div>`;
 }
 
 export function renderBroadcast(container, ctx) {
@@ -76,33 +80,53 @@ export function renderBroadcast(container, ctx) {
   const displayEndsAt = Number.isFinite(parsedEndsAt) ? parsedEndsAt : Date.now() + 60 * 60 * 1000;
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
-    <h1 class="view-title">📢 Durchsage</h1>
-    ${whoAmICardHtml('broadcast-whoami', { marginBottom: '12px' })}
-    <div class="card stack">
-      <form id="broadcast-form" class="stack">
-        <div>
-          <label for="broadcast-message" class="field-label">Nachricht</label>
-          <input type="text" id="broadcast-message" placeholder="z.B. Essen ist da!" maxlength="200" ${myId ? '' : 'disabled'} />
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+    <h1 class="view-title">Durchsage</h1>
+    ${whoAmICardHtml('broadcast-whoami', { marginBottom: 'var(--space-3)' })}
+    <div class="grouped-page-sections">
+      <section class="card stack grouped-page-section" aria-labelledby="broadcast-new-title">
+        <div class="grouped-page-section-title">
+          <span class="title-with-info">
+            <h2 id="broadcast-new-title">Neue Durchsage</h2>
+            ${infoTooltipHtml(
+              'broadcast-delivery-help',
+              'Neue Durchsage',
+              'Erscheint sofort auf allen offenen Geräten, auf dem Kiosk-Bildschirm und als Push-Benachrichtigung bei allen, die Push aktiviert haben.'
+            )}
+          </span>
         </div>
-        <div>
-          <label for="broadcast-ends-at" class="field-label">Sichtbar bis</label>
-          ${dateTimeFieldHtml('broadcast-ends-at', displayEndsAt, { disabled: !myId })}
-        </div>
-        <button type="submit" class="btn btn-primary" ${myId ? '' : 'disabled'}>${icon('megaphone')} Senden</button>
-      </form>
-      <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
-        Erscheint sofort auf allen offenen Geräten, auf dem Kiosk-Bildschirm und als
-        Push-Benachrichtigung bei allen, die Push aktiviert haben.
-      </p>
+        <form id="broadcast-form" class="stack">
+          <div>
+            <label for="broadcast-message" class="field-label">Nachricht</label>
+            <input type="text" id="broadcast-message" placeholder="z.B. Essen ist da!" maxlength="200" ${myId ? '' : 'disabled'} />
+          </div>
+          <div>
+            <label for="broadcast-ends-at" class="field-label">Sichtbar bis</label>
+            ${dateTimeFieldHtml('broadcast-ends-at', displayEndsAt, { disabled: !myId })}
+          </div>
+          <button type="submit" class="btn btn-primary" ${myId ? '' : 'disabled'}>Senden</button>
+        </form>
+      </section>
+      <details class="card grouped-page-section collapsible-section" data-broadcast-history ${historyOpen ? 'open' : ''}>
+        <summary class="collapsible-section-header">
+          <h2>Historie</h2>
+          <span class="collapsible-section-summary-end">
+            <span class="badge badge-offline">${historyCache?.length ?? 0}</span>
+            <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+          </span>
+        </summary>
+        <div class="collapsible-section-content">${renderHistory(myId)}</div>
+      </details>
     </div>
-
-    <div class="section-title">🕓 Letzte Durchsagen</div>
-    <div class="card">${renderHistory(myId)}</div>
   `;
 
   wireWhoAmICard(container, 'broadcast-whoami', ctx);
   wireDateTimeField(container, 'broadcast-ends-at');
+  wireInfoTooltips(container);
+
+  container.querySelector('[data-broadcast-history]')?.addEventListener('toggle', (event) => {
+    historyOpen = event.currentTarget.open;
+  });
 
   const messageInput = container.querySelector('#broadcast-message');
   if (prevValue) messageInput.value = prevValue;

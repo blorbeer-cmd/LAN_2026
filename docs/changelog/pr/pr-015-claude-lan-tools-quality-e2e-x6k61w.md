@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-08
 - Branch: `claude/lan-tools-quality-e2e-x6k61w`
-- Merge-Commit: [`13fdc8a`](https://github.com/blorbeer-cmd/LAN_2026/commit/13fdc8ad146a6536a7dba16cbef4593e2fdbf35d)
-- Pull Request: [#15](https://github.com/blorbeer-cmd/LAN_2026/pull/15)
+- Merge-Commit: [`13fdc8a`](https://github.com/blorbeer-cmd/Respawn/commit/13fdc8ad146a6536a7dba16cbef4593e2fdbf35d)
+- Pull Request: [#15](https://github.com/blorbeer-cmd/Respawn/pull/15)
 
 ## Changelog
 

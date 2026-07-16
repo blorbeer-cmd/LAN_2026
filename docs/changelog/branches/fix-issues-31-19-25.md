@@ -10,4 +10,4 @@ Kleine Sicherheits-, Robustheits- und Test-Dokumentationsverbesserungen:
 
 ## Pull Request
 
-- [PR #144](https://github.com/blorbeer-cmd/LAN_2026/pull/144), gemergt am 2026-07-12.
+- [PR #144](https://github.com/blorbeer-cmd/Respawn/pull/144), gemergt am 2026-07-12.

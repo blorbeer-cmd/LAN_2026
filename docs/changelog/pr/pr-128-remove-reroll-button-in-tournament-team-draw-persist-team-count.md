@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-11
 - Branch: `claude/team-draw-button-persistence-nadnbw`
-- Merge-Commit: [`ee7f7ce`](https://github.com/blorbeer-cmd/LAN_2026/commit/ee7f7cef00995d31fc7e87da332e4473e65399a4)
-- Pull Request: [#128](https://github.com/blorbeer-cmd/LAN_2026/pull/128)
+- Merge-Commit: [`ee7f7ce`](https://github.com/blorbeer-cmd/Respawn/commit/ee7f7cef00995d31fc7e87da332e4473e65399a4)
+- Pull Request: [#128](https://github.com/blorbeer-cmd/Respawn/pull/128)
 
 ## Changelog
 

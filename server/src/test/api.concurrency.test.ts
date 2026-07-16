@@ -42,14 +42,18 @@ test('simultaneous vote starts: exactly one round opens', async () => {
   assert.equal(state.body.round, 1);
 });
 
-test('double-tapped and simultaneous votes: one vote per player, last choice wins', async () => {
+test('double-tapped and simultaneous votes: exactly one vote per player wins, repeats get 409', async () => {
   const results = await Promise.all(
     playerIds.flatMap((playerId) => [
       request(app).post('/api/votes').send({ playerId, gameId: gameIds[0] }),
       request(app).post('/api/votes').send({ playerId, gameId: gameIds[1] }),
     ])
   );
-  assert.ok(results.every((r) => r.status === 200), JSON.stringify(statusCounts(results.map((r) => r.status))));
+  for (let index = 0; index < playerIds.length; index++) {
+    const pair = statusCounts([results[index * 2].status, results[index * 2 + 1].status]);
+    assert.equal(pair[200], 1, JSON.stringify(pair));
+    assert.equal(pair[409], 1, JSON.stringify(pair));
+  }
 
   const state = await request(app).get('/api/votes');
   assert.equal(state.body.totalVotes, playerIds.length);
@@ -138,6 +142,40 @@ test('conflicting simultaneous tournament reports: one result, one leaderboard m
   const decided = detail.body.matches.find((m: { id: string }) => m.id === match.id);
   const final = detail.body.matches.find((m: { round: number }) => m.round === 2);
   assert.equal(final.teamAId, decided.winnerTeamId);
+});
+
+test('simultaneous tournament corrections accept one current version only', async () => {
+  const create = await request(app)
+    .post('/api/tournaments')
+    .send({
+      gameId: gameIds[0],
+      format: 'round_robin',
+      teams: [
+        { name: 'C1', playerIds: [playerIds[0]] },
+        { name: 'C2', playerIds: [playerIds[1]] },
+      ],
+    });
+  const match = create.body.matches[0];
+  const recorded = await request(app)
+    .post(`/api/tournaments/${create.body.id}/matches/${match.id}/result`)
+    .send({ winnerTeamId: match.teamAId });
+  const version = recorded.body.matches[0].playedAt;
+  const before = (await request(app).get(`/api/matches?gameId=${gameIds[0]}`)).body.length;
+
+  const results = await Promise.all([
+    request(app)
+      .put(`/api/tournaments/${create.body.id}/matches/${match.id}/result`)
+      .send({ winnerTeamId: match.teamAId, expectedPlayedAt: version }),
+    request(app)
+      .put(`/api/tournaments/${create.body.id}/matches/${match.id}/result`)
+      .send({ winnerTeamId: match.teamBId, expectedPlayedAt: version }),
+  ]);
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[200], 1, JSON.stringify(counts));
+  assert.equal(counts[409], 1, JSON.stringify(counts));
+
+  const after = (await request(app).get(`/api/matches?gameId=${gameIds[0]}`)).body.length;
+  assert.equal(after, before);
 });
 
 test('simultaneous draft starts: exactly one draft opens', async () => {

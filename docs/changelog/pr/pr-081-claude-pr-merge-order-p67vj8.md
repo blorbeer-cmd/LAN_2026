@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-09
 - Branch: `claude/pr-merge-order-p67vj8`
-- Merge-Commit: [`fba27a8`](https://github.com/blorbeer-cmd/LAN_2026/commit/fba27a874175b11a1bda0cd6d353e21ef56afbc8)
-- Pull Request: [#81](https://github.com/blorbeer-cmd/LAN_2026/pull/81)
+- Merge-Commit: [`fba27a8`](https://github.com/blorbeer-cmd/Respawn/commit/fba27a874175b11a1bda0cd6d353e21ef56afbc8)
+- Pull Request: [#81](https://github.com/blorbeer-cmd/Respawn/pull/81)
 
 ## Changelog
 

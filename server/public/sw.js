@@ -5,14 +5,14 @@
 // so an offline app shell would be misleading.
 
 self.addEventListener('push', (event) => {
-  let data = { title: 'RespawnHQ', body: '' };
+  let data = { title: 'Respawn', body: '' };
   try {
     if (event.data) data = event.data.json();
   } catch {
     // Ignore malformed payloads rather than crashing the service worker.
   }
   event.waitUntil(
-    self.registration.showNotification(data.title || 'RespawnHQ', {
+    self.registration.showNotification(data.title || 'Respawn', {
       body: data.body || '',
       icon: '/img/logo-192.png',
       badge: '/img/logo-badge-96.png',

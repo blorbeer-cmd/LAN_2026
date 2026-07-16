@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-11
 - Branch: `claude/voting-page-improvements-3bsox6`
-- Merge-Commit: [`a2f6ac1`](https://github.com/blorbeer-cmd/LAN_2026/commit/a2f6ac1ade4d3ad722079ddfcf6843ad36193d74)
-- Pull Request: [#112](https://github.com/blorbeer-cmd/LAN_2026/pull/112)
+- Merge-Commit: [`a2f6ac1`](https://github.com/blorbeer-cmd/Respawn/commit/a2f6ac1ade4d3ad722079ddfcf6843ad36193d74)
+- Pull Request: [#112](https://github.com/blorbeer-cmd/Respawn/pull/112)
 
 ## Changelog
 

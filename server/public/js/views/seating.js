@@ -7,9 +7,12 @@
 // events never fire). Both go through movePlayer() + save().
 
 import { api } from '../api.js';
-import { escapeHtml, avatarHtml } from '../format.js';
+import { state } from '../state.js';
+import { escapeHtml, avatarHtml, stateLabel } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
+import { isAdmin } from '../admin.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 const SIDES = ['top', 'right', 'bottom', 'left'];
 const LABELS = { top: 'Oben', right: 'Rechts', bottom: 'Unten', left: 'Links' };
@@ -46,9 +49,14 @@ function assignmentAt(layout, side, seat) {
 // list-row height rule).
 function seatNamesHtml(player) {
   const realName = player.real_name;
+  const liveState = state.live.find((entry) => entry.player_id === player.id)?.state ?? 'offline';
+  const liveLabel = stateLabel(liveState);
   return `<span class="seating-seat-names">
-    <span class="seating-seat-name">${escapeHtml(player.name)}</span>
-    <span class="seating-seat-realname"${realName ? '' : ' style="visibility:hidden;"'}>${escapeHtml(realName || ' ')}</span>
+    <span class="seating-seat-name-line">
+      <span class="seating-seat-name">${escapeHtml(player.name)}</span>
+      <span class="seating-status-indicator is-${liveState}" role="img" aria-label="Status: ${liveLabel}" title="${liveLabel}"></span>
+    </span>
+    <span class="seating-seat-realname${realName ? '' : ' is-empty'}"${realName ? '' : ' style="visibility:hidden;"'}>${escapeHtml(realName || ' ')}</span>
   </span>`;
 }
 
@@ -59,7 +67,7 @@ function seatHtml(layout, players, side, seat, editable) {
   const title = player ? `${player.name}${player.real_name ? ` (${player.real_name})` : ''}` : 'Freier Sitzplatz';
   return `<div class="seating-seat ${player ? 'is-occupied' : ''} ${isSelected ? 'is-selected' : ''}" data-seat-side="${side}" data-seat-index="${seat}" ${player ? `data-player-id="${player.id}"` : ''}
       ${editable && player ? 'draggable="true"' : ''} title="${escapeHtml(title)}">
-    ${player ? `${avatarHtml(player, 30)}${seatNamesHtml(player)}` : `<span class="seating-seat-number">${seat + 1}</span><span class="muted">frei</span>`}
+    ${player ? `${avatarHtml(player, 30)}${seatNamesHtml(player)}` : `<span class="seating-seat-free-label">Frei</span>`}
   </div>`;
 }
 
@@ -85,35 +93,44 @@ export function renderSeatingPlan(layout, players, { editable = false } = {}) {
 }
 
 function renderSideControls(layout) {
-  return `<div class="seating-controls card">
-    <div class="section-title">Plätze pro Tischseite</div>
+  return `<section class="seating-controls card stack grouped-page-section" aria-labelledby="seating-config-title">
+    <div class="grouped-page-section-title"><h2 id="seating-config-title">Konfiguration</h2></div>
     <div class="seating-control-grid">${SIDES.map((side) => `
       <label>${LABELS[side]}
         <input type="number" min="0" max="12" value="${layout[`${side}Seats`]}" data-seat-count="${side}" />
       </label>`).join('')}</div>
-    <div class="muted seating-save-status">${saving ? 'Speichert…' : 'Änderungen werden automatisch gespeichert.'}</div>
-  </div>`;
+    <div class="seating-save-status title-with-info">
+      <span class="muted">${saving ? 'Speichert…' : 'Automatisch gespeichert'}</span>
+      ${infoTooltipHtml('seating-save-help', 'automatischem Speichern', 'Änderungen werden direkt gespeichert.')}
+    </div>
+  </section>`;
 }
 
 function renderPool(layout, players) {
   const assigned = assignedIds(layout);
   const unassigned = players.filter((player) => !assigned.has(player.id));
-  return `<div class="seating-pool card">
-    <div class="row-between"><div class="section-title" style="margin:0;">Spieler</div><span class="muted">${unassigned.length} frei</span></div>
+  return `<section class="seating-pool card stack grouped-page-section" aria-labelledby="seating-players-title">
+    <div class="grouped-page-section-title"><h2 id="seating-players-title">Spieler</h2><span class="muted">${unassigned.length} frei</span></div>
     <div class="seating-player-pool" data-seat-pool>
       ${unassigned.length ? unassigned.map((player) => `<div class="seating-pool-player ${selected?.playerId === player.id ? 'is-selected' : ''}" draggable="true" data-player-id="${player.id}">${avatarHtml(player, 28)}${seatNamesHtml(player)}</div>`).join('') : '<span class="muted">Alle Spieler sitzen bereits am Tisch.</span>'}
     </div>
-  </div>`;
+  </section>`;
 }
 
 function renderEditor() {
   const { layout, players } = cache;
-  return `<div class="seating-editor">
-    ${renderSeatingPlan(layout, players, { editable: true })}
-    <p class="muted seating-hint">${icon('monitor')} Wer an derselben Tischkante nebeneinander sitzt, bekommt sich gegenseitig
-      automatisch als „Sichtbare Monitore" im Profil vorausgefüllt.</p>
-    ${renderSideControls(layout)}
+  return `<div class="seating-editor grouped-page-sections">
+    <section class="card stack grouped-page-section" aria-labelledby="seating-plan-title">
+      <div class="grouped-page-section-title">
+        <h2 id="seating-plan-title" class="title-with-info">
+          <span>Sitzplan</span>
+          ${infoTooltipHtml('seating-monitors-help', 'Sitzplan', 'Sitznachbarn werden automatisch als sichtbare Monitore eingetragen.')}
+        </h2>
+      </div>
+      ${renderSeatingPlan(layout, players, { editable: true })}
+    </section>
     ${renderPool(layout, players)}
+    ${renderSideControls(layout)}
   </div>`;
 }
 
@@ -261,10 +278,24 @@ async function load(ctx) {
 }
 
 export function renderSeating(container, ctx) {
+  if (!isAdmin()) {
+    container.innerHTML = `
+      <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
+      <h1 class="view-title">Sitzplan</h1>
+      <div class="card stack">
+        <strong>Nur im Admin-Modus verfügbar</strong>
+        <span class="muted">Aktiviere zuerst den Admin-Modus, um den Sitzplan zu bearbeiten.</span>
+        <button type="button" class="btn btn-primary btn-block" data-navigate="admin">Zum Admin-Modus</button>
+      </div>`;
+    return;
+  }
   if (cache === null && !loading) load(ctx);
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="settings">‹ Zurück</button>
-    <h1 class="view-title">${icon('armchair')} Sitzplan</h1>
+    <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
+    <h1 class="view-title">Sitzplan</h1>
     ${loading || cache === null ? '<div class="empty-state">Lädt…</div>' : renderEditor()}`;
-  if (cache) wireEditor(container, ctx);
+  if (cache) {
+    wireInfoTooltips(container);
+    wireEditor(container, ctx);
+  }
 }

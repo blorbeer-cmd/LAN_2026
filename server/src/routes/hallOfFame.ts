@@ -43,6 +43,12 @@ hallOfFameRouter.get('/', (req, res) => {
     }>;
     const matches: MatchForScoring[] = matchRows.map((r) => JSON.parse(r.result));
     const standings = computeStandings(matches);
+    const overallStandings = standings.map((standing) => ({
+      ...playerSummary(playerById, standing.playerId),
+      points: standing.points,
+      wins: standing.wins,
+      matchesPlayed: standing.matchesPlayed,
+    }));
     const top = standings[0];
     // Only crown a champion if someone actually scored — an event with no
     // recorded matches has no "Gesamtsieger" to speak of.
@@ -71,6 +77,7 @@ hallOfFameRouter.get('/', (req, res) => {
       startsAt: e.starts_at,
       endsAt: e.ends_at,
       overallChampion,
+      overallStandings,
       tournamentChampions,
     };
   });

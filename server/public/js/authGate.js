@@ -78,7 +78,7 @@ function passwordField({ autofocus = false, autocomplete = 'current-password', l
 
 function renderLoginForm() {
   return cardShell(
-    'RespawnHQ',
+    'Respawn',
     'Melde dich mit Name und Passwort an.',
     `${nameField()}${passwordField()}<button type="submit" class="btn btn-primary">Anmelden</button>`
   );
@@ -86,7 +86,7 @@ function renderLoginForm() {
 
 function renderRegisterForm() {
   return cardShell(
-    'RespawnHQ',
+    'Respawn',
     'Willkommen! Leg dein Konto an.',
     `${nameField()}${passwordField({ autocomplete: 'new-password', label: 'Passwort (mind. 15 Zeichen)', passphraseHint: true })}<button type="submit" class="btn btn-primary">Konto anlegen</button>`
   );
@@ -103,7 +103,7 @@ function renderClaimForm(bootstrapAccounts = null) {
       </div>`
     : '';
   return cardShell(
-    'RespawnHQ',
+    'Respawn',
     'Setze ein Passwort für dein bestehendes Konto.',
     `${accountPicker}${passwordField({ autofocus: !bootstrapAccounts, autocomplete: 'new-password', label: 'Passwort (mind. 15 Zeichen)', passphraseHint: true })}<button type="submit" class="btn btn-primary" ${bootstrapAccounts && !bootstrapAccounts.length ? 'disabled' : ''}>Passwort setzen</button>`
   );
@@ -111,7 +111,7 @@ function renderClaimForm(bootstrapAccounts = null) {
 
 function renderResetForm() {
   return cardShell(
-    'RespawnHQ',
+    'Respawn',
     'Lege ein neues Passwort für dein Konto fest.',
     `${passwordField({ autofocus: true, autocomplete: 'new-password', label: 'Neues Passwort (mind. 15 Zeichen)', passphraseHint: true })}<button type="submit" class="btn btn-primary">Passwort zurücksetzen</button>`
   );

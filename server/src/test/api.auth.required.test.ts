@@ -91,7 +91,7 @@ test('required auth binds personal APIs to the session and protects API keys', (
         db.prepare("SELECT COUNT(*) AS count FROM admin_log WHERE action = 'access_denied'").get().count,
         0
       );
-      const malformedCookie = await request(app).get('/api/me').set('Cookie', 'lan2026_session=%');
+      const malformedCookie = await request(app).get('/api/me').set('Cookie', 'respawn_session=%');
       assert.equal(malformedCookie.status, 401);
 
       const spoofedSkill = await request(app).put('/api/skills').set('Cookie', alice.cookie).send({

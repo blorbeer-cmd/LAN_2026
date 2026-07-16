@@ -103,11 +103,13 @@ test('PATCH /api/food-orders/:id sets, updates and clears send time, notes, and 
   assert.equal(missing.status, 404);
 });
 
-test('items: everyone adds their own, prices sum up, price is optional', async () => {
+test('items: quantities multiply unit prices, totals sum up, and price is optional', async () => {
   const a = await request(app)
     .post(`/api/food-orders/${orderId}/items`)
-    .send({ playerId: alice.id, description: '1x Margherita groß', priceCents: 950 });
+    .send({ playerId: alice.id, description: 'Margherita groß', quantity: 2, priceCents: 950 });
   assert.equal(a.status, 201);
+  assert.equal(a.body.items[0].quantity, 2);
+  assert.equal(a.body.totalCents, 1900);
   aliceItemId = a.body.items[0].id;
 
   const badPrice = await request(app)
@@ -115,12 +117,17 @@ test('items: everyone adds their own, prices sum up, price is optional', async (
     .send({ playerId: bob.id, description: '1x Salami', priceCents: -5 });
   assert.equal(badPrice.status, 400);
 
+  const badQuantity = await request(app)
+    .post(`/api/food-orders/${orderId}/items`)
+    .send({ playerId: bob.id, description: 'Salami', quantity: 0, priceCents: 1050 });
+  assert.equal(badQuantity.status, 400);
+
   const b = await request(app)
     .post(`/api/food-orders/${orderId}/items`)
     .send({ playerId: bob.id, description: '1x Salami' }); // no price
   assert.equal(b.status, 201);
   assert.equal(b.body.items.length, 2);
-  assert.equal(b.body.totalCents, 950);
+  assert.equal(b.body.totalCents, 1900);
 });
 
 test('players can only remove their own items, and only while open', async () => {
@@ -138,14 +145,14 @@ test('players can only remove their own items, and only while open', async () =>
   // Re-add so the close test below has content.
   await request(app)
     .post(`/api/food-orders/${orderId}/items`)
-    .send({ playerId: alice.id, description: '1x Margherita groß', priceCents: 950 });
+    .send({ playerId: alice.id, description: 'Margherita groß', quantity: 2, priceCents: 950 });
 });
 
 test('closing freezes the order: no more items, no second close', async () => {
   const close = await request(app).post(`/api/food-orders/${orderId}/close`);
   assert.equal(close.status, 200);
   assert.equal(close.body.open, false);
-  assert.equal(close.body.totalCents, 950);
+  assert.equal(close.body.totalCents, 1900);
 
   const lateItem = await request(app)
     .post(`/api/food-orders/${orderId}/items`)

@@ -8,9 +8,36 @@ import {
   computeRoundRobinStandings,
   assignGroups,
   selectAdvancers,
+  deriveTournamentLobbyName,
   type BracketMatchSlot,
   type TeamStanding,
 } from './tournament';
+
+test('deriveTournamentLobbyName creates unique phase/round/slot names', () => {
+  assert.equal(
+    deriveTournamentLobbyName('LAN26', 'round_robin', { round: 2, slot: 1, stage: null, groupIndex: null }),
+    'LAN26-L-R2-M2'
+  );
+  assert.equal(
+    deriveTournamentLobbyName('LAN26', 'group_knockout', { round: 1, slot: 0, stage: 'group', groupIndex: 1 }),
+    'LAN26-G2-R1-M1'
+  );
+  assert.equal(
+    deriveTournamentLobbyName('LAN26', 'group_knockout', { round: 1, slot: 0, stage: 'knockout', groupIndex: null }),
+    'LAN26-KO-R1-M1'
+  );
+});
+
+test('deriveTournamentLobbyName keeps generated names within the existing 60-character limit', () => {
+  const name = deriveTournamentLobbyName('x'.repeat(60), 'single_elimination', {
+    round: 12,
+    slot: 14,
+    stage: null,
+    groupIndex: null,
+  });
+  assert.equal(name?.length, 60);
+  assert.equal(deriveTournamentLobbyName(null, 'round_robin', { round: 1, slot: 0, stage: null, groupIndex: null }), null);
+});
 
 test('generateBracket with a power-of-two team count has no byes', () => {
   const matches = generateBracket(['a', 'b', 'c', 'd']);

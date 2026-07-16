@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-13
 - Branch: `codex/docker-prepare-fix`
-- Merge-Commit: [`2e92824`](https://github.com/blorbeer-cmd/LAN_2026/commit/2e92824818ec89944cef8165061ae1b41c4d8964)
-- Pull Request: [#171](https://github.com/blorbeer-cmd/LAN_2026/pull/171)
+- Merge-Commit: [`2e92824`](https://github.com/blorbeer-cmd/Respawn/commit/2e92824818ec89944cef8165061ae1b41c4d8964)
+- Pull Request: [#171](https://github.com/blorbeer-cmd/Respawn/pull/171)
 
 ## Changelog
 

@@ -109,18 +109,3 @@ export function matchRosterHtml(players, { winnerId = null, scoreFor = null, det
         .join('')}
     </div>`;
 }
-
-export function arcadeInfoGridHtml(items) {
-  return `
-    <div class="arcade-info-grid">
-      ${items
-        .map(
-          (item) => `
-            <div class="arcade-info-card">
-              <div class="field-label">${escapeHtml(item.label)}</div>
-              <div class="arcade-info-text">${escapeHtml(item.text)}</div>
-            </div>`
-        )
-        .join('')}
-    </div>`;
-}

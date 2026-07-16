@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-10
 - Branch: `claude/food-order-metadata-links-tupa5b`
-- Merge-Commit: [`df4bad9`](https://github.com/blorbeer-cmd/LAN_2026/commit/df4bad995d16d05d8d47b2c681f1e5e82bb4f53e)
-- Pull Request: [#89](https://github.com/blorbeer-cmd/LAN_2026/pull/89)
+- Merge-Commit: [`df4bad9`](https://github.com/blorbeer-cmd/Respawn/commit/df4bad995d16d05d8d47b2c681f1e5e82bb4f53e)
+- Pull Request: [#89](https://github.com/blorbeer-cmd/Respawn/pull/89)
 
 ## Changelog
 

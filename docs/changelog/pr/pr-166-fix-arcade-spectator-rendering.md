@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-13
 - Branch: `codex/fix-arcade-spectator-views`
-- Merge-Commit: [`8e47760`](https://github.com/blorbeer-cmd/LAN_2026/commit/8e477606ab7f1e06e870ff769c0ab1b6b63f5f8f)
-- Pull Request: [#166](https://github.com/blorbeer-cmd/LAN_2026/pull/166)
+- Merge-Commit: [`8e47760`](https://github.com/blorbeer-cmd/Respawn/commit/8e477606ab7f1e06e870ff769c0ab1b6b63f5f8f)
+- Pull Request: [#166](https://github.com/blorbeer-cmd/Respawn/pull/166)
 
 ## Changelog
 

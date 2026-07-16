@@ -299,7 +299,7 @@ export function registerArcadeSockets(io: Server): void {
         notifyPlayers(
           otherPlayerIds,
           {
-            title: '🕹️ Neue Quiz-Lobby',
+            title: 'Neue Quiz-Lobby',
             body: `${player.name} hat eine Quiz-Lobby geöffnet – jetzt beitreten!`,
             url: '/#arcade',
           },

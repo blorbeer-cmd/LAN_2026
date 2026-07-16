@@ -1,7 +1,7 @@
-# RespawnHQ – LAN-Party Tool
+# Respawn – LAN-Party Tool
 
 Ein kleines, selbst gehostetes Web-Tool für unsere jährliche LAN-Party (~15 Leute, 3 Tage).
-Alles Wichtige an einem Ort: **Teams auslosen**, **abstimmen was als Nächstes gespielt wird**,
+Alles Wichtige an einem Ort: **Teams zusammenstellen**, **abstimmen was als Nächstes gespielt wird**,
 **live sehen wer gerade was zockt**, **Turniere durchspielen** und ein **Wochenend-Leaderboard**.
 Jeder öffnet einfach die URL im Handy-Browser und legt sich in unter einer Minute selbst ein
 Profil an – keine App-Installation, kein Account, kein langes Formular.
@@ -12,13 +12,13 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 
 | Feature | Beschreibung |
 |---|---|
-| 🏠 **Home** | Die Startseite für jeden Spieler: Live-Status (wer zockt gerade was, via kleinem Agent auf jedem PC – auch mehrere Spiele gleichzeitig, inkl. Vordergrund-Erkennung), manuelles Pausieren („Pause/Essen"), die Kiosk-Inhalte zum Antippen – laufende Abstimmung (inkl. Titel), aktives Turnier, offene Essensbestellung, offene Arcade-Lobby, persönliche „Skill bewerten"-Erinnerung – Rangliste-Top-3, Sitzplan und ganz unten der Mitteilungs-Verlauf. Die jeweils neueste Mitteilung ist zusätzlich immer oben im App-Header sichtbar, auf jeder Seite, mit Direktlink in den passenden Bereich. |
+| 🏠 **Home** | Die gruppierte Startübersicht mit „Aktuell“, Live-Status, Rangliste und Sitzplan. Die neueste aktive Mitteilung erscheint als farbiger Direktlink unter der Kopfzeile; die Glocke öffnet die persönliche Historie mit Gelesen- und Löschaktionen. |
 | ⚔️ **Turniere** | K.O.-Baum, Liga „jeder gegen jeden" (optional mit Hin-/Rückspielen) oder Gruppenphase + K.O. – Teams werden skill-balanciert vorgeschlagen, Ergebnisse (mit oder ohne Punktestand) direkt im Turnierbaum eintragbar, der sich automatisch weiterentwickelt. Bei neuem/anstehendem Match gibt's einen Push-Hinweis an die Beteiligten. |
-| ⚖️ **Teams auslosen** | Für ein Spiel automatisch faire Teams aus den anwesenden Spielern auslosen (skill-basiert), optional unter Berücksichtigung der Sitznachbarn (nicht gegeneinander). Ergebnis lässt sich direkt als Match-Ergebnis übernehmen. |
-| 👑 **Captain-Draft** | Die soziale Alternative zum Auslosen: 2–4 Captains picken abwechselnd (Snake-Reihenfolge) live aus dem Pool – jeder verfolgt den Draft auf dem eigenen Handy, nur der Captain am Zug kann picken. Ergebnis landet in der Team-Historie und lässt sich direkt als Match eintragen. |
-| 🗳️ **Abstimmung** | „Was zocken wir als Nächstes?" – jeder gibt seine Stimme/Punkte ab, sieht dabei aber nur die eigene Wahl, nicht den Zwischenstand (kein Bandwagon-Voting). Die volle Punkteverteilung gibt's erst nach Rundenende. Historie vergangener Runden lässt sich jederzeit erneut öffnen, um das Detail-Ergebnis einer Runde nachträglich anzusehen. |
-| 🏆 **Rangliste** | Match-Ergebnisse eintragen (auch Frei-für-alle ohne Teams), Punkte übers ganze Wochenende, Gesamtsieger der LAN, Spielzeit pro Spieler und pro Spiel. |
-| ☰ **Mehr** | Sammelstelle für alles Weitere: Info-Board, Essensbestellung, Durchsage, Spieler-Verwaltung, Spielzeit-Auswertungen, Spiele-&-Turnier-Statistiken, Hall of Fame, Sitzplan. |
+| ⚖️ **Teams** | Für ein Spiel automatisch faire Teams aus den anwesenden Spielern auslosen (skill-basiert) oder per Captain Draft zusammenstellen, optional unter Berücksichtigung der Sitznachbarn. Ergebnisse und Rematches landen in einer gemeinsamen Historie. |
+| 👑 **Captain Draft** | Die soziale Alternative zur Auslosung innerhalb von „Teams“: erst Teilnehmer, dann 2–4 Captains festlegen und anschließend abwechselnd aus den übrigen Spielern wählen. Das Ergebnis landet in derselben Historie wie Auslosungen und Matches. |
+| 🗳️ **Vote** | Jeder gibt seine Stimme oder Punkte ab, sieht dabei aber nur die eigene Wahl und nicht den Zwischenstand. Die volle Punkteverteilung erscheint erst nach Rundenende; Unentschieden können direkt in eine Stichwahl übergehen. Vergangene Runden stehen in der eingeklappten Historie. |
+| 🏆 **Rang** | Match-Ergebnisse eintragen (auch Frei-für-alle ohne Teams), Punkte übers ganze Wochenende, Gesamtsieger der LAN, gefilterte Spieler-Spielzeit und ein ungefilterter Vergleich der Spielzeit pro Spiel. |
+| ☰ **Mehr** | Sammelstelle für An-/Abreise, Arcade, Auswertungen, Durchsage, Essen, Hall of Fame, Info, Spieler, Spiele, Einstellungen und weitere Werkzeuge. |
 
 ### Auswertungen & Erinnerungsstücke
 
@@ -35,13 +35,13 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 | Feature | Beschreibung |
 |---|---|
 | 📢 **Durchsage** | Eine Nachricht an alle auf einmal („Essen ist da!"): Toast auf jedem offenen Gerät, großes Banner auf dem Kiosk-Bildschirm, Push-Benachrichtigung an alle Opt-ins – immer mit Absender-Name. |
-| 📌 **Info-Board** | WLAN-Passwort, Discord-Link, Gameserver-IPs, Hausregeln: die Dinge, die sonst fünfmal pro Abend gefragt werden, als gepinnte Einträge mit Kopieren-Knopf. Jeder darf pflegen. |
+| 📌 **Info** | WLAN-Passwort, Discord-Link, Gameserver-IPs und Hausregeln als alphabetisch sortierte Einträge mit Kopieren-Knopf. |
 | 🍕 **Essen bestellen** | Sammelbestellung öffnen („Pizza bei Luigi's"), optional mit Zeitpunkt „geht raus um …" (später jederzeit änderbar, auch nach dem Schließen), jeder trägt seine Positionen (mit optionalem Preis) vom eigenen Handy ein, Schließen friert die Liste ein – gruppiert pro Person mit Summen, bereit zum Vorlesen am Telefon. |
 | 👤 **Selbst-Onboarding** | Neue Geräte landen automatisch auf der Profil-Seite statt auf Home: Name (eindeutig), Profilbild, Skill-Ratings und der eigene Agent-Download richten sich alle selbst ein. |
 | 🎪 **Events** | Mehrere LAN-Termine können nebeneinander in derselben Installation existieren; nur eines „trackt" gleichzeitig (Live-Status/Spielzeit). Was außerhalb eines getrackten Events passiert, läuft normal unter „Außerhalb von Events". |
 | 🔗 **Einladungslink & QR-Code** | Ein Link (trägt bei Bedarf das Zugangs-Token) führt neue Leute direkt zur Profil-Erstellung – auch als QR-Code zum Aushängen, serverseitig gerendert statt über einen Drittanbieter. |
-| 🖥️ **TV-/Kiosk-Ansicht** | Read-only Dashboard (`/kiosk.html`) für einen gemeinsamen Bildschirm/Beamer: Live-Status, Abstimmung, Rangliste, laufendes Turnier – aktualisiert sich von selbst, keine Bedienung nötig. |
-| 🔔 **Push-Benachrichtigungen** | Optionaler Web-Push-Opt-in fürs Handy: neue Abstimmung, neue Durchsage, anstehendes Turnier-Match – auch wenn die Seite gerade nicht offen ist. Ein Tipp auf die Benachrichtigung springt direkt in den passenden Bereich; verpasste Nachrichten stehen zusätzlich im Mitteilungs-Feed auf Home. |
+| 🖥️ **TV-/Kiosk-Ansicht** | Scrollfreies Read-only-Dashboard (`/kiosk.html`) im 2×2-Aufbau: Live-Status und Rangliste oben, Live-Vote und Turnier unten. Offene Votes maskieren die Spiele, zeigen nach dem Ende einen Countdown und halten das Ergebnis anschließend zeitlich begrenzt sichtbar. |
+| 🔔 **Push-Benachrichtigungen** | Optionaler Web-Push-Opt-in fürs Handy: neue Abstimmung, neue Durchsage, anstehendes Turnier-Match – auch wenn die Seite gerade nicht offen ist. Ein Tipp springt direkt in den passenden Bereich; verpasste Nachrichten stehen in der Glocke der Kopfzeile. |
 | ⚙️ **Spiele & Events verwalten** | Spiele, Icons/eigene Logos, Teamgrößen und Prozessname-Zuordnungen (für die Live-Erkennung) zentral pflegen; Events anlegen und Tracking gezielt starten/stoppen. |
 | 🔒 **Zugangsschutz** | Leichtes, geteiltes Zugangs-Token schützt die Web-Oberfläche, falls der Server im Internet erreichbar ist. |
 | 🛡️ **Race-sicher** | Gleichzeitige Aktionen mehrerer Geräte (zwei Leute starten dieselbe Abstimmung, zwei melden dasselbe Turnier-Match) werden serverseitig sauber aufgelöst statt Daten zu duplizieren/korrumpieren – siehe `CLAUDE.md` → „Race-Sicherheit". |
@@ -81,7 +81,7 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 ## Verzeichnisstruktur
 
 ```
-LAN_2026/
+Respawn/
 ├── server/            # Zentraler Server (Node.js + TypeScript)
 │   ├── src/           # Quellcode (API, DB, WebSocket, PDF-Export)
 │   ├── public/        # Web-Oberfläche (HTML/CSS/JS) + Kiosk-Ansicht
@@ -148,10 +148,10 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
 
 1. **Deploy-Keypair erzeugen** (lokal, einmalig):
    ```bash
-   ssh-keygen -t ed25519 -f lan2026-deploy -N "" -C "lan2026-deploy"
+   ssh-keygen -t ed25519 -f respawn-deploy -N "" -C "respawn-deploy"
    ```
 2. **Cloudflare Tunnel anlegen** (einmalig, im [Zero Trust Dashboard](https://one.dash.cloudflare.com/)
-   → Networks → Tunnels → Create a tunnel → "Cloudflared"): Name z. B. `lan2026`, Public Hostname
+   → Networks → Tunnels → Create a tunnel → "Cloudflared"): Name z. B. `respawn`, Public Hostname
    `lan.dbehnke.dev` → Service `HTTP` → `app:3000` (der Service-Name `app` ist der Compose-Service,
    nicht die Server-IP). Den angezeigten **Tunnel-Token** kopieren.
 3. **GitHub Secrets anlegen** (Repo → Settings → Secrets and variables → Actions → *Secrets*, bewusst
@@ -160,8 +160,8 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
    | Secret | Wert |
    |---|---|
    | `HETZNER_API_TOKEN` | Hetzner Cloud Projekt → Security → API Tokens (Read & Write) |
-   | `HETZNER_SSH_PUBLIC_KEY` | Inhalt von `lan2026-deploy.pub` |
-   | `SSH_PRIVATE_KEY` | Inhalt von `lan2026-deploy` (**ohne** `.pub`) |
+   | `HETZNER_SSH_PUBLIC_KEY` | Inhalt von `respawn-deploy.pub` |
+   | `SSH_PRIVATE_KEY` | Inhalt von `respawn-deploy` (**ohne** `.pub`) |
    | `CF_TUNNEL_TOKEN` | Token aus Schritt 2 |
    | `APP_ADMIN_RECOVERY_CODE` | starkes, einmaliges Bootstrap-/Recovery-Secret, z. B. `openssl rand -hex 32`; nicht an Teilnehmende verteilen |
    | `APP_KIOSK_TOKEN` | eigener starker Read-only-Token für `/kiosk.html`; z. B. `openssl rand -hex 32` |
@@ -172,7 +172,7 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
    "Run workflow"). Legt SSH-Key + Firewall (nur Port 22 offen) + einen `cx23`-Server in Helsinki
    (`hel1`) in Hetzner an, installiert Docker via Cloud-Init, loggt sich per `GHCR_PULL_TOKEN` bei
    GHCR ein und startet `cloudflared` direkt beim ersten Boot. Läuft **einmalig** – ein zweiter Lauf
-   überspringt die Server-Erstellung, wenn `lan2026` schon existiert.
+   überspringt die Server-Erstellung, wenn `respawn` schon existiert.
 
    Der `app`-Container startet bei diesem allerersten Boot noch **nicht** – es gibt ja noch kein
    gepushtes Image (das entsteht erst in Schritt 6). Das ist erwartet und kein Fehler; `cloudflared`
@@ -191,7 +191,7 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
   erneuten Image-Build oder Produktionsneustart aus. Der Deploy wartet auf den
   Container-Healthcheck und zeigt bei einem Startfehler automatisch Status und die letzten 100
   App-Logzeilen; anschließend stellt er das zuvor laufende Image wieder her.
-- **Rollback:** auf dem Server (`ssh deploy@<HETZNER_HOST>`) `/opt/lan2026/rollback.sh <git-sha>`
+- **Rollback:** auf dem Server (`ssh deploy@<HETZNER_HOST>`) `/opt/respawn/rollback.sh <git-sha>`
   ausführen – pinnt das Docker-Image auf einen früheren, bereits gebauten Stand.
 - **Bestehenden Server auf persönliche Logins umstellen:** Vor dem ersten Required-Auth-Deploy in
   `/opt/lan2026/.env` ein starkes `ADMIN_RECOVERY_CODE`, einen separaten `KIOSK_TOKEN` ergänzen und
@@ -206,7 +206,7 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
   "richtigen" LAN auf dem neuen Server unbedingt einen Cron-Job mit `sqlite3 .backup` ergänzen.
 - **`GHCR_PULL_TOKEN` erneuern** (Fine-grained Tokens laufen ggf. ab): neuen Token erzeugen, das
   GitHub-Secret aktualisieren, dann auf dem Server (`ssh deploy@<HETZNER_HOST>`) die Zeile in
-  `/opt/lan2026/.env` von Hand ersetzen und `/opt/lan2026/docker-login.sh` erneut ausführen –
+  `/opt/respawn/.env` von Hand ersetzen und `/opt/respawn/docker-login.sh` erneut ausführen –
   `provision.yml` läuft nach dem ersten Mal nicht automatisch nochmal.
 
 ### Lokale Entwicklung / manuelles Hosting (unverändert möglich)
@@ -265,7 +265,7 @@ anzufassen.
 ## Agent-Steuerung (Kontroll-Tool)
 
 Läuft die installierte `.exe` unter Windows, erscheint kein Konsolenfenster, sondern ein kleines
-Icon im System-Tray. Doppelklick darauf (oder die Desktop-Verknüpfung „RespawnHQ-Agent Steuerung",
+Icon im System-Tray. Doppelklick darauf (oder die Desktop-Verknüpfung „Respawn-Agent Steuerung",
 die `install.bat` anlegt) öffnet eine kleine Weboberfläche unter `http://127.0.0.1:47813` – **rein
 lokal**, nie über das LAN erreichbar, also nichts, worauf ein Mitspieler zugreifen könnte. Von dort
 lässt sich alles einstellen/aktualisieren, ohne die ZIP neu herunterzuladen oder Dateien von Hand
@@ -276,7 +276,7 @@ anzufassen:
 | **Pausieren / Fortsetzen** | Stoppt sofort das Melden an den Server (Spieler erscheint nach dem üblichen Timeout als „offline"), ohne den Agent-Prozess zu beenden. Übersteht auch einen PC-Neustart. Dasselbe Pausieren geht auch direkt im Web-Tool über „Tracking pausieren" im Profil – beide Wege zeigen denselben Stand. |
 | **Erweiterte Daten senden an/aus** | Schaltet das optionale Aktivitäts-Tracking (aktives Fenster + Leerlaufzeit, für „davon aktiv gespielt") live um. |
 | **Autostart an/aus** | Entfernt bzw. erstellt die Verknüpfung im Windows-Autostart-Ordner. Nur mit der installierten `.exe` verfügbar. |
-| **Komplett deinstallieren** | Entfernt den Autostart-Eintrag, beendet den Agent-Prozess und löscht den gesamten Installationsordner (`%LOCALAPPDATA%\RespawnHQ-Agent`) von diesem PC. |
+| **Komplett deinstallieren** | Entfernt den Autostart-Eintrag, beendet den Agent-Prozess und löscht den gesamten Installationsordner (`%LOCALAPPDATA%\Respawn-Agent`) von diesem PC. |
 
 Ist der Port belegt (z. B. zwei Agenten auf demselben PC), probiert der Agent automatisch die
 nächsten Ports (47814, 47815, …). Klappt das Tray-Icon aus irgendeinem Grund nicht, bleibt das
@@ -303,6 +303,7 @@ Details zur Teststrategie: [`server/TESTING.md`](server/TESTING.md).
 - **Server**: Node.js, TypeScript, Express, better-sqlite3, Socket.IO, `web-push` (Push-Benachrichtigungen),
   `qrcode` + `pdfkit` (Einladungs-QR-Code, Event-Export als PDF), `archiver` (personalisierte Agent-ZIP)
 - **Frontend**: Vanilla HTML/CSS/JS (kein Build-Schritt, bewusst schlank gehalten), eigenes kleines
-  Design-System (Spacing-Skala, wiederverwendete Komponenten – siehe `CLAUDE.md` → „Design-System")
+  Design-System mit Tokens, gruppierten Seitenflächen und wiederverwendeten Komponenten – siehe
+  [`server/DESIGN_SYSTEM.md`](server/DESIGN_SYSTEM.md)
 - **Agent**: Node.js (als `.exe` paketierbar via `pkg`, damit kein Node auf den Spieler-PCs nötig
   ist), inkl. eigenem lokalem HTTP-Kontrollserver für die Steuerungs-Oberfläche

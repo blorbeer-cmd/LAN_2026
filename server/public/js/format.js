@@ -69,30 +69,26 @@ export function seatConflictIconHtml(player) {
   const title = hasConflict
     ? `Spielt gegen Sitznachbar${names?.length > 1 ? 'n' : ''}: ${names.map(escapeHtml).join(', ')}`
     : '';
-  return `<span title="${title}" style="color:var(--state-paused);${hasConflict ? '' : 'visibility:hidden;'}">${icon('armchair')}</span>`;
-}
-
-// Game artwork and emoji are deliberately omitted from the UI. There are not
-// enough semantically strong line icons to give every title a useful symbol,
-// and repeating a generic gamepad adds noise without adding information.
-export function gameBadgeHtml(game, size = 28) {
-  return '';
+  return `<span role="img" aria-label="${title}" title="${title}" style="color:var(--state-paused);${hasConflict ? '' : 'visibility:hidden;'}">${icon('armchair')}</span>`;
 }
 
 // Renders the "currently running games" chip list for one live-board entry
-// (shared by the Live view and the kiosk dashboard). Only distinguishes
+// (shared by the Live view and the kiosk dashboard). Game artwork and emoji
+// are deliberately omitted from the UI: there are not enough semantically
+// strong line icons to give every title a useful symbol, and repeating a
+// generic gamepad adds noise without adding information. Only distinguishes
 // foreground vs. background when there's actually more than one game running
 // at once *and* the player's agent sent the foreground signal at all
 // (activityTracked) — with a single game, or with no signal, there's nothing
 // meaningful to disambiguate, so all chips render the same as before.
-export function gameChipsHtml(games, activityTracked, badgeSize = 20) {
+export function gameChipsHtml(games, activityTracked) {
   const showForeground = activityTracked && games.length > 1;
   return games
     .map((g) => {
       const isForeground = showForeground && g.foreground;
       const cls = !showForeground ? 'chip' : isForeground ? 'chip chip-foreground' : 'chip chip-background';
       const tag = isForeground ? ' <strong>· aktiv</strong>' : '';
-      return `<span class="${cls}">${gameBadgeHtml({ id: g.game_id, icon: g.game_icon }, badgeSize)} ${escapeHtml(g.game_name)} · ${formatSince(g.since)}${tag}</span>`;
+      return `<span class="${cls}">${escapeHtml(g.game_name)} · ${formatSince(g.since)}${tag}</span>`;
     })
     .join('');
 }

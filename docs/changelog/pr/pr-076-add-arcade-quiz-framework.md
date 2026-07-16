@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-09
 - Branch: `feat/arcade-quiz`
-- Merge-Commit: [`e579dbe`](https://github.com/blorbeer-cmd/LAN_2026/commit/e579dbe4b6c1ec13633aa624165de6508410f39b)
-- Pull Request: [#76](https://github.com/blorbeer-cmd/LAN_2026/pull/76)
+- Merge-Commit: [`e579dbe`](https://github.com/blorbeer-cmd/Respawn/commit/e579dbe4b6c1ec13633aa624165de6508410f39b)
+- Pull Request: [#76](https://github.com/blorbeer-cmd/Respawn/pull/76)
 
 ## Changelog
 

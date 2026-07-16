@@ -25,7 +25,7 @@ function scheduleUninstall({ installDir, startupShortcutPath }) {
     installDir ? `if exist "${installDir}" rmdir /s /q "${installDir}"` : '',
   ].filter(Boolean);
 
-  const scriptPath = path.join(os.tmpdir(), `lan2026-agent-uninstall-${Date.now()}.bat`);
+  const scriptPath = path.join(os.tmpdir(), `respawn-agent-uninstall-${Date.now()}.bat`);
   fs.writeFileSync(scriptPath, lines.join('\r\n') + '\r\n', 'utf8');
 
   // The cleanup script deletes itself last isn't necessary — it lives in

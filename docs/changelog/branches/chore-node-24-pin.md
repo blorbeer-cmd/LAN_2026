@@ -10,4 +10,4 @@ Node.js 24 als gemeinsame Mindestversion für Server und Agent festgeschrieben:
 
 ## Pull Request
 
-- [PR #146](https://github.com/blorbeer-cmd/LAN_2026/pull/146), gemergt am 2026-07-12.
+- [PR #146](https://github.com/blorbeer-cmd/Respawn/pull/146), gemergt am 2026-07-12.

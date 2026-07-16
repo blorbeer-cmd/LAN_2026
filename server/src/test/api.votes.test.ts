@@ -4,7 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
-import { voteNotificationPlayerIds } from '../routes/votes';
+import { db } from '../db';
+import { KIOSK_RESULT_DURATION_MS, KIOSK_RESULT_REVEAL_DELAY_MS, voteNotificationPlayerIds } from '../routes/votes';
 
 const app = createApp();
 let playerA: string;
@@ -75,22 +76,50 @@ test('while a round is open, per-game votes/points/score are withheld — only t
   assert.equal(cs2Result.score, undefined);
 });
 
-test('re-voting changes the player\'s previous choice instead of adding a second vote (verified after close)', async () => {
-  await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameRl });
+test('GET /api/votes/kiosk exposes the live tally for the shared display', async () => {
+  const res = await request(app).get('/api/votes/kiosk');
+  assert.equal(res.status, 200);
+  assert.equal(res.body.current.mode, 'single');
+  assert.equal(res.body.current.totalVoters, 2);
+  const cs2Result = res.body.current.results.find((result: { gameId: string }) => result.gameId === gameCs2);
+  assert.equal(cs2Result.votes, 2);
+  assert.equal(cs2Result.score, 2);
+});
+
+test('a player cannot submit a second single-mode vote in the same round', async () => {
+  const repeated = await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameRl });
+  assert.equal(repeated.status, 409);
+  assert.match(repeated.body.error, /bereits abgestimmt/);
 
   const stillOpen = await request(app).get('/api/votes');
-  assert.equal(stillOpen.body.totalVotes, 2); // still 2 voters total, not 3
+  assert.equal(stillOpen.body.totalVotes, 2);
 
-  // The re-vote's effect (A now on RL, not CS2) only becomes visible once
-  // the round closes — that's the whole point.
-  await request(app).post('/api/votes').send({ playerId: playerB, gameId: gameRl });
   const res = await request(app).post('/api/votes/close');
   assert.equal(res.status, 200);
-  assert.deepEqual(res.body.winnerGameIds, [gameRl]);
+  assert.deepEqual(res.body.winnerGameIds, [gameCs2]);
   const cs2Result = res.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
   const rlResult = res.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
-  assert.equal(cs2Result.votes, 0);
-  assert.equal(rlResult.votes, 2);
+  assert.equal(cs2Result.votes, 2);
+  assert.equal(rlResult.votes, 0);
+
+  const kiosk = await request(app).get('/api/votes/kiosk');
+  assert.equal(kiosk.body.current, null);
+  assert.equal(kiosk.body.recentResult.round, 1);
+  assert.equal(kiosk.body.recentResult.totalVoters, 2);
+  assert.deepEqual(
+    kiosk.body.recentResult.results.filter((result: { score: number }) => result.score > 0).map((result: { gameId: string }) => result.gameId),
+    [gameCs2]
+  );
+  assert.equal(kiosk.body.recentResult.revealAt - kiosk.body.recentResult.closedAt, KIOSK_RESULT_REVEAL_DELAY_MS);
+  assert.equal(kiosk.body.recentResult.expiresAt - kiosk.body.recentResult.revealAt, KIOSK_RESULT_DURATION_MS);
+
+  db.prepare('UPDATE vote_rounds SET closed_at = ? WHERE round = ?').run(
+    Date.now() - KIOSK_RESULT_REVEAL_DELAY_MS - KIOSK_RESULT_DURATION_MS - 1,
+    1
+  );
+  const expiredKiosk = await request(app).get('/api/votes/kiosk');
+  assert.equal(expiredKiosk.body.current, null);
+  assert.equal(expiredKiosk.body.recentResult, null);
 });
 
 test('a new round starts fresh (previous votes do not carry over)', async () => {
@@ -115,15 +144,20 @@ test('POST /api/votes/cancel rejects when nothing is open', async () => {
 test('GET /api/votes/history lists closed rounds, newest first, with their winner(s)', async () => {
   const res = await request(app).get('/api/votes/history');
   assert.equal(res.status, 200);
-  // Round 1 closed with Rocket League winning; round 2 was cancelled, so it
+  // Round 1 closed with Counter-Strike 2 winning; round 2 was cancelled, so it
   // must not show up here at all.
   assert.equal(res.body.history.length, 1);
   const [entry] = res.body.history;
   assert.equal(entry.round, 1);
   assert.equal(entry.totalVotes, 2);
+  assert.equal(entry.totalVoters, 2);
+  assert.ok(entry.results.length >= 2);
+  assert.ok(entry.results.some((result: { gameId: string }) => result.gameId === gameCs2));
+  assert.ok(entry.results.some((result: { gameId: string }) => result.gameId === gameRl));
+  assert.deepEqual(entry.winnerGameIds, [gameCs2]);
   assert.deepEqual(
     entry.winners.map((w: { gameId: string }) => w.gameId),
-    [gameRl]
+    [gameCs2]
   );
 });
 
@@ -132,11 +166,11 @@ test('GET /api/votes/history/:round reopens a past round with the full per-game 
   assert.equal(res.status, 200);
   assert.equal(res.body.round, 1);
   assert.equal(res.body.mode, 'single');
-  assert.deepEqual(res.body.winnerGameIds, [gameRl]);
+  assert.deepEqual(res.body.winnerGameIds, [gameCs2]);
   const cs2Result = res.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
   const rlResult = res.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
-  assert.equal(cs2Result.votes, 0);
-  assert.equal(rlResult.votes, 2);
+  assert.equal(cs2Result.votes, 2);
+  assert.equal(rlResult.votes, 0);
   assert.equal(res.body.totalVotes, 2);
   assert.equal(res.body.totalVoters, 2);
 });
@@ -186,7 +220,7 @@ test('a fresh round with no votes yet is sorted by aggregate "Bock" rating (Beli
 
 test('catalogResults keeps showing every rated game after a round restricted to fewer games closes', async () => {
   // Age of Empires 2 is rated highest but never part of a round that only
-  // ever covers CS2 and Rocket League — the "Top 5 nach Bock-Level" widget
+  // ever covers CS2 and Rocket League — the "Top 10 nach Bock-Level" widget
   // (driven by catalogResults) must still surface it once that round closes,
   // unlike `results`, which stays scoped to the round's own selection.
   await request(app).put('/api/preferences').send({ playerId: playerA, gameId: gameAoe2, rating: 10 });
@@ -232,7 +266,10 @@ test('points mode: start, cast, and close a round', async () => {
     .post('/api/votes/points')
     .send({
       playerId: playerA,
-      entries: allGames.body.map((g: { id: string }) => ({ gameId: g.id, points: 1 })),
+      entries: allGames.body.map((g: { id: string }) => ({
+        gameId: g.id,
+        points: g.id === gameCs2 ? 10 : g.id === gameRl ? 4 : 1,
+      })),
     });
   assert.equal(noCap.status, 200);
   assert.equal(noCap.body.results.length, allGames.body.length);
@@ -255,7 +292,7 @@ test('points mode: start, cast, and close a round', async () => {
     .send({ playerId: playerA, entries: [{ gameId: gameCs2, points: 11 }] });
   assert.equal(outOfRange.status, 400);
 
-  const castA = await request(app)
+  const repeatedA = await request(app)
     .post('/api/votes/points')
     .send({
       playerId: playerA,
@@ -264,7 +301,8 @@ test('points mode: start, cast, and close a round', async () => {
         { gameId: gameRl, points: 4 },
       ],
     });
-  assert.equal(castA.status, 200);
+  assert.equal(repeatedA.status, 409);
+  assert.match(repeatedA.body.error, /bereits abgestimmt/);
 
   const castB = await request(app)
     .post('/api/votes/points')
@@ -274,17 +312,7 @@ test('points mode: start, cast, and close a round', async () => {
   const mine = await request(app).get(`/api/votes/mine?playerId=${playerA}`);
   assert.equal(mine.status, 200);
   assert.equal(mine.body.mode, 'points');
-  assert.equal(mine.body.entries.length, 2);
-
-  // Resubmitting replaces the player's previous set entirely.
-  const recastA = await request(app)
-    .post('/api/votes/points')
-    .send({ playerId: playerA, entries: [{ gameId: gameCs2, points: 3 }] });
-  assert.equal(recastA.status, 200);
-  const mineAfter = await request(app).get(`/api/votes/mine?playerId=${playerA}`);
-  assert.equal(mineAfter.body.entries.length, 1);
-  assert.equal(mineAfter.body.entries[0].gameId, gameCs2);
-  assert.equal(mineAfter.body.entries[0].points, 3);
+  assert.equal(mine.body.entries.length, allGames.body.length);
 
   // A points-mode submission is rejected once the round is in single mode... but here it's still points mode,
   // so a points cast for an unknown game 404s instead.
@@ -303,8 +331,8 @@ test('points mode: start, cast, and close a round', async () => {
   assert.deepEqual(closed.body.winnerGameIds, [gameRl]);
   const cs2Result = closed.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
   const rlResult = closed.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
-  assert.equal(cs2Result.points, 3); // player A's replaced entry
-  assert.equal(rlResult.points, 8); // only player B still has RL
+  assert.equal(cs2Result.points, 10);
+  assert.equal(rlResult.points, 12); // player A gave 4, player B gave 8
 
   const history = await request(app).get('/api/votes/history');
   const entry = history.body.history.find((h: { round: number }) => h.round === closed.body.round);
@@ -312,22 +340,13 @@ test('points mode: start, cast, and close a round', async () => {
   assert.equal(entry.mode, 'points');
 });
 
-test('points mode: submitting an empty entries array clears a player\'s previous points', async () => {
+test('points mode rejects an empty submission', async () => {
   await request(app).post('/api/votes/start').send({ mode: 'points' });
-  await request(app)
-    .post('/api/votes/points')
-    .send({ playerId: playerA, entries: [{ gameId: gameCs2, points: 7 }] });
-
-  const cleared = await request(app).post('/api/votes/points').send({ playerId: playerA, entries: [] });
-  assert.equal(cleared.status, 200);
+  const empty = await request(app).post('/api/votes/points').send({ playerId: playerA, entries: [] });
+  assert.equal(empty.status, 400);
 
   const mine = await request(app).get(`/api/votes/mine?playerId=${playerA}`);
   assert.deepEqual(mine.body.entries, []);
-
-  // Still withheld while open, whether cleared or not.
-  const res = await request(app).get('/api/votes');
-  const cs2Result = res.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
-  assert.equal(cs2Result.points, undefined);
 
   await request(app).post('/api/votes/cancel');
 });
@@ -342,13 +361,12 @@ test('points endpoint is rejected while a round is in single mode', async () => 
 });
 
 test('each result row reports its all-time vote win count', async () => {
-  // Rocket League has won two closed rounds so far in this file (the single-
-  // mode re-vote test, and the points-mode test); CS2 has never won.
+  // CS2 won the single-mode round and Rocket League won the points round.
   const res = await request(app).get('/api/votes');
   const cs2Result = res.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
   const rlResult = res.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
-  assert.equal(rlResult.voteWinCount, 2);
-  assert.equal(cs2Result.voteWinCount, 0);
+  assert.equal(rlResult.voteWinCount, 1);
+  assert.equal(cs2Result.voteWinCount, 1);
 });
 
 test('each result row reports total all-time playtime, growing as sessions are tracked', async () => {

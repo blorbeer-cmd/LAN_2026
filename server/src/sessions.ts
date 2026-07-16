@@ -15,7 +15,7 @@ import { writeAdminAudit } from './adminAudit';
 // __Host- prevents sibling subdomains from overwriting the production
 // session cookie. Plain-HTTP LAN deployments cannot use that prefix because
 // browsers require __Host- cookies to be Secure.
-export const SESSION_COOKIE_NAME = config.cookieSecure ? '__Host-lan2026_session' : 'lan2026_session';
+export const SESSION_COOKIE_NAME = config.cookieSecure ? '__Host-respawn_session' : 'respawn_session';
 export const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 export const SESSION_ABSOLUTE_TTL_MS = 180 * 24 * 60 * 60 * 1000;
 export const REAUTH_TTL_MS = 5 * 60 * 1000;

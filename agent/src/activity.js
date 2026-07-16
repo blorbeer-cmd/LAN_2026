@@ -43,7 +43,7 @@ let scriptPath = null;
 
 function ensureScriptFile() {
   if (scriptPath && fs.existsSync(scriptPath)) return scriptPath;
-  scriptPath = path.join(os.tmpdir(), 'lan2026-agent-activity.ps1');
+  scriptPath = path.join(os.tmpdir(), 'respawn-agent-activity.ps1');
   fs.writeFileSync(scriptPath, PS_SCRIPT, 'utf8');
   return scriptPath;
 }

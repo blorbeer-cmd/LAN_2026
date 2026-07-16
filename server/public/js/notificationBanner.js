@@ -1,133 +1,342 @@
-// Always-on header banner: shows the newest still-active push notification
-// that concerned this device's current identity, with a direct link into
-// whatever view it's about — a persistent counterpart to the transient toast
-// nudges app.js already fires on the relevant socket events, for anyone who
-// missed the toast, wasn't looking at the screen, or is just coming back
-// after a while away. Below that prominent line, it also surfaces the same
-// "Aktuell" items Home shows (open vote, active tournaments, ...) as small
-// tappable chips, so the always-visible one thing doesn't hide the rest of
-// what's currently going on. Lives outside the per-view render cycle
-// (switchView/renderCurrent in app.js) since it must stay visible across
-// every view, not just Home, so it manages its own small slice of DOM
-// directly instead of going through a view module's render(container, ctx).
+// Header notifications have two complementary layers: the newest active,
+// unread entry is an obvious deep link directly below the topbar, while the
+// bell keeps the complete personal history.
 
 import { api } from './api.js';
 import { getMyId } from './whoami.js';
 import { icon } from './icons.js';
-import { escapeHtml } from './format.js';
-import { feedLinkView, bannerContentHtml } from './pushFeed.js';
-import { ensureAktuellLoaded, aktuellItems } from './aktuellStatus.js';
+import { escapeHtml, formatDateTime } from './format.js';
+import { feedEntryIcon, feedEntryTitle, feedLinkView, FEED_LINK_LABELS } from './pushFeed.js';
 import { showToast } from './toast.js';
+import { confirmDialog } from './modal.js';
+
+const FEED_LIMIT = 20;
 
 let epoch = 0;
-let lastEntry = null;
-let expiryTimer = null;
+let entries = [];
+let highlightEntry = null;
+let loadedForId = null;
+let loading = false;
+let loadError = false;
+let isOpen = false;
+let highlightExpiryTimer = null;
 
-function bannerEl() {
-  return document.getElementById('notification-banner');
+function buttonEl() {
+  return document.getElementById('notifications-btn');
 }
 
-// Redraws from whatever's currently cached — the last-fetched active push entry
-// plus the shared "Aktuell" items — without refetching either. Called after
-// a push refetch resolves, whenever aktuellStatus.js reports new data, and
-// exported for app.js to call directly on state.votes changes (the vote
-// chip reads state.votes live, which isn't part of aktuellStatus.js's own
-// cache).
-export function renderBanner() {
-  const banner = bannerEl();
-  if (!banner) return;
+function panelEl() {
+  return document.getElementById('notifications-panel');
+}
 
-  if (expiryTimer) clearTimeout(expiryTimer);
-  expiryTimer = null;
-  if (lastEntry?.expiresAt) {
-    const delay = Math.max(0, Math.min(lastEntry.expiresAt - Date.now() + 50, 2_147_483_647));
-    expiryTimer = setTimeout(refreshNotificationBanner, delay);
+function countEl() {
+  return document.getElementById('notifications-count');
+}
+
+function highlightEl() {
+  return document.getElementById('notification-highlight');
+}
+
+function setOpen(nextOpen) {
+  isOpen = nextOpen;
+  renderBanner();
+}
+
+function clearHighlightExpiryTimer() {
+  if (highlightExpiryTimer !== null) window.clearTimeout(highlightExpiryTimer);
+  highlightExpiryTimer = null;
+}
+
+function scheduleHighlightExpiry() {
+  clearHighlightExpiryTimer();
+  if (!highlightEntry?.expiresAt) return;
+  const delay = Math.max(0, highlightEntry.expiresAt - Date.now());
+  // Browser timers cap at a signed 32-bit integer. Very distant deadlines
+  // simply re-check and schedule the remaining interval later.
+  highlightExpiryTimer = window.setTimeout(refreshNotificationBanner, Math.min(delay, 2_147_483_647));
+}
+
+function entryHtml(entry) {
+  const view = feedLinkView(entry.url);
+  const directBadge = entry.audience === 'direct' ? '<span class="badge badge-paused">Für dich</span>' : '';
+  return `<article class="notification-center-entry${entry.seen ? '' : ' is-unread'}" data-notification-entry="${entry.id}">
+    <div class="row-between notification-center-entry-head">
+      <span class="row notification-center-entry-title">
+        <span class="notification-center-entry-icon">${icon(feedEntryIcon(entry))}</span>
+        <strong>${escapeHtml(feedEntryTitle(entry))}</strong>${directBadge}
+      </span>
+      <time class="muted notification-center-time">${formatDateTime(entry.createdAt)}</time>
+    </div>
+    <div class="muted notification-center-body">${escapeHtml(entry.body)}</div>
+    <div class="notification-center-actions">
+      ${view ? `<button type="button" class="btn btn-sm" data-notification-navigate="${view}" data-notification-id="${entry.id}">${FEED_LINK_LABELS[view]}</button>` : ''}
+      <span class="notification-center-entry-tools">
+        ${entry.seen ? '' : `<button type="button" class="icon-btn notification-center-seen" data-notification-seen="${entry.id}" aria-label="Als gelesen markieren" title="Als gelesen markieren">${icon('circleCheck')}</button>`}
+        <button type="button" class="icon-btn notification-center-remove" data-notification-hide="${entry.id}" aria-label="Mitteilung entfernen" title="Mitteilung entfernen">${icon('trash')}</button>
+      </span>
+    </div>
+  </article>`;
+}
+
+function panelContentHtml(myId) {
+  if (!myId) {
+    return '<div class="empty-state notification-center-empty">Wähle zuerst dein Profil aus.</div>';
   }
+  if (loading && loadedForId !== myId) {
+    return '<div class="empty-state notification-center-empty">Mitteilungen werden geladen…</div>';
+  }
+  if (loadError) {
+    return '<div class="empty-state notification-center-empty">Mitteilungen konnten nicht geladen werden.</div>';
+  }
+  if (entries.length === 0) {
+    return '<div class="empty-state notification-center-empty">Keine Mitteilungen.</div>';
+  }
+  return `<div class="notification-center-list">${entries.slice(0, FEED_LIMIT).map(entryHtml).join('')}</div>`;
+}
 
-  const chips = aktuellItems()
-    .map(
-      (item) =>
-        `<button type="button" class="chip notification-banner-chip" data-notification-navigate="${item.navigate}">${icon(item.iconName)}<span>${escapeHtml(item.title)}</span></button>`
-    )
-    .join('');
+async function markSeen(entryId, { navigate } = {}) {
+  const playerId = getMyId();
+  const entry = entries.find((item) => item.id === entryId);
+  if (!playerId || !entry) return;
+  entry.seen = true;
+  const previousHighlight = highlightEntry;
+  if (highlightEntry?.id === entryId) {
+    highlightEntry = null;
+    clearHighlightExpiryTimer();
+  }
+  renderBanner();
+  try {
+    await api.push.seen(entryId, playerId);
+    if (navigate) {
+      setOpen(false);
+      window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: navigate }));
+    }
+  } catch (err) {
+    entry.seen = false;
+    highlightEntry = previousHighlight;
+    scheduleHighlightExpiry();
+    renderBanner();
+    showToast(err.message, { error: true });
+  }
+}
 
-  if (!lastEntry && !chips) {
-    banner.hidden = true;
-    banner.innerHTML = '';
+async function hideEntry(entryId) {
+  const playerId = getMyId();
+  if (!playerId) return;
+  const previousEntries = entries;
+  const previousHighlight = highlightEntry;
+  entries = entries.filter((item) => item.id !== entryId);
+  if (highlightEntry?.id === entryId) {
+    highlightEntry = null;
+    clearHighlightExpiryTimer();
+  }
+  renderBanner();
+  try {
+    await api.push.hide(entryId, playerId);
+  } catch (err) {
+    entries = previousEntries;
+    highlightEntry = previousHighlight;
+    scheduleHighlightExpiry();
+    renderBanner();
+    showToast(err.message, { error: true });
+  }
+}
+
+async function markAllSeen() {
+  const playerId = getMyId();
+  if (!playerId || entries.every((entry) => entry.seen)) return;
+  const previousEntries = entries.map((entry) => ({ ...entry }));
+  const previousHighlight = highlightEntry;
+  entries.forEach((entry) => {
+    entry.seen = true;
+  });
+  highlightEntry = null;
+  clearHighlightExpiryTimer();
+  renderBanner();
+  try {
+    await api.push.seenAll(playerId);
+  } catch (err) {
+    entries = previousEntries;
+    highlightEntry = previousHighlight;
+    scheduleHighlightExpiry();
+    renderBanner();
+    showToast(err.message, { error: true });
+  }
+}
+
+async function hideAllEntries() {
+  const playerId = getMyId();
+  if (!playerId || entries.length === 0) return;
+  if (!(await confirmDialog('Alle Mitteilungen aus deiner Historie entfernen?', {
+    confirmText: 'Alle löschen',
+    danger: true,
+  }))) return;
+  const previousEntries = entries;
+  const previousHighlight = highlightEntry;
+  entries = [];
+  highlightEntry = null;
+  clearHighlightExpiryTimer();
+  renderBanner();
+  try {
+    await api.push.hideAll(playerId);
+  } catch (err) {
+    entries = previousEntries;
+    highlightEntry = previousHighlight;
+    scheduleHighlightExpiry();
+    renderBanner();
+    showToast(err.message, { error: true });
+  }
+}
+
+function renderHighlight() {
+  const container = highlightEl();
+  if (!container) return;
+  const view = highlightEntry ? feedLinkView(highlightEntry.url) : null;
+  if (!highlightEntry || !getMyId()) {
+    clearHighlightExpiryTimer();
+    container.hidden = true;
+    container.innerHTML = '';
     return;
   }
-
-  let pushLine = '';
-  if (lastEntry) {
-    const view = feedLinkView(lastEntry.url);
-    const content = bannerContentHtml(lastEntry);
-    const contentLine = view
-      ? `<button type="button" class="notification-banner-link" data-notification-navigate="${view}">${content}${icon('chevronRight', { className: 'notification-banner-arrow' })}</button>`
-      : `<span class="notification-banner-link notification-banner-static">${content}</span>`;
-    pushLine = `<div class="notification-banner-push">
-      ${contentLine}
-      <button type="button" class="notification-banner-dismiss" data-notification-dismiss title="Als gesehen markieren" aria-label="Mitteilung als gesehen markieren">${icon('x')}</button>
-    </div>`;
-  }
-
-  banner.innerHTML = `${pushLine}${chips ? `<div class="notification-banner-aktuell">${chips}</div>` : ''}`;
-  banner.hidden = false;
-
-  banner.querySelectorAll('[data-notification-navigate]').forEach((el) => {
-    el.addEventListener('click', (e) => {
-      window.dispatchEvent(new CustomEvent('lan:navigate', { detail: e.currentTarget.dataset.notificationNavigate }));
+  container.hidden = false;
+  container.innerHTML = `
+    <button type="button" class="notification-highlight-link" ${view ? `data-notification-highlight-navigate="${view}"` : 'data-notification-highlight-open'} data-notification-id="${highlightEntry.id}">
+      ${icon(feedEntryIcon(highlightEntry))}
+      <span class="notification-highlight-text"><strong>${escapeHtml(feedEntryTitle(highlightEntry))}</strong><span>${escapeHtml(highlightEntry.body)}</span></span>
+      ${view ? icon('chevronRight') : ''}
+    </button>
+    <button type="button" class="icon-btn notification-highlight-dismiss" data-notification-highlight-dismiss="${highlightEntry.id}" aria-label="Aktuelle Mitteilung schließen" title="Schließen">${icon('x')}</button>`;
+  container.querySelector('[data-notification-highlight-navigate]')?.addEventListener('click', (event) => {
+    markSeen(event.currentTarget.dataset.notificationId, {
+      navigate: event.currentTarget.dataset.notificationHighlightNavigate,
     });
   });
+  container.querySelector('[data-notification-highlight-open]')?.addEventListener('click', () => setOpen(true));
+  container.querySelector('[data-notification-highlight-dismiss]')?.addEventListener('click', (event) => {
+    markSeen(event.currentTarget.dataset.notificationHighlightDismiss);
+  });
+}
 
-  const dismissButton = banner.querySelector('[data-notification-dismiss]');
-  dismissButton?.addEventListener('click', async () => {
-    const entryId = lastEntry?.id;
-    const playerId = getMyId();
-    if (!entryId || !playerId || dismissButton.disabled) return;
-    dismissButton.disabled = true;
-    try {
-      await api.push.seen(entryId, playerId);
-      await refreshNotificationBanner();
-    } catch (err) {
-      dismissButton.disabled = false;
-      showToast(err.message, { error: true });
-    }
+// Kept under the established export name so app.js and realtime consumers
+// do not need a second notification state abstraction.
+export function renderBanner() {
+  const button = buttonEl();
+  const panel = panelEl();
+  const count = countEl();
+  if (!button || !panel || !count) return;
+
+  renderHighlight();
+
+  const myId = getMyId();
+  const unreadCount = myId === loadedForId ? entries.filter((entry) => !entry.seen).length : 0;
+  count.textContent = unreadCount > 9 ? '9+' : String(unreadCount);
+  count.hidden = unreadCount === 0;
+  button.classList.toggle('has-unread', unreadCount > 0);
+  button.setAttribute('aria-expanded', String(isOpen));
+  button.setAttribute(
+    'aria-label',
+    unreadCount > 0 ? `Mitteilungen, ${unreadCount} ungelesen` : 'Mitteilungen'
+  );
+
+  panel.hidden = !isOpen;
+  if (!isOpen) return;
+  panel.innerHTML = `
+    <div class="notification-center-header">
+      <div class="row-between">
+        <strong>Mitteilungen</strong>
+        <button type="button" class="icon-btn" data-notification-close aria-label="Mitteilungen schließen" title="Schließen">${icon('x')}</button>
+      </div>
+    </div>
+    ${panelContentHtml(myId)}
+    ${entries.length > 0 ? `<div class="notification-center-toolbar">
+      <button type="button" class="btn btn-sm" data-notifications-seen-all ${entries.every((entry) => entry.seen) ? 'disabled' : ''}>Alle gelesen</button>
+      <button type="button" class="btn btn-sm btn-danger" data-notifications-hide-all>Alle löschen</button>
+    </div>` : ''}
+  `;
+
+  panel.querySelector('[data-notification-close]')?.addEventListener('click', () => {
+    setOpen(false);
+    button.focus();
+  });
+  panel.querySelector('[data-notifications-seen-all]')?.addEventListener('click', markAllSeen);
+  panel.querySelector('[data-notifications-hide-all]')?.addEventListener('click', hideAllEntries);
+  panel.querySelectorAll('[data-notification-seen]').forEach((control) => {
+    control.addEventListener('click', () => markSeen(control.dataset.notificationSeen));
+  });
+  panel.querySelectorAll('[data-notification-hide]').forEach((control) => {
+    control.addEventListener('click', () => hideEntry(control.dataset.notificationHide));
+  });
+  panel.querySelectorAll('[data-notification-navigate]').forEach((control) => {
+    control.addEventListener('click', () =>
+      markSeen(control.dataset.notificationId, { navigate: control.dataset.notificationNavigate })
+    );
   });
 }
 
 export async function refreshNotificationBanner() {
   const myId = getMyId();
   const thisEpoch = ++epoch;
+  if (!myId) {
+    entries = [];
+    highlightEntry = null;
+    clearHighlightExpiryTimer();
+    loadedForId = null;
+    loading = false;
+    loadError = false;
+    renderBanner();
+    return;
+  }
 
-  // The "Aktuell" chips aren't personal (besides the skill nudge, which
-  // aktuellStatus.js only loads once an identity exists) so they don't need
-  // an identity to show — only the personal push line does.
-  let entry = null;
-  if (myId) {
-    try {
-      const res = await api.push.current(myId);
-      entry = res.entry ?? null;
-    } catch {
-      entry = null;
+  loading = true;
+  loadError = false;
+  renderBanner();
+  try {
+    const [res, current] = await Promise.all([api.push.log(myId), api.push.current(myId)]);
+    if (thisEpoch !== epoch) return;
+    entries = res.entries;
+    highlightEntry = current.entry;
+    scheduleHighlightExpiry();
+    loadedForId = myId;
+  } catch {
+    if (thisEpoch !== epoch) return;
+    entries = [];
+    highlightEntry = null;
+    clearHighlightExpiryTimer();
+    loadedForId = myId;
+    loadError = true;
+  } finally {
+    if (thisEpoch === epoch) {
+      loading = false;
+      renderBanner();
     }
   }
-  // A newer refresh (identity change, or another push arriving) has since
-  // started or already finished — its result is the current one, don't let
-  // this now-outdated response clobber it.
-  if (thisEpoch !== epoch) return;
-
-  lastEntry = entry;
-  renderBanner();
 }
 
-// Called once from app.js's main(): loads the initial state and keeps it
-// live afterward without any per-view module having to remember to ask.
 export function initNotificationBanner() {
-  refreshNotificationBanner();
-  ensureAktuellLoaded();
-  window.addEventListener('lan:identity-changed', () => {
-    refreshNotificationBanner();
-    ensureAktuellLoaded();
+  const button = buttonEl();
+  const center = document.querySelector('[data-notification-center]');
+  if (!button || !center) return;
+
+  button.addEventListener('click', () => {
+    setOpen(!isOpen);
+    if (isOpen) refreshNotificationBanner();
   });
-  window.addEventListener('lan:aktuell-changed', renderBanner);
+  document.addEventListener('pointerdown', (event) => {
+    if (isOpen && !center.contains(event.target)) setOpen(false);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !isOpen) return;
+    setOpen(false);
+    button.focus();
+  });
+  window.addEventListener('respawn:identity-changed', () => {
+    isOpen = false;
+    entries = [];
+    highlightEntry = null;
+    clearHighlightExpiryTimer();
+    loadedForId = null;
+    loadError = false;
+    refreshNotificationBanner();
+  });
+  refreshNotificationBanner();
 }

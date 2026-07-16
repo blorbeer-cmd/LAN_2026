@@ -20,6 +20,7 @@ export const foodOrdersRouter = Router();
 const MAX_TITLE_LENGTH = 80;
 const MAX_ITEM_LENGTH = 120;
 const MAX_PRICE_CENTS = 500_00; // nobody orders a 500€ pizza
+const MAX_ITEM_QUANTITY = 99;
 const MAX_NOTES_LENGTH = 500;
 const MAX_LINK_LENGTH = 300;
 const HISTORY_LIMIT = 10;
@@ -63,6 +64,7 @@ interface ItemRow {
   order_id: string;
   player_id: string;
   description: string;
+  quantity: number;
   price_cents: number | null;
   created_at: number;
 }
@@ -71,17 +73,17 @@ function serializeOrder(row: OrderRow) {
   const items = db
     .prepare(
       `SELECT i.id, i.player_id AS playerId, p.name AS playerName, p.color AS playerColor, p.avatar AS playerAvatar,
-              i.description, i.price_cents AS priceCents, i.created_at AS createdAt
+              i.description, i.quantity, i.price_cents AS priceCents, i.created_at AS createdAt
        FROM food_order_items i JOIN players p ON p.id = i.player_id
        WHERE i.order_id = ? ORDER BY i.created_at`
     )
-    .all(row.id) as Array<{ playerId: string; priceCents: number | null }>;
+    .all(row.id) as Array<{ playerId: string; quantity: number; priceCents: number | null }>;
 
   const creator = db.prepare('SELECT name FROM players WHERE id = ?').get(row.created_by) as
     | { name: string }
     | undefined;
 
-  const totalCents = items.reduce((sum, i) => sum + (i.priceCents ?? 0), 0);
+  const totalCents = items.reduce((sum, i) => sum + (i.priceCents ?? 0) * i.quantity, 0);
 
   return {
     id: row.id,
@@ -165,7 +167,7 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   // (they just tapped the button themselves).
   broadcast(Events.foodOrdersChanged, {
     notify: {
-      message: `🍕 Neue Sammelbestellung: ${row.title}${sendAtNote} – jetzt eintragen!`,
+      message: `Neue Sammelbestellung: ${row.title}${sendAtNote} – jetzt eintragen!`,
       excludePlayerId: playerId,
     },
   });
@@ -173,7 +175,7 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   notifyPlayers(
     allPlayerIds,
     {
-      title: '🍕 Neue Sammelbestellung',
+      title: 'Neue Sammelbestellung',
       body: `${row.title}${sendAtNote} (von ${player.name}) – jetzt eintragen!`,
       url: '/#foodOrders',
     },
@@ -224,7 +226,7 @@ foodOrdersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   res.json(serializeOrder({ ...order, ...next }));
 });
 
-// POST /api/food-orders/:id/items - body: { playerId, description, priceCents? }
+// POST /api/food-orders/:id/items - body: { playerId, description, quantity, priceCents? }
 foodOrdersRouter.post('/:id/items', ...withBodyPlayerIdentity, (req, res) => {
   const order = getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
@@ -234,12 +236,15 @@ foodOrdersRouter.post('/:id/items', ...withBodyPlayerIdentity, (req, res) => {
     return res.status(409).json({ error: 'Diese Bestellung ist schon geschlossen.' });
   }
 
-  const { playerId, description, priceCents } = req.body ?? {};
+  const { playerId, description, quantity = 1, priceCents } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
   if (!isNonEmptyString(description, MAX_ITEM_LENGTH)) {
     return res.status(400).json({ error: `Was möchtest du? (1-${MAX_ITEM_LENGTH} Zeichen)` });
+  }
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_ITEM_QUANTITY) {
+    return res.status(400).json({ error: `Anzahl muss zwischen 1 und ${MAX_ITEM_QUANTITY} liegen.` });
   }
   if (
     priceCents !== undefined &&
@@ -252,8 +257,8 @@ foodOrdersRouter.post('/:id/items', ...withBodyPlayerIdentity, (req, res) => {
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   db.prepare(
-    'INSERT INTO food_order_items (id, order_id, player_id, description, price_cents, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(nanoid(), order.id, playerId, description.trim(), priceCents ?? null, Date.now());
+    'INSERT INTO food_order_items (id, order_id, player_id, description, quantity, price_cents, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(nanoid(), order.id, playerId, description.trim(), quantity, priceCents ?? null, Date.now());
 
   broadcast(Events.foodOrdersChanged, null);
   res.status(201).json(serializeOrder(order));

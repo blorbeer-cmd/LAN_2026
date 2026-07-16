@@ -19,7 +19,7 @@ import Database from 'better-sqlite3';
 const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
 
 function makeTempDbPath(name: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lan2026-migration-test-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-migration-test-'));
   return path.join(dir, `${name}.db`);
 }
 
@@ -144,6 +144,49 @@ test('legacy game_catalog tables are merged into games and preferences', () => {
     .get('p-legacy-1', newGame.id) as { rating: number };
   assert.equal(prefNewGame.rating, 10, 'a doubled rating above 10 should be capped, not overflow the 1-10 scale');
 
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('historical test LANs are marked and food-order quantities default safely during upgrade', () => {
+  const dbFile = makeTempDbPath('test-data-and-food-quantity');
+  const now = Date.now();
+  const fixture = new Database(dbFile);
+  fixture.exec(`
+    CREATE TABLE players (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, real_name TEXT, color TEXT NOT NULL DEFAULT '#4f9dff',
+      avatar TEXT, api_key TEXT NOT NULL UNIQUE, tracking_paused INTEGER NOT NULL DEFAULT 0,
+      is_admin INTEGER NOT NULL DEFAULT 1, is_test INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
+    );
+    CREATE TABLE events (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, starts_at INTEGER NOT NULL, ends_at INTEGER,
+      location TEXT, description TEXT, tracking_enabled INTEGER NOT NULL DEFAULT 0, ended_at INTEGER
+    );
+    CREATE TABLE food_orders (
+      id TEXT PRIMARY KEY, event_id TEXT NOT NULL, title TEXT NOT NULL, created_by TEXT NOT NULL,
+      created_at INTEGER NOT NULL, closed_at INTEGER, send_at INTEGER, notes TEXT, link TEXT
+    );
+    CREATE TABLE food_order_items (
+      id TEXT PRIMARY KEY, order_id TEXT NOT NULL, player_id TEXT NOT NULL,
+      description TEXT NOT NULL, price_cents INTEGER, created_at INTEGER NOT NULL
+    );
+  `);
+  fixture.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run('p1', 'Migration Player', 'key', now);
+  fixture.prepare('INSERT INTO events (id, name, starts_at) VALUES (?, ?, ?)').run('e-test', 'Respawn Test-LAN 2020', now);
+  fixture.prepare('INSERT INTO events (id, name, starts_at) VALUES (?, ?, ?)').run('e-real', 'Echte LAN 2020', now);
+  fixture.prepare('INSERT INTO food_orders (id, event_id, title, created_by, created_at) VALUES (?, ?, ?, ?, ?)').run('o1', 'e-real', 'Pizza', 'p1', now);
+  fixture.prepare('INSERT INTO food_order_items (id, order_id, player_id, description, price_cents, created_at) VALUES (?, ?, ?, ?, ?, ?)').run('i1', 'o1', 'p1', 'Margherita', 900, now);
+  fixture.close();
+
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile, { readonly: true });
+  const testEvent = migrated.prepare('SELECT is_test FROM events WHERE id = ?').get('e-test') as { is_test: number };
+  const realEvent = migrated.prepare('SELECT is_test FROM events WHERE id = ?').get('e-real') as { is_test: number };
+  const item = migrated.prepare('SELECT quantity FROM food_order_items WHERE id = ?').get('i1') as { quantity: number };
+  assert.equal(testEvent.is_test, 1);
+  assert.equal(realEvent.is_test, 0);
+  assert.equal(item.quantity, 1);
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
@@ -430,10 +473,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 35);
+  assert.equal(migrations.length, 38);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 35 }, (_, index) => index + 1),
+    Array.from({ length: 38 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -458,6 +501,8 @@ test('records the complete migration history and does not duplicate it on restar
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'push_log_seen'")
     .get();
   assert.ok(pushSeen, 'push_log_seen should be created for legacy databases');
+  const pushHidden = migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'push_log_hidden'").get();
+  assert.ok(pushHidden, 'push_log_hidden should be created for legacy databases');
   const playerColumns = migrated.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
   assert.ok(playerColumns.some((column) => column.name === 'deactivated_at'));
   assert.ok(playerColumns.some((column) => column.name === 'test_owner_group_id'));

@@ -247,7 +247,6 @@ analyticsRouter.get('/awards', (req, res) => {
 
   const awards = rawAwards.map((a) => ({
     id: a.id,
-    emoji: a.emoji,
     title: a.title,
     description: a.description,
     playerId: a.playerId,
@@ -472,19 +471,30 @@ interface ArcadeScoreEntry {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // GET /api/analytics/arcade - the arcade-specific "Auswertungen" tab: match
-// durations, most-active player per game and a per-day match timeline, on
-// top of the win/loss leaderboard already exposed by GET /api/arcade/stats.
-// arcade_results has no event_id column (arcade matches aren't tied to a
-// single event the way tournaments/matches are), so this is always all-time.
-analyticsRouter.get('/arcade', (_req, res) => {
+// durations and most-active player per game, optionally restricted by the
+// stored start time. Arcade results have no event id, so a direct time range
+// is the only honest equivalent to the other analytics filters.
+analyticsRouter.get('/arcade', (req, res) => {
+  const range = parseTimeRangeQuery(req.query as Record<string, unknown>);
+  if ('error' in range) return res.status(400).json({ error: range.error });
+  const clauses = [`reason = 'completed'`];
+  const params: number[] = [];
+  if (range.from !== undefined) {
+    clauses.push('started_at >= ?');
+    params.push(range.from);
+  }
+  if (range.to !== undefined) {
+    clauses.push('started_at <= ?');
+    params.push(range.to);
+  }
   const rows = db
     .prepare(
       `SELECT game_type, scores, started_at, ended_at
        FROM arcade_results
-       WHERE reason = 'completed'
+       WHERE ${clauses.join(' AND ')}
        ORDER BY started_at ASC`,
     )
-    .all() as ArcadeResultFullRow[];
+    .all(...params) as ArcadeResultFullRow[];
 
   interface GameAgg {
     gameType: string;

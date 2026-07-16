@@ -2,14 +2,17 @@
 // (player detail, game editor, match entry). Bottom-sheet on mobile, centered
 // dialog on wider screens (handled purely in CSS).
 
+import { icon } from './icons.js';
+
 export function openModal(title, bodyHtml, { onMount, onClose } = {}) {
+  const previousFocus = document.activeElement;
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   backdrop.innerHTML = `
     <div class="modal" role="dialog" aria-modal="true" aria-label="${title}">
       <div class="modal-header">
         <h2>${title}</h2>
-        <button type="button" class="icon-btn" data-close aria-label="Schließen">✕</button>
+        <button type="button" class="icon-btn" data-close aria-label="Schließen">${icon('x')}</button>
       </div>
       <div class="modal-body">${bodyHtml}</div>
     </div>
@@ -20,22 +23,53 @@ export function openModal(title, bodyHtml, { onMount, onClose } = {}) {
   const close = () => {
     if (closed) return;
     closed = true;
+    document.removeEventListener('keydown', onKeydown);
     backdrop.remove();
     onClose?.();
+    if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+  };
+  const onKeydown = (e) => {
+    if (e.key === 'Escape') close();
+    if (e.key !== 'Tab') return;
+    const focusableSelector = [
+      'button:not([disabled])',
+      'a[href]',
+      'input:not([disabled])',
+      'select:not([disabled])',
+      'textarea:not([disabled])',
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(',');
+    const focusable = [...backdrop.querySelectorAll(focusableSelector)].filter(
+      (element) => !element.hidden && element.getClientRects().length > 0
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
   };
   backdrop.addEventListener('click', (e) => {
     if (e.target === backdrop) close();
   });
   backdrop.querySelector('[data-close]').addEventListener('click', close);
+  document.addEventListener('keydown', onKeydown);
 
   if (onMount) onMount(backdrop, close);
+  if (!backdrop.contains(document.activeElement)) {
+    backdrop.querySelector('input, select, textarea, button, a[href]')?.focus();
+  }
   return { el: backdrop, close };
 }
 
 // Themed replacement for the browser's native confirm() — the same dark
 // bottom-sheet/dialog as every other modal, so "are you sure?" prompts stop
 // looking like a jarring OS pop-up. Resolves true if confirmed, false otherwise
-// (cancel button, ✕, backdrop tap, or Escape).
+// (cancel button, close icon, backdrop tap, or Escape).
 export function confirmDialog(message, { title = 'Bestätigen', confirmText = 'OK', cancelText = 'Abbrechen', danger = false } = {}) {
   return new Promise((resolve) => {
     const backdrop = document.createElement('div');
@@ -44,7 +78,7 @@ export function confirmDialog(message, { title = 'Bestätigen', confirmText = 'O
       <div class="modal" role="alertdialog" aria-modal="true" aria-label="${escapeAttr(title)}">
         <div class="modal-header">
           <h2>${escapeHtml(title)}</h2>
-          <button type="button" class="icon-btn" data-cancel aria-label="Schließen">✕</button>
+          <button type="button" class="icon-btn" data-cancel aria-label="Schließen">${icon('x')}</button>
         </div>
         <div class="modal-body">
           <p style="margin:0 0 var(--space-4);">${escapeHtml(message)}</p>

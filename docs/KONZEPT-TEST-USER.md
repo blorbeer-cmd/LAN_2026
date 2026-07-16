@@ -66,10 +66,10 @@ Klicks von selbst – der zweite Aufruf sieht die schon belegten Plätze/Namen. 
 parallelen Requests kommt trotzdem in `api.concurrency.test.ts` (Erwartung: keine doppelten
 Sitzplätze, keine Namenskollision, Gesamtzahl stimmt).
 
-Dazu **`DELETE /api/admin/test-users`**: löscht alle `is_test`-Spieler (Cascade räumt
-Skills/Bock/Sessions/Nachbarn ab) und entfernt ihre Sitzplan-Assignments + zugehörige
-Auto-Nachbarn. Ein „Test-Daten aufräumen"-Button im Admin-Panel ruft das auf – so bleibt
-nach dem Ausprobieren keine Datenleiche für die echte LAN.
+Dazu **`DELETE /api/admin/test-users`**: löscht alle `is_test`-Spieler und markierten
+Test-LANs (Cascades räumen ihre abhängigen Daten auf) und entfernt Sitzplan-Assignments +
+zugehörige Auto-Nachbarn. Ein „Test-Daten aufräumen"-Button im Admin-Panel ruft das auf –
+so bleibt nach dem Ausprobieren keine Datenleiche für die echte LAN.
 
 ### 3. Sichtbarkeit: zentral im Frontend filtern
 
@@ -129,8 +129,9 @@ Solange der Admin-Modus aktiv ist:
   `source='manual'` (z. B. ein Über-Eck-Paar), damit auch der Unterschied auto/manuell in
   der UI Testdaten hat.
 
-Bewusst **nicht** im Scope: Test-Votes/Matches/Turnierteilnahmen (das will man beim Testen
-gerade selbst auslösen), Fake-Agent-Reports, serverseitige Sichtbarkeits-Enforcement.
+Bewusst **nicht** im Scope: Fake-Agent-Reports und serverseitige Sichtbarkeits-Enforcement.
+Mehrjährige Hall-of-Fame-Testdaten mit Matches und Turnieren werden separat und reproduzierbar
+über die Admin-Ansicht angelegt.
 
 ## Umsetzungsplan
 
@@ -144,7 +145,8 @@ Player-Antworten. Socket-Event `players:changed` etc. wie bei normalem Anlegen.
 **Schritt 2 – Frontend Sichtbarkeit:**
 zentrale Filterung in `state.js` (+ abgeleitete Views: Sitzplan, Leaderboard, Live,
 Abstimmung), „Test"-Badge im Admin-Modus, Admin-Panel auf die neuen Endpoints umgestellt
-(Anlegen mit Anzahl, Aufräumen-Button, Zähler „X Test-Spieler vorhanden").
+(Anlegen mit Anzahl, Aufräumen-Button in derselben Zeile; der Zähler „X Test-Spieler vorhanden"
+steht platzsparend im Tooltip direkt neben „Test-Spieler").
 
 **Schritt 3 – Admin-UX:**
 PIN-Unlock aus `views/admin.js` entfernen (direkter Toggle), dauerhafte Admin-Leiste +

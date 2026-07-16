@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-09
 - Branch: `node24-fix-onto-main`
-- Merge-Commit: [`5ad9920`](https://github.com/blorbeer-cmd/LAN_2026/commit/5ad992014ad3f91e3e28d550f92934471584bf8d)
-- Pull Request: [#86](https://github.com/blorbeer-cmd/LAN_2026/pull/86)
+- Merge-Commit: [`5ad9920`](https://github.com/blorbeer-cmd/Respawn/commit/5ad992014ad3f91e3e28d550f92934471584bf8d)
+- Pull Request: [#86](https://github.com/blorbeer-cmd/Respawn/pull/86)
 
 ## Changelog
 

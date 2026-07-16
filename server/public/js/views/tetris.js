@@ -20,8 +20,8 @@ import { getMyId } from '../whoami.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
-import { allLobbyReady, lobbyPlayerChipsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, arcadeInfoGridHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
 const COLS = 10;
 const ROWS = 20;
@@ -58,10 +58,10 @@ function myId() {
 // without this module needing a handle on app.js — both are thin CustomEvent
 // hooks app.js listens for.
 function rerender() {
-  window.dispatchEvent(new CustomEvent('lan:rerender'));
+  window.dispatchEvent(new CustomEvent('respawn:rerender'));
 }
 function navigate(view) {
-  window.dispatchEvent(new CustomEvent('lan:navigate', { detail: view }));
+  window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view }));
 }
 
 function amPlayer() {
@@ -142,7 +142,7 @@ export function ensureTetrisSocket() {
     cancelCountdown();
     // A finished match adds a new highscore row — let the Arcade view know its
     // cached stats are stale so they refresh when the player heads back.
-    window.dispatchEvent(new CustomEvent('lan:arcade-stats-dirty'));
+    window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
     if (tetrisViewMounted()) rerender();
   });
 
@@ -334,7 +334,7 @@ function updateStatLine(prefix, playerState) {
   const warn = document.querySelector(`#${prefix}-incoming`);
   if (warn) {
     const n = playerState?.incoming ?? 0;
-    warn.textContent = n > 0 ? `⚠ ${n}` : '';
+    warn.textContent = n > 0 ? `Gefahr: ${n}` : '';
     warn.classList.toggle('tetris-incoming-hot', n >= 4);
   }
 }
@@ -401,41 +401,20 @@ function renderLobbyList() {
       const joined = l.players.some((p) => p.id === myId());
       const full = l.players.length >= 2 && !joined;
       // Host can close their lobby; a joined guest can leave; otherwise join.
-      const action = isHost
-        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-tetris-close="${l.id}">Schließen</button>`
+      const ready = l.players.length === 2;
+      const footerActions = isHost
+        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-tetris-close="${l.id}">Schließen</button>
+          <button type="button" class="btn btn-sm btn-equal btn-primary" id="tetris-start" ${ready ? '' : 'disabled'}>Start</button>`
         : joined
-          ? `<div class="stack" style="gap:var(--space-2);">
-              ${readyToggleHtml(l, myId(), 'tetris-ready')}
-              <button type="button" class="btn btn-sm btn-equal" data-tetris-leave="${l.id}">Verlassen</button>
-            </div>`
-          : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-tetris-join="${l.id}" ${full ? 'disabled' : ''}>Beitreten</button>`;
-      return `
-        <div class="lb-row" style="align-items:flex-start;">
-          <div class="stack" style="gap:var(--space-2);flex:1;">
-            <strong>${escapeHtml(l.host.name)}s Tetris-Lobby</strong>
-            <div class="chip-list">${lobbyPlayerChipsHtml(l)}</div>
-            <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length}/2 Spieler${full ? ' · voll' : ''}</div>
-          </div>
-          ${action}
-        </div>`;
+          ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-tetris-leave="${l.id}">Verlassen</button>
+            ${readyToggleHtml(l, myId(), 'tetris-ready')}`
+          : '';
+      const joinAction = !joined && !isHost
+        ? `<button type="button" class="btn btn-sm btn-primary" data-tetris-join="${l.id}" ${full ? 'disabled' : ''}>Beitreten</button>`
+        : '';
+      return arcadeLobbyEntryHtml(l, { playerLimit: 2, joinAction, footerActions, full });
     })
     .join('');
-}
-
-function hostStartHtml() {
-  const lobby = myTetrisLobby();
-  if (!lobby || lobby.host.id !== myId()) return '';
-  const ready = lobby.players.length === 2;
-  const hint = !ready
-    ? 'Warte auf einen Gegner…'
-    : allLobbyReady(lobby)
-      ? 'Gegner ist bereit.'
-      : 'Gegner ist da — noch nicht bereit.';
-  return `
-    <div class="stack" style="gap:var(--space-2);border-top:1px solid var(--border);padding-top:var(--space-3);">
-      <div class="muted" style="font-size:var(--font-size-xs);">${hint}</div>
-      <button type="button" class="btn btn-primary btn-block" id="tetris-start" ${ready ? '' : 'disabled'}>Start</button>
-    </div>`;
 }
 
 // The Arcade view embeds this whole card in place of a separate sub-view.
@@ -446,18 +425,13 @@ export function renderTetrisLobbyCard() {
   // which reads as "nothing happened".
   const noMe = !myId();
   return `
-    <div class="card stack">
-      <div class="row-between" style="gap:var(--space-3);">
-        <strong>Tetris-Lobby</strong>
-        <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="tetris-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="tetris-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div>
-      </div>
-      ${arcadeInfoGridHtml([
-        { label: 'Ziel', text: 'Überleben.' },
-        { label: 'Steuerung', text: 'Pfeiltasten + Leertaste.' },
-      ])}
+    <div class="card stack arcade-lobby-card">
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
       ${renderLobbyList()}
-      ${hostStartHtml()}
+      <div class="arcade-lobby-create-actions">
+        <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+        ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="tetris-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
+      </div>
     </div>`;
 }
 

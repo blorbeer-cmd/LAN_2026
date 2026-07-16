@@ -62,7 +62,8 @@ db.exec(`
     location         TEXT,
     description      TEXT,
     tracking_enabled INTEGER NOT NULL DEFAULT 0,
-    ended_at         INTEGER
+    ended_at         INTEGER,
+    is_test          INTEGER NOT NULL DEFAULT 0 -- admin-generated historical fixture; removable without touching real LANs
   );
 
   -- An event's roster. Only participants get tracked while their event has
@@ -320,7 +321,7 @@ db.exec(`
     advancers_per_group  INTEGER,                     -- only for group_knockout
     status               TEXT NOT NULL DEFAULT 'active', -- 'active' | 'completed'
     created_at           INTEGER NOT NULL,
-    lobby_name           TEXT,                         -- optional: in-game lobby name used throughout the tournament
+    lobby_name           TEXT,                         -- optional base name; each match receives a deterministic unique suffix
     lobby_password       TEXT                          -- optional: in-game lobby password used throughout the tournament
   );
 
@@ -414,9 +415,9 @@ db.exec(`
   -- Every real push notification sent via notifyPlayers() (Durchsagen, neue
   -- Sammelbestellung, Abstimmung offen, Arcade-Lobby, Turnier/Draft-Events,
   -- ...), regardless of how many devices were actually subscribed. Read two
-  -- ways: the Kiosk's newest-active banner and the Home view's
-  -- per-player notification feed. player_ids is the JSON recipient list the
-  -- feed filters by (NULL on rows from before the feed existed = show to
+  -- ways: the Kiosk's newest-active banner and the header's per-player
+  -- notification center. player_ids is the JSON recipient list the center
+  -- filters by (NULL on rows from before the feed existed = show to
   -- everyone); url is the deep link the notification opens; audience marks
   -- personally-targeted pushes ('direct', e.g. "dein Match ist bereit")
   -- apart from group-wide ones ('all'). Still not a per-recipient delivery
@@ -434,13 +435,21 @@ db.exec(`
     created_at INTEGER NOT NULL
   );
 
-  -- Per-player dismissal for the always-on app-header banner. The push log
-  -- remains intact as notification history; this only records that one
-  -- player no longer wants a specific entry occupying their banner.
+  -- Per-player read state for the notification center. The push log remains
+  -- intact as notification history.
   CREATE TABLE IF NOT EXISTS push_log_seen (
     push_id    TEXT NOT NULL REFERENCES push_log(id) ON DELETE CASCADE,
     player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     seen_at    INTEGER NOT NULL,
+    PRIMARY KEY (push_id, player_id)
+  );
+
+  -- Per-player removal from the notification center. The shared push log
+  -- itself remains intact for every other recipient and for audit/history.
+  CREATE TABLE IF NOT EXISTS push_log_hidden (
+    push_id    TEXT NOT NULL REFERENCES push_log(id) ON DELETE CASCADE,
+    player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    hidden_at  INTEGER NOT NULL,
     PRIMARY KEY (push_id, player_id)
   );
 
@@ -550,6 +559,7 @@ db.exec(`
     order_id    TEXT NOT NULL REFERENCES food_orders(id) ON DELETE CASCADE,
     player_id   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     description TEXT NOT NULL,
+    quantity    INTEGER NOT NULL DEFAULT 1,
     price_cents INTEGER,
     created_at  INTEGER NOT NULL
   );
@@ -613,6 +623,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_broadcasts_created ON broadcasts(created_at);
   CREATE INDEX IF NOT EXISTS idx_push_log_created ON push_log(created_at);
   CREATE INDEX IF NOT EXISTS idx_push_log_seen_player ON push_log_seen(player_id, push_id);
+  CREATE INDEX IF NOT EXISTS idx_push_log_hidden_player ON push_log_hidden(player_id, push_id);
   CREATE INDEX IF NOT EXISTS idx_quiz_seen_player ON quiz_seen(player_id);
   CREATE INDEX IF NOT EXISTS idx_scribble_seen_player ON scribble_seen(player_id);
   CREATE INDEX IF NOT EXISTS idx_scribble_drawings_artist ON scribble_drawings(artist_id, created_at);
@@ -1079,10 +1090,10 @@ function migrateSeatNeighborsSourceColumn(): void {
 }
 runMigration({ version: 20, name: 'add seat neighbor source', up: migrateSeatNeighborsSourceColumn });
 
-// Migration: older databases predate the Home notification feed's extra
+// Migration: older databases predate the notification center's extra
 // push_log fields (deep-link url, recipient list, all/direct audience).
-// Legacy rows keep player_ids = NULL, which the feed treats as "for
-// everyone" — the pre-feed log never recorded recipients.
+// Legacy rows keep player_ids = NULL, which the center treats as "for
+// everyone" — the old log never recorded recipients.
 function migratePushLogFeedColumns(): void {
   const columns = db.prepare('PRAGMA table_info(push_log)').all() as Array<{ name: string }>;
   const has = (name: string) => columns.some((c) => c.name === name);
@@ -2051,6 +2062,45 @@ function addSeatingAndPingsGroupScoping(): void {
   migrateScopedGamePings(ensureHistoricalMembership);
 }
 runMigration({ version: 35, name: 'add seating and pings group scoping', up: addSeatingAndPingsGroupScoping });
+
+// Notification-center removal is personal: hiding an entry must never
+// delete the shared push-log row for its other recipients.
+// Versions 36-38 predate the group-scoping series on their original branch;
+// they are registered after it so databases that followed main never skip them.
+function createPushLogHiddenTable(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS push_log_hidden (
+      push_id    TEXT NOT NULL REFERENCES push_log(id) ON DELETE CASCADE,
+      player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      hidden_at  INTEGER NOT NULL,
+      PRIMARY KEY (push_id, player_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_push_log_hidden_player ON push_log_hidden(player_id, push_id);
+  `);
+}
+runMigration({ version: 36, name: 'add per-player hidden push log', up: createPushLogHiddenTable });
+
+// Admin-generated historical Hall-of-Fame fixtures must be distinguishable
+// from real LANs so the cleanup action can remove them without relying on a
+// display-name convention forever. Existing local fixtures used that exact
+// prefix, so mark them during the upgrade.
+function migrateEventTestColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  if (!columns.some((c) => c.name === 'is_test')) {
+    db.exec('ALTER TABLE events ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0');
+  }
+  db.prepare("UPDATE events SET is_test = 1 WHERE name LIKE 'Respawn Test-LAN %'").run();
+}
+runMigration({ version: 37, name: 'add events.is_test', up: migrateEventTestColumn });
+
+// Quantity is separate from the free-text item description so totals can be
+// calculated correctly and users no longer have to encode "2x" in the name.
+function migrateFoodOrderItemQuantityColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(food_order_items)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'quantity')) return;
+  db.exec('ALTER TABLE food_order_items ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1');
+}
+runMigration({ version: 38, name: 'add food order item quantity', up: migrateFoodOrderItemQuantityColumn });
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.

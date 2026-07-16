@@ -1,0 +1,405 @@
+# Plan: Allgemeines Feedback als lokaler UI-PR
+
+## Ziel und PR-Zuschnitt
+
+Der lokale PR setzt das umsetzungsreife Feedback aus `docs/FEEDBACK-GENERELL.md` als zusammenhängenden
+UI-Polish-Pass um. Änderungen an Identität, Login, Rollen, Spieler-Lebenszyklus, Agent-Key-Rechten,
+Einladungen und Event-Sichtbarkeit bleiben ausdrücklich außen vor. Der personenbezogene
+Meldungsbereich wurde auf späteren ausdrücklichen Wunsch bereits auf Basis der lokal gewählten
+Spieleridentität umgesetzt; ein künftiges Usermanagement muss diese vorläufige Bindung auf die
+authentifizierte Session umstellen. Die übrigen Punkte mit `Kommentar (Usermanagement)` gehören in
+die Phasen aus `docs/KONZEPT-USER-MANAGEMENT.md`.
+
+Vorgeschlagener Arbeitstitel: **Refine general UI copy, layouts and contextual help**.
+
+Der PR darf mehrere kleine Commits enthalten und bleibt bis zur Abnahme ein lokaler Arbeitsbranch.
+Der inzwischen ausdrücklich beauftragte vollständige Produkt- und Repository-Rename wird als
+abschließendes Arbeitspaket umgesetzt; ein Push oder Merge ist damit weiterhin nicht beauftragt.
+
+## Status und verbindlicher Endstand
+
+Dieser Plan begann als Zuschnitt des Feedbacks und wurde während der lokalen Umsetzung mehrfach
+erweitert. Er dokumentiert deshalb weiterhin Motivation und PR-Umfang, ist aber **nicht** die
+verbindliche Quelle für wiederverwendbare UI-Regeln. Der tatsächlich umgesetzte Endstand ist in
+[`server/DESIGN_SYSTEM.md`](../../server/DESIGN_SYSTEM.md) festgeschrieben, insbesondere unter
+„Core composition and content rules“ und in den dortigen Komponentenverträgen. Bei abweichenden
+frühen Formulierungen in diesem Plan gilt das Design System.
+
+Der PR umfasst inzwischen neben Home, Turnieren, Teams, Vote und Rang auch die Navigation unter
+„Mehr“, An-/Abreise, Arcade, Durchsagen, Essen, Hall of Fame, Info, Auswertungen, Einstellungen,
+Profil, Admin/Sitzplan und die Kioskansicht. Dauerhafte Entscheidungen daraus sind unter anderem:
+
+- vollbreite gruppierte Hauptkarten mit ruhigeren Unterkarten und gezielt eingesetzten Akzentkanten,
+- responsive Zwei-Spalten-Raster, deren letztes Element je nach Entität bewusst streckt oder seine
+  Geschwisterbreite behält,
+- kurze sichtbare Texte mit touch-tauglicher Hilfe direkt rechts neben dem zugehörigen Titel,
+- ein symbolfreier, standardmäßig geschlossener Historien-/Abschlussstil,
+- zentrale Lucide-Domänensymbole, konsistente Aktionshierarchie und stabile Zeilenhöhen,
+- die vorläufige Selbstbearbeitungsgrenze für Profile bis zum authentifizierten Usermanagement,
+- ein scrollfreies 2×2-Kiosk-Dashboard mit anonymisiertem Live-Vote, Reveal-Countdown und
+  zeitlich begrenzter Ergebnisansicht.
+
+## Leitentscheidungen
+
+1. Erklärtexte werden nicht pauschal versteckt. Ein Tooltip bleibt nur dort erhalten, wo der
+   entfernte Text eine nicht offensichtliche Bedienregel erklärt. Reine Wiederholungen entfallen.
+2. Das sogenannte Tooltip ist ein touch-tauglicher Info-Popover: ein Lucide-Infosymbol neben Titel
+   oder Feldname, kein nur per Hover erreichbares natives `title`-Attribut. Das Infosymbol steht
+   immer direkt rechts neben dem sichtbaren Text, den es erklärt.
+3. Seitentitel und farbige Aktionsbuttons werden entsprechend der Feedbackliste von dekorativen
+   Symbolen befreit. Status-, Warn- und rein ikonische Bedienelemente behalten notwendige Symbole.
+4. Die Kacheln unter „Mehr“ werden alphabetisch sortiert. Das schafft eine objektive, dauerhaft
+   stabile Reihenfolge; die fachliche Gruppierung ist bei nur zehn Einträgen nicht eindeutig.
+5. Historien werden mit nativen `<details>`/`<summary>` standardmäßig eingeklappt. Dadurch bleiben
+   Tastaturbedienung und Semantik ohne eigene Zustandslogik erhalten.
+6. Die bestehende Implementierung der „Längsten Einzelsession pro Spiel“ wählt bereits die längste
+   einzelne Spieler-Session und hängt nicht davon ab, wer ein Spiel zuerst öffnet oder zuletzt
+   schließt. Der PR macht diese Bedeutung im Titel eindeutig und sichert sie mit einem Test ab.
+7. „Belegung über die Zeit“ und „Mehrere Spiele gleichzeitig offen“ verschwinden aus der normalen
+   Auswertungsansicht. Das Session-Protokoll bleibt für die Nachbereitung in einem eingeklappten
+   Detailbereich erhalten. Die APIs werden in diesem UI-PR nicht vorschnell gelöscht.
+
+## Arbeitspakete
+
+### 1. Ausgangszustand und regressionssichere Basis
+
+- Vor der Änderung die in der Feedbackliste genannten Pfade auf aktuellem Phone- und Laptop-Viewport
+  reproduzieren; die Liste ist teilweise älter als der jetzige Code.
+- Das Schließen der neuesten Kopfzeilen-Mitteilung in `notificationBanner.js` gezielt prüfen.
+  Die Funktion und ein E2E-Pfad existieren bereits; nur bei reproduzierbarem Fehler Ursache beheben
+  und den Test auf den tatsächlichen Fehlerfall erweitern.
+- Den immer „Offline“ wirkenden Status mit vorhandenem Agent-Heartbeat und Live-State prüfen. Dieser
+  Diagnosepunkt ist kein Anlass, im UI-PR Authentifizierung oder Agent-Key-Rechte umzubauen.
+- Bereits erfüllte Punkte nur dokumentieren und zur gemeinsamen Abnahme vorlegen; keine nutzlose
+  Neuimplementierung erzeugen.
+
+Betroffene Dateien voraussichtlich: `server/public/js/notificationBanner.js`,
+`server/public/js/views/home.js`, `server/src/test/e2e/flows.e2e.test.ts` sowie bei einem echten
+Statusfehler die vorhandenen Live-State-Tests.
+
+### 2. Gemeinsames Info-Tooltip/Popover
+
+- Einen kleinen wiederverwendbaren Helper unter `server/public/js/` ergänzen, der Überschrift,
+  Infoschalter und sicher escapten Hilfetext rendert und nach Re-Renders verdrahtet werden kann.
+- Der Schalter verwendet `icon('info')`, einen deutschen zugänglichen Namen und eine stabile
+  Beziehung zum Hilfetext. Er öffnet per Klick/Touch und Tastatur, schließt beim zweiten Auslösen,
+  mit `Escape`, außerhalb des Popovers und beim Öffnen eines anderen Hinweises.
+- Fokus bleibt nachvollziehbar; der Text enthält keine interaktiven Elemente. Hover darf auf Geräten
+  mit Maus zusätzlich funktionieren, ist aber keine Voraussetzung.
+- Darstellung in `style.css` ausschließlich mit vorhandenen Design-Tokens: erhöhte dunkle Fläche,
+  Border, Radius, Shadow, lesbare maximale Breite und sichere Positionierung ohne horizontalen
+  Seiten-Overflow auf dem Handy.
+- Erste konkrete Nutzung:
+  - „Captain Draft“: der gekürzte Ablauf „2–4 Captains benennen und abwechselnd aus den übrigen
+    Spielern wählen.“ liegt im Info-Popover.
+  - Turnieroptionen „Sitznachbarn“, „Hin- und Rückspiel“ und „Ergebnisse inkl.
+    Punktestand“ nur dann mit Hinweis versehen, wenn die gekürzte Beschriftung die Auswirkung nicht
+    ausreichend erklärt.
+- Stabile Bedienregeln für Einladung, Kiosk, Durchsage und Agent werden ebenfalls gekürzt und in
+  Info-Popover verschoben. Rollen-, Rechte- oder Identitätsaussagen, die erst das künftige
+  Usermanagement festlegt, werden dadurch nicht vorweggenommen.
+
+Betroffene Dateien voraussichtlich: neuer Helper `server/public/js/infoTooltip.js`,
+`server/public/css/style.css`, `server/public/js/views/matchmaking.js`,
+`server/public/js/views/tournament.js` und E2E-Abdeckung.
+
+### 3. Teams und Turniere gemeinsam vereinheitlichen
+
+- Eine gemeinsame responsive Spieler-Auswahlklasse einführen: eine Spalte auf schmalen Handys,
+  zwei bis vier Kachelbreiten je nach verfügbarem Platz auf Laptop/Desktop.
+- In beiden Ansichten „Alle markieren“ und „Auswahl aufheben“ nahe der Teamanzahl anbieten. Die
+  Buttons ändern nur die lokale Auswahl und erhalten den bereits eingegebenen Teamwert.
+- Teamanzahl in „Teams“ mit `2` vorbelegen; den bisherigen Automatik-Hinweis entfernen.
+- Beschriftungen und Symbole gemäß Feedback bereinigen, ohne Checkbox-Semantik zu ändern.
+- Captain-Draft in „Captain Draft“ umbenennen und den gekürzten Ablauf in den neuen Info-Popover
+  verschieben; doppelte sichtbare Erklärtexte entfallen.
+- „Draft starten“ übernimmt Breite und primäre Gestaltung von „Teams auslosen“ und wird erst bei
+  gültiger Auswahl aktiv; `disabled` bleibt nicht nur farblich erkennbar.
+- Eingeklappte Historien, abgeschlossene Turniere und geschlossene Bestellungen verwenden
+  einheitlich die voll umrandete Kopfzeile mit Anzahl beziehungsweise Status und drehendem Pfeil.
+  Team- und Vote-Historie sind standardmäßig eingeklappt; Lade-, Leer- und Ergebniszustände müssen
+  auch im eingeklappten Aufbau stabil bleiben.
+- Die Turnierübersicht zeigt maximal zwei Turnierkarten pro Zeile; eine einzelne Karte nutzt die
+  volle Breite und weitere Karten brechen in die nächste Zeile um. Sie zeigt
+  laufende Turniere beim geöffneten Anlageformular weiterhin davor und ordnet abgeschlossene
+  Turniere danach in einer zweiten prominenten, standardmäßig eingeklappten Statusreihe ein. Der
+  aufgeklappte Zustand bleibt bei Aktualisierungen innerhalb der Ansicht erhalten. Separate Statistik-Kacheln für
+  Gesamtzahl, laufende Turniere und Teams entfallen. Die Detailansicht ergänzt Fortschritt, Teams
+  und Teilnehmende; kleine Turnierbäume werden im verfügbaren Bereich zentriert.
+- Die Spielerauswahl beim Anlegen erscheint mit zwei Kacheln pro Zeile und beliebig vielen Zeilen
+  darunter; die Spielauswahl bleibt ein kompaktes Dropdown. Teamanzahl und Auswahlaktionen teilen
+  sich dieselbe Steuerelementhöhe; Sitznachbarn, Punktestand und der gemeinsame Lobby-Hinweis
+  verwenden die touch-tauglichen Info-Popovers statt dauerhaft sichtbarer Erklärtexte.
+- Anzahl Teams erhält denselben Label-Abstand wie die Spielauswahl. „(optional)“ steht direkt hinter
+  Lobby-Basisname und Lobby-Passwort. Zwischen aktueller
+  Turnierreihe, geöffnetem Formular und abgeschlossener Reihe gilt derselbe vertikale Abstand.
+- Aus dem optionalen Lobby-Basisnamen wird je Paarung ein stabiler Name mit Phase, Runde und
+  Matchnummer erzeugt. Die Turnierdetailansicht zeigt unter „Aktive Lobbys“ alle aktuell spielbaren
+  Paarungen mit eigenem Lobby-Namen, gemeinsamem Passwort, Gastgeber-Team und Kopieraktionen in
+  höchstens zwei Karten pro Reihe. Liga und Gruppenphase begrenzen die Anzeige auf die aktuelle
+  Runde; im K.O.-Baum erscheinen alle vollständig besetzten offenen Matches. Ergebnisfelder und
+  Speichern-/Bearbeiten-Aktion im Turnierbaum belegen getrennte Flächen innerhalb der Matchbox und
+  überlappen auch bei einem einzelnen Finale nicht. Die allgemeine Gastgeber-Regel liegt im
+  Info-Popover direkt neben „Aktive Lobbys“.
+- Teams, Teilnehmende und entschiedene Partien bilden unter „Turnierstatus“ einen eigenen Abschnitt,
+  statt optisch zum darüberliegenden Lobby-Zugang zu gehören.
+- Die Detailansicht kürzt die sichtbaren Formatangaben auf „Liga“ beziehungsweise „Gruppenphase +
+  K.O.“ und verschiebt Modusdetails, Gruppenanzahl, Aufsteiger und Punktestand in das direkt
+  anschließende Info-Popover. Liga-Runden verwenden dieselbe umrandete Akzentgruppe wie Gruppen- und
+  K.O.-Phasen. Auch die Turnierübersicht verwendet nur die kompakten Formatnamen ohne Klammerzusatz.
+- Teamkarten in der Detailansicht und in der Auslosung nutzen höchstens zwei Spalten. In der
+  Auslosung lassen sich Gamer per Drag-and-drop, Touch-Auswahl oder Pfeiltasten zwischen Teams
+  verschieben; das bisherige Team-Dropdown entfällt.
+- Das Anlageformular trennt Auslosung und Modus als zwei umrandete Bereiche mit dezenter
+  Akzentkante und kurzer Unterzeile statt nummerierter Kreise. Spiel, Teilnehmende und Teamvorschau
+  gehören zur Auslosung; Format, Ergebnisoptionen, Lobby und Erstellung zum Modus.
+- Die Erklärung zu „Gruppenphase + K.O.“ liegt als Info-Popover neben dem Turnierformat. Gruppe und
+  Tabelle verwenden textliche Überschriften ohne zusätzliche dekorative Symbole. Jede Gruppe fasst
+  ihre Tabelle und Runden in einem gemeinsamen umrandeten Bereich zusammen.
+- Ein erneuter Klick auf den aktiven unteren Turnier-Tab führt immer zur Turnierübersicht zurück.
+  Bereits erfasste Sieger und Punktestände lassen sich über eine eindeutige Bearbeiten-Aktion
+  korrigieren. Abhängige K.O.-Ergebnisse werden dabei zurückgesetzt und Gruppen-Korrekturen bauen
+  die K.O.-Phase neu auf, damit Rangliste und Turnierbaum konsistent bleiben.
+- Die Spielerübersicht zeigt fremde Profile nur lesbar; ausschließlich die lokal gewählte eigene
+  Identität gelangt in „Mein Profil“ und darf die Profilfelder ändern. Die API weist fremde
+  Profiländerungen mit `403` zurück. Die Geräteidentität per Header bleibt bis zu einem späteren
+  authentifizierten Usermanagement ausdrücklich eine Übergangslösung.
+- Die Teams-Seite übernimmt Spieler-Raster, Auslosungsbereich, Beschriftungen und Teamkarten aus
+  dem Turnierformular. Ausgeloste Gamer wechseln auch dort per Drag-and-drop, Touch-Auswahl oder
+  Pfeiltasten das Team; das alte Team-Dropdown entfällt. Auslosung und Captain Draft liegen als
+  gleichwertige Bereiche mit Akzentkante in einer gemeinsamen Hauptkarte. Eine gemeinsame
+  Spielauswahl oberhalb der beiden Bereiche gilt für Auslosung, Captain Draft und Historie, ohne
+  optisch einem Ablauf zugeordnet zu sein. Der Captain Draft erhält eine eigene Teilnehmerauswahl;
+  erst daraus werden die Captains im selben zweispaltigen Kartenraster benannt. Auswahlzustände
+  werden wie bei der Auslosung nur über die Checkbox gezeigt, ohne zusätzlichen Karten-Highlight.
+  Ein einzelner Tooltip neben „Captain Draft“ erklärt die Reihenfolge aus Teilnehmern, Captains und
+  Spielerwahl; bei „Captains“ gibt es keinen doppelten Tooltip oder Leerzustandstext. Titel und
+  Auswahlraster erhalten dort denselben kompakten Abstand wie im Spielerblock. Der Button bleibt
+  schlicht mit „Draft starten“ beschriftet und wiederholt keine Captain- oder Spieleranzahl. Die im
+  laufenden Draft verbliebenen Gamer stehen unter „Spieler“ in breiten Spielerkarten statt Pills;
+  die Captain-Teams erhalten parallel die Überschrift „Captains“. Dekorative Draft-Symbole und der Hinweis „Du bist am
+  Zug“ entfallen. In Auslosung, Draft-Auswahl, Live-Draft und ausgelosten Teams steht bei jedem Gamer
+  das vereinheitlichte Skill-Symbol mit dem Wert für das ausgewählte Spiel; eine fehlende Bewertung
+  wird mit einem Gedankenstrich ausgewiesen, Tooltip und Screenreader-Text nennen weiterhin „Skill-Level“.
+  Offene Auslosungen und erfasste Ergebnisse werden chronologisch in einer gemeinsamen, standardmäßig
+  geschlossenen „Historie“ ohne Symbol gezeigt; jeder Eintrag nennt Spielsymbol und Spielname.
+  Statt „Ergebnis erfasst“ kennzeichnet ein verstärkter Rahmen das
+  Gewinner-Team. Gewinner, Wert und Platzierung lassen sich über „Ergebnis bearbeiten“ am
+  bestehenden Match korrigieren, ohne einen zweiten Ergebniseintrag anzulegen. Auf abgeschlossenen
+  Einträgen ist „Rematch“ die hervorgehobene Primäraktion, „Ergebnis bearbeiten“ bleibt sekundär.
+  Der Seitentitel lautet kompakt „Teams“; „Teams auslosen“ bleibt die konkrete Aktionsbeschriftung.
+- Die Turnierseite nutzt dieselbe spielbezogene Skill-Anzeige wie die Teams-Seite: in der
+  Teilnehmerauswahl, der ausgelosten Teamvorschau und den Teams der Turnierdetails. Beide Ansichten
+  teilen dafür einen Helper, damit Symbol, fehlender Wert, Tooltip und Screenreader-Text gleich bleiben.
+  In den Teamüberschriften steht zusätzlich der dynamisch aus den zugeordneten Spielern summierte
+  Gesamt-Skill. Fehlende Einzelbewertungen zählen dabei mit `0`.
+- Erfolgreich zusammengehaltene Sitznachbarn erzeugen keinen zusätzlichen Bestätigungstext; nur
+  unvermeidbare Trennungen werden nach der Auslosung als Hinweis angezeigt.
+
+Betroffene Dateien: `server/public/js/views/matchmaking.js`,
+`server/public/js/views/tournament.js`, `server/public/js/views/votes.js`,
+`server/public/css/style.css` und `server/src/test/e2e/flows.e2e.test.ts`.
+
+### 4. Home, Rang und Vote aufräumen
+
+- Home verwendet wie Turniere, Teams und Vote vollbreite gruppierte Hauptkarten für „Aktuell“,
+  „Live-Status“, „Rangliste“ und „Sitzplan“. Überschriften liegen innerhalb der jeweiligen Fläche;
+  Aktuell-Einträge, eigener Status und Spieler bleiben als ruhigere Unterkarten erkennbar.
+  „Gerade aktiv“ gehört als Unterbereich zum Live-Status. Die vorhandenen internen Grids bleiben
+  responsiv.
+- Sitzplan erhält eine Überschrift analog zu Rangliste und Status; „Gesamte Rangliste“ ersetzt
+  „Ganze Rangliste“.
+- Die Meldungshistorie in die Glocke der Kopfzeile verschieben. Die neueste aktive, ungelesene
+  Mitteilung bleibt zusätzlich als hervorgehobener Direktlink unter der Kopfzeile sichtbar; die
+  frühere doppelte Home-Historie entfällt. Gelesen und persönlich ausgeblendet wird vorläufig anhand
+  der lokal gewählten Spieleridentität.
+- Die Glocken-Historie bietet persönliche Sammelaktionen für „Alle gelesen“ und
+  „Alle löschen“. Die hervorgehobene Meldung nutzt wieder den Markenverlauf der Primärbuttons und
+  verschwindet bei fachlicher Auflösung beziehungsweise exakt am hinterlegten Ablaufzeitpunkt.
+- Einzelne ungelesene Mitteilungen nutzen eine kompakte Icon-Aktion direkt links neben Löschen,
+  damit Aktionszeilen auf schmalen Displays nicht umbrechen. Mitteilungskategorien verwenden das
+  gemeinsame Lucide-Set; Sammelbestellungen erhalten das Bestell- statt des alten Pizza-Symbols.
+  Bereits gespeicherte Einträge mit Emoji-Präfix werden bei der Anzeige normalisiert. Der redundante
+  „Neu“-Badge entfällt; ungelesene Einträge bleiben durch Rand und Hintergrund klar erkennbar.
+- Wiederkehrende Fachsymbole werden zentral in `domainIcons.js` zugeordnet und von Navigation,
+  Aktuell-Karten, Kiosk, Mitteilungen, Leerzuständen und Querverweisen wiederverwendet. Untere
+  Navigation und „Mehr“ sind die verbindliche Referenz: Schwerter stehen für laufende Turniere,
+  die Waage für Teams, der Aktivitäts-Puls für Skill, der Hamburger für Sammelbestellungen und der
+  Pokal ausschließlich für Ranglisten, Ergebnisse beziehungsweise Siege.
+- Die Ranglisten-Vorschau zeigt auf größeren Displays die ersten sechs Plätze in zwei Spalten und
+  fällt auf schmalen Handys in eine fortlaufende Liste zurück.
+- Spieler-Namen verwenden in Live-Status, Rangliste und Auswahlansichten denselben Namensstil;
+  Formfelder erben seitenweit dieselbe Systemschrift. Der Home-Sitzplan richtet Avatar und Namen
+  sauber aus, hebt Gamer-Namen lesbarer hervor und zeigt ihren Live-Status direkt dahinter als
+  kompakten grünen, gelben oder roten Indikator.
+- Rang fasst die gemeinsam gefilterten Bereiche „Rangliste“ und Spieler-Spielzeit in einer
+  vollbreiten Hauptkarte zusammen; beide bleiben darin über umrandete Unterbereiche mit der
+  gemeinsamen Akzentkante unterscheidbar. Der Spielfilter steht oberhalb beider Bereiche.
+  „Spielzeit pro Spiel“ bleibt als ungefilterte Hauptkarte separat. Rang-Titel, Kurztexte und
+  Leerzustände sind bereinigt. Alle drei Listen stehen ab `--bp-md` in zwei Spalten; auf Handys
+  bleibt eine Spalte, einzelne Einträge nutzen die volle Breite. Der Spielfilter wirkt auf Rangliste
+  und Spieler-Spielzeit, während „Spielzeit pro Spiel“ immer den Vergleich aller Spiele behält.
+  Lange Namen bleiben innerhalb der Zeilen, und Siege sowie Spiele
+  stehen sichtbar in einer zweiten Zeile statt in einem nativen Hover-Text. Das Ergebnisformular
+  trennt Modus, Spieler-Zuordnung beziehungsweise Teilnehmende und Ergebnis als umrandete Bereiche.
+  Für Zuordnung und Zahlenfelder werden stabile Grid-/Spaltenstrukturen verwendet, damit Controls
+  unabhängig von Namenslängen fluchten.
+- Vote-Beschreibung auf „Punkte frei verteilen, höchste Summe gewinnt.“ kürzen, Aktionsbuttons
+  ausrichten und Spiele ab `--bp-md` zweispaltig darstellen; auf dem Handy bleibt eine Spalte.
+- Vote übernimmt die neuen Seitenmuster aus Home, Turniere und Teams: Die neue beziehungsweise
+  laufende Abstimmung steht zuerst. Darunter folgen „Letzter Vote“ und „Top 10 nach Bock-Level“
+  als eigene vollbreite Gruppen ohne Akzentkante. Ein klarer Status zählt während der Abstimmung
+  abgegebene Bewertungen gegen alle teilnehmenden Gamer. Das aktuelle Ergebnis und jeder Eintrag
+  der eingeklappten „Historie“ zeigen die zehn bestplatzierten Spiele in kompakten
+  Ranglistenzeilen; die Detailaktion mit allen Balken bleibt erhalten. Bei einem Unentschieden
+  tragen die punktgleichen Sieger denselben Rang und einen sichtbaren Rahmen. Der Textstatus und
+  der zusätzliche Erklärungstext entfallen; „Stichwahl starten“ steht direkt unten in derselben
+  „Letzter Vote“-Karte. Die Top 10 teilen sich ab
+  `--bp-md` in zwei geordnete Fünferlisten. Die
+  Spieleauswahl bleibt auch mobil als
+  umrandetes Kartenraster erkennbar. Der Erklärtext zur verdeckten Auswertung steht als Tooltip direkt
+  neben dem Titel, die Punkte-Erklärung entsprechend am Titel der neuen Abstimmung. Titel- und
+  Infofeld starten gleich hoch; Filterleiste und Auswahlbutton verwenden konsistente Abstände.
+  Die Teilnehmeraktion bleibt vollbreit und primär, darunter stehen „Abbrechen“ und „Beenden“ gleich breit.
+  Vote-Leerzustände zentrieren Symbol und Text vertikal. Der Seitentitel lautet kompakt „Vote“.
+  Pro Gamer und Runde ist genau eine Abgabe erlaubt. Die API schützt dies atomar auch gegen
+  Doppeltaps oder ein zweites Gerät; leere Punkteabgaben sind ungültig. Nach erfolgreicher Abgabe
+  sperrt die UI die Auswahl und ersetzt den Button durch „Bewertung/Stimme abgegeben“.
+- Die Vote-Historie heißt sichtbar nur „Historie“, nutzt den neuen gemeinsamen, symbolfreien
+  Collapse-Stil, startet geschlossen und behält ihren geöffneten Zustand bei
+  Live-Aktualisierungen; der alte Antipp-Erklärtext entfällt.
+
+Betroffene Dateien: `server/public/js/views/home.js`, `server/public/js/views/seating.js`,
+`server/public/js/views/leaderboard.js`, `server/public/js/views/votes.js` und
+`server/public/css/style.css`.
+
+### 5. Unterseiten unter „Mehr“ konsistent bereinigen
+
+- Einträge in `more.js` alphabetisch sortieren und die dort gewünschten Kurztexte aktualisieren
+  („Essen“, „Minigame-Lobbies“, „Awards und Statistiken“, keine An-/Abreise-Beschreibung).
+- Auf den Zielseiten die in der Feedbackliste genannten dekorativen Seiten-/Abschnittssymbole und
+  Symbole in farbigen Textbuttons entfernen. Rein ikonische Aktionen wie Bearbeiten, Kopieren,
+  Schließen oder Löschen bleiben erhalten und bekommen weiterhin zugängliche Namen.
+- Info-Inhalte durch eine klarere Typografie und Kartenhierarchie hervorheben, ohne die
+  Aktionsbuttons zu vergrößern; das Seitentitel-Symbol entfällt.
+- Essen-Texte vereinfachen und für die Datumsauswahl den vorhandenen `dateTimeField`-Helper wie bei
+  An-/Abreise verwenden.
+- An-/Abreise: Felder umbenennen, falsche Fahrgemeinschaftssymbole entfernen und Zeitangaben mit
+  einer responsiven Feldreihe nebeneinanderstellen.
+- Spieler bleibt eine lesbare Übersicht ohne Anlegeaktion. Fremde Profile sind read-only;
+  Erstauswahl, Selbstbearbeitung und Identitätswechsel laufen über „Mein Profil“. Admin bündelt
+  Sitzplan, Backup und lokale Testdatenwerkzeuge, ohne daraus allgemeine Spieler- oder
+  Rollenverwaltung abzuleiten. Die wiederholten „Du bist …“-Karten entfallen, sobald lokal eine
+  Identität gewählt ist. Durchsagen verwenden den gemeinsamen gruppierten Aufbau und die
+  standardmäßig geschlossene „Historie“.
+
+Betroffene Dateien vor allem: `server/public/js/views/more.js`, `infoBoard.js`, `gameCatalog.js`,
+`foodOrders.js`, `arcade.js`, `arrivals.js`, `broadcast.js`, `hallOfFame.js` und
+`server/public/css/style.css`.
+
+### 6. Auswertungen, Profil und Einstellungen verschlanken
+
+- Auswertungen: Kacheltext und Titel bereinigen, Symbole entfernen, Awards-Karten einheitlich mit
+  dem Spieler in der unteren Kartenzeile ausrichten.
+- „Längste Einzelsession pro Spiel“ in „Längste individuelle Session pro Spiel“ umbenennen und den
+  vorhandenen Max-pro-Einzelsession-Pfad durch einen Unit-/Integrationstest gegen überlappende
+  Sessions mehrerer Spieler absichern.
+- Multitasking-Liste und Belegungsdiagramm nicht mehr laden/rendern; das Backend bleibt für eine
+  spätere Achievement- oder überarbeitete Analyse nutzbar. Das Session-Protokoll wird als
+  standardmäßig geschlossener Nachbereitungsbereich geführt.
+- Alle drei Auswertungsbereiche verwenden dasselbe Event-Dropdown ohne zusätzliche Zeitraumfelder.
+  Spielzeit und Turniere filtern direkt nach Event; Arcade leitet den Zeitraum intern aus dem Event
+  ab. „Witzige Rekorde“ heißt sichtbar „Trivia“.
+- Profil verwendet die gemeinsame Gruppenhierarchie. Bild, Farbe, Gamertag und Name bilden eine
+  ausgerichtete Profilzeile. Die Farbauswahl öffnet ein zentriertes, zugängliches Modal mit
+  Farbfläche, Vorschau sowie editier- und kopierbarem Hex-Wert. Agent-Einrichtung ist in drei
+  nachvollziehbare Schritte gegliedert; Tracking-Pause und erweitertes Tracking gehören zu Schritt 1.
+- Einstellungen gruppiert Events, Einladungslink und Kiosk. Link, Kopieren und QR-Aktion teilen
+  eine Zeile; der QR-Code öffnet als Modal. Sitzplan und Backup liegen ausschließlich im
+  Admin-Modus. Erklärungen stehen als kurze Info-Popover direkt am jeweiligen Titel.
+
+Betroffene Dateien: `server/public/js/views/analytics.js`, gegebenenfalls
+`server/src/sessionStats.test.ts`, `server/public/js/views/profile.js`,
+`server/public/js/views/myStats.js`, `server/public/js/views/games.js` und
+`server/public/css/style.css`.
+
+### 7. Produkt und Repository vollständig in „Respawn“ umbenennen
+
+- Sichtbare Produkttexte, Wortmarke, Logo-Beschriftungen, PWA-Metadaten, Kiosk, Service Worker,
+  Exporte, Backups und Tests auf „Respawn“ vereinheitlichen.
+- Technische Bezeichner wie Paketnamen, Browser-Speicher, interne Events, Agent-Dateien,
+  Installationspfade, Container-Referenzen und Deployment-Verzeichnisse ebenfalls umbenennen.
+- Den Windows-Agent unter dem neuen Namen neu bauen; Dokumentation und Download-Tests folgen dem
+  neuen Artefaktnamen.
+- Den bestehenden Produktionspfad beim ersten Deployment verlustfrei auf `/opt/respawn` migrieren.
+- Nach vollständig grünen lokalen Prüfungen das GitHub-Repository in `Respawn` umbenennen und erst
+  danach die lokale `origin`-URL aktualisieren. Push und Merge bleiben separate Schritte.
+
+### 8. Globale interaktive Suche ergänzen
+
+- Ein Suchsymbol in der Kopfzeile öffnet eine responsive Command-Palette; `Strg/Cmd + K` und `/`
+  bieten denselben schnellen Einstieg per Tastatur.
+- Der lokale Index umfasst alle Hauptbereiche, Tools und persönliche Ziele sowie verständliche
+  Synonyme wie „Captain Draft“, „Voting“, „Anreise“ oder „WLAN“. Zusätzlich werden Spieler, Spiele,
+  Events, Bestellungen samt Positionen, Info-Einträge, Durchsagen, Fahrgemeinschaften,
+  Turniere und persönliche Mitteilungen aus State und bestehenden APIs indexiert.
+- Vor der Eingabe bleibt die Ergebnisliste leer; Startvorschläge und eine separate
+  Tastaturerklärung entfallen.
+- Das Suchfeld verwendet die gemeinsame Eingabegrundlage, erhält innerhalb des großen Dialogs aber
+  den Kartenradius, damit es nicht eckiger als die umgebende Oberfläche wirkt.
+- Treffer werden während der Eingabe gefiltert und lassen sich per Touch, Maus, Pfeiltasten und
+  Enter öffnen. Escape, Klick auf den Hintergrund und der Schließen-Button schließen die Palette
+  und geben den Fokus an den Auslöser zurück.
+- Inhaltstreffer navigieren in den passenden Bereich und markieren dort das konkrete Ziel, sofern
+  die Ansicht eine stabile Zielkarte oder -zeile besitzt; Turniertreffer öffnen direkt das Turnier.
+
+## Test- und Abnahmeplan
+
+### Automatisiert
+
+Die Verifikation folgt der risikobasierten Matrix in `DEVELOPMENT_GUIDELINES.md` und den konkreten
+Kommandos in `server/TESTING.md`. Für Frontend-JS/CSS gehören Token-Check und relevante E2E-Flows
+dazu; reine Dokumentationsänderungen werden über Links, Pfade und genannte Scripts geprüft. Ein
+vollständiger Lauf aller Suites ist für eine isolierte Text- oder Layoutkorrektur nicht automatisch
+erforderlich.
+
+E2E-Abdeckung ergänzt mindestens:
+
+- Info-Popover per Klick, Tastatur und `Escape`, inklusive nur eines offenen Popovers.
+- Mehrspaltige Spieler-/Vote-Auswahl auf Laptop und einspaltiger, overflow-freier Aufbau auf Handy.
+- „Alle markieren“/„Auswahl aufheben“, Teamwert `2` und gültiger/ungültiger Draft-Startzustand.
+- Standardmäßig geschlossene Team-/Vote-Historien und weiterhin erreichbare Historieninhalte.
+- Meldungsliste, Gelesenstatus, persönliches Ausblenden, Deep-Link und `Escape` im Browser abdecken.
+- Datumsauswahl in Essen mit demselben Helper-Verhalten wie An-/Abreise.
+
+### Manuell
+
+- Phone und Laptop, Browser-Zoom sowie lange Spieler-, Spiel- und Info-Texte prüfen.
+- Fokusreihenfolge, sichtbaren Fokus, Touch-Zielgröße, Screenreader-Namen und `Escape`-Verhalten des
+  Info-Popovers kontrollieren.
+- Lade-, Leer-, Fehler-, Disabled- und lange Historienzustände je betroffener Ansicht prüfen.
+- Symbol-Audit: keine dekorativen Icons in bereinigten Titeln/farbigen Buttons, aber notwendige
+  Status- und Icon-only-Aktionen bleiben verständlich.
+- Feedback-Checkboxen erst nach gemeinsamer visueller Abnahme auf `[x]` setzen.
+
+## Bewusst nicht Bestandteil dieses PRs
+
+- Alle weiterhin mit `Kommentar (Usermanagement)` markierten Punkte.
+- Neue Login-, Session-, Rollen-, Rechte-, Invite-, Kiosk-Token- oder Event-Scoping-Logik.
+- Löschen oder Deaktivieren von Spielern sowie Änderungen an Agent-Key-Sichtbarkeit/-Rotation.
+- Authentifizierte Session-Zuordnung des vorläufig spielerbezogenen Meldungsstatus.
+- Branch pushen, GitHub-PR eröffnen oder mergen.
+- Backend-Analytics-Endpunkte nur deshalb löschen, weil ihre aktuelle UI ausgeblendet wird.
+
+## Reviewbare Commit-Reihenfolge
+
+1. `feat: add accessible contextual info popovers`
+2. `feat: refine tournament team and voting layouts`
+3. `refactor: simplify secondary view copy and icons`
+4. `refactor: streamline analytics profile and settings views`
+5. `test: cover general UI polish flows`
+6. `feat: add personal header notification center`
+7. `chore: rename product and technical references to Respawn`
+
+Nach jedem Commit bleibt die App lauffähig; Dokumentation und Tests werden spätestens im selben
+Arbeitspaket aktualisiert. Sachfremde oder bereits vorhandene Nutzeränderungen werden nicht gestaged.

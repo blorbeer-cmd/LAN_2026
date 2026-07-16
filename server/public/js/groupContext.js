@@ -19,7 +19,7 @@ function selectGroup(groupId) {
   if (!group) return;
   sessionStorage.setItem(GROUP_KEY, group.id);
   updateButton();
-  window.dispatchEvent(new CustomEvent('lan:group-changed', { detail: group }));
+  window.dispatchEvent(new CustomEvent('respawn:group-changed', { detail: group }));
 }
 
 function mergeGroup(group) {
@@ -381,7 +381,7 @@ export async function refreshGroupContext() {
     }
     updateButton();
     if (selectionChanged) {
-      window.dispatchEvent(new CustomEvent('lan:group-changed', { detail: selectedGroup() }));
+      window.dispatchEvent(new CustomEvent('respawn:group-changed', { detail: selectedGroup() }));
     }
   } catch (error) {
     if (error.status !== 401) showToast(error.message, { error: true });

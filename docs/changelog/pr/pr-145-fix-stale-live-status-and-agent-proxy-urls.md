@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-12
 - Branch: `fix/live-status-agent-url`
-- Merge-Commit: [`78a2413`](https://github.com/blorbeer-cmd/LAN_2026/commit/78a2413)
-- Pull Request: [#145](https://github.com/blorbeer-cmd/LAN_2026/pull/145)
+- Merge-Commit: [`78a2413`](https://github.com/blorbeer-cmd/Respawn/commit/78a2413)
+- Pull Request: [#145](https://github.com/blorbeer-cmd/Respawn/pull/145)
 
 ## Changelog
 
@@ -14,6 +14,6 @@
 
 ## Geschlossene Issues
 
-- [#20](https://github.com/blorbeer-cmd/LAN_2026/issues/20)
-- [#18](https://github.com/blorbeer-cmd/LAN_2026/issues/18)
-- [#17](https://github.com/blorbeer-cmd/LAN_2026/issues/17)
+- [#20](https://github.com/blorbeer-cmd/Respawn/issues/20)
+- [#18](https://github.com/blorbeer-cmd/Respawn/issues/18)
+- [#17](https://github.com/blorbeer-cmd/Respawn/issues/17)

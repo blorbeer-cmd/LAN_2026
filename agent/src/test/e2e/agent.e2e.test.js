@@ -111,9 +111,11 @@ test('agent reports the running node process and the server reflects it as "play
 });
 
 test('pausing via the web profile (PATCH /api/players) is picked up by the already-running agent', async () => {
+  // The web profile always sends the device identity header (see
+  // server/public/js/api.js); profile-field updates without it are rejected.
   await fetch(`${BASE_URL}/api/players/${player.id}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-player-id': player.id },
     body: JSON.stringify({ trackingPaused: true }),
   });
 
@@ -125,7 +127,7 @@ test('pausing via the web profile (PATCH /api/players) is picked up by the alrea
 
   await fetch(`${BASE_URL}/api/players/${player.id}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-player-id': player.id },
     body: JSON.stringify({ trackingPaused: false }),
   });
   await new Promise((r) => setTimeout(r, 700));

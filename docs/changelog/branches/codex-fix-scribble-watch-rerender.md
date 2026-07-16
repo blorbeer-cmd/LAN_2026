@@ -6,4 +6,4 @@ Scribble-Galerie, Zuschauerbewertungen und Realtime-Auflösung nach Zuschauer-Ab
 
 ## Pull Request
 
-- [PR #167](https://github.com/blorbeer-cmd/LAN_2026/pull/167), gemergt am 2026-07-13.
+- [PR #167](https://github.com/blorbeer-cmd/Respawn/pull/167), gemergt am 2026-07-13.

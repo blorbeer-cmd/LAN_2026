@@ -6,7 +6,8 @@ import { db } from '../db';
 import { config } from '../config';
 import { broadcast, Events } from '../realtime';
 import { getLiveBoard } from '../liveStatus';
-import { createTestUsers, deleteTestUsers, countTestUsers, MAX_TEST_USERS_PER_CALL } from '../testUsers';
+import { createTestUsers, countTestUsers, MAX_TEST_USERS_PER_CALL } from '../testUsers';
+import { deleteAllTestData, seedHallOfFameTestData } from '../testData';
 import { writeAdminAudit } from '../adminAudit';
 import { requireRecentReauthentication } from '../sessions';
 
@@ -36,25 +37,48 @@ adminRouter.post('/test-users', requireAdmin, (req, res) => {
   res.status(201).json({ created, totalTestUsers: countTestUsers() });
 });
 
+// POST /api/admin/test-data/hall-of-fame - replaces the marked historical
+// fixtures with a dense deterministic 2015-2026 data set. Kept separate from
+// player creation so adding another test participant never rewrites history.
+adminRouter.post('/test-data/hall-of-fame', requireAdmin, (req, res) => {
+  if (config.authMode === 'required') {
+    return res.status(403).json({ error: 'Test-Daten werden über die aktive Gruppe verwaltet.' });
+  }
+  try {
+    const created = seedHallOfFameTestData();
+    broadcast(Events.eventsChanged, null);
+    broadcast(Events.leaderboardChanged, null);
+    broadcast(Events.tournamentsChanged, null);
+    res.status(201).json(created);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Hall-of-Fame-Testdaten konnten nicht angelegt werden.';
+    res.status(409).json({ error: message });
+  }
+});
+
 // DELETE /api/admin/test-users - removes every test player and everything
 // hanging off them (skills, Bock, sessions, seats, neighbors, live rows).
 adminRouter.delete('/test-users', requireAdmin, requireRecentReauthentication, (req, res) => {
   if (config.authMode === 'required') {
     return res.status(403).json({ error: 'Test-Spieler werden über die aktive Gruppe verwaltet.' });
   }
-  const deleted = deleteTestUsers();
+  const { deletedPlayers, deletedEvents } = deleteAllTestData();
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     action: 'test_users_deleted',
     targetType: 'test_user_batch',
-    details: { count: deleted },
+    details: { deletedPlayers, deletedEvents },
   });
-  if (deleted > 0) {
+  if (deletedPlayers > 0 || deletedEvents > 0) {
     broadcast(Events.playersChanged, null);
     broadcast(Events.skillsChanged, null);
     broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
+    broadcast(Events.eventsChanged, null);
+    broadcast(Events.leaderboardChanged, null);
+    broadcast(Events.tournamentsChanged, null);
   }
-  res.json({ deleted });
+  // `deleted` remains for older clients; it historically meant players.
+  res.json({ deleted: deletedPlayers, deletedPlayers, deletedEvents });
 });
 
 // GET /api/admin/agent-diagnostics — one compact troubleshooting row per

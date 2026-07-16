@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-09
 - Branch: `claude/game-preference-voting-ototpn`
-- Merge-Commit: [`51eb409`](https://github.com/blorbeer-cmd/LAN_2026/commit/51eb40987409182710dec15eb5a3e449ee5dbcaa)
-- Pull Request: [#78](https://github.com/blorbeer-cmd/LAN_2026/pull/78)
+- Merge-Commit: [`51eb409`](https://github.com/blorbeer-cmd/Respawn/commit/51eb40987409182710dec15eb5a3e449ee5dbcaa)
+- Pull Request: [#78](https://github.com/blorbeer-cmd/Respawn/pull/78)
 
 ## Changelog
 

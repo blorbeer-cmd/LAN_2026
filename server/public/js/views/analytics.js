@@ -1,28 +1,27 @@
-// Auswertungen view: three tabs — "Spielzeit" and "Matches & Turniere" share
-// one event/date filter (awards, longest sessions, multitasking, a raw
-// session log, a per-game concurrency chart; recorded results, tournament
+// Auswertungen view: all three tabs share one event filter (awards, longest
+// sessions, a collapsed raw session log; recorded results, tournament
 // counts, team-auslosen history, a few "witzige" head-to-head records).
-// "Arcade" has no filter of its own (arcade_results isn't tied to a single
-// event) and covers the arcade mini-games specifically: match durations,
-// the most-active player per game and a per-day match timeline — on top of
+// Arcade results aren't tied to an event id, so that tab derives the selected
+// event's date bounds internally. It covers the arcade mini-games specifically:
+// match durations and the most-active player per game — on top of
 // the win/loss leaderboard already shown on the Arcade view's own stats tab.
 // Reached via the "Mehr" hub, not the main bottom nav — this is for browsing
 // after the fact, not something needed mid-game. Playtime/Matches used to be
 // two separate views; merged since both answer
 // "how did the LAN go", just from different angles (see server/CLAUDE.md
 // games reorg) — one entry in the Mehr hub instead of two, and switching
-// angles no longer means re-picking the event/date range from scratch.
+// angles no longer means re-picking the event from scratch.
 //
 // Data is fetched lazily per tab and cached in this module (not the shared
-// `state`, since it's filtered by its own date range independent of the
-// rest of the app) — loadPlaytimeData()/loadMatchesData()/loadArcadeData()
+// `state`, since it's filtered by this view's event selection) —
+// loadPlaytimeData()/loadMatchesData()/loadArcadeData()
 // fetch, then trigger a re-render.
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, formatDateTime, avatarHtml, gameBadgeHtml } from '../format.js';
+import { escapeHtml, formatDateTime, avatarHtml } from '../format.js';
 import { showToast } from '../toast.js';
-import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
+import { icon } from '../icons.js';
 
 let activeTab = 'playtime'; // 'playtime' | 'matches' | 'arcade'
 
@@ -35,11 +34,8 @@ let arcadeLoading = false;
 
 function defaultFilters() {
   // eventId: 'active' resolves to the currently active event on first
-  // render; '' means "Gesamt, alle Events". from/to are an OPTIONAL extra
-  // narrowing on top of whichever event is selected (e.g. "just Saturday
-  // night of this LAN"), only meaningful for the Spielzeit tab — Matches &
-  // Turniere always queries the whole selected event.
-  return { eventId: 'active', from: null, to: null, concurrencyGameId: null, bucketMinutes: 60 };
+  // render; '' means "Gesamt, alle Events".
+  return { eventId: 'active' };
 }
 let filters = defaultFilters();
 
@@ -48,17 +44,15 @@ let filters = defaultFilters();
 function resolveEventSelection() {
   if (filters.eventId !== 'active') return;
   const active = state.events.find((e) => e.isActive);
-  if (active) filters.eventId = active.id;
+  filters.eventId = active?.id ?? '';
 }
 
-// The event's own date range, used only to pre-fill the manual date/time
-// inputs with something sensible — the actual query scopes by eventId
-// directly (exact), not by this range, unless the user applies a narrower one.
+// Arcade results do not carry an event id. For that tab only, translate the
+// selected event into its date bounds before querying the shared endpoint.
 function selectedEventRange() {
   const ev = state.events.find((e) => e.id === filters.eventId);
   if (ev) return { from: ev.starts_at, to: ev.ends_at ?? Date.now() };
-  const to = Date.now();
-  return { from: to - 3 * 24 * 60 * 60 * 1000, to };
+  return null;
 }
 
 async function loadPlaytimeData(ctx) {
@@ -68,50 +62,17 @@ async function loadPlaytimeData(ctx) {
     resolveEventSelection();
     const params = {};
     if (filters.eventId) params.eventId = filters.eventId;
-    if (filters.from && filters.to) {
-      params.from = String(filters.from);
-      params.to = String(filters.to);
-    }
 
-    // The concurrency endpoint always needs a concrete range (it doesn't
-    // understand eventId) — fall back to the selected event's own range, or
-    // span every known event for "Gesamt". Bucket size adapts to keep the
-    // number of bars sane regardless of how wide the range ends up being.
-    let concurrencyFrom;
-    let concurrencyTo;
-    if (filters.from && filters.to) {
-      concurrencyFrom = filters.from;
-      concurrencyTo = filters.to;
-    } else if (filters.eventId) {
-      ({ from: concurrencyFrom, to: concurrencyTo } = selectedEventRange());
-    } else {
-      concurrencyFrom = state.events.length
-        ? state.events.reduce((min, e) => Math.min(min, e.starts_at), Date.now())
-        : Date.now() - 30 * 24 * 60 * 60 * 1000;
-      concurrencyTo = Date.now();
-    }
-    const targetBucketCount = 200;
-    const spanMinutes = Math.max(1, (concurrencyTo - concurrencyFrom) / 60_000);
-    const bucketMinutes = Math.min(
-      24 * 60,
-      Math.max(filters.bucketMinutes, Math.ceil(spanMinutes / targetBucketCount))
-    );
-    const concurrencyParams = { from: String(concurrencyFrom), to: String(concurrencyTo) };
-
-    const gameId = filters.concurrencyGameId || (state.games[0] && state.games[0].id) || null;
-    const [overview, sessions, awards, popularGames, concurrency] = await Promise.all([
+    const [overview, sessions, awards, popularGames] = await Promise.all([
       api.analytics.overview(params),
       api.analytics.sessions(params),
       api.analytics.awards(params),
       api.analytics.games(params),
-      gameId
-        ? api.analytics.concurrency({ ...concurrencyParams, gameId, bucketMinutes: String(bucketMinutes) })
-        : Promise.resolve(null),
     ]);
-    cache = { overview, sessions, awards, popularGames, concurrency, gameId };
+    cache = { overview, sessions, awards, popularGames };
   } catch (err) {
     showToast(err.message, { error: true });
-    cache = { overview: null, sessions: [], awards: { awards: [] }, popularGames: { games: [] }, concurrency: null, gameId: null };
+    cache = { overview: null, sessions: [], awards: { awards: [] }, popularGames: { games: [] } };
   } finally {
     loading = false;
     ctx.rerender();
@@ -119,9 +80,9 @@ async function loadPlaytimeData(ctx) {
 }
 
 const FORMAT_LABELS = {
-  single_elimination: '🏆 K.O.-Turnier',
-  round_robin: '🔁 Liga',
-  group_knockout: '👥 Gruppenphase + K.O.',
+  single_elimination: 'K.O.-Turnier',
+  round_robin: 'Liga',
+  group_knockout: 'Gruppenphase + K.O.',
 };
 
 async function loadMatchesData(ctx) {
@@ -145,15 +106,19 @@ async function loadMatchesData(ctx) {
   }
 }
 
-// Arcade tab: match durations, most-active player and a per-day timeline
-// for the arcade mini-games, on top of the win/loss leaderboard already
-// shown on the Arcade view's own stats tab. arcade_results has no event_id,
-// so this is always all-time — no event/date filter to wire up here.
+// Arcade results have no event id, so the selected event's dates filter their
+// stored timestamps. "Gesamt" intentionally sends no range and returns all.
 async function loadArcadeData(ctx) {
   arcadeLoading = true;
   ctx.rerender();
   try {
-    arcadeCache = await api.analytics.arcade();
+    const params = {};
+    const eventRange = selectedEventRange();
+    if (eventRange) {
+      params.from = String(eventRange.from);
+      params.to = String(eventRange.to);
+    }
+    arcadeCache = await api.analytics.arcade(params);
   } catch (err) {
     showToast(err.message, { error: true });
     arcadeCache = { totals: { matches: 0, players: 0, totalDurationFormatted: '0s', avgDurationFormatted: '0s' }, games: [], timeline: [] };
@@ -171,7 +136,7 @@ function renderEventOptions() {
       return `<option value="${e.id}" ${e.id === filters.eventId ? 'selected' : ''}>${escapeHtml(e.name)} (${range})</option>`;
     })
     .join('');
-  return `<option value="" ${filters.eventId === '' ? 'selected' : ''}>🌐 Gesamt (alle Events)</option>${options}`;
+  return `<option value="" ${filters.eventId === '' ? 'selected' : ''}>Gesamt (alle Events)</option>${options}`;
 }
 
 export function renderAnalytics(container, ctx) {
@@ -185,48 +150,22 @@ export function renderAnalytics(container, ctx) {
   if (activeTab === 'arcade' && arcadeCache === null && !arcadeLoading) {
     loadArcadeData(ctx);
   }
-  const displayRange = filters.from && filters.to ? { from: filters.from, to: filters.to } : selectedEventRange();
-
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
-    <h1 class="view-title">📊 Auswertungen</h1>
-    <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-3);">
-      <button type="button" class="btn btn-sm ${activeTab === 'playtime' ? 'btn-primary' : ''}" data-an-tab="playtime">🕒 Spielzeit</button>
-      <button type="button" class="btn btn-sm ${activeTab === 'matches' ? 'btn-primary' : ''}" data-an-tab="matches">🎲 Matches & Turniere</button>
-      <button type="button" class="btn btn-sm ${activeTab === 'arcade' ? 'btn-primary' : ''}" data-an-tab="arcade">🕹️ Arcade</button>
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+    <h1 class="view-title">Auswertungen</h1>
+    <div class="grouped-page-sections">
+      <section class="card stack grouped-page-section" aria-labelledby="analytics-controls-title">
+        <div class="grouped-page-section-title"><h2 id="analytics-controls-title">Ansicht</h2></div>
+        <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm ${activeTab === 'playtime' ? 'btn-primary' : ''}" data-an-tab="playtime">Spielzeit</button>
+          <button type="button" class="btn btn-sm ${activeTab === 'matches' ? 'btn-primary' : ''}" data-an-tab="matches">Matches & Turniere</button>
+          <button type="button" class="btn btn-sm ${activeTab === 'arcade' ? 'btn-primary' : ''}" data-an-tab="arcade">Arcade</button>
+        </div>
+        <select id="an-event" aria-label="Veranstaltung">${renderEventOptions()}</select>
+      </section>
+      <div id="an-content" class="grouped-page-sections">${renderActiveTabContent()}</div>
     </div>
-    ${
-      activeTab === 'arcade'
-        ? ''
-        : `<div class="card stack">
-             <select id="an-event">${renderEventOptions()}</select>
-             ${
-               activeTab === 'playtime'
-                 ? `<div class="field-row">
-                      <div>${dateTimeFieldHtml('an-from', displayRange.from, { clearable: true })}</div>
-                      <div>${dateTimeFieldHtml('an-to', displayRange.to, { clearable: true })}</div>
-                    </div>
-                    <button type="button" class="btn btn-primary btn-block" id="an-apply">Zeitraum zusätzlich eingrenzen</button>
-                    <div class="muted" style="font-size:var(--font-size-xs);">Event wählen zeigt genau dessen Daten. Die Felder darüber grenzen innerhalb des Events optional weiter ein (z.B. nur Samstagnacht).</div>`
-                 : `<div class="muted" style="font-size:var(--font-size-xs);">Event wählen zeigt genau dessen Daten.</div>`
-             }
-           </div>`
-    }
-    <div id="an-content">${renderActiveTabContent()}</div>
   `;
-
-  if (activeTab === 'playtime') {
-    wireDateTimeField(container, 'an-from');
-    wireDateTimeField(container, 'an-to');
-    container.querySelector('#an-apply').addEventListener('click', () => {
-      const fromVal = container.querySelector('#an-from').value;
-      const toVal = container.querySelector('#an-to').value;
-      filters.from = fromVal ? new Date(fromVal).getTime() : null;
-      filters.to = toVal ? new Date(toVal).getTime() : null;
-      cache = null;
-      ctx.rerender();
-    });
-  }
 
   container.querySelectorAll('[data-an-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -239,17 +178,13 @@ export function renderAnalytics(container, ctx) {
   if (eventSelect) {
     eventSelect.addEventListener('change', (e) => {
       filters.eventId = e.target.value; // '' selects "Gesamt (alle Events)"
-      filters.from = null;
-      filters.to = null;
       cache = null;
       matchesCache = null;
+      arcadeCache = null;
       ctx.rerender();
     });
   }
 
-  if (activeTab === 'playtime' && !loading && cache) {
-    wirePlaytimeContent(container, ctx);
-  }
 }
 
 function renderActiveTabContent() {
@@ -265,7 +200,6 @@ function renderActiveTabContent() {
 function renderArcadeContent() {
   const totals = arcadeCache.totals;
   const games = arcadeCache.games;
-  const timeline = arcadeCache.timeline;
 
   const gameRows = games.length
     ? games
@@ -287,61 +221,26 @@ function renderArcadeContent() {
     : `<div class="empty-state" style="padding:var(--space-4);">Noch keine abgeschlossenen Arcade-Matches.</div>`;
 
   return `
-    <div class="section-title">🕹️ Arcade insgesamt</div>
-    <div class="card">
-      <div class="lb-row">
-        <span style="flex:1;">Matches</span>
-        <span class="lb-points">${totals.matches}</span>
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-arcade-total-title">
+      <div class="grouped-page-section-title"><h2 id="analytics-arcade-total-title">Arcade insgesamt</h2></div>
+      <div>
+        <div class="lb-row"><span style="flex:1;">Matches</span><span class="lb-points">${totals.matches}</span></div>
+        <div class="lb-row"><span style="flex:1;">Beteiligte Spieler</span><span class="lb-points">${totals.players}</span></div>
+        <div class="lb-row"><span style="flex:1;">Ø Matchdauer</span><span class="lb-points">${escapeHtml(totals.avgDurationFormatted)}</span></div>
+        <div class="lb-row"><span style="flex:1;">Gesamte Matchzeit</span><span class="lb-points">${escapeHtml(totals.totalDurationFormatted)}</span></div>
       </div>
-      <div class="lb-row">
-        <span style="flex:1;">Beteiligte Spieler</span>
-        <span class="lb-points">${totals.players}</span>
-      </div>
-      <div class="lb-row">
-        <span style="flex:1;">Ø Matchdauer</span>
-        <span class="lb-points">${escapeHtml(totals.avgDurationFormatted)}</span>
-      </div>
-      <div class="lb-row">
-        <span style="flex:1;">Gesamte Matchzeit</span>
-        <span class="lb-points">${escapeHtml(totals.totalDurationFormatted)}</span>
-      </div>
-    </div>
-
-    <div class="section-title">🏟️ Pro Spiel</div>
-    <div class="card">${gameRows}</div>
-
-    <div class="section-title">📈 Matches pro Tag</div>
-    <div class="card">${renderArcadeTimelineChart(timeline)}</div>
+    </section>
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-arcade-games-title">
+      <div class="grouped-page-section-title"><h2 id="analytics-arcade-games-title">Pro Spiel</h2></div>
+      ${gameRows}
+    </section>
   `;
-}
-
-// design-token-ok: bar-corner radius and gap are sized against this chart's
-// own thin bars, not the general spacing/radius scale — see "When a value
-// genuinely doesn't fit" in DESIGN_SYSTEM.md.
-function renderArcadeTimelineChart(timeline) {
-  if (!timeline.length) {
-    return `<div class="empty-state" style="padding:var(--space-4);">Noch keine Matches, aus denen sich ein Verlauf zeichnen ließe.</div>`;
-  }
-  const barRadius = '2px'; // design-token-ok: scaled to this chart's own thin bars, same exception as renderConcurrencyChart
-  const max = timeline.reduce((m, b) => Math.max(m, b.count), 1);
-  const bars = timeline
-    .map((b) => {
-      const heightPct = Math.round((b.count / max) * 100);
-      const label = new Date(b.dayStart).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-      return `<div style="display:flex;flex-direction:column;align-items:center;gap:var(--space-1);flex:0 0 32px;">
-        <div title="${escapeHtml(label)}: ${b.count} Match(es)" style="width:20px;height:${Math.max(4, heightPct)}px;max-height:100px;background:var(--accent);border-radius:${barRadius};align-self:flex-end;"></div>
-        <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(label)}</span>
-      </div>`;
-    })
-    .join('');
-  return `<div style="display:flex;align-items:flex-end;gap:var(--space-2);height:130px;overflow-x:auto;padding-bottom:2px;">${bars}</div>`;
 }
 
 function renderPlaytimeContent() {
   const awards = cache.awards?.awards || [];
   const overview = cache.overview || {
     longestSessionsPerGame: [],
-    simultaneousGameTime: [],
   };
   const sessions = cache.sessions || [];
   const popularGames = cache.popularGames?.games || [];
@@ -352,8 +251,7 @@ function renderPlaytimeContent() {
           (g, i) => `
         <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
           <span class="lb-rank">${i + 1}</span>
-          ${gameBadgeHtml({ id: g.gameId, icon: g.gameIcon }, 24)}
-          <span style="flex:1;">
+                    <span style="flex:1;">
             ${escapeHtml(g.gameName)}
             <div class="muted" style="font-size:var(--font-size-xs);">${g.playerCount} Spieler · ${g.sessionCount} Session(s)</div>
           </span>
@@ -361,27 +259,26 @@ function renderPlaytimeContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions in diesem Zeitraum.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions für dieses Event.</div>`;
 
   const awardsHtml = awards.length
     ? awards
         .map(
           (a) => `
-        <div class="card">
+        <div class="card award-card">
           <div class="row-between">
-            <span style="font-size:var(--font-size-xl);">${escapeHtml(a.emoji)}</span>
+            <div class="player-name">${escapeHtml(a.title)}</div>
             <span class="lb-points">${escapeHtml(a.value)}</span>
           </div>
-          <div class="player-name">${escapeHtml(a.title)}</div>
           <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(a.description)}</div>
-          <div class="row" style="margin-top:var(--space-2);">
+          <div class="row award-card-player">
             ${avatarHtml(state.players.find((p) => p.id === a.playerId) || { color: a.playerColor }, 20)}
             <span>${escapeHtml(a.playerName)}</span>
           </div>
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">🏅</span>Noch keine Awards in diesem Zeitraum.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon('award')}</span>Noch keine Awards für dieses Event.</div>`;
 
   const longestPerGameHtml = overview.longestSessionsPerGame.length
     ? overview.longestSessionsPerGame
@@ -389,33 +286,12 @@ function renderPlaytimeContent() {
           (r) => `
         <div class="lb-row">
           ${avatarHtml(state.players.find((p) => p.id === r.playerId) || { color: r.playerColor }, 20)}
-          <span class="row" style="flex:1;gap:var(--space-2);">${gameBadgeHtml({ id: r.gameId, icon: r.gameIcon }, 20)} ${escapeHtml(r.gameName)} — ${escapeHtml(r.playerName)}</span>
+          <span class="row" style="flex:1;gap:var(--space-2);">${escapeHtml(r.gameName)} — ${escapeHtml(r.playerName)}</span>
           <span class="lb-points">${escapeHtml(r.formatted)}</span>
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions in diesem Zeitraum.</div>`;
-
-  const multitaskingHtml = overview.simultaneousGameTime.length
-    ? overview.simultaneousGameTime
-        .map(
-          (r) => `
-        <div class="lb-row">
-          ${avatarHtml(state.players.find((p) => p.id === r.playerId) || { color: r.playerColor }, 20)}
-          <span style="flex:1;">${escapeHtml(r.playerName)} <span class="muted" style="font-size:var(--font-size-xs);">(max. ${r.maxSimultaneous} gleichzeitig)</span></span>
-          <span class="lb-points">${escapeHtml(r.multiGameFormatted)}</span>
-        </div>`
-        )
-        .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Niemand hatte mehrere Spiele gleichzeitig offen.</div>`;
-
-  const gameOptions = state.games
-    .map(
-      (g) =>
-        `<option value="${g.id}" ${g.id === cache.gameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`
-    )
-    .join('');
-  const concurrencyChart = renderConcurrencyChart(cache.concurrency);
+    : `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions für dieses Event.</div>`;
 
   const sessionRows = sessions
     .slice(0, 100)
@@ -424,7 +300,7 @@ function renderPlaytimeContent() {
       <div class="lb-row">
         ${avatarHtml(state.players.find((p) => p.id === s.playerId) || { color: s.playerColor }, 20)}
         <span style="flex:1;">
-          ${escapeHtml(s.playerName)} — ${gameBadgeHtml({ id: s.gameId, icon: s.gameIcon }, 18)} ${escapeHtml(s.gameName)}
+          ${escapeHtml(s.playerName)} — ${escapeHtml(s.gameName)}
           <div class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(s.startedAt)} – ${s.endedAt ? formatDateTime(s.endedAt) : 'läuft noch'}</div>
         </span>
         <span class="lb-points">${escapeHtml(s.formatted)}</span>
@@ -433,75 +309,31 @@ function renderPlaytimeContent() {
     .join('');
 
   return `
-    <div class="section-title">🎮 Beliebteste Spiele</div>
-    <div class="card">${popularGamesHtml}</div>
-
-    <div class="section-title">🏅 Awards</div>
-    <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));">${awardsHtml}</div>
-
-    <div class="section-title">🏃 Längste Einzelsession pro Spiel</div>
-    <div class="card">${longestPerGameHtml}</div>
-
-    <div class="section-title">🤹 Mehrere Spiele gleichzeitig offen</div>
-    <div class="card">${multitaskingHtml}</div>
-
-    <div class="section-title">📈 Belegung über die Zeit</div>
-    <div class="card stack">
-      <select id="an-concurrency-game">${gameOptions}</select>
-      ${concurrencyChart}
-    </div>
-
-    <div class="section-title">🕒 Wer hat wann was gespielt</div>
-    <div class="card">
-      ${sessionRows || `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions in diesem Zeitraum.</div>`}
-    </div>
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-popular-games-title">
+      <div class="grouped-page-section-title"><h2 id="analytics-popular-games-title">Beliebteste Spiele</h2></div>
+      ${popularGamesHtml}
+    </section>
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-awards-title">
+      <div class="grouped-page-section-title"><h2 id="analytics-awards-title">Awards</h2></div>
+      <div class="two-column-card-grid">${awardsHtml}</div>
+    </section>
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-longest-title">
+      <div class="grouped-page-section-title"><h2 id="analytics-longest-title">Längste individuelle Session pro Spiel</h2></div>
+      ${longestPerGameHtml}
+    </section>
+    <details class="card history-details collapsible-section grouped-page-section">
+      <summary class="collapsible-section-header">
+        <h2>Session-Protokoll</h2>
+        <span class="collapsible-section-summary-end">
+          <span class="badge badge-offline">${sessions.length}</span>
+          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+        </span>
+      </summary>
+      <div class="collapsible-section-content">
+        ${sessionRows || `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions für dieses Event.</div>`}
+      </div>
+    </details>
   `;
-}
-
-// design-token-ok: the 2px bar-corner radius, bar gap and bottom padding
-// below are sized against this chart's own thin bars, not the general
-// spacing/radius scale — see "When a value genuinely doesn't fit" in
-// DESIGN_SYSTEM.md.
-function renderConcurrencyChart(concurrency) {
-  if (!concurrency || concurrency.buckets.length === 0) {
-    return `<div class="empty-state" style="padding:var(--space-4);">Keine Daten für dieses Spiel im Zeitraum.</div>`;
-  }
-  // Plain reduce, not Math.max(...arr): a wide "Gesamt" range can produce
-  // thousands of buckets, and spreading that many args into Math.max blows
-  // the call stack.
-  const max = concurrency.buckets.reduce((m, b) => Math.max(m, b.count), 1);
-  const bars = concurrency.buckets
-    .map((b) => {
-      const heightPct = Math.round((b.count / max) * 100);
-      const label = new Date(b.bucketStart).toLocaleString('de-DE', {
-        day: '2-digit',
-        month: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-      return `<div title="${escapeHtml(label)}: ${b.count} Spieler" style="flex:0 0 8px;height:${Math.max(2, heightPct)}%;background:var(--accent);border-radius:2px;"></div>`;
-    })
-    .join('');
-  return `<div id="an-concurrency-chart" style="display:flex;align-items:flex-end;gap:2px;height:100px;overflow-x:auto;padding-bottom:2px;">${bars}</div>
-    <div class="muted" style="font-size:var(--font-size-xs);">Höhe = Anzahl Spieler gleichzeitig · zum Wert hovern/antippen · nach rechts = neuer</div>`;
-}
-
-function wirePlaytimeContent(container, ctx) {
-  // The chart can span many buckets (e.g. 72 for a 3-day range at hourly
-  // resolution) and scrolls horizontally — default to showing the most
-  // recent end rather than leaving it looking empty at scrollLeft=0 if all
-  // the activity happened later in the range.
-  const chart = container.querySelector('#an-concurrency-chart');
-  if (chart) chart.scrollLeft = chart.scrollWidth;
-
-  const select = container.querySelector('#an-concurrency-game');
-  if (select) {
-    select.addEventListener('change', (e) => {
-      filters.concurrencyGameId = e.target.value;
-      cache = null;
-      ctx.rerender();
-    });
-  }
 }
 
 function playerChip(p) {
@@ -519,8 +351,7 @@ function renderMatchesContent() {
         .map(
           (g) => `
         <div class="lb-row">
-          ${gameBadgeHtml({ id: g.gameId, icon: g.gameIcon }, 24)}
-          <span style="flex:1;">
+                    <span style="flex:1;">
             ${escapeHtml(g.gameName)}
             <div class="muted" style="font-size:var(--font-size-xs);">${g.decided} entschieden${g.undecided ? ` · ${g.undecided} ohne Sieger/Unentschieden` : ''}</div>
           </span>
@@ -535,8 +366,7 @@ function renderMatchesContent() {
         .map(
           (g) => `
         <div class="lb-row">
-          ${gameBadgeHtml({ id: g.gameId, icon: g.gameIcon }, 24)}
-          <span style="flex:1;">${escapeHtml(g.gameName)}</span>
+                    <span style="flex:1;">${escapeHtml(g.gameName)}</span>
           <span class="lb-points">${g.count}×</span>
         </div>`
         )
@@ -553,15 +383,14 @@ function renderMatchesContent() {
         </div>`
         )
         .join('')
-    : '';
+    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Turnierarten.</div>`;
 
   const drawRows = draws.byGame.length
     ? draws.byGame
         .map(
           (g) => `
         <div class="lb-row">
-          ${gameBadgeHtml({ id: g.gameId, icon: g.gameIcon }, 24)}
-          <span style="flex:1;">${escapeHtml(g.gameName)}</span>
+                    <span style="flex:1;">${escapeHtml(g.gameName)}</span>
           <span class="lb-points">${g.count}×</span>
         </div>`
         )
@@ -572,8 +401,7 @@ function renderMatchesContent() {
   if (fun.biggestRivalry) {
     funCards.push(`
       <div class="card">
-        <div class="row-between"><span style="font-size:var(--font-size-xl);">🥊</span><span class="lb-points">${fun.biggestRivalry.count}×</span></div>
-        <div class="player-name">Größte Rivalität</div>
+        <div class="row-between"><div class="player-name">Größte Rivalität</div><span class="lb-points">${fun.biggestRivalry.count}×</span></div>
         <div class="muted" style="font-size:var(--font-size-xs);">Sind sich am häufigsten als Gegner begegnet.</div>
         <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
           <div class="row">${playerChip(fun.biggestRivalry.playerA)}</div>
@@ -585,8 +413,7 @@ function renderMatchesContent() {
     const winRate = fun.bestDuo.gamesTogether > 0 ? Math.round((fun.bestDuo.winsTogether / fun.bestDuo.gamesTogether) * 100) : 0;
     funCards.push(`
       <div class="card">
-        <div class="row-between"><span style="font-size:var(--font-size-xl);">🤝</span><span class="lb-points">${winRate}%</span></div>
-        <div class="player-name">Bestes Duo</div>
+        <div class="row-between"><div class="player-name">Bestes Duo</div><span class="lb-points">${winRate}%</span></div>
         <div class="muted" style="font-size:var(--font-size-xs);">${fun.bestDuo.gamesTogether}× zusammen im Team, ${fun.bestDuo.winsTogether}× gewonnen.</div>
         <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
           <div class="row">${playerChip(fun.bestDuo.playerA)}</div>
@@ -598,9 +425,8 @@ function renderMatchesContent() {
     const u = fun.biggestUnderdogWin;
     funCards.push(`
       <div class="card">
-        <div class="row-between"><span style="font-size:var(--font-size-xl);">😱</span><span class="lb-points">${u.winnerAvgRating} vs ${u.loserAvgRating}</span></div>
-        <div class="player-name">Krasseste Überraschung</div>
-        <div class="muted" style="font-size:var(--font-size-xs);">${gameBadgeHtml({ id: u.gameId, icon: u.gameIcon }, 16)} ${escapeHtml(u.gameName)} — als klarer Außenseiter gewonnen (Skill-Wertung).</div>
+        <div class="row-between"><div class="player-name">Krasseste Überraschung</div><span class="lb-points">${u.winnerAvgRating} vs ${u.loserAvgRating}</span></div>
+        <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(u.gameName)} — als klarer Außenseiter gewonnen (Skill-Wertung).</div>
         <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
           ${u.winners.map((w) => `<div class="row">${playerChip(w)}</div>`).join('')}
         </div>
@@ -608,20 +434,36 @@ function renderMatchesContent() {
   }
   const funHtml = funCards.length
     ? `<div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));">${funCards.join('')}</div>`
-    : `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">🎉</span>Noch nicht genug Ergebnisse für witzige Rekorde.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);">Noch nicht genug Ergebnisse.</div>`;
 
   return `
-    <div class="section-title">🎲 Ergebnisse pro Spiel <span class="muted" style="font-weight:var(--font-weight-regular);">(${matches.total} insgesamt)</span></div>
-    <div class="card">${matchRows}</div>
-
-    <div class="section-title">🏆 Turniere <span class="muted" style="font-weight:var(--font-weight-regular);">(${tournaments.total} insgesamt · ${tournaments.completed} beendet · ${tournaments.active} laufend)</span></div>
-    ${formatRows ? `<div class="card" style="margin-bottom:var(--space-3);">${formatRows}</div>` : ''}
-    <div class="card">${tournamentByGameRows}</div>
-
-    <div class="section-title">⚖️ Team-Auslosungen <span class="muted" style="font-weight:var(--font-weight-regular);">(${draws.total} insgesamt${draws.seatConflictRatePercent !== null ? ` · ${draws.seatConflictRatePercent}% Sitznachbarn mussten gegeneinander` : ''})</span></div>
-    <div class="card">${drawRows}</div>
-
-    <div class="section-title">🎉 Witzige Rekorde</div>
-    ${funHtml}
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-match-results-title">
+      <div class="grouped-page-section-title">
+        <h2 id="analytics-match-results-title">Ergebnisse pro Spiel</h2>
+        <span class="muted">${matches.total} insgesamt</span>
+      </div>
+      ${matchRows}
+    </section>
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-tournaments-title">
+      <div class="grouped-page-section-title">
+        <h2 id="analytics-tournaments-title">Turniere</h2>
+        <span class="muted">${tournaments.total} insgesamt · ${tournaments.completed} beendet · ${tournaments.active} laufend</span>
+      </div>
+      <div class="analytics-tournament-breakdowns">
+        <section class="card analytics-tournament-breakdown is-formats"><div class="section-title">Turnierarten</div>${formatRows}</section>
+        <section class="card analytics-tournament-breakdown is-games"><div class="section-title">Turniere pro Spiel</div>${tournamentByGameRows}</section>
+      </div>
+    </section>
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-draws-title">
+      <div class="grouped-page-section-title">
+        <h2 id="analytics-draws-title">Team-Auslosungen</h2>
+        <span class="muted">${draws.total} insgesamt${draws.seatConflictRatePercent !== null ? ` · ${draws.seatConflictRatePercent}% Sitznachbarn mussten gegeneinander` : ''}</span>
+      </div>
+      ${drawRows}
+    </section>
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-fun-title">
+      <div class="grouped-page-section-title"><h2 id="analytics-fun-title">Trivia</h2></div>
+      ${funHtml}
+    </section>
   `;
 }

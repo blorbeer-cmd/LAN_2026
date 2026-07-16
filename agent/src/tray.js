@@ -23,7 +23,7 @@ const { spawn, spawnSync } = require('child_process');
 // blocking on Application.Run(), and there was nothing to tell us why.
 function buildTrayScript(controlUrl, agentPid) {
   return `
-$traceLog = "$env:TEMP\\lan2026-agent-tray-${agentPid}.trace.log"
+$traceLog = "$env:TEMP\\respawn-agent-tray-${agentPid}.trace.log"
 function Trace($msg) { Add-Content -Path $traceLog -Value "$(Get-Date -Format o) $msg" }
 
 try {
@@ -38,7 +38,7 @@ try {
 
   $icon = New-Object System.Windows.Forms.NotifyIcon
   $icon.Icon = [System.Drawing.SystemIcons]::Application
-  $icon.Text = "RespawnHQ-Agent"
+  $icon.Text = "Respawn-Agent"
   $icon.Visible = $true
   Trace "notify icon created and visible"
 
@@ -79,10 +79,10 @@ Trace "script end"
 function hideConsoleWindow(log = () => {}) {
   if (os.platform() !== 'win32') return;
   const script =
-    'Add-Type -Name W -Namespace RespawnHQ -MemberDefinition ' +
+    'Add-Type -Name W -Namespace Respawn -MemberDefinition ' +
     '\'[DllImport("kernel32.dll")]public static extern IntPtr GetConsoleWindow();' +
     '[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int n);\'; ' +
-    '[RespawnHQ.W]::ShowWindow([RespawnHQ.W]::GetConsoleWindow(), 0)';
+    '[Respawn.W]::ShowWindow([Respawn.W]::GetConsoleWindow(), 0)';
   try {
     const result = spawnSync('powershell', ['-NoProfile', '-Command', script], { timeout: 5000 });
     if (result.error) log(`Konsole ausblenden fehlgeschlagen: ${result.error.message}`);
@@ -115,7 +115,7 @@ function startTrayIcon(controlUrl, agentPid, log = () => {}) {
 
   let scriptPath;
   try {
-    scriptPath = path.join(os.tmpdir(), `lan2026-agent-tray-${agentPid}.ps1`);
+    scriptPath = path.join(os.tmpdir(), `respawn-agent-tray-${agentPid}.ps1`);
     fs.writeFileSync(scriptPath, buildTrayScript(controlUrl, agentPid), 'utf8');
     log(`Tray: Skript geschrieben (${scriptPath}).`);
   } catch (err) {

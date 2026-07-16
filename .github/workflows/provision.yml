@@ -11,12 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HCLOUD_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
-      SERVER_NAME: lan2026
+      SERVER_NAME: respawn
       SERVER_TYPE: cx23
       SERVER_LOCATION: hel1
       SERVER_IMAGE: debian-12
-      FIREWALL_NAME: lan2026-ssh-only
-      SSH_KEY_NAME: lan2026-deploy
+      FIREWALL_NAME: respawn-ssh-only
+      SSH_KEY_NAME: respawn-deploy
     steps:
       - uses: actions/checkout@v4
 

@@ -1,6 +1,6 @@
 # Plan für Issue #29: DB-Migrationen versionieren
 
-Issue: [#29](https://github.com/blorbeer-cmd/LAN_2026/issues/29)
+Issue: [#29](https://github.com/blorbeer-cmd/Respawn/issues/29)
 
 ## Ausgangslage
 

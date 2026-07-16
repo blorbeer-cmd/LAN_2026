@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-11
 - Branch: `claude/tournament-lobby-features-yt5cgp`
-- Merge-Commit: [`a6c1b3b`](https://github.com/blorbeer-cmd/LAN_2026/commit/a6c1b3b8f47478daa52eb039560698ce6afc3679)
-- Pull Request: [#115](https://github.com/blorbeer-cmd/LAN_2026/pull/115)
+- Merge-Commit: [`a6c1b3b`](https://github.com/blorbeer-cmd/Respawn/commit/a6c1b3b8f47478daa52eb039560698ce6afc3679)
+- Pull Request: [#115](https://github.com/blorbeer-cmd/Respawn/pull/115)
 
 ## Changelog
 

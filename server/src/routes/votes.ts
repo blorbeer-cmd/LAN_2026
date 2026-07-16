@@ -6,11 +6,12 @@
 // actually get played.
 //
 // Two modes, chosen when a round is started:
-// - 'single' (default): each player picks exactly one game; changing your
-//   pick replaces the previous one.
+// - 'single' (default): each player picks exactly one game.
 // - 'points': each player distributes 1-10 points across as many games as
-//   they like (a game with 0 points is simply left out); resubmitting
-//   replaces the player's whole set for the round.
+//   they like (a game with 0 points is simply left out).
+// A player may submit exactly once per round in either mode. The write guard
+// sits inside the database transaction so double taps and concurrent devices
+// cannot replace an already accepted submission.
 // Both modes rank games by a "score" (vote count for 'single', point sum for
 // 'points'); ties (including the all-zero state before anyone has voted)
 // fall back to the games' aggregate "Bock" rating (preferences table) so the
@@ -35,6 +36,8 @@ const ROUND_KEY = 'vote_round';
 const OPEN_KEY = 'vote_open';
 const STARTED_AT_KEY = 'vote_started_at';
 const MODE_KEY = 'vote_mode';
+export const KIOSK_RESULT_REVEAL_DELAY_MS = 5 * 1000;
+export const KIOSK_RESULT_DURATION_MS = 10 * 60 * 1000;
 
 const MAX_TITLE_LENGTH = 80;
 const MAX_INFO_LENGTH = 500;
@@ -244,7 +247,7 @@ function buildPayload(groupId: string, extra: Record<string, unknown> = {}) {
   const meta = getRoundMeta(groupId, state.round);
   // One query (buildAllResults) backs both views: the round-scoped
   // `results` (filtered to this round's own game selection, if any) and the
-  // always-full-catalog `catalogResults` behind the "Top 5 nach Bock-Level"
+  // always-full-catalog `catalogResults` behind the "Top 10 nach Bock-Level"
   // widget. That widget must never stay hidden behind a past round's "Nur
   // bestimmte Spiele zur Wahl stellen" restriction, but recomputing the same
   // SQL join a second time just to drop that restriction would be redundant
@@ -272,6 +275,62 @@ function buildPayload(groupId: string, extra: Record<string, unknown> = {}) {
 // GET /api/votes - current round's state and tally.
 votesRouter.get('/', (req, res) => {
   res.json(buildPayload(req.group!.id));
+});
+
+// GET /api/votes/kiosk - the shared room display receives the current tally
+// while a round is open, but kiosk.js masks every game identity until the
+// persisted post-close reveal time.
+// The regular GET /api/votes stays redacted while open, so this does not
+// change the anti-bandwagoning behavior on phones; the room display's masks
+// prevent its live ranking from influencing those votes too.
+votesRouter.get('/kiosk', (req, res) => {
+  const groupId = req.group!.id;
+  const state = readRoundState(groupId);
+  const meta = getRoundMeta(groupId, state.round);
+  const currentResults = state.open ? buildResults(groupId, state.round, state.mode, meta.selectedGameIds) : [];
+  const currentTotalVoters = state.open
+    ? (
+        db.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM votes WHERE group_id = ? AND round = ?').get(
+          groupId,
+          state.round,
+        ) as { n: number }
+      ).n
+    : 0;
+  const closedRound = state.open
+    ? undefined
+    : (db
+        .prepare('SELECT closed_at AS closedAt FROM vote_rounds WHERE group_id = ? AND round = ?')
+        .get(groupId, state.round) as { closedAt: number | null } | undefined);
+  const resultRevealAt = closedRound?.closedAt ? closedRound.closedAt + KIOSK_RESULT_REVEAL_DELAY_MS : null;
+  const resultExpiresAt = resultRevealAt ? resultRevealAt + KIOSK_RESULT_DURATION_MS : null;
+  const recentResult = resultExpiresAt && resultExpiresAt > Date.now()
+    ? {
+        ...state,
+        ...meta,
+        closedAt: closedRound!.closedAt,
+        revealAt: resultRevealAt,
+        expiresAt: resultExpiresAt,
+        results: buildResults(groupId, state.round, state.mode, meta.selectedGameIds),
+        totalVoters: (
+          db.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM votes WHERE group_id = ? AND round = ?').get(
+            groupId,
+            state.round,
+          ) as { n: number }
+        ).n,
+      }
+    : null;
+
+  res.json({
+    current: state.open
+      ? {
+          ...state,
+          ...meta,
+          results: currentResults,
+          totalVoters: currentTotalVoters,
+        }
+      : null,
+    recentResult,
+  });
 });
 
 // GET /api/votes/mine?playerId= - the given player's own entries in the
@@ -369,7 +428,7 @@ votesRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   notifyPlayers(
     voteNotificationPlayerIds(),
     {
-      title: cleanTitle ? `🗳️ ${cleanTitle}` : '🗳️ Neue Abstimmung',
+      title: cleanTitle || 'Neue Abstimmung',
       body:
         nextMode === 'single'
           ? 'Stichwahl: jetzt für einen der Gewinner abstimmen.'
@@ -383,7 +442,7 @@ votesRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   res.status(201).json(payload);
 });
 
-// POST /api/votes - cast or change a vote in the current round ('single' mode only).
+// POST /api/votes - cast one vote in the current round ('single' mode only).
 // Body: { playerId, gameId }
 votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   const groupId = req.group!.id;
@@ -412,29 +471,30 @@ votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   }
 
   const castVote = db.transaction(() => {
-    db.prepare('DELETE FROM votes WHERE group_id = ? AND player_id = ? AND round = ?').run(
-      groupId,
-      playerId,
-      state.round,
-    );
+    const existing = db
+      .prepare('SELECT 1 FROM votes WHERE group_id = ? AND player_id = ? AND round = ? LIMIT 1')
+      .get(groupId, playerId, state.round);
+    if (existing) return false;
     db.prepare(
       `INSERT INTO votes
          (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
     ).run(nanoid(), groupId, playerId, player.name, gameId, meta.eventId, state.round, Date.now());
+    return true;
   });
-  castVote();
+  if (!castVote()) {
+    return res.status(409).json({ error: 'Du hast in dieser Runde bereits abgestimmt.' });
+  }
 
   const payload = buildPayload(req.group!.id);
   broadcast(Events.votesChanged, payload);
   res.json(payload);
 });
 
-// POST /api/votes/points - cast or replace a player's points in the current
+// POST /api/votes/points - cast a player's points once in the current
 // round ('points' mode only). Body: { playerId, entries: [{ gameId, points }] },
-// any number of distinct games (including none, to clear your points
-// entirely), 1-10 points each. Resubmitting replaces the player's whole
-// previous set so they can change their mind any time.
+// one or more distinct games, 1-10 points each. Each identity submits once
+// per round; the transaction below answers a resubmission with 409.
 votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
   const groupId = req.group!.id;
   const state = readRoundState(groupId);
@@ -454,6 +514,9 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
 
   if (!Array.isArray(entries)) {
     return res.status(400).json({ error: 'entries muss ein Array sein.' });
+  }
+  if (entries.length === 0) {
+    return res.status(400).json({ error: 'Bitte mindestens ein Spiel bewerten.' });
   }
 
   const meta = getRoundMeta(groupId, state.round);
@@ -481,11 +544,10 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
 
   const now = Date.now();
   const castPoints = db.transaction(() => {
-    db.prepare('DELETE FROM votes WHERE group_id = ? AND player_id = ? AND round = ?').run(
-      groupId,
-      playerId,
-      state.round,
-    );
+    const existing = db
+      .prepare('SELECT 1 FROM votes WHERE group_id = ? AND player_id = ? AND round = ? LIMIT 1')
+      .get(groupId, playerId, state.round);
+    if (existing) return false;
     const insert = db.prepare(
       `INSERT INTO votes
          (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
@@ -494,8 +556,11 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
     for (const entry of clean) {
       insert.run(nanoid(), groupId, playerId, player.name, entry.gameId, meta.eventId, state.round, entry.points, now);
     }
+    return true;
   });
-  castPoints();
+  if (!castPoints()) {
+    return res.status(409).json({ error: 'Du hast in dieser Runde bereits abgestimmt.' });
+  }
 
   const payload = buildPayload(req.group!.id);
   broadcast(Events.votesChanged, payload);
@@ -568,9 +633,9 @@ function voteEventFilter(groupId: string, requested: unknown): string | null {
 }
 
 // GET /api/votes/history - past (closed) rounds for the active event, newest
-// first: when it happened, how many votes were cast, and who won. Rounds
-// nobody voted in still show up (with an empty winners list) since they come
-// from vote_rounds, not from the votes table itself.
+// first: when it happened, how many players submitted, the compact per-game
+// ranking, and who won. Rounds nobody voted in still show up (with an empty
+// winners list) since they come from vote_rounds, not from votes itself.
 votesRouter.get('/history', (req, res) => {
   const { eventId, limit } = req.query;
   const groupId = req.group!.id;
@@ -600,6 +665,9 @@ votesRouter.get('/history', (req, res) => {
     const selectedGameIds: string[] | null = r.selectedGameIdsJson ? JSON.parse(r.selectedGameIdsJson) : null;
     const results = buildResults(req.group!.id, r.round, r.mode, selectedGameIds);
     const totalVotes = results.reduce((sum, x) => sum + x.votes, 0);
+    const totalVoters = (
+      db.prepare('SELECT COUNT(DISTINCT player_id) AS n FROM votes WHERE round = ?').get(r.round) as { n: number }
+    ).n;
     const winners = results
       .filter((x) => winnerIds.includes(x.gameId))
       .map((x) => ({ gameId: x.gameId, gameName: x.gameName, icon: x.icon, votes: x.votes, points: x.points }));
@@ -613,6 +681,9 @@ votesRouter.get('/history', (req, res) => {
       title: r.title,
       info: r.info,
       totalVotes,
+      totalVoters,
+      winnerGameIds: winnerIds,
+      results,
       winners,
     };
   });

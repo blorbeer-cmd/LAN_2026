@@ -58,7 +58,7 @@ async function openArcadeAs(
   await page.goto(BASE_URL);
   await page.evaluate(
     ({ id, expand }) => {
-      localStorage.setItem('lan2026_my_player_id', id);
+      localStorage.setItem('respawn_my_player_id', id);
       // The expand preference must already exist before the game view first
       // renders — that ordering is exactly what the geometry regressions
       // below are about (see wireArcadeExpandControl).
@@ -99,7 +99,7 @@ async function startQuizMatch(host: Page, guest: Page): Promise<void> {
   await guest.click('[data-join-lobby]');
   await guest.waitForSelector('[data-quiz-ready][data-ready="1"]');
   await guest.click('[data-quiz-ready][data-ready="1"]');
-  await host.waitForSelector('text=2/2 bereit');
+  await host.waitForSelector('.arcade-lobby-member-role:has-text("Bereit")');
   await host.click('#quiz-start-lobby');
   await host.waitForSelector('#quiz-answer-form');
 }
@@ -262,14 +262,15 @@ test('rapid fire: lobby-create burst keeps one lobby, ready toggle survives spam
     }
     await guest.page.waitForTimeout(400);
     // Whatever parity the spam ended on, the control must still work:
-    // force it to "ready", host sees 2/2, then back to 1/2.
+    // force it to "ready", then back to not ready. Readiness now lives in
+    // the player row instead of a duplicate summary sentence.
     if ((await guest.page.locator('[data-quiz-ready][data-ready="1"]').count()) > 0) {
       await guest.page.click('[data-quiz-ready][data-ready="1"]');
     }
-    await host.page.waitForSelector('text=2/2 bereit');
+    await host.page.waitForSelector('.arcade-lobby-member-role:has-text("Bereit")');
     await guest.page.waitForSelector('[data-quiz-ready][data-ready="0"]');
     await guest.page.click('[data-quiz-ready][data-ready="0"]');
-    await host.page.waitForSelector('text=1/2 bereit');
+    await host.page.waitForSelector('.arcade-lobby-member-role:has-text("Mitspieler")');
 
     await host.page.click('[data-close-lobby]');
     await host.page.waitForSelector('text=Keine offene Quiz-Lobby.');

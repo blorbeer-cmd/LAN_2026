@@ -10,8 +10,10 @@ import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml, formatDateTime } fro
 import { installIconReplacement, icon } from './icons.js';
 import { bannerContentHtml } from './pushFeed.js';
 import { drawArcadeStreamCanvas } from './arcadeStreamRenderer.js';
+import { domainIcon, installDomainIcons } from './domainIcons.js';
 
 installIconReplacement();
+installDomainIcons();
 setKioskMode(true);
 
 const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
@@ -182,9 +184,9 @@ function renderLive(players) {
     const rankDiff = STATE_RANK[a.state] - STATE_RANK[b.state];
     return rankDiff !== 0 ? rankDiff : a.name.localeCompare(b.name, 'de');
   });
-  return `<div class="stack" style="gap:var(--space-2);">${sorted
+  return `<div class="kiosk-live-grid">${sorted
     .map((p) => {
-      const games = gameChipsHtml(p.games, p.activity_tracked, 18);
+      const games = gameChipsHtml(p.games, p.activity_tracked);
       return `
         <div class="card player-card">
           ${avatarHtml(p, 32)}
@@ -200,23 +202,126 @@ function renderLive(players) {
     .join('')}</div>`;
 }
 
-// While a round is open, the server withholds the per-game distribution
-// (see votes.ts) so nobody — including everyone glancing at this shared
-// screen — can see a leader emerge and bandwagon onto it. Just show that
-// it's running and how many have participated so far; the full breakdown
-// only ever appears once a round is closed (results.votes/points/score come
-// back once that happens, but by then this card would need re-fetching
-// mid-close to catch it, so we keep this simple: presence only, no bars).
-function renderVotes(votes) {
-  if (!votes || !votes.open) {
-    return `<div class="empty-state">Keine offene Abstimmung.</div>`;
+function concealedGameLabel(gameId, round) {
+  const seedText = `${round}:${gameId}`;
+  let seed = 0;
+  for (const character of seedText) seed = (seed * 31 + character.charCodeAt(0)) >>> 0;
+  const length = 5 + (seed % 10);
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let label = '';
+  for (let index = 0; index < length; index += 1) {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    label += alphabet[seed % alphabet.length];
   }
-  const label = votes.mode === 'points' ? `${votes.totalVoters} Teilnehmer bisher` : `${votes.totalVoters} Stimme(n) bisher`;
+  return label;
+}
+
+function kioskVoteScore(vote, result) {
+  return vote.mode === 'points' ? `${result.points} P` : `${result.votes} ${result.votes === 1 ? 'Stimme' : 'Stimmen'}`;
+}
+
+function renderKioskVoteRows(vote, { concealed = false, highlightLeading = true } = {}) {
+  const scored = vote.results.filter((result) => result.score > 0);
+  if (scored.length === 0) return `<div class="muted kiosk-vote-empty">Noch keine Stimmen.</div>`;
+  const maxScore = Math.max(...scored.map((result) => result.score));
+  const visibleResults = scored.slice(0, 10);
+  let previousScore = null;
+  let rank = 0;
+  return `<div class="kiosk-vote-results">${visibleResults
+    .map((result, index) => {
+      if (previousScore === null || result.score !== previousScore) rank = index + 1;
+      previousScore = result.score;
+      const highlighted = result.score === maxScore;
+      const score = kioskVoteScore(vote, result);
+      const gameName = concealed ? concealedGameLabel(result.gameId, vote.round) : escapeHtml(result.gameName);
+      return `<div class="kiosk-vote-result ${highlighted && highlightLeading ? 'is-leading' : ''} ${concealed ? 'is-concealed' : ''}">
+        <span class="lb-rank">${rank}</span>
+        <strong ${concealed ? 'aria-label="Spiel verborgen"' : ''}>${gameName}</strong>
+        <span class="lb-points">${score}</span>
+      </div>`;
+    })
+    .join('')}</div>`;
+}
+
+function renderKioskVoteWinners(vote) {
+  const scored = vote.results.filter((result) => result.score > 0);
+  const maxScore = Math.max(...scored.map((result) => result.score));
+  const winners = scored.filter((result) => result.score === maxScore);
+  if (winners.length === 0) return '';
   return `
-    <div class="empty-state">
-      <span class="emoji">🗳️</span>
-      Abstimmung läuft${votes.mode === 'points' ? ' (Punkte-Modus)' : ''}.<br />
-      <span class="muted">${label} – Ergebnis erst nach dem Ende.</span>
+    <div class="kiosk-vote-winner-section">
+      <div class="section-title kiosk-vote-final-title">Gewinner</div>
+      <div class="kiosk-vote-winner">
+        <div class="kiosk-vote-winner-games">
+          ${winners.map((winner) => `<strong>${escapeHtml(winner.gameName)}</strong>`).join('')}
+        </div>
+        <span class="lb-points">${kioskVoteScore(vote, winners[0])}</span>
+      </div>
+    </div>`;
+}
+
+let voteDisplayTimer = null;
+
+function clearVoteDisplayTimer() {
+  if (voteDisplayTimer !== null) clearTimeout(voteDisplayTimer);
+  voteDisplayTimer = null;
+}
+
+function scheduleVoteRefresh(at) {
+  clearVoteDisplayTimer();
+  voteDisplayTimer = setTimeout(() => {
+    voteDisplayTimer = null;
+    refreshAll();
+  }, Math.max(0, at - Date.now()));
+}
+
+function renderVotes(votes) {
+  const vote = votes?.current ?? null;
+  if (vote) {
+    clearVoteDisplayTimer();
+  } else if (votes?.recentResult) {
+    const result = votes.recentResult;
+    const now = Date.now();
+    if (now < result.revealAt) {
+      const seconds = Math.max(1, Math.ceil((result.revealAt - now) / 1000));
+      scheduleVoteRefresh(Math.min(result.revealAt, now + 1000));
+      return `
+        <div class="kiosk-vote-state kiosk-vote-countdown">
+          <strong>Ergebnis in</strong>
+          <div class="countdown-num-wrap kiosk-vote-countdown-number countdown-pop" aria-label="${seconds}">
+            <span class="countdown-num countdown-num-glow" aria-hidden="true">${seconds}</span>
+            <span class="countdown-num countdown-num-fill">${seconds}</span>
+          </div>
+        </div>`;
+    }
+    scheduleVoteRefresh(result.expiresAt);
+    return `
+      <div class="kiosk-vote-final">
+        ${renderKioskVoteWinners(result)}
+        <div class="kiosk-vote-final-header">
+          <div class="section-title kiosk-vote-final-title">Ergebnis im Detail</div>
+          <span class="muted">${result.title ? `${escapeHtml(result.title)} · ` : ''}${result.totalVoters} Teilnehmer</span>
+        </div>
+        ${renderKioskVoteRows(result, { highlightLeading: false })}
+      </div>`;
+  } else {
+    clearVoteDisplayTimer();
+  }
+  if (!vote) {
+    return `<div class="empty-state kiosk-vote-state">Keine offene Abstimmung.</div>`;
+  }
+  const heading = vote.mode === 'single' ? 'Stichwahl läuft' : 'Abstimmung läuft';
+  return `
+    <div class="kiosk-vote-overview">
+      <div class="kiosk-vote-header">
+        <span>
+          <strong>${heading}</strong>
+          ${vote.title ? `<span class="muted">${escapeHtml(vote.title)}</span>` : ''}
+        </span>
+        <span class="badge badge-playing">${vote.totalVoters} Teilnehmer</span>
+      </div>
+      <div class="section-title kiosk-vote-section-title">Zwischenstand</div>
+      ${renderKioskVoteRows(vote, { concealed: true })}
     </div>`;
 }
 
@@ -224,7 +329,7 @@ function renderLeaderboard(standings) {
   if (!standings || standings.length === 0) {
     return `<div class="empty-state">Noch keine Ergebnisse.</div>`;
   }
-  return standings
+  const rows = standings
     .slice(0, 8)
     .map(
       (s, i) => `
@@ -236,6 +341,17 @@ function renderLeaderboard(standings) {
       </div>`
     )
     .join('');
+  return `<div class="kiosk-ranking-grid">${rows}</div>`;
+}
+
+function tournamentStandingRow(name, standing, index, { compact = false } = {}) {
+  return `
+    <div class="kiosk-standing-row ${index === 0 ? 'rank-1' : ''}">
+      <span class="lb-rank">${index + 1}</span>
+      <strong>${name}</strong>
+      ${compact ? '' : `<span class="muted">${standing.wins}S · ${standing.draws}U · ${standing.losses}N</span>`}
+      <span class="lb-points">${standing.points} P</span>
+    </div>`;
 }
 
 function renderTournament(t) {
@@ -245,17 +361,12 @@ function renderTournament(t) {
 
   if (t.format === 'round_robin') {
     const rows = (t.standings || [])
-      .map(
-        (s, i) => `
-        <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
-          <span class="lb-rank">${i + 1}</span>
-          <span style="flex:1;">${teamName(s.teamId)}</span>
-          <span class="muted">${s.wins}S/${s.draws}U/${s.losses}N</span>
-          <span class="lb-points">${s.points} P</span>
-        </div>`
-      )
+      .map((s, i) => tournamentStandingRow(teamName(s.teamId), s, i))
       .join('');
-    return `<div class="muted" style="margin-bottom:var(--space-2);">${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)} — Liga</div>${rows}`;
+    return `<div class="kiosk-tournament-overview kiosk-tournament-stage">
+      <div class="kiosk-tournament-meta"><strong>${escapeHtml(t.gameName)}</strong><span class="badge">Liga</span></div>
+      <div class="kiosk-tournament-standings-grid">${rows}</div>
+    </div>`;
   }
 
   // group_knockout has two distinct phases mixed into one `matches` list
@@ -269,19 +380,15 @@ function renderTournament(t) {
     const groupBlocks = (t.groups || [])
       .map((g) => {
         const rows = g.standings
-          .map(
-            (s, i) => `
-            <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
-              <span class="lb-rank">${i + 1}</span>
-              <span style="flex:1;">${teamName(s.teamId)}</span>
-              <span class="lb-points">${s.points} P</span>
-            </div>`
-          )
+          .map((s, i) => tournamentStandingRow(teamName(s.teamId), s, i, { compact: true }))
           .join('');
-        return `<div class="muted" style="margin:var(--space-2) 0 var(--space-1);">Gruppe ${g.groupIndex + 1}</div>${rows}`;
+        return `<div class="kiosk-tournament-group"><strong>Gruppe ${g.groupIndex + 1}</strong>${rows}</div>`;
       })
       .join('');
-    return `<div class="muted" style="margin-bottom:var(--space-2);">${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)} — Gruppenphase</div>${groupBlocks}`;
+    return `<div class="kiosk-tournament-overview kiosk-tournament-stage">
+      <div class="kiosk-tournament-meta"><strong>${escapeHtml(t.gameName)}</strong><span class="badge">Gruppenphase</span></div>
+      <div class="kiosk-tournament-group-grid">${groupBlocks}</div>
+    </div>`;
   }
   const bracketMatches = t.format === 'group_knockout' ? knockoutMatches : t.matches;
 
@@ -295,44 +402,25 @@ function renderTournament(t) {
     .map((m) => {
       if (m.isBye) {
         return `
-          <div class="lb-row">
-            <span style="flex:1;">👑 ${teamName(m.winnerTeamId)} <span class="muted">(Freilos)</span></span>
+          <div class="kiosk-match-card">
+            <div class="kiosk-match-team is-winner"><strong>${teamName(m.winnerTeamId)}</strong><span class="badge badge-playing">Weiter</span></div>
+            <div class="muted">Freilos</div>
           </div>`;
       }
       return `
-        <div class="lb-row">
-          <span style="flex:1;">
-            ${m.winnerTeamId === m.teamAId ? '👑 ' : ''}${teamName(m.teamAId)}
-            <span class="muted">vs</span>
-            ${m.winnerTeamId === m.teamBId ? '👑 ' : ''}${teamName(m.teamBId)}
-          </span>
+        <div class="kiosk-match-card">
+          <div class="kiosk-match-team ${m.winnerTeamId === m.teamAId ? 'is-winner' : ''}"><strong>${teamName(m.teamAId)}</strong>${m.winnerTeamId === m.teamAId ? '<span class="badge badge-playing">Sieger</span>' : ''}</div>
+          <div class="kiosk-match-team ${m.winnerTeamId === m.teamBId ? 'is-winner' : ''}"><strong>${teamName(m.teamBId)}</strong>${m.winnerTeamId === m.teamBId ? '<span class="badge badge-playing">Sieger</span>' : ''}</div>
         </div>`;
     })
     .join('');
-  return `<div class="muted" style="margin-bottom:var(--space-2);">${escapeHtml(t.gameName)} — Runde ${currentRound}/${totalRounds}${t.status === 'completed' ? ' · Beendet 🏆' : ''}</div>${rows}`;
-}
-
-// Food-order banner: just enough for someone glancing at the shared screen
-// to know an order is running and how to get in on it — when it goes out
-// and where the menu/delivery link is. Never the item list or who ordered
-// what (that's on everyone's own phone, in the Essen-bestellen view).
-function renderFoodBanner(orders) {
-  const open = (orders || []).filter((o) => o.open);
-  const el = document.getElementById('kiosk-food-banner');
-  if (open.length === 0) {
-    el.hidden = true;
-    return;
-  }
-  el.innerHTML = open
-    .map((o) => {
-      const when = o.sendAt ? `🕒 geht raus um ${formatDateTime(o.sendAt)} Uhr` : '🕒 Zeitpunkt noch offen';
-      const where = o.link
-        ? ` · <a href="${escapeHtml(o.link)}" target="_blank" rel="noopener">🔗 Zur Karte/Lieferdienst</a>`
-        : '';
-      return `<div>🍕 Sammelbestellung „${escapeHtml(o.title)}" läuft – ${when}${where}</div>`;
-    })
-    .join('');
-  el.hidden = false;
+  return `<div class="kiosk-tournament-overview kiosk-tournament-bracket">
+    <div class="kiosk-tournament-meta">
+      <strong>${escapeHtml(t.gameName)}</strong>
+      <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : `Runde ${currentRound}/${totalRounds}`}</span>
+    </div>
+    <div class="kiosk-tournament-bracket-body"><div class="kiosk-match-grid">${rows}</div></div>
+  </div>`;
 }
 
 // Last-push banner: shows whatever was most recently sent to (almost)
@@ -343,10 +431,8 @@ function renderFoodBanner(orders) {
 // pushes like "dein Match ist bereit", which wouldn't mean anything to
 // everyone glancing at a shared screen). Shows the newest still-active one,
 // with timestamp; closed or expired topics fall back to an older applicable
-// announcement instead of lingering. Same bell + title + body content as
-// the app's
-// header notification banner (see notificationBanner.js/pushFeed.js) —
-// just not clickable, since the Kiosk has nobody to click it.
+// announcement instead of lingering. The shared content markup lives in
+// pushFeed.js; this Kiosk version is not clickable.
 let pushBannerExpiryTimer = null;
 
 async function refreshPushBanner() {
@@ -365,39 +451,45 @@ function renderBroadcastBanner(entry) {
   pushBannerExpiryTimer = null;
   if (!entry) {
     el.hidden = true;
+    updateAlertLayout();
     return;
   }
   if (entry.expiresAt) {
     const delay = Math.max(0, Math.min(entry.expiresAt - Date.now() + 50, 2_147_483_647));
     pushBannerExpiryTimer = setTimeout(refreshPushBanner, delay);
   }
-  el.innerHTML = `${bannerContentHtml(entry)} <span class="kiosk-broadcast-time">· ${formatDateTime(entry.createdAt)} Uhr</span>`;
+  el.innerHTML = `${bannerContentHtml(entry)} <span class="kiosk-broadcast-time">${formatDateTime(entry.createdAt)} Uhr</span>`;
   el.hidden = false;
+  updateAlertLayout();
+}
+
+function updateAlertLayout() {
+  const alerts = document.getElementById('kiosk-alerts');
+  if (!alerts) return;
+  alerts.hidden = document.getElementById('kiosk-broadcast')?.hidden !== false;
 }
 
 async function refreshAll() {
   try {
-    const [live, votes, leaderboard, tournaments, foodOrders, lastPush] = await Promise.all([
+    const [live, votes, leaderboard, tournaments, lastPush] = await Promise.all([
       api.live.board(),
-      api.votes.get(),
+      api.votes.kiosk(),
       api.leaderboard.get(),
       api.tournaments.list(),
-      api.foodOrders.list(),
       api.push.last(),
     ]);
     document.getElementById('kiosk-live').innerHTML = renderLive(live);
     document.getElementById('kiosk-votes').innerHTML = renderVotes(votes);
     document.getElementById('kiosk-leaderboard').innerHTML = renderLeaderboard(leaderboard.standings);
-    renderFoodBanner(foodOrders.orders);
     renderBroadcastBanner(lastPush.entry);
 
     const active = tournaments.find((t) => t.status === 'active') || tournaments[0] || null;
-    document.getElementById('kiosk-tournament-title').innerHTML = `${icon('swords')} ${active ? escapeHtml(active.name) : 'Turnier'}`;
+    document.getElementById('kiosk-tournament-title').innerHTML = `${icon(domainIcon('tournaments'))} ${active ? escapeHtml(active.name) : 'Turnier'}`;
     if (active) {
       const detail = await api.tournaments.get(active.id);
       document.getElementById('kiosk-tournament').innerHTML = renderTournament(detail);
     } else {
-      document.getElementById('kiosk-tournament').innerHTML = `<div class="empty-state">Noch kein Turnier.</div>`;
+      document.getElementById('kiosk-tournament').innerHTML = `<div class="empty-state">Kein offenes Turnier.</div>`;
     }
   } catch (err) {
     // A kiosk screen has nobody to dismiss a toast — log and try again on

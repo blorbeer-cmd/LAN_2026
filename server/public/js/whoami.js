@@ -6,7 +6,7 @@
 import { state } from './state.js';
 import { escapeHtml } from './format.js';
 
-const MY_ID_KEY = 'lan2026_my_player_id';
+const MY_ID_KEY = 'respawn_my_player_id';
 let sessionPlayerId = '';
 
 export function getMyId() {
@@ -30,29 +30,20 @@ function signalIdentityChanged(id) {
   // icon right away, without waiting for the next view switch to notice.
   document.getElementById('profile-btn')?.classList.toggle('needs-setup', !id);
   // Global signal for modules outside the per-view render cycle (the header
-  // notification banner) that need to refetch "for the current identity"
+  // notification center) that need to refetch "for the current identity"
   // data right away instead of only picking up the change whenever some
   // view next happens to render.
-  window.dispatchEvent(new CustomEvent('lan:identity-changed'));
+  window.dispatchEvent(new CustomEvent('respawn:identity-changed'));
 }
 
-// Compact "who's acting here" card reused by every view that needs an
-// identity before it lets you do something (vote, pause). Once this device
-// has a known identity, it just states it — no need to re-pick it on every
-// screen — with a "Nicht du?" escape hatch for a shared/borrowed device;
-// only asks via a <select> while nobody's set up yet.
+// Compact identity picker reused by every view that needs to know who is
+// acting. A known local identity needs no repeated confirmation; switching
+// remains available from "Mein Profil" until sessions replace this helper.
 export function whoAmICardHtml(selectId, { marginBottom } = {}) {
   const me = state.players.find((p) => p.id === getMyId());
   const style = marginBottom ? ` style="margin-bottom:${marginBottom};"` : '';
 
-  if (me) {
-    return `
-      <div class="card row-between"${style}>
-        <span>Du bist <strong>${escapeHtml(me.name)}</strong></span>
-        ${sessionPlayerId ? '' : '<button type="button" class="btn btn-sm" data-whoami-change>Nicht du?</button>'}
-      </div>
-    `;
-  }
+  if (me) return '';
 
   return `
     <div class="card stack"${style}>
@@ -71,16 +62,11 @@ export function whoAmICardHtml(selectId, { marginBottom } = {}) {
   `;
 }
 
-// Wires whichever half of whoAmICardHtml actually rendered (the picker or
-// the "Nicht du?" button) — call once after setting a container's innerHTML.
+// Wires the picker when no local identity has been selected yet.
 export function wireWhoAmICard(container, selectId, ctx) {
   if (sessionPlayerId) return;
   container.querySelector(`#${selectId}`)?.addEventListener('change', (e) => {
     setMyId(e.target.value);
-    ctx.rerender();
-  });
-  container.querySelector('[data-whoami-change]')?.addEventListener('click', () => {
-    setMyId('');
     ctx.rerender();
   });
 }

@@ -9,7 +9,7 @@ It's intentionally **not** gitignored — the whole point is a one-click
 download for participants, so the binary needs to actually be here, not
 rebuilt on every deploy.
 
-## Building `lan2026-agent.exe`
+## Building `respawn-agent.exe`
 
 Needs to be done once (or after every agent code change) on a machine with
 normal internet access — `pkg` downloads a prebuilt Node runtime for the
@@ -20,9 +20,9 @@ did not allow.
 cd agent
 npm install
 npm install -D @yao-pkg/pkg
-npx pkg src/index.js --targets node18-win-x64 --output ../server/agent-dist/lan2026-agent.exe
+npx pkg src/index.js --targets node24-win-x64 --output ../server/agent-dist/respawn-agent.exe
 ```
 
-Then commit the resulting `lan2026-agent.exe` in this folder. Until it's
+Then commit the resulting `respawn-agent.exe` in this folder. Until it's
 present, `/api/agent-download` responds with a clear 503 instead of a broken
 download.

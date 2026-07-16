@@ -10,9 +10,9 @@ import webpush from 'web-push';
 import { db, getState, setState } from './db';
 import { broadcast, Events } from './realtime';
 
-// Only recent entries matter (the Kiosk shows the latest one, the Home feed
-// the last handful per player) - trimmed on every insert so this never grows
-// unbounded over a multi-day LAN party.
+// Only recent entries matter (the Kiosk shows the latest one, the personal
+// notification center a short list) - trimmed on every insert so this never
+// grows unbounded over a multi-day LAN party.
 const PUSH_LOG_LIMIT = 50;
 
 const VAPID_PUBLIC_KEY = 'vapid_public_key';
@@ -30,7 +30,7 @@ function ensureVapidKeys(): { publicKey: string; privateKey: string } {
 }
 
 const vapidKeys = ensureVapidKeys();
-webpush.setVapidDetails('mailto:admin@respawnhq.local', vapidKeys.publicKey, vapidKeys.privateKey);
+webpush.setVapidDetails('mailto:admin@respawn.local', vapidKeys.publicKey, vapidKeys.privateKey);
 
 export function getVapidPublicKey(): string {
   return vapidKeys.publicKey;
@@ -92,8 +92,8 @@ interface SubscriptionRow {
 }
 
 // 'all' = a group-wide announcement (Durchsage, new vote, new lobby, ...);
-// 'direct' = personally targeted (e.g. "dein Match ist bereit") — the Home
-// feed highlights these.
+// 'direct' = personally targeted (e.g. "dein Match ist bereit") — the
+// notification center highlights these.
 export type PushAudience = 'all' | 'direct';
 
 interface PushLogEntry {
@@ -121,8 +121,8 @@ export function getLastPushLogEntry(): PushLogEntry | null {
   return row ?? null;
 }
 
-// The app header needs the same active-only view as the shared Kiosk, but
-// scoped to the current player so direct match notifications remain private.
+// Legacy active-only query retained for the /current API and older clients,
+// scoped to the current player so direct notifications remain private.
 export function getCurrentPushLogEntryFor(playerId: string): PushLogEntry | null {
   const rows = db
     .prepare(
@@ -134,9 +134,13 @@ export function getCurrentPushLogEntryFor(playerId: string): PushLogEntry | null
            SELECT 1 FROM push_log_seen
            WHERE push_log_seen.push_id = push_log.id AND push_log_seen.player_id = ?
          )
+         AND NOT EXISTS (
+           SELECT 1 FROM push_log_hidden
+           WHERE push_log_hidden.push_id = push_log.id AND push_log_hidden.player_id = ?
+         )
        ORDER BY created_at DESC`
     )
-    .all(Date.now(), playerId) as Array<PushLogEntry & { playerIds: string | null }>;
+    .all(Date.now(), playerId, playerId) as Array<PushLogEntry & { playerIds: string | null }>;
   const row = rows.find(
     (entry) => entry.playerIds === null || (JSON.parse(entry.playerIds) as string[]).includes(playerId)
   );
@@ -146,16 +150,22 @@ export function getCurrentPushLogEntryFor(playerId: string): PushLogEntry | null
 }
 
 export type MarkPushSeenResult = 'seen' | 'already_seen' | 'not_found' | 'not_recipient';
+export type HidePushResult = 'hidden' | 'already_hidden' | 'not_found' | 'not_recipient';
 
-// Hides one entry from this player's header banner without removing it from
-// push_log or from the Home notification history. Idempotence makes repeat
-// taps and duplicate requests harmless.
-export function markPushSeen(pushId: string, playerId: string): MarkPushSeenResult {
+function pushRecipientCheck(pushId: string, playerId: string): 'recipient' | 'not_found' | 'not_recipient' {
   const row = db.prepare('SELECT player_ids AS playerIds FROM push_log WHERE id = ?').get(pushId) as
     | { playerIds: string | null }
     | undefined;
   if (!row) return 'not_found';
   if (row.playerIds !== null && !(JSON.parse(row.playerIds) as string[]).includes(playerId)) return 'not_recipient';
+  return 'recipient';
+}
+
+// Marks one entry as read for this player without removing it from the
+// notification center. Idempotence makes repeat taps harmless.
+export function markPushSeen(pushId: string, playerId: string): MarkPushSeenResult {
+  const recipient = pushRecipientCheck(pushId, playerId);
+  if (recipient !== 'recipient') return recipient;
 
   const result = db
     .prepare('INSERT OR IGNORE INTO push_log_seen (push_id, player_id, seen_at) VALUES (?, ?, ?)')
@@ -165,33 +175,87 @@ export function markPushSeen(pushId: string, playerId: string): MarkPushSeenResu
   return 'seen';
 }
 
-// Recent log entries relevant to one player, newest first, for the Home
-// view's notification feed. "Relevant" = the player was on the recipient
+// Removes one notification from one player's center. The shared row stays
+// available to every other recipient; repeated taps are idempotent.
+export function hidePushForPlayer(pushId: string, playerId: string): HidePushResult {
+  const recipient = pushRecipientCheck(pushId, playerId);
+  if (recipient !== 'recipient') return recipient;
+
+  const result = db
+    .prepare('INSERT OR IGNORE INTO push_log_hidden (push_id, player_id, hidden_at) VALUES (?, ?, ?)')
+    .run(pushId, playerId, Date.now());
+  if (result.changes === 0) return 'already_hidden';
+  broadcast(Events.pushSeen, { playerId });
+  return 'hidden';
+}
+
+function visiblePushIdsFor(playerId: string): Array<{ id: string; seen: boolean }> {
+  return getPushLogEntriesFor(playerId, PUSH_LOG_LIMIT).map((entry) => ({ id: entry.id, seen: entry.seen }));
+}
+
+// Bulk actions stay personal, just like their single-entry counterparts.
+// One transaction and one realtime signal avoid a burst of up to 50 writes
+// and socket refreshes when someone clears the whole center.
+export function markAllPushSeen(playerId: string): number {
+  const entries = visiblePushIdsFor(playerId).filter((entry) => !entry.seen);
+  if (entries.length === 0) return 0;
+  const insert = db.prepare('INSERT OR IGNORE INTO push_log_seen (push_id, player_id, seen_at) VALUES (?, ?, ?)');
+  const seenAt = Date.now();
+  const changes = db.transaction(() =>
+    entries.reduce((sum, entry) => sum + insert.run(entry.id, playerId, seenAt).changes, 0)
+  )();
+  if (changes > 0) broadcast(Events.pushSeen, { playerId });
+  return changes;
+}
+
+export function hideAllPushForPlayer(playerId: string): number {
+  const entries = visiblePushIdsFor(playerId);
+  if (entries.length === 0) return 0;
+  const insert = db.prepare('INSERT OR IGNORE INTO push_log_hidden (push_id, player_id, hidden_at) VALUES (?, ?, ?)');
+  const hiddenAt = Date.now();
+  const changes = db.transaction(() =>
+    entries.reduce((sum, entry) => sum + insert.run(entry.id, playerId, hiddenAt).changes, 0)
+  )();
+  if (changes > 0) broadcast(Events.pushSeen, { playerId });
+  return changes;
+}
+
+// Recent log entries relevant to one player, newest first, for the header
+// notification center. "Relevant" = the player was on the recipient
 // list; rows from before recipients were recorded (player_ids NULL) show
 // for everyone. The recipient-list JSON is parsed in JS rather than matched
 // in SQL — the log is hard-capped at PUSH_LOG_LIMIT rows, so there's nothing
 // to gain from a LIKE-based filter that can false-match id substrings.
-export function getPushLogEntriesFor(playerId: string, limit = 20): PushLogEntry[] {
+export function getPushLogEntriesFor(playerId: string, limit = 20): Array<PushLogEntry & { seen: boolean }> {
   const rows = db
     .prepare(
       `SELECT id, title, body, url, audience, player_ids AS playerIds, expires_at AS expiresAt,
-              created_at AS createdAt
-       FROM push_log ORDER BY created_at DESC`
+              created_at AS createdAt,
+              EXISTS (
+                SELECT 1 FROM push_log_seen
+                WHERE push_log_seen.push_id = push_log.id AND push_log_seen.player_id = ?
+              ) AS seen
+       FROM push_log
+       WHERE NOT EXISTS (
+         SELECT 1 FROM push_log_hidden
+         WHERE push_log_hidden.push_id = push_log.id AND push_log_hidden.player_id = ?
+       )
+       ORDER BY created_at DESC`
     )
-    .all() as Array<PushLogEntry & { playerIds: string | null }>;
+    .all(playerId, playerId) as Array<PushLogEntry & { playerIds: string | null; seen: number }>;
   return rows
     .filter((row) => row.playerIds === null || (JSON.parse(row.playerIds) as string[]).includes(playerId))
     .slice(0, limit)
-    .map(({ playerIds: _playerIds, ...entry }) => entry);
+    .map(({ playerIds: _playerIds, seen, ...entry }) => ({ ...entry, seen: seen === 1 }));
 }
 
 function broadcastPushChanged(changes: number): void {
   if (changes > 0) broadcast(Events.pushChanged, null);
 }
 
-// Resolving a topic only removes it from active banners; the Home feed keeps
-// the original push as history. includeChildren handles tournament-wide
-// completion, where any still-pending match/stage notifications end too.
+// Resolving a topic only removes it from active banners; the notification
+// center keeps the original push as history. includeChildren handles
+// tournament-wide completion, where pending match/stage notifications end too.
 export function resolvePushTopic(topicKey: string, includeChildren = false): void {
   const now = Date.now();
   const result = includeChildren
@@ -229,7 +293,7 @@ export function notifyPlayers(
 
   // Logged regardless of how many subscriptions actually exist: this is a
   // record of "the app told these players something", for the Kiosk banner
-  // and the Home feed, not a delivery receipt.
+  // and notification center, not a delivery receipt.
   const entry: PushLogEntry = {
     id: nanoid(),
     title: payload.title,

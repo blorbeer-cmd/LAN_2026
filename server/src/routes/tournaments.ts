@@ -4,7 +4,7 @@
 // automatically. Recording a match's result also creates a normal `matches`
 // row, so playing in a tournament counts toward the regular leaderboard too.
 
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { nanoid } from 'nanoid';
@@ -23,6 +23,7 @@ import {
   computeRoundRobinStandings,
   assignGroups,
   selectAdvancers,
+  deriveTournamentLobbyName,
   type BracketMatchSlot,
   type TournamentFormat,
 } from '../tournament';
@@ -123,6 +124,41 @@ function progressBracketRows(
   return { readyNextMatchId, completed: bracketIsComplete(after) };
 }
 
+function clearBracketDescendants(
+  bracketRows: TournamentMatchRow[],
+  round: number,
+  slot: number
+): void {
+  const finalRound = Math.max(...bracketRows.map((row) => row.round));
+  let feederSlot = slot;
+  for (let nextRound = round + 1; nextRound <= finalRound; nextRound++) {
+    const nextSlot = Math.floor(feederSlot / 2);
+    const nextRow = bracketRows.find((row) => row.round === nextRound && row.slot === nextSlot);
+    if (!nextRow) break;
+
+    if (nextRow.match_id) db.prepare('DELETE FROM matches WHERE id = ?').run(nextRow.match_id);
+    const incomingColumn = feederSlot % 2 === 0 ? 'team_a_id' : 'team_b_id';
+    db.prepare(
+      `UPDATE tournament_matches
+       SET ${incomingColumn} = NULL, winner_team_id = NULL, score_a = NULL, score_b = NULL,
+           is_draw = 0, match_id = NULL, played_at = NULL
+       WHERE id = ?`
+    ).run(nextRow.id);
+    feederSlot = nextSlot;
+  }
+}
+
+function clearKnockoutStage(tournamentId: string): void {
+  const rows = db
+    .prepare(`SELECT * FROM tournament_matches WHERE tournament_id = ? AND stage = 'knockout'`)
+    .all(tournamentId) as TournamentMatchRow[];
+  for (const row of rows) {
+    if (row.match_id) db.prepare('DELETE FROM matches WHERE id = ?').run(row.match_id);
+  }
+  db.prepare(`DELETE FROM tournament_matches WHERE tournament_id = ? AND stage = 'knockout'`).run(tournamentId);
+  db.prepare("UPDATE tournaments SET status = 'active' WHERE id = ?").run(tournamentId);
+}
+
 // Builds the full detail payload shared by create/list-one/record-result.
 // groupId is required so a foreign group's tournament id 404s the same way
 // every other group-owned resource does (existence hidden).
@@ -177,6 +213,12 @@ function buildDetail(tournamentId: string, groupId: string) {
     isBye: Boolean(m.is_bye),
     matchId: m.match_id,
     playedAt: m.played_at,
+    lobbyName: deriveTournamentLobbyName(tournament.lobby_name, tournament.format, {
+      round: m.round,
+      slot: m.slot,
+      stage: m.stage,
+      groupIndex: m.group_index,
+    }),
   }));
 
   const decidedResultsOf = (rows: TournamentMatchRow[]) =>
@@ -472,23 +514,27 @@ tournamentsRouter.post('/', (req, res) => {
     gameIcon: game.icon,
     notify: {
       playerIds: allPlayerIds,
-      message: `🏆 Neues Turnier: ${tournamentName}`,
+      message: `Neues Turnier: ${tournamentName}`,
     },
   });
   notifyPlayers(
     allPlayerIds,
-    { title: '🏆 Neues Turnier', body: tournamentName, url: '/#tournaments' },
+    { title: 'Neues Turnier', body: tournamentName, url: '/#tournaments' },
     'all',
     { key: `tournament:${tournamentId}` }
   );
   res.status(201).json(buildDetail(tournamentId, req.group!.id));
 });
 
-// POST /api/tournaments/:id/matches/:matchId/result
+// POST /api/tournaments/:id/matches/:matchId/result records the first result.
+// PUT on the same URL corrects it and requires expectedPlayedAt as an
+// optimistic version so two stale screens cannot silently overwrite each
+// other. Corrections update the linked leaderboard match in place.
 // Body: { winnerTeamId: string | null }  (null = draw; not allowed for
 // knockout-shaped matches), OR — if the tournament has trackScore set —
 // { scoreA: number, scoreB: number } with the winner derived from the score.
-tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
+function saveTournamentResult(req: Request, res: Response) {
+  const isCorrection = req.method === 'PUT';
   const tournament = db.prepare('SELECT * FROM tournaments WHERE id = ? AND group_id = ?').get(req.params.id, req.group!.id) as
     | TournamentRow
     | undefined;
@@ -502,11 +548,19 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
   if (!match.team_a_id || !match.team_b_id) {
     return res.status(409).json({ error: 'Beide Teams müssen feststehen, bevor ein Ergebnis eingetragen werden kann.' });
   }
-  // Two phones can both still show the match as open and report "almost at
-  // the same time" — without this guard the second report would insert a
-  // second leaderboard match (double-counted) and, on a conflicting winner,
-  // re-run bracket progression and corrupt the next round's team slots.
-  if (match.winner_team_id !== null || match.is_draw) {
+  const wasDecided = match.winner_team_id !== null || Boolean(match.is_draw);
+  if (isCorrection) {
+    const expectedPlayedAt = (req.body ?? {}).expectedPlayedAt;
+    if (!wasDecided || !match.match_id || match.played_at === null) {
+      return res.status(409).json({ error: 'Für dieses Match gibt es noch kein Ergebnis zum Bearbeiten.' });
+    }
+    if (typeof expectedPlayedAt !== 'number' || expectedPlayedAt !== match.played_at) {
+      return res.status(409).json({ error: 'Das Ergebnis wurde inzwischen geändert. Bitte Turnier neu laden.' });
+    }
+  } else if (wasDecided) {
+    // Two phones can both still show the match as open and report "almost at
+    // the same time" — without this guard the second report would insert a
+    // second leaderboard match (double-counted) and corrupt bracket progress.
     return res.status(409).json({ error: 'Für dieses Match ist schon ein Ergebnis eingetragen.' });
   }
 
@@ -572,9 +626,10 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
   }
 
-  const now = Date.now();
+  const now = isCorrection ? Math.max(Date.now(), (match.played_at ?? 0) + 1) : Date.now();
   const winnerTeamIndex = winnerTeamId === null ? null : winnerTeamId === match.team_a_id ? 0 : 1;
-  const leaderboardMatchId = nanoid();
+  const leaderboardMatchId = isCorrection ? match.match_id! : nanoid();
+  const outcomeChanged = winnerTeamId !== match.winner_team_id || (winnerTeamId === null ? !match.is_draw : Boolean(match.is_draw));
 
   // Set inside the transaction below when this result causes some next
   // bracket match to have both its teams known for the first time (or,
@@ -594,20 +649,32 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
   let readyRoundRobinMatchIds: string[] = [];
 
   const record = db.transaction(() => {
-    db.prepare(
-      'INSERT INTO matches (id, game_id, event_id, played_at, result, group_id) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(
-      leaderboardMatchId,
-      tournament.game_id,
-      tournament.event_id,
-      now,
-      JSON.stringify({
-        teams: [{ playerIds: JSON.parse(teamA.player_ids) }, { playerIds: JSON.parse(teamB.player_ids) }],
-        winnerTeamIndex,
-        ...(scoreA !== null ? { score: [scoreA, scoreB] } : {}),
-      }),
-      tournament.group_id
-    );
+    const leaderboardResult = JSON.stringify({
+      teams: [{ playerIds: JSON.parse(teamA.player_ids) }, { playerIds: JSON.parse(teamB.player_ids) }],
+      winnerTeamIndex,
+      ...(scoreA !== null ? { score: [scoreA, scoreB] } : {}),
+    });
+    if (isCorrection) {
+      db.prepare('UPDATE matches SET result = ? WHERE id = ?').run(leaderboardResult, leaderboardMatchId);
+
+      if (outcomeChanged && (tournament.format === 'single_elimination' || match.stage === 'knockout')) {
+        const bracketRows = db
+          .prepare(
+            tournament.format === 'single_elimination'
+              ? 'SELECT * FROM tournament_matches WHERE tournament_id = ?'
+              : `SELECT * FROM tournament_matches WHERE tournament_id = ? AND stage = 'knockout'`
+          )
+          .all(tournament.id) as TournamentMatchRow[];
+        clearBracketDescendants(bracketRows, match.round, match.slot);
+        db.prepare("UPDATE tournaments SET status = 'active' WHERE id = ?").run(tournament.id);
+      } else if (outcomeChanged && tournament.format === 'group_knockout' && match.stage === 'group') {
+        clearKnockoutStage(tournament.id);
+      }
+    } else {
+      db.prepare(
+        'INSERT INTO matches (id, game_id, event_id, played_at, result, group_id) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(leaderboardMatchId, tournament.game_id, tournament.event_id, now, leaderboardResult, tournament.group_id);
+    }
 
     db.prepare(
       'UPDATE tournament_matches SET winner_team_id = ?, score_a = ?, score_b = ?, is_draw = ?, match_id = ?, played_at = ? WHERE id = ?'
@@ -639,7 +706,7 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
            WHERE tournament_id = ? AND round = ? AND is_bye = 0 AND winner_team_id IS NULL AND is_draw = 0`
         )
         .get(tournament.id, match.round) as { n: number };
-      if (roundRemaining.n === 0) {
+      if (!isCorrection && roundRemaining.n === 0) {
         readyRoundRobinMatchIds = (
           db
             .prepare('SELECT id FROM tournament_matches WHERE tournament_id = ? AND round = ? ORDER BY slot')
@@ -718,8 +785,8 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
   // Looks up a match's two teams and, if both are known, sends the "your
   // match is up" push + returns the notify payload for the socket broadcast.
   function buildMatchReadyNotify(matchId: string): { playerIds: string[]; message: string } | undefined {
-    const nextMatch = db.prepare('SELECT team_a_id, team_b_id FROM tournament_matches WHERE id = ?').get(matchId) as
-      | { team_a_id: string; team_b_id: string }
+    const nextMatch = db.prepare('SELECT * FROM tournament_matches WHERE id = ?').get(matchId) as
+      | TournamentMatchRow
       | undefined;
     if (!nextMatch || !nextMatch.team_a_id || !nextMatch.team_b_id) return undefined;
     const nextTeams = db
@@ -732,18 +799,24 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
     // propagateWinner in tournament.ts — the winner of the even-numbered
     // feeder slot becomes team A), so it's the natural default for "who
     // hosts" — no separate data field needed for this yet.
+    const lobbyName = deriveTournamentLobbyName(tournament!.lobby_name, tournament!.format, {
+      round: nextMatch.round,
+      slot: nextMatch.slot,
+      stage: nextMatch.stage,
+      groupIndex: nextMatch.group_index,
+    });
     const lobbyBits = [
-      tournament!.lobby_name ? `Lobby "${tournament!.lobby_name}"` : null,
+      lobbyName ? `Lobby "${lobbyName}"` : null,
       tournament!.lobby_password ? `PW: ${tournament!.lobby_password}` : null,
     ].filter(Boolean);
     const lobbyText = lobbyBits.length > 0 ? ` (${lobbyBits.join(', ')})` : '';
     const matchNotify = {
       playerIds: [...JSON.parse(nextTeamA.player_ids), ...JSON.parse(nextTeamB.player_ids)],
-      message: `⚔️ Dein nächstes Match steht an: ${nextTeamA.name} vs ${nextTeamB.name} — ${nextTeamA.name} eröffnet die Lobby${lobbyText}`,
+      message: `Dein nächstes Match steht an: ${nextTeamA.name} vs ${nextTeamB.name} — ${nextTeamA.name} eröffnet die Lobby${lobbyText}`,
     };
     notifyPlayers(
       matchNotify.playerIds,
-      { title: '⚔️ Dein Match ist bereit', body: matchNotify.message, url: '/#tournaments' },
+      { title: 'Dein Match ist bereit', body: matchNotify.message, url: '/#tournaments' },
       'direct',
       { key: `tournament:${tournament!.id}:match:${matchId}` }
     );
@@ -762,11 +835,11 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
     const playerIds = [...new Set(advancingTeams.flatMap((t) => JSON.parse(t.player_ids) as string[]))];
     const knockoutNotify = {
       playerIds,
-      message: `🏆 Gruppenphase von ${tournament!.name} beendet – die K.O.-Runde steht!`,
+      message: `Gruppenphase von ${tournament!.name} beendet – die K.O.-Runde steht!`,
     };
     notifyPlayers(
       playerIds,
-      { title: '🏆 K.O.-Runde steht', body: knockoutNotify.message, url: '/#tournaments' },
+      { title: 'K.O.-Runde steht', body: knockoutNotify.message, url: '/#tournaments' },
       'direct',
       { key: `tournament:${tournament!.id}:stage:knockout` }
     );
@@ -810,7 +883,10 @@ tournamentsRouter.post('/:id/matches/:matchId/result', (req, res) => {
   });
   broadcast(Events.leaderboardChanged, null);
   res.json(buildDetail(tournament.id, req.group!.id));
-});
+}
+
+tournamentsRouter.post('/:id/matches/:matchId/result', saveTournamentResult);
+tournamentsRouter.put('/:id/matches/:matchId/result', saveTournamentResult);
 
 // DELETE /api/tournaments/:id - removes the tournament and its teams/
 // matches (cascade); the `matches` rows already created for the leaderboard

@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-11
 - Branch: `claude/arcade-all-open-lobbies-tptts0`
-- Merge-Commit: [`d95a7bc`](https://github.com/blorbeer-cmd/LAN_2026/commit/d95a7bc5ad092c053b44ca9ac7209d673aed4781)
-- Pull Request: [#134](https://github.com/blorbeer-cmd/LAN_2026/pull/134)
+- Merge-Commit: [`d95a7bc`](https://github.com/blorbeer-cmd/Respawn/commit/d95a7bc5ad092c053b44ca9ac7209d673aed4781)
+- Pull Request: [#134](https://github.com/blorbeer-cmd/Respawn/pull/134)
 
 ## Changelog
 

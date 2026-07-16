@@ -53,16 +53,26 @@ const RULES = [
   {
     name: 'hardcoded font-size/font-weight',
     test: (line) => /font-(size|weight):\s*[0-9]/.test(line),
+    exempt: isCustomPropertyDefinition,
   },
   {
     name: 'hardcoded spacing (gap/padding/margin)',
     test: (line) => /(gap|padding|margin(-top|-bottom|-left|-right)?):\s*-?[0-9.]+px/.test(line),
+    exempt: isCustomPropertyDefinition,
   },
   {
     name: 'hardcoded border-radius',
     test: (line) => /border-radius:\s*[0-9.]+px/.test(line),
+    exempt: isCustomPropertyDefinition,
   },
 ];
+
+// Defining a custom property (`--bracket-pair-gap: 20px;`) is how a shared
+// value is introduced, not a bypass of one — mirrors the hex-color rule's
+// exemption for `--foo: #...` definitions.
+function isCustomPropertyDefinition(line) {
+  return /^\+\s*--[\w-]+\s*:\s*/.test(line);
+}
 
 function gitDiff(args) {
   return execFileSync('git', ['diff', ...args], { encoding: 'utf8' });
@@ -82,7 +92,11 @@ function addedLines(file) {
   // -U0: no context lines, only the actual diff hunks — keeps this to just
   // what's genuinely new in the commit or pull-request range.
   const revisionArgs = baseRef ? [`${baseRef}...HEAD`] : ['--cached'];
-  const diff = gitDiff(['-U0', ...revisionArgs, '--', file]);
+  // `git diff --name-only` reports paths relative to the repo root, but a
+  // plain pathspec is resolved relative to the current working directory —
+  // and this script runs from server/ via npm. `:(top)` pins the pathspec to
+  // the repo root so the per-file diff isn't silently empty.
+  const diff = gitDiff(['-U0', ...revisionArgs, '--', `:(top)${file}`]);
   return diff.split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++'));
 }
 

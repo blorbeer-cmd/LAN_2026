@@ -339,3 +339,21 @@ test('GET /api/analytics/arcade skips legacy score rows with no player attributi
   assert.equal(matchesAfter, matchesBefore); // the legacy row didn't count
   assert.equal(after.body.totals.matches, before.body.totals.matches);
 });
+
+test('GET /api/analytics/arcade filters results by start time', async () => {
+  const player = await request(app).post('/api/players').send({ name: 'Arcade Zeitraum' });
+  const now = Date.now();
+  const insert = db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, 'pong', ?, ?, ?, 'completed', ?, ?)`
+  );
+  const players = JSON.stringify([{ playerId: player.body.id }]);
+  const scores = JSON.stringify([{ playerId: player.body.id, name: player.body.name, score: 7 }]);
+  insert.run('arcade-range-old', player.body.id, players, scores, now - 20_000, now - 19_000);
+  insert.run('arcade-range-new', player.body.id, players, scores, now - 2_000, now - 1_000);
+
+  const res = await request(app).get(`/api/analytics/arcade?from=${now - 5_000}&to=${now}`);
+  assert.equal(res.status, 200);
+  const pong = res.body.games.find((game: { gameType: string }) => game.gameType === 'pong');
+  assert.equal(pong.matches, 1);
+});

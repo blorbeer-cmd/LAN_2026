@@ -17,7 +17,7 @@ import { withQueryPlayerIdentity } from '../sessions';
 
 export const agentDownloadRouter = Router();
 
-const EXE_PATH = path.join(__dirname, '..', '..', 'agent-dist', 'lan2026-agent.exe');
+const EXE_PATH = path.join(__dirname, '..', '..', 'agent-dist', 'respawn-agent.exe');
 
 interface PlayerRow {
   id: string;
@@ -60,27 +60,27 @@ function buildInstallBat(): string {
   const lines = [
     '@echo off',
     'setlocal',
-    'set "INSTALL_DIR=%LOCALAPPDATA%\\RespawnHQ-Agent"',
+    'set "INSTALL_DIR=%LOCALAPPDATA%\\Respawn-Agent"',
     'set "SRC_DIR=%~dp0"',
     '',
-    'echo RespawnHQ-Agent wird eingerichtet...',
+    'echo Respawn-Agent wird eingerichtet...',
     'if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"',
-    'copy /Y "%SRC_DIR%lan2026-agent.exe" "%INSTALL_DIR%\\lan2026-agent.exe" >nul',
+    'copy /Y "%SRC_DIR%respawn-agent.exe" "%INSTALL_DIR%\\respawn-agent.exe" >nul',
     'copy /Y "%SRC_DIR%agent.config.json" "%INSTALL_DIR%\\agent.config.json" >nul',
     '',
     'set "STARTUP_DIR=%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"',
-    'powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (New-Object -ComObject WScript.Shell).CreateShortcut(\'%STARTUP_DIR%\\RespawnHQ-Agent.lnk\'); $s.TargetPath = \'%INSTALL_DIR%\\lan2026-agent.exe\'; $s.WorkingDirectory = \'%INSTALL_DIR%\'; $s.WindowStyle = 7; $s.Save()"',
+    'powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (New-Object -ComObject WScript.Shell).CreateShortcut(\'%STARTUP_DIR%\\Respawn-Agent.lnk\'); $s.TargetPath = \'%INSTALL_DIR%\\respawn-agent.exe\'; $s.WorkingDirectory = \'%INSTALL_DIR%\'; $s.WindowStyle = 7; $s.Save()"',
     '',
     '(',
     '  echo [InternetShortcut]',
     '  echo URL=http://127.0.0.1:47813',
-    ') > "%USERPROFILE%\\Desktop\\RespawnHQ-Agent Steuerung.url"',
+    ') > "%USERPROFILE%\\Desktop\\Respawn-Agent Steuerung.url"',
     '',
     'echo Fertig! Der Agent startet ab jetzt automatisch bei jedem Windows-Login.',
-    'echo Auf dem Desktop liegt eine Verknuepfung "RespawnHQ-Agent Steuerung" zum',
+    'echo Auf dem Desktop liegt eine Verknuepfung "Respawn-Agent Steuerung" zum',
     'echo Pausieren, Autostart an/aus stellen oder Deinstallieren.',
     'echo Starte ihn jetzt auch gleich...',
-    'start "" "%INSTALL_DIR%\\lan2026-agent.exe"',
+    'start "" "%INSTALL_DIR%\\respawn-agent.exe"',
     '',
     'timeout /t 5',
   ];
@@ -97,12 +97,12 @@ function buildUninstallBat(): string {
   const lines = [
     '@echo off',
     'setlocal',
-    'set "INSTALL_DIR=%LOCALAPPDATA%\\RespawnHQ-Agent"',
+    'set "INSTALL_DIR=%LOCALAPPDATA%\\Respawn-Agent"',
     'set "STARTUP_DIR=%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"',
     '',
-    'echo RespawnHQ-Agent wird entfernt...',
-    'taskkill /IM lan2026-agent.exe /F >nul 2>&1',
-    'del /Q "%STARTUP_DIR%\\RespawnHQ-Agent.lnk" >nul 2>&1',
+    'echo Respawn-Agent wird entfernt...',
+    'taskkill /IM respawn-agent.exe /F >nul 2>&1',
+    'del /Q "%STARTUP_DIR%\\Respawn-Agent.lnk" >nul 2>&1',
     'rmdir /S /Q "%INSTALL_DIR%" >nul 2>&1',
     '',
     'echo Fertig! Der Agent laeuft nicht mehr und startet auch nicht mehr automatisch.',
@@ -126,14 +126,14 @@ agentDownloadRouter.get('/', ...withQueryPlayerIdentity, (req, res) => {
   if (!fs.existsSync(EXE_PATH)) {
     return res.status(503).json({
       error:
-        'Der Agent wurde auf dem Server noch nicht bereitgestellt (agent-dist/lan2026-agent.exe fehlt). Bitte den Organisator informieren.',
+        'Der Agent wurde auf dem Server noch nicht bereitgestellt (agent-dist/respawn-agent.exe fehlt). Bitte den Organisator informieren.',
     });
   }
 
   const serverUrl = resolveAgentServerUrl(req.protocol, req.get('host') ?? '');
   const config = buildAgentConfig(serverUrl, player.api_key, trackActivity);
 
-  res.attachment(`RespawnHQ-Agent-${sanitizeForFilename(player.name)}.zip`);
+  res.attachment(`Respawn-Agent-${sanitizeForFilename(player.name)}.zip`);
   res.set('Content-Type', 'application/zip');
 
   const archive = archiver('zip', { zlib: { level: 9 } });
@@ -146,7 +146,7 @@ agentDownloadRouter.get('/', ...withQueryPlayerIdentity, (req, res) => {
     res.end();
   });
   archive.pipe(res);
-  archive.file(EXE_PATH, { name: 'lan2026-agent.exe' });
+  archive.file(EXE_PATH, { name: 'respawn-agent.exe' });
   archive.append(JSON.stringify(config, null, 2), { name: 'agent.config.json' });
   archive.append(buildInstallBat(), { name: 'install.bat' });
   archive.append(buildUninstallBat(), { name: 'uninstall.bat' });

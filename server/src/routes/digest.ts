@@ -3,9 +3,8 @@
 // a card on the Home view's "Aktuell" section. Read-only and cheap (one
 // indexed lookup), so it's fine to poll on every Home render. (Used to also
 // cover an open vote not yet cast and a ready tournament match, but both are
-// now already visible via Home's "Aktuell" status cards and the always-on
-// header notification banner, so this endpoint dropped them rather than
-// keep computing data nothing reads anymore.)
+// now already visible via Home's "Aktuell" status cards, so this endpoint
+// dropped them rather than keep computing data nothing reads anymore.)
 
 import { Router } from 'express';
 import { db } from '../db';

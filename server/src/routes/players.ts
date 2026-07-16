@@ -81,9 +81,9 @@ playersRouter.get('/', (_req, res) => {
   res.json(rows.map(toPublicPlayer));
 });
 
-// GET /api/players/:id - profile details. Under required auth the API key is
-// only visible to its owner or an admin; legacy mode keeps the old response
-// until deployments complete the migration.
+// GET /api/players/:id - public profile details for everyone. Under required
+// auth the private agent API key is only visible to its owner or an admin;
+// legacy mode reveals it only to the matching device identity.
 playersRouter.get('/:id', requireConfiguredUser, (req, res) => {
   const row = db
     .prepare(
@@ -96,7 +96,9 @@ playersRouter.get('/:id', requireConfiguredUser, (req, res) => {
   if (row.deactivated_at !== null && !req.player?.is_admin) {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   }
-  const maySeeApiKey = !req.player || req.player.id === row.id || Boolean(req.player.is_admin);
+  const maySeeApiKey = req.player
+    ? req.player.id === row.id || Boolean(req.player.is_admin)
+    : req.header('x-player-id') === row.id;
   res.json(maySeeApiKey ? toPrivatePlayer(row) : toPublicPlayer(row));
 });
 
@@ -161,9 +163,11 @@ playersRouter.post('/', requireConfiguredUser, (req, res) => {
 });
 
 // PATCH /api/players/:id - rename, recolor, update the avatar, and/or
-// pause/resume tracking. Also used by players managing their own profile
-// (no separate ownership check — this tool trusts the friend group it's
-// built for; see auth.ts). trackingPaused is the player-side opt-out: while
+// pause/resume tracking. Profile fields may only be changed by the device
+// identity currently assigned to that player. The x-player-id header is the
+// temporary identity boundary until future user management replaces the
+// device-local "who am I" selection with authenticated sessions.
+// trackingPaused is the player-side opt-out: while
 // true, the agent's reports for this player are received but silently
 // dropped (see routes/agent.ts) — no live status, no playtime, regardless
 // of whether an event is tracking.
@@ -176,6 +180,10 @@ playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   }
 
   const { name, realName, color, avatar, trackingPaused, isAdmin } = req.body ?? {};
+  const changesProfile = [name, realName, color, avatar, trackingPaused].some((value) => value !== undefined);
+  if (changesProfile && req.header('x-player-id') !== existing.id) {
+    return res.status(403).json({ error: 'Du kannst nur dein eigenes Profil bearbeiten.' });
+  }
   if (name !== undefined && !isNonEmptyString(name)) {
     return res.status(400).json({ error: 'Name muss 1-60 Zeichen lang sein.' });
   }
@@ -637,7 +645,6 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
     .filter((a) => a.playerId === player.id)
     .map((a) => ({
       id: a.id,
-      emoji: a.emoji,
       title: a.title,
       description: a.description,
       value:

@@ -39,7 +39,7 @@ export interface ExportSnapshot {
   leaderboard: Array<{ playerId: string; name: string; points: number; wins: number; matchesPlayed: number }>;
   playtimeByPlayer: Array<{ playerId: string; name: string; totalFormatted: string }>;
   playtimeByGame: Array<{ gameId: string; gameName: string; gameIcon: string; totalFormatted: string }>;
-  awards: Array<{ emoji: string; title: string; description: string; playerName: string; value: string }>;
+  awards: Array<{ title: string; description: string; playerName: string; value: string }>;
   tournaments: Array<{
     name: string;
     format: string;
@@ -155,7 +155,6 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
   // ---------- Awards ----------
   const rawAwards = computeAwards(sessions, now);
   const awards = rawAwards.map((a) => ({
-    emoji: a.emoji,
     title: a.title,
     description: a.description,
     playerName: playerById.get(a.playerId)?.name ?? 'Unbekannt',
@@ -291,7 +290,7 @@ exportRouter.get('/pdf', (req, res) => {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader(
     'Content-Disposition',
-    `attachment; filename="respawnhq-${sanitizeForFilename(snapshot.event.name)}.pdf"`,
+    `attachment; filename="respawn-${sanitizeForFilename(snapshot.event.name)}.pdf"`,
   );
   doc.pipe(res);
   renderExportPdf(doc, snapshot);

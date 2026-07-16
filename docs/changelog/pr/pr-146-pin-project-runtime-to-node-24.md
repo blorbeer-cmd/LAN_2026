@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-12
 - Branch: `chore/node-24-pin`
-- Merge-Commit: [`5f2b8de`](https://github.com/blorbeer-cmd/LAN_2026/commit/5f2b8de)
-- Pull Request: [#146](https://github.com/blorbeer-cmd/LAN_2026/pull/146)
+- Merge-Commit: [`5f2b8de`](https://github.com/blorbeer-cmd/Respawn/commit/5f2b8de)
+- Pull Request: [#146](https://github.com/blorbeer-cmd/Respawn/pull/146)
 
 ## Changelog
 
@@ -14,4 +14,4 @@
 
 ## Geschlossene Issues
 
-- [#26](https://github.com/blorbeer-cmd/LAN_2026/issues/26)
+- [#26](https://github.com/blorbeer-cmd/Respawn/issues/26)

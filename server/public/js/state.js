@@ -13,8 +13,9 @@ export const state = {
   matches: [],
   leaderboard: null,
   playtime: null,
+  playtimeAllGames: null,
   events: [],
-  selectedGameId: null, // remembers the last game picked in Teams/Rangliste
+  selectedGameId: null, // remembers the last game picked in Teams/Turniere/Rangliste
   lastMatchmaking: null, // last drawn teams, shared live across all clients
 };
 
