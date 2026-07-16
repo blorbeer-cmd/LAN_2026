@@ -42,6 +42,11 @@ Hier sind alle in den PR-Metadaten gefundenen Arbeitsbranches zusammengefasst. D
 - [`test/all-features-local`](./test-all-features-local.md) — lokaler Integrationsbranch, kein eigener PR-Eintrag
 - [`claude/voting-section-redesign-dop6cu`](./claude-voting-section-redesign-dop6cu.md) — 2 gemergt, 0 offen
 - [`claude/voting-slider-color-bug-zbq2uh`](./claude-voting-slider-color-bug-zbq2uh.md) — 1 gemergt, 0 offen
+- [`codex/deploy-optimizations`](./codex-deploy-optimizations.md) — 1 gemergt, 0 offen
+- [`codex/docker-prepare-fix`](./codex-docker-prepare-fix.md) — 1 gemergt, 0 offen
+- [`codex/feedback-general-ui-polish`](./codex-feedback-general-ui-polish.md) — 0 gemergt, 1 offen
+- [`codex/fix-arcade-spectator-views`](./codex-fix-arcade-spectator-views.md) — 1 gemergt, 0 offen
+- [`codex/fix-scribble-watch-rerender`](./codex-fix-scribble-watch-rerender.md) — 1 gemergt, 0 offen
 - [`concurrency-fix-onto-main`](./concurrency-fix-onto-main.md) — 1 gemergt, 0 offen
 - [`feat/46-arcade-pong`](./feat-46-arcade-pong.md) — 1 gemergt, 0 offen
 - [`feat/admin-base`](./feat-admin-base.md) — 1 gemergt, 0 offen
