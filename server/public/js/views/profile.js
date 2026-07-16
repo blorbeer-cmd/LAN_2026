@@ -189,29 +189,30 @@ export function renderProfile(container, ctx) {
       <section class="card stack grouped-page-section" aria-labelledby="profile-data-title">
         <div class="grouped-page-section-title"><h2 id="profile-data-title">Profil</h2></div>
         <div class="profile-identity-editor">
-          <div class="profile-avatar-editor">
-            <label for="profile-avatar-input" class="profile-avatar-control" aria-label="Profilbild ändern">
-              ${avatarHtml(me, 64)}
-            </label>
-            <input type="file" id="profile-avatar-input" accept="image/*" hidden />
+          <div class="profile-visual-fields">
+            <div class="profile-avatar-editor">
+              <span class="field-label">Profilbild</span>
+              <label for="profile-avatar-input" class="profile-avatar-control" aria-label="Profilbild ändern">
+                ${avatarHtml(me, 64)}
+              </label>
+              <input type="file" id="profile-avatar-input" accept="image/*" hidden />
+            </div>
+            <div class="profile-color-field">
+              <label for="profile-color" class="field-label">Profilfarbe</label>
+              <input type="color" id="profile-color" value="${me.color}" aria-label="Profilfarbe" />
+            </div>
           </div>
-          <div class="stack" style="gap:var(--space-3);">
-            <div class="profile-gamertag-row">
-              <div class="profile-gamertag-field">
-                <label for="profile-name" class="field-label">Gamertag</label>
-                <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" />
-              </div>
-              <div class="profile-color-field">
-                <label for="profile-color" class="field-label">Profilfarbe</label>
-                <input type="color" id="profile-color" value="${me.color}" aria-label="Profilfarbe" />
-              </div>
+          <div class="profile-text-fields">
+            <div>
+              <label for="profile-name" class="field-label">Gamertag</label>
+              <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" />
             </div>
             <div>
               <label for="profile-real-name" class="field-label">Name</label>
               <input type="text" id="profile-real-name" value="${escapeHtml(me.real_name || '')}" maxlength="60" placeholder="Optional" />
             </div>
-            <button type="button" class="btn btn-primary btn-block" id="profile-save">Speichern</button>
           </div>
+          <button type="button" class="btn btn-primary btn-block" id="profile-save">Speichern</button>
         </div>
       </section>
 
@@ -246,8 +247,8 @@ export function renderProfile(container, ctx) {
             <label class="check-row">
               <input type="checkbox" id="agent-track-activity" />
               <span class="title-with-info" style="flex:1;">
-                <span>Erweitertes Aktivitäts-Tracking</span>
-                ${infoTooltipHtml('profile-activity-tracking-help', 'Erweitertes Aktivitäts-Tracking', ACTIVITY_TRACKING_HELP)}
+                <span>Erweitertes Tracking</span>
+                ${infoTooltipHtml('profile-activity-tracking-help', 'Erweitertes Tracking', ACTIVITY_TRACKING_HELP)}
               </span>
             </label>
           </div>

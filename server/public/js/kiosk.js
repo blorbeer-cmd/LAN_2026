@@ -317,36 +317,6 @@ function renderTournament(t) {
   </div>`;
 }
 
-// Food-order banner: just enough for someone glancing at the shared screen
-// to know an order is running and how to get in on it — when it goes out
-// and where the menu/delivery link is. Never the item list or who ordered
-// what (that's on everyone's own phone, in the Essen-bestellen view).
-function renderFoodBanner(orders) {
-  const open = (orders || []).filter((o) => o.open);
-  const el = document.getElementById('kiosk-food-banner');
-  if (open.length === 0) {
-    el.hidden = true;
-    updateAlertLayout();
-    return;
-  }
-  const rows = open
-    .map((o) => {
-      const when = o.sendAt ? `Bestellung um ${formatDateTime(o.sendAt)} Uhr` : 'Zeitpunkt noch offen';
-      const where = o.link
-        ? `<a href="${escapeHtml(o.link)}" target="_blank" rel="noopener">${icon('link')} Karte öffnen</a>`
-        : '';
-      return `<div class="kiosk-food-order">
-        <span class="inline-icon">${icon(domainIcon('foodOrders'))}</span>
-        <span class="kiosk-food-order-text"><strong>${escapeHtml(o.title)}</strong><span class="muted">${when}</span></span>
-        ${where}
-      </div>`;
-    })
-    .join('');
-  el.innerHTML = `<div class="kiosk-food-order-list">${rows}</div>`;
-  el.hidden = false;
-  updateAlertLayout();
-}
-
 // Last-push banner: shows whatever was most recently sent to (almost)
 // everyone — a manual Durchsage, but just as much a new Sammelbestellung, an
 // Arcade-Lobby opening, a new vote round, a tournament update, ... (every
@@ -390,25 +360,21 @@ function renderBroadcastBanner(entry) {
 function updateAlertLayout() {
   const alerts = document.getElementById('kiosk-alerts');
   if (!alerts) return;
-  const visibleCount = [...alerts.children].filter((element) => !element.hidden).length;
-  alerts.hidden = visibleCount === 0;
-  alerts.classList.toggle('has-single-alert', visibleCount === 1);
+  alerts.hidden = document.getElementById('kiosk-broadcast')?.hidden !== false;
 }
 
 async function refreshAll() {
   try {
-    const [live, votes, leaderboard, tournaments, foodOrders, lastPush] = await Promise.all([
+    const [live, votes, leaderboard, tournaments, lastPush] = await Promise.all([
       api.live.board(),
       api.votes.get(),
       api.leaderboard.get(),
       api.tournaments.list(),
-      api.foodOrders.list(),
       api.push.last(),
     ]);
     document.getElementById('kiosk-live').innerHTML = renderLive(live);
     document.getElementById('kiosk-votes').innerHTML = renderVotes(votes);
     document.getElementById('kiosk-leaderboard').innerHTML = renderLeaderboard(leaderboard.standings);
-    renderFoodBanner(foodOrders.orders);
     renderBroadcastBanner(lastPush.entry);
 
     const active = tournaments.find((t) => t.status === 'active') || tournaments[0] || null;

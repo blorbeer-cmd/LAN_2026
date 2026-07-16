@@ -279,26 +279,29 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Agent setup is split into three stable nested cards for choosing tracking, downloading and
   installing; tracking pause belongs to the first step beside foreground-activity tracking, and
   both explanations live in contextual tooltips beside their checkboxes. The profile header owns
-  its spacing to the first group. Avatar, Gamertag, profile color and optional name form one aligned
-  editor, with Gamertag and color sharing a row. Push uses the same checkbox language with its
+  its spacing to the first group. „Profilbild“ and „Profilfarbe“ form one compact visual column;
+  Gamertag and optional name form the aligned text column beside it, with the shared save action
+  below both. The foreground option uses the concise label „Erweitertes Tracking“. Push uses the same checkbox language with its
   explanation in a tooltip instead of an action button and omits a redundant off-state sentence.
   Visible-monitor choices form exactly two columns from `--bp-md`, with phones kept to one column.
 - **Settings and admin tools** — Settings uses separate grouped cards for Events, the invitation
   link and the TV/Kiosk view. Their concise explanations live in contextual tooltips beside each
-  heading. Event cards use the standard two-column nested-card grid. Invitation copy and QR actions
-  share one equal-width row; the QR code opens in the shared centered modal rather than expanding
+  heading. Event cards use the standard two-column nested-card grid. Invitation link, copy action
+  and QR action share one compact row; the QR code opens in the shared centered modal rather than expanding
   the settings page. Backup and seating-plan editing are absent from regular settings and live
-  together as nested tool cards in the active Admin mode. Each tool card contains only its title,
-  adjacent help tooltip and colorful primary action; the seating editor returns to Admin and blocks
+  together as nested tool cards in the active Admin mode. Each tool card keeps its title, adjacent
+  help tooltip and colorful primary action on one row; the seating editor returns to Admin and blocks
   editing outside that mode. The Admin test-data group can generate a dense 2015–2026 Hall-of-Fame
-  history and removes every marked test player and test LAN through one explicit „Testdaten löschen“
-  action without touching real events.
+  history. Test-player count lives in the adjacent tooltip; count input, compact create action and
+  „Test-Daten aufräumen“ share one control row. Cleanup removes every marked test player and test LAN
+  without touching real events.
 - **Kiosk dashboard** — Kiosk is a fixed, read-only TV canvas with no page or card scrollbars. Its
   four primary cards remain a 2×2 grid and distribute live players, rankings, tournament standings,
-  groups and matches across internal columns. Vote status is a centered icon/text stack. System
-  notifications and open food orders share a compact alert row; each separates title, body/time and
-  optional link instead of presenting one long sentence. Tournament content uses a metadata row and
-  bordered standing, group or match cards with textual winner states, matching the main app's
+  groups and matches across internal columns. Vote status is a centered icon/text stack. Only the
+  newest active system notification appears above the dashboard as one full-width brand-gradient
+  banner; separate food-order summary cards are omitted because order pushes already use that banner.
+  Tournament content is centered vertically and horizontally inside its card and uses a metadata row
+  plus bordered standing, group or match cards with textual winner states, matching the main app's
   nested-surface hierarchy.
 - **Grouped page sections** — `.grouped-page-sections` stacks the page's major areas with the
   shared vertical rhythm. Every `.grouped-page-section` is a full-width `.card`; its visible

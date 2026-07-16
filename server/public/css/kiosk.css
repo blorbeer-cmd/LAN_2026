@@ -57,6 +57,7 @@
   flex-shrink: 0;
 }
 .kiosk-card > div {
+  flex: 1;
   overflow: hidden;
   min-height: 0;
 }
@@ -129,10 +130,16 @@
 }
 .kiosk-tournament-overview {
   display: flex;
-  height: 100%;
+  width: 100%;
   min-height: 0;
   flex-direction: column;
+  justify-content: center;
   gap: var(--space-3);
+}
+#kiosk-tournament {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .kiosk-tournament-meta {
   display: flex;
@@ -192,21 +199,21 @@
 .kiosk-match-team.is-winner {
   box-shadow: inset var(--space-1) 0 0 var(--state-playing);
 }
+.kiosk-match-grid > :only-child {
+  grid-column: 1 / -1;
+  width: min(100%, calc(var(--selection-card-min-width) * 2));
+  justify-self: center;
+}
 
 /* Durchsage banner: full-width, impossible to miss — the whole point of a
    kiosk announcement is that people look up from their own screens. Uses
    the brand gradient so it reads as "the system speaks", pulses briefly. */
 .kiosk-alerts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
   margin: var(--space-3) var(--space-5) 0;
-}
-.kiosk-alerts.has-single-alert {
-  grid-template-columns: minmax(0, 1fr);
 }
 .kiosk-broadcast {
   display: flex;
+  width: 100%;
   min-width: 0;
   align-items: center;
   gap: var(--space-3);
@@ -245,46 +252,6 @@
   font-weight: var(--font-weight-regular);
   opacity: 0.85;
   font-size: var(--font-size-xs);
-}
-
-/* Food-order banner: same width/placement as the Durchsage banner but a
-   quieter card style — it's ambient status, not an urgent announcement. */
-.kiosk-food-banner {
-  min-width: 0;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  font-size: var(--font-size-md);
-}
-.kiosk-food-banner a {
-  color: var(--accent);
-}
-.kiosk-food-order-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(var(--selection-card-min-width), 1fr));
-  gap: var(--space-2);
-}
-.kiosk-food-order {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
-}
-.kiosk-food-order-text {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-.kiosk-food-order-text strong,
-.kiosk-food-order-text span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .kiosk-game {

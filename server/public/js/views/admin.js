@@ -192,19 +192,19 @@ function renderPanel(container, ctx) {
       <section class="card stack grouped-page-section" aria-labelledby="admin-tools-title">
         <div class="grouped-page-section-title"><h2 id="admin-tools-title">Werkzeuge</h2></div>
         <div class="two-column-card-grid">
-          <div class="card stack">
+          <div class="card admin-tool-row">
             <span class="title-with-info">
               <strong>Sitzplan</strong>
               ${infoTooltipHtml('admin-seating-help', 'Sitzplan', SEATING_HELP)}
             </span>
-            <button type="button" class="btn btn-primary btn-sm btn-block" data-navigate="seating">Öffnen</button>
+            <button type="button" class="btn btn-primary btn-sm" data-navigate="seating">Öffnen</button>
           </div>
-          <div class="card stack">
+          <div class="card admin-tool-row">
             <span class="title-with-info">
               <strong>Backup</strong>
               ${infoTooltipHtml('admin-backup-help', 'Backup', BACKUP_HELP)}
             </span>
-            <button type="button" class="btn btn-primary btn-sm btn-block" id="download-backup">Herunterladen</button>
+            <button type="button" class="btn btn-primary btn-sm" id="download-backup">Herunterladen</button>
           </div>
         </div>
       </section>
@@ -213,15 +213,16 @@ function renderPanel(container, ctx) {
         <p class="muted">Kommen fertig eingerichtet: Platz im Sitzplan samt sichtbarer Monitore,
         Skill- und Bock-Werte pro Spiel, Spielzeit fürs aktive Event – zwei davon spielen gerade.
         Nur im Admin-Modus sichtbar.</p>
-        <div class="row" style="gap:var(--space-2);">
-          <input type="number" id="admin-count" value="5" min="1" max="20" style="max-width:calc(var(--space-8) * 2);" />
-          <button type="button" class="btn btn-primary" id="admin-bulk" style="flex:1;" ${seedBusy ? 'disabled' : ''}>Test-Spieler anlegen</button>
+        <div class="title-with-info">
+          <strong>Test-Spieler</strong>
+          ${infoTooltipHtml('admin-test-count-help', 'Vorhandene Test-Spieler', `${testCount} Test-Spieler vorhanden`)}
+        </div>
+        <div class="admin-test-controls">
+          <input type="number" id="admin-count" value="5" min="1" max="20" aria-label="Anzahl Test-Spieler" />
+          <button type="button" class="btn btn-primary btn-sm" id="admin-bulk" ${seedBusy ? 'disabled' : ''}>Test-Spieler anlegen</button>
+          <button type="button" class="btn btn-sm btn-danger" id="admin-cleanup">Test-Daten aufräumen</button>
         </div>
         <button type="button" class="btn btn-primary btn-block" id="admin-seed-hall" ${seedBusy ? 'disabled' : ''}>Hall-of-Fame-Testdaten anlegen</button>
-        <div class="row-between">
-          <span class="muted">${testCount} Test-Spieler vorhanden</span>
-          <button type="button" class="btn btn-sm btn-danger" id="admin-cleanup">Testdaten löschen</button>
-        </div>
       </section>
       <section class="card stack grouped-page-section" aria-labelledby="admin-players-title">
         <div class="grouped-page-section-title"><h2 id="admin-players-title">Spieler (${players.length})</h2></div>

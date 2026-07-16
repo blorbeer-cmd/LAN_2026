@@ -958,7 +958,8 @@ input[type='number']::-webkit-inner-spin-button {
 
 .profile-identity-editor {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
   gap: var(--space-4);
 }
 .profile-page-header {
@@ -971,24 +972,28 @@ input[type='number']::-webkit-inner-spin-button {
 .profile-avatar-editor {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-2);
 }
 .profile-avatar-control {
   cursor: pointer;
 }
-.profile-gamertag-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
+.profile-visual-fields,
+.profile-text-fields {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-3);
 }
-.profile-gamertag-field {
+.profile-text-fields > div {
   min-width: 0;
 }
 .profile-color-field {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+}
+.profile-identity-editor #profile-save {
+  grid-column: 1 / -1;
 }
 .profile-rating-nudge {
   border-color: var(--accent);
@@ -2651,10 +2656,14 @@ button.card {
 /* The QR code SVG already draws its own white background (needed for
    scanability regardless of theme) — just round its corners and give it
    some breathing room against the dark page behind it. */
-.invite-link-actions {
+.invite-link-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
   gap: var(--space-2);
+}
+.invite-link-row .btn {
+  white-space: nowrap;
 }
 .invite-qr-modal {
   display: flex;
@@ -3723,6 +3732,27 @@ input[type='number'].tournament-score-input {
 .admin-player-identity,
 .admin-player-actions {
   flex-wrap: wrap;
+}
+.admin-tool-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.admin-tool-row .title-with-info {
+  min-width: 0;
+}
+.admin-test-controls {
+  display: grid;
+  grid-template-columns: calc(var(--space-8) + var(--space-3)) repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: var(--space-2);
+}
+.admin-test-controls .btn {
+  min-width: 0;
+  padding-right: var(--space-2);
+  padding-left: var(--space-2);
+  font-size: var(--font-size-xs);
 }
 .admin-player-row {
   gap: var(--space-2);

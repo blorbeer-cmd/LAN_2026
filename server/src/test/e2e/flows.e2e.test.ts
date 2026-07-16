@@ -124,6 +124,11 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 3);
   assert.equal(await page.locator('[data-navigate="seating"]').count(), 0);
   assert.equal(await page.locator('#download-backup').count(), 0);
+  assert.equal(
+    await page.locator('.invite-link-row').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
+    3,
+  );
+  assert.equal(await page.locator('.invite-link-row').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
   await page.click('[aria-label="Mehr Informationen zu Events"]');
   await page.waitForSelector('#settings-events-help:not([hidden])');
   await page.click('[aria-label="Mehr Informationen zu Events"]');
@@ -142,6 +147,10 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   assert.equal(await page.locator('.profile-agent-step').first().locator('#tracking-paused').count(), 1);
   assert.equal(await page.locator('label[for="profile-name"]').textContent(), 'Gamertag');
   assert.equal(await page.locator('label[for="profile-real-name"]').textContent(), 'Name');
+  assert.equal(await page.locator('.profile-avatar-editor .field-label').textContent(), 'Profilbild');
+  assert.equal(await page.locator('label[for="profile-color"]').textContent(), 'Profilfarbe');
+  assert.equal(await page.getByText('Erweitertes Tracking', { exact: true }).count(), 1);
+  assert.equal(await page.locator('.profile-identity-editor').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
   assert.equal(await page.getByText('Auf diesem Gerät aus.', { exact: true }).count(), 0);
 });
 
@@ -159,6 +168,11 @@ test('Admin mode owns the seating editor and backup tools', async () => {
   assert.ok(await page.locator('[data-navigate="seating"]').evaluate((element) => element.classList.contains('btn-primary')));
   assert.equal(await page.locator('#admin-seating-help').count(), 1);
   assert.equal(await page.locator('#admin-backup-help').count(), 1);
+  assert.equal(await page.locator('#admin-test-count-help').count(), 1);
+  assert.equal(await page.locator('.admin-tool-row').count(), 2);
+  assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
+  assert.equal(await page.locator('#admin-cleanup').textContent(), 'Test-Daten aufräumen');
+  assert.equal(await page.locator('.admin-test-controls').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('.seating-plan.is-editable');
   await page.click('[data-navigate="admin"]');
@@ -1620,7 +1634,7 @@ test('Aktuell: an open vote\'s title (if set) shows on Home\'s status card', asy
   await page.waitForSelector('#votes-start');
 });
 
-test('Kiosk: shows an open food order (when/where only), and the last-push banner picks up any feature, not just Durchsagen', async () => {
+test('Kiosk: centers tournament content and shows only the latest feature push across the full width', async () => {
   const playersRes = await page.request.get(`${BASE_URL}/api/players`);
   const [{ id: playerId }] = await playersRes.json();
 
@@ -1653,12 +1667,6 @@ test('Kiosk: shows an open food order (when/where only), and the last-push banne
   await page.goto(`${BASE_URL}/kiosk.html`);
   assert.equal((await page.locator('.kiosk-header .brand-title').textContent())?.trim(), 'Respawn');
 
-  // The food banner shows only the when/where (send time + menu link) — the
-  // items themselves stay on everyone's own phone, never on the shared screen.
-  await page.waitForSelector('#kiosk-food-banner:not([hidden]) >> text=Kiosk-Test-Pizza');
-  await page.waitForSelector('a[href="https://kiosk-test.example/karte"]');
-  await page.waitForSelector('.kiosk-food-order');
-
   // The last-push banner shows the food order's own push (title "Neue
   // Sammelbestellung"), not the earlier Durchsage — with a timestamp, and
   // it stays up permanently rather than auto-hiding after a few minutes.
@@ -1668,6 +1676,24 @@ test('Kiosk: shows an open food order (when/where only), and the last-push banne
   await page.waitForSelector('.notification-banner-body');
   await page.waitForSelector('.kiosk-vote-state');
   await page.waitForSelector('.kiosk-match-grid .kiosk-match-card');
+  await page.locator('#kiosk-broadcast').evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
+  assert.equal(await page.locator('#kiosk-alerts > *').count(), 1);
+  const [alertBox, bannerBox] = await Promise.all([
+    page.locator('#kiosk-alerts').boundingBox(),
+    page.locator('#kiosk-broadcast').boundingBox(),
+  ]);
+  assert.ok(
+    alertBox && bannerBox && Math.abs(alertBox.width - bannerBox.width) <= 1,
+    `highlighted message should fill the alert row (${JSON.stringify({ alertBox, bannerBox })})`
+  );
+  const [tournamentBox, overviewBox] = await Promise.all([
+    page.locator('#kiosk-tournament').boundingBox(),
+    page.locator('.kiosk-tournament-overview').boundingBox(),
+  ]);
+  assert.ok(
+    tournamentBox && overviewBox && Math.abs(tournamentBox.y + tournamentBox.height / 2 - (overviewBox.y + overviewBox.height / 2)) < 4,
+    'tournament content should be vertically centered in its card content area'
+  );
   assert.equal(
     await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight && document.body.scrollHeight <= window.innerHeight),
     true,
@@ -1709,7 +1735,9 @@ test('Admin: one-tap mode with banner, seeded test users visible only in admin m
     data: { note: 'Pause / Essen' },
   });
   assert.ok(pauseResponse.ok(), `test-user pause failed (${pauseResponse.status()}): ${await pauseResponse.text()}`);
-  await page.waitForSelector('text=4 Test-Spieler vorhanden');
+  await page.click('[aria-label="Mehr Informationen zu Vorhandene Test-Spieler"]');
+  await page.waitForSelector('#admin-test-count-help:not([hidden]) >> text=4 Test-Spieler vorhanden');
+  await page.keyboard.press('Escape');
   await page.waitForSelector('.badge-paused >> text=Test');
 
   const hallSeedResponse = page.waitForResponse(
@@ -1757,7 +1785,8 @@ test('Admin: one-tap mode with banner, seeded test users visible only in admin m
   await page.click('#admin-cleanup');
   // confirmDialog is an in-app modal (not a native browser dialog).
   await page.click('[data-confirm]');
-  await page.waitForSelector('text=0 Test-Spieler vorhanden');
+  await page.click('[aria-label="Mehr Informationen zu Vorhandene Test-Spieler"]');
+  await page.waitForSelector('#admin-test-count-help:not([hidden]) >> text=0 Test-Spieler vorhanden');
   const cleanedHall = await (await page.request.get(`${BASE_URL}/api/hall-of-fame`)).json() as { events: Array<{ eventName: string }> };
   assert.equal(cleanedHall.events.filter((event) => event.eventName.startsWith('Respawn Test-LAN')).length, 0);
   await page.click('#admin-banner-leave');

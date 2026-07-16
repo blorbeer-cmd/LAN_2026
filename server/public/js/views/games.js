@@ -28,8 +28,8 @@ function inviteUrl() {
 
 function renderInviteLinkBody() {
   return `
-    <input type="text" id="invite-link" readonly value="${escapeHtml(inviteUrl())}" style="font-family:monospace;font-size:var(--font-size-xs);" />
-    <div class="invite-link-actions">
+    <div class="invite-link-row">
+      <input type="text" id="invite-link" readonly value="${escapeHtml(inviteUrl())}" aria-label="Einladungslink" style="font-family:monospace;font-size:var(--font-size-xs);" />
       <button type="button" class="btn btn-sm" id="invite-copy">Kopieren</button>
       <button type="button" class="btn btn-sm" id="invite-qr-open">${icon('scanQrCode')} QR-Code</button>
     </div>
