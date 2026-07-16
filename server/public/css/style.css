@@ -3919,18 +3919,21 @@ input[type='number'].tournament-score-input {
 .food-order-item-form > [data-item-desc] {
   grid-column: 1 / -1;
 }
-.food-order-quantity-input {
-  text-align: center;
-}
+.food-order-quantity-field,
 .food-order-price-field {
   position: relative;
   display: block;
   min-width: 0;
 }
+.food-order-quantity-input,
 .food-order-price-input {
   width: 100%;
   padding-right: var(--space-7);
 }
+.food-order-quantity-input {
+  text-align: left;
+}
+.food-order-quantity-field > span,
 .food-order-price-field > span {
   position: absolute;
   top: 50%;

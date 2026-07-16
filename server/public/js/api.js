@@ -168,6 +168,7 @@ export const api = {
 
   votes: {
     get: () => apiFetch('/api/votes'),
+    kiosk: () => apiFetch('/api/votes/kiosk'),
     mine: (playerId) => apiFetch(`/api/votes/mine?playerId=${encodeURIComponent(playerId)}`),
     history: () => apiFetch('/api/votes/history'),
     historyRound: (round) => apiFetch(`/api/votes/history/${round}`),

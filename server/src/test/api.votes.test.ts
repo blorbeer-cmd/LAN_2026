@@ -75,6 +75,16 @@ test('while a round is open, per-game votes/points/score are withheld — only t
   assert.equal(cs2Result.score, undefined);
 });
 
+test('GET /api/votes/kiosk exposes the live tally for the shared display', async () => {
+  const res = await request(app).get('/api/votes/kiosk');
+  assert.equal(res.status, 200);
+  assert.equal(res.body.current.mode, 'single');
+  assert.equal(res.body.current.totalVoters, 2);
+  const cs2Result = res.body.current.results.find((result: { gameId: string }) => result.gameId === gameCs2);
+  assert.equal(cs2Result.votes, 2);
+  assert.equal(cs2Result.score, 2);
+});
+
 test('a player cannot submit a second single-mode vote in the same round', async () => {
   const repeated = await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameRl });
   assert.equal(repeated.status, 409);
@@ -90,6 +100,11 @@ test('a player cannot submit a second single-mode vote in the same round', async
   const rlResult = res.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
   assert.equal(cs2Result.votes, 2);
   assert.equal(rlResult.votes, 0);
+
+  const kiosk = await request(app).get('/api/votes/kiosk');
+  assert.equal(kiosk.body.current, null);
+  assert.equal(kiosk.body.latest.round, 1);
+  assert.deepEqual(kiosk.body.latest.winnerGameIds, [gameCs2]);
 });
 
 test('a new round starts fresh (previous votes do not carry over)', async () => {

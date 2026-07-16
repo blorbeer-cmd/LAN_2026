@@ -6,7 +6,7 @@
 
 import { api, getToken, setToken } from './api.js';
 import { connectSocket } from './socket.js';
-import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml, formatDateTime } from './format.js';
+import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml, gameBadgeHtml, formatDateTime } from './format.js';
 import { installIconReplacement, icon } from './icons.js';
 import { bannerContentHtml } from './pushFeed.js';
 import { drawArcadeStreamCanvas } from './arcadeStreamRenderer.js';
@@ -199,22 +199,49 @@ function renderLive(players) {
     .join('')}</div>`;
 }
 
-// While a round is open, the server withholds the per-game distribution
-// (see votes.ts) so nobody — including everyone glancing at this shared
-// screen — can see a leader emerge and bandwagon onto it. Just show that
-// it's running and how many have participated so far; the full breakdown
-// only ever appears once a round is closed (results.votes/points/score come
-// back once that happens, but by then this card would need re-fetching
-// mid-close to catch it, so we keep this simple: presence only, no bars).
+function renderKioskVoteRows(vote, { closed = false } = {}) {
+  const scored = vote.results.filter((result) => result.score > 0);
+  if (scored.length === 0) return `<div class="muted kiosk-vote-empty">Noch keine Stimmen.</div>`;
+  const maxScore = Math.max(...scored.map((result) => result.score));
+  const winners = new Set(vote.winnerGameIds ?? []);
+  let previousScore = null;
+  let rank = 0;
+  return `<div class="kiosk-vote-results">${scored
+    .slice(0, 6)
+    .map((result, index) => {
+      if (previousScore === null || result.score !== previousScore) rank = index + 1;
+      previousScore = result.score;
+      const highlighted = closed ? winners.has(result.gameId) : result.score === maxScore;
+      const score = vote.mode === 'points' ? `${result.points} P` : `${result.votes} ${result.votes === 1 ? 'Stimme' : 'Stimmen'}`;
+      return `<div class="kiosk-vote-result ${highlighted ? 'is-leading' : ''}">
+        <span class="lb-rank">${rank}</span>
+        ${gameBadgeHtml({ id: result.gameId, icon: result.icon }, 24)}
+        <strong>${escapeHtml(result.gameName)}</strong>
+        <span class="lb-points">${score}</span>
+      </div>`;
+    })
+    .join('')}</div>`;
+}
+
 function renderVotes(votes) {
-  if (!votes || !votes.open) {
+  const vote = votes?.current ?? votes?.latest ?? null;
+  if (!vote) {
     return `<div class="empty-state">Keine offene Abstimmung.</div>`;
   }
+  const isCurrent = Boolean(votes.current);
+  const heading = isCurrent ? (vote.mode === 'single' ? 'Stichwahl läuft' : 'Abstimmung läuft') : 'Letztes Ergebnis';
+  const subheading = isCurrent ? 'Zwischenstand' : vote.mode === 'single' ? 'Stichwahl' : 'Ergebnis';
   return `
-    <div class="kiosk-vote-state">
-      <span class="empty-state-icon">${icon(domainIcon('votes'))}</span>
-      <strong>Abstimmung läuft</strong>
-      <span class="muted">${votes.totalVoters} Teilnehmer</span>
+    <div class="kiosk-vote-overview">
+      <div class="kiosk-vote-header">
+        <span>
+          <strong>${heading}</strong>
+          ${vote.title ? `<span class="muted">${escapeHtml(vote.title)}</span>` : ''}
+        </span>
+        <span class="badge ${isCurrent ? 'badge-playing' : 'badge-offline'}">${vote.totalVoters} Teilnehmer</span>
+      </div>
+      <div class="section-title kiosk-vote-section-title">${subheading}</div>
+      ${renderKioskVoteRows(vote, { closed: !isCurrent })}
     </div>`;
 }
 
@@ -366,7 +393,7 @@ async function refreshAll() {
   try {
     const [live, votes, leaderboard, tournaments, lastPush] = await Promise.all([
       api.live.board(),
-      api.votes.get(),
+      api.votes.kiosk(),
       api.leaderboard.get(),
       api.tournaments.list(),
       api.push.last(),

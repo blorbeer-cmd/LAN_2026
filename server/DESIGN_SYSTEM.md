@@ -309,8 +309,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Tournament standings and group phases start directly below their metadata. In a
   knockout view, game and round remain fixed at the top while the bracket round itself is centered in
   the remaining card area. All variants use bordered standing, group or match cards with textual winner
-  states, matching the main app's nested-surface hierarchy. An open Vote shows only its concise
-  participant count below the centered status; the deferred-result explanation is omitted.
+  states, matching the main app's nested-surface hierarchy. Vote is a live room display: open rounds
+  show their current ranking as „Zwischenstand“, single-choice runoffs are explicitly labeled
+  „Stichwahl“, and an idle card falls back to the latest completed result. The regular personal Vote
+  view keeps its open-round distribution hidden.
 - **Grouped page sections** — `.grouped-page-sections` stacks the page's major areas with the
   shared vertical rhythm. Every `.grouped-page-section` is a full-width `.card`; its visible
   heading lives inside the surface through `.grouped-page-section-title`, while filters and
@@ -338,8 +340,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   suffix and the compact action together. Item totals multiply unit price by quantity; clearly
   labeled subtotals per player and the order-wide total use consistent German currency formatting.
   Quantity starts empty with the explicit placeholder „Anzahl“ instead of implying one item. Quantity
-  and price use the same wider field width; the euro suffix sits inside the price field so neither
-  placeholder is squeezed.
+  and price use the same wider field width; the left-aligned quantity carries an internal
+  multiplication sign just as the price carries its euro suffix, so neither placeholder is squeezed.
   An absent send time is plain text without a misleading timer icon. Closing an order is the
   colorful full-width primary action below a divider; the compact neutral „Hinzufügen“ action does
   not stretch to the input height. Closed orders live inside one standard, initially collapsed

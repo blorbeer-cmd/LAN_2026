@@ -869,6 +869,8 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
 
   assert.equal(await page.locator('[data-item-quantity]').inputValue(), '');
   assert.equal(await page.locator('[data-item-quantity]').getAttribute('placeholder'), 'Anzahl');
+  assert.equal(await page.locator('.food-order-quantity-field > span').textContent(), '×');
+  assert.equal(await page.locator('[data-item-quantity]').evaluate((input) => getComputedStyle(input).textAlign), 'left');
   await page.fill('[data-item-desc]', 'Margherita groß');
   await page.fill('[data-item-quantity]', '2');
   await page.fill('[data-item-price]', '9,50');
@@ -1697,10 +1699,20 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
   await page.request.post(`${BASE_URL}/api/broadcasts`, {
     data: { playerId, message: 'Kiosk-Test-Durchsage' },
   });
-  await page.request.post(`${BASE_URL}/api/votes/start`, { data: { mode: 'single' } });
   const opponent = await page.request.post(`${BASE_URL}/api/players`, { data: { name: 'Kiosk Gegner' } });
   const opponentId = (await opponent.json()).id;
   const games = await (await page.request.get(`${BASE_URL}/api/games`)).json();
+  await page.request.post(`${BASE_URL}/api/votes/start`, {
+    data: { mode: 'points', title: 'Kiosk Vote', gameIds: [games[0].id, games[1].id] },
+  });
+  await page.request.post(`${BASE_URL}/api/votes/points`, {
+    data: { playerId, entries: [{ gameId: games[0].id, points: 8 }, { gameId: games[1].id, points: 5 }] },
+  });
+  await page.request.post(`${BASE_URL}/api/votes/close`);
+  await page.request.post(`${BASE_URL}/api/votes/start`, {
+    data: { mode: 'single', title: 'Stichwahl: Kiosk Vote', gameIds: [games[0].id, games[1].id] },
+  });
+  await page.request.post(`${BASE_URL}/api/votes`, { data: { playerId, gameId: games[1].id } });
   await page.request.post(`${BASE_URL}/api/tournaments`, {
     data: {
       gameId: games[0].id,
@@ -1731,8 +1743,10 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
   await page.waitForSelector('#kiosk-broadcast >> text=Kiosk-Test-Pizza');
   await page.waitForSelector('.kiosk-broadcast-time');
   await page.waitForSelector('.notification-banner-body');
-  await page.waitForSelector('.kiosk-vote-state');
-  await page.waitForSelector('.kiosk-vote-state >> text=0 Teilnehmer');
+  await page.waitForSelector('.kiosk-vote-overview >> text=Stichwahl läuft');
+  await page.waitForSelector('.kiosk-vote-overview >> text=Zwischenstand');
+  await page.waitForSelector('.kiosk-vote-overview >> text=1 Teilnehmer');
+  await page.waitForSelector(`.kiosk-vote-result:has-text("${games[1].name}") >> text=1 Stimme`);
   assert.equal(await page.getByText('Ergebnis erst nach dem Ende.', { exact: false }).count(), 0);
   await page.waitForSelector('.kiosk-match-grid .kiosk-match-card');
   await page.locator('#kiosk-broadcast').evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
@@ -1770,6 +1784,8 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
     'kiosk cards must not introduce internal scrollbars'
   );
   await page.request.post(`${BASE_URL}/api/votes/cancel`);
+  await page.waitForSelector('.kiosk-vote-overview >> text=Letztes Ergebnis');
+  await page.waitForSelector('.kiosk-vote-overview >> text=Kiosk Vote');
   await page.setViewportSize({ width: 390, height: 844 });
 });
 

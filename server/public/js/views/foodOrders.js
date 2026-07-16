@@ -144,7 +144,10 @@ function renderOpenOrder(order, myId) {
         myId
           ? `<form class="food-order-item-form" data-add-item-form="${order.id}">
                <input type="text" data-item-desc placeholder="z.B. Margherita groß" maxlength="120" required />
-               <input type="number" class="food-order-quantity-input" data-item-quantity placeholder="Anzahl" min="1" max="99" inputmode="numeric" aria-label="Anzahl" />
+               <label class="food-order-quantity-field">
+                 <input type="number" class="food-order-quantity-input" data-item-quantity placeholder="Anzahl" min="1" max="99" inputmode="numeric" aria-label="Anzahl" />
+                 <span aria-hidden="true">×</span>
+               </label>
                <label class="food-order-price-field">
                  <input type="text" class="food-order-price-input" data-item-price placeholder="Preis" inputmode="decimal" aria-label="Einzelpreis" />
                  <span aria-hidden="true">€</span>
