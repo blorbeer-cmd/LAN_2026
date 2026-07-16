@@ -437,9 +437,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   New/current-round controls come first, followed by separate full-width cards for „Letzter Vote“
   and „Top 10 nach Bock-Level“. An open round exposes a bordered participation counter with the
   submitted and eligible-player totals, updated through the existing realtime refresh. The latest
-  result and every history card show the ten highest-ranked games with the same compact rows and
-  responsive columns as the Bock ranking; history keeps an explicit detail action for the complete
-  bar view. Equal top scores use the same visible rank and a reinforced gold border on every tied
+  result and every history card show up to ten scored games with the same compact rows and
+  responsive columns as the Bock ranking; games with zero votes or points are omitted. History
+  keeps an explicit detail action for the complete non-zero bar view. Equal top scores use the same
+  visible rank and a reinforced gold border on every tied
   row, so the shared placement remains understandable beyond the border color. The full-width
   „Stichwahl starten“ action sits at the bottom of the same „Letzter Vote“ card without a
   redundant explanatory block or separate group.

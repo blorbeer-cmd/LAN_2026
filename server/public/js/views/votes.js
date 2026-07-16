@@ -253,8 +253,9 @@ function renderOpenRows(votes, draftReady, hasSubmitted) {
 // ---------- closed round (current or reopened from history): full bars ----------
 
 function renderClosedRows(results, mode, winnerGameIds) {
-  const maxScore = Math.max(1, ...results.map((r) => r.score));
-  return results
+  const scoredResults = results.filter((result) => result.score > 0);
+  const maxScore = Math.max(1, ...scoredResults.map((result) => result.score));
+  return scoredResults
     .map((r) => {
       const isWinner = winnerGameIds ? winnerGameIds.includes(r.gameId) : r.score > 0 && r.score === maxScore;
       const scoreLabel =
@@ -277,7 +278,7 @@ function renderVoteRanking(results, mode, winnerGameIds) {
   const tiedWinners = winners.size > 1;
   let previousScore = null;
   let currentRank = 0;
-  const rankedResults = results.slice(0, 10).map((result, index) => {
+  const rankedResults = results.filter((result) => result.score > 0).slice(0, 10).map((result, index) => {
     if (previousScore === null || result.score !== previousScore) currentRank = index + 1;
     previousScore = result.score;
     return { result, rank: currentRank };

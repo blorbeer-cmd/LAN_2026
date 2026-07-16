@@ -357,11 +357,12 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
 
   await page.click('#votes-close');
   await page.waitForSelector('#votes-start');
-  // Closing reveals every ranked game in the compact "Letzter Vote" group;
-  // the optional detail modal retains the full bar presentation.
+  // Closing reveals only games that actually received points in the compact
+  // "Letzter Vote" group; the detail modal applies the same zero-score filter.
   await page.waitForSelector('text=Letzter Vote');
   await page.waitForFunction(() => document.querySelectorAll('section[aria-labelledby="vote-current-result-title"] .lb-row').length >= 2);
   const currentVote = page.locator('section[aria-labelledby="vote-current-result-title"]');
+  assert.equal(await currentVote.locator('.lb-row').count(), 2);
   assert.equal(await currentVote.locator('.lb-row.is-tied').count(), 2);
   assert.deepEqual(await currentVote.locator('.lb-row.is-tied .lb-rank').allTextContents(), ['1', '1']);
   assert.equal(await currentVote.getByText('Unentschieden', { exact: true }).count(), 0);
@@ -374,9 +375,11 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   // full detailed breakdown.
   await page.click('details.history-details:has(summary:has-text("Historie")) > summary');
   await page.waitForFunction(() => document.querySelectorAll('.vote-history-round .lb-row').length >= 2);
+  assert.equal(await page.locator('.vote-history-round').first().locator('.lb-row').count(), 2);
   await page.click('[data-open-history-round]');
   await page.waitForSelector('text=Abstimmung Runde 1');
   await page.waitForSelector('.modal .vote-bar-track');
+  assert.equal(await page.locator('.modal .vote-row').count(), 2);
   await page.click('[data-close]');
 
   // Leaderboard: record a match and see it reflected.
