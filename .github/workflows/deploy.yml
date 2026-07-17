@@ -284,4 +284,12 @@ jobs:
               exit 1
             fi
             docker compose ps
-            docker image prune -af --filter "until=720h"
+            # 720h (30 days) let the disk fill up: at this repo's merge
+            # velocity (often dozens of deploys/day, each publishing a new
+            # uniquely sha-tagged image) that's easily hundreds of accumulated
+            # images before anything gets swept. 24h matches the retention
+            # policy of the nightly "Ops - Disk Cleanup" workflow, which also
+            # covers days with no deploy at all. For an already-full disk,
+            # run that workflow directly instead of waiting for the next
+            # deploy's prune to catch up.
+            docker image prune -af --filter "until=24h"
