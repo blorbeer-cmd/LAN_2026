@@ -18,7 +18,6 @@ import { getPushSubscriptionState, enablePush, disablePush } from '../push.js';
 import { invalidateMyStats } from './myStats.js';
 import { resizeImageFile } from '../imageUtils.js';
 import { icon } from '../icons.js';
-import { domainIcon } from '../domainIcons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { confirmDialog, openModal } from '../modal.js';
 
@@ -387,12 +386,7 @@ export function renderProfile(container, ctx) {
         state.games.length === 0 || hasAnyRating
           ? ''
           : `<section class="card stack grouped-page-section profile-rating-nudge" aria-labelledby="profile-rating-title">
-               <div class="grouped-page-section-title">
-                 <span class="title-with-info">
-                   <span class="inline-icon">${icon(domainIcon('gameCatalog'))}</span>
-                   <h2 id="profile-rating-title">Bock & Skill eintragen</h2>
-                 </span>
-               </div>
+               <div class="grouped-page-section-title"><h2 id="profile-rating-title">Bock & Skill eintragen</h2></div>
                <p class="muted" style="font-size:var(--font-size-xs);margin:0;">Hilft beim Voting und beim Teams-Auslosen und dauert nur eine Minute.</p>
                <button type="button" class="btn btn-primary btn-block" data-navigate="gameCatalog">Zu den Spielen</button>
              </section>`
