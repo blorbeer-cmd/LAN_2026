@@ -1,15 +1,26 @@
 name: Ops - Disk Cleanup
 
-# Manual escape hatch for "the server's disk is full" (accumulated old Docker
-# images/build cache/stopped containers). Routine prevention lives in
-# deploy.yml's own cleanup step after each deploy — this is for reclaiming
-# space right now, on demand, independent of a deploy running.
+# Manual escape hatch (workflow_dispatch) plus a daily safety net (schedule)
+# for "the server's disk is full" (accumulated old Docker images/build
+# cache/stopped containers). Runs unattended: this project is still WIP and
+# everything it touches (images, containers) is reproducible from the repo,
+# so a nightly full sweep carries no real risk — see the safety notes on the
+# prune command below for exactly what it will and won't remove.
 on:
   workflow_dispatch: {}
+  schedule:
+    # 03:17 UTC — low-traffic hour, off the clock boundary to avoid piling
+    # onto GitHub's exact-o'clock cron traffic spike.
+    - cron: '17 3 * * *'
 
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    # Shares deploy.yml's lock: never run this at the same time as an
+    # in-flight deploy's own `docker compose pull`/`up` on the same box.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
     steps:
       - uses: appleboy/ssh-action@v1.2.5
         with:
@@ -24,10 +35,11 @@ jobs:
 
             # Safe: only removes stopped containers, unused networks, dangling
             # build cache, and images with no container (running or stopped)
-            # referencing them — the live app/cloudflared containers and
-            # whatever image they're running are never touched. No --volumes,
-            # so the bind-mounted ./data (SQLite) is untouched regardless.
-            docker system prune -af
+            # referencing them, AND older than 24h — the live app/cloudflared
+            # containers and whatever image they're running are never
+            # touched regardless of age. No --volumes, so the bind-mounted
+            # ./data (SQLite) is untouched either way.
+            docker system prune -af --filter "until=24h"
 
             echo
             echo "=== After ==="
