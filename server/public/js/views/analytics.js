@@ -223,7 +223,7 @@ function renderArcadeContent() {
   return `
     <section class="card stack grouped-page-section" aria-labelledby="analytics-arcade-total-title">
       <div class="grouped-page-section-title"><h2 id="analytics-arcade-total-title">Arcade insgesamt</h2></div>
-      <div>
+      <div class="leaderboard-list-grid">
         <div class="lb-row"><span style="flex:1;">Matches</span><span class="lb-points">${totals.matches}</span></div>
         <div class="lb-row"><span style="flex:1;">Beteiligte Spieler</span><span class="lb-points">${totals.players}</span></div>
         <div class="lb-row"><span style="flex:1;">Ø Matchdauer</span><span class="lb-points">${escapeHtml(totals.avgDurationFormatted)}</span></div>
@@ -232,7 +232,7 @@ function renderArcadeContent() {
     </section>
     <section class="card stack grouped-page-section" aria-labelledby="analytics-arcade-games-title">
       <div class="grouped-page-section-title"><h2 id="analytics-arcade-games-title">Pro Spiel</h2></div>
-      ${gameRows}
+      <div class="leaderboard-list-grid">${gameRows}</div>
     </section>
   `;
 }
@@ -311,7 +311,7 @@ function renderPlaytimeContent() {
   return `
     <section class="card stack grouped-page-section" aria-labelledby="analytics-popular-games-title">
       <div class="grouped-page-section-title"><h2 id="analytics-popular-games-title">Beliebteste Spiele</h2></div>
-      ${popularGamesHtml}
+      <div class="leaderboard-list-grid">${popularGamesHtml}</div>
     </section>
     <section class="card stack grouped-page-section" aria-labelledby="analytics-awards-title">
       <div class="grouped-page-section-title"><h2 id="analytics-awards-title">Awards</h2></div>
@@ -319,7 +319,7 @@ function renderPlaytimeContent() {
     </section>
     <section class="card stack grouped-page-section" aria-labelledby="analytics-longest-title">
       <div class="grouped-page-section-title"><h2 id="analytics-longest-title">Längste individuelle Session pro Spiel</h2></div>
-      ${longestPerGameHtml}
+      <div class="leaderboard-list-grid">${longestPerGameHtml}</div>
     </section>
     <details class="card history-details collapsible-section grouped-page-section">
       <summary class="collapsible-section-header">
@@ -330,7 +330,9 @@ function renderPlaytimeContent() {
         </span>
       </summary>
       <div class="collapsible-section-content">
-        ${sessionRows || `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions für dieses Event.</div>`}
+        <div class="leaderboard-list-grid">
+          ${sessionRows || `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions für dieses Event.</div>`}
+        </div>
       </div>
     </details>
   `;
@@ -442,7 +444,7 @@ function renderMatchesContent() {
         <h2 id="analytics-match-results-title">Ergebnisse pro Spiel</h2>
         <span class="muted">${matches.total} insgesamt</span>
       </div>
-      ${matchRows}
+      <div class="leaderboard-list-grid">${matchRows}</div>
     </section>
     <section class="card stack grouped-page-section" aria-labelledby="analytics-tournaments-title">
       <div class="grouped-page-section-title">
@@ -459,7 +461,7 @@ function renderMatchesContent() {
         <h2 id="analytics-draws-title">Team-Auslosungen</h2>
         <span class="muted">${draws.total} insgesamt${draws.seatConflictRatePercent !== null ? ` · ${draws.seatConflictRatePercent}% Sitznachbarn mussten gegeneinander` : ''}</span>
       </div>
-      ${drawRows}
+      <div class="leaderboard-list-grid">${drawRows}</div>
     </section>
     <section class="card stack grouped-page-section" aria-labelledby="analytics-fun-title">
       <div class="grouped-page-section-title"><h2 id="analytics-fun-title">Trivia</h2></div>
