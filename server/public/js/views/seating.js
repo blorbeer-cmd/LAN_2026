@@ -94,14 +94,18 @@ export function renderSeatingPlan(layout, players, { editable = false } = {}) {
 
 function renderSideControls(layout) {
   return `<section class="seating-controls card stack grouped-page-section" aria-labelledby="seating-config-title">
-    <div class="grouped-page-section-title"><h2 id="seating-config-title">Konfiguration</h2></div>
+    <div class="grouped-page-section-title">
+      <span class="title-with-info">
+        <h2 id="seating-config-title">Konfiguration</h2>
+        ${infoTooltipHtml('seating-save-help', 'Konfiguration', 'Änderungen werden direkt gespeichert.')}
+      </span>
+    </div>
     <div class="seating-control-grid">${SIDES.map((side) => `
       <label>${LABELS[side]}
         <input type="number" min="0" max="12" value="${layout[`${side}Seats`]}" data-seat-count="${side}" />
       </label>`).join('')}</div>
-    <div class="seating-save-status title-with-info">
+    <div class="seating-save-status">
       <span class="muted">${saving ? 'Speichert…' : 'Automatisch gespeichert'}</span>
-      ${infoTooltipHtml('seating-save-help', 'automatischem Speichern', 'Änderungen werden direkt gespeichert.')}
     </div>
   </section>`;
 }
