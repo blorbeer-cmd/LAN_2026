@@ -1,0 +1,35 @@
+name: Ops - Disk Cleanup
+
+# Manual escape hatch for "the server's disk is full" (accumulated old Docker
+# images/build cache/stopped containers). Routine prevention lives in
+# deploy.yml's own cleanup step after each deploy — this is for reclaiming
+# space right now, on demand, independent of a deploy running.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: deploy
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -euo pipefail
+            echo "=== Before ==="
+            df -h /
+            docker system df
+
+            # Safe: only removes stopped containers, unused networks, dangling
+            # build cache, and images with no container (running or stopped)
+            # referencing them — the live app/cloudflared containers and
+            # whatever image they're running are never touched. No --volumes,
+            # so the bind-mounted ./data (SQLite) is untouched regardless.
+            docker system prune -af
+
+            echo
+            echo "=== After ==="
+            df -h /
+            docker system df

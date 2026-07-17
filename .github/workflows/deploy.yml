@@ -284,4 +284,12 @@ jobs:
               exit 1
             fi
             docker compose ps
-            docker image prune -af --filter "until=720h"
+            # 720h (30 days) let the disk fill up: at this repo's merge
+            # velocity (often dozens of deploys/day, each publishing a new
+            # uniquely sha-tagged image) that's easily hundreds of accumulated
+            # images before anything gets swept. 72h (3 days) is still ample
+            # rollback headroom — rollback.sh only ever targets a recent sha
+            # in practice — while keeping routine disk growth bounded. For an
+            # already-full disk, run the "Ops - Disk Cleanup" workflow instead
+            # of waiting for the next deploy's prune to catch up.
+            docker image prune -af --filter "until=72h"
