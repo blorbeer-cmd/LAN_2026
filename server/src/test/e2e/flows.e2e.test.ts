@@ -270,7 +270,7 @@ test('Admin mode owns the seating editor and backup tools', async () => {
   assert.equal(await page.locator('#seating-plan-title [data-info-tooltip-trigger]').count(), 1);
   await page.click('[aria-label="Mehr Informationen zu Sitzplan"]');
   await page.waitForSelector('#seating-monitors-help:not([hidden])');
-  await page.click('[aria-label="Mehr Informationen zu automatischem Speichern"]');
+  await page.click('[aria-label="Mehr Informationen zu Konfiguration"]');
   await page.waitForSelector('#seating-save-help:not([hidden])');
   await page.click('[data-navigate="admin"]');
   await page.click('#admin-leave');
