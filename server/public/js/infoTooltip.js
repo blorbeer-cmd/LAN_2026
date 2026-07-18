@@ -3,6 +3,12 @@ import { icon } from './icons.js';
 
 let activeTrigger = null;
 let pinnedTrigger = null;
+// Viewport position of the active trigger at open time. Scroll events only
+// close the popover once the trigger has actually moved: scroll listeners
+// fire asynchronously, so a programmatic scroll-into-view (or settling touch
+// momentum) that finished before the opening tap would otherwise be
+// delivered right after open() and close the popover again immediately.
+let activeTriggerViewportPosition = null;
 let globalListenersInstalled = false;
 
 function panelFor(trigger) {
@@ -33,7 +39,10 @@ function close(trigger = activeTrigger) {
   const panel = panelFor(trigger);
   trigger.setAttribute('aria-expanded', 'false');
   if (panel) panel.hidden = true;
-  if (activeTrigger === trigger) activeTrigger = null;
+  if (activeTrigger === trigger) {
+    activeTrigger = null;
+    activeTriggerViewportPosition = null;
+  }
   if (pinnedTrigger === trigger) pinnedTrigger = null;
 }
 
@@ -45,6 +54,8 @@ function open(trigger, { pinned = false } = {}) {
   positionPanel(trigger, panel);
   trigger.setAttribute('aria-expanded', 'true');
   activeTrigger = trigger;
+  const rect = trigger.getBoundingClientRect();
+  activeTriggerViewportPosition = { top: rect.top, left: rect.left };
   if (pinned) pinnedTrigger = trigger;
 }
 
@@ -63,7 +74,18 @@ function installGlobalListeners() {
     trigger.focus();
   });
   window.addEventListener('resize', () => close());
-  window.addEventListener('scroll', () => close(), true);
+  window.addEventListener(
+    'scroll',
+    () => {
+      if (!activeTrigger || !activeTriggerViewportPosition) return;
+      const rect = activeTrigger.getBoundingClientRect();
+      const moved =
+        Math.abs(rect.top - activeTriggerViewportPosition.top) > 1 ||
+        Math.abs(rect.left - activeTriggerViewportPosition.left) > 1;
+      if (moved) close();
+    },
+    true
+  );
 }
 
 export function infoTooltipHtml(id, label, text) {
