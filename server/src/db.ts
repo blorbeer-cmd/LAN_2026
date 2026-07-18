@@ -1562,8 +1562,9 @@ function addVotesAndDraftsGroupScoping(): void {
     db.prepare(
       `INSERT OR IGNORE INTO group_memberships
          (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
-       VALUES (?, ?, 'member', 'removed', ?, ?, 0, NULL)`,
-    ).run(groupId, playerId, timestamp, timestamp);
+       SELECT ?, ?, 'member', 'removed', ?, ?, 0, NULL
+       WHERE EXISTS (SELECT 1 FROM players WHERE id = ?)`,
+    ).run(groupId, playerId, timestamp, timestamp, playerId);
   };
 
   const voteColumns = db.prepare('PRAGMA table_info(votes)').all() as Array<{ name: string }>;
