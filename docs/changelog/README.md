@@ -2,7 +2,7 @@
 
 Diese Übersicht dokumentiert die Entwicklung von Respawn aus der Git-Historie. Für jeden gemergten Pull Request gibt es eine eigene Datei unter `docs/changelog/pr/`; zusätzlich sind die zugehörigen Arbeitsbranches unter `docs/changelog/branches/` erfasst.
 
-Stand: 2026-07-18 · Basis: `main` auf `a552816`
+Stand: 2026-07-18 · Basis: `main` auf `816c786`
 
 ## Übersicht
 
@@ -16,6 +16,7 @@ Stand: 2026-07-18 · Basis: `main` auf `a552816`
 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
+| 2026-07-18 | main | [Mobile-Layout-Fixes und Info-Popover-Scroll-Race behoben](pr/main-2026-07-18-mobile-layout-and-tooltip-scroll-fixes.md) | `main` |
 | 2026-07-18 | [#213](https://github.com/blorbeer-cmd/Respawn/pull/213) | [fix flaky admin-count height assertion in E2E flows test](pr/pr-213-fix-flaky-admin-count-height-assertion-in-e2e-flows-test.md) | `fix/e2e-admin-count-height-flake` |
 | 2026-07-18 | [#212](https://github.com/blorbeer-cmd/Respawn/pull/212) | [fix migration 34 crash on drafts referencing deleted players](pr/pr-212-fix-migration-34-crash-on-drafts-referencing-deleted-players.md) | `claude/mystifying-proskuriakova-a45f34` |
 | 2026-07-18 | [#211](https://github.com/blorbeer-cmd/Respawn/pull/211) | [ops-disk-cleanup: run nightly too, 24h retention, share deploy's lock](pr/pr-211-ops-disk-cleanup-run-nightly-too-24h-retention-share-deploy-s-lock.md) | `fix-disk-full-image-prune` |
