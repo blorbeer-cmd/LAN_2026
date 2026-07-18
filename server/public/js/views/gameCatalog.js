@@ -607,8 +607,16 @@ export function renderGameCatalog(container, ctx) {
             // connected client, including this one.
             await api.preferences.set(myId, gameId, parseInt(slider.value, 10));
           } else {
+            // No ctx.refresh() here either, for the same reason: PUT
+            // /api/skills broadcasts 'skills:changed', which app.js's
+            // fullReloadEvents handler already turns into a loadAll() +
+            // rerender for every connected client, including this one.
+            // Calling ctx.refresh() here too used to fire that same reload
+            // twice (once from here, once from the incoming broadcast) plus
+            // the unconditional rerender() below on top — three full
+            // <div>.innerHTML rebuilds of this whole view stacked right at
+            // pointerup, which is the jank users felt on mobile release.
             await api.skills.set(myId, gameId, parseInt(slider.value, 10));
-            await ctx.refresh();
           }
         } catch (err) {
           showToast(err.message, { error: true });
