@@ -4583,7 +4583,12 @@ input.food-order-price-input {
 .seating-side-seats {
   display: flex;
   align-items: center;
-  justify-content: center;
+  /* "safe" falls back to flex-start once the row overflows its scroll
+     container, so every seat stays reachable by scrolling — plain "center"
+     splits the overflow evenly left/right, and the left half sits outside
+     the scrollable range and can never be reached (see .seating-plan's
+     overflow-x on phones). */
+  justify-content: safe center;
   gap: var(--space-2);
 }
 .seating-side-right .seating-side-seats,
