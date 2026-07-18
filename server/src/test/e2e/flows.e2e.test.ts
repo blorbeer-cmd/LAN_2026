@@ -237,7 +237,7 @@ test('Admin mode owns the seating editor and backup tools', async () => {
   assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
   assert.equal(await page.locator('#admin-cleanup').textContent(), 'Test-Daten aufräumen');
   assert.deepEqual(await page.locator('.admin-test-controls > *').evaluateAll((controls) => controls.map((control) => control.id)), ['admin-count', 'admin-cleanup', 'admin-bulk']);
-  assert.equal(await page.locator('#admin-count').evaluate((input) => Math.round(input.getBoundingClientRect().height)), 36);
+  assert.equal(await page.locator('#admin-count').evaluate((input) => input.getBoundingClientRect().height), 36);
   assert.equal(await page.locator('.admin-test-controls').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('.seating-plan.is-editable');
@@ -351,11 +351,13 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   assert.equal(await page.locator('[data-player]:checked').count(), 2);
   assert.equal(await page.locator('details.history-details:has(summary:has-text("Historie"))').getAttribute('open'), null);
 
+  // Player cards (checkbox, avatar, name, skill value) stack in a single
+  // column on phones; two columns would leave no readable room for names.
   const drawPlayerGrid = page.locator('section[aria-labelledby="matchmaking-draw-title"] .player-selection-grid');
   const mobileSelectionColumns = await drawPlayerGrid.evaluate((element) =>
     getComputedStyle(element).gridTemplateColumns.split(' ').length
   );
-  assert.equal(mobileSelectionColumns, 2);
+  assert.equal(mobileSelectionColumns, 1);
   await page.setViewportSize({ width: 900, height: 844 });
   const desktopSelectionColumns = await drawPlayerGrid.evaluate((element) =>
     getComputedStyle(element).gridTemplateColumns.split(' ').length
@@ -879,9 +881,11 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
   const scoreHelp = page.locator('[aria-controls="tournament-score-help"]');
   const lobbyHelp = page.locator('[aria-controls="tournament-lobby-help"]');
   assert.ok((await page.locator('[data-create-player]').count()) >= 2);
+  // Single column on the phone viewport; the two-column cap applies from
+  // --bp-md where the cards have room for avatar, name and skill value.
   assert.equal(
     await page.locator('.tournament-player-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
-    2,
+    1,
   );
   await neighborHelp.click();
   assert.equal(await neighborHelp.getAttribute('aria-expanded'), 'true');

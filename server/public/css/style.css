@@ -983,6 +983,18 @@ input[type='number']::-webkit-inner-spin-button {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
+/* Long gamertags wrap (mid-word if needed) while checkbox, avatar and
+   skill value keep their size, so no part escapes the card border. */
+.player-selection-grid .check-row .player-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.player-selection-grid .check-row input[type='checkbox'],
+.player-selection-grid .check-row .avatar-img,
+.player-selection-grid .check-row .avatar-dot,
+.player-selection-grid .check-row .rating {
+  flex-shrink: 0;
+}
 .player-assignment-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) var(--assignment-select-width);
@@ -1236,11 +1248,19 @@ button.draft-pool-player {
 
 /* Tournament overview and creation deliberately use their available width:
    one or two entries stretch instead of reserving empty auto-fill columns,
-   while the tournament player picker stays at two cards per row. */
+   while the tournament player picker caps at two cards per row from
+   --bp-md and stacks a single column on phones. */
 .tournament-detail-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(var(--selection-card-min-width), 1fr));
   gap: var(--space-3);
+}
+/* Phones fit exactly two stat columns; an odd final summary card spans the
+   row instead of leaving a hole beside it. */
+@media (max-width: 639px) { /* --bp-md */
+  .tournament-detail-stats > :nth-child(odd):last-child {
+    grid-column: 1 / -1;
+  }
 }
 .tournament-detail-meta {
   display: flex;
@@ -1358,8 +1378,13 @@ button.draft-pool-player {
   align-items: center;
   gap: var(--space-2);
 }
-.player-selection-grid.tournament-player-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+/* Player cards carry checkbox, avatar, name and skill value — two of them
+   per phone row leave no readable room for the name, so the two-column cap
+   only applies from --bp-md (phones keep the base single column). */
+@media (min-width: 640px) { /* --bp-md */
+  .player-selection-grid.tournament-player-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .tournament-section-panel {
   position: relative;
@@ -4071,8 +4096,11 @@ input[type='number'].tournament-score-input {
   display: block;
   min-width: 0;
 }
-.food-order-quantity-input,
-.food-order-price-input {
+/* The element prefix keeps these ahead of the base input[type=...] rule,
+   which otherwise resets padding-right and lets text run under the ×/€
+   suffix on narrow fields. */
+input.food-order-quantity-input,
+input.food-order-price-input {
   width: 100%;
   padding-right: var(--space-7);
 }
