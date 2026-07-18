@@ -2,19 +2,51 @@
 
 Diese Übersicht dokumentiert die Entwicklung von Respawn aus der Git-Historie. Für jeden gemergten Pull Request gibt es eine eigene Datei unter `docs/changelog/pr/`; zusätzlich sind die zugehörigen Arbeitsbranches unter `docs/changelog/branches/` erfasst.
 
-Stand: 2026-07-16 · Basis: `main` auf `c586cec`
+Stand: 2026-07-18 · Basis: `main` auf `a552816`
 
 ## Übersicht
 
-- Gemergte PRs dokumentiert: 92
-- Eindeutige PR-Branches dokumentiert: 63
+- Gemergte PRs dokumentiert: 143
+- Eindeutige PR-Branches dokumentiert: 92
 - Technische Synchronisations-Merges ohne eigenen PR sind nicht als eigene Feature-Einträge aufgeführt.
 
 ## Chronologie
 
+### Nachträge seit dem letzten Redaktionsstand
+
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
-| 2026-07-16 | [#209](https://github.com/blorbeer-cmd/Respawn/pull/209) | [UI-Polish-Durchgang mit User-Management-Integration](pr/pr-209-general-ui-polish-pass-with-user-management-merge-integration.md) | `codex/feedback-general-ui-polish` |
+| 2026-07-18 | [#213](https://github.com/blorbeer-cmd/Respawn/pull/213) | [fix flaky admin-count height assertion in E2E flows test](pr/pr-213-fix-flaky-admin-count-height-assertion-in-e2e-flows-test.md) | `fix/e2e-admin-count-height-flake` |
+| 2026-07-18 | [#212](https://github.com/blorbeer-cmd/Respawn/pull/212) | [fix migration 34 crash on drafts referencing deleted players](pr/pr-212-fix-migration-34-crash-on-drafts-referencing-deleted-players.md) | `claude/mystifying-proskuriakova-a45f34` |
+| 2026-07-18 | [#211](https://github.com/blorbeer-cmd/Respawn/pull/211) | [ops-disk-cleanup: run nightly too, 24h retention, share deploy's lock](pr/pr-211-ops-disk-cleanup-run-nightly-too-24h-retention-share-deploy-s-lock.md) | `fix-disk-full-image-prune` |
+| 2026-07-16 | [#210](https://github.com/blorbeer-cmd/Respawn/pull/210) | [fix cloudflared disconnected after rename: pin the compose project name](pr/pr-210-fix-cloudflared-disconnected-after-rename-pin-the-compose-project-name.md) | `fix-cloudflared-network-split` |
+| 2026-07-16 | [#209](https://github.com/blorbeer-cmd/Respawn/pull/209) | [General UI polish pass with user-management merge integration](pr/pr-209-general-ui-polish-pass-with-user-management-merge-integration.md) | `codex/feedback-general-ui-polish` |
+| 2026-07-16 | [#208](https://github.com/blorbeer-cmd/Respawn/pull/208) | [scope seating and pings to groups](pr/pr-208-scope-seating-and-pings-to-groups.md) | `codex/phase5c-seating-pings` |
+| 2026-07-16 | [#207](https://github.com/blorbeer-cmd/Respawn/pull/207) | [scope votes and drafts to groups](pr/pr-207-scope-votes-and-drafts-to-groups.md) | `agent/phase5c-votes-drafts` |
+| 2026-07-16 | [#206](https://github.com/blorbeer-cmd/Respawn/pull/206) | [harden competition tenant boundaries](pr/pr-206-harden-competition-tenant-boundaries.md) | `codex/pr201-hardening` |
+| 2026-07-16 | [#200](https://github.com/blorbeer-cmd/Respawn/pull/200) | [harden group-scoped catalog presence](pr/pr-200-harden-group-scoped-catalog-presence.md) | `claude/group-scoping-catalog-presence` |
+| 2026-07-16 | [#199](https://github.com/blorbeer-cmd/Respawn/pull/199) | [harden group lifecycle invariants](pr/pr-199-harden-group-lifecycle-invariants.md) | `codex/group-management` |
+| 2026-07-16 | [#198](https://github.com/blorbeer-cmd/Respawn/pull/198) | [rebuild multi-group user management concept](pr/pr-198-rebuild-multi-group-user-management-concept.md) | `claude/user-management-concept-xbro77` |
+| 2026-07-16 | [#203](https://github.com/blorbeer-cmd/Respawn/pull/203) | [Add session hygiene guidance](pr/pr-203-add-session-hygiene-guidance.md) | `agent/session-hygiene-guidance` |
+| 2026-07-16 | [#202](https://github.com/blorbeer-cmd/Respawn/pull/202) | [Split agent guidelines by scope](pr/pr-202-split-agent-guidelines-by-scope.md) | `agent/split-agent-guidelines` |
+| 2026-07-14 | [#193](https://github.com/blorbeer-cmd/Respawn/pull/193) | [add changelog entry for PR #180](pr/pr-193-add-changelog-entry-for-pr-180.md) | `claude/auto-resume-token-reset-0jl2dt` |
+| 2026-07-14 | [#195](https://github.com/blorbeer-cmd/Respawn/pull/195) | [retrigger CI after transient Docker Hub 502](pr/pr-195-retrigger-ci-after-transient-docker-hub-502.md) | `claude/user-management-concept-xbro77` |
+| 2026-07-14 | [#196](https://github.com/blorbeer-cmd/Respawn/pull/196) | [Rework Scribble voting: continuous thumbs-up, no round-gallery pause](pr/pr-196-rework-scribble-voting-continuous-thumbs-up-no-round-gallery-pause.md) | `claude/arcade-mode-adjustments-eq29ci` |
+| 2026-07-14 | [#194](https://github.com/blorbeer-cmd/Respawn/pull/194) | [Fix expanded arcade overflow, Scribble leave, and rework drawing votes](pr/pr-194-fix-expanded-arcade-overflow-scribble-leave-and-rework-drawing-votes.md) | `claude/arcade-mode-adjustments-eq29ci` |
+| 2026-07-14 | [#191](https://github.com/blorbeer-cmd/Respawn/pull/191) | [Show skill level in the captain-draft player pool and teams](pr/pr-191-show-skill-level-in-the-captain-draft-player-pool-and-teams.md) | `claude/captain-draft-skill-level-pj2i5b` |
+| 2026-07-14 | [#192](https://github.com/blorbeer-cmd/Respawn/pull/192) | [link Ergebnis eintragen results back to their draw regardless of shape](pr/pr-192-link-ergebnis-eintragen-results-back-to-their-draw-regardless-of-shape.md) | `claude/rematch-results-winner-display-7qg5hr` |
+| 2026-07-14 | [#189](https://github.com/blorbeer-cmd/Respawn/pull/189) | [close review findings on the arcade leave feature and votes payload](pr/pr-189-close-review-findings-on-the-arcade-leave-feature-and-votes-payload.md) | `claude/arcade-pause-exit-options-d9kd54` |
+| 2026-07-14 | [#190](https://github.com/blorbeer-cmd/Respawn/pull/190) | [keep team-draw cards readable instead of overflowing with many teams](pr/pr-190-keep-team-draw-cards-readable-instead-of-overflowing-with-many-teams.md) | `claude/team-draw-display-bug-gacxhe` |
+| 2026-07-13 | [#187](https://github.com/blorbeer-cmd/Respawn/pull/187) | [let a non-host arcade participant leave a running match](pr/pr-187-let-a-non-host-arcade-participant-leave-a-running-match.md) | `claude/arcade-pause-exit-options-d9kd54` |
+| 2026-07-13 | [#188](https://github.com/blorbeer-cmd/Respawn/pull/188) | [show Unentschieden badge for drawn matchmaking results](pr/pr-188-show-unentschieden-badge-for-drawn-matchmaking-results.md) | `claude/game-results-draw-display-opzvah` |
+| 2026-07-13 | [#186](https://github.com/blorbeer-cmd/Respawn/pull/186) | [Add an arcade-specific tab to Auswertungen](pr/pr-186-add-an-arcade-specific-tab-to-auswertungen.md) | `claude/arcade-games-reports-hwafva` |
+| 2026-07-13 | [#184](https://github.com/blorbeer-cmd/Respawn/pull/184) | [stop Bock/Skill sliders snapping back to the old value mid-save](pr/pr-184-stop-bock-skill-sliders-snapping-back-to-the-old-value-mid-save.md) | `claude/bock-skill-slider-bug-hp7fce` |
+| 2026-07-13 | [#185](https://github.com/blorbeer-cmd/Respawn/pull/185) | [restore arcade tile icon/text size and spacing](pr/pr-185-restore-arcade-tile-icon-text-size-and-spacing.md) | `claude/arcade-game-tiles-width-izo34m` |
+| 2026-07-13 | [#182](https://github.com/blorbeer-cmd/Respawn/pull/182) | [bump last_seen when setting the Home pause note](pr/pr-182-bump-last-seen-when-setting-the-home-pause-note.md) | `claude/home-pause-button-bug-xhapiv` |
+| 2026-07-13 | [#181](https://github.com/blorbeer-cmd/Respawn/pull/181) | [fit all six arcade game tiles into one row](pr/pr-181-fit-all-six-arcade-game-tiles-into-one-row.md) | `claude/arcade-game-tiles-width-izo34m` |
+
+| Datum | PR | Änderung | Branch |
+|---|---:|---|---|
 | 2026-07-13 | [#180](https://github.com/blorbeer-cmd/Respawn/pull/180) | [Konzept: Auto-Resume von Agent-Sessions nach Token-Reset](pr/pr-180-add-concept-for-auto-resuming-agent-sessions-after-usage-limit-reset.md) | `claude/auto-resume-token-reset-0jl2dt` |
 | 2026-07-13 | [#174](https://github.com/blorbeer-cmd/Respawn/pull/174) | [Arcade-Review-Follow-up, Spectator-/Rapid-Fire-E2E und parallele CI](pr/pr-174-arcade-review-follow-up-e2e-coverage-and-ci-parallelization.md) | `claude/arcade-e2e-testing-gn96bz` |
 | 2026-07-13 | [#171](https://github.com/blorbeer-cmd/Respawn/pull/171) | [Prepare-Hook im Container-Build korrigiert](pr/pr-171-fix-prepare-hook-in-container-build.md) | `codex/docker-prepare-fix` |
