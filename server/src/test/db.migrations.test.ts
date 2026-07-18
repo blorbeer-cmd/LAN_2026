@@ -421,6 +421,89 @@ test('migration 34 backfills draft ownership, event binding and immutable player
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
+test('migration 34 skips historical drafts referencing since-deleted players instead of crashing', () => {
+  const dbFile = makeTempDbPath('draft-group-backfill-orphaned-player');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = OFF');
+  const now = Date.now();
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('draft-player-live', 'Draft Player Live', 'draft-player-key-live', now);
+  fixture
+    .prepare(
+      `INSERT INTO group_memberships
+         (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+       VALUES ('default-group', ?, 'member', 'active', ?, 1)`,
+    )
+    .run('draft-player-live', now);
+  const game = fixture.prepare('SELECT id FROM games WHERE group_id = ? LIMIT 1').get('default-group') as {
+    id: string;
+  };
+  const event = { id: 'legacy-draft-event-orphaned' };
+  fixture
+    .prepare(
+      `INSERT INTO events
+         (id, name, starts_at, ends_at, tracking_enabled, group_id, status)
+       VALUES (?, 'Legacy Draft Event Orphaned', ?, ?, 0, 'default-group', 'ended')`,
+    )
+    .run(event.id, now, now + 1000);
+  fixture.exec(`
+    DELETE FROM schema_migrations WHERE version = 34;
+    DROP TABLE draft_player_refs;
+    DROP TABLE drafts;
+    CREATE TABLE drafts (
+      id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      game_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      captain_ids TEXT NOT NULL,
+      pool_ids TEXT NOT NULL,
+      picks TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+  `);
+  // captain_ids references a player that was deleted after the draft ran (real-world:
+  // test-data cleanup removes test players but leaves their IDs in historical draft JSON).
+  fixture
+    .prepare(
+      `INSERT INTO drafts (id, event_id, game_id, status, captain_ids, pool_ids, picks, created_at)
+       VALUES (?, ?, ?, 'completed', ?, '[]', ?, ?)`,
+    )
+    .run(
+      'legacy-draft-orphaned',
+      event.id,
+      game.id,
+      JSON.stringify(['draft-player-deleted']),
+      JSON.stringify([{ captainIndex: 0, playerId: 'draft-player-live', pickedAt: now }]),
+      now,
+    );
+  fixture.close();
+
+  // Previously crashed with "FOREIGN KEY constraint failed" because
+  // ensureHistoricalMembership inserted a group_memberships row for the deleted player.
+  assert.doesNotThrow(() => runMigrations(dbFile));
+
+  const migrated = new Database(dbFile);
+  migrated.pragma('foreign_keys = ON');
+  const draft = migrated.prepare('SELECT group_id, event_id FROM drafts WHERE id = ?').get('legacy-draft-orphaned');
+  assert.deepEqual(draft, { group_id: 'default-group', event_id: event.id });
+  const refs = migrated
+    .prepare(
+      `SELECT player_id FROM draft_player_refs WHERE draft_id = ? ORDER BY player_id`,
+    )
+    .all('legacy-draft-orphaned');
+  assert.deepEqual(refs, [{ player_id: 'draft-player-live' }]);
+  const orphanedMembership = migrated
+    .prepare(`SELECT 1 FROM group_memberships WHERE group_id = ? AND player_id = ?`)
+    .get('default-group', 'draft-player-deleted');
+  assert.equal(orphanedMembership, undefined);
+  assert.deepEqual(migrated.prepare('PRAGMA foreign_key_check').all(), []);
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('migration 32 keeps historical Arcade sessions visible in their event group', () => {
   const dbFile = makeTempDbPath('arcade-session-group-backfill');
   runMigrations(dbFile);
