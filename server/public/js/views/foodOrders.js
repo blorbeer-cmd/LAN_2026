@@ -1,8 +1,12 @@
 // "Essen bestellen" view: Sammelbestellungen. Someone opens an order
 // ("Pizza bei Luigi's"), everyone adds their own items (free text, price
-// optional) from their own phone, closing freezes the list into a read-out
-// view grouped per person — the "wer wollte nochmal was?" round through the
-// room becomes one glance at the screen.
+// optional) from their own phone. Submitting it ("Abgeschickt") freezes the
+// item list into a read-out view grouped per person — the "wer wollte
+// nochmal was?" round through the room becomes one glance at the screen —
+// but stays reversible: the creator/an admin can reopen it to add a
+// forgotten item or fix a price, and paid status/metadata stay editable
+// throughout. Only once they close it for good ("Geschlossen") does it lock
+// permanently.
 
 import { api } from '../api.js';
 import { state } from '../state.js';
@@ -16,6 +20,11 @@ import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 let cache = null;
 let loading = false;
 let historyOpen = false;
+// Item ids picked for a combined PayPal payment — deliberately not tied to
+// who added the item: "pay for others too" means anyone can pick any mix of
+// items across the whole order. Purely a local UI selection (never sent to
+// the server), so it survives re-renders but resets on page reload.
+const selectedForPayment = new Set();
 
 async function load(ctx) {
   loading = true;
@@ -52,6 +61,19 @@ function formatCents(cents) {
   return euroFormatter.format(cents / 100);
 }
 
+// Turns a stored PayPal(.me) link into a payable one: a bare
+// "paypal.me/name" link gets the exact owed amount appended so paying is one
+// tap; anything else (already has a path/amount, or some other payment page
+// entirely) opens unchanged rather than risk mangling a URL the creator
+// typed on purpose.
+export function paypalPayUrl(paypalLink, cents) {
+  const bareMatch = paypalLink.match(/^(https?:\/\/(?:www\.)?paypal\.me\/[^/?#]+)\/?$/i);
+  if (bareMatch && cents > 0) {
+    return `${bareMatch[1]}/${(cents / 100).toFixed(2)}EUR`;
+  }
+  return paypalLink;
+}
+
 function itemsGroupedByPlayer(order) {
   const byPlayer = new Map();
   for (const item of order.items) {
@@ -61,7 +83,7 @@ function itemsGroupedByPlayer(order) {
   return byPlayer;
 }
 
-function renderItems(order, myId) {
+function renderItems(order, myId, { locked = false } = {}) {
   if (order.items.length === 0) {
     return `<div class="muted" style="font-size:var(--font-size-sm);padding:var(--space-2) 0;">Noch nichts eingetragen.</div>`;
   }
@@ -81,12 +103,23 @@ function renderItems(order, myId) {
                 <strong>${formatCents(lineTotal)}</strong>
                 ${quantity > 1 ? `<span class="muted">${quantity} × ${formatCents(i.priceCents)}</span>` : ''}
               </span>`;
+          const selected = selectedForPayment.has(i.id);
           return `
-          <div class="row food-order-item">
+          <div class="row food-order-item ${i.paid ? 'is-paid' : ''} ${selected ? 'is-selected-for-payment' : ''}">
+            <label class="food-order-item-paid-toggle">
+              <input type="checkbox" data-toggle-paid="${i.id}" data-order="${order.id}" ${i.paid ? 'checked' : ''} ${locked ? 'disabled' : ''} aria-label="Als bezahlt markieren" />
+            </label>
             <span style="flex:1;"><strong>${quantity} ×</strong> ${escapeHtml(i.description)}</span>
             ${priceHtml}
             ${
-              order.open && i.playerId === myId
+              order.paypalLink
+                ? `<label class="food-order-item-pay-select">
+                     <input type="checkbox" data-select-pay="${i.id}" ${selected ? 'checked' : ''} aria-label="Für gemeinsame Zahlung auswählen" />
+                   </label>`
+                : ''
+            }
+            ${
+              !locked && order.open && i.playerId === myId
                 ? `<button type="button" class="icon-btn food-order-item-remove" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen">${icon('x')}</button>`
                 : ''
             }
@@ -100,10 +133,43 @@ function renderItems(order, myId) {
             <strong style="flex:1;">${escapeHtml(first.playerName)}</strong>
           </div>
           <div class="food-order-player-items">${rows}</div>
-          ${playerSum > 0 ? `<div class="row-between food-order-player-total"><span class="muted">Zwischensumme</span><strong>${formatCents(playerSum)}</strong></div>` : ''}
+          ${
+            playerSum > 0
+              ? `<div class="row-between food-order-player-total"><span class="muted">Zwischensumme</span><strong>${formatCents(playerSum)}</strong></div>`
+              : ''
+          }
         </div>`;
     })
     .join('');
+}
+
+// Lets anyone build a combined PayPal payment out of any mix of items —
+// their own, someone else's, or both — via the per-item checkboxes above.
+// Tip is applied to the selected subtotal, not the whole order. If any
+// selected item has no price, the sum would silently undercount it, so the
+// amount is withheld entirely and the raw PayPal link opens instead
+// (paypalPayUrl only appends an amount when cents > 0).
+function renderPaymentSelector(order) {
+  // A selection can outlive the PayPal link it was made for — the creator
+  // might clear it via "Info bearbeiten" while items are still selected on
+  // someone else's device — so bail out before paypalPayUrl(null, …) throws.
+  if (!order.paypalLink) return '';
+  const selectedItems = order.items.filter((i) => selectedForPayment.has(i.id));
+  if (selectedItems.length === 0) return '';
+
+  const allPriced = selectedItems.every((i) => i.priceCents !== null);
+  const rawCents = selectedItems.reduce((sum, i) => sum + (i.priceCents ?? 0) * (i.quantity ?? 1), 0);
+  const tipPercent = order.tipPercent || 0;
+  const payableCents = allPriced ? Math.round(rawCents * (1 + tipPercent / 100)) : 0;
+  const amountLabel = allPriced
+    ? `${formatCents(payableCents)}${tipPercent > 0 ? ` (inkl. ${tipPercent}% Trinkgeld)` : ''}`
+    : 'Preis unvollständig – Betrag manuell eingeben';
+
+  return `
+    <div class="row-between food-order-payment-selector">
+      <span class="muted">${selectedItems.length} ${selectedItems.length === 1 ? 'Position' : 'Positionen'} ausgewählt · ${amountLabel}</span>
+      <a class="btn btn-sm btn-primary" href="${escapeHtml(paypalPayUrl(order.paypalLink, payableCents))}" target="_blank" rel="noopener">Bezahlen</a>
+    </div>`;
 }
 
 // Metadata block (send time / notes / link) shown on both open and closed
@@ -111,19 +177,20 @@ function renderItems(order, myId) {
 // commonly get wrong or need to correct ("doch erst um 21 Uhr", "Link war
 // falsch"), so they stay editable even after the order closed, unlike the
 // items themselves.
-function renderDetails(order) {
+function renderDetails(order, { locked = false } = {}) {
   const sendAtLabel = order.sendAt
     ? `Versand ${formatDateTime(order.sendAt)} Uhr`
     : 'Kein Zeitpunkt festgelegt';
-  const hasDetails = Boolean(order.sendAt || order.notes || order.link);
+  const hasDetails = Boolean(order.sendAt || order.notes || order.link || order.paypalLink || order.tipPercent);
   return `
     <div class="stack food-order-details">
       <div class="row-between">
         <span class="muted" style="font-size:var(--font-size-sm);">${sendAtLabel}</span>
-        <button type="button" class="btn btn-sm" data-edit-details="${order.id}">${hasDetails ? 'Bearbeiten' : 'Info'}</button>
+        ${locked ? '' : `<button type="button" class="btn btn-sm" data-edit-details="${order.id}">${hasDetails ? 'Bearbeiten' : 'Info'}</button>`}
       </div>
       ${order.notes ? `<div class="muted" style="font-size:var(--font-size-sm);white-space:pre-wrap;word-break:break-word;">${escapeHtml(order.notes)}</div>` : ''}
       ${order.link ? `<a href="${escapeHtml(order.link)}" target="_blank" rel="noopener" style="font-size:var(--font-size-sm);">Link öffnen</a>` : ''}
+      ${order.paypalLink ? `<a href="${escapeHtml(order.paypalLink)}" target="_blank" rel="noopener" style="font-size:var(--font-size-sm);">PayPal öffnen</a>` : ''}
     </div>`;
 }
 
@@ -140,6 +207,7 @@ function renderOpenOrder(order, myId) {
       ${renderDetails(order)}
       <div class="food-order-items">${renderItems(order, myId)}</div>
       ${order.totalCents > 0 ? `<div class="row-between food-order-total"><strong>Gesamtsumme</strong><strong>${formatCents(order.totalCents)}</strong></div>` : ''}
+      ${renderPaymentSelector(order)}
       ${
         myId
           ? `<form class="food-order-item-form" data-add-item-form="${order.id}">
@@ -157,24 +225,40 @@ function renderOpenOrder(order, myId) {
           : `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um dich einzutragen.</div>`
       }
       <div class="food-order-close-action">
-        <button type="button" class="btn btn-primary btn-sm btn-block" data-close-order="${order.id}">Bestellung abschließen</button>
+        <button type="button" class="btn btn-primary btn-sm btn-block" data-close-order="${order.id}">Bestellung abschicken</button>
       </div>
     </div>`;
 }
 
-function renderClosedOrder(order) {
+// The "Abgeschickt" (submitted) state — items are frozen for others, but the
+// creator/an admin can still reopen it, toggle paid status, and edit
+// metadata — is deliberately kept visually and textually distinct from
+// "Geschlossen" (finalized, fully locked): a different badge color
+// (badge-paused vs badge-offline, matching the amber/gray "pausiert"/
+// "offline" state language used elsewhere) plus different wording.
+function renderClosedOrder(order, myId) {
   const itemCount = order.items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
+  const finalized = Boolean(order.finalizedAt);
   return `
-    <article class="card stack food-order-card">
+    <article class="card stack food-order-card" data-closed-order="${order.id}">
       <div class="row-between">
         <strong>${escapeHtml(order.title)}</strong>
-        <span class="badge badge-offline">Geschlossen</span>
+        <span class="badge ${finalized ? 'badge-offline' : 'badge-paused'}">${finalized ? 'Geschlossen' : 'Abgeschickt'}</span>
       </div>
       <div class="muted food-order-meta">
         ${itemCount} ${itemCount === 1 ? 'Position' : 'Positionen'}${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}
       </div>
-      ${renderDetails(order)}
-      <div class="food-order-items">${renderItems(order, null)}</div>
+      ${renderDetails(order, { locked: finalized })}
+      <div class="food-order-items">${renderItems(order, myId, { locked: finalized })}</div>
+      ${renderPaymentSelector(order)}
+      ${
+        finalized
+          ? ''
+          : `<div class="food-order-close-action stack" style="gap:var(--space-2);">
+               <button type="button" class="btn btn-sm btn-block" data-reopen-order="${order.id}">Wieder öffnen</button>
+               <button type="button" class="btn btn-danger btn-sm btn-block" data-finalize-order="${order.id}">Bestellung schließen</button>
+             </div>`
+      }
     </article>`;
 }
 
@@ -195,6 +279,14 @@ function openNewOrderForm(ctx, myId) {
         <div>
           <label for="order-link" class="field-label">Link (optional)</label>
           <input type="url" id="order-link" maxlength="300" placeholder="https://…" />
+        </div>
+        <div>
+          <label for="order-paypal" class="field-label">PayPal-Link (optional)</label>
+          <input type="url" id="order-paypal" maxlength="300" placeholder="https://paypal.me/deinname" />
+        </div>
+        <div>
+          <label for="order-tip" class="field-label">Trinkgeld in % (optional)</label>
+          <input type="number" id="order-tip" min="0" max="100" inputmode="numeric" placeholder="z.B. 10" />
         </div>
         <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
           Alle bekommen eine Benachrichtigung und können sich dann selbst eintragen. Alles lässt
@@ -218,8 +310,18 @@ function openNewOrderForm(ctx, myId) {
             return showToast('Link muss mit http:// oder https:// beginnen.', { error: true });
           }
           const link = linkRaw || undefined;
+          const paypalRaw = el.querySelector('#order-paypal').value.trim();
+          if (paypalRaw && !/^https?:\/\//i.test(paypalRaw)) {
+            return showToast('PayPal-Link muss mit http:// oder https:// beginnen.', { error: true });
+          }
+          const paypalLink = paypalRaw || undefined;
+          const tipRaw = el.querySelector('#order-tip').value.trim();
+          if (tipRaw && (!/^\d+$/.test(tipRaw) || Number(tipRaw) > 100)) {
+            return showToast('Trinkgeld muss zwischen 0 und 100 Prozent liegen.', { error: true });
+          }
+          const tipPercent = tipRaw ? Number(tipRaw) : undefined;
           try {
-            await api.foodOrders.create(myId, title, { sendAt, notes, link });
+            await api.foodOrders.create(myId, title, { sendAt, notes, link, paypalLink, tipPercent });
             close();
             cache = null;
             showToast('Bestellung geöffnet – alle wurden benachrichtigt.');
@@ -250,6 +352,14 @@ function openDetailsForm(ctx, order) {
           <label for="link-input" class="field-label">Link</label>
           <input type="url" id="link-input" maxlength="300" placeholder="https://…" value="${escapeHtml(order.link ?? '')}" />
         </div>
+        <div>
+          <label for="paypal-input" class="field-label">PayPal-Link</label>
+          <input type="url" id="paypal-input" maxlength="300" placeholder="https://paypal.me/deinname" value="${escapeHtml(order.paypalLink ?? '')}" />
+        </div>
+        <div>
+          <label for="tip-input" class="field-label">Trinkgeld in %</label>
+          <input type="number" id="tip-input" min="0" max="100" inputmode="numeric" placeholder="z.B. 10" value="${order.tipPercent ?? ''}" />
+        </div>
         <button type="submit" class="btn btn-primary btn-block">Speichern</button>
       </form>
     `,
@@ -266,8 +376,18 @@ function openDetailsForm(ctx, order) {
             return showToast('Link muss mit http:// oder https:// beginnen.', { error: true });
           }
           const link = linkRaw || null;
+          const paypalRaw = el.querySelector('#paypal-input').value.trim();
+          if (paypalRaw && !/^https?:\/\//i.test(paypalRaw)) {
+            return showToast('PayPal-Link muss mit http:// oder https:// beginnen.', { error: true });
+          }
+          const paypalLink = paypalRaw || null;
+          const tipRaw = el.querySelector('#tip-input').value.trim();
+          if (tipRaw && (!/^\d+$/.test(tipRaw) || Number(tipRaw) > 100)) {
+            return showToast('Trinkgeld muss zwischen 0 und 100 Prozent liegen.', { error: true });
+          }
+          const tipPercent = tipRaw ? Number(tipRaw) : null;
           try {
-            await api.foodOrders.updateDetails(order.id, { sendAt, notes, link });
+            await api.foodOrders.updateDetails(order.id, { sendAt, notes, link, paypalLink, tipPercent });
             close();
             cache = null;
             showToast('Gespeichert.');
@@ -337,7 +457,7 @@ export function renderFoodOrders(container, ctx) {
                  </span>
                </summary>
                <div class="collapsible-section-content">
-                 <div class="two-column-card-grid food-order-grid">${closedOrders.map(renderClosedOrder).join('')}</div>
+                 <div class="two-column-card-grid food-order-grid">${closedOrders.map((o) => renderClosedOrder(o, myId)).join('')}</div>
                </div>
              </details>`
           : ''
@@ -409,6 +529,29 @@ export function renderFoodOrders(container, ctx) {
     });
   });
 
+  container.querySelectorAll('[data-toggle-paid]').forEach((checkbox) => {
+    checkbox.addEventListener('change', async (e) => {
+      const paid = e.currentTarget.checked;
+      try {
+        await api.foodOrders.setItemPaid(checkbox.dataset.order, checkbox.dataset.togglePaid, paid);
+        cache = null;
+        ctx.rerender();
+      } catch (err) {
+        e.currentTarget.checked = !paid;
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-select-pay]').forEach((checkbox) => {
+    checkbox.addEventListener('change', (e) => {
+      const itemId = checkbox.dataset.selectPay;
+      if (e.currentTarget.checked) selectedForPayment.add(itemId);
+      else selectedForPayment.delete(itemId);
+      ctx.rerender();
+    });
+  });
+
   container.querySelector('[data-food-history]')?.addEventListener('toggle', (event) => {
     historyOpen = event.currentTarget.open;
   });
@@ -422,11 +565,43 @@ export function renderFoodOrders(container, ctx) {
 
   container.querySelectorAll('[data-close-order]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      if (!(await confirmDialog('Bestellung abschließen? Danach kann niemand mehr etwas eintragen.'))) return;
+      if (!(await confirmDialog('Bestellung abschicken? Danach kann niemand mehr etwas eintragen.'))) return;
       try {
         await api.foodOrders.close(btn.dataset.closeOrder);
         cache = null;
-        showToast('Bestellung abgeschlossen.');
+        showToast('Bestellung abgeschickt.');
+        ctx.rerender();
+      } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-reopen-order]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await api.foodOrders.reopen(btn.dataset.reopenOrder);
+        cache = null;
+        showToast('Bestellung wieder geöffnet.');
+        ctx.rerender();
+      } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-finalize-order]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (
+        !(await confirmDialog(
+          'Bestellung schließen? Danach sind keine Änderungen mehr möglich – auch nicht durch erneutes Öffnen.'
+        ))
+      )
+        return;
+      try {
+        await api.foodOrders.finalize(btn.dataset.finalizeOrder);
+        cache = null;
+        showToast('Bestellung geschlossen.');
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });

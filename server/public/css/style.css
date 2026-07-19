@@ -4075,6 +4075,15 @@ input[type='number'].tournament-score-input {
   min-height: var(--space-7);
   padding: var(--space-1) 0;
 }
+.food-order-item-paid-toggle {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+.food-order-item.is-paid > span {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
 .food-order-item-price {
   display: flex;
   flex-direction: column;
@@ -4083,6 +4092,16 @@ input[type='number'].tournament-score-input {
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
 }
+.food-order-item-pay-select {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+.food-order-item.is-selected-for-payment {
+  border-left: var(--space-1) solid var(--accent);
+  background: var(--bg-elevated-2);
+  padding-left: var(--space-2);
+}
 .food-order-item-remove {
   padding: 0 var(--space-1);
   font-size: var(--font-size-xs);
@@ -4090,6 +4109,14 @@ input[type='number'].tournament-score-input {
 .food-order-total {
   padding-top: var(--space-2);
   border-top: 1px solid var(--border);
+}
+.food-order-payment-selector {
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  font-size: var(--font-size-sm);
 }
 .food-order-item-form {
   display: grid;

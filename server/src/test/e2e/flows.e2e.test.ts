@@ -985,6 +985,8 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await setDateTimeField('order-sendat', '2026-12-24T20:00');
   await page.fill('#order-notes', 'Mindestbestellwert 15€, bar zahlen');
   await page.fill('#order-link', 'https://luigis-pizza.example/karte');
+  await page.fill('#order-paypal', 'https://paypal.me/luigi');
+  await page.fill('#order-tip', '10');
   await page.click('#order-form button[type="submit"]');
   await page.waitForSelector('text=Pizza bei Luigi');
   await page.waitForSelector('text=Versand 24.12., 20:00 Uhr');
@@ -1012,6 +1014,56 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.waitForSelector('text=Zwischensumme');
   await page.waitForSelector('text=Gesamtsumme');
 
+  // Whoever collects the money checks an item off once it's paid — works
+  // while the order is still open, and stays visible/editable after closing.
+  await page.check('[data-toggle-paid]');
+  await page.waitForSelector('.food-order-item.is-paid');
+
+  // Anyone can select any mix of items — their own or someone else's — and
+  // pay them together in one PayPal link, tip included.
+  await page.check('[data-select-pay]');
+  const paymentSelector = page.locator('.food-order-payment-selector');
+  await page.waitForSelector('.food-order-payment-selector:has-text("1 Position ausgewählt")');
+  await page.waitForSelector('.food-order-payment-selector:has-text("20,90")');
+  await page.waitForSelector('.food-order-payment-selector:has-text("10% Trinkgeld")');
+  assert.equal(
+    await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'),
+    'https://paypal.me/luigi/20.90EUR'
+  );
+
+  // Adding an unpriced item to the selection withholds the amount entirely
+  // (rather than silently undercounting it as 0) and falls back to the raw
+  // PayPal link.
+  await page.fill('[data-item-desc]', 'Wasser');
+  await page.fill('[data-item-quantity]', '1');
+  await page.click('[data-add-item-form] button[type="submit"]');
+  await page.waitForSelector('text=Wasser');
+  await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').check();
+  await page.waitForSelector('text=Preis unvollständig');
+  assert.equal(await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'), 'https://paypal.me/luigi');
+
+  // Deselecting it goes back to a complete, priced selection.
+  await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').uncheck();
+  await page.waitForSelector('text=Preis unvollständig', { state: 'detached' });
+  assert.equal(
+    await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'),
+    'https://paypal.me/luigi/20.90EUR'
+  );
+
+  // Clearing the PayPal link while an item is still selected must not crash
+  // the view (a selection can outlive the link it was made for).
+  await page.click('[data-edit-details]');
+  await page.fill('#paypal-input', '');
+  await page.click('#details-form button[type="submit"]');
+  await page.waitForSelector('.food-order-payment-selector', { state: 'detached' });
+  await page.waitForSelector('text=Margherita');
+
+  // Restore it for the rest of the flow.
+  await page.click('[data-edit-details]');
+  await page.fill('#paypal-input', 'https://paypal.me/luigi');
+  await page.click('#details-form button[type="submit"]');
+  await page.waitForSelector('.food-order-payment-selector');
+
   // Content search resolves an item description to its parent order and
   // highlights that concrete order instead of only opening the Essen area.
   await page.keyboard.press('Control+K');
@@ -1025,13 +1077,42 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.click('[data-confirm]');
   await page.waitForSelector('[data-food-history]');
   await page.click('[data-food-history] > summary');
-  await page.waitForSelector('.badge-offline >> text=Geschlossen');
+  // "Abgeschickt" (submitted, badge-paused) vs "Geschlossen" (finalized,
+  // badge-offline) are deliberately distinct labels/colors in the history.
+  await page.waitForSelector('.badge-paused >> text=Abgeschickt');
+
+  // Paid state survives closing, and stays togglable — settling up normally
+  // happens after the order is already closed.
+  await page.waitForSelector('.food-order-item.is-paid');
+  await page.locator('.food-order-item', { hasText: 'Margherita' }).locator('[data-toggle-paid]').uncheck();
+  await page.waitForSelector('.food-order-item:not(.is-paid)');
 
   // Closing only freezes items — the details stay correctable afterward.
   await page.click('[data-edit-details]');
   await setDateTimeField('sendat-input', '2026-12-24T22:00');
   await page.click('#details-form button[type="submit"]');
   await page.waitForSelector('text=Versand 24.12., 22:00 Uhr');
+
+  // Reopening a closed order un-freezes it: items can be added again.
+  await page.click('[data-reopen-order]');
+  await page.waitForSelector('.badge-playing >> text=Offen');
+  await page.fill('[data-item-desc]', 'Vergessene Cola');
+  await page.fill('[data-item-quantity]', '1');
+  await page.click('[data-add-item-form] button[type="submit"]');
+  await page.waitForSelector('text=Vergessene Cola');
+
+  await page.click('[data-close-order]');
+  await page.click('[data-confirm]');
+  await page.waitForSelector('.badge-paused >> text=Abgeschickt');
+
+  // Finalizing is the creator's terminal lock: no more reopening, editing,
+  // or paid toggling.
+  await page.click('[data-finalize-order]');
+  await page.click('[data-confirm]');
+  await page.waitForSelector('.badge-offline >> text=Geschlossen');
+  await page.waitForSelector('[data-reopen-order]', { state: 'detached' });
+  await page.waitForSelector('[data-edit-details]', { state: 'detached' });
+  assert.equal(await page.locator('[data-toggle-paid]').first().isDisabled(), true);
 });
 
 test('Arcade: open a quiz lobby, see it on Home, then close it again', async (t) => {
