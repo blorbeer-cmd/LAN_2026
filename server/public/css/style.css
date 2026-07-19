@@ -4190,9 +4190,6 @@ input.food-order-price-input {
   color: var(--text-muted);
   text-decoration: line-through;
 }
-.checklist-assignee-option {
-  cursor: pointer;
-}
 .hall-of-fame-event-header {
   align-items: flex-start;
   flex-wrap: wrap;
