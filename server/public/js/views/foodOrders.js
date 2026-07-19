@@ -20,6 +20,11 @@ import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 let cache = null;
 let loading = false;
 let historyOpen = false;
+// Item ids picked for a combined PayPal payment — deliberately not tied to
+// who added the item: "pay for others too" means anyone can pick any mix of
+// items across the whole order. Purely a local UI selection (never sent to
+// the server), so it survives re-renders but resets on page reload.
+const selectedForPayment = new Set();
 
 async function load(ctx) {
   loading = true;
@@ -98,13 +103,21 @@ function renderItems(order, myId, { locked = false } = {}) {
                 <strong>${formatCents(lineTotal)}</strong>
                 ${quantity > 1 ? `<span class="muted">${quantity} × ${formatCents(i.priceCents)}</span>` : ''}
               </span>`;
+          const selected = selectedForPayment.has(i.id);
           return `
-          <div class="row food-order-item ${i.paid ? 'is-paid' : ''}">
+          <div class="row food-order-item ${i.paid ? 'is-paid' : ''} ${selected ? 'is-selected-for-payment' : ''}">
             <label class="food-order-item-paid-toggle">
               <input type="checkbox" data-toggle-paid="${i.id}" data-order="${order.id}" ${i.paid ? 'checked' : ''} ${locked ? 'disabled' : ''} aria-label="Als bezahlt markieren" />
             </label>
             <span style="flex:1;"><strong>${quantity} ×</strong> ${escapeHtml(i.description)}</span>
             ${priceHtml}
+            ${
+              order.paypalLink
+                ? `<label class="food-order-item-pay-select">
+                     <input type="checkbox" data-select-pay="${i.id}" ${selected ? 'checked' : ''} aria-label="Für gemeinsame Zahlung auswählen" />
+                   </label>`
+                : ''
+            }
             ${
               !locked && order.open && i.playerId === myId
                 ? `<button type="button" class="icon-btn food-order-item-remove" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen">${icon('x')}</button>`
@@ -113,15 +126,6 @@ function renderItems(order, myId, { locked = false } = {}) {
           </div>`;
         })
         .join('');
-      const tipPercent = order.tipPercent || 0;
-      const tippedCents = tipPercent > 0 ? Math.round(playerSum * (1 + tipPercent / 100)) : playerSum;
-      // Only the co-orderer this row belongs to sees a "Bezahlen" button —
-      // otherwise viewers could tap someone else's link and pay the wrong
-      // amount to the wrong share.
-      const payButtonHtml =
-        order.paypalLink && playerSum > 0 && playerId === myId
-          ? `<a class="btn btn-sm" href="${escapeHtml(paypalPayUrl(order.paypalLink, tippedCents))}" target="_blank" rel="noopener">Bezahlen${tipPercent > 0 ? ` (+${tipPercent}%)` : ''}</a>`
-          : '';
       return `
         <div class="stack food-order-player">
           <div class="row food-order-player-head">
@@ -131,15 +135,37 @@ function renderItems(order, myId, { locked = false } = {}) {
           <div class="food-order-player-items">${rows}</div>
           ${
             playerSum > 0
-              ? `<div class="row-between food-order-player-total">
-                   <span class="muted">Zwischensumme</span>
-                   <span class="row" style="gap:var(--space-2);"><strong>${formatCents(playerSum)}</strong>${payButtonHtml}</span>
-                 </div>`
+              ? `<div class="row-between food-order-player-total"><span class="muted">Zwischensumme</span><strong>${formatCents(playerSum)}</strong></div>`
               : ''
           }
         </div>`;
     })
     .join('');
+}
+
+// Lets anyone build a combined PayPal payment out of any mix of items —
+// their own, someone else's, or both — via the per-item checkboxes above.
+// Tip is applied to the selected subtotal, not the whole order. If any
+// selected item has no price, the sum would silently undercount it, so the
+// amount is withheld entirely and the raw PayPal link opens instead
+// (paypalPayUrl only appends an amount when cents > 0).
+function renderPaymentSelector(order) {
+  const selectedItems = order.items.filter((i) => selectedForPayment.has(i.id));
+  if (selectedItems.length === 0) return '';
+
+  const allPriced = selectedItems.every((i) => i.priceCents !== null);
+  const rawCents = selectedItems.reduce((sum, i) => sum + (i.priceCents ?? 0) * (i.quantity ?? 1), 0);
+  const tipPercent = order.tipPercent || 0;
+  const payableCents = allPriced ? Math.round(rawCents * (1 + tipPercent / 100)) : 0;
+  const amountLabel = allPriced
+    ? `${formatCents(payableCents)}${tipPercent > 0 ? ` (inkl. ${tipPercent}% Trinkgeld)` : ''}`
+    : 'Preis unvollständig – Betrag manuell eingeben';
+
+  return `
+    <div class="row-between food-order-payment-selector">
+      <span class="muted">${selectedItems.length} ${selectedItems.length === 1 ? 'Position' : 'Positionen'} ausgewählt · ${amountLabel}</span>
+      <a class="btn btn-sm btn-primary" href="${escapeHtml(paypalPayUrl(order.paypalLink, payableCents))}" target="_blank" rel="noopener">Bezahlen</a>
+    </div>`;
 }
 
 // Metadata block (send time / notes / link) shown on both open and closed
@@ -177,6 +203,7 @@ function renderOpenOrder(order, myId) {
       ${renderDetails(order)}
       <div class="food-order-items">${renderItems(order, myId)}</div>
       ${order.totalCents > 0 ? `<div class="row-between food-order-total"><strong>Gesamtsumme</strong><strong>${formatCents(order.totalCents)}</strong></div>` : ''}
+      ${renderPaymentSelector(order)}
       ${
         myId
           ? `<form class="food-order-item-form" data-add-item-form="${order.id}">
@@ -219,6 +246,7 @@ function renderClosedOrder(order, myId) {
       </div>
       ${renderDetails(order, { locked: finalized })}
       <div class="food-order-items">${renderItems(order, myId, { locked: finalized })}</div>
+      ${renderPaymentSelector(order)}
       ${
         finalized
           ? ''
@@ -508,6 +536,15 @@ export function renderFoodOrders(container, ctx) {
         e.currentTarget.checked = !paid;
         showToast(err.message, { error: true });
       }
+    });
+  });
+
+  container.querySelectorAll('[data-select-pay]').forEach((checkbox) => {
+    checkbox.addEventListener('change', (e) => {
+      const itemId = checkbox.dataset.selectPay;
+      if (e.currentTarget.checked) selectedForPayment.add(itemId);
+      else selectedForPayment.delete(itemId);
+      ctx.rerender();
     });
   });
 

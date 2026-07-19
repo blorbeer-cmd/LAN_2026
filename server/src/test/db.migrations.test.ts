@@ -176,6 +176,10 @@ test('historical test LANs are marked and food-order quantity/paid/finalized/pay
   fixture.prepare('INSERT INTO events (id, name, starts_at) VALUES (?, ?, ?)').run('e-real', 'Echte LAN 2020', now);
   fixture.prepare('INSERT INTO food_orders (id, event_id, title, created_by, created_at) VALUES (?, ?, ?, ?, ?)').run('o1', 'e-real', 'Pizza', 'p1', now);
   fixture.prepare('INSERT INTO food_order_items (id, order_id, player_id, description, price_cents, created_at) VALUES (?, ?, ?, ?, ?, ?)').run('i1', 'o1', 'p1', 'Margherita', 900, now);
+  // Pre-upgrade, closing an order WAS the terminal frozen state (today's
+  // "Geschlossen", not the new reopenable "Abgeschickt") — the migration
+  // must backfill finalized_at for it, not leave old history reopenable.
+  fixture.prepare('INSERT INTO food_orders (id, event_id, title, created_by, created_at, closed_at) VALUES (?, ?, ?, ?, ?, ?)').run('o2', 'e-real', 'Getränke', 'p1', now, now + 500);
   fixture.close();
 
   runMigrations(dbFile);
@@ -199,6 +203,11 @@ test('historical test LANs are marked and food-order quantity/paid/finalized/pay
   assert.equal(order.finalized_at, null);
   assert.equal(order.paypal_link, null);
   assert.equal(order.tip_percent, null);
+  const closedOrder = migrated.prepare('SELECT closed_at, finalized_at FROM food_orders WHERE id = ?').get('o2') as {
+    closed_at: number;
+    finalized_at: number | null;
+  };
+  assert.equal(closedOrder.finalized_at, closedOrder.closed_at);
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

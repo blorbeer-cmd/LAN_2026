@@ -2287,7 +2287,14 @@ runMigration({ version: 40, name: 'add food order item paid flag', up: migrateFo
 function migrateFoodOrderFinalizeAndPaypalColumns(): void {
   const columns = db.prepare('PRAGMA table_info(food_orders)').all() as Array<{ name: string }>;
   const has = (name: string) => columns.some((c) => c.name === name);
-  if (!has('finalized_at')) db.exec('ALTER TABLE food_orders ADD COLUMN finalized_at INTEGER');
+  if (!has('finalized_at')) {
+    db.exec('ALTER TABLE food_orders ADD COLUMN finalized_at INTEGER');
+    // Before this migration, closing an order WAS the terminal, frozen
+    // state (matches "Geschlossen" today, not the new reopenable
+    // "Abgeschickt") — backfill so existing closed history doesn't
+    // suddenly gain reopen/paid/edit controls it never had.
+    db.prepare('UPDATE food_orders SET finalized_at = closed_at WHERE closed_at IS NOT NULL').run();
+  }
   if (!has('paypal_link')) db.exec('ALTER TABLE food_orders ADD COLUMN paypal_link TEXT');
 }
 runMigration({

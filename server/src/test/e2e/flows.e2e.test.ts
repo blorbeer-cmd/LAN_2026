@@ -1019,12 +1019,36 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.check('[data-toggle-paid]');
   await page.waitForSelector('.food-order-item.is-paid');
 
-  // A co-orderer pays their exact share (plus the creator's 10% tip) via the
-  // "Bezahlen" button, which appends the owed amount to a bare paypal.me link.
-  const payLink = page.locator('.food-order-player-total a:has-text("Bezahlen")');
-  await payLink.waitFor();
-  assert.equal(await payLink.textContent(), 'Bezahlen (+10%)');
-  assert.equal(await payLink.getAttribute('href'), 'https://paypal.me/luigi/20.90EUR');
+  // Anyone can select any mix of items — their own or someone else's — and
+  // pay them together in one PayPal link, tip included.
+  await page.check('[data-select-pay]');
+  const paymentSelector = page.locator('.food-order-payment-selector');
+  await page.waitForSelector('.food-order-payment-selector:has-text("1 Position ausgewählt")');
+  await page.waitForSelector('.food-order-payment-selector:has-text("20,90")');
+  await page.waitForSelector('.food-order-payment-selector:has-text("10% Trinkgeld")');
+  assert.equal(
+    await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'),
+    'https://paypal.me/luigi/20.90EUR'
+  );
+
+  // Adding an unpriced item to the selection withholds the amount entirely
+  // (rather than silently undercounting it as 0) and falls back to the raw
+  // PayPal link.
+  await page.fill('[data-item-desc]', 'Wasser');
+  await page.fill('[data-item-quantity]', '1');
+  await page.click('[data-add-item-form] button[type="submit"]');
+  await page.waitForSelector('text=Wasser');
+  await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').check();
+  await page.waitForSelector('text=Preis unvollständig');
+  assert.equal(await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'), 'https://paypal.me/luigi');
+
+  // Deselecting it goes back to a complete, priced selection.
+  await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').uncheck();
+  await page.waitForSelector('text=Preis unvollständig', { state: 'detached' });
+  assert.equal(
+    await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'),
+    'https://paypal.me/luigi/20.90EUR'
+  );
 
   // Content search resolves an item description to its parent order and
   // highlights that concrete order instead of only opening the Essen area.
@@ -1046,7 +1070,7 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   // Paid state survives closing, and stays togglable — settling up normally
   // happens after the order is already closed.
   await page.waitForSelector('.food-order-item.is-paid');
-  await page.uncheck('[data-toggle-paid]');
+  await page.locator('.food-order-item', { hasText: 'Margherita' }).locator('[data-toggle-paid]').uncheck();
   await page.waitForSelector('.food-order-item:not(.is-paid)');
 
   // Closing only freezes items — the details stay correctable afterward.
