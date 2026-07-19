@@ -14,16 +14,16 @@ ohne 15 Handys. Dazu gehört:
 2. Test-User sind **nur im Admin-Modus sichtbar** – normale Geräte sehen sie nirgends
    (Spielerliste, Sitzplan, Leaderboard, Live-Status, …).
 3. Der **Admin-Modus ist deutlich erkennbar** (dauerhafter Hinweis, nicht nur im Admin-Tab).
-4. Der **Admin-PIN entfällt vorerst** – ein Klick genügt, um in den Admin-Modus zu wechseln.
+4. Der **Admin-PIN entfällt**. Im Legacy-Modus genügt lokal ein Klick; unter Required-Auth
+   entscheidet ausschließlich die serverseitige Admin-Rolle der Session.
 
 ## Ist-Zustand (relevant)
 
 - „Test-Spieler anlegen" existiert bereits, aber rein clientseitig: `views/admin.js` ruft in
   einer Schleife `POST /api/players` auf. Die Spieler sind normale Spieler ohne Markierung,
   ohne Seed-Daten, für alle sichtbar.
-- Admin-Modus ist ein Gerät-lokales Flag (`localStorage`), optional per PIN
-  (`config.adminPin`, Header `x-admin-pin`). Leerer PIN = offener Modus. Kein sichtbarer
-  Dauer-Indikator.
+- Im damaligen Ausgangszustand war der Admin-Modus ein Gerät-lokales Flag (`localStorage`) mit
+  optionalem PIN. Required-Auth ersetzt diese Vertrauensannahme durch die Session-Rolle.
 - Sitzplan: `seating_layouts.assignments` (JSON `{side, seat, playerId}`), beim Speichern
   leitet `syncAutoSeatNeighbors` aus Kanten-Nachbarschaft automatisch `seat_neighbors`-Zeilen
   (`source='auto'`) ab → genau das ist „Sichtbare Monitore".
@@ -66,10 +66,10 @@ Klicks von selbst – der zweite Aufruf sieht die schon belegten Plätze/Namen. 
 parallelen Requests kommt trotzdem in `api.concurrency.test.ts` (Erwartung: keine doppelten
 Sitzplätze, keine Namenskollision, Gesamtzahl stimmt).
 
-Dazu **`DELETE /api/admin/test-users`**: löscht alle `is_test`-Spieler (Cascade räumt
-Skills/Bock/Sessions/Nachbarn ab) und entfernt ihre Sitzplan-Assignments + zugehörige
-Auto-Nachbarn. Ein „Test-Daten aufräumen"-Button im Admin-Panel ruft das auf – so bleibt
-nach dem Ausprobieren keine Datenleiche für die echte LAN.
+Dazu **`DELETE /api/admin/test-users`**: löscht alle `is_test`-Spieler und markierten
+Test-LANs (Cascades räumen ihre abhängigen Daten auf) und entfernt Sitzplan-Assignments +
+zugehörige Auto-Nachbarn. Ein „Test-Daten aufräumen"-Button im Admin-Panel ruft das auf –
+so bleibt nach dem Ausprobieren keine Datenleiche für die echte LAN.
 
 ### 3. Sichtbarkeit: zentral im Frontend filtern
 
@@ -110,15 +110,13 @@ Solange der Admin-Modus aktiv ist:
 - zusätzlich `body.admin-mode`-Klasse als Styling-Hook (z. B. dezente Rahmenfarbe), damit
   auch Screenshots eindeutig sind.
 
-### 5. PIN vorerst raus
+### 5. PIN entfernt
 
 - `views/admin.js`: Unlock-Screen entfällt komplett; der Admin-Tab zeigt direkt einen
   „Admin-Modus aktivieren"-Schalter (ein Klick an/aus).
-- Server: `config.adminPin` und `requireAdmin` **bleiben bestehen** (offener Modus bei
-  leerem PIN existiert ja schon) – wir entfernen nur die Abfrage im Frontend und ignorieren
-  einen evtl. gesetzten PIN dort nicht mehr nötig zu machen: `GET /api/admin/status` +
-  `POST /api/admin/unlock` werden nicht mehr aufgerufen, können aber vorerst stehen bleiben
-  (kein API-Bruch, PIN später mit einem kleinen Frontend-Patch reaktivierbar).
+- Server: `requireAdmin` prüft unter Required-Auth die echte Session-Rolle. `ADMIN_PIN`,
+  `x-admin-pin` sowie `GET /api/admin/status` und `POST /api/admin/unlock` sind entfernt.
+  Der Legacy-Modus behält bis zum Cutover bewusst seinen lokalen Ein-Klick-Vertrauensmodus.
 
 ## Sinnvolle Ergänzungen (im Scope)
 
@@ -131,8 +129,9 @@ Solange der Admin-Modus aktiv ist:
   `source='manual'` (z. B. ein Über-Eck-Paar), damit auch der Unterschied auto/manuell in
   der UI Testdaten hat.
 
-Bewusst **nicht** im Scope: Test-Votes/Matches/Turnierteilnahmen (das will man beim Testen
-gerade selbst auslösen), Fake-Agent-Reports, serverseitige Sichtbarkeits-Enforcement.
+Bewusst **nicht** im Scope: Fake-Agent-Reports und serverseitige Sichtbarkeits-Enforcement.
+Mehrjährige Hall-of-Fame-Testdaten mit Matches und Turnieren werden separat und reproduzierbar
+über die Admin-Ansicht angelegt.
 
 ## Umsetzungsplan
 
@@ -146,7 +145,8 @@ Player-Antworten. Socket-Event `players:changed` etc. wie bei normalem Anlegen.
 **Schritt 2 – Frontend Sichtbarkeit:**
 zentrale Filterung in `state.js` (+ abgeleitete Views: Sitzplan, Leaderboard, Live,
 Abstimmung), „Test"-Badge im Admin-Modus, Admin-Panel auf die neuen Endpoints umgestellt
-(Anlegen mit Anzahl, Aufräumen-Button, Zähler „X Test-Spieler vorhanden").
+(Anlegen mit Anzahl, Aufräumen-Button in derselben Zeile; der Zähler „X Test-Spieler vorhanden"
+steht platzsparend im Tooltip direkt neben „Test-Spieler").
 
 **Schritt 3 – Admin-UX:**
 PIN-Unlock aus `views/admin.js` entfernen (direkter Toggle), dauerhafte Admin-Leiste +

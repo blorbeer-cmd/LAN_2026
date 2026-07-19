@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-09
 - Branch: `feat/admin-base`
-- Merge-Commit: [`3a0a032`](https://github.com/blorbeer-cmd/LAN_2026/commit/3a0a0326828830fe2e3f10b979bff22c9a447e61)
-- Pull Request: [#72](https://github.com/blorbeer-cmd/LAN_2026/pull/72)
+- Merge-Commit: [`3a0a032`](https://github.com/blorbeer-cmd/Respawn/commit/3a0a0326828830fe2e3f10b979bff22c9a447e61)
+- Pull Request: [#72](https://github.com/blorbeer-cmd/Respawn/pull/72)
 
 ## Changelog
 

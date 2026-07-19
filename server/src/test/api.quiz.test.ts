@@ -23,14 +23,14 @@ test('POST /api/quiz/questions validates question and answers', async () => {
 test('POST /api/quiz/questions creates a manageable question', async () => {
   const res = await request(app).post('/api/quiz/questions').send({
     question: 'Welches Spiel testen wir gerade?',
-    answers: ['RespawnHQ Quiz', 'Gaming Quiz'],
+    answers: ['Respawn Quiz', 'Gaming Quiz'],
     category: 'Test',
     difficulty: 'leicht',
   });
   assert.equal(res.status, 201);
   const created = res.body.questions.find((q: { question: string }) => q.question === 'Welches Spiel testen wir gerade?');
   assert.ok(created);
-  assert.deepEqual(created.answers, ['RespawnHQ Quiz', 'Gaming Quiz']);
+  assert.deepEqual(created.answers, ['Respawn Quiz', 'Gaming Quiz']);
   questionId = created.id;
 });
 

@@ -3,6 +3,6 @@
 
 import { getToken } from './api.js';
 
-export function connectSocket() {
-  return io({ auth: { token: getToken() } });
+export function connectSocket({ kiosk = false } = {}) {
+  return io({ auth: { token: getToken(), kiosk } });
 }

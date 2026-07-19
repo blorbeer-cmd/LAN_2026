@@ -19,6 +19,7 @@ import { playerMayUseArcadeAi } from './adminAccess';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
+import { recordArcadeResult } from './arcadeData';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import {
   Board,
@@ -269,19 +270,14 @@ function finishMatch(io: Server, match: TetrisMatch, winner: PlayerRef | null, r
   match.loop = null;
   match.running = false;
   endArcadeSession(realPlayerIds(match.players), 'tetris');
-  db.prepare(
-    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    nanoid(),
-    'tetris',
-    winner?.id === BOT_ID ? null : winner?.id ?? null,
-    JSON.stringify(match.players),
-    JSON.stringify(scorePayload(match)),
+  recordArcadeResult({
+    gameType: 'tetris',
+    winnerId: winner?.id === BOT_ID ? null : winner?.id ?? null,
+    players: match.players,
+    scores: scorePayload(match),
     reason,
-    match.startedAt,
-    Date.now()
-  );
+    startedAt: match.startedAt,
+  });
   io.to(match.room).emit('tetris:match:end', {
     matchId: match.id,
     winner,
@@ -494,7 +490,7 @@ export function registerTetrisSockets(io: Server): void {
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
     });
-    socket.on('tetris:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (res: unknown) => void) => {
+    socket.on('tetris:lobby:bot', (payload: { playerId?: string }, ack?: (res: unknown) => void) => {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
@@ -659,6 +655,23 @@ export function registerTetrisSockets(io: Server): void {
       if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann beenden.' });
       finishMatch(io, match, null, 'ended-by-host');
+      ack?.({ ok: true });
+    });
+
+    // Lets a non-host participant end a running match themselves instead of
+    // relying on the host (who might be AFK) or a raw disconnect — same
+    // outcome as a disconnect mid-match: the match ends, opponent wins.
+    socket.on('tetris:match:leave', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      const leaver = match.players.find((p) => p.id === payload?.playerId);
+      if (!leaver) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
+      const winner = match.players.find((p) => p.id !== leaver.id) ?? null;
+      // socket.to (not io.to): the leaver's own socket is still joined to
+      // match.room at this point (unlike a real disconnect), so io.to would
+      // also show them their own "opponent left" toast.
+      socket.to(match.room).emit('tetris:opponent-left', { matchId: match.id, playerId: leaver.id });
+      finishMatch(io, match, winner, 'player-left');
       ack?.({ ok: true });
     });
 

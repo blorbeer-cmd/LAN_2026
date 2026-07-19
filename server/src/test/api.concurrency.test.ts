@@ -9,6 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
+import { createInvite } from '../invites';
 
 const app = createApp();
 
@@ -41,14 +42,18 @@ test('simultaneous vote starts: exactly one round opens', async () => {
   assert.equal(state.body.round, 1);
 });
 
-test('double-tapped and simultaneous votes: one vote per player, last choice wins', async () => {
+test('double-tapped and simultaneous votes: exactly one vote per player wins, repeats get 409', async () => {
   const results = await Promise.all(
     playerIds.flatMap((playerId) => [
       request(app).post('/api/votes').send({ playerId, gameId: gameIds[0] }),
       request(app).post('/api/votes').send({ playerId, gameId: gameIds[1] }),
     ])
   );
-  assert.ok(results.every((r) => r.status === 200), JSON.stringify(statusCounts(results.map((r) => r.status))));
+  for (let index = 0; index < playerIds.length; index++) {
+    const pair = statusCounts([results[index * 2].status, results[index * 2 + 1].status]);
+    assert.equal(pair[200], 1, JSON.stringify(pair));
+    assert.equal(pair[409], 1, JSON.stringify(pair));
+  }
 
   const state = await request(app).get('/api/votes');
   assert.equal(state.body.totalVotes, playerIds.length);
@@ -137,6 +142,40 @@ test('conflicting simultaneous tournament reports: one result, one leaderboard m
   const decided = detail.body.matches.find((m: { id: string }) => m.id === match.id);
   const final = detail.body.matches.find((m: { round: number }) => m.round === 2);
   assert.equal(final.teamAId, decided.winnerTeamId);
+});
+
+test('simultaneous tournament corrections accept one current version only', async () => {
+  const create = await request(app)
+    .post('/api/tournaments')
+    .send({
+      gameId: gameIds[0],
+      format: 'round_robin',
+      teams: [
+        { name: 'C1', playerIds: [playerIds[0]] },
+        { name: 'C2', playerIds: [playerIds[1]] },
+      ],
+    });
+  const match = create.body.matches[0];
+  const recorded = await request(app)
+    .post(`/api/tournaments/${create.body.id}/matches/${match.id}/result`)
+    .send({ winnerTeamId: match.teamAId });
+  const version = recorded.body.matches[0].playedAt;
+  const before = (await request(app).get(`/api/matches?gameId=${gameIds[0]}`)).body.length;
+
+  const results = await Promise.all([
+    request(app)
+      .put(`/api/tournaments/${create.body.id}/matches/${match.id}/result`)
+      .send({ winnerTeamId: match.teamAId, expectedPlayedAt: version }),
+    request(app)
+      .put(`/api/tournaments/${create.body.id}/matches/${match.id}/result`)
+      .send({ winnerTeamId: match.teamBId, expectedPlayedAt: version }),
+  ]);
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[200], 1, JSON.stringify(counts));
+  assert.equal(counts[409], 1, JSON.stringify(counts));
+
+  const after = (await request(app).get(`/api/matches?gameId=${gameIds[0]}`)).body.length;
+  assert.equal(after, before);
 });
 
 test('simultaneous draft starts: exactly one draft opens', async () => {
@@ -306,4 +345,88 @@ test('simultaneous broadcast endings: exactly one request ends the announcement'
   const counts = statusCounts(results.map((result) => result.status));
   assert.equal(counts[200], 1, JSON.stringify(counts));
   assert.equal(counts[409], 5, JSON.stringify(counts));
+});
+
+test('simultaneous registrations with the same invite code: exactly one succeeds', async () => {
+  const admin = await request(app).post('/api/players').send({ name: 'Auth Race Admin' });
+  const invite = createInvite({ purpose: 'register', createdBy: admin.body.id });
+
+  const results = await Promise.all(
+    Array.from({ length: 6 }, (_, i) =>
+      request(app)
+        .post('/api/auth/register')
+        .send({ code: invite.code, name: `Race Reg ${i}`, password: 'race registration password' })
+    )
+  );
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[201], 1, JSON.stringify(counts));
+});
+
+test('simultaneous registrations with the same name (different codes): exactly one succeeds', async () => {
+  const admin = await request(app).post('/api/players').send({ name: 'Auth Race Admin Two' });
+  const invites = Array.from({ length: 6 }, () => createInvite({ purpose: 'register', createdBy: admin.body.id }));
+
+  const results = await Promise.all(
+    invites.map((invite) =>
+      request(app)
+        .post('/api/auth/register')
+        .send({ code: invite.code, name: 'Race Same Name', password: 'race registration password' })
+    )
+  );
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[201], 1, JSON.stringify(counts));
+  assert.equal(counts[409], 5, JSON.stringify(counts));
+});
+
+test('simultaneous claims with the same claim code: exactly one succeeds', async () => {
+  const admin = await request(app).post('/api/players').send({ name: 'Auth Race Admin Three' });
+  const target = await request(app).post('/api/players').send({ name: 'Race Claim Target' });
+  const invite = createInvite({ purpose: 'claim', playerId: target.body.id, createdBy: admin.body.id });
+
+  const results = await Promise.all(
+    Array.from({ length: 6 }, () =>
+      request(app).post('/api/auth/claim').send({ code: invite.code, password: 'race claim password' })
+    )
+  );
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[200], 1, JSON.stringify(counts));
+});
+
+test('simultaneous password resets with the same code: exactly one succeeds', async () => {
+  const admin = await request(app).post('/api/players').send({ name: 'Auth Reset Race Admin' });
+  const target = await request(app).post('/api/players').send({ name: 'Race Reset Target' });
+  const claim = createInvite({ purpose: 'claim', playerId: target.body.id, createdBy: admin.body.id });
+  const claimed = await request(app)
+    .post('/api/auth/claim')
+    .send({ code: claim.code, password: 'race reset original password' });
+  assert.equal(claimed.status, 200);
+
+  const reset = createInvite({ purpose: 'reset', playerId: target.body.id, createdBy: admin.body.id });
+  const results = await Promise.all(
+    Array.from({ length: 6 }, (_, index) =>
+      request(app)
+        .post('/api/auth/reset')
+        .send({ code: reset.code, newPassword: `race reset password ${index}` })
+    )
+  );
+  const counts = statusCounts(results.map((result) => result.status));
+  assert.equal(counts[200], 1, JSON.stringify(counts));
+  assert.equal(counts[400], 5, JSON.stringify(counts));
+});
+
+test('a second claim code for an already-claimed player is voided, not just rejected', async () => {
+  // Regression pin for the invite-purpose-separation guarantee (see
+  // docs/KONZEPT-USER-MANAGEMENT.md 4.1): once a player is claimed, every
+  // OTHER outstanding claim code for them stops working too, immediately —
+  // not just the one that was actually used.
+  const admin = await request(app).post('/api/players').send({ name: 'Auth Race Admin Four' });
+  const target = await request(app).post('/api/players').send({ name: 'Race Claim Target Two' });
+  const inviteA = createInvite({ purpose: 'claim', playerId: target.body.id, createdBy: admin.body.id });
+  const inviteB = createInvite({ purpose: 'claim', playerId: target.body.id, createdBy: admin.body.id });
+
+  const first = await request(app).post('/api/auth/claim').send({ code: inviteA.code, password: 'race claim password' });
+  assert.equal(first.status, 200);
+
+  const second = await request(app).post('/api/auth/claim').send({ code: inviteB.code, password: 'another password' });
+  assert.equal(second.status, 400, 'the other outstanding claim code should already be voided');
 });

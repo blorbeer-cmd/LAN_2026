@@ -17,7 +17,8 @@ import {
   type SeatPair,
 } from '../matchmaking';
 import { isIntInRange } from '../validation';
-import { getTrackingEventId } from '../events';
+import { getTrackingEventId, OUTSIDE_EVENTS_ID } from '../events';
+import { competitionPlayersBelongToGroup, trackingEventIdForGroup } from '../competitionScope';
 
 export const matchmakingRouter = Router();
 
@@ -36,17 +37,80 @@ interface PlayerRow {
   avatar: string | null;
 }
 
+// Re-derives a draw-shaped teams snapshot (full player info + totalRating)
+// from plain player-id lists — used wherever a fresh matchmaking_draws.teams
+// value needs to be built from scratch: the rematch endpoint, and POST
+// /api/matches re-snapshotting a linked draw to whatever was actually
+// submitted (see the comment on that call site).
+export function buildTeamsSnapshot(gameId: string, teamPlayerIdLists: string[][]) {
+  const allIds = [...new Set(teamPlayerIdLists.flat())];
+  const playerById = new Map<string, PlayerRow>();
+  const ratingByPlayer = new Map<string, number>();
+  if (allIds.length > 0) {
+    const placeholders = allIds.map(() => '?').join(',');
+    const players = db
+      .prepare(`SELECT id, name, color, avatar FROM players WHERE id IN (${placeholders})`)
+      .all(...allIds) as PlayerRow[];
+    players.forEach((p) => playerById.set(p.id, p));
+    const ratingRows = db
+      .prepare(`SELECT player_id, rating FROM skills WHERE game_id = ? AND player_id IN (${placeholders})`)
+      .all(gameId, ...allIds) as Array<{ player_id: string; rating: number }>;
+    ratingRows.forEach((r) => ratingByPlayer.set(r.player_id, r.rating));
+  }
+  return teamPlayerIdLists.map((ids) => {
+    const teamPlayers = ids.map((id) => {
+      const p = playerById.get(id);
+      return {
+        id,
+        name: p?.name ?? '?',
+        color: p?.color ?? '#888888',
+        avatar: p?.avatar ?? null,
+        rating: ratingByPlayer.get(id) ?? DEFAULT_RATING,
+      };
+    });
+    return { players: teamPlayers, totalRating: teamPlayers.reduce((sum, p) => sum + p.rating, 0) };
+  });
+}
+
+// Recomputes and applies per-player seatConflict/seatConflictNames flags for
+// a teams snapshot (mutates the player objects in place) and returns the
+// aggregate conflict count. Shared by the Feinschliff move handler and the
+// POST /api/matches re-snapshot below — both need to re-derive conflicts
+// after a team lineup changes post-draw.
+export function applySeatConflicts(
+  groupId: string,
+  eventId: string,
+  teams: Array<{ players: Array<{ id: string; name: string; seatConflict?: boolean; seatConflictNames?: string[] }> }>
+): number {
+  const allPlayers = teams.flatMap((t) => t.players);
+  const nameById = new Map(allPlayers.map((p) => [p.id, p.name]));
+  const avoidPairs = loadAvoidPairs(groupId, eventId, allPlayers.map((p) => p.id));
+  const teamIdLists = teams.map((t) => t.players.map((p) => p.id));
+  const seatConflicts = countSeatConflicts(teamIdLists, avoidPairs);
+  const conflictNeighbors = seatConflictNeighbors(teamIdLists, avoidPairs);
+  for (const p of allPlayers) {
+    const neighborIds = conflictNeighbors.get(p.id);
+    p.seatConflict = !!neighborIds;
+    p.seatConflictNames = neighborIds?.map((nid) => nameById.get(nid)).filter((n): n is string => !!n) ?? [];
+  }
+  return seatConflicts;
+}
+
 // Declared seat-neighbor pairs among a set of players, deduped (neighbors are
 // stored per-direction — see seat_neighbors' comment in db.ts). Shared by the
 // initial draw and by re-deriving conflicts after a manual Feinschliff move.
-function loadAvoidPairs(eventId: string, playerIds: string[]): SeatPair[] {
+function loadAvoidPairs(groupId: string, eventId: string, playerIds: string[]): SeatPair[] {
   const placeholders = playerIds.map(() => '?').join(',');
   const neighborRows = db
     .prepare(
       `SELECT player_id, neighbor_id FROM seat_neighbors
-       WHERE event_id = ? AND player_id IN (${placeholders}) AND neighbor_id IN (${placeholders})`
+       WHERE group_id = ? AND event_id IS ?
+         AND player_id IN (${placeholders}) AND neighbor_id IN (${placeholders})`
     )
-    .all(eventId, ...playerIds, ...playerIds) as Array<{ player_id: string; neighbor_id: string }>;
+    .all(groupId, eventId === OUTSIDE_EVENTS_ID ? null : eventId, ...playerIds, ...playerIds) as Array<{
+      player_id: string;
+      neighbor_id: string;
+    }>;
   const seen = new Set<string>();
   const pairs: SeatPair[] = [];
   for (const r of neighborRows) {
@@ -88,10 +152,18 @@ matchmakingRouter.post('/', (req, res) => {
     return res.status(400).json({ error: 'avoidAdjacentOpponents muss ein Boolean sein.' });
   }
 
-  const game = db.prepare('SELECT id, name, max_team_size FROM games WHERE id = ?').get(gameId) as
+  const game = db.prepare('SELECT id, name, max_team_size FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
     | GameRow
     | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+
+  const eventId = trackingEventIdForGroup(req.group!.id);
+  if (!eventId) {
+    return res.status(409).json({ error: 'Tracking läuft derzeit in einem anderen Gruppenkontext.' });
+  }
+  if (!competitionPlayersBelongToGroup(req.group!.id, eventId, uniqueIds)) {
+    return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
+  }
 
   const placeholders = uniqueIds.map(() => '?').join(',');
   const players = db
@@ -113,7 +185,7 @@ matchmakingRouter.post('/', (req, res) => {
 
   // Seat neighbors only get looked up when this particular draw asked for
   // it (FR-18 extension) — skip the query entirely otherwise.
-  const avoidPairs: SeatPair[] = avoidAdjacentOpponents ? loadAvoidPairs(getTrackingEventId(), uniqueIds) : [];
+  const avoidPairs: SeatPair[] = avoidAdjacentOpponents ? loadAvoidPairs(req.group!.id, eventId, uniqueIds) : [];
 
   const resolvedTeamCount = computeTeamCount(teamCount, players.length, game.max_team_size);
   const teamIdLists = balanceTeams(ratings, resolvedTeamCount, avoidPairs);
@@ -159,9 +231,9 @@ matchmakingRouter.post('/', (req, res) => {
   // matchmaking_draws comment in db.ts for why this is separate from the
   // actually-recorded `matches`).
   db.prepare(
-    `INSERT INTO matchmaking_draws (id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(drawId, gameId, getTrackingEventId(), JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt);
+    `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt);
 
   broadcast(Events.matchmakingGenerated, result);
   res.json(result);
@@ -196,10 +268,18 @@ matchmakingRouter.post('/rematch', (req, res) => {
     return res.status(400).json({ error: 'Ein Spieler ist in mehreren Teams.' });
   }
 
-  const game = db.prepare('SELECT id, name, max_team_size FROM games WHERE id = ?').get(gameId) as
+  const game = db.prepare('SELECT id, name, max_team_size FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
     | GameRow
     | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+
+  const eventId = trackingEventIdForGroup(req.group!.id);
+  if (!eventId) {
+    return res.status(409).json({ error: 'Tracking läuft derzeit in einem anderen Gruppenkontext.' });
+  }
+  if (!competitionPlayersBelongToGroup(req.group!.id, eventId, uniqueIds)) {
+    return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
+  }
 
   const placeholders = uniqueIds.map(() => '?').join(',');
   const players = db
@@ -209,22 +289,7 @@ matchmakingRouter.post('/rematch', (req, res) => {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
   }
 
-  const ratingRows = db
-    .prepare(`SELECT player_id, rating FROM skills WHERE game_id = ? AND player_id IN (${placeholders})`)
-    .all(gameId, ...uniqueIds) as Array<{ player_id: string; rating: number }>;
-  const ratingByPlayer = new Map(ratingRows.map((r) => [r.player_id, r.rating]));
-  const playerById = new Map(players.map((p) => [p.id, p]));
-
-  const teams = teamPlayerIdLists.map((ids) => {
-    const teamPlayers = ids.map((id) => ({
-      ...playerById.get(id)!,
-      rating: ratingByPlayer.get(id) ?? DEFAULT_RATING,
-    }));
-    return {
-      players: teamPlayers,
-      totalRating: teamPlayers.reduce((sum, p) => sum + p.rating, 0),
-    };
-  });
+  const teams = buildTeamsSnapshot(gameId, teamPlayerIdLists);
 
   const drawId = nanoid();
   const result = {
@@ -240,9 +305,9 @@ matchmakingRouter.post('/rematch', (req, res) => {
   };
 
   db.prepare(
-    `INSERT INTO matchmaking_draws (id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source)
-     VALUES (?, ?, ?, ?, 0, 0, ?, 'rematch')`
-  ).run(drawId, gameId, getTrackingEventId(), JSON.stringify(teams), result.generatedAt);
+    `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source)
+     VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'rematch')`
+  ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), result.generatedAt);
 
   broadcast(Events.matchmakingGenerated, result);
   res.json(result);
@@ -321,8 +386,8 @@ matchmakingRouter.get('/history', (req, res) => {
   const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
   const limitNum = Math.min(50, Math.max(1, parseInt(typeof limit === 'string' ? limit : '', 10) || 20));
 
-  const clauses = ['md.event_id = ?'];
-  const params: Array<string | number> = [filterEventId];
+  const clauses = ['md.group_id = ?', 'md.event_id = ?'];
+  const params: Array<string | number> = [req.group!.id, filterEventId];
   if (typeof gameId === 'string' && gameId) {
     clauses.push('md.game_id = ?');
     params.push(gameId);
@@ -360,7 +425,7 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
     return res.status(400).json({ error: 'toTeamIndex ist ungültig.' });
   }
 
-  const row = db.prepare('SELECT * FROM matchmaking_draws WHERE id = ?').get(req.params.id) as
+  const row = db.prepare('SELECT * FROM matchmaking_draws WHERE id = ? AND group_id = ?').get(req.params.id, req.group!.id) as
     | { id: string; game_id: string; event_id: string; teams: string; match_id: string | null; seat_pairs_considered: number }
     | undefined;
   if (!row) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
@@ -382,6 +447,9 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
   }
 
   if (fromTeamIndex !== toTeamIndex) {
+    if (teams[fromTeamIndex].players.length <= 1) {
+      return res.status(409).json({ error: 'Ein Team kann nicht komplett leer werden.' });
+    }
     const [player] = teams[fromTeamIndex].players.splice(
       teams[fromTeamIndex].players.findIndex((p) => p.id === playerId),
       1
@@ -395,20 +463,7 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
   // The move can turn a resolved seat-neighbor pair into a conflict (or fix
   // one) — only re-derive it when this draw actually considered seat
   // neighbors in the first place (avoidAdjacentOpponents was on for it).
-  let seatConflicts = 0;
-  if (row.seat_pairs_considered > 0) {
-    const allPlayers = teams.flatMap((t) => t.players);
-    const nameById = new Map(allPlayers.map((p) => [p.id, p.name]));
-    const avoidPairs = loadAvoidPairs(row.event_id, allPlayers.map((p) => p.id));
-    const teamIdLists = teams.map((t) => t.players.map((p) => p.id));
-    seatConflicts = countSeatConflicts(teamIdLists, avoidPairs);
-    const conflictNeighbors = seatConflictNeighbors(teamIdLists, avoidPairs);
-    for (const p of allPlayers) {
-      const neighborIds = conflictNeighbors.get(p.id);
-      p.seatConflict = !!neighborIds;
-      p.seatConflictNames = neighborIds?.map((nid) => nameById.get(nid)).filter((n): n is string => !!n) ?? [];
-    }
-  }
+  const seatConflicts = row.seat_pairs_considered > 0 ? applySeatConflicts(req.group!.id, row.event_id, teams) : 0;
 
   db.prepare('UPDATE matchmaking_draws SET teams = ?, seat_conflicts = ? WHERE id = ?').run(
     JSON.stringify(teams),

@@ -55,7 +55,7 @@ test('GET /api/seating dedupes a pair declared from both directions', async () =
 });
 
 test('GET /api/seating/layout includes each player\'s optional real name', async () => {
-  await request(app).patch(`/api/players/${a}`).send({ realName: 'Anna Beispiel' });
+  await request(app).patch(`/api/players/${a}`).set('x-player-id', a).send({ realName: 'Anna Beispiel' });
 
   const res = await request(app).get('/api/seating/layout');
   const playerA = res.body.players.find((p: { id: string }) => p.id === a);

@@ -1,11 +1,13 @@
 import { getToken } from '../api.js';
 import { escapeHtml } from '../format.js';
+import { icon } from '../icons.js';
 import { showToast } from '../toast.js';
+import { confirmDialog } from '../modal.js';
 import { getMyId } from '../whoami.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { allLobbyReady, lobbyPlayerChipsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, arcadeInfoGridHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 
 const COLS = 32;
 const ROWS = 20;
@@ -17,8 +19,8 @@ let world = null;
 let keyboardBound = false;
 
 const myId = () => getMyId();
-const rerender = () => window.dispatchEvent(new CustomEvent('lan:rerender'));
-const navigate = (view) => window.dispatchEvent(new CustomEvent('lan:navigate', { detail: view }));
+const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
+const navigate = (view) => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view }));
 const emitAck = (event, payload) => new Promise((resolve) => socket.emit(event, payload, resolve));
 const currentView = () => document.getElementById('view-container')?.dataset.view;
 
@@ -59,7 +61,7 @@ export function ensureSnakeSocket() {
     match.winner = payload.winner ?? null;
     match.scores = payload.scores ?? [];
     cancelCountdown();
-    window.dispatchEvent(new CustomEvent('lan:arcade-stats-dirty'));
+    window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
     if (currentView() === 'snake' || currentView() === 'arcade') rerender();
   });
   bindKeyboard();
@@ -72,44 +74,32 @@ function lobbyList() {
     const isHost = lobby.host.id === myId();
     const joined = lobby.players.some((player) => player.id === myId());
     const full = lobby.players.length >= 2 && !joined;
-    const action = isHost
-      ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-snake-close="${lobby.id}">Schließen</button>`
+    const ready = lobby.players.length === 2;
+    const footerActions = isHost
+      ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-snake-close="${lobby.id}">Schließen</button>
+        <button type="button" class="btn btn-sm btn-equal btn-primary" id="snake-start" ${ready ? '' : 'disabled'}>Start</button>`
       : joined
-        ? `<div class="stack" style="gap:var(--space-2);">
-            ${readyToggleHtml(lobby, myId(), 'snake-ready')}
-            <button type="button" class="btn btn-sm btn-equal" data-snake-leave="${lobby.id}">Verlassen</button>
-          </div>`
-        : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-snake-join="${lobby.id}" ${full ? 'disabled' : ''}>Beitreten</button>`;
-    return `<div class="lb-row" style="align-items:flex-start;">
-      <div class="stack" style="gap:var(--space-2);flex:1;">
-        <strong>${escapeHtml(lobby.host.name)}s Snake-Lobby</strong>
-        <div class="chip-list">${lobbyPlayerChipsHtml(lobby)}</div>
-        <div class="muted" style="font-size:var(--font-size-xs);">${lobby.players.length}/2 Spieler${full ? ' · voll' : ''}</div>
-      </div>${action}</div>`;
+        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-snake-leave="${lobby.id}">Verlassen</button>
+          ${readyToggleHtml(lobby, myId(), 'snake-ready')}`
+        : '';
+    const joinAction = !joined && !isHost
+      ? `<button type="button" class="btn btn-sm btn-primary" data-snake-join="${lobby.id}" ${full ? 'disabled' : ''}>Beitreten</button>`
+      : '';
+    return arcadeLobbyEntryHtml(lobby, { playerLimit: 2, joinAction, footerActions, full });
   }).join('');
-}
-
-function hostStart() {
-  const lobby = mySnakeLobby();
-  if (!lobby || lobby.host.id !== myId()) return '';
-  const joined = lobby.players.length === 2;
-  const hint = !joined ? 'Warte auf einen Gegner…' : allLobbyReady(lobby) ? 'Gegner ist bereit.' : 'Gegner ist da — noch nicht bereit.';
-  return `<div class="stack" style="gap:var(--space-2);border-top:1px solid var(--border);padding-top:var(--space-3);">
-    <div class="muted" style="font-size:var(--font-size-xs);">${hint}</div>
-    <button type="button" class="btn btn-primary btn-block" id="snake-start" ${joined ? '' : 'disabled'}>Start</button>
-  </div>`;
 }
 
 export function renderSnakeLobbyCard() {
   const lobby = mySnakeLobby();
   const noMe = !myId();
-  return `<div class="card stack"><div class="row-between" style="gap:var(--space-3);"><strong>Snake-Lobby</strong>
-    <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="snake-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="snake-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button></div></div>
-    ${arcadeInfoGridHtml([
-      { label: 'Ziel', text: 'Länger leben als die andere Schlange.' },
-      { label: 'Steuerung', text: 'Pfeiltasten.' },
-    ])}
-    ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}${lobbyList()}${hostStart()}</div>`;
+  return `<div class="card stack arcade-lobby-card">
+    ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
+    ${lobbyList()}
+    <div class="arcade-lobby-create-actions">
+      <button type="button" class="btn btn-primary btn-sm" id="snake-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+      ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="snake-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
+    </div>
+  </div>`;
 }
 
 export async function leaveMySnakeLobby() {
@@ -217,7 +207,7 @@ function updateRosterDisplay() {
 export function renderSnake(container) {
   ensureSnakeSocket();
   if (!match) {
-    container.innerHTML = `<button class="btn btn-sm" data-navigate="arcade">‹ Zurück</button><h1 class="view-title">Snake</h1>${renderSnakeLobbyCard()}`;
+    container.innerHTML = `<button class="btn btn-sm" data-navigate="arcade">${icon('chevronLeft')} Zurück</button><h1 class="view-title">Snake</h1>${renderSnakeLobbyCard()}`;
     wireSnakeLobbyCard(container);
     return;
   }
@@ -228,10 +218,20 @@ export function renderSnake(container) {
     scoreFor: (player, index) => `${world?.snakes?.[index]?.score ?? 0} Punkte`,
   });
   const result = match.ended ? `<div class="card arcade-winner-card"><strong>${endedText}</strong><button type="button" class="btn btn-primary" id="snake-back">Zur Arcade</button></div>` : '';
+  const isPlayer = match.players.some((p) => p.id === myId());
+  // A non-host player can't pause (shared timer state, host-only), but must
+  // still have a way out instead of only a raw tab close.
+  const controls = match.ended
+    ? ''
+    : isHost
+      ? `<div class="arcade-match-controls"><button class="btn btn-sm btn-equal" id="snake-pause">${match.paused ? 'Fortsetzen' : 'Pausieren'}</button><button class="btn btn-sm btn-equal btn-danger" id="snake-finish">Beenden</button></div>`
+      : isPlayer
+        ? `<div class="arcade-match-controls"><button class="btn btn-sm btn-equal btn-danger" id="snake-leave-match">Verlassen</button></div>`
+        : '';
   container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Snake</h1>${arcadeExpandControlHtml()}
     <div id="snake-roster">${roster}</div>
     <div class="card snake-game"><canvas id="snake-canvas"></canvas>${match.paused ? '<div class="snake-overlay">Pause</div>' : ''}</div>
-    ${isHost && !match.ended ? `<div class="arcade-match-controls"><button class="btn btn-sm btn-equal" id="snake-pause">${match.paused ? 'Fortsetzen' : 'Pausieren'}</button><button class="btn btn-sm btn-equal btn-danger" id="snake-finish">Beenden</button></div>` : ''}${result}</div>`;
+    ${controls}${result}</div>`;
   wireArcadeExpandControl(container);
   paintBoard();
   wireSwipeControls(container.querySelector('#snake-canvas'));
@@ -240,6 +240,11 @@ export function renderSnake(container) {
   });
   container.querySelector('#snake-finish')?.addEventListener('click', async () => {
     await emitAck('snake:match:finish', { matchId: match.matchId, playerId: myId() });
+  });
+  container.querySelector('#snake-leave-match')?.addEventListener('click', async () => {
+    if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
+    const res = await emitAck('snake:match:leave', { matchId: match.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
   });
   container.querySelector('#snake-back')?.addEventListener('click', () => {
     match = null;

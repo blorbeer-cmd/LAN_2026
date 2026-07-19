@@ -4,7 +4,6 @@
 // wherever a notify-worthy event already fires a socket toast.
 
 import { Router } from 'express';
-import { db } from '../db';
 import {
   getVapidPublicKey,
   isValidSubscription,
@@ -14,7 +13,13 @@ import {
   getCurrentPushLogEntryFor,
   getPushLogEntriesFor,
   markPushSeen,
+  hidePushForPlayer,
+  markAllPushSeen,
+  hideAllPushForPlayer,
 } from '../push';
+import { withBodyPlayerIdentity, withQueryPlayerIdentity } from '../sessions';
+import { resolveGroupEventScope } from '../groupEventScope';
+import { activeGroupPlayers } from '../groupPlayers';
 
 export const pushRouter = Router();
 
@@ -27,48 +32,109 @@ pushRouter.get('/vapid-public-key', (_req, res) => {
 // GET /api/push/last - the most recent still-active notification sent via notifyPlayers()
 // (Durchsage, neue Bestellung, Arcade-Lobby, Abstimmung, Turnier, ...),
 // for the Kiosk screen. null when no applicable push remains.
-pushRouter.get('/last', (_req, res) => {
-  res.json({ entry: getLastPushLogEntry() });
+pushRouter.get('/last', (req, res) => {
+  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  res.json({ entry: getLastPushLogEntry(req.group!.id, scope.eventId) });
 });
 
-// GET /api/push/current?playerId=... - the newest still-actionable entry for
-// the personal app-header banner. Closed topics are skipped; the full /log
-// endpoint below intentionally remains an unfiltered notification history.
-pushRouter.get('/current', (req, res) => {
+// GET /api/push/current?playerId=... - legacy endpoint for the newest
+// still-actionable personal entry. The full /log endpoint below remains the
+// notification history used by the current header center.
+pushRouter.get('/current', ...withQueryPlayerIdentity, (req, res) => {
   const { playerId } = req.query;
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
-  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
-  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  res.json({ entry: getCurrentPushLogEntryFor(playerId) });
+  if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
+  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  res.json({ entry: getCurrentPushLogEntryFor(req.group!.id, scope.eventId, playerId) });
 });
 
 // GET /api/push/log?playerId=... - recent notifications relevant to one
-// player (they were on the recipient list), newest first, for the Home
-// view's "Mitteilungen" feed. Each entry carries the deep-link url the
-// notification would open, so the feed can offer the same jump-off point.
-pushRouter.get('/log', (req, res) => {
+// player (they were on the recipient list), newest first, for the header
+// notification center. Each entry carries its in-app deep link.
+pushRouter.get('/log', ...withQueryPlayerIdentity, (req, res) => {
   const { playerId } = req.query;
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
-  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
-  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  res.json({ entries: getPushLogEntriesFor(playerId) });
+  if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
+  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  const entries = getPushLogEntriesFor(req.group!.id, scope.eventId, playerId);
+  res.json({
+    entries,
+    summary: {
+      total: entries.length,
+      direct: entries.filter((entry) => entry.audience === 'direct').length,
+      groupWide: entries.filter((entry) => entry.audience === 'all').length,
+    },
+  });
 });
 
-// POST /api/push/:id/seen - dismiss one notification from this player's
-// persistent header banner. It intentionally remains in /log as history.
-pushRouter.post('/:id/seen', (req, res) => {
+// Bulk variants retain the same identity scoping as the single-entry
+// actions. They never mutate another recipient's history.
+pushRouter.post('/seen-all', ...withBodyPlayerIdentity, (req, res) => {
+  const { playerId, eventId } = req.body ?? {};
+  if (typeof playerId !== 'string' || !playerId) {
+    return res.status(400).json({ error: 'playerId ist erforderlich.' });
+  }
+  if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
+  const scope = resolveGroupEventScope(req.group!.id, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  res.json({ changed: markAllPushSeen(req.group!.id, scope.eventId, playerId) });
+});
+
+pushRouter.delete('/', ...withBodyPlayerIdentity, (req, res) => {
+  const { playerId, eventId } = req.body ?? {};
+  if (typeof playerId !== 'string' || !playerId) {
+    return res.status(400).json({ error: 'playerId ist erforderlich.' });
+  }
+  if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
+  const scope = resolveGroupEventScope(req.group!.id, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  res.json({ changed: hideAllPushForPlayer(req.group!.id, scope.eventId, playerId) });
+});
+
+// POST /api/push/:id/seen - mark one notification read for this player. It
+// intentionally remains in /log as history.
+pushRouter.post('/:id/seen', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
-  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
-  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
 
-  const result = markPushSeen(req.params.id, playerId);
+  const result = markPushSeen(req.group!.id, req.params.id, playerId);
+  if (result === 'not_found') return res.status(404).json({ error: 'Mitteilung nicht gefunden.' });
+  if (result === 'not_recipient') return res.status(403).json({ error: 'Mitteilung gehört nicht zu diesem Spieler.' });
+  res.status(204).end();
+});
+
+// DELETE /api/push/:id - hide one notification for one player. This is a
+// per-recipient removal, never a global deletion from the shared push log.
+pushRouter.delete('/:id', ...withBodyPlayerIdentity, (req, res) => {
+  const { playerId } = req.body ?? {};
+  if (typeof playerId !== 'string' || !playerId) {
+    return res.status(400).json({ error: 'playerId ist erforderlich.' });
+  }
+  if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
+
+  const result = hidePushForPlayer(req.group!.id, req.params.id, playerId);
   if (result === 'not_found') return res.status(404).json({ error: 'Mitteilung nicht gefunden.' });
   if (result === 'not_recipient') return res.status(403).json({ error: 'Mitteilung gehört nicht zu diesem Spieler.' });
   res.status(204).end();
@@ -76,13 +142,14 @@ pushRouter.post('/:id/seen', (req, res) => {
 
 // POST /api/push/subscribe - register (or re-point) a browser subscription
 // for a player. Body: { playerId, subscription: PushSubscriptionJSON }
-pushRouter.post('/subscribe', (req, res) => {
+pushRouter.post('/subscribe', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId, subscription } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
-  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
-  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
   if (!isValidSubscription(subscription)) {
     return res.status(400).json({ error: 'subscription ist ungültig.' });
   }
@@ -92,11 +159,11 @@ pushRouter.post('/subscribe', (req, res) => {
 });
 
 // POST /api/push/unsubscribe - drop a subscription (opt-out). Body: { endpoint }
-pushRouter.post('/unsubscribe', (req, res) => {
-  const { endpoint } = req.body ?? {};
+pushRouter.post('/unsubscribe', ...withBodyPlayerIdentity, (req, res) => {
+  const { endpoint, playerId } = req.body ?? {};
   if (typeof endpoint !== 'string' || !endpoint) {
     return res.status(400).json({ error: 'endpoint ist erforderlich.' });
   }
-  removeSubscription(endpoint);
+  removeSubscription(endpoint, req.player ? playerId : undefined);
   res.status(204).end();
 });

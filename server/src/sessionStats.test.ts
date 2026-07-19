@@ -39,17 +39,19 @@ test('longestSessionPerPlayerGame keeps only the top session per (player, game)'
   assert.equal(g1Entry.durationMs, 5000);
 });
 
-test('longestSessionPerGame picks the record holder regardless of player', () => {
+test('longestSessionPerGame picks one individual record instead of combining overlapping players', () => {
   const sorted = sessionDurations(
     [
-      { playerId: 'p1', gameId: 'g1', startedAt: 0, endedAt: 3000, activeMs: 0 },
-      { playerId: 'p2', gameId: 'g1', startedAt: 0, endedAt: 9000, activeMs: 0 },
+      { playerId: 'p1', gameId: 'g1', startedAt: 0, endedAt: 6000, activeMs: 0 },
+      { playerId: 'p2', gameId: 'g1', startedAt: 2000, endedAt: 9000, activeMs: 0 },
+      { playerId: 'p3', gameId: 'g1', startedAt: 5000, endedAt: 10_000, activeMs: 0 },
     ],
     NOW
   );
   const result = longestSessionPerGame(sorted);
   assert.equal(result.length, 1);
   assert.equal(result[0].playerId, 'p2');
+  assert.equal(result[0].durationMs, 7000);
 });
 
 test('longestSessionPerPlayer picks each player\'s single best session across games', () => {

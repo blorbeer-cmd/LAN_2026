@@ -42,6 +42,11 @@ Hier sind alle in den PR-Metadaten gefundenen Arbeitsbranches zusammengefasst. D
 - [`test/all-features-local`](./test-all-features-local.md) — lokaler Integrationsbranch, kein eigener PR-Eintrag
 - [`claude/voting-section-redesign-dop6cu`](./claude-voting-section-redesign-dop6cu.md) — 2 gemergt, 0 offen
 - [`claude/voting-slider-color-bug-zbq2uh`](./claude-voting-slider-color-bug-zbq2uh.md) — 1 gemergt, 0 offen
+- [`codex/deploy-optimizations`](./codex-deploy-optimizations.md) — 1 gemergt, 0 offen
+- [`codex/docker-prepare-fix`](./codex-docker-prepare-fix.md) — 1 gemergt, 0 offen
+- [`codex/feedback-general-ui-polish`](./codex-feedback-general-ui-polish.md) — 1 gemergt, 0 offen
+- [`codex/fix-arcade-spectator-views`](./codex-fix-arcade-spectator-views.md) — 1 gemergt, 0 offen
+- [`codex/fix-scribble-watch-rerender`](./codex-fix-scribble-watch-rerender.md) — 1 gemergt, 0 offen
 - [`concurrency-fix-onto-main`](./concurrency-fix-onto-main.md) — 1 gemergt, 0 offen
 - [`feat/46-arcade-pong`](./feat-46-arcade-pong.md) — 1 gemergt, 0 offen
 - [`feat/admin-base`](./feat-admin-base.md) — 1 gemergt, 0 offen
@@ -68,3 +73,44 @@ Hier sind alle in den PR-Metadaten gefundenen Arbeitsbranches zusammengefasst. D
 - [`node24-fix-onto-main`](./node24-fix-onto-main.md) — 1 gemergt, 0 offen
 - [`symbol-fix`](./symbol-fix.md) — 1 gemergt, 0 offen
 - [`worktree-hetzner-cicd`](./worktree-hetzner-cicd.md) — 1 gemergt, 0 offen
+
+## Neu erfasste Branches
+
+Die folgenden Branch-Seiten wurden beim Abgleich der vollständigen Merge-Historie ergänzt:
+
+- [`agent-arcade-kiosk-stream`](./agent-arcade-kiosk-stream.md)
+- [`agent-arcade-single-lobby`](./agent-arcade-single-lobby.md)
+- [`agent-arcade-watch-stream`](./agent-arcade-watch-stream.md)
+- [`agent-fix-scribble-undo-e2e`](./agent-fix-scribble-undo-e2e.md)
+- [`agent-notification-banner-lifecycle`](./agent-notification-banner-lifecycle.md)
+- [`agent-phase5c-votes-drafts`](./agent-phase5c-votes-drafts.md)
+- [`agent-session-hygiene-guidance`](./agent-session-hygiene-guidance.md)
+- [`agent-split-agent-guidelines`](./agent-split-agent-guidelines.md)
+- [`agent-unify-guidelines-and-ci`](./agent-unify-guidelines-and-ci.md)
+- [`claude-arcade-game-tiles-width-izo34m`](./claude-arcade-game-tiles-width-izo34m.md)
+- [`claude-arcade-games-reports-hwafva`](./claude-arcade-games-reports-hwafva.md)
+- [`claude-arcade-mode-adjustments-eq29ci`](./claude-arcade-mode-adjustments-eq29ci.md)
+- [`claude-arcade-pause-exit-options-d9kd54`](./claude-arcade-pause-exit-options-d9kd54.md)
+- [`claude-automated-deployment-pipeline-jw2zf1`](./claude-automated-deployment-pipeline-jw2zf1.md)
+- [`claude-bock-skill-slider-bug-hp7fce`](./claude-bock-skill-slider-bug-hp7fce.md)
+- [`claude-captain-draft-skill-level-pj2i5b`](./claude-captain-draft-skill-level-pj2i5b.md)
+- [`claude-game-results-draw-display-opzvah`](./claude-game-results-draw-display-opzvah.md)
+- [`claude-group-scoping-catalog-presence`](./claude-group-scoping-catalog-presence.md)
+- [`claude-home-pause-button-bug-xhapiv`](./claude-home-pause-button-bug-xhapiv.md)
+- [`claude-mystifying-proskuriakova-a45f34`](./claude-mystifying-proskuriakova-a45f34.md)
+- [`claude-rematch-results-winner-display-7qg5hr`](./claude-rematch-results-winner-display-7qg5hr.md)
+- [`claude-team-draw-display-bug-gacxhe`](./claude-team-draw-display-bug-gacxhe.md)
+- [`claude-tournament-teams-consistency-lkkns1`](./claude-tournament-teams-consistency-lkkns1.md)
+- [`codex-arcade-tetris-navigation-fix`](./codex-arcade-tetris-navigation-fix.md)
+- [`codex-arcade-viewport-aspect-ratio`](./codex-arcade-viewport-aspect-ratio.md)
+- [`codex-arcade-viewport-fix`](./codex-arcade-viewport-fix.md)
+- [`codex-changelog-deploy-hardening`](./codex-changelog-deploy-hardening.md)
+- [`codex-group-management`](./codex-group-management.md)
+- [`codex-phase5c-seating-pings`](./codex-phase5c-seating-pings.md)
+- [`codex-pr201-hardening`](./codex-pr201-hardening.md)
+- [`codex-update-arcade-changelog`](./codex-update-arcade-changelog.md)
+- [`codex-update-seat-neighbor-labels`](./codex-update-seat-neighbor-labels.md)
+- [`fix-cloudflared-network-split`](./fix-cloudflared-network-split.md)
+- [`fix-disk-full-image-prune`](./fix-disk-full-image-prune.md)
+- [`fix-e2e-admin-count-height-flake`](./fix-e2e-admin-count-height-flake.md)
+- [`fix-topbar-wordmark`](./fix-topbar-wordmark.md)

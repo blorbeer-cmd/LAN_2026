@@ -6,6 +6,7 @@ import { createWorld, Direction, setDirection, SnakeWorld, stepWorld, SNAKE_HEIG
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
+import { recordArcadeResult } from './arcadeData';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 
 const TICK_MS = 125;
@@ -77,9 +78,14 @@ function finish(io: Server, match: Match, winner: Player | null, reason: string)
     name: player.name,
     score: match.world.snakes[index]?.score ?? 0,
   }));
-  db.prepare('INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
-    nanoid(), 'snake', winnerId, JSON.stringify(match.players), JSON.stringify(scoreEntries), reason, match.startedAt, Date.now()
-  );
+  recordArcadeResult({
+    gameType: 'snake',
+    winnerId,
+    players: match.players,
+    scores: scoreEntries,
+    reason,
+    startedAt: match.startedAt,
+  });
   io.to(match.room).emit('snake:match:end', { winner, reason, scores: match.world.snakes.map((snake) => snake.score) });
   broadcastArcadeKiosk(io, { gameType: null, matchId: match.id });
   matches.delete(match.id);
@@ -166,7 +172,7 @@ export function registerSnakeSockets(io: Server): void {
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
     });
-    socket.on('snake:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (result: unknown) => void) => {
+    socket.on('snake:lobby:bot', (payload: { playerId?: string }, ack?: (result: unknown) => void) => {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Spieler nicht gefunden.' });
@@ -240,6 +246,17 @@ export function registerSnakeSockets(io: Server): void {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
       if (!match || payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann beenden.' });
       finish(io, match, null, 'aborted');
+      ack?.({ ok: true });
+    });
+    // Lets a non-host participant end a running match themselves instead of
+    // relying on the host (who might be AFK) — same outcome as a disconnect
+    // mid-match: the match ends, opponent wins.
+    socket.on('snake:match:leave', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
+      const match = payload?.matchId ? matches.get(payload.matchId) : null;
+      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      const leaver = match.players.find((p) => p.id === payload?.playerId);
+      if (!leaver) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
+      finish(io, match, match.players.find((p) => p.id !== leaver.id) ?? null, 'player-left');
       ack?.({ ok: true });
     });
     socket.on('disconnect', () => removeFromLobbies(io, socket.id));

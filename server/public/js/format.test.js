@@ -79,7 +79,7 @@ test('avatarHtml escapes an unsafe color/avatar value', () => {
 
 test('gameChipsHtml renders one chip per game with the elapsed time', () => {
   const games = [{ game_id: 'g1', game_name: 'CS2', game_icon: '🔫', since: Date.now() - 60_000, foreground: true }];
-  const html = gameChipsHtml(games, false, 20);
+  const html = gameChipsHtml(games, false);
   assert.match(html, /CS2/);
   assert.match(html, /seit 1 Min\./);
 });
@@ -89,18 +89,18 @@ test('gameChipsHtml only distinguishes foreground/background with >1 game and ac
     { game_id: 'g1', game_name: 'CS2', game_icon: '🔫', since: Date.now(), foreground: true },
     { game_id: 'g2', game_name: 'Discord', game_icon: '💬', since: Date.now(), foreground: false },
   ];
-  const trackedHtml = gameChipsHtml(games, true, 20);
+  const trackedHtml = gameChipsHtml(games, true);
   assert.match(trackedHtml, /chip-foreground/);
   assert.match(trackedHtml, /chip-background/);
 
-  const untrackedHtml = gameChipsHtml(games, false, 20);
+  const untrackedHtml = gameChipsHtml(games, false);
   assert.doesNotMatch(untrackedHtml, /chip-foreground/);
   assert.doesNotMatch(untrackedHtml, /chip-background/);
 });
 
 test('gameChipsHtml with a single game never shows the foreground/background distinction', () => {
   const games = [{ game_id: 'g1', game_name: 'CS2', game_icon: '🔫', since: Date.now(), foreground: true }];
-  const html = gameChipsHtml(games, true, 20);
+  const html = gameChipsHtml(games, true);
   assert.doesNotMatch(html, /chip-foreground/);
   assert.doesNotMatch(html, /aktiv/);
 });

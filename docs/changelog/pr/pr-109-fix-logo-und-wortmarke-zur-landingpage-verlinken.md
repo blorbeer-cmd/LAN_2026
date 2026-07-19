@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-10
 - Branch: `fix/logo-landing-link`
-- Merge-Commit: [`f07d9e9`](https://github.com/blorbeer-cmd/LAN_2026/commit/f07d9e9ccaafe17e762520271552993d8485a75b)
-- Pull Request: [#109](https://github.com/blorbeer-cmd/LAN_2026/pull/109)
+- Merge-Commit: [`f07d9e9`](https://github.com/blorbeer-cmd/Respawn/commit/f07d9e9ccaafe17e762520271552993d8485a75b)
+- Pull Request: [#109](https://github.com/blorbeer-cmd/Respawn/pull/109)
 
 ## Changelog
 

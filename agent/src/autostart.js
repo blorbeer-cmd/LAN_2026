@@ -12,7 +12,7 @@ const path = require('path');
 const os = require('os');
 const { exec } = require('child_process');
 
-const SHORTCUT_NAME = 'RespawnHQ-Agent.lnk';
+const SHORTCUT_NAME = 'Respawn-Agent.lnk';
 
 function getStartupShortcutPath(startupDir) {
   return path.join(startupDir, SHORTCUT_NAME);

@@ -26,7 +26,7 @@ test('POST /api/info validates title and content', async () => {
 test('POST /api/info creates an entry', async () => {
   const res = await request(app)
     .post('/api/info')
-    .send({ title: 'WLAN', content: 'Netz: LAN2026\nPasswort: kartoffel' });
+    .send({ title: 'WLAN', content: 'Netz: Respawn\nPasswort: kartoffel' });
   assert.equal(res.status, 201);
   assert.equal(res.body.title, 'WLAN');
   entryId = res.body.id;
@@ -36,7 +36,7 @@ test('POST /api/info creates an entry', async () => {
 });
 
 test('PATCH /api/info/:id updates fields and bumps updated_at', async () => {
-  const res = await request(app).patch(`/api/info/${entryId}`).send({ content: 'Netz: LAN2026\nPasswort: gurke' });
+  const res = await request(app).patch(`/api/info/${entryId}`).send({ content: 'Netz: Respawn\nPasswort: gurke' });
   assert.equal(res.status, 200);
   assert.equal(res.body.title, 'WLAN');
   assert.match(res.body.content, /gurke/);

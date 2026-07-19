@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-12
 - Branch: `claude/team-draw-seat-neighbors-2wfji2`
-- Merge-Commit: [`a3011e2`](https://github.com/blorbeer-cmd/LAN_2026/commit/a3011e20e7345fe914da65ce1671cbda99ac75d8)
-- Pull Request: [#143](https://github.com/blorbeer-cmd/LAN_2026/pull/143)
+- Merge-Commit: [`a3011e2`](https://github.com/blorbeer-cmd/Respawn/commit/a3011e20e7345fe914da65ce1671cbda99ac75d8)
+- Pull Request: [#143](https://github.com/blorbeer-cmd/Respawn/pull/143)
 
 ## Changelog
 

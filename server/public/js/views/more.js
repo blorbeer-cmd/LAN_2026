@@ -1,39 +1,39 @@
-// "Mehr" hub: the secondary destinations (Spieler-Verwaltung, Auswertungen,
-// Hall of Fame, Sitzplan) each get their own clear entry point here, leaving
+// "Mehr" hub: the secondary destinations (Spielerprofile, Auswertungen,
+// Hall of Fame, Info) each get their own clear entry point here, leaving
 // the bottom nav to the things people reach for constantly during the party
 // (tournaments earned that spot; the roster is mostly a setup-time concern
 // since everyone self-onboards through their profile).
 
 import { icon } from '../icons.js';
+import { domainIcon } from '../domainIcons.js';
 
 const ITEMS = [
-  { view: 'infoBoard', icon: 'pin', title: 'Info-Board', desc: 'WLAN, Discord, Server-IPs, Hausregeln – alles Wichtige an einem Ort.' },
-  { view: 'gameCatalog', icon: 'gamepad', title: 'Spiele', desc: 'Alle Spiele: Bock & Skill eintragen, vorschlagen, verwalten.' },
-  { view: 'foodOrders', icon: 'hamburger', title: 'Essen bestellen', desc: 'Sammelbestellung öffnen, jeder trägt sich selbst ein.' },
-  { view: 'arcade', icon: 'joystick', title: 'Arcade', desc: 'Mini-Games starten, aktuell mit Mehrspieler-Gaming-Quiz.' },
-  { view: 'arrivals', icon: 'van', title: 'An- & Abreise', desc: 'Wann kommst/gehst du, plus Fahrgemeinschaften.' },
-  { view: 'broadcast', icon: 'megaphone', title: 'Durchsage', desc: 'Eine Nachricht an alle Geräte, den Kiosk und als Push.' },
-  { view: 'players', icon: 'users', title: 'Spieler', desc: 'Alle Teilnehmer: anlegen, umbenennen, Agent-Keys nachschlagen.' },
-  { view: 'analytics', icon: 'chart', title: 'Auswertungen', desc: 'Spielzeit, Awards und Match-/Turnier-Statistiken, Rivalitäten, Duos.' },
-  { view: 'hallOfFame', icon: 'landmark', title: 'Hall of Fame', desc: 'Champions über alle LAN-Partys hinweg.' },
-  { view: 'admin', icon: 'shield', title: 'Admin', desc: 'Test-Spieler anlegen, Admin vergeben, moderieren.' },
+  { view: 'admin', title: 'Admin' },
+  { view: 'arrivals', title: 'An- & Abreise' },
+  { view: 'arcade', title: 'Arcade' },
+  { view: 'analytics', title: 'Auswertungen' },
+  { view: 'broadcast', title: 'Durchsage' },
+  { view: 'foodOrders', title: 'Essen' },
+  { view: 'hallOfFame', title: 'Hall of Fame' },
+  { view: 'infoBoard', title: 'Info' },
+  { view: 'players', title: 'Spieler' },
+  { view: 'gameCatalog', title: 'Spiele' },
 ];
 
 export function renderMore(container) {
   const rows = ITEMS.map(
     (item) => `
-    <button type="button" class="card row list-row" data-navigate="${item.view}">
-      <span class="list-row-icon">${icon(item.icon)}</span>
-      <span style="flex:1;">
-        <div class="player-name">${item.title}</div>
-        <div class="muted list-row-desc">${item.desc}</div>
+    <button type="button" class="card row list-row more-card" data-navigate="${item.view}">
+      <span class="more-card-label">
+        <span class="list-row-icon">${icon(domainIcon(item.view))}</span>
+        <span class="player-name more-card-title">${item.title}</span>
       </span>
-      <span class="muted">›</span>
+      <span class="muted more-card-chevron">${icon('chevronRight')}</span>
     </button>`
   ).join('');
 
   container.innerHTML = `
     <h1 class="view-title">Mehr</h1>
-    <div class="card-grid">${rows}</div>
+    <div class="card-grid more-grid">${rows}</div>
   `;
 }

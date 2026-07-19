@@ -1,27 +1,44 @@
-import { escapeHtml } from './format.js';
+import { avatarHtml, escapeHtml } from './format.js';
 import { icon } from './icons.js';
 
-// Shared "Bereit" UI for all arcade lobby cards (quiz, tetris, scribble,
-// blobby): player chips that turn green with a check once someone is ready,
-// an "x/y bereit" summary for the host, and the guest's own ready toggle.
-// The server marks the host as always ready (they decide when to start).
+// Shared lobby UI for every arcade game: stable player rows, the lobby card
+// shell and the guest's own ready toggle. The server
+// marks the host as always ready because they decide when to start.
 
-export function lobbyPlayerChipsHtml(lobby) {
+function lobbyPlayerRowsHtml(lobby) {
   return lobby.players
-    .map(
-      (p) =>
-        `<span class="chip${p.ready ? ' chip-ready' : ''}">${p.ready ? icon('check') : ''}${escapeHtml(p.name)}</span>`
-    )
+    .map((player) => {
+      const role = player.id === lobby.host.id ? 'Host' : player.ready ? `${icon('check')} Bereit` : 'Mitspieler';
+      return `<div class="arcade-lobby-member-row">
+        ${avatarHtml(player, 24)}
+        <span class="player-name">${escapeHtml(player.name)}</span>
+        <span class="arcade-lobby-member-role">${role}</span>
+      </div>`;
+    })
     .join('');
 }
 
-export function readySummaryText(lobby) {
-  const ready = lobby.players.filter((p) => p.ready).length;
-  return `${ready}/${lobby.players.length} bereit`;
-}
-
-export function allLobbyReady(lobby) {
-  return lobby.players.every((p) => p.ready);
+export function arcadeLobbyEntryHtml(
+  lobby,
+  { joinAction = '', settingsHtml = '', footerActions = '', full = false } = {}
+) {
+  const availableRow = joinAction
+    ? `<div class="arcade-lobby-member-row arcade-lobby-free-row">
+        <span class="arcade-lobby-avatar-slot" aria-hidden="true"></span>
+        <span class="muted arcade-lobby-free-label">${full ? 'Voll' : 'Frei'}</span>
+        ${joinAction}
+      </div>`
+    : '';
+  return `<div class="card stack arcade-lobby-entry">
+    <div class="arcade-lobby-entry-head">
+      <strong>${escapeHtml(lobby.host.name)}s Lobby</strong>
+    </div>
+    <div class="arcade-lobby-member-list">${lobbyPlayerRowsHtml(lobby)}${availableRow}</div>
+    ${settingsHtml || footerActions ? `<div class="arcade-lobby-control-bar">
+      ${settingsHtml ? `<div class="arcade-lobby-settings">${settingsHtml}</div>` : ''}
+      ${footerActions ? `<div class="arcade-lobby-entry-actions">${footerActions}</div>` : ''}
+    </div>` : ''}
+  </div>`;
 }
 
 // Toggle button for the current player (guests only — the host has no ready
@@ -31,7 +48,7 @@ export function readyToggleHtml(lobby, myId, dataAttr) {
   const me = lobby.players.find((p) => p.id === myId);
   if (!me || lobby.host.id === myId) return '';
   return me.ready
-    ? `<button type="button" class="btn btn-sm btn-equal btn-ready" data-${dataAttr}="${lobby.id}" data-ready="0">${icon('check')} Bereit</button>`
+    ? `<button type="button" class="btn btn-sm btn-equal btn-ready" data-${dataAttr}="${lobby.id}" data-ready="0">Bereit</button>`
     : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-${dataAttr}="${lobby.id}" data-ready="1">Bereit?</button>`;
 }
 

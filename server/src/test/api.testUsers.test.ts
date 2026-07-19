@@ -17,6 +17,7 @@ interface PlayerBody {
   id: string;
   name: string;
   is_test: number;
+  is_admin: number;
 }
 
 test('POST /api/admin/test-users validates count', async () => {
@@ -38,6 +39,7 @@ test('POST /api/admin/test-users seeds players with seats, neighbors, ratings, a
   const testRows = (roster.body as PlayerBody[]).filter((p) => ids.includes(p.id));
   assert.equal(testRows.length, 4);
   assert.ok(testRows.every((p) => p.is_test === 1));
+  assert.ok(testRows.every((p) => p.is_admin === 0));
 
   // A skill and a Bock rating (1-10) for every game, per player.
   const games = (await request(app).get('/api/games')).body as Array<{ id: string }>;
@@ -60,13 +62,13 @@ test('POST /api/admin/test-users seeds players with seats, neighbors, ratings, a
   // least one adjacent pair must exist.
   const eventId = getTrackingEventId();
   const autoRows = db
-    .prepare("SELECT player_id, neighbor_id FROM seat_neighbors WHERE event_id = ? AND source = 'auto'")
-    .all(eventId) as Array<{ player_id: string; neighbor_id: string }>;
+    .prepare("SELECT player_id, neighbor_id FROM seat_neighbors WHERE group_id = 'default-group' AND event_id IS NULL AND source = 'auto'")
+    .all() as Array<{ player_id: string; neighbor_id: string }>;
   assert.ok(autoRows.some((r) => ids.includes(r.player_id) && ids.includes(r.neighbor_id)));
   // Plus the deliberately-manual extra pair from the seeder.
   const manualRows = db
-    .prepare("SELECT player_id FROM seat_neighbors WHERE event_id = ? AND source = 'manual'")
-    .all(eventId) as Array<{ player_id: string }>;
+    .prepare("SELECT player_id FROM seat_neighbors WHERE group_id = 'default-group' AND event_id IS NULL AND source = 'manual'")
+    .all() as Array<{ player_id: string }>;
   assert.ok(manualRows.some((r) => ids.includes(r.player_id)));
 
   // Finished play sessions in the tracking event for everyone.
@@ -88,13 +90,36 @@ test('POST /api/admin/test-users seeds players with seats, neighbors, ratings, a
   assert.equal(liveStates.get(ids[1]), 'playing');
 });
 
-test('DELETE /api/admin/test-users removes players, seats, neighbors, and sessions', async () => {
+test('POST /api/admin/test-data/hall-of-fame creates dense marked history across years', async () => {
+  const seeded = await request(app).post('/api/admin/test-data/hall-of-fame');
+  assert.equal(seeded.status, 201);
+  assert.deepEqual(seeded.body, { events: 12, matches: 216, tournaments: 36 });
+
+  const events = db
+    .prepare('SELECT id, name, is_test FROM events WHERE is_test = 1 ORDER BY starts_at')
+    .all() as Array<{ id: string; name: string; is_test: number }>;
+  assert.equal(events.length, 12);
+  assert.equal(events[0].name, 'Respawn Test-LAN 2015');
+  assert.equal(events.at(-1)?.name, 'Respawn Test-LAN 2026');
+  assert.ok(events.every((event) => event.is_test === 1));
+
+  const hall = await request(app).get('/api/hall-of-fame');
+  assert.equal(hall.status, 200);
+  const testEvents = hall.body.events.filter((event: { eventName: string }) => event.eventName.startsWith('Respawn Test-LAN'));
+  assert.equal(testEvents.length, 12);
+  assert.ok(testEvents.every((event: { overallStandings: unknown[]; tournamentChampions: unknown[] }) =>
+    event.overallStandings.length >= 4 && event.tournamentChampions.length === 3));
+});
+
+test('DELETE /api/admin/test-users removes every marked player and historical test LAN', async () => {
   const ids = (db.prepare('SELECT id FROM players WHERE is_test = 1').all() as Array<{ id: string }>).map((r) => r.id);
   assert.ok(ids.length > 0, 'previous test should have seeded users');
 
   const res = await request(app).delete('/api/admin/test-users');
   assert.equal(res.status, 200);
   assert.equal(res.body.deleted, ids.length);
+  assert.equal(res.body.deletedPlayers, ids.length);
+  assert.equal(res.body.deletedEvents, 12);
 
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM players WHERE is_test = 1').get() as { n: number }).n, 0);
   const layout = await request(app).get('/api/seating/layout');
@@ -103,12 +128,13 @@ test('DELETE /api/admin/test-users removes players, seats, neighbors, and sessio
   const eventId = getTrackingEventId();
   for (const id of ids) {
     assert.equal((db.prepare('SELECT COUNT(*) AS n FROM play_sessions WHERE player_id = ?').get(id) as { n: number }).n, 0);
-    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM seat_neighbors WHERE event_id = ? AND (player_id = ? OR neighbor_id = ?)').get(eventId, id, id) as { n: number }).n, 0);
+    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM seat_neighbors WHERE group_id = ? AND (player_id = ? OR neighbor_id = ?)').get('default-group', id, id) as { n: number }).n, 0);
   }
 
   // Idempotent: a second cleanup finds nothing.
   const again = await request(app).delete('/api/admin/test-users');
   assert.equal(again.body.deleted, 0);
+  assert.equal(again.body.deletedEvents, 0);
 });
 
 test('seeding respects existing seat assignments and grows the table when full', async () => {

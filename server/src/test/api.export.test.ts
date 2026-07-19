@@ -141,7 +141,7 @@ test('GET /api/export/pdf returns a PDF document', async () => {
     });
   assert.equal(res.status, 200);
   assert.match(res.headers['content-type'], /application\/pdf/);
-  assert.match(res.headers['content-disposition'], /attachment; filename="respawnhq-.+\.pdf"/);
+  assert.match(res.headers['content-disposition'], /attachment; filename="respawn-.+\.pdf"/);
   const buf = res.body as Buffer;
   assert.equal(buf.subarray(0, 5).toString('latin1'), '%PDF-');
 });

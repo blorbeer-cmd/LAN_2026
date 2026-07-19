@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-07
 - Branch: `claude/lan-party-tools-6jqu4g`
-- Merge-Commit: [`0502dcb`](https://github.com/blorbeer-cmd/LAN_2026/commit/0502dcb6def9455b5aacb6bf53ab364e30d96917)
-- Pull Request: [#1](https://github.com/blorbeer-cmd/LAN_2026/pull/1)
+- Merge-Commit: [`0502dcb`](https://github.com/blorbeer-cmd/Respawn/commit/0502dcb6def9455b5aacb6bf53ab364e30d96917)
+- Pull Request: [#1](https://github.com/blorbeer-cmd/Respawn/pull/1)
 
 ## Changelog
 

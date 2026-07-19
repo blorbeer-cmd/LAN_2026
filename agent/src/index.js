@@ -128,7 +128,7 @@ function start(configPath) {
 
   const initialTrackActivity = loadState(stateFilePath, { trackActivity: config.trackActivity }).trackActivity;
   log(
-    `LAN-2026-Agent gestartet. Server: ${config.serverUrl} · Intervall: ${config.pollIntervalMs}ms` +
+    `Respawn-Agent gestartet. Server: ${config.serverUrl} · Intervall: ${config.pollIntervalMs}ms` +
       (initialTrackActivity ? ' · Aktivitäts-Tracking: an' : '')
   );
 

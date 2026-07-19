@@ -4,8 +4,10 @@
 import { Server, Socket } from 'socket.io';
 import { config } from './config';
 import { db } from './db';
+import { isSessionActive, parseCookieHeader, verifySession, SESSION_COOKIE_NAME } from './sessions';
 
 let io: Server | null = null;
+let authSessionSweep: NodeJS.Timeout | null = null;
 let latestArcadeKioskGame: unknown = null;
 const latestArcadeGames = new Map<string, Record<string, unknown>>();
 type ArcadeWatcherChangeListener = (server: Server, matchId: string) => void;
@@ -88,8 +90,34 @@ function emitArcadeWatchList(server: Server): void {
   server.emit('arcade:watch:list', { matches: [...latestArcadeGames.values()].map(watchSummary) });
 }
 
-export function setIo(server: Server): void {
+export function setIo(server: Server | null): void {
   io = server;
+  if (authSessionSweep) clearInterval(authSessionSweep);
+  authSessionSweep = null;
+  if (!server) return;
+  authSessionSweep = setInterval(() => {
+    for (const socket of server.sockets.sockets.values()) {
+      const sessionId = socket.data.authSessionId;
+      if (typeof sessionId === 'string' && !isSessionActive(sessionId)) socket.disconnect(true);
+    }
+  }, 60_000);
+  authSessionSweep.unref();
+}
+
+export function disconnectSessionSockets(sessionId: string): void {
+  if (!io) return;
+  for (const socket of io.sockets.sockets.values()) {
+    if (socket.data.authSessionId === sessionId) socket.disconnect(true);
+  }
+}
+
+export function disconnectPlayerSockets(playerId: string, exceptSessionId?: string): void {
+  if (!io) return;
+  for (const socket of io.sockets.sockets.values()) {
+    if (socket.data.authPlayerId !== playerId) continue;
+    if (exceptSessionId && socket.data.authSessionId === exceptSessionId) continue;
+    socket.disconnect(true);
+  }
 }
 
 // Broadcast an event to every connected client. Safe to call before io is set
@@ -164,14 +192,49 @@ export function registerArcadeKioskSockets(server: Server): void {
   });
 }
 
-// Socket.IO connections bypass Express middleware entirely, so the REST
-// access-token gate (requireAccess) never sees them. Without this, realtime
-// data (live status, votes, leaderboard) would leak to anyone who opens a
-// WebSocket, even with ACCESS_TOKEN set — enforce the same shared token here.
+// Socket.IO connections bypass Express middleware entirely, so their access
+// rules mirror the REST API here: required mode accepts only a valid user
+// session, while legacy mode also supports the shared ACCESS_TOKEN.
 // Parameterized (defaulting to config.accessToken) so the exact matching
 // logic is unit-testable without depending on process-wide env state.
-export function createSocketAuthGuard(accessToken: string = config.accessToken) {
+//
+// Same-origin clients send the session cookie automatically. In legacy mode,
+// an existing user session remains a valid alternative to the shared token.
+export function createSocketAuthGuard(
+  accessToken: string = config.accessToken,
+  authMode: 'legacy' | 'required' = config.authMode,
+  kioskToken: string = config.kioskToken
+) {
   return (socket: Socket, next: (err?: Error) => void): void => {
+    if (
+      authMode === 'required' &&
+      socket.handshake.auth?.kiosk === true &&
+      Boolean(kioskToken) &&
+      socket.handshake.auth?.token === kioskToken
+    ) {
+      socket.data.kioskReadOnly = true;
+      socket.use(([event], proceed) => {
+        if (event === 'kiosk:subscribe') return proceed();
+        proceed(new Error('unauthorized'));
+      });
+      return next();
+    }
+    const sessionToken = parseCookieHeader(socket.handshake.headers.cookie)[SESSION_COOKIE_NAME];
+    const resolved = sessionToken ? verifySession(sessionToken) : undefined;
+    if (resolved) {
+      socket.data.authSessionId = resolved.session.id;
+      socket.data.authPlayerId = resolved.player.id;
+      if (authMode === 'required') {
+        socket.use(([_, payload], proceed) => {
+          if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+            (payload as Record<string, unknown>).playerId = resolved.player.id;
+          }
+          proceed();
+        });
+      }
+      return next();
+    }
+    if (authMode === 'required') return next(new Error('unauthorized'));
     if (!accessToken) return next();
     const token = socket.handshake.auth?.token ?? socket.handshake.query?.token;
     if (token === accessToken) return next();
@@ -181,6 +244,7 @@ export function createSocketAuthGuard(accessToken: string = config.accessToken) 
 
 // Event name constants keep client and server in sync and avoid typos.
 export const Events = {
+  groupsChanged: 'groups:changed',
   playersChanged: 'players:changed',
   gamesChanged: 'games:changed',
   skillsChanged: 'skills:changed',

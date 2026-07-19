@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-10
 - Branch: `claude/merge-conflicts-ui-symbols-0b61av`
-- Merge-Commit: [`ebd82f4`](https://github.com/blorbeer-cmd/LAN_2026/commit/ebd82f41a2905ec6d72ecec722eeaea096001b3f)
-- Pull Request: [#102](https://github.com/blorbeer-cmd/LAN_2026/pull/102)
+- Merge-Commit: [`ebd82f4`](https://github.com/blorbeer-cmd/Respawn/commit/ebd82f41a2905ec6d72ecec722eeaea096001b3f)
+- Pull Request: [#102](https://github.com/blorbeer-cmd/Respawn/pull/102)
 
 ## Changelog
 

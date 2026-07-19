@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Request, Response } from 'express';
-import { createAccessGuard, extractToken } from './auth';
+import { accessProtectionEnabled, createAccessGuard, extractToken } from './auth';
 
 // Builds a minimal fake Express request with the given header/query.
 function fakeReq(opts: { header?: string; query?: Record<string, unknown> }): Request {
@@ -83,4 +83,14 @@ test('guard accepts the correct token (calls next)', () => {
     called = true;
   });
   assert.equal(called, true);
+});
+
+test('required auth replaces the shared access-token guard', () => {
+  const guard = createAccessGuard('legacy-secret', 'required');
+  let called = false;
+  guard(fakeReq({}), fakeRes(), () => {
+    called = true;
+  });
+  assert.equal(called, true);
+  assert.equal(accessProtectionEnabled('legacy-secret', 'required'), false);
 });

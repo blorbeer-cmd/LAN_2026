@@ -9,17 +9,17 @@ setzt die noch offenen Punkte um. Die Nummerierung F1–F12 dient dem Nachreview
 
 | # | PR | Fund | Beleg im aktuellen Code |
 |---|---|---|---|
-| F1 | [#158](https://github.com/blorbeer-cmd/LAN_2026/pull/158#discussion_r3567234517) | Höhen-Cap (`100dvh - 18rem`) verzerrte expandierte Spielfelder | #160/#162 leiten die Breite inzwischen aus dem Höhen-Cap ab (`width: min(100%, calc((100dvh - 18rem) * <ratio>))` in `style.css`), `aspect-ratio` bleibt maßgeblich |
-| F2 | [#158](https://github.com/blorbeer-cmd/LAN_2026/pull/158#discussion_r3567234518) | Tetris-Overlays deckten die leere Spalte statt des Boards ab | `.is-expanded .tetris-canvas-wrap` ist auf `min(100%, calc((100dvh - 18rem) / 2))` begrenzt und die Canvas füllt den Wrap (`width: 100%`), Overlays liegen damit auf dem sichtbaren Board |
-| F6 | [#163](https://github.com/blorbeer-cmd/LAN_2026/pull/163#discussion_r3568089106) | Match-Ende navigierte Nutzer aus fremden Views weg | Alle Redirects in `arcadeWatch.js` sind seit #164 mit `isArcadeWatchView()` geschützt |
-| F8/F10 | [#166](https://github.com/blorbeer-cmd/LAN_2026/pull/166#discussion_r3568791891), [#167](https://github.com/blorbeer-cmd/LAN_2026/pull/167#discussion_r3568849588) | Scribble-Streams wurden auf dunklem `--bg` statt weißem Papier repliziert | `arcadeStreamRenderer.js` füllt Scribble-Canvases mit `SCRIBBLE_PAPER_COLOR` (`#ffffff`) |
-| F11 | [#167](https://github.com/blorbeer-cmd/LAN_2026/pull/167#discussion_r3568849593) | Gespeicherte Scribble-Bilder wurden 4:3 statt 8:5 angezeigt | `.scribble-stored-canvas-wrap` hat `aspect-ratio: 8 / 5` |
+| F1 | [#158](https://github.com/blorbeer-cmd/Respawn/pull/158#discussion_r3567234517) | Höhen-Cap (`100dvh - 18rem`) verzerrte expandierte Spielfelder | #160/#162 leiten die Breite inzwischen aus dem Höhen-Cap ab (`width: min(100%, calc((100dvh - 18rem) * <ratio>))` in `style.css`), `aspect-ratio` bleibt maßgeblich |
+| F2 | [#158](https://github.com/blorbeer-cmd/Respawn/pull/158#discussion_r3567234518) | Tetris-Overlays deckten die leere Spalte statt des Boards ab | `.is-expanded .tetris-canvas-wrap` ist auf `min(100%, calc((100dvh - 18rem) / 2))` begrenzt und die Canvas füllt den Wrap (`width: 100%`), Overlays liegen damit auf dem sichtbaren Board |
+| F6 | [#163](https://github.com/blorbeer-cmd/Respawn/pull/163#discussion_r3568089106) | Match-Ende navigierte Nutzer aus fremden Views weg | Alle Redirects in `arcadeWatch.js` sind seit #164 mit `isArcadeWatchView()` geschützt |
+| F8/F10 | [#166](https://github.com/blorbeer-cmd/Respawn/pull/166#discussion_r3568791891), [#167](https://github.com/blorbeer-cmd/Respawn/pull/167#discussion_r3568849588) | Scribble-Streams wurden auf dunklem `--bg` statt weißem Papier repliziert | `arcadeStreamRenderer.js` füllt Scribble-Canvases mit `SCRIBBLE_PAPER_COLOR` (`#ffffff`) |
+| F11 | [#167](https://github.com/blorbeer-cmd/Respawn/pull/167#discussion_r3568849593) | Gespeicherte Scribble-Bilder wurden 4:3 statt 8:5 angezeigt | `.scribble-stored-canvas-wrap` hat `aspect-ratio: 8 / 5` |
 
 ## In diesem Branch umgesetzt
 
 ### F3/F5 – Expandierte Scribble-Canvas verlor das 8:5-Verhältnis
 
-- Kommentare: [#160](https://github.com/blorbeer-cmd/LAN_2026/pull/160#discussion_r3567266502), [#162](https://github.com/blorbeer-cmd/LAN_2026/pull/162#discussion_r3567304706)
+- Kommentare: [#160](https://github.com/blorbeer-cmd/Respawn/pull/160#discussion_r3567266502), [#162](https://github.com/blorbeer-cmd/Respawn/pull/162#discussion_r3567304706)
 - Befund bestätigt: Die Regel `.arcade-game-shell.is-expanded … canvas { height: auto; }`
   galt auch für `#scribble-canvas`. Die Scribble-Canvas trägt beim ersten Render
   keine `width`/`height`-Attribute; `height: auto` fiel damit auf das intrinsische
@@ -37,7 +37,7 @@ setzt die noch offenen Punkte um. Die Nummerierung F1–F12 dient dem Nachreview
 
 ### F4 – Tetris-Glow erzeugte horizontales Scrollen im Expand-Modus
 
-- Kommentar: [#160](https://github.com/blorbeer-cmd/LAN_2026/pull/160#discussion_r3567266503)
+- Kommentar: [#160](https://github.com/blorbeer-cmd/Respawn/pull/160#discussion_r3567266503)
 - Befund bestätigt: `.tetris-boards::before` (`inset: -24px`) ragte bei
   nahezu voller Viewport-Breite über `.view-container` hinaus; das frühere
   `overflow: hidden` der Expanded-Regel war beim Umbau in #160 entfallen.
@@ -50,13 +50,13 @@ setzt die noch offenen Punkte um. Die Nummerierung F1–F12 dient dem Nachreview
 
 ### F7 – Stale Watch-History-Eintrag blieb auf „Verbindung…“ hängen
 
-- Kommentar: [#164](https://github.com/blorbeer-cmd/LAN_2026/pull/164#discussion_r3568146651)
+- Kommentar: [#164](https://github.com/blorbeer-cmd/Respawn/pull/164#discussion_r3568146651)
 - Befund bestätigt: Verlässt ein Zuschauer die Watch-View über die globale
   Navigation und endet das Match danach, blieb der `arcadeWatch`-History-Eintrag
   bestehen. Zurück-Taste ⇒ `renderArcadeWatch()` ohne `watchedMatchId` ⇒ tote
   „Verbindung…“-Ansicht ohne weitere Updates.
 - Fix:
-  - `server/public/js/app.js`: `switchView()` und das `lan:navigate`-Event
+  - `server/public/js/app.js`: `switchView()` und das `respawn:navigate`-Event
     unterstützen jetzt `{ view, replace: true }` — der Redirect ersetzt den
     aktuellen History-Eintrag per `history.replaceState` statt zu pushen.
     Ein Push hätte eine Back-Falle erzeugt (Back ⇒ stale Eintrag ⇒ Redirect
@@ -74,7 +74,7 @@ setzt die noch offenen Punkte um. Die Nummerierung F1–F12 dient dem Nachreview
 
 ### F9 – Rejoin während der Galerie parkte alte Strokes für die nächste Runde
 
-- Kommentar: [#167](https://github.com/blorbeer-cmd/LAN_2026/pull/167#discussion_r3568849582)
+- Kommentar: [#167](https://github.com/blorbeer-cmd/Respawn/pull/167#discussion_r3568849582)
 - Befund bestätigt: `scribble:rejoin` setzte `replayStrokesOnNextCanvas`
   bedingungslos. Außerhalb der Drawing-Phase ist keine Canvas gemountet, die
   den Wert konsumiert; das nächste `setupCanvas()` (neue Runde, leere Canvas)
@@ -88,7 +88,7 @@ setzt die noch offenen Punkte um. Die Nummerierung F1–F12 dient dem Nachreview
 
 ### F12 – Aufgelöste Rundenbilder blieben in der Folgerunde bewertbar
 
-- Kommentar: [#167](https://github.com/blorbeer-cmd/LAN_2026/pull/167#discussion_r3568849597)
+- Kommentar: [#167](https://github.com/blorbeer-cmd/Respawn/pull/167#discussion_r3568849597)
 - Befund bestätigt: `startNextTurn()` ließ `currentDrawingId` stehen. Nach der
   Galerie-Auflösung behandelten `spectatorVoting()` und `scribble:reaction`
   das bereits gekürte Bild weiter als aktuelles Reaktionsziel; die Watch-View

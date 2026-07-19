@@ -9,6 +9,7 @@ import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { shouldSendLobbyPush } from './lobbyPush';
+import { currentArcadeDataScope, recordArcadeResult } from './arcadeData';
 
 const DEFAULT_TARGET_SCORE = 5;
 const QUESTION_MS = 20_000;
@@ -109,18 +110,20 @@ function realPlayerIds(players: PlayerRef[]): string[] {
 }
 
 function loadQuestionFor(match: MatchState): QuizQuestion | null {
+  const scope = currentArcadeDataScope(realPlayerIds(match.players));
+  if (!scope) return null;
   const questions = db
-    .prepare('SELECT id, question, answers, category, difficulty FROM quiz_questions ORDER BY created_at')
-    .all() as QuizQuestion[];
+    .prepare('SELECT id, question, answers, category, difficulty FROM quiz_questions WHERE group_id = ? ORDER BY created_at')
+    .all(scope.groupId) as QuizQuestion[];
   const seenRows = db
     .prepare(
       `SELECT question_id
        FROM quiz_seen
-       WHERE player_id IN (${match.players.map(() => '?').join(',')})
+       WHERE group_id = ? AND event_id IS ? AND player_id IN (${match.players.map(() => '?').join(',')})
        GROUP BY question_id
        HAVING COUNT(DISTINCT player_id) = ?`
     )
-    .all(...match.players.map((p) => p.id), match.players.length) as Array<{ question_id: string }>;
+    .all(scope.groupId, scope.eventId, ...match.players.map((p) => p.id), match.players.length) as Array<{ question_id: string }>;
   const id = pickQuestion(
     questions.map((q) => q.id),
     new Set(seenRows.map((r) => r.question_id))
@@ -142,33 +145,43 @@ function firstAcceptedAnswer(question: QuizQuestion): string {
 
 function markSeen(match: MatchState, winnerId: string | null) {
   if (!match.currentQuestion) return;
+  const players = realPlayerIds(match.players);
+  const scope = currentArcadeDataScope(players);
+  if (!scope) return;
   const now = Date.now();
   const stmt = db.prepare(
-    `INSERT INTO quiz_seen (question_id, player_id, seen_at, was_correct)
-     VALUES (?, ?, ?, ?)
-     ON CONFLICT(question_id, player_id) DO UPDATE SET seen_at = excluded.seen_at, was_correct = excluded.was_correct`
+    `INSERT INTO quiz_seen
+       (question_id, player_id, seen_at, was_correct, group_id, event_id, player_name_snapshot)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(question_id, player_id) DO UPDATE SET
+       seen_at = excluded.seen_at, was_correct = excluded.was_correct,
+       group_id = excluded.group_id, event_id = excluded.event_id,
+       player_name_snapshot = excluded.player_name_snapshot`
   );
   for (const p of match.players.filter((player) => player.id !== QUIZ_BOT.id)) {
-    stmt.run(match.currentQuestion.id, p.id, now, winnerId === null ? null : winnerId === p.id ? 1 : 0);
+    stmt.run(
+      match.currentQuestion.id,
+      p.id,
+      now,
+      winnerId === null ? null : winnerId === p.id ? 1 : 0,
+      scope.groupId,
+      scope.eventId,
+      p.name,
+    );
   }
 }
 
 function finishMatch(io: Server, match: MatchState, winner: PlayerRef | null, reason = 'completed') {
   clearQuestionTimer(match);
   endArcadeSession(realPlayerIds(match.players), 'quiz');
-  db.prepare(
-    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    nanoid(),
-    'quiz',
-    winner?.id === QUIZ_BOT.id ? null : winner?.id ?? null,
-    JSON.stringify(match.players),
-    JSON.stringify(scorePayload(match)),
+  recordArcadeResult({
+    gameType: 'quiz',
+    winnerId: winner?.id === QUIZ_BOT.id ? null : winner?.id ?? null,
+    players: match.players,
+    scores: scorePayload(match),
     reason,
-    match.startedAt,
-    Date.now()
-  );
+    startedAt: match.startedAt,
+  });
   io.to(match.room).emit('arcade:match:end', { matchId: match.id, winner, reason, scores: scorePayload(match) });
   broadcastArcadeKiosk(io, { gameType: null, matchId: match.id });
   matches.delete(match.id);
@@ -299,7 +312,7 @@ export function registerArcadeSockets(io: Server): void {
         notifyPlayers(
           otherPlayerIds,
           {
-            title: '🕹️ Neue Quiz-Lobby',
+            title: 'Neue Quiz-Lobby',
             body: `${player.name} hat eine Quiz-Lobby geöffnet – jetzt beitreten!`,
             url: '/#arcade',
           },
@@ -309,7 +322,7 @@ export function registerArcadeSockets(io: Server): void {
       }
     });
 
-    socket.on('arcade:lobby:bot', (payload: { playerId?: string; adminPin?: string }, ack?: (res: unknown) => void) => {
+    socket.on('arcade:lobby:bot', (payload: { playerId?: string }, ack?: (res: unknown) => void) => {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
@@ -483,6 +496,22 @@ export function registerArcadeSockets(io: Server): void {
       if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann beenden.' });
       finishMatch(io, match, null, 'ended-by-host');
+      ack?.({ ok: true });
+    });
+
+    // Lets a non-host participant end a running match themselves instead of
+    // relying on the host (who might be AFK) or a raw disconnect — same
+    // outcome as a disconnect mid-match.
+    socket.on('arcade:match:leave', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      const leaver = match.players.find((p) => p.id === payload?.playerId);
+      if (!leaver) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
+      // socket.to (not io.to): the leaver's own socket is still joined to
+      // match.room at this point (unlike a real disconnect), so io.to would
+      // also show them their own "opponent left" toast.
+      socket.to(match.room).emit('arcade:match:opponent-left', { matchId: match.id, playerId: leaver.id });
+      finishMatch(io, match, null, 'player-left');
       ack?.({ ok: true });
     });
 

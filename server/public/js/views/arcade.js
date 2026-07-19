@@ -18,21 +18,52 @@ import {
 import { ensureBlobbySocket, renderBlobbyLobbyCard, wireBlobbyLobbyCard, myBlobbyLobby, hasBlobbyMatch, blobbyLobbies, leaveMyBlobbyLobby } from './blobby.js';
 import { ensurePongSocket, renderPongLobbyCard, wirePongLobbyCard, myPongLobby, hasPongMatch, pongLobbies, leaveMyPongLobby } from './pong.js';
 import { ensureSnakeSocket, renderSnakeLobbyCard, wireSnakeLobbyCard, mySnakeLobby, hasSnakeMatch, snakeLobbies, leaveMySnakeLobby } from './snake.js';
-import { arcadeExpandControlHtml, arcadeInfoGridHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 import { startArcadeWatch } from './arcadeWatch.js';
 import { confirmDialog } from '../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { lobbyPlayerChipsHtml, readySummaryText, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 // The Arcade opens as a launcher: a compact grid of playable game tiles.
 // Picking one reveals that game's lobby below.
 const GAMES = [
-  { id: 'quiz', icon: icon('brain'), name: 'Gaming-Quiz' },
-  { id: 'tetris', icon: '🧩', name: 'Tetris' },
-  { id: 'scribble', icon: icon('pencil'), name: 'Scribble' },
-  { id: 'pong', icon: icon('gitCommitVertical'), name: 'Pong' },
-  { id: 'blobby', icon: icon('volleyball'), name: 'Blobby Volley' },
-  { id: 'snake', icon: icon('snake'), name: 'Snake' },
+  {
+    id: 'quiz',
+    icon: icon('brain'),
+    name: 'Gaming-Quiz',
+    help: 'Ziel: Richtige Antworten sammeln. Steuerung: Antwort tippen und senden.',
+  },
+  {
+    id: 'tetris',
+    icon: icon('blocks'),
+    name: 'Tetris',
+    help: 'Ziel: Überleben. Steuerung: Pfeiltasten und Leertaste.',
+  },
+  {
+    id: 'scribble',
+    icon: icon('pencil'),
+    name: 'Scribble',
+    help: 'Ziel: Wörter erraten und Punkte sammeln. Steuerung: Zeichnen und tippen.',
+  },
+  {
+    id: 'pong',
+    icon: icon('gitCommitVertical'),
+    name: 'Pong',
+    help: 'Ziel: Erreiche zuerst die Punktzahl. Steuerung: Pfeiltasten.',
+  },
+  {
+    id: 'blobby',
+    icon: icon('volleyball'),
+    name: 'Blobby Volley',
+    help: 'Ziel: Erreiche zuerst die Punktzahl. Steuerung: Pfeiltasten.',
+  },
+  {
+    id: 'snake',
+    icon: icon('snake'),
+    name: 'Snake',
+    help: 'Ziel: Länger leben als die andere Schlange. Steuerung: Pfeiltasten.',
+  },
 ];
 
 let socket = null;
@@ -47,7 +78,7 @@ let match = null;
 let currentQuestion = null;
 let lastResult = null;
 let countdownInterval = null;
-let customTarget = '';
+let customTarget = '5';
 
 function currentView() {
   return document.getElementById('view-container')?.dataset.view;
@@ -59,7 +90,7 @@ function rerenderIfView(ctx, view) {
 
 // The Tetris view lives in its own module; when one of its matches finishes it
 // fires this so our cached highscores refetch the next time Arcade renders.
-window.addEventListener('lan:arcade-stats-dirty', () => {
+window.addEventListener('respawn:arcade-stats-dirty', () => {
   stats = null;
   scribbleGallery = [];
 });
@@ -175,7 +206,7 @@ function ensureSocket(ctx) {
 }
 
 function navigate(view) {
-  window.dispatchEvent(new CustomEvent('lan:navigate', { detail: view }));
+  window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view }));
 }
 
 function emitWithAck(event, payload) {
@@ -194,8 +225,12 @@ function scribbleArtStatsHtml(game) {
   const artRows = players.length
     ? players.map((player, index) => `
         <div class="lb-row scribble-art-stat-row">
-          <span><strong>${index + 1}. ${escapeHtml(player.name)}</strong><span class="muted"> · ${player.drawings} Bilder</span></span>
-          <span class="muted" style="text-align:right;">${player.roundWins} Rundenbilder · ${player.favorites} Favoriten<br />Cool ${player.reactionBreakdown.cool} · Kreativ ${player.reactionBreakdown.creative} · Witzig ${player.reactionBreakdown.funny}</span>
+          <span class="lb-rank">${index + 1}</span>
+          <span class="leaderboard-row-main">
+            <strong class="player-name leaderboard-row-name">${escapeHtml(player.name)}</strong>
+            <span class="muted leaderboard-row-stat">${player.drawings} Bilder · ${player.roundWins} Rundenbilder · ${player.favorites} Favoriten</span>
+            <span class="muted leaderboard-row-stat">Cool ${player.reactionBreakdown.cool} · Kreativ ${player.reactionBreakdown.creative} · Witzig ${player.reactionBreakdown.funny}</span>
+          </span>
         </div>`).join('')
     : `<div class="empty-state" style="padding:var(--space-4);">Noch keine bewerteten Scribble-Bilder.</div>`;
   const galleryHtml = scribbleGallery.length
@@ -208,9 +243,17 @@ function scribbleArtStatsHtml(game) {
     : `<div class="empty-state" style="padding:var(--space-4);">Noch kein Rundenbild gekürt.</div>`;
   return `
     <div class="section-title">Beste Bilder pro Spieler</div>
-    <div>${artRows}</div>
+    <div class="leaderboard-list-grid">${artRows}</div>
     <div class="section-title">Rundenbilder-Galerie</div>
     ${galleryHtml}`;
+}
+
+function arcadeMatchCountLabel(count) {
+  return `${count} ${count === 1 ? 'Match' : 'Matches'}`;
+}
+
+function arcadeResultLabel(wins, losses) {
+  return `${wins} ${wins === 1 ? 'Sieg' : 'Siege'} · ${losses} ${losses === 1 ? 'Niederlage' : 'Niederlagen'}`;
 }
 
 function arcadeStatsHtml() {
@@ -220,58 +263,39 @@ function arcadeStatsHtml() {
   if (!games.length) return `<div class="empty-state" style="padding:var(--space-4);">Noch keine abgeschlossenen Arcade-Runden.</div>`;
   if (!games.some((g) => g.gameType === activeStatsGame)) activeStatsGame = games[0].gameType;
 
-  const tabs =
-    games.length > 1
-      ? `<div class="row" style="gap:var(--space-2);flex-wrap:wrap;">${games
+  const gameSelect = `
+    <div>
+      <label for="arcade-stats-game" class="field-label">Spiel auswählen</label>
+      <select id="arcade-stats-game">
+        ${games
           .map(
-            (g) =>
-              `<button type="button" class="btn btn-sm ${g.gameType === activeStatsGame ? 'btn-primary' : ''}" data-stats-tab="${g.gameType}">${escapeHtml(g.title)}</button>`
+            (g) => `<option value="${g.gameType}" ${g.gameType === activeStatsGame ? 'selected' : ''}>${escapeHtml(g.title)} · ${arcadeMatchCountLabel(g.matches)}</option>`
           )
-          .join('')}</div>`
-      : '';
+          .join('')}
+      </select>
+    </div>`;
 
   const game = games.find((g) => g.gameType === activeStatsGame);
-  const medals = ['🥇', '🥈', '🥉'];
   const rows = game.players
     .slice(0, 5)
     .map(
       (p, i) => `
         <div class="lb-row">
-          <span>${medals[i] ?? `${i + 1}.`} ${escapeHtml(p.name)}</span>
-          <span class="muted" style="font-variant-numeric:tabular-nums;">${p.wins}–${p.losses} · ${Math.round(p.winRate * 100)}%</span>
+          <span class="lb-rank">${i + 1}</span>
+          <span class="leaderboard-row-main">
+            <strong class="player-name leaderboard-row-name">${escapeHtml(p.name)}</strong>
+            <span class="muted leaderboard-row-stat">${arcadeResultLabel(p.wins, p.losses)}</span>
+          </span>
+          <strong class="lb-points">${Math.round(p.winRate * 100)}%</strong>
         </div>`
     )
     .join('');
   return `
-    ${tabs}
+    ${gameSelect}
     <div class="arcade-stat-game">
-      <div class="row-between">
-        <strong>${escapeHtml(game.title)} · W–L-Ratio</strong>
-        <span class="badge">${game.matches} Match(es)</span>
-      </div>
-      ${rows}
+      <div class="leaderboard-list-grid">${rows}</div>
     </div>
     ${game.gameType === 'scribble' ? scribbleArtStatsHtml(game) : ''}`;
-}
-
-function targetControls(lobby) {
-  const myId = getMyId();
-  if (!lobby || lobby.host.id !== myId) return '';
-  return `
-    <div class="card stack" style="margin-top:var(--space-3);">
-      <strong>Start</strong>
-      <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
-        <label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="target-score" value="5" checked />5</label>
-        <label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="target-score" value="10" />10</label>
-        <label class="check-row" style="padding:var(--space-2) var(--space-3);"><input type="radio" name="target-score" value="20" />20</label>
-        <label class="row" style="gap:var(--space-2);align-items:center;">
-          <input type="radio" name="target-score" value="custom" />
-          <input type="number" id="target-custom" min="1" max="100" value="${escapeHtml(customTarget)}" placeholder="frei" style="width:78px;" />
-        </label>
-      </div>
-      <div class="muted" style="font-size:var(--font-size-xs);">${readySummaryText(lobby)}</div>
-      <button type="button" class="btn btn-primary btn-block" id="quiz-start-lobby" ${lobby.players.length < 2 ? 'disabled' : ''}>Start</button>
-    </div>`;
 }
 
 function renderLobbyList() {
@@ -280,20 +304,22 @@ function renderLobbyList() {
     .map((l) => {
       const isHost = l.host.id === getMyId();
       const joined = l.players.some((p) => p.id === getMyId());
-      const action = isHost
-        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-close-lobby="${l.id}">Schließen</button>`
+      const settingsHtml = isHost
+        ? `<label class="arcade-lobby-target-score">
+            <span>Punkte bis Sieg</span>
+            <input type="number" id="target-score" min="1" max="100" value="${escapeHtml(customTarget)}" aria-label="Punkte bis Sieg" />
+          </label>`
+        : '';
+      const footerActions = isHost
+        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-close-lobby="${l.id}">Schließen</button>
+          <button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-start-lobby" ${l.players.length < 2 ? 'disabled' : ''}>Start</button>`
         : joined
           ? readyToggleHtml(l, getMyId(), 'quiz-ready')
-          : `<button type="button" class="btn btn-sm btn-equal btn-primary" data-join-lobby="${l.id}">Beitreten</button>`;
-      return `
-        <div class="lb-row" style="align-items:flex-start;">
-          <div class="stack" style="gap:var(--space-2);flex:1;">
-            <strong>${escapeHtml(l.host.name)}s Quiz-Lobby</strong>
-            <div class="chip-list">${lobbyPlayerChipsHtml(l)}</div>
-            <div class="muted" style="font-size:var(--font-size-xs);">${l.players.length} Spieler · ${readySummaryText(l)}</div>
-          </div>
-          ${action}
-        </div>`;
+          : '';
+      const joinAction = !joined && !isHost
+        ? `<button type="button" class="btn btn-sm btn-primary" data-join-lobby="${l.id}">Beitreten</button>`
+        : '';
+      return arcadeLobbyEntryHtml(l, { joinAction, settingsHtml, footerActions });
     })
     .join('');
 }
@@ -305,7 +331,17 @@ function secondsLeft() {
 }
 
 function matchControlsHtml() {
-  if (!match || match.ended || match.host?.id !== getMyId()) return '';
+  if (!match || match.ended) return '';
+  const isHost = match.host?.id === getMyId();
+  if (!isHost) {
+    // A non-host player can't pause (shared timer state, host-only), but
+    // must still have a way out instead of only a raw tab close.
+    if (!match.players.some((p) => p.id === getMyId())) return '';
+    return `
+      <div class="arcade-match-controls">
+        <button type="button" class="btn btn-sm btn-equal btn-danger" id="quiz-leave">Verlassen</button>
+      </div>`;
+  }
   return `
     <div class="arcade-match-controls">
       ${
@@ -431,67 +467,35 @@ function openLobbyCount(gameId) {
 
 function gameTileHtml(game, active, count) {
   return `
-    <button type="button" class="card arcade-tile ${active === game.id ? 'is-active' : ''} ${game.soon ? 'is-soon' : ''}" data-game="${game.id}">
-      ${game.soon ? `<span class="arcade-tile-soon">Bald</span>` : count > 0 ? `<span class="arcade-tile-count">${count}</span>` : ''}
+    <button type="button" class="card arcade-tile ${active === game.id ? 'is-active' : ''} ${game.soon ? 'is-soon' : ''}" data-game="${game.id}" aria-pressed="${active === game.id}">
       <span class="arcade-tile-icon" aria-hidden="true">${game.icon}</span>
       <span class="arcade-tile-name">${escapeHtml(game.name)}</span>
+      ${game.soon ? `<span class="badge arcade-tile-state">Bald</span>` : count > 0 ? `<span class="badge arcade-tile-count">${count} offen</span>` : ''}
     </button>`;
-}
-
-// Compact, always-current list of just the open lobbies, grouped and sorted
-// by game (in the same fixed order as the tile grid) — a game that currently
-// has no open lobby doesn't get a row at all. Each row's sub-line names every
-// open lobby's host and current player count, so a glance is enough to know
-// who's waiting and whether it's worth joining, without expanding anything.
-// Tapping a row still expands that game's full section below, same as
-// tapping its tile.
-function openLobbiesOverviewHtml() {
-  const rows = GAMES.filter((g) => !g.soon)
-    .map((g) => ({ game: g, lobbies: gameLobbies(g.id) }))
-    .filter(({ lobbies: gl }) => gl.length > 0);
-  if (rows.length === 0) return '';
-  return `
-    <div class="section-title">Offene Lobbys</div>
-    <div class="arcade-lobby-grid" style="margin-bottom:var(--space-3);">
-      ${rows
-        .map(({ game, lobbies: gl }) => {
-          const hostsSummary = gl
-            .map((l) => `${escapeHtml(l.host.name)} · ${l.players.length} Spieler`)
-            .join(', ');
-          return `
-        <button type="button" class="card row list-row" data-game="${game.id}">
-          <span class="list-row-icon" aria-hidden="true">${game.icon}</span>
-          <span style="flex:1;min-width:0;">
-            <div class="player-name">${escapeHtml(game.name)}</div>
-            <div class="muted list-row-desc">${hostsSummary}</div>
-          </span>
-          <span class="badge">${gl.length} offen</span>
-        </button>`;
-        })
-        .join('')}
-    </div>`;
 }
 
 function runningMatchesOverviewHtml() {
   if (watchMatches.length === 0) return '';
   return `
-    <div class="section-title">Laufende Spiele</div>
-    <div class="arcade-watch-list" style="margin-bottom:var(--space-3);">
-      ${watchMatches
-        .map((live) => {
-          const game = GAMES.find((entry) => entry.id === live.gameType);
-          const players = (live.players ?? []).map((player) => escapeHtml(player.name ?? player.ref?.name ?? 'Spieler')).join(' · ');
-          const scoreText = (live.scores ?? []).map((score) => `${escapeHtml(score.name ?? 'Spieler')}: ${score.score ?? 0}`).join(' · ');
-          return `<div class="card arcade-watch-list-row">
-            <div class="stack" style="gap:var(--space-1);min-width:0;">
-              <strong>${game?.icon ?? ''} ${escapeHtml(game?.name ?? live.gameType)}</strong>
-              <span class="muted list-row-desc">${players || 'Spiel läuft'}${scoreText ? ` · ${scoreText}` : ''}</span>
-            </div>
-            <button type="button" class="btn btn-sm btn-primary" data-watch-match="${escapeHtml(live.matchId)}">Zuschauen</button>
-          </div>`;
-        })
-        .join('')}
-    </div>`;
+    <section class="card stack grouped-page-section" aria-labelledby="arcade-running-title">
+      <div class="grouped-page-section-title"><h2 id="arcade-running-title">Laufende Spiele</h2></div>
+      <div class="arcade-watch-list two-column-card-grid">
+        ${watchMatches
+          .map((live) => {
+            const game = GAMES.find((entry) => entry.id === live.gameType);
+            const players = (live.players ?? []).map((player) => escapeHtml(player.name ?? player.ref?.name ?? 'Spieler')).join(' · ');
+            const scoreText = (live.scores ?? []).map((score) => `${escapeHtml(score.name ?? 'Spieler')}: ${score.score ?? 0}`).join(' · ');
+            return `<div class="card arcade-watch-list-row">
+              <div class="stack" style="gap:var(--space-1);min-width:0;">
+                <strong>${game?.icon ?? ''} ${escapeHtml(game?.name ?? live.gameType)}</strong>
+                <span class="muted list-row-desc">${players || 'Spiel läuft'}${scoreText ? ` · ${scoreText}` : ''}</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-primary" data-watch-match="${escapeHtml(live.matchId)}">Zuschauen</button>
+            </div>`;
+          })
+          .join('')}
+      </div>
+    </section>`;
 }
 
 // The lobby/match UI for the currently selected game, shown under the tiles.
@@ -500,30 +504,24 @@ function runningMatchesOverviewHtml() {
 function activeGameHtml() {
   const game = currentGame();
   if (game === 'quiz') {
-    const lobby = myLobby();
     return `
-      <div class="card stack" style="margin-top:var(--space-3);">
-        <div class="row-between" style="gap:var(--space-3);">
-          <strong>Quiz-Lobby</strong>
-          <div class="row" style="gap:var(--space-2);">${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm btn-equal" id="quiz-bot" ${match ? 'disabled' : ''}>Gegen KI</button>` : ''}<button type="button" class="btn btn-primary btn-sm btn-equal" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button></div>
-        </div>
-        ${arcadeInfoGridHtml([
-          { label: 'Ziel', text: 'Richtige Antworten sammeln.' },
-          { label: 'Steuerung', text: 'Antwort tippen und senden.' },
-        ])}
+      <div class="card stack arcade-lobby-card">
         ${renderLobbyList()}
-      </div>
-      ${targetControls(lobby)}`;
+        <div class="arcade-lobby-create-actions">
+          <button type="button" class="btn btn-primary btn-sm" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button>
+          ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="quiz-bot" ${match ? 'disabled' : ''}>Gegen KI</button>` : ''}
+        </div>
+      </div>`;
   }
   if (game === 'tetris') {
-    return `<div style="margin-top:var(--space-3);">${renderTetrisLobbyCard()}</div>`;
+    return `<div>${renderTetrisLobbyCard()}</div>`;
   }
   if (game === 'scribble') {
-    return `<div style="margin-top:var(--space-3);">${renderScribbleLobbyCard()}</div>`;
+    return `<div>${renderScribbleLobbyCard()}</div>`;
   }
-  if (game === 'pong') return `<div style="margin-top:var(--space-3);">${renderPongLobbyCard()}</div>`;
-  if (game === 'blobby') return `<div style="margin-top:var(--space-3);">${renderBlobbyLobbyCard()}</div>`;
-  if (game === 'snake') return `<div style="margin-top:var(--space-3);">${renderSnakeLobbyCard()}</div>`;
+  if (game === 'pong') return `<div>${renderPongLobbyCard()}</div>`;
+  if (game === 'blobby') return `<div>${renderBlobbyLobbyCard()}</div>`;
+  if (game === 'snake') return `<div>${renderSnakeLobbyCard()}</div>`;
   return '';
 }
 
@@ -538,22 +536,41 @@ export function renderArcade(container, ctx) {
   const lobby = myLobby();
 
   const cg = currentGame();
+  const activeGameDefinition = GAMES.find((game) => game.id === cg);
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Arcade</h1>
     ${whoAmICardHtml('whoami')}
-    <div class="section-title">🎮 Spiele</div>
-    <div class="arcade-tiles">
-      ${GAMES.map((g) => gameTileHtml(g, cg, openLobbyCount(g.id))).join('')}
+    <div class="grouped-page-sections" style="margin-top:var(--space-3);">
+      <section class="card stack grouped-page-section" aria-labelledby="arcade-games-title">
+        <div class="grouped-page-section-title"><h2 id="arcade-games-title">Spiele</h2></div>
+        <div class="arcade-tiles">
+          ${GAMES.map((g) => gameTileHtml(g, cg, openLobbyCount(g.id))).join('')}
+        </div>
+      </section>
+      ${runningMatchesOverviewHtml()}
+      ${
+        activeGameDefinition
+          ? `<section class="card stack grouped-page-section" aria-labelledby="arcade-active-game-title">
+               <div class="grouped-page-section-title">
+                 <div class="row arcade-active-game-title">
+                   <h2 id="arcade-active-game-title">${escapeHtml(activeGameDefinition.name)}</h2>
+                   ${infoTooltipHtml(`arcade-${activeGameDefinition.id}-game-info`, activeGameDefinition.name, activeGameDefinition.help)}
+                 </div>
+               </div>
+               ${activeGameHtml()}
+             </section>`
+          : ''
+      }
+      <section class="card stack grouped-page-section" aria-labelledby="arcade-stats-title">
+        <div class="grouped-page-section-title"><h2 id="arcade-stats-title">Statistiken</h2></div>
+        ${arcadeStatsHtml()}
+      </section>
     </div>
-    ${runningMatchesOverviewHtml()}
-    ${openLobbiesOverviewHtml()}
-    ${activeGameHtml()}
-    <div class="section-title">📊 Arcade-Statistiken</div>
-    <div class="card stack">${arcadeStatsHtml()}</div>
   `;
 
   wireWhoAmICard(container, 'whoami', ctx);
+  wireInfoTooltips(container);
   wireTetrisLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('tetris', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('tetris', 'join') });
   wireScribbleLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('scribble', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('scribble', 'join') });
   wirePongLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('pong', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('pong', 'join') });
@@ -574,11 +591,9 @@ export function renderArcade(container, ctx) {
     btn.addEventListener('click', () => startArcadeWatch(btn.dataset.watchMatch));
   });
 
-  container.querySelectorAll('[data-stats-tab]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      activeStatsGame = btn.dataset.statsTab;
-      ctx.rerender();
-    });
+  container.querySelector('#arcade-stats-game')?.addEventListener('change', (event) => {
+    activeStatsGame = event.currentTarget.value;
+    ctx.rerender();
   });
 
   container.querySelectorAll('canvas[data-arcade-gallery-drawing]').forEach((canvas) => {
@@ -625,14 +640,13 @@ export function renderArcade(container, ctx) {
     if (!res?.ok) showToast(res?.error || 'Bereit-Status konnte nicht gesetzt werden.', { error: true });
   });
 
-  container.querySelector('#target-custom')?.addEventListener('input', (e) => {
+  container.querySelector('#target-score')?.addEventListener('input', (e) => {
     customTarget = e.target.value;
   });
 
   container.querySelector('#quiz-start-lobby')?.addEventListener('click', async () => {
     const playerId = getMyId();
-    const selected = container.querySelector('input[name="target-score"]:checked')?.value ?? '5';
-    const targetScore = selected === 'custom' ? Number(container.querySelector('#target-custom').value) : Number(selected);
+    const targetScore = Number(container.querySelector('#target-score')?.value ?? 5);
     const res = await emitWithAck('arcade:lobby:start', { lobbyId: lobby.id, playerId, targetScore });
     if (!res?.ok) showToast(res?.error || 'Start fehlgeschlagen.', { error: true });
   });
@@ -692,6 +706,12 @@ function wireQuizMatch(container) {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
     const res = await emitWithAck('arcade:match:finish', { matchId: match?.matchId, playerId: getMyId() });
     if (!res?.ok) showToast(res?.error || 'Beenden fehlgeschlagen.', { error: true });
+  });
+
+  container.querySelector('#quiz-leave')?.addEventListener('click', async () => {
+    if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
+    const res = await emitWithAck('arcade:match:leave', { matchId: match?.matchId, playerId: getMyId() });
+    if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
   });
 
   container.querySelector('#quiz-back')?.addEventListener('click', () => {

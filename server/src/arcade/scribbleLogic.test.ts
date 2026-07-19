@@ -10,7 +10,6 @@ import {
   pickWordChoices,
   pointsForDrawer,
   pointsForGuess,
-  selectRoundWinnerIds,
   wordMask,
 } from './scribbleLogic';
 
@@ -86,35 +85,6 @@ test('isMatchComplete compares turns played against rounds * player count', () =
   assert.equal(isMatchComplete(5, 2, 3), false);
   assert.equal(isMatchComplete(6, 2, 3), true);
   assert.equal(isMatchComplete(0, 1, 0), true);
-});
-
-test('selectRoundWinnerIds prioritizes favorite votes and keeps exact ties', () => {
-  assert.deepEqual(
-    selectRoundWinnerIds([
-      { id: 'a', favoriteVotes: 2, reactionCount: 1 },
-      { id: 'b', favoriteVotes: 2, reactionCount: 3 },
-      { id: 'c', favoriteVotes: 1, reactionCount: 9 },
-    ]),
-    ['b']
-  );
-  assert.deepEqual(
-    selectRoundWinnerIds([
-      { id: 'a', favoriteVotes: 2, reactionCount: 3 },
-      { id: 'b', favoriteVotes: 2, reactionCount: 3 },
-    ]),
-    ['a', 'b']
-  );
-});
-
-test('selectRoundWinnerIds falls back to reactions when nobody votes', () => {
-  assert.deepEqual(
-    selectRoundWinnerIds([
-      { id: 'a', favoriteVotes: 0, reactionCount: 1 },
-      { id: 'b', favoriteVotes: 0, reactionCount: 4 },
-    ]),
-    ['b']
-  );
-  assert.deepEqual(selectRoundWinnerIds([]), []);
 });
 
 test('levenshteinDistance counts single-character edits', () => {

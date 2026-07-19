@@ -27,10 +27,10 @@ function playerSummary(playerById: Map<string, PlayerRow>, playerId: string) {
   };
 }
 
-hallOfFameRouter.get('/', (_req, res) => {
+hallOfFameRouter.get('/', (req, res) => {
   // Real events only — "außerhalb von Events" isn't a LAN party to crown a
   // champion of, it's just the fallback bucket for untracked activity.
-  const events = listEvents();
+  const events = listEvents(req.group!.id);
   const players = db.prepare('SELECT id, name, color, avatar FROM players').all() as PlayerRow[];
   const playerById = new Map(players.map((p) => [p.id, p]));
 
@@ -38,11 +38,17 @@ hallOfFameRouter.get('/', (_req, res) => {
   const tournamentWinCounts = new Map<string, number>();
 
   const eventSummaries = events.map((e) => {
-    const matchRows = db.prepare('SELECT result FROM matches WHERE event_id = ?').all(e.id) as Array<{
+    const matchRows = db.prepare('SELECT result FROM matches WHERE event_id = ? AND group_id = ?').all(e.id, req.group!.id) as Array<{
       result: string;
     }>;
     const matches: MatchForScoring[] = matchRows.map((r) => JSON.parse(r.result));
     const standings = computeStandings(matches);
+    const overallStandings = standings.map((standing) => ({
+      ...playerSummary(playerById, standing.playerId),
+      points: standing.points,
+      wins: standing.wins,
+      matchesPlayed: standing.matchesPlayed,
+    }));
     const top = standings[0];
     // Only crown a champion if someone actually scored — an event with no
     // recorded matches has no "Gesamtsieger" to speak of.
@@ -51,7 +57,7 @@ hallOfFameRouter.get('/', (_req, res) => {
       overallWinCounts.set(overallChampion.playerId, (overallWinCounts.get(overallChampion.playerId) ?? 0) + 1);
     }
 
-    const tournamentChampions = getCompletedTournamentSummaries(e.id).map((t) => {
+    const tournamentChampions = getCompletedTournamentSummaries(e.id, req.group!.id).map((t) => {
       for (const playerId of t.championPlayerIds) {
         tournamentWinCounts.set(playerId, (tournamentWinCounts.get(playerId) ?? 0) + 1);
       }
@@ -71,6 +77,7 @@ hallOfFameRouter.get('/', (_req, res) => {
       startsAt: e.starts_at,
       endsAt: e.ends_at,
       overallChampion,
+      overallStandings,
       tournamentChampions,
     };
   });

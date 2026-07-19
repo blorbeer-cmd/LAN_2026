@@ -7,14 +7,15 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, avatarHtml, gameBadgeHtml } from '../format.js';
+import { escapeHtml, avatarHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
+import { domainIcon } from '../domainIcons.js';
 
 export function renderLeaderboard(container, ctx) {
   const filterGameId = state.selectedGameId || '';
-  const gameOptions = `<option value="">🏆 Gesamt</option>${state.games
+  const gameOptions = `<option value="">Gesamt</option>${state.games
     .map((g) => `<option value="${g.id}" ${g.id === filterGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`)
     .join('')}`;
 
@@ -28,9 +29,11 @@ export function renderLeaderboard(container, ctx) {
         <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
           <span class="lb-rank">${i + 1}</span>
           ${avatarHtml(player || { color }, 24)}
-          <span style="flex:1;">${escapeHtml(name)}</span>
-          <span class="muted" style="font-size:var(--font-size-xs);" title="${s.wins} Siege von ${s.matchesPlayed} Matches">${s.wins}S / ${s.matchesPlayed}M</span>
-          <span class="lb-points" title="${s.points} Punkte">${s.points} P</span>
+          <span class="leaderboard-row-main">
+            <span class="player-name leaderboard-row-name">${escapeHtml(name)}</span>
+            <span class="muted leaderboard-row-stat">${s.wins} Siege / ${s.matchesPlayed} Spiele</span>
+          </span>
+          <span class="lb-points" aria-label="${s.points} Punkte">${s.points} P</span>
         </div>`;
     })
     .join('');
@@ -55,8 +58,8 @@ export function renderLeaderboard(container, ctx) {
       (p) => `
       <div class="lb-row">
         ${avatarHtml(state.players.find((pl) => pl.id === p.playerId) || { color: p.playerColor }, 24)}
-        <span style="flex:1;">
-          ${escapeHtml(p.playerName)}
+        <span class="leaderboard-row-main">
+          <span class="player-name leaderboard-row-name">${escapeHtml(p.playerName)}</span>
           ${activeHint(p.activeMs, p.totalMs, p.activeFormatted)}
         </span>
         <span class="lb-points">${escapeHtml(p.formatted)}</span>
@@ -66,14 +69,13 @@ export function renderLeaderboard(container, ctx) {
 
   // "How long did this game run at the party in total" — summed across
   // everyone, as opposed to the per-player breakdown above.
-  const playtimeByGame = state.playtime?.totalsByGame || [];
+  const playtimeByGame = state.playtimeAllGames?.totalsByGame || [];
   const playtimeByGameRows = playtimeByGame
     .map(
       (g) => `
       <div class="lb-row">
-        ${gameBadgeHtml({ id: g.gameId, icon: g.gameIcon }, 24)}
-        <span style="flex:1;">
-          ${escapeHtml(g.gameName)}
+                <span class="leaderboard-row-main">
+          <span class="leaderboard-row-name">${escapeHtml(g.gameName)}</span>
           ${activeHint(g.activeMs, g.totalMs, g.activeFormatted)}
         </span>
         <span class="lb-points">${escapeHtml(g.formatted)}</span>
@@ -83,31 +85,58 @@ export function renderLeaderboard(container, ctx) {
 
   container.innerHTML = `
     <div class="row-between">
-      <h1 class="view-title">Rangliste</h1>
-      <button type="button" class="btn btn-primary btn-sm" id="add-match-btn">+ Ergebnis</button>
+      <h1 class="view-title">Rang</h1>
+      <button type="button" class="btn btn-primary btn-sm" id="add-match-btn">Ergebnis eintragen</button>
     </div>
-    <select id="lb-filter" style="margin-bottom:var(--space-3);">${gameOptions}</select>
-    <div class="card">
-      ${standings.length === 0 ? `<div class="empty-state"><span class="emoji">🏆</span>Noch keine Ergebnisse.</div>` : rows}
-    </div>
+    <div class="grouped-page-sections">
+      <section class="card stack grouped-page-section" aria-labelledby="leaderboard-filtered-title">
+        <div class="grouped-page-section-title">
+          <h2 id="leaderboard-filtered-title">Rangliste &amp; Spielzeit</h2>
+        </div>
+        <label>
+          <span class="field-label">Spiel auswählen</span>
+          <select id="lb-filter">${gameOptions}</select>
+        </label>
+        <div class="stack">
+          <section class="tournament-section-panel stack" aria-labelledby="leaderboard-ranking-title">
+            <div class="grouped-page-section-title">
+              <h2 id="leaderboard-ranking-title">Rangliste</h2>
+            </div>
+            <div class="leaderboard-list-grid">
+              ${standings.length === 0 ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('leaderboard'))}</span>Noch keine Ergebnisse.</div>` : rows}
+            </div>
+          </section>
+          <section class="tournament-section-panel stack" aria-labelledby="leaderboard-playtime-title">
+            <div class="grouped-page-section-title">
+              <h2 id="leaderboard-playtime-title">Spielzeit</h2>
+            </div>
+            <div class="leaderboard-list-grid">
+              ${playtime.length === 0 ? `<div class="empty-state"><span class="empty-state-icon">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeRows}
+            </div>
+          </section>
+        </div>
+      </section>
 
-    <div class="section-title">${icon('timer')} Spielzeit</div>
-    <div class="card">
-      ${playtime.length === 0 ? `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeRows}
-    </div>
-
-    <div class="section-title">${icon('timer')} Spielzeit pro Spiel (alle zusammen)</div>
-    <div class="card">
-      ${playtimeByGame.length === 0 ? `<div class="empty-state" style="padding:var(--space-4);"><span class="emoji">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeByGameRows}
+      <section class="card stack grouped-page-section" aria-labelledby="leaderboard-games-playtime-title">
+        <div class="grouped-page-section-title">
+          <h2 id="leaderboard-games-playtime-title">Spielzeit pro Spiel</h2>
+        </div>
+        <div class="leaderboard-list-grid">
+          ${playtimeByGame.length === 0 ? `<div class="empty-state"><span class="empty-state-icon">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeByGameRows}
+        </div>
+      </section>
     </div>
   `;
 
   container.querySelector('#lb-filter').addEventListener('change', async (e) => {
     state.selectedGameId = e.target.value || null;
     const gameId = state.selectedGameId || undefined;
-    [state.leaderboard, state.playtime] = await Promise.all([
+    const playtimeAllGamesPromise = api.stats.playtime();
+    const playtimePromise = gameId ? api.stats.playtime(gameId) : playtimeAllGamesPromise;
+    [state.leaderboard, state.playtime, state.playtimeAllGames] = await Promise.all([
       api.leaderboard.get(gameId),
-      api.stats.playtime(gameId),
+      playtimePromise,
+      playtimeAllGamesPromise,
     ]);
     ctx.rerender();
   });
@@ -118,8 +147,8 @@ export function renderLeaderboard(container, ctx) {
 // Also called from matchmaking.js (with presetGameId/presetTeams) so a
 // freshly drawn set of teams can go straight into "Ergebnis eintragen"
 // without re-picking every player by hand. presetDrawId additionally links
-// the saved match back to that matchmaking_draws row, moving it from
-// Team-Historie to Ergebnis-Historie.
+// the saved match back to that matchmaking_draws row and updates its actions
+// in the shared Historie.
 export function openMatchForm(ctx, options = {}) {
   if (state.games.length === 0 || state.players.length === 0) {
     return showToast('Dafür braucht es mindestens ein Spiel und 2 Spieler.', { error: true });
@@ -139,9 +168,14 @@ export function openMatchForm(ctx, options = {}) {
     options.presetTeams.forEach((t, i) => t.playerIds.forEach((pid) => presetTeamIndexByPlayer.set(pid, i)));
   }
 
-  // Free-for-all defaults to whoever is currently shown as playing, same
+  // Free-for-all defaults to the drawn lineup's players when entering a
+  // result for a specific draw (so switching to "Frei-für-alle" there keeps
+  // the same participants instead of silently swapping in "whoever is
+  // playing now"), otherwise whoever is currently shown as playing, same
   // convention as "Teams auslosen" and tournament creation.
-  let ffaCheckedIds = new Set(state.live.filter((p) => p.state === 'playing').map((p) => p.player_id));
+  let ffaCheckedIds = options.presetTeams
+    ? new Set(options.presetTeams.flatMap((t) => t.playerIds))
+    : new Set(state.live.filter((p) => p.state === 'playing').map((p) => p.player_id));
   if (ffaCheckedIds.size === 0) ffaCheckedIds = new Set(state.players.map((p) => p.id));
   const ffaParticipants = () => state.players.filter((p) => ffaCheckedIds.has(p.id));
 
@@ -166,17 +200,27 @@ export function openMatchForm(ctx, options = {}) {
     'Ergebnis eintragen',
     `
       <form id="match-form" class="stack">
-        <select id="match-game">
-          ${state.games.map((g) => `<option value="${g.id}" ${g.id === defaultGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`).join('')}
-        </select>
-        <label class="check-row">
-          <input type="checkbox" id="match-ffa" />
-          <span>🎲 Frei-für-alle (kein Team, jeder für sich)</span>
-        </label>
-        <label class="check-row">
-          <input type="checkbox" id="match-advanced" />
-          <span>${icon('chart')} Werte / Platzierung statt nur Sieger eintragen</span>
-        </label>
+        <section class="tournament-section-panel stack match-form-section" aria-labelledby="match-mode-title">
+          <div class="grouped-page-section-title">
+            <h2 id="match-mode-title">Modus</h2>
+          </div>
+          <label>
+            <span class="field-label">Spiel</span>
+            <select id="match-game">
+              ${state.games.map((g) => `<option value="${g.id}" ${g.id === defaultGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`).join('')}
+            </select>
+          </label>
+          <div>
+            <label class="check-row">
+              <input type="checkbox" id="match-ffa" />
+              <span>Frei-für-alle</span>
+            </label>
+            <label class="check-row">
+              <input type="checkbox" id="match-advanced" />
+              <span>Werte / Platzierung eintragen</span>
+            </label>
+          </div>
+        </section>
         <div id="match-body"></div>
         <button type="submit" class="btn btn-primary btn-block">Speichern</button>
       </form>
@@ -194,10 +238,10 @@ export function openMatchForm(ctx, options = {}) {
           const playersHtml = state.players
             .map(
               (p) => `
-              <div class="row" style="padding:var(--space-1) 0;">
+              <div class="player-assignment-row" style="padding:var(--space-1) 0;">
                 ${avatarHtml(p, 20)}
-                <span style="flex:1;">${escapeHtml(p.name)}</span>
-                <select data-team-for="${p.id}">
+                <span class="player-name leaderboard-row-name">${escapeHtml(p.name)}</span>
+                <select data-team-for="${p.id}" aria-label="Team für ${escapeHtml(p.name)}">
                   <option value="" ${presetTeamIndexByPlayer.has(p.id) ? '' : 'selected'}>–</option>
                   ${teamOptions(p.id)}
                 </select>
@@ -206,38 +250,54 @@ export function openMatchForm(ctx, options = {}) {
             .join('');
 
           bodyEl.innerHTML = `
-            <div class="row">
-              <span style="flex:1;">Anzahl Teams</span>
-              <input type="number" id="match-teamcount" min="2" max="6" value="${teamCount}" style="width:70px;" />
-            </div>
-            <div class="section-title">Spieler-Zuordnung</div>
-            <div id="match-players">${playersHtml}</div>
-            <div id="match-winner-section" ${advancedMode ? 'hidden' : ''}>
-              <div class="section-title">Gewinner</div>
-              <div class="row" style="flex-wrap:wrap;">
-                ${Array.from({ length: teamCount }, (_, i) => `<label class="chip"><input type="radio" name="winner" value="${i}" /> Team ${i + 1}</label>`).join('')}
-                <label class="chip"><input type="radio" name="winner" value="" checked /> Unentschieden</label>
-              </div>
-            </div>
-            <div id="match-scores-section" ${advancedMode ? '' : 'hidden'}>
-              <div class="section-title">${icon('chart')} Werte / Platzierung</div>
-              <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
-                Sieger wird automatisch aus Platz 1 bzw. dem höchsten Wert bestimmt. Beides ist optional
-                und unabhängig voneinander — leer lassen, was nicht zutrifft.
-              </p>
-              ${Array.from(
-                { length: teamCount },
-                (_, i) => `
-                <div class="row" style="align-items:center;">
-                  <span style="flex:1;">Team ${i + 1}</span>
-                  <input type="number" data-team-score="${i}" placeholder="Wert" step="any" style="width:90px;" />
-                  <input type="number" data-team-rank="${i}" placeholder="Platz" min="1" style="width:80px;" />
-                </div>`
-              ).join('')}
+            <div class="stack">
+              <section class="tournament-section-panel stack match-form-section" aria-labelledby="match-assignment-title">
+                <div class="grouped-page-section-title">
+                  <h2 id="match-assignment-title">Spieler-Zuordnung</h2>
+                </div>
+                <label class="match-team-count-field">
+                  <span class="field-label">Anzahl Teams</span>
+                  <input type="number" id="match-teamcount" min="2" max="6" value="${teamCount}" />
+                </label>
+                <div id="match-players">${playersHtml}</div>
+              </section>
+              <section class="tournament-section-panel stack match-form-section" aria-labelledby="match-result-title">
+                <div class="grouped-page-section-title">
+                  <h2 id="match-result-title">Ergebnis</h2>
+                </div>
+                <div id="match-winner-section" ${advancedMode ? 'hidden' : ''}>
+                  <div class="row" style="flex-wrap:wrap;">
+                    ${Array.from({ length: teamCount }, (_, i) => `<label class="chip"><input type="radio" name="winner" value="${i}" /> Team ${i + 1}</label>`).join('')}
+                    <label class="chip"><input type="radio" name="winner" value="" checked /> Unentschieden</label>
+                  </div>
+                </div>
+                <div id="match-scores-section" class="stack" ${advancedMode ? '' : 'hidden'}>
+                  <p class="muted match-result-help">
+                    Sieger wird automatisch aus Platz 1 bzw. dem höchsten Wert bestimmt. Beides ist optional
+                    und unabhängig voneinander — leer lassen, was nicht zutrifft.
+                  </p>
+                  ${Array.from(
+                    { length: teamCount },
+                    (_, i) => `
+                    <div class="match-result-row">
+                      <span>Team ${i + 1}</span>
+                      <input type="number" data-team-score="${i}" aria-label="Wert für Team ${i + 1}" placeholder="Wert" step="any" />
+                      <input type="number" data-team-rank="${i}" aria-label="Platz für Team ${i + 1}" placeholder="Platz" min="1" />
+                    </div>`
+                  ).join('')}
+                </div>
+              </section>
             </div>
           `;
 
           bodyEl.querySelector('#match-teamcount').addEventListener('input', (e) => {
+            // Capture whatever the user already picked before re-rendering,
+            // so changing "Anzahl Teams" doesn't quietly revert a manual
+            // team reassignment (or removal, via "–") made just before it.
+            bodyEl.querySelectorAll('[data-team-for]').forEach((sel) => {
+              if (sel.value === '') presetTeamIndexByPlayer.delete(sel.dataset.teamFor);
+              else presetTeamIndexByPlayer.set(sel.dataset.teamFor, parseInt(sel.value, 10));
+            });
             teamCount = Math.min(6, Math.max(2, parseInt(e.target.value, 10) || 2));
             renderTeamPickers();
           });
@@ -260,10 +320,10 @@ export function openMatchForm(ctx, options = {}) {
           scoresEl.innerHTML = participants
             .map(
               (p) => `
-              <div class="row" style="align-items:center;">
-                <span style="flex:1;">${escapeHtml(p.name)}</span>
-                <input type="number" data-ffa-score="${p.id}" placeholder="Wert" step="any" style="width:90px;" />
-                <input type="number" data-ffa-rank="${p.id}" placeholder="Platz" min="1" style="width:80px;" />
+              <div class="match-result-row">
+                <span class="player-name leaderboard-row-name">${escapeHtml(p.name)}</span>
+                <input type="number" data-ffa-score="${p.id}" aria-label="Wert für ${escapeHtml(p.name)}" placeholder="Wert" step="any" />
+                <input type="number" data-ffa-rank="${p.id}" aria-label="Platz für ${escapeHtml(p.name)}" placeholder="Platz" min="1" />
               </div>`
             )
             .join('');
@@ -271,30 +331,39 @@ export function openMatchForm(ctx, options = {}) {
 
         function renderFfaPickers() {
           bodyEl.innerHTML = `
-            <div class="section-title">Teilnehmer</div>
-            <div id="match-ffa-players">
-              ${state.players
-                .map(
-                  (p) => `
-                <label class="check-row">
-                  <input type="checkbox" data-ffa-player="${p.id}" ${ffaCheckedIds.has(p.id) ? 'checked' : ''} />
-                  ${avatarHtml(p, 20)}
-                  <span style="flex:1;">${escapeHtml(p.name)}</span>
-                </label>`
-                )
-                .join('')}
-            </div>
-            <div id="match-ffa-winner-section" ${advancedMode ? 'hidden' : ''}>
-              <div class="section-title">Gewinner</div>
-              <div id="match-ffa-winner"></div>
-            </div>
-            <div id="match-ffa-scores-section" ${advancedMode ? '' : 'hidden'}>
-              <div class="section-title">${icon('chart')} Werte / Platzierung</div>
-              <p class="muted" style="font-size:var(--font-size-xs);margin-top:calc(var(--space-2) * -1);">
-                Sieger wird automatisch aus Platz 1 bzw. dem höchsten Wert bestimmt. Beides ist optional
-                und unabhängig voneinander — leer lassen, was nicht zutrifft.
-              </p>
-              <div id="match-ffa-scores"></div>
+            <div class="stack">
+              <section class="tournament-section-panel stack match-form-section" aria-labelledby="match-participants-title">
+                <div class="grouped-page-section-title">
+                  <h2 id="match-participants-title">Teilnehmende</h2>
+                </div>
+                <div id="match-ffa-players">
+                  ${state.players
+                    .map(
+                      (p) => `
+                    <label class="check-row">
+                      <input type="checkbox" data-ffa-player="${p.id}" ${ffaCheckedIds.has(p.id) ? 'checked' : ''} />
+                      ${avatarHtml(p, 20)}
+                      <span class="player-name leaderboard-row-name">${escapeHtml(p.name)}</span>
+                    </label>`
+                    )
+                    .join('')}
+                </div>
+              </section>
+              <section class="tournament-section-panel stack match-form-section" aria-labelledby="match-result-title">
+                <div class="grouped-page-section-title">
+                  <h2 id="match-result-title">Ergebnis</h2>
+                </div>
+                <div id="match-ffa-winner-section" ${advancedMode ? 'hidden' : ''}>
+                  <div id="match-ffa-winner"></div>
+                </div>
+                <div id="match-ffa-scores-section" class="stack" ${advancedMode ? '' : 'hidden'}>
+                  <p class="muted match-result-help">
+                    Sieger wird automatisch aus Platz 1 bzw. dem höchsten Wert bestimmt. Beides ist optional
+                    und unabhängig voneinander — leer lassen, was nicht zutrifft.
+                  </p>
+                  <div id="match-ffa-scores"></div>
+                </div>
+              </section>
             </div>
           `;
           renderFfaWinnerOptions();
@@ -369,7 +438,18 @@ export function openMatchForm(ctx, options = {}) {
             }
 
             try {
-              await api.matches.create({ gameId, teams, winnerTeamIndex });
+              await api.matches.create({
+                gameId,
+                teams,
+                winnerTeamIndex,
+                ...(options.presetDrawId ? { drawId: options.presetDrawId } : {}),
+              });
+              // Same as the team-mode branch below: don't wait for the
+              // matchmaking:draws-changed round trip to hide the "gerade
+              // ausgelost" panel the submitter is looking at.
+              if (options.presetDrawId && state.lastMatchmaking?.id === options.presetDrawId) {
+                state.lastMatchmaking = null;
+              }
               close();
               await ctx.refresh();
               showToast('Ergebnis gespeichert.');
@@ -424,9 +504,9 @@ export function openMatchForm(ctx, options = {}) {
               winnerTeamIndex,
               ...(options.presetDrawId ? { drawId: options.presetDrawId } : {}),
             });
-            // The recorded draw disappears from both the "gerade ausgelost"
-            // panel and Team-Historie, showing up in Ergebnis-Historie
-            // instead — don't wait for the matchmaking:draws-changed socket
+            // The recorded draw disappears from the "gerade ausgelost"
+            // panel and becomes a result inside Historie — don't wait for
+            // the matchmaking:draws-changed socket
             // round trip to hide the panel the submitter is looking at.
             if (options.presetDrawId && state.lastMatchmaking?.id === options.presetDrawId) {
               state.lastMatchmaking = null;

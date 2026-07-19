@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-10
 - Branch: `feat/seating-drag-drop`
-- Merge-Commit: [`f35b6df`](https://github.com/blorbeer-cmd/LAN_2026/commit/f35b6dfe05a5f3874655e979a5dca279ee8ad6ac)
-- Pull Request: [#110](https://github.com/blorbeer-cmd/LAN_2026/pull/110)
+- Merge-Commit: [`f35b6df`](https://github.com/blorbeer-cmd/Respawn/commit/f35b6dfe05a5f3874655e979a5dca279ee8ad6ac)
+- Pull Request: [#110](https://github.com/blorbeer-cmd/Respawn/pull/110)
 
 ## Changelog
 

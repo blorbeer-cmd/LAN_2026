@@ -58,7 +58,7 @@ async function openArcadeAs(
   await page.goto(BASE_URL);
   await page.evaluate(
     ({ id, expand }) => {
-      localStorage.setItem('lan2026_my_player_id', id);
+      localStorage.setItem('respawn_my_player_id', id);
       // The expand preference must already exist before the game view first
       // renders — that ordering is exactly what the geometry regressions
       // below are about (see wireArcadeExpandControl).
@@ -99,7 +99,7 @@ async function startQuizMatch(host: Page, guest: Page): Promise<void> {
   await guest.click('[data-join-lobby]');
   await guest.waitForSelector('[data-quiz-ready][data-ready="1"]');
   await guest.click('[data-quiz-ready][data-ready="1"]');
-  await host.waitForSelector('text=2/2 bereit');
+  await host.waitForSelector('.arcade-lobby-member-role:has-text("Bereit")');
   await host.click('#quiz-start-lobby');
   await host.waitForSelector('#quiz-answer-form');
 }
@@ -262,14 +262,15 @@ test('rapid fire: lobby-create burst keeps one lobby, ready toggle survives spam
     }
     await guest.page.waitForTimeout(400);
     // Whatever parity the spam ended on, the control must still work:
-    // force it to "ready", host sees 2/2, then back to 1/2.
+    // force it to "ready", then back to not ready. Readiness now lives in
+    // the player row instead of a duplicate summary sentence.
     if ((await guest.page.locator('[data-quiz-ready][data-ready="1"]').count()) > 0) {
       await guest.page.click('[data-quiz-ready][data-ready="1"]');
     }
-    await host.page.waitForSelector('text=2/2 bereit');
+    await host.page.waitForSelector('.arcade-lobby-member-role:has-text("Bereit")');
     await guest.page.waitForSelector('[data-quiz-ready][data-ready="0"]');
     await guest.page.click('[data-quiz-ready][data-ready="0"]');
-    await host.page.waitForSelector('text=1/2 bereit');
+    await host.page.waitForSelector('.arcade-lobby-member-role:has-text("Mitspieler")');
 
     await host.page.click('[data-close-lobby]');
     await host.page.waitForSelector('text=Keine offene Quiz-Lobby.');
@@ -337,7 +338,7 @@ test('expanded Tetris keeps the page free of horizontal scroll and the board ali
   }
 });
 
-test('Scribble: expanded canvas keeps 8:5, gallery reconnect stays clean, resolved round closes its rating window', async () => {
+test('Scribble: expanded canvas keeps 8:5, live thumbs-up survives a reconnect, new turn starts blank', async () => {
   const hostPlayer = await createPlayer('Scribble Maler');
   const guestPlayer = await createPlayer('Scribble Rater');
   const spectatorPlayer = await createPlayer('Scribble Zuschauer');
@@ -419,7 +420,34 @@ test('Scribble: expanded canvas keeps 8:5, gallery reconnect stays clean, resolv
     await guest.page.click('#scribble-guess-form button[type="submit"]');
     await host.page.waitForSelector(`text=Wort war: ${firstWord}`);
 
-    // Turn 2: the guest draws, the host guesses — completing round 1.
+    // The just-finished drawing is still votable through 'reveal'/'choosing'
+    // (up until the next word is chosen) — the guest marks it with a thumb.
+    // (The host drew it, so their own thumbButtonHtml() stays hidden — the
+    // count is only checked on the guest's page, which does render it.)
+    await guest.page.waitForSelector('#scribble-thumb');
+    await guest.page.click('#scribble-thumb');
+    await guest.page.waitForFunction(
+      () => document.querySelector('[data-scribble-thumb-count]')?.textContent === '1'
+    );
+
+    // The spectator follows along in the readonly watch view and may thumb too.
+    await spectator.page.waitForSelector('[data-watch-match]');
+    await spectator.page.click('[data-watch-match]');
+    await spectator.page.waitForSelector('#arcade-watch-thumb:not([disabled])');
+
+    // Guest briefly drops offline right after thumbing (network blip) — the
+    // rejoin sync must not park the previous turn's strokes for the next
+    // turn's blank canvas, and the vote window must still work afterwards.
+    await guest.context.setOffline(true);
+    await guest.page.waitForTimeout(600);
+    await guest.context.setOffline(false);
+    await spectator.page.click('#arcade-watch-thumb');
+    await guest.page.waitForFunction(
+      () => document.querySelector('[data-scribble-thumb-count]')?.textContent === '2'
+    );
+
+    // Turn 2: the guest draws, the host guesses — no round-gallery pause
+    // anymore, the next word choice appears directly.
     await guest.page.waitForSelector('.scribble-word-choice-btn');
     const secondWordBtn = guest.page.locator('.scribble-word-choice-btn').first();
     const secondWord = (await secondWordBtn.textContent())!.trim();
@@ -428,39 +456,7 @@ test('Scribble: expanded canvas keeps 8:5, gallery reconnect stays clean, resolv
     await host.page.fill('#scribble-guess-input', secondWord);
     await host.page.click('#scribble-guess-form button[type="submit"]');
 
-    await host.page.waitForSelector('.scribble-round-gallery');
-    await guest.page.waitForSelector('.scribble-round-gallery');
-
-    // The spectator follows along in the readonly watch view and may vote.
-    await spectator.page.waitForSelector('[data-watch-match]');
-    await spectator.page.click('[data-watch-match]');
-    await spectator.page.waitForSelector('.scribble-round-gallery');
-
-    // Guest briefly drops offline during the gallery (network blip) — the
-    // rejoin sync must not park the previous turn's strokes for the next
-    // round's blank canvas.
-    await guest.context.setOffline(true);
-    await guest.page.waitForTimeout(600);
-    await guest.context.setOffline(false);
-    // Reconnected and functional again: the favorite vote below proves the
-    // socket is back and the gallery still accepts input.
-
-    // All three eligible voters pick a favorite; the round then resolves.
-    await spectator.page.click('[data-watch-favorite]:not([disabled])');
-    await host.page.click('[data-favorite-drawing]:not([disabled])');
-    await guest.page.click('[data-favorite-drawing]:not([disabled])');
-    await host.page.waitForSelector('text=Rundenbild gekürt');
-    await spectator.page.waitForSelector('text=Rundenbild gekürt');
-
-    // Round 2 begins (host draws again). The resolved round's rating window
-    // is closed for spectators: no leftover voting cards during the new turn.
     await host.page.waitForSelector('.scribble-word-choice-btn', { timeout: 15_000 });
-    await spectator.page.waitForFunction(
-      () => document.querySelectorAll('.scribble-drawing-card').length === 0,
-      undefined,
-      { timeout: 15_000 }
-    );
-
     const thirdWordBtn = host.page.locator('.scribble-word-choice-btn').first();
     await thirdWordBtn.click();
     await host.page.waitForSelector('#scribble-canvas');

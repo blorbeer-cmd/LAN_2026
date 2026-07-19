@@ -409,6 +409,25 @@ test('PATCH /api/matchmaking/draws/:id/move recomputes seat-conflict flags after
   assert.deepEqual(movedPlayer.seatConflictNames, ['MoveSeatB']);
 });
 
+test('PATCH /api/matchmaking/draws/:id/move keeps every drawn team populated', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Move Empty Team Guard' });
+  const first = await request(app).post('/api/players').send({ name: 'MoveSoloA' });
+  const second = await request(app).post('/api/players').send({ name: 'MoveSoloB' });
+  const draw = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: [first.body.id, second.body.id], teamCount: 2 });
+  const fromTeam = draw.body.teams.findIndex((team: { players: Array<{ id: string }> }) =>
+    team.players.some((player: { id: string }) => player.id === first.body.id)
+  );
+
+  const moved = await request(app)
+    .patch(`/api/matchmaking/draws/${draw.body.id}/move`)
+    .send({ playerId: first.body.id, toTeamIndex: fromTeam === 0 ? 1 : 0 });
+
+  assert.equal(moved.status, 409);
+  assert.match(moved.body.error, /nicht komplett leer/);
+});
+
 test('PATCH /api/matchmaking/draws/:id/move 404s for an unknown draw', async () => {
   const res = await request(app)
     .patch('/api/matchmaking/draws/nope/move')

@@ -81,7 +81,7 @@ test('POST /api/tournaments creates a single-elimination bracket for 4 teams', a
     .send({
       gameId,
       format: 'single_elimination',
-      lobbyName: 'LAN2026',
+      lobbyName: 'Respawn',
       lobbyPassword: 'geheim',
       teams: soloTeams(playerIds),
     });
@@ -91,8 +91,10 @@ test('POST /api/tournaments creates a single-elimination bracket for 4 teams', a
   assert.equal(res.body.teams.length, 4);
   assert.equal(res.body.matches.length, 3); // 2 round-1 + 1 final
   assert.ok(res.body.matches.every((m: { isBye: boolean }) => !m.isBye));
-  assert.equal(res.body.lobbyName, 'LAN2026');
+  assert.equal(res.body.lobbyName, 'Respawn');
   assert.equal(res.body.lobbyPassword, 'geheim');
+  const generatedLobbyNames = res.body.matches.map((m: { lobbyName: string }) => m.lobbyName);
+  assert.deepEqual(generatedLobbyNames, ['Respawn-KO-R1-M1', 'Respawn-KO-R1-M2', 'Respawn-KO-R2-M1']);
 
   bracketId = res.body.id;
   bracketTeamIds = res.body.teams.map((t: { id: string }) => t.id);
@@ -183,6 +185,39 @@ test('recording the final marks the tournament completed', async () => {
     .send({ winnerTeamId: final.teamAId });
   assert.equal(res.status, 200);
   assert.equal(res.body.status, 'completed');
+});
+
+test('correcting a bracket result reopens dependent matches without duplicating the leaderboard result', async () => {
+  const beforeDetail = await request(app).get(`/api/tournaments/${bracketId}`);
+  const semi = beforeDetail.body.matches.find((m: { round: number; slot: number }) => m.round === 1 && m.slot === 0);
+  const oldFinal = beforeDetail.body.matches.find((m: { round: number }) => m.round === 2);
+  const beforeMatches = await request(app).get(`/api/matches?gameId=${gameId}`);
+
+  const correction = await request(app)
+    .put(`/api/tournaments/${bracketId}/matches/${semi.id}/result`)
+    .send({ winnerTeamId: semi.teamBId, expectedPlayedAt: semi.playedAt });
+
+  assert.equal(correction.status, 200);
+  assert.equal(correction.body.status, 'active');
+  const correctedSemi = correction.body.matches.find((m: { id: string }) => m.id === semi.id);
+  const reopenedFinal = correction.body.matches.find((m: { round: number }) => m.round === 2);
+  assert.equal(correctedSemi.winnerTeamId, semi.teamBId);
+  assert.equal(correctedSemi.matchId, semi.matchId);
+  assert.equal(reopenedFinal.teamAId, semi.teamBId);
+  assert.equal(reopenedFinal.winnerTeamId, null);
+  assert.equal(reopenedFinal.matchId, null);
+
+  const afterMatches = await request(app).get(`/api/matches?gameId=${gameId}`);
+  assert.equal(afterMatches.body.length, beforeMatches.body.length - 1);
+  assert.ok(!afterMatches.body.some((m: { id: string }) => m.id === oldFinal.matchId));
+  const leaderboardSemi = afterMatches.body.find((m: { id: string }) => m.id === semi.matchId);
+  assert.equal(leaderboardSemi.winnerTeamIndex, 1);
+
+  const stale = await request(app)
+    .put(`/api/tournaments/${bracketId}/matches/${semi.id}/result`)
+    .send({ winnerTeamId: semi.teamAId, expectedPlayedAt: semi.playedAt });
+  assert.equal(stale.status, 409);
+  assert.match(stale.body.error, /inzwischen geändert/);
 });
 
 test('POST /api/tournaments auto-resolves a bye for an odd team count', async () => {
@@ -404,6 +439,29 @@ test('playing out the knockout bracket completes the tournament and resolves a c
   assert.ok(entry.championTeamName);
 });
 
+test('correcting a group result rebuilds the dependent knockout stage', async () => {
+  const beforeDetail = await request(app).get(`/api/tournaments/${groupKnockoutId}`);
+  const groupMatch = beforeDetail.body.matches.find((m: { stage: string }) => m.stage === 'group');
+  const oldKnockoutMatchIds = beforeDetail.body.matches
+    .filter((m: { stage: string; matchId: string | null }) => m.stage === 'knockout' && m.matchId)
+    .map((m: { matchId: string }) => m.matchId);
+  const beforeMatches = await request(app).get(`/api/matches?gameId=${gameId}`);
+
+  const corrected = await request(app)
+    .put(`/api/tournaments/${groupKnockoutId}/matches/${groupMatch.id}/result`)
+    .send({ winnerTeamId: groupMatch.teamBId, expectedPlayedAt: groupMatch.playedAt });
+
+  assert.equal(corrected.status, 200);
+  assert.equal(corrected.body.status, 'active');
+  const knockout = corrected.body.matches.filter((m: { stage: string }) => m.stage === 'knockout');
+  assert.equal(knockout.length, 3);
+  assert.ok(knockout.every((m: { matchId: string | null }) => m.matchId === null));
+
+  const afterMatches = await request(app).get(`/api/matches?gameId=${gameId}`);
+  assert.equal(afterMatches.body.length, beforeMatches.body.length - oldKnockoutMatchIds.length);
+  assert.ok(!afterMatches.body.some((m: { id: string }) => oldKnockoutMatchIds.includes(m.id)));
+});
+
 // ---------- trackScore ----------
 
 let scoreRoundRobinId: string;
@@ -434,6 +492,29 @@ test('POST /api/tournaments with trackScore derives the winner from scoreA/score
   const recordedDraw = drawResult.body.matches.find((m: { id: string }) => m.id === m2.id);
   assert.equal(recordedDraw.isDraw, true);
   assert.equal(recordedDraw.winnerTeamId, null);
+});
+
+test('PUT .../result corrects a tracked score in place', async () => {
+  const detail = await request(app).get(`/api/tournaments/${scoreRoundRobinId}`);
+  const match = detail.body.matches.find((m: { scoreA: number | null }) => m.scoreA === 3);
+  const beforeMatches = await request(app).get(`/api/matches?gameId=${gameId}`);
+
+  const corrected = await request(app)
+    .put(`/api/tournaments/${scoreRoundRobinId}/matches/${match.id}/result`)
+    .send({ scoreA: 0, scoreB: 4, expectedPlayedAt: match.playedAt });
+
+  assert.equal(corrected.status, 200);
+  const correctedMatch = corrected.body.matches.find((m: { id: string }) => m.id === match.id);
+  assert.equal(correctedMatch.scoreA, 0);
+  assert.equal(correctedMatch.scoreB, 4);
+  assert.equal(correctedMatch.winnerTeamId, match.teamBId);
+  assert.equal(correctedMatch.matchId, match.matchId);
+
+  const afterMatches = await request(app).get(`/api/matches?gameId=${gameId}`);
+  assert.equal(afterMatches.body.length, beforeMatches.body.length);
+  const leaderboardMatch = afterMatches.body.find((m: { id: string }) => m.id === match.matchId);
+  assert.equal(leaderboardMatch.winnerTeamIndex, 1);
+  assert.deepEqual(leaderboardMatch.score, [0, 4]);
 });
 
 test('POST .../result rejects a non-integer score when trackScore is on', async () => {

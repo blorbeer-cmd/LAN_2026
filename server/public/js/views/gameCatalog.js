@@ -9,11 +9,13 @@
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { icon } from '../icons.js';
-import { escapeHtml, gameBadgeHtml } from '../format.js';
+import { escapeHtml } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { suggestProcessNames } from '../gameProcessSuggestions.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { domainIcon } from '../domainIcons.js';
+import { withStepUp } from '../reauth.js';
 
 let activeTab = 'catalog'; // 'catalog' | 'suggestions'
 let sortKey = 'name';
@@ -49,6 +51,14 @@ let suggestionsEpoch = 0;
 // while a drag is active keeps the live element intact; endDrag() below
 // catches up with a single no-network re-render once the drag actually ends.
 let sliderDragActive = false;
+// The value change is debounced (see the 'input' listener below) and then
+// written via an async API call, both of which outlive pointerup. Without
+// this, endDrag()'s catch-up render fires while that write is still
+// pending, repainting the row from not-yet-updated state — the slider
+// visibly snaps back to the old value for a moment before the debounced
+// write lands and a second render shows the new one. Keeping the render
+// guard up until the write actually settles avoids that stale repaint.
+let sliderSaving = false;
 let dragGuardInstalled = false;
 let lastCtx = null;
 
@@ -58,7 +68,7 @@ function ensureDragGuardInstalled() {
   const endDrag = () => {
     if (!sliderDragActive) return;
     sliderDragActive = false;
-    lastCtx?.rerender();
+    if (!sliderSaving) lastCtx?.rerender();
   };
   // Listening on document (not the slider) is what catches a release outside
   // the slider's own box — a range input's native drag keeps tracking the
@@ -77,6 +87,11 @@ function ensureDragGuardInstalled() {
 export function invalidateSkillSuggestions() {
   suggestionsCache = null;
   suggestionsEpoch += 1;
+}
+
+export function focusGameCatalog(gameId) {
+  const game = state.games.find((entry) => entry.id === gameId);
+  if (game) activeTab = game.isSuggestion ? 'suggestions' : 'catalog';
 }
 
 async function loadSuggestions(ctx) {
@@ -131,7 +146,7 @@ function sortedGames(games, myId) {
 }
 
 function sortButton(key, label) {
-  const mark = sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
+  const mark = sortKey === key ? ` ${icon(sortDir === 'asc' ? 'arrowUp' : 'arrowDown')}` : '';
   return `<button type="button" class="btn btn-sm" data-sort="${key}">${label}${mark}</button>`;
 }
 
@@ -141,7 +156,7 @@ function statusBadgeHtml(game) {
   return `<span class="badge badge-offline">${icon('library')} Katalog</span>`;
 }
 
-// The 🧠 suggestion chip: only rendered once there's actually a suggestion
+// The process suggestion chip: only rendered once there's actually a suggestion
 // for this player+game (see suggestionFor/loadSuggestions above). Deliberately
 // plain — no pill background/border — so it reads as part of the label line
 // next to the Ø note instead of another button competing with the sliders;
@@ -254,7 +269,7 @@ function gameRowHtml(game, myId) {
     : [
         bockRow,
         ratingRowHtml({
-          label: `${icon('activity')} Skill`,
+          label: `${icon(domainIcon('skill'))} Skill`,
           accentClass: '',
           mine: mySkill,
           avg: skillStats.avg,
@@ -267,10 +282,9 @@ function gameRowHtml(game, myId) {
       ];
 
   return `
-    <div class="card game-table-row">
+    <div class="card game-table-row" data-search-game="${game.id}">
       <div class="game-row-name">
-        ${gameBadgeHtml(game, 28)}
-        <strong class="game-row-title">${escapeHtml(game.name)}</strong>
+                <strong class="game-row-title">${escapeHtml(game.name)}</strong>
         ${gameRowIconsHtml(game)}
       </div>
       <div class="game-row-sliders">
@@ -338,7 +352,7 @@ function openGameDetail(gameId, ctx) {
   const processChips = game.processNames
     .map(
       (pn) => `
-      <span class="chip">${escapeHtml(pn)} <button type="button" class="icon-btn" data-remove-proc="${escapeHtml(pn)}" aria-label="Entfernen" style="font-size:var(--font-size-xs);padding:0 2px;">✕</button></span>`
+      <span class="chip">${escapeHtml(pn)} <button type="button" class="icon-btn" data-remove-proc="${escapeHtml(pn)}" aria-label="Entfernen" style="font-size:var(--font-size-xs);padding:0 2px;">${icon('x')}</button></span>`
     )
     .join('');
   const suggestedProcessNames = game.processNames.length === 0 ? suggestProcessNames(game.name) : [];
@@ -348,8 +362,7 @@ function openGameDetail(gameId, ctx) {
     `
       <div class="stack">
         <div class="row" style="align-items:center;">
-          ${gameBadgeHtml(game, 56)}
-          <input type="text" id="edit-name" value="${escapeHtml(game.name)}" maxlength="60" style="flex:1;" />
+                    <input type="text" id="edit-name" value="${escapeHtml(game.name)}" maxlength="60" style="flex:1;" />
         </div>
         <div class="row" style="gap:var(--space-2);flex-wrap:wrap;align-items:center;">
           ${statusBadgeHtml(game)}
@@ -382,7 +395,7 @@ function openGameDetail(gameId, ctx) {
         <div class="chip-list">${processChips || '<span class="muted">Noch keine.</span>'}</div>
         ${
           suggestedProcessNames.length
-            ? `<button type="button" class="btn btn-sm" id="use-suggested-process" style="align-self:flex-start;">💡 Vorschlag übernehmen: ${escapeHtml(suggestedProcessNames.join(', '))}</button>`
+            ? `<button type="button" class="btn btn-sm" id="use-suggested-process" style="align-self:flex-start;">${icon('lightbulb')} Vorschlag übernehmen: ${escapeHtml(suggestedProcessNames.join(', '))}</button>`
             : ''
         }
         <div class="row" style="align-items:stretch;">
@@ -485,7 +498,8 @@ function openGameDetail(gameId, ctx) {
         el.querySelector('#edit-delete').addEventListener('click', async () => {
           if (!(await confirmDialog(`${game.name} wirklich löschen? Skill-/Bock-Wertungen und Ergebnisse dazu gehen verloren.`))) return;
           try {
-            await api.games.remove(gameId);
+            const removed = await withStepUp(() => api.games.remove(gameId));
+            if (removed === undefined) return;
             close();
             await ctx.refresh();
             showToast('Spiel gelöscht.');
@@ -501,7 +515,7 @@ function openGameDetail(gameId, ctx) {
 export function renderGameCatalog(container, ctx) {
   lastCtx = ctx;
   ensureDragGuardInstalled();
-  if (sliderDragActive) return;
+  if (sliderDragActive || sliderSaving) return;
 
   if (suggestionsCache === null && !suggestionsLoading) loadSuggestions(ctx);
 
@@ -510,28 +524,33 @@ export function renderGameCatalog(container, ctx) {
   const rows = sortedGames(games, myId);
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
-    <h1 class="view-title">🎮 Spiele</h1>
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+    <div class="row-between">
+      <h1 class="view-title">Spiele</h1>
+      <button type="button" class="btn btn-primary btn-sm" id="suggest-new">Spiel vorschlagen</button>
+    </div>
     ${whoAmICardHtml('whoami')}
-    <div class="row-between" style="margin-top:var(--space-3);gap:var(--space-3);align-items:center;">
-      <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
-        <button type="button" class="btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}" data-tab="catalog">Alle</button>
-        <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
-      </div>
-      <button type="button" class="btn btn-primary btn-sm" id="suggest-new">+ Spiel vorschlagen</button>
-    </div>
-    <div class="row" style="gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3);">
-      ${sortButton('name', 'Name')}
-      ${sortButton('myBock', 'Mein Bock')}
-      ${sortButton('avgBock', 'Ø Bock')}
-      ${activeTab === 'catalog' ? sortButton('avgSkill', 'Ø Skill') : ''}
-    </div>
-    <div class="game-table" style="margin-top:var(--space-3);">
-      ${
-        rows.length === 0
-          ? `<div class="empty-state"><span class="emoji">🎮</span>${activeTab === 'suggestions' ? 'Noch keine vorgeschlagenen Spiele.' : 'Noch keine Spiele im Katalog.'}</div>`
-          : rows.map((g) => gameRowHtml(g, myId)).join('')
-      }
+    <div class="grouped-page-sections" style="margin-top:var(--space-3);">
+      <section class="card stack grouped-page-section" aria-labelledby="game-catalog-list-title">
+        <div class="grouped-page-section-title"><h2 id="game-catalog-list-title">${activeTab === 'catalog' ? 'Spielekatalog' : 'Vorschläge'}</h2></div>
+        <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}" data-tab="catalog">Alle</button>
+          <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
+        </div>
+        <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
+          ${sortButton('name', 'Name')}
+          ${sortButton('myBock', 'Mein Bock')}
+          ${sortButton('avgBock', 'Ø Bock')}
+          ${activeTab === 'catalog' ? sortButton('avgSkill', 'Ø Skill') : ''}
+        </div>
+        <div class="game-table">
+          ${
+            rows.length === 0
+              ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('gameCatalog'))}</span>${activeTab === 'suggestions' ? 'Noch keine vorgeschlagenen Spiele.' : 'Noch keine Spiele im Katalog.'}</div>`
+              : rows.map((g) => gameRowHtml(g, myId)).join('')
+          }
+        </div>
+      </section>
     </div>
   `;
 
@@ -578,6 +597,7 @@ export function renderGameCatalog(container, ctx) {
     slider.addEventListener('input', () => {
       valueEl.textContent = slider.value;
       updateSliderTone();
+      sliderSaving = true;
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(async () => {
         try {
@@ -592,6 +612,9 @@ export function renderGameCatalog(container, ctx) {
           }
         } catch (err) {
           showToast(err.message, { error: true });
+        } finally {
+          sliderSaving = false;
+          if (!sliderDragActive) lastCtx?.rerender();
         }
       }, 250);
     });

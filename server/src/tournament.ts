@@ -11,6 +11,37 @@
 
 export type TournamentFormat = 'single_elimination' | 'round_robin' | 'group_knockout';
 
+export interface TournamentLobbyMatchPosition {
+  round: number;
+  slot: number;
+  stage: 'group' | 'knockout' | null;
+  groupIndex: number | null;
+}
+
+// A tournament stores one short base name, while every playable pairing
+// needs its own actual in-game lobby when several matches run in parallel.
+// The phase/round/slot suffix is deterministic, so clients and push messages
+// always agree without another mutable assignment table.
+export function deriveTournamentLobbyName(
+  baseName: string | null,
+  format: TournamentFormat,
+  match: TournamentLobbyMatchPosition
+): string | null {
+  const trimmedBase = baseName?.trim();
+  if (!trimmedBase) return null;
+
+  const phase =
+    format === 'round_robin'
+      ? 'L'
+      : format === 'group_knockout' && match.stage === 'group'
+        ? `G${(match.groupIndex ?? 0) + 1}`
+        : 'KO';
+  const suffix = `${phase}-R${match.round}-M${match.slot + 1}`;
+  const maxBaseLength = Math.max(1, 60 - suffix.length - 1);
+  const boundedBase = trimmedBase.slice(0, maxBaseLength).replace(/-+$/, '') || 'Lobby';
+  return `${boundedBase}-${suffix}`;
+}
+
 // ---------- Single-elimination bracket ----------
 
 export interface BracketMatchSlot {

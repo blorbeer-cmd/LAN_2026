@@ -73,7 +73,7 @@ test('GET / serves the HTML control page', async () => {
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type'), /text\/html/);
   const body = await res.text();
-  assert.match(body, /RespawnHQ-Agent/);
+  assert.match(body, /Respawn-Agent/);
 });
 
 test('GET /api/status reflects current state', async () => {

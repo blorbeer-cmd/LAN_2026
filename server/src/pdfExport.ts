@@ -146,7 +146,7 @@ export function renderExportPdf(doc: PDFKit.PDFDocument, snapshot: ExportSnapsho
     .font('Helvetica-Bold')
     .fontSize(15)
     .fillColor(COLOR.text)
-    .text('RespawnHQ', MARGIN + 44, cursor.y + 9);
+    .text('Respawn', MARGIN + 44, cursor.y + 9);
   cursor.y += 34 + 20;
 
   doc.font('Helvetica-Bold').fontSize(24).fillColor(COLOR.text).text(stripEmoji(snapshot.event.name), MARGIN, cursor.y, {
@@ -233,7 +233,7 @@ export function renderExportPdf(doc: PDFKit.PDFDocument, snapshot: ExportSnapsho
       .font('Helvetica')
       .fontSize(8)
       .fillColor(COLOR.muted)
-      .text(`RespawnHQ · Seite ${i + 1} von ${pageCount}`, MARGIN, PAGE_HEIGHT - MARGIN, {
+      .text(`Respawn · Seite ${i + 1} von ${pageCount}`, MARGIN, PAGE_HEIGHT - MARGIN, {
         width: CONTENT_WIDTH,
         align: 'center',
       });

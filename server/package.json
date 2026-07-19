@@ -1,5 +1,5 @@
 {
-  "name": "lan-party-server",
+  "name": "respawn-server",
   "version": "1.0.0",
   "description": "Zentrales Tool fuer die LAN Party: Matchmaking, Abstimmung, Live-Status, Leaderboard",
   "private": true,

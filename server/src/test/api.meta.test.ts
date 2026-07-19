@@ -15,6 +15,12 @@ test('GET /api/meta reports access protection state', async () => {
   assert.equal(typeof res.body.accessProtection, 'boolean');
 });
 
+test('GET /api/meta reports authMode, defaulting to legacy', async () => {
+  const res = await request(app).get('/api/meta');
+  assert.equal(res.status, 200);
+  assert.equal(res.body.authMode, 'legacy');
+});
+
 test('GET /api/health returns ok with a timestamp', async () => {
   const res = await request(app).get('/api/health');
   assert.equal(res.status, 200);

@@ -6,9 +6,16 @@
 import { api } from '../api.js';
 import { escapeHtml, avatarHtml, formatDate } from '../format.js';
 import { showToast } from '../toast.js';
+import { icon } from '../icons.js';
+import { domainIcon } from '../domainIcons.js';
 
 let cache = null;
 let loading = false;
+let selectedEventId = null;
+
+export function invalidateHallOfFame() {
+  cache = null;
+}
 
 async function load(ctx) {
   loading = true;
@@ -33,66 +40,107 @@ function rankedRows(entries, suffix) {
       <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
         <span class="lb-rank">${i + 1}</span>
         ${avatarHtml(r, 24)}
-        <span style="flex:1;">${escapeHtml(r.name)}</span>
+        <span class="player-name" style="flex:1;">${escapeHtml(r.name)}</span>
         <span class="lb-points">${r.count}× ${suffix}</span>
       </div>`
     )
     .join('');
 }
 
+function renderEventStanding(r, index) {
+  return `
+    <div class="lb-row ${index === 0 ? 'rank-1' : ''}">
+      <span class="lb-rank">${index + 1}</span>
+      ${avatarHtml(r, 24)}
+      <span class="leaderboard-row-main">
+        <strong class="player-name leaderboard-row-name">${escapeHtml(r.name)}</strong>
+        <span class="muted leaderboard-row-stat">${r.wins} ${r.wins === 1 ? 'Sieg' : 'Siege'} · ${r.matchesPlayed} ${r.matchesPlayed === 1 ? 'Spiel' : 'Spiele'}</span>
+      </span>
+      <strong class="lb-points">${r.points} P.</strong>
+    </div>`;
+}
+
+function renderTournamentChampion(t, index) {
+  return `
+    <div class="lb-row hall-of-fame-tournament-row">
+      <span class="lb-rank">${index + 1}</span>
+      <span class="leaderboard-row-main">
+        <strong class="player-name leaderboard-row-name">${escapeHtml(t.name)}</strong>
+        <span class="muted leaderboard-row-stat">${escapeHtml(t.gameName)}</span>
+      </span>
+      <span class="hall-of-fame-tournament-winner">
+        <strong>${escapeHtml(t.championTeamName || '–')}</strong>
+        <span class="muted">${escapeHtml(t.championPlayers.join(', '))}</span>
+      </span>
+    </div>`;
+}
+
 function renderEvent(e) {
   const range = `${formatDate(e.startsAt)}${e.endsAt ? ' – ' + formatDate(e.endsAt) : ' (läuft)'}`;
-  const championLine = e.overallChampion
-    ? `<div class="row" style="margin-top:var(--space-2);">${avatarHtml(e.overallChampion, 22)} <strong>${escapeHtml(e.overallChampion.name)}</strong><span class="muted">— ${e.overallChampion.points} P. Gesamtsieger</span></div>`
-    : `<div class="muted" style="margin-top:var(--space-2);font-size:var(--font-size-sm);">Kein Gesamtsieger erfasst.</div>`;
+  const standings = e.overallStandings ?? [];
+  const standingsHtml = standings.length
+    ? `<div class="leaderboard-list-grid">${standings.map(renderEventStanding).join('')}</div>`
+    : `<div class="muted hall-of-fame-empty-result">Noch keine Platzierungen.</div>`;
 
   const tournamentsHtml = e.tournamentChampions.length
-    ? e.tournamentChampions
-        .map(
-          (t) => `
-        <div class="chip" style="margin-top:var(--space-2);">
-          ${escapeHtml(t.gameIcon)} ${escapeHtml(t.gameName)} — <strong>${escapeHtml(t.championTeamName || '–')}</strong>
-          <span class="muted">(${escapeHtml(t.championPlayers.join(', '))})</span>
-        </div>`
-        )
-        .join('')
+    ? `<div class="leaderboard-list-grid">${e.tournamentChampions.map(renderTournamentChampion).join('')}</div>`
     : '';
 
   return `
-    <div class="card" style="margin-bottom:var(--space-3);">
-      <div class="row-between">
+    <div class="stack hall-of-fame-event">
+      <div class="row-between hall-of-fame-event-header">
         <span class="player-name">${escapeHtml(e.eventName)}</span>
         <span class="muted" style="font-size:var(--font-size-xs);">${range}</span>
       </div>
-      ${championLine}
-      <div class="chip-list">${tournamentsHtml}</div>
+      <section class="hall-of-fame-event-section is-overall">
+        <div class="section-title hall-of-fame-subtitle">Gesamtplatzierungen</div>
+        ${standingsHtml}
+      </section>
+      ${tournamentsHtml ? `<section class="hall-of-fame-event-section is-tournaments"><div class="section-title hall-of-fame-subtitle">Turniere</div>${tournamentsHtml}</section>` : ''}
     </div>
   `;
 }
 
 export function renderHallOfFame(container, ctx) {
   if (cache === null && !loading) load(ctx);
+  const events = cache?.events ?? [];
+  if (!events.some((event) => event.eventId === selectedEventId)) selectedEventId = events[0]?.eventId ?? null;
+  const selectedEvent = events.find((event) => event.eventId === selectedEventId) ?? null;
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
-    <h1 class="view-title">🏛️ Hall of Fame</h1>
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+    <h1 class="view-title">Hall of Fame</h1>
     ${
       loading || cache === null
         ? `<div class="empty-state">Lädt…</div>`
         : `
-      <div class="section-title">👑 Meiste Gesamtsiege</div>
-      <div class="card">${rankedRows(cache.allTime.mostOverallWins, 'Gesamtsieg')}</div>
-
-      <div class="section-title">🏆 Meiste Turniersiege</div>
-      <div class="card">${rankedRows(cache.allTime.mostTournamentWins, 'Turnier')}</div>
-
-      <div class="section-title">📅 Nach LAN</div>
-      ${
-        cache.events.length === 0
-          ? `<div class="empty-state"><span class="emoji">🏛️</span>Noch keine Events.</div>`
-          : cache.events.map(renderEvent).join('')
-      }
+      <div class="grouped-page-sections">
+        <section class="card stack grouped-page-section" aria-labelledby="hall-overall-title">
+          <div class="grouped-page-section-title"><h2 id="hall-overall-title">Meiste Gesamtsiege</h2></div>
+          <div class="leaderboard-list-grid">${rankedRows(cache.allTime.mostOverallWins, 'Gesamtsieg')}</div>
+        </section>
+        <section class="card stack grouped-page-section" aria-labelledby="hall-tournaments-title">
+          <div class="grouped-page-section-title"><h2 id="hall-tournaments-title">Meiste Turniersiege</h2></div>
+          <div class="leaderboard-list-grid">${rankedRows(cache.allTime.mostTournamentWins, 'Turnier')}</div>
+        </section>
+        <section class="card stack grouped-page-section" aria-labelledby="hall-events-title">
+          <div class="grouped-page-section-title"><h2 id="hall-events-title">Nach LAN</h2></div>
+          ${
+            events.length === 0
+              ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('hallOfFame'))}</span>Noch keine Events.</div>`
+              : `<select id="hall-event-select" aria-label="LAN">
+                   ${events.map((event) => `<option value="${event.eventId}" ${event.eventId === selectedEventId ? 'selected' : ''}>${escapeHtml(event.eventName)}</option>`).join('')}
+                 </select>
+                 <div class="card hall-of-fame-selected-event">${renderEvent(selectedEvent)}</div>`
+          }
+        </section>
+      </div>
     `
     }
   `;
+
+  container.querySelector('#hall-event-select')?.addEventListener('change', (event) => {
+    selectedEventId = event.currentTarget.value;
+    ctx.rerender();
+  });
 }

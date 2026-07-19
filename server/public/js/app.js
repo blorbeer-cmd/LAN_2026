@@ -3,6 +3,7 @@
 // focused on its own rendering logic.
 
 import { api, getToken, setToken } from './api.js';
+import { ensureLogin } from './authGate.js';
 import { connectSocket } from './socket.js';
 import { state } from './state.js';
 import { loadAll } from './data.js';
@@ -10,8 +11,8 @@ import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
 import { isAdmin, setAdmin } from './admin.js';
 import { filterTestUsers } from './testFilter.js';
-import { renderHome, invalidatePushFeed, invalidateHomeSeating } from './views/home.js';
-import { initNotificationBanner, refreshNotificationBanner, renderBanner } from './notificationBanner.js';
+import { renderHome, invalidateHomeSeating } from './views/home.js';
+import { initNotificationBanner, refreshNotificationBanner } from './notificationBanner.js';
 import { invalidateMissingSkills, invalidateAktuellStatus } from './aktuellStatus.js';
 import { renderPlayers } from './views/players.js';
 import { renderSettings } from './views/games.js';
@@ -26,21 +27,25 @@ import { renderScribbleRoom } from './views/arcadeScribble.js';
 import { renderBlobby } from './views/blobby.js';
 import { renderPong } from './views/pong.js';
 import { renderSnake } from './views/snake.js';
-import { renderGameCatalog, invalidateSkillSuggestions } from './views/gameCatalog.js';
+import { renderGameCatalog, invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
 import { renderArrivals, invalidateArrivals } from './views/arrivals.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
 import { renderProfile } from './views/profile.js';
-import { renderTournaments, invalidateTournaments, focusTournament } from './views/tournament.js';
-import { renderHallOfFame } from './views/hallOfFame.js';
+import { renderTournaments, invalidateTournaments, focusTournament, showTournamentLanding } from './views/tournament.js';
+import { invalidateHallOfFame, renderHallOfFame } from './views/hallOfFame.js';
 import { renderSeating, invalidateSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
 import { renderMore } from './views/more.js';
 import { renderAdmin } from './views/admin.js';
-import { installIconReplacement } from './icons.js';
+import { icon, installIconReplacement } from './icons.js';
+import { initGlobalSearch } from './searchPalette.js';
+import { installDomainIcons } from './domainIcons.js';
+import { initGroupContext, refreshGroupContext } from './groupContext.js';
 
 installIconReplacement();
+installDomainIcons();
 
 const VIEWS = {
   home: renderHome,
@@ -74,6 +79,7 @@ const VIEWS = {
 
 let currentView = 'home';
 const viewContainer = document.getElementById('view-container');
+let pendingSearchTarget = null;
 
 // Tracks the last vote round we've seen, so the socket handler can tell a
 // genuinely new round (round number just changed while open) apart from a
@@ -97,6 +103,30 @@ const ctx = {
 function renderCurrent() {
   const renderFn = VIEWS[currentView];
   if (renderFn) renderFn(viewContainer, ctx);
+  focusPendingSearchTarget();
+}
+
+function focusPendingSearchTarget() {
+  if (!pendingSearchTarget || pendingSearchTarget.view !== currentView) return;
+  const { type, id } = pendingSearchTarget.target;
+  const candidates = {
+    player: [...viewContainer.querySelectorAll('[data-player]')].filter((el) => el.dataset.player === id),
+    game: [...viewContainer.querySelectorAll('[data-search-game]')].filter((el) => el.dataset.searchGame === id),
+    order: [
+      ...viewContainer.querySelectorAll('[data-order-card], [data-closed-order]'),
+    ].filter((el) => el.dataset.orderCard === id || el.dataset.closedOrder === id),
+    info: [...viewContainer.querySelectorAll('[data-info-entry]')].filter((el) => el.dataset.infoEntry === id),
+    broadcast: [...viewContainer.querySelectorAll('[data-broadcast]')].filter((el) => el.dataset.broadcast === id),
+    carpool: [...viewContainer.querySelectorAll('[data-carpool]')].filter((el) => el.dataset.carpool === id),
+  }[type] ?? [];
+  const element = candidates[0];
+  if (!element) return;
+  if (element instanceof HTMLDetailsElement) element.open = true;
+  element.classList.add('search-target-highlight');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  element.scrollIntoView({ block: 'center', behavior: reducedMotion ? 'auto' : 'smooth' });
+  if (element.matches('button, a, input, [tabindex]')) element.focus({ preventScroll: true });
+  pendingSearchTarget = null;
 }
 
 // Every deliberate tab switch pushes a browser history entry (see main()'s
@@ -112,8 +142,9 @@ function renderCurrent() {
 // reachable via the back button (e.g. a watch view whose match has ended;
 // re-pushing would trap back/forward between the stale entry and its
 // redirect target).
-function switchView(view, { fromHistory = false, replace = false } = {}) {
+function switchView(view, { fromHistory = false, replace = false, searchTarget = null } = {}) {
   const changed = view !== currentView;
+  pendingSearchTarget = searchTarget ? { view, target: searchTarget } : null;
   currentView = view;
   // Realtime game modules use this marker to ignore updates while another
   // view is active. Without it, a running game can rebuild the current DOM
@@ -155,7 +186,7 @@ function wireAdminMode() {
     setAdmin(false);
     showToast('Admin-Modus verlassen.');
   });
-  window.addEventListener('lan:admin-changed', () => {
+  window.addEventListener('respawn:admin-changed', () => {
     updateAdminIndicator();
     ctx.refresh();
   });
@@ -170,20 +201,25 @@ async function tokenWorks(candidate) {
   }
 }
 
-// Gates the whole app behind the shared access token, if one is configured
-// server-side (NFR-16). Resolves once a working token is stored.
-//
+// Legacy deployments use the shared-token gate; required auth replaces it
+// with the personal login gate.
+async function ensureAccess() {
+  const meta = await api.meta();
+  if (meta.accessProtection) await ensureToken();
+  if (meta.authMode === 'required') await ensureLogin();
+  return meta;
+}
+
 // Invite links carry the token in the URL (?token=...): opening one logs in
 // automatically without anyone having to type or paste anything, which is
 // the whole point of sending a link instead of a password.
-async function ensureAccess() {
-  const meta = await api.meta();
-  if (!meta.accessProtection) return;
-
+async function ensureToken() {
   const fromUrl = new URLSearchParams(location.search).get('token');
   if (fromUrl && (await tokenWorks(fromUrl))) {
     setToken(fromUrl);
-    history.replaceState(null, '', `${location.pathname}${location.hash}`);
+    const cleanUrl = new URL(location.href);
+    cleanUrl.searchParams.delete('token');
+    history.replaceState(null, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
     return;
   }
 
@@ -215,8 +251,20 @@ async function ensureAccess() {
 }
 
 function wireNav() {
+  // Topbar and admin-banner icons come from icons.js like everywhere else
+  // (index.html stays free of hand-copied SVG paths); the app shell is
+  // hidden until this boot code runs, so nothing renders icon-less.
+  document.getElementById('notifications-btn').insertAdjacentHTML('afterbegin', icon('bell'));
+  document.getElementById('group-btn').insertAdjacentHTML('afterbegin', icon('users'));
+  document.getElementById('profile-btn').innerHTML = icon('circleUser');
+  document.getElementById('settings-btn').innerHTML = icon('settings');
+  document.querySelector('.admin-banner-label').insertAdjacentHTML('afterbegin', icon('shield'));
+
   document.querySelectorAll('.nav-btn').forEach((btn) => {
-    btn.addEventListener('click', () => switchView(btn.dataset.view));
+    btn.addEventListener('click', () => {
+      if (btn.dataset.view === 'tournaments') showTournamentLanding();
+      switchView(btn.dataset.view);
+    });
   });
   document.getElementById('settings-btn').addEventListener('click', () => switchView('settings'));
   document.getElementById('profile-btn').addEventListener('click', () => switchView('profile'));
@@ -234,11 +282,12 @@ function wireNav() {
   // when a realtime match starts, or refreshing its inline lobby on a socket
   // update). Kept as plain CustomEvents so modules stay decoupled from app.js.
   // detail is either the view name or { view, replace } (see switchView).
-  window.addEventListener('lan:navigate', (e) => {
+  window.addEventListener('respawn:navigate', (e) => {
     const detail = typeof e.detail === 'string' ? { view: e.detail } : e.detail ?? {};
     if (VIEWS[detail.view]) switchView(detail.view, { replace: detail.replace === true });
   });
-  window.addEventListener('lan:rerender', () => renderCurrent());
+  window.addEventListener('respawn:rerender', () => renderCurrent());
+  window.addEventListener('respawn:group-changed', () => ctx.refresh());
 
   // Back/forward: jump to whichever view is recorded on the popped entry
   // instead of re-pushing it (see switchView's fromHistory param). No
@@ -278,6 +327,10 @@ function wireSocket() {
       // leaderboard:changed, the only one that actually changes match
       // history) — the next time the Spiele view opens it just refetches.
       invalidateSkillSuggestions();
+      // Match corrections also change the Teams result history. Invalidate
+      // its separate cache so every open client shows the corrected winner.
+      invalidateMatchmakingHistory();
+      invalidateHallOfFame();
       // players:changed covers a renamed gamer/real name or new avatar —
       // both the Home board and the Sitzplan editor embed a snapshot of
       // player data alongside the layout, so they need the same treatment
@@ -296,7 +349,7 @@ function wireSocket() {
     // Socket payloads bypass apiFetch, so the test-user filter must run here.
     state.live = filterTestUsers(payload);
     invalidateMissingSkills(); // a newly-running game may now need a skill rating
-    if (currentView === 'home') renderCurrent();
+    if (currentView === 'home' || currentView === 'seating') renderCurrent();
   });
   socket.on('votes:changed', (payload) => {
     const isNewRound = payload.open && payload.round !== lastVoteRound;
@@ -304,12 +357,8 @@ function wireSocket() {
     lastVoteRound = payload.round;
 
     state.votes = payload;
-    // Home shows an "Abstimmung läuft" status card driven by state.votes,
-    // and the header banner shows the same thing as a chip — on every view,
-    // so it needs its own re-render here rather than piggybacking on
-    // renderCurrent(), which only touches the currently visible view.
+    // Home shows an "Abstimmung läuft" status card driven by state.votes.
     if (currentView === 'votes' || currentView === 'home') renderCurrent();
-    renderBanner();
 
     // Anyone with an identity gets nudged that a new vote opened, even if
     // they're not currently looking at the Votes tab — otherwise the only
@@ -317,7 +366,7 @@ function wireSocket() {
     // on Votes: the view itself just updated in place, a toast on top would
     // just be noise.
     if (isNewRound && getMyId() && currentView !== 'votes') {
-      showToast('🗳️ Neue Abstimmung gestartet – tippen zum Mitmachen', {
+      showToast('Neue Abstimmung gestartet – tippen zum Mitmachen', {
         duration: 4500,
         onClick: () => switchView('votes'),
       });
@@ -355,13 +404,12 @@ function wireSocket() {
     if (currentView === 'matchmaking') renderCurrent();
   });
   // A draw's teams were fine-tuned (player moved) or a result was just
-  // entered for it (Team-Historie -> Ergebnis-Historie) — refetch so
-  // everyone's history view stays in sync.
+  // entered for it — refetch so everyone's history view stays in sync.
   socket.on('matchmaking:draws-changed', (payload) => {
     invalidateMatchmakingHistory();
     // A result was just recorded for this draw elsewhere — the "gerade
     // ausgelost" panel (if still showing that same draw) disappears too,
-    // not just Team-Historie.
+    // not just the history entry.
     if (payload?.matchId && state.lastMatchmaking?.id === payload.id) {
       state.lastMatchmaking = null;
     }
@@ -387,16 +435,12 @@ function wireSocket() {
     }
   });
   // Every notifyPlayers() call on the server also lands here — refresh the
-  // Home view's "Mitteilungen" history and the always-on header banner so
-  // new entries appear without a reload.
+  // header notification center so new entries appear without a reload.
   socket.on('push:sent', () => {
-    invalidatePushFeed();
-    if (currentView === 'home') renderCurrent();
     refreshNotificationBanner();
   });
   // A short-lived push topic was closed, completed or reached its deadline.
-  // Its history stays on Home, but the always-on banner must immediately
-  // fall back to the newest entry that is still actionable.
+  // Refresh the center so its server-backed state remains current.
   socket.on('push:changed', refreshNotificationBanner);
   // Dismissals are personal: only refresh devices currently acting as the
   // player who marked this entry as seen.
@@ -418,20 +462,20 @@ function wireSocket() {
   // Captain draft: the payload carries the full fresh state, so the Teams
   // view can re-render without a round trip. A newly started draft nudges
   // everyone who isn't already watching; a finished draft's teams land in
-  // Team-Historie (see draft.ts), so just point people there instead of
+  // Historie (see draft.ts), so just point people there instead of
   // pinning the result to the top of the page.
   socket.on('draft:changed', (payload) => {
     setDraftState(payload);
     invalidateMatchmakingHistory();
     if (currentView === 'matchmaking') renderCurrent();
     if (payload?.started && getMyId() && currentView !== 'matchmaking') {
-      showToast('👑 Captain-Draft gestartet – tippen zum Zusehen', {
+      showToast('Captain-Draft gestartet – tippen zum Zusehen', {
         duration: 5000,
         onClick: () => switchView('matchmaking'),
       });
     }
     if (payload?.completed) {
-      showToast('👑 Draft abgeschlossen – Teams stehen in der Team-Historie', {
+      showToast('Draft abgeschlossen – Teams stehen in der Historie', {
         duration: 5000,
         onClick: () => switchView('matchmaking'),
       });
@@ -444,7 +488,7 @@ function wireSocket() {
     invalidateBroadcasts();
     if (currentView === 'broadcast') renderCurrent();
     if (payload && payload.playerId !== getMyId()) {
-      showToast(`📢 ${payload.playerName}: ${payload.message}`, { duration: 8000 });
+      showToast(`${payload.playerName}: ${payload.message}`, { duration: 8000 });
     }
   });
   socket.on('broadcasts:changed', () => {
@@ -474,12 +518,21 @@ function wireSocket() {
     invalidateArrivals();
     if (currentView === 'arrivals') renderCurrent();
   });
+  socket.on('groups:changed', () => refreshGroupContext());
 }
 
 async function main() {
-  await ensureAccess();
+  const meta = await ensureAccess();
   document.getElementById('app').hidden = false;
+  await initGroupContext(meta);
   wireNav();
+  initGlobalSearch((entry) => {
+    if (entry.target?.type === 'tournament') focusTournament(entry.target.id);
+    if (entry.target?.type === 'game') focusGameCatalog(entry.target.id);
+    switchView(entry.view, {
+      searchTarget: entry.target?.type === 'tournament' ? null : entry.target,
+    });
+  });
   wireAdminMode();
   wireSocket();
   initNotificationBanner();
@@ -493,7 +546,16 @@ async function main() {
   // app window existed yet) overrides that default so the tap actually lands
   // where the notification promised.
   const hashView = location.hash.slice(1);
-  const initialView = VIEWS[hashView] ? hashView : getMyId() ? 'home' : 'profile';
+  // A reload keeps the view the browser was on (stored on the history entry
+  // by switchView) instead of bouncing back to Home mid-workflow.
+  const restoredView = history.state?.view;
+  const initialView = VIEWS[hashView]
+    ? hashView
+    : VIEWS[restoredView]
+      ? restoredView
+      : getMyId()
+        ? 'home'
+        : 'profile';
   // Establishes the base history entry the very first popstate can land on
   // (replace, not push — this page load shouldn't cost an extra back-step)
   // before any tab switch starts pushing entries on top of it.

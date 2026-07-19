@@ -7,7 +7,11 @@ import { state } from './state.js';
 import { filterTestUsers } from './testFilter.js';
 
 export async function loadAll() {
-  const [players, games, skills, preferences, live, votes, matches, leaderboard, playtime, events] =
+  const playtimeAllGamesPromise = api.stats.playtime();
+  const playtimePromise = state.selectedGameId
+    ? api.stats.playtime(state.selectedGameId)
+    : playtimeAllGamesPromise;
+  const [players, games, skills, preferences, live, votes, matches, leaderboard, playtime, playtimeAllGames, events] =
     await Promise.all([
       api.players.list(),
       api.games.list(),
@@ -17,7 +21,8 @@ export async function loadAll() {
       api.votes.get(),
       api.matches.list(),
       api.leaderboard.get(state.selectedGameId || undefined),
-      api.stats.playtime(state.selectedGameId || undefined),
+      playtimePromise,
+      playtimeAllGamesPromise,
       api.events.list(),
     ]);
   // apiFetch already filters test users per response, but within this
@@ -27,6 +32,6 @@ export async function loadAll() {
   // that the roster has definitely been seen (idempotent otherwise).
   Object.assign(
     state,
-    filterTestUsers({ players, games, skills, preferences, live, votes, matches, leaderboard, playtime, events })
+    filterTestUsers({ players, games, skills, preferences, live, votes, matches, leaderboard, playtime, playtimeAllGames, events })
   );
 }

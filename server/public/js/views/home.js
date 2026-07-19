@@ -3,20 +3,17 @@
 // currently running and needs you (open vote / active tournament / open food
 // order / waiting arcade lobby / an unrated skill for a currently-live game —
 // the kiosk content, but tappable and personalized), the realtime live board,
-// a leaderboard snapshot, the seating plan, and — at the very bottom, as a
-// history rather than something needing attention — the full notification
-// log. The newest still-active notification is additionally always visible
-// in the app header (see notificationBanner.js), on every view, not just
-// this one.
+// a leaderboard snapshot and the seating plan. Notifications live only in
+// the header bell (see notificationBanner.js), so Home does not duplicate
+// the same content in a second style.
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, formatDateTime, stateLabel, avatarHtml, gameBadgeHtml, gameChipsHtml } from '../format.js';
+import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml } from '../format.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { renderSeatingPlan } from './seating.js';
-import { feedLinkView, FEED_LINK_LABELS } from '../pushFeed.js';
 import { ensureAktuellLoaded, aktuellItems } from '../aktuellStatus.js';
 
 const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
@@ -50,7 +47,8 @@ async function loadSeating(ctx) {
 
 function renderHomeSeating(ctx) {
   if (seatingCache === null && !seatingLoading) loadSeating(ctx);
-  return `<section class="live-seating">
+  return `<section class="card grouped-page-section live-seating stack" aria-labelledby="home-seating-title">
+    <div class="grouped-page-section-title"><h2 id="home-seating-title">Sitzplan</h2></div>
     ${seatingLoading || seatingCache === null
       ? '<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>'
       : renderSeatingPlan(seatingCache.layout, seatingCache.players)}
@@ -63,7 +61,7 @@ function renderHomeSeating(ctx) {
 // their own. This view just re-renders whenever that shared data changes.
 let lastCtx = null;
 
-window.addEventListener('lan:aktuell-changed', () => lastCtx?.rerender());
+window.addEventListener('respawn:aktuell-changed', () => lastCtx?.rerender());
 
 // Compact single-line row (the "Mehr" hub's list-row component, see
 // more.js) instead of a full card with its own button: the prominent header
@@ -78,7 +76,7 @@ function statusRowHtml({ iconName, title, sub, navigate }) {
         <div class="player-name">${title}</div>
         ${sub ? `<div class="muted list-row-desc">${sub}</div>` : ''}
       </span>
-      <span class="muted">›</span>
+      <span class="muted">${icon('chevronRight')}</span>
     </button>`;
 }
 
@@ -94,67 +92,10 @@ function renderStatus() {
 
   if (rows.length === 0) return '';
   return `
-    <div class="section-title">Aktuell</div>
-    <div class="card-grid" style="margin-bottom:var(--space-4);">${rows.join('')}</div>
-  `;
-}
-
-// "Mitteilungen": history of recent push notifications that concerned this
-// player (Durchsagen, neue Abstimmung, Turnier-Events, Bestellungen, ...),
-// straight from the server's push log. The newest still-active one is visible
-// up in the app header on every view (see notificationBanner.js);
-// this is the full recent history, further down the page since (once read)
-// it's a look-back, not something needing attention right now.
-let feedCache = null;
-let feedLoadedForId = null;
-let feedLoading = false;
-
-export function invalidatePushFeed() {
-  feedCache = null;
-  feedLoadedForId = null;
-}
-
-async function loadFeed(ctx, myId) {
-  feedLoading = true;
-  try {
-    const res = await api.push.log(myId);
-    feedCache = res.entries;
-    feedLoadedForId = myId;
-  } catch {
-    feedCache = [];
-    feedLoadedForId = myId;
-  } finally {
-    feedLoading = false;
-    ctx.rerender();
-  }
-}
-
-const FEED_LIMIT = 8;
-
-function renderFeed(myId) {
-  if (!myId || feedLoading || feedCache === null || feedLoadedForId !== myId) return '';
-  if (feedCache.length === 0) return '';
-
-  const rows = feedCache
-    .slice(0, FEED_LIMIT)
-    .map((e, i) => {
-      const view = feedLinkView(e.url);
-      const directBadge = e.audience === 'direct' ? `<span class="badge badge-playing">Für dich</span>` : '';
-      return `
-        <div class="stack" style="gap:var(--space-1);${i > 0 ? 'border-top:1px solid var(--border);padding-top:var(--space-3);' : ''}">
-          <div class="row-between" style="gap:var(--space-2);">
-            <span class="row" style="gap:var(--space-2);min-width:0;"><strong>${escapeHtml(e.title)}</strong>${directBadge}</span>
-            <span class="muted" style="font-size:var(--font-size-xs);flex-shrink:0;">${formatDateTime(e.createdAt)}</span>
-          </div>
-          <div class="muted" style="font-size:var(--font-size-sm);">${escapeHtml(e.body)}</div>
-          ${view ? `<div><button type="button" class="btn btn-sm" data-navigate="${view}">${FEED_LINK_LABELS[view]} ${icon('chevronRight')}</button></div>` : ''}
-        </div>`;
-    })
-    .join('');
-
-  return `
-    <div class="section-title">${icon('bell')} Mitteilungen</div>
-    <div class="card stack" style="gap:var(--space-3);margin-bottom:var(--space-4);">${rows}</div>
+    <section class="card grouped-page-section stack" aria-labelledby="home-current-title">
+      <div class="grouped-page-section-title"><h2 id="home-current-title">Aktuell</h2></div>
+      <div class="card-grid">${rows.join('')}</div>
+    </section>
   `;
 }
 
@@ -179,39 +120,46 @@ function renderActiveGroups(players) {
       const count = g.players.length;
       const namesList = g.players.slice().sort((a, b) => a.localeCompare(b, 'de')).join(', ');
       return `
-      <div class="chip" title="${escapeHtml(namesList)}">${gameBadgeHtml(g, 20)} <strong>${escapeHtml(g.name)}</strong> <span class="muted">· ${count} Spieler</span></div>`;
+      <div class="chip" title="${escapeHtml(namesList)}"><strong>${escapeHtml(g.name)}</strong> <span class="muted">· ${count} Spieler</span></div>`;
     })
     .join('');
 
   return `
-    <div class="section-title">Gerade aktiv</div>
-    <div class="chip-list" style="margin-bottom:var(--space-4);">${groups}</div>
+    <div class="home-page-subsection stack">
+      <h3>Gerade aktiv</h3>
+      <div class="chip-list">${groups}</div>
+    </div>
   `;
 }
 
-// Leaderboard snapshot (kiosk parity): the top three, one tap from the full
-// standings.
+// Leaderboard snapshot: the top six use the otherwise empty card width as
+// two compact columns on larger screens and stay a single list on phones.
 function renderLeaderboardTop() {
   const standings = state.leaderboard?.standings || [];
   if (standings.length === 0) return '';
-  const rows = standings
-    .slice(0, 3)
+  const columns = [standings.slice(0, 3), standings.slice(3, 6)]
+    .filter((column) => column.length > 0)
     .map(
-      (s, i) => `
-      <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
-        <span class="lb-rank">${i + 1}</span>
+      (column, columnIndex) => `<div class="home-leaderboard-column">${column
+        .map((s, rowIndex) => {
+          const rank = columnIndex * 3 + rowIndex + 1;
+          return `
+      <div class="lb-row ${rank === 1 ? 'rank-1' : ''}">
+        <span class="lb-rank">${rank}</span>
         ${avatarHtml(s, 28)}
-        <span style="flex:1;">${escapeHtml(s.name)}</span>
+        <span class="player-name" style="flex:1;">${escapeHtml(s.name)}</span>
         <span class="lb-points">${s.points} P</span>
-      </div>`
+      </div>`;
+        })
+        .join('')}</div>`
     )
     .join('');
   return `
-    <div class="section-title">Rangliste</div>
-    <div class="card" style="margin-bottom:var(--space-4);">
-      ${rows}
-      <button type="button" class="btn btn-sm btn-block" data-navigate="leaderboard" style="margin-top:var(--space-3);">Ganze Rangliste ${icon('chevronRight')}</button>
-    </div>
+    <section class="card grouped-page-section stack" aria-labelledby="home-leaderboard-title">
+      <div class="grouped-page-section-title"><h2 id="home-leaderboard-title">Rangliste</h2></div>
+      <div class="home-leaderboard-columns">${columns}</div>
+      <button type="button" class="btn btn-sm btn-block" data-navigate="leaderboard">Gesamte Rangliste ${icon('chevronRight')}</button>
+    </section>
   `;
 }
 
@@ -224,7 +172,7 @@ function renderMyStatus(myId, players) {
   if (!me) return '';
   const badgeClass = `badge-${me.state}`;
   return `
-    <div class="card row-between" style="margin-bottom:var(--space-4);">
+    <div class="card row-between home-my-status">
       <span class="row" style="gap:var(--space-2);">
         <span>Dein Status:</span>
         <span class="badge ${badgeClass}">${stateLabel(me.state)}</span>
@@ -250,19 +198,15 @@ export function renderHome(container, ctx) {
       <div class="empty-state">
         <img src="/img/mascot.svg" alt="" width="72" height="66" class="mascot" />
         Noch keine Spieler angelegt.<br />
-        <button type="button" class="btn btn-primary btn-sm" data-navigate="profile" style="margin-top:var(--space-3);">${icon('user')} Eigenes Profil anlegen</button>
+        <button type="button" class="btn btn-primary btn-sm" data-navigate="profile" style="margin-top:var(--space-3);">Eigenes Profil anlegen</button>
       </div>`;
     return;
   }
 
   const myId = getMyId();
-  const whoAmI = whoAmICardHtml('home-whoami', { marginBottom: '16px' });
+  const whoAmI = whoAmICardHtml('home-whoami', { marginBottom: 'var(--space-4)' });
 
   ensureAktuellLoaded();
-  if (myId && feedLoadedForId !== myId && !feedLoading) {
-    loadFeed(ctx, myId);
-  }
-
   const cards = players
     .map((p) => {
       const badgeClass = `badge-${p.state}`;
@@ -292,14 +236,17 @@ export function renderHome(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Home</h1>
     ${whoAmI}
-    ${renderMyStatus(myId, players)}
-    ${renderStatus()}
-    ${renderActiveGroups(players)}
-    <div class="section-title">Live-Status</div>
-    <div class="card-grid">${cards}</div>
-    ${renderLeaderboardTop()}
-    ${renderHomeSeating(ctx)}
-    ${renderFeed(myId)}
+    <div class="grouped-page-sections">
+      ${renderStatus()}
+      <section class="card grouped-page-section stack" aria-labelledby="home-live-title">
+        <div class="grouped-page-section-title"><h2 id="home-live-title">Live-Status</h2></div>
+        ${renderActiveGroups(players)}
+        ${renderMyStatus(myId, players)}
+        <div class="two-column-card-grid home-live-grid">${cards}</div>
+      </section>
+      ${renderLeaderboardTop()}
+      ${renderHomeSeating(ctx)}
+    </div>
   `;
 
   wireWhoAmICard(container, 'home-whoami', ctx);

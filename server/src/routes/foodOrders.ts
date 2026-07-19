@@ -8,20 +8,24 @@
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { db } from '../db';
+import { db, OUTSIDE_EVENTS_ID } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getTrackingEventId } from '../events';
 import { isNonEmptyString, isValidUrl } from '../validation';
 import { notifyPlayers, resolvePushTopic, updatePushTopicExpiry } from '../push';
+import { requireConfiguredUser, withBodyPlayerIdentity } from '../sessions';
+import { communicationRecipientIds } from '../communicationRecipients';
 
 export const foodOrdersRouter = Router();
 
 const MAX_TITLE_LENGTH = 80;
 const MAX_ITEM_LENGTH = 120;
 const MAX_PRICE_CENTS = 500_00; // nobody orders a 500€ pizza
+const MAX_ITEM_QUANTITY = 99;
 const MAX_NOTES_LENGTH = 500;
 const MAX_LINK_LENGTH = 300;
 const HISTORY_LIMIT = 10;
+const communicationEventId = (eventId: string): string | null => (eventId === OUTSIDE_EVENTS_ID ? null : eventId);
 
 interface OrderRow {
   id: string;
@@ -62,6 +66,7 @@ interface ItemRow {
   order_id: string;
   player_id: string;
   description: string;
+  quantity: number;
   price_cents: number | null;
   created_at: number;
 }
@@ -70,17 +75,17 @@ function serializeOrder(row: OrderRow) {
   const items = db
     .prepare(
       `SELECT i.id, i.player_id AS playerId, p.name AS playerName, p.color AS playerColor, p.avatar AS playerAvatar,
-              i.description, i.price_cents AS priceCents, i.created_at AS createdAt
+              i.description, i.quantity, i.price_cents AS priceCents, i.created_at AS createdAt
        FROM food_order_items i JOIN players p ON p.id = i.player_id
        WHERE i.order_id = ? ORDER BY i.created_at`
     )
-    .all(row.id) as Array<{ playerId: string; priceCents: number | null }>;
+    .all(row.id) as Array<{ playerId: string; quantity: number; priceCents: number | null }>;
 
   const creator = db.prepare('SELECT name FROM players WHERE id = ?').get(row.created_by) as
     | { name: string }
     | undefined;
 
-  const totalCents = items.reduce((sum, i) => sum + (i.priceCents ?? 0), 0);
+  const totalCents = items.reduce((sum, i) => sum + (i.priceCents ?? 0) * i.quantity, 0);
 
   return {
     id: row.id,
@@ -121,7 +126,7 @@ foodOrdersRouter.get('/', (_req, res) => {
 // placed/picked up, so everyone knows the cutoff for adding items instead of
 // guessing. notes/link are optional too: free-text info (e.g. Mindestbestell-
 // wert, "bar zahlen") and a link to the menu/delivery service.
-foodOrdersRouter.post('/', (req, res) => {
+foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId, title, sendAt, notes, link } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -164,20 +169,22 @@ foodOrdersRouter.post('/', (req, res) => {
   // (they just tapped the button themselves).
   broadcast(Events.foodOrdersChanged, {
     notify: {
-      message: `🍕 Neue Sammelbestellung: ${row.title}${sendAtNote} – jetzt eintragen!`,
+      message: `Neue Sammelbestellung: ${row.title}${sendAtNote} – jetzt eintragen!`,
       excludePlayerId: playerId,
     },
   });
-  const allPlayerIds = (db.prepare('SELECT id FROM players').all() as Array<{ id: string }>).map((p) => p.id);
+  const eventScope = communicationEventId(row.event_id);
+  const allPlayerIds = communicationRecipientIds(req.group!.id, eventScope);
   notifyPlayers(
     allPlayerIds,
     {
-      title: '🍕 Neue Sammelbestellung',
+      title: 'Neue Sammelbestellung',
       body: `${row.title}${sendAtNote} (von ${player.name}) – jetzt eintragen!`,
       url: '/#foodOrders',
     },
     'all',
-    { key: `food-order:${row.id}`, expiresAt: row.send_at }
+    { key: `food-order:${row.id}`, expiresAt: row.send_at },
+    { groupId: req.group!.id, eventId: eventScope },
   );
 
   res.status(201).json(serializeOrder(row));
@@ -189,9 +196,12 @@ foodOrdersRouter.post('/', (req, res) => {
 // even after the order closed, so none of this is gated on open/closed like
 // items are. Each field is independent: omit a field to leave it as-is,
 // pass null to clear it.
-foodOrdersRouter.patch('/:id', (req, res) => {
+foodOrdersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   const order = getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
+  if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung bearbeiten.' });
+  }
 
   const { sendAt, notes, link } = req.body ?? {};
   if (sendAt !== undefined && sendAt !== null && !isValidSendAt(sendAt)) {
@@ -215,13 +225,18 @@ foodOrdersRouter.patch('/:id', (req, res) => {
     next.link,
     order.id
   );
-  if (sendAt !== undefined) updatePushTopicExpiry(`food-order:${order.id}`, next.send_at);
+  if (sendAt !== undefined) {
+    updatePushTopicExpiry(`food-order:${order.id}`, next.send_at, {
+      groupId: req.group!.id,
+      eventId: communicationEventId(order.event_id),
+    });
+  }
   broadcast(Events.foodOrdersChanged, null);
   res.json(serializeOrder({ ...order, ...next }));
 });
 
-// POST /api/food-orders/:id/items - body: { playerId, description, priceCents? }
-foodOrdersRouter.post('/:id/items', (req, res) => {
+// POST /api/food-orders/:id/items - body: { playerId, description, quantity, priceCents? }
+foodOrdersRouter.post('/:id/items', ...withBodyPlayerIdentity, (req, res) => {
   const order = getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   // The race guard: the order may have been closed between this device
@@ -230,12 +245,15 @@ foodOrdersRouter.post('/:id/items', (req, res) => {
     return res.status(409).json({ error: 'Diese Bestellung ist schon geschlossen.' });
   }
 
-  const { playerId, description, priceCents } = req.body ?? {};
+  const { playerId, description, quantity = 1, priceCents } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
   if (!isNonEmptyString(description, MAX_ITEM_LENGTH)) {
     return res.status(400).json({ error: `Was möchtest du? (1-${MAX_ITEM_LENGTH} Zeichen)` });
+  }
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_ITEM_QUANTITY) {
+    return res.status(400).json({ error: `Anzahl muss zwischen 1 und ${MAX_ITEM_QUANTITY} liegen.` });
   }
   if (
     priceCents !== undefined &&
@@ -248,8 +266,8 @@ foodOrdersRouter.post('/:id/items', (req, res) => {
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   db.prepare(
-    'INSERT INTO food_order_items (id, order_id, player_id, description, price_cents, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(nanoid(), order.id, playerId, description.trim(), priceCents ?? null, Date.now());
+    'INSERT INTO food_order_items (id, order_id, player_id, description, quantity, price_cents, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(nanoid(), order.id, playerId, description.trim(), quantity, priceCents ?? null, Date.now());
 
   broadcast(Events.foodOrdersChanged, null);
   res.status(201).json(serializeOrder(order));
@@ -257,7 +275,7 @@ foodOrdersRouter.post('/:id/items', (req, res) => {
 
 // DELETE /api/food-orders/:id/items/:itemId - body: { playerId }. Players
 // may only remove their own items (mis-taps happen), and only while open.
-foodOrdersRouter.delete('/:id/items/:itemId', (req, res) => {
+foodOrdersRouter.delete('/:id/items/:itemId', ...withBodyPlayerIdentity, (req, res) => {
   const order = getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (order.closed_at !== null) {
@@ -280,16 +298,22 @@ foodOrdersRouter.delete('/:id/items/:itemId', (req, res) => {
 
 // POST /api/food-orders/:id/close - freezes the list. Exactly one closer
 // wins; the second tap gets a 409 instead of double-notifying everyone.
-foodOrdersRouter.post('/:id/close', (req, res) => {
+foodOrdersRouter.post('/:id/close', requireConfiguredUser, (req, res) => {
   const order = getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
+  if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung schließen.' });
+  }
   if (order.closed_at !== null) {
     return res.status(409).json({ error: 'Diese Bestellung ist schon geschlossen.' });
   }
 
   const closedAt = Date.now();
   db.prepare('UPDATE food_orders SET closed_at = ? WHERE id = ?').run(closedAt, order.id);
-  resolvePushTopic(`food-order:${order.id}`);
+  resolvePushTopic(`food-order:${order.id}`, false, {
+    groupId: req.group!.id,
+    eventId: communicationEventId(order.event_id),
+  });
   broadcast(Events.foodOrdersChanged, null);
   res.json(serializeOrder({ ...order, closed_at: closedAt }));
 });

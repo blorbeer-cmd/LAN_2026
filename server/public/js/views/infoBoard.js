@@ -1,4 +1,4 @@
-// Info-Board view: the pinned answers to the questions everyone asks five
+// Info view: the pinned answers to the questions everyone asks five
 // times per evening — WLAN password, Discord link, game-server IPs, house
 // rules. Anyone can add/edit/delete entries (LAN trust model); values get a
 // one-tap copy button since most of them exist to be pasted somewhere.
@@ -7,6 +7,8 @@ import { api } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
+import { icon } from '../icons.js';
+import { withStepUp } from '../reauth.js';
 
 let cache = null;
 let loading = false;
@@ -46,7 +48,7 @@ function openEntryForm(ctx, existing) {
     `
       <form id="info-form" class="stack">
         <input type="text" id="info-title" maxlength="80" required autofocus placeholder="z.B. WLAN" value="${escapeHtml(existing?.title ?? '')}" />
-        <textarea id="info-content" maxlength="1000" rows="4" required placeholder="z.B. Netz: LAN2026 / Passwort: …">${escapeHtml(existing?.content ?? '')}</textarea>
+        <textarea id="info-content" maxlength="1000" rows="4" required placeholder="z.B. Netz: Respawn / Passwort: …">${escapeHtml(existing?.content ?? '')}</textarea>
         <button type="submit" class="btn btn-primary btn-block">${isEdit ? 'Speichern' : 'Anlegen'}</button>
       </form>
     `,
@@ -80,32 +82,40 @@ export function renderInfoBoard(container, ctx) {
     loading || cache === null
       ? `<div class="empty-state">Lädt…</div>`
       : cache.length === 0
-        ? `<div class="empty-state"><span class="emoji">📌</span>Noch keine Einträge.<br />
+        ? `<div class="empty-state">Noch keine Einträge.<br />
            <span class="muted" style="font-size:var(--font-size-sm);">Gut aufgehoben hier: WLAN-Passwort, Discord-Link, Server-IPs, Hausregeln.</span></div>`
-        : `<div class="card-grid">${cache
+        : `<div class="two-column-card-grid">${[...cache]
+            .sort((a, b) => a.title.localeCompare(b.title, 'de', { sensitivity: 'base' }))
             .map(
               (e) => `
-            <div class="card stack" style="gap:var(--space-2);">
+            <div class="card stack" style="gap:var(--space-2);" data-info-entry="${e.id}">
               <div class="row-between">
-                <strong>${escapeHtml(e.title)}</strong>
+                <strong class="info-board-title">${escapeHtml(e.title)}</strong>
                 <span class="row" style="gap:var(--space-1);">
-                  <button type="button" class="icon-btn" data-copy-entry="${e.id}" title="Inhalt kopieren" aria-label="Inhalt kopieren">📋</button>
-                  <button type="button" class="icon-btn" data-edit-entry="${e.id}" title="Bearbeiten" aria-label="Bearbeiten">✏️</button>
-                  <button type="button" class="icon-btn" data-delete-entry="${e.id}" title="Löschen" aria-label="Löschen">🗑️</button>
+                  <button type="button" class="icon-btn" data-copy-entry="${e.id}" title="Inhalt kopieren" aria-label="Inhalt kopieren">${icon('copy')}</button>
+                  <button type="button" class="icon-btn" data-edit-entry="${e.id}" title="Bearbeiten" aria-label="Bearbeiten">${icon('pencil')}</button>
+                  <button type="button" class="icon-btn" data-delete-entry="${e.id}" title="Löschen" aria-label="Löschen">${icon('trash')}</button>
                 </span>
               </div>
-              <div style="white-space:pre-wrap;word-break:break-word;font-size:var(--font-size-md);">${linkify(escapeHtml(e.content))}</div>
+              <div class="info-board-content">${linkify(escapeHtml(e.content))}</div>
             </div>`
             )
             .join('')}</div>`;
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <div class="row-between">
-      <h1 class="view-title">📌 Info-Board</h1>
-      <button type="button" class="btn btn-primary btn-sm" id="info-new-btn">+ Eintrag</button>
+      <h1 class="view-title">Info</h1>
+      <button type="button" class="btn btn-primary btn-sm" id="info-new-btn">Eintrag anlegen</button>
     </div>
-    ${entries}
+    <div class="grouped-page-sections">
+      <section class="card stack grouped-page-section" aria-labelledby="info-board-entries-title">
+        <div class="grouped-page-section-title">
+          <h2 id="info-board-entries-title">Einträge</h2>
+        </div>
+        ${entries}
+      </section>
+    </div>
   `;
 
   container.querySelector('#info-new-btn').addEventListener('click', () => openEntryForm(ctx, null));
@@ -136,7 +146,8 @@ export function renderInfoBoard(container, ctx) {
       if (!entry) return;
       if (!(await confirmDialog(`Eintrag "${entry.title}" wirklich löschen?`))) return;
       try {
-        await api.info.remove(entry.id);
+        const removed = await withStepUp(() => api.info.remove(entry.id));
+        if (removed === undefined) return;
         cache = null;
         showToast('Eintrag gelöscht.');
         ctx.rerender();

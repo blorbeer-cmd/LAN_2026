@@ -198,7 +198,7 @@ Setzt der Nutzer das Label wieder ab, bevor das Gate gegriffen hat, gilt wieder 
 
 1. **Claude GitHub App installieren** (falls noch nicht geschehen): in einer lokalen Claude-Code-
    Session `/install-github-app` ausführen oder über github.com/apps/claude installieren und dem
-   Repo `blorbeer-cmd/LAN_2026` Zugriff geben.
+   Repo `blorbeer-cmd/Respawn` Zugriff geben.
 2. **Secret anlegen:** `ANTHROPIC_API_KEY` (oder `CLAUDE_CODE_OAUTH_TOKEN` aus einem
    Claude-Abo) unter *Settings → Secrets and variables → Actions*.
 3. **Codex-GitHub-Integration verbinden:** in den Codex-Einstellungen (ChatGPT → Codex →

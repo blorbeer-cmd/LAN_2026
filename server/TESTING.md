@@ -40,6 +40,26 @@ eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur d
 - E2E startet den gebauten Server (`dist/index.js`) als eigenen Kindprozess auf einem Test-Port,
   ebenfalls mit `DB_FILE=:memory:`, und schließt ihn danach automatisch wieder.
 - Jede Test-Datei läuft in einem eigenen Prozess (Isolation durch den Node-Runner).
+- Die verpflichtende Zwei-Gruppen-Autorisierungsmatrix liegt in
+  `src/test/api.groupAuthorization.required.test.ts`. Sie prüft fremde Ressourcen (`404`),
+  unzureichende Rollen (`403`), sofortige Rollenwirkung, gruppengebundene Events/Audits,
+  Test-Spieler-Eigentum, den Last-Owner-Race, deaktivierte Owner, den Entfernungsschutz der
+  Startgruppe und die Archivierungssperre bei laufendem Tracking.
+- Der Phase-5c-Cluster Votes/Drafts hat eine eigene Zwei-Gruppen-Suite in
+  `src/test/api.groupVotesDrafts.required.test.ts`. Sie deckt gruppenlokale CRUD-/Listen-Zustände,
+  Rollen, aktive Spieler-Mitgliedschaften, historische Snapshots, Aggregationen, Foreign Keys und
+  Event-Exporte ab.
+- Seating/Pings wird entsprechend in `src/test/api.groupSeatingPings.required.test.ts` geprüft:
+  getrennte Gruppenraum-/Event-Historien, fremde Spieler- und Eventreferenzen, 403-Rollenpfade,
+  bekannte Fremd-IDs sowie Datenbank-Trigger und -Foreign-Keys.
+- Organisation/Kommunikation liegt in
+  `src/test/api.groupOrganisationCommunication.required.test.ts`: Zwei Gruppen, Gruppenraum- und
+  Event-Empfänger, Broadcast-/Push-Historien, Infoboard-Rollen, Aggregationen, Event-Export,
+  Cross-Tenant-404s und der bewusst ausbleibende Web-Push-Transport werden gemeinsam geprüft.
+- Arcade-Daten und die sessiongebundenen REST-Auswertungen deckt
+  `src/test/api.groupArcadeData.required.test.ts` ab: getrennte Ergebnis-/Statistik-/Historienleser,
+  Eventfilter, Spielerzuordnung und historische Snapshots sowie gruppenlokale Quiz-Inhalte. Socket-
+  Discovery, Rooms, Zuschauer, Streams und Kiosk bleiben Teil von Phase 5e.
 
 ## Datenbank-Migrationen
 

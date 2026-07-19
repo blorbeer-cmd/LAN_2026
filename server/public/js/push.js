@@ -62,3 +62,18 @@ export async function disablePush() {
   await api.push.unsubscribe(subscription.endpoint);
   await subscription.unsubscribe();
 }
+
+// A browser push endpoint belongs to the signed-in account, not to the
+// device forever. Logout detaches it server-side without deleting the
+// browser subscription; the next login can then rebind the same endpoint.
+export async function detachPushSubscription() {
+  const registration = await navigator.serviceWorker.getRegistration();
+  const subscription = registration ? await registration.pushManager.getSubscription() : null;
+  if (subscription) await api.push.unsubscribe(subscription.endpoint);
+}
+
+export async function rebindExistingPushSubscription(playerId) {
+  const registration = await navigator.serviceWorker.getRegistration();
+  const subscription = registration ? await registration.pushManager.getSubscription() : null;
+  if (subscription) await api.push.subscribe(playerId, subscription.toJSON());
+}

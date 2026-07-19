@@ -14,6 +14,7 @@
 // keeps working unchanged.
 
 import { toDatetimeLocal } from './format.js';
+import { icon } from './icons.js';
 
 const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const MONTH_NAMES = [
@@ -85,7 +86,7 @@ export function dateTimeFieldHtml(id, rawValueMs, opts = {}) {
         <span class="dt-time-sep">:</span>
         <select class="dt-time-select" data-dt-minute ${hasValue ? '' : 'disabled'} ${opts.disabled ? 'disabled' : ''}>${minuteOptions}</select>
       </div>
-      ${opts.clearable ? `<button type="button" class="dt-clear-btn icon-btn" data-dt-clear title="Datum löschen" ${hasValue ? '' : 'hidden'} ${opts.disabled ? 'disabled' : ''}>✕</button>` : ''}
+      ${opts.clearable ? `<button type="button" class="dt-clear-btn icon-btn" data-dt-clear title="Datum löschen" aria-label="Datum löschen" ${hasValue ? '' : 'hidden'} ${opts.disabled ? 'disabled' : ''}>${icon('x')}</button>` : ''}
     </div>`;
 }
 

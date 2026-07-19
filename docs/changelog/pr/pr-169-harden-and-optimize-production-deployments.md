@@ -2,8 +2,8 @@
 
 - Datum des Merges: 2026-07-13
 - Branch: `codex/deploy-optimizations`
-- Merge-Commit: [`e5f4da0`](https://github.com/blorbeer-cmd/LAN_2026/commit/e5f4da043166e0cd55cd4b72f687f2cedca49f17)
-- Pull Request: [#169](https://github.com/blorbeer-cmd/LAN_2026/pull/169)
+- Merge-Commit: [`e5f4da0`](https://github.com/blorbeer-cmd/Respawn/commit/e5f4da043166e0cd55cd4b72f687f2cedca49f17)
+- Pull Request: [#169](https://github.com/blorbeer-cmd/Respawn/pull/169)
 
 ## Changelog
 

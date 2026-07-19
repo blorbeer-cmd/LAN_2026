@@ -6,7 +6,7 @@
 // of currently detected games per player, not a single game_id.
 
 import { Server } from 'socket.io';
-import { db } from './db';
+import { db, DEFAULT_GROUP_ID } from './db';
 import { config } from './config';
 import { broadcast, Events } from './realtime';
 
@@ -65,14 +65,35 @@ export function deriveState(
   return 'offline';
 }
 
-// Returns the full board: every player plus their currently detected games and
-// derived state. Players without any live_status row still appear (offline).
-export function getLiveBoard(): LiveBoardEntry[] {
+// Returns the full board for one group: every active member plus their
+// currently detected games (scoped to that group's catalog) and derived
+// state. Members without any live_status row still appear (offline).
+// live_status/agent_diagnostics themselves stay ungrouped (FR-13's presence
+// heartbeat describes the physical PC, not a group), so a member seen from
+// two groups would show the same last_seen/manual_note in both — only the
+// games list and the roster are group-scoped.
+export function getLiveBoard(groupId: string): LiveBoardEntry[] {
   const now = Date.now();
 
-  const players = db
-    .prepare('SELECT id, name, color, avatar FROM players ORDER BY name COLLATE NOCASE')
-    .all() as Array<{ id: string; name: string; color: string; avatar: string | null }>;
+  // Legacy mode predates the group system: players created via the simple
+  // "add a participant" flow never get a group_memberships row at all (there
+  // is no account/onboarding step to attach one), so gating the roster on
+  // membership there would silently drop them from their own live board.
+  // Required mode enforces real membership like every other group-owned read.
+  const players =
+    config.authMode === 'legacy'
+      ? (db
+          .prepare('SELECT id, name, color, avatar FROM players WHERE deactivated_at IS NULL ORDER BY name COLLATE NOCASE')
+          .all() as Array<{ id: string; name: string; color: string; avatar: string | null }>)
+      : (db
+          .prepare(
+            `SELECT p.id, p.name, p.color, p.avatar
+             FROM players p
+             JOIN group_memberships gm ON gm.player_id = p.id
+             WHERE p.deactivated_at IS NULL AND gm.group_id = ? AND gm.status = 'active'
+             ORDER BY p.name COLLATE NOCASE`
+          )
+          .all(groupId) as Array<{ id: string; name: string; color: string; avatar: string | null }>);
 
   const statusRows = db
     .prepare('SELECT player_id, last_seen, manual_note, activity_tracked FROM live_status')
@@ -84,9 +105,10 @@ export function getLiveBoard(): LiveBoardEntry[] {
       `SELECT lsg.player_id, lsg.game_id, g.name AS game_name, g.icon AS game_icon, lsg.since, lsg.is_foreground
        FROM live_status_games lsg
        JOIN games g ON g.id = lsg.game_id
+       WHERE lsg.group_id = ?
        ORDER BY lsg.since ASC`
     )
-    .all() as Array<{
+    .all(groupId) as Array<{
     player_id: string;
     game_id: string;
     game_name: string;
@@ -168,7 +190,10 @@ export function closeStaleSessions(now: number): void {
 export function sweepOnce(now: number = Date.now()): void {
   try {
     closeStaleSessions(now);
-    broadcast(Events.liveStatusChanged, getLiveBoard());
+    // Broadcasts the migrated default group's board globally — correct as
+    // long as MULTI_GROUPS_ENABLED stays off (the only functionally active
+    // group). Genuine per-group broadcasting needs Socket-Rooms (Phase 5e).
+    broadcast(Events.liveStatusChanged, getLiveBoard(DEFAULT_GROUP_ID));
   } catch (err) {
     // Never let a sweep error take down the timer/process.
     // eslint-disable-next-line no-console

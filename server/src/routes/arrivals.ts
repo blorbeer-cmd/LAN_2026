@@ -8,6 +8,7 @@ import { db } from '../db';
 import { getTrackingEventId } from '../events';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString } from '../validation';
+import { withBodyPlayerIdentity } from '../sessions';
 
 export const arrivalsRouter = Router();
 
@@ -162,7 +163,7 @@ arrivalsRouter.get('/', (_req, res) => {
 });
 
 // PUT /api/arrivals/mine - body: { playerId, arrivalAt?, departureAt?, note? }
-arrivalsRouter.put('/mine', (req, res) => {
+arrivalsRouter.put('/mine', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId, arrivalAt, departureAt, note } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -195,7 +196,7 @@ arrivalsRouter.put('/mine', (req, res) => {
 // startLocation?, etaAt?, seatsTotal? }. The creator becomes the driver -
 // they're the only one who can delete the group later (see DELETE below)
 // and never counts against their own seatsTotal offer.
-arrivalsRouter.post('/carpools', (req, res) => {
+arrivalsRouter.post('/carpools', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId, direction, label, startAt, startLocation, etaAt, seatsTotal } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) return res.status(400).json({ error: 'playerId ist erforderlich.' });
   if (!playerExists(playerId)) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
@@ -234,7 +235,7 @@ arrivalsRouter.post('/carpools', (req, res) => {
 // PATCH /api/arrivals/carpools/:id - driver-only. Lets the driver correct
 // their plan (time slips, seat count changes, ...) without having to delete
 // and recreate the group (which would kick every joined passenger out).
-arrivalsRouter.patch('/carpools/:id', (req, res) => {
+arrivalsRouter.patch('/carpools/:id', ...withBodyPlayerIdentity, (req, res) => {
   const carpool = getCarpool(req.params.id);
   if (!carpool) return res.status(404).json({ error: 'Fahrgemeinschaft nicht gefunden.' });
   const { playerId, label, startAt, startLocation, etaAt, seatsTotal } = req.body ?? {};
@@ -268,7 +269,7 @@ arrivalsRouter.patch('/carpools/:id', (req, res) => {
   res.json(serializeCarpool(getCarpool(carpool.id)!));
 });
 
-arrivalsRouter.post('/carpools/:id/join', (req, res) => {
+arrivalsRouter.post('/carpools/:id/join', ...withBodyPlayerIdentity, (req, res) => {
   const carpool = getCarpool(req.params.id);
   if (!carpool) return res.status(404).json({ error: 'Fahrgemeinschaft nicht gefunden.' });
   const { playerId } = req.body ?? {};
@@ -285,7 +286,7 @@ arrivalsRouter.post('/carpools/:id/join', (req, res) => {
   res.json(serializeCarpool(carpool));
 });
 
-arrivalsRouter.post('/carpools/:id/leave', (req, res) => {
+arrivalsRouter.post('/carpools/:id/leave', ...withBodyPlayerIdentity, (req, res) => {
   const carpool = getCarpool(req.params.id);
   if (!carpool) return res.status(404).json({ error: 'Fahrgemeinschaft nicht gefunden.' });
   const { playerId } = req.body ?? {};
@@ -307,7 +308,7 @@ arrivalsRouter.post('/carpools/:id/leave', (req, res) => {
   res.json(serializeCarpool(carpool));
 });
 
-arrivalsRouter.delete('/carpools/:id', (req, res) => {
+arrivalsRouter.delete('/carpools/:id', ...withBodyPlayerIdentity, (req, res) => {
   const carpool = getCarpool(req.params.id);
   if (!carpool) return res.status(404).json({ error: 'Fahrgemeinschaft nicht gefunden.' });
   const { playerId } = req.body ?? {};

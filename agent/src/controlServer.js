@@ -17,7 +17,7 @@ function renderPage() {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RespawnHQ-Agent – Steuerung</title>
+<title>Respawn-Agent – Steuerung</title>
 <style>
   :root { color-scheme: dark light; }
   * { box-sizing: border-box; }
@@ -75,7 +75,7 @@ function renderPage() {
 </head>
 <body>
   <div class="card" id="card">
-    <h1>RespawnHQ-Agent</h1>
+    <h1>Respawn-Agent</h1>
     <p class="sub" id="serverUrl">wird geladen…</p>
     <div class="badge" id="statusBadge">…</div>
 

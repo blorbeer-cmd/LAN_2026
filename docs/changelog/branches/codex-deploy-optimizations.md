@@ -7,4 +7,4 @@ Diagnostik, begrenzten Logs und automatischem Rollback härten.
 
 ## Pull Request
 
-- [PR #169](https://github.com/blorbeer-cmd/LAN_2026/pull/169), gemergt am 2026-07-13.
+- [PR #169](https://github.com/blorbeer-cmd/Respawn/pull/169), gemergt am 2026-07-13.

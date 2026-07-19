@@ -213,6 +213,34 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Preserve the existing production data on the first deploy after the
+      # product rename. Later deploys simply keep using the new directory.
+      - uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: deploy
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -euo pipefail
+            if [ ! -d /opt/respawn ] && [ -d /opt/lan2026 ]; then
+              sudo mv /opt/lan2026 /opt/respawn
+            fi
+            sudo mkdir -p /opt/respawn
+            sudo chown -R deploy:deploy /opt/respawn
+
+            # One-time cleanup for the pre-rename stack: Compose infers its
+            # project name from the containing directory, so the move above
+            # left any already-running lan2026-project containers (in
+            # particular cloudflared, which the deploy step below only ever
+            # restarts by service name within the *current* directory)
+            # orphaned on their own "lan2026_default" network, unable to
+            # reach the app container the next step creates on
+            # "respawn_default". docker-compose.yml now pins an explicit
+            # project name so this can't recur. Idempotent: a no-op once
+            # these are gone.
+            docker ps -aq --filter "label=com.docker.compose.project=lan2026" | xargs -r docker rm -f
+            docker network ls -q --filter "label=com.docker.compose.project=lan2026" | xargs -r docker network rm
+
       # Keep the live service definition in sync as deploy safeguards (for
       # example logging limits) evolve; secrets remain exclusively in the
       # server-side .env and are never copied from the repository.
@@ -222,7 +250,7 @@ jobs:
           username: deploy
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: docker-compose.yml
-          target: /opt/lan2026
+          target: /opt/respawn
           overwrite: true
 
       # Pinning the box to this exact sha (not a floating :latest tag) keeps
@@ -236,20 +264,32 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -euo pipefail
-            cd /opt/lan2026
+            cd /opt/respawn
             previous_image="$(sed -n 's/^IMAGE=//p' .env)"
             next_image="${{ needs.publish.outputs.image }}:${{ github.sha }}"
             sed -i "s#^IMAGE=.*#IMAGE=${next_image}#" .env
-            if ! docker compose pull app || ! docker compose up -d --wait --wait-timeout 90 app; then
+            # Also (re)attach cloudflared on every deploy, not just app: cheap
+            # and idempotent when it's already healthy, and self-heals it onto
+            # the pinned project/network if it was ever left stranded (see the
+            # cleanup step above) instead of requiring a manual fix.
+            if ! docker compose pull app || ! docker compose up -d --wait --wait-timeout 90 app cloudflared; then
               docker compose ps app || true
               docker compose logs --tail=100 app || true
               if [ -n "$previous_image" ] && [ "$previous_image" != "$next_image" ]; then
                 echo "Deploy failed; restoring previous image."
                 sed -i "s#^IMAGE=.*#IMAGE=${previous_image}#" .env
-                docker compose up -d --wait --wait-timeout 90 app || true
+                docker compose up -d --wait --wait-timeout 90 app cloudflared || true
                 docker compose ps app || true
               fi
               exit 1
             fi
-            docker compose ps app
-            docker image prune -af --filter "until=720h"
+            docker compose ps
+            # 720h (30 days) let the disk fill up: at this repo's merge
+            # velocity (often dozens of deploys/day, each publishing a new
+            # uniquely sha-tagged image) that's easily hundreds of accumulated
+            # images before anything gets swept. 24h matches the retention
+            # policy of the nightly "Ops - Disk Cleanup" workflow, which also
+            # covers days with no deploy at all. For an already-full disk,
+            # run that workflow directly instead of waiting for the next
+            # deploy's prune to catch up.
+            docker image prune -af --filter "until=24h"
