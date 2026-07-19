@@ -2483,6 +2483,83 @@ function addArcadeDataGroupScoping(): void {
 }
 runMigration({ version: 40, name: 'add arcade data group scoping', up: addArcadeDataGroupScoping });
 
+// Phase 5d: tracking consent is an auditable, append-only decision.  The
+// current state is the row with no revoked_at; old group memberships and event
+// rosters are imported as historical consent so existing LANs keep working.
+function addTrackingConsentHistory(): void {
+  const eventColumns = db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  if (!eventColumns.some((column) => column.name === 'visibility_scope')) {
+    db.exec("ALTER TABLE events ADD COLUMN visibility_scope TEXT NOT NULL DEFAULT 'participants' CHECK (visibility_scope IN ('group', 'participants', 'public'))");
+  }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS group_tracking_consents (
+      id         TEXT PRIMARY KEY,
+      group_id   TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      granted_at INTEGER NOT NULL,
+      revoked_at INTEGER,
+      source     TEXT NOT NULL DEFAULT 'user',
+      CHECK (revoked_at IS NULL OR revoked_at >= granted_at)
+    );
+    CREATE INDEX IF NOT EXISTS idx_group_tracking_consent_current
+      ON group_tracking_consents(group_id, player_id, revoked_at);
+    CREATE TABLE IF NOT EXISTS event_tracking_consents (
+      id          TEXT PRIMARY KEY,
+      event_id    TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      group_id    TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      player_id   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      accepted_at INTEGER NOT NULL,
+      revoked_at  INTEGER,
+      source      TEXT NOT NULL DEFAULT 'user',
+      CHECK (revoked_at IS NULL OR revoked_at >= accepted_at),
+      UNIQUE (event_id, player_id, accepted_at)
+    );
+    CREATE INDEX IF NOT EXISTS idx_event_tracking_consent_current
+      ON event_tracking_consents(event_id, player_id, revoked_at);
+    CREATE TABLE IF NOT EXISTS tracking_live_contexts (
+      player_id        TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      group_id         TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      event_id         TEXT REFERENCES events(id) ON DELETE CASCADE,
+      last_seen        INTEGER NOT NULL,
+      manual_note      TEXT,
+      activity_tracked INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (player_id, group_id, event_id)
+    );
+    CREATE TABLE IF NOT EXISTS tracking_live_games (
+      player_id     TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      group_id      TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      event_id      TEXT REFERENCES events(id) ON DELETE CASCADE,
+      game_id       TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+      since         INTEGER NOT NULL,
+      is_foreground INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (player_id, group_id, event_id, game_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_tracking_live_games_group ON tracking_live_games(group_id, player_id);
+    ALTER TABLE play_sessions ADD COLUMN allocation_weight REAL NOT NULL DEFAULT 1.0;
+  `);
+  const now = Date.now();
+  const insertGroup = db.prepare(
+    `INSERT OR IGNORE INTO group_tracking_consents (id, group_id, player_id, granted_at, revoked_at, source)
+     SELECT ?, gm.group_id, gm.player_id, COALESCE(gm.joined_at, ?), NULL, 'migration'
+     FROM group_memberships gm
+     WHERE gm.status = 'active' AND gm.outside_tracking_enabled = 1
+       AND NOT EXISTS (SELECT 1 FROM group_tracking_consents c WHERE c.group_id = gm.group_id AND c.player_id = gm.player_id AND c.revoked_at IS NULL)`,
+  );
+  for (const row of db.prepare("SELECT group_id, player_id FROM group_memberships WHERE status = 'active' AND outside_tracking_enabled = 1").all() as Array<{group_id:string;player_id:string}>) {
+    insertGroup.run(`migration-${row.group_id}-${row.player_id}`, now);
+  }
+  const insertEvent = db.prepare(
+    `INSERT OR IGNORE INTO event_tracking_consents (id, event_id, group_id, player_id, accepted_at, revoked_at, source)
+     SELECT ?, ep.event_id, e.group_id, ep.player_id, ?, NULL, 'migration'
+     FROM event_participants ep JOIN events e ON e.id = ep.event_id
+     WHERE ep.event_id = ? AND ep.player_id = ?`,
+  );
+  for (const row of db.prepare('SELECT event_id, player_id FROM event_participants').all() as Array<{event_id:string;player_id:string}>) {
+    insertEvent.run(nanoid(), now, row.event_id, row.player_id);
+  }
+}
+runMigration({ version: 41, name: 'add historized tracking consents and fan-out contexts', up: addTrackingConsentHistory });
+
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.
 function seedGames(): void {

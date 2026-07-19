@@ -16,6 +16,8 @@
 
 import { nanoid } from 'nanoid';
 import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
+import { closeEventContexts } from './trackingContexts';
+import { config } from './config';
 
 export { OUTSIDE_EVENTS_ID };
 
@@ -30,6 +32,7 @@ export interface EventRow {
   ended_at: number | null;
   group_id: string | null;
   status: 'draft' | 'published' | 'cancelled' | 'ended';
+  visibility_scope: 'group' | 'participants' | 'public';
 }
 
 // Whichever event currently has tracking_enabled — or the permanent
@@ -39,6 +42,15 @@ export interface EventRow {
 export function getTrackingEventId(): string {
   const row = db.prepare('SELECT id FROM events WHERE tracking_enabled = 1').get() as { id: string } | undefined;
   return row?.id ?? OUTSIDE_EVENTS_ID;
+}
+
+export function getTrackingEvents(now = Date.now()): EventRow[] {
+  return db.prepare(
+    `SELECT * FROM events
+     WHERE tracking_enabled = 1 AND id != ? AND status = 'published'
+       AND starts_at <= ? AND (ends_at IS NULL OR ends_at > ?)
+     ORDER BY group_id, id`,
+  ).all(OUTSIDE_EVENTS_ID, now, now) as EventRow[];
 }
 
 export function getTrackingEvent(): EventRow {
@@ -93,6 +105,7 @@ export interface UpdateEventFields {
   endsAt?: number | null;
   location?: string | null;
   description?: string | null;
+  visibilityScope?: 'group' | 'participants' | 'public';
 }
 
 // Metadata-only correction — never touches tracking state or live status.
@@ -109,11 +122,12 @@ export function updateEvent(id: string, fields: UpdateEventFields): EventRow | u
     ends_at: fields.endsAt !== undefined ? fields.endsAt : existing.ends_at,
     location: fields.location !== undefined ? fields.location : existing.location,
     description: fields.description !== undefined ? fields.description : existing.description,
+    visibility_scope: fields.visibilityScope !== undefined ? fields.visibilityScope : existing.visibility_scope,
   };
 
   db.prepare(
-    'UPDATE events SET name = ?, starts_at = ?, ends_at = ?, location = ?, description = ? WHERE id = ?'
-  ).run(next.name, next.starts_at, next.ends_at, next.location, next.description, next.id);
+    'UPDATE events SET name = ?, starts_at = ?, ends_at = ?, location = ?, description = ?, visibility_scope = ? WHERE id = ?'
+  ).run(next.name, next.starts_at, next.ends_at, next.location, next.description, next.visibility_scope, next.id);
 
   return next;
 }
@@ -131,6 +145,9 @@ function wipeLiveStatus(): void {
   db.prepare('UPDATE play_sessions SET ended_at = ? WHERE ended_at IS NULL').run(now);
   db.prepare('DELETE FROM live_status_games').run();
   db.prepare('DELETE FROM live_status').run();
+  db.prepare('UPDATE play_sessions SET ended_at = ? WHERE ended_at IS NULL').run(now);
+  db.prepare('DELETE FROM tracking_live_games').run();
+  db.prepare('DELETE FROM tracking_live_contexts').run();
 }
 
 // Turns tracking on for one event — clearing stale live status from
@@ -154,21 +171,13 @@ export function startTracking(id: string): StartTrackingResult {
   }
   if (event.tracking_enabled) return { ok: true, event };
 
-  const current = db.prepare('SELECT id, name FROM events WHERE tracking_enabled = 1').get() as
-    | { id: string; name: string }
-    | undefined;
-  if (current && current.id !== id) {
-    return {
-      ok: false,
-      code: 'conflict',
-      error: `Tracking läuft bereits für „${current.name}" – dort erst stoppen.`,
-      conflictEventId: current.id,
-      conflictEventName: current.name,
-    };
+  if (!config.multiGroupsEnabled) {
+    const current = db.prepare('SELECT id, name FROM events WHERE tracking_enabled = 1').get() as { id: string; name: string } | undefined;
+    if (current && current.id !== id) return { ok: false, code: 'conflict', error: `Tracking läuft bereits für „${current.name}" – dort erst stoppen.`, conflictEventId: current.id, conflictEventName: current.name };
+    wipeLiveStatus();
   }
 
   db.prepare('UPDATE events SET tracking_enabled = 1 WHERE id = ?').run(id);
-  wipeLiveStatus();
 
   return { ok: true, event: getEvent(id)! };
 }
@@ -182,7 +191,7 @@ export function stopTracking(id: string): EventRow | undefined {
   if (!event.tracking_enabled) return event;
 
   db.prepare('UPDATE events SET tracking_enabled = 0 WHERE id = ?').run(id);
-  wipeLiveStatus();
+  closeEventContexts(id);
   return getEvent(id);
 }
 
@@ -196,7 +205,7 @@ export function endEvent(id: string): EventRow | undefined {
 
   const wasTracking = Boolean(event.tracking_enabled);
   db.prepare("UPDATE events SET tracking_enabled = 0, ended_at = ?, status = 'ended' WHERE id = ?").run(Date.now(), id);
-  if (wasTracking) wipeLiveStatus();
+  if (wasTracking) closeEventContexts(id);
   return getEvent(id);
 }
 
