@@ -308,7 +308,12 @@ export function broadcast(event: string, payload: unknown, scope: BroadcastScope
       if (socket.data.kioskGroupId !== groupId) continue;
       if ((socket.data.kioskEventId ?? null) !== eventId) continue;
       if (!kioskDeliveryAllowed(socket)) continue;
-      socket.emit(event, payload);
+      // The kiosk gets refresh signals, not data: fachliche payloads can
+      // carry member-only details (e.g. match-ready lobby credentials in
+      // tournaments:changed). The group-wide push banner is the one
+      // deliberate payload consumer; its entries are already
+      // recipient-guarded above.
+      socket.emit(event, event === 'push:sent' ? payload : null);
       continue;
     }
     if (socket.data.groupId !== groupId) continue;

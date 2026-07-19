@@ -307,8 +307,25 @@ export function initGlobalSearch(onNavigate) {
           input.focus();
           loadContentSearchEntries().then((contentEntries) => {
             if (!backdrop.isConnected) return;
+            // Merging the late content entries re-renders the result list; a
+            // keyboard selection made in the meantime must survive instead of
+            // silently snapping back to the first result while the user is
+            // about to press Enter.
+            const previousSelection = results[selectedIndex];
             allEntries = [...visibleAreaEntries, ...contentEntries];
             renderResults();
+            if (previousSelection) {
+              const restored = results.findIndex(
+                (entry) =>
+                  entry.view === previousSelection.view &&
+                  entry.title === previousSelection.title &&
+                  entry.category === previousSelection.category
+              );
+              if (restored > 0) {
+                selectedIndex = restored;
+                updateSelection();
+              }
+            }
           });
         },
       }

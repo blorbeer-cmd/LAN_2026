@@ -195,6 +195,35 @@ test('kiosk sockets receive only allowlisted events for their validated token sc
   });
 });
 
+test('kiosks receive refresh signals without fachliche payloads, members get the full payload', async () => {
+  const groupA = createGroup('Kiosk Sanitize A');
+  const owner = createPlayer('Kiosk Sanitize Owner');
+  addMembership(groupA, owner, 'owner');
+  const kioskToken = issueKioskToken(groupA, null, owner, null).token;
+
+  await withRequiredServer(async ({ baseUrl }) => {
+    const memberSocket = await connectSession(baseUrl, owner);
+    const kiosk = await connectKiosk(baseUrl, kioskToken);
+    try {
+      await subscribeScope(memberSocket, groupA);
+      const memberPayloads: unknown[] = [];
+      const kioskPayloads: unknown[] = [];
+      memberSocket.on(Events.tournamentsChanged, (payload: unknown) => memberPayloads.push(payload));
+      kiosk.on(Events.tournamentsChanged, (payload: unknown) => kioskPayloads.push(payload));
+
+      const sensitive = { type: 'match_ready', notify: { message: 'Lobby geheim / Passwort 1234' } };
+      broadcast(Events.tournamentsChanged, sensitive, { groupId: groupA });
+      await settle();
+
+      assert.deepEqual(memberPayloads, [sensitive], 'members receive the full payload');
+      assert.deepEqual(kioskPayloads, [null], 'the kiosk receives only the refresh signal');
+    } finally {
+      memberSocket.close();
+      kiosk.close();
+    }
+  });
+});
+
 test('an event-scoped kiosk token does not receive group-room broadcasts', async () => {
   const groupA = createGroup('Kiosk Event A');
   const owner = createPlayer('Kiosk Event Owner');
