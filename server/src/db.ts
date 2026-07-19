@@ -2587,6 +2587,72 @@ runMigration({ version: 44, name: 'add historized tracking consents and fan-out 
 // well, so databases that already recorded 44 receive the Phase-5e surface.
 createPushMuteTable();
 
+// Packliste: a personal packing checklist per player/event (Grundstock items
+// materialized from DEFAULT_CHECKLIST_ITEMS plus freely added custom ones),
+// and a shared task/request pool (organizer-distributed to-dos, open or
+// assigned to one/several people, plus "kann mir jemand X mitnehmen"
+// requests anyone can claim). See routes/checklist.ts for the full lifecycle.
+//
+// event_id is nullable (NULL = the group's permanent room, no specific
+// event - resolved per request via resolveGroupEventScope) rather than the
+// global "outside events" sentinel: this is a group-owned feature, and a
+// single global tracking event would let one group's writes land under a
+// completely different group's event. SQLite treats every NULL as distinct
+// for UNIQUE/PRIMARY KEY purposes, so nothing below actually relies on a
+// SQL-level uniqueness constraint to enforce "exactly one Grundstock
+// materialization per player/event" - the check-then-insert in
+// ensureDefaultItems() (routes/checklist.ts) is fully synchronous within one
+// request, which is what actually guarantees it; the indexes/PK here are
+// defense-in-depth query aids, not the uniqueness authority.
+function addChecklistTables(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS checklist_items (
+      id           TEXT PRIMARY KEY,
+      group_id     TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      event_id     TEXT REFERENCES events(id) ON DELETE CASCADE,
+      player_id    TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      label        TEXT NOT NULL,
+      template_key TEXT, -- ties a materialized default row back to its Grundstock entry; NULL for custom items
+      checked_at   INTEGER,
+      created_at   INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_checklist_items_player
+      ON checklist_items(group_id, event_id, player_id);
+
+    -- Marks that the Grundstock was already materialized for this
+    -- player/event, independent of whether any of those rows still exist -
+    -- without this, deleting a default item (pruning the list on purpose)
+    -- would just have it silently reappear on the next fetch.
+    CREATE TABLE IF NOT EXISTS checklist_materializations (
+      group_id        TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      event_id        TEXT REFERENCES events(id) ON DELETE CASCADE,
+      player_id       TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      materialized_at INTEGER NOT NULL,
+      PRIMARY KEY (group_id, event_id, player_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS checklist_tasks (
+      id           TEXT PRIMARY KEY,
+      group_id     TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      event_id     TEXT REFERENCES events(id) ON DELETE CASCADE,
+      type         TEXT NOT NULL CHECK (type IN ('todo', 'item_request')),
+      title        TEXT NOT NULL,
+      description  TEXT,
+      created_by   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      assignee_id  TEXT REFERENCES players(id) ON DELETE CASCADE,
+      batch_id     TEXT, -- shared by rows created together via one organizer multi-assign; NULL otherwise
+      status       TEXT NOT NULL CHECK (status IN ('open', 'taken', 'done', 'cancelled')),
+      created_at   INTEGER NOT NULL,
+      taken_at     INTEGER,
+      done_at      INTEGER,
+      cancelled_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_checklist_tasks_scope ON checklist_tasks(group_id, event_id, status);
+    CREATE INDEX IF NOT EXISTS idx_checklist_tasks_assignee ON checklist_tasks(assignee_id, status);
+  `);
+}
+runMigration({ version: 45, name: 'add checklist items and tasks', up: addChecklistTables });
+
 // Lets whoever collects the money (the order's creator/an admin) check off
 // each item once that person has paid their share.
 function migrateFoodOrderItemPaidColumn(): void {
@@ -2626,6 +2692,110 @@ function migrateFoodOrderTipPercentColumn(): void {
   db.exec('ALTER TABLE food_orders ADD COLUMN tip_percent INTEGER');
 }
 runMigration({ version: 43, name: 'add food order tip percent', up: migrateFoodOrderTipPercentColumn });
+
+// A Respawn Jam session stores only the shared queue and public playback
+// snapshot. Spotify authorization belongs to the local playback controller
+// created by migration 46, never to this server database.
+function createMusicSessionTables(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS music_sessions (
+      id                    TEXT PRIMARY KEY,
+      group_id              TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      host_player_id        TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      device_id             TEXT NOT NULL,
+      device_name           TEXT NOT NULL,
+      status                TEXT NOT NULL CHECK (status IN ('active', 'ended')),
+      current_track_uri     TEXT,
+      current_track_json    TEXT,
+      playback_is_playing   INTEGER NOT NULL DEFAULT 0,
+      playback_progress_ms  INTEGER NOT NULL DEFAULT 0,
+      playback_updated_at   INTEGER,
+      started_at            INTEGER NOT NULL,
+      ended_at              INTEGER
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_music_sessions_one_active_group
+      ON music_sessions(group_id) WHERE status = 'active';
+
+    CREATE TABLE IF NOT EXISTS music_requests (
+      id                         TEXT PRIMARY KEY,
+      session_id                 TEXT NOT NULL REFERENCES music_sessions(id) ON DELETE CASCADE,
+      track_uri                  TEXT NOT NULL,
+      track_id                   TEXT NOT NULL,
+      track_name                 TEXT NOT NULL,
+      artist_name                TEXT NOT NULL,
+      album_name                 TEXT,
+      image_url                  TEXT,
+      duration_ms                INTEGER NOT NULL,
+      requested_by               TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      requested_by_name_snapshot TEXT NOT NULL,
+      status                     TEXT NOT NULL CHECK (status IN ('sending', 'queued', 'playing', 'played', 'failed')),
+      created_at                 INTEGER NOT NULL,
+      played_at                  INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_music_requests_session_status
+      ON music_requests(session_id, status, created_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_music_requests_active_track
+      ON music_requests(session_id, track_uri)
+      WHERE status IN ('sending', 'queued', 'playing');
+  `);
+}
+runMigration({ version: 46, name: 'add Spotify music sessions', up: createMusicSessionTables });
+
+// Spotify authorization belongs to one dedicated playback device (for
+// example the kiosk Raspberry Pi), never to the Respawn server. The server
+// only keeps a revocable controller credential and the last public playback
+// snapshot. Legacy server-side OAuth rows are deliberately removed.
+function migrateMusicToLocalController(): void {
+  db.exec(`
+    DROP TABLE IF EXISTS spotify_oauth_states;
+    DROP TABLE IF EXISTS spotify_connections;
+
+    CREATE TABLE IF NOT EXISTS music_controllers (
+      group_id             TEXT PRIMARY KEY REFERENCES groups(id) ON DELETE CASCADE,
+      id                   TEXT NOT NULL UNIQUE,
+      token_hash           TEXT NOT NULL UNIQUE,
+      label                TEXT NOT NULL,
+      spotify_display_name TEXT,
+      last_seen            INTEGER NOT NULL,
+      playback_json        TEXT,
+      created_at           INTEGER NOT NULL,
+      updated_at           INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS music_controller_pairings (
+      code_hash  TEXT PRIMARY KEY,
+      group_id   TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      created_by TEXT REFERENCES players(id) ON DELETE SET NULL,
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_music_controller_pairings_expiry
+      ON music_controller_pairings(expires_at);
+  `);
+}
+runMigration({ version: 47, name: 'move Spotify authorization to local Jam controller', up: migrateMusicToLocalController });
+
+function closeOrphanedLegacyMusicSessions(): void {
+  const now = Date.now();
+  db.prepare(
+    `UPDATE music_requests SET status = 'failed'
+     WHERE status IN ('sending', 'queued') AND session_id IN (
+       SELECT id FROM music_sessions WHERE status = 'active'
+       AND group_id NOT IN (SELECT group_id FROM music_controllers)
+     )`,
+  ).run();
+  db.prepare(
+    `UPDATE music_sessions SET status = 'ended', ended_at = ?
+     WHERE status = 'active' AND group_id NOT IN (SELECT group_id FROM music_controllers)`,
+  ).run(now);
+}
+runMigration({ version: 48, name: 'close music sessions orphaned by local controller migration', up: closeOrphanedLegacyMusicSessions });
+
+// Version 45 was used by both the checklist and Jam branches before they
+// were merged. Existing databases created from the Jam branch may therefore
+// have recorded the music migration as version 45 and skipped the checklist
+// migration. Re-run the idempotent checklist DDL once to repair that state.
+runMigration({ version: 49, name: 'repair checklist tables after migration merge', up: addChecklistTables });
 
 function createPushMuteTable(): void {
   db.exec(`

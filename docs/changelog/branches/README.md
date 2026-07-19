@@ -48,6 +48,7 @@ Hier sind alle in den PR-Metadaten gefundenen Arbeitsbranches zusammengefasst. D
 - [`codex/feedback-general-ui-polish`](./codex-feedback-general-ui-polish.md) — 1 gemergt, 0 offen
 - [`codex/fix-arcade-spectator-views`](./codex-fix-arcade-spectator-views.md) — 1 gemergt, 0 offen
 - [`codex/fix-scribble-watch-rerender`](./codex-fix-scribble-watch-rerender.md) — 1 gemergt, 0 offen
+- [`codex/spotify-music-session`](./codex-spotify-music-session.md) — lokaler Arbeitsbranch, kein eigener PR-Eintrag
 - [`concurrency-fix-onto-main`](./concurrency-fix-onto-main.md) — 1 gemergt, 0 offen
 - [`feat/46-arcade-pong`](./feat-46-arcade-pong.md) — 1 gemergt, 0 offen
 - [`feat/admin-base`](./feat-admin-base.md) — 1 gemergt, 0 offen

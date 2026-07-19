@@ -222,6 +222,7 @@ const KIOSK_DELIVERED_EVENTS = new Set<string>([
   'tournaments:changed',
   'matchmaking:generated',
   'foodOrders:changed',
+  'music:changed',
   'push:sent',
   'push:changed',
 ]);
@@ -295,6 +296,10 @@ export function broadcast(event: string, payload: unknown, scope: BroadcastScope
   }
   // Socket.IO rooms are only a routing hint. Re-check the current membership
   // at delivery time so a revoke/group switch cannot leak a queued payload.
+  // Kiosk sockets are authenticated with a read-only kiosk token rather than
+  // a player session; only the server-set kioskReadOnly flag counts (a
+  // handshake claim alone must never select the kiosk path). Legacy mode is
+  // handled above via io.emit, kiosk screens included.
   const recipients = scope.recipientPlayerIds ? new Set(scope.recipientPlayerIds) : null;
   for (const socket of io.sockets.sockets.values()) {
     if (socket.data.kioskReadOnly) {
@@ -521,6 +526,8 @@ export const Events = {
   infoChanged: 'info:changed',
   foodOrdersChanged: 'foodOrders:changed',
   arrivalsChanged: 'arrivals:changed',
+  checklistChanged: 'checklist:changed',
+  musicChanged: 'music:changed',
   pushSent: 'push:sent',
   pushChanged: 'push:changed',
   pushSeen: 'push:seen',

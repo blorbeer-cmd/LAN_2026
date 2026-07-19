@@ -75,6 +75,7 @@ export async function fetchText(path) {
   if (token) headers['x-access-token'] = token;
   const playerId = localStorage.getItem(PLAYER_ID_KEY);
   if (playerId) headers['x-player-id'] = playerId;
+  if (localStorage.getItem('respawn_admin') === '1') headers['x-admin-mode'] = '1';
   addGroupHeader(headers);
   const res = await fetch(path, { headers });
   const text = await res.text();
@@ -94,14 +95,16 @@ export async function fetchText(path) {
 // attached like every other call, but must hand back a Blob (with its
 // filename) instead of trying to JSON.parse it, and read the server's error
 // JSON on failure the same way fetchText does.
-export async function fetchBlob(path) {
-  const headers = {};
+export async function fetchBlob(path, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (options.body) headers['Content-Type'] = 'application/json';
   const token = getToken();
   if (token) headers['x-access-token'] = token;
   const playerId = localStorage.getItem(PLAYER_ID_KEY);
   if (playerId) headers['x-player-id'] = playerId;
+  if (localStorage.getItem('respawn_admin') === '1') headers['x-admin-mode'] = '1';
   addGroupHeader(headers);
-  const res = await fetch(path, { headers });
+  const res = await fetch(path, { ...options, headers });
   if (!res.ok) {
     let message = `Fehler ${res.status}`;
     let code;
@@ -483,6 +486,32 @@ export const api = {
     finalize: (orderId) => apiFetch(`/api/food-orders/${orderId}/finalize`, { method: 'POST' }),
   },
 
+  checklist: {
+    items: (playerId) => apiFetch(`/api/checklist/items?playerId=${encodeURIComponent(playerId)}`),
+    addItem: (playerId, label) =>
+      apiFetch('/api/checklist/items', { method: 'POST', body: JSON.stringify({ playerId, label }) }),
+    setItemChecked: (itemId, playerId, checked) =>
+      apiFetch(`/api/checklist/items/${itemId}`, { method: 'PATCH', body: JSON.stringify({ playerId, checked }) }),
+    removeItem: (itemId, playerId) =>
+      apiFetch(`/api/checklist/items/${itemId}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
+    tasks: () => apiFetch('/api/checklist/tasks'),
+    createRequest: (playerId, title, description) =>
+      apiFetch('/api/checklist/tasks', { method: 'POST', body: JSON.stringify({ playerId, title, description }) }),
+    createTodo: (playerId, title, description, assigneePlayerIds) =>
+      apiFetch('/api/checklist/tasks/todo', {
+        method: 'POST',
+        body: JSON.stringify({ playerId, title, description, assigneePlayerIds }),
+      }),
+    claim: (taskId, playerId) =>
+      apiFetch(`/api/checklist/tasks/${taskId}/claim`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    release: (taskId, playerId) =>
+      apiFetch(`/api/checklist/tasks/${taskId}/release`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    setDone: (taskId, playerId) =>
+      apiFetch(`/api/checklist/tasks/${taskId}/done`, { method: 'PATCH', body: JSON.stringify({ playerId }) }),
+    cancel: (taskId, playerId) =>
+      apiFetch(`/api/checklist/tasks/${taskId}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
+  },
+
   arrivals: {
     list: () => apiFetch('/api/arrivals'),
     saveMine: (data) => apiFetch('/api/arrivals/mine', { method: 'PUT', body: JSON.stringify(data) }),
@@ -495,5 +524,33 @@ export const api = {
       apiFetch(`/api/arrivals/carpools/${id}/leave`, { method: 'POST', body: JSON.stringify({ playerId }) }),
     removeCarpool: (id, playerId) =>
       apiFetch(`/api/arrivals/carpools/${id}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
+  },
+
+  music: {
+    status: () => apiFetch('/api/music/status'),
+    controllerPackage: (playerId, pairingCode) =>
+      fetchBlob('/api/music/controller-package', {
+        method: 'POST',
+        body: JSON.stringify({ playerId, pairingCode }),
+      }),
+    createPairing: (playerId) =>
+      apiFetch('/api/music/pairing', { method: 'POST', body: JSON.stringify({ playerId }) }),
+    disconnectController: (playerId) =>
+      apiFetch('/api/music/controller', { method: 'DELETE', body: JSON.stringify({ playerId }) }),
+    devices: () => apiFetch('/api/music/devices'),
+    start: (playerId, deviceId) =>
+      apiFetch('/api/music/sessions', { method: 'POST', body: JSON.stringify({ playerId, deviceId }) }),
+    search: (query) => apiFetch(`/api/music/search?q=${encodeURIComponent(query)}`),
+    request: (playerId, trackId) =>
+      apiFetch('/api/music/requests', { method: 'POST', body: JSON.stringify({ playerId, trackId }) }),
+    removeRequest: (playerId, requestId) =>
+      apiFetch(`/api/music/requests/${requestId}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
+    reorder: (playerId, requestIds) =>
+      apiFetch('/api/music/requests/order', { method: 'PUT', body: JSON.stringify({ playerId, requestIds }) }),
+    skip: (playerId) => apiFetch('/api/music/skip', { method: 'POST', body: JSON.stringify({ playerId }) }),
+    setPlaying: (playerId, playing) =>
+      apiFetch('/api/music/playback', { method: 'POST', body: JSON.stringify({ playerId, playing }) }),
+    end: (playerId) => apiFetch('/api/music/end', { method: 'POST', body: JSON.stringify({ playerId }) }),
+    kiosk: () => apiFetch('/api/music/kiosk'),
   },
 };

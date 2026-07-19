@@ -44,17 +44,21 @@ import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 let historyCache = null;
 let historyLoading = false;
 let historyOpen = false;
+let historyRequestVersion = 0;
 
 async function loadHistory(ctx) {
+  const requestVersion = ++historyRequestVersion;
   historyLoading = true;
   try {
     const res = await api.votes.history();
-    historyCache = res.history;
+    if (requestVersion === historyRequestVersion) historyCache = res.history;
   } catch {
-    historyCache = [];
+    if (requestVersion === historyRequestVersion) historyCache = [];
   } finally {
-    historyLoading = false;
-    ctx.rerender();
+    if (requestVersion === historyRequestVersion) {
+      historyLoading = false;
+      ctx.rerender();
+    }
   }
 }
 
@@ -62,7 +66,9 @@ async function loadHistory(ctx) {
 // longer open, so a freshly closed round shows up next time this view opens
 // instead of whatever the last fetch happened to see.
 export function invalidateVoteHistory() {
+  historyRequestVersion += 1;
   historyCache = null;
+  historyLoading = false;
 }
 
 // The current player's own already-submitted entries in the running round.
@@ -700,6 +706,11 @@ export function renderVotes(container, ctx) {
       try {
         // No ctx.refresh(): see the start button above.
         state.votes = await api.votes.close();
+        // The close response belongs to this client, so invalidate the
+        // separately cached history immediately instead of waiting for the
+        // socket echo. This also guarantees a fresh history request when a
+        // socket delivery races the rerender below.
+        invalidateVoteHistory();
         ctx.rerender();
         showToast('Abstimmung beendet.');
       } catch (err) {

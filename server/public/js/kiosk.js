@@ -469,24 +469,139 @@ function updateAlertLayout() {
   alerts.hidden = document.getElementById('kiosk-broadcast')?.hidden !== false;
 }
 
-async function refreshAll() {
+let kioskMusicSession = null;
+let kioskMusicProgressFrame = null;
+
+function estimatedMusicProgress(session, now = Date.now()) {
+  if (!session?.currentTrack) return 0;
+  const elapsed = session.isPlaying && session.playbackUpdatedAt ? now - session.playbackUpdatedAt : 0;
+  return Math.max(0, Math.min(Number(session.currentTrack.durationMs || 0), Number(session.progressMs || 0) + elapsed));
+}
+
+function musicDurationLabel(milliseconds) {
+  const totalSeconds = Math.max(0, Math.floor(Number(milliseconds || 0) / 1000));
+  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`;
+}
+
+function stabilizedMusicSession(nextSession) {
+  if (!nextSession?.currentTrack) return nextSession;
+  const now = Date.now();
+  const incomingProgress = estimatedMusicProgress(nextSession, now);
+  const sameTrack = kioskMusicSession?.currentTrack?.uri === nextSession.currentTrack.uri;
+  const previousProgress = sameTrack ? estimatedMusicProgress(kioskMusicSession, now) : 0;
+  return {
+    ...nextSession,
+    progressMs: sameTrack && nextSession.isPlaying
+      ? Math.max(previousProgress, incomingProgress)
+      : incomingProgress,
+    playbackUpdatedAt: now,
+  };
+}
+
+function updateMusicBarProgress() {
+  const session = kioskMusicSession;
+  const duration = Number(session?.currentTrack?.durationMs || 0);
+  const bar = document.querySelector('.kiosk-music-progress > span');
+  const time = document.querySelector('.kiosk-music-duration');
+  if (!duration || !bar) return;
+  const progress = estimatedMusicProgress(session);
+  bar.style.transform = `scaleX(${progress / duration})`;
+  if (time) time.textContent = `${musicDurationLabel(progress)} / ${musicDurationLabel(duration)}`;
+}
+
+function scheduleMusicBarProgress() {
+  if (kioskMusicProgressFrame) cancelAnimationFrame(kioskMusicProgressFrame);
+  kioskMusicProgressFrame = null;
+  const update = () => {
+    updateMusicBarProgress();
+    if (kioskMusicSession?.isPlaying && kioskMusicSession.currentTrack) {
+      kioskMusicProgressFrame = requestAnimationFrame(update);
+    } else {
+      kioskMusicProgressFrame = null;
+    }
+  };
+  update();
+}
+
+function renderMusicBar(payload) {
+  const element = document.getElementById('kiosk-music');
+  const session = stabilizedMusicSession(payload?.session);
+  kioskMusicSession = session ?? null;
+  if (!session) {
+    element.hidden = true;
+    element.innerHTML = '';
+    return;
+  }
+  const track = session.currentTrack;
+  const queued = (session.requests || []).filter((entry) => entry.status === 'queued').slice(0, 1);
+  const duration = Number(track?.durationMs || 0);
+  const progress = estimatedMusicProgress(session);
+  const request = (session.requests || []).find(
+    (entry) => entry.status === 'playing' && entry.trackUri === track?.uri,
+  );
+  element.innerHTML = track ? `
+    <span class="kiosk-music-current">
+      ${track.imageUrl ? `<img class="kiosk-music-cover" src="${escapeHtml(track.imageUrl)}" alt="" />` : `<span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span>`}
+      <span class="kiosk-music-copy">
+        <span class="muted">Jetzt läuft</span>
+        <strong>${escapeHtml(track.name)}</strong>
+        <span class="muted">${escapeHtml(track.artist)}${request ? ` · gewünscht von ${escapeHtml(request.requestedByName)}` : ''}</span>
+      </span>
+      <span class="kiosk-music-progress-row">
+        <span class="kiosk-music-progress"><span style="transform:scaleX(${duration ? progress / duration : 0});"></span></span>
+        <span class="muted kiosk-music-duration">${musicDurationLabel(progress)} / ${musicDurationLabel(duration)}</span>
+      </span>
+    </span>
+    <span class="kiosk-music-next">
+      ${queued.length ? `
+        ${queued[0].imageUrl ? `<img class="kiosk-music-cover" src="${escapeHtml(queued[0].imageUrl)}" alt="" />` : `<span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span>`}
+        <span class="kiosk-music-copy">
+          <span class="muted kiosk-music-next-label">${icon('music')} Als Nächstes</span>
+          <strong>${escapeHtml(queued[0].name)}</strong>
+          <span class="muted">${escapeHtml(queued[0].artist)} · gewünscht von ${escapeHtml(queued[0].requestedByName)}</span>
+        </span>` : `<span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span><span class="kiosk-music-copy"><span class="muted kiosk-music-next-label">${icon('music')} Als Nächstes</span><strong>Noch keine Wünsche</strong></span>`}
+    </span>` : `
+      <span class="kiosk-music-current kiosk-music-empty"><span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span><span class="kiosk-music-copy"><strong>Jam aktiv</strong><span class="muted">Auf ${escapeHtml(session.deviceName)} läuft gerade kein Titel.</span></span></span>`;
+  element.hidden = false;
+  scheduleMusicBarProgress();
+}
+
+async function refreshMusic() {
   try {
-    const [live, votes, leaderboard, tournaments, lastPush] = await Promise.all([
+    renderMusicBar(await api.music.kiosk());
+  } catch (error) {
+    // Music is optional; a Spotify outage must never disturb the four
+    // primary kiosk cards.
+    // eslint-disable-next-line no-console
+    console.error('Kiosk music refresh failed:', error);
+  }
+}
+
+let refreshVersion = 0;
+
+async function refreshAll() {
+  const requestVersion = ++refreshVersion;
+  try {
+    const [live, votes, leaderboard, tournaments, lastPush, music] = await Promise.all([
       api.live.board(),
       api.votes.kiosk(),
       api.leaderboard.get(),
       api.tournaments.list(),
       api.push.last(),
+      api.music.kiosk(),
     ]);
+    if (requestVersion !== refreshVersion) return;
     document.getElementById('kiosk-live').innerHTML = renderLive(live);
     document.getElementById('kiosk-votes').innerHTML = renderVotes(votes);
     document.getElementById('kiosk-leaderboard').innerHTML = renderLeaderboard(leaderboard.standings);
     renderBroadcastBanner(lastPush.entry);
+    renderMusicBar(music);
 
     const active = tournaments.find((t) => t.status === 'active') || tournaments[0] || null;
     document.getElementById('kiosk-tournament-title').innerHTML = `${icon(domainIcon('tournaments'))} ${active ? escapeHtml(active.name) : 'Turnier'}`;
     if (active) {
       const detail = await api.tournaments.get(active.id);
+      if (requestVersion !== refreshVersion) return;
       document.getElementById('kiosk-tournament').innerHTML = renderTournament(detail);
     } else {
       document.getElementById('kiosk-tournament').innerHTML = `<div class="empty-state">Kein offenes Turnier.</div>`;
@@ -559,6 +674,7 @@ async function main() {
 
   updateClock();
   setInterval(updateClock, 1000);
+  setInterval(refreshMusic, 5_000);
   await refreshAll();
 
   const socket = connectSocket({ kiosk: true });
@@ -573,6 +689,7 @@ async function main() {
     'tournaments:changed',
     'matchmaking:generated',
     'foodOrders:changed',
+    'music:changed',
   ].forEach((event) => socket.on(event, refreshAll));
 
   // Last-push banner: a big banner across the top of the shared screen — the

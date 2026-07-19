@@ -20,6 +20,7 @@ import { renderMatchmaking, invalidateMatchmakingHistory, setDraftState } from '
 import { renderBroadcast, invalidateBroadcasts } from './views/broadcast.js';
 import { renderInfoBoard, invalidateInfoBoard } from './views/infoBoard.js';
 import { renderFoodOrders, invalidateFoodOrders } from './views/foodOrders.js';
+import { renderChecklist, invalidateChecklist } from './views/checklist.js';
 import { renderArcade, renderQuizRoom } from './views/arcade.js';
 import { renderArcadeWatch } from './views/arcadeWatch.js';
 import { renderTetris } from './views/tetris.js';
@@ -39,6 +40,7 @@ import { renderSeating, invalidateSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
 import { renderMore } from './views/more.js';
 import { renderAdmin } from './views/admin.js';
+import { invalidateMusic, renderMusic } from './views/music.js';
 import { icon, installIconReplacement } from './icons.js';
 import { initGlobalSearch } from './searchPalette.js';
 import { installDomainIcons } from './domainIcons.js';
@@ -64,6 +66,7 @@ const VIEWS = {
   broadcast: renderBroadcast,
   infoBoard: renderInfoBoard,
   foodOrders: renderFoodOrders,
+  checklist: renderChecklist,
   arcade: renderArcade,
   arcadeWatch: renderArcadeWatch,
   quizRoom: renderQuizRoom,
@@ -75,6 +78,7 @@ const VIEWS = {
   gameCatalog: renderGameCatalog,
   arrivals: renderArrivals,
   admin: renderAdmin,
+  music: renderMusic,
 };
 
 let currentView = 'home';
@@ -188,6 +192,7 @@ function wireAdminMode() {
   });
   window.addEventListener('respawn:admin-changed', () => {
     updateAdminIndicator();
+    invalidateMusic();
     ctx.refresh();
   });
 }
@@ -517,6 +522,15 @@ function wireSocket() {
   socket.on('arrivals:changed', () => {
     invalidateArrivals();
     if (currentView === 'arrivals') renderCurrent();
+  });
+  socket.on('checklist:changed', () => {
+    invalidateChecklist();
+    if (currentView === 'checklist') renderCurrent();
+  });
+
+  socket.on('music:changed', () => {
+    invalidateMusic();
+    if (currentView === 'music') renderCurrent();
   });
   socket.on('groups:changed', () => refreshGroupContext());
 }

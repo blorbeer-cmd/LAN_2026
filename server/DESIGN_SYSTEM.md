@@ -425,6 +425,16 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   colorful full-width primary action below a divider; the compact neutral „Hinzufügen“ action does
   not stretch to the input height. Closed orders live inside one standard, initially collapsed
   „Historie“ section whose open state survives live re-renders.
+- **Packliste** — „Meine Packliste“ and „Aufgaben & Anfragen“ are separate grouped-page sections.
+  The personal list is a compact checkbox row per item (Grundstock plus freely added/removable
+  custom entries) with a checked item shown via muted, struck-through text instead of a separate
+  badge, followed by the plain add-item field/button row. Shared tasks and open Mitbring-Anfragen
+  use one bare `.badge` to distinguish the two types and share the same nested-card layout as an
+  open request card; „Übernehmen“ replaces the claim action once someone else already committed to
+  it, and the requester/organizer sees „Zurückziehen“ on their own open entry instead. Tasks already
+  taken move into the „Unterwegs“ subsection with the current assignee's avatar/name and, for that
+  assignee only, „Freigeben“/„Erledigt“ actions. Completed tasks live in one standard, initially
+  collapsed „Historie“ section whose open state survives live re-renders, same as Food orders.
 - **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
   grid. „Nach LAN“ uses one directly labeled event dropdown and shows every overall placement for
   the selected LAN, followed by tournament winners in the same leaderboard-row structure. Blue and
@@ -468,6 +478,25 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   results follow directly without another enclosing card or accent rail; player rows reuse
   `.leaderboard-list-grid` for the shared one-/two-column ranking presentation and spell out wins
   and losses in German.
+- **Jam sessions** — Jam is a grouped page below „Mehr“. A dedicated local controller on the
+  playback PC or kiosk Raspberry Pi connects Spotify through PKCE and never appears as a player.
+  The server stores neither Spotify application credentials nor OAuth tokens. One participant
+  starts a session on an explicitly selected playback device; this player is the host. All active
+  group members share pause, resume and skip controls and search the same
+  catalog and add any number of requests. Requests use stable full-width rows with artwork,
+  title, artist and requester instead of pills; their order is the shared queue order. The current
+  track is the most prominent nested surface, with progress and host controls directly attached.
+  Members can reorder two or more queued requests through native drag-and-drop or the equivalent
+  arrow controls. Respawn persists that order and replaces the active Spotify URI context at the
+  current playback position so the visible order also becomes the actual playback order.
+  The kiosk reuses a single compact full-width music bar below the fixed dashboard and shows current
+  track, progress and next request without exposing controls or Spotify credentials. The fixed
+  loopback redirect `http://127.0.0.1:43821/callback` makes controller setup independent of the
+  Respawn server URL. A short-lived pairing code replaces an existing controller; only its hashed
+  credential and public playback/queue metadata reach the server.
+  The setup card offers a generated portable controller ZIP instead of repository or `npm`
+  instructions. It contains prefilled server/pairing data and platform launchers for macOS,
+  Windows and Raspberry Pi/Linux; the launchers provision an isolated runtime on first use.
 - **Analytics** — All three tabs share the same event dropdown and show no additional date controls.
   Playtime and tournament data use the selected event directly; Arcade internally derives the
   event's date bounds because arcade results have no event assignment. The daily match chart is

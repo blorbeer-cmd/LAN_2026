@@ -19,10 +19,12 @@ test('bottom navigation and More define every canonical view icon', () => {
     players: 'users',
     live: 'radioTower',
     foodOrders: 'hamburger',
+    checklist: 'clipboard',
     arcade: 'joystick',
     broadcast: 'megaphone',
     gameCatalog: 'gamepad',
     skill: 'activity',
+    music: 'music',
   });
 });
 

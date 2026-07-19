@@ -13,6 +13,10 @@ server/data/
 # Lokale Agent-Konfiguration (enthält API-Key)
 agent/agent.config.json
 
+# Lokale Server-Zugangsdaten
+server/.env*.local
+server/.pkg-cache/
+
 # Logs & OS-Kram
 *.log
 .DS_Store

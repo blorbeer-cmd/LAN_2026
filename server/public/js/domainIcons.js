@@ -19,10 +19,12 @@ export const DOMAIN_ICONS = Object.freeze({
   players: 'users',
   live: 'radioTower',
   foodOrders: 'hamburger',
+  checklist: 'clipboard',
   arcade: 'joystick',
   broadcast: 'megaphone',
   gameCatalog: 'gamepad',
   skill: 'activity',
+  music: 'music',
 });
 
 export function domainIcon(key, fallback = 'bell') {

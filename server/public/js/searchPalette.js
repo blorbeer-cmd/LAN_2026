@@ -24,9 +24,11 @@ export const SEARCH_ENTRIES = [
   { view: 'arcade', title: 'Arcade', category: 'Bereich', description: 'Minigame-Lobbies öffnen und mitspielen', aliases: 'quiz tetris scribble pong blobby snake minigame', priority: 74 },
   { view: 'analytics', title: 'Auswertungen', category: 'Bereich', description: 'Awards und gemeinsame Statistiken', aliases: 'analytics statistik awards spielzeit', priority: 64 },
   { view: 'broadcast', title: 'Durchsage', category: 'Bereich', description: 'Eine Mitteilung an alle Geräte senden', aliases: 'ansage nachricht push kiosk', priority: 63 },
+  { view: 'music', title: 'Jam', category: 'Bereich', description: 'Gemeinsame Spotify-Warteschlange', aliases: 'spotify musik songs queue warteschlange', priority: 64 },
   { view: 'foodOrders', title: 'Essen', category: 'Bereich', description: 'Sammelbestellungen koordinieren', aliases: 'bestellung food pizza lieferdienst', priority: 68 },
   { view: 'hallOfFame', title: 'Hall of Fame', category: 'Bereich', description: 'Champions vergangener Events', aliases: 'champions sieger historie ruhmeshalle', priority: 61 },
   { view: 'infoBoard', title: 'Info', category: 'Bereich', description: 'WLAN, Discord, Server und Hausregeln', aliases: 'info board information wlan discord server hausregeln', priority: 69 },
+  { view: 'checklist', title: 'Packliste', category: 'Bereich', description: 'Persönliche Packliste, Aufgaben und Mitbring-Anfragen', aliases: 'packen todo aufgabe anfrage mitbringen checkliste', priority: 66 },
   { view: 'seating', title: 'Sitzplan', category: 'Bereich', description: 'Plätze und sichtbare Monitore verwalten', aliases: 'sitzplatz tisch monitore nachbarn', priority: 67, adminOnly: true },
 ];
 
