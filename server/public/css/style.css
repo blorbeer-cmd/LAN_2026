@@ -972,6 +972,15 @@ input[type='number']::-webkit-inner-spin-button {
 .tournament-team-count-field .field-label {
   margin-bottom: var(--space-1);
 }
+/* On phones the team-count field and the two selection buttons no longer fit
+   one row; forcing the field onto its own row lets "Alle markieren" and
+   "Auswahl aufheben" wrap together onto the next line instead of splitting
+   across two rows, matching the Captain-Draft toolbar below it. */
+@media (max-width: 639px) { /* --bp-md */
+  .tournament-team-count-field {
+    flex-basis: 100%;
+  }
+}
 .player-selection-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
