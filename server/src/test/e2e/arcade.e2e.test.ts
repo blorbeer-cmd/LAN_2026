@@ -72,7 +72,7 @@ async function openArcadeAs(
   // re-render the "Mehr" view mid-click — retry the two-step navigation
   // instead of failing on a detached button.
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.click('[data-view="more"]', { timeout: 4000 }).catch(() => undefined);
+    await page.click('.nav-btn[data-view="more"]', { timeout: 4000 }).catch(() => undefined);
     try {
       await page.click('[data-navigate="arcade"]', { timeout: 4000 });
       await page.waitForSelector('.arcade-tiles', { timeout: 4000 });
@@ -189,7 +189,7 @@ test('watch history: a stale watch entry redirects to the Arcade instead of hang
 
     // Leave the watch view via the global nav (not its own back button) —
     // the watch history entry stays behind on the stack.
-    await spectator.page.click('[data-view="home"]');
+    await spectator.page.click('.nav-btn[data-view="home"]');
     await spectator.page.waitForFunction(
       () => (document.getElementById('view-container') as HTMLElement | null)?.dataset.view === 'home'
     );

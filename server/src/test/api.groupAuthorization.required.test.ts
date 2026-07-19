@@ -90,9 +90,7 @@ test('group roles, event resources and audit remain isolated across two groups',
       const archiveWhileTracking = await request(app).delete('/api/groups/' + groupA).set('Cookie', alice.cookie);
       assert.equal(archiveWhileTracking.status, 409);
       const hiddenTrackingConflict = await scoped(app, 'post', '/api/events/' + eventB.body.id + '/tracking/start', carol.cookie, groupB).send({});
-      assert.equal(hiddenTrackingConflict.status, 409);
-      assert.equal(hiddenTrackingConflict.body.conflictEventId, undefined);
-      assert.equal(JSON.stringify(hiddenTrackingConflict.body).includes('Event A'), false);
+      assert.equal(hiddenTrackingConflict.status, 200);
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/stop', alice.cookie, groupA).send({})).status, 200);
 
       const bobEventsA = await scoped(app, 'get', '/api/events', bob.cookie, groupA);
@@ -188,6 +186,7 @@ test('group roles, event resources and audit remain isolated across two groups',
       assert.equal(instanceAudit.status, 200, JSON.stringify(instanceAudit.body));
       assert.equal(instanceAudit.body.some((entry) => entry.action === 'event_created'), false);
 
+      assert.equal((await scoped(app, 'post', '/api/events/' + eventB.body.id + '/tracking/stop', carol.cookie, groupB).send({})).status, 200);
       const cancelled = await scoped(app, 'delete', '/api/events/' + eventB.body.id, carol.cookie, groupB);
       assert.equal(cancelled.status, 200, JSON.stringify(cancelled.body));
       assert.equal(cancelled.body.status, 'cancelled');

@@ -42,6 +42,8 @@ export function clearPlayerLiveStatus(playerId: string, endedAt = Date.now()): v
     db.prepare(
       'UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND ended_at IS NULL'
     ).run(endedAt, playerId);
+    db.prepare('DELETE FROM tracking_live_games WHERE player_id = ?').run(playerId);
+    db.prepare('DELETE FROM tracking_live_contexts WHERE player_id = ?').run(playerId);
     db.prepare('DELETE FROM live_status_games WHERE player_id = ?').run(playerId);
     db.prepare('DELETE FROM live_status WHERE player_id = ?').run(playerId);
   });
@@ -96,14 +98,17 @@ export function getLiveBoard(groupId: string): LiveBoardEntry[] {
           .all(groupId) as Array<{ id: string; name: string; color: string; avatar: string | null }>);
 
   const statusRows = db
-    .prepare('SELECT player_id, last_seen, manual_note, activity_tracked FROM live_status')
-    .all() as Array<{ player_id: string; last_seen: number; manual_note: string | null; activity_tracked: number }>;
+    .prepare('SELECT player_id, MAX(last_seen) AS last_seen, MAX(manual_note) AS manual_note, MAX(activity_tracked) AS activity_tracked FROM tracking_live_contexts WHERE group_id = ? GROUP BY player_id')
+    .all(groupId) as Array<{ player_id: string; last_seen: number; manual_note: string | null; activity_tracked: number }>;
   const statusByPlayer = new Map(statusRows.map((r) => [r.player_id, r]));
+  for (const row of db.prepare('SELECT player_id, last_seen, manual_note, activity_tracked FROM live_status').all() as Array<{ player_id: string; last_seen: number; manual_note: string | null; activity_tracked: number }>) {
+    if (!statusByPlayer.has(row.player_id)) statusByPlayer.set(row.player_id, row);
+  }
 
   const gameRows = db
     .prepare(
       `SELECT lsg.player_id, lsg.game_id, g.name AS game_name, g.icon AS game_icon, lsg.since, lsg.is_foreground
-       FROM live_status_games lsg
+       FROM tracking_live_games lsg
        JOIN games g ON g.id = lsg.game_id
        WHERE lsg.group_id = ?
        ORDER BY lsg.since ASC`
@@ -127,6 +132,12 @@ export function getLiveBoard(groupId: string): LiveBoardEntry[] {
       since: row.since,
       foreground: Boolean(row.is_foreground),
     });
+    gamesByPlayer.set(row.player_id, list);
+  }
+  for (const row of db.prepare(`SELECT lsg.player_id, lsg.game_id, g.name AS game_name, g.icon AS game_icon, lsg.since, lsg.is_foreground
+    FROM live_status_games lsg JOIN games g ON g.id = lsg.game_id WHERE lsg.group_id = ?`).all(groupId) as Array<{player_id:string;game_id:string;game_name:string;game_icon:string;since:number;is_foreground:number}>) {
+    const list = gamesByPlayer.get(row.player_id) ?? [];
+    if (!list.some((game) => game.game_id === row.game_id)) list.push({ game_id: row.game_id, game_name: row.game_name, game_icon: row.game_icon, since: row.since, foreground: Boolean(row.is_foreground) });
     gamesByPlayer.set(row.player_id, list);
   }
 
@@ -158,27 +169,35 @@ export function getLiveBoard(groupId: string): LiveBoardEntry[] {
 // confirmed real timestamp), not "now", since the game may have stopped
 // running well before we noticed.
 export function closeStaleSessions(now: number): void {
+  const legacyStale = db.prepare(`SELECT lsg.player_id, lsg.game_id, ls.last_seen FROM live_status_games lsg JOIN live_status ls ON ls.player_id = lsg.player_id WHERE ? - ls.last_seen > ?`).all(now, config.offlineTimeoutMs) as Array<{player_id:string;game_id:string;last_seen:number}>;
+  for (const row of legacyStale) {
+    db.prepare('DELETE FROM live_status_games WHERE player_id = ? AND game_id = ?').run(row.player_id, row.game_id);
+    db.prepare('UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND game_id = ? AND ended_at IS NULL').run(row.last_seen, row.player_id, row.game_id);
+  }
   const stale = db
     .prepare(
       `SELECT lsg.player_id AS player_id, lsg.game_id AS game_id, ls.last_seen AS last_seen
-       FROM live_status_games lsg
-       JOIN live_status ls ON ls.player_id = lsg.player_id
+       FROM tracking_live_games lsg
+       JOIN tracking_live_contexts ls ON ls.player_id = lsg.player_id
+        AND ls.group_id = lsg.group_id AND ls.event_id IS lsg.event_id
        WHERE ? - ls.last_seen > ?`
     )
-    .all(now, config.offlineTimeoutMs) as Array<{ player_id: string; game_id: string; last_seen: number }>;
+    .all(now, config.offlineTimeoutMs) as Array<{ player_id: string; group_id: string; event_id: string | null; game_id: string; last_seen: number }>;
 
   if (stale.length === 0) return;
 
   const cleanup = db.transaction(() => {
     for (const row of stale) {
-      db.prepare('DELETE FROM live_status_games WHERE player_id = ? AND game_id = ?').run(
+      db.prepare('DELETE FROM tracking_live_games WHERE player_id = ? AND group_id = ? AND event_id IS ? AND game_id = ?').run(
         row.player_id,
+        row.group_id,
+        row.event_id,
         row.game_id
       );
       db.prepare(
         `UPDATE play_sessions SET ended_at = ?
-         WHERE player_id = ? AND game_id = ? AND ended_at IS NULL`
-      ).run(row.last_seen, row.player_id, row.game_id);
+         WHERE player_id = ? AND group_id = ? AND event_id = COALESCE(?, 'outside-events') AND game_id = ? AND ended_at IS NULL`
+      ).run(row.last_seen, row.player_id, row.group_id, row.event_id, row.game_id);
     }
   });
   cleanup();
@@ -193,7 +212,7 @@ export function sweepOnce(now: number = Date.now()): void {
     // Broadcasts the migrated default group's board globally — correct as
     // long as MULTI_GROUPS_ENABLED stays off (the only functionally active
     // group). Genuine per-group broadcasting needs Socket-Rooms (Phase 5e).
-    broadcast(Events.liveStatusChanged, getLiveBoard(DEFAULT_GROUP_ID));
+    broadcast(Events.liveStatusChanged, getLiveBoard(DEFAULT_GROUP_ID), { groupId: DEFAULT_GROUP_ID });
   } catch (err) {
     // Never let a sweep error take down the timer/process.
     // eslint-disable-next-line no-console

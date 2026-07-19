@@ -2,7 +2,7 @@
 // control tracking (at most one event tracks at a time — see events.ts for
 // why). Ending an event is separate from just pausing its tracking.
 
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import {
   cancelEvent,
   listEvents,
@@ -27,6 +27,7 @@ import { requireConfiguredGroupMembership, requireGroupRole, resolveGroupResourc
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { config } from '../config';
+import { setEventTrackingConsent } from '../trackingContexts';
 
 export const eventsRouter = Router();
 
@@ -52,6 +53,7 @@ function serializeEvent(event: ReturnType<typeof getEvent>) {
     endedAt: event.ended_at,
     groupId: event.group_id,
     status: event.status,
+    visibilityScope: event.visibility_scope,
     isOutsideEvents: event.id === OUTSIDE_EVENTS_ID,
     participantIds: event.id === OUTSIDE_EVENTS_ID ? undefined : getParticipantIds(event.id),
   };
@@ -83,6 +85,19 @@ eventsRouter.get('/:id', resolveEvent, (req, res) => {
   if (event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
   res.json(serializeEvent(event));
 });
+
+// Event tracking is an explicit personal acceptance, separate from an
+// administrator's roster.  In legacy mode the historical roster remains a
+// compatibility acceptance; required mode must use this endpoint.
+function acceptEventTracking(req: Request, res: Response): void {
+  const event = req.groupResource as EventRow;
+  if (!event || event.id === OUTSIDE_EVENTS_ID) { res.status(404).json({ error: 'Event nicht gefunden.' }); return; }
+  setEventTrackingConsent(event.id, event.group_id!, req.player!.id, true);
+  res.json({ ok: true, eventId: event.id, accepted: true });
+}
+
+eventsRouter.post('/:id/accept', resolveEvent, acceptEventTracking);
+eventsRouter.post('/:id/tracking-consent', resolveEvent, acceptEventTracking);
 
 // Optional freeform text (location/description): undefined = not provided,
 // '' or null = explicitly cleared, otherwise validated against maxLength.
@@ -126,7 +141,7 @@ function parseRequiredTimestamp(
 // event (if any) is currently tracking.
 // Body: { name, startsAt, endsAt, location?, description? }
 eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin'), (req, res) => {
-  const { name, startsAt, endsAt, location, description } = req.body ?? {};
+  const { name, startsAt, endsAt, location, description, visibilityScope } = req.body ?? {};
   if (!isNonEmptyString(name, 80)) {
     return res.status(400).json({ error: 'Name ist erforderlich (1-80 Zeichen).' });
   }
@@ -142,6 +157,9 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
   if (!parsedLocation.ok) return res.status(400).json({ error: parsedLocation.error });
   const parsedDescription = parseOptionalText(description, 500, 'description');
   if (!parsedDescription.ok) return res.status(400).json({ error: parsedDescription.error });
+  if (visibilityScope !== undefined && !['group', 'participants', 'public'].includes(visibilityScope)) {
+    return res.status(400).json({ error: 'visibilityScope ist ungültig.' });
+  }
 
   const event = createEvent(name.trim(), {
     groupId: req.player ? req.group!.id : undefined,
@@ -150,6 +168,7 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
     location: parsedLocation.value,
     description: parsedDescription.value,
   });
+  if (visibilityScope !== undefined) db.prepare('UPDATE events SET visibility_scope = ? WHERE id = ?').run(visibilityScope, event.id);
 
   writeAdminAudit({
     actorPlayerId: req.player?.id,
@@ -171,7 +190,7 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     return res.status(404).json({ error: 'Event nicht gefunden.' });
   }
 
-  const { name, startsAt, endsAt, location, description } = req.body ?? {};
+  const { name, startsAt, endsAt, location, description, visibilityScope } = req.body ?? {};
   const fields: UpdateEventFields = {};
 
   if (name !== undefined) {
@@ -207,6 +226,10 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     const parsed = parseOptionalText(description, 500, 'description');
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
     fields.description = parsed.value;
+  }
+  if (visibilityScope !== undefined) {
+    if (!['group', 'participants', 'public'].includes(visibilityScope)) return res.status(400).json({ error: 'visibilityScope ist ungültig.' });
+    fields.visibilityScope = visibilityScope;
   }
 
   const updated = updateEvent(req.params.id, fields);

@@ -274,6 +274,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.global-search-result`, wired through `searchPalette.js`; opens from the topbar or with
   `Strg/Cmd + K`, searches both areas and current app content without an external service, and uses
   `.search-target-highlight` to expose a concrete result after navigation.
+- **Sticky in-card actions** — `.sticky-actions` pins a card's primary action(s) to the bottom of
+  the viewport, just above the fixed bottom nav, while a long preceding list (vote game rows,
+  player-selection grids) scrolls through. It stays bounded to its own card via `position: sticky`
+  and releases back into normal flow once that card is fully scrolled past, so it never covers an
+  unrelated card further down the page. Used for the open vote round's submit/cancel/beenden stack
+  and the „Abstimmung starten“ action in Vote, and the „Teams auslosen“/„Draft starten“ actions in
+  Team formation and Tournament creation.
 - **Collapsible section** — `.collapsible-section` uses a native `details` element with
   `.collapsible-section-header`, a count/status badge and `.collapsible-section-chevron`. It is the
   standard presentation for collapsed histories, completed tournament lists and closed order

@@ -26,6 +26,8 @@ import { broadcast, Events } from '../realtime';
 import { requireGroupMembership, requireGroupRole } from '../groupAuthorization';
 import { countTestUsers, createTestUsers, deleteTestUsers, MAX_TEST_USERS_PER_CALL } from '../testUsers';
 import { getLiveBoard } from '../liveStatus';
+import { setGroupTrackingConsent } from '../trackingContexts';
+import { issueKioskToken, listKioskTokens, revokeKioskToken } from '../kioskTokens';
 
 export const groupsRouter = Router();
 
@@ -149,6 +151,47 @@ groupsRouter.get('/:groupId', requireGroupMembership, (req, res) => {
   res.json(
     serializeGroup(req.group!, req.groupMembership!.role, Boolean(req.groupMembership!.outside_tracking_enabled)),
   );
+});
+
+groupsRouter.get('/:groupId/kiosk-tokens', requireGroupMembership, requireGroupRole('admin'), (req, res) => {
+  res.json(listKioskTokens(req.group!.id));
+});
+
+groupsRouter.post('/:groupId/kiosk-tokens', requireGroupMembership, requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
+  const { eventId, label } = req.body ?? {};
+  if (eventId !== undefined && eventId !== null && (typeof eventId !== 'string' || !eventId)) {
+    return res.status(400).json({ error: 'eventId ist ungültig.' });
+  }
+  if (typeof label !== 'undefined' && label !== null && (typeof label !== 'string' || label.trim().length > 80)) {
+    return res.status(400).json({ error: 'label darf höchstens 80 Zeichen lang sein.' });
+  }
+  if (eventId && !db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, req.group!.id)) {
+    return res.status(404).json({ error: 'Event nicht gefunden.' });
+  }
+  const issued = issueKioskToken(req.group!.id, eventId ?? null, req.player!.id, typeof label === 'string' && label.trim() ? label.trim() : null);
+  res.status(201).json({ token: issued.token, ...issued.scope });
+});
+
+groupsRouter.delete('/:groupId/kiosk-tokens/:tokenId', requireGroupMembership, requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
+  if (!revokeKioskToken(req.group!.id, req.params.tokenId)) return res.status(404).json({ error: 'Kiosk-Token nicht gefunden.' });
+  res.status(204).end();
+});
+
+// Personal, explicit consent for tracking in the group's outside-event room.
+// The append-only history is the source of truth; the membership bit remains
+// as a compatibility projection for older clients.
+groupsRouter.post('/:groupId/tracking-consent', requireGroupMembership, (req, res) => {
+  const { granted } = req.body ?? {};
+  if (typeof granted !== 'boolean') return res.status(400).json({ error: 'granted muss ein Boolean sein.' });
+  setGroupTrackingConsent(req.group!.id, req.player!.id, granted);
+  db.prepare('UPDATE group_memberships SET outside_tracking_enabled = ? WHERE group_id = ? AND player_id = ?')
+    .run(granted ? 1 : 0, req.group!.id, req.player!.id);
+  if (!granted) {
+    db.prepare('UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND group_id = ? AND event_id IS NULL AND ended_at IS NULL')
+      .run(Date.now(), req.player!.id, req.group!.id);
+  }
+  broadcast(Events.groupsChanged, null);
+  res.json({ ok: true, granted });
 });
 
 groupsRouter.patch('/:groupId', requireGroupMembership, requireGroupRole('admin'), (req, res) => {

@@ -49,7 +49,7 @@ async function switchIdentityAndOpenArrivals(label: string): Promise<void> {
   await page.click('#profile-not-me');
   await page.selectOption('#profile-whoami', { label });
   await page.waitForSelector('#profile-not-me');
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="arrivals"]');
   await page.waitForSelector('[data-new-carpool="arrival"]');
 }
@@ -218,11 +218,11 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
 });
 
 test('Admin mode owns the seating editor and backup tools', async () => {
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
   await page.click('#admin-activate');
   await page.waitForSelector('#admin-banner:not([hidden])');
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
   await page.waitForSelector('#admin-tools-title');
   assert.equal(await page.locator('#download-backup').count(), 1);
@@ -237,7 +237,7 @@ test('Admin mode owns the seating editor and backup tools', async () => {
   assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
   assert.equal(await page.locator('#admin-cleanup').textContent(), 'Test-Daten aufräumen');
   assert.deepEqual(await page.locator('.admin-test-controls > *').evaluateAll((controls) => controls.map((control) => control.id)), ['admin-count', 'admin-cleanup', 'admin-bulk']);
-  assert.equal(await page.locator('#admin-count').evaluate((input) => input.getBoundingClientRect().height), 36);
+  assert.equal(await page.locator('#admin-count').evaluate((input) => Math.round(input.getBoundingClientRect().height)), 36);
   assert.equal(await page.locator('.admin-test-controls').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('.seating-plan.is-editable');
@@ -329,7 +329,7 @@ test('global search filters areas, supports keyboard navigation and restores foc
 test('full click-through: players, matchmaking, voting, leaderboard, live pause', async () => {
   // The public roster no longer creates identities; test setup creates the
   // second profile through the API that future user management will own.
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="players"]');
   await createPlayerForFlow('E2E Bob');
 
@@ -343,7 +343,7 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   assert.equal(await page.inputValue('#profile-name'), 'E2E Alice');
 
   // Matchmaking: draw teams for both players.
-  await page.click('[data-view="matchmaking"]');
+  await page.click('.nav-btn[data-view="matchmaking"]');
   assert.equal(await page.inputValue('#mm-teamcount'), '2');
   await page.click('#mm-select-none');
   assert.equal(await page.locator('[data-player]:checked').count(), 0);
@@ -383,7 +383,7 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   // button is pressed. While the round is open, no per-game distribution
   // (bars/counts) may be visible anywhere — only total participation and the
   // voter's own pick.
-  await page.click('[data-view="votes"]');
+  await page.click('.nav-btn[data-view="votes"]');
   await page.waitForSelector('#votes-start');
   assert.equal(await page.getByText('Du bist E2E Alice', { exact: true }).count(), 0);
   await page.click('#votes-start');
@@ -448,7 +448,7 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.click('[data-close]');
 
   // Leaderboard: record a match and see it reflected.
-  await page.click('[data-view="leaderboard"]');
+  await page.click('.nav-btn[data-view="leaderboard"]');
   await page.waitForSelector('h1:text-is("Rang")');
   assert.equal(
     await page.locator('section.grouped-page-section:has(> .grouped-page-section-title > h2:text-is("Rangliste & Spielzeit"))').count(),
@@ -529,6 +529,13 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.click('#match-form button[type="submit"]');
   await page.waitForSelector('.lb-row');
   assert.ok((await page.locator('.lb-row').count()) >= 2);
+  // The app can render its first data view before the stylesheet request has
+  // completed on a cold CI browser. Wait for the actual sheet and a resolved
+  // body font before comparing typography across views.
+  await page.waitForFunction(() => {
+    const stylesheet = document.querySelector('link[href*="/css/style.css"]') as HTMLLinkElement | null;
+    return stylesheet?.sheet !== null && getComputedStyle(document.body).fontFamily !== '';
+  });
   const leaderboardNameTypography = await page.locator('.lb-row .player-name').first().evaluate((element) => {
     const style = getComputedStyle(element);
     return { family: style.fontFamily, size: style.fontSize, weight: style.fontWeight };
@@ -536,7 +543,7 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.waitForSelector('text=Spielzeit');
 
   // Back to Home: should now show both players (offline, since no agent ran).
-  await page.click('[data-view="home"]');
+  await page.click('.nav-btn[data-view="home"]');
   await page.waitForSelector('.player-card');
   assert.equal(await page.locator('.player-card').count(), 2);
   for (const title of ['Live-Status', 'Rangliste', 'Sitzplan']) {
@@ -615,7 +622,7 @@ test('Vote: game-limit selection survives an unrelated re-render and select-all/
 });
 
 test('matchmaking Historie marks a recorded draw as Unentschieden', async () => {
-  await page.click('[data-view="matchmaking"]');
+  await page.click('.nav-btn[data-view="matchmaking"]');
   await page.click('#mm-generate');
   await openMatchmakingHistory();
   await page.waitForSelector('[data-record-draw]');
@@ -636,7 +643,7 @@ test('matchmaking Historie shows the winner after switching to Frei-für-alle fo
   // "Frei-für-alle" instead of the drawn team shape — the draw must still
   // remain in Historie with the winner shown instead of retaining the open
   // draw actions.
-  await page.click('[data-view="matchmaking"]');
+  await page.click('.nav-btn[data-view="matchmaking"]');
   await page.click('#mm-generate');
   await openMatchmakingHistory();
   await page.waitForSelector('[data-record-draw]');
@@ -658,7 +665,7 @@ test('Ergebnis eintragen keeps a manual team reassignment after changing "Anzahl
   // Regression test: reassigning a player to a different team in the entry
   // form, then changing "Anzahl Teams", must not silently revert that player
   // back to the original drawn team.
-  await page.click('[data-view="matchmaking"]');
+  await page.click('.nav-btn[data-view="matchmaking"]');
   await page.click('#mm-generate');
   await openMatchmakingHistory();
   await page.waitForSelector('[data-record-draw]');
@@ -703,7 +710,7 @@ test('Auswertungen (via Mehr) shows a real award and keeps detail logs collapsed
   await page.reload();
   await page.waitForSelector('#app:not([hidden])');
   // Spielzeit-Auswertungen lives in the "Mehr" tab.
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="analytics"]');
   await page.waitForSelector('text=Marathon-Zocker', { timeout: 5000 });
   assert.ok((await page.textContent('.view-title'))?.includes('Auswertungen'));
@@ -814,11 +821,11 @@ test('Sitzplan: the real name set in Mein Profil shows in small everywhere the s
   // Seat her via the editor's tap-to-place path (select the pool chip, then
   // tap an empty seat) rather than HTML5 drag & drop, which Playwright can't
   // simulate reliably.
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
   await page.click('#admin-activate');
   await page.waitForSelector('#admin-banner:not([hidden])');
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('[data-seat-pool] [data-player-id]');
@@ -831,7 +838,7 @@ test('Sitzplan: the real name set in Mein Profil shows in small everywhere the s
   // requested side-by-side desktop layout separately from the intentionally
   // stacked narrow-screen variant used by the rest of this suite.
   await page.setViewportSize({ width: 900, height: 844 });
-  await page.click('[data-view="home"]');
+  await page.click('.nav-btn[data-view="home"]');
   await page.waitForSelector('.seating-seat-realname:has-text("Alice Musterfrau")');
   const homeSeatName = page.locator('.live-seating .seating-seat.is-occupied .seating-seat-name', { hasText: 'E2E Alice Pro' });
   await homeSeatName.waitFor();
@@ -843,7 +850,7 @@ test('Sitzplan: the real name set in Mein Profil shows in small everywhere the s
 });
 
 test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bock/Skill inline', async () => {
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="gameCatalog"]');
   await page.waitForSelector('#suggest-new');
 
@@ -897,7 +904,7 @@ test('Spiele: a skill suggestion chip appears after enough recorded results and 
     assert.equal(res.status(), 201);
   }
 
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="gameCatalog"]');
   const cs2Row = page.locator('.game-table-row', { hasText: 'Counter-Strike 2' });
   await cs2Row.waitFor();
@@ -915,7 +922,7 @@ test('Spiele: a skill suggestion chip appears after enough recorded results and 
 
 test('Turnier: create a K.O. bracket from proposed teams and play it to a champion', async () => {
   // Tournaments earned their own bottom-nav slot.
-  await page.click('[data-view="tournaments"]');
+  await page.click('.nav-btn[data-view="tournaments"]');
   await page.waitForSelector('#tourn-new-btn');
   await page.click('#tourn-new-btn');
 
@@ -966,7 +973,7 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
 });
 
 test('Info: create an entry, see it rendered', async () => {
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="infoBoard"]');
   await page.waitForSelector('#info-new-btn');
   await page.click('#info-new-btn');
@@ -977,7 +984,7 @@ test('Info: create an entry, see it rendered', async () => {
 });
 
 test('Essensbestellung: open an order with a send time/notes/link, edit them, add a priced item, close it', async () => {
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="foodOrders"]');
   await page.waitForSelector('#order-new-btn');
   await page.click('#order-new-btn');
@@ -985,6 +992,8 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await setDateTimeField('order-sendat', '2026-12-24T20:00');
   await page.fill('#order-notes', 'Mindestbestellwert 15€, bar zahlen');
   await page.fill('#order-link', 'https://luigis-pizza.example/karte');
+  await page.fill('#order-paypal', 'https://paypal.me/luigi');
+  await page.fill('#order-tip', '10');
   await page.click('#order-form button[type="submit"]');
   await page.waitForSelector('text=Pizza bei Luigi');
   await page.waitForSelector('text=Versand 24.12., 20:00 Uhr');
@@ -1012,6 +1021,56 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.waitForSelector('text=Zwischensumme');
   await page.waitForSelector('text=Gesamtsumme');
 
+  // Whoever collects the money checks an item off once it's paid — works
+  // while the order is still open, and stays visible/editable after closing.
+  await page.check('[data-toggle-paid]');
+  await page.waitForSelector('.food-order-item.is-paid');
+
+  // Anyone can select any mix of items — their own or someone else's — and
+  // pay them together in one PayPal link, tip included.
+  await page.check('[data-select-pay]');
+  const paymentSelector = page.locator('.food-order-payment-selector');
+  await page.waitForSelector('.food-order-payment-selector:has-text("1 Position ausgewählt")');
+  await page.waitForSelector('.food-order-payment-selector:has-text("20,90")');
+  await page.waitForSelector('.food-order-payment-selector:has-text("10% Trinkgeld")');
+  assert.equal(
+    await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'),
+    'https://paypal.me/luigi/20.90EUR'
+  );
+
+  // Adding an unpriced item to the selection withholds the amount entirely
+  // (rather than silently undercounting it as 0) and falls back to the raw
+  // PayPal link.
+  await page.fill('[data-item-desc]', 'Wasser');
+  await page.fill('[data-item-quantity]', '1');
+  await page.click('[data-add-item-form] button[type="submit"]');
+  await page.waitForSelector('text=Wasser');
+  await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').check();
+  await page.waitForSelector('text=Preis unvollständig');
+  assert.equal(await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'), 'https://paypal.me/luigi');
+
+  // Deselecting it goes back to a complete, priced selection.
+  await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').uncheck();
+  await page.waitForSelector('text=Preis unvollständig', { state: 'detached' });
+  assert.equal(
+    await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'),
+    'https://paypal.me/luigi/20.90EUR'
+  );
+
+  // Clearing the PayPal link while an item is still selected must not crash
+  // the view (a selection can outlive the link it was made for).
+  await page.click('[data-edit-details]');
+  await page.fill('#paypal-input', '');
+  await page.click('#details-form button[type="submit"]');
+  await page.waitForSelector('.food-order-payment-selector', { state: 'detached' });
+  await page.waitForSelector('text=Margherita');
+
+  // Restore it for the rest of the flow.
+  await page.click('[data-edit-details]');
+  await page.fill('#paypal-input', 'https://paypal.me/luigi');
+  await page.click('#details-form button[type="submit"]');
+  await page.waitForSelector('.food-order-payment-selector');
+
   // Content search resolves an item description to its parent order and
   // highlights that concrete order instead of only opening the Essen area.
   await page.keyboard.press('Control+K');
@@ -1025,13 +1084,42 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.click('[data-confirm]');
   await page.waitForSelector('[data-food-history]');
   await page.click('[data-food-history] > summary');
-  await page.waitForSelector('.badge-offline >> text=Geschlossen');
+  // "Abgeschickt" (submitted, badge-paused) vs "Geschlossen" (finalized,
+  // badge-offline) are deliberately distinct labels/colors in the history.
+  await page.waitForSelector('.badge-paused >> text=Abgeschickt');
+
+  // Paid state survives closing, and stays togglable — settling up normally
+  // happens after the order is already closed.
+  await page.waitForSelector('.food-order-item.is-paid');
+  await page.locator('.food-order-item', { hasText: 'Margherita' }).locator('[data-toggle-paid]').uncheck();
+  await page.waitForSelector('.food-order-item:not(.is-paid)');
 
   // Closing only freezes items — the details stay correctable afterward.
   await page.click('[data-edit-details]');
   await setDateTimeField('sendat-input', '2026-12-24T22:00');
   await page.click('#details-form button[type="submit"]');
   await page.waitForSelector('text=Versand 24.12., 22:00 Uhr');
+
+  // Reopening a closed order un-freezes it: items can be added again.
+  await page.click('[data-reopen-order]');
+  await page.waitForSelector('.badge-playing >> text=Offen');
+  await page.fill('[data-item-desc]', 'Vergessene Cola');
+  await page.fill('[data-item-quantity]', '1');
+  await page.click('[data-add-item-form] button[type="submit"]');
+  await page.waitForSelector('text=Vergessene Cola');
+
+  await page.click('[data-close-order]');
+  await page.click('[data-confirm]');
+  await page.waitForSelector('.badge-paused >> text=Abgeschickt');
+
+  // Finalizing is the creator's terminal lock: no more reopening, editing,
+  // or paid toggling.
+  await page.click('[data-finalize-order]');
+  await page.click('[data-confirm]');
+  await page.waitForSelector('.badge-offline >> text=Geschlossen');
+  await page.waitForSelector('[data-reopen-order]', { state: 'detached' });
+  await page.waitForSelector('[data-edit-details]', { state: 'detached' });
+  assert.equal(await page.locator('[data-toggle-paid]').first().isDisabled(), true);
 });
 
 test('Arcade: open a quiz lobby, see it on Home, then close it again', async (t) => {
@@ -1050,7 +1138,7 @@ test('Arcade: open a quiz lobby, see it on Home, then close it again', async (t)
   await guestPage.reload();
   await guestPage.waitForSelector('.nav-btn[data-view="home"]');
 
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="arcade"]');
   // Arcade is a launcher; select the quiz tile before its lobby controls
   // become visible (module state is intentionally reset on a fresh run).
@@ -1066,7 +1154,7 @@ test('Arcade: open a quiz lobby, see it on Home, then close it again', async (t)
   // deep-links back into the Arcade (the whole row is the tap target, not a
   // separate labeled button — see statusRowHtml in home.js). No tile click
   // needed there: the launcher force-expands the game whose lobby you're in.
-  await page.click('[data-view="home"]');
+  await page.click('.nav-btn[data-view="home"]');
   await page.click('button:has-text("Gaming-Quiz-Lobby offen")');
   await page.waitForSelector('#arcade-active-game-title:has-text("Gaming-Quiz")');
 
@@ -1099,7 +1187,7 @@ test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', as
     guest = await created.json() as { id: string; name: string };
   }
 
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="arcade"]');
 
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -1109,7 +1197,7 @@ test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', as
     await guestPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), guest!.id);
     await guestPage.reload();
     await guestPage.waitForSelector('.nav-btn[data-view="more"]');
-    await guestPage.click('[data-view="more"]');
+    await guestPage.click('.nav-btn[data-view="more"]');
     await guestPage.click('[data-navigate="arcade"]');
 
     for (const game of ['pong', 'blobby'] as const) {
@@ -1182,7 +1270,7 @@ test('Arcade: a lobby guest flags themselves ready and the host sees it', async 
     await guestPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), guest!.id);
     await guestPage.reload();
     await guestPage.waitForSelector('.nav-btn[data-view="more"]');
-    await guestPage.click('[data-view="more"]');
+    await guestPage.click('.nav-btn[data-view="more"]');
     await guestPage.click('[data-navigate="arcade"]');
     await guestPage.click('[data-game="quiz"]');
 
@@ -1231,7 +1319,7 @@ test('Arcade: a non-player can watch a running quiz without seeing the question'
     await guestPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), guest!.id);
     await guestPage.reload();
     await guestPage.waitForSelector('.nav-btn[data-view="more"]');
-    await guestPage.click('[data-view="more"]');
+    await guestPage.click('.nav-btn[data-view="more"]');
     await guestPage.click('[data-navigate="arcade"]');
     await guestPage.click('[data-game="quiz"]');
 
@@ -1251,7 +1339,7 @@ test('Arcade: a non-player can watch a running quiz without seeing the question'
     await spectatorPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), spectator!.id);
     await spectatorPage.reload();
     await spectatorPage.waitForSelector('.nav-btn[data-view="more"]');
-    await spectatorPage.click('[data-view="more"]');
+    await spectatorPage.click('.nav-btn[data-view="more"]');
     await spectatorPage.click('[data-navigate="arcade"]');
     await spectatorPage.waitForSelector('[data-watch-match]');
     await spectatorPage.click('[data-watch-match]');
@@ -1297,7 +1385,7 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     await guesserPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), guesser!.id);
     await guesserPage.reload();
     await guesserPage.waitForSelector('.nav-btn[data-view="more"]');
-    await guesserPage.click('[data-view="more"]');
+    await guesserPage.click('.nav-btn[data-view="more"]');
     await guesserPage.click('[data-navigate="arcade"]');
     await guesserPage.click('[data-game="scribble"]');
 
@@ -1305,13 +1393,13 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     await spectatorPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), spectator!.id);
     await spectatorPage.reload();
     await spectatorPage.waitForSelector('.nav-btn[data-view="more"]');
-    await spectatorPage.click('[data-view="more"]');
+    await spectatorPage.click('.nav-btn[data-view="more"]');
     await spectatorPage.click('[data-navigate="arcade"]');
 
     // Host (the shared device driving `page` through this whole suite) opens
     // the lobby — draw order is lobby join order, so the host always draws
     // first, keeping this test deterministic about who does what.
-    await page.click('[data-view="more"]');
+    await page.click('.nav-btn[data-view="more"]');
     await page.click('[data-navigate="arcade"]');
     await page.click('[data-game="scribble"]');
     await page.waitForSelector('#scribble-create:not([disabled])');
@@ -1601,11 +1689,11 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
 
 test('An- & Abreise: carpool marks the driver, enforces seats, driver can only delete', async () => {
   // A third player to later demonstrate a full carpool.
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="players"]');
   await createPlayerForFlow('E2E Carol');
 
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="arrivals"]');
   await page.waitForSelector('[data-new-carpool="arrival"]');
 
@@ -1648,7 +1736,7 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
 });
 
 test('Durchsage: notification center can navigate, mark read and remove without duplicating Home', async () => {
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="broadcast"]');
   await page.waitForSelector('#broadcast-message');
   const defaultEndsAt = new Date(await page.inputValue('#broadcast-ends-at')).getTime();
@@ -1672,7 +1760,7 @@ test('Durchsage: notification center can navigate, mark read and remove without 
   // The highlighted strip shows the newest active push on any view and
   // deep-links back into Durchsagen. Opening it marks the entry as read,
   // while the bell keeps it in the durable history.
-  await page.click('[data-view="leaderboard"]');
+  await page.click('.nav-btn[data-view="leaderboard"]');
   const highlight = page.locator('#notification-highlight:has-text("Essen ist da!")');
   await highlight.waitFor();
   await highlight.locator('[data-notification-highlight-navigate]').click();
@@ -1705,12 +1793,12 @@ test('Durchsage: notification center can navigate, mark read and remove without 
 
   // Home no longer renders a second notification history in a different
   // style; notifications live only under the bell.
-  await page.click('[data-view="home"]');
+  await page.click('.nav-btn[data-view="home"]');
   assert.equal(await page.locator('.section-title:has-text("Mitteilungen")').count(), 0);
 
   // A second message can be ended early by its creator; it remains a past
   // notification until this player removes it from the center.
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="broadcast"]');
   await page.fill('#broadcast-message', 'Turnier startet gleich!');
   await page.click('#broadcast-form button[type="submit"]');
@@ -1746,7 +1834,7 @@ test('Durchsage: notification center can navigate, mark read and remove without 
 });
 
 test('Captain-Draft: pick captains, run the live draft to completion', async () => {
-  await page.click('[data-view="matchmaking"]');
+  await page.click('.nav-btn[data-view="matchmaking"]');
   await page.waitForSelector('[data-captain-toggle]');
 
   // The device identity ("E2E Alice Pro") must be a captain so this page is
@@ -1780,11 +1868,11 @@ test('Captain-Draft: pick captains, run the live draft to completion', async () 
 test('the device back button steps back through in-app views instead of leaving the tool', async () => {
   // Land on a known view, then navigate through two more — each deliberate
   // tab switch should push a history entry (see switchView in app.js).
-  await page.click('[data-view="home"]');
+  await page.click('.nav-btn[data-view="home"]');
   await page.waitForSelector('.view-title');
-  await page.click('[data-view="votes"]');
+  await page.click('.nav-btn[data-view="votes"]');
   await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Vote');
-  await page.click('[data-view="leaderboard"]');
+  await page.click('.nav-btn[data-view="leaderboard"]');
   await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Rang');
 
   // Back should undo the last switch (leaderboard -> votes), not leave the
@@ -1803,18 +1891,18 @@ test('the device back button steps back through in-app views instead of leaving 
 });
 
 test('Aktuell: an open vote\'s title (if set) shows on Home\'s status card', async () => {
-  await page.click('[data-view="votes"]');
+  await page.click('.nav-btn[data-view="votes"]');
   await page.waitForSelector('#votes-title');
   await page.fill('#votes-title', 'Freitagabend-Runde');
   await page.click('#votes-start');
   await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
 
-  await page.click('[data-view="home"]');
+  await page.click('.nav-btn[data-view="home"]');
   await page.waitForSelector('section.grouped-page-section:has(h2:text-is("Aktuell"))');
   await page.waitForSelector('text=Freitagabend-Runde');
 
   // Leave no open round behind for later tests.
-  await page.click('[data-view="votes"]');
+  await page.click('.nav-btn[data-view="votes"]');
   await page.click('#votes-close');
   await page.waitForSelector('#votes-start');
 });
@@ -2008,13 +2096,13 @@ test('Admin: one-tap mode with banner, seeded test users visible only in admin m
   await page.waitForSelector('#app:not([hidden])');
 
   // Enter admin mode — no PIN prompt, one tap (see docs/KONZEPT-TEST-USER.md).
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
   await page.click('#admin-activate');
   await page.waitForSelector('#admin-banner:not([hidden]) >> text=Admin-Modus aktiv');
 
   // Seed test users; the admin toggle triggers a refresh, so re-open the view.
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
   await page.fill('#admin-count', '4');
   const seedResponse = page.waitForResponse(
@@ -2043,7 +2131,7 @@ test('Admin: one-tap mode with banner, seeded test users visible only in admin m
   const testLans = hallBody.events.filter((event) => event.eventName.startsWith('Respawn Test-LAN'));
   assert.equal(testLans.length, 12);
   assert.ok(testLans.every((event) => event.overallStandings.length >= 4 && event.tournamentChampions.length === 3));
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="hallOfFame"]');
   await page.waitForSelector('#hall-event-select');
   assert.equal(await page.getByText('LAN auswählen', { exact: true }).count(), 0);
@@ -2054,17 +2142,17 @@ test('Admin: one-tap mode with banner, seeded test users visible only in admin m
   // gamer name: seeded players cover playing + paused while the regular
   // roster also supplies an offline seat. The title/ARIA label keeps the
   // three colors understandable without relying on color alone.
-  await page.click('[data-view="home"]');
+  await page.click('.nav-btn[data-view="home"]');
   await page.waitForSelector('.live-seating .seating-status-indicator.is-playing[aria-label="Status: Spielt"]');
   await page.waitForSelector(`.live-seating [data-player-id="${pausedTestPlayer.id}"] .seating-status-indicator.is-paused[aria-label="Status: Pause"]`);
   await page.waitForSelector('.live-seating .seating-status-indicator.is-offline[aria-label="Status: Offline"]');
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector(`.seating-plan.is-editable [data-player-id="${pausedTestPlayer.id}"] .seating-status-indicator.is-paused`);
 
   // Visible on the roster (Mehr → Spieler) while in admin mode...
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="players"]');
   await page.waitForSelector('text=Test Alex');
 
@@ -2074,11 +2162,11 @@ test('Admin: one-tap mode with banner, seeded test users visible only in admin m
   await page.waitForFunction(() => !document.body.textContent?.includes('Test Alex'));
 
   // Back in admin mode, cleanup removes them and their data again.
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
   await page.click('#admin-activate');
   await page.waitForSelector('#admin-banner:not([hidden])');
-  await page.click('[data-view="more"]');
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
   await page.click('#admin-cleanup');
   // confirmDialog is an in-app modal (not a native browser dialog).

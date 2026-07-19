@@ -40,6 +40,7 @@ import { extractToken } from '../auth';
 import { requireConfiguredGroupMembership } from '../groupAuthorization';
 import { getGroup } from '../groups';
 import { DEFAULT_GROUP_ID } from '../db';
+import { resolveKioskToken } from '../kioskTokens';
 
 export const apiRouter = Router();
 
@@ -67,13 +68,18 @@ apiRouter.use((req, res, next) => {
     config.authMode === 'required' &&
     req.method === 'GET' &&
     req.header('x-kiosk-mode') === '1' &&
-    Boolean(config.kioskToken) &&
-    extractToken(req) === config.kioskToken &&
+    Boolean(config.kioskToken || resolveKioskToken(extractToken(req))) &&
+    (extractToken(req) === config.kioskToken || Boolean(resolveKioskToken(extractToken(req)))) &&
     KIOSK_GET_PATHS.some((pattern) => pattern.test(req.path));
   if (kioskRead) {
-    // The kiosk token isn't group-scoped yet (Phase 5e); until then it reads
-    // the single migrated group, same as legacy mode's implicit context.
-    req.group = getGroup(DEFAULT_GROUP_ID);
+    const tokenScope = resolveKioskToken(extractToken(req));
+    const groupId = tokenScope?.groupId ?? DEFAULT_GROUP_ID;
+    const requestedGroup = req.headers['x-group-id'];
+    if (tokenScope && typeof requestedGroup === 'string' && requestedGroup !== groupId) {
+      return res.status(404).json({ error: 'Kiosk-Token ist für diese Gruppe nicht freigegeben.' });
+    }
+    if (tokenScope?.eventId) req.query.eventId = tokenScope.eventId;
+    req.group = getGroup(groupId);
     return next();
   }
   requireConfiguredUser(req, res, next);

@@ -159,6 +159,21 @@ export function getCurrentPushLogEntryFor(groupId: string, eventId: string | nul
 export type MarkPushSeenResult = 'seen' | 'already_seen' | 'not_found' | 'not_recipient';
 export type HidePushResult = 'hidden' | 'already_hidden' | 'not_found' | 'not_recipient';
 
+export function setPushMute(groupId: string, playerId: string, eventId: string | null, muted: boolean): void {
+  if (muted) {
+    db.prepare('INSERT OR REPLACE INTO push_mutes (group_id, player_id, event_id, muted_at) VALUES (?, ?, ?, ?)')
+      .run(groupId, playerId, eventId, Date.now());
+  } else {
+    db.prepare('DELETE FROM push_mutes WHERE group_id = ? AND player_id = ? AND event_id IS ?').run(groupId, playerId, eventId);
+  }
+}
+
+export function isPushMuted(groupId: string, playerId: string, eventId: string | null): boolean {
+  return Boolean(db.prepare(
+    `SELECT 1 FROM push_mutes WHERE group_id = ? AND player_id = ? AND (event_id IS NULL OR event_id IS ?)`
+  ).get(groupId, playerId, eventId));
+}
+
 function pushRecipientCheck(
   groupId: string,
   pushId: string,
@@ -182,7 +197,7 @@ export function markPushSeen(groupId: string, pushId: string, playerId: string):
     .prepare('INSERT OR IGNORE INTO push_log_seen (push_id, player_id, seen_at) VALUES (?, ?, ?)')
     .run(pushId, playerId, Date.now());
   if (result.changes === 0) return 'already_seen';
-  broadcast(Events.pushSeen, { playerId });
+  broadcast(Events.pushSeen, { playerId }, { groupId });
   return 'seen';
 }
 
@@ -196,7 +211,7 @@ export function hidePushForPlayer(groupId: string, pushId: string, playerId: str
     .prepare('INSERT OR IGNORE INTO push_log_hidden (push_id, player_id, hidden_at) VALUES (?, ?, ?)')
     .run(pushId, playerId, Date.now());
   if (result.changes === 0) return 'already_hidden';
-  broadcast(Events.pushSeen, { playerId });
+  broadcast(Events.pushSeen, { playerId }, { groupId });
   return 'hidden';
 }
 
@@ -222,7 +237,7 @@ export function markAllPushSeen(groupId: string, eventId: string | null, playerI
   const changes = db.transaction(() =>
     entries.reduce((sum, entry) => sum + insert.run(entry.id, playerId, seenAt).changes, 0)
   )();
-  if (changes > 0) broadcast(Events.pushSeen, { playerId });
+  if (changes > 0) broadcast(Events.pushSeen, { playerId }, { groupId });
   return changes;
 }
 
@@ -234,7 +249,7 @@ export function hideAllPushForPlayer(groupId: string, eventId: string | null, pl
   const changes = db.transaction(() =>
     entries.reduce((sum, entry) => sum + insert.run(entry.id, playerId, hiddenAt).changes, 0)
   )();
-  if (changes > 0) broadcast(Events.pushSeen, { playerId });
+  if (changes > 0) broadcast(Events.pushSeen, { playerId }, { groupId });
   return changes;
 }
 
@@ -298,7 +313,7 @@ export function resolvePushTopic(
     : db
         .prepare('UPDATE push_log SET resolved_at = ? WHERE group_id = ? AND event_id IS ? AND resolved_at IS NULL AND topic_key = ?')
         .run(now, scope.groupId, scope.eventId ?? null, topicKey);
-  if (emitDeliveryEvent) broadcastPushChanged(result.changes);
+  if (emitDeliveryEvent && result.changes > 0) broadcast(Events.pushChanged, { groupId: scope.groupId }, { groupId: scope.groupId, eventId: scope.eventId });
 }
 
 // Food-order deadlines are editable. Keep the banner expiry synchronized
@@ -313,7 +328,7 @@ export function updatePushTopicExpiry(
       'UPDATE push_log SET expires_at = ? WHERE group_id = ? AND event_id IS ? AND resolved_at IS NULL AND topic_key = ?',
     )
     .run(expiresAt, scope.groupId, scope.eventId ?? null, topicKey);
-  broadcastPushChanged(result.changes);
+  if (result.changes > 0) broadcast(Events.pushChanged, { groupId: scope.groupId }, { groupId: scope.groupId, eventId: scope.eventId });
 }
 
 // Fire-and-forget by design (never awaited by callers): a request handler
@@ -330,12 +345,25 @@ export function notifyPlayers(
 ): void {
   if (playerIds.length === 0) return;
 
-  const entry = recordPushLog(playerIds, payload, audience, topic, scope);
-  broadcast(Events.pushSent, entry);
-
   const placeholders = playerIds.map(() => '?').join(',');
+  const eligible = config.authMode === 'legacy' ? playerIds.map((playerId) => ({ playerId })) : db.prepare(
+    `SELECT DISTINCT gm.player_id AS playerId
+     FROM group_memberships gm JOIN players p ON p.id = gm.player_id
+     WHERE gm.group_id = ? AND gm.status = 'active' AND p.deactivated_at IS NULL AND p.is_test = 0
+       AND gm.player_id IN (${placeholders})
+       AND NOT EXISTS (SELECT 1 FROM push_mutes pm WHERE pm.group_id = gm.group_id AND pm.player_id = gm.player_id
+                      AND (pm.event_id IS NULL OR pm.event_id IS ?))
+       AND (? IS NULL OR EXISTS (SELECT 1 FROM event_participants ep WHERE ep.event_id = ? AND ep.player_id = gm.player_id))`
+  ).all(scope.groupId, ...playerIds, scope.eventId ?? null, scope.eventId ?? null, scope.eventId ?? null) as Array<{ playerId: string }>;
+  playerIds = eligible.map((row) => row.playerId);
+  if (playerIds.length === 0) return;
+
+  const entry = recordPushLog(playerIds, payload, audience, topic, scope);
+  broadcast(Events.pushSent, entry, scope);
+
+  const recipientPlaceholders = playerIds.map(() => '?').join(',');
   const rows = db
-    .prepare(`SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE player_id IN (${placeholders})`)
+    .prepare(`SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE player_id IN (${recipientPlaceholders})`)
     .all(...playerIds) as SubscriptionRow[];
 
   for (const row of rows) {

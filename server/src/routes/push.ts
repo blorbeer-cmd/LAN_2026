@@ -16,6 +16,8 @@ import {
   hidePushForPlayer,
   markAllPushSeen,
   hideAllPushForPlayer,
+  setPushMute,
+  isPushMuted,
 } from '../push';
 import { withBodyPlayerIdentity, withQueryPlayerIdentity } from '../sessions';
 import { resolveGroupEventScope } from '../groupEventScope';
@@ -27,6 +29,25 @@ export const pushRouter = Router();
 // call pushManager.subscribe().
 pushRouter.get('/vapid-public-key', (_req, res) => {
   res.json({ publicKey: getVapidPublicKey() });
+});
+
+pushRouter.get('/mute', ...withQueryPlayerIdentity, (req, res) => {
+  const playerId = typeof req.query.playerId === 'string' ? req.query.playerId : req.player?.id;
+  if (!playerId || !activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  const eventId = req.query.eventId === undefined ? null : (typeof req.query.eventId === 'string' ? req.query.eventId : null);
+  const scope = resolveGroupEventScope(req.group!.id, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  res.json({ muted: isPushMuted(req.group!.id, playerId, scope.eventId) });
+});
+
+pushRouter.put('/mute', ...withBodyPlayerIdentity, (req, res) => {
+  const { playerId, eventId, muted } = req.body ?? {};
+  if (typeof playerId !== 'string' || !playerId || typeof muted !== 'boolean') return res.status(400).json({ error: 'playerId und muted sind erforderlich.' });
+  if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  const scope = resolveGroupEventScope(req.group!.id, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  setPushMute(req.group!.id, playerId, scope.eventId, muted);
+  res.json({ muted });
 });
 
 // GET /api/push/last - the most recent still-active notification sent via notifyPlayers()

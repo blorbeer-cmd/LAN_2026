@@ -38,7 +38,9 @@ liveRouter.post('/:playerId/note', ...withParamPlayerIdentity(), (req, res) => {
     `INSERT INTO live_status (player_id, last_seen, manual_note) VALUES (?, ?, ?)
      ON CONFLICT(player_id) DO UPDATE SET last_seen = excluded.last_seen, manual_note = excluded.manual_note`
   ).run(req.params.playerId, Date.now(), normalized);
+  db.prepare('UPDATE tracking_live_contexts SET last_seen = ?, manual_note = ? WHERE player_id = ? AND group_id = ?')
+    .run(Date.now(), normalized, req.params.playerId, req.group!.id);
 
-  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
   res.json({ ok: true });
 });

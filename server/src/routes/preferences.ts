@@ -71,7 +71,7 @@ preferencesRouter.put('/', requireConfiguredUser, (req, res) => {
   // Carries the changed row directly (rather than just a "something changed"
   // null, like skills.ts does) so the frontend can patch its local state and
   // re-sort the voting view instantly instead of waiting on a full reload.
-  broadcast(Events.preferencesChanged, { playerId, gameId, rating });
+  broadcast(Events.preferencesChanged, { playerId, gameId, rating }, { groupId: req.group!.id });
   res.json({ playerId, gameId, rating });
 });
 
@@ -87,6 +87,6 @@ preferencesRouter.delete('/:playerId/:gameId', requireConfiguredUser, (req, res)
   if (result.changes === 0) {
     return res.status(404).json({ error: 'Rating nicht gefunden.' });
   }
-  broadcast(Events.preferencesChanged, { playerId, gameId, rating: null });
+  broadcast(Events.preferencesChanged, { playerId, gameId, rating: null }, { groupId: req.group!.id });
   res.status(204).end();
 });
