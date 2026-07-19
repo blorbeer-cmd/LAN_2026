@@ -1057,9 +1057,9 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.fill('[data-item-price]', '9,50');
   await page.click('[data-add-item-form] button[type="submit"]');
   await page.waitForSelector('text=Margherita');
-  await page.waitForSelector('text=19,00 €');
-  await page.waitForSelector('text=Zwischensumme');
-  await page.waitForSelector('text=Gesamtsumme');
+  await page.waitForSelector('.food-order-item-price:has-text("20,90 €")');
+  await page.waitForSelector('.food-order-total:has-text("Gesamtsumme inkl. 10% Trinkgeld")');
+  assert.equal(await page.getByText('Zwischensumme', { exact: false }).count(), 0);
 
   // Whoever collects the money checks an item off once it's paid — works
   // while the order is still open, and stays visible/editable after closing.
