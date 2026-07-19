@@ -346,7 +346,18 @@ test('global search filters areas, supports keyboard navigation and restores foc
   await page.setViewportSize({ width: 390, height: 844 });
 });
 
-test('full click-through: players, matchmaking, voting, leaderboard, live pause', async () => {
+test('full click-through: players, matchmaking, voting, leaderboard, live pause', async (t) => {
+  // This test starts a vote round partway through and only cancels it via UI
+  // clicks much later, once its own assertions along the way all pass. If
+  // one of those throws first, the round is left open for the rest of the
+  // shared page/session — the later "Aktuell" test then times out because it
+  // expects the idle "start a round" form, not an already-open round. Cancel
+  // any round left open directly through the API, bypassing whatever UI
+  // state the test aborted in, so a failure here can't cascade like that.
+  t.after(async () => {
+    const current = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
+    if (current.open) await page.request.post(`${BASE_URL}/api/votes/cancel`);
+  });
   // The public roster no longer creates identities; test setup creates the
   // second profile through the API that future user management will own.
   await page.click('[data-view="more"]');
@@ -407,13 +418,22 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.waitForSelector('#votes-start');
   assert.equal(await page.getByText('Du bist E2E Alice', { exact: true }).count(), 0);
   await page.click('#votes-start');
-  await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
+  await page.waitForSelector('#votes-close'); // only rendered once the round shows as open
   await page.waitForSelector('.vote-participation-status:has-text("Bewertungen abgegeben"):has-text("0 / 2")');
-  const submitBox = await page.locator('#votes-submit').boundingBox();
-  const closeBox = await page.locator('#votes-close').boundingBox();
-  const cancelBox = await page.locator('#votes-cancel').boundingBox();
-  assert.ok((submitBox?.width || 0) > (closeBox?.width || 0));
-  assert.equal(Math.round(cancelBox?.width || 0), Math.round(closeBox?.width || 0));
+  // Opening the round also kicks off votes.js's own follow-up mine/history
+  // fetches, each of which rerenders (replacing this whole section) again
+  // once it resolves. Settling on network idle first, then reading all
+  // three boxes from one synchronous evaluate(), avoids one of those
+  // rerenders landing between three separate boundingBox() round trips and
+  // handing back a stale/zero-size box for whichever button it replaced.
+  await page.waitForLoadState('networkidle');
+  const { submitWidth, closeWidth, cancelWidth } = await page.evaluate(() => ({
+    submitWidth: document.querySelector('#votes-submit')?.getBoundingClientRect().width ?? 0,
+    closeWidth: document.querySelector('#votes-close')?.getBoundingClientRect().width ?? 0,
+    cancelWidth: document.querySelector('#votes-cancel')?.getBoundingClientRect().width ?? 0,
+  }));
+  assert.ok(submitWidth > closeWidth);
+  assert.equal(Math.round(cancelWidth), Math.round(closeWidth));
   assert.equal(await page.locator('.vote-game-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 1);
   await page.setViewportSize({ width: 900, height: 844 });
   assert.equal(await page.locator('.vote-game-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 2);
