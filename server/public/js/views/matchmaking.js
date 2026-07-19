@@ -591,7 +591,9 @@ export function renderMatchmaking(container, ctx) {
               )}
           </span>
         </div>
-        <button type="button" class="btn btn-primary" id="mm-generate">Teams auslosen</button>
+        <div class="sticky-actions">
+          <button type="button" class="btn btn-primary" id="mm-generate">Teams auslosen</button>
+        </div>
       </section>
 
       <section class="tournament-section-panel tournament-create-step stack" aria-labelledby="matchmaking-draft-title">
@@ -617,7 +619,9 @@ export function renderMatchmaking(container, ctx) {
             ${captainRows}
           </div>
         </div>
-        <button type="button" class="btn btn-primary" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten</button>
+        <div class="sticky-actions">
+          <button type="button" class="btn btn-primary" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten</button>
+        </div>
       </section>
     </div>
     <div id="mm-result">${renderResult(state.lastMatchmaking)}</div>
