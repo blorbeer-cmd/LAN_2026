@@ -343,6 +343,11 @@ function wireSocket() {
       // any device that already has it cached.
       invalidateHomeSeating();
       invalidateSeating();
+      // events:changed also covers starting/stopping/switching which event is
+      // tracked, and the Packliste is scoped to that current event - without
+      // this, a stale tasksCache/itemsCache would keep the previous event's
+      // rows on screen (and mutable) after the switch.
+      invalidateChecklist();
       ctx.refresh();
     })
   );

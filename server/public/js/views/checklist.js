@@ -5,7 +5,7 @@
 // mitnehmen"-style request. Claiming is immediate and binding - no
 // confirmation step, same as a captain-draft pick.
 
-import { api } from '../api.js';
+import { api, GROUP_KEY } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
@@ -192,8 +192,27 @@ function openRequestForm(ctx, myId) {
   );
 }
 
-function openTodoForm(ctx, myId) {
-  const playerOptions = state.players
+// state.players is the whole instance's roster, not the selected group's
+// membership - in required multi-group mode that would let an organizer
+// pick someone from a different group, and the create request 404s server-
+// side (activeGroupPlayers only accepts the current group's active
+// members). Group-scoped membership needs a real session, so this quietly
+// falls back to the global roster wherever that's unavailable (legacy mode
+// has no session at all, and there's only ever the one implicit group).
+async function assigneeCandidates() {
+  const groupId = sessionStorage.getItem(GROUP_KEY);
+  if (!groupId) return state.players;
+  try {
+    const members = await api.groups.members(groupId);
+    return members.map((m) => ({ id: m.playerId, name: m.name, color: m.color, avatar: m.avatar }));
+  } catch {
+    return state.players;
+  }
+}
+
+async function openTodoForm(ctx, myId) {
+  const candidates = await assigneeCandidates();
+  const playerOptions = candidates
     .filter((p) => p.id !== myId)
     .map(
       (p) => `

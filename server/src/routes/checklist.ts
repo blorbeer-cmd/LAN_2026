@@ -30,7 +30,7 @@
 // caller isn't an active member of 404s instead of being reachable by
 // switching the selected group header.
 
-import { Router, type Request } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
@@ -196,6 +196,21 @@ function isChecklistModerator(req: Request): boolean {
   return role === 'owner' || role === 'admin';
 }
 
+// resolveGroupResource only re-verifies group membership - a task/item id
+// from a *past* event in the very same group (e.g. right after an organizer
+// switches which event is tracked) would otherwise stay mutable forever,
+// even though GET no longer lists it in the current scope. Every id-based
+// mutation calls this right after loading its row and 404s on a mismatch,
+// same wording as "not found" since a stale id has no other legitimate use.
+function currentEventScope(req: Request, res: Response): { eventId: string | null } | null {
+  const scope = resolveGroupEventScope(req.group!.id, undefined);
+  if (!scope.ok) {
+    res.status(scope.status).json({ error: scope.error });
+    return null;
+  }
+  return scope;
+}
+
 // GET /api/checklist/items?playerId=... - materializes the Grundstock (if not
 // already done for this event) then returns the player's full personal list.
 checklistRouter.get('/items', ...withQueryPlayerIdentity, (req, res) => {
@@ -250,6 +265,9 @@ checklistRouter.post('/items', ...withBodyPlayerIdentity, (req, res) => {
 // PATCH /api/checklist/items/:id - body: { playerId, checked }. Own items only.
 checklistRouter.patch('/items/:id', resolveChecklistItem, ...withBodyPlayerIdentity, (req, res) => {
   const item = req.groupResource as ItemRow;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
+  if (item.event_id !== scope.eventId) return res.status(404).json({ error: 'Position nicht gefunden.' });
   const { playerId, checked } = req.body ?? {};
   if (item.player_id !== playerId) {
     return res.status(403).json({ error: 'Nur die eigene Packliste kann bearbeitet werden.' });
@@ -268,6 +286,9 @@ checklistRouter.patch('/items/:id', resolveChecklistItem, ...withBodyPlayerIdent
 // (including default ones - the list is meant to be freely pruned).
 checklistRouter.delete('/items/:id', resolveChecklistItem, ...withBodyPlayerIdentity, (req, res) => {
   const item = req.groupResource as ItemRow;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
+  if (item.event_id !== scope.eventId) return res.status(404).json({ error: 'Position nicht gefunden.' });
   const { playerId } = req.body ?? {};
   if (item.player_id !== playerId) {
     return res.status(403).json({ error: 'Nur die eigene Packliste kann bearbeitet werden.' });
@@ -465,6 +486,9 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
 // wins: exactly one concurrent claim succeeds, everyone else gets a 409.
 checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
   const task = req.groupResource as TaskRow;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
+  if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -501,6 +525,9 @@ checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayer
 // current assignee can back out, returning the task to the open pool.
 checklistRouter.post('/tasks/:id/release', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
   const task = req.groupResource as TaskRow;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
+  if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
   const { playerId } = req.body ?? {};
   if (task.assignee_id !== playerId) {
     return res.status(403).json({ error: 'Nur die zugewiesene Person kann die Aufgabe wieder freigeben.' });
@@ -512,6 +539,11 @@ checklistRouter.post('/tasks/:id/release', resolveChecklistTask, ...withBodyPlay
   db.prepare(`UPDATE checklist_tasks SET status = 'open', assignee_id = NULL, taken_at = NULL WHERE id = ? AND status = 'taken'`).run(
     task.id,
   );
+  // The create-with-assigneePlayerIds path records an active "you were
+  // assigned" push topic for the assignee - releasing must close it too, or
+  // their notification center keeps claiming they're still assigned to a
+  // task that's back in the open pool.
+  resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
   res.json(serializeTask({ ...task, status: 'open', assignee_id: null, taken_at: null }));
 });
@@ -520,6 +552,9 @@ checklistRouter.post('/tasks/:id/release', resolveChecklistTask, ...withBodyPlay
 // the creator, or a group moderator (owner/admin) can mark a taken task done.
 checklistRouter.patch('/tasks/:id/done', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
   const task = req.groupResource as TaskRow;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
+  if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
   const { playerId } = req.body ?? {};
   if (playerId !== task.assignee_id && playerId !== task.created_by && !isChecklistModerator(req)) {
     return res.status(403).json({ error: 'Nur die zugewiesene Person, der Ersteller oder ein Admin kann dies als erledigt markieren.' });
@@ -541,6 +576,9 @@ checklistRouter.patch('/tasks/:id/done', resolveChecklistTask, ...withBodyPlayer
 // plate.
 checklistRouter.delete('/tasks/:id', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
   const task = req.groupResource as TaskRow;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
+  if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
   const { playerId } = req.body ?? {};
   if (playerId !== task.created_by && !isChecklistModerator(req)) {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann dies zurückziehen.' });
