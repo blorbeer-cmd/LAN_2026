@@ -597,14 +597,23 @@ export function renderVotes(container, ctx) {
       }
       submitBtn.disabled = true;
       try {
-        if (votes.mode === 'single') {
-          await api.votes.cast(playerId, draftSingleGameId);
-        } else {
-          await api.votes.castPoints(playerId, entries);
-        }
+        // Every vote mutation route returns the same fresh payload it
+        // broadcasts as 'votes:changed' (see routes/votes.ts) — patching
+        // state.votes from our own response and doing a plain, no-network
+        // rerender() is both cheaper than ctx.refresh()'s full loadAll() and
+        // more reliable than depending solely on the broadcast: if this
+        // client's own socket is disconnected/reconnecting right when the
+        // write lands, the broadcast never arrives, and nothing else would
+        // ever notice mineCacheKey went stale or reflect the new totalVoters
+        // count. Resetting mineCache/mineCacheKey and rendering in the same
+        // synchronous block also removes the race the previous ctx.refresh()
+        // fix here was papering over (that render vs. the broadcast's own,
+        // whichever ran first) — this is now the only render, run strictly
+        // after the reset, every time.
+        state.votes = votes.mode === 'single' ? await api.votes.cast(playerId, draftSingleGameId) : await api.votes.castPoints(playerId, entries);
         mineCache = null; // force a reload so the draft re-syncs with what the server now has
         mineCacheKey = null;
-        await ctx.refresh();
+        ctx.rerender();
         showToast('Deine Stimme wurde gezählt.');
       } catch (err) {
         submitBtn.disabled = false;
@@ -652,8 +661,13 @@ export function renderVotes(container, ctx) {
         gameIds = checked;
       }
       try {
-        await api.votes.start({ mode: 'points', title, info, gameIds });
-        await ctx.refresh();
+        // No ctx.refresh() (a full loadAll()): patch state.votes straight
+        // from our own response and do a plain rerender() instead — see the
+        // submit button above for why that's both cheaper and more reliable
+        // than depending solely on the 'votes:changed' broadcast this call
+        // also triggers for every other client.
+        state.votes = await api.votes.start({ mode: 'points', title, info, gameIds });
+        ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });
       }
@@ -666,12 +680,13 @@ export function renderVotes(container, ctx) {
       const lastClosed = historyCache && historyCache[0];
       if (!lastClosed) return;
       try {
-        await api.votes.start({
+        // No ctx.refresh(): see the start button above.
+        state.votes = await api.votes.start({
           mode: 'single',
           title: lastClosed.title ? `Stichwahl: ${lastClosed.title}` : 'Stichwahl',
           gameIds: lastClosed.winners.map((w) => w.gameId),
         });
-        await ctx.refresh();
+        ctx.rerender();
         showToast('Stichwahl gestartet.');
       } catch (err) {
         showToast(err.message, { error: true });
@@ -683,8 +698,9 @@ export function renderVotes(container, ctx) {
   if (closeBtn) {
     closeBtn.addEventListener('click', async () => {
       try {
-        await api.votes.close();
-        await ctx.refresh();
+        // No ctx.refresh(): see the start button above.
+        state.votes = await api.votes.close();
+        ctx.rerender();
         showToast('Abstimmung beendet.');
       } catch (err) {
         showToast(err.message, { error: true });
@@ -697,8 +713,9 @@ export function renderVotes(container, ctx) {
     cancelBtn.addEventListener('click', async () => {
       if (!(await confirmDialog('Abstimmung wirklich abbrechen? Alle Stimmen gehen verloren.'))) return;
       try {
-        await api.votes.cancel();
-        await ctx.refresh();
+        // No ctx.refresh(): see the start button above.
+        state.votes = await api.votes.cancel();
+        ctx.rerender();
         showToast('Abstimmung abgebrochen.');
       } catch (err) {
         showToast(err.message, { error: true });
