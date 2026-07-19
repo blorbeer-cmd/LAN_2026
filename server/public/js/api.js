@@ -469,6 +469,7 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ sendAt, notes, link, paypalLink, tipPercent }),
       }),
+    remove: (orderId) => apiFetch(`/api/food-orders/${orderId}`, { method: 'DELETE' }),
     addItem: (orderId, data) =>
       apiFetch(`/api/food-orders/${orderId}/items`, { method: 'POST', body: JSON.stringify(data) }),
     removeItem: (orderId, itemId, playerId) =>

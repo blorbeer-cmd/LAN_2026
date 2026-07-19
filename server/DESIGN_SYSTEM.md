@@ -424,7 +424,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   An absent send time is plain text without a misleading timer icon. Closing an order is the
   colorful full-width primary action below a divider; the compact neutral „Hinzufügen“ action does
   not stretch to the input height. Closed orders live inside one standard, initially collapsed
-  „Historie“ section whose open state survives live re-renders.
+  „Historie“ section whose open state survives live re-renders. Every card — open, abgeschickt or
+  geschlossen — carries a stacked full-width „Bestellung löschen“ danger action below its other
+  actions, since scrapping an order stays possible at every lifecycle stage unlike the other,
+  stage-gated mutations. Each position's two per-item checkboxes carry their own short visible
+  label („Bezahlt“, „Sammelzahlung“) instead of relying on an aria-label alone; a single contextual
+  tooltip beside „Sammelzahlung“, shown once per card when the order has a PayPal link, explains
+  that any position — including someone else's — can be picked for the combined payment below.
 - **Packliste** — „Meine Packliste“ and „Aufgaben & Anfragen“ are separate grouped-page sections.
   The personal list is a compact checkbox row per item (Grundstock plus freely added/removable
   custom entries) with a checked item shown via muted, struck-through text instead of a separate
