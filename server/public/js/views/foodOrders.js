@@ -74,6 +74,26 @@ export function paypalPayUrl(paypalLink, cents) {
   return paypalLink;
 }
 
+// Lets people type just their paypal.me name ("blorbeer", "@blorbeer",
+// pasted "paypal.me/blorbeer" without a scheme, …) instead of having to
+// paste the whole https://paypal.me/… URL. A full http(s) link is passed
+// through untouched so anyone who prefers a different payment page can
+// still use it. Returns null for empty input; throws a user-facing message
+// for input that's neither a link nor a usable name.
+export function normalizePaypalInput(raw) {
+  const trimmed = (raw ?? '').trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  const name = trimmed
+    .replace(/^@/, '')
+    .replace(/^(www\.)?paypal\.me\//i, '')
+    .replace(/\/+$/, '');
+  if (!name || /\s/.test(name)) {
+    throw new Error('PayPal-Link muss eine gültige URL oder ein PayPal.me-Name ohne Leerzeichen sein.');
+  }
+  return `https://paypal.me/${name}`;
+}
+
 function itemsGroupedByPlayer(order) {
   const byPlayer = new Map();
   for (const item of order.items) {
@@ -281,8 +301,8 @@ function openNewOrderForm(ctx, myId) {
           <input type="url" id="order-link" maxlength="300" placeholder="https://…" />
         </div>
         <div>
-          <label for="order-paypal" class="field-label">PayPal-Link (optional)</label>
-          <input type="url" id="order-paypal" maxlength="300" placeholder="https://paypal.me/deinname" />
+          <label for="order-paypal" class="field-label">PayPal.me-Name oder -Link (optional)</label>
+          <input type="text" id="order-paypal" maxlength="300" placeholder="z.B. deinname oder https://paypal.me/deinname" />
         </div>
         <div>
           <label for="order-tip" class="field-label">Trinkgeld in % (optional)</label>
@@ -310,11 +330,12 @@ function openNewOrderForm(ctx, myId) {
             return showToast('Link muss mit http:// oder https:// beginnen.', { error: true });
           }
           const link = linkRaw || undefined;
-          const paypalRaw = el.querySelector('#order-paypal').value.trim();
-          if (paypalRaw && !/^https?:\/\//i.test(paypalRaw)) {
-            return showToast('PayPal-Link muss mit http:// oder https:// beginnen.', { error: true });
+          let paypalLink;
+          try {
+            paypalLink = normalizePaypalInput(el.querySelector('#order-paypal').value) ?? undefined;
+          } catch (err) {
+            return showToast(err.message, { error: true });
           }
-          const paypalLink = paypalRaw || undefined;
           const tipRaw = el.querySelector('#order-tip').value.trim();
           if (tipRaw && (!/^\d+$/.test(tipRaw) || Number(tipRaw) > 100)) {
             return showToast('Trinkgeld muss zwischen 0 und 100 Prozent liegen.', { error: true });
@@ -353,8 +374,8 @@ function openDetailsForm(ctx, order) {
           <input type="url" id="link-input" maxlength="300" placeholder="https://…" value="${escapeHtml(order.link ?? '')}" />
         </div>
         <div>
-          <label for="paypal-input" class="field-label">PayPal-Link</label>
-          <input type="url" id="paypal-input" maxlength="300" placeholder="https://paypal.me/deinname" value="${escapeHtml(order.paypalLink ?? '')}" />
+          <label for="paypal-input" class="field-label">PayPal.me-Name oder -Link</label>
+          <input type="text" id="paypal-input" maxlength="300" placeholder="z.B. deinname oder https://paypal.me/deinname" value="${escapeHtml(order.paypalLink ?? '')}" />
         </div>
         <div>
           <label for="tip-input" class="field-label">Trinkgeld in %</label>
@@ -376,11 +397,12 @@ function openDetailsForm(ctx, order) {
             return showToast('Link muss mit http:// oder https:// beginnen.', { error: true });
           }
           const link = linkRaw || null;
-          const paypalRaw = el.querySelector('#paypal-input').value.trim();
-          if (paypalRaw && !/^https?:\/\//i.test(paypalRaw)) {
-            return showToast('PayPal-Link muss mit http:// oder https:// beginnen.', { error: true });
+          let paypalLink;
+          try {
+            paypalLink = normalizePaypalInput(el.querySelector('#paypal-input').value);
+          } catch (err) {
+            return showToast(err.message, { error: true });
           }
-          const paypalLink = paypalRaw || null;
           const tipRaw = el.querySelector('#tip-input').value.trim();
           if (tipRaw && (!/^\d+$/.test(tipRaw) || Number(tipRaw) > 100)) {
             return showToast('Trinkgeld muss zwischen 0 und 100 Prozent liegen.', { error: true });
