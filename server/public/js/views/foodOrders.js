@@ -115,8 +115,11 @@ function renderItems(order, myId, { locked = false } = {}) {
         .join('');
       const tipPercent = order.tipPercent || 0;
       const tippedCents = tipPercent > 0 ? Math.round(playerSum * (1 + tipPercent / 100)) : playerSum;
+      // Only the co-orderer this row belongs to sees a "Bezahlen" button —
+      // otherwise viewers could tap someone else's link and pay the wrong
+      // amount to the wrong share.
       const payButtonHtml =
-        order.paypalLink && playerSum > 0
+        order.paypalLink && playerSum > 0 && playerId === myId
           ? `<a class="btn btn-sm" href="${escapeHtml(paypalPayUrl(order.paypalLink, tippedCents))}" target="_blank" rel="noopener">Bezahlen${tipPercent > 0 ? ` (+${tipPercent}%)` : ''}</a>`
           : '';
       return `
@@ -202,7 +205,7 @@ function renderOpenOrder(order, myId) {
 // "Geschlossen" (finalized, fully locked): a different badge color
 // (badge-paused vs badge-offline, matching the amber/gray "pausiert"/
 // "offline" state language used elsewhere) plus different wording.
-function renderClosedOrder(order) {
+function renderClosedOrder(order, myId) {
   const itemCount = order.items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
   const finalized = Boolean(order.finalizedAt);
   return `
@@ -215,7 +218,7 @@ function renderClosedOrder(order) {
         ${itemCount} ${itemCount === 1 ? 'Position' : 'Positionen'}${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}
       </div>
       ${renderDetails(order, { locked: finalized })}
-      <div class="food-order-items">${renderItems(order, null, { locked: finalized })}</div>
+      <div class="food-order-items">${renderItems(order, myId, { locked: finalized })}</div>
       ${
         finalized
           ? ''
@@ -422,7 +425,7 @@ export function renderFoodOrders(container, ctx) {
                  </span>
                </summary>
                <div class="collapsible-section-content">
-                 <div class="two-column-card-grid food-order-grid">${closedOrders.map(renderClosedOrder).join('')}</div>
+                 <div class="two-column-card-grid food-order-grid">${closedOrders.map((o) => renderClosedOrder(o, myId)).join('')}</div>
                </div>
              </details>`
           : ''
