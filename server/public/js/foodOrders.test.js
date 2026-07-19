@@ -3,7 +3,13 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from './views/foodOrders.js';
+import { addTipToCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from './views/foodOrders.js';
+
+test('addTipToCents adds and rounds the configured percentage', () => {
+  assert.equal(addTipToCents(1000, 10), 1100);
+  assert.equal(addTipToCents(995, 10), 1095);
+  assert.equal(addTipToCents(1000, null), 1000);
+});
 
 test('normalizePaypalInput returns null for empty input', () => {
   assert.equal(normalizePaypalInput(''), null);

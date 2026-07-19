@@ -62,6 +62,23 @@ function formatCents(cents) {
   return euroFormatter.format(cents / 100);
 }
 
+async function copyFoodOrderTotal(value) {
+  if (!navigator.clipboard?.writeText) {
+    showToast('Kopieren ist in diesem Browser nicht verfügbar.', { error: true });
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(value);
+    showToast(`Summe kopiert: ${value}`);
+  } catch {
+    showToast('Summe konnte nicht kopiert werden.', { error: true });
+  }
+}
+
+export function addTipToCents(cents, tipPercent) {
+  return Math.round(cents * (1 + (tipPercent || 0) / 100));
+}
+
 // Turns a stored PayPal(.me) link into a payable one: a bare
 // "paypal.me/name" link gets the exact owed amount appended so paying is one
 // tap; anything else (already has a path/amount, or some other payment page
@@ -154,18 +171,28 @@ function renderItems(order, myId, { locked = false } = {}) {
   return [...grouped.entries()]
     .map(([playerId, items]) => {
       const first = items[0];
-      const playerSum = items.reduce((sum, i) => sum + (i.priceCents ?? 0) * (i.quantity ?? 1), 0);
+      const tipPercent = order.tipPercent || 0;
       const player = state.players.find((p) => p.id === playerId) || { color: first.playerColor };
       const rows = items
         .map((i) => {
           const quantity = i.quantity ?? 1;
-          const lineTotal = i.priceCents === null ? null : i.priceCents * quantity;
+          const lineSubtotal = i.priceCents === null ? null : i.priceCents * quantity;
+          const lineTotal = lineSubtotal === null ? null : addTipToCents(lineSubtotal, tipPercent);
           const priceHtml = lineTotal === null
             ? ''
             : `<span class="food-order-item-price">
                 <strong>${formatCents(lineTotal)}</strong>
-                ${quantity > 1 ? `<span class="muted">${quantity} × ${formatCents(i.priceCents)}</span>` : ''}
+                ${
+                  tipPercent > 0
+                    ? `<span class="muted">inkl. ${tipPercent}% Trinkgeld</span>`
+                    : quantity > 1
+                      ? `<span class="muted">${quantity} × ${formatCents(i.priceCents)}</span>`
+                      : ''
+                }
               </span>`;
+          const copyHtml = lineTotal === null
+            ? `<span class="food-order-item-action-slot food-order-item-copy-slot" aria-hidden="true"></span>`
+            : `<button type="button" class="icon-btn food-order-item-action food-order-item-copy" data-copy-food-total="${escapeHtml(formatCents(lineTotal))}" title="Summe kopieren" aria-label="Summe kopieren">${icon('copy')}</button>`;
           const selected = selectedForPayment.has(i.id);
           return `
           <div class="row food-order-item ${i.paid ? 'is-paid' : ''} ${selected ? 'is-selected-for-payment' : ''}">
@@ -173,8 +200,7 @@ function renderItems(order, myId, { locked = false } = {}) {
               <input type="checkbox" data-toggle-paid="${i.id}" data-order="${order.id}" ${i.paid ? 'checked' : ''} ${locked ? 'disabled' : ''} />
               <span class="food-order-item-toggle-label">Bezahlt</span>
             </label>
-            <span style="flex:1;"><strong>${quantity} ×</strong> ${escapeHtml(i.description)}</span>
-            ${priceHtml}
+            <span class="food-order-item-description"><strong>${quantity} ×</strong> ${escapeHtml(i.description)}</span>
             ${
               order.paypalLink
                 ? `<label class="food-order-item-pay-select">
@@ -183,11 +209,15 @@ function renderItems(order, myId, { locked = false } = {}) {
                    </label>`
                 : ''
             }
-            ${
-              !locked && order.open && i.playerId === myId
-                ? `<button type="button" class="icon-btn food-order-item-remove" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen">${icon('x')}</button>`
-                : ''
-            }
+            <span class="food-order-item-controls">
+              ${copyHtml}
+              ${
+                !locked && order.open && i.playerId === myId
+                  ? `<button type="button" class="icon-btn food-order-item-action food-order-item-remove" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen">${icon('x')}</button>`
+                  : `<span class="food-order-item-action-slot food-order-item-remove-slot" aria-hidden="true"></span>`
+              }
+            </span>
+            ${priceHtml}
           </div>`;
         })
         .join('');
@@ -198,11 +228,6 @@ function renderItems(order, myId, { locked = false } = {}) {
             <strong style="flex:1;">${escapeHtml(first.playerName)}</strong>
           </div>
           <div class="food-order-player-items">${rows}</div>
-          ${
-            playerSum > 0
-              ? `<div class="row-between food-order-player-total"><span class="muted">Zwischensumme</span><strong>${formatCents(playerSum)}</strong></div>`
-              : ''
-          }
         </div>`;
     })
     .join('');
@@ -225,7 +250,7 @@ function renderPaymentSelector(order) {
   const allPriced = selectedItems.every((i) => i.priceCents !== null);
   const rawCents = selectedItems.reduce((sum, i) => sum + (i.priceCents ?? 0) * (i.quantity ?? 1), 0);
   const tipPercent = order.tipPercent || 0;
-  const payableCents = allPriced ? Math.round(rawCents * (1 + tipPercent / 100)) : 0;
+  const payableCents = allPriced ? addTipToCents(rawCents, tipPercent) : 0;
   const email = paypalEmailFromLink(order.paypalLink);
   const amountLabel = allPriced
     ? `${formatCents(payableCents)}${tipPercent > 0 ? ` (inkl. ${tipPercent}% Trinkgeld)` : ''}`
@@ -234,14 +259,25 @@ function renderPaymentSelector(order) {
   return `
     <div class="row-between food-order-payment-selector">
       <span class="muted">${selectedItems.length} ${selectedItems.length === 1 ? 'Position' : 'Positionen'} ausgewählt · ${amountLabel}</span>
-      <a
-        class="btn btn-sm btn-primary"
-        href="${escapeHtml(paypalPayUrl(order.paypalLink, payableCents))}"
-        target="_blank"
-        rel="noopener"
-        ${email ? `data-copy-paypal-email="${escapeHtml(email)}" title="Öffnet PayPal und kopiert ${escapeHtml(email)} zum Einfügen."` : ''}
-      >${email ? 'PayPal öffnen' : 'Bezahlen'}</a>
+      <span class="food-order-payment-actions">
+        <a
+          class="btn btn-sm btn-primary"
+          href="${escapeHtml(paypalPayUrl(order.paypalLink, payableCents))}"
+          target="_blank"
+          rel="noopener"
+          ${email ? `data-copy-paypal-email="${escapeHtml(email)}" title="Öffnet PayPal und kopiert ${escapeHtml(email)} zum Einfügen."` : ''}
+        >${email ? 'PayPal öffnen' : 'Bezahlen'}</a>
+      </span>
     </div>`;
+}
+
+function renderOrderTotal(order) {
+  if (order.totalCents <= 0) return '';
+  const tipPercent = order.tipPercent || 0;
+  const totalCents = addTipToCents(order.totalCents, tipPercent);
+  return `<div class="row-between food-order-total"><strong>${
+    tipPercent > 0 ? `Gesamtsumme inkl. ${tipPercent}% Trinkgeld` : 'Gesamtsumme'
+  }</strong><strong>${formatCents(totalCents)}</strong></div>`;
 }
 
 // Metadata block (send time / notes / link) shown on both open and closed
@@ -292,7 +328,7 @@ function renderOpenOrder(order, myId) {
       ${renderDetails(order)}
       ${renderPaymentHint(order)}
       <div class="food-order-items">${renderItems(order, myId)}</div>
-      ${order.totalCents > 0 ? `<div class="row-between food-order-total"><strong>Gesamtsumme</strong><strong>${formatCents(order.totalCents)}</strong></div>` : ''}
+      ${renderOrderTotal(order)}
       ${renderPaymentSelector(order)}
       ${
         myId
@@ -310,10 +346,14 @@ function renderOpenOrder(order, myId) {
              </form>`
           : `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um dich einzutragen.</div>`
       }
-      <div class="food-order-close-action stack" style="gap:var(--space-2);">
-        <button type="button" class="btn btn-primary btn-sm btn-block" data-close-order="${order.id}">Bestellung abschicken</button>
-        <button type="button" class="btn btn-danger btn-sm btn-block" data-delete-order="${order.id}">Bestellung löschen</button>
-      </div>
+      ${
+        order.createdBy === myId
+          ? `<div class="food-order-close-action stack" style="gap:var(--space-2);">
+               <button type="button" class="btn btn-primary btn-sm btn-block" data-close-order="${order.id}">Bestellung abschicken</button>
+               <button type="button" class="btn btn-danger btn-sm btn-block" data-delete-order="${order.id}">Bestellung löschen</button>
+             </div>`
+          : ''
+      }
     </div>`;
 }
 
@@ -326,6 +366,7 @@ function renderOpenOrder(order, myId) {
 function renderClosedOrder(order, myId) {
   const itemCount = order.items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
   const finalized = Boolean(order.finalizedAt);
+  const totalCents = addTipToCents(order.totalCents, order.tipPercent);
   return `
     <article class="card stack food-order-card" data-closed-order="${order.id}">
       <div class="row-between">
@@ -333,21 +374,26 @@ function renderClosedOrder(order, myId) {
         <span class="badge ${finalized ? 'badge-offline' : 'badge-paused'}">${finalized ? 'Geschlossen' : 'Abgeschickt'}</span>
       </div>
       <div class="muted food-order-meta">
-        ${itemCount} ${itemCount === 1 ? 'Position' : 'Positionen'}${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}
+        ${itemCount} ${itemCount === 1 ? 'Position' : 'Positionen'}${totalCents > 0 ? ` · ${formatCents(totalCents)}${order.tipPercent ? ' inkl. Trinkgeld' : ''}` : ''}
       </div>
       ${renderDetails(order, { locked: finalized })}
       ${renderPaymentHint(order)}
       <div class="food-order-items">${renderItems(order, myId, { locked: finalized })}</div>
+      ${renderOrderTotal(order)}
       ${renderPaymentSelector(order)}
-      <div class="food-order-close-action stack" style="gap:var(--space-2);">
-        ${
-          finalized
-            ? ''
-            : `<button type="button" class="btn btn-sm btn-block" data-reopen-order="${order.id}">Wieder öffnen</button>
-               <button type="button" class="btn btn-danger btn-sm btn-block" data-finalize-order="${order.id}">Bestellung schließen</button>`
-        }
-        <button type="button" class="btn btn-danger btn-sm btn-block" data-delete-order="${order.id}">Bestellung löschen</button>
-      </div>
+      ${
+        order.createdBy === myId
+          ? `<div class="food-order-close-action stack" style="gap:var(--space-2);">
+               ${
+                 finalized
+                   ? ''
+                   : `<button type="button" class="btn btn-sm btn-block" data-reopen-order="${order.id}">Wieder öffnen</button>
+                      <button type="button" class="btn btn-danger btn-sm btn-block" data-finalize-order="${order.id}">Bestellung schließen</button>`
+               }
+               <button type="button" class="btn btn-danger btn-sm btn-block" data-delete-order="${order.id}">Bestellung löschen</button>
+             </div>`
+          : ''
+      }
     </article>`;
 }
 
@@ -371,14 +417,14 @@ function openNewOrderForm(ctx, myId) {
         </div>
         <div>
           <div class="food-order-paypal-label">
-            <label for="order-paypal" class="field-label">PayPal.me-Name, E-Mail oder Link (optional)</label>
+            <label for="order-paypal" class="field-label">PayPal (optional)</label>
             ${infoTooltipHtml(
               'order-paypal-help',
-              'PayPal-Adresse',
-              'Bei einer E-Mail-Adresse kann der Betrag nicht vorausgefüllt werden; beim Öffnen wird die Adresse kopiert.',
+              'PayPal',
+              'E-Mail-Adresse oder vollständigen PayPal.me-Link einfügen. Bei einer E-Mail-Adresse wird sie beim Öffnen von PayPal kopiert; ein Betrag kann nur beim PayPal.me-Link vorausgefüllt werden.',
             )}
           </div>
-          <input type="text" id="order-paypal" maxlength="300" placeholder="z.B. deinname, deine@mail.de oder https://paypal.me/deinname" />
+          <input type="text" id="order-paypal" maxlength="300" placeholder="E-Mail-Adresse oder https://paypal.me/name" />
         </div>
         <div>
           <label for="order-tip" class="field-label">Trinkgeld in % (optional)</label>
@@ -448,14 +494,14 @@ function openDetailsForm(ctx, order) {
         </div>
         <div>
           <div class="food-order-paypal-label">
-            <label for="paypal-input" class="field-label">PayPal.me-Name, E-Mail oder Link</label>
+            <label for="paypal-input" class="field-label">PayPal</label>
             ${infoTooltipHtml(
               'paypal-input-help',
-              'PayPal-Adresse',
-              'Bei einer E-Mail-Adresse kann der Betrag nicht vorausgefüllt werden; beim Öffnen wird die Adresse kopiert.',
+              'PayPal',
+              'E-Mail-Adresse oder vollständigen PayPal.me-Link einfügen. Bei einer E-Mail-Adresse wird sie beim Öffnen von PayPal kopiert; ein Betrag kann nur beim PayPal.me-Link vorausgefüllt werden.',
             )}
           </div>
-          <input type="text" id="paypal-input" maxlength="300" placeholder="z.B. deinname, deine@mail.de oder https://paypal.me/deinname" value="${escapeHtml(paypalEmailFromLink(order.paypalLink) ?? order.paypalLink ?? '')}" />
+          <input type="text" id="paypal-input" maxlength="300" placeholder="E-Mail-Adresse oder https://paypal.me/name" value="${escapeHtml(paypalEmailFromLink(order.paypalLink) ?? order.paypalLink ?? '')}" />
         </div>
         <div>
           <label for="tip-input" class="field-label">Trinkgeld in %</label>
@@ -667,6 +713,10 @@ export function renderFoodOrders(container, ctx) {
         () => {}
       );
     });
+  });
+
+  container.querySelectorAll('[data-copy-food-total]').forEach((button) => {
+    button.addEventListener('click', () => copyFoodOrderTotal(button.dataset.copyFoodTotal));
   });
 
   container.querySelector('[data-food-history]')?.addEventListener('toggle', (event) => {

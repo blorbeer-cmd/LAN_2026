@@ -4123,19 +4123,26 @@ input[type='number'].tournament-score-input {
 }
 .food-order-player-head {
   gap: var(--space-2);
+  font-size: var(--font-size-sm);
 }
 .food-order-player-items {
   padding-left: calc(var(--space-5) + var(--space-2));
 }
-.food-order-player-total {
-  margin-left: calc(var(--space-5) + var(--space-2));
-  padding-top: var(--space-1);
-  font-size: var(--font-size-xs);
-  font-variant-numeric: tabular-nums;
+.food-order-payment-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
 }
 .food-order-item {
   min-height: var(--space-7);
   padding: var(--space-1) 0;
+  font-size: var(--font-size-sm);
+}
+.food-order-item-description {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
 }
 .food-order-item-paid-toggle {
   display: flex;
@@ -4152,8 +4159,11 @@ input[type='number'].tournament-score-input {
   flex-direction: column;
   align-items: flex-end;
   flex-shrink: 0;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
+}
+.food-order-item-price .muted {
+  font-size: var(--font-size-xs);
 }
 .food-order-item-pay-select {
   display: flex;
@@ -4163,7 +4173,7 @@ input[type='number'].tournament-score-input {
 }
 .food-order-item-toggle-label {
   color: var(--text-muted);
-  font-size: var(--font-size-2xs);
+  font-size: var(--font-size-xs);
   white-space: nowrap;
 }
 .food-order-payment-hint {
@@ -4174,13 +4184,26 @@ input[type='number'].tournament-score-input {
   background: var(--bg-elevated-2);
   padding-left: var(--space-2);
 }
-.food-order-item-remove {
-  padding: 0 var(--space-1);
+.food-order-item-action,
+.food-order-item-action-slot {
+  width: var(--space-7);
+  height: var(--space-7);
+  flex: 0 0 var(--space-7);
+}
+.food-order-item-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+.food-order-item-action {
+  padding: var(--space-1);
   font-size: var(--font-size-xs);
 }
 .food-order-total {
   padding-top: var(--space-2);
   border-top: 1px solid var(--border);
+  font-size: var(--font-size-sm);
 }
 .food-order-payment-selector {
   gap: var(--space-2);
@@ -4190,6 +4213,9 @@ input[type='number'].tournament-score-input {
   background: var(--bg-elevated);
   font-size: var(--font-size-sm);
 }
+.food-order-payment-selector > .muted {
+  min-width: 0;
+}
 .food-order-item-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
@@ -4197,6 +4223,66 @@ input[type='number'].tournament-score-input {
 }
 .food-order-item-form > [data-item-desc] {
   grid-column: 1 / -1;
+}
+.food-order-add-button {
+  grid-column: -2 / -1;
+  justify-self: end;
+  padding-right: 0;
+}
+@media (max-width: 639px) { /* --bp-md */
+  .food-order-player-items {
+    padding-left: 0;
+  }
+  .food-order-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-3) 0;
+  }
+  .food-order-item-description {
+    width: 100%;
+    order: 1;
+  }
+  .food-order-item-price {
+    order: 2;
+    align-items: flex-start;
+  }
+  .food-order-item-paid-toggle {
+    order: 3;
+  }
+  .food-order-item-pay-select {
+    order: 4;
+  }
+  .food-order-item-controls {
+    order: 5;
+    gap: var(--space-2);
+  }
+  .food-order-item-action-slot {
+    display: none;
+  }
+  .food-order-total {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+  .food-order-item-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .food-order-item-form > [data-item-desc],
+  .food-order-add-button {
+    grid-column: 1;
+  }
+  .food-order-add-button {
+    width: 100%;
+    padding-right: var(--space-3);
+  }
+  .food-order-payment-selector {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .food-order-payment-actions {
+    align-self: flex-end;
+  }
 }
 .food-order-quantity-field,
 .food-order-price-field {
