@@ -453,7 +453,7 @@ export function renderVotes(container, ctx) {
         </div>
         ${votes.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0;">${escapeHtml(votes.info)}</p>` : ''}
         ${rows}
-        <div class="vote-action-stack">
+        <div class="vote-action-stack sticky-actions">
           ${
             hasSubmitted
               ? `<div class="vote-submitted-state">${icon('circleCheck')} ${submittedLabel}</div>`
@@ -509,7 +509,9 @@ export function renderVotes(container, ctx) {
             <div id="votes-game-select" class="vote-game-grid">${gameCheckboxes}</div>
           </div>
         </div>
-        <button type="button" class="btn btn-primary btn-block" id="votes-start">Abstimmung starten</button>
+        <div class="sticky-actions">
+          <button type="button" class="btn btn-primary btn-block" id="votes-start">Abstimmung starten</button>
+        </div>
       </section>`;
   }
 

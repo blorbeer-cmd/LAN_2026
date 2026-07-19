@@ -236,7 +236,7 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     await adminPage.waitForSelector('#app:not([hidden])');
     await adminPage.waitForTimeout(500);
 
-    await adminPage.click('[data-view="more"]');
+    await adminPage.click('.nav-btn[data-view="more"]');
     await adminPage.click('[data-navigate="admin"]');
     await adminPage.waitForSelector('#admin-register-link');
     assert.equal(

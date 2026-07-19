@@ -1911,6 +1911,22 @@ button.draft-pool-player {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
+/* A card's primary action(s), pinned to the bottom of the viewport (just
+   above the fixed bottom nav) while the card itself is scrolling through —
+   so a long preceding list (vote game rows, player-selection grids, ...)
+   never forces a scroll just to reach submit/cancel. Bounded by the card's
+   own box (position:sticky's containing block), so it releases and scrolls
+   away normally once that card is fully passed instead of covering
+   unrelated cards further down the page. */
+.sticky-actions {
+  position: sticky;
+  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom));
+  z-index: 1;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
 /* Cards that ARE buttons (game rows, tournament list, "Mehr" hub): lift
    slightly on hover so tappable rows are distinguishable from static cards
    on a laptop without needing extra affordance on touch. */
