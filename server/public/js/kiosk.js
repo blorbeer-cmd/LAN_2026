@@ -577,7 +577,10 @@ async function refreshMusic() {
   }
 }
 
+let refreshVersion = 0;
+
 async function refreshAll() {
+  const requestVersion = ++refreshVersion;
   try {
     const [live, votes, leaderboard, tournaments, lastPush, music] = await Promise.all([
       api.live.board(),
@@ -587,6 +590,7 @@ async function refreshAll() {
       api.push.last(),
       api.music.kiosk(),
     ]);
+    if (requestVersion !== refreshVersion) return;
     document.getElementById('kiosk-live').innerHTML = renderLive(live);
     document.getElementById('kiosk-votes').innerHTML = renderVotes(votes);
     document.getElementById('kiosk-leaderboard').innerHTML = renderLeaderboard(leaderboard.standings);
@@ -597,6 +601,7 @@ async function refreshAll() {
     document.getElementById('kiosk-tournament-title').innerHTML = `${icon(domainIcon('tournaments'))} ${active ? escapeHtml(active.name) : 'Turnier'}`;
     if (active) {
       const detail = await api.tournaments.get(active.id);
+      if (requestVersion !== refreshVersion) return;
       document.getElementById('kiosk-tournament').innerHTML = renderTournament(detail);
     } else {
       document.getElementById('kiosk-tournament').innerHTML = `<div class="empty-state">Kein offenes Turnier.</div>`;

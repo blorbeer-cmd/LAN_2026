@@ -213,7 +213,22 @@ export function broadcast(event: string, payload: unknown, scope?: { groupId?: s
   }
   // Socket.IO rooms are only a routing hint. Re-check the current membership
   // at delivery time so a revoke/group switch cannot leak a queued payload.
+  // Kiosk sockets are authenticated with a read-only kiosk token rather than
+  // a player session, so they use their token scope instead of the regular
+  // membership/session fields.
   for (const socket of io.sockets.sockets.values()) {
+    // In legacy access-token mode there is no kiosk token to resolve, but
+    // the client still explicitly identifies its connection as kiosk. Keep
+    // that read-only stream on the default group instead of treating it as a
+    // regular unauthenticated browser with no subscribed group.
+    const isKioskSocket = socket.data.kioskReadOnly === true || socket.handshake.auth?.kiosk === true;
+    if (isKioskSocket) {
+      const kioskGroupId = socket.data.kioskGroupId ?? DEFAULT_GROUP_ID;
+      if (kioskGroupId !== groupId) continue;
+      if (eventId && socket.data.kioskEventId && socket.data.kioskEventId !== eventId) continue;
+      socket.emit(event, payload);
+      continue;
+    }
     if (!activeGroupMember(groupId, socket.data.authPlayerId)) continue;
     if (eventId && !activeEventParticipant(groupId, eventId, socket.data.authPlayerId)) continue;
     if (socket.data.groupId !== groupId) continue;
