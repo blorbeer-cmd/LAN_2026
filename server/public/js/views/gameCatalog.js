@@ -607,8 +607,26 @@ export function renderGameCatalog(container, ctx) {
             // connected client, including this one.
             await api.preferences.set(myId, gameId, parseInt(slider.value, 10));
           } else {
-            await api.skills.set(myId, gameId, parseInt(slider.value, 10));
-            await ctx.refresh();
+            // Still no ctx.refresh() (a full loadAll() + render): PUT
+            // /api/skills broadcasts 'skills:changed', which app.js's
+            // fullReloadEvents handler already turns into one for every
+            // connected client, including this one — doing it again here
+            // too used to fire that reload twice plus the unconditional
+            // rerender() below on top, three full <div>.innerHTML rebuilds
+            // stacked right at pointerup, which is the jank users felt on
+            // mobile release. But relying solely on that broadcast left a
+            // gap: if this client's own socket is disconnected or
+            // reconnecting right when the write lands, nothing ever patches
+            // state.skills locally, and the rerender() below would repaint
+            // the slider back to the pre-save value — a save that silently
+            // "un-does" itself on screen. Patching state.skills directly
+            // from our own successful response closes that gap with a
+            // plain, free rerender (no network), independent of whether the
+            // broadcast ever arrives.
+            const saved = await api.skills.set(myId, gameId, parseInt(slider.value, 10));
+            const existing = state.skills.find((s) => s.player_id === saved.playerId && s.game_id === saved.gameId);
+            if (existing) existing.rating = saved.rating;
+            else state.skills.push({ player_id: saved.playerId, game_id: saved.gameId, rating: saved.rating });
           }
         } catch (err) {
           showToast(err.message, { error: true });
