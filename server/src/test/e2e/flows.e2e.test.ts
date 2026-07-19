@@ -130,7 +130,10 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   );
   assert.equal(await page.locator('.invite-link-row').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
   assert.deepEqual(
-    await page.locator('.invite-link-row > *').evaluateAll((controls) => controls.map((control) => control.getBoundingClientRect().height)),
+    // Rounded: getBoundingClientRect() can return a sub-pixel value like
+    // 43.999969482421875 for an intended 44px depending on the browser's
+    // layout rounding, which a strict-equality assertion here flakes on.
+    await page.locator('.invite-link-row > *').evaluateAll((controls) => controls.map((control) => Math.round(control.getBoundingClientRect().height))),
     [44, 44, 44],
   );
   await page.click('[aria-label="Mehr Informationen zu Events"]');
@@ -217,7 +220,21 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   assert.equal(await page.getByText('Auf diesem Gerät aktiv.', { exact: true }).count(), 0);
 });
 
-test('Admin mode owns the seating editor and backup tools', async () => {
+test('Admin mode owns the seating editor and backup tools', async (t) => {
+  // Admin mode is only meant to be left via the explicit #admin-leave click
+  // at the very end of this test. If an assertion above it throws instead,
+  // that click is skipped and admin mode stays active for every later test
+  // in this shared page/session — several of which assume a fresh,
+  // non-admin start and hang waiting for #admin-activate, which no longer
+  // exists once admin is already active. This safety net leaves admin mode
+  // via the always-present banner button regardless of how the test ends,
+  // so one broken assertion here can no longer cascade into unrelated ones.
+  t.after(async () => {
+    if (await page.locator('#admin-banner-leave').isVisible()) {
+      await page.click('#admin-banner-leave');
+      await page.waitForSelector('#admin-banner', { state: 'hidden' });
+    }
+  });
   await page.click('[data-view="more"]');
   await page.click('[data-navigate="admin"]');
   await page.click('#admin-activate');
@@ -237,7 +254,10 @@ test('Admin mode owns the seating editor and backup tools', async () => {
   assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
   assert.equal(await page.locator('#admin-cleanup').textContent(), 'Test-Daten aufräumen');
   assert.deepEqual(await page.locator('.admin-test-controls > *').evaluateAll((controls) => controls.map((control) => control.id)), ['admin-count', 'admin-cleanup', 'admin-bulk']);
-  assert.equal(await page.locator('#admin-count').evaluate((input) => input.getBoundingClientRect().height), 36);
+  // Rounded: getBoundingClientRect() can return a sub-pixel value like
+  // 35.999969482421875 for an intended 36px depending on the browser's
+  // layout rounding, which a strict-equality assertion here flakes on.
+  assert.equal(await page.locator('#admin-count').evaluate((input) => Math.round(input.getBoundingClientRect().height)), 36);
   assert.equal(await page.locator('.admin-test-controls').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('.seating-plan.is-editable');
@@ -1087,7 +1107,8 @@ test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', as
         await guestPage.locator(`.arcade-lobby-control-bar select[name="${game}-target"]`).inputValue(),
         '7',
       );
-      assert.equal(await guestPage.locator(`.arcade-lobby-control-bar select[name="${game}-target"]`).evaluate((select) => select.getBoundingClientRect().height), 32);
+      // Rounded: see the #admin-count assertion above for why.
+      assert.equal(await guestPage.locator(`.arcade-lobby-control-bar select[name="${game}-target"]`).evaluate((select) => Math.round(select.getBoundingClientRect().height)), 32);
 
       await page.click(`[data-game="${game}"]`);
       await page.waitForSelector(`[data-${game}-join]`);

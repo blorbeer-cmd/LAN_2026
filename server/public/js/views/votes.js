@@ -591,7 +591,11 @@ export function renderVotes(container, ctx) {
         }
         mineCache = null; // force a reload so the draft re-syncs with what the server now has
         mineCacheKey = null;
-        await ctx.refresh();
+        // No ctx.refresh(): the incoming 'votes:changed' broadcast rerenders
+        // this view (see app.js), and renderVotes() itself already reloads
+        // mine* on any render once mineCacheKey no longer matches — see the
+        // start button above for why a local refresh here would just be a
+        // second, redundant full reload.
         showToast('Deine Stimme wurde gezählt.');
       } catch (err) {
         submitBtn.disabled = false;
@@ -633,8 +637,13 @@ export function renderVotes(container, ctx) {
         gameIds = checked;
       }
       try {
+        // No ctx.refresh() here: the server's 'votes:changed' broadcast this
+        // triggers (see app.js) already carries the fresh payload and
+        // rerenders this view for every connected client, including this
+        // one — a local ctx.refresh() on top of that fired a redundant
+        // second full loadAll() + render for the same change (see
+        // gameCatalog.js's skill slider for the identical fix).
         await api.votes.start({ mode: 'points', title, info, gameIds });
-        await ctx.refresh();
       } catch (err) {
         showToast(err.message, { error: true });
       }
@@ -647,12 +656,12 @@ export function renderVotes(container, ctx) {
       const lastClosed = historyCache && historyCache[0];
       if (!lastClosed) return;
       try {
+        // No ctx.refresh(): see the start button above.
         await api.votes.start({
           mode: 'single',
           title: lastClosed.title ? `Stichwahl: ${lastClosed.title}` : 'Stichwahl',
           gameIds: lastClosed.winners.map((w) => w.gameId),
         });
-        await ctx.refresh();
         showToast('Stichwahl gestartet.');
       } catch (err) {
         showToast(err.message, { error: true });
@@ -664,8 +673,8 @@ export function renderVotes(container, ctx) {
   if (closeBtn) {
     closeBtn.addEventListener('click', async () => {
       try {
+        // No ctx.refresh(): see the start button above.
         await api.votes.close();
-        await ctx.refresh();
         showToast('Abstimmung beendet.');
       } catch (err) {
         showToast(err.message, { error: true });
@@ -678,8 +687,8 @@ export function renderVotes(container, ctx) {
     cancelBtn.addEventListener('click', async () => {
       if (!(await confirmDialog('Abstimmung wirklich abbrechen? Alle Stimmen gehen verloren.'))) return;
       try {
+        // No ctx.refresh(): see the start button above.
         await api.votes.cancel();
-        await ctx.refresh();
         showToast('Abstimmung abgebrochen.');
       } catch (err) {
         showToast(err.message, { error: true });
