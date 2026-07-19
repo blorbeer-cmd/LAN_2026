@@ -35,6 +35,8 @@ import { backupRouter } from './backup';
 import { authRouter } from './auth';
 import { groupsRouter } from './groups';
 import { pingsRouter } from './pings';
+import { musicRouter } from './music';
+import { musicControllerRouter } from '../musicController';
 import { requireConfiguredUser, requireUser } from '../sessions';
 import { config } from '../config';
 import { extractToken } from '../auth';
@@ -52,6 +54,11 @@ apiRouter.get('/health', (_req, res) => {
 
 apiRouter.use('/auth', authRouter);
 
+// The dedicated playback device is intentionally not a Respawn player. It
+// authenticates with its own paired controller token and therefore reaches
+// only this narrow command channel before browser/user authentication.
+apiRouter.use('/music/controller', musicControllerRouter);
+
 // Once required auth is enabled, every browser-facing feature API is behind
 // the verified session. Health and the anonymous auth flows above stay public;
 // legacy mode keeps the existing shared-token behavior unchanged.
@@ -62,6 +69,7 @@ const KIOSK_GET_PATHS = [
   /^\/leaderboard\/?$/,
   /^\/tournaments(?:\/[^/]+)?\/?$/,
   /^\/food-orders\/?$/,
+  /^\/music\/kiosk\/?$/,
 ];
 
 apiRouter.use((req, res, next) => {
@@ -141,3 +149,4 @@ apiRouter.use('/arcade', arcadeRouter);
 apiRouter.use('/arrivals', arrivalsRouter);
 apiRouter.use('/admin', adminRouter);
 apiRouter.use('/backup', backupRouter);
+apiRouter.use('/music', musicRouter);

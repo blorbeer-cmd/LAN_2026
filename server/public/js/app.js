@@ -40,6 +40,7 @@ import { renderSeating, invalidateSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
 import { renderMore } from './views/more.js';
 import { renderAdmin } from './views/admin.js';
+import { invalidateMusic, renderMusic } from './views/music.js';
 import { icon, installIconReplacement } from './icons.js';
 import { initGlobalSearch } from './searchPalette.js';
 import { installDomainIcons } from './domainIcons.js';
@@ -77,6 +78,7 @@ const VIEWS = {
   gameCatalog: renderGameCatalog,
   arrivals: renderArrivals,
   admin: renderAdmin,
+  music: renderMusic,
 };
 
 let currentView = 'home';
@@ -190,6 +192,7 @@ function wireAdminMode() {
   });
   window.addEventListener('respawn:admin-changed', () => {
     updateAdminIndicator();
+    invalidateMusic();
     ctx.refresh();
   });
 }
@@ -520,10 +523,14 @@ function wireSocket() {
     invalidateArrivals();
     if (currentView === 'arrivals') renderCurrent();
   });
-
   socket.on('checklist:changed', () => {
     invalidateChecklist();
     if (currentView === 'checklist') renderCurrent();
+  });
+
+  socket.on('music:changed', () => {
+    invalidateMusic();
+    if (currentView === 'music') renderCurrent();
   });
   socket.on('groups:changed', () => refreshGroupContext());
 }

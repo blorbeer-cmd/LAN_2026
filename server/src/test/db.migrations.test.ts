@@ -630,15 +630,25 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 45);
+  assert.equal(migrations.length, 49);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 45 }, (_, index) => index + 1),
+    Array.from({ length: 49 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
     const row = migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
     assert.ok(row, `${table} should be created for legacy databases`);
+  }
+  for (const table of ['music_controllers', 'music_controller_pairings', 'music_sessions', 'music_requests']) {
+    const row = migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
+    assert.ok(row, `${table} should be created for legacy databases`);
+  }
+  for (const removedTable of ['spotify_connections', 'spotify_oauth_states']) {
+    assert.equal(
+      migrated.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(removedTable),
+      undefined,
+    );
   }
   const pushLogColumns = migrated.prepare('PRAGMA table_info(push_log)').all() as Array<{ name: string }>;
   for (const column of ['topic_key', 'expires_at', 'resolved_at']) {

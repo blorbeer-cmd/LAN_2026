@@ -9,6 +9,10 @@
   <meta name="apple-mobile-web-app-title" content="Respawn" />
   <title>Respawn</title>
   <link rel="icon" type="image/svg+xml" href="/img/logo.svg" />
+  <!-- PNG fallback for browsers/bookmark features that can't use an SVG favicon
+       (e.g. Firefox on iOS, whose "Add to Home Screen" is a plain bookmark
+       shortcut with no manifest/apple-touch-icon support). -->
+  <link rel="icon" type="image/png" sizes="192x192" href="/img/logo-192.png" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
   <!-- bump ?v= when the stylesheet changes so no cached copy survives a reload -->

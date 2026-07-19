@@ -17,6 +17,7 @@ const ITEMS = [
   { view: 'hallOfFame', title: 'Hall of Fame' },
   { view: 'infoBoard', title: 'Info' },
   { view: 'checklist', title: 'Packliste' },
+  { view: 'music', title: 'Jam' },
   { view: 'players', title: 'Spieler' },
   { view: 'gameCatalog', title: 'Spiele' },
 ];

@@ -2693,6 +2693,110 @@ function migrateFoodOrderTipPercentColumn(): void {
 }
 runMigration({ version: 43, name: 'add food order tip percent', up: migrateFoodOrderTipPercentColumn });
 
+// A Respawn Jam session stores only the shared queue and public playback
+// snapshot. Spotify authorization belongs to the local playback controller
+// created by migration 46, never to this server database.
+function createMusicSessionTables(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS music_sessions (
+      id                    TEXT PRIMARY KEY,
+      group_id              TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      host_player_id        TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      device_id             TEXT NOT NULL,
+      device_name           TEXT NOT NULL,
+      status                TEXT NOT NULL CHECK (status IN ('active', 'ended')),
+      current_track_uri     TEXT,
+      current_track_json    TEXT,
+      playback_is_playing   INTEGER NOT NULL DEFAULT 0,
+      playback_progress_ms  INTEGER NOT NULL DEFAULT 0,
+      playback_updated_at   INTEGER,
+      started_at            INTEGER NOT NULL,
+      ended_at              INTEGER
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_music_sessions_one_active_group
+      ON music_sessions(group_id) WHERE status = 'active';
+
+    CREATE TABLE IF NOT EXISTS music_requests (
+      id                         TEXT PRIMARY KEY,
+      session_id                 TEXT NOT NULL REFERENCES music_sessions(id) ON DELETE CASCADE,
+      track_uri                  TEXT NOT NULL,
+      track_id                   TEXT NOT NULL,
+      track_name                 TEXT NOT NULL,
+      artist_name                TEXT NOT NULL,
+      album_name                 TEXT,
+      image_url                  TEXT,
+      duration_ms                INTEGER NOT NULL,
+      requested_by               TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      requested_by_name_snapshot TEXT NOT NULL,
+      status                     TEXT NOT NULL CHECK (status IN ('sending', 'queued', 'playing', 'played', 'failed')),
+      created_at                 INTEGER NOT NULL,
+      played_at                  INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_music_requests_session_status
+      ON music_requests(session_id, status, created_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_music_requests_active_track
+      ON music_requests(session_id, track_uri)
+      WHERE status IN ('sending', 'queued', 'playing');
+  `);
+}
+runMigration({ version: 46, name: 'add Spotify music sessions', up: createMusicSessionTables });
+
+// Spotify authorization belongs to one dedicated playback device (for
+// example the kiosk Raspberry Pi), never to the Respawn server. The server
+// only keeps a revocable controller credential and the last public playback
+// snapshot. Legacy server-side OAuth rows are deliberately removed.
+function migrateMusicToLocalController(): void {
+  db.exec(`
+    DROP TABLE IF EXISTS spotify_oauth_states;
+    DROP TABLE IF EXISTS spotify_connections;
+
+    CREATE TABLE IF NOT EXISTS music_controllers (
+      group_id             TEXT PRIMARY KEY REFERENCES groups(id) ON DELETE CASCADE,
+      id                   TEXT NOT NULL UNIQUE,
+      token_hash           TEXT NOT NULL UNIQUE,
+      label                TEXT NOT NULL,
+      spotify_display_name TEXT,
+      last_seen            INTEGER NOT NULL,
+      playback_json        TEXT,
+      created_at           INTEGER NOT NULL,
+      updated_at           INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS music_controller_pairings (
+      code_hash  TEXT PRIMARY KEY,
+      group_id   TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      created_by TEXT REFERENCES players(id) ON DELETE SET NULL,
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_music_controller_pairings_expiry
+      ON music_controller_pairings(expires_at);
+  `);
+}
+runMigration({ version: 47, name: 'move Spotify authorization to local Jam controller', up: migrateMusicToLocalController });
+
+function closeOrphanedLegacyMusicSessions(): void {
+  const now = Date.now();
+  db.prepare(
+    `UPDATE music_requests SET status = 'failed'
+     WHERE status IN ('sending', 'queued') AND session_id IN (
+       SELECT id FROM music_sessions WHERE status = 'active'
+       AND group_id NOT IN (SELECT group_id FROM music_controllers)
+     )`,
+  ).run();
+  db.prepare(
+    `UPDATE music_sessions SET status = 'ended', ended_at = ?
+     WHERE status = 'active' AND group_id NOT IN (SELECT group_id FROM music_controllers)`,
+  ).run(now);
+}
+runMigration({ version: 48, name: 'close music sessions orphaned by local controller migration', up: closeOrphanedLegacyMusicSessions });
+
+// Version 45 was used by both the checklist and Jam branches before they
+// were merged. Existing databases created from the Jam branch may therefore
+// have recorded the music migration as version 45 and skipped the checklist
+// migration. Re-run the idempotent checklist DDL once to repair that state.
+runMigration({ version: 49, name: 'repair checklist tables after migration merge', up: addChecklistTables });
+
 function createPushMuteTable(): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS push_mutes (

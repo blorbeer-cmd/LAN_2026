@@ -12,6 +12,7 @@
     "prepare": "node scripts/setup-git-hooks.js || true",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
+    "jam-controller": "node scripts/jam-controller.mjs",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "test": "tsc -p tsconfig.test.json && cross-env DB_FILE=:memory: node --test \"dist-test/*.test.js\" \"dist-test/arcade/*.test.js\" \"dist-test/test/*.test.js\" && node --test \"public/js/*.test.js\"",
     "test:coverage": "tsc -p tsconfig.test.json && cross-env DB_FILE=:memory: node --test --experimental-test-coverage --test-coverage-exclude=\"dist-test/test/**\" --test-coverage-exclude=\"dist-test/**/*.test.js\" \"dist-test/*.test.js\" \"dist-test/arcade/*.test.js\" \"dist-test/test/*.test.js\"",

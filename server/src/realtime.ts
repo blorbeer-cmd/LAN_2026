@@ -411,6 +411,7 @@ export const Events = {
   foodOrdersChanged: 'foodOrders:changed',
   arrivalsChanged: 'arrivals:changed',
   checklistChanged: 'checklist:changed',
+  musicChanged: 'music:changed',
   pushSent: 'push:sent',
   pushChanged: 'push:changed',
   pushSeen: 'push:seen',

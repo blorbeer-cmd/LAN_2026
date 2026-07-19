@@ -41,6 +41,100 @@
   min-height: 0;
 }
 
+.kiosk-music {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 0;
+  margin: 0 var(--space-5) var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+}
+.kiosk-music[hidden] {
+  display: none;
+}
+.kiosk-music-cover {
+  width: var(--avatar-size-lg);
+  height: var(--avatar-size-lg);
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+.kiosk-music-placeholder {
+  display: grid;
+  place-items: center;
+  background: var(--bg-elevated-2);
+  color: var(--text-muted);
+}
+.kiosk-music-current,
+.kiosk-music-next {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+}
+.kiosk-music-current {
+  padding-right: var(--space-4);
+}
+.kiosk-music-current > .kiosk-music-progress-row {
+  grid-column: 1 / -1;
+}
+.kiosk-music-next {
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--border);
+}
+.kiosk-music-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.kiosk-music-copy > strong,
+.kiosk-music-copy > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kiosk-music-next-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.kiosk-music-next-label .ui-icon {
+  flex: 0 0 auto;
+}
+.kiosk-music-empty {
+  grid-column: 1 / -1;
+  padding-right: 0;
+}
+.kiosk-music-progress {
+  flex: 1 1 auto;
+  height: var(--space-1);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--border);
+}
+.kiosk-music-progress > span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  border-radius: inherit;
+  background: var(--accent-gradient);
+  will-change: transform;
+}
+.kiosk-music-progress-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.kiosk-music-duration {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
 .kiosk-card {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
