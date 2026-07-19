@@ -972,6 +972,15 @@ input[type='number']::-webkit-inner-spin-button {
 .tournament-team-count-field .field-label {
   margin-bottom: var(--space-1);
 }
+/* On phones the team-count field and the two selection buttons no longer fit
+   one row; forcing the field onto its own row lets "Alle markieren" and
+   "Auswahl aufheben" wrap together onto the next line instead of splitting
+   across two rows, matching the Captain-Draft toolbar below it. */
+@media (max-width: 639px) { /* --bp-md */
+  .tournament-team-count-field {
+    flex-basis: 100%;
+  }
+}
 .player-selection-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1909,6 +1918,22 @@ button.draft-pool-player {
   /* Faint top highlight for a bit of glass-like depth — cheap (no extra
      element/image), barely visible on its own, but adds polish. */
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+/* A card's primary action(s), pinned to the bottom of the viewport (just
+   above the fixed bottom nav) while the card itself is scrolling through —
+   so a long preceding list (vote game rows, player-selection grids, ...)
+   never forces a scroll just to reach submit/cancel. Bounded by the card's
+   own box (position:sticky's containing block), so it releases and scrolls
+   away normally once that card is fully passed instead of covering
+   unrelated cards further down the page. */
+.sticky-actions {
+  position: sticky;
+  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom));
+  z-index: 1;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
 }
 
 /* Cards that ARE buttons (game rows, tournament list, "Mehr" hub): lift
@@ -3848,13 +3873,6 @@ input[type='number'].tournament-score-input {
 .vote-game-select-wrap {
   gap: var(--space-2);
 }
-.vote-game-select-toolbar {
-  align-items: center;
-  gap: var(--space-3);
-}
-.vote-game-select-toolbar .field-label {
-  margin: 0;
-}
 .vote-workflow-section .tournament-create-step-title h2,
 .vote-page-section .tournament-create-step-title h2 {
   margin: 0;
@@ -4066,6 +4084,15 @@ input[type='number'].tournament-score-input {
   min-height: var(--space-7);
   padding: var(--space-1) 0;
 }
+.food-order-item-paid-toggle {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+.food-order-item.is-paid > span {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
 .food-order-item-price {
   display: flex;
   flex-direction: column;
@@ -4074,6 +4101,16 @@ input[type='number'].tournament-score-input {
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
 }
+.food-order-item-pay-select {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+.food-order-item.is-selected-for-payment {
+  border-left: var(--space-1) solid var(--accent);
+  background: var(--bg-elevated-2);
+  padding-left: var(--space-2);
+}
 .food-order-item-remove {
   padding: 0 var(--space-1);
   font-size: var(--font-size-xs);
@@ -4081,6 +4118,14 @@ input[type='number'].tournament-score-input {
 .food-order-total {
   padding-top: var(--space-2);
   border-top: 1px solid var(--border);
+}
+.food-order-payment-selector {
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  font-size: var(--font-size-sm);
 }
 .food-order-item-form {
   display: grid;
@@ -4583,7 +4628,12 @@ input.food-order-price-input {
 .seating-side-seats {
   display: flex;
   align-items: center;
-  justify-content: center;
+  /* "safe" falls back to flex-start once the row overflows its scroll
+     container, so every seat stays reachable by scrolling — plain "center"
+     splits the overflow evenly left/right, and the left half sits outside
+     the scrollable range and can never be reached (see .seating-plan's
+     overflow-x on phones). */
+  justify-content: safe center;
   gap: var(--space-2);
 }
 .seating-side-right .seating-side-seats,

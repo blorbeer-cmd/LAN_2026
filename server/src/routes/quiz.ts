@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { requireAdmin } from '../auth';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { isNonEmptyString } from '../validation';
+import { requireGroupRole } from '../groupAuthorization';
 
 export const quizRouter = Router();
 
@@ -42,17 +42,18 @@ function parseAnswers(value: unknown): string[] | undefined {
   return [...new Set(answers)];
 }
 
-function serializeQuestions() {
+function serializeQuestions(groupId: string) {
   const rows = db
     .prepare(
       `SELECT q.id, q.question, q.answers, q.category, q.difficulty, q.created_at,
               COUNT(s.question_id) AS seen_count
        FROM quiz_questions q
-       LEFT JOIN quiz_seen s ON s.question_id = q.id
+       LEFT JOIN quiz_seen s ON s.question_id = q.id AND s.group_id = q.group_id
+       WHERE q.group_id = ?
        GROUP BY q.id
        ORDER BY q.category COLLATE NOCASE, q.question COLLATE NOCASE`
     )
-    .all() as QuizQuestionRow[];
+    .all(groupId) as QuizQuestionRow[];
   return {
     questions: rows.map((r) => ({
       id: r.id,
@@ -66,11 +67,11 @@ function serializeQuestions() {
   };
 }
 
-quizRouter.get('/questions', (_req, res) => {
-  res.json(serializeQuestions());
+quizRouter.get('/questions', (req, res) => {
+  res.json(serializeQuestions(req.group!.id));
 });
 
-quizRouter.post('/questions', (req, res) => {
+quizRouter.post('/questions', requireGroupRole('admin'), (req, res) => {
   const { question, answers, category, difficulty } = req.body ?? {};
   if (!isNonEmptyString(question, MAX_QUESTION_LENGTH)) {
     return res.status(400).json({ error: `Frage ist erforderlich (1-${MAX_QUESTION_LENGTH} Zeichen).` });
@@ -83,13 +84,14 @@ quizRouter.post('/questions', (req, res) => {
   if (parsedDifficulty === undefined) return res.status(400).json({ error: 'Schwierigkeit ist zu lang.' });
 
   db.prepare(
-    'INSERT INTO quiz_questions (id, question, answers, category, difficulty, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(nanoid(), question.trim(), JSON.stringify(parsedAnswers), parsedCategory, parsedDifficulty, Date.now());
-  res.status(201).json(serializeQuestions());
+    `INSERT INTO quiz_questions (id, question, answers, category, difficulty, created_at, group_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(nanoid(), question.trim(), JSON.stringify(parsedAnswers), parsedCategory, parsedDifficulty, Date.now(), req.group!.id);
+  res.status(201).json(serializeQuestions(req.group!.id));
 });
 
-quizRouter.patch('/questions/:id', (req, res) => {
-  const existing = db.prepare('SELECT * FROM quiz_questions WHERE id = ?').get(req.params.id) as
+quizRouter.patch('/questions/:id', requireGroupRole('admin'), (req, res) => {
+  const existing = db.prepare('SELECT * FROM quiz_questions WHERE id = ? AND group_id = ?').get(req.params.id, req.group!.id) as
     | QuizQuestionRow
     | undefined;
   if (!existing) return res.status(404).json({ error: 'Frage nicht gefunden.' });
@@ -108,19 +110,28 @@ quizRouter.patch('/questions/:id', (req, res) => {
     return res.status(400).json({ error: 'Schwierigkeit ist zu lang.' });
   }
 
-  db.prepare('UPDATE quiz_questions SET question = ?, answers = ?, category = ?, difficulty = ? WHERE id = ?').run(
+  db.prepare(
+    'UPDATE quiz_questions SET question = ?, answers = ?, category = ?, difficulty = ? WHERE id = ? AND group_id = ?',
+  ).run(
     nextQuestion,
     JSON.stringify(parsedAnswers),
     category === undefined ? existing.category : parsedCategory,
     difficulty === undefined ? existing.difficulty : parsedDifficulty,
-    req.params.id
+    req.params.id,
+    req.group!.id,
   );
-  res.json(serializeQuestions());
+  res.json(serializeQuestions(req.group!.id));
 });
 
-quizRouter.delete('/questions/:id', requireAdmin, requireRecentReauthentication, (req, res) => {
-  const result = db.prepare('DELETE FROM quiz_questions WHERE id = ?').run(req.params.id);
+quizRouter.delete('/questions/:id', requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
+  const result = db.prepare('DELETE FROM quiz_questions WHERE id = ? AND group_id = ?').run(req.params.id, req.group!.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Frage nicht gefunden.' });
-  writeAdminAudit({ actorPlayerId: req.player?.id, action: 'quiz_question_deleted', targetType: 'quiz_question', targetId: req.params.id });
+  writeAdminAudit({
+    actorPlayerId: req.player?.id,
+    groupId: req.group!.id,
+    action: 'quiz_question_deleted',
+    targetType: 'quiz_question',
+    targetId: req.params.id,
+  });
   res.status(204).end();
 });

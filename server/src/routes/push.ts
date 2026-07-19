@@ -4,7 +4,6 @@
 // wherever a notify-worthy event already fires a socket toast.
 
 import { Router } from 'express';
-import { db } from '../db';
 import {
   getVapidPublicKey,
   isValidSubscription,
@@ -19,6 +18,8 @@ import {
   hideAllPushForPlayer,
 } from '../push';
 import { withBodyPlayerIdentity, withQueryPlayerIdentity } from '../sessions';
+import { resolveGroupEventScope } from '../groupEventScope';
+import { activeGroupPlayers } from '../groupPlayers';
 
 export const pushRouter = Router();
 
@@ -31,8 +32,10 @@ pushRouter.get('/vapid-public-key', (_req, res) => {
 // GET /api/push/last - the most recent still-active notification sent via notifyPlayers()
 // (Durchsage, neue Bestellung, Arcade-Lobby, Abstimmung, Turnier, ...),
 // for the Kiosk screen. null when no applicable push remains.
-pushRouter.get('/last', (_req, res) => {
-  res.json({ entry: getLastPushLogEntry() });
+pushRouter.get('/last', (req, res) => {
+  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  res.json({ entry: getLastPushLogEntry(req.group!.id, scope.eventId) });
 });
 
 // GET /api/push/current?playerId=... - legacy endpoint for the newest
@@ -43,9 +46,12 @@ pushRouter.get('/current', ...withQueryPlayerIdentity, (req, res) => {
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
-  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
-  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  res.json({ entry: getCurrentPushLogEntryFor(playerId) });
+  if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
+  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  res.json({ entry: getCurrentPushLogEntryFor(req.group!.id, scope.eventId, playerId) });
 });
 
 // GET /api/push/log?playerId=... - recent notifications relevant to one
@@ -56,31 +62,48 @@ pushRouter.get('/log', ...withQueryPlayerIdentity, (req, res) => {
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
-  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
-  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  res.json({ entries: getPushLogEntriesFor(playerId) });
+  if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
+  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  const entries = getPushLogEntriesFor(req.group!.id, scope.eventId, playerId);
+  res.json({
+    entries,
+    summary: {
+      total: entries.length,
+      direct: entries.filter((entry) => entry.audience === 'direct').length,
+      groupWide: entries.filter((entry) => entry.audience === 'all').length,
+    },
+  });
 });
 
 // Bulk variants retain the same identity scoping as the single-entry
 // actions. They never mutate another recipient's history.
 pushRouter.post('/seen-all', ...withBodyPlayerIdentity, (req, res) => {
-  const { playerId } = req.body ?? {};
+  const { playerId, eventId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
-  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
-  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  res.json({ changed: markAllPushSeen(playerId) });
+  if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
+  const scope = resolveGroupEventScope(req.group!.id, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  res.json({ changed: markAllPushSeen(req.group!.id, scope.eventId, playerId) });
 });
 
 pushRouter.delete('/', ...withBodyPlayerIdentity, (req, res) => {
-  const { playerId } = req.body ?? {};
+  const { playerId, eventId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
-  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
-  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  res.json({ changed: hideAllPushForPlayer(playerId) });
+  if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
+  const scope = resolveGroupEventScope(req.group!.id, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  res.json({ changed: hideAllPushForPlayer(req.group!.id, scope.eventId, playerId) });
 });
 
 // POST /api/push/:id/seen - mark one notification read for this player. It
@@ -90,10 +113,11 @@ pushRouter.post('/:id/seen', ...withBodyPlayerIdentity, (req, res) => {
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
-  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
-  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
 
-  const result = markPushSeen(req.params.id, playerId);
+  const result = markPushSeen(req.group!.id, req.params.id, playerId);
   if (result === 'not_found') return res.status(404).json({ error: 'Mitteilung nicht gefunden.' });
   if (result === 'not_recipient') return res.status(403).json({ error: 'Mitteilung gehört nicht zu diesem Spieler.' });
   res.status(204).end();
@@ -106,10 +130,11 @@ pushRouter.delete('/:id', ...withBodyPlayerIdentity, (req, res) => {
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
-  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
-  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
 
-  const result = hidePushForPlayer(req.params.id, playerId);
+  const result = hidePushForPlayer(req.group!.id, req.params.id, playerId);
   if (result === 'not_found') return res.status(404).json({ error: 'Mitteilung nicht gefunden.' });
   if (result === 'not_recipient') return res.status(403).json({ error: 'Mitteilung gehört nicht zu diesem Spieler.' });
   res.status(204).end();
@@ -122,8 +147,9 @@ pushRouter.post('/subscribe', ...withBodyPlayerIdentity, (req, res) => {
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
-  const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
-  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
   if (!isValidSubscription(subscription)) {
     return res.status(400).json({ error: 'subscription ist ungültig.' });
   }

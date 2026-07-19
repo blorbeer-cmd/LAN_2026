@@ -6,6 +6,7 @@ import { BALL_RADIUS, BLOB_RADIUS, BlobbyInput, BlobbyWorld, COURT_HEIGHT, COURT
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
+import { recordArcadeResult } from './arcadeData';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 
 const TICK_MS = 1000 / 60;
@@ -71,10 +72,14 @@ function finish(io: Server, match: Match, winner: PlayerRef | null, reason: stri
   if (match.loop) clearInterval(match.loop);
   match.loop = null;
   endArcadeSession(realPlayerIds(match.players), 'blobby');
-  db.prepare(`INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    nanoid(), 'blobby', winner?.id === BOT_ID ? null : winner?.id ?? null, JSON.stringify(match.players), JSON.stringify(scorePayload(match)), reason, match.startedAt, Date.now()
-  );
+  recordArcadeResult({
+    gameType: 'blobby',
+    winnerId: winner?.id === BOT_ID ? null : winner?.id ?? null,
+    players: match.players,
+    scores: scorePayload(match),
+    reason,
+    startedAt: match.startedAt,
+  });
   io.to(match.room).emit('blobby:match:end', { matchId: match.id, winner, reason, scores: scorePayload(match) });
   broadcastArcadeKiosk(io, { gameType: null, matchId: match.id });
   matches.delete(match.id);

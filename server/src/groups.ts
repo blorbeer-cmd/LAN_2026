@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import { db, DEFAULT_GROUP_ID } from './db';
+import { db, DEFAULT_GROUP_ID, seedArcadeContentForGroup } from './db';
 import { DEFAULT_INVITE_TTL_MS, MAX_INVITE_TTL_MS } from './invites';
 
 export { DEFAULT_GROUP_ID };
@@ -133,6 +133,7 @@ export function createGroup(name: string, description: string | null, creatorPla
          (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
        VALUES (?, ?, 'owner', 'active', ?, NULL, 0, NULL)`,
     ).run(id, creatorPlayerId, now);
+    seedArcadeContentForGroup(id);
     return getGroup(id)!;
   })();
 }

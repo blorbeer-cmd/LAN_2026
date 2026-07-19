@@ -5,6 +5,7 @@ import { playerMayUseArcadeAi } from './adminAccess';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { BALL_RADIUS, PADDLE_HEIGHT, PADDLE_WIDTH, PONG_HEIGHT, PONG_WIDTH, PongInput, PongWorld, createWorld, stepWorld } from './pongLogic';
 import { broadcastArcadeKiosk } from '../realtime';
+import { recordArcadeResult } from './arcadeData';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 
 const TICK_MS = 1000 / 60;
@@ -89,18 +90,14 @@ function finish(io: Server, match: Match, winner: Player | null, reason: string)
   if (match.loop) clearInterval(match.loop);
   match.loop = null;
   const winnerId = winner?.id === BOT_ID ? null : winner?.id ?? null;
-  db.prepare(
-    'INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(
-    nanoid(),
-    'pong',
+  recordArcadeResult({
+    gameType: 'pong',
     winnerId,
-    JSON.stringify(match.players),
-    JSON.stringify(scorePayload(match)),
+    players: match.players,
+    scores: scorePayload(match),
     reason,
-    match.startedAt,
-    Date.now()
-  );
+    startedAt: match.startedAt,
+  });
   io.to(match.room).emit('pong:match:end', { matchId: match.id, winner, reason, scores: scorePayload(match) });
   broadcastArcadeKiosk(io, { gameType: null, matchId: match.id });
   matches.delete(match.id);

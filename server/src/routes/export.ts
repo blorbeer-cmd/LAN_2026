@@ -67,6 +67,28 @@ export interface ExportSnapshot {
     createdAt: number;
     teams: Array<{ captainId: string; players: Array<{ playerId: string; playerName: string }> }>;
   }>;
+  communications: {
+    broadcasts: Array<{
+      id: string;
+      playerId: string;
+      playerName: string;
+      message: string;
+      recipientCount: number;
+      createdAt: number;
+      endedAt: number | null;
+    }>;
+    infoEntries: Array<{ id: string; title: string; content: string; updatedAt: number }>;
+    pushHistory: { total: number; groupWide: number; direct: number; uniqueRecipients: number };
+  };
+  arcadeResults: Array<{
+    id: string;
+    gameType: string;
+    winnerName: string | null;
+    reason: string;
+    startedAt: number;
+    endedAt: number;
+    participants: Array<{ playerId: string | null; name: string; score: unknown }>;
+  }>;
 }
 
 // Builds the full "Andenken" snapshot for one event — shared by the JSON
@@ -251,6 +273,77 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
     };
   });
 
+  // ---------- Organisation and communication ----------
+  const broadcasts = (
+    db
+      .prepare(
+        `SELECT id, player_id, player_name_snapshot, message, recipient_ids, created_at, ended_at
+         FROM broadcasts WHERE group_id = ? AND event_id = ? ORDER BY created_at`,
+      )
+      .all(groupId, filterEventId) as Array<{
+      id: string;
+      player_id: string;
+      player_name_snapshot: string;
+      message: string;
+      recipient_ids: string;
+      created_at: number;
+      ended_at: number | null;
+    }>
+  ).map((row) => ({
+    id: row.id,
+    playerId: row.player_id,
+    playerName: row.player_name_snapshot,
+    message: row.message,
+    recipientCount: (JSON.parse(row.recipient_ids) as string[]).length,
+    createdAt: row.created_at,
+    endedAt: row.ended_at,
+  }));
+  const infoEntries = (
+    db
+      .prepare('SELECT id, title, content, updated_at FROM info_entries WHERE group_id = ? AND event_id = ? ORDER BY created_at')
+      .all(groupId, filterEventId) as Array<{ id: string; title: string; content: string; updated_at: number }>
+  ).map((row) => ({ id: row.id, title: row.title, content: row.content, updatedAt: row.updated_at }));
+  const pushRows = db
+    .prepare('SELECT audience, player_ids FROM push_log WHERE group_id = ? AND event_id = ?')
+    .all(groupId, filterEventId) as Array<{ audience: 'all' | 'direct'; player_ids: string }>;
+  const pushRecipients = new Set(pushRows.flatMap((row) => JSON.parse(row.player_ids) as string[]));
+
+  // ---------- Arcade result history ----------
+  const arcadeRows = db.prepare(
+    `SELECT id, game_type, winner_id, reason, started_at, ended_at
+     FROM arcade_results WHERE group_id = ? AND event_id = ? ORDER BY ended_at`,
+  ).all(groupId, filterEventId) as Array<{
+    id: string;
+    game_type: string;
+    winner_id: string | null;
+    reason: string;
+    started_at: number;
+    ended_at: number;
+  }>;
+  const arcadeResults = arcadeRows.map((result) => {
+    const participants = db.prepare(
+      `SELECT player_id, player_name_snapshot, score_snapshot
+       FROM arcade_result_participants WHERE group_id = ? AND result_id = ? ORDER BY rowid`,
+    ).all(groupId, result.id) as Array<{
+      player_id: string | null;
+      player_name_snapshot: string;
+      score_snapshot: string;
+    }>;
+    return {
+      id: result.id,
+      gameType: result.game_type,
+      winnerName: participants.find((participant) => participant.player_id === result.winner_id)?.player_name_snapshot ?? null,
+      reason: result.reason,
+      startedAt: result.started_at,
+      endedAt: result.ended_at,
+      participants: participants.map((participant) => ({
+        playerId: participant.player_id,
+        name: participant.player_name_snapshot,
+        score: JSON.parse(participant.score_snapshot) as unknown,
+      })),
+    };
+  });
+
   return {
     event: { id: event.id, name: event.name, startsAt: event.starts_at, endsAt: event.ends_at },
     exportedAt: now,
@@ -261,6 +354,17 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
     tournaments,
     voteRounds,
     drafts,
+    communications: {
+      broadcasts,
+      infoEntries,
+      pushHistory: {
+        total: pushRows.length,
+        groupWide: pushRows.filter((row) => row.audience === 'all').length,
+        direct: pushRows.filter((row) => row.audience === 'direct').length,
+        uniqueRecipients: pushRecipients.size,
+      },
+    },
+    arcadeResults,
   };
 }
 

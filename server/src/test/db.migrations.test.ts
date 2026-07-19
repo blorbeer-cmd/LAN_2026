@@ -148,7 +148,7 @@ test('legacy game_catalog tables are merged into games and preferences', () => {
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('historical test LANs are marked and food-order quantities default safely during upgrade', () => {
+test('historical test LANs are marked and food-order quantity/paid/finalized/paypal/tip columns default safely during upgrade', () => {
   const dbFile = makeTempDbPath('test-data-and-food-quantity');
   const now = Date.now();
   const fixture = new Database(dbFile);
@@ -176,6 +176,10 @@ test('historical test LANs are marked and food-order quantities default safely d
   fixture.prepare('INSERT INTO events (id, name, starts_at) VALUES (?, ?, ?)').run('e-real', 'Echte LAN 2020', now);
   fixture.prepare('INSERT INTO food_orders (id, event_id, title, created_by, created_at) VALUES (?, ?, ?, ?, ?)').run('o1', 'e-real', 'Pizza', 'p1', now);
   fixture.prepare('INSERT INTO food_order_items (id, order_id, player_id, description, price_cents, created_at) VALUES (?, ?, ?, ?, ?, ?)').run('i1', 'o1', 'p1', 'Margherita', 900, now);
+  // Pre-upgrade, closing an order WAS the terminal frozen state (today's
+  // "Geschlossen", not the new reopenable "Abgeschickt") — the migration
+  // must backfill finalized_at for it, not leave old history reopenable.
+  fixture.prepare('INSERT INTO food_orders (id, event_id, title, created_by, created_at, closed_at) VALUES (?, ?, ?, ?, ?, ?)').run('o2', 'e-real', 'Getränke', 'p1', now, now + 500);
   fixture.close();
 
   runMigrations(dbFile);
@@ -183,10 +187,27 @@ test('historical test LANs are marked and food-order quantities default safely d
   const migrated = new Database(dbFile, { readonly: true });
   const testEvent = migrated.prepare('SELECT is_test FROM events WHERE id = ?').get('e-test') as { is_test: number };
   const realEvent = migrated.prepare('SELECT is_test FROM events WHERE id = ?').get('e-real') as { is_test: number };
-  const item = migrated.prepare('SELECT quantity FROM food_order_items WHERE id = ?').get('i1') as { quantity: number };
+  const item = migrated.prepare('SELECT quantity, paid FROM food_order_items WHERE id = ?').get('i1') as {
+    quantity: number;
+    paid: number;
+  };
+  const order = migrated.prepare('SELECT finalized_at, paypal_link, tip_percent FROM food_orders WHERE id = ?').get('o1') as {
+    finalized_at: number | null;
+    paypal_link: string | null;
+    tip_percent: number | null;
+  };
   assert.equal(testEvent.is_test, 1);
   assert.equal(realEvent.is_test, 0);
   assert.equal(item.quantity, 1);
+  assert.equal(item.paid, 0);
+  assert.equal(order.finalized_at, null);
+  assert.equal(order.paypal_link, null);
+  assert.equal(order.tip_percent, null);
+  const closedOrder = migrated.prepare('SELECT closed_at, finalized_at FROM food_orders WHERE id = ?').get('o2') as {
+    closed_at: number;
+    finalized_at: number | null;
+  };
+  assert.equal(closedOrder.finalized_at, closedOrder.closed_at);
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
@@ -544,6 +565,59 @@ test('migration 32 keeps historical Arcade sessions visible in their event group
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
+test('migration 40 assigns legacy Arcade results to the default group and snapshots participants', () => {
+  const dbFile = makeTempDbPath('arcade-data-group-backfill');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = ON');
+  const now = Date.now();
+  fixture.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('legacy-arcade-player', 'Legacy Arcade Player', 'legacy-arcade-player-key', now);
+  fixture.prepare(
+    `INSERT INTO group_memberships
+       (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
+     VALUES ('default-group', 'legacy-arcade-player', 'member', 'active', ?, NULL, 1, NULL)`,
+  ).run(now);
+  fixture.exec(`
+    DROP TRIGGER trg_arcade_results_legacy_scope_insert;
+    DELETE FROM schema_migrations WHERE version = 40;
+  `);
+  fixture.prepare(
+    `INSERT INTO arcade_results
+       (id, game_type, winner_id, players, scores, reason, started_at, ended_at, group_id, event_id)
+     VALUES ('legacy-arcade-result', 'quiz', 'legacy-arcade-player', ?, ?, 'completed', ?, ?, NULL, NULL)`,
+  ).run(
+    JSON.stringify([{ id: 'legacy-arcade-player', name: 'Legacy Arcade Player' }]),
+    JSON.stringify([{ playerId: 'legacy-arcade-player', name: 'Legacy Arcade Player', score: 5 }]),
+    now,
+    now + 1000,
+  );
+  fixture.close();
+
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated.prepare('SELECT group_id, event_id FROM arcade_results WHERE id = ?').get('legacy-arcade-result'),
+    { group_id: 'default-group', event_id: null },
+  );
+  assert.deepEqual(
+    migrated.prepare(
+      `SELECT group_id, player_id, player_name_snapshot, is_winner
+       FROM arcade_result_participants WHERE result_id = ?`,
+    ).get('legacy-arcade-result'),
+    {
+      group_id: 'default-group',
+      player_id: 'legacy-arcade-player',
+      player_name_snapshot: 'Legacy Arcade Player',
+      is_winner: 1,
+    },
+  );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('records the complete migration history and does not duplicate it on restart', () => {
   const dbFile = makeTempDbPath('migration-history');
 
@@ -556,10 +630,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 38);
+  assert.equal(migrations.length, 43);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 38 }, (_, index) => index + 1),
+    Array.from({ length: 43 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -769,6 +843,79 @@ test('migration 35 preserves legacy ping rows as scoped history', () => {
       .get('legacy-ping'),
     { group_id: 'default-group', player_name_snapshot: 'Legacy Ping Friend' },
   );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 39 preserves legacy communication rows in the default group', () => {
+  const dbFile = makeTempDbPath('legacy-communications');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = OFF');
+  fixture.exec(`
+    DELETE FROM schema_migrations WHERE version = 39;
+    DROP TABLE push_log_hidden;
+    DROP TABLE push_log_seen;
+    DROP TABLE push_log;
+    DROP TABLE broadcasts;
+    DROP TABLE info_entries;
+    CREATE TABLE broadcasts (
+      id TEXT PRIMARY KEY, player_id TEXT NOT NULL, message TEXT NOT NULL,
+      ends_at INTEGER NOT NULL, ended_at INTEGER, created_at INTEGER NOT NULL
+    );
+    CREATE TABLE push_log (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, url TEXT,
+      audience TEXT NOT NULL DEFAULT 'all', player_ids TEXT, topic_key TEXT,
+      expires_at INTEGER, resolved_at INTEGER, created_at INTEGER NOT NULL
+    );
+    CREATE TABLE push_log_seen (
+      push_id TEXT NOT NULL, player_id TEXT NOT NULL, seen_at INTEGER NOT NULL,
+      PRIMARY KEY (push_id, player_id)
+    );
+    CREATE TABLE push_log_hidden (
+      push_id TEXT NOT NULL, player_id TEXT NOT NULL, hidden_at INTEGER NOT NULL,
+      PRIMARY KEY (push_id, player_id)
+    );
+    CREATE TABLE info_entries (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
+  `);
+  const now = Date.now();
+  fixture.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('legacy-comms-player', 'Legacy Comms', 'legacy-comms-key', now);
+  fixture.prepare(
+    `INSERT INTO group_memberships
+       (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+     VALUES ('default-group', ?, 'member', 'active', ?, 1)`,
+  ).run('legacy-comms-player', now);
+  fixture.prepare('INSERT INTO broadcasts VALUES (?, ?, ?, ?, NULL, ?)')
+    .run('legacy-broadcast', 'legacy-comms-player', 'Legacy message', now + 1000, now);
+  fixture.prepare('INSERT INTO push_log VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)')
+    .run('legacy-push', 'Legacy title', 'Legacy body', '/legacy', 'all', null, 'legacy-topic', now + 1000, now);
+  fixture.prepare('INSERT INTO push_log_seen VALUES (?, ?, ?)').run('legacy-push', 'legacy-comms-player', now);
+  fixture.prepare('INSERT INTO push_log_hidden VALUES (?, ?, ?)').run('legacy-push', 'legacy-comms-player', now);
+  fixture.prepare('INSERT INTO info_entries VALUES (?, ?, ?, ?, ?)')
+    .run('legacy-info', 'Legacy info', 'Legacy content', now, now);
+  fixture.close();
+
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated.prepare('SELECT group_id, event_id, player_name_snapshot FROM broadcasts WHERE id = ?')
+      .get('legacy-broadcast'),
+    { group_id: 'default-group', event_id: null, player_name_snapshot: 'Legacy Comms' },
+  );
+  assert.deepEqual(
+    migrated.prepare('SELECT group_id, event_id, player_ids FROM push_log WHERE id = ?').get('legacy-push'),
+    { group_id: 'default-group', event_id: null, player_ids: '["legacy-comms-player"]' },
+  );
+  assert.deepEqual(
+    migrated.prepare('SELECT group_id, event_id FROM info_entries WHERE id = ?').get('legacy-info'),
+    { group_id: 'default-group', event_id: null },
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM push_log_seen WHERE push_id = ?').get('legacy-push'));
+  assert.ok(migrated.prepare('SELECT 1 FROM push_log_hidden WHERE push_id = ?').get('legacy-push'));
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
