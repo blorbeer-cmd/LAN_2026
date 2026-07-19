@@ -21,6 +21,7 @@ import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { shouldSendLobbyPush } from './lobbyPush';
+import { currentArcadeDataScope, recordArcadeResult } from './arcadeData';
 import {
   buildHintSchedule,
   HintStep,
@@ -270,29 +271,41 @@ function clearAllTimers(match: ScribbleMatchState): void {
   match.hintTimers = [];
 }
 
-function loadWordPool(): WordRow[] {
-  return db.prepare('SELECT id, word, difficulty FROM scribble_words ORDER BY created_at').all() as WordRow[];
+function loadWordPool(playerIds: string[]): WordRow[] {
+  const scope = currentArcadeDataScope(playerIds);
+  if (!scope) return [];
+  return db.prepare('SELECT id, word, difficulty FROM scribble_words WHERE group_id = ? ORDER BY created_at')
+    .all(scope.groupId) as WordRow[];
 }
 
 function seenWordIds(playerIds: string[]): Set<string> {
   playerIds = playerIds.filter((id) => id !== BOT_ID);
   if (playerIds.length === 0) return new Set();
+  const scope = currentArcadeDataScope(playerIds);
+  if (!scope) return new Set();
   const rows = db
     .prepare(
-      `SELECT word_id FROM scribble_seen WHERE player_id IN (${playerIds.map(() => '?').join(',')})
+      `SELECT word_id FROM scribble_seen
+       WHERE group_id = ? AND event_id IS ? AND player_id IN (${playerIds.map(() => '?').join(',')})
        GROUP BY word_id HAVING COUNT(DISTINCT player_id) = ?`
     )
-    .all(...playerIds, playerIds.length) as Array<{ word_id: string }>;
+    .all(scope.groupId, scope.eventId, ...playerIds, playerIds.length) as Array<{ word_id: string }>;
   return new Set(rows.map((r) => r.word_id));
 }
 
 function markWordSeen(wordId: string, playerIds: string[]): void {
+  playerIds = playerIds.filter((id) => id !== BOT_ID);
+  const scope = currentArcadeDataScope(playerIds);
+  if (!scope) return;
   const now = Date.now();
   const stmt = db.prepare(
-    `INSERT INTO scribble_seen (word_id, player_id, seen_at) VALUES (?, ?, ?)
-     ON CONFLICT(word_id, player_id) DO UPDATE SET seen_at = excluded.seen_at`
+    `INSERT INTO scribble_seen (word_id, player_id, seen_at, group_id, event_id, player_name_snapshot)
+     SELECT ?, p.id, ?, ?, ?, p.name FROM players p WHERE p.id = ?
+     ON CONFLICT(word_id, player_id) DO UPDATE SET
+       seen_at = excluded.seen_at, group_id = excluded.group_id,
+       event_id = excluded.event_id, player_name_snapshot = excluded.player_name_snapshot`
   );
-  for (const id of playerIds) if (id !== BOT_ID) stmt.run(wordId, id, now);
+  for (const id of playerIds) stmt.run(wordId, now, scope.groupId, scope.eventId, id);
 }
 
 interface DrawingSummary {
@@ -399,11 +412,16 @@ function persistCurrentDrawing(match: ScribbleMatchState): DrawingSummary | null
   if (!drawer || drawer.id === BOT_ID || !match.currentWord) return null;
   const id = nanoid();
   const round = Math.floor(match.turnsPlayed / match.players.length) + 1;
+  const scope = currentArcadeDataScope(realPlayerIds(match.players));
+  if (!scope) return null;
   db.prepare(
     `INSERT INTO scribble_drawings
-       (id, match_id, round_number, turn_number, artist_id, artist_name, word, draw_ops, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, match.id, round, match.turnsPlayed + 1, drawer.id, drawer.name, match.currentWord, JSON.stringify(match.strokes), Date.now());
+       (id, match_id, round_number, turn_number, artist_id, artist_name, word, draw_ops, created_at, group_id, event_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id, match.id, round, match.turnsPlayed + 1, drawer.id, drawer.name, match.currentWord,
+    JSON.stringify(match.strokes), Date.now(), scope.groupId, scope.eventId,
+  );
   match.currentDrawingId = id;
   return drawingSummaries(match.id, round).find((drawing) => drawing.id === id) ?? null;
 }
@@ -445,10 +463,14 @@ function finishMatch(io: Server, match: ScribbleMatchState, winner: PlayerRef | 
   const candidateWinnerId = winner?.id ?? bestScore?.playerId ?? null;
   const winnerId = candidateWinnerId === BOT_ID ? null : candidateWinnerId;
   const resolvedWinner = winnerId ? match.players.find((p) => p.id === winnerId) ?? null : null;
-  db.prepare(
-    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(nanoid(), 'scribble', winnerId, JSON.stringify(match.players), JSON.stringify(scores), reason, match.startedAt, Date.now());
+  recordArcadeResult({
+    gameType: 'scribble',
+    winnerId,
+    players: match.players,
+    scores,
+    reason,
+    startedAt: match.startedAt,
+  });
   // Only drawings someone actually marked with a thumb re-enter the final
   // vote - falling back to every drawing if nobody marked any, so the final
   // step always has something to show instead of coming up empty.
@@ -511,7 +533,7 @@ function startNextTurn(io: Server, match: ScribbleMatchState): void {
   match.pendingHints = [];
   match.strokes = [];
 
-  const pool = loadWordPool();
+  const pool = loadWordPool(realPlayerIds(match.players));
   const seen = seenWordIds(match.players.map((p) => p.id));
   const optionIds = pickWordChoices(
     pool.map((w) => w.id),
@@ -1014,10 +1036,12 @@ export function registerScribbleSockets(io: Server): void {
         if (!recentMatchRosters.get(matchId)?.has(player.id)) {
           return ack?.({ ok: false, error: 'Du warst kein Teilnehmer dieses Matches.' });
         }
-        const drawing = db.prepare('SELECT id, artist_id FROM scribble_drawings WHERE id = ? AND match_id = ?').get(
+        const drawing = db.prepare(
+          'SELECT id, artist_id, group_id, event_id FROM scribble_drawings WHERE id = ? AND match_id = ?',
+        ).get(
           payload.drawingId,
           matchId
-        ) as { id: string; artist_id: string | null } | undefined;
+        ) as { id: string; artist_id: string | null; group_id: string; event_id: string | null } | undefined;
         if (!drawing) return ack?.({ ok: false, error: 'Bild nicht gefunden.' });
         const artists = db.prepare('SELECT DISTINCT artist_id FROM scribble_drawings WHERE match_id = ?').all(matchId) as Array<{
           artist_id: string | null;
@@ -1027,11 +1051,12 @@ export function registerScribbleSockets(io: Server): void {
           return ack?.({ ok: false, error: 'Das eigene Bild kann nicht Favorit sein.' });
         }
         db.prepare(
-          `INSERT INTO scribble_drawing_favorites (match_id, round_number, player_id, drawing_id, created_at)
-           VALUES (?, 0, ?, ?, ?)
+          `INSERT INTO scribble_drawing_favorites
+             (match_id, round_number, player_id, drawing_id, created_at, group_id, event_id, player_name_snapshot)
+           VALUES (?, 0, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(match_id, round_number, player_id)
            DO UPDATE SET drawing_id = excluded.drawing_id, created_at = excluded.created_at`
-        ).run(matchId, player.id, drawing.id, Date.now());
+        ).run(matchId, player.id, drawing.id, Date.now(), drawing.group_id, drawing.event_id, player.name);
         ack?.({ ok: true, drawingId: drawing.id });
       }
     );

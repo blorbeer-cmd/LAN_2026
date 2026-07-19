@@ -19,6 +19,7 @@ import { playerMayUseArcadeAi } from './adminAccess';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
+import { recordArcadeResult } from './arcadeData';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import {
   Board,
@@ -269,19 +270,14 @@ function finishMatch(io: Server, match: TetrisMatch, winner: PlayerRef | null, r
   match.loop = null;
   match.running = false;
   endArcadeSession(realPlayerIds(match.players), 'tetris');
-  db.prepare(
-    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    nanoid(),
-    'tetris',
-    winner?.id === BOT_ID ? null : winner?.id ?? null,
-    JSON.stringify(match.players),
-    JSON.stringify(scorePayload(match)),
+  recordArcadeResult({
+    gameType: 'tetris',
+    winnerId: winner?.id === BOT_ID ? null : winner?.id ?? null,
+    players: match.players,
+    scores: scorePayload(match),
     reason,
-    match.startedAt,
-    Date.now()
-  );
+    startedAt: match.startedAt,
+  });
   io.to(match.room).emit('tetris:match:end', {
     matchId: match.id,
     winner,

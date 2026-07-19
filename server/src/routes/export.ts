@@ -80,6 +80,15 @@ export interface ExportSnapshot {
     infoEntries: Array<{ id: string; title: string; content: string; updatedAt: number }>;
     pushHistory: { total: number; groupWide: number; direct: number; uniqueRecipients: number };
   };
+  arcadeResults: Array<{
+    id: string;
+    gameType: string;
+    winnerName: string | null;
+    reason: string;
+    startedAt: number;
+    endedAt: number;
+    participants: Array<{ playerId: string | null; name: string; score: unknown }>;
+  }>;
 }
 
 // Builds the full "Andenken" snapshot for one event — shared by the JSON
@@ -299,6 +308,42 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
     .all(groupId, filterEventId) as Array<{ audience: 'all' | 'direct'; player_ids: string }>;
   const pushRecipients = new Set(pushRows.flatMap((row) => JSON.parse(row.player_ids) as string[]));
 
+  // ---------- Arcade result history ----------
+  const arcadeRows = db.prepare(
+    `SELECT id, game_type, winner_id, reason, started_at, ended_at
+     FROM arcade_results WHERE group_id = ? AND event_id = ? ORDER BY ended_at`,
+  ).all(groupId, filterEventId) as Array<{
+    id: string;
+    game_type: string;
+    winner_id: string | null;
+    reason: string;
+    started_at: number;
+    ended_at: number;
+  }>;
+  const arcadeResults = arcadeRows.map((result) => {
+    const participants = db.prepare(
+      `SELECT player_id, player_name_snapshot, score_snapshot
+       FROM arcade_result_participants WHERE group_id = ? AND result_id = ? ORDER BY rowid`,
+    ).all(groupId, result.id) as Array<{
+      player_id: string | null;
+      player_name_snapshot: string;
+      score_snapshot: string;
+    }>;
+    return {
+      id: result.id,
+      gameType: result.game_type,
+      winnerName: participants.find((participant) => participant.player_id === result.winner_id)?.player_name_snapshot ?? null,
+      reason: result.reason,
+      startedAt: result.started_at,
+      endedAt: result.ended_at,
+      participants: participants.map((participant) => ({
+        playerId: participant.player_id,
+        name: participant.player_name_snapshot,
+        score: JSON.parse(participant.score_snapshot) as unknown,
+      })),
+    };
+  });
+
   return {
     event: { id: event.id, name: event.name, startsAt: event.starts_at, endsAt: event.ends_at },
     exportedAt: now,
@@ -319,6 +364,7 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
         uniqueRecipients: pushRecipients.size,
       },
     },
+    arcadeResults,
   };
 }
 

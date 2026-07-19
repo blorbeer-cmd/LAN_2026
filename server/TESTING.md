@@ -56,6 +56,10 @@ eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur d
   `src/test/api.groupOrganisationCommunication.required.test.ts`: Zwei Gruppen, Gruppenraum- und
   Event-Empfänger, Broadcast-/Push-Historien, Infoboard-Rollen, Aggregationen, Event-Export,
   Cross-Tenant-404s und der bewusst ausbleibende Web-Push-Transport werden gemeinsam geprüft.
+- Arcade-Daten und die sessiongebundenen REST-Auswertungen deckt
+  `src/test/api.groupArcadeData.required.test.ts` ab: getrennte Ergebnis-/Statistik-/Historienleser,
+  Eventfilter, Spielerzuordnung und historische Snapshots sowie gruppenlokale Quiz-Inhalte. Socket-
+  Discovery, Rooms, Zuschauer, Streams und Kiosk bleiben Teil von Phase 5e.
 
 ## Datenbank-Migrationen
 

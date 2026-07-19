@@ -6,6 +6,7 @@ import { createWorld, Direction, setDirection, SnakeWorld, stepWorld, SNAKE_HEIG
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
+import { recordArcadeResult } from './arcadeData';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 
 const TICK_MS = 125;
@@ -77,9 +78,14 @@ function finish(io: Server, match: Match, winner: Player | null, reason: string)
     name: player.name,
     score: match.world.snakes[index]?.score ?? 0,
   }));
-  db.prepare('INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
-    nanoid(), 'snake', winnerId, JSON.stringify(match.players), JSON.stringify(scoreEntries), reason, match.startedAt, Date.now()
-  );
+  recordArcadeResult({
+    gameType: 'snake',
+    winnerId,
+    players: match.players,
+    scores: scoreEntries,
+    reason,
+    startedAt: match.startedAt,
+  });
   io.to(match.room).emit('snake:match:end', { winner, reason, scores: match.world.snakes.map((snake) => snake.score) });
   broadcastArcadeKiosk(io, { gameType: null, matchId: match.id });
   matches.delete(match.id);
