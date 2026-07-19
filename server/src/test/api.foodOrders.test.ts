@@ -1,7 +1,7 @@
 // Integration tests for Sammelbestellungen: open → everyone adds items →
-// close lifecycle, per-player item ownership, price handling/summing, and
-// the closed-order guards. The close-vs-add race itself is covered in
-// api.concurrency.test.ts.
+// close → reopen/finalize lifecycle, per-player item ownership, price
+// handling/summing, paypalLink, and the closed/finalized-order guards. The
+// close-vs-add race itself is covered in api.concurrency.test.ts.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,7 +20,7 @@ test('setup: two players', async () => {
   bob = (await request(app).post('/api/players').send({ name: 'Hungriger Bob' })).body;
 });
 
-test('POST /api/food-orders validates title, player, sendAt, notes, and link', async () => {
+test('POST /api/food-orders validates title, player, sendAt, notes, link, and paypalLink', async () => {
   const noTitle = await request(app).post('/api/food-orders').send({ playerId: alice.id });
   assert.equal(noTitle.status, 400);
   const ghost = await request(app).post('/api/food-orders').send({ playerId: 'ghost', title: 'Pizza' });
@@ -33,13 +33,17 @@ test('POST /api/food-orders validates title, player, sendAt, notes, and link', a
     .post('/api/food-orders')
     .send({ playerId: alice.id, title: 'Pizza', link: 'javascript:alert(1)' });
   assert.equal(badLink.status, 400);
+  const badPaypalLink = await request(app)
+    .post('/api/food-orders')
+    .send({ playerId: alice.id, title: 'Pizza', paypalLink: 'javascript:alert(1)' });
+  assert.equal(badPaypalLink.status, 400);
   const tooLongNotes = await request(app)
     .post('/api/food-orders')
     .send({ playerId: alice.id, title: 'Pizza', notes: 'x'.repeat(501) });
   assert.equal(tooLongNotes.status, 400);
 });
 
-test('POST /api/food-orders opens an order, optionally with a send time, notes, and link', async () => {
+test('POST /api/food-orders opens an order, optionally with a send time, notes, link, and paypalLink', async () => {
   const res = await request(app).post('/api/food-orders').send({ playerId: alice.id, title: "Pizza bei Luigi's" });
   assert.equal(res.status, 201);
   assert.equal(res.body.open, true);
@@ -47,6 +51,8 @@ test('POST /api/food-orders opens an order, optionally with a send time, notes, 
   assert.equal(res.body.sendAt, null);
   assert.equal(res.body.notes, null);
   assert.equal(res.body.link, null);
+  assert.equal(res.body.paypalLink, null);
+  assert.equal(res.body.finalizedAt, null);
   orderId = res.body.id;
 
   const sendAt = Date.now() + 3600_000;
@@ -58,14 +64,16 @@ test('POST /api/food-orders opens an order, optionally with a send time, notes, 
       sendAt,
       notes: 'Mindestbestellwert 15€, bar zahlen',
       link: 'https://luigis-pizza.example/karte',
+      paypalLink: 'https://paypal.me/luigi',
     });
   assert.equal(withTime.status, 201);
   assert.equal(withTime.body.sendAt, sendAt);
   assert.equal(withTime.body.notes, 'Mindestbestellwert 15€, bar zahlen');
   assert.equal(withTime.body.link, 'https://luigis-pizza.example/karte');
+  assert.equal(withTime.body.paypalLink, 'https://paypal.me/luigi');
 });
 
-test('PATCH /api/food-orders/:id sets, updates and clears send time, notes, and link independently', async () => {
+test('PATCH /api/food-orders/:id sets, updates and clears send time, notes, link, and paypalLink independently', async () => {
   const sendAt = Date.now() + 1800_000;
   const set = await request(app).patch(`/api/food-orders/${orderId}`).send({ sendAt });
   assert.equal(set.status, 200);
@@ -78,26 +86,31 @@ test('PATCH /api/food-orders/:id sets, updates and clears send time, notes, and 
 
   const withNotesAndLink = await request(app)
     .patch(`/api/food-orders/${orderId}`)
-    .send({ notes: 'Bitte bar mitbringen', link: 'https://luigis-pizza.example' });
+    .send({ notes: 'Bitte bar mitbringen', link: 'https://luigis-pizza.example', paypalLink: 'https://paypal.me/alice' });
   assert.equal(withNotesAndLink.status, 200);
   assert.equal(withNotesAndLink.body.notes, 'Bitte bar mitbringen');
   assert.equal(withNotesAndLink.body.link, 'https://luigis-pizza.example');
-  // sendAt untouched by a request that only mentions notes/link.
+  assert.equal(withNotesAndLink.body.paypalLink, 'https://paypal.me/alice');
+  // sendAt untouched by a request that only mentions notes/link/paypalLink.
   assert.equal(withNotesAndLink.body.sendAt, laterSendAt);
 
   const cleared = await request(app)
     .patch(`/api/food-orders/${orderId}`)
-    .send({ sendAt: null, notes: null, link: null });
+    .send({ sendAt: null, notes: null, link: null, paypalLink: null });
   assert.equal(cleared.status, 200);
   assert.equal(cleared.body.sendAt, null);
   assert.equal(cleared.body.notes, null);
   assert.equal(cleared.body.link, null);
+  assert.equal(cleared.body.paypalLink, null);
 
   const invalidSendAt = await request(app).patch(`/api/food-orders/${orderId}`).send({ sendAt: 'garbage' });
   assert.equal(invalidSendAt.status, 400);
 
   const invalidLink = await request(app).patch(`/api/food-orders/${orderId}`).send({ link: 'not-a-url' });
   assert.equal(invalidLink.status, 400);
+
+  const invalidPaypalLink = await request(app).patch(`/api/food-orders/${orderId}`).send({ paypalLink: 'not-a-url' });
+  assert.equal(invalidPaypalLink.status, 400);
 
   const missing = await request(app).patch('/api/food-orders/nope').send({ sendAt });
   assert.equal(missing.status, 404);
@@ -197,6 +210,36 @@ test('items can still be marked paid after the order is closed (settling up happ
   assert.equal(item.paid, true);
 });
 
+test('reopening a closed order allows items to be added/removed again, then it can be closed again', async () => {
+  const reopenMissing = await request(app).post('/api/food-orders/nope/reopen');
+  assert.equal(reopenMissing.status, 404);
+
+  const reopened = await request(app).post(`/api/food-orders/${orderId}/reopen`);
+  assert.equal(reopened.status, 200);
+  assert.equal(reopened.body.open, true);
+
+  const alreadyOpen = await request(app).post(`/api/food-orders/${orderId}/reopen`);
+  assert.equal(alreadyOpen.status, 409);
+
+  const added = await request(app)
+    .post(`/api/food-orders/${orderId}/items`)
+    .send({ playerId: bob.id, description: 'Vergessene Cola' });
+  assert.equal(added.status, 201);
+  assert.equal(added.body.items.length, 3);
+  const newItemId = added.body.items.find((i: { description: string }) => i.description === 'Vergessene Cola').id;
+
+  const removed = await request(app)
+    .delete(`/api/food-orders/${orderId}/items/${newItemId}`)
+    .send({ playerId: bob.id });
+  assert.equal(removed.status, 200);
+  assert.equal(removed.body.items.length, 2);
+
+  const closedAgain = await request(app).post(`/api/food-orders/${orderId}/close`);
+  assert.equal(closedAgain.status, 200);
+  assert.equal(closedAgain.body.open, false);
+  assert.equal(closedAgain.body.totalCents, 1900);
+});
+
 test('the send time, notes, and link stay editable after the order is closed (only items are frozen)', async () => {
   const sendAt = Date.now() + 600_000;
   const res = await request(app)
@@ -216,4 +259,49 @@ test('GET /api/food-orders lists orders with items grouped data', async () => {
   assert.ok(order);
   assert.equal(order.open, false);
   assert.equal(order.items.length, 2);
+});
+
+test('finalize requires the order to be closed first, and rejects an unknown order', async () => {
+  const missing = await request(app).post('/api/food-orders/nope/finalize');
+  assert.equal(missing.status, 404);
+
+  const fresh = await request(app).post('/api/food-orders').send({ playerId: alice.id, title: 'Noch offen' });
+  const notYetClosed = await request(app).post(`/api/food-orders/${fresh.body.id}/finalize`);
+  assert.equal(notYetClosed.status, 409);
+});
+
+test('finalizing permanently locks the order: no reopen, items, paid or metadata changes, and no re-finalizing', async () => {
+  const created = await request(app).post('/api/food-orders').send({ playerId: alice.id, title: 'Getränke-Runde' });
+  const finalizeOrderId = created.body.id;
+  const item = await request(app)
+    .post(`/api/food-orders/${finalizeOrderId}/items`)
+    .send({ playerId: bob.id, description: 'Cola', priceCents: 200 });
+  const itemId = item.body.items[0].id;
+
+  await request(app).post(`/api/food-orders/${finalizeOrderId}/close`);
+
+  const finalized = await request(app).post(`/api/food-orders/${finalizeOrderId}/finalize`);
+  assert.equal(finalized.status, 200);
+  assert.ok(finalized.body.finalizedAt);
+
+  const reopenAfterFinalize = await request(app).post(`/api/food-orders/${finalizeOrderId}/reopen`);
+  assert.equal(reopenAfterFinalize.status, 409);
+
+  const addAfterFinalize = await request(app)
+    .post(`/api/food-orders/${finalizeOrderId}/items`)
+    .send({ playerId: bob.id, description: 'Zu spät' });
+  assert.equal(addAfterFinalize.status, 409);
+
+  const paidAfterFinalize = await request(app)
+    .patch(`/api/food-orders/${finalizeOrderId}/items/${itemId}`)
+    .send({ paid: true });
+  assert.equal(paidAfterFinalize.status, 409);
+
+  const metadataAfterFinalize = await request(app)
+    .patch(`/api/food-orders/${finalizeOrderId}`)
+    .send({ notes: 'zu spät' });
+  assert.equal(metadataAfterFinalize.status, 409);
+
+  const secondFinalize = await request(app).post(`/api/food-orders/${finalizeOrderId}/finalize`);
+  assert.equal(secondFinalize.status, 409);
 });

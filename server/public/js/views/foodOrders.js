@@ -2,7 +2,9 @@
 // ("Pizza bei Luigi's"), everyone adds their own items (free text, price
 // optional) from their own phone, closing freezes the list into a read-out
 // view grouped per person — the "wer wollte nochmal was?" round through the
-// room becomes one glance at the screen.
+// room becomes one glance at the screen. Closing is reversible (the creator/
+// an admin can reopen it to add a forgotten item or fix a price) until they
+// finalize it, a one-way lock once everyone has paid up.
 
 import { api } from '../api.js';
 import { state } from '../state.js';
@@ -52,6 +54,19 @@ function formatCents(cents) {
   return euroFormatter.format(cents / 100);
 }
 
+// Turns a stored PayPal(.me) link into a payable one: a bare
+// "paypal.me/name" link gets the exact owed amount appended so paying is one
+// tap; anything else (already has a path/amount, or some other payment page
+// entirely) opens unchanged rather than risk mangling a URL the creator
+// typed on purpose.
+export function paypalPayUrl(paypalLink, cents) {
+  const bareMatch = paypalLink.match(/^(https?:\/\/(?:www\.)?paypal\.me\/[^/?#]+)\/?$/i);
+  if (bareMatch && cents > 0) {
+    return `${bareMatch[1]}/${(cents / 100).toFixed(2)}EUR`;
+  }
+  return paypalLink;
+}
+
 function itemsGroupedByPlayer(order) {
   const byPlayer = new Map();
   for (const item of order.items) {
@@ -61,7 +76,7 @@ function itemsGroupedByPlayer(order) {
   return byPlayer;
 }
 
-function renderItems(order, myId) {
+function renderItems(order, myId, { locked = false } = {}) {
   if (order.items.length === 0) {
     return `<div class="muted" style="font-size:var(--font-size-sm);padding:var(--space-2) 0;">Noch nichts eingetragen.</div>`;
   }
@@ -84,18 +99,22 @@ function renderItems(order, myId) {
           return `
           <div class="row food-order-item ${i.paid ? 'is-paid' : ''}">
             <label class="food-order-item-paid-toggle">
-              <input type="checkbox" data-toggle-paid="${i.id}" data-order="${order.id}" ${i.paid ? 'checked' : ''} aria-label="Als bezahlt markieren" />
+              <input type="checkbox" data-toggle-paid="${i.id}" data-order="${order.id}" ${i.paid ? 'checked' : ''} ${locked ? 'disabled' : ''} aria-label="Als bezahlt markieren" />
             </label>
             <span style="flex:1;"><strong>${quantity} ×</strong> ${escapeHtml(i.description)}</span>
             ${priceHtml}
             ${
-              order.open && i.playerId === myId
+              !locked && order.open && i.playerId === myId
                 ? `<button type="button" class="icon-btn food-order-item-remove" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen">${icon('x')}</button>`
                 : ''
             }
           </div>`;
         })
         .join('');
+      const payButtonHtml =
+        order.paypalLink && playerSum > 0
+          ? `<a class="btn btn-sm" href="${escapeHtml(paypalPayUrl(order.paypalLink, playerSum))}" target="_blank" rel="noopener">Bezahlen</a>`
+          : '';
       return `
         <div class="stack food-order-player">
           <div class="row food-order-player-head">
@@ -103,7 +122,14 @@ function renderItems(order, myId) {
             <strong style="flex:1;">${escapeHtml(first.playerName)}</strong>
           </div>
           <div class="food-order-player-items">${rows}</div>
-          ${playerSum > 0 ? `<div class="row-between food-order-player-total"><span class="muted">Zwischensumme</span><strong>${formatCents(playerSum)}</strong></div>` : ''}
+          ${
+            playerSum > 0
+              ? `<div class="row-between food-order-player-total">
+                   <span class="muted">Zwischensumme</span>
+                   <span class="row" style="gap:var(--space-2);"><strong>${formatCents(playerSum)}</strong>${payButtonHtml}</span>
+                 </div>`
+              : ''
+          }
         </div>`;
     })
     .join('');
@@ -114,19 +140,20 @@ function renderItems(order, myId) {
 // commonly get wrong or need to correct ("doch erst um 21 Uhr", "Link war
 // falsch"), so they stay editable even after the order closed, unlike the
 // items themselves.
-function renderDetails(order) {
+function renderDetails(order, { locked = false } = {}) {
   const sendAtLabel = order.sendAt
     ? `Versand ${formatDateTime(order.sendAt)} Uhr`
     : 'Kein Zeitpunkt festgelegt';
-  const hasDetails = Boolean(order.sendAt || order.notes || order.link);
+  const hasDetails = Boolean(order.sendAt || order.notes || order.link || order.paypalLink);
   return `
     <div class="stack food-order-details">
       <div class="row-between">
         <span class="muted" style="font-size:var(--font-size-sm);">${sendAtLabel}</span>
-        <button type="button" class="btn btn-sm" data-edit-details="${order.id}">${hasDetails ? 'Bearbeiten' : 'Info'}</button>
+        ${locked ? '' : `<button type="button" class="btn btn-sm" data-edit-details="${order.id}">${hasDetails ? 'Bearbeiten' : 'Info'}</button>`}
       </div>
       ${order.notes ? `<div class="muted" style="font-size:var(--font-size-sm);white-space:pre-wrap;word-break:break-word;">${escapeHtml(order.notes)}</div>` : ''}
       ${order.link ? `<a href="${escapeHtml(order.link)}" target="_blank" rel="noopener" style="font-size:var(--font-size-sm);">Link öffnen</a>` : ''}
+      ${order.paypalLink ? `<a href="${escapeHtml(order.paypalLink)}" target="_blank" rel="noopener" style="font-size:var(--font-size-sm);">PayPal öffnen</a>` : ''}
     </div>`;
 }
 
@@ -167,17 +194,26 @@ function renderOpenOrder(order, myId) {
 
 function renderClosedOrder(order) {
   const itemCount = order.items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
+  const finalized = Boolean(order.finalizedAt);
   return `
-    <article class="card stack food-order-card">
+    <article class="card stack food-order-card" data-closed-order="${order.id}">
       <div class="row-between">
         <strong>${escapeHtml(order.title)}</strong>
-        <span class="badge badge-offline">Geschlossen</span>
+        <span class="badge badge-offline">${finalized ? 'Endgültig geschlossen' : 'Geschlossen'}</span>
       </div>
       <div class="muted food-order-meta">
         ${itemCount} ${itemCount === 1 ? 'Position' : 'Positionen'}${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}
       </div>
-      ${renderDetails(order)}
-      <div class="food-order-items">${renderItems(order, null)}</div>
+      ${renderDetails(order, { locked: finalized })}
+      <div class="food-order-items">${renderItems(order, null, { locked: finalized })}</div>
+      ${
+        finalized
+          ? ''
+          : `<div class="food-order-close-action stack" style="gap:var(--space-2);">
+               <button type="button" class="btn btn-sm btn-block" data-reopen-order="${order.id}">Wieder öffnen</button>
+               <button type="button" class="btn btn-danger btn-sm btn-block" data-finalize-order="${order.id}">Endgültig schließen</button>
+             </div>`
+      }
     </article>`;
 }
 
@@ -198,6 +234,10 @@ function openNewOrderForm(ctx, myId) {
         <div>
           <label for="order-link" class="field-label">Link (optional)</label>
           <input type="url" id="order-link" maxlength="300" placeholder="https://…" />
+        </div>
+        <div>
+          <label for="order-paypal" class="field-label">PayPal-Link (optional)</label>
+          <input type="url" id="order-paypal" maxlength="300" placeholder="https://paypal.me/deinname" />
         </div>
         <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
           Alle bekommen eine Benachrichtigung und können sich dann selbst eintragen. Alles lässt
@@ -221,8 +261,13 @@ function openNewOrderForm(ctx, myId) {
             return showToast('Link muss mit http:// oder https:// beginnen.', { error: true });
           }
           const link = linkRaw || undefined;
+          const paypalRaw = el.querySelector('#order-paypal').value.trim();
+          if (paypalRaw && !/^https?:\/\//i.test(paypalRaw)) {
+            return showToast('PayPal-Link muss mit http:// oder https:// beginnen.', { error: true });
+          }
+          const paypalLink = paypalRaw || undefined;
           try {
-            await api.foodOrders.create(myId, title, { sendAt, notes, link });
+            await api.foodOrders.create(myId, title, { sendAt, notes, link, paypalLink });
             close();
             cache = null;
             showToast('Bestellung geöffnet – alle wurden benachrichtigt.');
@@ -253,6 +298,10 @@ function openDetailsForm(ctx, order) {
           <label for="link-input" class="field-label">Link</label>
           <input type="url" id="link-input" maxlength="300" placeholder="https://…" value="${escapeHtml(order.link ?? '')}" />
         </div>
+        <div>
+          <label for="paypal-input" class="field-label">PayPal-Link</label>
+          <input type="url" id="paypal-input" maxlength="300" placeholder="https://paypal.me/deinname" value="${escapeHtml(order.paypalLink ?? '')}" />
+        </div>
         <button type="submit" class="btn btn-primary btn-block">Speichern</button>
       </form>
     `,
@@ -269,8 +318,13 @@ function openDetailsForm(ctx, order) {
             return showToast('Link muss mit http:// oder https:// beginnen.', { error: true });
           }
           const link = linkRaw || null;
+          const paypalRaw = el.querySelector('#paypal-input').value.trim();
+          if (paypalRaw && !/^https?:\/\//i.test(paypalRaw)) {
+            return showToast('PayPal-Link muss mit http:// oder https:// beginnen.', { error: true });
+          }
+          const paypalLink = paypalRaw || null;
           try {
-            await api.foodOrders.updateDetails(order.id, { sendAt, notes, link });
+            await api.foodOrders.updateDetails(order.id, { sendAt, notes, link, paypalLink });
             close();
             cache = null;
             showToast('Gespeichert.');
@@ -444,6 +498,38 @@ export function renderFoodOrders(container, ctx) {
         await api.foodOrders.close(btn.dataset.closeOrder);
         cache = null;
         showToast('Bestellung abgeschlossen.');
+        ctx.rerender();
+      } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-reopen-order]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await api.foodOrders.reopen(btn.dataset.reopenOrder);
+        cache = null;
+        showToast('Bestellung wieder geöffnet.');
+        ctx.rerender();
+      } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-finalize-order]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (
+        !(await confirmDialog(
+          'Bestellung endgültig schließen? Danach sind keine Änderungen mehr möglich – auch nicht durch erneutes Öffnen.'
+        ))
+      )
+        return;
+      try {
+        await api.foodOrders.finalize(btn.dataset.finalizeOrder);
+        cache = null;
+        showToast('Bestellung endgültig geschlossen.');
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });

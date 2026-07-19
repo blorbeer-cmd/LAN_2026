@@ -543,15 +543,17 @@ db.exec(`
   -- splitting the bill is the usual pain, but forcing prices would slow
   -- down the common "just write what you want" case.
   CREATE TABLE IF NOT EXISTS food_orders (
-    id         TEXT PRIMARY KEY,
-    event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-    title      TEXT NOT NULL,
-    created_by TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-    created_at INTEGER NOT NULL,
-    closed_at  INTEGER,
-    send_at    INTEGER, -- optional, editable: when the order will actually be placed/picked up
-    notes      TEXT,    -- optional, editable: free-text info (e.g. "bar zahlen", "Mindestbestellwert 15€")
-    link       TEXT     -- optional, editable: URL to the menu/delivery service
+    id           TEXT PRIMARY KEY,
+    event_id     TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    title        TEXT NOT NULL,
+    created_by   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    created_at   INTEGER NOT NULL,
+    closed_at    INTEGER,
+    finalized_at INTEGER, -- set by the creator/admin once closed; a terminal lock, never cleared
+    send_at      INTEGER, -- optional, editable: when the order will actually be placed/picked up
+    notes        TEXT,    -- optional, editable: free-text info (e.g. "bar zahlen", "Mindestbestellwert 15€")
+    link         TEXT,    -- optional, editable: URL to the menu/delivery service
+    paypal_link  TEXT     -- optional, editable: PayPal(.me) link co-orderers pay their share to
   );
 
   CREATE TABLE IF NOT EXISTS food_order_items (
@@ -2112,6 +2114,21 @@ function migrateFoodOrderItemPaidColumn(): void {
   db.exec('ALTER TABLE food_order_items ADD COLUMN paid INTEGER NOT NULL DEFAULT 0');
 }
 runMigration({ version: 39, name: 'add food order item paid flag', up: migrateFoodOrderItemPaidColumn });
+
+// finalized_at lets the creator/admin permanently lock a closed order (no
+// more reopening, items or paid edits); paypal_link is the co-orderers'
+// "Bezahlen" target, edited the same way as notes/link.
+function migrateFoodOrderFinalizeAndPaypalColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(food_orders)').all() as Array<{ name: string }>;
+  const has = (name: string) => columns.some((c) => c.name === name);
+  if (!has('finalized_at')) db.exec('ALTER TABLE food_orders ADD COLUMN finalized_at INTEGER');
+  if (!has('paypal_link')) db.exec('ALTER TABLE food_orders ADD COLUMN paypal_link TEXT');
+}
+runMigration({
+  version: 40,
+  name: 'add food order finalize and paypal link',
+  up: migrateFoodOrderFinalizeAndPaypalColumns,
+});
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.

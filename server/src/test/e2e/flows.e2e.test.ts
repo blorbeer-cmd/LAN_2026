@@ -939,6 +939,7 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await setDateTimeField('order-sendat', '2026-12-24T20:00');
   await page.fill('#order-notes', 'Mindestbestellwert 15€, bar zahlen');
   await page.fill('#order-link', 'https://luigis-pizza.example/karte');
+  await page.fill('#order-paypal', 'https://paypal.me/luigi');
   await page.click('#order-form button[type="submit"]');
   await page.waitForSelector('text=Pizza bei Luigi');
   await page.waitForSelector('text=Versand 24.12., 20:00 Uhr');
@@ -971,6 +972,12 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.check('[data-toggle-paid]');
   await page.waitForSelector('.food-order-item.is-paid');
 
+  // A co-orderer pays their exact share via the "Bezahlen" button, which
+  // appends the owed amount to a bare paypal.me link.
+  const payLink = page.locator('.food-order-player-total a:has-text("Bezahlen")');
+  await payLink.waitFor();
+  assert.equal(await payLink.getAttribute('href'), 'https://paypal.me/luigi/19.00EUR');
+
   // Content search resolves an item description to its parent order and
   // highlights that concrete order instead of only opening the Essen area.
   await page.keyboard.press('Control+K');
@@ -997,6 +1004,27 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await setDateTimeField('sendat-input', '2026-12-24T22:00');
   await page.click('#details-form button[type="submit"]');
   await page.waitForSelector('text=Versand 24.12., 22:00 Uhr');
+
+  // Reopening a closed order un-freezes it: items can be added again.
+  await page.click('[data-reopen-order]');
+  await page.waitForSelector('.badge-playing >> text=Offen');
+  await page.fill('[data-item-desc]', 'Vergessene Cola');
+  await page.fill('[data-item-quantity]', '1');
+  await page.click('[data-add-item-form] button[type="submit"]');
+  await page.waitForSelector('text=Vergessene Cola');
+
+  await page.click('[data-close-order]');
+  await page.click('[data-confirm]');
+  await page.waitForSelector('.badge-offline >> text=Geschlossen');
+
+  // Finalizing is the creator's terminal lock: no more reopening, editing,
+  // or paid toggling.
+  await page.click('[data-finalize-order]');
+  await page.click('[data-confirm]');
+  await page.waitForSelector('.badge-offline >> text=Endgültig geschlossen');
+  await page.waitForSelector('[data-reopen-order]', { state: 'detached' });
+  await page.waitForSelector('[data-edit-details]', { state: 'detached' });
+  assert.equal(await page.locator('[data-toggle-paid]').first().isDisabled(), true);
 });
 
 test('Arcade: open a quiz lobby, see it on Home, then close it again', async (t) => {
