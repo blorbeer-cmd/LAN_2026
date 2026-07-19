@@ -8,6 +8,7 @@ import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
 import { recordArcadeResult } from './arcadeData';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
+import { canJoinLobby, lobbyGroupId, playerGroupId, socketGroupId } from './scope';
 
 const TICK_MS = 1000 / 60;
 const SNAPSHOT_MS = 50;
@@ -34,15 +35,15 @@ function playerById(id: unknown): PlayerRef | null {
   if (typeof id !== 'string' || !id) return null;
   return (db.prepare('SELECT id, name, avatar, color FROM players WHERE id = ?').get(id) as PlayerRef | undefined) ?? null;
 }
-function publicLobbies() {
-  return [...lobbies.values()].map((l) => ({
+function publicLobbies(groupId?: string | null) {
+  return [...lobbies.values()].filter((l) => !groupId || lobbyGroupId(l) === groupId).map((l) => ({
     id: l.id,
     host: l.host,
     players: l.players.map((p) => ({ ...p, ready: isLobbyReady(l, p.id) })),
     createdAt: l.createdAt,
   }));
 }
-function emitLobbies(io: Server) { io.emit('blobby:lobbies', { lobbies: publicLobbies() }); }
+function emitLobbies(io: Server) { for (const socket of io.sockets.sockets.values()) socket.emit('blobby:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) }); }
 
 // Open-lobby summary for GET /api/arcade/lobbies — see arcade.ts.
 export function openLobbySummaries() {
@@ -141,8 +142,8 @@ function removeFromLobbies(io: Server, socketId: string) {
 
 export function registerBlobbySockets(io: Server): void {
   io.on('connection', (socket: Socket) => {
-    socket.emit('blobby:lobbies', { lobbies: publicLobbies() });
-    socket.on('blobby:lobbies:get', () => socket.emit('blobby:lobbies', { lobbies: publicLobbies() }));
+    socket.emit('blobby:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
+    socket.on('blobby:lobbies:get', () => socket.emit('blobby:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) }));
     socket.on('blobby:lobby:create', (payload: { playerId?: string }, ack?: (r: unknown) => void) => {
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
@@ -164,6 +165,7 @@ export function registerBlobbySockets(io: Server): void {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
       const player = playerById(payload?.playerId);
       if (!lobby || !player) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
+      if (!canJoinLobby(socket, lobby, player.id)) return ack?.({ ok: false, error: 'Lobby gehört zu einer anderen Gruppe.' });
       const present = lobby.players.some((p) => p.id === player.id);
       if (!present && lobby.players.length >= 2) return ack?.({ ok: false, error: 'Lobby ist voll (1v1).' });
       if (!claimLobbyMembership(player.id, 'blobby', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });

@@ -2539,6 +2539,25 @@ function addTrackingConsentHistory(): void {
       PRIMARY KEY (player_id, group_id, event_id, game_id)
     );
     CREATE INDEX IF NOT EXISTS idx_tracking_live_games_group ON tracking_live_games(group_id, player_id);
+    CREATE TABLE IF NOT EXISTS push_mutes (
+      group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      event_id TEXT REFERENCES events(id) ON DELETE CASCADE,
+      muted_at INTEGER NOT NULL,
+      PRIMARY KEY (group_id, player_id, event_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_push_mutes_player ON push_mutes(player_id, group_id);
+    CREATE TABLE IF NOT EXISTS kiosk_tokens (
+      id TEXT PRIMARY KEY,
+      token_hash TEXT NOT NULL UNIQUE,
+      group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      event_id TEXT REFERENCES events(id) ON DELETE CASCADE,
+      label TEXT,
+      created_by TEXT REFERENCES players(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      revoked_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_kiosk_tokens_group ON kiosk_tokens(group_id, revoked_at);
     ALTER TABLE play_sessions ADD COLUMN allocation_weight REAL NOT NULL DEFAULT 1.0;
   `);
   const now = Date.now();
@@ -2563,6 +2582,10 @@ function addTrackingConsentHistory(): void {
   }
 }
 runMigration({ version: 44, name: 'add historized tracking consents and fan-out contexts', up: addTrackingConsentHistory });
+
+// Delivery tables are idempotently ensured outside the migration counter as
+// well, so databases that already recorded 44 receive the Phase-5e surface.
+createPushMuteTable();
 
 // Lets whoever collects the money (the order's creator/an admin) check off
 // each item once that person has paid their share.
@@ -2603,6 +2626,30 @@ function migrateFoodOrderTipPercentColumn(): void {
   db.exec('ALTER TABLE food_orders ADD COLUMN tip_percent INTEGER');
 }
 runMigration({ version: 43, name: 'add food order tip percent', up: migrateFoodOrderTipPercentColumn });
+
+function createPushMuteTable(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS push_mutes (
+      group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      event_id TEXT REFERENCES events(id) ON DELETE CASCADE,
+      muted_at INTEGER NOT NULL,
+      PRIMARY KEY (group_id, player_id, event_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_push_mutes_player ON push_mutes(player_id, group_id);
+    CREATE TABLE IF NOT EXISTS kiosk_tokens (
+      id TEXT PRIMARY KEY,
+      token_hash TEXT NOT NULL UNIQUE,
+      group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      event_id TEXT REFERENCES events(id) ON DELETE CASCADE,
+      label TEXT,
+      created_by TEXT REFERENCES players(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      revoked_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_kiosk_tokens_group ON kiosk_tokens(group_id, revoked_at);
+  `);
+}
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.

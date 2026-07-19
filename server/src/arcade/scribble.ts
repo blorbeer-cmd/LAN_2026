@@ -22,6 +22,7 @@ import { broadcastArcadeKiosk } from '../realtime';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { shouldSendLobbyPush } from './lobbyPush';
 import { currentArcadeDataScope, recordArcadeResult } from './arcadeData';
+import { canJoinLobby, lobbyGroupId, socketGroupId } from './scope';
 import {
   buildHintSchedule,
   HintStep,
@@ -165,8 +166,8 @@ function turnDurationValue(value: unknown): number | null {
   return value >= MIN_TURN_MS && value <= MAX_TURN_MS ? value : null;
 }
 
-function publicLobbies() {
-  return [...lobbies.values()].map((l) => ({
+function publicLobbies(groupId?: string | null) {
+  return [...lobbies.values()].filter((l) => !groupId || lobbyGroupId(l) === groupId).map((l) => ({
     id: l.id,
     host: l.host,
     players: l.players.map((p) => ({ ...p, ready: isLobbyReady(l, p.id) })),
@@ -175,7 +176,7 @@ function publicLobbies() {
 }
 
 function emitLobbies(io: Server) {
-  io.emit('scribble:lobbies', { lobbies: publicLobbies() });
+  for (const socket of io.sockets.sockets.values()) socket.emit('scribble:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
 }
 
 // Open-lobby summary for GET /api/arcade/lobbies — see arcade.ts.
@@ -680,10 +681,10 @@ function endTurn(io: Server, match: ScribbleMatchState, reason: string): void {
 
 export function registerScribbleSockets(io: Server): void {
   io.on('connection', (socket: Socket) => {
-    socket.emit('scribble:lobbies', { lobbies: publicLobbies() });
+    socket.emit('scribble:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
 
     socket.on('scribble:lobbies:get', () => {
-      socket.emit('scribble:lobbies', { lobbies: publicLobbies() });
+      socket.emit('scribble:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
     });
 
     socket.on('scribble:lobby:create', (payload: { playerId?: string }, ack?: (res: unknown) => void) => {
@@ -738,6 +739,7 @@ export function registerScribbleSockets(io: Server): void {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
       const player = playerById(payload?.playerId);
       if (!lobby || !player) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
+      if (!canJoinLobby(socket, lobby, player.id)) return ack?.({ ok: false, error: 'Lobby gehört zu einer anderen Gruppe.' });
 
       if (!claimLobbyMembership(player.id, 'scribble', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromOpenLobbies(io, socket.id);

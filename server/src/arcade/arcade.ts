@@ -10,6 +10,7 @@ import { broadcastArcadeKiosk } from '../realtime';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { shouldSendLobbyPush } from './lobbyPush';
 import { currentArcadeDataScope, recordArcadeResult } from './arcadeData';
+import { canJoinLobby, lobbyGroupId, playerGroupId, socketGroupId } from './scope';
 
 const DEFAULT_TARGET_SCORE = 5;
 const QUESTION_MS = 20_000;
@@ -75,8 +76,8 @@ function targetScore(value: unknown): number | null {
   return value >= 1 && value <= 100 ? value : null;
 }
 
-function publicLobbies() {
-  return [...lobbies.values()].map((l) => ({
+function publicLobbies(groupId?: string | null) {
+  return [...lobbies.values()].filter((l) => !groupId || lobbyGroupId(l) === groupId).map((l) => ({
     id: l.id,
     gameType: l.gameType,
     host: l.host,
@@ -86,7 +87,7 @@ function publicLobbies() {
 }
 
 function emitLobbies(io: Server) {
-  io.emit('arcade:lobbies', { lobbies: publicLobbies() });
+  for (const socket of io.sockets.sockets.values()) socket.emit('arcade:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
 }
 
 // Open-lobby summary for GET /api/arcade/lobbies (the Home view's "Aktuell"
@@ -274,15 +275,16 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
 
 export function registerArcadeSockets(io: Server): void {
   io.on('connection', (socket: Socket) => {
-    socket.emit('arcade:lobbies', { lobbies: publicLobbies() });
+    socket.emit('arcade:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
 
     socket.on('arcade:lobbies:get', () => {
-      socket.emit('arcade:lobbies', { lobbies: publicLobbies() });
+      socket.emit('arcade:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
     });
 
     socket.on('arcade:lobby:create', (payload: { gameType?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const player = playerById(payload?.playerId);
       if (!player || payload?.gameType !== 'quiz') return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
+      if (socketGroupId(socket) && socketGroupId(socket) !== playerGroupId(player.id)) return ack?.({ ok: false, error: 'Gruppenzugriff verweigert.' });
 
       const lobby: Lobby = {
         id: nanoid(),
@@ -326,6 +328,7 @@ export function registerArcadeSockets(io: Server): void {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
+      if (socketGroupId(socket) && socketGroupId(socket) !== playerGroupId(player.id)) return ack?.({ ok: false, error: 'Gruppenzugriff verweigert.' });
       const lobby: Lobby = { id: nanoid(), gameType: 'quiz', host: player, players: [player, QUIZ_BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([QUIZ_BOT.id]), createdAt: Date.now() };
       if (!claimLobbyMembership(player.id, 'quiz', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromOpenLobbies(io, socket.id);
@@ -350,6 +353,7 @@ export function registerArcadeSockets(io: Server): void {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
       const player = playerById(payload?.playerId);
       if (!lobby || !player) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
+      if (!canJoinLobby(socket, lobby, player.id)) return ack?.({ ok: false, error: 'Lobby gehört zu einer anderen Gruppe.' });
 
       if (!claimLobbyMembership(player.id, 'quiz', lobby.id)) {
         return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });

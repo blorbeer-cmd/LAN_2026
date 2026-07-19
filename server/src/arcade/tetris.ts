@@ -21,6 +21,7 @@ import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
 import { recordArcadeResult } from './arcadeData';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
+import { canJoinLobby, lobbyGroupId, socketGroupId } from './scope';
 import {
   Board,
   Piece,
@@ -111,8 +112,8 @@ function playerById(playerId: unknown): PlayerRef | null {
   return row ?? null;
 }
 
-function publicLobbies() {
-  return [...lobbies.values()].map((l) => ({
+function publicLobbies(groupId?: string | null) {
+  return [...lobbies.values()].filter((l) => !groupId || lobbyGroupId(l) === groupId).map((l) => ({
     id: l.id,
     host: l.host,
     players: l.players.map((p) => ({ ...p, ready: isLobbyReady(l, p.id) })),
@@ -121,7 +122,7 @@ function publicLobbies() {
 }
 
 function emitLobbies(io: Server) {
-  io.emit('tetris:lobbies', { lobbies: publicLobbies() });
+  for (const socket of io.sockets.sockets.values()) socket.emit('tetris:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
 }
 
 // Open-lobby summary for GET /api/arcade/lobbies — see arcade.ts.
@@ -467,10 +468,10 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
 
 export function registerTetrisSockets(io: Server): void {
   io.on('connection', (socket: Socket) => {
-    socket.emit('tetris:lobbies', { lobbies: publicLobbies() });
+    socket.emit('tetris:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
 
     socket.on('tetris:lobbies:get', () => {
-      socket.emit('tetris:lobbies', { lobbies: publicLobbies() });
+      socket.emit('tetris:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
     });
 
     socket.on('tetris:lobby:create', (payload: { playerId?: string }, ack?: (res: unknown) => void) => {
@@ -504,6 +505,7 @@ export function registerTetrisSockets(io: Server): void {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
       const player = playerById(payload?.playerId);
       if (!lobby || !player) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
+      if (!canJoinLobby(socket, lobby, player.id)) return ack?.({ ok: false, error: 'Lobby gehört zu einer anderen Gruppe.' });
       const alreadyIn = lobby.players.some((p) => p.id === player.id);
       // 1v1: block a third party from crowding into a full lobby.
       if (!alreadyIn && lobby.players.length >= 2) return ack?.({ ok: false, error: 'Lobby ist voll (1v1).' });

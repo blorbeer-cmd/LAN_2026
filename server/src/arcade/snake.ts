@@ -8,6 +8,7 @@ import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
 import { recordArcadeResult } from './arcadeData';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
+import { canJoinLobby, lobbyGroupId, socketGroupId } from './scope';
 
 const TICK_MS = 125;
 const COUNTDOWN_MS = 3000;
@@ -25,15 +26,15 @@ function playerById(id?: string): Player | null {
   if (!id) return null;
   return (db.prepare('SELECT id, name, avatar, color FROM players WHERE id = ?').get(id) as Player | undefined) ?? null;
 }
-function publicLobbies() {
-  return [...lobbies.values()].map((lobby) => ({
+function publicLobbies(groupId?: string | null) {
+  return [...lobbies.values()].filter((lobby) => !groupId || lobbyGroupId(lobby) === groupId).map((lobby) => ({
     id: lobby.id,
     host: lobby.host,
     players: lobby.players.map((player) => ({ ...player, ready: isLobbyReady(lobby, player.id) })),
     createdAt: lobby.createdAt,
   }));
 }
-function emitLobbies(io: Server) { io.emit('snake:lobbies', { lobbies: publicLobbies() }); }
+function emitLobbies(io: Server) { for (const socket of io.sockets.sockets.values()) socket.emit('snake:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) }); }
 
 // Open-lobby summary for GET /api/arcade/lobbies — see arcade.ts.
 export function openLobbySummaries() {
@@ -161,7 +162,7 @@ function startMatch(io: Server, lobby: Lobby) {
 
 export function registerSnakeSockets(io: Server): void {
   io.on('connection', (socket: Socket) => {
-    socket.emit('snake:lobbies', { lobbies: publicLobbies() });
+    socket.emit('snake:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
     socket.on('snake:lobby:create', (payload: { playerId?: string }, ack?: (result: unknown) => void) => {
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Spieler nicht gefunden.' });
@@ -187,6 +188,7 @@ export function registerSnakeSockets(io: Server): void {
       const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null;
       const player = playerById(payload?.playerId);
       if (!lobby || !player) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
+      if (!canJoinLobby(socket, lobby, player.id)) return ack?.({ ok: false, error: 'Lobby gehört zu einer anderen Gruppe.' });
       const present = lobby.players.some((entry) => entry.id === player.id);
       if (!present && lobby.players.length >= 2) return ack?.({ ok: false, error: 'Lobby ist voll (1 gegen 1).' });
       if (!claimLobbyMembership(player.id, 'snake', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });

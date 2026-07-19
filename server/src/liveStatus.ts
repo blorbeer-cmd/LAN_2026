@@ -212,7 +212,7 @@ export function sweepOnce(now: number = Date.now()): void {
     // Broadcasts the migrated default group's board globally — correct as
     // long as MULTI_GROUPS_ENABLED stays off (the only functionally active
     // group). Genuine per-group broadcasting needs Socket-Rooms (Phase 5e).
-    broadcast(Events.liveStatusChanged, getLiveBoard(DEFAULT_GROUP_ID));
+    broadcast(Events.liveStatusChanged, getLiveBoard(DEFAULT_GROUP_ID), { groupId: DEFAULT_GROUP_ID });
   } catch (err) {
     // Never let a sweep error take down the timer/process.
     // eslint-disable-next-line no-console

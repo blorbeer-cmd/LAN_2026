@@ -7,6 +7,7 @@ import { BALL_RADIUS, PADDLE_HEIGHT, PADDLE_WIDTH, PONG_HEIGHT, PONG_WIDTH, Pong
 import { broadcastArcadeKiosk } from '../realtime';
 import { recordArcadeResult } from './arcadeData';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
+import { canJoinLobby, lobbyGroupId, socketGroupId } from './scope';
 
 const TICK_MS = 1000 / 60;
 const SNAPSHOT_MS = 50;
@@ -45,8 +46,8 @@ function playerById(id: unknown): Player | null {
   return (db.prepare('SELECT id, name, avatar, color FROM players WHERE id = ?').get(id) as Player | undefined) ?? null;
 }
 
-function publicLobbies() {
-  return [...lobbies.values()].map((lobby) => ({
+function publicLobbies(groupId?: string | null) {
+  return [...lobbies.values()].filter((lobby) => !groupId || lobbyGroupId(lobby) === groupId).map((lobby) => ({
     id: lobby.id,
     host: lobby.host,
     players: lobby.players.map((player) => ({ ...player, ready: isLobbyReady(lobby, player.id) })),
@@ -55,7 +56,7 @@ function publicLobbies() {
 }
 
 function emitLobbies(io: Server) {
-  io.emit('pong:lobbies', { lobbies: publicLobbies() });
+  for (const socket of io.sockets.sockets.values()) socket.emit('pong:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
 }
 
 export function openLobbySummaries() {
@@ -166,8 +167,8 @@ function removeFromLobbies(io: Server, socketId: string) {
 
 export function registerPongSockets(io: Server): void {
   io.on('connection', (socket: Socket) => {
-    socket.emit('pong:lobbies', { lobbies: publicLobbies() });
-    socket.on('pong:lobbies:get', () => socket.emit('pong:lobbies', { lobbies: publicLobbies() }));
+    socket.emit('pong:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
+    socket.on('pong:lobbies:get', () => socket.emit('pong:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) }));
 
     socket.on('pong:lobby:create', (payload: { playerId?: string }, ack?: (result: unknown) => void) => {
       const player = playerById(payload?.playerId);
@@ -200,6 +201,7 @@ export function registerPongSockets(io: Server): void {
       const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null;
       const player = playerById(payload?.playerId);
       if (!lobby || !player) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
+      if (!canJoinLobby(socket, lobby, player.id)) return ack?.({ ok: false, error: 'Lobby gehört zu einer anderen Gruppe.' });
       const present = lobby.players.some((entry) => entry.id === player.id);
       if (!present && lobby.players.length >= 2) return ack?.({ ok: false, error: 'Lobby ist voll (1 gegen 1).' });
       if (!claimLobbyMembership(player.id, 'pong', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });

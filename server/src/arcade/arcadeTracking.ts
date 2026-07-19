@@ -72,7 +72,7 @@ export function startArcadeSession(playerIds: string[], key: ArcadeGameKey): voi
     }
   });
   run();
-  broadcast(Events.liveStatusChanged, getLiveBoard(groupId));
+  broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
 }
 
 // Ends the arcade session for the given real players — called on every match
@@ -97,7 +97,7 @@ export function endArcadeSession(playerIds: string[], key: ArcadeGameKey): void 
     }
   });
   run();
-  broadcast(Events.liveStatusChanged, getLiveBoard(scope.groupId));
+  broadcast(Events.liveStatusChanged, getLiveBoard(scope.groupId), { groupId: scope.groupId });
 }
 
 // Every player currently in an open arcade session, across all games.
@@ -125,6 +125,7 @@ export function startArcadeHeartbeat(): void {
       for (const id of ids) touch.run(now, id);
     });
     run();
-    broadcast(Events.liveStatusChanged, getLiveBoard(getTrackingEvent().group_id ?? DEFAULT_GROUP_ID));
+    const groupId = getTrackingEvent().group_id ?? DEFAULT_GROUP_ID;
+    broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
   }, 20_000).unref();
 }

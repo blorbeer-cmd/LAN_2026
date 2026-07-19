@@ -41,6 +41,6 @@ liveRouter.post('/:playerId/note', ...withParamPlayerIdentity(), (req, res) => {
   db.prepare('UPDATE tracking_live_contexts SET last_seen = ?, manual_note = ? WHERE player_id = ? AND group_id = ?')
     .run(Date.now(), normalized, req.params.playerId, req.group!.id);
 
-  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
   res.json({ ok: true });
 });

@@ -60,6 +60,10 @@ eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur d
   `src/test/api.groupArcadeData.required.test.ts` ab: getrennte Ergebnis-/Statistik-/Historienleser,
   Eventfilter, Spielerzuordnung und historische Snapshots sowie gruppenlokale Quiz-Inhalte. Socket-
   Discovery, Rooms, Zuschauer, Streams und Kiosk bleiben Teil von Phase 5e.
+- Die Phase-5e-Socket-Isolation läuft in `src/test/e2e/phase5eIsolation.e2e.test.ts`: zwei getrennte
+  authentifizierte Verbindungen abonnieren verschiedene Gruppenräume und erhalten nur den jeweils
+  aktuellen Gruppen-Emit. Kiosk-Token-Hashing, Scope und Widerruf werden zusätzlich in
+  `src/test/kioskTokens.test.ts` geprüft.
 
 ## Datenbank-Migrationen
 
