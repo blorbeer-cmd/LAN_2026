@@ -529,6 +529,13 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.click('#match-form button[type="submit"]');
   await page.waitForSelector('.lb-row');
   assert.ok((await page.locator('.lb-row').count()) >= 2);
+  // The app can render its first data view before the stylesheet request has
+  // completed on a cold CI browser. Wait for the actual sheet and a resolved
+  // body font before comparing typography across views.
+  await page.waitForFunction(() => {
+    const stylesheet = document.querySelector('link[href*="/css/style.css"]') as HTMLLinkElement | null;
+    return stylesheet?.sheet !== null && getComputedStyle(document.body).fontFamily !== '';
+  });
   const leaderboardNameTypography = await page.locator('.lb-row .player-name').first().evaluate((element) => {
     const style = getComputedStyle(element);
     return { family: style.fontFamily, size: style.fontSize, weight: style.fontWeight };

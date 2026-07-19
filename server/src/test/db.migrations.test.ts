@@ -630,10 +630,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 43);
+  assert.equal(migrations.length, 44);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 43 }, (_, index) => index + 1),
+    Array.from({ length: 44 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {

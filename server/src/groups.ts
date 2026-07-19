@@ -116,6 +116,9 @@ export function ensureDefaultGroupMembership(playerId: string): GroupMembershipR
     if (player.is_test) {
       db.prepare('UPDATE players SET test_owner_group_id = ? WHERE id = ?').run(DEFAULT_GROUP_ID, playerId);
     }
+    db.prepare(`INSERT OR IGNORE INTO group_tracking_consents
+      (id, group_id, player_id, granted_at, revoked_at, source) VALUES (?, ?, ?, ?, NULL, 'migration')`)
+      .run(`default-${playerId}`, DEFAULT_GROUP_ID, playerId, now);
     return getGroupMembership(DEFAULT_GROUP_ID, playerId)!;
   })();
 }

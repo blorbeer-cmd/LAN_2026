@@ -26,6 +26,7 @@ import { broadcast, Events } from '../realtime';
 import { requireGroupMembership, requireGroupRole } from '../groupAuthorization';
 import { countTestUsers, createTestUsers, deleteTestUsers, MAX_TEST_USERS_PER_CALL } from '../testUsers';
 import { getLiveBoard } from '../liveStatus';
+import { setGroupTrackingConsent } from '../trackingContexts';
 
 export const groupsRouter = Router();
 
@@ -149,6 +150,23 @@ groupsRouter.get('/:groupId', requireGroupMembership, (req, res) => {
   res.json(
     serializeGroup(req.group!, req.groupMembership!.role, Boolean(req.groupMembership!.outside_tracking_enabled)),
   );
+});
+
+// Personal, explicit consent for tracking in the group's outside-event room.
+// The append-only history is the source of truth; the membership bit remains
+// as a compatibility projection for older clients.
+groupsRouter.post('/:groupId/tracking-consent', requireGroupMembership, (req, res) => {
+  const { granted } = req.body ?? {};
+  if (typeof granted !== 'boolean') return res.status(400).json({ error: 'granted muss ein Boolean sein.' });
+  setGroupTrackingConsent(req.group!.id, req.player!.id, granted);
+  db.prepare('UPDATE group_memberships SET outside_tracking_enabled = ? WHERE group_id = ? AND player_id = ?')
+    .run(granted ? 1 : 0, req.group!.id, req.player!.id);
+  if (!granted) {
+    db.prepare('UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND group_id = ? AND event_id IS NULL AND ended_at IS NULL')
+      .run(Date.now(), req.player!.id, req.group!.id);
+  }
+  broadcast(Events.groupsChanged, null);
+  res.json({ ok: true, granted });
 });
 
 groupsRouter.patch('/:groupId', requireGroupMembership, requireGroupRole('admin'), (req, res) => {

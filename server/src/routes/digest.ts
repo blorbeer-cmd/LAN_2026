@@ -31,7 +31,7 @@ digestRouter.get('/', ...withQueryPlayerIdentity, (req, res) => {
   const missingSkills = db
     .prepare(
       `SELECT DISTINCT g.id, g.name, g.icon
-       FROM live_status_games lsg
+       FROM tracking_live_games lsg
        JOIN games g ON g.id = lsg.game_id
        WHERE lsg.group_id = ? AND g.arcade_key IS NULL
          AND NOT EXISTS (

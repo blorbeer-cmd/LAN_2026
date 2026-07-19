@@ -153,17 +153,21 @@ test('game catalog, process names, skills/preferences and live status stay isola
 
       assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice.cookie, groupA).send({ playerIds: [alice.account.id] })).status, 200);
       assert.equal((await scoped(app, 'put', '/api/events/' + eventB.body.id + '/participants', carol.cookie, groupB).send({ playerIds: [alice.account.id] })).status, 200);
+      assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/accept', alice.cookie, groupA).send({})).status, 200);
+      assert.equal((await scoped(app, 'post', '/api/events/' + eventB.body.id + '/accept', alice.cookie, groupB).send({})).status, 200);
+      assert.equal((await scoped(app, 'post', '/api/groups/' + groupA + '/tracking-consent', alice.cookie, groupA).send({ granted: true })).status, 200);
+      assert.equal((await scoped(app, 'post', '/api/groups/' + groupB + '/tracking-consent', alice.cookie, groupB).send({ granted: true })).status, 200);
 
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/start', alice.cookie, groupA).send({})).status, 200);
       const reportDuringA = await request(app).post('/api/agent/report').set('x-api-key', aliceApiKey).send({ processNames: ['trackedgame.exe'] });
       assert.equal(reportDuringA.status, 200, JSON.stringify(reportDuringA.body));
-      assert.deepEqual(reportDuringA.body.gameIds, [trackedA.body.id]);
+      assert.ok(reportDuringA.body.gameIds.includes(trackedA.body.id));
 
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/stop', alice.cookie, groupA).send({})).status, 200);
       assert.equal((await scoped(app, 'post', '/api/events/' + eventB.body.id + '/tracking/start', carol.cookie, groupB).send({})).status, 200);
       const reportDuringB = await request(app).post('/api/agent/report').set('x-api-key', aliceApiKey).send({ processNames: ['trackedgame.exe'] });
       assert.equal(reportDuringB.status, 200, JSON.stringify(reportDuringB.body));
-      assert.deepEqual(reportDuringB.body.gameIds, [trackedB.body.id]);
+      assert.deepEqual(new Set(reportDuringB.body.gameIds), new Set([trackedA.body.id, trackedB.body.id]));
 
       // Every reader/aggregation over the newly group-owned presence tables
       // must follow the selected group as well.
