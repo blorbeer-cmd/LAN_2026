@@ -197,7 +197,7 @@ export function markPushSeen(groupId: string, pushId: string, playerId: string):
     .prepare('INSERT OR IGNORE INTO push_log_seen (push_id, player_id, seen_at) VALUES (?, ?, ?)')
     .run(pushId, playerId, Date.now());
   if (result.changes === 0) return 'already_seen';
-  broadcast(Events.pushSeen, { playerId }, { groupId });
+  broadcast(Events.pushSeen, { playerId }, { groupId, recipientPlayerIds: [playerId] });
   return 'seen';
 }
 
@@ -211,7 +211,7 @@ export function hidePushForPlayer(groupId: string, pushId: string, playerId: str
     .prepare('INSERT OR IGNORE INTO push_log_hidden (push_id, player_id, hidden_at) VALUES (?, ?, ?)')
     .run(pushId, playerId, Date.now());
   if (result.changes === 0) return 'already_hidden';
-  broadcast(Events.pushSeen, { playerId }, { groupId });
+  broadcast(Events.pushSeen, { playerId }, { groupId, recipientPlayerIds: [playerId] });
   return 'hidden';
 }
 
@@ -237,7 +237,7 @@ export function markAllPushSeen(groupId: string, eventId: string | null, playerI
   const changes = db.transaction(() =>
     entries.reduce((sum, entry) => sum + insert.run(entry.id, playerId, seenAt).changes, 0)
   )();
-  if (changes > 0) broadcast(Events.pushSeen, { playerId }, { groupId });
+  if (changes > 0) broadcast(Events.pushSeen, { playerId }, { groupId, recipientPlayerIds: [playerId] });
   return changes;
 }
 
@@ -249,7 +249,7 @@ export function hideAllPushForPlayer(groupId: string, eventId: string | null, pl
   const changes = db.transaction(() =>
     entries.reduce((sum, entry) => sum + insert.run(entry.id, playerId, hiddenAt).changes, 0)
   )();
-  if (changes > 0) broadcast(Events.pushSeen, { playerId }, { groupId });
+  if (changes > 0) broadcast(Events.pushSeen, { playerId }, { groupId, recipientPlayerIds: [playerId] });
   return changes;
 }
 
@@ -355,7 +355,14 @@ export function notifyPlayers(
   if (playerIds.length === 0) return;
 
   const entry = recordPushLog(playerIds, payload, audience, topic, scope);
-  broadcast(Events.pushSent, entry, scope);
+  // Group-wide entries stay a plain group broadcast (the kiosk banner is
+  // their deliberate consumer); personally targeted entries bind delivery to
+  // exactly the resolved recipients and never reach the shared kiosk.
+  broadcast(
+    Events.pushSent,
+    entry,
+    audience === 'direct' ? { ...scope, recipientPlayerIds: playerIds } : scope,
+  );
 
   const recipientPlaceholders = playerIds.map(() => '?').join(',');
   const rows = db

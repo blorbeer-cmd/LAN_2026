@@ -22,7 +22,7 @@ import { db, DEFAULT_GROUP_ID } from '../db';
 import { requireRecentReauthentication, requireUser } from '../sessions';
 import { isNonEmptyString } from '../validation';
 import { writeAdminAudit } from '../adminAudit';
-import { broadcast, broadcastInstanceSignal, Events } from '../realtime';
+import { broadcast, broadcastInstanceSignal, disconnectKioskTokenSockets, Events } from '../realtime';
 import { requireGroupMembership, requireGroupRole } from '../groupAuthorization';
 import { countTestUsers, createTestUsers, deleteTestUsers, MAX_TEST_USERS_PER_CALL } from '../testUsers';
 import { getLiveBoard } from '../liveStatus';
@@ -174,6 +174,9 @@ groupsRouter.post('/:groupId/kiosk-tokens', requireGroupMembership, requireGroup
 
 groupsRouter.delete('/:groupId/kiosk-tokens/:tokenId', requireGroupMembership, requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
   if (!revokeKioskToken(req.group!.id, req.params.tokenId)) return res.status(404).json({ error: 'Kiosk-Token nicht gefunden.' });
+  // Delivery re-checks the token anyway; ending the sockets eagerly makes the
+  // revocation visible on the shared screen immediately.
+  disconnectKioskTokenSockets(req.params.tokenId);
   res.status(204).end();
 });
 

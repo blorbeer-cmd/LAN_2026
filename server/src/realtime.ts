@@ -205,6 +205,10 @@ export function disconnectPlayerSockets(playerId: string, exceptSessionId?: stri
 export interface BroadcastScope {
   groupId: string;
   eventId?: string | null;
+  // Personally targeted payloads (e.g. direct pushes): restricts delivery to
+  // exactly these players and keeps the payload off kiosk sockets entirely.
+  // Legacy mode cannot enforce this — its sockets carry no identity.
+  recipientPlayerIds?: string[];
 }
 
 // The shared kiosk screen is a read-only display without an identity. It only
@@ -226,6 +230,32 @@ const KIOSK_DELIVERED_EVENTS = new Set<string>([
 // events never belong here — add a name only when the signal must reach
 // clients that are, by definition, outside every deliverable group scope.
 const INSTANCE_SIGNAL_EVENTS = new Set<string>(['groups:changed']);
+
+// Kiosk access is only as good as its token: the scope captured at handshake
+// time must not outlive a revocation or the archival of its group, so every
+// delivery re-checks the persisted token. The installation-wide env token
+// (config.kioskToken) has no database row and cannot be revoked at runtime.
+function kioskDeliveryAllowed(socket: Socket): boolean {
+  const tokenId = socket.data.kioskTokenId;
+  if (typeof tokenId !== 'string' || !tokenId) return true;
+  return Boolean(
+    db
+      .prepare(
+        `SELECT 1 FROM kiosk_tokens kt JOIN groups g ON g.id = kt.group_id
+         WHERE kt.id = ? AND kt.revoked_at IS NULL AND g.archived_at IS NULL`,
+      )
+      .get(tokenId),
+  );
+}
+
+// Eagerly ends the sockets of a just-revoked kiosk token; the delivery-time
+// re-check above stays the authoritative guard either way.
+export function disconnectKioskTokenSockets(tokenId: string): void {
+  if (!io) return;
+  for (const socket of io.sockets.sockets.values()) {
+    if (socket.data.kioskTokenId === tokenId) socket.disconnect(true);
+  }
+}
 
 // A fachlicher Broadcast without a group scope must never fall through to a
 // global emit and must never disappear silently: outside production it throws
@@ -265,15 +295,19 @@ export function broadcast(event: string, payload: unknown, scope: BroadcastScope
   }
   // Socket.IO rooms are only a routing hint. Re-check the current membership
   // at delivery time so a revoke/group switch cannot leak a queued payload.
+  const recipients = scope.recipientPlayerIds ? new Set(scope.recipientPlayerIds) : null;
   for (const socket of io.sockets.sockets.values()) {
     if (socket.data.kioskReadOnly) {
+      if (recipients) continue; // personally targeted payloads never reach the shared screen
       if (!KIOSK_DELIVERED_EVENTS.has(event)) continue;
       if (socket.data.kioskGroupId !== groupId) continue;
       if ((socket.data.kioskEventId ?? null) !== eventId) continue;
+      if (!kioskDeliveryAllowed(socket)) continue;
       socket.emit(event, payload);
       continue;
     }
     if (socket.data.groupId !== groupId) continue;
+    if (recipients && !recipients.has(socket.data.authPlayerId as string)) continue;
     if (!activeGroupMember(groupId, socket.data.authPlayerId)) continue;
     if (eventId && !activeEventParticipant(groupId, eventId, socket.data.authPlayerId)) continue;
     socket.emit(event, payload);
@@ -313,7 +347,7 @@ export function broadcastArcadeKiosk(io: Server, payload: unknown): void {
     latestArcadeKioskGame = payload;
     for (const socket of io.sockets.sockets.values()) {
       const targetGroup = payloadGroupId(payload as Record<string, unknown>);
-      if (socket.data.kioskReadOnly && targetGroup && socket.data.kioskGroupId !== targetGroup) continue;
+      if (socket.data.kioskReadOnly && (!kioskDeliveryAllowed(socket) || (targetGroup && socket.data.kioskGroupId !== targetGroup))) continue;
       if (!socket.data.kioskReadOnly && socket.data.groupId && targetGroup && socket.data.groupId !== targetGroup) continue;
       socket.emit('arcade:kiosk:game', payload);
     }
@@ -332,7 +366,7 @@ export function broadcastArcadeKiosk(io: Server, payload: unknown): void {
   latestArcadeKioskGame = payload;
   for (const socket of io.sockets.sockets.values()) {
     const targetGroup = typeof payload === 'object' && payload !== null ? payloadGroupId(payload as Record<string, unknown>) : null;
-    if (socket.data.kioskReadOnly && targetGroup && socket.data.kioskGroupId !== targetGroup) continue;
+    if (socket.data.kioskReadOnly && (!kioskDeliveryAllowed(socket) || (targetGroup && socket.data.kioskGroupId !== targetGroup))) continue;
     if (!socket.data.kioskReadOnly && socket.data.groupId && targetGroup && socket.data.groupId !== targetGroup) continue;
     socket.emit('arcade:kiosk:game', payload);
   }
@@ -368,7 +402,7 @@ export function registerArcadeKioskSockets(server: Server): void {
       const eventMatches = socket.data.kioskEventId === null
         ? requestedEvent === undefined || requestedEvent === null
         : requestedEvent === socket.data.kioskEventId;
-      if (!socket.data.kioskReadOnly || !groupMatches || !eventMatches) {
+      if (!socket.data.kioskReadOnly || !groupMatches || !eventMatches || !kioskDeliveryAllowed(socket)) {
         ack?.({ ok: false, error: 'Kiosk-Scope stimmt nicht mit dem Token überein.' });
         return;
       }
@@ -437,6 +471,7 @@ export function createSocketAuthGuard(
       socket.data.kioskReadOnly = true;
       socket.data.kioskGroupId = kioskScope?.groupId ?? DEFAULT_GROUP_ID;
       socket.data.kioskEventId = kioskScope?.eventId ?? null;
+      socket.data.kioskTokenId = kioskScope?.id ?? null;
       socket.use(([event], proceed) => {
         if (event === 'kiosk:subscribe') return proceed();
         proceed(new Error('unauthorized'));

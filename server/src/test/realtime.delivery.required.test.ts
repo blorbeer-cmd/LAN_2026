@@ -24,7 +24,8 @@ import {
   registerArcadeKioskSockets,
   setIo,
 } from '../realtime';
-import { issueKioskToken } from '../kioskTokens';
+import { issueKioskToken, revokeKioskToken } from '../kioskTokens';
+import { notifyPlayers } from '../push';
 import { createSession, SESSION_COOKIE_NAME } from '../sessions';
 
 const originalAuthMode = config.authMode;
@@ -217,6 +218,76 @@ test('an event-scoped kiosk token does not receive group-room broadcasts', async
       assert.equal(votes.count(), 1, 'exactly the event-scoped broadcast reaches the event kiosk');
     } finally {
       eventKiosk.close();
+    }
+  });
+});
+
+test('a direct push reaches only its resolved recipients and never the kiosk', async () => {
+  const groupA = createGroup('Direct Push A');
+  const alice = createPlayer('Push Alice');
+  const bob = createPlayer('Push Bob');
+  addMembership(groupA, alice, 'owner');
+  addMembership(groupA, bob);
+  const kioskToken = issueKioskToken(groupA, null, alice, null).token;
+
+  await withRequiredServer(async ({ baseUrl }) => {
+    const aliceSocket = await connectSession(baseUrl, alice);
+    const bobSocket = await connectSession(baseUrl, bob);
+    const kiosk = await connectKiosk(baseUrl, kioskToken);
+    try {
+      await subscribeScope(aliceSocket, groupA);
+      await subscribeScope(bobSocket, groupA);
+      const alicePush = collect(aliceSocket, Events.pushSent);
+      const bobPush = collect(bobSocket, Events.pushSent);
+      const kioskPush = collect(kiosk, Events.pushSent);
+
+      notifyPlayers(
+        [alice],
+        { title: 'Privat', body: 'Nur Alice darf das lesen' },
+        'direct',
+        undefined,
+        { groupId: groupA },
+      );
+      await settle();
+      assert.equal(alicePush.count(), 1, 'the resolved recipient receives the direct push');
+      assert.equal(bobPush.count(), 0, 'other group members must not see a direct push payload');
+      assert.equal(kioskPush.count(), 0, 'the shared kiosk must never render a direct push');
+
+      notifyPlayers([alice, bob], { title: 'Für alle', body: 'Gruppenweit' }, 'all', undefined, {
+        groupId: groupA,
+      });
+      await settle();
+      assert.equal(alicePush.count(), 2);
+      assert.equal(bobPush.count(), 1);
+      assert.equal(kioskPush.count(), 1, 'group-wide entries remain the kiosk banner source');
+    } finally {
+      aliceSocket.close();
+      bobSocket.close();
+      kiosk.close();
+    }
+  });
+});
+
+test('revoking a kiosk token stops delivery to its already-connected socket', async () => {
+  const groupA = createGroup('Kiosk Revoke A');
+  const owner = createPlayer('Kiosk Revoke Owner');
+  addMembership(groupA, owner, 'owner');
+  const issued = issueKioskToken(groupA, null, owner, null);
+
+  await withRequiredServer(async ({ baseUrl }) => {
+    const kiosk = await connectKiosk(baseUrl, issued.token);
+    try {
+      const votes = collect(kiosk, Events.votesChanged);
+      broadcast(Events.votesChanged, { round: 1 }, { groupId: groupA });
+      await settle();
+      assert.equal(votes.count(), 1, 'delivery works while the token is valid');
+
+      assert.equal(revokeKioskToken(groupA, issued.scope.id), true);
+      broadcast(Events.votesChanged, { round: 2 }, { groupId: groupA });
+      await settle();
+      assert.equal(votes.count(), 1, 'a revoked token receives no further delivery');
+    } finally {
+      kiosk.close();
     }
   });
 });

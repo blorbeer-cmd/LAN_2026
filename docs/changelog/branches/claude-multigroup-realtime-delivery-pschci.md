@@ -9,5 +9,5 @@ Mehr-Gruppen-Offline-Sweep.
 
 ## Pull Requests
 
-- [PR #238](https://github.com/blorbeer-cmd/LAN_2026/pull/238), offen (Draft): Enforce explicit
-  group scope for non-arcade realtime delivery.
+- [PR #238](https://github.com/blorbeer-cmd/LAN_2026/pull/238), offen (Ready for Review): Enforce
+  explicit group scope for non-arcade realtime delivery.
