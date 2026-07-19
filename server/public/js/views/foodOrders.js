@@ -150,6 +150,10 @@ function renderItems(order, myId, { locked = false } = {}) {
 // amount is withheld entirely and the raw PayPal link opens instead
 // (paypalPayUrl only appends an amount when cents > 0).
 function renderPaymentSelector(order) {
+  // A selection can outlive the PayPal link it was made for — the creator
+  // might clear it via "Info bearbeiten" while items are still selected on
+  // someone else's device — so bail out before paypalPayUrl(null, …) throws.
+  if (!order.paypalLink) return '';
   const selectedItems = order.items.filter((i) => selectedForPayment.has(i.id));
   if (selectedItems.length === 0) return '';
 

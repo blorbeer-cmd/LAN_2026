@@ -21,6 +21,7 @@ import { parseTimeRangeQuery } from './queryHelpers';
 import { computeAwards } from '../awards';
 import { matchCountsByGame, biggestRivalry, bestDuo, biggestUnderdogWin, type MatchForUnderdog } from '../gameStats';
 import { ARCADE_TITLES } from './arcade';
+import { resolveGroupEventScope } from '../groupEventScope';
 
 export const analyticsRouter = Router();
 
@@ -471,14 +472,19 @@ interface ArcadeScoreEntry {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // GET /api/analytics/arcade - the arcade-specific "Auswertungen" tab: match
-// durations and most-active player per game, optionally restricted by the
-// stored start time. Arcade results have no event id, so a direct time range
-// is the only honest equivalent to the other analytics filters.
+// durations and most-active player per game, optionally restricted by its
+// stored event and/or a direct time range.
 analyticsRouter.get('/arcade', (req, res) => {
   const range = parseTimeRangeQuery(req.query as Record<string, unknown>);
   if ('error' in range) return res.status(400).json({ error: range.error });
-  const clauses = [`reason = 'completed'`];
-  const params: number[] = [];
+  const clauses = [`group_id = ?`, `reason = 'completed'`];
+  const params: Array<string | number | null> = [req.group!.id];
+  if (req.query.eventId !== undefined) {
+    const event = resolveGroupEventScope(req.group!.id, req.query.eventId);
+    if (!event.ok) return res.status(event.status).json({ error: event.error });
+    clauses.push('event_id IS ?');
+    params.push(event.eventId);
+  }
   if (range.from !== undefined) {
     clauses.push('started_at >= ?');
     params.push(range.from);

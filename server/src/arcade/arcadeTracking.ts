@@ -11,6 +11,7 @@ import { db, ARCADE_GAME_DEFS, DEFAULT_GROUP_ID } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getLiveBoard } from '../liveStatus';
 import { getTrackingEvent, getTrackingEventId } from '../events';
+import { currentArcadeDataScope } from './arcadeData';
 
 export type ArcadeGameKey = (typeof ARCADE_GAME_DEFS)[number]['key'];
 
@@ -38,19 +39,23 @@ function arcadeGameId(key: ArcadeGameKey): string | null {
 export function startArcadeSession(playerIds: string[], key: ArcadeGameKey): void {
   const gameId = arcadeGameId(key);
   if (!gameId || playerIds.length === 0) return;
+  const scope = currentArcadeDataScope(playerIds);
+  if (!scope) return;
   const now = Date.now();
   const eventId = getTrackingEventId();
   // The Arcade titles themselves are shared system fixtures (games.group_id
   // NULL, see db.ts), but a live session still belongs to whichever group its
   // players are actually in — same "current tracking context" resolution
   // agent.ts uses for regular PC games (7.4 in the concept doc).
-  const groupId = getTrackingEvent().group_id ?? DEFAULT_GROUP_ID;
+  const groupId = scope.groupId;
 
   const touchStatus = db.prepare(
     `INSERT INTO live_status (player_id, last_seen, manual_note, activity_tracked) VALUES (?, ?, NULL, 0)
      ON CONFLICT(player_id) DO UPDATE SET last_seen = excluded.last_seen`
   );
-  const alreadyPlaying = db.prepare('SELECT 1 FROM live_status_games WHERE player_id = ? AND game_id = ?');
+  const alreadyPlaying = db.prepare(
+    'SELECT 1 FROM live_status_games WHERE player_id = ? AND game_id = ? AND group_id = ?',
+  );
   const insertGame = db.prepare(
     'INSERT OR IGNORE INTO live_status_games (player_id, game_id, group_id, since, is_foreground) VALUES (?, ?, ?, ?, 1)'
   );
@@ -61,7 +66,7 @@ export function startArcadeSession(playerIds: string[], key: ArcadeGameKey): voi
   const run = db.transaction(() => {
     for (const playerId of playerIds) {
       touchStatus.run(playerId, now);
-      const already = alreadyPlaying.get(playerId, gameId);
+      const already = alreadyPlaying.get(playerId, gameId, groupId);
       insertGame.run(playerId, gameId, groupId, now);
       if (!already) insertSession.run(nanoid(), playerId, gameId, groupId, eventId, now);
     }
@@ -76,20 +81,23 @@ export function startArcadeSession(playerIds: string[], key: ArcadeGameKey): voi
 export function endArcadeSession(playerIds: string[], key: ArcadeGameKey): void {
   const gameId = arcadeGameId(key);
   if (!gameId || playerIds.length === 0) return;
+  const scope = currentArcadeDataScope(playerIds);
+  if (!scope) return;
   const now = Date.now();
 
-  const closeGame = db.prepare('DELETE FROM live_status_games WHERE player_id = ? AND game_id = ?');
+  const closeGame = db.prepare('DELETE FROM live_status_games WHERE player_id = ? AND game_id = ? AND group_id = ?');
   const closeSession = db.prepare(
-    `UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND game_id = ? AND ended_at IS NULL`
+    `UPDATE play_sessions SET ended_at = ?
+     WHERE player_id = ? AND game_id = ? AND group_id = ? AND ended_at IS NULL`
   );
   const run = db.transaction(() => {
     for (const playerId of playerIds) {
-      closeGame.run(playerId, gameId);
-      closeSession.run(now, playerId, gameId);
+      closeGame.run(playerId, gameId, scope.groupId);
+      closeSession.run(now, playerId, gameId, scope.groupId);
     }
   });
   run();
-  broadcast(Events.liveStatusChanged, getLiveBoard(getTrackingEvent().group_id ?? DEFAULT_GROUP_ID));
+  broadcast(Events.liveStatusChanged, getLiveBoard(scope.groupId));
 }
 
 // Every player currently in an open arcade session, across all games.

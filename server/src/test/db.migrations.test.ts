@@ -565,6 +565,59 @@ test('migration 32 keeps historical Arcade sessions visible in their event group
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
+test('migration 40 assigns legacy Arcade results to the default group and snapshots participants', () => {
+  const dbFile = makeTempDbPath('arcade-data-group-backfill');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = ON');
+  const now = Date.now();
+  fixture.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('legacy-arcade-player', 'Legacy Arcade Player', 'legacy-arcade-player-key', now);
+  fixture.prepare(
+    `INSERT INTO group_memberships
+       (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
+     VALUES ('default-group', 'legacy-arcade-player', 'member', 'active', ?, NULL, 1, NULL)`,
+  ).run(now);
+  fixture.exec(`
+    DROP TRIGGER trg_arcade_results_legacy_scope_insert;
+    DELETE FROM schema_migrations WHERE version = 40;
+  `);
+  fixture.prepare(
+    `INSERT INTO arcade_results
+       (id, game_type, winner_id, players, scores, reason, started_at, ended_at, group_id, event_id)
+     VALUES ('legacy-arcade-result', 'quiz', 'legacy-arcade-player', ?, ?, 'completed', ?, ?, NULL, NULL)`,
+  ).run(
+    JSON.stringify([{ id: 'legacy-arcade-player', name: 'Legacy Arcade Player' }]),
+    JSON.stringify([{ playerId: 'legacy-arcade-player', name: 'Legacy Arcade Player', score: 5 }]),
+    now,
+    now + 1000,
+  );
+  fixture.close();
+
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated.prepare('SELECT group_id, event_id FROM arcade_results WHERE id = ?').get('legacy-arcade-result'),
+    { group_id: 'default-group', event_id: null },
+  );
+  assert.deepEqual(
+    migrated.prepare(
+      `SELECT group_id, player_id, player_name_snapshot, is_winner
+       FROM arcade_result_participants WHERE result_id = ?`,
+    ).get('legacy-arcade-result'),
+    {
+      group_id: 'default-group',
+      player_id: 'legacy-arcade-player',
+      player_name_snapshot: 'Legacy Arcade Player',
+      is_winner: 1,
+    },
+  );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('records the complete migration history and does not duplicate it on restart', () => {
   const dbFile = makeTempDbPath('migration-history');
 
@@ -577,10 +630,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 42);
+  assert.equal(migrations.length, 43);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 42 }, (_, index) => index + 1),
+    Array.from({ length: 43 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
