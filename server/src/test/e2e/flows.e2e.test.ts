@@ -966,6 +966,11 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.waitForSelector('text=Zwischensumme');
   await page.waitForSelector('text=Gesamtsumme');
 
+  // Whoever collects the money checks an item off once it's paid — works
+  // while the order is still open, and stays visible/editable after closing.
+  await page.check('[data-toggle-paid]');
+  await page.waitForSelector('.food-order-item.is-paid');
+
   // Content search resolves an item description to its parent order and
   // highlights that concrete order instead of only opening the Essen area.
   await page.keyboard.press('Control+K');
@@ -980,6 +985,12 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.waitForSelector('[data-food-history]');
   await page.click('[data-food-history] > summary');
   await page.waitForSelector('.badge-offline >> text=Geschlossen');
+
+  // Paid state survives closing, and stays togglable — settling up normally
+  // happens after the order is already closed.
+  await page.waitForSelector('.food-order-item.is-paid');
+  await page.uncheck('[data-toggle-paid]');
+  await page.waitForSelector('.food-order-item:not(.is-paid)');
 
   // Closing only freezes items — the details stay correctable afterward.
   await page.click('[data-edit-details]');

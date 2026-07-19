@@ -66,18 +66,21 @@ interface ItemRow {
   description: string;
   quantity: number;
   price_cents: number | null;
+  paid: number;
   created_at: number;
 }
 
 function serializeOrder(row: OrderRow) {
-  const items = db
-    .prepare(
-      `SELECT i.id, i.player_id AS playerId, p.name AS playerName, p.color AS playerColor, p.avatar AS playerAvatar,
-              i.description, i.quantity, i.price_cents AS priceCents, i.created_at AS createdAt
-       FROM food_order_items i JOIN players p ON p.id = i.player_id
-       WHERE i.order_id = ? ORDER BY i.created_at`
-    )
-    .all(row.id) as Array<{ playerId: string; quantity: number; priceCents: number | null }>;
+  const items = (
+    db
+      .prepare(
+        `SELECT i.id, i.player_id AS playerId, p.name AS playerName, p.color AS playerColor, p.avatar AS playerAvatar,
+                i.description, i.quantity, i.price_cents AS priceCents, i.paid, i.created_at AS createdAt
+         FROM food_order_items i JOIN players p ON p.id = i.player_id
+         WHERE i.order_id = ? ORDER BY i.created_at`
+      )
+      .all(row.id) as Array<{ playerId: string; quantity: number; priceCents: number | null; paid: number }>
+  ).map((i) => ({ ...i, paid: Boolean(i.paid) }));
 
   const creator = db.prepare('SELECT name FROM players WHERE id = ?').get(row.created_by) as
     | { name: string }
@@ -283,6 +286,31 @@ foodOrdersRouter.delete('/:id/items/:itemId', ...withBodyPlayerIdentity, (req, r
   }
 
   db.prepare('DELETE FROM food_order_items WHERE id = ?').run(item.id);
+  broadcast(Events.foodOrdersChanged, null);
+  res.json(serializeOrder(order));
+});
+
+// PATCH /api/food-orders/:id/items/:itemId - body: { paid }. Whoever collects
+// the money (the order's creator, or an admin) checks items off as people
+// pay — same authorization as close. Deliberately not gated on open/closed:
+// settling up normally happens after the order is already closed.
+foodOrdersRouter.patch('/:id/items/:itemId', requireConfiguredUser, (req, res) => {
+  const order = getOrder(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
+  if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann Positionen als bezahlt markieren.' });
+  }
+
+  const { paid } = req.body ?? {};
+  if (typeof paid !== 'boolean') {
+    return res.status(400).json({ error: 'paid muss true oder false sein.' });
+  }
+  const item = db
+    .prepare('SELECT id FROM food_order_items WHERE id = ? AND order_id = ?')
+    .get(req.params.itemId, order.id) as { id: string } | undefined;
+  if (!item) return res.status(404).json({ error: 'Position nicht gefunden.' });
+
+  db.prepare('UPDATE food_order_items SET paid = ? WHERE id = ?').run(paid ? 1 : 0, item.id);
   broadcast(Events.foodOrdersChanged, null);
   res.json(serializeOrder(order));
 });

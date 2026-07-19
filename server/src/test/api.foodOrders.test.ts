@@ -143,9 +143,31 @@ test('players can only remove their own items, and only while open', async () =>
   assert.equal(removed.body.items.length, 1);
 
   // Re-add so the close test below has content.
-  await request(app)
+  const readded = await request(app)
     .post(`/api/food-orders/${orderId}/items`)
     .send({ playerId: alice.id, description: 'Margherita groß', quantity: 2, priceCents: 950 });
+  aliceItemId = readded.body.items.find((i: { playerId: string }) => i.playerId === alice.id).id;
+});
+
+test('PATCH /api/food-orders/:id/items/:itemId marks and unmarks an item as paid', async () => {
+  const bad = await request(app).patch(`/api/food-orders/${orderId}/items/${aliceItemId}`).send({ paid: 'yes' });
+  assert.equal(bad.status, 400);
+
+  const missingOrder = await request(app).patch(`/api/food-orders/nope/items/${aliceItemId}`).send({ paid: true });
+  assert.equal(missingOrder.status, 404);
+
+  const missingItem = await request(app).patch(`/api/food-orders/${orderId}/items/nope`).send({ paid: true });
+  assert.equal(missingItem.status, 404);
+
+  const marked = await request(app).patch(`/api/food-orders/${orderId}/items/${aliceItemId}`).send({ paid: true });
+  assert.equal(marked.status, 200);
+  const markedItem = marked.body.items.find((i: { id: string }) => i.id === aliceItemId);
+  assert.equal(markedItem.paid, true);
+
+  const unmarked = await request(app).patch(`/api/food-orders/${orderId}/items/${aliceItemId}`).send({ paid: false });
+  assert.equal(unmarked.status, 200);
+  const unmarkedItem = unmarked.body.items.find((i: { id: string }) => i.id === aliceItemId);
+  assert.equal(unmarkedItem.paid, false);
 });
 
 test('closing freezes the order: no more items, no second close', async () => {
@@ -166,6 +188,13 @@ test('closing freezes the order: no more items, no second close', async () => {
 
   const secondClose = await request(app).post(`/api/food-orders/${orderId}/close`);
   assert.equal(secondClose.status, 409);
+});
+
+test('items can still be marked paid after the order is closed (settling up happens afterwards)', async () => {
+  const res = await request(app).patch(`/api/food-orders/${orderId}/items/${aliceItemId}`).send({ paid: true });
+  assert.equal(res.status, 200);
+  const item = res.body.items.find((i: { id: string }) => i.id === aliceItemId);
+  assert.equal(item.paid, true);
 });
 
 test('the send time, notes, and link stay editable after the order is closed (only items are frozen)', async () => {

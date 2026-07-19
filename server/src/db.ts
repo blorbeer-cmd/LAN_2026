@@ -561,6 +561,7 @@ db.exec(`
     description TEXT NOT NULL,
     quantity    INTEGER NOT NULL DEFAULT 1,
     price_cents INTEGER,
+    paid        INTEGER NOT NULL DEFAULT 0,
     created_at  INTEGER NOT NULL
   );
 
@@ -2102,6 +2103,15 @@ function migrateFoodOrderItemQuantityColumn(): void {
   db.exec('ALTER TABLE food_order_items ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1');
 }
 runMigration({ version: 38, name: 'add food order item quantity', up: migrateFoodOrderItemQuantityColumn });
+
+// Lets whoever collects the money (the order's creator/an admin) check off
+// each item once that person has paid their share.
+function migrateFoodOrderItemPaidColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(food_order_items)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'paid')) return;
+  db.exec('ALTER TABLE food_order_items ADD COLUMN paid INTEGER NOT NULL DEFAULT 0');
+}
+runMigration({ version: 39, name: 'add food order item paid flag', up: migrateFoodOrderItemPaidColumn });
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.

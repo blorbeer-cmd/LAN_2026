@@ -82,7 +82,10 @@ function renderItems(order, myId) {
                 ${quantity > 1 ? `<span class="muted">${quantity} × ${formatCents(i.priceCents)}</span>` : ''}
               </span>`;
           return `
-          <div class="row food-order-item">
+          <div class="row food-order-item ${i.paid ? 'is-paid' : ''}">
+            <label class="food-order-item-paid-toggle">
+              <input type="checkbox" data-toggle-paid="${i.id}" data-order="${order.id}" ${i.paid ? 'checked' : ''} aria-label="Als bezahlt markieren" />
+            </label>
             <span style="flex:1;"><strong>${quantity} ×</strong> ${escapeHtml(i.description)}</span>
             ${priceHtml}
             ${
@@ -404,6 +407,20 @@ export function renderFoodOrders(container, ctx) {
         cache = null;
         ctx.rerender();
       } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-toggle-paid]').forEach((checkbox) => {
+    checkbox.addEventListener('change', async (e) => {
+      const paid = e.currentTarget.checked;
+      try {
+        await api.foodOrders.setItemPaid(checkbox.dataset.order, checkbox.dataset.togglePaid, paid);
+        cache = null;
+        ctx.rerender();
+      } catch (err) {
+        e.currentTarget.checked = !paid;
         showToast(err.message, { error: true });
       }
     });

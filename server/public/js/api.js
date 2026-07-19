@@ -467,6 +467,11 @@ export const api = {
         method: 'DELETE',
         body: JSON.stringify({ playerId }),
       }),
+    setItemPaid: (orderId, itemId, paid) =>
+      apiFetch(`/api/food-orders/${orderId}/items/${itemId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ paid }),
+      }),
     close: (orderId) => apiFetch(`/api/food-orders/${orderId}/close`, { method: 'POST' }),
   },
 

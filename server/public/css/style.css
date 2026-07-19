@@ -4066,6 +4066,15 @@ input[type='number'].tournament-score-input {
   min-height: var(--space-7);
   padding: var(--space-1) 0;
 }
+.food-order-item-paid-toggle {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+.food-order-item.is-paid > span {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
 .food-order-item-price {
   display: flex;
   flex-direction: column;

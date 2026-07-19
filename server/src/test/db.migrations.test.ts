@@ -148,7 +148,7 @@ test('legacy game_catalog tables are merged into games and preferences', () => {
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('historical test LANs are marked and food-order quantities default safely during upgrade', () => {
+test('historical test LANs are marked and food-order quantity/paid columns default safely during upgrade', () => {
   const dbFile = makeTempDbPath('test-data-and-food-quantity');
   const now = Date.now();
   const fixture = new Database(dbFile);
@@ -183,10 +183,14 @@ test('historical test LANs are marked and food-order quantities default safely d
   const migrated = new Database(dbFile, { readonly: true });
   const testEvent = migrated.prepare('SELECT is_test FROM events WHERE id = ?').get('e-test') as { is_test: number };
   const realEvent = migrated.prepare('SELECT is_test FROM events WHERE id = ?').get('e-real') as { is_test: number };
-  const item = migrated.prepare('SELECT quantity FROM food_order_items WHERE id = ?').get('i1') as { quantity: number };
+  const item = migrated.prepare('SELECT quantity, paid FROM food_order_items WHERE id = ?').get('i1') as {
+    quantity: number;
+    paid: number;
+  };
   assert.equal(testEvent.is_test, 1);
   assert.equal(realEvent.is_test, 0);
   assert.equal(item.quantity, 1);
+  assert.equal(item.paid, 0);
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
@@ -556,10 +560,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 38);
+  assert.equal(migrations.length, 39);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 38 }, (_, index) => index + 1),
+    Array.from({ length: 39 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
