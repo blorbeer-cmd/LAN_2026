@@ -1,6 +1,5 @@
 import { config } from './config';
 import { db, OUTSIDE_EVENTS_ID } from './db';
-import { getTrackingEvent } from './events';
 
 export type GroupEventScope = string | null;
 
@@ -25,11 +24,17 @@ export function resolveGroupEventScope(groupId: string, requestedEventId: unknow
     return { ok: true, eventId: requestedEventId };
   }
 
-  const tracking = getTrackingEvent();
-  if (tracking.id !== OUTSIDE_EVENTS_ID && tracking.group_id === groupId) {
-    return { ok: true, eventId: tracking.id };
-  }
-  return { ok: true, eventId: null };
+  // Deliberately scoped to this group, not the single-row global tracking
+  // helper (getTrackingEvent()/getTrackingEventId() in events.ts): with
+  // MULTI_GROUPS_ENABLED, several groups can each have their own event
+  // tracking_enabled at the same time (see startTracking() in events.ts),
+  // and the global helper only ever returns one arbitrary row across all of
+  // them. Filtering by group_id here is what actually makes "this group's
+  // currently tracked event" well-defined once more than one exists.
+  const tracking = db
+    .prepare("SELECT id FROM events WHERE tracking_enabled = 1 AND group_id = ? AND id != ?")
+    .get(groupId, OUTSIDE_EVENTS_ID) as { id: string } | undefined;
+  return { ok: true, eventId: tracking?.id ?? null };
 }
 
 export function groupPlayerRows<T>(groupId: string, columns: string): T[] {

@@ -483,6 +483,32 @@ export const api = {
     finalize: (orderId) => apiFetch(`/api/food-orders/${orderId}/finalize`, { method: 'POST' }),
   },
 
+  checklist: {
+    items: (playerId) => apiFetch(`/api/checklist/items?playerId=${encodeURIComponent(playerId)}`),
+    addItem: (playerId, label) =>
+      apiFetch('/api/checklist/items', { method: 'POST', body: JSON.stringify({ playerId, label }) }),
+    setItemChecked: (itemId, playerId, checked) =>
+      apiFetch(`/api/checklist/items/${itemId}`, { method: 'PATCH', body: JSON.stringify({ playerId, checked }) }),
+    removeItem: (itemId, playerId) =>
+      apiFetch(`/api/checklist/items/${itemId}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
+    tasks: () => apiFetch('/api/checklist/tasks'),
+    createRequest: (playerId, title, description) =>
+      apiFetch('/api/checklist/tasks', { method: 'POST', body: JSON.stringify({ playerId, title, description }) }),
+    createTodo: (playerId, title, description, assigneePlayerIds) =>
+      apiFetch('/api/checklist/tasks/todo', {
+        method: 'POST',
+        body: JSON.stringify({ playerId, title, description, assigneePlayerIds }),
+      }),
+    claim: (taskId, playerId) =>
+      apiFetch(`/api/checklist/tasks/${taskId}/claim`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    release: (taskId, playerId) =>
+      apiFetch(`/api/checklist/tasks/${taskId}/release`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    setDone: (taskId, playerId) =>
+      apiFetch(`/api/checklist/tasks/${taskId}/done`, { method: 'PATCH', body: JSON.stringify({ playerId }) }),
+    cancel: (taskId, playerId) =>
+      apiFetch(`/api/checklist/tasks/${taskId}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
+  },
+
   arrivals: {
     list: () => apiFetch('/api/arrivals'),
     saveMine: (data) => apiFetch('/api/arrivals/mine', { method: 'PUT', body: JSON.stringify(data) }),

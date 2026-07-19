@@ -425,6 +425,16 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   colorful full-width primary action below a divider; the compact neutral „Hinzufügen“ action does
   not stretch to the input height. Closed orders live inside one standard, initially collapsed
   „Historie“ section whose open state survives live re-renders.
+- **Packliste** — „Meine Packliste“ and „Aufgaben & Anfragen“ are separate grouped-page sections.
+  The personal list is a compact checkbox row per item (Grundstock plus freely added/removable
+  custom entries) with a checked item shown via muted, struck-through text instead of a separate
+  badge, followed by the plain add-item field/button row. Shared tasks and open Mitbring-Anfragen
+  use one bare `.badge` to distinguish the two types and share the same nested-card layout as an
+  open request card; „Übernehmen“ replaces the claim action once someone else already committed to
+  it, and the requester/organizer sees „Zurückziehen“ on their own open entry instead. Tasks already
+  taken move into the „Unterwegs“ subsection with the current assignee's avatar/name and, for that
+  assignee only, „Freigeben“/„Erledigt“ actions. Completed tasks live in one standard, initially
+  collapsed „Historie“ section whose open state survives live re-renders, same as Food orders.
 - **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
   grid. „Nach LAN“ uses one directly labeled event dropdown and shows every overall placement for
   the selected LAN, followed by tournament winners in the same leaderboard-row structure. Blue and

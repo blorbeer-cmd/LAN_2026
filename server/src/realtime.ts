@@ -410,6 +410,7 @@ export const Events = {
   infoChanged: 'info:changed',
   foodOrdersChanged: 'foodOrders:changed',
   arrivalsChanged: 'arrivals:changed',
+  checklistChanged: 'checklist:changed',
   pushSent: 'push:sent',
   pushChanged: 'push:changed',
   pushSeen: 'push:seen',
