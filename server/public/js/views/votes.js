@@ -591,11 +591,17 @@ export function renderVotes(container, ctx) {
         }
         mineCache = null; // force a reload so the draft re-syncs with what the server now has
         mineCacheKey = null;
-        // No ctx.refresh(): the incoming 'votes:changed' broadcast rerenders
-        // this view (see app.js), and renderVotes() itself already reloads
-        // mine* on any render once mineCacheKey no longer matches — see the
-        // start button above for why a local refresh here would just be a
-        // second, redundant full reload.
+        // Unlike start/close/cancel/runoff, this invalidation is NOT reflected
+        // in anything the 'votes:changed' broadcast payload carries (that
+        // broadcast only changes votes.round on start/close, not on a plain
+        // submit) — it is purely a local flag this client just reset. If the
+        // broadcast's own render already ran before this reset (a real race:
+        // both this handler and the socket listener are async, and the
+        // server can broadcast before this await even resolves), nothing else
+        // is left to notice mineCacheKey went stale, and the "Bewertung
+        // abgegeben" state never appears. ctx.refresh() guarantees a render
+        // strictly after this reset, closing that race.
+        await ctx.refresh();
         showToast('Deine Stimme wurde gezählt.');
       } catch (err) {
         submitBtn.disabled = false;
