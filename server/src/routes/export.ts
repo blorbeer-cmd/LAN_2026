@@ -67,6 +67,19 @@ export interface ExportSnapshot {
     createdAt: number;
     teams: Array<{ captainId: string; players: Array<{ playerId: string; playerName: string }> }>;
   }>;
+  communications: {
+    broadcasts: Array<{
+      id: string;
+      playerId: string;
+      playerName: string;
+      message: string;
+      recipientCount: number;
+      createdAt: number;
+      endedAt: number | null;
+    }>;
+    infoEntries: Array<{ id: string; title: string; content: string; updatedAt: number }>;
+    pushHistory: { total: number; groupWide: number; direct: number; uniqueRecipients: number };
+  };
 }
 
 // Builds the full "Andenken" snapshot for one event — shared by the JSON
@@ -251,6 +264,41 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
     };
   });
 
+  // ---------- Organisation and communication ----------
+  const broadcasts = (
+    db
+      .prepare(
+        `SELECT id, player_id, player_name_snapshot, message, recipient_ids, created_at, ended_at
+         FROM broadcasts WHERE group_id = ? AND event_id = ? ORDER BY created_at`,
+      )
+      .all(groupId, filterEventId) as Array<{
+      id: string;
+      player_id: string;
+      player_name_snapshot: string;
+      message: string;
+      recipient_ids: string;
+      created_at: number;
+      ended_at: number | null;
+    }>
+  ).map((row) => ({
+    id: row.id,
+    playerId: row.player_id,
+    playerName: row.player_name_snapshot,
+    message: row.message,
+    recipientCount: (JSON.parse(row.recipient_ids) as string[]).length,
+    createdAt: row.created_at,
+    endedAt: row.ended_at,
+  }));
+  const infoEntries = (
+    db
+      .prepare('SELECT id, title, content, updated_at FROM info_entries WHERE group_id = ? AND event_id = ? ORDER BY created_at')
+      .all(groupId, filterEventId) as Array<{ id: string; title: string; content: string; updated_at: number }>
+  ).map((row) => ({ id: row.id, title: row.title, content: row.content, updatedAt: row.updated_at }));
+  const pushRows = db
+    .prepare('SELECT audience, player_ids FROM push_log WHERE group_id = ? AND event_id = ?')
+    .all(groupId, filterEventId) as Array<{ audience: 'all' | 'direct'; player_ids: string }>;
+  const pushRecipients = new Set(pushRows.flatMap((row) => JSON.parse(row.player_ids) as string[]));
+
   return {
     event: { id: event.id, name: event.name, startsAt: event.starts_at, endsAt: event.ends_at },
     exportedAt: now,
@@ -261,6 +309,16 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
     tournaments,
     voteRounds,
     drafts,
+    communications: {
+      broadcasts,
+      infoEntries,
+      pushHistory: {
+        total: pushRows.length,
+        groupWide: pushRows.filter((row) => row.audience === 'all').length,
+        direct: pushRows.filter((row) => row.audience === 'direct').length,
+        uniqueRecipients: pushRecipients.size,
+      },
+    },
   };
 }
 

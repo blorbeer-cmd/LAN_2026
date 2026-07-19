@@ -1,11 +1,6 @@
-// Integration test for the realtime push path itself. Every other
-// integration test only proves that a route handler calls broadcast() (via
-// mocking or by trusting the code); none of them prove that a connected
-// Socket.IO client actually receives the event. Since "Realtime by default"
-// is a core product principle (CLAUDE.md), this boots the real HTTP +
-// Socket.IO wiring (the same shape as src/index.ts, minus the offline
-// sweeper/process-crash handlers) and drives it with a real socket.io-client
-// connection.
+// Integration tests for the realtime path itself. Phase 5c deliberately
+// keeps organisation communication data-only, while the remaining tests
+// verify the Socket.IO wiring used by features that already deliver events.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -52,46 +47,26 @@ function connectClient(baseUrl: string, sessionToken?: string): Promise<ClientSo
   });
 }
 
-test('a broadcast triggered by an HTTP request reaches a connected socket.io client', async () => {
-  await withServer(async (baseUrl) => {
-    const client = await connectClient(baseUrl);
-    try {
-      const received = new Promise<unknown>((resolve) => {
-        client.on(Events.broadcastNew, resolve);
-      });
-
-      const player = await request(baseUrl).post('/api/players').send({ name: 'Realtime Test Player' });
-      assert.equal(player.status, 201);
-
-      const send = await request(baseUrl)
-        .post('/api/broadcasts')
-        .send({ playerId: player.body.id, message: 'Pizza ist da!' });
-      assert.equal(send.status, 201);
-
-      const payload = (await received) as { message: string };
-      assert.equal(payload.message, 'Pizza ist da!');
-    } finally {
-      client.close();
-    }
-  });
-});
-
-test('multiple connected clients all receive the same broadcast', async () => {
+test('stored broadcasts do not deliver a Socket.IO event in Phase 5c', async () => {
   await withServer(async (baseUrl) => {
     const clientA = await connectClient(baseUrl);
     const clientB = await connectClient(baseUrl);
     try {
-      const receivedA = new Promise<unknown>((resolve) => clientA.on(Events.broadcastNew, resolve));
-      const receivedB = new Promise<unknown>((resolve) => clientB.on(Events.broadcastNew, resolve));
+      let received = 0;
+      clientA.on(Events.broadcastNew, () => { received += 1; });
+      clientB.on(Events.broadcastNew, () => { received += 1; });
 
       const player = await request(baseUrl).post('/api/players').send({ name: 'Realtime Test Player 2' });
-      await request(baseUrl)
+      assert.equal(player.status, 201);
+      const sent = await request(baseUrl)
         .post('/api/broadcasts')
         .send({ playerId: player.body.id, message: 'Zweite Durchsage' });
+      assert.equal(sent.status, 201);
 
-      const [payloadA, payloadB] = (await Promise.all([receivedA, receivedB])) as Array<{ message: string }>;
-      assert.equal(payloadA.message, 'Zweite Durchsage');
-      assert.equal(payloadB.message, 'Zweite Durchsage');
+      // The HTTP response is produced after the route has finished. Give any
+      // accidentally queued Socket.IO packets one event-loop turn to arrive.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal(received, 0);
     } finally {
       clientA.close();
       clientB.close();

@@ -1738,6 +1738,9 @@ test('Durchsage: notification center can navigate, mark read and remove without 
     data: { playerId: myId, message: 'Läuft automatisch ab', endsAt: Date.now() + 2000 },
   });
   assert.equal(expiring.status(), 201);
+  // APIRequestContext bypasses the sending browser. Phase 5c intentionally
+  // has no delivery signal, so model the browser's explicit REST refresh.
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:notifications-refresh')));
   await page.waitForSelector('#notification-highlight:has-text("Läuft automatisch ab")');
   await page.waitForSelector('#notification-highlight', { state: 'hidden', timeout: 5000 });
 });
