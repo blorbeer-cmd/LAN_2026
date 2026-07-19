@@ -568,6 +568,52 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.waitForFunction(() => !document.querySelector('.badge-paused'));
 });
 
+test('Vote: game-limit selection survives an unrelated re-render and select-all/none ignore prior manual state', async () => {
+  // Regression test: the "Nur bestimmte Spiele zur Wahl stellen" panel and
+  // its checkboxes used to live only in the DOM with no persisted JS state.
+  // A votes:changed/preferences:changed socket event re-renders this whole
+  // view from scratch whenever *anyone* interacts with voting elsewhere —
+  // that silently collapsed the panel and cleared manual deselections.
+  // `respawn:rerender` is the same generic re-render signal the app itself
+  // dispatches; firing it here simulates that unrelated event without
+  // needing a second browser context.
+  await page.click('[data-view="votes"]');
+  await page.waitForSelector('#votes-start');
+  await page.click('#votes-limit-games');
+  await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
+  const voteGameCheckboxes = page.locator('[data-vote-game-checkbox]');
+  const voteGameCount = await voteGameCheckboxes.count();
+  assert.ok(voteGameCount >= 2, 'test fixture must ship at least two games');
+  await voteGameCheckboxes.nth(0).uncheck();
+  await voteGameCheckboxes.nth(1).uncheck();
+
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:rerender')));
+
+  await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
+  assert.equal(await page.locator('#votes-limit-games').isChecked(), true, 'the filter checkbox itself must stay checked');
+  assert.equal(await voteGameCheckboxes.nth(0).isChecked(), false, 'a manual deselection must survive an unrelated re-render');
+  assert.equal(await voteGameCheckboxes.nth(1).isChecked(), false);
+
+  // The previous single toggle button computed its action from whether
+  // *all* boxes were checked, so clicking it in this exact mixed state
+  // (2 unchecked, rest checked) re-checked everything instead of clearing
+  // the rest. The two dedicated buttons must not depend on prior state.
+  await page.click('#votes-select-none');
+  assert.deepEqual(
+    await voteGameCheckboxes.evaluateAll((els) => els.map((el) => (el as HTMLInputElement).checked)),
+    Array(voteGameCount).fill(false)
+  );
+  await page.click('#votes-select-all');
+  assert.deepEqual(
+    await voteGameCheckboxes.evaluateAll((els) => els.map((el) => (el as HTMLInputElement).checked)),
+    Array(voteGameCount).fill(true)
+  );
+
+  // Restore the idle default so later tests in this file start clean.
+  await page.click('#votes-limit-games');
+  await page.waitForSelector('#votes-game-select-wrap[hidden]', { state: 'attached' });
+});
+
 test('matchmaking Historie marks a recorded draw as Unentschieden', async () => {
   await page.click('[data-view="matchmaking"]');
   await page.click('#mm-generate');
