@@ -599,7 +599,7 @@ textarea {
      but the scrollbar parks at the window's right edge instead of floating
      mid-screen at the column's edge on a wide display. */
   padding: var(--space-4) max(var(--space-4), calc((100% - var(--content-max-width)) / 2))
-    calc(var(--nav-height) + var(--space-6));
+    calc(var(--nav-height) + env(safe-area-inset-bottom) + var(--space-6));
   width: 100%;
 }
 /* Re-applied by switchView() on every tab change (and only there — realtime
@@ -1926,10 +1926,17 @@ button.draft-pool-player {
    never forces a scroll just to reach submit/cancel. Bounded by the card's
    own box (position:sticky's containing block), so it releases and scrolls
    away normally once that card is fully passed instead of covering
-   unrelated cards further down the page. */
+   unrelated cards further down the page.
+
+   bottom: 0, not the nav's height — .view-container's own bottom padding
+   (see above) already reserves exactly that much space (plus a space-6
+   gap) below the true end of the scrollable content, and a sticky
+   element's offset is resolved against that reserved edge. Re-adding the
+   nav height here double-counts it and parks the bar a full nav-height
+   too high, floating over mid-list rows with a dead gap above the nav. */
 .sticky-actions {
   position: sticky;
-  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom));
+  bottom: 0;
   z-index: 1;
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
