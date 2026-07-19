@@ -74,22 +74,44 @@ export function paypalPayUrl(paypalLink, cents) {
   return paypalLink;
 }
 
+// PayPal has no public URL that pre-fills a payment's recipient by email
+// (the old cmd=_send-money trick is long dead) — so an email address can't
+// become a one-tap payment link the way a paypal.me name can. The best we
+// can do is send people to PayPal's generic "send money" page and put the
+// address on the clipboard so they only have to paste it. The email is
+// tucked into the (otherwise unused by PayPal) recipient query param purely
+// so paypalEmailFromLink can recover it later for that clipboard copy.
+const PAYPAL_EMAIL_LINK_RE = /^https:\/\/www\.paypal\.com\/myaccount\/transfer\/homepage\/pay\?recipient=([^&]+)$/i;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// The email this order's PayPal link was built from, or null if the link
+// isn't one of ours (a paypal.me link or some other payment page).
+export function paypalEmailFromLink(paypalLink) {
+  const match = (paypalLink ?? '').match(PAYPAL_EMAIL_LINK_RE);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 // Lets people type just their paypal.me name ("blorbeer", "@blorbeer",
 // pasted "paypal.me/blorbeer" without a scheme, …) instead of having to
-// paste the whole https://paypal.me/… URL. A full http(s) link is passed
-// through untouched so anyone who prefers a different payment page can
-// still use it. Returns null for empty input; throws a user-facing message
-// for input that's neither a link nor a usable name.
+// paste the whole https://paypal.me/… URL, or their PayPal email address if
+// that's all they have (see paypalEmailFromLink for what that turns into).
+// A full http(s) link is passed through untouched so anyone who prefers a
+// different payment page can still use it. Returns null for empty input;
+// throws a user-facing message for input that's neither a link, an email,
+// nor a usable name.
 export function normalizePaypalInput(raw) {
   const trimmed = (raw ?? '').trim();
   if (!trimmed) return null;
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (EMAIL_RE.test(trimmed)) {
+    return `https://www.paypal.com/myaccount/transfer/homepage/pay?recipient=${encodeURIComponent(trimmed)}`;
+  }
   const name = trimmed
     .replace(/^@/, '')
     .replace(/^(www\.)?paypal\.me\//i, '')
     .replace(/\/+$/, '');
   if (!name || /\s/.test(name)) {
-    throw new Error('PayPal-Link muss eine gültige URL oder ein PayPal.me-Name ohne Leerzeichen sein.');
+    throw new Error('PayPal-Link muss eine gültige URL, E-Mail-Adresse oder ein PayPal.me-Name ohne Leerzeichen sein.');
   }
   return `https://paypal.me/${name}`;
 }
@@ -181,6 +203,7 @@ function renderPaymentSelector(order) {
   const rawCents = selectedItems.reduce((sum, i) => sum + (i.priceCents ?? 0) * (i.quantity ?? 1), 0);
   const tipPercent = order.tipPercent || 0;
   const payableCents = allPriced ? Math.round(rawCents * (1 + tipPercent / 100)) : 0;
+  const email = paypalEmailFromLink(order.paypalLink);
   const amountLabel = allPriced
     ? `${formatCents(payableCents)}${tipPercent > 0 ? ` (inkl. ${tipPercent}% Trinkgeld)` : ''}`
     : 'Preis unvollständig – Betrag manuell eingeben';
@@ -188,7 +211,13 @@ function renderPaymentSelector(order) {
   return `
     <div class="row-between food-order-payment-selector">
       <span class="muted">${selectedItems.length} ${selectedItems.length === 1 ? 'Position' : 'Positionen'} ausgewählt · ${amountLabel}</span>
-      <a class="btn btn-sm btn-primary" href="${escapeHtml(paypalPayUrl(order.paypalLink, payableCents))}" target="_blank" rel="noopener">Bezahlen</a>
+      <a
+        class="btn btn-sm btn-primary"
+        href="${escapeHtml(paypalPayUrl(order.paypalLink, payableCents))}"
+        target="_blank"
+        rel="noopener"
+        ${email ? `data-copy-paypal-email="${escapeHtml(email)}" title="Öffnet PayPal und kopiert ${escapeHtml(email)} zum Einfügen."` : ''}
+      >${email ? 'PayPal öffnen' : 'Bezahlen'}</a>
     </div>`;
 }
 
@@ -210,7 +239,20 @@ function renderDetails(order, { locked = false } = {}) {
       </div>
       ${order.notes ? `<div class="muted" style="font-size:var(--font-size-sm);white-space:pre-wrap;word-break:break-word;">${escapeHtml(order.notes)}</div>` : ''}
       ${order.link ? `<a href="${escapeHtml(order.link)}" target="_blank" rel="noopener" style="font-size:var(--font-size-sm);">Link öffnen</a>` : ''}
-      ${order.paypalLink ? `<a href="${escapeHtml(order.paypalLink)}" target="_blank" rel="noopener" style="font-size:var(--font-size-sm);">PayPal öffnen</a>` : ''}
+      ${
+        order.paypalLink
+          ? (() => {
+              const email = paypalEmailFromLink(order.paypalLink);
+              return `<a
+                href="${escapeHtml(order.paypalLink)}"
+                target="_blank"
+                rel="noopener"
+                style="font-size:var(--font-size-sm);"
+                ${email ? `data-copy-paypal-email="${escapeHtml(email)}" title="Öffnet PayPal und kopiert ${escapeHtml(email)} zum Einfügen."` : ''}
+              >PayPal öffnen</a>`;
+            })()
+          : ''
+      }
     </div>`;
 }
 
@@ -301,8 +343,11 @@ function openNewOrderForm(ctx, myId) {
           <input type="url" id="order-link" maxlength="300" placeholder="https://…" />
         </div>
         <div>
-          <label for="order-paypal" class="field-label">PayPal.me-Name oder -Link (optional)</label>
-          <input type="text" id="order-paypal" maxlength="300" placeholder="z.B. deinname oder https://paypal.me/deinname" />
+          <label for="order-paypal" class="field-label">PayPal.me-Name, E-Mail oder Link (optional)</label>
+          <input type="text" id="order-paypal" maxlength="300" placeholder="z.B. deinname, deine@mail.de oder https://paypal.me/deinname" />
+          <p class="muted" style="font-size:var(--font-size-xs);margin:var(--space-1) 0 0;">
+            Bei E-Mail-Adresse: Betrag lässt sich nicht vorausfüllen, die Adresse wird beim Öffnen kopiert.
+          </p>
         </div>
         <div>
           <label for="order-tip" class="field-label">Trinkgeld in % (optional)</label>
@@ -374,8 +419,11 @@ function openDetailsForm(ctx, order) {
           <input type="url" id="link-input" maxlength="300" placeholder="https://…" value="${escapeHtml(order.link ?? '')}" />
         </div>
         <div>
-          <label for="paypal-input" class="field-label">PayPal.me-Name oder -Link</label>
-          <input type="text" id="paypal-input" maxlength="300" placeholder="z.B. deinname oder https://paypal.me/deinname" value="${escapeHtml(order.paypalLink ?? '')}" />
+          <label for="paypal-input" class="field-label">PayPal.me-Name, E-Mail oder Link</label>
+          <input type="text" id="paypal-input" maxlength="300" placeholder="z.B. deinname, deine@mail.de oder https://paypal.me/deinname" value="${escapeHtml(paypalEmailFromLink(order.paypalLink) ?? order.paypalLink ?? '')}" />
+          <p class="muted" style="font-size:var(--font-size-xs);margin:var(--space-1) 0 0;">
+            Bei E-Mail-Adresse: Betrag lässt sich nicht vorausfüllen, die Adresse wird beim Öffnen kopiert.
+          </p>
         </div>
         <div>
           <label for="tip-input" class="field-label">Trinkgeld in %</label>
@@ -571,6 +619,19 @@ export function renderFoodOrders(container, ctx) {
       if (e.currentTarget.checked) selectedForPayment.add(itemId);
       else selectedForPayment.delete(itemId);
       ctx.rerender();
+    });
+  });
+
+  // PayPal has no link that pre-fills a recipient by email, so these links
+  // only open PayPal's generic "send money" page — copying the address here
+  // is what saves the actual step of typing it in by hand.
+  container.querySelectorAll('[data-copy-paypal-email]').forEach((a) => {
+    a.addEventListener('click', () => {
+      const email = a.dataset.copyPaypalEmail;
+      navigator.clipboard?.writeText(email).then(
+        () => showToast(`E-Mail-Adresse kopiert: ${email}`),
+        () => {}
+      );
     });
   });
 
