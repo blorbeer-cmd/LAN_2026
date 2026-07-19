@@ -148,7 +148,7 @@ test('legacy game_catalog tables are merged into games and preferences', () => {
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('historical test LANs are marked and food-order quantities default safely during upgrade', () => {
+test('historical test LANs are marked and food-order quantity/paid/finalized/paypal/tip columns default safely during upgrade', () => {
   const dbFile = makeTempDbPath('test-data-and-food-quantity');
   const now = Date.now();
   const fixture = new Database(dbFile);
@@ -176,6 +176,10 @@ test('historical test LANs are marked and food-order quantities default safely d
   fixture.prepare('INSERT INTO events (id, name, starts_at) VALUES (?, ?, ?)').run('e-real', 'Echte LAN 2020', now);
   fixture.prepare('INSERT INTO food_orders (id, event_id, title, created_by, created_at) VALUES (?, ?, ?, ?, ?)').run('o1', 'e-real', 'Pizza', 'p1', now);
   fixture.prepare('INSERT INTO food_order_items (id, order_id, player_id, description, price_cents, created_at) VALUES (?, ?, ?, ?, ?, ?)').run('i1', 'o1', 'p1', 'Margherita', 900, now);
+  // Pre-upgrade, closing an order WAS the terminal frozen state (today's
+  // "Geschlossen", not the new reopenable "Abgeschickt") — the migration
+  // must backfill finalized_at for it, not leave old history reopenable.
+  fixture.prepare('INSERT INTO food_orders (id, event_id, title, created_by, created_at, closed_at) VALUES (?, ?, ?, ?, ?, ?)').run('o2', 'e-real', 'Getränke', 'p1', now, now + 500);
   fixture.close();
 
   runMigrations(dbFile);
@@ -183,10 +187,27 @@ test('historical test LANs are marked and food-order quantities default safely d
   const migrated = new Database(dbFile, { readonly: true });
   const testEvent = migrated.prepare('SELECT is_test FROM events WHERE id = ?').get('e-test') as { is_test: number };
   const realEvent = migrated.prepare('SELECT is_test FROM events WHERE id = ?').get('e-real') as { is_test: number };
-  const item = migrated.prepare('SELECT quantity FROM food_order_items WHERE id = ?').get('i1') as { quantity: number };
+  const item = migrated.prepare('SELECT quantity, paid FROM food_order_items WHERE id = ?').get('i1') as {
+    quantity: number;
+    paid: number;
+  };
+  const order = migrated.prepare('SELECT finalized_at, paypal_link, tip_percent FROM food_orders WHERE id = ?').get('o1') as {
+    finalized_at: number | null;
+    paypal_link: string | null;
+    tip_percent: number | null;
+  };
   assert.equal(testEvent.is_test, 1);
   assert.equal(realEvent.is_test, 0);
   assert.equal(item.quantity, 1);
+  assert.equal(item.paid, 0);
+  assert.equal(order.finalized_at, null);
+  assert.equal(order.paypal_link, null);
+  assert.equal(order.tip_percent, null);
+  const closedOrder = migrated.prepare('SELECT closed_at, finalized_at FROM food_orders WHERE id = ?').get('o2') as {
+    closed_at: number;
+    finalized_at: number | null;
+  };
+  assert.equal(closedOrder.finalized_at, closedOrder.closed_at);
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
@@ -609,10 +630,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 41);
+  assert.equal(migrations.length, 44);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 41 }, (_, index) => index + 1),
+    Array.from({ length: 44 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {

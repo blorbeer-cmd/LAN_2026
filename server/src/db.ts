@@ -542,15 +542,18 @@ db.exec(`
   -- splitting the bill is the usual pain, but forcing prices would slow
   -- down the common "just write what you want" case.
   CREATE TABLE IF NOT EXISTS food_orders (
-    id         TEXT PRIMARY KEY,
-    event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-    title      TEXT NOT NULL,
-    created_by TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-    created_at INTEGER NOT NULL,
-    closed_at  INTEGER,
-    send_at    INTEGER, -- optional, editable: when the order will actually be placed/picked up
-    notes      TEXT,    -- optional, editable: free-text info (e.g. "bar zahlen", "Mindestbestellwert 15€")
-    link       TEXT     -- optional, editable: URL to the menu/delivery service
+    id           TEXT PRIMARY KEY,
+    event_id     TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    title        TEXT NOT NULL,
+    created_by   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    created_at   INTEGER NOT NULL,
+    closed_at    INTEGER,
+    finalized_at INTEGER, -- set by the creator/admin once closed; a terminal lock, never cleared
+    send_at      INTEGER, -- optional, editable: when the order will actually be placed/picked up
+    notes        TEXT,    -- optional, editable: free-text info (e.g. "bar zahlen", "Mindestbestellwert 15€")
+    link         TEXT,    -- optional, editable: URL to the menu/delivery service
+    paypal_link  TEXT,    -- optional, editable: PayPal(.me) link co-orderers pay their share to
+    tip_percent  INTEGER  -- optional, editable: 0-100, added on top of the paypal_link payment amount
   );
 
   CREATE TABLE IF NOT EXISTS food_order_items (
@@ -560,6 +563,7 @@ db.exec(`
     description TEXT NOT NULL,
     quantity    INTEGER NOT NULL DEFAULT 1,
     price_cents INTEGER,
+    paid        INTEGER NOT NULL DEFAULT 0,
     created_at  INTEGER NOT NULL
   );
 
@@ -2558,7 +2562,47 @@ function addTrackingConsentHistory(): void {
     insertEvent.run(nanoid(), now, row.event_id, row.player_id);
   }
 }
-runMigration({ version: 41, name: 'add historized tracking consents and fan-out contexts', up: addTrackingConsentHistory });
+runMigration({ version: 44, name: 'add historized tracking consents and fan-out contexts', up: addTrackingConsentHistory });
+
+// Lets whoever collects the money (the order's creator/an admin) check off
+// each item once that person has paid their share.
+function migrateFoodOrderItemPaidColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(food_order_items)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'paid')) return;
+  db.exec('ALTER TABLE food_order_items ADD COLUMN paid INTEGER NOT NULL DEFAULT 0');
+}
+runMigration({ version: 41, name: 'add food order item paid flag', up: migrateFoodOrderItemPaidColumn });
+
+// finalized_at lets the creator/admin permanently lock a closed order (no
+// more reopening, items or paid edits); paypal_link is the co-orderers'
+// "Bezahlen" target, edited the same way as notes/link.
+function migrateFoodOrderFinalizeAndPaypalColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(food_orders)').all() as Array<{ name: string }>;
+  const has = (name: string) => columns.some((c) => c.name === name);
+  if (!has('finalized_at')) {
+    db.exec('ALTER TABLE food_orders ADD COLUMN finalized_at INTEGER');
+    // Before this migration, closing an order WAS the terminal, frozen
+    // state (matches "Geschlossen" today, not the new reopenable
+    // "Abgeschickt") — backfill so existing closed history doesn't
+    // suddenly gain reopen/paid/edit controls it never had.
+    db.prepare('UPDATE food_orders SET finalized_at = closed_at WHERE closed_at IS NOT NULL').run();
+  }
+  if (!has('paypal_link')) db.exec('ALTER TABLE food_orders ADD COLUMN paypal_link TEXT');
+}
+runMigration({
+  version: 42,
+  name: 'add food order finalize and paypal link',
+  up: migrateFoodOrderFinalizeAndPaypalColumns,
+});
+
+// tip_percent: how much the creator wants added on top when co-orderers pay
+// via the PayPal link.
+function migrateFoodOrderTipPercentColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(food_orders)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'tip_percent')) return;
+  db.exec('ALTER TABLE food_orders ADD COLUMN tip_percent INTEGER');
+}
+runMigration({ version: 43, name: 'add food order tip percent', up: migrateFoodOrderTipPercentColumn });
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.
