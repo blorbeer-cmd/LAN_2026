@@ -597,24 +597,23 @@ export function renderVotes(container, ctx) {
       }
       submitBtn.disabled = true;
       try {
-        if (votes.mode === 'single') {
-          await api.votes.cast(playerId, draftSingleGameId);
-        } else {
-          await api.votes.castPoints(playerId, entries);
-        }
+        // Every vote mutation route returns the same fresh payload it
+        // broadcasts as 'votes:changed' (see routes/votes.ts) — patching
+        // state.votes from our own response and doing a plain, no-network
+        // rerender() is both cheaper than ctx.refresh()'s full loadAll() and
+        // more reliable than depending solely on the broadcast: if this
+        // client's own socket is disconnected/reconnecting right when the
+        // write lands, the broadcast never arrives, and nothing else would
+        // ever notice mineCacheKey went stale or reflect the new totalVoters
+        // count. Resetting mineCache/mineCacheKey and rendering in the same
+        // synchronous block also removes the race the previous ctx.refresh()
+        // fix here was papering over (that render vs. the broadcast's own,
+        // whichever ran first) — this is now the only render, run strictly
+        // after the reset, every time.
+        state.votes = votes.mode === 'single' ? await api.votes.cast(playerId, draftSingleGameId) : await api.votes.castPoints(playerId, entries);
         mineCache = null; // force a reload so the draft re-syncs with what the server now has
         mineCacheKey = null;
-        // Unlike start/close/cancel/runoff, this invalidation is NOT reflected
-        // in anything the 'votes:changed' broadcast payload carries (that
-        // broadcast only changes votes.round on start/close, not on a plain
-        // submit) — it is purely a local flag this client just reset. If the
-        // broadcast's own render already ran before this reset (a real race:
-        // both this handler and the socket listener are async, and the
-        // server can broadcast before this await even resolves), nothing else
-        // is left to notice mineCacheKey went stale, and the "Bewertung
-        // abgegeben" state never appears. ctx.refresh() guarantees a render
-        // strictly after this reset, closing that race.
-        await ctx.refresh();
+        ctx.rerender();
         showToast('Deine Stimme wurde gezählt.');
       } catch (err) {
         submitBtn.disabled = false;
@@ -662,13 +661,13 @@ export function renderVotes(container, ctx) {
         gameIds = checked;
       }
       try {
-        // No ctx.refresh() here: the server's 'votes:changed' broadcast this
-        // triggers (see app.js) already carries the fresh payload and
-        // rerenders this view for every connected client, including this
-        // one — a local ctx.refresh() on top of that fired a redundant
-        // second full loadAll() + render for the same change (see
-        // gameCatalog.js's skill slider for the identical fix).
-        await api.votes.start({ mode: 'points', title, info, gameIds });
+        // No ctx.refresh() (a full loadAll()): patch state.votes straight
+        // from our own response and do a plain rerender() instead — see the
+        // submit button above for why that's both cheaper and more reliable
+        // than depending solely on the 'votes:changed' broadcast this call
+        // also triggers for every other client.
+        state.votes = await api.votes.start({ mode: 'points', title, info, gameIds });
+        ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });
       }
@@ -682,11 +681,12 @@ export function renderVotes(container, ctx) {
       if (!lastClosed) return;
       try {
         // No ctx.refresh(): see the start button above.
-        await api.votes.start({
+        state.votes = await api.votes.start({
           mode: 'single',
           title: lastClosed.title ? `Stichwahl: ${lastClosed.title}` : 'Stichwahl',
           gameIds: lastClosed.winners.map((w) => w.gameId),
         });
+        ctx.rerender();
         showToast('Stichwahl gestartet.');
       } catch (err) {
         showToast(err.message, { error: true });
@@ -699,7 +699,8 @@ export function renderVotes(container, ctx) {
     closeBtn.addEventListener('click', async () => {
       try {
         // No ctx.refresh(): see the start button above.
-        await api.votes.close();
+        state.votes = await api.votes.close();
+        ctx.rerender();
         showToast('Abstimmung beendet.');
       } catch (err) {
         showToast(err.message, { error: true });
@@ -713,7 +714,8 @@ export function renderVotes(container, ctx) {
       if (!(await confirmDialog('Abstimmung wirklich abbrechen? Alle Stimmen gehen verloren.'))) return;
       try {
         // No ctx.refresh(): see the start button above.
-        await api.votes.cancel();
+        state.votes = await api.votes.cancel();
+        ctx.rerender();
         showToast('Abstimmung abgebrochen.');
       } catch (err) {
         showToast(err.message, { error: true });
