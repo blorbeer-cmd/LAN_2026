@@ -5,13 +5,14 @@
 // mitnehmen"-style request. Claiming is immediate and binding - no
 // confirmation step, same as a captain-draft pick.
 
-import { api } from '../api.js';
+import { api, GROUP_KEY } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { icon } from '../icons.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let tasksCache = null;
 let itemsCache = null;
@@ -192,15 +193,34 @@ function openRequestForm(ctx, myId) {
   );
 }
 
-function openTodoForm(ctx, myId) {
-  const playerOptions = state.players
+// state.players is the whole instance's roster, not the selected group's
+// membership - in required multi-group mode that would let an organizer
+// pick someone from a different group, and the create request 404s server-
+// side (activeGroupPlayers only accepts the current group's active
+// members). Group-scoped membership needs a real session, so this quietly
+// falls back to the global roster wherever that's unavailable (legacy mode
+// has no session at all, and there's only ever the one implicit group).
+async function assigneeCandidates() {
+  const groupId = sessionStorage.getItem(GROUP_KEY);
+  if (!groupId) return state.players;
+  try {
+    const members = await api.groups.members(groupId);
+    return members.map((m) => ({ id: m.playerId, name: m.name, color: m.color, avatar: m.avatar }));
+  } catch {
+    return state.players;
+  }
+}
+
+async function openTodoForm(ctx, myId) {
+  const candidates = await assigneeCandidates();
+  const playerOptions = candidates
     .filter((p) => p.id !== myId)
     .map(
       (p) => `
-      <label class="row checklist-assignee-option" style="gap:var(--space-2);">
+      <label class="check-row">
         <input type="checkbox" value="${p.id}" data-todo-assignee />
         ${avatarHtml(p, 20)}
-        <span>${escapeHtml(p.name)}</span>
+        <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
       </label>`,
     )
     .join('');
@@ -212,23 +232,41 @@ function openTodoForm(ctx, myId) {
         <input type="text" id="todo-title" maxlength="80" required autofocus placeholder="z.B. Mehrfachsteckdosen mitbringen" />
         <textarea id="todo-description" rows="2" maxlength="300" placeholder="Details (optional)"></textarea>
         <div>
-          <p class="field-label">Direkt zuweisen (optional)</p>
-          <p class="muted" style="font-size:var(--font-size-xs);margin:0 0 var(--space-2);">
-            Ohne Auswahl landet die Aufgabe offen im Pool, und alle können sie übernehmen.
-          </p>
-          <div class="stack" style="gap:var(--space-1);max-height:240px;overflow-y:auto;">${playerOptions}</div>
+          <div class="selection-toolbar">
+            <span class="field-label title-with-info">
+              Direkt zuweisen (optional)
+              ${infoTooltipHtml(
+                'checklist-assign-help',
+                'Direkt zuweisen',
+                'Ohne Auswahl landet die Aufgabe offen im Pool, und alle können sie übernehmen.',
+              )}
+            </span>
+            <button type="button" class="btn btn-sm" id="todo-select-all">Alle auswählen</button>
+            <button type="button" class="btn btn-sm" id="todo-select-none">Alle abwählen</button>
+          </div>
+          <div class="player-selection-grid tournament-player-grid">${playerOptions}</div>
         </div>
         <button type="submit" class="btn btn-primary btn-block">Aufgabe anlegen</button>
       </form>
     `,
     {
       onMount: (el) => {
+        wireInfoTooltips(el);
+        const assigneeCheckboxes = () => [...el.querySelectorAll('[data-todo-assignee]')];
+        el.querySelector('#todo-select-all').addEventListener('click', () => {
+          assigneeCheckboxes().forEach((checkbox) => (checkbox.checked = true));
+        });
+        el.querySelector('#todo-select-none').addEventListener('click', () => {
+          assigneeCheckboxes().forEach((checkbox) => (checkbox.checked = false));
+        });
         el.querySelector('#checklist-todo-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const title = el.querySelector('#todo-title').value.trim();
           if (!title) return;
           const description = el.querySelector('#todo-description').value.trim() || undefined;
-          const assigneePlayerIds = [...el.querySelectorAll('[data-todo-assignee]:checked')].map((c) => c.value);
+          const assigneePlayerIds = assigneeCheckboxes()
+            .filter((checkbox) => checkbox.checked)
+            .map((checkbox) => checkbox.value);
           try {
             await api.checklist.createTodo(myId, title, description, assigneePlayerIds.length ? assigneePlayerIds : undefined);
             close();
