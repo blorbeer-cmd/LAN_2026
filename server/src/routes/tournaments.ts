@@ -8,7 +8,7 @@ import { Router, type Request, type Response } from 'express';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { nanoid } from 'nanoid';
-import { db } from '../db';
+import { db, OUTSIDE_EVENTS_ID } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getTrackingEventId } from '../events';
 import { isNonEmptyString } from '../validation';
@@ -31,6 +31,7 @@ import {
 export const tournamentsRouter = Router();
 
 const FORMATS: TournamentFormat[] = ['single_elimination', 'round_robin', 'group_knockout'];
+const communicationEventId = (eventId: string): string | null => (eventId === OUTSIDE_EVENTS_ID ? null : eventId);
 
 interface TournamentRow {
   id: string;
@@ -521,7 +522,8 @@ tournamentsRouter.post('/', (req, res) => {
     allPlayerIds,
     { title: 'Neues Turnier', body: tournamentName, url: '/#tournaments' },
     'all',
-    { key: `tournament:${tournamentId}` }
+    { key: `tournament:${tournamentId}` },
+    { groupId: req.group!.id, eventId: communicationEventId(eventId) },
   );
   res.status(201).json(buildDetail(tournamentId, req.group!.id));
 });
@@ -780,7 +782,11 @@ function saveTournamentResult(req: Request, res: Response) {
     }
   });
   record();
-  resolvePushTopic(`tournament:${tournament.id}:match:${match.id}`);
+  const notificationScope = {
+    groupId: tournament.group_id!,
+    eventId: communicationEventId(tournament.event_id),
+  };
+  resolvePushTopic(`tournament:${tournament.id}:match:${match.id}`, false, notificationScope);
 
   // Looks up a match's two teams and, if both are known, sends the "your
   // match is up" push + returns the notify payload for the socket broadcast.
@@ -818,7 +824,8 @@ function saveTournamentResult(req: Request, res: Response) {
       matchNotify.playerIds,
       { title: 'Dein Match ist bereit', body: matchNotify.message, url: '/#tournaments' },
       'direct',
-      { key: `tournament:${tournament!.id}:match:${matchId}` }
+      { key: `tournament:${tournament!.id}:match:${matchId}` },
+      notificationScope,
     );
     return matchNotify;
   }
@@ -841,7 +848,8 @@ function saveTournamentResult(req: Request, res: Response) {
       playerIds,
       { title: 'K.O.-Runde steht', body: knockoutNotify.message, url: '/#tournaments' },
       'direct',
-      { key: `tournament:${tournament!.id}:stage:knockout` }
+      { key: `tournament:${tournament!.id}:stage:knockout` },
+      notificationScope,
     );
     return knockoutNotify;
   }
@@ -872,7 +880,7 @@ function saveTournamentResult(req: Request, res: Response) {
   const currentTournament = db.prepare('SELECT status FROM tournaments WHERE id = ?').get(tournament.id) as
     | { status: string }
     | undefined;
-  if (currentTournament?.status !== 'active') resolvePushTopic(`tournament:${tournament.id}`, true);
+  if (currentTournament?.status !== 'active') resolvePushTopic(`tournament:${tournament.id}`, true, notificationScope);
 
   broadcast(Events.tournamentsChanged, {
     type: notify ? (knockoutJustGenerated ? 'knockout_stage_started' : 'match_ready') : 'updated',
@@ -893,6 +901,9 @@ tournamentsRouter.put('/:id/matches/:matchId/result', saveTournamentResult);
 // are left untouched (match_id just goes stale, which is fine — they're
 // independent leaderboard history at that point).
 tournamentsRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
+  const tournament = db
+    .prepare('SELECT event_id FROM tournaments WHERE id = ? AND group_id = ?')
+    .get(req.params.id, req.group!.id) as { event_id: string } | undefined;
   const result = db.prepare('DELETE FROM tournaments WHERE id = ? AND group_id = ?').run(req.params.id, req.group!.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
   writeAdminAudit({
@@ -902,7 +913,10 @@ tournamentsRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthe
     targetType: 'tournament',
     targetId: req.params.id,
   });
-  resolvePushTopic(`tournament:${req.params.id}`, true);
+  resolvePushTopic(`tournament:${req.params.id}`, true, {
+    groupId: req.group!.id,
+    eventId: tournament ? communicationEventId(tournament.event_id) : null,
+  });
   broadcast(Events.tournamentsChanged, { type: 'deleted', tournamentId: req.params.id });
   res.status(204).end();
 });

@@ -157,8 +157,8 @@ test('DELETE /api/push/:id hides a notification only for that player', async () 
 
   const directId = 'push-hidden-not-recipient';
   db.prepare(
-    `INSERT INTO push_log (id, title, body, url, audience, player_ids, created_at)
-     VALUES (?, 'Direkt', 'Nur für den anderen Spieler', NULL, 'direct', ?, ?)`,
+    `INSERT INTO push_log (id, group_id, event_id, title, body, url, audience, player_ids, created_at)
+     VALUES (?, 'default-group', NULL, 'Direkt', 'Nur für den anderen Spieler', NULL, 'direct', ?, ?)`,
   ).run(directId, JSON.stringify([other.body.id]), Date.now());
   assert.equal((await request(app).delete(`/api/push/${directId}`).send({ playerId })).status, 403);
 

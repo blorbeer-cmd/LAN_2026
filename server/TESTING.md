@@ -52,6 +52,10 @@ eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur d
 - Seating/Pings wird entsprechend in `src/test/api.groupSeatingPings.required.test.ts` geprüft:
   getrennte Gruppenraum-/Event-Historien, fremde Spieler- und Eventreferenzen, 403-Rollenpfade,
   bekannte Fremd-IDs sowie Datenbank-Trigger und -Foreign-Keys.
+- Organisation/Kommunikation liegt in
+  `src/test/api.groupOrganisationCommunication.required.test.ts`: Zwei Gruppen, Gruppenraum- und
+  Event-Empfänger, Broadcast-/Push-Historien, Infoboard-Rollen, Aggregationen, Event-Export,
+  Cross-Tenant-404s und der bewusst ausbleibende Web-Push-Transport werden gemeinsam geprüft.
 
 ## Datenbank-Migrationen
 

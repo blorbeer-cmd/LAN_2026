@@ -7,8 +7,9 @@
 
 import { nanoid } from 'nanoid';
 import webpush from 'web-push';
-import { db, getState, setState } from './db';
+import { db, DEFAULT_GROUP_ID, getState, setState } from './db';
 import { broadcast, Events } from './realtime';
+import { config } from './config';
 
 // Only recent entries matter (the Kiosk shows the latest one, the personal
 // notification center a short list) - trimmed on every insert so this never
@@ -74,7 +75,7 @@ export function removeSubscription(endpoint: string, playerId?: string): void {
   db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);
 }
 
-interface PushPayload {
+export interface PushPayload {
   title: string;
   body: string;
   url?: string;
@@ -98,6 +99,8 @@ export type PushAudience = 'all' | 'direct';
 
 interface PushLogEntry {
   id: string;
+  groupId: string;
+  eventId: string | null;
   title: string;
   body: string;
   url: string | null;
@@ -111,25 +114,29 @@ const ACTIVE_PUSH_SQL = 'resolved_at IS NULL AND (expires_at IS NULL OR expires_
 // Only 'all' (group-wide) entries — the Kiosk is the sole consumer, a
 // shared screen with no identity of its own, so a 'direct' one (e.g. "dein
 // Match ist bereit") would read as if it applied to everyone glancing at it.
-export function getLastPushLogEntry(): PushLogEntry | null {
+export function getLastPushLogEntry(groupId: string, eventId: string | null): PushLogEntry | null {
   const row = db
     .prepare(
-      `SELECT id, title, body, url, audience, expires_at AS expiresAt, created_at AS createdAt FROM push_log
-       WHERE audience = 'all' AND ${ACTIVE_PUSH_SQL} ORDER BY created_at DESC LIMIT 1`
+      `SELECT id, group_id AS groupId, event_id AS eventId, title, body, url, audience,
+              expires_at AS expiresAt, created_at AS createdAt
+       FROM push_log
+       WHERE group_id = ? AND event_id IS ? AND audience = 'all' AND ${ACTIVE_PUSH_SQL}
+       ORDER BY created_at DESC LIMIT 1`
     )
-    .get(Date.now()) as PushLogEntry | undefined;
+    .get(groupId, eventId, Date.now()) as PushLogEntry | undefined;
   return row ?? null;
 }
 
-// Legacy active-only query retained for the /current API and older clients,
-// scoped to the current player so direct notifications remain private.
-export function getCurrentPushLogEntryFor(playerId: string): PushLogEntry | null {
+// The app header needs the same active-only view as the shared Kiosk, but
+// scoped to the current player so direct match notifications remain private.
+export function getCurrentPushLogEntryFor(groupId: string, eventId: string | null, playerId: string): PushLogEntry | null {
   const rows = db
     .prepare(
-      `SELECT id, title, body, url, audience, player_ids AS playerIds, expires_at AS expiresAt,
+      `SELECT id, group_id AS groupId, event_id AS eventId, title, body, url, audience,
+              player_ids AS playerIds, expires_at AS expiresAt,
               created_at AS createdAt
        FROM push_log
-       WHERE ${ACTIVE_PUSH_SQL}
+       WHERE group_id = ? AND event_id IS ? AND ${ACTIVE_PUSH_SQL}
          AND NOT EXISTS (
            SELECT 1 FROM push_log_seen
            WHERE push_log_seen.push_id = push_log.id AND push_log_seen.player_id = ?
@@ -140,7 +147,7 @@ export function getCurrentPushLogEntryFor(playerId: string): PushLogEntry | null
          )
        ORDER BY created_at DESC`
     )
-    .all(Date.now(), playerId, playerId) as Array<PushLogEntry & { playerIds: string | null }>;
+    .all(groupId, eventId, Date.now(), playerId, playerId) as Array<PushLogEntry & { playerIds: string }>;
   const row = rows.find(
     (entry) => entry.playerIds === null || (JSON.parse(entry.playerIds) as string[]).includes(playerId)
   );
@@ -152,9 +159,13 @@ export function getCurrentPushLogEntryFor(playerId: string): PushLogEntry | null
 export type MarkPushSeenResult = 'seen' | 'already_seen' | 'not_found' | 'not_recipient';
 export type HidePushResult = 'hidden' | 'already_hidden' | 'not_found' | 'not_recipient';
 
-function pushRecipientCheck(pushId: string, playerId: string): 'recipient' | 'not_found' | 'not_recipient' {
-  const row = db.prepare('SELECT player_ids AS playerIds FROM push_log WHERE id = ?').get(pushId) as
-    | { playerIds: string | null }
+function pushRecipientCheck(
+  groupId: string,
+  pushId: string,
+  playerId: string,
+): 'recipient' | 'not_found' | 'not_recipient' {
+  const row = db.prepare('SELECT player_ids AS playerIds FROM push_log WHERE id = ? AND group_id = ?').get(pushId, groupId) as
+    | { playerIds: string }
     | undefined;
   if (!row) return 'not_found';
   if (row.playerIds !== null && !(JSON.parse(row.playerIds) as string[]).includes(playerId)) return 'not_recipient';
@@ -163,8 +174,8 @@ function pushRecipientCheck(pushId: string, playerId: string): 'recipient' | 'no
 
 // Marks one entry as read for this player without removing it from the
 // notification center. Idempotence makes repeat taps harmless.
-export function markPushSeen(pushId: string, playerId: string): MarkPushSeenResult {
-  const recipient = pushRecipientCheck(pushId, playerId);
+export function markPushSeen(groupId: string, pushId: string, playerId: string): MarkPushSeenResult {
+  const recipient = pushRecipientCheck(groupId, pushId, playerId);
   if (recipient !== 'recipient') return recipient;
 
   const result = db
@@ -177,8 +188,8 @@ export function markPushSeen(pushId: string, playerId: string): MarkPushSeenResu
 
 // Removes one notification from one player's center. The shared row stays
 // available to every other recipient; repeated taps are idempotent.
-export function hidePushForPlayer(pushId: string, playerId: string): HidePushResult {
-  const recipient = pushRecipientCheck(pushId, playerId);
+export function hidePushForPlayer(groupId: string, pushId: string, playerId: string): HidePushResult {
+  const recipient = pushRecipientCheck(groupId, pushId, playerId);
   if (recipient !== 'recipient') return recipient;
 
   const result = db
@@ -189,15 +200,22 @@ export function hidePushForPlayer(pushId: string, playerId: string): HidePushRes
   return 'hidden';
 }
 
-function visiblePushIdsFor(playerId: string): Array<{ id: string; seen: boolean }> {
-  return getPushLogEntriesFor(playerId, PUSH_LOG_LIMIT).map((entry) => ({ id: entry.id, seen: entry.seen }));
+function visiblePushIdsFor(
+  groupId: string,
+  eventId: string | null,
+  playerId: string,
+): Array<{ id: string; seen: boolean }> {
+  return getPushLogEntriesFor(groupId, eventId, playerId, PUSH_LOG_LIMIT).map((entry) => ({
+    id: entry.id,
+    seen: entry.seen,
+  }));
 }
 
 // Bulk actions stay personal, just like their single-entry counterparts.
 // One transaction and one realtime signal avoid a burst of up to 50 writes
 // and socket refreshes when someone clears the whole center.
-export function markAllPushSeen(playerId: string): number {
-  const entries = visiblePushIdsFor(playerId).filter((entry) => !entry.seen);
+export function markAllPushSeen(groupId: string, eventId: string | null, playerId: string): number {
+  const entries = visiblePushIdsFor(groupId, eventId, playerId).filter((entry) => !entry.seen);
   if (entries.length === 0) return 0;
   const insert = db.prepare('INSERT OR IGNORE INTO push_log_seen (push_id, player_id, seen_at) VALUES (?, ?, ?)');
   const seenAt = Date.now();
@@ -208,8 +226,8 @@ export function markAllPushSeen(playerId: string): number {
   return changes;
 }
 
-export function hideAllPushForPlayer(playerId: string): number {
-  const entries = visiblePushIdsFor(playerId);
+export function hideAllPushForPlayer(groupId: string, eventId: string | null, playerId: string): number {
+  const entries = visiblePushIdsFor(groupId, eventId, playerId);
   if (entries.length === 0) return 0;
   const insert = db.prepare('INSERT OR IGNORE INTO push_log_hidden (push_id, player_id, hidden_at) VALUES (?, ?, ?)');
   const hiddenAt = Date.now();
@@ -226,23 +244,30 @@ export function hideAllPushForPlayer(playerId: string): number {
 // for everyone. The recipient-list JSON is parsed in JS rather than matched
 // in SQL — the log is hard-capped at PUSH_LOG_LIMIT rows, so there's nothing
 // to gain from a LIKE-based filter that can false-match id substrings.
-export function getPushLogEntriesFor(playerId: string, limit = 20): Array<PushLogEntry & { seen: boolean }> {
+export function getPushLogEntriesFor(
+  groupId: string,
+  eventId: string | null,
+  playerId: string,
+  limit = 20,
+): Array<PushLogEntry & { seen: boolean }> {
   const rows = db
     .prepare(
-      `SELECT id, title, body, url, audience, player_ids AS playerIds, expires_at AS expiresAt,
+      `SELECT id, group_id AS groupId, event_id AS eventId, title, body, url, audience,
+              player_ids AS playerIds, expires_at AS expiresAt,
               created_at AS createdAt,
               EXISTS (
                 SELECT 1 FROM push_log_seen
                 WHERE push_log_seen.push_id = push_log.id AND push_log_seen.player_id = ?
               ) AS seen
        FROM push_log
-       WHERE NOT EXISTS (
-         SELECT 1 FROM push_log_hidden
-         WHERE push_log_hidden.push_id = push_log.id AND push_log_hidden.player_id = ?
-       )
+       WHERE group_id = ? AND event_id IS ?
+         AND NOT EXISTS (
+           SELECT 1 FROM push_log_hidden
+           WHERE push_log_hidden.push_id = push_log.id AND push_log_hidden.player_id = ?
+         )
        ORDER BY created_at DESC`
     )
-    .all(playerId, playerId) as Array<PushLogEntry & { playerIds: string | null; seen: number }>;
+    .all(playerId, groupId, eventId, playerId) as Array<PushLogEntry & { playerIds: string; seen: number }>;
   return rows
     .filter((row) => row.playerIds === null || (JSON.parse(row.playerIds) as string[]).includes(playerId))
     .slice(0, limit)
@@ -256,25 +281,38 @@ function broadcastPushChanged(changes: number): void {
 // Resolving a topic only removes it from active banners; the notification
 // center keeps the original push as history. includeChildren handles
 // tournament-wide completion, where pending match/stage notifications end too.
-export function resolvePushTopic(topicKey: string, includeChildren = false): void {
+export function resolvePushTopic(
+  topicKey: string,
+  includeChildren = false,
+  scope: { groupId: string; eventId?: string | null } = { groupId: DEFAULT_GROUP_ID },
+  emitDeliveryEvent = true,
+): void {
   const now = Date.now();
   const result = includeChildren
     ? db
         .prepare(
           `UPDATE push_log SET resolved_at = ?
-           WHERE resolved_at IS NULL AND (topic_key = ? OR topic_key GLOB ?)`
+           WHERE group_id = ? AND event_id IS ? AND resolved_at IS NULL AND (topic_key = ? OR topic_key GLOB ?)`
         )
-        .run(now, topicKey, `${topicKey}:*`)
-    : db.prepare('UPDATE push_log SET resolved_at = ? WHERE resolved_at IS NULL AND topic_key = ?').run(now, topicKey);
-  broadcastPushChanged(result.changes);
+        .run(now, scope.groupId, scope.eventId ?? null, topicKey, `${topicKey}:*`)
+    : db
+        .prepare('UPDATE push_log SET resolved_at = ? WHERE group_id = ? AND event_id IS ? AND resolved_at IS NULL AND topic_key = ?')
+        .run(now, scope.groupId, scope.eventId ?? null, topicKey);
+  if (emitDeliveryEvent) broadcastPushChanged(result.changes);
 }
 
 // Food-order deadlines are editable. Keep the banner expiry synchronized
 // without rewriting the historical notification itself.
-export function updatePushTopicExpiry(topicKey: string, expiresAt: number | null): void {
+export function updatePushTopicExpiry(
+  topicKey: string,
+  expiresAt: number | null,
+  scope: { groupId: string; eventId?: string | null } = { groupId: DEFAULT_GROUP_ID },
+): void {
   const result = db
-    .prepare('UPDATE push_log SET expires_at = ? WHERE resolved_at IS NULL AND topic_key = ?')
-    .run(expiresAt, topicKey);
+    .prepare(
+      'UPDATE push_log SET expires_at = ? WHERE group_id = ? AND event_id IS ? AND resolved_at IS NULL AND topic_key = ?',
+    )
+    .run(expiresAt, scope.groupId, scope.eventId ?? null, topicKey);
   broadcastPushChanged(result.changes);
 }
 
@@ -287,40 +325,12 @@ export function notifyPlayers(
   playerIds: string[],
   payload: PushPayload,
   audience: PushAudience = 'all',
-  topic?: PushTopic
+  topic?: PushTopic,
+  scope: { groupId: string; eventId?: string | null } = { groupId: DEFAULT_GROUP_ID },
 ): void {
   if (playerIds.length === 0) return;
 
-  // Logged regardless of how many subscriptions actually exist: this is a
-  // record of "the app told these players something", for the Kiosk banner
-  // and notification center, not a delivery receipt.
-  const entry: PushLogEntry = {
-    id: nanoid(),
-    title: payload.title,
-    body: payload.body,
-    url: payload.url ?? null,
-    audience,
-    expiresAt: topic?.expiresAt ?? null,
-    createdAt: Date.now(),
-  };
-  db.prepare(
-    `INSERT INTO push_log
-       (id, title, body, url, audience, player_ids, topic_key, expires_at, resolved_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`
-  ).run(
-    entry.id,
-    entry.title,
-    entry.body,
-    entry.url,
-    entry.audience,
-    JSON.stringify(playerIds),
-    topic?.key ?? null,
-    entry.expiresAt,
-    entry.createdAt
-  );
-  db.prepare(
-    `DELETE FROM push_log WHERE id NOT IN (SELECT id FROM push_log ORDER BY created_at DESC LIMIT ${PUSH_LOG_LIMIT})`
-  ).run();
+  const entry = recordPushLog(playerIds, payload, audience, topic, scope);
   broadcast(Events.pushSent, entry);
 
   const placeholders = playerIds.map(() => '?').join(',');
@@ -336,11 +346,68 @@ export function notifyPlayers(
         if (err?.statusCode === 404 || err?.statusCode === 410) {
           removeSubscription(row.endpoint);
         }
-        // Any other failure (offline push service, transient error, ...) is
-        // swallowed: the in-app toast already covers the connected case,
-        // this is a best-effort bonus for the disconnected one.
       });
   }
+}
+
+// Persists the recipient definition and history only. Organisation routes use
+// this in Phase 5c so later delivery work can consume the data without this
+// cluster introducing Socket.IO, Web Push or kiosk side effects.
+export function recordPushLog(
+  playerIds: string[],
+  payload: PushPayload,
+  audience: PushAudience = 'all',
+  topic?: PushTopic,
+  scope: { groupId: string; eventId?: string | null } = { groupId: DEFAULT_GROUP_ID },
+): PushLogEntry {
+  if (config.authMode === 'legacy') {
+    const insertMembership = db.prepare(
+      `INSERT OR IGNORE INTO group_memberships
+         (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
+       VALUES (?, ?, 'member', 'active', ?, NULL, 1, NULL)`,
+    );
+    const now = Date.now();
+    for (const playerId of playerIds) insertMembership.run(scope.groupId, playerId, now);
+  }
+
+  // Logged regardless of how many subscriptions actually exist: this is a
+  // record of "the app told these players something", for the Kiosk banner
+  // and the Home feed, not a delivery receipt.
+  const entry: PushLogEntry = {
+    id: nanoid(),
+    groupId: scope.groupId,
+    eventId: scope.eventId ?? null,
+    title: payload.title,
+    body: payload.body,
+    url: payload.url ?? null,
+    audience,
+    expiresAt: topic?.expiresAt ?? null,
+    createdAt: Date.now(),
+  };
+  db.prepare(
+    `INSERT INTO push_log
+       (id, group_id, event_id, title, body, url, audience, player_ids, topic_key, expires_at, resolved_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`
+  ).run(
+    entry.id,
+    entry.groupId,
+    entry.eventId,
+    entry.title,
+    entry.body,
+    entry.url,
+    entry.audience,
+    JSON.stringify(playerIds),
+    topic?.key ?? null,
+    entry.expiresAt,
+    entry.createdAt
+  );
+  db.prepare(
+    `DELETE FROM push_log
+     WHERE group_id = ? AND id NOT IN (
+       SELECT id FROM push_log WHERE group_id = ? ORDER BY created_at DESC LIMIT ${PUSH_LOG_LIMIT}
+     )`,
+  ).run(entry.groupId, entry.groupId);
+  return entry;
 }
 
 // Arcade lobbies are intentionally in-memory. After a process restart none
