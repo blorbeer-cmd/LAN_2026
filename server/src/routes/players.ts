@@ -16,6 +16,7 @@ import { clearPlayerLiveStatus } from '../liveStatus';
 import { writeAdminAudit } from '../adminAudit';
 import { voidOutstandingInvites } from '../invites';
 import { activeGroupPlayers } from '../groupPlayers';
+import { activePlayerGroupIds } from '../groups';
 import { resolveGroupEventScope } from '../groupEventScope';
 import { config } from '../config';
 
@@ -158,7 +159,7 @@ playersRouter.post('/', requireConfiguredUser, (req, res) => {
     row.created_at,
   );
 
-  broadcast(Events.playersChanged, null);
+  broadcast(Events.playersChanged, null, { groupId: req.group!.id });
   res.status(201).json(row);
 });
 
@@ -261,7 +262,11 @@ playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   })();
   if (!update) return res.status(409).json({ error: 'Der letzte Admin kann seine Rolle nicht verlieren.' });
 
-  broadcast(Events.playersChanged, null);
+  // Profile changes are visible in every group the player belongs to, not
+  // only in the tab the request happened to come from.
+  for (const groupId of activePlayerGroupIds(existing.id)) {
+    broadcast(Events.playersChanged, null, { groupId });
+  }
   if (roleChanged) disconnectPlayerSockets(existing.id);
   res.json(
     toPrivatePlayer({
@@ -346,8 +351,12 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
     return res.status(409).json({ error: 'Der letzte aktive Owner einer Gruppe kann nicht deaktiviert werden.' });
   }
   disconnectPlayerSockets(target.id);
-  broadcast(Events.playersChanged, null);
-  broadcast(Events.liveStatusChanged, null);
+  // Memberships survive deactivation (only current access ends), so they
+  // still name every group whose roster and live board just changed.
+  for (const groupId of activePlayerGroupIds(target.id)) {
+    broadcast(Events.playersChanged, null, { groupId });
+    broadcast(Events.liveStatusChanged, null, { groupId });
+  }
   res.status(204).end();
 });
 
@@ -368,7 +377,9 @@ playersRouter.post('/:id/reactivate', requireAdmin, (req, res) => {
     targetType: 'player',
     targetId: req.params.id,
   });
-  broadcast(Events.playersChanged, null);
+  for (const groupId of activePlayerGroupIds(req.params.id)) {
+    broadcast(Events.playersChanged, null, { groupId });
+  }
   res.status(204).end();
 });
 
@@ -391,7 +402,9 @@ playersRouter.post('/:id/api-key/rotate', requireConfiguredUser, (req, res) => {
     targetType: 'player',
     targetId: target.id,
   });
-  broadcast(Events.liveStatusChanged, null);
+  for (const groupId of activePlayerGroupIds(target.id)) {
+    broadcast(Events.liveStatusChanged, null, { groupId });
+  }
   res.json({ apiKey });
 });
 
@@ -405,6 +418,9 @@ playersRouter.delete('/:id', requireAdmin, (req, res) => {
     { is_test: number } | undefined;
   if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   if (!target.is_test) return res.status(409).json({ error: 'Echte Spieler werden deaktiviert statt gelöscht.' });
+  // Resolved before the delete: afterwards the membership rows are gone and
+  // could no longer name the groups whose roster just lost this test player.
+  const affectedGroupIds = activePlayerGroupIds(req.params.id);
   const result = db.prepare('DELETE FROM players WHERE id = ?').run(req.params.id);
   if (result.changes === 0) {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
@@ -416,7 +432,9 @@ playersRouter.delete('/:id', requireAdmin, (req, res) => {
     targetType: 'player',
     targetId: req.params.id,
   });
-  broadcast(Events.playersChanged, null);
+  for (const groupId of affectedGroupIds) {
+    broadcast(Events.playersChanged, null, { groupId });
+  }
   res.status(204).end();
 });
 

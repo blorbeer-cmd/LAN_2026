@@ -249,7 +249,7 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   }
 
   const state = buildState(row);
-  broadcast(Events.draftChanged, { ...state, started: true });
+  broadcast(Events.draftChanged, { ...state, started: true }, { groupId: req.group!.id });
 
   // The captains need to show up and pick; everyone else gets to watch.
   notifyPlayers(
@@ -362,7 +362,7 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
   }
   if (completed) resolvePushTopic(`draft:${row.id}`, false, { groupId, eventId: row.event_id });
 
-  broadcast(Events.draftChanged, { ...state, completed });
+  broadcast(Events.draftChanged, { ...state, completed }, { groupId: req.group!.id });
   res.json(state);
 });
 
@@ -374,6 +374,6 @@ draftRouter.post('/cancel', requireGroupRole('admin'), (req, res) => {
   db.prepare("UPDATE drafts SET status = 'cancelled' WHERE id = ? AND group_id = ?").run(row.id, req.group!.id);
   resolvePushTopic(`draft:${row.id}`, false, { groupId: req.group!.id, eventId: row.event_id });
   const state = buildState({ ...row, status: 'cancelled' });
-  broadcast(Events.draftChanged, state);
+  broadcast(Events.draftChanged, state, { groupId: req.group!.id });
   res.json(state);
 });

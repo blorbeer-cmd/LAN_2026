@@ -188,7 +188,7 @@ arrivalsRouter.put('/mine', ...withBodyPlayerIdentity, (req, res) => {
        updated_at = excluded.updated_at`
   ).run(eventId, playerId, parsedArrival, parsedDeparture, parsedNote, Date.now());
 
-  broadcast(Events.arrivalsChanged, null);
+  broadcast(Events.arrivalsChanged, null, { groupId: req.group!.id });
   res.json(buildList());
 });
 
@@ -228,7 +228,7 @@ arrivalsRouter.post('/carpools', ...withBodyPlayerIdentity, (req, res) => {
   });
   create();
 
-  broadcast(Events.arrivalsChanged, null);
+  broadcast(Events.arrivalsChanged, null, { groupId: req.group!.id });
   res.status(201).json(serializeCarpool(getCarpool(id)!));
 });
 
@@ -265,7 +265,7 @@ arrivalsRouter.patch('/carpools/:id', ...withBodyPlayerIdentity, (req, res) => {
     `UPDATE carpools SET label = ?, start_at = ?, start_location = ?, eta_at = ?, seats_total = ? WHERE id = ?`
   ).run(label !== undefined ? label.trim() : carpool.label, parsedStartAt, parsedStartLocation, parsedEtaAt, parsedSeats, carpool.id);
 
-  broadcast(Events.arrivalsChanged, null);
+  broadcast(Events.arrivalsChanged, null, { groupId: req.group!.id });
   res.json(serializeCarpool(getCarpool(carpool.id)!));
 });
 
@@ -282,7 +282,7 @@ arrivalsRouter.post('/carpools/:id/join', ...withBodyPlayerIdentity, (req, res) 
   }
 
   db.prepare('INSERT OR IGNORE INTO carpool_members (carpool_id, player_id) VALUES (?, ?)').run(carpool.id, playerId);
-  broadcast(Events.arrivalsChanged, null);
+  broadcast(Events.arrivalsChanged, null, { groupId: req.group!.id });
   res.json(serializeCarpool(carpool));
 });
 
@@ -303,7 +303,7 @@ arrivalsRouter.post('/carpools/:id/leave', ...withBodyPlayerIdentity, (req, res)
   });
   const remaining = leave();
 
-  broadcast(Events.arrivalsChanged, null);
+  broadcast(Events.arrivalsChanged, null, { groupId: req.group!.id });
   if (remaining === 0) return res.status(204).end();
   res.json(serializeCarpool(carpool));
 });
@@ -318,6 +318,6 @@ arrivalsRouter.delete('/carpools/:id', ...withBodyPlayerIdentity, (req, res) => 
   }
 
   db.prepare('DELETE FROM carpools WHERE id = ?').run(carpool.id);
-  broadcast(Events.arrivalsChanged, null);
+  broadcast(Events.arrivalsChanged, null, { groupId: req.group!.id });
   res.status(204).end();
 });

@@ -168,15 +168,18 @@ export function getLiveBoard(groupId: string): LiveBoardEntry[] {
 // would never get an ended_at. Closes sessions at last_seen (the last
 // confirmed real timestamp), not "now", since the game may have stopped
 // running well before we noticed.
-export function closeStaleSessions(now: number): void {
-  const legacyStale = db.prepare(`SELECT lsg.player_id, lsg.game_id, ls.last_seen FROM live_status_games lsg JOIN live_status ls ON ls.player_id = lsg.player_id WHERE ? - ls.last_seen > ?`).all(now, config.offlineTimeoutMs) as Array<{player_id:string;game_id:string;last_seen:number}>;
+export function closeStaleSessions(now: number): Set<string> {
+  const sweptGroupIds = new Set<string>();
+  const legacyStale = db.prepare(`SELECT lsg.player_id, lsg.game_id, lsg.group_id, ls.last_seen FROM live_status_games lsg JOIN live_status ls ON ls.player_id = lsg.player_id WHERE ? - ls.last_seen > ?`).all(now, config.offlineTimeoutMs) as Array<{player_id:string;game_id:string;group_id:string;last_seen:number}>;
   for (const row of legacyStale) {
     db.prepare('DELETE FROM live_status_games WHERE player_id = ? AND game_id = ?').run(row.player_id, row.game_id);
     db.prepare('UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND game_id = ? AND ended_at IS NULL').run(row.last_seen, row.player_id, row.game_id);
+    sweptGroupIds.add(row.group_id ?? DEFAULT_GROUP_ID);
   }
   const stale = db
     .prepare(
-      `SELECT lsg.player_id AS player_id, lsg.game_id AS game_id, ls.last_seen AS last_seen
+      `SELECT lsg.player_id AS player_id, lsg.group_id AS group_id, lsg.event_id AS event_id,
+              lsg.game_id AS game_id, ls.last_seen AS last_seen
        FROM tracking_live_games lsg
        JOIN tracking_live_contexts ls ON ls.player_id = lsg.player_id
         AND ls.group_id = lsg.group_id AND ls.event_id IS lsg.event_id
@@ -184,7 +187,7 @@ export function closeStaleSessions(now: number): void {
     )
     .all(now, config.offlineTimeoutMs) as Array<{ player_id: string; group_id: string; event_id: string | null; game_id: string; last_seen: number }>;
 
-  if (stale.length === 0) return;
+  if (stale.length === 0) return sweptGroupIds;
 
   const cleanup = db.transaction(() => {
     for (const row of stale) {
@@ -198,9 +201,11 @@ export function closeStaleSessions(now: number): void {
         `UPDATE play_sessions SET ended_at = ?
          WHERE player_id = ? AND group_id = ? AND event_id = COALESCE(?, 'outside-events') AND game_id = ? AND ended_at IS NULL`
       ).run(row.last_seen, row.player_id, row.group_id, row.event_id, row.game_id);
+      sweptGroupIds.add(row.group_id);
     }
   });
   cleanup();
+  return sweptGroupIds;
 }
 
 // One sweep pass: closes stale sessions and re-broadcasts the board. Split
@@ -208,11 +213,21 @@ export function closeStaleSessions(now: number): void {
 // without waiting on a real timer.
 export function sweepOnce(now: number = Date.now()): void {
   try {
-    closeStaleSessions(now);
-    // Broadcasts the migrated default group's board globally — correct as
-    // long as MULTI_GROUPS_ENABLED stays off (the only functionally active
-    // group). Genuine per-group broadcasting needs Socket-Rooms (Phase 5e).
-    broadcast(Events.liveStatusChanged, getLiveBoard(DEFAULT_GROUP_ID), { groupId: DEFAULT_GROUP_ID });
+    const sweptGroupIds = closeStaleSessions(now);
+    // Every group that currently carries live rows (or just had stale rows
+    // closed) gets its own refreshed board, each under its own group scope.
+    // The default group is always included: legacy live_status rows carry no
+    // group, and its board is the one every legacy client renders.
+    const groupIds = new Set<string>([DEFAULT_GROUP_ID, ...sweptGroupIds]);
+    for (const row of db.prepare('SELECT DISTINCT group_id AS id FROM tracking_live_contexts').all() as Array<{ id: string }>) {
+      groupIds.add(row.id);
+    }
+    for (const row of db.prepare('SELECT DISTINCT group_id AS id FROM tracking_live_games').all() as Array<{ id: string }>) {
+      groupIds.add(row.id);
+    }
+    for (const groupId of groupIds) {
+      broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+    }
   } catch (err) {
     // Never let a sweep error take down the timer/process.
     // eslint-disable-next-line no-console

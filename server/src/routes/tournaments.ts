@@ -517,7 +517,7 @@ tournamentsRouter.post('/', (req, res) => {
       playerIds: allPlayerIds,
       message: `Neues Turnier: ${tournamentName}`,
     },
-  });
+  }, { groupId: req.group!.id });
   notifyPlayers(
     allPlayerIds,
     { title: 'Neues Turnier', body: tournamentName, url: '/#tournaments' },
@@ -874,7 +874,7 @@ function saveTournamentResult(req: Request, res: Response) {
       tournamentName: tournament.name,
       gameId: tournament.game_id,
       notify: roundNotify,
-    });
+    }, { groupId: req.group!.id });
   }
 
   const currentTournament = db.prepare('SELECT status FROM tournaments WHERE id = ?').get(tournament.id) as
@@ -888,8 +888,8 @@ function saveTournamentResult(req: Request, res: Response) {
     tournamentName: tournament.name,
     gameId: tournament.game_id,
     ...(notify ? { notify } : {}),
-  });
-  broadcast(Events.leaderboardChanged, null);
+  }, { groupId: req.group!.id });
+  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id });
   res.json(buildDetail(tournament.id, req.group!.id));
 }
 
@@ -917,6 +917,6 @@ tournamentsRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthe
     groupId: req.group!.id,
     eventId: tournament ? communicationEventId(tournament.event_id) : null,
   });
-  broadcast(Events.tournamentsChanged, { type: 'deleted', tournamentId: req.params.id });
+  broadcast(Events.tournamentsChanged, { type: 'deleted', tournamentId: req.params.id }, { groupId: req.group!.id });
   res.status(204).end();
 });

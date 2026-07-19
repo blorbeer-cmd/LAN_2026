@@ -64,6 +64,12 @@ eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur d
   authentifizierte Verbindungen abonnieren verschiedene Gruppenräume und erhalten nur den jeweils
   aktuellen Gruppen-Emit. Kiosk-Token-Hashing, Scope und Widerruf werden zusätzlich in
   `src/test/kioskTokens.test.ts` geprüft.
+- Die Zustellmatrix des gescopten Broadcast-Modells liegt in
+  `src/test/realtime.delivery.required.test.ts`: Zwei-Gruppen-Isolation, default-deny für
+  unabonnierte Sockets, Kiosk-Token mit eigener und fremder Gruppe samt Event-Allowlist,
+  Mitgliedschaftsentzug und Gruppenwechsel bei offenem Socket, ungescopte Fach-Broadcasts sowie
+  das globale Instanz-Signal. Der Offline-Sweep über mehrere Gruppen wird in
+  `src/liveStatus.sweepOnce.test.ts` abgedeckt.
 
 ## Datenbank-Migrationen
 

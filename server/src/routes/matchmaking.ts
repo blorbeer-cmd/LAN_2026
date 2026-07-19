@@ -235,7 +235,7 @@ matchmakingRouter.post('/', (req, res) => {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt);
 
-  broadcast(Events.matchmakingGenerated, result);
+  broadcast(Events.matchmakingGenerated, result, { groupId: req.group!.id });
   res.json(result);
 });
 
@@ -309,7 +309,7 @@ matchmakingRouter.post('/rematch', (req, res) => {
      VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'rematch')`
   ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), result.generatedAt);
 
-  broadcast(Events.matchmakingGenerated, result);
+  broadcast(Events.matchmakingGenerated, result, { groupId: req.group!.id });
   res.json(result);
 });
 
@@ -482,6 +482,6 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
     .get(row.id) as DrawRow;
 
   const draw = parseDrawRow(updated);
-  broadcast(Events.matchmakingDrawsChanged, draw);
+  broadcast(Events.matchmakingDrawsChanged, draw, { groupId: req.group!.id });
   res.json(draw);
 });

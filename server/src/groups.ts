@@ -48,6 +48,22 @@ export function getGroupMembership(groupId: string, playerId: string): GroupMemb
     GroupMembershipRow | undefined;
 }
 
+// Fan-out targets for player-lifecycle broadcasts (deactivation, profile
+// changes, tracking pause): every non-archived group whose roster this player
+// belongs to. Legacy players without membership rows fall back to the default
+// group so their board still refreshes.
+export function activePlayerGroupIds(playerId: string): string[] {
+  const rows = db
+    .prepare(
+      `SELECT gm.group_id AS id
+       FROM group_memberships gm
+       JOIN groups g ON g.id = gm.group_id AND g.archived_at IS NULL
+       WHERE gm.player_id = ? AND gm.status = 'active'`,
+    )
+    .all(playerId) as Array<{ id: string }>;
+  return rows.length > 0 ? rows.map((row) => row.id) : [DEFAULT_GROUP_ID];
+}
+
 export function listGroupsForPlayer(
   playerId: string,
 ): Array<GroupRow & { role: GroupRole; outsideTrackingEnabled: boolean }> {

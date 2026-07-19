@@ -37,6 +37,50 @@ test('sweepOnce broadcasts the live board via io.emit', () => {
   setIo(null as any);
 });
 
+test('sweepOnce refreshes every group that carries live rows, each under its own scope', () => {
+  const emitted: Array<{ event: string; payload: unknown }> = [];
+  const fakeIo = { emit: (event: string, payload: unknown) => emitted.push({ event, payload }) };
+  setIo(fakeIo as any);
+
+  const groupA = nanoid();
+  const groupB = nanoid();
+  db.prepare('INSERT INTO groups (id, name, created_at) VALUES (?, ?, ?)').run(groupA, 'Sweep A', Date.now());
+  db.prepare('INSERT INTO groups (id, name, created_at) VALUES (?, ?, ?)').run(groupB, 'Sweep B', Date.now());
+  const playerA = nanoid();
+  const playerB = nanoid();
+  db.prepare('INSERT INTO players (id, name, color, api_key, created_at) VALUES (?, ?, ?, ?, ?)').run(
+    playerA,
+    'Sweep Player A',
+    '#abcdef',
+    nanoid(),
+    Date.now()
+  );
+  db.prepare('INSERT INTO players (id, name, color, api_key, created_at) VALUES (?, ?, ?, ?, ?)').run(
+    playerB,
+    'Sweep Player B',
+    '#abcdef',
+    nanoid(),
+    Date.now()
+  );
+  const now = Date.now();
+  db.prepare(
+    'INSERT INTO tracking_live_contexts (player_id, group_id, event_id, last_seen, activity_tracked) VALUES (?, ?, NULL, ?, 0)'
+  ).run(playerA, groupA, now);
+  db.prepare(
+    'INSERT INTO tracking_live_contexts (player_id, group_id, event_id, last_seen, activity_tracked) VALUES (?, ?, NULL, ?, 0)'
+  ).run(playerB, groupB, now);
+
+  try {
+    sweepOnce(now);
+    const liveEvents = emitted.filter((entry) => entry.event === 'live:changed');
+    // One board per group with live rows plus the always-included default group.
+    assert.equal(liveEvents.length, 3);
+  } finally {
+    db.prepare('DELETE FROM tracking_live_contexts WHERE player_id IN (?, ?)').run(playerA, playerB);
+    setIo(null as any);
+  }
+});
+
 test('sweepOnce swallows an error thrown while closing stale sessions', () => {
   const emitted: Array<{ event: string; payload: unknown }> = [];
   const fakeIo = { emit: (event: string, payload: unknown) => emitted.push({ event, payload }) };

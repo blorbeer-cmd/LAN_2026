@@ -289,10 +289,6 @@ export function getPushLogEntriesFor(
     .map(({ playerIds: _playerIds, seen, ...entry }) => ({ ...entry, seen: seen === 1 }));
 }
 
-function broadcastPushChanged(changes: number): void {
-  if (changes > 0) broadcast(Events.pushChanged, null);
-}
-
 // Resolving a topic only removes it from active banners; the notification
 // center keeps the original push as history. includeChildren handles
 // tournament-wide completion, where pending match/stage notifications end too.

@@ -98,7 +98,7 @@ skillsRouter.put('/', requireConfiguredUser, (req, res) => {
      ON CONFLICT(player_id, game_id) DO UPDATE SET rating = excluded.rating`
   ).run(playerId, gameId, req.group!.id, rating);
 
-  broadcast(Events.skillsChanged, null);
+  broadcast(Events.skillsChanged, null, { groupId: req.group!.id });
   res.json({ playerId, gameId, rating });
 });
 
@@ -113,6 +113,6 @@ skillsRouter.delete('/:playerId/:gameId', requireConfiguredUser, (req, res) => {
   if (result.changes === 0) {
     return res.status(404).json({ error: 'Rating nicht gefunden.' });
   }
-  broadcast(Events.skillsChanged, null);
+  broadcast(Events.skillsChanged, null, { groupId: req.group!.id });
   res.status(204).end();
 });

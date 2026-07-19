@@ -214,7 +214,7 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
       message: `Neue Sammelbestellung: ${row.title}${sendAtNote} – jetzt eintragen!`,
       excludePlayerId: playerId,
     },
-  });
+  }, { groupId: req.group!.id });
   const eventScope = communicationEventId(row.event_id);
   const allPlayerIds = communicationRecipientIds(req.group!.id, eventScope);
   notifyPlayers(
@@ -287,7 +287,7 @@ foodOrdersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
       eventId: communicationEventId(order.event_id),
     });
   }
-  broadcast(Events.foodOrdersChanged, null);
+  broadcast(Events.foodOrdersChanged, null, { groupId: req.group!.id });
   res.json(serializeOrder({ ...order, ...next }));
 });
 
@@ -325,7 +325,7 @@ foodOrdersRouter.post('/:id/items', ...withBodyPlayerIdentity, (req, res) => {
     'INSERT INTO food_order_items (id, order_id, player_id, description, quantity, price_cents, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ).run(nanoid(), order.id, playerId, description.trim(), quantity, priceCents ?? null, Date.now());
 
-  broadcast(Events.foodOrdersChanged, null);
+  broadcast(Events.foodOrdersChanged, null, { groupId: req.group!.id });
   res.status(201).json(serializeOrder(order));
 });
 
@@ -348,7 +348,7 @@ foodOrdersRouter.delete('/:id/items/:itemId', ...withBodyPlayerIdentity, (req, r
   }
 
   db.prepare('DELETE FROM food_order_items WHERE id = ?').run(item.id);
-  broadcast(Events.foodOrdersChanged, null);
+  broadcast(Events.foodOrdersChanged, null, { groupId: req.group!.id });
   res.json(serializeOrder(order));
 });
 
@@ -377,7 +377,7 @@ foodOrdersRouter.patch('/:id/items/:itemId', requireConfiguredUser, (req, res) =
   if (!item) return res.status(404).json({ error: 'Position nicht gefunden.' });
 
   db.prepare('UPDATE food_order_items SET paid = ? WHERE id = ?').run(paid ? 1 : 0, item.id);
-  broadcast(Events.foodOrdersChanged, null);
+  broadcast(Events.foodOrdersChanged, null, { groupId: req.group!.id });
   res.json(serializeOrder(order));
 });
 
@@ -400,7 +400,7 @@ foodOrdersRouter.post('/:id/close', requireConfiguredUser, (req, res) => {
     groupId: req.group!.id,
     eventId: communicationEventId(order.event_id),
   });
-  broadcast(Events.foodOrdersChanged, null);
+  broadcast(Events.foodOrdersChanged, null, { groupId: req.group!.id });
   res.json(serializeOrder({ ...order, closed_at: closedAt }));
 });
 
@@ -421,7 +421,7 @@ foodOrdersRouter.post('/:id/reopen', requireConfiguredUser, (req, res) => {
   }
 
   db.prepare('UPDATE food_orders SET closed_at = NULL WHERE id = ?').run(order.id);
-  broadcast(Events.foodOrdersChanged, null);
+  broadcast(Events.foodOrdersChanged, null, { groupId: req.group!.id });
   res.json(serializeOrder({ ...order, closed_at: null }));
 });
 
@@ -444,6 +444,6 @@ foodOrdersRouter.post('/:id/finalize', requireConfiguredUser, (req, res) => {
 
   const finalizedAt = Date.now();
   db.prepare('UPDATE food_orders SET finalized_at = ? WHERE id = ?').run(finalizedAt, order.id);
-  broadcast(Events.foodOrdersChanged, null);
+  broadcast(Events.foodOrdersChanged, null, { groupId: req.group!.id });
   res.json(serializeOrder({ ...order, finalized_at: finalizedAt }));
 });

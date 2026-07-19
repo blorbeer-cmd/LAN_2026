@@ -31,9 +31,9 @@ adminRouter.post('/test-users', requireAdmin, (req, res) => {
     targetType: 'test_user_batch',
     details: { count: created.length },
   });
-  broadcast(Events.playersChanged, null);
-  broadcast(Events.skillsChanged, null);
-  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
+  broadcast(Events.playersChanged, null, { groupId: req.group!.id });
+  broadcast(Events.skillsChanged, null, { groupId: req.group!.id });
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
   res.status(201).json({ created, totalTestUsers: countTestUsers() });
 });
 
@@ -46,9 +46,9 @@ adminRouter.post('/test-data/hall-of-fame', requireAdmin, (req, res) => {
   }
   try {
     const created = seedHallOfFameTestData();
-    broadcast(Events.eventsChanged, null);
-    broadcast(Events.leaderboardChanged, null);
-    broadcast(Events.tournamentsChanged, null);
+    broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+    broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id });
+    broadcast(Events.tournamentsChanged, null, { groupId: req.group!.id });
     res.status(201).json(created);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Hall-of-Fame-Testdaten konnten nicht angelegt werden.';
@@ -70,12 +70,12 @@ adminRouter.delete('/test-users', requireAdmin, requireRecentReauthentication, (
     details: { deletedPlayers, deletedEvents },
   });
   if (deletedPlayers > 0 || deletedEvents > 0) {
-    broadcast(Events.playersChanged, null);
-    broadcast(Events.skillsChanged, null);
-    broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
-    broadcast(Events.eventsChanged, null);
-    broadcast(Events.leaderboardChanged, null);
-    broadcast(Events.tournamentsChanged, null);
+    broadcast(Events.playersChanged, null, { groupId: req.group!.id });
+    broadcast(Events.skillsChanged, null, { groupId: req.group!.id });
+    broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
+    broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+    broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id });
+    broadcast(Events.tournamentsChanged, null, { groupId: req.group!.id });
   }
   // `deleted` remains for older clients; it historically meant players.
   res.json({ deleted: deletedPlayers, deletedPlayers, deletedEvents });

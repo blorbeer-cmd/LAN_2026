@@ -177,7 +177,7 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
     targetType: 'event',
     targetId: event.id,
   });
-  broadcast(Events.eventsChanged, null);
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
   res.status(201).json(serializeEvent(event));
 });
 
@@ -240,7 +240,7 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     targetType: 'event',
     targetId: req.params.id,
   });
-  broadcast(Events.eventsChanged, null);
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
   res.json(serializeEvent(updated));
 });
 
@@ -269,8 +269,8 @@ eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin')
     targetType: 'event',
     targetId: req.params.id,
   });
-  broadcast(Events.eventsChanged, null);
-  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
   res.json(serializeEvent(result.event));
 });
 
@@ -286,8 +286,8 @@ eventsRouter.post('/:id/tracking/stop', resolveEvent, requireGroupRole('admin'),
     targetType: 'event',
     targetId: req.params.id,
   });
-  broadcast(Events.eventsChanged, null);
-  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
   res.json(serializeEvent(updated));
 });
 
@@ -303,8 +303,8 @@ eventsRouter.post('/:id/end', resolveEvent, requireGroupRole('admin'), (req, res
     targetType: 'event',
     targetId: req.params.id,
   });
-  broadcast(Events.eventsChanged, null);
-  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
   res.json(serializeEvent(updated));
 });
 
@@ -355,8 +355,8 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
     targetId: req.params.id,
     details: { participantCount: uniqueIds.length },
   });
-  broadcast(Events.eventsChanged, null);
-  if (removedIds.length > 0) broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  if (removedIds.length > 0) broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
   res.json(serializeEvent(getEvent(req.params.id)));
 });
 
@@ -370,6 +370,6 @@ eventsRouter.delete('/:id', resolveEvent, requireGroupRole('admin'), requireRece
     targetType: 'event',
     targetId: req.params.id,
   });
-  broadcast(Events.eventsChanged, null);
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
   res.json(serializeEvent(cancelled));
 });

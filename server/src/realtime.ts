@@ -168,7 +168,12 @@ export function setIo(server: Server | null): void {
   authSessionSweep = setInterval(() => {
     for (const socket of server.sockets.sockets.values()) {
       const sessionId = socket.data.authSessionId;
-      if (typeof sessionId === 'string' && (!isSessionActive(sessionId) || !activeGroupMember(String(socket.data.groupId ?? ''), socket.data.authPlayerId))) {
+      const scopedGroupId = socket.data.groupId;
+      // A socket without a subscribed scope has nothing to revoke — only a
+      // dead session or a lost membership of the subscribed group disconnects.
+      const membershipLost =
+        typeof scopedGroupId === 'string' && !activeGroupMember(scopedGroupId, socket.data.authPlayerId);
+      if (typeof sessionId === 'string' && (!isSessionActive(sessionId) || membershipLost)) {
         socket.disconnect(true);
         continue;
       }
@@ -194,16 +199,63 @@ export function disconnectPlayerSockets(playerId: string, exceptSessionId?: stri
   }
 }
 
-// Broadcast an event to every connected client. Safe to call before io is set
-// (during early startup) — it simply no-ops.
-export function broadcast(event: string, payload: unknown, scope?: { groupId?: string | null; eventId?: string | null }): void {
+// Every fachliche Auslieferung carries an explicit, server-derived scope.
+// Callers pass the group of the validated request or loaded resource — never
+// unchecked client input.
+export interface BroadcastScope {
+  groupId: string;
+  eventId?: string | null;
+}
+
+// The shared kiosk screen is a read-only display without an identity. It only
+// ever receives the refresh signals its dashboard actually renders (mirroring
+// KIOSK_GET_PATHS on the REST side); everything else stays member-only even
+// inside the kiosk's own group.
+const KIOSK_DELIVERED_EVENTS = new Set<string>([
+  'live:changed',
+  'votes:changed',
+  'leaderboard:changed',
+  'tournaments:changed',
+  'matchmaking:generated',
+  'foodOrders:changed',
+  'push:sent',
+  'push:changed',
+]);
+
+// Deliberately global technical signals (see broadcastInstanceSignal). Fach-
+// events never belong here — add a name only when the signal must reach
+// clients that are, by definition, outside every deliverable group scope.
+const INSTANCE_SIGNAL_EVENTS = new Set<string>(['groups:changed']);
+
+// A fachlicher Broadcast without a group scope must never fall through to a
+// global emit and must never disappear silently: outside production it throws
+// (so tests and development catch the missing scope immediately), in
+// production it logs loudly and refuses delivery.
+function rejectUnscopedBroadcast(event: string): never | void {
+  const message = `[realtime] Broadcast "${event}" ohne Gruppen-Scope – Auslieferung verweigert.`;
+  // eslint-disable-next-line no-console
+  console.error(message);
+  if (process.env.NODE_ENV !== 'production') throw new Error(message);
+}
+
+// Broadcast a group-scoped event. Safe to call before io is set (during early
+// startup) — it simply no-ops.
+//
+// Empfängerregeln (default-deny):
+// - Legacy-Modus: die Installation ist ein einzelner Mandant ohne echte
+//   Gruppen-Sockets; jeder gescopte Broadcast geht an alle Clients.
+// - Required-Modus, normale Sockets: nur an Sockets, die genau diesen
+//   Gruppen-Scope abonniert haben UND deren aktive Mitgliedschaft (sowie ggf.
+//   Event-Teilnahme) unmittelbar vor der Auslieferung erneut bestätigt wurde.
+// - Required-Modus, Kiosk-Sockets: nur Events aus KIOSK_DELIVERED_EVENTS,
+//   nur für exakt den Gruppen-/Event-Scope des validierten Kiosk-Tokens.
+export function broadcast(event: string, payload: unknown, scope: BroadcastScope): void {
   if (!io) return;
-  const groupId = scope?.groupId ?? (payload && typeof payload === 'object' && typeof (payload as Record<string, unknown>).groupId === 'string'
-    ? (payload as Record<string, unknown>).groupId as string : null);
-  const eventId = scope?.eventId ?? (payload && typeof payload === 'object' && typeof (payload as Record<string, unknown>).eventId === 'string'
-    ? (payload as Record<string, unknown>).eventId as string : null);
-  if (!groupId) {
-    if (config.authMode === 'legacy') io.emit(event, payload);
+  const groupId = typeof scope?.groupId === 'string' && scope.groupId ? scope.groupId : null;
+  if (!groupId) return rejectUnscopedBroadcast(event);
+  const eventId = typeof scope.eventId === 'string' && scope.eventId ? scope.eventId : null;
+  if (config.authMode === 'legacy') {
+    io.emit(event, payload);
     return;
   }
   // Unit/test adapters may expose only the historical io.emit surface.
@@ -214,11 +266,35 @@ export function broadcast(event: string, payload: unknown, scope?: { groupId?: s
   // Socket.IO rooms are only a routing hint. Re-check the current membership
   // at delivery time so a revoke/group switch cannot leak a queued payload.
   for (const socket of io.sockets.sockets.values()) {
+    if (socket.data.kioskReadOnly) {
+      if (!KIOSK_DELIVERED_EVENTS.has(event)) continue;
+      if (socket.data.kioskGroupId !== groupId) continue;
+      if ((socket.data.kioskEventId ?? null) !== eventId) continue;
+      socket.emit(event, payload);
+      continue;
+    }
+    if (socket.data.groupId !== groupId) continue;
     if (!activeGroupMember(groupId, socket.data.authPlayerId)) continue;
     if (eventId && !activeEventParticipant(groupId, eventId, socket.data.authPlayerId)) continue;
-    if (socket.data.groupId !== groupId) continue;
     socket.emit(event, payload);
   }
+}
+
+// The deliberately named path for genuinely global technical signals: an
+// allowlisted event name and no payload (clients refetch their own,
+// authorization-filtered data). Used for membership-lifecycle refreshes that
+// must also reach clients who just lost (or have not yet gained) a group
+// scope — a group-scoped delivery could by definition never inform them.
+export function broadcastInstanceSignal(event: string): void {
+  if (!io) return;
+  if (!INSTANCE_SIGNAL_EVENTS.has(event)) {
+    const message = `[realtime] "${event}" ist kein freigegebenes globales Instanz-Signal.`;
+    // eslint-disable-next-line no-console
+    console.error(message);
+    if (process.env.NODE_ENV !== 'production') throw new Error(message);
+    return;
+  }
+  io.emit(event, null);
 }
 
 // Public, read-only stream for the shared kiosk. Callers must only pass
