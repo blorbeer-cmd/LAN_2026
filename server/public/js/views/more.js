@@ -16,6 +16,7 @@ const ITEMS = [
   { view: 'foodOrders', title: 'Essen' },
   { view: 'hallOfFame', title: 'Hall of Fame' },
   { view: 'infoBoard', title: 'Info' },
+  { view: 'music', title: 'Jam' },
   { view: 'players', title: 'Spieler' },
   { view: 'gameCatalog', title: 'Spiele' },
 ];

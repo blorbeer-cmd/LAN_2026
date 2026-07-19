@@ -34,6 +34,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY public ./public
 COPY agent-dist ./agent-dist
+COPY scripts/jam-controller.mjs ./scripts/jam-controller.mjs
 
 # node:24-bookworm-slim ships a non-root "node" user out of the box.
 RUN chown -R node:node /app

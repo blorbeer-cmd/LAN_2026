@@ -468,6 +468,25 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   results follow directly without another enclosing card or accent rail; player rows reuse
   `.leaderboard-list-grid` for the shared one-/two-column ranking presentation and spell out wins
   and losses in German.
+- **Jam sessions** — Jam is a grouped page below „Mehr“. A dedicated local controller on the
+  playback PC or kiosk Raspberry Pi connects Spotify through PKCE and never appears as a player.
+  The server stores neither Spotify application credentials nor OAuth tokens. One participant
+  starts a session on an explicitly selected playback device; this player is the host. All active
+  group members share pause, resume and skip controls and search the same
+  catalog and add any number of requests. Requests use stable full-width rows with artwork,
+  title, artist and requester instead of pills; their order is the shared queue order. The current
+  track is the most prominent nested surface, with progress and host controls directly attached.
+  Members can reorder two or more queued requests through native drag-and-drop or the equivalent
+  arrow controls. Respawn persists that order and replaces the active Spotify URI context at the
+  current playback position so the visible order also becomes the actual playback order.
+  The kiosk reuses a single compact full-width music bar below the fixed dashboard and shows current
+  track, progress and next request without exposing controls or Spotify credentials. The fixed
+  loopback redirect `http://127.0.0.1:43821/callback` makes controller setup independent of the
+  Respawn server URL. A short-lived pairing code replaces an existing controller; only its hashed
+  credential and public playback/queue metadata reach the server.
+  The setup card offers a generated portable controller ZIP instead of repository or `npm`
+  instructions. It contains prefilled server/pairing data and platform launchers for macOS,
+  Windows and Raspberry Pi/Linux; the launchers provision an isolated runtime on first use.
 - **Analytics** — All three tabs share the same event dropdown and show no additional date controls.
   Playtime and tournament data use the selected event directly; Arcade internally derives the
   event's date bounds because arcade results have no event assignment. The daily match chart is

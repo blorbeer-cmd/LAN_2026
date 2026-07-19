@@ -150,6 +150,7 @@ Die Branch-Seiten zeigen, über welche PRs ein Themenstrang in `main` eingefloss
 - [`codex/docker-prepare-fix`](branches/codex-docker-prepare-fix.md)
 - [`codex/fix-arcade-spectator-views`](branches/codex-fix-arcade-spectator-views.md)
 - [`codex/fix-scribble-watch-rerender`](branches/codex-fix-scribble-watch-rerender.md)
+- [`codex/spotify-music-session`](branches/codex-spotify-music-session.md)
 
 - [`claude/arcade-against-ai-admin-s55h89`](branches/claude-arcade-against-ai-admin-s55h89.md)
 - [`claude/arcade-all-open-lobbies-tptts0`](branches/claude-arcade-all-open-lobbies-tptts0.md)

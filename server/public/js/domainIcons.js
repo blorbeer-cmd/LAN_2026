@@ -23,6 +23,7 @@ export const DOMAIN_ICONS = Object.freeze({
   broadcast: 'megaphone',
   gameCatalog: 'gamepad',
   skill: 'activity',
+  music: 'music',
 });
 
 export function domainIcon(key, fallback = 'bell') {
