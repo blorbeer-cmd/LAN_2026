@@ -261,6 +261,7 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
     },
     'all',
     { key: `draft:${row.id}` },
+    { groupId, eventId: row.event_id },
   );
 
   res.status(201).json(state);
@@ -359,7 +360,7 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
       "INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source) VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'draft')",
     ).run(nanoid(), row.game_id, historyEventId, groupId, JSON.stringify(teamsSnapshot), now);
   }
-  if (completed) resolvePushTopic(`draft:${row.id}`);
+  if (completed) resolvePushTopic(`draft:${row.id}`, false, { groupId, eventId: row.event_id });
 
   broadcast(Events.draftChanged, { ...state, completed });
   res.json(state);
@@ -371,7 +372,7 @@ draftRouter.post('/cancel', requireGroupRole('admin'), (req, res) => {
   if (!row) return res.status(409).json({ error: 'Es läuft kein Draft.' });
 
   db.prepare("UPDATE drafts SET status = 'cancelled' WHERE id = ? AND group_id = ?").run(row.id, req.group!.id);
-  resolvePushTopic(`draft:${row.id}`);
+  resolvePushTopic(`draft:${row.id}`, false, { groupId: req.group!.id, eventId: row.event_id });
   const state = buildState({ ...row, status: 'cancelled' });
   broadcast(Events.draftChanged, state);
   res.json(state);

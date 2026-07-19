@@ -12,12 +12,13 @@
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { db } from '../db';
+import { db, OUTSIDE_EVENTS_ID } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getTrackingEventId } from '../events';
 import { isIntInRange, isNonEmptyString, isValidUrl } from '../validation';
 import { notifyPlayers, resolvePushTopic, updatePushTopicExpiry } from '../push';
 import { requireConfiguredUser, withBodyPlayerIdentity } from '../sessions';
+import { communicationRecipientIds } from '../communicationRecipients';
 
 export const foodOrdersRouter = Router();
 
@@ -28,6 +29,7 @@ const MAX_ITEM_QUANTITY = 99;
 const MAX_NOTES_LENGTH = 500;
 const MAX_LINK_LENGTH = 300;
 const HISTORY_LIMIT = 10;
+const communicationEventId = (eventId: string): string | null => (eventId === OUTSIDE_EVENTS_ID ? null : eventId);
 
 interface OrderRow {
   id: string;
@@ -213,7 +215,8 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
       excludePlayerId: playerId,
     },
   });
-  const allPlayerIds = (db.prepare('SELECT id FROM players').all() as Array<{ id: string }>).map((p) => p.id);
+  const eventScope = communicationEventId(row.event_id);
+  const allPlayerIds = communicationRecipientIds(req.group!.id, eventScope);
   notifyPlayers(
     allPlayerIds,
     {
@@ -222,7 +225,8 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
       url: '/#foodOrders',
     },
     'all',
-    { key: `food-order:${row.id}`, expiresAt: row.send_at }
+    { key: `food-order:${row.id}`, expiresAt: row.send_at },
+    { groupId: req.group!.id, eventId: eventScope },
   );
 
   res.status(201).json(serializeOrder(row));
@@ -277,7 +281,12 @@ foodOrdersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
     next.tip_percent,
     order.id
   );
-  if (sendAt !== undefined) updatePushTopicExpiry(`food-order:${order.id}`, next.send_at);
+  if (sendAt !== undefined) {
+    updatePushTopicExpiry(`food-order:${order.id}`, next.send_at, {
+      groupId: req.group!.id,
+      eventId: communicationEventId(order.event_id),
+    });
+  }
   broadcast(Events.foodOrdersChanged, null);
   res.json(serializeOrder({ ...order, ...next }));
 });
@@ -387,7 +396,10 @@ foodOrdersRouter.post('/:id/close', requireConfiguredUser, (req, res) => {
 
   const closedAt = Date.now();
   db.prepare('UPDATE food_orders SET closed_at = ? WHERE id = ?').run(closedAt, order.id);
-  resolvePushTopic(`food-order:${order.id}`);
+  resolvePushTopic(`food-order:${order.id}`, false, {
+    groupId: req.group!.id,
+    eventId: communicationEventId(order.event_id),
+  });
   broadcast(Events.foodOrdersChanged, null);
   res.json(serializeOrder({ ...order, closed_at: closedAt }));
 });

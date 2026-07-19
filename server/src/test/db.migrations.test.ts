@@ -568,10 +568,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 41);
+  assert.equal(migrations.length, 42);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 41 }, (_, index) => index + 1),
+    Array.from({ length: 42 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -781,6 +781,79 @@ test('migration 35 preserves legacy ping rows as scoped history', () => {
       .get('legacy-ping'),
     { group_id: 'default-group', player_name_snapshot: 'Legacy Ping Friend' },
   );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 39 preserves legacy communication rows in the default group', () => {
+  const dbFile = makeTempDbPath('legacy-communications');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = OFF');
+  fixture.exec(`
+    DELETE FROM schema_migrations WHERE version = 39;
+    DROP TABLE push_log_hidden;
+    DROP TABLE push_log_seen;
+    DROP TABLE push_log;
+    DROP TABLE broadcasts;
+    DROP TABLE info_entries;
+    CREATE TABLE broadcasts (
+      id TEXT PRIMARY KEY, player_id TEXT NOT NULL, message TEXT NOT NULL,
+      ends_at INTEGER NOT NULL, ended_at INTEGER, created_at INTEGER NOT NULL
+    );
+    CREATE TABLE push_log (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, url TEXT,
+      audience TEXT NOT NULL DEFAULT 'all', player_ids TEXT, topic_key TEXT,
+      expires_at INTEGER, resolved_at INTEGER, created_at INTEGER NOT NULL
+    );
+    CREATE TABLE push_log_seen (
+      push_id TEXT NOT NULL, player_id TEXT NOT NULL, seen_at INTEGER NOT NULL,
+      PRIMARY KEY (push_id, player_id)
+    );
+    CREATE TABLE push_log_hidden (
+      push_id TEXT NOT NULL, player_id TEXT NOT NULL, hidden_at INTEGER NOT NULL,
+      PRIMARY KEY (push_id, player_id)
+    );
+    CREATE TABLE info_entries (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
+  `);
+  const now = Date.now();
+  fixture.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('legacy-comms-player', 'Legacy Comms', 'legacy-comms-key', now);
+  fixture.prepare(
+    `INSERT INTO group_memberships
+       (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+     VALUES ('default-group', ?, 'member', 'active', ?, 1)`,
+  ).run('legacy-comms-player', now);
+  fixture.prepare('INSERT INTO broadcasts VALUES (?, ?, ?, ?, NULL, ?)')
+    .run('legacy-broadcast', 'legacy-comms-player', 'Legacy message', now + 1000, now);
+  fixture.prepare('INSERT INTO push_log VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)')
+    .run('legacy-push', 'Legacy title', 'Legacy body', '/legacy', 'all', null, 'legacy-topic', now + 1000, now);
+  fixture.prepare('INSERT INTO push_log_seen VALUES (?, ?, ?)').run('legacy-push', 'legacy-comms-player', now);
+  fixture.prepare('INSERT INTO push_log_hidden VALUES (?, ?, ?)').run('legacy-push', 'legacy-comms-player', now);
+  fixture.prepare('INSERT INTO info_entries VALUES (?, ?, ?, ?, ?)')
+    .run('legacy-info', 'Legacy info', 'Legacy content', now, now);
+  fixture.close();
+
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated.prepare('SELECT group_id, event_id, player_name_snapshot FROM broadcasts WHERE id = ?')
+      .get('legacy-broadcast'),
+    { group_id: 'default-group', event_id: null, player_name_snapshot: 'Legacy Comms' },
+  );
+  assert.deepEqual(
+    migrated.prepare('SELECT group_id, event_id, player_ids FROM push_log WHERE id = ?').get('legacy-push'),
+    { group_id: 'default-group', event_id: null, player_ids: '["legacy-comms-player"]' },
+  );
+  assert.deepEqual(
+    migrated.prepare('SELECT group_id, event_id FROM info_entries WHERE id = ?').get('legacy-info'),
+    { group_id: 'default-group', event_id: null },
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM push_log_seen WHERE push_id = ?').get('legacy-push'));
+  assert.ok(migrated.prepare('SELECT 1 FROM push_log_hidden WHERE push_id = ?').get('legacy-push'));
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

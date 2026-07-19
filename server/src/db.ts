@@ -399,10 +399,9 @@ db.exec(`
     created_at  INTEGER NOT NULL
   );
 
-  -- Durchsagen ("Essen ist da!"): broadcast to every device as a toast +
-  -- kiosk banner + push notification. Kept as rows (not fire-and-forget) so
-  -- the Durchsage view can show the recent history and late joiners still
-  -- see what they missed.
+  -- Durchsagen ("Essen ist da!"): durable communication records. Group/event
+  -- ownership and recipient snapshots are added by the Phase-5c migration;
+  -- transport delivery intentionally remains separate.
   CREATE TABLE IF NOT EXISTS broadcasts (
     id         TEXT PRIMARY KEY,
     player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
@@ -412,12 +411,11 @@ db.exec(`
     created_at INTEGER NOT NULL
   );
 
-  -- Every real push notification sent via notifyPlayers() (Durchsagen, neue
-  -- Sammelbestellung, Abstimmung offen, Arcade-Lobby, Turnier/Draft-Events,
-  -- ...), regardless of how many devices were actually subscribed. Read two
-  -- ways: the Kiosk's newest-active banner and the header's per-player
-  -- notification center. player_ids is the JSON recipient list the center
-  -- filters by (NULL on rows from before the feed existed = show to
+  -- Notification history recorded for notifyPlayers() and data-only
+  -- communication producers, regardless of how many devices were actually
+  -- subscribed. Read two ways: the Kiosk's newest-active banner and the
+  -- header's per-player notification center. player_ids is the JSON recipient
+  -- list the center filters by (NULL on rows from before the feed existed = show to
   -- everyone); url is the deep link the notification opens; audience marks
   -- personally-targeted pushes ('direct', e.g. "dein Match ist bereit")
   -- apart from group-wide ones ('all'). Still not a per-recipient delivery
@@ -528,7 +526,8 @@ db.exec(`
 
   -- Info-Board: the answers to the questions everyone asks five times per
   -- evening (WLAN password, Discord link, game-server IPs, house rules).
-  -- Plain title+content entries, editable by anyone (LAN trust model).
+  -- Plain title+content entries; group/event ownership and moderation roles
+  -- are applied by the Phase-5c migration and REST router.
   CREATE TABLE IF NOT EXISTS info_entries (
     id         TEXT PRIMARY KEY,
     title      TEXT NOT NULL,
@@ -2107,6 +2106,172 @@ function migrateFoodOrderItemQuantityColumn(): void {
 }
 runMigration({ version: 38, name: 'add food order item quantity', up: migrateFoodOrderItemQuantityColumn });
 
+// Phase 5c (organisation/communication): communication records belong to a
+// group room or one concrete event. Recipient snapshots remain durable after
+// membership changes; composite foreign keys prevent cross-group references.
+function addOrganisationCommunicationGroupScoping(): void {
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_events_group_pk ON events(group_id, id)');
+
+  const broadcastColumns = db.prepare('PRAGMA table_info(broadcasts)').all() as Array<{ name: string }>;
+  if (!broadcastColumns.some((column) => column.name === 'group_id')) {
+    const senders = db.prepare('SELECT DISTINCT player_id, created_at FROM broadcasts').all() as Array<{
+      player_id: string;
+      created_at: number;
+    }>;
+    const ensureMembership = db.prepare(
+      `INSERT OR IGNORE INTO group_memberships
+         (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
+       VALUES (?, ?, 'member', 'removed', ?, ?, 0, NULL)`,
+    );
+    for (const sender of senders) {
+      ensureMembership.run(DEFAULT_GROUP_ID, sender.player_id, sender.created_at, sender.created_at);
+    }
+    db.exec(`
+      ALTER TABLE broadcasts RENAME TO broadcasts_unscoped;
+      CREATE TABLE broadcasts (
+        id                   TEXT PRIMARY KEY,
+        group_id             TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+        event_id             TEXT,
+        player_id            TEXT NOT NULL,
+        player_name_snapshot TEXT NOT NULL,
+        message              TEXT NOT NULL,
+        ends_at              INTEGER NOT NULL,
+        ended_at             INTEGER,
+        recipient_ids        TEXT NOT NULL,
+        created_at           INTEGER NOT NULL,
+        FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE,
+        FOREIGN KEY (group_id, player_id) REFERENCES group_memberships(group_id, player_id) ON DELETE RESTRICT
+      );
+      INSERT INTO broadcasts
+        (id, group_id, event_id, player_id, player_name_snapshot, message, ends_at, ended_at, recipient_ids, created_at)
+      SELECT b.id, '${DEFAULT_GROUP_ID}', NULL, b.player_id, p.name, b.message, b.ends_at, b.ended_at,
+             COALESCE((SELECT json_group_array(gm.player_id) FROM group_memberships gm
+                       WHERE gm.group_id = '${DEFAULT_GROUP_ID}' AND gm.status = 'active'), '[]'),
+             b.created_at
+      FROM broadcasts_unscoped b JOIN players p ON p.id = b.player_id;
+      DROP TABLE broadcasts_unscoped;
+    `);
+  }
+
+  const infoColumns = db.prepare('PRAGMA table_info(info_entries)').all() as Array<{ name: string }>;
+  if (!infoColumns.some((column) => column.name === 'group_id')) {
+    db.exec(`
+      ALTER TABLE info_entries RENAME TO info_entries_unscoped;
+      CREATE TABLE info_entries (
+        id         TEXT PRIMARY KEY,
+        group_id   TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+        event_id   TEXT,
+        title      TEXT NOT NULL,
+        content    TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE
+      );
+      INSERT INTO info_entries (id, group_id, event_id, title, content, created_at, updated_at)
+      SELECT id, '${DEFAULT_GROUP_ID}', NULL, title, content, created_at, updated_at FROM info_entries_unscoped;
+      DROP TABLE info_entries_unscoped;
+    `);
+  }
+
+  const pushColumns = db.prepare('PRAGMA table_info(push_log)').all() as Array<{ name: string }>;
+  if (!pushColumns.some((column) => column.name === 'group_id')) {
+    db.exec(`
+      DROP TABLE IF EXISTS push_log_seen_migration_39;
+      DROP TABLE IF EXISTS push_log_hidden_migration_39;
+      CREATE TABLE push_log_seen_migration_39 AS SELECT push_id, player_id, seen_at FROM push_log_seen;
+      CREATE TABLE push_log_hidden_migration_39 AS SELECT push_id, player_id, hidden_at FROM push_log_hidden;
+      DROP TABLE push_log_seen;
+      DROP TABLE push_log_hidden;
+      ALTER TABLE push_log RENAME TO push_log_unscoped;
+      CREATE TABLE push_log (
+        id          TEXT PRIMARY KEY,
+        group_id    TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+        event_id    TEXT,
+        title       TEXT NOT NULL,
+        body        TEXT NOT NULL,
+        url         TEXT,
+        audience    TEXT NOT NULL DEFAULT 'all',
+        player_ids  TEXT NOT NULL,
+        topic_key   TEXT,
+        expires_at  INTEGER,
+        resolved_at INTEGER,
+        created_at  INTEGER NOT NULL,
+        FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE
+      );
+      INSERT INTO push_log
+        (id, group_id, event_id, title, body, url, audience, player_ids, topic_key, expires_at, resolved_at, created_at)
+      SELECT id, '${DEFAULT_GROUP_ID}', NULL, title, body, url, audience,
+             COALESCE(player_ids, (SELECT json_group_array(player_id) FROM group_memberships
+                                   WHERE group_id = '${DEFAULT_GROUP_ID}' AND status = 'active')),
+             topic_key, expires_at, resolved_at, created_at
+      FROM push_log_unscoped;
+      DROP TABLE push_log_unscoped;
+      CREATE TABLE push_log_seen (
+        push_id   TEXT NOT NULL REFERENCES push_log(id) ON DELETE CASCADE,
+        player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+        seen_at   INTEGER NOT NULL,
+        PRIMARY KEY (push_id, player_id)
+      );
+      CREATE TABLE push_log_hidden (
+        push_id    TEXT NOT NULL REFERENCES push_log(id) ON DELETE CASCADE,
+        player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+        hidden_at  INTEGER NOT NULL,
+        PRIMARY KEY (push_id, player_id)
+      );
+      INSERT OR IGNORE INTO push_log_seen SELECT push_id, player_id, seen_at FROM push_log_seen_migration_39;
+      INSERT OR IGNORE INTO push_log_hidden SELECT push_id, player_id, hidden_at FROM push_log_hidden_migration_39;
+      DROP TABLE push_log_seen_migration_39;
+      DROP TABLE push_log_hidden_migration_39;
+    `);
+  }
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_broadcasts_group_event_created
+      ON broadcasts(group_id, event_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_info_entries_group_event_created
+      ON info_entries(group_id, event_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_push_log_group_event_created
+      ON push_log(group_id, event_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_push_log_topic_lifecycle
+      ON push_log(group_id, topic_key, resolved_at, expires_at);
+    CREATE INDEX IF NOT EXISTS idx_push_log_seen_player ON push_log_seen(player_id, push_id);
+    CREATE INDEX IF NOT EXISTS idx_push_log_hidden_player ON push_log_hidden(player_id, push_id);
+
+    DROP TRIGGER IF EXISTS trg_broadcast_recipients_group_insert;
+    CREATE TRIGGER trg_broadcast_recipients_group_insert
+    BEFORE INSERT ON broadcasts
+    WHEN EXISTS (
+      SELECT 1 FROM json_each(NEW.recipient_ids) recipient
+      WHERE NOT EXISTS (
+        SELECT 1 FROM group_memberships gm
+        WHERE gm.group_id = NEW.group_id AND gm.player_id = recipient.value
+      )
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'broadcast recipient group mismatch');
+    END;
+
+    DROP TRIGGER IF EXISTS trg_push_log_recipients_group_insert;
+    CREATE TRIGGER trg_push_log_recipients_group_insert
+    BEFORE INSERT ON push_log
+    WHEN EXISTS (
+      SELECT 1 FROM json_each(NEW.player_ids) recipient
+      WHERE NOT EXISTS (
+        SELECT 1 FROM group_memberships gm
+        WHERE gm.group_id = NEW.group_id AND gm.player_id = recipient.value
+      )
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'push recipient group mismatch');
+    END;
+  `);
+}
+runMigration({
+  version: 39,
+  name: 'add organisation communication group scoping',
+  up: addOrganisationCommunicationGroupScoping,
+});
+
 // Lets whoever collects the money (the order's creator/an admin) check off
 // each item once that person has paid their share.
 function migrateFoodOrderItemPaidColumn(): void {
@@ -2114,7 +2279,7 @@ function migrateFoodOrderItemPaidColumn(): void {
   if (columns.some((c) => c.name === 'paid')) return;
   db.exec('ALTER TABLE food_order_items ADD COLUMN paid INTEGER NOT NULL DEFAULT 0');
 }
-runMigration({ version: 39, name: 'add food order item paid flag', up: migrateFoodOrderItemPaidColumn });
+runMigration({ version: 40, name: 'add food order item paid flag', up: migrateFoodOrderItemPaidColumn });
 
 // finalized_at lets the creator/admin permanently lock a closed order (no
 // more reopening, items or paid edits); paypal_link is the co-orderers'
@@ -2126,7 +2291,7 @@ function migrateFoodOrderFinalizeAndPaypalColumns(): void {
   if (!has('paypal_link')) db.exec('ALTER TABLE food_orders ADD COLUMN paypal_link TEXT');
 }
 runMigration({
-  version: 40,
+  version: 41,
   name: 'add food order finalize and paypal link',
   up: migrateFoodOrderFinalizeAndPaypalColumns,
 });
@@ -2138,7 +2303,7 @@ function migrateFoodOrderTipPercentColumn(): void {
   if (columns.some((c) => c.name === 'tip_percent')) return;
   db.exec('ALTER TABLE food_orders ADD COLUMN tip_percent INTEGER');
 }
-runMigration({ version: 41, name: 'add food order tip percent', up: migrateFoodOrderTipPercentColumn });
+runMigration({ version: 42, name: 'add food order tip percent', up: migrateFoodOrderTipPercentColumn });
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.

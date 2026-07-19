@@ -95,6 +95,16 @@ let draftSingleGameId = null;
 let draftPoints = null; // Map<gameId, points>
 let draftKey = null; // `${round}:${playerId}` the current draft belongs to
 
+// "Neue Abstimmung" game-limit filter. Persisted here (like matchmaking.js's
+// checkedIds) rather than left in the DOM, because a votes:changed/
+// games:changed socket event re-renders this whole view from scratch
+// whenever anyone else interacts with voting — without this, that re-render
+// silently collapsed the panel and cleared any manual deselection mid-edit.
+// excludedGameIds tracks games manually unchecked; anything not listed
+// (including a newly added game) defaults to selected.
+let limitGamesChecked = false;
+let excludedGameIds = new Set();
+
 // Guards the points sliders against a re-render landing mid-drag (another
 // player casting a vote, or a Bock rating changing elsewhere, both trigger a
 // renderCurrent() while this view is open) — see gameCatalog.js's identical
@@ -460,7 +470,7 @@ export function renderVotes(container, ctx) {
       .map(
         (g) => `
         <label class="check-row">
-          <input type="checkbox" data-vote-game-checkbox value="${g.id}" checked />
+          <input type="checkbox" data-vote-game-checkbox value="${g.id}" ${excludedGameIds.has(g.id) ? '' : 'checked'} />
           <span class="row" style="flex:1;gap:var(--space-2);">${escapeHtml(g.name)}</span>
         </label>`
       )
@@ -487,13 +497,14 @@ export function renderVotes(container, ctx) {
         </label>
         <div class="stack vote-game-filter">
           <label class="check-row">
-            <input type="checkbox" id="votes-limit-games" />
+            <input type="checkbox" id="votes-limit-games" ${limitGamesChecked ? 'checked' : ''} />
             <span style="flex:1;">Nur bestimmte Spiele zur Wahl stellen</span>
           </label>
-          <div id="votes-game-select-wrap" class="stack vote-game-select-wrap" hidden>
-            <div class="row-between vote-game-select-toolbar">
+          <div id="votes-game-select-wrap" class="stack vote-game-select-wrap" ${limitGamesChecked ? '' : 'hidden'}>
+            <div class="selection-toolbar">
               <span class="field-label">Welche Spiele stehen zur Wahl?</span>
-              <button type="button" class="btn btn-sm" id="votes-select-toggle">Alle abwählen</button>
+              <button type="button" class="btn btn-sm" id="votes-select-all">Alle markieren</button>
+              <button type="button" class="btn btn-sm" id="votes-select-none">Auswahl aufheben</button>
             </div>
             <div id="votes-game-select" class="vote-game-grid">${gameCheckboxes}</div>
           </div>
@@ -604,19 +615,26 @@ export function renderVotes(container, ctx) {
   const gameSelectWrap = container.querySelector('#votes-game-select-wrap');
   if (limitGamesCheckbox && gameSelectWrap) {
     limitGamesCheckbox.addEventListener('change', () => {
-      gameSelectWrap.hidden = !limitGamesCheckbox.checked;
+      limitGamesChecked = limitGamesCheckbox.checked;
+      gameSelectWrap.hidden = !limitGamesChecked;
     });
   }
 
-  const toggleBtn = container.querySelector('#votes-select-toggle');
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', () => {
-      const boxes = [...container.querySelectorAll('[data-vote-game-checkbox]')];
-      const allChecked = boxes.every((b) => b.checked);
-      boxes.forEach((b) => (b.checked = !allChecked));
-      toggleBtn.textContent = allChecked ? 'Alle auswählen' : 'Alle abwählen';
+  container.querySelectorAll('[data-vote-game-checkbox]').forEach((checkbox) => {
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) excludedGameIds.delete(checkbox.value);
+      else excludedGameIds.add(checkbox.value);
     });
-  }
+  });
+
+  container.querySelector('#votes-select-all')?.addEventListener('click', () => {
+    excludedGameIds.clear();
+    ctx.rerender();
+  });
+  container.querySelector('#votes-select-none')?.addEventListener('click', () => {
+    excludedGameIds = new Set(state.games.map((g) => g.id));
+    ctx.rerender();
+  });
 
   const startBtn = container.querySelector('#votes-start');
   if (startBtn) {
@@ -624,9 +642,8 @@ export function renderVotes(container, ctx) {
       const title = container.querySelector('#votes-title')?.value.trim() || undefined;
       const info = container.querySelector('#votes-info')?.value.trim() || undefined;
       let gameIds;
-      if (limitGamesCheckbox?.checked) {
-        const checkboxes = [...container.querySelectorAll('[data-vote-game-checkbox]')];
-        const checked = checkboxes.filter((b) => b.checked).map((b) => b.value);
+      if (limitGamesChecked) {
+        const checked = state.games.filter((g) => !excludedGameIds.has(g.id)).map((g) => g.id);
         if (checked.length === 0) {
           return showToast('Bitte mindestens ein Spiel auswählen.', { error: true });
         }

@@ -1,7 +1,6 @@
-// "Durchsage" view: one message out to everyone at once ("Essen ist
-// da!") — lands as a toast on every open device, as a banner on the kiosk
-// screen, and as a push notification on opted-in phones. Needs an identity
-// (the sender's name is always attached), reuses the shared whoami card.
+// "Durchsage" view: persists a message for the current group/event recipient
+// set. Phase 5c deliberately refreshes only the sending browser; delivery to
+// other devices, Push and Kiosk remain separate follow-up work.
 
 import { api } from '../api.js';
 import { escapeHtml, formatDateTime } from '../format.js';
@@ -91,7 +90,7 @@ export function renderBroadcast(container, ctx) {
             ${infoTooltipHtml(
               'broadcast-delivery-help',
               'Neue Durchsage',
-              'Erscheint sofort auf allen offenen Geräten, auf dem Kiosk-Bildschirm und als Push-Benachrichtigung bei allen, die Push aktiviert haben.'
+              'Wird für die aktuelle Gruppe oder LAN gespeichert und erscheint in deiner Mitteilungshistorie. Andere Geräte, Push und Kiosk werden noch nicht automatisch beliefert.'
             )}
           </span>
         </div>
@@ -148,9 +147,9 @@ export function renderBroadcast(container, ctx) {
     submitBtn.disabled = true;
     try {
       await api.broadcasts.send(myId, message, endsAt);
-      // A broadcast:new socket event may have re-rendered the form while the
-      // request was in flight, so clear the currently mounted fields rather
-      // than only the now-detached references captured before await.
+      // Refresh only this browser from the durable REST history. This keeps
+      // the sender's center current without introducing delivery signals.
+      window.dispatchEvent(new CustomEvent('respawn:notifications-refresh'));
       const currentInput = container.querySelector('#broadcast-message');
       const currentEndsAtInput = container.querySelector('#broadcast-ends-at');
       if (currentInput) currentInput.value = '';

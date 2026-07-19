@@ -29,6 +29,7 @@ import { withBodyPlayerIdentity, withQueryPlayerIdentity } from '../sessions';
 import { requireGroupRole } from '../groupAuthorization';
 import { activeGroupPlayers } from '../groupPlayers';
 import { trackingEventIdForGroup } from '../competitionScope';
+import { communicationRecipientIds } from '../communicationRecipients';
 
 export const votesRouter = Router();
 
@@ -53,7 +54,8 @@ function optionalText(value: unknown, maxLength: number): string | null | undefi
   return trimmed.length <= maxLength ? trimmed : undefined;
 }
 
-export function voteNotificationPlayerIds(): string[] {
+export function voteNotificationPlayerIds(groupId?: string, scopedEventId?: string | null): string[] {
+  if (groupId !== undefined) return communicationRecipientIds(groupId, scopedEventId ?? null);
   const eventId = getTrackingEventId();
   if (eventId === OUTSIDE_EVENTS_ID) {
     return (db.prepare('SELECT id FROM players').all() as Array<{ id: string }>).map((player) => player.id);
@@ -426,7 +428,7 @@ votesRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   broadcast(Events.votesChanged, payload);
 
   notifyPlayers(
-    voteNotificationPlayerIds(),
+    voteNotificationPlayerIds(groupId, eventId),
     {
       title: cleanTitle || 'Neue Abstimmung',
       body:
@@ -437,6 +439,7 @@ votesRouter.post('/start', requireGroupRole('admin'), (req, res) => {
     },
     'all',
     { key: `vote:${nextRound}` },
+    { groupId, eventId },
   );
 
   res.status(201).json(payload);
@@ -588,7 +591,7 @@ votesRouter.post('/close', requireGroupRole('admin'), (req, res) => {
     groupId,
     state.round,
   );
-  resolvePushTopic(`vote:${state.round}`);
+  resolvePushTopic(`vote:${state.round}`, false, { groupId, eventId: meta.eventId });
 
   const payload = buildPayload(req.group!.id, { winnerGameIds });
   broadcast(Events.votesChanged, payload);
@@ -604,9 +607,10 @@ votesRouter.post('/cancel', requireGroupRole('admin'), (req, res) => {
   if (!state.open) {
     return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
   }
+  const meta = getRoundMeta(groupId, state.round);
   db.prepare('DELETE FROM vote_rounds WHERE group_id = ? AND round = ?').run(groupId, state.round);
   setState(scopedStateKey(OPEN_KEY, groupId), '0');
-  resolvePushTopic(`vote:${state.round}`);
+  resolvePushTopic(`vote:${state.round}`, false, { groupId, eventId: meta.eventId });
 
   const payload = buildPayload(req.group!.id);
   broadcast(Events.votesChanged, payload);
