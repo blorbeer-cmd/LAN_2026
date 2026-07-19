@@ -1,19 +1,21 @@
 // Sammelbestellungen ("Pizza bei Luigi's — wer will was?"): one order is
-// opened, everyone adds their own items while it's open, closing freezes the
-// list for reading out to the phone/delivery app. Closing is reversible via
-// reopen (add a forgotten item, fix a price) until the creator/an admin
-// finalizes it — a one-way lock, no more reopening, items, paid or metadata
-// changes. The check-then-write race to watch: someone closes the order
-// while others are still typing — adding to a closed order must fail with a
-// clean 409, never silently append, and two simultaneous closes must
-// resolve to exactly one winner (see api.concurrency.test.ts).
+// opened, everyone adds their own items while it's open, closing ("wird
+// abgeschickt" in the UI — closed_at) freezes the list for reading out to
+// the phone/delivery app. That's reversible via reopen (add a forgotten
+// item, fix a price) until the creator/an admin finalizes it ("wird
+// geschlossen" in the UI — finalized_at) — a one-way lock, no more
+// reopening, items, paid or metadata changes. The check-then-write race to
+// watch: someone closes the order while others are still typing — adding to
+// a closed order must fail with a clean 409, never silently append, and two
+// simultaneous closes must resolve to exactly one winner (see
+// api.concurrency.test.ts).
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getTrackingEventId } from '../events';
-import { isNonEmptyString, isValidUrl } from '../validation';
+import { isIntInRange, isNonEmptyString, isValidUrl } from '../validation';
 import { notifyPlayers, resolvePushTopic, updatePushTopicExpiry } from '../push';
 import { requireConfiguredUser, withBodyPlayerIdentity } from '../sessions';
 
@@ -39,6 +41,7 @@ interface OrderRow {
   notes: string | null;
   link: string | null;
   paypal_link: string | null;
+  tip_percent: number | null;
 }
 
 // Epoch-ms bounds a "wann geht's raus" timestamp must fall within — loose on
@@ -61,6 +64,12 @@ function isValidNotes(value: unknown): boolean {
 
 function isValidLink(value: unknown): boolean {
   return value === null || isValidUrl(value, MAX_LINK_LENGTH);
+}
+
+// Whole percent, 0-100 — a decimal-point tip is more precision than anyone
+// needs at a LAN party.
+function isValidTipPercent(value: unknown): boolean {
+  return value === null || isIntInRange(value, 0, 100);
 }
 
 interface ItemRow {
@@ -104,6 +113,7 @@ function serializeOrder(row: OrderRow) {
     notes: row.notes,
     link: row.link,
     paypalLink: row.paypal_link,
+    tipPercent: row.tip_percent,
     open: row.closed_at === null,
     items,
     totalCents,
@@ -127,15 +137,16 @@ foodOrdersRouter.get('/', (_req, res) => {
   res.json(buildList());
 });
 
-// POST /api/food-orders - body: { playerId, title, sendAt?, notes?, link?, paypalLink? }.
+// POST /api/food-orders - body: { playerId, title, sendAt?, notes?, link?, paypalLink?, tipPercent? }.
 // Multiple open orders are allowed (drinks run + pizza run can overlap) — no
 // single-open guard. sendAt is optional: when this order will actually be
 // placed/picked up, so everyone knows the cutoff for adding items instead of
 // guessing. notes/link are optional too: free-text info (e.g. Mindestbestell-
 // wert, "bar zahlen") and a link to the menu/delivery service. paypalLink is
-// where co-orderers pay their share back to (rendered as a "Bezahlen" button).
+// where co-orderers pay their share back to (rendered as a "Bezahlen"
+// button); tipPercent is added on top of that amount.
 foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
-  const { playerId, title, sendAt, notes, link, paypalLink } = req.body ?? {};
+  const { playerId, title, sendAt, notes, link, paypalLink, tipPercent } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
@@ -154,6 +165,9 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   if (paypalLink !== undefined && paypalLink !== null && !isValidLink(paypalLink)) {
     return res.status(400).json({ error: 'PayPal-Link muss eine gültige http(s)-URL sein.' });
   }
+  if (tipPercent !== undefined && tipPercent !== null && !isValidTipPercent(tipPercent)) {
+    return res.status(400).json({ error: 'Trinkgeld muss zwischen 0 und 100 Prozent liegen.' });
+  }
   const player = db.prepare('SELECT id, name FROM players WHERE id = ?').get(playerId) as
     | { id: string; name: string }
     | undefined;
@@ -171,11 +185,23 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     notes: notes ? notes.trim() : null,
     link: link ? link.trim() : null,
     paypal_link: paypalLink ? paypalLink.trim() : null,
+    tip_percent: tipPercent ?? null,
   };
   db.prepare(
-    `INSERT INTO food_orders (id, event_id, title, created_by, created_at, closed_at, finalized_at, send_at, notes, link, paypal_link)
-     VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)`
-  ).run(row.id, row.event_id, row.title, row.created_by, row.created_at, row.send_at, row.notes, row.link, row.paypal_link);
+    `INSERT INTO food_orders (id, event_id, title, created_by, created_at, closed_at, finalized_at, send_at, notes, link, paypal_link, tip_percent)
+     VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?)`
+  ).run(
+    row.id,
+    row.event_id,
+    row.title,
+    row.created_by,
+    row.created_at,
+    row.send_at,
+    row.notes,
+    row.link,
+    row.paypal_link,
+    row.tip_percent
+  );
 
   const sendAtNote = row.send_at ? ` (geht raus um ${new Date(row.send_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})` : '';
 
@@ -202,7 +228,7 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   res.status(201).json(serializeOrder(row));
 });
 
-// PATCH /api/food-orders/:id - body: { sendAt?, notes?, link?, paypalLink? }.
+// PATCH /api/food-orders/:id - body: { sendAt?, notes?, link?, paypalLink?, tipPercent? }.
 // Only this metadata is editable this way (not title/items) — correcting a
 // mis-typed or shifted deadline, a typo in the notes, or a wrong link is
 // legitimate even after the order closed, so none of this is gated on
@@ -216,10 +242,10 @@ foodOrdersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung bearbeiten.' });
   }
   if (order.finalized_at !== null) {
-    return res.status(409).json({ error: 'Diese Bestellung ist endgültig geschlossen und kann nicht mehr geändert werden.' });
+    return res.status(409).json({ error: 'Diese Bestellung ist geschlossen und kann nicht mehr geändert werden.' });
   }
 
-  const { sendAt, notes, link, paypalLink } = req.body ?? {};
+  const { sendAt, notes, link, paypalLink, tipPercent } = req.body ?? {};
   if (sendAt !== undefined && sendAt !== null && !isValidSendAt(sendAt)) {
     return res.status(400).json({ error: 'sendAt muss ein gültiger Zeitpunkt sein (oder null zum Entfernen).' });
   }
@@ -232,18 +258,23 @@ foodOrdersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   if (paypalLink !== undefined && !isValidLink(paypalLink)) {
     return res.status(400).json({ error: 'PayPal-Link muss eine gültige http(s)-URL sein (oder null zum Entfernen).' });
   }
+  if (tipPercent !== undefined && !isValidTipPercent(tipPercent)) {
+    return res.status(400).json({ error: 'Trinkgeld muss zwischen 0 und 100 Prozent liegen (oder null zum Entfernen).' });
+  }
 
   const next = {
     send_at: sendAt !== undefined ? sendAt : order.send_at,
     notes: notes !== undefined ? (notes ? notes.trim() : null) : order.notes,
     link: link !== undefined ? (link ? link.trim() : null) : order.link,
     paypal_link: paypalLink !== undefined ? (paypalLink ? paypalLink.trim() : null) : order.paypal_link,
+    tip_percent: tipPercent !== undefined ? tipPercent : order.tip_percent,
   };
-  db.prepare('UPDATE food_orders SET send_at = ?, notes = ?, link = ?, paypal_link = ? WHERE id = ?').run(
+  db.prepare('UPDATE food_orders SET send_at = ?, notes = ?, link = ?, paypal_link = ?, tip_percent = ? WHERE id = ?').run(
     next.send_at,
     next.notes,
     next.link,
     next.paypal_link,
+    next.tip_percent,
     order.id
   );
   if (sendAt !== undefined) updatePushTopicExpiry(`food-order:${order.id}`, next.send_at);
@@ -258,7 +289,7 @@ foodOrdersRouter.post('/:id/items', ...withBodyPlayerIdentity, (req, res) => {
   // The race guard: the order may have been closed between this device
   // rendering the form and the submit arriving.
   if (order.closed_at !== null) {
-    return res.status(409).json({ error: 'Diese Bestellung ist schon geschlossen.' });
+    return res.status(409).json({ error: 'Diese Bestellung wurde bereits abgeschickt.' });
   }
 
   const { playerId, description, quantity = 1, priceCents } = req.body ?? {};
@@ -295,7 +326,7 @@ foodOrdersRouter.delete('/:id/items/:itemId', ...withBodyPlayerIdentity, (req, r
   const order = getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (order.closed_at !== null) {
-    return res.status(409).json({ error: 'Diese Bestellung ist schon geschlossen.' });
+    return res.status(409).json({ error: 'Diese Bestellung wurde bereits abgeschickt.' });
   }
 
   const { playerId } = req.body ?? {};
@@ -324,7 +355,7 @@ foodOrdersRouter.patch('/:id/items/:itemId', requireConfiguredUser, (req, res) =
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann Positionen als bezahlt markieren.' });
   }
   if (order.finalized_at !== null) {
-    return res.status(409).json({ error: 'Diese Bestellung ist endgültig geschlossen und kann nicht mehr geändert werden.' });
+    return res.status(409).json({ error: 'Diese Bestellung ist geschlossen und kann nicht mehr geändert werden.' });
   }
 
   const { paid } = req.body ?? {};
@@ -341,16 +372,17 @@ foodOrdersRouter.patch('/:id/items/:itemId', requireConfiguredUser, (req, res) =
   res.json(serializeOrder(order));
 });
 
-// POST /api/food-orders/:id/close - freezes the list. Exactly one closer
-// wins; the second tap gets a 409 instead of double-notifying everyone.
+// POST /api/food-orders/:id/close - freezes the list ("wird abgeschickt" in
+// the UI). Exactly one closer wins; the second tap gets a 409 instead of
+// double-notifying everyone.
 foodOrdersRouter.post('/:id/close', requireConfiguredUser, (req, res) => {
   const order = getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
-    return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung schließen.' });
+    return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung abschicken.' });
   }
   if (order.closed_at !== null) {
-    return res.status(409).json({ error: 'Diese Bestellung ist schon geschlossen.' });
+    return res.status(409).json({ error: 'Diese Bestellung wurde bereits abgeschickt.' });
   }
 
   const closedAt = Date.now();
@@ -370,7 +402,7 @@ foodOrdersRouter.post('/:id/reopen', requireConfiguredUser, (req, res) => {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung wieder öffnen.' });
   }
   if (order.finalized_at !== null) {
-    return res.status(409).json({ error: 'Diese Bestellung ist endgültig geschlossen und kann nicht mehr geöffnet werden.' });
+    return res.status(409).json({ error: 'Diese Bestellung ist bereits geschlossen und kann nicht mehr geöffnet werden.' });
   }
   if (order.closed_at === null) {
     return res.status(409).json({ error: 'Diese Bestellung ist bereits offen.' });
@@ -381,20 +413,21 @@ foodOrdersRouter.post('/:id/reopen', requireConfiguredUser, (req, res) => {
   res.json(serializeOrder({ ...order, closed_at: null }));
 });
 
-// POST /api/food-orders/:id/finalize - the creator's/admin's terminal lock:
-// no more reopening, items, paid changes or metadata edits. Only from the
-// closed state (close first, then finalize once everyone has settled up).
+// POST /api/food-orders/:id/finalize - the creator's/admin's terminal lock
+// ("wird geschlossen" in the UI): no more reopening, items, paid changes or
+// metadata edits. Only from the closed/"abgeschickt" state (close first,
+// then finalize once everyone has settled up).
 foodOrdersRouter.post('/:id/finalize', requireConfiguredUser, (req, res) => {
   const order = getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
-    return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung endgültig schließen.' });
+    return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung schließen.' });
   }
   if (order.finalized_at !== null) {
-    return res.status(409).json({ error: 'Diese Bestellung ist bereits endgültig geschlossen.' });
+    return res.status(409).json({ error: 'Diese Bestellung ist bereits geschlossen.' });
   }
   if (order.closed_at === null) {
-    return res.status(409).json({ error: 'Die Bestellung muss erst geschlossen werden.' });
+    return res.status(409).json({ error: 'Die Bestellung muss erst abgeschickt werden.' });
   }
 
   const finalizedAt = Date.now();

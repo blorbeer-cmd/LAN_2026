@@ -940,6 +940,7 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.fill('#order-notes', 'Mindestbestellwert 15€, bar zahlen');
   await page.fill('#order-link', 'https://luigis-pizza.example/karte');
   await page.fill('#order-paypal', 'https://paypal.me/luigi');
+  await page.fill('#order-tip', '10');
   await page.click('#order-form button[type="submit"]');
   await page.waitForSelector('text=Pizza bei Luigi');
   await page.waitForSelector('text=Versand 24.12., 20:00 Uhr');
@@ -972,11 +973,12 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.check('[data-toggle-paid]');
   await page.waitForSelector('.food-order-item.is-paid');
 
-  // A co-orderer pays their exact share via the "Bezahlen" button, which
-  // appends the owed amount to a bare paypal.me link.
+  // A co-orderer pays their exact share (plus the creator's 10% tip) via the
+  // "Bezahlen" button, which appends the owed amount to a bare paypal.me link.
   const payLink = page.locator('.food-order-player-total a:has-text("Bezahlen")');
   await payLink.waitFor();
-  assert.equal(await payLink.getAttribute('href'), 'https://paypal.me/luigi/19.00EUR');
+  assert.equal(await payLink.textContent(), 'Bezahlen (+10%)');
+  assert.equal(await payLink.getAttribute('href'), 'https://paypal.me/luigi/20.90EUR');
 
   // Content search resolves an item description to its parent order and
   // highlights that concrete order instead of only opening the Essen area.
@@ -991,7 +993,9 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.click('[data-confirm]');
   await page.waitForSelector('[data-food-history]');
   await page.click('[data-food-history] > summary');
-  await page.waitForSelector('.badge-offline >> text=Geschlossen');
+  // "Abgeschickt" (submitted, badge-paused) vs "Geschlossen" (finalized,
+  // badge-offline) are deliberately distinct labels/colors in the history.
+  await page.waitForSelector('.badge-paused >> text=Abgeschickt');
 
   // Paid state survives closing, and stays togglable — settling up normally
   // happens after the order is already closed.
@@ -1015,13 +1019,13 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
 
   await page.click('[data-close-order]');
   await page.click('[data-confirm]');
-  await page.waitForSelector('.badge-offline >> text=Geschlossen');
+  await page.waitForSelector('.badge-paused >> text=Abgeschickt');
 
   // Finalizing is the creator's terminal lock: no more reopening, editing,
   // or paid toggling.
   await page.click('[data-finalize-order]');
   await page.click('[data-confirm]');
-  await page.waitForSelector('.badge-offline >> text=Endgültig geschlossen');
+  await page.waitForSelector('.badge-offline >> text=Geschlossen');
   await page.waitForSelector('[data-reopen-order]', { state: 'detached' });
   await page.waitForSelector('[data-edit-details]', { state: 'detached' });
   assert.equal(await page.locator('[data-toggle-paid]').first().isDisabled(), true);

@@ -20,7 +20,7 @@ test('setup: two players', async () => {
   bob = (await request(app).post('/api/players').send({ name: 'Hungriger Bob' })).body;
 });
 
-test('POST /api/food-orders validates title, player, sendAt, notes, link, and paypalLink', async () => {
+test('POST /api/food-orders validates title, player, sendAt, notes, link, paypalLink, and tipPercent', async () => {
   const noTitle = await request(app).post('/api/food-orders').send({ playerId: alice.id });
   assert.equal(noTitle.status, 400);
   const ghost = await request(app).post('/api/food-orders').send({ playerId: 'ghost', title: 'Pizza' });
@@ -37,13 +37,25 @@ test('POST /api/food-orders validates title, player, sendAt, notes, link, and pa
     .post('/api/food-orders')
     .send({ playerId: alice.id, title: 'Pizza', paypalLink: 'javascript:alert(1)' });
   assert.equal(badPaypalLink.status, 400);
+  const tipTooHigh = await request(app)
+    .post('/api/food-orders')
+    .send({ playerId: alice.id, title: 'Pizza', tipPercent: 101 });
+  assert.equal(tipTooHigh.status, 400);
+  const tipNegative = await request(app)
+    .post('/api/food-orders')
+    .send({ playerId: alice.id, title: 'Pizza', tipPercent: -5 });
+  assert.equal(tipNegative.status, 400);
+  const tipNotInteger = await request(app)
+    .post('/api/food-orders')
+    .send({ playerId: alice.id, title: 'Pizza', tipPercent: 5.5 });
+  assert.equal(tipNotInteger.status, 400);
   const tooLongNotes = await request(app)
     .post('/api/food-orders')
     .send({ playerId: alice.id, title: 'Pizza', notes: 'x'.repeat(501) });
   assert.equal(tooLongNotes.status, 400);
 });
 
-test('POST /api/food-orders opens an order, optionally with a send time, notes, link, and paypalLink', async () => {
+test('POST /api/food-orders opens an order, optionally with a send time, notes, link, paypalLink, and tipPercent', async () => {
   const res = await request(app).post('/api/food-orders').send({ playerId: alice.id, title: "Pizza bei Luigi's" });
   assert.equal(res.status, 201);
   assert.equal(res.body.open, true);
@@ -52,6 +64,7 @@ test('POST /api/food-orders opens an order, optionally with a send time, notes, 
   assert.equal(res.body.notes, null);
   assert.equal(res.body.link, null);
   assert.equal(res.body.paypalLink, null);
+  assert.equal(res.body.tipPercent, null);
   assert.equal(res.body.finalizedAt, null);
   orderId = res.body.id;
 
@@ -65,15 +78,17 @@ test('POST /api/food-orders opens an order, optionally with a send time, notes, 
       notes: 'Mindestbestellwert 15€, bar zahlen',
       link: 'https://luigis-pizza.example/karte',
       paypalLink: 'https://paypal.me/luigi',
+      tipPercent: 10,
     });
   assert.equal(withTime.status, 201);
   assert.equal(withTime.body.sendAt, sendAt);
   assert.equal(withTime.body.notes, 'Mindestbestellwert 15€, bar zahlen');
   assert.equal(withTime.body.link, 'https://luigis-pizza.example/karte');
   assert.equal(withTime.body.paypalLink, 'https://paypal.me/luigi');
+  assert.equal(withTime.body.tipPercent, 10);
 });
 
-test('PATCH /api/food-orders/:id sets, updates and clears send time, notes, link, and paypalLink independently', async () => {
+test('PATCH /api/food-orders/:id sets, updates and clears send time, notes, link, paypalLink, and tipPercent independently', async () => {
   const sendAt = Date.now() + 1800_000;
   const set = await request(app).patch(`/api/food-orders/${orderId}`).send({ sendAt });
   assert.equal(set.status, 200);
@@ -86,22 +101,29 @@ test('PATCH /api/food-orders/:id sets, updates and clears send time, notes, link
 
   const withNotesAndLink = await request(app)
     .patch(`/api/food-orders/${orderId}`)
-    .send({ notes: 'Bitte bar mitbringen', link: 'https://luigis-pizza.example', paypalLink: 'https://paypal.me/alice' });
+    .send({
+      notes: 'Bitte bar mitbringen',
+      link: 'https://luigis-pizza.example',
+      paypalLink: 'https://paypal.me/alice',
+      tipPercent: 15,
+    });
   assert.equal(withNotesAndLink.status, 200);
   assert.equal(withNotesAndLink.body.notes, 'Bitte bar mitbringen');
   assert.equal(withNotesAndLink.body.link, 'https://luigis-pizza.example');
   assert.equal(withNotesAndLink.body.paypalLink, 'https://paypal.me/alice');
-  // sendAt untouched by a request that only mentions notes/link/paypalLink.
+  assert.equal(withNotesAndLink.body.tipPercent, 15);
+  // sendAt untouched by a request that only mentions notes/link/paypalLink/tipPercent.
   assert.equal(withNotesAndLink.body.sendAt, laterSendAt);
 
   const cleared = await request(app)
     .patch(`/api/food-orders/${orderId}`)
-    .send({ sendAt: null, notes: null, link: null, paypalLink: null });
+    .send({ sendAt: null, notes: null, link: null, paypalLink: null, tipPercent: null });
   assert.equal(cleared.status, 200);
   assert.equal(cleared.body.sendAt, null);
   assert.equal(cleared.body.notes, null);
   assert.equal(cleared.body.link, null);
   assert.equal(cleared.body.paypalLink, null);
+  assert.equal(cleared.body.tipPercent, null);
 
   const invalidSendAt = await request(app).patch(`/api/food-orders/${orderId}`).send({ sendAt: 'garbage' });
   assert.equal(invalidSendAt.status, 400);
@@ -111,6 +133,9 @@ test('PATCH /api/food-orders/:id sets, updates and clears send time, notes, link
 
   const invalidPaypalLink = await request(app).patch(`/api/food-orders/${orderId}`).send({ paypalLink: 'not-a-url' });
   assert.equal(invalidPaypalLink.status, 400);
+
+  const invalidTipPercent = await request(app).patch(`/api/food-orders/${orderId}`).send({ tipPercent: 200 });
+  assert.equal(invalidTipPercent.status, 400);
 
   const missing = await request(app).patch('/api/food-orders/nope').send({ sendAt });
   assert.equal(missing.status, 404);
@@ -299,7 +324,7 @@ test('finalizing permanently locks the order: no reopen, items, paid or metadata
 
   const metadataAfterFinalize = await request(app)
     .patch(`/api/food-orders/${finalizeOrderId}`)
-    .send({ notes: 'zu spät' });
+    .send({ notes: 'zu spät', tipPercent: 20 });
   assert.equal(metadataAfterFinalize.status, 409);
 
   const secondFinalize = await request(app).post(`/api/food-orders/${finalizeOrderId}/finalize`);

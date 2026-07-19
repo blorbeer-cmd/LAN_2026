@@ -456,15 +456,15 @@ export const api = {
 
   foodOrders: {
     list: () => apiFetch('/api/food-orders'),
-    create: (playerId, title, { sendAt, notes, link, paypalLink } = {}) =>
+    create: (playerId, title, { sendAt, notes, link, paypalLink, tipPercent } = {}) =>
       apiFetch('/api/food-orders', {
         method: 'POST',
-        body: JSON.stringify({ playerId, title, sendAt, notes, link, paypalLink }),
+        body: JSON.stringify({ playerId, title, sendAt, notes, link, paypalLink, tipPercent }),
       }),
-    updateDetails: (orderId, { sendAt, notes, link, paypalLink }) =>
+    updateDetails: (orderId, { sendAt, notes, link, paypalLink, tipPercent }) =>
       apiFetch(`/api/food-orders/${orderId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ sendAt, notes, link, paypalLink }),
+        body: JSON.stringify({ sendAt, notes, link, paypalLink, tipPercent }),
       }),
     addItem: (orderId, data) =>
       apiFetch(`/api/food-orders/${orderId}/items`, { method: 'POST', body: JSON.stringify(data) }),

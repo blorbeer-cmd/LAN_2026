@@ -553,7 +553,8 @@ db.exec(`
     send_at      INTEGER, -- optional, editable: when the order will actually be placed/picked up
     notes        TEXT,    -- optional, editable: free-text info (e.g. "bar zahlen", "Mindestbestellwert 15€")
     link         TEXT,    -- optional, editable: URL to the menu/delivery service
-    paypal_link  TEXT     -- optional, editable: PayPal(.me) link co-orderers pay their share to
+    paypal_link  TEXT,    -- optional, editable: PayPal(.me) link co-orderers pay their share to
+    tip_percent  INTEGER  -- optional, editable: 0-100, added on top of the paypal_link payment amount
   );
 
   CREATE TABLE IF NOT EXISTS food_order_items (
@@ -2129,6 +2130,15 @@ runMigration({
   name: 'add food order finalize and paypal link',
   up: migrateFoodOrderFinalizeAndPaypalColumns,
 });
+
+// tip_percent: how much the creator wants added on top when co-orderers pay
+// via the PayPal link.
+function migrateFoodOrderTipPercentColumn(): void {
+  const columns = db.prepare('PRAGMA table_info(food_orders)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'tip_percent')) return;
+  db.exec('ALTER TABLE food_orders ADD COLUMN tip_percent INTEGER');
+}
+runMigration({ version: 41, name: 'add food order tip percent', up: migrateFoodOrderTipPercentColumn });
 
 // Seed the games we actually play, once, on an empty database. Process-name
 // mappings are best-effort defaults and can be edited later in the UI.
