@@ -55,9 +55,10 @@ async function loadHistory(ctx) {
   } catch {
     if (requestVersion === historyRequestVersion) historyCache = [];
   } finally {
-    if (requestVersion !== historyRequestVersion) return;
-    historyLoading = false;
-    ctx.rerender();
+    if (requestVersion === historyRequestVersion) {
+      historyLoading = false;
+      ctx.rerender();
+    }
   }
 }
 
