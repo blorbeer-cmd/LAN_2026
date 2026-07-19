@@ -363,33 +363,34 @@ function openNewOrderForm(ctx, myId) {
         </div>
         <div>
           <label for="order-notes" class="field-label">Info (optional)</label>
-          <textarea id="order-notes" rows="2" maxlength="500" placeholder="z.B. Mindestbestellwert 15€, bar zahlen"></textarea>
+          <textarea id="order-notes" rows="1" maxlength="500" placeholder="z.B. Mindestbestellwert 15€, bar zahlen"></textarea>
         </div>
         <div>
           <label for="order-link" class="field-label">Link (optional)</label>
           <input type="url" id="order-link" maxlength="300" placeholder="https://…" />
         </div>
         <div>
-          <label for="order-paypal" class="field-label">PayPal.me-Name, E-Mail oder Link (optional)</label>
+          <div class="food-order-paypal-label">
+            <label for="order-paypal" class="field-label">PayPal.me-Name, E-Mail oder Link (optional)</label>
+            ${infoTooltipHtml(
+              'order-paypal-help',
+              'PayPal-Adresse',
+              'Bei einer E-Mail-Adresse kann der Betrag nicht vorausgefüllt werden; beim Öffnen wird die Adresse kopiert.',
+            )}
+          </div>
           <input type="text" id="order-paypal" maxlength="300" placeholder="z.B. deinname, deine@mail.de oder https://paypal.me/deinname" />
-          <p class="muted" style="font-size:var(--font-size-xs);margin:var(--space-1) 0 0;">
-            Bei E-Mail-Adresse: Betrag lässt sich nicht vorausfüllen, die Adresse wird beim Öffnen kopiert.
-          </p>
         </div>
         <div>
           <label for="order-tip" class="field-label">Trinkgeld in % (optional)</label>
           <input type="number" id="order-tip" min="0" max="100" inputmode="numeric" placeholder="z.B. 10" />
         </div>
-        <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
-          Alle bekommen eine Benachrichtigung und können sich dann selbst eintragen. Alles lässt
-          sich später jederzeit ändern.
-        </p>
         <button type="submit" class="btn btn-primary btn-block">Bestellung öffnen</button>
       </form>
     `,
     {
       onMount: (el) => {
         wireDateTimeField(el, 'order-sendat');
+        wireInfoTooltips(el);
         el.querySelector('#order-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const title = el.querySelector('#order-title').value.trim();
@@ -446,11 +447,15 @@ function openDetailsForm(ctx, order) {
           <input type="url" id="link-input" maxlength="300" placeholder="https://…" value="${escapeHtml(order.link ?? '')}" />
         </div>
         <div>
-          <label for="paypal-input" class="field-label">PayPal.me-Name, E-Mail oder Link</label>
+          <div class="food-order-paypal-label">
+            <label for="paypal-input" class="field-label">PayPal.me-Name, E-Mail oder Link</label>
+            ${infoTooltipHtml(
+              'paypal-input-help',
+              'PayPal-Adresse',
+              'Bei einer E-Mail-Adresse kann der Betrag nicht vorausgefüllt werden; beim Öffnen wird die Adresse kopiert.',
+            )}
+          </div>
           <input type="text" id="paypal-input" maxlength="300" placeholder="z.B. deinname, deine@mail.de oder https://paypal.me/deinname" value="${escapeHtml(paypalEmailFromLink(order.paypalLink) ?? order.paypalLink ?? '')}" />
-          <p class="muted" style="font-size:var(--font-size-xs);margin:var(--space-1) 0 0;">
-            Bei E-Mail-Adresse: Betrag lässt sich nicht vorausfüllen, die Adresse wird beim Öffnen kopiert.
-          </p>
         </div>
         <div>
           <label for="tip-input" class="field-label">Trinkgeld in %</label>
@@ -462,6 +467,7 @@ function openDetailsForm(ctx, order) {
     {
       onMount: (el) => {
         wireDateTimeField(el, 'sendat-input');
+        wireInfoTooltips(el);
         el.querySelector('#details-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const sendAtRaw = el.querySelector('#sendat-input').value;

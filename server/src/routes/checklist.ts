@@ -117,8 +117,8 @@ function serializeTask(row: TaskRow) {
 // Inserts the Grundstock exactly once per player/event (tracked in
 // checklist_materializations, not just inferred from existing rows - a
 // deliberately deleted default item must never come back on a later fetch),
-// spacing created_at by 1ms per entry so the list renders in Grundstock
-// order on first load instead of depending on insertion-order ties.
+// spacing created_at by 1ms per entry so materialization stays deterministic;
+// the API sorts the visible list alphabetically below.
 function ensureDefaultItems(groupId: string, eventId: string | null, playerId: string): void {
   const already = db
     .prepare('SELECT 1 FROM checklist_materializations WHERE group_id = ? AND event_id IS ? AND player_id = ?')
@@ -141,9 +141,10 @@ function ensureDefaultItems(groupId: string, eventId: string | null, playerId: s
 }
 
 function listItems(groupId: string, eventId: string | null, playerId: string): ItemRow[] {
-  return db
+  const items = db
     .prepare('SELECT * FROM checklist_items WHERE group_id = ? AND event_id IS ? AND player_id = ? ORDER BY created_at')
     .all(groupId, eventId, playerId) as ItemRow[];
+  return items.sort((a, b) => a.label.localeCompare(b.label, 'de', { sensitivity: 'base' }));
 }
 
 function getItem(id: string): ItemRow | undefined {

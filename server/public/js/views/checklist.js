@@ -91,9 +91,9 @@ function renderItems(myId) {
     )
     .join('');
   return `
-    <div class="stack checklist-item-list">${rows}</div>
+    <div class="checklist-item-list">${rows}</div>
     <form class="row" data-add-item-form style="gap:var(--space-2);">
-      <input type="text" data-item-label placeholder="z.B. Ersatzbrille" maxlength="80" required style="flex:1;" />
+      <input type="text" data-item-label placeholder="z.B. Skill" maxlength="80" required style="flex:1;" />
       <button type="submit" class="btn btn-sm">Hinzufügen</button>
     </form>`;
 }
@@ -230,9 +230,9 @@ async function openTodoForm(ctx, myId) {
     `
       <form id="checklist-todo-form" class="stack">
         <input type="text" id="todo-title" maxlength="80" required autofocus placeholder="z.B. Mehrfachsteckdosen mitbringen" />
-        <textarea id="todo-description" rows="2" maxlength="300" placeholder="Details (optional)"></textarea>
-        <div>
-          <div class="selection-toolbar">
+        <textarea id="todo-description" rows="1" maxlength="300" placeholder="Details (optional)"></textarea>
+        <div class="checklist-assignment-section">
+          <div class="checklist-assignment-toolbar">
             <span class="field-label title-with-info">
               Direkt zuweisen (optional)
               ${infoTooltipHtml(
@@ -241,8 +241,10 @@ async function openTodoForm(ctx, myId) {
                 'Ohne Auswahl landet die Aufgabe offen im Pool, und alle können sie übernehmen.',
               )}
             </span>
-            <button type="button" class="btn btn-sm" id="todo-select-all">Alle auswählen</button>
-            <button type="button" class="btn btn-sm" id="todo-select-none">Alle abwählen</button>
+            <div class="checklist-assignment-actions">
+              <button type="button" class="btn btn-sm" id="todo-select-all">Alle auswählen</button>
+              <button type="button" class="btn btn-sm" id="todo-select-none">Alle abwählen</button>
+            </div>
           </div>
           <div class="player-selection-grid tournament-player-grid">${playerOptions}</div>
         </div>

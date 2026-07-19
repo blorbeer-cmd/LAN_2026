@@ -34,7 +34,13 @@ test('GET /api/checklist/items materializes the Grundstock once and is idempoten
   assert.equal(first.status, 200);
   assert.equal(first.body.items.length, DEFAULT_CHECKLIST_ITEMS.length);
   assert.ok(first.body.items.every((i: { isCustom: boolean; checked: boolean }) => !i.isCustom && !i.checked));
-  assert.equal(first.body.items[0].label, DEFAULT_CHECKLIST_ITEMS[0].label);
+  const expectedLabels = DEFAULT_CHECKLIST_ITEMS.map((item) => item.label).sort((a, b) =>
+    a.localeCompare(b, 'de', { sensitivity: 'base' }),
+  );
+  assert.deepEqual(
+    first.body.items.map((item: { label: string }) => item.label),
+    expectedLabels,
+  );
 
   const second = await request(app).get(`/api/checklist/items?playerId=${alice.id}`);
   assert.equal(second.status, 200);

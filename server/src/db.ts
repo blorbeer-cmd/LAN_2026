@@ -2797,6 +2797,14 @@ runMigration({ version: 48, name: 'close music sessions orphaned by local contro
 // migration. Re-run the idempotent checklist DDL once to repair that state.
 runMigration({ version: 49, name: 'repair checklist tables after migration merge', up: addChecklistTables });
 
+// The personal packing list no longer includes an ID card. Remove only the
+// materialized built-in rows; custom entries with the same visible label are
+// left untouched.
+function removeChecklistIdCardDefault(): void {
+  db.prepare("DELETE FROM checklist_items WHERE template_key = 'id-card'").run();
+}
+runMigration({ version: 50, name: 'remove ID card from checklist defaults', up: removeChecklistIdCardDefault });
+
 function createPushMuteTable(): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS push_mutes (
