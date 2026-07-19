@@ -4095,6 +4095,7 @@ input[type='number'].tournament-score-input {
   display: flex;
   flex-shrink: 0;
   align-items: center;
+  gap: var(--space-1);
 }
 .food-order-item.is-paid > span {
   color: var(--text-muted);
@@ -4112,6 +4113,15 @@ input[type='number'].tournament-score-input {
   display: flex;
   flex-shrink: 0;
   align-items: center;
+  gap: var(--space-1);
+}
+.food-order-item-toggle-label {
+  color: var(--text-muted);
+  font-size: var(--font-size-2xs);
+  white-space: nowrap;
+}
+.food-order-payment-hint {
+  justify-content: flex-end;
 }
 .food-order-item.is-selected-for-payment {
   border-left: var(--space-1) solid var(--accent);

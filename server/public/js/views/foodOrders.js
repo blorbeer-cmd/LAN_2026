@@ -16,6 +16,7 @@ import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { icon } from '../icons.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let cache = null;
 let loading = false;
@@ -83,6 +84,26 @@ function itemsGroupedByPlayer(order) {
   return byPlayer;
 }
 
+// Explains once per order card what checking "Sammelzahlung" on a position
+// does — it's not "this is my item", it's "include this position (mine or
+// someone else's) in the combined PayPal payment below". Only relevant (and
+// only rendered) once the order actually has a PayPal link, i.e. once the
+// per-item checkbox exists at all.
+function renderPaymentHint(order) {
+  if (!order.paypalLink) return '';
+  return `
+    <div class="row food-order-payment-hint">
+      <span class="title-with-info">
+        <span class="muted" style="font-size:var(--font-size-xs);">Sammelzahlung</span>
+        ${infoTooltipHtml(
+          `food-pay-select-help-${order.id}`,
+          'Sammelzahlung',
+          'Bei einzelnen Positionen „Sammelzahlung“ ankreuzen – auch bei fremden – um sie zusammen per PayPal zu bezahlen.'
+        )}
+      </span>
+    </div>`;
+}
+
 function renderItems(order, myId, { locked = false } = {}) {
   if (order.items.length === 0) {
     return `<div class="muted" style="font-size:var(--font-size-sm);padding:var(--space-2) 0;">Noch nichts eingetragen.</div>`;
@@ -107,14 +128,16 @@ function renderItems(order, myId, { locked = false } = {}) {
           return `
           <div class="row food-order-item ${i.paid ? 'is-paid' : ''} ${selected ? 'is-selected-for-payment' : ''}">
             <label class="food-order-item-paid-toggle">
-              <input type="checkbox" data-toggle-paid="${i.id}" data-order="${order.id}" ${i.paid ? 'checked' : ''} ${locked ? 'disabled' : ''} aria-label="Als bezahlt markieren" />
+              <input type="checkbox" data-toggle-paid="${i.id}" data-order="${order.id}" ${i.paid ? 'checked' : ''} ${locked ? 'disabled' : ''} />
+              <span class="food-order-item-toggle-label">Bezahlt</span>
             </label>
             <span style="flex:1;"><strong>${quantity} ×</strong> ${escapeHtml(i.description)}</span>
             ${priceHtml}
             ${
               order.paypalLink
                 ? `<label class="food-order-item-pay-select">
-                     <input type="checkbox" data-select-pay="${i.id}" ${selected ? 'checked' : ''} aria-label="Für gemeinsame Zahlung auswählen" />
+                     <input type="checkbox" data-select-pay="${i.id}" ${selected ? 'checked' : ''} />
+                     <span class="food-order-item-toggle-label">Sammelzahlung</span>
                    </label>`
                 : ''
             }
@@ -205,6 +228,7 @@ function renderOpenOrder(order, myId) {
         von ${escapeHtml(order.createdByName)} · ${formatDateTime(order.createdAt)}
       </div>
       ${renderDetails(order)}
+      ${renderPaymentHint(order)}
       <div class="food-order-items">${renderItems(order, myId)}</div>
       ${order.totalCents > 0 ? `<div class="row-between food-order-total"><strong>Gesamtsumme</strong><strong>${formatCents(order.totalCents)}</strong></div>` : ''}
       ${renderPaymentSelector(order)}
@@ -224,8 +248,9 @@ function renderOpenOrder(order, myId) {
              </form>`
           : `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um dich einzutragen.</div>`
       }
-      <div class="food-order-close-action">
+      <div class="food-order-close-action stack" style="gap:var(--space-2);">
         <button type="button" class="btn btn-primary btn-sm btn-block" data-close-order="${order.id}">Bestellung abschicken</button>
+        <button type="button" class="btn btn-danger btn-sm btn-block" data-delete-order="${order.id}">Bestellung löschen</button>
       </div>
     </div>`;
 }
@@ -249,16 +274,18 @@ function renderClosedOrder(order, myId) {
         ${itemCount} ${itemCount === 1 ? 'Position' : 'Positionen'}${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}
       </div>
       ${renderDetails(order, { locked: finalized })}
+      ${renderPaymentHint(order)}
       <div class="food-order-items">${renderItems(order, myId, { locked: finalized })}</div>
       ${renderPaymentSelector(order)}
-      ${
-        finalized
-          ? ''
-          : `<div class="food-order-close-action stack" style="gap:var(--space-2);">
-               <button type="button" class="btn btn-sm btn-block" data-reopen-order="${order.id}">Wieder öffnen</button>
-               <button type="button" class="btn btn-danger btn-sm btn-block" data-finalize-order="${order.id}">Bestellung schließen</button>
-             </div>`
-      }
+      <div class="food-order-close-action stack" style="gap:var(--space-2);">
+        ${
+          finalized
+            ? ''
+            : `<button type="button" class="btn btn-sm btn-block" data-reopen-order="${order.id}">Wieder öffnen</button>
+               <button type="button" class="btn btn-danger btn-sm btn-block" data-finalize-order="${order.id}">Bestellung schließen</button>`
+        }
+        <button type="button" class="btn btn-danger btn-sm btn-block" data-delete-order="${order.id}">Bestellung löschen</button>
+      </div>
     </article>`;
 }
 
@@ -466,6 +493,7 @@ export function renderFoodOrders(container, ctx) {
   `;
 
   wireWhoAmICard(container, 'food-whoami', ctx);
+  wireInfoTooltips(container);
 
   container.querySelectorAll('[data-add-item-form]').forEach((f) => {
     const prev = prevForms.get(f.dataset.addItemForm);
@@ -602,6 +630,20 @@ export function renderFoodOrders(container, ctx) {
         await api.foodOrders.finalize(btn.dataset.finalizeOrder);
         cache = null;
         showToast('Bestellung geschlossen.');
+        ctx.rerender();
+      } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-delete-order]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!(await confirmDialog('Bestellung endgültig löschen? Alle eingetragenen Positionen gehen dabei verloren.'))) return;
+      try {
+        await api.foodOrders.remove(btn.dataset.deleteOrder);
+        cache = null;
+        showToast('Bestellung gelöscht.');
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });
