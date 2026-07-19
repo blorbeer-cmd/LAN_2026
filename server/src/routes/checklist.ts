@@ -20,16 +20,25 @@
 // several people at once inserts one independent row per person sharing a
 // batch_id, so each person's own progress (and own push topic) stays
 // separate even though they were assigned together.
+//
+// event_id is null for "the group's room, no specific event" (resolved per
+// request via resolveGroupEventScope) rather than the global sentinel -
+// this is a group-owned feature, so the event scope must be resolved
+// relative to req.group, never from the single global tracking event (see
+// resolveGroupEventScope's own doc comment). Every :id-based mutation loads
+// its row through resolveGroupResource so a task/item id from a group the
+// caller isn't an active member of 404s instead of being reachable by
+// switching the selected group header.
 
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { nanoid } from 'nanoid';
-import { db, OUTSIDE_EVENTS_ID } from '../db';
+import { db } from '../db';
 import { broadcast, Events } from '../realtime';
-import { getTrackingEventId } from '../events';
 import { isNonEmptyString } from '../validation';
 import { notifyPlayers, resolvePushTopic } from '../push';
 import { withBodyPlayerIdentity, withQueryPlayerIdentity } from '../sessions';
-import { requireGroupRole } from '../groupAuthorization';
+import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
+import { resolveGroupEventScope } from '../groupEventScope';
 import { communicationRecipientIds } from '../communicationRecipients';
 import { activeGroupPlayers } from '../groupPlayers';
 import { DEFAULT_CHECKLIST_ITEMS } from '../checklistDefaults';
@@ -41,12 +50,10 @@ const MAX_TASK_TITLE = 80;
 const MAX_TASK_DESCRIPTION = 300;
 const MAX_BATCH_ASSIGNEES = 30; // generous over the ~15-person LAN this is sized for
 
-const communicationEventId = (eventId: string): string | null => (eventId === OUTSIDE_EVENTS_ID ? null : eventId);
-
 interface ItemRow {
   id: string;
   group_id: string;
-  event_id: string;
+  event_id: string | null;
   player_id: string;
   label: string;
   template_key: string | null;
@@ -57,7 +64,7 @@ interface ItemRow {
 interface TaskRow {
   id: string;
   group_id: string;
-  event_id: string;
+  event_id: string | null;
   type: 'todo' | 'item_request';
   title: string;
   description: string | null;
@@ -112,9 +119,9 @@ function serializeTask(row: TaskRow) {
 // deliberately deleted default item must never come back on a later fetch),
 // spacing created_at by 1ms per entry so the list renders in Grundstock
 // order on first load instead of depending on insertion-order ties.
-function ensureDefaultItems(groupId: string, eventId: string, playerId: string): void {
+function ensureDefaultItems(groupId: string, eventId: string | null, playerId: string): void {
   const already = db
-    .prepare('SELECT 1 FROM checklist_materializations WHERE group_id = ? AND event_id = ? AND player_id = ?')
+    .prepare('SELECT 1 FROM checklist_materializations WHERE group_id = ? AND event_id IS ? AND player_id = ?')
     .get(groupId, eventId, playerId);
   if (already) return;
 
@@ -133,9 +140,9 @@ function ensureDefaultItems(groupId: string, eventId: string, playerId: string):
   })();
 }
 
-function listItems(groupId: string, eventId: string, playerId: string): ItemRow[] {
+function listItems(groupId: string, eventId: string | null, playerId: string): ItemRow[] {
   return db
-    .prepare('SELECT * FROM checklist_items WHERE group_id = ? AND event_id = ? AND player_id = ? ORDER BY created_at')
+    .prepare('SELECT * FROM checklist_items WHERE group_id = ? AND event_id IS ? AND player_id = ? ORDER BY created_at')
     .all(groupId, eventId, playerId) as ItemRow[];
 }
 
@@ -147,12 +154,46 @@ function getTask(id: string): TaskRow | undefined {
   return db.prepare('SELECT * FROM checklist_tasks WHERE id = ?').get(id) as TaskRow | undefined;
 }
 
-function listTasks(groupId: string, eventId: string): TaskRow[] {
+function listTasks(groupId: string, eventId: string | null): TaskRow[] {
   return db
     .prepare(
-      `SELECT * FROM checklist_tasks WHERE group_id = ? AND event_id = ? AND status != 'cancelled' ORDER BY created_at DESC`,
+      `SELECT * FROM checklist_tasks WHERE group_id = ? AND event_id IS ? AND status != 'cancelled' ORDER BY created_at DESC`,
     )
     .all(groupId, eventId) as TaskRow[];
+}
+
+// A resource route never trusts the selected group header as ownership
+// evidence - the loader hands the resource's own group_id to
+// resolveGroupResource, which re-verifies active membership in *that* group
+// (not whatever the caller currently has selected) before exposing it.
+const resolveChecklistItem = resolveGroupResource<ItemRow>({
+  resourceType: 'Packlisten-Position',
+  load: (id) => {
+    const row = getItem(id);
+    return row ? { resource: row, groupId: row.group_id } : undefined;
+  },
+});
+
+const resolveChecklistTask = resolveGroupResource<TaskRow>({
+  resourceType: 'Aufgabe',
+  load: (id) => {
+    const row = getTask(id);
+    return row ? { resource: row, groupId: row.group_id } : undefined;
+  },
+});
+
+// Group owners/admins moderate the shared pool the same way requireGroupRole
+// gates creating an organizer todo. Deliberately *not* falling back to the
+// global req.player.is_admin flag: that's an instance-wide moderation role
+// unrelated to any specific group's management and must not let someone who
+// merely has a "member" role in this group override its own admins/owner
+// (see the required-mode regression in api.groupChecklist.required.test.ts).
+// Legacy mode never populates req.groupMembership, so this is creator/
+// assignee-only there - matching requireGroupRole's own legacy behavior of
+// having no group-role concept to check in the first place.
+function isChecklistModerator(req: Request): boolean {
+  const role = req.groupMembership?.role;
+  return role === 'owner' || role === 'admin';
 }
 
 // GET /api/checklist/items?playerId=... - materializes the Grundstock (if not
@@ -166,9 +207,10 @@ checklistRouter.get('/items', ...withQueryPlayerIdentity, (req, res) => {
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const groupId = req.group!.id;
-  const eventId = getTrackingEventId();
-  ensureDefaultItems(groupId, eventId, playerId);
-  res.json({ items: listItems(groupId, eventId, playerId).map(serializeItem) });
+  const scope = resolveGroupEventScope(groupId, undefined);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  ensureDefaultItems(groupId, scope.eventId, playerId);
+  res.json({ items: listItems(groupId, scope.eventId, playerId).map(serializeItem) });
 });
 
 // POST /api/checklist/items - body: { playerId, label }. Adds one custom item.
@@ -184,11 +226,12 @@ checklistRouter.post('/items', ...withBodyPlayerIdentity, (req, res) => {
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const groupId = req.group!.id;
-  const eventId = getTrackingEventId();
+  const scope = resolveGroupEventScope(groupId, undefined);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   const row: ItemRow = {
     id: nanoid(),
     group_id: groupId,
-    event_id: eventId,
+    event_id: scope.eventId,
     player_id: playerId,
     label: label.trim(),
     template_key: null,
@@ -200,14 +243,13 @@ checklistRouter.post('/items', ...withBodyPlayerIdentity, (req, res) => {
      VALUES (?, ?, ?, ?, ?, NULL, NULL, ?)`,
   ).run(row.id, row.group_id, row.event_id, row.player_id, row.label, row.created_at);
 
-  broadcast(Events.checklistChanged, { scope: 'items', playerId }, { groupId, eventId: communicationEventId(eventId) });
+  broadcast(Events.checklistChanged, { scope: 'items', playerId }, { groupId, eventId: scope.eventId });
   res.status(201).json(serializeItem(row));
 });
 
 // PATCH /api/checklist/items/:id - body: { playerId, checked }. Own items only.
-checklistRouter.patch('/items/:id', ...withBodyPlayerIdentity, (req, res) => {
-  const item = getItem(req.params.id);
-  if (!item) return res.status(404).json({ error: 'Position nicht gefunden.' });
+checklistRouter.patch('/items/:id', resolveChecklistItem, ...withBodyPlayerIdentity, (req, res) => {
+  const item = req.groupResource as ItemRow;
   const { playerId, checked } = req.body ?? {};
   if (item.player_id !== playerId) {
     return res.status(403).json({ error: 'Nur die eigene Packliste kann bearbeitet werden.' });
@@ -218,22 +260,21 @@ checklistRouter.patch('/items/:id', ...withBodyPlayerIdentity, (req, res) => {
 
   const checkedAt = checked ? Date.now() : null;
   db.prepare('UPDATE checklist_items SET checked_at = ? WHERE id = ?').run(checkedAt, item.id);
-  broadcast(Events.checklistChanged, { scope: 'items', playerId }, { groupId: item.group_id, eventId: communicationEventId(item.event_id) });
+  broadcast(Events.checklistChanged, { scope: 'items', playerId }, { groupId: item.group_id, eventId: item.event_id });
   res.json(serializeItem({ ...item, checked_at: checkedAt }));
 });
 
 // DELETE /api/checklist/items/:id - body: { playerId }. Own items only
 // (including default ones - the list is meant to be freely pruned).
-checklistRouter.delete('/items/:id', ...withBodyPlayerIdentity, (req, res) => {
-  const item = getItem(req.params.id);
-  if (!item) return res.status(404).json({ error: 'Position nicht gefunden.' });
+checklistRouter.delete('/items/:id', resolveChecklistItem, ...withBodyPlayerIdentity, (req, res) => {
+  const item = req.groupResource as ItemRow;
   const { playerId } = req.body ?? {};
   if (item.player_id !== playerId) {
     return res.status(403).json({ error: 'Nur die eigene Packliste kann bearbeitet werden.' });
   }
 
   db.prepare('DELETE FROM checklist_items WHERE id = ?').run(item.id);
-  broadcast(Events.checklistChanged, { scope: 'items', playerId }, { groupId: item.group_id, eventId: communicationEventId(item.event_id) });
+  broadcast(Events.checklistChanged, { scope: 'items', playerId }, { groupId: item.group_id, eventId: item.event_id });
   res.status(204).end();
 });
 
@@ -241,8 +282,9 @@ checklistRouter.delete('/items/:id', ...withBodyPlayerIdentity, (req, res) => {
 // current event, open and taken/done alike; the frontend splits them up.
 checklistRouter.get('/tasks', (req, res) => {
   const groupId = req.group!.id;
-  const eventId = getTrackingEventId();
-  res.json({ tasks: listTasks(groupId, eventId).map(serializeTask) });
+  const scope = resolveGroupEventScope(groupId, undefined);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  res.json({ tasks: listTasks(groupId, scope.eventId).map(serializeTask) });
 });
 
 // POST /api/checklist/tasks - body: { playerId, title, description? }. Any
@@ -265,11 +307,12 @@ checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const groupId = req.group!.id;
-  const eventId = getTrackingEventId();
+  const scope = resolveGroupEventScope(groupId, undefined);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   const row: TaskRow = {
     id: nanoid(),
     group_id: groupId,
-    event_id: eventId,
+    event_id: scope.eventId,
     type: 'item_request',
     title: title.trim(),
     description: description ? description.trim() : null,
@@ -287,17 +330,16 @@ checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
      VALUES (?, ?, ?, 'item_request', ?, ?, ?, NULL, NULL, 'open', ?)`,
   ).run(row.id, row.group_id, row.event_id, row.title, row.description, row.created_by, row.created_at);
 
-  const eventScope = communicationEventId(eventId);
-  const recipients = communicationRecipientIds(groupId, eventScope).filter((id) => id !== playerId);
+  const recipients = communicationRecipientIds(groupId, scope.eventId).filter((id) => id !== playerId);
   notifyPlayers(
     recipients,
     { title: 'Neue Mitbring-Anfrage', body: `${player.name}: ${row.title}`, url: '/#checklist' },
     'all',
     { key: `checklist-task:${row.id}` },
-    { groupId, eventId: eventScope },
+    { groupId, eventId: scope.eventId },
   );
 
-  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId, eventId: eventScope });
+  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId, eventId: scope.eventId });
   res.status(201).json(serializeTask(row));
 });
 
@@ -338,8 +380,9 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
     return res.status(404).json({ error: 'Mindestens eine zugewiesene Person wurde nicht gefunden.' });
   }
 
-  const eventId = getTrackingEventId();
-  const eventScope = communicationEventId(eventId);
+  const scope = resolveGroupEventScope(groupId, undefined);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  const eventId = scope.eventId;
   const now = Date.now();
   const trimmedTitle = title.trim();
   const trimmedDescription = description ? description.trim() : null;
@@ -394,13 +437,13 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
   })();
 
   if (assigneeIds.length === 0) {
-    const recipients = communicationRecipientIds(groupId, eventScope).filter((id) => id !== playerId);
+    const recipients = communicationRecipientIds(groupId, eventId).filter((id) => id !== playerId);
     notifyPlayers(
       recipients,
       { title: 'Neue Aufgabe', body: `${organizer.name}: ${trimmedTitle}`, url: '/#checklist' },
       'all',
       { key: `checklist-task:${rows[0].id}` },
-      { groupId, eventId: eventScope },
+      { groupId, eventId },
     );
   } else {
     for (const row of rows) {
@@ -409,20 +452,19 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
         { title: 'Dir wurde eine Aufgabe zugewiesen', body: `${organizer.name}: ${trimmedTitle}`, url: '/#checklist' },
         'direct',
         { key: `checklist-task:${row.id}` },
-        { groupId, eventId: eventScope },
+        { groupId, eventId },
       );
     }
   }
 
-  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId, eventId: eventScope });
+  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId, eventId });
   res.status(201).json({ tasks: rows.map(serializeTask) });
 });
 
 // POST /api/checklist/tasks/:id/claim - body: { playerId }. First request
 // wins: exactly one concurrent claim succeeds, everyone else gets a 409.
-checklistRouter.post('/tasks/:id/claim', ...withBodyPlayerIdentity, (req, res) => {
-  const task = getTask(req.params.id);
-  if (!task) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
+checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
+  const task = req.groupResource as TaskRow;
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -443,24 +485,22 @@ checklistRouter.post('/tasks/:id/claim', ...withBodyPlayerIdentity, (req, res) =
     return res.status(409).json({ error: 'Diese Aufgabe wurde bereits übernommen.' });
   }
 
-  const eventScope = communicationEventId(task.event_id);
-  resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: eventScope });
+  resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
   notifyPlayers(
     [task.created_by],
     { title: 'Übernommen', body: `${player.name} übernimmt: ${task.title}`, url: '/#checklist' },
     'direct',
     undefined,
-    { groupId: task.group_id, eventId: eventScope },
+    { groupId: task.group_id, eventId: task.event_id },
   );
-  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: eventScope });
+  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
   res.json(serializeTask({ ...task, status: 'taken', assignee_id: playerId, taken_at: now }));
 });
 
 // POST /api/checklist/tasks/:id/release - body: { playerId }. Only the
 // current assignee can back out, returning the task to the open pool.
-checklistRouter.post('/tasks/:id/release', ...withBodyPlayerIdentity, (req, res) => {
-  const task = getTask(req.params.id);
-  if (!task) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
+checklistRouter.post('/tasks/:id/release', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
+  const task = req.groupResource as TaskRow;
   const { playerId } = req.body ?? {};
   if (task.assignee_id !== playerId) {
     return res.status(403).json({ error: 'Nur die zugewiesene Person kann die Aufgabe wieder freigeben.' });
@@ -472,18 +512,16 @@ checklistRouter.post('/tasks/:id/release', ...withBodyPlayerIdentity, (req, res)
   db.prepare(`UPDATE checklist_tasks SET status = 'open', assignee_id = NULL, taken_at = NULL WHERE id = ? AND status = 'taken'`).run(
     task.id,
   );
-  const eventScope = communicationEventId(task.event_id);
-  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: eventScope });
+  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
   res.json(serializeTask({ ...task, status: 'open', assignee_id: null, taken_at: null }));
 });
 
 // PATCH /api/checklist/tasks/:id/done - body: { playerId }. The assignee,
-// the creator, or a group admin can mark a taken task as done.
-checklistRouter.patch('/tasks/:id/done', ...withBodyPlayerIdentity, (req, res) => {
-  const task = getTask(req.params.id);
-  if (!task) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
+// the creator, or a group moderator (owner/admin) can mark a taken task done.
+checklistRouter.patch('/tasks/:id/done', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
+  const task = req.groupResource as TaskRow;
   const { playerId } = req.body ?? {};
-  if (playerId !== task.assignee_id && playerId !== task.created_by && !req.player?.is_admin) {
+  if (playerId !== task.assignee_id && playerId !== task.created_by && !isChecklistModerator(req)) {
     return res.status(403).json({ error: 'Nur die zugewiesene Person, der Ersteller oder ein Admin kann dies als erledigt markieren.' });
   }
   if (task.status !== 'taken') {
@@ -492,20 +530,19 @@ checklistRouter.patch('/tasks/:id/done', ...withBodyPlayerIdentity, (req, res) =
 
   const doneAt = Date.now();
   db.prepare(`UPDATE checklist_tasks SET status = 'done', done_at = ? WHERE id = ? AND status = 'taken'`).run(doneAt, task.id);
-  const eventScope = communicationEventId(task.event_id);
-  resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: eventScope });
-  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: eventScope });
+  resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
+  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
   res.json(serializeTask({ ...task, status: 'done', done_at: doneAt }));
 });
 
-// DELETE /api/checklist/tasks/:id - body: { playerId }. Creator or admin
-// only, and only before it's done - withdraws a task/request that's no
-// longer needed instead of leaving it in the pool or on someone's plate.
-checklistRouter.delete('/tasks/:id', ...withBodyPlayerIdentity, (req, res) => {
-  const task = getTask(req.params.id);
-  if (!task) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
+// DELETE /api/checklist/tasks/:id - body: { playerId }. Creator or group
+// moderator only, and only before it's done - withdraws a task/request
+// that's no longer needed instead of leaving it in the pool or on someone's
+// plate.
+checklistRouter.delete('/tasks/:id', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
+  const task = req.groupResource as TaskRow;
   const { playerId } = req.body ?? {};
-  if (playerId !== task.created_by && !req.player?.is_admin) {
+  if (playerId !== task.created_by && !isChecklistModerator(req)) {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann dies zurückziehen.' });
   }
   if (task.status === 'done' || task.status === 'cancelled') {
@@ -520,8 +557,7 @@ checklistRouter.delete('/tasks/:id', ...withBodyPlayerIdentity, (req, res) => {
     return res.status(409).json({ error: 'Diese Aufgabe ist bereits abgeschlossen.' });
   }
 
-  const eventScope = communicationEventId(task.event_id);
-  resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: eventScope });
-  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: eventScope });
+  resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
+  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
   res.status(204).end();
 });

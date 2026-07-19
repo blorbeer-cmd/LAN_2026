@@ -64,6 +64,12 @@ export function invalidateChecklist() {
   invalidateItems();
 }
 
+// These caches are keyed by player id, not by group - switching the active
+// group (see groupContext.js) must drop them too, or the previous group's
+// tasks/items keep rendering (and stay clickable) until some unrelated
+// checklist:changed socket event happens to arrive.
+window.addEventListener('respawn:group-changed', invalidateChecklist);
+
 function renderItems(myId) {
   if (!myId) {
     return `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um deine Packliste zu sehen.</div>`;

@@ -2592,35 +2592,40 @@ createPushMuteTable();
 // and a shared task/request pool (organizer-distributed to-dos, open or
 // assigned to one/several people, plus "kann mir jemand X mitnehmen"
 // requests anyone can claim). See routes/checklist.ts for the full lifecycle.
+//
+// event_id is nullable (NULL = the group's permanent room, no specific
+// event - resolved per request via resolveGroupEventScope) rather than the
+// global "outside events" sentinel: this is a group-owned feature, and a
+// single global tracking event would let one group's writes land under a
+// completely different group's event. SQLite treats every NULL as distinct
+// for UNIQUE/PRIMARY KEY purposes, so nothing below actually relies on a
+// SQL-level uniqueness constraint to enforce "exactly one Grundstock
+// materialization per player/event" - the check-then-insert in
+// ensureDefaultItems() (routes/checklist.ts) is fully synchronous within one
+// request, which is what actually guarantees it; the indexes/PK here are
+// defense-in-depth query aids, not the uniqueness authority.
 function addChecklistTables(): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS checklist_items (
       id           TEXT PRIMARY KEY,
       group_id     TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-      event_id     TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      event_id     TEXT REFERENCES events(id) ON DELETE CASCADE,
       player_id    TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
       label        TEXT NOT NULL,
       template_key TEXT, -- ties a materialized default row back to its Grundstock entry; NULL for custom items
       checked_at   INTEGER,
       created_at   INTEGER NOT NULL
     );
-    -- One materialized row per default item per player/event, so re-fetching
-    -- never duplicates the Grundstock (partial index: custom items, whose
-    -- template_key is NULL, are never constrained by this).
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_checklist_items_template
-      ON checklist_items(group_id, event_id, player_id, template_key)
-      WHERE template_key IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_checklist_items_player
       ON checklist_items(group_id, event_id, player_id);
 
     -- Marks that the Grundstock was already materialized for this
     -- player/event, independent of whether any of those rows still exist -
     -- without this, deleting a default item (pruning the list on purpose)
-    -- would just have it silently reappear on the next fetch, since the
-    -- unique index above only prevents a *duplicate*, not a *resurrection*.
+    -- would just have it silently reappear on the next fetch.
     CREATE TABLE IF NOT EXISTS checklist_materializations (
       group_id        TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-      event_id        TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      event_id        TEXT REFERENCES events(id) ON DELETE CASCADE,
       player_id       TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
       materialized_at INTEGER NOT NULL,
       PRIMARY KEY (group_id, event_id, player_id)
@@ -2629,7 +2634,7 @@ function addChecklistTables(): void {
     CREATE TABLE IF NOT EXISTS checklist_tasks (
       id           TEXT PRIMARY KEY,
       group_id     TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-      event_id     TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      event_id     TEXT REFERENCES events(id) ON DELETE CASCADE,
       type         TEXT NOT NULL CHECK (type IN ('todo', 'item_request')),
       title        TEXT NOT NULL,
       description  TEXT,
