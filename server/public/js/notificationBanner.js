@@ -338,5 +338,8 @@ export function initNotificationBanner() {
     loadError = false;
     refreshNotificationBanner();
   });
+  // Local REST mutations can refresh this browser without implying delivery
+  // to sockets, Push subscribers or the Kiosk.
+  window.addEventListener('respawn:notifications-refresh', refreshNotificationBanner);
   refreshNotificationBanner();
 }
