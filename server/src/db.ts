@@ -2587,6 +2587,67 @@ runMigration({ version: 44, name: 'add historized tracking consents and fan-out 
 // well, so databases that already recorded 44 receive the Phase-5e surface.
 createPushMuteTable();
 
+// Packliste: a personal packing checklist per player/event (Grundstock items
+// materialized from DEFAULT_CHECKLIST_ITEMS plus freely added custom ones),
+// and a shared task/request pool (organizer-distributed to-dos, open or
+// assigned to one/several people, plus "kann mir jemand X mitnehmen"
+// requests anyone can claim). See routes/checklist.ts for the full lifecycle.
+function addChecklistTables(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS checklist_items (
+      id           TEXT PRIMARY KEY,
+      group_id     TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      event_id     TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      player_id    TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      label        TEXT NOT NULL,
+      template_key TEXT, -- ties a materialized default row back to its Grundstock entry; NULL for custom items
+      checked_at   INTEGER,
+      created_at   INTEGER NOT NULL
+    );
+    -- One materialized row per default item per player/event, so re-fetching
+    -- never duplicates the Grundstock (partial index: custom items, whose
+    -- template_key is NULL, are never constrained by this).
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_checklist_items_template
+      ON checklist_items(group_id, event_id, player_id, template_key)
+      WHERE template_key IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_checklist_items_player
+      ON checklist_items(group_id, event_id, player_id);
+
+    -- Marks that the Grundstock was already materialized for this
+    -- player/event, independent of whether any of those rows still exist -
+    -- without this, deleting a default item (pruning the list on purpose)
+    -- would just have it silently reappear on the next fetch, since the
+    -- unique index above only prevents a *duplicate*, not a *resurrection*.
+    CREATE TABLE IF NOT EXISTS checklist_materializations (
+      group_id        TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      event_id        TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      player_id       TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      materialized_at INTEGER NOT NULL,
+      PRIMARY KEY (group_id, event_id, player_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS checklist_tasks (
+      id           TEXT PRIMARY KEY,
+      group_id     TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      event_id     TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      type         TEXT NOT NULL CHECK (type IN ('todo', 'item_request')),
+      title        TEXT NOT NULL,
+      description  TEXT,
+      created_by   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      assignee_id  TEXT REFERENCES players(id) ON DELETE CASCADE,
+      batch_id     TEXT, -- shared by rows created together via one organizer multi-assign; NULL otherwise
+      status       TEXT NOT NULL CHECK (status IN ('open', 'taken', 'done', 'cancelled')),
+      created_at   INTEGER NOT NULL,
+      taken_at     INTEGER,
+      done_at      INTEGER,
+      cancelled_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_checklist_tasks_scope ON checklist_tasks(group_id, event_id, status);
+    CREATE INDEX IF NOT EXISTS idx_checklist_tasks_assignee ON checklist_tasks(assignee_id, status);
+  `);
+}
+runMigration({ version: 45, name: 'add checklist items and tasks', up: addChecklistTables });
+
 // Lets whoever collects the money (the order's creator/an admin) check off
 // each item once that person has paid their share.
 function migrateFoodOrderItemPaidColumn(): void {
