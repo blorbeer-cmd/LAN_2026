@@ -2797,6 +2797,24 @@ runMigration({ version: 48, name: 'close music sessions orphaned by local contro
 // migration. Re-run the idempotent checklist DDL once to repair that state.
 runMigration({ version: 49, name: 'repair checklist tables after migration merge', up: addChecklistTables });
 
+// The personal packing list no longer includes an ID card. Remove only the
+// materialized built-in rows; custom entries with the same visible label are
+// left untouched.
+function removeChecklistIdCardDefault(): void {
+  db.prepare("DELETE FROM checklist_items WHERE template_key = 'id-card'").run();
+}
+runMigration({ version: 50, name: 'remove ID card from checklist defaults', up: removeChecklistIdCardDefault });
+
+// Lets whoever claims a task/request leave a short note along with it (e.g.
+// "Bringe einen XBOX Controller mit."), shown to the creator and everyone
+// else looking at the taken task instead of just the bare assignee name.
+function addChecklistTaskClaimComment(): void {
+  const columns = db.prepare('PRAGMA table_info(checklist_tasks)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'claim_comment')) return;
+  db.exec('ALTER TABLE checklist_tasks ADD COLUMN claim_comment TEXT');
+}
+runMigration({ version: 51, name: 'add checklist task claim comment', up: addChecklistTaskClaimComment });
+
 function createPushMuteTable(): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS push_mutes (

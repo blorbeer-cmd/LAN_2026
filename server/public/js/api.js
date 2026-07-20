@@ -469,6 +469,7 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ sendAt, notes, link, paypalLink, tipPercent }),
       }),
+    remove: (orderId) => apiFetch(`/api/food-orders/${orderId}`, { method: 'DELETE' }),
     addItem: (orderId, data) =>
       apiFetch(`/api/food-orders/${orderId}/items`, { method: 'POST', body: JSON.stringify(data) }),
     removeItem: (orderId, itemId, playerId) =>
@@ -502,8 +503,8 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ playerId, title, description, assigneePlayerIds }),
       }),
-    claim: (taskId, playerId) =>
-      apiFetch(`/api/checklist/tasks/${taskId}/claim`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    claim: (taskId, playerId, comment) =>
+      apiFetch(`/api/checklist/tasks/${taskId}/claim`, { method: 'POST', body: JSON.stringify({ playerId, comment }) }),
     release: (taskId, playerId) =>
       apiFetch(`/api/checklist/tasks/${taskId}/release`, { method: 'POST', body: JSON.stringify({ playerId }) }),
     setDone: (taskId, playerId) =>

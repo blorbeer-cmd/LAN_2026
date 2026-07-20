@@ -43,6 +43,7 @@ function linkify(escaped) {
 
 function openEntryForm(ctx, existing) {
   const isEdit = Boolean(existing);
+  let modalEl;
   const { close } = openModal(
     isEdit ? 'Eintrag bearbeiten' : 'Neuer Eintrag',
     `
@@ -53,7 +54,17 @@ function openEntryForm(ctx, existing) {
       </form>
     `,
     {
+      confirmClose: () => {
+        if (!modalEl) return null;
+        const title = modalEl.querySelector('#info-title').value.trim();
+        const content = modalEl.querySelector('#info-content').value.trim();
+        const dirty = isEdit
+          ? title !== (existing.title ?? '') || content !== (existing.content ?? '')
+          : Boolean(title || content);
+        return dirty ? 'Der Eintrag mit Titel und Inhalt geht verloren.' : null;
+      },
       onMount: (el) => {
+        modalEl = el;
         el.querySelector('#info-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const title = el.querySelector('#info-title').value.trim();

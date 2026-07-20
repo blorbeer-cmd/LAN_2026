@@ -330,3 +330,39 @@ test('finalizing permanently locks the order: no reopen, items, paid or metadata
   const secondFinalize = await request(app).post(`/api/food-orders/${finalizeOrderId}/finalize`);
   assert.equal(secondFinalize.status, 409);
 });
+
+test('DELETE /api/food-orders/:id removes an open order and its items, and rejects an unknown id', async () => {
+  const missing = await request(app).delete('/api/food-orders/nope');
+  assert.equal(missing.status, 404);
+
+  const created = await request(app).post('/api/food-orders').send({ playerId: alice.id, title: 'Versehentlich geöffnet' });
+  const deleteOrderId = created.body.id;
+  await request(app)
+    .post(`/api/food-orders/${deleteOrderId}/items`)
+    .send({ playerId: bob.id, description: 'Cola', priceCents: 200 });
+
+  const removed = await request(app).delete(`/api/food-orders/${deleteOrderId}`);
+  assert.equal(removed.status, 204);
+
+  const list = await request(app).get('/api/food-orders');
+  assert.equal(
+    list.body.orders.some((o: { id: string }) => o.id === deleteOrderId),
+    false
+  );
+
+  const secondDelete = await request(app).delete(`/api/food-orders/${deleteOrderId}`);
+  assert.equal(secondDelete.status, 404);
+});
+
+test('DELETE /api/food-orders/:id also works on a closed and on a finalized order (unlike every other mutation)', async () => {
+  const closedOrder = await request(app).post('/api/food-orders').send({ playerId: alice.id, title: 'Abgeschickt, aber falsch' });
+  await request(app).post(`/api/food-orders/${closedOrder.body.id}/close`);
+  const closedDelete = await request(app).delete(`/api/food-orders/${closedOrder.body.id}`);
+  assert.equal(closedDelete.status, 204);
+
+  const finalizedOrder = await request(app).post('/api/food-orders').send({ playerId: alice.id, title: 'Ganz fertig' });
+  await request(app).post(`/api/food-orders/${finalizedOrder.body.id}/close`);
+  await request(app).post(`/api/food-orders/${finalizedOrder.body.id}/finalize`);
+  const finalizedDelete = await request(app).delete(`/api/food-orders/${finalizedOrder.body.id}`);
+  assert.equal(finalizedDelete.status, 204);
+});

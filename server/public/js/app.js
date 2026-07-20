@@ -42,12 +42,14 @@ import { renderMore } from './views/more.js';
 import { renderAdmin } from './views/admin.js';
 import { invalidateMusic, renderMusic } from './views/music.js';
 import { icon, installIconReplacement } from './icons.js';
+import { initNumberStepper } from './numberStepper.js';
 import { initGlobalSearch } from './searchPalette.js';
 import { installDomainIcons } from './domainIcons.js';
 import { initGroupContext, refreshGroupContext } from './groupContext.js';
 
 installIconReplacement();
 installDomainIcons();
+initNumberStepper();
 
 const VIEWS = {
   home: renderHome,
@@ -343,6 +345,11 @@ function wireSocket() {
       // any device that already has it cached.
       invalidateHomeSeating();
       invalidateSeating();
+      // events:changed also covers starting/stopping/switching which event is
+      // tracked, and the Packliste is scoped to that current event - without
+      // this, a stale tasksCache/itemsCache would keep the previous event's
+      // rows on screen (and mutable) after the switch.
+      invalidateChecklist();
       ctx.refresh();
     })
   );

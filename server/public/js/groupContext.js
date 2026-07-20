@@ -160,6 +160,18 @@ async function openManageGroup(group) {
         ${adminSections}
         ${destructiveActions}
       </div>`,
+      {
+        confirmClose: () => {
+          if (!el) return null;
+          const nameInput = el.querySelector('#group-edit-name');
+          const descriptionInput = el.querySelector('#group-edit-description');
+          if (!nameInput || !descriptionInput) return null;
+          const dirty =
+            nameInput.value.trim() !== (freshGroup.name ?? '') ||
+            descriptionInput.value.trim() !== (freshGroup.description ?? '');
+          return dirty ? 'Änderungen an Gruppenname und Beschreibung wurden nicht gespeichert.' : null;
+        },
+      },
     );
 
     el.querySelector('#group-edit-form')?.addEventListener('submit', async (event) => {
@@ -296,6 +308,14 @@ function openCreateGroup() {
       <p class="notice notice-warning">Die Gruppe ist zunächst eine Vorschau. Fach- und Trackingdaten bleiben bis zum Abschluss der Mandantentrennung in der Startgruppe.</p>
       <button class="btn btn-primary" type="submit">Gruppe anlegen</button>
     </form>`,
+    {
+      confirmClose: () => {
+        if (!el) return null;
+        const name = el.querySelector('#group-name').value.trim();
+        const description = el.querySelector('#group-description').value.trim();
+        return name || description ? 'Der neu angelegte Gruppenname und die Beschreibung gehen verloren.' : null;
+      },
+    },
   );
   el.querySelector('#group-create-form').addEventListener('submit', async (event) => {
     event.preventDefault();

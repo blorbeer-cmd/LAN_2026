@@ -16,6 +16,7 @@ import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { icon } from '../icons.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let cache = null;
 let loading = false;
@@ -61,6 +62,23 @@ function formatCents(cents) {
   return euroFormatter.format(cents / 100);
 }
 
+async function copyFoodOrderTotal(value) {
+  if (!navigator.clipboard?.writeText) {
+    showToast('Kopieren ist in diesem Browser nicht verfügbar.', { error: true });
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(value);
+    showToast(`Summe kopiert: ${value}`);
+  } catch {
+    showToast('Summe konnte nicht kopiert werden.', { error: true });
+  }
+}
+
+export function addTipToCents(cents, tipPercent) {
+  return Math.round(cents * (1 + (tipPercent || 0) / 100));
+}
+
 // Turns a stored PayPal(.me) link into a payable one: a bare
 // "paypal.me/name" link gets the exact owed amount appended so paying is one
 // tap; anything else (already has a path/amount, or some other payment page
@@ -74,22 +92,44 @@ export function paypalPayUrl(paypalLink, cents) {
   return paypalLink;
 }
 
+// PayPal has no public URL that pre-fills a payment's recipient by email
+// (the old cmd=_send-money trick is long dead) — so an email address can't
+// become a one-tap payment link the way a paypal.me name can. The best we
+// can do is send people to PayPal's generic "send money" page and put the
+// address on the clipboard so they only have to paste it. The email is
+// tucked into the (otherwise unused by PayPal) recipient query param purely
+// so paypalEmailFromLink can recover it later for that clipboard copy.
+const PAYPAL_EMAIL_LINK_RE = /^https:\/\/www\.paypal\.com\/myaccount\/transfer\/homepage\/pay\?recipient=([^&]+)$/i;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// The email this order's PayPal link was built from, or null if the link
+// isn't one of ours (a paypal.me link or some other payment page).
+export function paypalEmailFromLink(paypalLink) {
+  const match = (paypalLink ?? '').match(PAYPAL_EMAIL_LINK_RE);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 // Lets people type just their paypal.me name ("blorbeer", "@blorbeer",
 // pasted "paypal.me/blorbeer" without a scheme, …) instead of having to
-// paste the whole https://paypal.me/… URL. A full http(s) link is passed
-// through untouched so anyone who prefers a different payment page can
-// still use it. Returns null for empty input; throws a user-facing message
-// for input that's neither a link nor a usable name.
+// paste the whole https://paypal.me/… URL, or their PayPal email address if
+// that's all they have (see paypalEmailFromLink for what that turns into).
+// A full http(s) link is passed through untouched so anyone who prefers a
+// different payment page can still use it. Returns null for empty input;
+// throws a user-facing message for input that's neither a link, an email,
+// nor a usable name.
 export function normalizePaypalInput(raw) {
   const trimmed = (raw ?? '').trim();
   if (!trimmed) return null;
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (EMAIL_RE.test(trimmed)) {
+    return `https://www.paypal.com/myaccount/transfer/homepage/pay?recipient=${encodeURIComponent(trimmed)}`;
+  }
   const name = trimmed
     .replace(/^@/, '')
     .replace(/^(www\.)?paypal\.me\//i, '')
     .replace(/\/+$/, '');
   if (!name || /\s/.test(name)) {
-    throw new Error('PayPal-Link muss eine gültige URL oder ein PayPal.me-Name ohne Leerzeichen sein.');
+    throw new Error('PayPal-Link muss eine gültige URL, E-Mail-Adresse oder ein PayPal.me-Name ohne Leerzeichen sein.');
   }
   return `https://paypal.me/${name}`;
 }
@@ -103,6 +143,26 @@ function itemsGroupedByPlayer(order) {
   return byPlayer;
 }
 
+// Explains once per order card what checking "Sammelzahlung" on a position
+// does — it's not "this is my item", it's "include this position (mine or
+// someone else's) in the combined PayPal payment below". Only relevant (and
+// only rendered) once the order actually has a PayPal link, i.e. once the
+// per-item checkbox exists at all.
+function renderPaymentHint(order) {
+  if (!order.paypalLink) return '';
+  return `
+    <div class="row food-order-payment-hint">
+      <span class="title-with-info">
+        <span class="muted" style="font-size:var(--font-size-xs);">Sammelzahlung</span>
+        ${infoTooltipHtml(
+          `food-pay-select-help-${order.id}`,
+          'Sammelzahlung',
+          'Bei einzelnen Positionen „Sammelzahlung“ ankreuzen – auch bei fremden – um sie zusammen per PayPal zu bezahlen.'
+        )}
+      </span>
+    </div>`;
+}
+
 function renderItems(order, myId, { locked = false } = {}) {
   if (order.items.length === 0) {
     return `<div class="muted" style="font-size:var(--font-size-sm);padding:var(--space-2) 0;">Noch nichts eingetragen.</div>`;
@@ -111,38 +171,53 @@ function renderItems(order, myId, { locked = false } = {}) {
   return [...grouped.entries()]
     .map(([playerId, items]) => {
       const first = items[0];
-      const playerSum = items.reduce((sum, i) => sum + (i.priceCents ?? 0) * (i.quantity ?? 1), 0);
+      const tipPercent = order.tipPercent || 0;
       const player = state.players.find((p) => p.id === playerId) || { color: first.playerColor };
       const rows = items
         .map((i) => {
           const quantity = i.quantity ?? 1;
-          const lineTotal = i.priceCents === null ? null : i.priceCents * quantity;
+          const lineSubtotal = i.priceCents === null ? null : i.priceCents * quantity;
+          const lineTotal = lineSubtotal === null ? null : addTipToCents(lineSubtotal, tipPercent);
+          const basePriceLabel = quantity > 1 ? `${quantity} × ${formatCents(i.priceCents)}` : formatCents(lineSubtotal);
+          const showBasePrice = quantity > 1 || tipPercent > 0;
           const priceHtml = lineTotal === null
             ? ''
             : `<span class="food-order-item-price">
                 <strong>${formatCents(lineTotal)}</strong>
-                ${quantity > 1 ? `<span class="muted">${quantity} × ${formatCents(i.priceCents)}</span>` : ''}
+                ${
+                  showBasePrice
+                    ? `<span class="muted">${basePriceLabel}${tipPercent > 0 ? ` · inkl. ${tipPercent}% Trinkgeld` : ''}</span>`
+                    : ''
+                }
               </span>`;
+          const copyHtml = lineTotal === null
+            ? `<span class="food-order-item-action-slot food-order-item-copy-slot" aria-hidden="true"></span>`
+            : `<button type="button" class="icon-btn food-order-item-action food-order-item-copy" data-copy-food-total="${escapeHtml(formatCents(lineTotal))}" title="Summe kopieren" aria-label="Summe kopieren">${icon('copy')}</button>`;
           const selected = selectedForPayment.has(i.id);
           return `
           <div class="row food-order-item ${i.paid ? 'is-paid' : ''} ${selected ? 'is-selected-for-payment' : ''}">
             <label class="food-order-item-paid-toggle">
-              <input type="checkbox" data-toggle-paid="${i.id}" data-order="${order.id}" ${i.paid ? 'checked' : ''} ${locked ? 'disabled' : ''} aria-label="Als bezahlt markieren" />
+              <input type="checkbox" data-toggle-paid="${i.id}" data-order="${order.id}" ${i.paid ? 'checked' : ''} ${locked ? 'disabled' : ''} />
+              <span class="food-order-item-toggle-label">Bezahlt</span>
             </label>
-            <span style="flex:1;"><strong>${quantity} ×</strong> ${escapeHtml(i.description)}</span>
-            ${priceHtml}
+            <span class="food-order-item-description"><strong>${quantity} ×</strong> ${escapeHtml(i.description)}</span>
             ${
               order.paypalLink
                 ? `<label class="food-order-item-pay-select">
-                     <input type="checkbox" data-select-pay="${i.id}" ${selected ? 'checked' : ''} aria-label="Für gemeinsame Zahlung auswählen" />
+                     <input type="checkbox" data-select-pay="${i.id}" ${selected ? 'checked' : ''} />
+                     <span class="food-order-item-toggle-label">Sammelzahlung</span>
                    </label>`
                 : ''
             }
-            ${
-              !locked && order.open && i.playerId === myId
-                ? `<button type="button" class="icon-btn food-order-item-remove" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen">${icon('x')}</button>`
-                : ''
-            }
+            <span class="food-order-item-controls">
+              ${copyHtml}
+              ${
+                !locked && order.open && i.playerId === myId
+                  ? `<button type="button" class="icon-btn food-order-item-action food-order-item-remove" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen">${icon('x')}</button>`
+                  : `<span class="food-order-item-action-slot food-order-item-remove-slot" aria-hidden="true"></span>`
+              }
+            </span>
+            ${priceHtml}
           </div>`;
         })
         .join('');
@@ -153,11 +228,6 @@ function renderItems(order, myId, { locked = false } = {}) {
             <strong style="flex:1;">${escapeHtml(first.playerName)}</strong>
           </div>
           <div class="food-order-player-items">${rows}</div>
-          ${
-            playerSum > 0
-              ? `<div class="row-between food-order-player-total"><span class="muted">Zwischensumme</span><strong>${formatCents(playerSum)}</strong></div>`
-              : ''
-          }
         </div>`;
     })
     .join('');
@@ -180,7 +250,8 @@ function renderPaymentSelector(order) {
   const allPriced = selectedItems.every((i) => i.priceCents !== null);
   const rawCents = selectedItems.reduce((sum, i) => sum + (i.priceCents ?? 0) * (i.quantity ?? 1), 0);
   const tipPercent = order.tipPercent || 0;
-  const payableCents = allPriced ? Math.round(rawCents * (1 + tipPercent / 100)) : 0;
+  const payableCents = allPriced ? addTipToCents(rawCents, tipPercent) : 0;
+  const email = paypalEmailFromLink(order.paypalLink);
   const amountLabel = allPriced
     ? `${formatCents(payableCents)}${tipPercent > 0 ? ` (inkl. ${tipPercent}% Trinkgeld)` : ''}`
     : 'Preis unvollständig – Betrag manuell eingeben';
@@ -188,8 +259,30 @@ function renderPaymentSelector(order) {
   return `
     <div class="row-between food-order-payment-selector">
       <span class="muted">${selectedItems.length} ${selectedItems.length === 1 ? 'Position' : 'Positionen'} ausgewählt · ${amountLabel}</span>
-      <a class="btn btn-sm btn-primary" href="${escapeHtml(paypalPayUrl(order.paypalLink, payableCents))}" target="_blank" rel="noopener">Bezahlen</a>
+      <span class="food-order-payment-actions">
+        ${
+          allPriced
+            ? `<button type="button" class="icon-btn food-order-item-action food-order-item-copy" data-copy-food-total="${escapeHtml(formatCents(payableCents))}" title="Summe kopieren" aria-label="Summe kopieren">${icon('copy')}</button>`
+            : ''
+        }
+        <a
+          class="btn btn-sm btn-primary"
+          href="${escapeHtml(paypalPayUrl(order.paypalLink, payableCents))}"
+          target="_blank"
+          rel="noopener"
+          ${email ? `data-copy-paypal-email="${escapeHtml(email)}" title="Öffnet PayPal und kopiert ${escapeHtml(email)} zum Einfügen."` : ''}
+        >${email ? 'PayPal öffnen' : 'Bezahlen'}</a>
+      </span>
     </div>`;
+}
+
+function renderOrderTotal(order) {
+  if (order.totalCents <= 0) return '';
+  const tipPercent = order.tipPercent || 0;
+  const totalCents = addTipToCents(order.totalCents, tipPercent);
+  return `<div class="row-between food-order-total"><strong>${
+    tipPercent > 0 ? `Gesamtsumme inkl. ${tipPercent}% Trinkgeld` : 'Gesamtsumme'
+  }</strong><strong>${formatCents(totalCents)}</strong></div>`;
 }
 
 // Metadata block (send time / notes / link) shown on both open and closed
@@ -210,7 +303,20 @@ function renderDetails(order, { locked = false } = {}) {
       </div>
       ${order.notes ? `<div class="muted" style="font-size:var(--font-size-sm);white-space:pre-wrap;word-break:break-word;">${escapeHtml(order.notes)}</div>` : ''}
       ${order.link ? `<a href="${escapeHtml(order.link)}" target="_blank" rel="noopener" style="font-size:var(--font-size-sm);">Link öffnen</a>` : ''}
-      ${order.paypalLink ? `<a href="${escapeHtml(order.paypalLink)}" target="_blank" rel="noopener" style="font-size:var(--font-size-sm);">PayPal öffnen</a>` : ''}
+      ${
+        order.paypalLink
+          ? (() => {
+              const email = paypalEmailFromLink(order.paypalLink);
+              return `<a
+                href="${escapeHtml(order.paypalLink)}"
+                target="_blank"
+                rel="noopener"
+                style="font-size:var(--font-size-sm);"
+                ${email ? `data-copy-paypal-email="${escapeHtml(email)}" title="Öffnet PayPal und kopiert ${escapeHtml(email)} zum Einfügen."` : ''}
+              >PayPal öffnen</a>`;
+            })()
+          : ''
+      }
     </div>`;
 }
 
@@ -225,8 +331,9 @@ function renderOpenOrder(order, myId) {
         von ${escapeHtml(order.createdByName)} · ${formatDateTime(order.createdAt)}
       </div>
       ${renderDetails(order)}
+      ${renderPaymentHint(order)}
       <div class="food-order-items">${renderItems(order, myId)}</div>
-      ${order.totalCents > 0 ? `<div class="row-between food-order-total"><strong>Gesamtsumme</strong><strong>${formatCents(order.totalCents)}</strong></div>` : ''}
+      ${renderOrderTotal(order)}
       ${renderPaymentSelector(order)}
       ${
         myId
@@ -244,9 +351,14 @@ function renderOpenOrder(order, myId) {
              </form>`
           : `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um dich einzutragen.</div>`
       }
-      <div class="food-order-close-action">
-        <button type="button" class="btn btn-primary btn-sm btn-block" data-close-order="${order.id}">Bestellung abschicken</button>
-      </div>
+      ${
+        order.createdBy === myId
+          ? `<div class="food-order-close-action stack" style="gap:var(--space-2);">
+               <button type="button" class="btn btn-primary btn-sm btn-block" data-close-order="${order.id}">Bestellung abschicken</button>
+               <button type="button" class="btn btn-danger btn-sm btn-block" data-delete-order="${order.id}">Bestellung löschen</button>
+             </div>`
+          : ''
+      }
     </div>`;
 }
 
@@ -259,6 +371,7 @@ function renderOpenOrder(order, myId) {
 function renderClosedOrder(order, myId) {
   const itemCount = order.items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
   const finalized = Boolean(order.finalizedAt);
+  const totalCents = addTipToCents(order.totalCents, order.tipPercent);
   return `
     <article class="card stack food-order-card" data-closed-order="${order.id}">
       <div class="row-between">
@@ -266,23 +379,31 @@ function renderClosedOrder(order, myId) {
         <span class="badge ${finalized ? 'badge-offline' : 'badge-paused'}">${finalized ? 'Geschlossen' : 'Abgeschickt'}</span>
       </div>
       <div class="muted food-order-meta">
-        ${itemCount} ${itemCount === 1 ? 'Position' : 'Positionen'}${order.totalCents > 0 ? ` · ${formatCents(order.totalCents)}` : ''}
+        ${itemCount} ${itemCount === 1 ? 'Position' : 'Positionen'}${totalCents > 0 ? ` · ${formatCents(totalCents)}${order.tipPercent ? ' inkl. Trinkgeld' : ''}` : ''}
       </div>
       ${renderDetails(order, { locked: finalized })}
+      ${renderPaymentHint(order)}
       <div class="food-order-items">${renderItems(order, myId, { locked: finalized })}</div>
+      ${renderOrderTotal(order)}
       ${renderPaymentSelector(order)}
       ${
-        finalized
-          ? ''
-          : `<div class="food-order-close-action stack" style="gap:var(--space-2);">
-               <button type="button" class="btn btn-sm btn-block" data-reopen-order="${order.id}">Wieder öffnen</button>
-               <button type="button" class="btn btn-danger btn-sm btn-block" data-finalize-order="${order.id}">Bestellung schließen</button>
+        order.createdBy === myId
+          ? `<div class="food-order-close-action stack" style="gap:var(--space-2);">
+               ${
+                 finalized
+                   ? ''
+                   : `<button type="button" class="btn btn-sm btn-block" data-reopen-order="${order.id}">Wieder öffnen</button>
+                      <button type="button" class="btn btn-danger btn-sm btn-block" data-finalize-order="${order.id}">Bestellung schließen</button>`
+               }
+               <button type="button" class="btn btn-danger btn-sm btn-block" data-delete-order="${order.id}">Bestellung löschen</button>
              </div>`
+          : ''
       }
     </article>`;
 }
 
 function openNewOrderForm(ctx, myId) {
+  let modalEl;
   const { close } = openModal(
     'Neue Sammelbestellung',
     `
@@ -294,30 +415,44 @@ function openNewOrderForm(ctx, myId) {
         </div>
         <div>
           <label for="order-notes" class="field-label">Info (optional)</label>
-          <textarea id="order-notes" rows="2" maxlength="500" placeholder="z.B. Mindestbestellwert 15€, bar zahlen"></textarea>
+          <textarea id="order-notes" rows="1" maxlength="500" placeholder="z.B. Mindestbestellwert 15€, bar zahlen"></textarea>
         </div>
         <div>
           <label for="order-link" class="field-label">Link (optional)</label>
           <input type="url" id="order-link" maxlength="300" placeholder="https://…" />
         </div>
         <div>
-          <label for="order-paypal" class="field-label">PayPal.me-Name oder -Link (optional)</label>
-          <input type="text" id="order-paypal" maxlength="300" placeholder="z.B. deinname oder https://paypal.me/deinname" />
+          <div class="food-order-paypal-label">
+            <label for="order-paypal" class="field-label">PayPal (optional)</label>
+            ${infoTooltipHtml(
+              'order-paypal-help',
+              'PayPal',
+              'E-Mail-Adresse oder vollständigen PayPal.me-Link einfügen. Bei einer E-Mail-Adresse wird sie beim Öffnen von PayPal kopiert; ein Betrag kann nur beim PayPal.me-Link vorausgefüllt werden.',
+            )}
+          </div>
+          <input type="text" id="order-paypal" maxlength="300" placeholder="E-Mail-Adresse oder https://paypal.me/name" />
         </div>
         <div>
           <label for="order-tip" class="field-label">Trinkgeld in % (optional)</label>
           <input type="number" id="order-tip" min="0" max="100" inputmode="numeric" placeholder="z.B. 10" />
         </div>
-        <p class="muted" style="font-size:var(--font-size-xs);margin:0;">
-          Alle bekommen eine Benachrichtigung und können sich dann selbst eintragen. Alles lässt
-          sich später jederzeit ändern.
-        </p>
         <button type="submit" class="btn btn-primary btn-block">Bestellung öffnen</button>
       </form>
     `,
     {
+      confirmClose: () => {
+        if (!modalEl) return null;
+        const values = ['#order-title', '#order-notes', '#order-link', '#order-paypal', '#order-tip', '#order-sendat'].map(
+          (sel) => modalEl.querySelector(sel).value.trim(),
+        );
+        return values.some(Boolean)
+          ? 'Die neue Sammelbestellung mit allen eingegebenen Angaben (Titel, Link, PayPal, Trinkgeld …) geht verloren.'
+          : null;
+      },
       onMount: (el) => {
+        modalEl = el;
         wireDateTimeField(el, 'order-sendat');
+        wireInfoTooltips(el);
         el.querySelector('#order-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const title = el.querySelector('#order-title').value.trim();
@@ -357,6 +492,7 @@ function openNewOrderForm(ctx, myId) {
 }
 
 function openDetailsForm(ctx, order) {
+  let modalEl;
   const { close } = openModal(
     'Info bearbeiten',
     `
@@ -374,8 +510,15 @@ function openDetailsForm(ctx, order) {
           <input type="url" id="link-input" maxlength="300" placeholder="https://…" value="${escapeHtml(order.link ?? '')}" />
         </div>
         <div>
-          <label for="paypal-input" class="field-label">PayPal.me-Name oder -Link</label>
-          <input type="text" id="paypal-input" maxlength="300" placeholder="z.B. deinname oder https://paypal.me/deinname" value="${escapeHtml(order.paypalLink ?? '')}" />
+          <div class="food-order-paypal-label">
+            <label for="paypal-input" class="field-label">PayPal</label>
+            ${infoTooltipHtml(
+              'paypal-input-help',
+              'PayPal',
+              'E-Mail-Adresse oder vollständigen PayPal.me-Link einfügen. Bei einer E-Mail-Adresse wird sie beim Öffnen von PayPal kopiert; ein Betrag kann nur beim PayPal.me-Link vorausgefüllt werden.',
+            )}
+          </div>
+          <input type="text" id="paypal-input" maxlength="300" placeholder="E-Mail-Adresse oder https://paypal.me/name" value="${escapeHtml(paypalEmailFromLink(order.paypalLink) ?? order.paypalLink ?? '')}" />
         </div>
         <div>
           <label for="tip-input" class="field-label">Trinkgeld in %</label>
@@ -385,8 +528,25 @@ function openDetailsForm(ctx, order) {
       </form>
     `,
     {
+      confirmClose: () => {
+        if (!modalEl) return null;
+        const notes = modalEl.querySelector('#notes-input').value.trim();
+        const link = modalEl.querySelector('#link-input').value.trim();
+        const paypal = modalEl.querySelector('#paypal-input').value.trim();
+        const tip = modalEl.querySelector('#tip-input').value.trim();
+        const sendAt = modalEl.querySelector('#sendat-input').value;
+        const dirty =
+          notes !== (order.notes ?? '') ||
+          link !== (order.link ?? '') ||
+          paypal !== (paypalEmailFromLink(order.paypalLink) ?? order.paypalLink ?? '') ||
+          tip !== String(order.tipPercent ?? '') ||
+          Boolean(sendAt) !== Boolean(order.sendAt);
+        return dirty ? 'Deine Änderungen an Info, Link, PayPal oder Trinkgeld werden nicht gespeichert.' : null;
+      },
       onMount: (el) => {
+        modalEl = el;
         wireDateTimeField(el, 'sendat-input');
+        wireInfoTooltips(el);
         el.querySelector('#details-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const sendAtRaw = el.querySelector('#sendat-input').value;
@@ -488,6 +648,7 @@ export function renderFoodOrders(container, ctx) {
   `;
 
   wireWhoAmICard(container, 'food-whoami', ctx);
+  wireInfoTooltips(container);
 
   container.querySelectorAll('[data-add-item-form]').forEach((f) => {
     const prev = prevForms.get(f.dataset.addItemForm);
@@ -556,7 +717,9 @@ export function renderFoodOrders(container, ctx) {
       const paid = e.currentTarget.checked;
       try {
         await api.foodOrders.setItemPaid(checkbox.dataset.order, checkbox.dataset.togglePaid, paid);
-        cache = null;
+        const order = cache?.find((o) => o.id === checkbox.dataset.order);
+        const item = order?.items.find((i) => i.id === checkbox.dataset.togglePaid);
+        if (item) item.paid = paid;
         ctx.rerender();
       } catch (err) {
         e.currentTarget.checked = !paid;
@@ -572,6 +735,23 @@ export function renderFoodOrders(container, ctx) {
       else selectedForPayment.delete(itemId);
       ctx.rerender();
     });
+  });
+
+  // PayPal has no link that pre-fills a recipient by email, so these links
+  // only open PayPal's generic "send money" page — copying the address here
+  // is what saves the actual step of typing it in by hand.
+  container.querySelectorAll('[data-copy-paypal-email]').forEach((a) => {
+    a.addEventListener('click', () => {
+      const email = a.dataset.copyPaypalEmail;
+      navigator.clipboard?.writeText(email).then(
+        () => showToast(`E-Mail-Adresse kopiert: ${email}`),
+        () => {}
+      );
+    });
+  });
+
+  container.querySelectorAll('[data-copy-food-total]').forEach((button) => {
+    button.addEventListener('click', () => copyFoodOrderTotal(button.dataset.copyFoodTotal));
   });
 
   container.querySelector('[data-food-history]')?.addEventListener('toggle', (event) => {
@@ -624,6 +804,20 @@ export function renderFoodOrders(container, ctx) {
         await api.foodOrders.finalize(btn.dataset.finalizeOrder);
         cache = null;
         showToast('Bestellung geschlossen.');
+        ctx.rerender();
+      } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-delete-order]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!(await confirmDialog('Bestellung endgültig löschen? Alle eingetragenen Positionen gehen dabei verloren.'))) return;
+      try {
+        await api.foodOrders.remove(btn.dataset.deleteOrder);
+        cache = null;
+        showToast('Bestellung gelöscht.');
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });

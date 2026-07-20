@@ -118,7 +118,19 @@ test('fresh device lands on self-onboarding and creates its profile there', asyn
   await page.waitForSelector('text=Bock & Skill eintragen');
 });
 
-test('Einstellungen und Profil use grouped help while admin tools stay out of regular settings', async () => {
+test('Einstellungen und Profil use grouped help while admin tools stay out of regular settings', async (t) => {
+  // Switches to a desktop viewport partway through (for the desktop-only
+  // profile layout checks below) and never switches back on its own —
+  // relying on a later test happening to reset it first. If this test
+  // throws before reaching that point, or a later test that resets it
+  // (e.g. "global search...") fails before its own reset runs, every test
+  // in between silently keeps running at the wrong viewport size, which
+  // reads as an unrelated mobile-layout assertion failure. Restore the
+  // shared page's actual default (see the `before()` above) regardless of
+  // how this test ends.
+  t.after(async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+  });
   await page.click('#settings-btn');
   await page.waitForSelector('#settings-events-title');
   assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 3);
@@ -253,12 +265,29 @@ test('Admin mode owns the seating editor and backup tools', async (t) => {
   assert.equal(await page.locator('.admin-tool-row').count(), 2);
   assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
   assert.equal(await page.locator('#admin-cleanup').textContent(), 'Test-Daten aufräumen');
-  assert.deepEqual(await page.locator('.admin-test-controls > *').evaluateAll((controls) => controls.map((control) => control.id)), ['admin-count', 'admin-cleanup', 'admin-bulk']);
+  // The count field's own id now sits one level down, inside the
+  // `.number-stepper` wrapper numberStepper.js adds around every
+  // `input[type="number"]` (see DESIGN_SYSTEM.md's "Number stepper" entry).
+  assert.deepEqual(await page.locator('.admin-test-controls > *').evaluateAll((controls) => controls.map((control) => control.querySelector('#admin-count') ? 'admin-count' : control.id)), ['admin-count', 'admin-cleanup', 'admin-bulk']);
   // Rounded: getBoundingClientRect() can return a sub-pixel value like
   // 35.999969482421875 for an intended 36px depending on the browser's
   // layout rounding, which a strict-equality assertion here flakes on.
   assert.equal(await page.locator('#admin-count').evaluate((input) => Math.round(input.getBoundingClientRect().height)), 36);
   assert.equal(await page.locator('.admin-test-controls').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
+  // The overlay stepper buttons adjust the value by click...
+  await page.fill('#admin-count', '5');
+  await page.click('.admin-test-controls .number-stepper-btn[aria-label="Wert erhöhen"]');
+  assert.equal(await page.locator('#admin-count').inputValue(), '6');
+  await page.click('.admin-test-controls .number-stepper-btn[aria-label="Wert verringern"]');
+  await page.click('.admin-test-controls .number-stepper-btn[aria-label="Wert verringern"]');
+  assert.equal(await page.locator('#admin-count').inputValue(), '4');
+  // ...and mouse-wheel scrolling over the focused field no longer changes it
+  // (the field blurs itself on wheel instead of applying the native step).
+  await page.focus('#admin-count');
+  assert.equal(await page.locator('#admin-count').evaluate((input) => document.activeElement === input), true);
+  await page.locator('#admin-count').dispatchEvent('wheel', { deltaY: -100 });
+  assert.equal(await page.locator('#admin-count').inputValue(), '4');
+  assert.equal(await page.locator('#admin-count').evaluate((input) => document.activeElement === input), false);
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('.seating-plan.is-editable');
   assert.equal(await page.locator('.seating-editor > .grouped-page-section').count(), 3);
@@ -297,7 +326,15 @@ test('Admin mode owns the seating editor and backup tools', async (t) => {
   await page.waitForSelector('#admin-banner', { state: 'hidden' });
 });
 
-test('global search filters areas, supports keyboard navigation and restores focus', async () => {
+test('global search filters areas, supports keyboard navigation and restores focus', async (t) => {
+  // Also switches viewport size mid-test (see the note on the same pattern
+  // in "Einstellungen und Profil..." above) and only restores the shared
+  // page's default at the very end — guarantee it regardless of where this
+  // test fails, so a flake here can't cascade into unrelated mobile-layout
+  // assertions in whatever test runs next.
+  t.after(async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+  });
   await page.click('#global-search-btn');
   await page.waitForSelector('.global-search-modal');
   assert.equal(await page.locator('#global-search-input').evaluate((element) => element === document.activeElement), true);
@@ -396,12 +433,18 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   assert.ok(desktopSelectionColumns >= 2);
   await page.setViewportSize({ width: 390, height: 844 });
 
+  // Only the selected mode's section renders — switch to Captain Draft to
+  // reach its tooltip, then back to Auslosung to reach "Teams auslosen".
+  await page.click('[data-mm-mode="draft"]');
   const draftHelp = page.locator('[aria-controls="captain-draft-help"]');
+  await draftHelp.waitFor();
   await draftHelp.click();
   assert.equal(await draftHelp.getAttribute('aria-expanded'), 'true');
   await page.keyboard.press('Escape');
   assert.equal(await draftHelp.getAttribute('aria-expanded'), 'false');
 
+  await page.click('[data-mm-mode="draw"]');
+  await page.waitForSelector('#mm-generate');
   await page.click('#mm-generate');
   await page.waitForSelector('.team-card');
   const teamCards = await page.locator('.team-card').count();
@@ -908,6 +951,9 @@ test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bo
   await page.waitForSelector('.toast-error');
   await page.waitForSelector('text=gibt es schon');
   await page.click('[data-close]');
+  // Closing still discards the typed (rejected) title, so the new
+  // confirm-before-discard guard steps in — confirm it away.
+  await page.click('[data-confirm]');
 
   // Promote the suggestion into the catalog via its detail modal (row-level
   // actions live only in there now — the row itself just carries the info
@@ -1057,9 +1103,23 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.fill('[data-item-price]', '9,50');
   await page.click('[data-add-item-form] button[type="submit"]');
   await page.waitForSelector('text=Margherita');
-  await page.waitForSelector('text=19,00 €');
-  await page.waitForSelector('text=Zwischensumme');
-  await page.waitForSelector('text=Gesamtsumme');
+  await page.waitForSelector('.food-order-item-price:has-text("20,90 €")');
+  // The tip-inclusive total doesn't replace the position's actual price -
+  // both stay visible (quantity × unit price, plus the tip note).
+  await page.waitForSelector('.food-order-item-price:has-text("2 × 9,50 €")');
+  await page.waitForSelector('.food-order-item-price:has-text("inkl. 10% Trinkgeld")');
+  await page.waitForSelector('.food-order-total:has-text("Gesamtsumme inkl. 10% Trinkgeld")');
+  assert.equal(await page.getByText('Zwischensumme', { exact: false }).count(), 0);
+
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (value: string) => { (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal = value; } },
+    });
+  });
+  await page.click('.food-order-item [data-copy-food-total]');
+  assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
+  await page.waitForSelector('text=Summe kopiert: 20,90');
 
   // Whoever collects the money checks an item off once it's paid — works
   // while the order is still open, and stays visible/editable after closing.
@@ -1078,6 +1138,11 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
     'https://paypal.me/luigi/20.90EUR'
   );
 
+  // The combined Sammelzahlung total can be copied too, same as a single
+  // position's amount.
+  await paymentSelector.locator('[data-copy-food-total]').click();
+  assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
+
   // Adding an unpriced item to the selection withholds the amount entirely
   // (rather than silently undercounting it as 0) and falls back to the raw
   // PayPal link.
@@ -1088,6 +1153,8 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').check();
   await page.waitForSelector('text=Preis unvollständig');
   assert.equal(await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'), 'https://paypal.me/luigi');
+  // No copyable amount while the selection has an unpriced item.
+  assert.equal(await paymentSelector.locator('[data-copy-food-total]').count(), 0);
 
   // Deselecting it goes back to a complete, priced selection.
   await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').uncheck();
@@ -1876,6 +1943,7 @@ test('Durchsage: notification center can navigate, mark read and remove without 
 
 test('Captain-Draft: pick captains, run the live draft to completion', async () => {
   await page.click('.nav-btn[data-view="matchmaking"]');
+  await page.click('[data-mm-mode="draft"]');
   await page.waitForSelector('[data-captain-toggle]');
 
   // The device identity ("E2E Alice Pro") must be a captain so this page is

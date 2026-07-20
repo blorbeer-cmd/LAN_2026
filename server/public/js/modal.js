@@ -4,7 +4,13 @@
 
 import { icon } from './icons.js';
 
-export function openModal(title, bodyHtml, { onMount, onClose } = {}) {
+// `confirmClose`, if given, is called whenever the user tries to dismiss the
+// modal via the X button, Escape, or a backdrop tap (never for the returned
+// `close()` — that's for callers closing programmatically, e.g. after a
+// successful save). It should return a warning message describing what
+// would be lost, or a falsy value to close immediately (e.g. because the
+// form is still empty/unchanged).
+export function openModal(title, bodyHtml, { onMount, onClose, confirmClose } = {}) {
   const previousFocus = document.activeElement;
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
@@ -28,8 +34,21 @@ export function openModal(title, bodyHtml, { onMount, onClose } = {}) {
     onClose?.();
     if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
   };
+  let confirmPending = false;
+  const requestClose = async () => {
+    if (closed || confirmPending) return;
+    const message = confirmClose?.();
+    if (!message) {
+      close();
+      return;
+    }
+    confirmPending = true;
+    const confirmed = await confirmDialog(message, { title: 'Änderungen verwerfen?', confirmText: 'Verwerfen', danger: true });
+    confirmPending = false;
+    if (confirmed) close();
+  };
   const onKeydown = (e) => {
-    if (e.key === 'Escape') close();
+    if (e.key === 'Escape') requestClose();
     if (e.key !== 'Tab') return;
     const focusableSelector = [
       'button:not([disabled])',
@@ -54,9 +73,9 @@ export function openModal(title, bodyHtml, { onMount, onClose } = {}) {
     }
   };
   backdrop.addEventListener('click', (e) => {
-    if (e.target === backdrop) close();
+    if (e.target === backdrop) requestClose();
   });
-  backdrop.querySelector('[data-close]').addEventListener('click', close);
+  backdrop.querySelector('[data-close]').addEventListener('click', requestClose);
   document.addEventListener('keydown', onKeydown);
 
   if (onMount) onMount(backdrop, close);

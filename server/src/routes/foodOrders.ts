@@ -291,6 +291,27 @@ foodOrdersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   res.json(serializeOrder({ ...order, ...next }));
 });
 
+// DELETE /api/food-orders/:id - permanently removes the whole order (items
+// cascade via the food_order_items foreign key). Unlike every other mutation
+// here, this is deliberately NOT gated on open/closed/finalized: scrapping an
+// order opened by mistake, or one nobody wants to keep around after the LAN,
+// must stay possible at every stage, not just while it's still open.
+foodOrdersRouter.delete('/:id', requireConfiguredUser, (req, res) => {
+  const order = getOrder(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
+  if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung löschen.' });
+  }
+
+  db.prepare('DELETE FROM food_orders WHERE id = ?').run(order.id);
+  resolvePushTopic(`food-order:${order.id}`, false, {
+    groupId: req.group!.id,
+    eventId: communicationEventId(order.event_id),
+  });
+  broadcast(Events.foodOrdersChanged, null);
+  res.status(204).end();
+});
+
 // POST /api/food-orders/:id/items - body: { playerId, description, quantity, priceCents? }
 foodOrdersRouter.post('/:id/items', ...withBodyPlayerIdentity, (req, res) => {
   const order = getOrder(req.params.id);

@@ -892,8 +892,10 @@ input[type='color'] {
 
 /* Number inputs are often sized narrow (team counts, etc.); the native
    up/down spinner steals space from that on top of the usual padding,
-   which is what was clipping placeholders like "Teams". Not worth the
-   spinner anyway on a touch-first UI. */
+   which is what was clipping placeholders like "Teams". `numberStepper.js`
+   replaces it app-wide with the compact `.number-stepper` buttons below,
+   which also cover mouse-wheel-over-a-focused-field the native spinner never
+   handled well anyway. */
 input[type='number'] {
   -moz-appearance: textfield;
   appearance: textfield;
@@ -902,6 +904,55 @@ input[type='number']::-webkit-outer-spin-button,
 input[type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
+}
+
+/* `numberStepper.js` wraps every `input[type="number"]` in `.number-stepper`
+   and overlays the two `.number-stepper-btn` step buttons inside the input's
+   own right-hand padding via `position: absolute`, the same spot the native
+   spinner used to occupy before the rule above disabled it. Taking the
+   buttons out of normal flow this way means the wrapper's footprint stays
+   exactly the input's own footprint — every narrow context above (team
+   counts, scores, seat counts, ...) that was already sized for a bare input
+   keeps working unchanged, with no per-view width adjustments needed. */
+.number-stepper {
+  position: relative;
+}
+.number-stepper input[type='number'] {
+  padding-right: 30px; /* design-token-ok: reserves exactly the .number-stepper-steps width below plus its 1px inset, in the input's own padding */
+}
+.number-stepper-steps {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  width: 26px; /* design-token-ok: a compact overlay control sized to the input's own reserved padding, not the standalone tap-target-size scale — typing stays the primary way to set a value, this is a supplementary click/tap shortcut */
+  display: flex;
+  flex-direction: column;
+}
+.number-stepper-btn {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.number-stepper-btn:first-child {
+  border-bottom: 1px solid var(--border);
+}
+.number-stepper-btn .ui-icon {
+  width: 11px; /* design-token-ok: scaled to this compact overlay half-button, not the standalone icon scale */
+  height: 11px;
+}
+@media (hover: hover) {
+  .number-stepper-btn:hover {
+    color: var(--text);
+    background: var(--bg-elevated-2);
+  }
 }
 
 /* A persistent label above a field — for cases where a placeholder alone
@@ -1003,6 +1054,33 @@ input[type='number']::-webkit-inner-spin-button {
 .player-selection-grid .check-row .avatar-dot,
 .player-selection-grid .check-row .rating {
   flex-shrink: 0;
+}
+.checklist-assignment-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.checklist-assignment-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+.checklist-assignment-toolbar .field-label {
+  margin: 0;
+}
+.checklist-assignment-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+@media (max-width: 639px) { /* --bp-md */
+  .checklist-assignment-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .checklist-assignment-actions {
+    width: 100%;
+  }
 }
 .player-assignment-row {
   display: grid;
@@ -1853,6 +1931,25 @@ button.draft-pool-player {
   align-items: center;
   gap: var(--space-1);
 }
+.title-with-info .field-label {
+  margin: 0;
+}
+.food-order-paypal-label {
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: var(--space-1);
+  padding-right: calc(var(--tap-target-size) + var(--space-1));
+}
+.food-order-paypal-label .field-label {
+  margin: 0;
+}
+.food-order-paypal-label .info-tooltip {
+  position: absolute;
+  top: calc((1em - var(--tap-target-size)) / 2);
+  right: 0;
+}
 .info-tooltip {
   position: relative;
   display: inline-flex;
@@ -1875,6 +1972,13 @@ button.draft-pool-player {
   color: var(--accent);
   background: var(--bg-elevated-2);
 }
+.info-tooltip-trigger--warning {
+  color: var(--danger);
+}
+.info-tooltip-trigger--warning[aria-expanded='true'] {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
 .info-tooltip-panel {
   position: fixed;
   z-index: 20;
@@ -1895,6 +1999,10 @@ button.draft-pool-player {
   .info-tooltip-trigger:hover {
     color: var(--accent);
     background: var(--bg-elevated-2);
+  }
+  .info-tooltip-trigger--warning:hover {
+    color: var(--danger);
+    background: var(--danger-bg);
   }
 }
 /* Scoped to a direct child of the view container (i.e. actually the first
@@ -4077,24 +4185,32 @@ input[type='number'].tournament-score-input {
 }
 .food-order-player-head {
   gap: var(--space-2);
+  font-size: var(--font-size-sm);
 }
 .food-order-player-items {
   padding-left: calc(var(--space-5) + var(--space-2));
 }
-.food-order-player-total {
-  margin-left: calc(var(--space-5) + var(--space-2));
-  padding-top: var(--space-1);
-  font-size: var(--font-size-xs);
-  font-variant-numeric: tabular-nums;
+.food-order-payment-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
 }
 .food-order-item {
   min-height: var(--space-7);
   padding: var(--space-1) 0;
+  font-size: var(--font-size-sm);
+}
+.food-order-item-description {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
 }
 .food-order-item-paid-toggle {
   display: flex;
   flex-shrink: 0;
   align-items: center;
+  gap: var(--space-1);
 }
 .food-order-item.is-paid > span {
   color: var(--text-muted);
@@ -4105,26 +4221,51 @@ input[type='number'].tournament-score-input {
   flex-direction: column;
   align-items: flex-end;
   flex-shrink: 0;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
+}
+.food-order-item-price .muted {
+  font-size: var(--font-size-xs);
 }
 .food-order-item-pay-select {
   display: flex;
   flex-shrink: 0;
   align-items: center;
+  gap: var(--space-1);
+}
+.food-order-item-toggle-label {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+.food-order-payment-hint {
+  justify-content: flex-end;
 }
 .food-order-item.is-selected-for-payment {
   border-left: var(--space-1) solid var(--accent);
   background: var(--bg-elevated-2);
   padding-left: var(--space-2);
 }
-.food-order-item-remove {
-  padding: 0 var(--space-1);
+.food-order-item-action,
+.food-order-item-action-slot {
+  width: var(--space-7);
+  height: var(--space-7);
+  flex: 0 0 var(--space-7);
+}
+.food-order-item-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+.food-order-item-action {
+  padding: var(--space-1);
   font-size: var(--font-size-xs);
 }
 .food-order-total {
   padding-top: var(--space-2);
   border-top: 1px solid var(--border);
+  font-size: var(--font-size-sm);
 }
 .food-order-payment-selector {
   gap: var(--space-2);
@@ -4134,6 +4275,9 @@ input[type='number'].tournament-score-input {
   background: var(--bg-elevated);
   font-size: var(--font-size-sm);
 }
+.food-order-payment-selector > .muted {
+  min-width: 0;
+}
 .food-order-item-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
@@ -4141,6 +4285,66 @@ input[type='number'].tournament-score-input {
 }
 .food-order-item-form > [data-item-desc] {
   grid-column: 1 / -1;
+}
+.food-order-add-button {
+  grid-column: -2 / -1;
+  justify-self: end;
+  padding-right: 0;
+}
+@media (max-width: 639px) { /* --bp-md */
+  .food-order-player-items {
+    padding-left: 0;
+  }
+  .food-order-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-3) 0;
+  }
+  .food-order-item-description {
+    width: 100%;
+    order: 1;
+  }
+  .food-order-item-price {
+    order: 2;
+    align-items: flex-start;
+  }
+  .food-order-item-paid-toggle {
+    order: 3;
+  }
+  .food-order-item-pay-select {
+    order: 4;
+  }
+  .food-order-item-controls {
+    order: 5;
+    gap: var(--space-2);
+  }
+  .food-order-item-action-slot {
+    display: none;
+  }
+  .food-order-total {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+  .food-order-item-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .food-order-item-form > [data-item-desc],
+  .food-order-add-button {
+    grid-column: 1;
+  }
+  .food-order-add-button {
+    width: 100%;
+    padding-right: var(--space-3);
+  }
+  .food-order-payment-selector {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .food-order-payment-actions {
+    align-self: flex-end;
+  }
 }
 .food-order-quantity-field,
 .food-order-price-field {
@@ -4177,7 +4381,19 @@ input.food-order-price-input {
 }
 .checklist-item-row {
   min-height: var(--space-7);
-  padding: var(--space-1) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.checklist-item-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+@media (min-width: 640px) { /* --bp-md */
+  .checklist-item-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .checklist-item-label {
   display: flex;
@@ -4189,9 +4405,6 @@ input.food-order-price-input {
 .checklist-item-row.is-checked .checklist-item-label span {
   color: var(--text-muted);
   text-decoration: line-through;
-}
-.checklist-assignee-option {
-  cursor: pointer;
 }
 .hall-of-fame-event-header {
   align-items: flex-start;

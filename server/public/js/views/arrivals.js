@@ -239,6 +239,7 @@ function renderPeopleList() {
 function openCarpoolForm(direction, myId, ctx, existing = null) {
   const isEdit = Boolean(existing);
   const title = isEdit ? 'Fahrgemeinschaft bearbeiten' : direction === 'arrival' ? 'Anreise-Fahrgemeinschaft' : 'Abreise-Fahrgemeinschaft';
+  let modalEl;
   const { close } = openModal(
     title,
     `
@@ -266,7 +267,17 @@ function openCarpoolForm(direction, myId, ctx, existing = null) {
       </form>
     `,
     {
+      confirmClose: () => {
+        if (!modalEl) return null;
+        const label = modalEl.querySelector('#carpool-label').value.trim();
+        const location = modalEl.querySelector('#carpool-location').value.trim();
+        const dirty = isEdit
+          ? label !== (existing.label ?? '') || location !== (existing.startLocation ?? '')
+          : Boolean(label || location);
+        return dirty ? 'Die eingegebenen Fahrgemeinschaftsdaten (Bezeichnung, Ort, Zeiten, Plätze) gehen verloren.' : null;
+      },
       onMount: (el) => {
+        modalEl = el;
         wireDateTimeField(el, 'carpool-start-at');
         wireDateTimeField(el, 'carpool-eta-at');
 

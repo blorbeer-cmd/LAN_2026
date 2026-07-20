@@ -278,7 +278,7 @@ function renderPlaytimeContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon('award')}</span>Noch keine Awards für dieses Event.</div>`;
+    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Awards für dieses Event.</div>`;
 
   const longestPerGameHtml = overview.longestSessionsPerGame.length
     ? overview.longestSessionsPerGame

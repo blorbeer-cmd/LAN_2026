@@ -34,7 +34,13 @@ test('GET /api/checklist/items materializes the Grundstock once and is idempoten
   assert.equal(first.status, 200);
   assert.equal(first.body.items.length, DEFAULT_CHECKLIST_ITEMS.length);
   assert.ok(first.body.items.every((i: { isCustom: boolean; checked: boolean }) => !i.isCustom && !i.checked));
-  assert.equal(first.body.items[0].label, DEFAULT_CHECKLIST_ITEMS[0].label);
+  const expectedLabels = DEFAULT_CHECKLIST_ITEMS.map((item) => item.label).sort((a, b) =>
+    a.localeCompare(b, 'de', { sensitivity: 'base' }),
+  );
+  assert.deepEqual(
+    first.body.items.map((item: { label: string }) => item.label),
+    expectedLabels,
+  );
 
   const second = await request(app).get(`/api/checklist/items?playerId=${alice.id}`);
   assert.equal(second.status, 200);
@@ -217,6 +223,32 @@ test('claim: cannot claim your own task/request, unknown task 404, exactly one w
 
   const alreadyTaken = await request(app).post(`/api/checklist/tasks/${requestTaskId}/claim`).send({ playerId: alice.id });
   assert.equal(alreadyTaken.status, 409);
+});
+
+test('claim: optional comment is validated, stored, echoed in the response and cleared on release', async () => {
+  const created = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Fernseher mitbringen?' });
+  const taskId = created.body.id;
+
+  const tooLong = await request(app)
+    .post(`/api/checklist/tasks/${taskId}/claim`)
+    .send({ playerId: bob.id, comment: 'x'.repeat(201) });
+  assert.equal(tooLong.status, 400);
+
+  const claimed = await request(app)
+    .post(`/api/checklist/tasks/${taskId}/claim`)
+    .send({ playerId: bob.id, comment: '  Bringe einen XBOX Controller mit.  ' });
+  assert.equal(claimed.status, 200);
+  assert.equal(claimed.body.claimComment, 'Bringe einen XBOX Controller mit.');
+
+  const list = await request(app).get('/api/checklist/tasks');
+  const listed = list.body.tasks.find((t: { id: string }) => t.id === taskId);
+  assert.equal(listed.claimComment, 'Bringe einen XBOX Controller mit.');
+
+  const released = await request(app).post(`/api/checklist/tasks/${taskId}/release`).send({ playerId: bob.id });
+  assert.equal(released.status, 200);
+  assert.equal(released.body.claimComment, null);
 });
 
 test('release: only the assignee can release, back to the open pool', async () => {

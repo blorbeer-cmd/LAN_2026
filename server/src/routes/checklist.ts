@@ -30,7 +30,7 @@
 // caller isn't an active member of 404s instead of being reachable by
 // switching the selected group header.
 
-import { Router, type Request } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
@@ -48,6 +48,7 @@ export const checklistRouter = Router();
 const MAX_ITEM_LABEL = 80;
 const MAX_TASK_TITLE = 80;
 const MAX_TASK_DESCRIPTION = 300;
+const MAX_CLAIM_COMMENT = 200;
 const MAX_BATCH_ASSIGNEES = 30; // generous over the ~15-person LAN this is sized for
 
 interface ItemRow {
@@ -76,6 +77,7 @@ interface TaskRow {
   taken_at: number | null;
   done_at: number | null;
   cancelled_at: number | null;
+  claim_comment: string | null;
 }
 
 function serializeItem(row: ItemRow) {
@@ -111,14 +113,15 @@ function serializeTask(row: TaskRow) {
     takenAt: row.taken_at,
     doneAt: row.done_at,
     cancelledAt: row.cancelled_at,
+    claimComment: row.claim_comment,
   };
 }
 
 // Inserts the Grundstock exactly once per player/event (tracked in
 // checklist_materializations, not just inferred from existing rows - a
 // deliberately deleted default item must never come back on a later fetch),
-// spacing created_at by 1ms per entry so the list renders in Grundstock
-// order on first load instead of depending on insertion-order ties.
+// spacing created_at by 1ms per entry so materialization stays deterministic;
+// the API sorts the visible list alphabetically below.
 function ensureDefaultItems(groupId: string, eventId: string | null, playerId: string): void {
   const already = db
     .prepare('SELECT 1 FROM checklist_materializations WHERE group_id = ? AND event_id IS ? AND player_id = ?')
@@ -141,9 +144,10 @@ function ensureDefaultItems(groupId: string, eventId: string | null, playerId: s
 }
 
 function listItems(groupId: string, eventId: string | null, playerId: string): ItemRow[] {
-  return db
+  const items = db
     .prepare('SELECT * FROM checklist_items WHERE group_id = ? AND event_id IS ? AND player_id = ? ORDER BY created_at')
     .all(groupId, eventId, playerId) as ItemRow[];
+  return items.sort((a, b) => a.label.localeCompare(b.label, 'de', { sensitivity: 'base' }));
 }
 
 function getItem(id: string): ItemRow | undefined {
@@ -194,6 +198,21 @@ const resolveChecklistTask = resolveGroupResource<TaskRow>({
 function isChecklistModerator(req: Request): boolean {
   const role = req.groupMembership?.role;
   return role === 'owner' || role === 'admin';
+}
+
+// resolveGroupResource only re-verifies group membership - a task/item id
+// from a *past* event in the very same group (e.g. right after an organizer
+// switches which event is tracked) would otherwise stay mutable forever,
+// even though GET no longer lists it in the current scope. Every id-based
+// mutation calls this right after loading its row and 404s on a mismatch,
+// same wording as "not found" since a stale id has no other legitimate use.
+function currentEventScope(req: Request, res: Response): { eventId: string | null } | null {
+  const scope = resolveGroupEventScope(req.group!.id, undefined);
+  if (!scope.ok) {
+    res.status(scope.status).json({ error: scope.error });
+    return null;
+  }
+  return scope;
 }
 
 // GET /api/checklist/items?playerId=... - materializes the Grundstock (if not
@@ -250,6 +269,9 @@ checklistRouter.post('/items', ...withBodyPlayerIdentity, (req, res) => {
 // PATCH /api/checklist/items/:id - body: { playerId, checked }. Own items only.
 checklistRouter.patch('/items/:id', resolveChecklistItem, ...withBodyPlayerIdentity, (req, res) => {
   const item = req.groupResource as ItemRow;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
+  if (item.event_id !== scope.eventId) return res.status(404).json({ error: 'Position nicht gefunden.' });
   const { playerId, checked } = req.body ?? {};
   if (item.player_id !== playerId) {
     return res.status(403).json({ error: 'Nur die eigene Packliste kann bearbeitet werden.' });
@@ -268,6 +290,9 @@ checklistRouter.patch('/items/:id', resolveChecklistItem, ...withBodyPlayerIdent
 // (including default ones - the list is meant to be freely pruned).
 checklistRouter.delete('/items/:id', resolveChecklistItem, ...withBodyPlayerIdentity, (req, res) => {
   const item = req.groupResource as ItemRow;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
+  if (item.event_id !== scope.eventId) return res.status(404).json({ error: 'Position nicht gefunden.' });
   const { playerId } = req.body ?? {};
   if (item.player_id !== playerId) {
     return res.status(403).json({ error: 'Nur die eigene Packliste kann bearbeitet werden.' });
@@ -324,6 +349,7 @@ checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
     taken_at: null,
     done_at: null,
     cancelled_at: null,
+    claim_comment: null,
   };
   db.prepare(
     `INSERT INTO checklist_tasks (id, group_id, event_id, type, title, description, created_by, assignee_id, batch_id, status, created_at)
@@ -411,6 +437,7 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
             taken_at: null,
             done_at: null,
             cancelled_at: null,
+            claim_comment: null,
           },
         ]
       : assigneeIds.map((assigneeId) => ({
@@ -428,6 +455,7 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
           taken_at: now,
           done_at: null,
           cancelled_at: null,
+          claim_comment: null,
         }));
 
   db.transaction(() => {
@@ -461,13 +489,21 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
   res.status(201).json({ tasks: rows.map(serializeTask) });
 });
 
-// POST /api/checklist/tasks/:id/claim - body: { playerId }. First request
-// wins: exactly one concurrent claim succeeds, everyone else gets a 409.
+// POST /api/checklist/tasks/:id/claim - body: { playerId, comment? }. First
+// request wins: exactly one concurrent claim succeeds, everyone else gets a
+// 409. The optional comment (e.g. "Bringe einen XBOX Controller mit.") is
+// stored on the task and included in the creator's notification.
 checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
   const task = req.groupResource as TaskRow;
-  const { playerId } = req.body ?? {};
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
+  if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
+  const { playerId, comment } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
+  }
+  if (comment !== undefined && comment !== null && !isNonEmptyString(comment, MAX_CLAIM_COMMENT)) {
+    return res.status(400).json({ error: `Kommentar darf höchstens ${MAX_CLAIM_COMMENT} Zeichen lang sein.` });
   }
   if (task.created_by === playerId) {
     return res.status(409).json({ error: 'Die eigene Aufgabe kann nicht selbst übernommen werden.' });
@@ -477,10 +513,13 @@ checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayer
     | undefined;
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
+  const trimmedComment = comment ? comment.trim() : null;
   const now = Date.now();
   const update = db
-    .prepare(`UPDATE checklist_tasks SET status = 'taken', assignee_id = ?, taken_at = ? WHERE id = ? AND status = 'open'`)
-    .run(playerId, now, task.id);
+    .prepare(
+      `UPDATE checklist_tasks SET status = 'taken', assignee_id = ?, taken_at = ?, claim_comment = ? WHERE id = ? AND status = 'open'`,
+    )
+    .run(playerId, now, trimmedComment, task.id);
   if (update.changes !== 1) {
     return res.status(409).json({ error: 'Diese Aufgabe wurde bereits übernommen.' });
   }
@@ -488,19 +527,28 @@ checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayer
   resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
   notifyPlayers(
     [task.created_by],
-    { title: 'Übernommen', body: `${player.name} übernimmt: ${task.title}`, url: '/#checklist' },
+    {
+      title: 'Übernommen',
+      body: trimmedComment
+        ? `${player.name} übernimmt: ${task.title} – ${trimmedComment}`
+        : `${player.name} übernimmt: ${task.title}`,
+      url: '/#checklist',
+    },
     'direct',
     undefined,
     { groupId: task.group_id, eventId: task.event_id },
   );
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
-  res.json(serializeTask({ ...task, status: 'taken', assignee_id: playerId, taken_at: now }));
+  res.json(serializeTask({ ...task, status: 'taken', assignee_id: playerId, taken_at: now, claim_comment: trimmedComment }));
 });
 
 // POST /api/checklist/tasks/:id/release - body: { playerId }. Only the
 // current assignee can back out, returning the task to the open pool.
 checklistRouter.post('/tasks/:id/release', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
   const task = req.groupResource as TaskRow;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
+  if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
   const { playerId } = req.body ?? {};
   if (task.assignee_id !== playerId) {
     return res.status(403).json({ error: 'Nur die zugewiesene Person kann die Aufgabe wieder freigeben.' });
@@ -509,17 +557,25 @@ checklistRouter.post('/tasks/:id/release', resolveChecklistTask, ...withBodyPlay
     return res.status(409).json({ error: 'Diese Aufgabe ist nicht übernommen.' });
   }
 
-  db.prepare(`UPDATE checklist_tasks SET status = 'open', assignee_id = NULL, taken_at = NULL WHERE id = ? AND status = 'taken'`).run(
-    task.id,
-  );
+  db.prepare(
+    `UPDATE checklist_tasks SET status = 'open', assignee_id = NULL, taken_at = NULL, claim_comment = NULL WHERE id = ? AND status = 'taken'`,
+  ).run(task.id);
+  // The create-with-assigneePlayerIds path records an active "you were
+  // assigned" push topic for the assignee - releasing must close it too, or
+  // their notification center keeps claiming they're still assigned to a
+  // task that's back in the open pool.
+  resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
-  res.json(serializeTask({ ...task, status: 'open', assignee_id: null, taken_at: null }));
+  res.json(serializeTask({ ...task, status: 'open', assignee_id: null, taken_at: null, claim_comment: null }));
 });
 
 // PATCH /api/checklist/tasks/:id/done - body: { playerId }. The assignee,
 // the creator, or a group moderator (owner/admin) can mark a taken task done.
 checklistRouter.patch('/tasks/:id/done', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
   const task = req.groupResource as TaskRow;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
+  if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
   const { playerId } = req.body ?? {};
   if (playerId !== task.assignee_id && playerId !== task.created_by && !isChecklistModerator(req)) {
     return res.status(403).json({ error: 'Nur die zugewiesene Person, der Ersteller oder ein Admin kann dies als erledigt markieren.' });
@@ -541,6 +597,9 @@ checklistRouter.patch('/tasks/:id/done', resolveChecklistTask, ...withBodyPlayer
 // plate.
 checklistRouter.delete('/tasks/:id', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
   const task = req.groupResource as TaskRow;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
+  if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
   const { playerId } = req.body ?? {};
   if (playerId !== task.created_by && !isChecklistModerator(req)) {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann dies zurückziehen.' });

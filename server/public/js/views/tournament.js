@@ -457,7 +457,16 @@ function renderCreateForm(el, ctx) {
 
   wireInfoTooltips(el);
 
-  el.querySelector('#tourn-create-close').addEventListener('click', () => {
+  el.querySelector('#tourn-create-close').addEventListener('click', async () => {
+    const hasEnteredData = Boolean(createProposedTeams) || Boolean(createLobbyName.trim()) || Boolean(createLobbyPassword.trim());
+    if (
+      hasEnteredData &&
+      !(await confirmDialog(
+        'Die Turnier-Einrichtung geht verloren: ausgeloste Teams sowie Lobby-Name und -Passwort werden verworfen.',
+        { title: 'Einrichtung verwerfen?', confirmText: 'Verwerfen', danger: true },
+      ))
+    )
+      return;
     resetCreateForm();
     ctx.rerender();
   });

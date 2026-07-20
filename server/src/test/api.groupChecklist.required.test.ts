@@ -170,6 +170,38 @@ test('checklist isolates two groups: cross-group mutations 404, group admins mod
       const todoBOpenId = todoBOpen.body.tasks[0].id;
       assert.equal((await scoped(app, 'delete', '/api/checklist/tasks/' + todoBOpenId, alice, groupB).send({})).status, 403);
       assert.equal((await scoped(app, 'delete', '/api/checklist/tasks/' + todoBOpenId, dave, groupB).send({})).status, 204);
+
+      // --- Finding: mutations must also be scoped to the *current* event,
+      // not just the current group. itemA/taskA belong to eventA, still the
+      // group's own resources - switching group A's tracking to a second
+      // event must make them un-mutable (though still group-owned) even
+      // though resolveGroupResource alone would happily let them through. ---
+      const eventA2 = await scoped(app, 'post', '/api/events', alice, groupA)
+        .send({ name: 'Checklist Event A2', startsAt: now, endsAt: now + 60_000 });
+      assert.equal(eventA2.status, 201);
+      assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/stop', alice, groupA)).status, 200);
+      assert.equal((await scoped(app, 'post', '/api/events/' + eventA2.body.id + '/tracking/start', alice, groupA)).status, 200);
+
+      // itemA/taskA still belong to group A and Alice/Bob are still active
+      // members there - only the event scope changed - so a plain group-
+      // mismatch check would incorrectly let these through.
+      assert.equal((await scoped(app, 'patch', '/api/checklist/items/' + itemA.body.id, alice, groupA).send({ checked: true })).status, 404);
+      assert.equal((await scoped(app, 'delete', '/api/checklist/items/' + itemA.body.id, alice, groupA).send({})).status, 404);
+      assert.equal((await scoped(app, 'post', '/api/checklist/tasks/' + taskA.body.id + '/claim', dave, groupA).send({})).status, 404);
+
+      // A fresh item/task created now lands under eventA2 and stays mutable.
+      const itemA2 = await scoped(app, 'post', '/api/checklist/items', alice, groupA).send({ label: 'Gruppe A, zweites Event' });
+      assert.equal(itemA2.status, 201);
+      const itemA2Row = db.prepare('SELECT event_id FROM checklist_items WHERE id = ?').get(itemA2.body.id);
+      assert.equal(itemA2Row.event_id, eventA2.body.id);
+      const toggledItemA2 = await scoped(app, 'patch', '/api/checklist/items/' + itemA2.body.id, alice, groupA).send({ checked: true });
+      assert.equal(toggledItemA2.status, 200, JSON.stringify(toggledItemA2.body));
+      assert.equal(toggledItemA2.body.checked, true);
+
+      // GET already only lists the current event's tasks/items - confirms
+      // the mutation-side 404s above match what was already true for reads.
+      const listAfterSwitch = await scoped(app, 'get', '/api/checklist/tasks', alice, groupA);
+      assert.deepEqual(listAfterSwitch.body.tasks.map((t) => t.id), []);
     })().catch((error) => { console.error(error); process.exit(1); });
   `;
 
