@@ -225,6 +225,32 @@ test('claim: cannot claim your own task/request, unknown task 404, exactly one w
   assert.equal(alreadyTaken.status, 409);
 });
 
+test('claim: optional comment is validated, stored, echoed in the response and cleared on release', async () => {
+  const created = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Fernseher mitbringen?' });
+  const taskId = created.body.id;
+
+  const tooLong = await request(app)
+    .post(`/api/checklist/tasks/${taskId}/claim`)
+    .send({ playerId: bob.id, comment: 'x'.repeat(201) });
+  assert.equal(tooLong.status, 400);
+
+  const claimed = await request(app)
+    .post(`/api/checklist/tasks/${taskId}/claim`)
+    .send({ playerId: bob.id, comment: '  Bringe einen XBOX Controller mit.  ' });
+  assert.equal(claimed.status, 200);
+  assert.equal(claimed.body.claimComment, 'Bringe einen XBOX Controller mit.');
+
+  const list = await request(app).get('/api/checklist/tasks');
+  const listed = list.body.tasks.find((t: { id: string }) => t.id === taskId);
+  assert.equal(listed.claimComment, 'Bringe einen XBOX Controller mit.');
+
+  const released = await request(app).post(`/api/checklist/tasks/${taskId}/release`).send({ playerId: bob.id });
+  assert.equal(released.status, 200);
+  assert.equal(released.body.claimComment, null);
+});
+
 test('release: only the assignee can release, back to the open pool', async () => {
   const task = (await request(app).get('/api/checklist/tasks')).body.tasks.find((t: { id: string }) => t.id === requestTaskId);
   const assigneeId = task.assignee.id;

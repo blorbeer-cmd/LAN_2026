@@ -48,6 +48,7 @@ export const checklistRouter = Router();
 const MAX_ITEM_LABEL = 80;
 const MAX_TASK_TITLE = 80;
 const MAX_TASK_DESCRIPTION = 300;
+const MAX_CLAIM_COMMENT = 200;
 const MAX_BATCH_ASSIGNEES = 30; // generous over the ~15-person LAN this is sized for
 
 interface ItemRow {
@@ -76,6 +77,7 @@ interface TaskRow {
   taken_at: number | null;
   done_at: number | null;
   cancelled_at: number | null;
+  claim_comment: string | null;
 }
 
 function serializeItem(row: ItemRow) {
@@ -111,6 +113,7 @@ function serializeTask(row: TaskRow) {
     takenAt: row.taken_at,
     doneAt: row.done_at,
     cancelledAt: row.cancelled_at,
+    claimComment: row.claim_comment,
   };
 }
 
@@ -346,6 +349,7 @@ checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
     taken_at: null,
     done_at: null,
     cancelled_at: null,
+    claim_comment: null,
   };
   db.prepare(
     `INSERT INTO checklist_tasks (id, group_id, event_id, type, title, description, created_by, assignee_id, batch_id, status, created_at)
@@ -433,6 +437,7 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
             taken_at: null,
             done_at: null,
             cancelled_at: null,
+            claim_comment: null,
           },
         ]
       : assigneeIds.map((assigneeId) => ({
@@ -450,6 +455,7 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
           taken_at: now,
           done_at: null,
           cancelled_at: null,
+          claim_comment: null,
         }));
 
   db.transaction(() => {
@@ -483,16 +489,21 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
   res.status(201).json({ tasks: rows.map(serializeTask) });
 });
 
-// POST /api/checklist/tasks/:id/claim - body: { playerId }. First request
-// wins: exactly one concurrent claim succeeds, everyone else gets a 409.
+// POST /api/checklist/tasks/:id/claim - body: { playerId, comment? }. First
+// request wins: exactly one concurrent claim succeeds, everyone else gets a
+// 409. The optional comment (e.g. "Bringe einen XBOX Controller mit.") is
+// stored on the task and included in the creator's notification.
 checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
   const task = req.groupResource as TaskRow;
   const scope = currentEventScope(req, res);
   if (!scope) return;
   if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
-  const { playerId } = req.body ?? {};
+  const { playerId, comment } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
+  }
+  if (comment !== undefined && comment !== null && !isNonEmptyString(comment, MAX_CLAIM_COMMENT)) {
+    return res.status(400).json({ error: `Kommentar darf höchstens ${MAX_CLAIM_COMMENT} Zeichen lang sein.` });
   }
   if (task.created_by === playerId) {
     return res.status(409).json({ error: 'Die eigene Aufgabe kann nicht selbst übernommen werden.' });
@@ -502,10 +513,13 @@ checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayer
     | undefined;
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
+  const trimmedComment = comment ? comment.trim() : null;
   const now = Date.now();
   const update = db
-    .prepare(`UPDATE checklist_tasks SET status = 'taken', assignee_id = ?, taken_at = ? WHERE id = ? AND status = 'open'`)
-    .run(playerId, now, task.id);
+    .prepare(
+      `UPDATE checklist_tasks SET status = 'taken', assignee_id = ?, taken_at = ?, claim_comment = ? WHERE id = ? AND status = 'open'`,
+    )
+    .run(playerId, now, trimmedComment, task.id);
   if (update.changes !== 1) {
     return res.status(409).json({ error: 'Diese Aufgabe wurde bereits übernommen.' });
   }
@@ -513,13 +527,19 @@ checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayer
   resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
   notifyPlayers(
     [task.created_by],
-    { title: 'Übernommen', body: `${player.name} übernimmt: ${task.title}`, url: '/#checklist' },
+    {
+      title: 'Übernommen',
+      body: trimmedComment
+        ? `${player.name} übernimmt: ${task.title} – ${trimmedComment}`
+        : `${player.name} übernimmt: ${task.title}`,
+      url: '/#checklist',
+    },
     'direct',
     undefined,
     { groupId: task.group_id, eventId: task.event_id },
   );
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
-  res.json(serializeTask({ ...task, status: 'taken', assignee_id: playerId, taken_at: now }));
+  res.json(serializeTask({ ...task, status: 'taken', assignee_id: playerId, taken_at: now, claim_comment: trimmedComment }));
 });
 
 // POST /api/checklist/tasks/:id/release - body: { playerId }. Only the
@@ -537,16 +557,16 @@ checklistRouter.post('/tasks/:id/release', resolveChecklistTask, ...withBodyPlay
     return res.status(409).json({ error: 'Diese Aufgabe ist nicht übernommen.' });
   }
 
-  db.prepare(`UPDATE checklist_tasks SET status = 'open', assignee_id = NULL, taken_at = NULL WHERE id = ? AND status = 'taken'`).run(
-    task.id,
-  );
+  db.prepare(
+    `UPDATE checklist_tasks SET status = 'open', assignee_id = NULL, taken_at = NULL, claim_comment = NULL WHERE id = ? AND status = 'taken'`,
+  ).run(task.id);
   // The create-with-assigneePlayerIds path records an active "you were
   // assigned" push topic for the assignee - releasing must close it too, or
   // their notification center keeps claiming they're still assigned to a
   // task that's back in the open pool.
   resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
-  res.json(serializeTask({ ...task, status: 'open', assignee_id: null, taken_at: null }));
+  res.json(serializeTask({ ...task, status: 'open', assignee_id: null, taken_at: null, claim_comment: null }));
 });
 
 // PATCH /api/checklist/tasks/:id/done - body: { playerId }. The assignee,
