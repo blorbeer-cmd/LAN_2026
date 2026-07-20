@@ -1921,6 +1921,13 @@ button.draft-pool-player {
   color: var(--accent);
   background: var(--bg-elevated-2);
 }
+.info-tooltip-trigger--warning {
+  color: var(--danger);
+}
+.info-tooltip-trigger--warning[aria-expanded='true'] {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
 .info-tooltip-panel {
   position: fixed;
   z-index: 20;
@@ -1941,6 +1948,10 @@ button.draft-pool-player {
   .info-tooltip-trigger:hover {
     color: var(--accent);
     background: var(--bg-elevated-2);
+  }
+  .info-tooltip-trigger--warning:hover {
+    color: var(--danger);
+    background: var(--danger-bg);
   }
 }
 /* Scoped to a direct child of the view container (i.e. actually the first

@@ -88,12 +88,18 @@ function installGlobalListeners() {
   );
 }
 
-export function infoTooltipHtml(id, label, text) {
+// `variant: 'warning'` marks the trigger as a reason for a currently
+// disabled action (red instead of muted) — used where a disabled button
+// must stay understandable instead of silently ignoring a click/tap.
+export function infoTooltipHtml(id, label, text, variant) {
   const safeId = escapeHtml(id);
   const safeLabel = escapeHtml(label);
+  const isWarning = variant === 'warning';
+  const triggerClass = isWarning ? 'info-tooltip-trigger info-tooltip-trigger--warning' : 'info-tooltip-trigger';
+  const ariaLabel = isWarning ? safeLabel : `Mehr Informationen zu ${safeLabel}`;
   return `<span class="info-tooltip" data-info-tooltip>
-    <button type="button" class="info-tooltip-trigger" data-info-tooltip-trigger
-      aria-label="Mehr Informationen zu ${safeLabel}" aria-controls="${safeId}"
+    <button type="button" class="${triggerClass}" data-info-tooltip-trigger
+      aria-label="${ariaLabel}" aria-controls="${safeId}"
       aria-expanded="false">${icon('info')}</button>
     <span class="info-tooltip-panel" id="${safeId}" role="tooltip" hidden>${escapeHtml(text)}</span>
   </span>`;

@@ -263,7 +263,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.info-tooltip-panel`, rendered/wired through `infoTooltip.js`; works with pointer, keyboard and
   touch instead of relying on the native `title` attribute. A tooltip trigger always follows
   directly to the right of the visible text it explains; it does not precede a checkbox or float
-  independently at the far edge of a row.
+  independently at the far edge of a row. The optional `.info-tooltip-trigger--warning` variant
+  (red instead of muted) marks the reason beside a currently disabled action, e.g. „Teams
+  auslosen“/„Draft starten“ in Team formation.
 - **Notification center** — `.notification-highlight` exposes the newest active unread entry as a
   brand-gradient direct link below the topbar and follows its domain/expiry lifecycle;
   `.notification-center` with `.notification-center-panel`, `.notification-center-toolbar` and
@@ -293,20 +295,26 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Every `.seating-seat` uses the same width and height on all four table sides, so vertical sides
   no longer stretch into wide rows. Phones switch all four sides to one shared compact size and
   keep exceptionally narrow layouts locally scrollable instead of widening the page.
-- **Team formation** — the Teams view places „Auslosung“ and „Captain Draft“ inside one main card
-  as equal `.tournament-section-panel` sections with the shared accent rail. Draw participants and
-  draft participants are independent `.tournament-player-grid` checkbox selections; captains are
-  then chosen only from the prepared draft roster. One tooltip beside „Captain Draft“ explains the
-  complete participant/captain/pick sequence; the Captains label has no duplicate tooltip or empty-state
-  instruction. `.captain-selection-group` keeps its label close to the associated player grid.
-  Both selections use the standard checkbox-card state without an additional selected-card highlight.
-  The captain action stretches like the draw action and stays labeled simply „Draft starten“ without
-  repeating participant counts already visible in the selections.
-  One shared game picker sits above both sections and controls draw, draft and the loaded history;
-  it does not visually belong to either workflow. The remaining live-draft participants appear under
-  the heading „Spieler“ in the same full-width player cards instead of chips; the drafted teams are
-  introduced by the parallel heading „Captains“. Decorative draft icons and the redundant local-turn
-  hint are omitted.
+- **Team formation** — the Teams view first asks for game and mode: one shared `<select>` picks the
+  game, followed by a `Modus` toggle (two `.btn`/`.btn-sm` buttons, `.btn-primary` marking the active
+  one, `aria-pressed` conveying state beyond color) choosing between „Auslosung“ and „Captain Draft“.
+  Only the chosen mode's `.tournament-section-panel` renders below — the two workflows never compete
+  for space — while the shared game picker and the loaded history stay visible regardless of mode.
+  Draw participants and draft participants are independent `.tournament-player-grid` checkbox
+  selections; captains are then chosen only from the prepared draft roster. One tooltip beside
+  „Captain Draft“ explains the complete participant/captain/pick sequence; the Captains label has no
+  duplicate tooltip or empty-state instruction. `.captain-selection-group` keeps its label close to
+  the associated player grid. Both selections use the standard checkbox-card state without an
+  additional selected-card highlight. The captain action stretches like the draw action and stays
+  labeled simply „Draft starten“ without repeating participant counts already visible in the
+  selections. Switching modes keeps both selections intact, so toggling back and forth loses no work.
+  „Teams auslosen“ and „Draft starten“ share one rule: each stays disabled until its minimum
+  (2 selected players; 2–4 captains plus at least 1 pool player) is met, and a red
+  `.info-tooltip-trigger--warning` beside the disabled button names the exact missing requirement —
+  disabled actions stay understandable instead of silently ignoring a tap. The remaining live-draft
+  participants appear under the heading „Spieler“ in the same full-width player cards instead of
+  chips; the drafted teams are introduced by the parallel heading „Captains“. Decorative draft icons
+  and the redundant local-turn hint are omitted.
   Every player row in both setup flows, the live draft and the drawn teams shows the shared activity
   icon followed by the selected game's `1–10` skill value; an en dash makes a missing self-rating
   explicit instead of silently presenting the matchmaking fallback as a real rating. The title and
