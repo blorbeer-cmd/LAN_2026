@@ -12,4 +12,5 @@ fachfremd entfernten, dort bereits per In-Page-Event-Recorder verifizierten Korr
 
 ## Pull Requests
 
-- Noch kein PR erstellt bzw. gemergt; Eintrag wird beim Öffnen/Merge nachgeführt.
+- [PR #251](https://github.com/blorbeer-cmd/LAN_2026/pull/251), offen (Draft): Stop hover resets
+  of the search keyboard selection.
