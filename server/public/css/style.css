@@ -892,8 +892,10 @@ input[type='color'] {
 
 /* Number inputs are often sized narrow (team counts, etc.); the native
    up/down spinner steals space from that on top of the usual padding,
-   which is what was clipping placeholders like "Teams". Not worth the
-   spinner anyway on a touch-first UI. */
+   which is what was clipping placeholders like "Teams". `numberStepper.js`
+   replaces it app-wide with the compact `.number-stepper` buttons below,
+   which also cover mouse-wheel-over-a-focused-field the native spinner never
+   handled well anyway. */
 input[type='number'] {
   -moz-appearance: textfield;
   appearance: textfield;
@@ -902,6 +904,55 @@ input[type='number']::-webkit-outer-spin-button,
 input[type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
+}
+
+/* `numberStepper.js` wraps every `input[type="number"]` in `.number-stepper`
+   and overlays the two `.number-stepper-btn` step buttons inside the input's
+   own right-hand padding via `position: absolute`, the same spot the native
+   spinner used to occupy before the rule above disabled it. Taking the
+   buttons out of normal flow this way means the wrapper's footprint stays
+   exactly the input's own footprint — every narrow context above (team
+   counts, scores, seat counts, ...) that was already sized for a bare input
+   keeps working unchanged, with no per-view width adjustments needed. */
+.number-stepper {
+  position: relative;
+}
+.number-stepper input[type='number'] {
+  padding-right: 30px; /* design-token-ok: reserves exactly the .number-stepper-steps width below plus its 1px inset, in the input's own padding */
+}
+.number-stepper-steps {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  width: 26px; /* design-token-ok: a compact overlay control sized to the input's own reserved padding, not the standalone tap-target-size scale — typing stays the primary way to set a value, this is a supplementary click/tap shortcut */
+  display: flex;
+  flex-direction: column;
+}
+.number-stepper-btn {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.number-stepper-btn:first-child {
+  border-bottom: 1px solid var(--border);
+}
+.number-stepper-btn .ui-icon {
+  width: 11px; /* design-token-ok: scaled to this compact overlay half-button, not the standalone icon scale */
+  height: 11px;
+}
+@media (hover: hover) {
+  .number-stepper-btn:hover {
+    color: var(--text);
+    background: var(--bg-elevated-2);
+  }
 }
 
 /* A persistent label above a field — for cases where a placeholder alone

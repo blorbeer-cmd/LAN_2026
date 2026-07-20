@@ -64,6 +64,8 @@ const ICONS = {
   arrowDown: '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
   chevronRight: '<path d="m9 18 6-6-6-6"/>',
   chevronLeft: '<path d="m15 18-6-6 6-6"/>',
+  chevronUp: '<path d="m18 15-6-6-6 6"/>',
+  chevronDown: '<path d="m6 9 6 6 6-6"/>',
   play: '<polygon points="6 3 20 12 6 21 6 3"/>',
   crosshair: '<circle cx="12" cy="12" r="8"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/>',
   shield: '<path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3v8Z"/>',

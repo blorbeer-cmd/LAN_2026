@@ -253,12 +253,29 @@ test('Admin mode owns the seating editor and backup tools', async (t) => {
   assert.equal(await page.locator('.admin-tool-row').count(), 2);
   assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
   assert.equal(await page.locator('#admin-cleanup').textContent(), 'Test-Daten aufräumen');
-  assert.deepEqual(await page.locator('.admin-test-controls > *').evaluateAll((controls) => controls.map((control) => control.id)), ['admin-count', 'admin-cleanup', 'admin-bulk']);
+  // The count field's own id now sits one level down, inside the
+  // `.number-stepper` wrapper numberStepper.js adds around every
+  // `input[type="number"]` (see DESIGN_SYSTEM.md's "Number stepper" entry).
+  assert.deepEqual(await page.locator('.admin-test-controls > *').evaluateAll((controls) => controls.map((control) => control.querySelector('#admin-count') ? 'admin-count' : control.id)), ['admin-count', 'admin-cleanup', 'admin-bulk']);
   // Rounded: getBoundingClientRect() can return a sub-pixel value like
   // 35.999969482421875 for an intended 36px depending on the browser's
   // layout rounding, which a strict-equality assertion here flakes on.
   assert.equal(await page.locator('#admin-count').evaluate((input) => Math.round(input.getBoundingClientRect().height)), 36);
   assert.equal(await page.locator('.admin-test-controls').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
+  // The overlay stepper buttons adjust the value by click...
+  await page.fill('#admin-count', '5');
+  await page.click('.admin-test-controls .number-stepper-btn[aria-label="Wert erhöhen"]');
+  assert.equal(await page.locator('#admin-count').inputValue(), '6');
+  await page.click('.admin-test-controls .number-stepper-btn[aria-label="Wert verringern"]');
+  await page.click('.admin-test-controls .number-stepper-btn[aria-label="Wert verringern"]');
+  assert.equal(await page.locator('#admin-count').inputValue(), '4');
+  // ...and mouse-wheel scrolling over the focused field no longer changes it
+  // (the field blurs itself on wheel instead of applying the native step).
+  await page.focus('#admin-count');
+  assert.equal(await page.locator('#admin-count').evaluate((input) => document.activeElement === input), true);
+  await page.locator('#admin-count').dispatchEvent('wheel', { deltaY: -100 });
+  assert.equal(await page.locator('#admin-count').inputValue(), '4');
+  assert.equal(await page.locator('#admin-count').evaluate((input) => document.activeElement === input), false);
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('.seating-plan.is-editable');
   assert.equal(await page.locator('.seating-editor > .grouped-page-section').count(), 3);
