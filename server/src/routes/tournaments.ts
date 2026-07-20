@@ -517,7 +517,7 @@ tournamentsRouter.post('/', (req, res) => {
       playerIds: allPlayerIds,
       message: `Neues Turnier: ${tournamentName}`,
     },
-  }, { groupId: req.group!.id });
+  }, { groupId: req.group!.id, eventId: communicationEventId(eventId) });
   notifyPlayers(
     allPlayerIds,
     { title: 'Neues Turnier', body: tournamentName, url: '/#tournaments' },
@@ -876,12 +876,13 @@ function saveTournamentResult(req: Request, res: Response) {
     };
     // notify.message carries the next lobby's name/password and names the two
     // teams; deliver those details only to the players in the match, and give
-    // the rest of the group a plain refresh signal without the private notify.
-    broadcast(Events.tournamentsChanged, roundBase, { groupId: req.group!.id });
+    // the other event-authorized sockets a refresh payload without the private
+    // notify.
+    broadcast(Events.tournamentsChanged, roundBase, notificationScope);
     broadcast(
       Events.tournamentsChanged,
       { ...roundBase, notify: roundNotify },
-      { groupId: req.group!.id, recipientPlayerIds: roundNotify.playerIds },
+      { ...notificationScope, recipientPlayerIds: roundNotify.playerIds },
     );
   }
 
@@ -896,14 +897,15 @@ function saveTournamentResult(req: Request, res: Response) {
     tournamentName: tournament.name,
     gameId: tournament.game_id,
   };
-  // Everyone in the group gets the refresh; the notify (lobby name/password,
-  // intended teams) rides a second broadcast bound to its named players only.
-  broadcast(Events.tournamentsChanged, mainBase, { groupId: req.group!.id });
+  // Every event-authorized socket gets the refresh; the notify (lobby
+  // name/password, intended teams) rides a second broadcast bound to its
+  // named players only.
+  broadcast(Events.tournamentsChanged, mainBase, notificationScope);
   if (notify) {
     broadcast(
       Events.tournamentsChanged,
       { ...mainBase, notify },
-      { groupId: req.group!.id, recipientPlayerIds: notify.playerIds },
+      { ...notificationScope, recipientPlayerIds: notify.playerIds },
     );
   }
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id });
@@ -934,6 +936,10 @@ tournamentsRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthe
     groupId: req.group!.id,
     eventId: tournament ? communicationEventId(tournament.event_id) : null,
   });
-  broadcast(Events.tournamentsChanged, { type: 'deleted', tournamentId: req.params.id }, { groupId: req.group!.id });
+  broadcast(
+    Events.tournamentsChanged,
+    { type: 'deleted', tournamentId: req.params.id },
+    { groupId: req.group!.id, eventId: tournament ? communicationEventId(tournament.event_id) : null },
+  );
   res.status(204).end();
 });

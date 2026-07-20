@@ -14,6 +14,8 @@ import type { AddressInfo } from 'net';
 import { Server } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import { nanoid } from 'nanoid';
+import request from 'supertest';
+import { createApp } from '../app';
 import { db, DEFAULT_GROUP_ID } from '../db';
 import { config } from '../config';
 import {
@@ -116,6 +118,16 @@ async function subscribeScope(socket: ClientSocket, groupId: string): Promise<vo
     socket.emit('scope:subscribe', { groupId }, resolve);
   });
   assert.equal(result.ok, true);
+}
+
+function subscribeEventScope(
+  socket: ClientSocket,
+  groupId: string,
+  eventId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    socket.emit('scope:subscribe', { groupId, eventId }, resolve);
+  });
 }
 
 function collect(socket: ClientSocket, event: string): { count: () => number } {
@@ -353,6 +365,218 @@ test('a direct push reaches only its resolved recipients and never the kiosk', a
       kiosk.close();
     }
   });
+});
+
+test('event sockets admit participants plus group admins and owners, and revalidate role changes', async () => {
+  const groupA = createGroup('Event Access A');
+  const participant = createPlayer('Event Participant');
+  const outsider = createPlayer('Event Outsider');
+  const admin = createPlayer('Event Admin');
+  const owner = createPlayer('Event Owner');
+  addMembership(groupA, participant);
+  addMembership(groupA, outsider);
+  addMembership(groupA, admin, 'admin');
+  addMembership(groupA, owner, 'owner');
+  const eventId = nanoid();
+  db.prepare('INSERT INTO events (id, name, starts_at, group_id) VALUES (?, ?, ?, ?)').run(
+    eventId,
+    'Private Event',
+    Date.now(),
+    groupA,
+  );
+  db.prepare('INSERT INTO event_participants (event_id, player_id) VALUES (?, ?)').run(eventId, participant);
+
+  await withRequiredServer(async ({ baseUrl }) => {
+    const participantSocket = await connectSession(baseUrl, participant);
+    const outsiderSocket = await connectSession(baseUrl, outsider);
+    const adminSocket = await connectSession(baseUrl, admin);
+    const ownerSocket = await connectSession(baseUrl, owner);
+    try {
+      assert.equal((await subscribeEventScope(participantSocket, groupA, eventId)).ok, true);
+      assert.equal((await subscribeEventScope(adminSocket, groupA, eventId)).ok, true);
+      assert.equal((await subscribeEventScope(ownerSocket, groupA, eventId)).ok, true);
+      assert.equal((await subscribeEventScope(outsiderSocket, groupA, eventId)).ok, false);
+      await subscribeScope(outsiderSocket, groupA);
+
+      const participantEvents = collect(participantSocket, Events.tournamentsChanged);
+      const outsiderEvents = collect(outsiderSocket, Events.tournamentsChanged);
+      const adminEvents = collect(adminSocket, Events.tournamentsChanged);
+      const ownerEvents = collect(ownerSocket, Events.tournamentsChanged);
+
+      broadcast(Events.tournamentsChanged, { tournamentName: 'Private Cup' }, { groupId: groupA, eventId });
+      await settle();
+      assert.equal(participantEvents.count(), 1);
+      assert.equal(outsiderEvents.count(), 0, 'a normal non-participant receives no event payload');
+      assert.equal(adminEvents.count(), 1, 'a group admin may administer the event without a participant row');
+      assert.equal(ownerEvents.count(), 1, 'a group owner may administer the event without a participant row');
+
+      addMembership(groupA, admin, 'member');
+      broadcast(Events.tournamentsChanged, { tournamentName: 'After role revoke' }, { groupId: groupA, eventId });
+      await settle();
+      assert.equal(adminEvents.count(), 1, 'role revocation stops event delivery immediately');
+
+      db.prepare('DELETE FROM event_participants WHERE event_id = ? AND player_id = ?').run(eventId, participant);
+      broadcast(Events.tournamentsChanged, { tournamentName: 'After participant removal' }, { groupId: groupA, eventId });
+      await settle();
+      assert.equal(participantEvents.count(), 2, 'participant removal stops subsequent event delivery');
+    } finally {
+      participantSocket.close();
+      outsiderSocket.close();
+      adminSocket.close();
+      ownerSocket.close();
+    }
+  });
+});
+
+test('event-bound tournament, draft, matchmaking and vote producers exclude normal non-participants', async () => {
+  const app = createApp();
+  const groupA = createGroup('Producer Event A');
+  const alice = createPlayer('Producer Alice');
+  const carol = createPlayer('Producer Carol');
+  const eve = createPlayer('Producer Eve');
+  const outsider = createPlayer('Producer Outsider');
+  const admin = createPlayer('Producer Admin');
+  const owner = createPlayer('Producer Owner');
+  addMembership(groupA, alice);
+  addMembership(groupA, carol);
+  addMembership(groupA, eve);
+  addMembership(groupA, outsider);
+  addMembership(groupA, admin, 'admin');
+  addMembership(groupA, owner, 'owner');
+
+  const eventId = nanoid();
+  // Earlier cases deliberately create their own tracking fixtures in this
+  // process; make this producer matrix's event the unambiguous active one.
+  db.prepare('UPDATE events SET tracking_enabled = 0').run();
+  db.prepare(
+    'INSERT INTO events (id, name, starts_at, ends_at, tracking_enabled, group_id) VALUES (?, ?, ?, ?, 1, ?)',
+  ).run(eventId, 'Producer Private Event', Date.now() - 1_000, Date.now() + 60_000, groupA);
+  const insertParticipant = db.prepare('INSERT INTO event_participants (event_id, player_id) VALUES (?, ?)');
+  for (const playerId of [alice, carol, eve]) insertParticipant.run(eventId, playerId);
+  const gameId = nanoid();
+  db.prepare('INSERT INTO games (id, name, created_at, group_id) VALUES (?, ?, ?, ?)').run(
+    gameId,
+    'Producer Game',
+    Date.now(),
+    groupA,
+  );
+
+  const received = new Map<string, Array<{ event: string; payload: unknown }>>();
+  function fakeSocket(label: string, playerId: string) {
+    received.set(label, []);
+    return {
+      data: { groupId: groupA, authPlayerId: playerId },
+      emit(event: string, payload: unknown) { received.get(label)!.push({ event, payload }); },
+    };
+  }
+  const fakeIo = {
+    sockets: { sockets: new Map([
+      ['participant', fakeSocket('participant', alice)],
+      ['outsider', fakeSocket('outsider', outsider)],
+      ['admin', fakeSocket('admin', admin)],
+      ['owner', fakeSocket('owner', owner)],
+    ]) },
+    emit() {},
+  };
+  setIo(fakeIo as unknown as Server);
+
+  const ownerCookie = `${SESSION_COOKIE_NAME}=${createSession(owner)}`;
+  const scopedRequest = (method: 'post', url: string) => request(app)[method](url)
+    .set('Cookie', ownerCookie)
+    .set('x-group-id', groupA);
+  const cases: Array<{ label: string; event: string; run: () => Promise<request.Response> }> = [
+    {
+      label: 'tournament',
+      event: Events.tournamentsChanged,
+      run: () => scopedRequest('post', '/api/tournaments').send({
+        gameId,
+        format: 'single_elimination',
+        teams: [
+          { name: 'Team Alice', playerIds: [alice] },
+          { name: 'Team Carol', playerIds: [carol] },
+        ],
+      }),
+    },
+    {
+      label: 'draft',
+      event: Events.draftChanged,
+      run: () => scopedRequest('post', '/api/draft/start').send({
+        gameId,
+        captainIds: [alice, carol],
+        poolPlayerIds: [eve],
+      }),
+    },
+    {
+      label: 'matchmaking',
+      event: Events.matchmakingGenerated,
+      run: () => scopedRequest('post', '/api/matchmaking').send({ gameId, playerIds: [alice, carol] }),
+    },
+    {
+      label: 'vote',
+      event: Events.votesChanged,
+      run: () => scopedRequest('post', '/api/votes/start').send({
+        title: 'Private vote',
+        gameIds: [gameId],
+      }),
+    },
+  ];
+
+  try {
+    for (const producer of cases) {
+      for (const deliveries of received.values()) deliveries.length = 0;
+      const response = await producer.run();
+      assert.ok(response.status >= 200 && response.status < 300, producer.label + ': ' + JSON.stringify(response.body));
+      for (const [label, deliveries] of received) {
+        const count = deliveries.filter((delivery) => delivery.event === producer.event).length;
+        if (label === 'outsider') {
+          assert.equal(count, 0, producer.label + ' leaked its event payload to a normal non-participant');
+        } else {
+          assert.ok(count >= 1, producer.label + ' did not reach authorized ' + label);
+        }
+      }
+    }
+  } finally {
+    setIo(null);
+  }
+});
+
+test('legacy mode never globally emits personally targeted push payloads', () => {
+  const groupA = createGroup('Legacy Direct Push A');
+  const alice = createPlayer('Legacy Push Alice');
+  addMembership(groupA, alice, 'owner');
+  const emitted: Array<{ event: string; payload: unknown }> = [];
+  const fakeIo = {
+    sockets: { sockets: new Map() },
+    emit(event: string, payload: unknown) { emitted.push({ event, payload }); },
+  };
+  (config as { authMode: 'legacy' | 'required' }).authMode = 'legacy';
+  setIo(fakeIo as unknown as Server);
+  try {
+    notifyPlayers(
+      [alice],
+      { title: 'Legacy private', body: 'Must not be broadcast globally' },
+      'direct',
+      undefined,
+      { groupId: groupA },
+    );
+    assert.equal(
+      emitted.filter((delivery) => delivery.event === Events.pushSent).length,
+      0,
+      'legacy sockets have no proven identity, so no direct realtime payload is safe',
+    );
+
+    notifyPlayers([alice], { title: 'Legacy group', body: 'Group-wide compatibility' }, 'all', undefined, {
+      groupId: groupA,
+    });
+    assert.equal(
+      emitted.filter((delivery) => delivery.event === Events.pushSent).length,
+      1,
+      'group-wide legacy notifications keep their compatibility broadcast',
+    );
+  } finally {
+    setIo(null);
+    (config as { authMode: 'legacy' | 'required' }).authMode = 'required';
+  }
 });
 
 test('a recipient-scoped fachbroadcast reaches only named members, and never the kiosk', async () => {

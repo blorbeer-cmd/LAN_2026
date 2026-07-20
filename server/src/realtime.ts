@@ -36,8 +36,15 @@ function activeGroupMember(groupId: string, playerId: unknown): boolean {
   ).get(groupId, playerId));
 }
 
-function activeEventParticipant(groupId: string, eventId: string, playerId: unknown): boolean {
-  return activeGroupMember(groupId, playerId) && Boolean(db.prepare(
+function activeEventAccess(groupId: string, eventId: string, playerId: unknown): boolean {
+  if (!activeGroupMember(groupId, playerId)) return false;
+  const membership = db
+    .prepare("SELECT role FROM group_memberships WHERE group_id = ? AND player_id = ? AND status = 'active'")
+    .get(groupId, playerId) as { role: string } | undefined;
+  if (membership?.role === 'admin' || membership?.role === 'owner') {
+    return Boolean(db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, groupId));
+  }
+  return Boolean(db.prepare(
     `SELECT 1 FROM event_participants ep JOIN events e ON e.id = ep.event_id
      WHERE ep.event_id = ? AND ep.player_id = ? AND e.group_id = ?`
   ).get(eventId, playerId, groupId));
@@ -49,7 +56,7 @@ function validScope(socket: Socket, groupId: unknown, eventId: unknown): boolean
   if (eventId === undefined || eventId === null || eventId === '') return true;
   if (typeof eventId !== 'string') return false;
   return Boolean(db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, groupId)) &&
-    activeEventParticipant(groupId, eventId, socket.data.authPlayerId);
+    activeEventAccess(groupId, eventId, socket.data.authPlayerId);
 }
 
 function clearSocketScope(socket: Socket): void {
@@ -67,7 +74,7 @@ function revalidateSocketScopes(server: Server, socket: Socket): void {
     return;
   }
   const eventId = socket.data.eventId;
-  if (typeof eventId === 'string' && !activeEventParticipant(groupId, eventId, socket.data.authPlayerId)) {
+  if (typeof eventId === 'string' && !activeEventAccess(groupId, eventId, socket.data.authPlayerId)) {
     socket.leave(eventRoom(eventId));
     delete socket.data.eventId;
   }
@@ -212,7 +219,8 @@ export interface BroadcastScope {
   eventId?: string | null;
   // Personally targeted payloads (e.g. direct pushes): restricts delivery to
   // exactly these players and keeps the payload off kiosk sockets entirely.
-  // Legacy mode cannot enforce this — its sockets carry no identity.
+  // Legacy sockets carry no proven identity, so these payloads are not sent
+  // through realtime there at all.
   recipientPlayerIds?: string[];
 }
 
@@ -299,7 +307,16 @@ export function broadcast(event: string, payload: unknown, scope: BroadcastScope
   const groupId = typeof scope?.groupId === 'string' && scope.groupId ? scope.groupId : null;
   if (!groupId) return rejectUnscopedBroadcast(event);
   const eventId = typeof scope.eventId === 'string' && scope.eventId ? scope.eventId : null;
+  const hasRecipientFilter = Array.isArray(scope.recipientPlayerIds);
+  const recipients = hasRecipientFilter ? new Set(scope.recipientPlayerIds) : null;
   if (config.authMode === 'legacy') {
+    // A legacy socket has neither a session-bound player id nor a validated
+    // group subscription. Falling back to io.emit for a personally targeted
+    // payload would disclose it to every browser and kiosk, so the safe
+    // compatibility behavior is no realtime delivery. The persisted entry
+    // remains available through the recipient's authenticated history after
+    // upgrading to required mode.
+    if (hasRecipientFilter) return;
     io.emit(event, payload);
     return;
   }
@@ -314,7 +331,6 @@ export function broadcast(event: string, payload: unknown, scope: BroadcastScope
   // a player session; only the server-set kioskReadOnly flag counts (a
   // handshake claim alone must never select the kiosk path). Legacy mode is
   // handled above via io.emit, kiosk screens included.
-  const recipients = scope.recipientPlayerIds ? new Set(scope.recipientPlayerIds) : null;
   for (const socket of io.sockets.sockets.values()) {
     if (socket.data.kioskReadOnly) {
       if (recipients) continue; // personally targeted payloads never reach the shared screen
@@ -349,7 +365,7 @@ export function broadcast(event: string, payload: unknown, scope: BroadcastScope
     if (socket.data.groupId !== groupId) continue;
     if (recipients && !recipients.has(socket.data.authPlayerId as string)) continue;
     if (!activeGroupMember(groupId, socket.data.authPlayerId)) continue;
-    if (eventId && !activeEventParticipant(groupId, eventId, socket.data.authPlayerId)) continue;
+    if (eventId && !activeEventAccess(groupId, eventId, socket.data.authPlayerId)) continue;
     socket.emit(event, payload);
   }
 }

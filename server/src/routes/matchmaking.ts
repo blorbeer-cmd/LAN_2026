@@ -23,6 +23,7 @@ import { competitionPlayersBelongToGroup, trackingEventIdForGroup } from '../com
 export const matchmakingRouter = Router();
 
 const DEFAULT_RATING = 5; // neutral middle rating for players without one
+const deliveryEventId = (eventId: string): string | null => (eventId === OUTSIDE_EVENTS_ID ? null : eventId);
 
 interface GameRow {
   id: string;
@@ -235,7 +236,7 @@ matchmakingRouter.post('/', (req, res) => {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt);
 
-  broadcast(Events.matchmakingGenerated, result, { groupId: req.group!.id });
+  broadcast(Events.matchmakingGenerated, result, { groupId: req.group!.id, eventId: deliveryEventId(eventId) });
   res.json(result);
 });
 
@@ -309,7 +310,7 @@ matchmakingRouter.post('/rematch', (req, res) => {
      VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'rematch')`
   ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), result.generatedAt);
 
-  broadcast(Events.matchmakingGenerated, result, { groupId: req.group!.id });
+  broadcast(Events.matchmakingGenerated, result, { groupId: req.group!.id, eventId: deliveryEventId(eventId) });
   res.json(result);
 });
 
@@ -482,6 +483,9 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
     .get(row.id) as DrawRow;
 
   const draw = parseDrawRow(updated);
-  broadcast(Events.matchmakingDrawsChanged, draw, { groupId: req.group!.id });
+  broadcast(Events.matchmakingDrawsChanged, draw, {
+    groupId: req.group!.id,
+    eventId: deliveryEventId(row.event_id),
+  });
   res.json(draw);
 });
