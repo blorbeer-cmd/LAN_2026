@@ -10,6 +10,7 @@ import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { icon } from '../icons.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let cache = null;
 let loading = false;
@@ -79,14 +80,20 @@ function renderCarpool(c, direction, myId, elsewhere) {
             </div>`
     )
     .join('');
-  const freeSeatRowsHtml = Array.from({ length: c.seatsFree }, () => {
-    const control = canJoin
-      ? `<button type="button" class="btn btn-sm btn-primary" data-join-carpool="${c.id}">Mitfahren</button>`
-      : !myId
-        ? '<button type="button" class="btn btn-sm" disabled>Mitfahren</button>'
-        : elsewhere && !isDriver && !amIn
-          ? '<button type="button" class="btn btn-sm" disabled title="Du bist schon in einer anderen Fahrgemeinschaft dieser Richtung.">Mitfahren</button>'
-          : '<span class="arrivals-member-role">Mitfahrer</span>';
+  const freeSeatRowsHtml = Array.from({ length: c.seatsFree }, (_, seatIndex) => {
+    const control =
+      canJoin
+        ? `<button type="button" class="btn btn-sm btn-primary" data-join-carpool="${c.id}">Mitfahren</button>`
+        : !myId
+          ? '<button type="button" class="btn btn-sm" disabled>Mitfahren</button>'
+          : elsewhere && !isDriver && !amIn
+            ? `<button type="button" class="btn btn-sm" disabled>Mitfahren</button>${infoTooltipHtml(
+                `arrivals-join-disabled-${c.id}-${seatIndex}`,
+                'Warum ist „Mitfahren“ deaktiviert?',
+                'Du bist bereits Fahrer oder Mitfahrer einer anderen Fahrgemeinschaft dieser Richtung.',
+                'warning'
+              )}`
+            : '<span class="arrivals-member-role">Mitfahrer</span>';
     return `<div class="arrivals-member-row arrivals-free-seat-row">
       <span class="muted arrivals-free-seat-label">Frei</span>
       ${control}
@@ -139,7 +146,19 @@ function renderCarpoolSection(direction, title, myId) {
     <section class="tournament-section-panel stack arrivals-carpool-section is-${direction}">
       <div class="row-between">
         <strong>${title}</strong>
-        <button type="button" class="btn btn-sm btn-primary" data-new-carpool="${direction}" ${myId && !committed ? '' : 'disabled'} ${committed ? 'title="Du bist schon in einer Fahrgemeinschaft dieser Richtung."' : ''}>+ Neu</button>
+        <span class="row">
+          <button type="button" class="btn btn-sm btn-primary" data-new-carpool="${direction}" ${myId && !committed ? '' : 'disabled'}>+ Neu</button>
+          ${
+            committed
+              ? infoTooltipHtml(
+                  `arrivals-new-${direction}-disabled-help`,
+                  'Warum ist „+ Neu“ deaktiviert?',
+                  'Du bist bereits Fahrer oder Mitfahrer einer anderen Fahrgemeinschaft dieser Richtung.',
+                  'warning'
+                )
+              : ''
+          }
+        </span>
       </div>
       ${
         rows.length
@@ -199,6 +218,14 @@ function renderPeopleSortButton(key, label) {
   </button>`;
 }
 
+// Whoever a player rides with (not their own carpool, if they drive) - shown
+// as a small hint next to their Ankunft/Abreise in the table below.
+function carpoolDriverName(direction, playerId) {
+  const rows = cache?.carpools?.[direction] || [];
+  const carpool = rows.find((c) => c.driverId !== playerId && c.members.some((m) => m.id === playerId));
+  return carpool?.createdByName ?? null;
+}
+
 function renderPeopleList() {
   const byPlayer = new Map((cache?.arrivals || []).map((a) => [a.player_id, a]));
   const rows = [...state.players]
@@ -207,14 +234,22 @@ function renderPeopleList() {
     .map(({ player, entry }) => {
       const arrival = entry?.arrival_at ? formatDateTime(entry.arrival_at) : 'offen';
       const departure = entry?.departure_at ? formatDateTime(entry.departure_at) : 'offen';
+      const arrivalDriver = carpoolDriverName('arrival', player.id);
+      const departureDriver = carpoolDriverName('departure', player.id);
       return `
         <div class="arrivals-times-row" role="row">
           <div class="arrivals-times-player" role="cell">
             ${avatarHtml(player, 30)}
             <span class="player-name">${escapeHtml(player.name)}</span>
           </div>
-          <div class="arrivals-times-value" role="cell" data-label="Ankunft"><strong>${escapeHtml(arrival)}</strong></div>
-          <div class="arrivals-times-value" role="cell" data-label="Abreise"><strong>${escapeHtml(departure)}</strong></div>
+          <div class="arrivals-times-value" role="cell" data-label="Ankunft">
+            <strong>${escapeHtml(arrival)}</strong>
+            ${arrivalDriver ? `<div class="muted" style="font-size:var(--font-size-xs);">Fahrer: ${escapeHtml(arrivalDriver)}</div>` : ''}
+          </div>
+          <div class="arrivals-times-value" role="cell" data-label="Abreise">
+            <strong>${escapeHtml(departure)}</strong>
+            ${departureDriver ? `<div class="muted" style="font-size:var(--font-size-xs);">Fahrer: ${escapeHtml(departureDriver)}</div>` : ''}
+          </div>
           <div class="arrivals-times-note muted" role="cell" data-label="Notiz">${entry?.note ? escapeHtml(entry.note) : '–'}</div>
         </div>`;
     })
@@ -351,6 +386,7 @@ export function renderArrivals(container, ctx) {
   wireWhoAmICard(container, 'arrivals-whoami', ctx);
   if (!loaded) return;
 
+  wireInfoTooltips(container);
   wireDateTimeField(container, 'arrival-at');
   wireDateTimeField(container, 'departure-at');
 

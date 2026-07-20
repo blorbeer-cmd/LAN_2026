@@ -1837,6 +1837,11 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
   await page.waitForSelector('.arrivals-free-seat-row', { state: 'detached' });
   await page.waitForSelector('[data-leave-carpool]');
 
+  // "Alle Zeiten" below shows who Bob is riding with.
+  const bobTimesRow = page.locator('.arrivals-times-row', { hasText: 'E2E Bob' });
+  await bobTimesRow.waitFor();
+  assert.match((await bobTimesRow.textContent()) ?? '', /Fahrer: E2E Alice Pro/);
+
   // A third player finds the carpool full and can't join.
   await switchIdentityAndOpenArrivals('E2E Carol');
   await page.waitForSelector('.arrivals-member-row:has-text("E2E Bob"):has-text("Mitfahrer")');
@@ -1847,6 +1852,7 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
   await switchIdentityAndOpenArrivals('E2E Bob');
   await page.click('[data-leave-carpool]');
   await page.waitForSelector('.arrivals-free-seat-row');
+  assert.doesNotMatch((await bobTimesRow.textContent()) ?? '', /Fahrer:/);
 
   await switchIdentityAndOpenArrivals('E2E Alice Pro');
   await page.click('[data-remove-carpool]');
