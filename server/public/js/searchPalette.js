@@ -290,17 +290,10 @@ export function initGlobalSearch(onNavigate) {
               activateSelected();
             }
           });
-          // pointermove instead of pointerover: when a keyboard selection
-          // re-renders or scrolls the list, Chromium re-dispatches a
-          // synthetic pointerover for whatever now sits under a stationary
-          // cursor — which silently snapped the highlight back to the hovered
-          // row. Only genuine pointer movement may take over the selection.
-          resultsContainer.addEventListener('pointermove', (event) => {
+          resultsContainer.addEventListener('pointerover', (event) => {
             const button = event.target.closest('[data-search-index]');
             if (!button) return;
-            const index = Number(button.dataset.searchIndex);
-            if (index === selectedIndex) return;
-            selectedIndex = index;
+            selectedIndex = Number(button.dataset.searchIndex);
             updateSelection();
           });
           resultsContainer.addEventListener('click', (event) => {
@@ -314,25 +307,8 @@ export function initGlobalSearch(onNavigate) {
           input.focus();
           loadContentSearchEntries().then((contentEntries) => {
             if (!backdrop.isConnected) return;
-            // Merging the late content entries re-renders the result list; a
-            // keyboard selection made in the meantime must survive instead of
-            // silently snapping back to the first result while the user is
-            // about to press Enter.
-            const previousSelection = results[selectedIndex];
             allEntries = [...visibleAreaEntries, ...contentEntries];
             renderResults();
-            if (previousSelection) {
-              const restored = results.findIndex(
-                (entry) =>
-                  entry.view === previousSelection.view &&
-                  entry.title === previousSelection.title &&
-                  entry.category === previousSelection.category
-              );
-              if (restored > 0) {
-                selectedIndex = restored;
-                updateSelection();
-              }
-            }
           });
         },
       }

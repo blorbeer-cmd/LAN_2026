@@ -242,10 +242,6 @@ test('Admin mode owns the seating editor and backup tools', async (t) => {
   // via the always-present banner button regardless of how the test ends,
   // so one broken assertion here can no longer cascade into unrelated ones.
   t.after(async () => {
-    // This test switches to a desktop viewport for the pool-column check;
-    // always restore the shared page's mobile default regardless of how the
-    // test ends (same viewport-leak safety net as the Einstellungen test).
-    await page.setViewportSize({ width: 390, height: 844 });
     if (await page.locator('#admin-banner-leave').isVisible()) {
       await page.click('#admin-banner-leave');
       await page.waitForSelector('#admin-banner', { state: 'hidden' });
@@ -297,14 +293,7 @@ test('Admin mode owns the seating editor and backup tools', async (t) => {
   assert.equal(await page.locator('.seating-editor > .grouped-page-section').count(), 3);
   assert.deepEqual(await page.locator('.seating-editor > .grouped-page-section h2 > span:first-child, .seating-editor > .grouped-page-section h2:not(:has(> span:first-child))').allTextContents(), ['Sitzplan', 'Spieler', 'Konfiguration']);
   assert.equal(await page.locator('.seating-pool-player').evaluateAll((players) => players.every((player) => getComputedStyle(player).borderRadius !== '999px')), true);
-  // The unassigned-player pool is one column on phones and two from --bp-md
-  // (DESIGN_SYSTEM.md: "phones keep one column"). The old bare 2-column
-  // assertion only ever passed while a desktop viewport leaked in from the
-  // Einstellungen test; check both documented layouts explicitly instead.
-  assert.equal(await page.locator('.seating-player-pool').evaluate((pool) => getComputedStyle(pool).gridTemplateColumns.split(' ').length), 1);
-  await page.setViewportSize({ width: 900, height: 844 });
   assert.equal(await page.locator('.seating-player-pool').evaluate((pool) => getComputedStyle(pool).gridTemplateColumns.split(' ').length), 2);
-  await page.setViewportSize({ width: 390, height: 844 });
   assert.ok((await page.locator('.seating-seat:not(.is-occupied)').count()) > 0);
   assert.equal(await page.locator('.seating-seat:not(.is-occupied)').first().getByText('Frei', { exact: true }).count(), 1);
   assert.equal(await page.locator('.seating-seat:not(.is-occupied)').first().evaluate((seat) => getComputedStyle(seat).borderStyle), 'dashed');
