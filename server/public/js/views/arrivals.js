@@ -47,7 +47,7 @@ function renderMyForm(myId) {
       <form class="stack" id="arrival-form">
         <div class="field-row">
           <div>
-            <label for="arrival-at" class="field-label">Anreise</label>
+            <label for="arrival-at" class="field-label">Ankunft</label>
             ${dateTimeFieldHtml('arrival-at', own?.arrival_at ?? null, { clearable: true, disabled: !myId })}
           </div>
           <div>
@@ -201,7 +201,7 @@ function renderPeopleList() {
             ${avatarHtml(player, 30)}
             <span class="player-name">${escapeHtml(player.name)}</span>
           </div>
-          <div class="arrivals-times-value" role="cell" data-label="Anreise"><strong>${escapeHtml(arrival)}</strong></div>
+          <div class="arrivals-times-value" role="cell" data-label="Ankunft"><strong>${escapeHtml(arrival)}</strong></div>
           <div class="arrivals-times-value" role="cell" data-label="Abreise"><strong>${escapeHtml(departure)}</strong></div>
           <div class="arrivals-times-note muted" role="cell" data-label="Notiz">${entry?.note ? escapeHtml(entry.note) : '–'}</div>
         </div>`;
@@ -214,7 +214,7 @@ function renderPeopleList() {
       <div class="arrivals-mobile-sort" aria-label="Zeiten sortieren">
         <span class="muted">Sortieren:</span>
         ${renderPeopleSortButton('player', 'Spieler')}
-        ${renderPeopleSortButton('arrival', 'Anreise')}
+        ${renderPeopleSortButton('arrival', 'Ankunft')}
         ${renderPeopleSortButton('departure', 'Abreise')}
       </div>
       <div class="card arrivals-people-card" role="table" aria-label="An- und Abreisezeiten">
@@ -239,6 +239,11 @@ function renderPeopleList() {
 function openCarpoolForm(direction, myId, ctx, existing = null) {
   const isEdit = Boolean(existing);
   const title = isEdit ? 'Fahrgemeinschaft bearbeiten' : direction === 'arrival' ? 'Anreise-Fahrgemeinschaft' : 'Abreise-Fahrgemeinschaft';
+  const own = (cache?.arrivals || []).find((a) => a.player_id === myId);
+  // Neue Fahrgemeinschaft: das Feld, das zur eigenen Ankunft/Abreise oben
+  // gehört (eta_at bei Anreise, start_at bei Abreise), wird damit vorbelegt.
+  const defaultStartAt = !isEdit && direction === 'departure' ? (own?.departure_at ?? null) : null;
+  const defaultEtaAt = !isEdit && direction === 'arrival' ? (own?.arrival_at ?? null) : null;
   let modalEl;
   const { close } = openModal(
     title,
@@ -252,11 +257,11 @@ function openCarpoolForm(direction, myId, ctx, existing = null) {
         <div class="field-row">
           <div>
             <label for="carpool-start-at" class="field-label">Start</label>
-            ${dateTimeFieldHtml('carpool-start-at', existing?.startAt ?? null, { clearable: true })}
+            ${dateTimeFieldHtml('carpool-start-at', existing?.startAt ?? defaultStartAt, { clearable: true })}
           </div>
           <div>
             <label for="carpool-eta-at" class="field-label">Ankunft</label>
-            ${dateTimeFieldHtml('carpool-eta-at', existing?.etaAt ?? null, { clearable: true })}
+            ${dateTimeFieldHtml('carpool-eta-at', existing?.etaAt ?? defaultEtaAt, { clearable: true })}
           </div>
         </div>
         <div>
