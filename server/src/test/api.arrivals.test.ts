@@ -204,3 +204,53 @@ test('joining syncs the passenger own arrival/departure; leaving and deleting re
   frankRow = list.body.arrivals.find((a: { player_id: string }) => a.player_id === frank.id);
   assert.equal(frankRow.departure_at, null);
 });
+
+test('a player can only be in one carpool per direction, as driver or passenger', async () => {
+  const hank = (await request(app).post('/api/players').send({ name: 'Anreise Hank' })).body;
+  const ivy = (await request(app).post('/api/players').send({ name: 'Anreise Ivy' })).body;
+  const jill = (await request(app).post('/api/players').send({ name: 'Anreise Jill' })).body;
+
+  const hanksCarpool = await request(app)
+    .post('/api/arrivals/carpools')
+    .send({ playerId: hank.id, direction: 'arrival', label: 'Auto Hank' });
+  assert.equal(hanksCarpool.status, 201);
+
+  // Driving one arrival carpool blocks driving a second one.
+  const secondAsDriver = await request(app)
+    .post('/api/arrivals/carpools')
+    .send({ playerId: hank.id, direction: 'arrival', label: 'Zweites Auto Hank' });
+  assert.equal(secondAsDriver.status, 409);
+
+  // A driver in a departure carpool is unaffected - different direction.
+  const hanksDepartureCarpool = await request(app)
+    .post('/api/arrivals/carpools')
+    .send({ playerId: hank.id, direction: 'departure', label: 'Rückfahrt Hank' });
+  assert.equal(hanksDepartureCarpool.status, 201);
+
+  // Ivy joining Hank's arrival carpool is fine (she isn't in one yet).
+  const joinHank = await request(app).post(`/api/arrivals/carpools/${hanksCarpool.body.id}/join`).send({ playerId: ivy.id });
+  assert.equal(joinHank.status, 200);
+
+  // ...but she's now a passenger of an arrival carpool, so both creating
+  // and joining another one must fail rather than double-book her.
+  const ivyCreatesAnother = await request(app)
+    .post('/api/arrivals/carpools')
+    .send({ playerId: ivy.id, direction: 'arrival', label: 'Auto Ivy' });
+  assert.equal(ivyCreatesAnother.status, 409);
+
+  const jillsCarpool = await request(app)
+    .post('/api/arrivals/carpools')
+    .send({ playerId: jill.id, direction: 'arrival', label: 'Auto Jill' });
+  assert.equal(jillsCarpool.status, 201);
+
+  const ivyJoinsJill = await request(app).post(`/api/arrivals/carpools/${jillsCarpool.body.id}/join`).send({ playerId: ivy.id });
+  assert.equal(ivyJoinsJill.status, 409);
+
+  // Hank, already driving an arrival carpool, can't join Jill's either.
+  const hankJoinsJill = await request(app).post(`/api/arrivals/carpools/${jillsCarpool.body.id}/join`).send({ playerId: hank.id });
+  assert.equal(hankJoinsJill.status, 409);
+
+  // Re-joining a carpool you're already in stays a harmless no-op.
+  const rejoin = await request(app).post(`/api/arrivals/carpools/${hanksCarpool.body.id}/join`).send({ playerId: ivy.id });
+  assert.equal(rejoin.status, 200);
+});

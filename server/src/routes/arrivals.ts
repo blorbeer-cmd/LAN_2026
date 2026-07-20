@@ -183,6 +183,33 @@ function buildList(groupId: string) {
   return { eventId, arrivals, carpools };
 }
 
+// A player can drive or ride along in at most one carpool per direction -
+// otherwise their own Ankunft/Abreise (synced from the carpool) would be
+// ambiguous between two groups. excludeCarpoolId lets a join check ignore
+// the target carpool itself (already being in it isn't "another" one).
+function memberOfOtherDirectionCarpool(
+  eventId: string,
+  groupId: string,
+  direction: 'arrival' | 'departure',
+  playerId: string,
+  excludeCarpoolId?: string
+): boolean {
+  return Boolean(
+    db
+      .prepare(
+        `SELECT 1 FROM carpool_members cm
+         JOIN carpools c ON c.id = cm.carpool_id
+         JOIN events e ON e.id = c.event_id
+         WHERE cm.player_id = ? AND c.event_id = ? AND e.group_id = ? AND c.direction = ? AND c.id != ?`
+      )
+      .get(playerId, eventId, groupId, direction, excludeCarpoolId ?? '')
+  );
+}
+
+function directionLabel(direction: 'arrival' | 'departure'): string {
+  return direction === 'arrival' ? 'Anreise' : 'Abreise';
+}
+
 function getCarpool(id: string, groupId: string): CarpoolRow | undefined {
   return db
     .prepare(
@@ -259,6 +286,9 @@ arrivalsRouter.post('/carpools', ...withBodyPlayerIdentity, (req, res) => {
   const now = Date.now();
   const eventId = resolveGroupEventStorageId(req.group!.id);
   if (!eventId) return res.status(409).json({ error: 'Für diese Gruppe läuft derzeit kein Event.' });
+  if (memberOfOtherDirectionCarpool(eventId, req.group!.id, direction as 'arrival' | 'departure', playerId)) {
+    return res.status(409).json({ error: `Du bist bereits Teil einer ${directionLabel(direction as 'arrival' | 'departure')}-Fahrgemeinschaft.` });
+  }
   const create = db.transaction(() => {
     db.prepare(
       `INSERT INTO carpools (id, event_id, direction, label, start_at, start_location, eta_at, seats_total, created_by, created_at)
@@ -332,6 +362,9 @@ arrivalsRouter.post('/carpools/:id/join', ...withBodyPlayerIdentity, (req, res) 
   const alreadyIn = db.prepare('SELECT 1 FROM carpool_members WHERE carpool_id = ? AND player_id = ?').get(carpool.id, playerId);
   if (!alreadyIn && seatsTaken(carpool.id, carpool.created_by) >= carpool.seats_total) {
     return res.status(409).json({ error: 'Keine Plätze mehr frei.' });
+  }
+  if (!alreadyIn && memberOfOtherDirectionCarpool(carpool.event_id, carpool.group_id, carpool.direction, playerId, carpool.id)) {
+    return res.status(409).json({ error: `Du bist bereits Teil einer anderen ${directionLabel(carpool.direction)}-Fahrgemeinschaft.` });
   }
 
   const join = db.transaction(() => {

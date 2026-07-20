@@ -62,10 +62,14 @@ function renderMyForm(myId) {
   `;
 }
 
-function renderCarpool(c, direction, myId) {
+// A player can only drive or ride along in one carpool per direction (see
+// server/src/routes/arrivals.ts) - otherwise, which carpool would their own
+// Ankunft/Abreise above sync with? `elsewhere` marks that they're already
+// committed to a *different* carpool of this direction.
+function renderCarpool(c, direction, myId, elsewhere) {
   const isDriver = c.driverId === myId;
   const amIn = Boolean(myId && c.members.some((m) => m.id === myId));
-  const canJoin = Boolean(myId && !isDriver && !amIn);
+  const canJoin = Boolean(myId && !isDriver && !amIn && !elsewhere);
   const memberRowsHtml = c.members
     .map(
       (m) => `<div class="arrivals-member-row">
@@ -80,7 +84,9 @@ function renderCarpool(c, direction, myId) {
       ? `<button type="button" class="btn btn-sm btn-primary" data-join-carpool="${c.id}">Mitfahren</button>`
       : !myId
         ? '<button type="button" class="btn btn-sm" disabled>Mitfahren</button>'
-        : '<span class="arrivals-member-role">Mitfahrer</span>';
+        : elsewhere && !isDriver && !amIn
+          ? '<button type="button" class="btn btn-sm" disabled title="Du bist schon in einer anderen Fahrgemeinschaft dieser Richtung.">Mitfahren</button>'
+          : '<span class="arrivals-member-role">Mitfahrer</span>';
     return `<div class="arrivals-member-row arrivals-free-seat-row">
       <span class="muted arrivals-free-seat-label">Frei</span>
       ${control}
@@ -121,17 +127,23 @@ function renderCarpool(c, direction, myId) {
     </div>`;
 }
 
+function isCommittedToDirection(direction, myId) {
+  const rows = cache?.carpools?.[direction] || [];
+  return Boolean(myId && rows.some((c) => c.driverId === myId || c.members.some((m) => m.id === myId)));
+}
+
 function renderCarpoolSection(direction, title, myId) {
   const rows = cache?.carpools?.[direction] || [];
+  const committed = isCommittedToDirection(direction, myId);
   return `
     <section class="tournament-section-panel stack arrivals-carpool-section is-${direction}">
       <div class="row-between">
         <strong>${title}</strong>
-        <button type="button" class="btn btn-sm btn-primary" data-new-carpool="${direction}" ${myId ? '' : 'disabled'}>+ Neu</button>
+        <button type="button" class="btn btn-sm btn-primary" data-new-carpool="${direction}" ${myId && !committed ? '' : 'disabled'} ${committed ? 'title="Du bist schon in einer Fahrgemeinschaft dieser Richtung."' : ''}>+ Neu</button>
       </div>
       ${
         rows.length
-          ? `<div class="two-column-card-grid arrivals-carpool-grid">${rows.map((c) => renderCarpool(c, direction, myId)).join('')}</div>`
+          ? `<div class="two-column-card-grid arrivals-carpool-grid">${rows.map((c) => renderCarpool(c, direction, myId, committed && c.driverId !== myId && !c.members.some((m) => m.id === myId))).join('')}</div>`
           : `<div class="muted arrivals-carpool-empty">Noch keine Fahrgemeinschaft.</div>`
       }
     </section>`;
