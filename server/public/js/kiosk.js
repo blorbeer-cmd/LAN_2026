@@ -684,6 +684,10 @@ async function main() {
 
   [
     'live:changed',
+    // Player-lifecycle changes (rename, deactivation, tracking pause) can
+    // clear live rows without a follow-up live:changed for this group, so the
+    // shared screen refreshes on the roster signal too.
+    'players:changed',
     'votes:changed',
     'leaderboard:changed',
     'tournaments:changed',

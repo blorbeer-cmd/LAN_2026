@@ -147,6 +147,11 @@ function watchSummary(payload: Record<string, unknown>): Record<string, unknown>
 
 function emitArcadeWatchList(server: Server): void {
   for (const socket of server.sockets.sockets.values()) {
+    // Read-only kiosks never consume watch lists — their only arcade channel
+    // is the deliberately sanitised arcade:kiosk:game stream. Without this
+    // guard they would receive summaries (player refs, scores) of every
+    // group, since they carry no subscribed groupId to filter on.
+    if (socket.data.kioskReadOnly) continue;
     socket.emit('arcade:watch:list', { matches: [...latestArcadeGames.values()]
       .filter((match) => !socket.data.groupId || match.groupId === socket.data.groupId).map(watchSummary) });
   }
@@ -217,6 +222,7 @@ export interface BroadcastScope {
 // inside the kiosk's own group.
 const KIOSK_DELIVERED_EVENTS = new Set<string>([
   'live:changed',
+  'players:changed',
   'votes:changed',
   'leaderboard:changed',
   'tournaments:changed',
@@ -234,19 +240,16 @@ const INSTANCE_SIGNAL_EVENTS = new Set<string>(['groups:changed']);
 
 // Kiosk access is only as good as its token: the scope captured at handshake
 // time must not outlive a revocation or the archival of its group, so every
-// delivery re-checks the persisted token. The installation-wide env token
-// (config.kioskToken) has no database row and cannot be revoked at runtime.
+// delivery re-checks the persisted state. The group-archival check applies to
+// every kiosk; only the revocation check is token-bound, because the
+// installation-wide env token (config.kioskToken) has no database row.
 function kioskDeliveryAllowed(socket: Socket): boolean {
+  const groupId = socket.data.kioskGroupId;
+  if (typeof groupId !== 'string' || !groupId) return false;
+  if (!db.prepare('SELECT 1 FROM groups WHERE id = ? AND archived_at IS NULL').get(groupId)) return false;
   const tokenId = socket.data.kioskTokenId;
   if (typeof tokenId !== 'string' || !tokenId) return true;
-  return Boolean(
-    db
-      .prepare(
-        `SELECT 1 FROM kiosk_tokens kt JOIN groups g ON g.id = kt.group_id
-         WHERE kt.id = ? AND kt.revoked_at IS NULL AND g.archived_at IS NULL`,
-      )
-      .get(tokenId),
-  );
+  return Boolean(db.prepare('SELECT 1 FROM kiosk_tokens WHERE id = ? AND revoked_at IS NULL').get(tokenId));
 }
 
 // Eagerly ends the sockets of a just-revoked kiosk token; the delivery-time
@@ -421,8 +424,12 @@ export function registerArcadeKioskSockets(server: Server): void {
       }
       ack?.({ ok: true, groupId: socket.data.kioskGroupId, eventId: socket.data.kioskEventId });
     });
-    socket.emit('arcade:watch:list', { matches: [...latestArcadeGames.values()]
-      .filter((match) => !socket.data.groupId || match.groupId === socket.data.groupId).map(watchSummary) });
+    // Same kiosk exclusion as emitArcadeWatchList: the initial list on
+    // connect must not hand a read-only kiosk cross-group match summaries.
+    if (!socket.data.kioskReadOnly) {
+      socket.emit('arcade:watch:list', { matches: [...latestArcadeGames.values()]
+        .filter((match) => !socket.data.groupId || match.groupId === socket.data.groupId).map(watchSummary) });
+    }
     socket.on('arcade:watch:list', () => emitArcadeWatchList(server));
     socket.on('arcade:watch:join', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const matchId = payload?.matchId;

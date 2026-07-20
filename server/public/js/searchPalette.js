@@ -290,10 +290,17 @@ export function initGlobalSearch(onNavigate) {
               activateSelected();
             }
           });
-          resultsContainer.addEventListener('pointerover', (event) => {
+          // pointermove instead of pointerover: when a keyboard selection
+          // re-renders or scrolls the list, Chromium re-dispatches a
+          // synthetic pointerover for whatever now sits under a stationary
+          // cursor — which silently snapped the highlight back to the hovered
+          // row. Only genuine pointer movement may take over the selection.
+          resultsContainer.addEventListener('pointermove', (event) => {
             const button = event.target.closest('[data-search-index]');
             if (!button) return;
-            selectedIndex = Number(button.dataset.searchIndex);
+            const index = Number(button.dataset.searchIndex);
+            if (index === selectedIndex) return;
+            selectedIndex = index;
             updateSelection();
           });
           resultsContainer.addEventListener('click', (event) => {

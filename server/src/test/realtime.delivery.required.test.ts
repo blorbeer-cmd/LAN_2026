@@ -14,10 +14,11 @@ import type { AddressInfo } from 'net';
 import { Server } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import { nanoid } from 'nanoid';
-import { db } from '../db';
+import { db, DEFAULT_GROUP_ID } from '../db';
 import { config } from '../config';
 import {
   broadcast,
+  broadcastArcadeKiosk,
   broadcastInstanceSignal,
   createSocketAuthGuard,
   Events,
@@ -68,10 +69,10 @@ interface TestServer {
   baseUrl: string;
 }
 
-async function withRequiredServer(fn: (server: TestServer) => Promise<void>): Promise<void> {
+async function withRequiredServer(fn: (server: TestServer) => Promise<void>, envKioskToken = ''): Promise<void> {
   const httpServer = http.createServer();
   const io = new Server(httpServer);
-  io.use(createSocketAuthGuard('', 'required', ''));
+  io.use(createSocketAuthGuard('', 'required', envKioskToken));
   registerArcadeKioskSockets(io);
   setIo(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
@@ -179,13 +180,16 @@ test('kiosk sockets receive only allowlisted events for their validated token sc
       const kioskASkills = collect(kioskA, Events.skillsChanged);
       const kioskAPush = collect(kioskA, Events.pushSent);
 
+      const kioskAPlayers = collect(kioskA, Events.playersChanged);
       broadcast(Events.votesChanged, { round: 2 }, { groupId: groupA });
       broadcast(Events.skillsChanged, null, { groupId: groupA });
       broadcast(Events.pushSent, { title: 'Nur Gruppe A' }, { groupId: groupA });
+      broadcast(Events.playersChanged, null, { groupId: groupA });
       await settle();
 
       assert.equal(kioskAVotes.count(), 1, 'the matching kiosk receives allowlisted group events');
       assert.equal(kioskAPush.count(), 1, 'push banners belong to the kiosk allowlist');
+      assert.equal(kioskAPlayers.count(), 1, 'player-lifecycle signals refresh the group kiosk');
       assert.equal(kioskBVotes.count(), 0, 'a kiosk token of another group must receive nothing');
       assert.equal(kioskASkills.count(), 0, 'events outside the kiosk allowlist stay member-only');
     } finally {
@@ -293,6 +297,62 @@ test('a direct push reaches only its resolved recipients and never the kiosk', a
       aliceSocket.close();
       bobSocket.close();
       kiosk.close();
+    }
+  });
+});
+
+test('archiving the group silences an already-connected env-token kiosk too', async () => {
+  await withRequiredServer(async ({ baseUrl }) => {
+    const kiosk = await connectKiosk(baseUrl, 'env-kiosk-token');
+    try {
+      const votes = collect(kiosk, Events.votesChanged);
+      broadcast(Events.votesChanged, { round: 1 }, { groupId: DEFAULT_GROUP_ID });
+      await settle();
+      assert.equal(votes.count(), 1, 'the env-token kiosk receives its default-group events');
+
+      db.prepare('UPDATE groups SET archived_at = ? WHERE id = ?').run(Date.now(), DEFAULT_GROUP_ID);
+      try {
+        broadcast(Events.votesChanged, { round: 2 }, { groupId: DEFAULT_GROUP_ID });
+        await settle();
+        assert.equal(votes.count(), 1, 'an archived group stops delivery even without a token row');
+      } finally {
+        db.prepare('UPDATE groups SET archived_at = NULL WHERE id = ?').run(DEFAULT_GROUP_ID);
+      }
+    } finally {
+      kiosk.close();
+    }
+  }, 'env-kiosk-token');
+});
+
+test('read-only kiosks never receive arcade watch lists', async () => {
+  const groupA = createGroup('Watch List A');
+  const owner = createPlayer('Watch List Owner');
+  addMembership(groupA, owner, 'owner');
+  const kioskToken = issueKioskToken(groupA, null, owner, null).token;
+  const matchId = `watch-list-kiosk-${nanoid()}`;
+
+  await withRequiredServer(async ({ io, baseUrl }) => {
+    const kiosk = await connectKiosk(baseUrl, kioskToken);
+    const memberSocket = await connectSession(baseUrl, owner);
+    try {
+      const kioskLists = collect(kiosk, 'arcade:watch:list');
+      const memberLists = collect(memberSocket, 'arcade:watch:list');
+
+      broadcastArcadeKiosk(io, {
+        matchId,
+        gameType: 'pong',
+        running: true,
+        players: [],
+        scores: [],
+      });
+      await settle();
+
+      assert.equal(kioskLists.count(), 0, 'watch summaries must never reach a read-only kiosk');
+      assert.ok(memberLists.count() >= 1, 'regular sockets keep receiving the watch list');
+    } finally {
+      broadcastArcadeKiosk(io, { gameType: null, matchId });
+      kiosk.close();
+      memberSocket.close();
     }
   });
 });
