@@ -630,10 +630,21 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
     const stylesheet = document.querySelector('link[href*="/css/style.css"]') as HTMLLinkElement | null;
     return stylesheet?.sheet !== null && getComputedStyle(document.body).fontFamily !== '';
   });
-  const leaderboardNameTypography = await page.locator('.lb-row .player-name').first().evaluate((element) => {
-    const style = getComputedStyle(element);
-    return { family: style.fontFamily, size: style.fontSize, weight: style.fontWeight };
-  });
+  // Read the styles off a freshly queried node at evaluation time: a
+  // players:/live:changed refresh can re-render the list between resolving a
+  // locator handle and evaluating it, and a detached node reports every
+  // computed style as ''. Retry until a live node answers.
+  const readNameTypography = (selector: string) =>
+    page
+      .waitForFunction((sel) => {
+        const element = document.querySelector(sel);
+        if (!element) return null;
+        const style = getComputedStyle(element);
+        if (!style.fontFamily) return null;
+        return { family: style.fontFamily, size: style.fontSize, weight: style.fontWeight };
+      }, selector)
+      .then((result) => result.jsonValue() as Promise<{ family: string; size: string; weight: string }>);
+  const leaderboardNameTypography = await readNameTypography('.lb-row .player-name');
   await page.waitForSelector('text=Spielzeit');
 
   // Back to Home: should now show both players (offline, since no agent ran).
@@ -647,10 +658,7 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
       `${title} should be presented as a grouped Home section`
     );
   }
-  const liveNameTypography = await page.locator('.player-card .player-name').first().evaluate((element) => {
-    const style = getComputedStyle(element);
-    return { family: style.fontFamily, size: style.fontSize, weight: style.fontWeight };
-  });
+  const liveNameTypography = await readNameTypography('.player-card .player-name');
   assert.deepEqual(liveNameTypography, leaderboardNameTypography, 'player names should use one shared typography');
   await page.setViewportSize({ width: 900, height: 844 });
   assert.equal(
