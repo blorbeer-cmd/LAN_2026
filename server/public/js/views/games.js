@@ -215,6 +215,7 @@ function openEventForm(ctx, existing) {
   const now = Date.now();
   const defaultEnd = now + 24 * 60 * 60 * 1000;
 
+  let capturedEl;
   const { close } = openModal(
     isEdit ? 'Event bearbeiten' : 'Neues Event',
     `
@@ -245,7 +246,20 @@ function openEventForm(ctx, existing) {
       </form>
     `,
     {
+      confirmClose: () => {
+        if (!capturedEl) return null;
+        const name = capturedEl.querySelector('#event-name').value.trim();
+        const location = capturedEl.querySelector('#event-location').value.trim();
+        const description = capturedEl.querySelector('#event-description').value.trim();
+        const dirty = isEdit
+          ? name !== (existing.name ?? '') ||
+            location !== (existing.location ?? '') ||
+            description !== (existing.description ?? '')
+          : Boolean(name || location || description);
+        return dirty ? 'Die Event-Daten (Name, Zeitraum, Ort, Notiz) gehen verloren.' : null;
+      },
       onMount: (modalEl) => {
+        capturedEl = modalEl;
         wireDateTimeField(modalEl, 'event-starts');
         wireDateTimeField(modalEl, 'event-ends');
 
@@ -302,6 +316,7 @@ function openParticipantsForm(ctx, event) {
     )
     .join('');
 
+  let capturedEl;
   const { close } = openModal(
     `Teilnehmer – ${escapeHtml(event.name)}`,
     `
@@ -314,7 +329,14 @@ function openParticipantsForm(ctx, event) {
       </div>
     `,
     {
+      confirmClose: () => {
+        if (!capturedEl) return null;
+        const ids = [...capturedEl.querySelectorAll('[data-participant]:checked')].map((cb) => cb.dataset.participant);
+        const same = ids.length === checked.size && ids.every((id) => checked.has(id));
+        return same ? null : 'Die geänderte Teilnehmerauswahl wird nicht gespeichert.';
+      },
       onMount: (modalEl) => {
+        capturedEl = modalEl;
         modalEl.querySelector('#participants-save').addEventListener('click', async () => {
           const ids = [...modalEl.querySelectorAll('[data-participant]:checked')].map((cb) => cb.dataset.participant);
           try {

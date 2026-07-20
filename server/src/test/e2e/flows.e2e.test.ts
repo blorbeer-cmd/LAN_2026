@@ -951,6 +951,9 @@ test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bo
   await page.waitForSelector('.toast-error');
   await page.waitForSelector('text=gibt es schon');
   await page.click('[data-close]');
+  // Closing still discards the typed (rejected) title, so the new
+  // confirm-before-discard guard steps in — confirm it away.
+  await page.click('[data-confirm]');
 
   // Promote the suggestion into the catalog via its detail modal (row-level
   // actions live only in there now — the row itself just carries the info

@@ -164,6 +164,7 @@ function renderDoneTask(task) {
 }
 
 function openRequestForm(ctx, myId) {
+  let modalEl;
   const { close } = openModal(
     'Mitbring-Anfrage stellen',
     `
@@ -174,7 +175,14 @@ function openRequestForm(ctx, myId) {
       </form>
     `,
     {
+      confirmClose: () => {
+        if (!modalEl) return null;
+        const title = modalEl.querySelector('#request-title').value.trim();
+        const description = modalEl.querySelector('#request-description').value.trim();
+        return title || description ? 'Die Mitbring-Anfrage mit Titel und Beschreibung geht verloren.' : null;
+      },
       onMount: (el) => {
+        modalEl = el;
         el.querySelector('#checklist-request-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const title = el.querySelector('#request-title').value.trim();
@@ -262,6 +270,7 @@ async function openTodoForm(ctx, myId) {
     )
     .join('');
 
+  let modalEl;
   const { close } = openModal(
     'Aufgabe verteilen',
     `
@@ -289,7 +298,17 @@ async function openTodoForm(ctx, myId) {
       </form>
     `,
     {
+      confirmClose: () => {
+        if (!modalEl) return null;
+        const title = modalEl.querySelector('#todo-title').value.trim();
+        const description = modalEl.querySelector('#todo-description').value.trim();
+        const anyChecked = [...modalEl.querySelectorAll('[data-todo-assignee]')].some((cb) => cb.checked);
+        return title || description || anyChecked
+          ? 'Die Aufgabe samt Titel, Beschreibung und ausgewählten Personen geht verloren.'
+          : null;
+      },
       onMount: (el) => {
+        modalEl = el;
         wireInfoTooltips(el);
         const assigneeCheckboxes = () => [...el.querySelectorAll('[data-todo-assignee]')];
         el.querySelector('#todo-select-all').addEventListener('click', () => {

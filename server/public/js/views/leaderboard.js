@@ -226,6 +226,20 @@ export function openMatchForm(ctx, options = {}) {
       </form>
     `,
     {
+      confirmClose: () => {
+        if (!el) return null;
+        const hasValue = (selector) => [...el.querySelectorAll(selector)].some((input) => input.value.trim() !== '');
+        const winnerPicked = [...el.querySelectorAll('input[name="winner"], input[name="ffa-winner"]')].some(
+          (input) => input.checked && input.value !== '',
+        );
+        const dirty =
+          winnerPicked ||
+          hasValue('[data-team-score]') ||
+          hasValue('[data-team-rank]') ||
+          hasValue('[data-ffa-score]') ||
+          hasValue('[data-ffa-rank]');
+        return dirty ? 'Das eingetragene Ergebnis inklusive Sieger, Werten und Platzierungen geht verloren.' : null;
+      },
       onMount: (modalEl) => {
         const bodyEl = modalEl.querySelector('#match-body');
 

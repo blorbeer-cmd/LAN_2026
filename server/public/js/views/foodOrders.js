@@ -403,6 +403,7 @@ function renderClosedOrder(order, myId) {
 }
 
 function openNewOrderForm(ctx, myId) {
+  let modalEl;
   const { close } = openModal(
     'Neue Sammelbestellung',
     `
@@ -439,7 +440,17 @@ function openNewOrderForm(ctx, myId) {
       </form>
     `,
     {
+      confirmClose: () => {
+        if (!modalEl) return null;
+        const values = ['#order-title', '#order-notes', '#order-link', '#order-paypal', '#order-tip', '#order-sendat'].map(
+          (sel) => modalEl.querySelector(sel).value.trim(),
+        );
+        return values.some(Boolean)
+          ? 'Die neue Sammelbestellung mit allen eingegebenen Angaben (Titel, Link, PayPal, Trinkgeld …) geht verloren.'
+          : null;
+      },
       onMount: (el) => {
+        modalEl = el;
         wireDateTimeField(el, 'order-sendat');
         wireInfoTooltips(el);
         el.querySelector('#order-form').addEventListener('submit', async (e) => {
@@ -481,6 +492,7 @@ function openNewOrderForm(ctx, myId) {
 }
 
 function openDetailsForm(ctx, order) {
+  let modalEl;
   const { close } = openModal(
     'Info bearbeiten',
     `
@@ -516,7 +528,23 @@ function openDetailsForm(ctx, order) {
       </form>
     `,
     {
+      confirmClose: () => {
+        if (!modalEl) return null;
+        const notes = modalEl.querySelector('#notes-input').value.trim();
+        const link = modalEl.querySelector('#link-input').value.trim();
+        const paypal = modalEl.querySelector('#paypal-input').value.trim();
+        const tip = modalEl.querySelector('#tip-input').value.trim();
+        const sendAt = modalEl.querySelector('#sendat-input').value;
+        const dirty =
+          notes !== (order.notes ?? '') ||
+          link !== (order.link ?? '') ||
+          paypal !== (paypalEmailFromLink(order.paypalLink) ?? order.paypalLink ?? '') ||
+          tip !== String(order.tipPercent ?? '') ||
+          Boolean(sendAt) !== Boolean(order.sendAt);
+        return dirty ? 'Deine Änderungen an Info, Link, PayPal oder Trinkgeld werden nicht gespeichert.' : null;
+      },
       onMount: (el) => {
+        modalEl = el;
         wireDateTimeField(el, 'sendat-input');
         wireInfoTooltips(el);
         el.querySelector('#details-form').addEventListener('submit', async (e) => {
