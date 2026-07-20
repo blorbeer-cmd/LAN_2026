@@ -12,5 +12,7 @@ Breakpoints, damit die vollständige CI nicht von einem geleakten Desktop-Viewpo
 
 ## Pull Requests
 
-- [PR #238](https://github.com/blorbeer-cmd/LAN_2026/pull/238), offen (Ready for Review): Enforce
-  group- and event-scoped realtime delivery including Arcade.
+- [PR #238](https://github.com/blorbeer-cmd/LAN_2026/pull/238), gemergt am 2026-07-20 als Squash
+  [`601d43e`](https://github.com/blorbeer-cmd/LAN_2026/commit/601d43ee18b0b102c22e2ccbf47f089a7de14aad)
+  nach unabhängigem Delta-Review (`DELTA APPROVED`): Enforce group- and event-scoped realtime
+  delivery including Arcade.
