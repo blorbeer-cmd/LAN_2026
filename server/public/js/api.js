@@ -503,8 +503,8 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ playerId, title, description, assigneePlayerIds }),
       }),
-    claim: (taskId, playerId) =>
-      apiFetch(`/api/checklist/tasks/${taskId}/claim`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    claim: (taskId, playerId, comment) =>
+      apiFetch(`/api/checklist/tasks/${taskId}/claim`, { method: 'POST', body: JSON.stringify({ playerId, comment }) }),
     release: (taskId, playerId) =>
       apiFetch(`/api/checklist/tasks/${taskId}/release`, { method: 'POST', body: JSON.stringify({ playerId }) }),
     setDone: (taskId, playerId) =>

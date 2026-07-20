@@ -137,6 +137,7 @@ function renderTakenTask(task, myId) {
         ${avatarHtml(task.assignee, 20)}
         <span class="muted" style="font-size:var(--font-size-sm);">${escapeHtml(task.assignee?.name ?? '?')} kümmert sich darum</span>
       </div>
+      ${task.claimComment ? `<div class="muted" style="font-size:var(--font-size-sm);">„${escapeHtml(task.claimComment)}“</div>` : ''}
       ${
         isMine
           ? `<div class="row" style="gap:var(--space-2);">
@@ -155,6 +156,7 @@ function renderDoneTask(task) {
         <strong>${escapeHtml(task.title)}</strong>
         <span class="badge badge-offline">Erledigt</span>
       </div>
+      ${task.claimComment ? `<div class="muted" style="font-size:var(--font-size-sm);">„${escapeHtml(task.claimComment)}“</div>` : ''}
       <div class="muted" style="font-size:var(--font-size-xs);">
         ${escapeHtml(task.assignee?.name ?? '?')} · ${formatDateTime(task.doneAt)}
       </div>
@@ -209,6 +211,41 @@ async function assigneeCandidates() {
   } catch {
     return state.players;
   }
+}
+
+function openClaimForm(ctx, myId, taskId) {
+  const { close } = openModal(
+    'Aufgabe übernehmen',
+    `
+      <form id="checklist-claim-form" class="stack">
+        <input
+          type="text"
+          id="claim-comment"
+          maxlength="200"
+          autofocus
+          placeholder="Kommentar (optional), z.B. Bringe einen XBOX Controller mit."
+        />
+        <button type="submit" class="btn btn-primary btn-block">Übernehmen</button>
+      </form>
+    `,
+    {
+      onMount: (el) => {
+        el.querySelector('#checklist-claim-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const comment = el.querySelector('#claim-comment').value.trim() || undefined;
+          try {
+            await api.checklist.claim(taskId, myId, comment);
+            close();
+            tasksCache = null;
+            showToast('Übernommen.');
+            ctx.rerender();
+          } catch (err) {
+            showToast(err.message, { error: true });
+          }
+        });
+      },
+    },
+  );
 }
 
 async function openTodoForm(ctx, myId) {
@@ -412,15 +449,8 @@ export function renderChecklist(container, ctx) {
   });
 
   container.querySelectorAll('[data-claim-task]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      try {
-        await api.checklist.claim(btn.dataset.claimTask, myId);
-        tasksCache = null;
-        showToast('Übernommen.');
-        ctx.rerender();
-      } catch (err) {
-        showToast(err.message, { error: true });
-      }
+    btn.addEventListener('click', () => {
+      openClaimForm(ctx, myId, btn.dataset.claimTask);
     });
   });
 
