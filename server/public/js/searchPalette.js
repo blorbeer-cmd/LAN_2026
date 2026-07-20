@@ -314,11 +314,13 @@ export function initGlobalSearch(onNavigate) {
           input.focus();
           loadContentSearchEntries().then((contentEntries) => {
             if (!backdrop.isConnected) return;
-            // Merging the late content entries re-renders the result list; a
-            // keyboard selection made in the meantime must survive instead of
-            // silently snapping back to the first result while the user is
-            // about to press Enter.
-            const previousSelection = results[selectedIndex];
+            // Merging the late content entries re-renders the result list; an
+            // explicit keyboard selection made in the meantime must survive
+            // instead of silently snapping back to the first result while the
+            // user is about to press Enter. The default top hit (index 0) is
+            // deliberately not preserved: a better-ranked late content match
+            // (e.g. an exact order title over an area alias) may replace it.
+            const previousSelection = selectedIndex > 0 ? results[selectedIndex] : null;
             allEntries = [...visibleAreaEntries, ...contentEntries];
             renderResults();
             if (previousSelection) {
