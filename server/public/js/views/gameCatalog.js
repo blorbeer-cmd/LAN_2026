@@ -298,6 +298,7 @@ function openSuggestForm(ctx) {
   const myId = getMyId();
   if (!myId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
 
+  let modalEl;
   const { close } = openModal(
     'Spiel vorschlagen',
     `
@@ -318,7 +319,15 @@ function openSuggestForm(ctx) {
       </form>
     `,
     {
+      confirmClose: () => {
+        if (!modalEl) return null;
+        const values = ['#suggest-title', '#suggest-platform', '#suggest-trailer'].map(
+          (sel) => modalEl.querySelector(sel).value.trim(),
+        );
+        return values.some(Boolean) ? 'Der Spielvorschlag mit Titel, Plattform und Trailer-Link geht verloren.' : null;
+      },
       onMount: (el) => {
+        modalEl = el;
         el.querySelector('#suggest-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const name = el.querySelector('#suggest-title').value.trim();
@@ -357,6 +366,7 @@ function openGameDetail(gameId, ctx) {
     .join('');
   const suggestedProcessNames = game.processNames.length === 0 ? suggestProcessNames(game.name) : [];
 
+  let modalEl;
   const { close } = openModal(
     escapeHtml(game.name),
     `
@@ -413,7 +423,27 @@ function openGameDetail(gameId, ctx) {
       </div>
     `,
     {
+      confirmClose: () => {
+        if (!modalEl) return null;
+        const name = modalEl.querySelector('#edit-name').value.trim();
+        const platform = modalEl.querySelector('#edit-platform').value.trim();
+        const platformUrl = modalEl.querySelector('#edit-platform-url').value.trim();
+        const trailerUrl = modalEl.querySelector('#edit-trailer').value.trim();
+        const minTeamSize = modalEl.querySelector('#edit-min').value;
+        const maxTeamSize = modalEl.querySelector('#edit-max').value;
+        const newProcess = modalEl.querySelector('#new-process').value.trim();
+        const dirty =
+          name !== (game.name ?? '') ||
+          platform !== (game.platform ?? '') ||
+          platformUrl !== (game.platform_url ?? '') ||
+          trailerUrl !== (game.trailer_url ?? '') ||
+          Number(minTeamSize) !== game.min_team_size ||
+          Number(maxTeamSize) !== game.max_team_size ||
+          Boolean(newProcess);
+        return dirty ? 'Deine Änderungen am Spiel (Name, Plattform, Team-Größen, Prozessname) werden nicht gespeichert.' : null;
+      },
       onMount: (el) => {
+        modalEl = el;
         el.querySelector('#edit-save').addEventListener('click', async () => {
           const name = el.querySelector('#edit-name').value.trim();
           const minTeamSize = parseInt(el.querySelector('#edit-min').value, 10);

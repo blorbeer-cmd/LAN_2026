@@ -197,7 +197,20 @@ function openDrawResultEdit(draw, ctx) {
         <span>Unentschieden</span>
       </label>
       <button type="submit" class="btn btn-primary btn-block">Änderung speichern</button>
-    </form>`
+    </form>`,
+    {
+      confirmClose: () => {
+        if (!el) return null;
+        const dirty = draw.teams.some((team, index) => {
+          const scoreRaw = el.querySelector(`[data-edit-draw-score="${index}"]`).value;
+          const rankRaw = el.querySelector(`[data-edit-draw-rank="${index}"]`).value;
+          return scoreRaw !== String(team.score ?? '') || rankRaw !== String(team.rank ?? '');
+        });
+        const winnerRaw = el.querySelector('input[name="edit-draw-winner"]:checked')?.value ?? '';
+        const winnerDirty = winnerRaw !== (draw.winnerTeamIndex === null ? '' : String(draw.winnerTeamIndex));
+        return dirty || winnerDirty ? 'Deine Änderungen am Ergebnis (Sieger, Wert, Platz) werden nicht gespeichert.' : null;
+      },
+    }
   );
 
   el.querySelector('#edit-draw-result-form').addEventListener('submit', async (event) => {
