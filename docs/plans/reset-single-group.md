@@ -210,12 +210,11 @@ R4 (Migrations-Hygiene) ── unabhängig, jederzeit ────────�
 - **Multi-Gruppen „später doch noch“ hinter dem Flag schlummern lassen**: halb entfernte Features
   sind die teuerste Variante — tote Pfade, die weiter mitgetestet und mitgedacht werden müssen.
 
-## 9. Offene Entscheidungen (mit Empfehlung)
+## 9. Getroffene Entscheidungen (Nutzer, 2026-07-20)
 
-1. **Rollen sichtbar lassen?** Empfehlung: ja, unverändert lassen (Owner/Admin/Member der
-   Startgruppe als Instanz-Rechtemodell). Alternative — Rückbau auf `is_admin` — wäre ein
-   M/L-Refactoring ohne Bedienungsgewinn.
-2. **F6 (Event-Selbstbeitritt) später beheben?** Empfehlung: als kleines UX-Feature „Einladung
-   annehmen/ablehnen“ ins Backlog, keine Sicherheitspriorität mehr.
-3. **`groupContext.js` ganz entfernen oder auf Event-Kontextanzeige reduzieren?** Empfehlung:
-   reduzieren — die Anzeige „Gruppenraum vs. Eventname“ bleibt nützlich, weil Events bleiben.
+1. **Rollen bleiben:** Owner/Admin/Member der Startgruppe bleiben unverändert das
+   Instanz-Rechtemodell. Kein Rückbau auf `is_admin`.
+2. **F6 (Event-Selbstbeitritt) wird Backlog-UX-Feature:** „Event-Einladung annehmen/ablehnen“
+   wird später als kleines Feature umgesetzt; im Reset keine Änderung, keine Sicherheitspriorität.
+3. **`groupContext.js` wird reduziert, nicht entfernt:** Umschalter, Anlegen, Einladungslink,
+   Verlassen/Archivieren entfallen in R2; die Kontextanzeige „Gruppenraum vs. Eventname“ bleibt.
