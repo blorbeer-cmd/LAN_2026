@@ -70,6 +70,11 @@ const KIOSK_GET_PATHS = [
   /^\/tournaments(?:\/[^/]+)?\/?$/,
   /^\/food-orders\/?$/,
   /^\/music\/kiosk\/?$/,
+  // The dashboard loads the latest group-wide banner alongside the other
+  // read-only views; without this a token-only kiosk 401s on the whole
+  // Promise.all refresh. getLastPushLogEntry only returns 'all'-audience
+  // entries, so no personal push content is exposed.
+  /^\/push\/last\/?$/,
 ];
 
 apiRouter.use((req, res, next) => {
@@ -87,8 +92,17 @@ apiRouter.use((req, res, next) => {
     if (tokenScope && typeof requestedGroup === 'string' && requestedGroup !== groupId) {
       return res.status(404).json({ error: 'Kiosk-Token ist für diese Gruppe nicht freigegeben.' });
     }
+    // resolveKioskToken already rejects a DB token whose group is archived;
+    // the installation-wide env token has no such row, so re-check the
+    // resolved group here — otherwise an env-token kiosk keeps reading an
+    // archived group's data long after the socket path stopped delivering it.
+    const group = getGroup(groupId);
+    if (!group || group.archived_at !== null) {
+      return res.status(404).json({ error: 'Kiosk-Gruppe ist nicht verfügbar.' });
+    }
     if (tokenScope?.eventId) req.query.eventId = tokenScope.eventId;
-    req.group = getGroup(groupId);
+    req.group = group;
+    req.kioskScope = { groupId, eventId: tokenScope?.eventId ?? null };
     return next();
   }
   requireConfiguredUser(req, res, next);

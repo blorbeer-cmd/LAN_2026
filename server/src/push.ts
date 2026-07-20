@@ -127,6 +127,36 @@ export function getLastPushLogEntry(groupId: string, eventId: string | null): Pu
   return row ?? null;
 }
 
+// The kiosk banner variant, kept in lockstep with the socket delivery rules
+// in realtime.ts: a group kiosk shows the newest active group-wide entry from
+// its group room OR its currently tracking event, while an event kiosk stays
+// exact to its own event. Using the same union on both the live push:sent and
+// this REST refresh prevents a group-room banner from vanishing (or being
+// replaced by a stale event banner) on the next refreshAll().
+export function getLastKioskPushLogEntry(
+  groupId: string,
+  opts: { includeGroupRoom: boolean; eventId: string | null },
+): PushLogEntry | null {
+  const clauses: string[] = [];
+  const params: unknown[] = [groupId, Date.now()];
+  if (opts.includeGroupRoom) clauses.push('event_id IS NULL');
+  if (opts.eventId) {
+    clauses.push('event_id = ?');
+    params.push(opts.eventId);
+  }
+  if (clauses.length === 0) return null;
+  const row = db
+    .prepare(
+      `SELECT id, group_id AS groupId, event_id AS eventId, title, body, url, audience,
+              expires_at AS expiresAt, created_at AS createdAt
+       FROM push_log
+       WHERE group_id = ? AND audience = 'all' AND ${ACTIVE_PUSH_SQL} AND (${clauses.join(' OR ')})
+       ORDER BY created_at DESC LIMIT 1`
+    )
+    .get(...params) as PushLogEntry | undefined;
+  return row ?? null;
+}
+
 // The app header needs the same active-only view as the shared Kiosk, but
 // scoped to the current player so direct match notifications remain private.
 export function getCurrentPushLogEntryFor(groupId: string, eventId: string | null, playerId: string): PushLogEntry | null {

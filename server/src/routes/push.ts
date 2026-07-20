@@ -10,6 +10,7 @@ import {
   saveSubscription,
   removeSubscription,
   getLastPushLogEntry,
+  getLastKioskPushLogEntry,
   getCurrentPushLogEntryFor,
   getPushLogEntriesFor,
   markPushSeen,
@@ -54,6 +55,24 @@ pushRouter.put('/mute', ...withBodyPlayerIdentity, (req, res) => {
 // (Durchsage, neue Bestellung, Arcade-Lobby, Abstimmung, Turnier, ...),
 // for the Kiosk screen. null when no applicable push remains.
 pushRouter.get('/last', (req, res) => {
+  // A kiosk uses its bound token scope, mirroring the socket push:sent rules:
+  // an event kiosk stays exact to its event, a group kiosk unions its group
+  // room with its currently tracking event so a live banner does not flicker
+  // away on the next refresh.
+  if (req.kioskScope) {
+    if (req.kioskScope.eventId) {
+      return res.json({
+        entry: getLastKioskPushLogEntry(req.group!.id, { includeGroupRoom: false, eventId: req.kioskScope.eventId }),
+      });
+    }
+    const current = resolveGroupEventScope(req.group!.id, undefined);
+    return res.json({
+      entry: getLastKioskPushLogEntry(req.group!.id, {
+        includeGroupRoom: true,
+        eventId: current.ok ? current.eventId : null,
+      }),
+    });
+  }
   const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   res.json({ entry: getLastPushLogEntry(req.group!.id, scope.eventId) });
