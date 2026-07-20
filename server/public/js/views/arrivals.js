@@ -14,16 +14,24 @@ import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let cache = null;
 let loading = false;
+// Set instead of nulling `cache` directly after an action or a remote
+// arrivals:changed event: renderArrivals() keeps showing the last-known
+// carpools/times while a background refetch is in flight, rather than
+// collapsing the whole section down to a one-line "Lädt…" placeholder and
+// back - that height jump was clamping the scroll container's scrollTop
+// back to the top on every save/join/leave.
+let dirty = false;
 let peopleSortKey = 'arrival';
 let peopleSortDirection = 'asc';
 
 async function load(ctx) {
   loading = true;
+  dirty = false;
   try {
     cache = await api.arrivals.list();
   } catch (err) {
     showToast(err.message, { error: true });
-    cache = { arrivals: [], carpools: { arrival: [], departure: [] } };
+    if (cache === null) cache = { arrivals: [], carpools: { arrival: [], departure: [] } };
   } finally {
     loading = false;
     ctx.rerender();
@@ -31,7 +39,7 @@ async function load(ctx) {
 }
 
 export function invalidateArrivals() {
-  cache = null;
+  dirty = true;
 }
 
 function parseDatetimeValue(value) {
@@ -351,7 +359,7 @@ function openCarpoolForm(direction, myId, ctx, existing = null) {
               await api.arrivals.createCarpool({ playerId: myId, direction, label, startLocation, startAt, etaAt, seatsTotal });
             }
             close();
-            cache = null;
+            dirty = true;
             showToast(isEdit ? 'Fahrgemeinschaft aktualisiert.' : 'Fahrgemeinschaft angelegt.');
             ctx.rerender();
           } catch (err) {
@@ -364,9 +372,12 @@ function openCarpoolForm(direction, myId, ctx, existing = null) {
 }
 
 export function renderArrivals(container, ctx) {
-  if (cache === null && !loading) load(ctx);
+  if ((cache === null || dirty) && !loading) load(ctx);
   const myId = getMyId();
-  const loaded = cache !== null && !loading;
+  // Once there's cached data, keep rendering it even while a refetch is in
+  // flight (dirty or loading) - only the very first load has nothing to
+  // show yet and falls back to the placeholder below.
+  const loaded = cache !== null;
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
@@ -418,7 +429,7 @@ export function renderArrivals(container, ctx) {
         departureAt,
         note: container.querySelector('#arrival-note').value.trim() || null,
       });
-      cache = null;
+      dirty = true;
       showToast('An-/Abreise gespeichert.');
       ctx.rerender();
     } catch (err) {
@@ -445,7 +456,7 @@ export function renderArrivals(container, ctx) {
     btn.addEventListener('click', async () => {
       try {
         await api.arrivals.joinCarpool(btn.dataset.joinCarpool, myId);
-        cache = null;
+        dirty = true;
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });
@@ -457,7 +468,7 @@ export function renderArrivals(container, ctx) {
     btn.addEventListener('click', async () => {
       try {
         await api.arrivals.leaveCarpool(btn.dataset.leaveCarpool, myId);
-        cache = null;
+        dirty = true;
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });
@@ -470,7 +481,7 @@ export function renderArrivals(container, ctx) {
       if (!(await confirmDialog('Fahrgemeinschaft löschen?'))) return;
       try {
         await api.arrivals.removeCarpool(btn.dataset.removeCarpool, myId);
-        cache = null;
+        dirty = true;
         showToast('Fahrgemeinschaft gelöscht.');
         ctx.rerender();
       } catch (err) {
