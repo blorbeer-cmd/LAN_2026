@@ -1072,7 +1072,7 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
     });
   });
   await page.click('.food-order-item [data-copy-food-total]');
-  assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
+  assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
   await page.waitForSelector('text=Summe kopiert: 20,90');
 
   // Whoever collects the money checks an item off once it's paid — works
@@ -1095,7 +1095,7 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   // The combined Sammelzahlung total can be copied too, same as a single
   // position's amount.
   await paymentSelector.locator('[data-copy-food-total]').click();
-  assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
+  assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
 
   // Adding an unpriced item to the selection withholds the amount entirely
   // (rather than silently undercounting it as 0) and falls back to the raw
