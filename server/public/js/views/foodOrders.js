@@ -178,16 +178,16 @@ function renderItems(order, myId, { locked = false } = {}) {
           const quantity = i.quantity ?? 1;
           const lineSubtotal = i.priceCents === null ? null : i.priceCents * quantity;
           const lineTotal = lineSubtotal === null ? null : addTipToCents(lineSubtotal, tipPercent);
+          const basePriceLabel = quantity > 1 ? `${quantity} × ${formatCents(i.priceCents)}` : formatCents(lineSubtotal);
+          const showBasePrice = quantity > 1 || tipPercent > 0;
           const priceHtml = lineTotal === null
             ? ''
             : `<span class="food-order-item-price">
                 <strong>${formatCents(lineTotal)}</strong>
                 ${
-                  tipPercent > 0
-                    ? `<span class="muted">inkl. ${tipPercent}% Trinkgeld</span>`
-                    : quantity > 1
-                      ? `<span class="muted">${quantity} × ${formatCents(i.priceCents)}</span>`
-                      : ''
+                  showBasePrice
+                    ? `<span class="muted">${basePriceLabel}${tipPercent > 0 ? ` · inkl. ${tipPercent}% Trinkgeld` : ''}</span>`
+                    : ''
                 }
               </span>`;
           const copyHtml = lineTotal === null
@@ -260,6 +260,11 @@ function renderPaymentSelector(order) {
     <div class="row-between food-order-payment-selector">
       <span class="muted">${selectedItems.length} ${selectedItems.length === 1 ? 'Position' : 'Positionen'} ausgewählt · ${amountLabel}</span>
       <span class="food-order-payment-actions">
+        ${
+          allPriced
+            ? `<button type="button" class="icon-btn food-order-item-action food-order-item-copy" data-copy-food-total="${escapeHtml(formatCents(payableCents))}" title="Summe kopieren" aria-label="Summe kopieren">${icon('copy')}</button>`
+            : ''
+        }
         <a
           class="btn btn-sm btn-primary"
           href="${escapeHtml(paypalPayUrl(order.paypalLink, payableCents))}"
