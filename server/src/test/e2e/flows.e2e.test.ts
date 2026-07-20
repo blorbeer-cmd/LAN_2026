@@ -1058,8 +1058,22 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.click('[data-add-item-form] button[type="submit"]');
   await page.waitForSelector('text=Margherita');
   await page.waitForSelector('.food-order-item-price:has-text("20,90 €")');
+  // The tip-inclusive total doesn't replace the position's actual price -
+  // both stay visible (quantity × unit price, plus the tip note).
+  await page.waitForSelector('.food-order-item-price:has-text("2 × 9,50 €")');
+  await page.waitForSelector('.food-order-item-price:has-text("inkl. 10% Trinkgeld")');
   await page.waitForSelector('.food-order-total:has-text("Gesamtsumme inkl. 10% Trinkgeld")');
   assert.equal(await page.getByText('Zwischensumme', { exact: false }).count(), 0);
+
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (value: string) => { (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal = value; } },
+    });
+  });
+  await page.click('.food-order-item [data-copy-food-total]');
+  assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
+  await page.waitForSelector('text=Summe kopiert: 20,90');
 
   // Whoever collects the money checks an item off once it's paid — works
   // while the order is still open, and stays visible/editable after closing.
@@ -1078,6 +1092,11 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
     'https://paypal.me/luigi/20.90EUR'
   );
 
+  // The combined Sammelzahlung total can be copied too, same as a single
+  // position's amount.
+  await paymentSelector.locator('[data-copy-food-total]').click();
+  assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
+
   // Adding an unpriced item to the selection withholds the amount entirely
   // (rather than silently undercounting it as 0) and falls back to the raw
   // PayPal link.
@@ -1088,6 +1107,8 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').check();
   await page.waitForSelector('text=Preis unvollständig');
   assert.equal(await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'), 'https://paypal.me/luigi');
+  // No copyable amount while the selection has an unpriced item.
+  assert.equal(await paymentSelector.locator('[data-copy-food-total]').count(), 0);
 
   // Deselecting it goes back to a complete, priced selection.
   await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').uncheck();
