@@ -79,6 +79,7 @@ export function recordArcadeResult(options: {
   reason: string;
   startedAt: number;
   endedAt?: number;
+  scope?: ArcadeDataScope;
 }): string | null {
   const playerSnapshots = options.players.filter((player) => typeof (player.id ?? player.playerId) === 'string');
   const participantKeys = playerSnapshots.map((player) => String(player.id ?? player.playerId));
@@ -87,7 +88,23 @@ export function recordArcadeResult(options: {
     .all(...participantKeys) as Array<{ id: string; name: string }>;
   const realPlayerById = new Map(realPlayers.map((player) => [player.id, player]));
   const realPlayerIds = participantKeys.filter((id) => realPlayerById.has(id));
-  const scope = currentArcadeDataScope(realPlayerIds);
+  const scope = options.scope ?? currentArcadeDataScope(realPlayerIds);
+  if (scope && options.scope && config.authMode !== 'legacy') {
+    const eventExists = scope.eventId === null || Boolean(
+      db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(scope.eventId, scope.groupId),
+    );
+    const permitted = realPlayerIds.every((playerId) => Boolean(db.prepare(
+      `SELECT 1 FROM group_memberships gm
+       JOIN groups g ON g.id = gm.group_id
+       JOIN players p ON p.id = gm.player_id
+       WHERE gm.group_id = ? AND gm.player_id = ? AND gm.status = 'active'
+         AND g.archived_at IS NULL AND p.deactivated_at IS NULL
+         AND (? IS NULL OR gm.role IN ('admin', 'owner') OR EXISTS (
+           SELECT 1 FROM event_participants ep WHERE ep.event_id = ? AND ep.player_id = gm.player_id
+         ))`,
+    ).get(scope.groupId, playerId, scope.eventId, scope.eventId)));
+    if (!eventExists || !permitted) return null;
+  }
   if (!scope || (options.winnerId !== null && !realPlayerById.has(options.winnerId))) return null;
 
   const resultId = nanoid();

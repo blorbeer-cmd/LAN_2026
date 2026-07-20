@@ -9,13 +9,18 @@ import { resolveKioskToken } from './kioskTokens';
 
 let io: Server | null = null;
 let authSessionSweep: NodeJS.Timeout | null = null;
-let latestArcadeKioskGame: unknown = null;
+interface ArcadeDeliveryScope { groupId: string; eventId: string | null }
+const latestArcadeKioskGames = new Map<string, Record<string, unknown>>();
 const latestArcadeGames = new Map<string, Record<string, unknown>>();
 type ArcadeWatcherChangeListener = (server: Server, matchId: string) => void;
 const arcadeWatcherChangeListeners = new Set<ArcadeWatcherChangeListener>();
 
 function watchRoom(matchId: string): string {
   return `arcade-watch:${matchId}`;
+}
+
+function arcadeScopeKey(scope: ArcadeDeliveryScope): string {
+  return `${scope.groupId}\u0000${scope.eventId ?? ''}`;
 }
 
 export function groupRoom(groupId: string): string {
@@ -108,10 +113,16 @@ function spectatorPlayerId(payload: Record<string, unknown>, playerId: unknown):
 }
 
 export function arcadeWatcherPlayerIds(server: Server, matchId: string): string[] {
+  const match = latestArcadeGames.get(matchId);
+  const scope = match ? arcadePayloadScope(match) : null;
+  if (!scope) return [];
   const socketIds = server.sockets.adapter.rooms.get(watchRoom(matchId)) ?? new Set<string>();
   return [...new Set(
     [...socketIds]
-      .map((socketId) => server.sockets.sockets.get(socketId)?.data.arcadeWatchPlayerId)
+      .map((socketId) => {
+        const socket = server.sockets.sockets.get(socketId);
+        return socket && normalSocketCanUseArcadeScope(socket, scope) ? socket.data.arcadeWatchPlayerId : null;
+      })
       .filter((playerId): playerId is string => typeof playerId === 'string' && !!playerId)
   )];
 }
@@ -152,24 +163,57 @@ function watchSummary(payload: Record<string, unknown>): Record<string, unknown>
   };
 }
 
-function emitArcadeWatchList(server: Server): void {
-  for (const socket of server.sockets.sockets.values()) {
-    // Read-only kiosks never consume watch lists — their only arcade channel
-    // is the deliberately sanitised arcade:kiosk:game stream. Without this
-    // guard they would receive summaries (player refs, scores) of every
-    // group, since they carry no subscribed groupId to filter on.
-    if (socket.data.kioskReadOnly) continue;
-    socket.emit('arcade:watch:list', { matches: [...latestArcadeGames.values()]
-      .filter((match) => !socket.data.groupId || match.groupId === socket.data.groupId).map(watchSummary) });
+function arcadePayloadScope(payload: Record<string, unknown>): ArcadeDeliveryScope | null {
+  const explicit =
+    typeof payload.groupId === 'string' && payload.groupId &&
+    Object.prototype.hasOwnProperty.call(payload, 'eventId') &&
+    (payload.eventId === null || (typeof payload.eventId === 'string' && payload.eventId))
+      ? { groupId: payload.groupId, eventId: payload.eventId as string | null }
+      : null;
+  return explicit ?? (config.authMode === 'legacy' ? { groupId: DEFAULT_GROUP_ID, eventId: null } : null);
+}
+
+function normalSocketCanUseArcadeScope(socket: Socket, scope: ArcadeDeliveryScope): boolean {
+  if (socket.data.kioskReadOnly) return false;
+  if (config.authMode === 'legacy') return true;
+  const socketEventId = typeof socket.data.eventId === 'string' && socket.data.eventId ? socket.data.eventId : null;
+  if (socket.data.groupId !== scope.groupId || socketEventId !== scope.eventId) return false;
+  if (!activeGroupMember(scope.groupId, socket.data.authPlayerId)) return false;
+  return scope.eventId === null || activeEventAccess(scope.groupId, scope.eventId, socket.data.authPlayerId);
+}
+
+function kioskCanUseArcadeScope(socket: Socket, scope: ArcadeDeliveryScope): boolean {
+  return Boolean(
+    socket.data.kioskReadOnly &&
+    socket.data.kioskGroupId === scope.groupId &&
+    (socket.data.kioskEventId ?? null) === scope.eventId &&
+    kioskDeliveryAllowed(socket)
+  );
+}
+
+function emitArcadeWatchListToSocket(socket: Socket): void {
+  if (socket.data.kioskReadOnly) return;
+  const matches = [...latestArcadeGames.values()]
+    .filter((match) => {
+      const scope = arcadePayloadScope(match);
+      return scope && normalSocketCanUseArcadeScope(socket, scope);
+    })
+    .map(watchSummary);
+  if (config.authMode === 'legacy' || typeof socket.data.groupId === 'string') {
+    socket.emit('arcade:watch:list', { matches });
   }
 }
 
-function payloadGroupId(payload: Record<string, unknown>): string | null {
-  if (typeof payload.groupId === 'string' && payload.groupId) return payload.groupId;
-  const id = [...arcadePlayerIds(payload)][0];
-  if (!id) return null;
-  const row = db.prepare("SELECT group_id AS groupId FROM group_memberships WHERE player_id = ? AND status = 'active' ORDER BY joined_at LIMIT 1").get(id) as { groupId: string } | undefined;
-  return row?.groupId ?? null;
+function emitArcadeWatchList(server: Server): void {
+  for (const socket of server.sockets.sockets.values()) emitArcadeWatchListToSocket(socket);
+}
+
+function emitArcadeWatchRoom(server: Server, matchId: string, event: string, payload: unknown, scope: ArcadeDeliveryScope): void {
+  const socketIds = server.sockets.adapter.rooms.get(watchRoom(matchId)) ?? new Set<string>();
+  for (const socketId of socketIds) {
+    const socket = server.sockets.sockets.get(socketId);
+    if (socket && normalSocketCanUseArcadeScope(socket, scope)) socket.emit(event, payload);
+  }
 }
 
 export function setIo(server: Server | null): void {
@@ -391,40 +435,47 @@ export function broadcastInstanceSignal(event: string): void {
 // deliberately sanitised game state; this is separate from private match
 // rooms so the kiosk can follow a match without joining it.
 export function broadcastArcadeKiosk(io: Server, payload: unknown): void {
-  if (typeof payload === 'object' && payload !== null && 'gameType' in payload && (payload as { gameType?: unknown }).gameType === null) {
-    const endingMatchId = (payload as { matchId?: unknown }).matchId;
-    const currentMatchId = (latestArcadeKioskGame as { matchId?: unknown } | null)?.matchId;
-    if (typeof endingMatchId === 'string') {
-      latestArcadeGames.delete(endingMatchId);
-      io.to(watchRoom(endingMatchId)).emit('arcade:watch:ended', { matchId: endingMatchId });
-    }
-    emitArcadeWatchList(io);
-    if (endingMatchId !== currentMatchId) return;
-    latestArcadeKioskGame = payload;
-    for (const socket of io.sockets.sockets.values()) {
-      const targetGroup = payloadGroupId(payload as Record<string, unknown>);
-      if (socket.data.kioskReadOnly && (!kioskDeliveryAllowed(socket) || (targetGroup && socket.data.kioskGroupId !== targetGroup))) continue;
-      if (!socket.data.kioskReadOnly && socket.data.groupId && targetGroup && socket.data.groupId !== targetGroup) continue;
-      socket.emit('arcade:kiosk:game', payload);
-    }
+  if (typeof payload !== 'object' || payload === null) return;
+  const record = payload as Record<string, unknown>;
+  const matchId = typeof record.matchId === 'string' && record.matchId ? record.matchId : null;
+  const previous = matchId ? latestArcadeGames.get(matchId) : undefined;
+  const requestedScope = arcadePayloadScope(record);
+  const previousScope = previous ? arcadePayloadScope(previous) : null;
+  if (requestedScope && previousScope && arcadeScopeKey(requestedScope) !== arcadeScopeKey(previousScope)) {
+    // eslint-disable-next-line no-console
+    console.error('[realtime] Änderung des immutable Arcade-Scopes verweigert.');
     return;
   }
-  if (typeof payload === 'object' && payload !== null && typeof (payload as { matchId?: unknown }).matchId === 'string') {
-    const matchId = (payload as { matchId: string }).matchId;
-    const previous = latestArcadeGames.get(matchId);
-    const next = { ...(latestArcadeGames.get(matchId) ?? {}), ...(payload as Record<string, unknown>) };
-    const groupId = payloadGroupId(next);
-    if (groupId) next.groupId = groupId;
-    latestArcadeGames.set(matchId, next);
-    io.to(watchRoom(matchId)).emit('arcade:watch:state', watchState(next));
-    if (JSON.stringify(watchSummary(previous ?? {})) !== JSON.stringify(watchSummary(next))) emitArcadeWatchList(io);
+  const scope = previousScope ?? requestedScope;
+  if (!scope) {
+    // eslint-disable-next-line no-console
+    console.error('[realtime] Arcade-Auslieferung ohne immutable Gruppen-/Event-Scope verweigert.');
+    return;
   }
-  latestArcadeKioskGame = payload;
+  const scopedPayload = { ...record, groupId: scope.groupId, eventId: scope.eventId };
+
+  if (record.gameType === null) {
+    if (matchId) {
+      latestArcadeGames.delete(matchId);
+      emitArcadeWatchRoom(io, matchId, 'arcade:watch:ended', { matchId }, scope);
+    }
+    emitArcadeWatchList(io);
+    const latest = latestArcadeKioskGames.get(arcadeScopeKey(scope));
+    if (!matchId || latest?.matchId === matchId) latestArcadeKioskGames.set(arcadeScopeKey(scope), scopedPayload);
+  } else if (matchId) {
+    const next = { ...(previous ?? {}), ...scopedPayload };
+    latestArcadeGames.set(matchId, next);
+    latestArcadeKioskGames.set(arcadeScopeKey(scope), next);
+    emitArcadeWatchRoom(io, matchId, 'arcade:watch:state', watchState(next), scope);
+    if (JSON.stringify(watchSummary(previous ?? {})) !== JSON.stringify(watchSummary(next))) emitArcadeWatchList(io);
+  } else {
+    latestArcadeKioskGames.set(arcadeScopeKey(scope), scopedPayload);
+  }
+
   for (const socket of io.sockets.sockets.values()) {
-    const targetGroup = typeof payload === 'object' && payload !== null ? payloadGroupId(payload as Record<string, unknown>) : null;
-    if (socket.data.kioskReadOnly && (!kioskDeliveryAllowed(socket) || (targetGroup && socket.data.kioskGroupId !== targetGroup))) continue;
-    if (!socket.data.kioskReadOnly && socket.data.groupId && targetGroup && socket.data.groupId !== targetGroup) continue;
-    socket.emit('arcade:kiosk:game', payload);
+    if (socket.data.kioskReadOnly ? kioskCanUseArcadeScope(socket, scope) : normalSocketCanUseArcadeScope(socket, scope)) {
+      socket.emit('arcade:kiosk:game', scopedPayload);
+    }
   }
 }
 
@@ -444,6 +495,7 @@ export function registerArcadeKioskSockets(server: Server): void {
         socket.join(eventRoom(eventId));
         socket.data.eventId = eventId;
       }
+      emitArcadeWatchListToSocket(socket);
       ack?.({ ok: true, groupId, eventId: typeof eventId === 'string' && eventId ? eventId : null });
     };
     // Browser clients use scope:subscribe; aliases keep the transport easy
@@ -469,22 +521,24 @@ export function registerArcadeKioskSockets(server: Server): void {
         ack?.({ ok: false, error: 'Kiosk-Scope stimmt nicht mit dem Token überein.' });
         return;
       }
-      if (!latestArcadeKioskGame || socket.data.kioskGroupId === payloadGroupId(latestArcadeKioskGame as Record<string, unknown>)) {
-        socket.emit('arcade:kiosk:game', latestArcadeKioskGame);
-      }
+      const replay = latestArcadeKioskGames.get(arcadeScopeKey({
+        groupId: socket.data.kioskGroupId as string,
+        eventId: (socket.data.kioskEventId ?? null) as string | null,
+      }));
+      if (replay) socket.emit('arcade:kiosk:game', replay);
       ack?.({ ok: true, groupId: socket.data.kioskGroupId, eventId: socket.data.kioskEventId });
     });
     // Same kiosk exclusion as emitArcadeWatchList: the initial list on
     // connect must not hand a read-only kiosk cross-group match summaries.
-    if (!socket.data.kioskReadOnly) {
-      socket.emit('arcade:watch:list', { matches: [...latestArcadeGames.values()]
-        .filter((match) => !socket.data.groupId || match.groupId === socket.data.groupId).map(watchSummary) });
-    }
-    socket.on('arcade:watch:list', () => emitArcadeWatchList(server));
+    socket.on('arcade:watch:list', () => emitArcadeWatchListToSocket(socket));
     socket.on('arcade:watch:join', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const matchId = payload?.matchId;
       if (typeof matchId !== 'string' || !latestArcadeGames.has(matchId)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       const match = latestArcadeGames.get(matchId)!;
+      const scope = arcadePayloadScope(match);
+      if (!scope || !normalSocketCanUseArcadeScope(socket, scope)) {
+        return ack?.({ ok: false, error: 'Match gehört zu einem anderen Gruppen- oder Event-Scope.' });
+      }
       if (socket.data.groupId && match.groupId !== socket.data.groupId) return ack?.({ ok: false, error: 'Match gehört zu einer anderen Gruppe.' });
       if (socket.data.groupId && !activeGroupMember(socket.data.groupId, socket.data.authPlayerId)) return ack?.({ ok: false, error: 'Gruppenzugriff verweigert.' });
       const previousRoom = socket.data.arcadeWatchRoom;
@@ -498,7 +552,7 @@ export function registerArcadeKioskSockets(server: Server): void {
       socket.data.arcadeWatchMatchId = matchId;
       if (playerId) socket.data.arcadeWatchPlayerId = playerId;
       else delete socket.data.arcadeWatchPlayerId;
-      socket.emit('arcade:watch:state', watchState(latestArcadeGames.get(matchId)!));
+      socket.emit('arcade:watch:state', watchState(match));
       notifyArcadeWatcherChange(server, matchId);
       ack?.({ ok: true, matchId, votingPlayerId: playerId, canVote: playerId !== null });
     });

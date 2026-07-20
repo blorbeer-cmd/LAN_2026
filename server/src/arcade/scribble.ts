@@ -21,8 +21,9 @@ import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { shouldSendLobbyPush } from './lobbyPush';
-import { currentArcadeDataScope, recordArcadeResult } from './arcadeData';
-import { canJoinLobby, lobbyGroupId, socketGroupId } from './scope';
+import { recordArcadeResult } from './arcadeData';
+import { canJoinLobby, canUseLobby, emitArcadeRoom, emitArcadeSocket, socketArcadeScope, socketCanUseArcadeScope } from './scope';
+import { communicationRecipientIds } from '../communicationRecipients';
 import {
   buildHintSchedule,
   HintStep,
@@ -57,6 +58,8 @@ interface PlayerRef {
 
 interface ScribbleLobby {
   id: string;
+  groupId: string;
+  eventId: string | null;
   host: PlayerRef;
   players: PlayerRef[];
   socketIds: Map<string, string>;
@@ -96,6 +99,8 @@ export type DrawOp = StrokeBatch | FillOp;
 
 interface ScribbleMatchState {
   id: string;
+  groupId: string;
+  eventId: string | null;
   room: string;
   host: PlayerRef;
   players: PlayerRef[]; // fixed roster, draw order = lobby join order
@@ -148,7 +153,7 @@ const matches = new Map<string, ScribbleMatchState>();
 // the match a while after that. A short-lived roster snapshot, cleaned up
 // after the window players realistically still have the result screen open.
 const FINAL_FAVORITE_WINDOW_MS = 30 * 60 * 1000;
-const recentMatchRosters = new Map<string, Set<string>>();
+const recentMatchRosters = new Map<string, { players: Set<string>; groupId: string; eventId: string | null }>();
 
 function playerById(playerId: unknown): PlayerRef | null {
   if (typeof playerId !== 'string' || !playerId) return null;
@@ -166,8 +171,8 @@ function turnDurationValue(value: unknown): number | null {
   return value >= MIN_TURN_MS && value <= MAX_TURN_MS ? value : null;
 }
 
-function publicLobbies(groupId?: string | null) {
-  return [...lobbies.values()].filter((l) => !groupId || lobbyGroupId(l) === groupId).map((l) => ({
+function publicLobbies(groupId: string, eventId: string | null) {
+  return [...lobbies.values()].filter((l) => l.groupId === groupId && l.eventId === eventId).map((l) => ({
     id: l.id,
     host: l.host,
     players: l.players.map((p) => ({ ...p, ready: isLobbyReady(l, p.id) })),
@@ -176,12 +181,12 @@ function publicLobbies(groupId?: string | null) {
 }
 
 function emitLobbies(io: Server) {
-  for (const socket of io.sockets.sockets.values()) socket.emit('scribble:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
+  for (const socket of io.sockets.sockets.values()) { const scope = socketArcadeScope(socket); if (scope) socket.emit('scribble:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) }); }
 }
 
 // Open-lobby summary for GET /api/arcade/lobbies — see arcade.ts.
-export function openLobbySummaries() {
-  return [...lobbies.values()].map((l) => ({
+export function openLobbySummaries(groupId?: string, eventId?: string | null) {
+  return [...lobbies.values()].filter((l) => !groupId || (l.groupId === groupId && (eventId === undefined || l.eventId === eventId))).map((l) => ({
     id: l.id,
     hostName: l.host.name,
     playerCount: l.players.length,
@@ -197,7 +202,7 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
     if (lobby.host.id === entry[0]) {
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'scribble', id);
       lobbies.delete(id);
-      resolvePushTopic(scribbleLobbyPushKey(id));
+      resolvePushTopic(scribbleLobbyPushKey(id), false, lobby);
     } else {
       releaseLobbyMembership(entry[0], 'scribble', id);
       lobby.socketIds.delete(entry[0]);
@@ -230,6 +235,8 @@ function spectatorVoting(match: ScribbleMatchState) {
 function kioskSnapshot(io: Server, match: ScribbleMatchState): void {
   broadcastArcadeKiosk(io, {
     gameType: 'scribble',
+    groupId: match.groupId,
+    eventId: match.eventId,
     matchId: match.id,
     players: match.players,
     drawer: match.phase === 'drawing' ? match.players[match.drawIndex] : null,
@@ -272,32 +279,26 @@ function clearAllTimers(match: ScribbleMatchState): void {
   match.hintTimers = [];
 }
 
-function loadWordPool(playerIds: string[]): WordRow[] {
-  const scope = currentArcadeDataScope(playerIds);
-  if (!scope) return [];
+function loadWordPool(match: ScribbleMatchState): WordRow[] {
   return db.prepare('SELECT id, word, difficulty FROM scribble_words WHERE group_id = ? ORDER BY created_at')
-    .all(scope.groupId) as WordRow[];
+    .all(match.groupId) as WordRow[];
 }
 
-function seenWordIds(playerIds: string[]): Set<string> {
-  playerIds = playerIds.filter((id) => id !== BOT_ID);
+function seenWordIds(match: ScribbleMatchState): Set<string> {
+  const playerIds = realPlayerIds(match.players);
   if (playerIds.length === 0) return new Set();
-  const scope = currentArcadeDataScope(playerIds);
-  if (!scope) return new Set();
   const rows = db
     .prepare(
       `SELECT word_id FROM scribble_seen
        WHERE group_id = ? AND event_id IS ? AND player_id IN (${playerIds.map(() => '?').join(',')})
        GROUP BY word_id HAVING COUNT(DISTINCT player_id) = ?`
     )
-    .all(scope.groupId, scope.eventId, ...playerIds, playerIds.length) as Array<{ word_id: string }>;
+    .all(match.groupId, match.eventId, ...playerIds, playerIds.length) as Array<{ word_id: string }>;
   return new Set(rows.map((r) => r.word_id));
 }
 
-function markWordSeen(wordId: string, playerIds: string[]): void {
-  playerIds = playerIds.filter((id) => id !== BOT_ID);
-  const scope = currentArcadeDataScope(playerIds);
-  if (!scope) return;
+function markWordSeen(match: ScribbleMatchState, wordId: string): void {
+  const playerIds = realPlayerIds(match.players);
   const now = Date.now();
   const stmt = db.prepare(
     `INSERT INTO scribble_seen (word_id, player_id, seen_at, group_id, event_id, player_name_snapshot)
@@ -306,7 +307,7 @@ function markWordSeen(wordId: string, playerIds: string[]): void {
        seen_at = excluded.seen_at, group_id = excluded.group_id,
        event_id = excluded.event_id, player_name_snapshot = excluded.player_name_snapshot`
   );
-  for (const id of playerIds) stmt.run(wordId, now, scope.groupId, scope.eventId, id);
+  for (const id of playerIds) stmt.run(wordId, now, match.groupId, match.eventId, id);
 }
 
 interface DrawingSummary {
@@ -413,15 +414,13 @@ function persistCurrentDrawing(match: ScribbleMatchState): DrawingSummary | null
   if (!drawer || drawer.id === BOT_ID || !match.currentWord) return null;
   const id = nanoid();
   const round = Math.floor(match.turnsPlayed / match.players.length) + 1;
-  const scope = currentArcadeDataScope(realPlayerIds(match.players));
-  if (!scope) return null;
   db.prepare(
     `INSERT INTO scribble_drawings
        (id, match_id, round_number, turn_number, artist_id, artist_name, word, draw_ops, created_at, group_id, event_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id, match.id, round, match.turnsPlayed + 1, drawer.id, drawer.name, match.currentWord,
-    JSON.stringify(match.strokes), Date.now(), scope.groupId, scope.eventId,
+    JSON.stringify(match.strokes), Date.now(), match.groupId, match.eventId,
   );
   match.currentDrawingId = id;
   return drawingSummaries(match.id, round).find((drawing) => drawing.id === id) ?? null;
@@ -458,7 +457,7 @@ function freezeLiveThumbs(match: ScribbleMatchState): void {
 function finishMatch(io: Server, match: ScribbleMatchState, winner: PlayerRef | null, reason: string): void {
   clearAllTimers(match);
   freezeLiveThumbs(match);
-  endArcadeSession(realPlayerIds(match.players), 'scribble');
+  endArcadeSession(realPlayerIds(match.players), 'scribble', match);
   const scores = scorePayload(match);
   const bestScore = scores.reduce<(typeof scores)[number] | null>((best, s) => (!best || s.score > best.score ? s : best), null);
   const candidateWinnerId = winner?.id ?? bestScore?.playerId ?? null;
@@ -471,6 +470,7 @@ function finishMatch(io: Server, match: ScribbleMatchState, winner: PlayerRef | 
     scores,
     reason,
     startedAt: match.startedAt,
+    scope: match,
   });
   // Only drawings someone actually marked with a thumb re-enter the final
   // vote - falling back to every drawing if nobody marked any, so the final
@@ -479,16 +479,16 @@ function finishMatch(io: Server, match: ScribbleMatchState, winner: PlayerRef | 
   const finalCandidates = match.markedDrawingIds.size > 0
     ? allDrawings.filter((drawing) => match.markedDrawingIds.has(drawing.id))
     : allDrawings;
-  io.to(match.room).emit('scribble:match:end', {
+  emitArcadeRoom(io, match.room, 'scribble:match:end', {
     matchId: match.id,
     winner: resolvedWinner,
     reason,
     scores,
     drawings: finalCandidates,
-  });
-  broadcastArcadeKiosk(io, { gameType: null, matchId: match.id });
+  }, match);
+  broadcastArcadeKiosk(io, { gameType: null, matchId: match.id, groupId: match.groupId, eventId: match.eventId });
   matches.delete(match.id);
-  recentMatchRosters.set(match.id, new Set(realPlayerIds(match.players)));
+  recentMatchRosters.set(match.id, { players: new Set(realPlayerIds(match.players)), groupId: match.groupId, eventId: match.eventId });
   setTimeout(() => recentMatchRosters.delete(match.id), FINAL_FAVORITE_WINDOW_MS).unref();
 }
 
@@ -506,10 +506,10 @@ function fireHint(io: Server, match: ScribbleMatchState, hint: HintStep): void {
   if (!match.pendingHints.includes(hint)) return;
   match.pendingHints = match.pendingHints.filter((h) => h !== hint);
   match.revealedIndices.add(hint.index);
-  io.to(match.room).emit('scribble:hint', {
+  emitArcadeRoom(io, match.room, 'scribble:hint', {
     matchId: match.id,
     mask: wordMask(match.currentWord ?? '', match.revealedIndices),
-  });
+  }, match);
 }
 
 function startNextTurn(io: Server, match: ScribbleMatchState): void {
@@ -534,8 +534,8 @@ function startNextTurn(io: Server, match: ScribbleMatchState): void {
   match.pendingHints = [];
   match.strokes = [];
 
-  const pool = loadWordPool(realPlayerIds(match.players));
-  const seen = seenWordIds(match.players.map((p) => p.id));
+  const pool = loadWordPool(match);
+  const seen = seenWordIds(match);
   const optionIds = pickWordChoices(
     pool.map((w) => w.id),
     seen,
@@ -551,14 +551,14 @@ function startNextTurn(io: Server, match: ScribbleMatchState): void {
 
   const drawerSocketId = match.socketIds.get(drawer.id);
   if (drawerSocketId) {
-    io.to(drawerSocketId).emit('scribble:choose', {
+    emitArcadeSocket(io, drawerSocketId, 'scribble:choose', {
       matchId: match.id,
       options: match.wordOptions.map((w) => ({ id: w.id, word: w.word })),
       expiresAt: match.choiceExpiresAt,
-    });
+    }, match);
   }
 
-  io.to(match.room).emit('scribble:turn', {
+  emitArcadeRoom(io, match.room, 'scribble:turn', {
     matchId: match.id,
     phase: 'choosing',
     drawer,
@@ -567,7 +567,7 @@ function startNextTurn(io: Server, match: ScribbleMatchState): void {
     turnDurationMs: match.turnDurationMs,
     expiresAt: match.choiceExpiresAt,
     scores: scorePayload(match),
-  });
+  }, match);
   kioskSnapshot(io, match);
 }
 
@@ -600,7 +600,7 @@ function chooseWord(io: Server, match: ScribbleMatchState, wordId: string): void
   match.liveThumbsToken = nanoid();
   match.liveThumbsArtistId = drawer.id;
 
-  io.to(match.room).emit('scribble:turn', {
+  emitArcadeRoom(io, match.room, 'scribble:turn', {
     matchId: match.id,
     phase: 'drawing',
     drawer,
@@ -612,7 +612,7 @@ function chooseWord(io: Server, match: ScribbleMatchState, wordId: string): void
     expiresAt: Date.now() + match.turnDurationMs,
     scores: scorePayload(match),
     thumbsToken: match.liveThumbsToken,
-  });
+  }, match);
 
   // The room broadcast above only ever carries the masked word (guessers must
   // never see it) — the drawer needs the real text, sent privately so it
@@ -620,7 +620,7 @@ function chooseWord(io: Server, match: ScribbleMatchState, wordId: string): void
   // on a choice timeout.
   const drawerSocketId = match.socketIds.get(drawer.id);
   if (drawerSocketId) {
-    io.to(drawerSocketId).emit('scribble:word-chosen', { matchId: match.id, word: option.word });
+    emitArcadeSocket(io, drawerSocketId, 'scribble:word-chosen', { matchId: match.id, word: option.word }, match);
   }
 
   startTurnTimers(io, match, match.turnDurationMs, 0);
@@ -634,8 +634,8 @@ function chooseWord(io: Server, match: ScribbleMatchState, wordId: string): void
       const points = pointsForGuess(remainingMs, match.turnDurationMs);
       match.scores.set(bot.id, (match.scores.get(bot.id) ?? 0) + points);
       match.guessedPlayerIds.add(bot.id);
-      io.to(match.room).emit('scribble:chat', { matchId: match.id, playerId: bot.id, name: bot.name, correct: true, points });
-      io.to(match.room).emit('scribble:scores', { matchId: match.id, scores: scorePayload(match) });
+      emitArcadeRoom(io, match.room, 'scribble:chat', { matchId: match.id, playerId: bot.id, name: bot.name, correct: true, points }, match);
+      emitArcadeRoom(io, match.room, 'scribble:scores', { matchId: match.id, scores: scorePayload(match) }, match);
       if (allEligibleGuessed(match)) endTurn(io, match, 'all-guessed');
     }, 4500 + Math.floor(Math.random() * 2500));
   }
@@ -651,10 +651,7 @@ function endTurn(io: Server, match: ScribbleMatchState, reason: string): void {
     const eligible = eligibleGuesserIds(match).length;
     const drawerPoints = pointsForDrawer(match.guessedPlayerIds.size, eligible);
     if (drawerPoints > 0) match.scores.set(drawer.id, (match.scores.get(drawer.id) ?? 0) + drawerPoints);
-    markWordSeen(
-      match.currentWordId!,
-      match.players.map((p) => p.id)
-    );
+    markWordSeen(match, match.currentWordId!);
   }
 
   const drawing = reason === 'drawer-left' ? null : persistCurrentDrawing(match);
@@ -664,14 +661,14 @@ function endTurn(io: Server, match: ScribbleMatchState, reason: string): void {
   // maps to a real drawing id for the round-end gallery sort.
   if (drawing && match.liveThumbsToken) match.liveThumbsDrawingId = drawing.id;
   match.turnsPlayed += 1;
-  io.to(match.room).emit('scribble:turn-end', {
+  emitArcadeRoom(io, match.room, 'scribble:turn-end', {
     matchId: match.id,
     word: match.currentWord,
     reason,
     scores: scorePayload(match),
     drawing,
     thumbsToken: match.liveThumbsToken,
-  });
+  }, match);
   kioskSnapshot(io, match);
 
   match.nextTurnTimer = setTimeout(() => {
@@ -681,18 +678,22 @@ function endTurn(io: Server, match: ScribbleMatchState, reason: string): void {
 
 export function registerScribbleSockets(io: Server): void {
   io.on('connection', (socket: Socket) => {
-    socket.emit('scribble:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
+    const emitSocketLobbies = () => { const scope = socketArcadeScope(socket); if (scope) socket.emit('scribble:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) }); };
+    emitSocketLobbies();
 
-    socket.on('scribble:lobbies:get', () => {
-      socket.emit('scribble:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
-    });
+    socket.on('scribble:lobbies:get', emitSocketLobbies);
+    socket.on('scope:subscribe', emitSocketLobbies);
+    socket.on('room:subscribe', emitSocketLobbies);
 
     socket.on('scribble:lobby:create', (payload: { playerId?: string }, ack?: (res: unknown) => void) => {
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
+      const scope = socketArcadeScope(socket, player.id);
+      if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
 
       const lobby: ScribbleLobby = {
         id: nanoid(),
+        ...scope,
         host: player,
         players: [player],
         socketIds: new Map([[player.id, socket.id]]),
@@ -710,9 +711,7 @@ export function registerScribbleSockets(io: Server): void {
       // is waiting for them. Throttled per game type (see lobbyPush.ts) so
       // rapid re-creation cannot spam every phone on the LAN.
       if (shouldSendLobbyPush('scribble')) {
-        const otherPlayerIds = (db.prepare('SELECT id FROM players WHERE id != ?').all(player.id) as Array<{ id: string }>).map(
-          (p) => p.id
-        );
+        const otherPlayerIds = communicationRecipientIds(lobby.groupId, lobby.eventId).filter((id) => id !== player.id);
         notifyPlayers(
           otherPlayerIds,
           {
@@ -721,7 +720,8 @@ export function registerScribbleSockets(io: Server): void {
             url: '/#arcade',
           },
           'all',
-          { key: scribbleLobbyPushKey(lobby.id) }
+          { key: scribbleLobbyPushKey(lobby.id) },
+          lobby,
         );
       }
     });
@@ -729,7 +729,9 @@ export function registerScribbleSockets(io: Server): void {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
-      const lobby: ScribbleLobby = { id: nanoid(), host: player, players: [player, BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now() };
+      const scope = socketArcadeScope(socket, player.id);
+      if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
+      const lobby: ScribbleLobby = { id: nanoid(), ...scope, host: player, players: [player, BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now() };
       if (!claimLobbyMembership(player.id, 'scribble', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromOpenLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby); emitLobbies(io); ack?.({ ok: true, lobbyId: lobby.id });
@@ -751,11 +753,11 @@ export function registerScribbleSockets(io: Server): void {
 
     socket.on('scribble:lobby:leave', (payload: { lobbyId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
-      if (!lobby || typeof payload?.playerId !== 'string') return ack?.({ ok: true });
+      if (!lobby || !canUseLobby(socket, lobby) || typeof payload?.playerId !== 'string') return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' });
       if (lobby.host.id === payload.playerId) {
         releaseLobbyMemberships(lobby.players.map((p) => p.id), 'scribble', lobby.id);
         lobbies.delete(lobby.id);
-        resolvePushTopic(scribbleLobbyPushKey(lobby.id));
+        resolvePushTopic(scribbleLobbyPushKey(lobby.id), false, lobby);
       } else {
         releaseLobbyMembership(payload.playerId, 'scribble', lobby.id);
         lobby.socketIds.delete(payload.playerId);
@@ -768,7 +770,7 @@ export function registerScribbleSockets(io: Server): void {
 
     socket.on('scribble:lobby:ready', (payload: { lobbyId?: string; playerId?: string; ready?: boolean }, ack?: (res: unknown) => void) => {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
-      if (!lobby || !setLobbyReady(lobby, payload?.playerId, payload?.ready)) {
+      if (!lobby || !canUseLobby(socket, lobby) || !setLobbyReady(lobby, payload?.playerId, payload?.ready)) {
         return ack?.({ ok: false, error: 'Bereit-Status konnte nicht gesetzt werden.' });
       }
       emitLobbies(io);
@@ -780,6 +782,7 @@ export function registerScribbleSockets(io: Server): void {
       (payload: { lobbyId?: string; playerId?: string; rounds?: number; turnDurationMs?: number }, ack?: (res: unknown) => void) => {
         const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
         if (!lobby) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
+        if (!canUseLobby(socket, lobby)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' });
         if (payload?.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' });
         if (lobby.players.length < 2) return ack?.({ ok: false, error: 'Mindestens zwei Spieler werden gebraucht.' });
 
@@ -792,6 +795,8 @@ export function registerScribbleSockets(io: Server): void {
 
         const match: ScribbleMatchState = {
           id: nanoid(),
+          groupId: lobby.groupId,
+          eventId: lobby.eventId,
           room,
           host: lobby.host,
           players: lobby.players,
@@ -832,19 +837,19 @@ export function registerScribbleSockets(io: Server): void {
         matches.set(match.id, match);
         releaseLobbyMemberships(lobby.players.map((p) => p.id), 'scribble', lobby.id);
         lobbies.delete(lobby.id);
-        resolvePushTopic(scribbleLobbyPushKey(lobby.id));
+        resolvePushTopic(scribbleLobbyPushKey(lobby.id), false, lobby);
         emitLobbies(io);
-        startArcadeSession(realPlayerIds(match.players), 'scribble');
+        startArcadeSession(realPlayerIds(match.players), 'scribble', match);
 
         const beginsAt = Date.now() + COUNTDOWN_MS;
-        io.to(room).emit('scribble:match:start', {
+        emitArcadeRoom(io, room, 'scribble:match:start', {
           matchId: match.id,
           host: match.host,
           players: match.players,
           rounds,
           turnDurationMs,
           beginsAt,
-        });
+        }, match);
         kioskSnapshot(io, match);
         ack?.({ ok: true, matchId: match.id });
 
@@ -859,7 +864,7 @@ export function registerScribbleSockets(io: Server): void {
       'scribble:word',
       (payload: { matchId?: string; playerId?: string; wordId?: string }, ack?: (res: unknown) => void) => {
         const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-        if (!match || match.phase !== 'choosing') return ack?.({ ok: false, error: 'Wortauswahl nicht möglich.' });
+        if (!match || !canUseLobby(socket, match) || match.phase !== 'choosing') return ack?.({ ok: false, error: 'Wortauswahl nicht möglich.' });
         if (match.players[match.drawIndex]?.id !== payload?.playerId) return ack?.({ ok: false, error: 'Nur der Zeichner wählt.' });
         if (payload?.playerId === BOT_ID) return ack?.({ ok: false, error: 'Wortauswahl nicht möglich.' });
         if (typeof payload?.wordId !== 'string') return ack?.({ ok: false, error: 'Ungültiges Wort.' });
@@ -880,7 +885,7 @@ export function registerScribbleSockets(io: Server): void {
         points?: number[][];
       }, ack?: (result: { ok: boolean; strokeCount?: number }) => void) => {
         const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-        if (!match || match.phase !== 'drawing' || match.paused) return;
+        if (!match || !canUseLobby(socket, match) || match.phase !== 'drawing' || match.paused) return;
         if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
         if (payload?.playerId === BOT_ID) return;
         if (typeof payload.strokeId !== 'string' || !payload.strokeId || payload.strokeId.length > 40) return;
@@ -894,7 +899,7 @@ export function registerScribbleSockets(io: Server): void {
         const batch: StrokeBatch = { type: 'stroke', strokeId: payload.strokeId, color, size, erase: !!payload.erase, points };
         if (match.strokes.length < MAX_STROKE_BATCHES) match.strokes.push(batch);
         const strokeCount = new Set(match.strokes.map((stroke) => stroke.strokeId)).size;
-        socket.to(match.room).emit('scribble:stroke', { matchId: match.id, ...batch, strokeCount });
+        emitArcadeRoom(io, match.room, 'scribble:stroke', { matchId: match.id, ...batch, strokeCount }, match, socket.id);
         ack?.({ ok: true, strokeCount });
         kioskSnapshot(io, match);
       }
@@ -904,7 +909,7 @@ export function registerScribbleSockets(io: Server): void {
       'scribble:fill',
       (payload: { matchId?: string; playerId?: string; strokeId?: string; x?: number; y?: number; color?: string }, ack?: (result: { ok: boolean; strokeCount?: number }) => void) => {
         const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-        if (!match || match.phase !== 'drawing' || match.paused) return;
+        if (!match || !canUseLobby(socket, match) || match.phase !== 'drawing' || match.paused) return;
         if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
         if (payload?.playerId === BOT_ID) return;
         if (typeof payload.strokeId !== 'string' || !payload.strokeId || payload.strokeId.length > 40) return;
@@ -914,7 +919,7 @@ export function registerScribbleSockets(io: Server): void {
         const fill: FillOp = { type: 'fill', strokeId: payload.strokeId, x: payload.x, y: payload.y, color };
         if (match.strokes.length < MAX_STROKE_BATCHES) match.strokes.push(fill);
         const strokeCount = new Set(match.strokes.map((stroke) => stroke.strokeId)).size;
-        socket.to(match.room).emit('scribble:fill', { matchId: match.id, x: fill.x, y: fill.y, color: fill.color, strokeCount });
+        emitArcadeRoom(io, match.room, 'scribble:fill', { matchId: match.id, x: fill.x, y: fill.y, color: fill.color, strokeCount }, match, socket.id);
         ack?.({ ok: true, strokeCount });
         kioskSnapshot(io, match);
       }
@@ -922,11 +927,11 @@ export function registerScribbleSockets(io: Server): void {
 
     socket.on('scribble:clear', (payload: { matchId?: string; playerId?: string }) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-      if (!match || match.phase !== 'drawing' || match.paused) return;
+      if (!match || !canUseLobby(socket, match) || match.phase !== 'drawing' || match.paused) return;
       if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
       if (payload?.playerId === BOT_ID) return;
       match.strokes = [];
-      io.to(match.room).emit('scribble:clear', { matchId: match.id });
+      emitArcadeRoom(io, match.room, 'scribble:clear', { matchId: match.id }, match);
       kioskSnapshot(io, match);
     });
 
@@ -939,13 +944,13 @@ export function registerScribbleSockets(io: Server): void {
     // rather than trying to "erase" (which can't correctly undo overlaps).
     socket.on('scribble:undo', (payload: { matchId?: string; playerId?: string }, ack?: (result: { ok: boolean; strokeCount?: number }) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-      if (!match || match.phase !== 'drawing' || match.paused) return;
+      if (!match || !canUseLobby(socket, match) || match.phase !== 'drawing' || match.paused) return;
       if (match.players[match.drawIndex]?.id !== payload?.playerId) return;
       if (match.strokes.length === 0) return;
       const lastStrokeId = match.strokes[match.strokes.length - 1].strokeId;
       match.strokes = match.strokes.filter((s) => s.strokeId !== lastStrokeId);
       const strokeCount = new Set(match.strokes.map((stroke) => stroke.strokeId)).size;
-      io.to(match.room).emit('scribble:redraw', { matchId: match.id, strokes: match.strokes, strokeCount });
+      emitArcadeRoom(io, match.room, 'scribble:redraw', { matchId: match.id, strokes: match.strokes, strokeCount }, match);
       ack?.({ ok: true, strokeCount });
       kioskSnapshot(io, match);
     });
@@ -955,7 +960,7 @@ export function registerScribbleSockets(io: Server): void {
       (payload: { matchId?: string; playerId?: string; text?: string }, ack?: (res: unknown) => void) => {
         const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
         const player = match?.players.find((p) => p.id === payload?.playerId);
-        if (!match || !player || typeof payload?.text !== 'string' || !payload.text.trim()) {
+        if (!match || !canUseLobby(socket, match) || !player || typeof payload?.text !== 'string' || !payload.text.trim()) {
           return ack?.({ ok: false, error: 'Tipp nicht angenommen.' });
         }
         if (player.id === BOT_ID) return ack?.({ ok: false, error: 'Tipp nicht angenommen.' });
@@ -969,7 +974,7 @@ export function registerScribbleSockets(io: Server): void {
 
         const text = payload.text.trim().slice(0, 80);
         if (!match.currentWord || !matchesAnswer(text, [match.currentWord])) {
-          io.to(match.room).emit('scribble:chat', { matchId: match.id, playerId: player.id, name: player.name, text });
+          emitArcadeRoom(io, match.room, 'scribble:chat', { matchId: match.id, playerId: player.id, name: player.name, text }, match);
           // "Knapp dran" is only ever sent back to this one guesser via the
           // ack, never broadcast - anyone else seeing it would effectively
           // learn the word is nearly spelled out.
@@ -981,14 +986,14 @@ export function registerScribbleSockets(io: Server): void {
         const points = pointsForGuess(remainingMs, match.turnDurationMs);
         match.scores.set(player.id, (match.scores.get(player.id) ?? 0) + points);
         match.guessedPlayerIds.add(player.id);
-        io.to(match.room).emit('scribble:chat', {
+        emitArcadeRoom(io, match.room, 'scribble:chat', {
           matchId: match.id,
           playerId: player.id,
           name: player.name,
           correct: true,
           points,
-        });
-        io.to(match.room).emit('scribble:scores', { matchId: match.id, scores: scorePayload(match) });
+        }, match);
+        emitArcadeRoom(io, match.room, 'scribble:scores', { matchId: match.id, scores: scorePayload(match) }, match);
         kioskSnapshot(io, match);
         ack?.({ ok: true, correct: true, points });
 
@@ -1003,7 +1008,7 @@ export function registerScribbleSockets(io: Server): void {
       (payload: { matchId?: string; playerId?: string; token?: string }, ack?: (res: unknown) => void) => {
         const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
         const player = match ? ratingPlayer(match, socket, payload?.playerId) : null;
-        if (!match || !player) return ack?.({ ok: false, error: 'Bewertung nicht möglich.' });
+        if (!match || !canUseLobby(socket, match) || !player) return ack?.({ ok: false, error: 'Bewertung nicht möglich.' });
         if (typeof payload?.token !== 'string' || payload.token !== match.liveThumbsToken) {
           return ack?.({ ok: false, error: 'Dieses Bild kann gerade nicht bewertet werden.' });
         }
@@ -1012,7 +1017,7 @@ export function registerScribbleSockets(io: Server): void {
         const active = match.liveThumbs.has(player.id);
         if (active) match.liveThumbs.delete(player.id);
         else match.liveThumbs.add(player.id);
-        io.to(match.room).emit('scribble:thumb-update', { matchId: match.id, token: match.liveThumbsToken, count: match.liveThumbs.size });
+        emitArcadeRoom(io, match.room, 'scribble:thumb-update', { matchId: match.id, token: match.liveThumbsToken, count: match.liveThumbs.size }, match);
         ack?.({ ok: true, active: !active, count: match.liveThumbs.size });
       }
     );
@@ -1035,7 +1040,8 @@ export function registerScribbleSockets(io: Server): void {
         // match's roster/socket), the live match is already gone here - the
         // recentMatchRosters snapshot is the only membership check left, so
         // only someone who actually played this match can cast this vote.
-        if (!recentMatchRosters.get(matchId)?.has(player.id)) {
+        const recent = recentMatchRosters.get(matchId);
+        if (!recent || !socketCanUseArcadeScope(socket, recent) || !recent.players.has(player.id)) {
           return ack?.({ ok: false, error: 'Du warst kein Teilnehmer dieses Matches.' });
         }
         const drawing = db.prepare(
@@ -1066,7 +1072,7 @@ export function registerScribbleSockets(io: Server): void {
 
     socket.on('scribble:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
       if (match.phase !== 'drawing' || match.paused) return ack?.({ ok: true });
 
@@ -1079,14 +1085,14 @@ export function registerScribbleSockets(io: Server): void {
       match.turnExpiresAt = null;
       match.hintTimers = [];
       match.paused = true;
-      io.to(match.room).emit('scribble:match:paused', { matchId: match.id, remainingMs, scores: scorePayload(match) });
+      emitArcadeRoom(io, match.room, 'scribble:match:paused', { matchId: match.id, remainingMs, scores: scorePayload(match) }, match);
       kioskSnapshot(io, match);
       ack?.({ ok: true });
     });
 
     socket.on('scribble:match:resume', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann fortsetzen.' });
       if (match.phase !== 'drawing' || !match.paused) return ack?.({ ok: true });
 
@@ -1096,14 +1102,14 @@ export function registerScribbleSockets(io: Server): void {
       match.pausedElapsedMs = null;
       match.paused = false;
       startTurnTimers(io, match, remainingMs, elapsedMs);
-      io.to(match.room).emit('scribble:match:resumed', { matchId: match.id, expiresAt: match.turnExpiresAt, scores: scorePayload(match) });
+      emitArcadeRoom(io, match.room, 'scribble:match:resumed', { matchId: match.id, expiresAt: match.turnExpiresAt, scores: scorePayload(match) }, match);
       kioskSnapshot(io, match);
       ack?.({ ok: true });
     });
 
     socket.on('scribble:match:finish', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann beenden.' });
       finishMatch(io, match, null, 'ended-by-host');
       ack?.({ ok: true });
@@ -1112,12 +1118,12 @@ export function registerScribbleSockets(io: Server): void {
     socket.on('scribble:rejoin', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
       const player = match?.players.find((p) => p.id === payload?.playerId);
-      if (!match || !player) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (!match || !canUseLobby(socket, match) || !player) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
 
       match.socketIds.set(player.id, socket.id);
       match.online.add(player.id);
       socket.join(match.room);
-      io.to(match.room).emit('scribble:presence', { matchId: match.id, playerId: player.id, online: true });
+      emitArcadeRoom(io, match.room, 'scribble:presence', { matchId: match.id, playerId: player.id, online: true }, match);
 
       ack?.({
         ok: true,
@@ -1159,7 +1165,7 @@ export function registerScribbleSockets(io: Server): void {
     // match once fewer than 2 players remain).
     function handlePlayerLeft(playerId: string, match: ScribbleMatchState) {
       match.online.delete(playerId);
-      io.to(match.room).emit('scribble:presence', { matchId: match.id, playerId, online: false });
+      emitArcadeRoom(io, match.room, 'scribble:presence', { matchId: match.id, playerId, online: false }, match);
 
       if (match.online.size < 2) {
         finishMatch(io, match, null, 'player-left');
@@ -1181,7 +1187,7 @@ export function registerScribbleSockets(io: Server): void {
 
     socket.on('scribble:match:leave', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       const leaver = match.players.find((p) => p.id === payload?.playerId);
       if (!leaver) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
       handlePlayerLeft(leaver.id, match);

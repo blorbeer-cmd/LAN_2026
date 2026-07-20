@@ -8,7 +8,7 @@ import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
 import { recordArcadeResult } from './arcadeData';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
-import { canJoinLobby, lobbyGroupId, socketGroupId } from './scope';
+import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 
 const TICK_MS = 125;
 const COUNTDOWN_MS = 3000;
@@ -16,8 +16,8 @@ const BOT_ID = 'snake-bot';
 const BOT = { id: BOT_ID, name: 'Snake-Bot', avatar: null, color: '#ef5da8' };
 
 interface Player { id: string; name: string; avatar: string | null; color: string | null }
-interface Lobby { id: string; host: Player; players: Player[]; socketIds: Map<string, string>; ready: Set<string>; createdAt: number }
-interface Match { id: string; room: string; host: Player; players: Player[]; world: SnakeWorld; loop: NodeJS.Timeout | null; running: boolean; paused: boolean; startedAt: number }
+interface Lobby { id: string; groupId: string; eventId: string | null; host: Player; players: Player[]; socketIds: Map<string, string>; ready: Set<string>; createdAt: number }
+interface Match { id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[]; world: SnakeWorld; loop: NodeJS.Timeout | null; running: boolean; paused: boolean; startedAt: number }
 
 const lobbies = new Map<string, Lobby>();
 const matches = new Map<string, Match>();
@@ -26,19 +26,19 @@ function playerById(id?: string): Player | null {
   if (!id) return null;
   return (db.prepare('SELECT id, name, avatar, color FROM players WHERE id = ?').get(id) as Player | undefined) ?? null;
 }
-function publicLobbies(groupId?: string | null) {
-  return [...lobbies.values()].filter((lobby) => !groupId || lobbyGroupId(lobby) === groupId).map((lobby) => ({
+function publicLobbies(groupId: string, eventId: string | null) {
+  return [...lobbies.values()].filter((lobby) => lobby.groupId === groupId && lobby.eventId === eventId).map((lobby) => ({
     id: lobby.id,
     host: lobby.host,
     players: lobby.players.map((player) => ({ ...player, ready: isLobbyReady(lobby, player.id) })),
     createdAt: lobby.createdAt,
   }));
 }
-function emitLobbies(io: Server) { for (const socket of io.sockets.sockets.values()) socket.emit('snake:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) }); }
+function emitLobbies(io: Server) { for (const socket of io.sockets.sockets.values()) { const scope = socketArcadeScope(socket); if (scope) socket.emit('snake:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) }); } }
 
 // Open-lobby summary for GET /api/arcade/lobbies — see arcade.ts.
-export function openLobbySummaries() {
-  return [...lobbies.values()].map((lobby) => ({
+export function openLobbySummaries(groupId?: string, eventId?: string | null) {
+  return [...lobbies.values()].filter((lobby) => !groupId || (lobby.groupId === groupId && (eventId === undefined || lobby.eventId === eventId))).map((lobby) => ({
     id: lobby.id,
     hostName: lobby.host.name,
     playerCount: lobby.players.length,
@@ -60,8 +60,8 @@ function snapshot(io: Server, match: Match) {
     scores,
     render: { width: SNAKE_WIDTH, height: SNAKE_HEIGHT },
   };
-  io.to(match.room).emit('snake:state', payload);
-  broadcastArcadeKiosk(io, { gameType: 'snake', ...payload, players: match.players });
+  emitArcadeRoom(io, match.room, 'snake:state', payload, match);
+  broadcastArcadeKiosk(io, { gameType: 'snake', groupId: match.groupId, eventId: match.eventId, ...payload, players: match.players });
 }
 function realPlayerIds(players: Player[]): string[] {
   return players.filter((p) => p.id !== BOT_ID).map((p) => p.id);
@@ -69,7 +69,7 @@ function realPlayerIds(players: Player[]): string[] {
 function finish(io: Server, match: Match, winner: Player | null, reason: string) {
   if (match.loop) clearInterval(match.loop);
   match.loop = null;
-  endArcadeSession(realPlayerIds(match.players), 'snake');
+  endArcadeSession(realPlayerIds(match.players), 'snake', match);
   const winnerId = winner && winner.id !== BOT_ID ? winner.id : null;
   // Store per-player score entries (playerId/name/score), like every other
   // arcade game, so the stats route can attribute results to players. The
@@ -86,9 +86,10 @@ function finish(io: Server, match: Match, winner: Player | null, reason: string)
     scores: scoreEntries,
     reason,
     startedAt: match.startedAt,
+    scope: match,
   });
-  io.to(match.room).emit('snake:match:end', { winner, reason, scores: match.world.snakes.map((snake) => snake.score) });
-  broadcastArcadeKiosk(io, { gameType: null, matchId: match.id });
+  emitArcadeRoom(io, match.room, 'snake:match:end', { winner, reason, scores: match.world.snakes.map((snake) => snake.score) }, match);
+  broadcastArcadeKiosk(io, { gameType: null, matchId: match.id, groupId: match.groupId, eventId: match.eventId });
   matches.delete(match.id);
 }
 function removeFromLobbies(io: Server, socketId: string) {
@@ -137,14 +138,14 @@ function startMatch(io: Server, lobby: Lobby) {
   const id = nanoid();
   const room = `snake:${id}`;
   for (const socketId of lobby.socketIds.values()) io.sockets.sockets.get(socketId)?.join(room);
-  const match: Match = { id, room, host: lobby.host, players: lobby.players, world: createWorld(), loop: null, running: false, paused: false, startedAt: Date.now() };
+  const match: Match = { id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: lobby.players, world: createWorld(), loop: null, running: false, paused: false, startedAt: Date.now() };
   matches.set(id, match);
   releaseLobbyMemberships(lobby.players.map((p) => p.id), 'snake', lobby.id);
   lobbies.delete(lobby.id);
   emitLobbies(io);
-  startArcadeSession(realPlayerIds(match.players), 'snake');
+  startArcadeSession(realPlayerIds(match.players), 'snake', match);
   const beginsAt = Date.now() + COUNTDOWN_MS;
-  io.to(room).emit('snake:match:start', { matchId: id, host: match.host, players: match.players, beginsAt });
+  emitArcadeRoom(io, room, 'snake:match:start', { matchId: id, host: match.host, players: match.players, beginsAt }, match);
   snapshot(io, match);
   match.loop = setInterval(() => {
     if (!match.running || match.paused) return;
@@ -162,11 +163,17 @@ function startMatch(io: Server, lobby: Lobby) {
 
 export function registerSnakeSockets(io: Server): void {
   io.on('connection', (socket: Socket) => {
-    socket.emit('snake:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
+    const emitSocketLobbies = () => { const scope = socketArcadeScope(socket); if (scope) socket.emit('snake:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) }); };
+    emitSocketLobbies();
+    socket.on('snake:lobbies:get', emitSocketLobbies);
+    socket.on('scope:subscribe', emitSocketLobbies);
+    socket.on('room:subscribe', emitSocketLobbies);
     socket.on('snake:lobby:create', (payload: { playerId?: string }, ack?: (result: unknown) => void) => {
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Spieler nicht gefunden.' });
-      const lobby: Lobby = { id: nanoid(), host: player, players: [player], socketIds: new Map([[player.id, socket.id]]), ready: new Set(), createdAt: Date.now() };
+      const scope = socketArcadeScope(socket, player.id);
+      if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
+      const lobby: Lobby = { id: nanoid(), ...scope, host: player, players: [player], socketIds: new Map([[player.id, socket.id]]), ready: new Set(), createdAt: Date.now() };
       if (!claimLobbyMembership(player.id, 'snake', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby);
@@ -177,7 +184,9 @@ export function registerSnakeSockets(io: Server): void {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Spieler nicht gefunden.' });
-      const lobby: Lobby = { id: nanoid(), host: player, players: [player, BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now() };
+      const scope = socketArcadeScope(socket, player.id);
+      if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
+      const lobby: Lobby = { id: nanoid(), ...scope, host: player, players: [player, BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now() };
       if (!claimLobbyMembership(player.id, 'snake', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby);
@@ -186,6 +195,7 @@ export function registerSnakeSockets(io: Server): void {
     });
     socket.on('snake:lobby:join', (payload: { lobbyId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null;
+      if (!lobby || !canUseLobby(socket, lobby)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' });
       const player = playerById(payload?.playerId);
       if (!lobby || !player) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
       if (!canJoinLobby(socket, lobby, player.id)) return ack?.({ ok: false, error: 'Lobby gehört zu einer anderen Gruppe.' });
@@ -212,41 +222,41 @@ export function registerSnakeSockets(io: Server): void {
     });
     socket.on('snake:lobby:ready', (payload: { lobbyId?: string; playerId?: string; ready?: boolean }, ack?: (result: unknown) => void) => {
       const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null;
-      if (!lobby || !setLobbyReady(lobby, payload?.playerId, payload?.ready)) return ack?.({ ok: false, error: 'Bereit-Status konnte nicht gesetzt werden.' });
+      if (!lobby || !canUseLobby(socket, lobby) || !setLobbyReady(lobby, payload?.playerId, payload?.ready)) return ack?.({ ok: false, error: 'Bereit-Status konnte nicht gesetzt werden.' });
       emitLobbies(io);
       ack?.({ ok: true });
     });
     socket.on('snake:lobby:start', (payload: { lobbyId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null;
-      if (!lobby || payload.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' });
+      if (!lobby || !canUseLobby(socket, lobby) || payload.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' });
       if (lobby.players.length !== 2) return ack?.({ ok: false, error: 'Snake ist genau 1 gegen 1.' });
       ack?.({ ok: true, matchId: startMatch(io, lobby) });
     });
     socket.on('snake:input', (payload: { matchId?: string; playerId?: string; direction?: Direction }) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
       const index = match?.players.findIndex((player) => player.id === payload.playerId) ?? -1;
-      if (!match || index < 0 || match.players[index].id === BOT_ID || !payload.direction || !match.running || match.paused) return;
+      if (!match || !canUseLobby(socket, match) || index < 0 || match.players[index].id === BOT_ID || !payload.direction || !match.running || match.paused) return;
       setDirection(match.world.snakes[index], payload.direction);
     });
     socket.on('snake:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
-      if (!match || payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
+      if (!match || !canUseLobby(socket, match) || payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
       match.paused = true;
-      io.to(match.room).emit('snake:match:paused');
+      emitArcadeRoom(io, match.room, 'snake:match:paused', undefined, match);
       snapshot(io, match);
       ack?.({ ok: true });
     });
     socket.on('snake:match:resume', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
-      if (!match || payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann fortsetzen.' });
+      if (!match || !canUseLobby(socket, match) || payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann fortsetzen.' });
       match.paused = false;
-      io.to(match.room).emit('snake:match:resumed');
+      emitArcadeRoom(io, match.room, 'snake:match:resumed', undefined, match);
       snapshot(io, match);
       ack?.({ ok: true });
     });
     socket.on('snake:match:finish', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
-      if (!match || payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann beenden.' });
+      if (!match || !canUseLobby(socket, match) || payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann beenden.' });
       finish(io, match, null, 'aborted');
       ack?.({ ok: true });
     });
@@ -255,7 +265,7 @@ export function registerSnakeSockets(io: Server): void {
     // mid-match: the match ends, opponent wins.
     socket.on('snake:match:leave', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
-      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       const leaver = match.players.find((p) => p.id === payload?.playerId);
       if (!leaver) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
       finish(io, match, match.players.find((p) => p.id !== leaver.id) ?? null, 'player-left');

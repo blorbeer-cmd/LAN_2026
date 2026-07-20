@@ -7,6 +7,7 @@ import { openLobbySummaries as blobbyLobbies } from '../arcade/blobby';
 import { openLobbySummaries as pongLobbies } from '../arcade/pong';
 import { openLobbySummaries as snakeLobbies } from '../arcade/snake';
 import { resolveGroupEventScope } from '../groupEventScope';
+import { config } from '../config';
 
 export const arcadeRouter = Router();
 
@@ -87,14 +88,27 @@ function resultPayload(row: ArcadeResultRow) {
 // games, newest first, for the Home view's "Aktuell" card. Lobbies live
 // in-memory in their socket modules (short-lived party state, not data),
 // so this just aggregates their summaries.
-arcadeRouter.get('/lobbies', (_req, res) => {
+arcadeRouter.get('/lobbies', (req, res) => {
+  const selectedEvent = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  if (!selectedEvent.ok) return res.status(selectedEvent.status).json({ error: selectedEvent.error });
+  if (config.authMode === 'required' && selectedEvent.eventId) {
+    const mayAccess = req.groupMembership?.role === 'admin' || req.groupMembership?.role === 'owner' || Boolean(
+      db.prepare('SELECT 1 FROM event_participants WHERE event_id = ? AND player_id = ?').get(
+        selectedEvent.eventId,
+        req.player?.id,
+      ),
+    );
+    if (!mayAccess) return res.json({ lobbies: [] });
+  }
+  const groupId = req.group!.id;
+  const eventId = selectedEvent.eventId;
   const lobbies = [
-    ...quizLobbies().map((l) => ({ ...l, gameType: 'quiz' })),
-    ...tetrisLobbies().map((l) => ({ ...l, gameType: 'tetris' })),
-    ...scribbleLobbies().map((l) => ({ ...l, gameType: 'scribble' })),
-    ...pongLobbies().map((l) => ({ ...l, gameType: 'pong' })),
-    ...blobbyLobbies().map((l) => ({ ...l, gameType: 'blobby' })),
-    ...snakeLobbies().map((l) => ({ ...l, gameType: 'snake' })),
+    ...quizLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'quiz' })),
+    ...tetrisLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'tetris' })),
+    ...scribbleLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'scribble' })),
+    ...pongLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'pong' })),
+    ...blobbyLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'blobby' })),
+    ...snakeLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'snake' })),
   ]
     .map((l) => ({ ...l, title: ARCADE_TITLES[l.gameType] ?? l.gameType }))
     .sort((a, b) => b.createdAt - a.createdAt);
