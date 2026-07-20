@@ -308,7 +308,7 @@ foodOrdersRouter.delete('/:id', requireConfiguredUser, (req, res) => {
     groupId: req.group!.id,
     eventId: communicationEventId(order.event_id),
   });
-  broadcast(Events.foodOrdersChanged, null);
+  broadcast(Events.foodOrdersChanged, null, { groupId: req.group!.id });
   res.status(204).end();
 });
 
