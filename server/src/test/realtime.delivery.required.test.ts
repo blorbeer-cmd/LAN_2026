@@ -267,6 +267,48 @@ test('an event kiosk refreshes on group signals but banner-matches its exact pus
   });
 });
 
+test('a group kiosk shows group-room and current-event banners but not a foreign event banner', async () => {
+  const groupA = createGroup('Kiosk Group Banner A');
+  const owner = createPlayer('Kiosk Group Banner Owner');
+  addMembership(groupA, owner, 'owner');
+  const currentEventId = nanoid();
+  const otherEventId = nanoid();
+  // The group's currently tracking event; its banner belongs on the group
+  // kiosk because /api/push/last resolves exactly this event for it.
+  db.prepare('INSERT INTO events (id, name, starts_at, group_id, tracking_enabled) VALUES (?, ?, ?, ?, 1)').run(
+    currentEventId,
+    'Current Event',
+    Date.now(),
+    groupA
+  );
+  db.prepare('INSERT INTO events (id, name, starts_at, group_id, tracking_enabled) VALUES (?, ?, ?, ?, 0)').run(
+    otherEventId,
+    'Other Event',
+    Date.now(),
+    groupA
+  );
+  const groupToken = issueKioskToken(groupA, null, owner, null).token;
+
+  await withRequiredServer(async ({ baseUrl }) => {
+    const kiosk = await connectKiosk(baseUrl, groupToken);
+    try {
+      const banners: unknown[] = [];
+      kiosk.on(Events.pushSent, (payload: unknown) => banners.push(payload));
+      broadcast(Events.pushSent, { title: 'Gruppenraum' }, { groupId: groupA });
+      broadcast(Events.pushSent, { title: 'Aktuelles Event' }, { groupId: groupA, eventId: currentEventId });
+      broadcast(Events.pushSent, { title: 'Anderes Event' }, { groupId: groupA, eventId: otherEventId });
+      await settle();
+      assert.deepEqual(
+        banners,
+        [{ title: 'Gruppenraum' }, { title: 'Aktuelles Event' }],
+        'the group kiosk shows its group-room and current-event banners, not a non-current event banner'
+      );
+    } finally {
+      kiosk.close();
+    }
+  });
+});
+
 test('a direct push reaches only its resolved recipients and never the kiosk', async () => {
   const groupA = createGroup('Direct Push A');
   const alice = createPlayer('Push Alice');

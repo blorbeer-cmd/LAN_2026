@@ -3,7 +3,7 @@
 
 import { Server, Socket } from 'socket.io';
 import { config } from './config';
-import { db, DEFAULT_GROUP_ID } from './db';
+import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 import { isSessionActive, parseCookieHeader, verifySession, SESSION_COOKIE_NAME } from './sessions';
 import { resolveKioskToken } from './kioskTokens';
 
@@ -252,6 +252,17 @@ function kioskDeliveryAllowed(socket: Socket): boolean {
   return Boolean(db.prepare('SELECT 1 FROM kiosk_tokens WHERE id = ? AND revoked_at IS NULL').get(tokenId));
 }
 
+// A group's currently tracking event, resolved per group (not the global
+// getTrackingEventId() helper, which returns one arbitrary row across all
+// groups). A group kiosk's /api/push/last banner view is scoped to exactly
+// this event, so the live push:sent banner must accept it too.
+function groupCurrentTrackingEventId(groupId: string): string | null {
+  const row = db
+    .prepare("SELECT id FROM events WHERE tracking_enabled = 1 AND group_id = ? AND id != ?")
+    .get(groupId, OUTSIDE_EVENTS_ID) as { id: string } | undefined;
+  return row?.id ?? null;
+}
+
 // Eagerly ends the sockets of a just-revoked kiosk token; the delivery-time
 // re-check above stays the authoritative guard either way.
 export function disconnectKioskTokenSockets(tokenId: string): void {
@@ -312,10 +323,17 @@ export function broadcast(event: string, payload: unknown, scope: BroadcastScope
       if (!kioskDeliveryAllowed(socket)) continue;
       if (event === 'push:sent') {
         // The push banner is the one payload the kiosk renders directly, so
-        // it is delivered only for the kiosk's exact scope: a group kiosk
-        // never shows an event-only banner and an event kiosk never shows a
-        // group-room one.
-        if ((socket.data.kioskEventId ?? null) !== eventId) continue;
+        // its scope mirrors the kiosk's /api/push/last view exactly. An event
+        // kiosk shows only its own event's banner; a group kiosk shows its
+        // group-room banners plus its group's currently tracking event (the
+        // same event resolveGroupEventScope returns for that kiosk's REST
+        // reads), so an event-scoped push is not stuck until a reload.
+        const kioskEventId = (socket.data.kioskEventId ?? null) as string | null;
+        const accepted =
+          kioskEventId !== null
+            ? eventId === kioskEventId
+            : eventId === null || eventId === groupCurrentTrackingEventId(groupId);
+        if (!accepted) continue;
         socket.emit(event, payload);
       } else {
         // Every other allowlisted event is a null refresh signal (fachliche
