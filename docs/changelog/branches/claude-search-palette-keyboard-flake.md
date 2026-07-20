@@ -12,5 +12,7 @@ fachfremd entfernten, dort bereits per In-Page-Event-Recorder verifizierten Korr
 
 ## Pull Requests
 
-- [PR #251](https://github.com/blorbeer-cmd/LAN_2026/pull/251), offen (Draft): Stop hover resets
-  of the search keyboard selection.
+- [PR #251](https://github.com/blorbeer-cmd/LAN_2026/pull/251), gemergt am 2026-07-20 als Squash
+  [`938a178`](https://github.com/blorbeer-cmd/LAN_2026/commit/938a178b989c2fc70ac3e149fd51a44e50a66af9)
+  nach unabhängigem Review (ein Fund, behoben in `89ecf97`): Stabilize the two remaining flows-E2E
+  flakes at their root causes.

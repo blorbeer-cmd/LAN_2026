@@ -2,7 +2,7 @@
 
 Diese Übersicht dokumentiert die Entwicklung von Respawn aus der Git-Historie. Für jeden gemergten Pull Request gibt es eine eigene Datei unter `docs/changelog/pr/`; zusätzlich sind die zugehörigen Arbeitsbranches unter `docs/changelog/branches/` erfasst.
 
-Stand: 2026-07-20 · Basis: `main` auf `601d43e` · Hinweis: Chronologie und Zähler sind ab PR #214
+Stand: 2026-07-20 · Basis: `main` auf `938a178` · Hinweis: Chronologie und Zähler sind ab PR #214
 lückenhaft; der vollständige Nachtrag ist Phase R5 in
 [`docs/plans/reset-single-group.md`](../plans/reset-single-group.md).
 
@@ -18,6 +18,7 @@ lückenhaft; der vollständige Nachtrag ist Phase R5 in
 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
+| 2026-07-20 | [#251](https://github.com/blorbeer-cmd/LAN_2026/pull/251) | [Stabilize the two remaining flows-E2E flakes at their root causes](pr/pr-251-stabilize-the-two-remaining-flows-e2e-flakes-at-their-root-causes.md) | `claude/search-palette-keyboard-flake` |
 | 2026-07-20 | [#238](https://github.com/blorbeer-cmd/LAN_2026/pull/238) | [Enforce group- and event-scoped realtime delivery](pr/pr-238-enforce-group-and-event-scoped-realtime-delivery.md) | `claude/multigroup-realtime-delivery-pschci` |
 | 2026-07-18 | main | [Mobile-Layout-Fixes und Info-Popover-Scroll-Race behoben](pr/main-2026-07-18-mobile-layout-and-tooltip-scroll-fixes.md) | `main` |
 | 2026-07-18 | [#213](https://github.com/blorbeer-cmd/Respawn/pull/213) | [fix flaky admin-count height assertion in E2E flows test](pr/pr-213-fix-flaky-admin-count-height-assertion-in-e2e-flows-test.md) | `fix/e2e-admin-count-height-flake` |
