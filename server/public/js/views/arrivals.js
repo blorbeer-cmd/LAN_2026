@@ -10,19 +10,28 @@ import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { icon } from '../icons.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let cache = null;
 let loading = false;
+// Set instead of nulling `cache` directly after an action or a remote
+// arrivals:changed event: renderArrivals() keeps showing the last-known
+// carpools/times while a background refetch is in flight, rather than
+// collapsing the whole section down to a one-line "Lädt…" placeholder and
+// back - that height jump was clamping the scroll container's scrollTop
+// back to the top on every save/join/leave.
+let dirty = false;
 let peopleSortKey = 'arrival';
 let peopleSortDirection = 'asc';
 
 async function load(ctx) {
   loading = true;
+  dirty = false;
   try {
     cache = await api.arrivals.list();
   } catch (err) {
     showToast(err.message, { error: true });
-    cache = { arrivals: [], carpools: { arrival: [], departure: [] } };
+    if (cache === null) cache = { arrivals: [], carpools: { arrival: [], departure: [] } };
   } finally {
     loading = false;
     ctx.rerender();
@@ -30,7 +39,7 @@ async function load(ctx) {
 }
 
 export function invalidateArrivals() {
-  cache = null;
+  dirty = true;
 }
 
 function parseDatetimeValue(value) {
@@ -47,7 +56,7 @@ function renderMyForm(myId) {
       <form class="stack" id="arrival-form">
         <div class="field-row">
           <div>
-            <label for="arrival-at" class="field-label">Anreise</label>
+            <label for="arrival-at" class="field-label">Ankunft</label>
             ${dateTimeFieldHtml('arrival-at', own?.arrival_at ?? null, { clearable: true, disabled: !myId })}
           </div>
           <div>
@@ -62,10 +71,14 @@ function renderMyForm(myId) {
   `;
 }
 
-function renderCarpool(c, direction, myId) {
+// A player can only drive or ride along in one carpool per direction (see
+// server/src/routes/arrivals.ts) - otherwise, which carpool would their own
+// Ankunft/Abreise above sync with? `elsewhere` marks that they're already
+// committed to a *different* carpool of this direction.
+function renderCarpool(c, direction, myId, elsewhere) {
   const isDriver = c.driverId === myId;
   const amIn = Boolean(myId && c.members.some((m) => m.id === myId));
-  const canJoin = Boolean(myId && !isDriver && !amIn);
+  const canJoin = Boolean(myId && !isDriver && !amIn && !elsewhere);
   const memberRowsHtml = c.members
     .map(
       (m) => `<div class="arrivals-member-row">
@@ -75,12 +88,20 @@ function renderCarpool(c, direction, myId) {
             </div>`
     )
     .join('');
-  const freeSeatRowsHtml = Array.from({ length: c.seatsFree }, () => {
-    const control = canJoin
-      ? `<button type="button" class="btn btn-sm btn-primary" data-join-carpool="${c.id}">Mitfahren</button>`
-      : !myId
-        ? '<button type="button" class="btn btn-sm" disabled>Mitfahren</button>'
-        : '<span class="arrivals-member-role">Mitfahrer</span>';
+  const freeSeatRowsHtml = Array.from({ length: c.seatsFree }, (_, seatIndex) => {
+    const control =
+      canJoin
+        ? `<button type="button" class="btn btn-sm btn-primary" data-join-carpool="${c.id}">Mitfahren</button>`
+        : !myId
+          ? '<button type="button" class="btn btn-sm" disabled>Mitfahren</button>'
+          : elsewhere && !isDriver && !amIn
+            ? `<button type="button" class="btn btn-sm" disabled>Mitfahren</button>${infoTooltipHtml(
+                `arrivals-join-disabled-${c.id}-${seatIndex}`,
+                'Warum ist „Mitfahren“ deaktiviert?',
+                'Du bist bereits Fahrer oder Mitfahrer einer anderen Fahrgemeinschaft dieser Richtung.',
+                'warning'
+              )}`
+            : '<span class="arrivals-member-role">Mitfahrer</span>';
     return `<div class="arrivals-member-row arrivals-free-seat-row">
       <span class="muted arrivals-free-seat-label">Frei</span>
       ${control}
@@ -121,17 +142,35 @@ function renderCarpool(c, direction, myId) {
     </div>`;
 }
 
+function isCommittedToDirection(direction, myId) {
+  const rows = cache?.carpools?.[direction] || [];
+  return Boolean(myId && rows.some((c) => c.driverId === myId || c.members.some((m) => m.id === myId)));
+}
+
 function renderCarpoolSection(direction, title, myId) {
   const rows = cache?.carpools?.[direction] || [];
+  const committed = isCommittedToDirection(direction, myId);
   return `
     <section class="tournament-section-panel stack arrivals-carpool-section is-${direction}">
       <div class="row-between">
         <strong>${title}</strong>
-        <button type="button" class="btn btn-sm btn-primary" data-new-carpool="${direction}" ${myId ? '' : 'disabled'}>+ Neu</button>
+        <span class="row">
+          <button type="button" class="btn btn-sm btn-primary" data-new-carpool="${direction}" ${myId && !committed ? '' : 'disabled'}>+ Neu</button>
+          ${
+            committed
+              ? infoTooltipHtml(
+                  `arrivals-new-${direction}-disabled-help`,
+                  'Warum ist „+ Neu“ deaktiviert?',
+                  'Du bist bereits Fahrer oder Mitfahrer einer anderen Fahrgemeinschaft dieser Richtung.',
+                  'warning'
+                )
+              : ''
+          }
+        </span>
       </div>
       ${
         rows.length
-          ? `<div class="two-column-card-grid arrivals-carpool-grid">${rows.map((c) => renderCarpool(c, direction, myId)).join('')}</div>`
+          ? `<div class="two-column-card-grid arrivals-carpool-grid">${rows.map((c) => renderCarpool(c, direction, myId, committed && c.driverId !== myId && !c.members.some((m) => m.id === myId))).join('')}</div>`
           : `<div class="muted arrivals-carpool-empty">Noch keine Fahrgemeinschaft.</div>`
       }
     </section>`;
@@ -187,6 +226,14 @@ function renderPeopleSortButton(key, label) {
   </button>`;
 }
 
+// Whoever a player rides with (not their own carpool, if they drive) - shown
+// as a small hint next to their Ankunft/Abreise in the table below.
+function carpoolDriverName(direction, playerId) {
+  const rows = cache?.carpools?.[direction] || [];
+  const carpool = rows.find((c) => c.driverId !== playerId && c.members.some((m) => m.id === playerId));
+  return carpool?.createdByName ?? null;
+}
+
 function renderPeopleList() {
   const byPlayer = new Map((cache?.arrivals || []).map((a) => [a.player_id, a]));
   const rows = [...state.players]
@@ -195,14 +242,22 @@ function renderPeopleList() {
     .map(({ player, entry }) => {
       const arrival = entry?.arrival_at ? formatDateTime(entry.arrival_at) : 'offen';
       const departure = entry?.departure_at ? formatDateTime(entry.departure_at) : 'offen';
+      const arrivalDriver = carpoolDriverName('arrival', player.id);
+      const departureDriver = carpoolDriverName('departure', player.id);
       return `
         <div class="arrivals-times-row" role="row">
           <div class="arrivals-times-player" role="cell">
             ${avatarHtml(player, 30)}
             <span class="player-name">${escapeHtml(player.name)}</span>
           </div>
-          <div class="arrivals-times-value" role="cell" data-label="Anreise"><strong>${escapeHtml(arrival)}</strong></div>
-          <div class="arrivals-times-value" role="cell" data-label="Abreise"><strong>${escapeHtml(departure)}</strong></div>
+          <div class="arrivals-times-value" role="cell" data-label="Ankunft">
+            <strong>${escapeHtml(arrival)}</strong>
+            ${arrivalDriver ? `<div class="muted" style="font-size:var(--font-size-xs);">Fahrer: ${escapeHtml(arrivalDriver)}</div>` : ''}
+          </div>
+          <div class="arrivals-times-value" role="cell" data-label="Abreise">
+            <strong>${escapeHtml(departure)}</strong>
+            ${departureDriver ? `<div class="muted" style="font-size:var(--font-size-xs);">Fahrer: ${escapeHtml(departureDriver)}</div>` : ''}
+          </div>
           <div class="arrivals-times-note muted" role="cell" data-label="Notiz">${entry?.note ? escapeHtml(entry.note) : '–'}</div>
         </div>`;
     })
@@ -214,7 +269,7 @@ function renderPeopleList() {
       <div class="arrivals-mobile-sort" aria-label="Zeiten sortieren">
         <span class="muted">Sortieren:</span>
         ${renderPeopleSortButton('player', 'Spieler')}
-        ${renderPeopleSortButton('arrival', 'Anreise')}
+        ${renderPeopleSortButton('arrival', 'Ankunft')}
         ${renderPeopleSortButton('departure', 'Abreise')}
       </div>
       <div class="card arrivals-people-card" role="table" aria-label="An- und Abreisezeiten">
@@ -239,6 +294,11 @@ function renderPeopleList() {
 function openCarpoolForm(direction, myId, ctx, existing = null) {
   const isEdit = Boolean(existing);
   const title = isEdit ? 'Fahrgemeinschaft bearbeiten' : direction === 'arrival' ? 'Anreise-Fahrgemeinschaft' : 'Abreise-Fahrgemeinschaft';
+  const own = (cache?.arrivals || []).find((a) => a.player_id === myId);
+  // Neue Fahrgemeinschaft: das Feld, das zur eigenen Ankunft/Abreise oben
+  // gehört (eta_at bei Anreise, start_at bei Abreise), wird damit vorbelegt.
+  const defaultStartAt = !isEdit && direction === 'departure' ? (own?.departure_at ?? null) : null;
+  const defaultEtaAt = !isEdit && direction === 'arrival' ? (own?.arrival_at ?? null) : null;
   let modalEl;
   const { close } = openModal(
     title,
@@ -252,11 +312,11 @@ function openCarpoolForm(direction, myId, ctx, existing = null) {
         <div class="field-row">
           <div>
             <label for="carpool-start-at" class="field-label">Start</label>
-            ${dateTimeFieldHtml('carpool-start-at', existing?.startAt ?? null, { clearable: true })}
+            ${dateTimeFieldHtml('carpool-start-at', existing?.startAt ?? defaultStartAt, { clearable: true })}
           </div>
           <div>
             <label for="carpool-eta-at" class="field-label">Ankunft</label>
-            ${dateTimeFieldHtml('carpool-eta-at', existing?.etaAt ?? null, { clearable: true })}
+            ${dateTimeFieldHtml('carpool-eta-at', existing?.etaAt ?? defaultEtaAt, { clearable: true })}
           </div>
         </div>
         <div>
@@ -299,7 +359,7 @@ function openCarpoolForm(direction, myId, ctx, existing = null) {
               await api.arrivals.createCarpool({ playerId: myId, direction, label, startLocation, startAt, etaAt, seatsTotal });
             }
             close();
-            cache = null;
+            dirty = true;
             showToast(isEdit ? 'Fahrgemeinschaft aktualisiert.' : 'Fahrgemeinschaft angelegt.');
             ctx.rerender();
           } catch (err) {
@@ -312,9 +372,12 @@ function openCarpoolForm(direction, myId, ctx, existing = null) {
 }
 
 export function renderArrivals(container, ctx) {
-  if (cache === null && !loading) load(ctx);
+  if ((cache === null || dirty) && !loading) load(ctx);
   const myId = getMyId();
-  const loaded = cache !== null && !loading;
+  // Once there's cached data, keep rendering it even while a refetch is in
+  // flight (dirty or loading) - only the very first load has nothing to
+  // show yet and falls back to the placeholder below.
+  const loaded = cache !== null;
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
@@ -334,6 +397,7 @@ export function renderArrivals(container, ctx) {
   wireWhoAmICard(container, 'arrivals-whoami', ctx);
   if (!loaded) return;
 
+  wireInfoTooltips(container);
   wireDateTimeField(container, 'arrival-at');
   wireDateTimeField(container, 'departure-at');
 
@@ -365,7 +429,7 @@ export function renderArrivals(container, ctx) {
         departureAt,
         note: container.querySelector('#arrival-note').value.trim() || null,
       });
-      cache = null;
+      dirty = true;
       showToast('An-/Abreise gespeichert.');
       ctx.rerender();
     } catch (err) {
@@ -392,7 +456,7 @@ export function renderArrivals(container, ctx) {
     btn.addEventListener('click', async () => {
       try {
         await api.arrivals.joinCarpool(btn.dataset.joinCarpool, myId);
-        cache = null;
+        dirty = true;
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });
@@ -404,7 +468,7 @@ export function renderArrivals(container, ctx) {
     btn.addEventListener('click', async () => {
       try {
         await api.arrivals.leaveCarpool(btn.dataset.leaveCarpool, myId);
-        cache = null;
+        dirty = true;
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });
@@ -417,7 +481,7 @@ export function renderArrivals(container, ctx) {
       if (!(await confirmDialog('Fahrgemeinschaft löschen?'))) return;
       try {
         await api.arrivals.removeCarpool(btn.dataset.removeCarpool, myId);
-        cache = null;
+        dirty = true;
         showToast('Fahrgemeinschaft gelöscht.');
         ctx.rerender();
       } catch (err) {
