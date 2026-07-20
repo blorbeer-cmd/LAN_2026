@@ -118,7 +118,19 @@ test('fresh device lands on self-onboarding and creates its profile there', asyn
   await page.waitForSelector('text=Bock & Skill eintragen');
 });
 
-test('Einstellungen und Profil use grouped help while admin tools stay out of regular settings', async () => {
+test('Einstellungen und Profil use grouped help while admin tools stay out of regular settings', async (t) => {
+  // Switches to a desktop viewport partway through (for the desktop-only
+  // profile layout checks below) and never switches back on its own —
+  // relying on a later test happening to reset it first. If this test
+  // throws before reaching that point, or a later test that resets it
+  // (e.g. "global search...") fails before its own reset runs, every test
+  // in between silently keeps running at the wrong viewport size, which
+  // reads as an unrelated mobile-layout assertion failure. Restore the
+  // shared page's actual default (see the `before()` above) regardless of
+  // how this test ends.
+  t.after(async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+  });
   await page.click('#settings-btn');
   await page.waitForSelector('#settings-events-title');
   assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 3);
@@ -314,7 +326,15 @@ test('Admin mode owns the seating editor and backup tools', async (t) => {
   await page.waitForSelector('#admin-banner', { state: 'hidden' });
 });
 
-test('global search filters areas, supports keyboard navigation and restores focus', async () => {
+test('global search filters areas, supports keyboard navigation and restores focus', async (t) => {
+  // Also switches viewport size mid-test (see the note on the same pattern
+  // in "Einstellungen und Profil..." above) and only restores the shared
+  // page's default at the very end — guarantee it regardless of where this
+  // test fails, so a flake here can't cascade into unrelated mobile-layout
+  // assertions in whatever test runs next.
+  t.after(async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+  });
   await page.click('#global-search-btn');
   await page.waitForSelector('.global-search-modal');
   assert.equal(await page.locator('#global-search-input').evaluate((element) => element === document.activeElement), true);
