@@ -253,6 +253,16 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `class="btn btn-primary btn-sm"`.
 - **Input** — plain `<input>`/`<select>`/`<textarea>` are styled globally by
   type selector; no class needed.
+- **Number stepper** — every `input[type="number"]` is enhanced app-wide by
+  `numberStepper.js` (no per-view wiring, same auto-enhancement approach as
+  `icons.js`'s emoji replacement): a compact `.number-stepper-btn` pair
+  overlays the input's own right-hand padding for click/tap increment and
+  decrement — the same spot the native spinner used to occupy before it was
+  disabled for space (see the `input[type='number']` exception above) — so
+  every already-tuned narrow number field keeps its existing width. Mouse-
+  wheel scrolling over a focused field no longer silently changes its value
+  (the field blurs on wheel instead, so the page keeps scrolling normally
+  underneath the pointer).
 - **Card** — `.card`.
 - **Badge** (status pill) — `.badge` + one of `.badge-playing` /
   `.badge-paused` / `.badge-offline`.
