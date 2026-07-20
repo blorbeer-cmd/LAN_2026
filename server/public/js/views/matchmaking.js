@@ -22,6 +22,11 @@ let avoidAdjacentOpponents = false;
 let teamCountValue = '2';
 let selectedDrawPlayer = null;
 
+// Which of the two team-formation workflows is currently open below the
+// shared game picker — only one shows at a time so the game+mode choice
+// reads as one linear step instead of two competing panels.
+let teamsMode = 'draw';
+
 // Captain-draft state: the latest draft (active or finished) as delivered by
 // GET /api/draft or the draft:changed socket event. A running draft takes
 // over the whole view on every device (that's the point — it's a live event
@@ -559,6 +564,23 @@ export function renderMatchmaking(container, ctx) {
     .join('');
   const draftPoolSize = draftPlayers.length - draftCaptainIds.size;
   const draftReady = draftCaptainIds.size >= 2 && draftCaptainIds.size <= 4 && draftPoolSize >= 1;
+  // Mirrors the disabled "Draft starten" button below: named so the reason
+  // is visible up front instead of only after a click is attempted.
+  let draftDisabledReason = '';
+  if (!draftReady) {
+    if (draftCaptainIds.size < 2) draftDisabledReason = 'Mindestens 2 Captains auswählen, um den Draft zu starten.';
+    else if (draftCaptainIds.size > 4) draftDisabledReason = 'Maximal 4 Captains auswählen.';
+    else draftDisabledReason = 'Mindestens 1 weiteren Spieler zusätzlich zu den Captains auswählen.';
+  }
+
+  const drawReady = checkedIds.size >= 2;
+
+  const modeToggleHtml = `
+      <div class="selection-toolbar" role="group" aria-labelledby="mm-mode-label">
+        <span class="field-label" id="mm-mode-label">Modus</span>
+        <button type="button" class="btn btn-sm${teamsMode === 'draw' ? ' btn-primary' : ''}" data-mm-mode="draw" aria-pressed="${teamsMode === 'draw'}">Auslosung</button>
+        <button type="button" class="btn btn-sm${teamsMode === 'draft' ? ' btn-primary' : ''}" data-mm-mode="draft" aria-pressed="${teamsMode === 'draft'}">Captain Draft</button>
+      </div>`;
 
   container.innerHTML = `
     <h1 class="view-title">Teams</h1>
@@ -567,6 +589,9 @@ export function renderMatchmaking(container, ctx) {
         <label class="field-label" for="mm-game">Spiel auswählen</label>
         <select id="mm-game">${gameOptions}</select>
       </div>
+      ${modeToggleHtml}
+
+      ${teamsMode === 'draw' ? `
       <section class="tournament-section-panel tournament-create-step stack" aria-labelledby="matchmaking-draw-title">
         <div class="tournament-create-step-title">
           <h3 id="matchmaking-draw-title">Auslosung</h3>
@@ -592,10 +617,19 @@ export function renderMatchmaking(container, ctx) {
           </span>
         </div>
         <div class="sticky-actions">
-          <button type="button" class="btn btn-primary" id="mm-generate">Teams auslosen</button>
+          <div class="row" style="flex-wrap:wrap;">
+            <button type="button" class="btn btn-primary" id="mm-generate" ${drawReady ? '' : 'disabled'}>Teams auslosen</button>
+            ${drawReady ? '' : infoTooltipHtml(
+                'matchmaking-draw-disabled-help',
+                'Warum ist „Teams auslosen“ deaktiviert?',
+                'Mindestens 2 Spieler auswählen, um Teams auszulosen.',
+                'warning'
+              )}
+          </div>
         </div>
-      </section>
+      </section>` : ''}
 
+      ${teamsMode === 'draft' ? `
       <section class="tournament-section-panel tournament-create-step stack" aria-labelledby="matchmaking-draft-title">
         <div class="tournament-create-step-title">
           <h3 id="matchmaking-draft-title" class="title-with-info">
@@ -620,9 +654,17 @@ export function renderMatchmaking(container, ctx) {
           </div>
         </div>
         <div class="sticky-actions">
-          <button type="button" class="btn btn-primary" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten</button>
+          <div class="row" style="flex-wrap:wrap;">
+            <button type="button" class="btn btn-primary" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten</button>
+            ${draftReady ? '' : infoTooltipHtml(
+                'matchmaking-draft-disabled-help',
+                'Warum ist „Draft starten“ deaktiviert?',
+                draftDisabledReason,
+                'warning'
+              )}
+          </div>
         </div>
-      </section>
+      </section>` : ''}
     </div>
     <div id="mm-result">${renderResult(state.lastMatchmaking)}</div>
 
@@ -632,24 +674,31 @@ export function renderMatchmaking(container, ctx) {
   wireInfoTooltips(container);
   wireDrawCards(container, ctx);
 
-  container.querySelector('#mm-teamcount').addEventListener('input', (event) => {
+  container.querySelectorAll('[data-mm-mode]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      teamsMode = btn.dataset.mmMode;
+      ctx.rerender();
+    });
+  });
+
+  container.querySelector('#mm-teamcount')?.addEventListener('input', (event) => {
     teamCountValue = event.target.value;
   });
 
-  container.querySelector('#mm-select-all').addEventListener('click', () => {
+  container.querySelector('#mm-select-all')?.addEventListener('click', () => {
     checkedIds = new Set(state.players.map((player) => player.id));
     ctx.rerender();
   });
-  container.querySelector('#mm-select-none').addEventListener('click', () => {
+  container.querySelector('#mm-select-none')?.addEventListener('click', () => {
     checkedIds.clear();
     ctx.rerender();
   });
 
-  container.querySelector('#draft-select-all').addEventListener('click', () => {
+  container.querySelector('#draft-select-all')?.addEventListener('click', () => {
     draftPlayerIds = new Set(state.players.map((player) => player.id));
     ctx.rerender();
   });
-  container.querySelector('#draft-select-none').addEventListener('click', () => {
+  container.querySelector('#draft-select-none')?.addEventListener('click', () => {
     draftPlayerIds.clear();
     draftCaptainIds.clear();
     ctx.rerender();
@@ -680,7 +729,7 @@ export function renderMatchmaking(container, ctx) {
     });
   });
 
-  container.querySelector('#draft-start').addEventListener('click', async () => {
+  container.querySelector('#draft-start')?.addEventListener('click', async () => {
     const captainIds = [...draftCaptainIds];
     const poolPlayerIds = [...draftPlayerIds].filter((id) => !draftCaptainIds.has(id));
     try {
@@ -712,16 +761,13 @@ export function renderMatchmaking(container, ctx) {
     });
   });
 
-  container.querySelector('#mm-avoid-adjacent').addEventListener('change', (e) => {
+  container.querySelector('#mm-avoid-adjacent')?.addEventListener('change', (e) => {
     avoidAdjacentOpponents = e.target.checked;
   });
 
-  container.querySelector('#mm-generate').addEventListener('click', async () => {
+  container.querySelector('#mm-generate')?.addEventListener('click', async () => {
     const gameId = selectedGameId;
     const playerIds = [...checkedIds];
-    if (playerIds.length < 2) {
-      return showToast('Mindestens 2 Spieler auswählen.', { error: true });
-    }
     const teamCountRaw = container.querySelector('#mm-teamcount').value;
     const body = { gameId, playerIds, avoidAdjacentOpponents };
     if (teamCountRaw) body.teamCount = parseInt(teamCountRaw, 10);

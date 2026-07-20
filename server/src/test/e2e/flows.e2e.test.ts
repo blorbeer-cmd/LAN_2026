@@ -413,12 +413,18 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   assert.ok(desktopSelectionColumns >= 2);
   await page.setViewportSize({ width: 390, height: 844 });
 
+  // Only the selected mode's section renders — switch to Captain Draft to
+  // reach its tooltip, then back to Auslosung to reach "Teams auslosen".
+  await page.click('[data-mm-mode="draft"]');
   const draftHelp = page.locator('[aria-controls="captain-draft-help"]');
+  await draftHelp.waitFor();
   await draftHelp.click();
   assert.equal(await draftHelp.getAttribute('aria-expanded'), 'true');
   await page.keyboard.press('Escape');
   assert.equal(await draftHelp.getAttribute('aria-expanded'), 'false');
 
+  await page.click('[data-mm-mode="draw"]');
+  await page.waitForSelector('#mm-generate');
   await page.click('#mm-generate');
   await page.waitForSelector('.team-card');
   const teamCards = await page.locator('.team-card').count();
@@ -1914,6 +1920,7 @@ test('Durchsage: notification center can navigate, mark read and remove without 
 
 test('Captain-Draft: pick captains, run the live draft to completion', async () => {
   await page.click('.nav-btn[data-view="matchmaking"]');
+  await page.click('[data-mm-mode="draft"]');
   await page.waitForSelector('[data-captain-toggle]');
 
   // The device identity ("E2E Alice Pro") must be a captain so this page is
