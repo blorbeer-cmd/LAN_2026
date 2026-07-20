@@ -684,7 +684,9 @@ export function renderFoodOrders(container, ctx) {
       const paid = e.currentTarget.checked;
       try {
         await api.foodOrders.setItemPaid(checkbox.dataset.order, checkbox.dataset.togglePaid, paid);
-        cache = null;
+        const order = cache?.find((o) => o.id === checkbox.dataset.order);
+        const item = order?.items.find((i) => i.id === checkbox.dataset.togglePaid);
+        if (item) item.paid = paid;
         ctx.rerender();
       } catch (err) {
         e.currentTarget.checked = !paid;

@@ -389,7 +389,8 @@ export function renderChecklist(container, ctx) {
       const checked = e.currentTarget.checked;
       try {
         await api.checklist.setItemChecked(checkbox.dataset.toggleItem, myId, checked);
-        invalidateItems();
+        const item = itemsCache?.find((it) => it.id === checkbox.dataset.toggleItem);
+        if (item) item.checked = checked;
         ctx.rerender();
       } catch (err) {
         e.currentTarget.checked = !checked;
