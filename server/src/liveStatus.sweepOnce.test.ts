@@ -12,6 +12,7 @@ import { nanoid } from 'nanoid';
 import { db } from './db';
 import { setIo } from './realtime';
 import { sweepOnce } from './liveStatus';
+import { config } from './config';
 
 test('sweepOnce broadcasts the live board via io.emit', () => {
   const emitted: Array<{ event: string; payload: unknown }> = [];
@@ -78,6 +79,68 @@ test('sweepOnce refreshes every group that carries live rows, each under its own
   } finally {
     db.prepare('DELETE FROM tracking_live_contexts WHERE player_id IN (?, ?)').run(playerA, playerB);
     setIo(null as any);
+  }
+});
+
+test('sweepOnce isolates group boards by actual required-mode recipient', () => {
+  const originalAuthMode = config.authMode;
+  (config as { authMode: 'legacy' | 'required' }).authMode = 'required';
+  const groupA = nanoid();
+  const groupB = nanoid();
+  const playerA = nanoid();
+  const playerB = nanoid();
+  const now = Date.now();
+  db.prepare('INSERT INTO groups (id, name, created_at) VALUES (?, ?, ?)').run(groupA, 'Sweep Recipient A', now);
+  db.prepare('INSERT INTO groups (id, name, created_at) VALUES (?, ?, ?)').run(groupB, 'Sweep Recipient B', now);
+  const insertPlayer = db.prepare('INSERT INTO players (id, name, color, api_key, created_at) VALUES (?, ?, ?, ?, ?)');
+  insertPlayer.run(playerA, 'Sweep Recipient Player A', '#abcdef', nanoid(), now);
+  insertPlayer.run(playerB, 'Sweep Recipient Player B', '#fedcba', nanoid(), now);
+  const insertMembership = db.prepare(
+    `INSERT INTO group_memberships (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+     VALUES (?, ?, 'member', 'active', ?, 1)`,
+  );
+  insertMembership.run(groupA, playerA, now);
+  insertMembership.run(groupB, playerB, now);
+  db.prepare(
+    'INSERT INTO tracking_live_contexts (player_id, group_id, event_id, last_seen, activity_tracked) VALUES (?, ?, NULL, ?, 0)',
+  ).run(playerA, groupA, now);
+  db.prepare(
+    'INSERT INTO tracking_live_contexts (player_id, group_id, event_id, last_seen, activity_tracked) VALUES (?, ?, NULL, ?, 0)',
+  ).run(playerB, groupB, now);
+
+  const received = new Map<string, unknown[]>([['groupA', []], ['groupB', []], ['unscoped', []]]);
+  const fakeSocket = (label: string, data: Record<string, unknown>) => ({
+    data,
+    emit(event: string, payload: unknown) {
+      if (event === 'live:changed') received.get(label)!.push(payload);
+    },
+  });
+  const globalEmits: string[] = [];
+  const fakeIo = {
+    emit(event: string) { globalEmits.push(event); },
+    sockets: { sockets: new Map([
+      ['groupA', fakeSocket('groupA', { groupId: groupA, authPlayerId: playerA })],
+      ['groupB', fakeSocket('groupB', { groupId: groupB, authPlayerId: playerB })],
+      ['unscoped', fakeSocket('unscoped', { authPlayerId: playerA })],
+    ]) },
+  };
+  setIo(fakeIo as any);
+
+  try {
+    sweepOnce(now);
+    assert.deepEqual(globalEmits, [], 'required-mode sweeps never fall back to a global emit');
+    assert.equal(received.get('groupA')!.length, 1, 'group A receives exactly its board refresh');
+    assert.equal(received.get('groupB')!.length, 1, 'group B receives exactly its board refresh');
+    assert.equal(received.get('unscoped')!.length, 0, 'an unscoped socket receives no board');
+    const boardA = received.get('groupA')![0] as Array<{ player_id: string }>;
+    const boardB = received.get('groupB')![0] as Array<{ player_id: string }>;
+    assert.ok(boardA.some((entry) => entry.player_id === playerA));
+    assert.ok(!boardA.some((entry) => entry.player_id === playerB), 'group A board excludes group B players');
+    assert.ok(boardB.some((entry) => entry.player_id === playerB));
+    assert.ok(!boardB.some((entry) => entry.player_id === playerA), 'group B board excludes group A players');
+  } finally {
+    setIo(null);
+    (config as { authMode: 'legacy' | 'required' }).authMode = originalAuthMode;
   }
 });
 
