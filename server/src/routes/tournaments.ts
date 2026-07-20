@@ -517,7 +517,7 @@ tournamentsRouter.post('/', (req, res) => {
       playerIds: allPlayerIds,
       message: `Neues Turnier: ${tournamentName}`,
     },
-  });
+  }, { groupId: req.group!.id, eventId: communicationEventId(eventId) });
   notifyPlayers(
     allPlayerIds,
     { title: 'Neues Turnier', body: tournamentName, url: '/#tournaments' },
@@ -868,13 +868,22 @@ function saveTournamentResult(req: Request, res: Response) {
   for (const matchId of readyRoundRobinMatchIds) {
     const roundNotify = buildMatchReadyNotify(matchId);
     if (!roundNotify) continue;
-    broadcast(Events.tournamentsChanged, {
+    const roundBase = {
       type: 'match_ready',
       tournamentId: tournament.id,
       tournamentName: tournament.name,
       gameId: tournament.game_id,
-      notify: roundNotify,
-    });
+    };
+    // notify.message carries the next lobby's name/password and names the two
+    // teams; deliver those details only to the players in the match, and give
+    // the other event-authorized sockets a refresh payload without the private
+    // notify.
+    broadcast(Events.tournamentsChanged, roundBase, notificationScope);
+    broadcast(
+      Events.tournamentsChanged,
+      { ...roundBase, notify: roundNotify },
+      { ...notificationScope, recipientPlayerIds: roundNotify.playerIds },
+    );
   }
 
   const currentTournament = db.prepare('SELECT status FROM tournaments WHERE id = ?').get(tournament.id) as
@@ -882,14 +891,24 @@ function saveTournamentResult(req: Request, res: Response) {
     | undefined;
   if (currentTournament?.status !== 'active') resolvePushTopic(`tournament:${tournament.id}`, true, notificationScope);
 
-  broadcast(Events.tournamentsChanged, {
+  const mainBase = {
     type: notify ? (knockoutJustGenerated ? 'knockout_stage_started' : 'match_ready') : 'updated',
     tournamentId: tournament.id,
     tournamentName: tournament.name,
     gameId: tournament.game_id,
-    ...(notify ? { notify } : {}),
-  });
-  broadcast(Events.leaderboardChanged, null);
+  };
+  // Every event-authorized socket gets the refresh; the notify (lobby
+  // name/password, intended teams) rides a second broadcast bound to its
+  // named players only.
+  broadcast(Events.tournamentsChanged, mainBase, notificationScope);
+  if (notify) {
+    broadcast(
+      Events.tournamentsChanged,
+      { ...mainBase, notify },
+      { ...notificationScope, recipientPlayerIds: notify.playerIds },
+    );
+  }
+  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id });
   res.json(buildDetail(tournament.id, req.group!.id));
 }
 
@@ -917,6 +936,10 @@ tournamentsRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthe
     groupId: req.group!.id,
     eventId: tournament ? communicationEventId(tournament.event_id) : null,
   });
-  broadcast(Events.tournamentsChanged, { type: 'deleted', tournamentId: req.params.id });
+  broadcast(
+    Events.tournamentsChanged,
+    { type: 'deleted', tournamentId: req.params.id },
+    { groupId: req.group!.id, eventId: tournament ? communicationEventId(tournament.event_id) : null },
+  );
   res.status(204).end();
 });

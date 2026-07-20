@@ -6,6 +6,7 @@ import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { isGameActive } from '../activity';
 import { config } from '../config';
 import { activeTrackingContexts, closeTrackingContext } from '../trackingContexts';
+import { activePlayerGroupIds } from '../groups';
 
 export const agentRouter = Router();
 
@@ -69,7 +70,7 @@ agentRouter.post('/report', (req, res) => {
     }
   });
   sync();
-  for (const groupId of [...new Set(contexts.map((c) => c.groupId))]) broadcast(Events.liveStatusChanged, getLiveBoard(groupId));
+  for (const groupId of [...new Set(contexts.map((c) => c.groupId))]) broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
   const gameIds = [...new Set((db.prepare('SELECT game_id FROM tracking_live_games WHERE player_id = ?').all(player.id) as Array<{ game_id: string }>).map((row) => row.game_id))];
   res.json({ ok: true, playerId: player.id, gameIds, tracked: true, trackingPaused: false });
 });
@@ -83,6 +84,8 @@ agentRouter.post('/tracking-paused', (req, res) => {
   if (typeof paused !== 'boolean') return res.status(400).json({ error: 'paused muss ein Boolean sein.' });
   db.prepare('UPDATE players SET tracking_paused = ? WHERE id = ?').run(paused ? 1 : 0, player.id);
   if (paused) clearPlayerLiveStatus(player.id);
-  broadcast(Events.playersChanged, null);
+  for (const groupId of activePlayerGroupIds(player.id)) {
+    broadcast(Events.playersChanged, null, { groupId });
+  }
   res.json({ ok: true, trackingPaused: paused });
 });

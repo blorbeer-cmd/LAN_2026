@@ -9,8 +9,9 @@ import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { shouldSendLobbyPush } from './lobbyPush';
-import { currentArcadeDataScope, recordArcadeResult } from './arcadeData';
-import { canJoinLobby, lobbyGroupId, playerGroupId, socketGroupId } from './scope';
+import { recordArcadeResult } from './arcadeData';
+import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
+import { communicationRecipientIds } from '../communicationRecipients';
 
 const DEFAULT_TARGET_SCORE = 5;
 const QUESTION_MS = 20_000;
@@ -28,6 +29,8 @@ interface PlayerRef {
 
 interface Lobby {
   id: string;
+  groupId: string;
+  eventId: string | null;
   gameType: 'quiz';
   host: PlayerRef;
   players: PlayerRef[];
@@ -46,6 +49,8 @@ interface QuizQuestion {
 
 interface MatchState {
   id: string;
+  groupId: string;
+  eventId: string | null;
   room: string;
   host: PlayerRef;
   players: PlayerRef[];
@@ -76,8 +81,8 @@ function targetScore(value: unknown): number | null {
   return value >= 1 && value <= 100 ? value : null;
 }
 
-function publicLobbies(groupId?: string | null) {
-  return [...lobbies.values()].filter((l) => !groupId || lobbyGroupId(l) === groupId).map((l) => ({
+function publicLobbies(groupId: string, eventId: string | null) {
+  return [...lobbies.values()].filter((l) => l.groupId === groupId && l.eventId === eventId).map((l) => ({
     id: l.id,
     gameType: l.gameType,
     host: l.host,
@@ -87,14 +92,17 @@ function publicLobbies(groupId?: string | null) {
 }
 
 function emitLobbies(io: Server) {
-  for (const socket of io.sockets.sockets.values()) socket.emit('arcade:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
+  for (const socket of io.sockets.sockets.values()) {
+    const scope = socketArcadeScope(socket);
+    if (scope) socket.emit('arcade:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) });
+  }
 }
 
 // Open-lobby summary for GET /api/arcade/lobbies (the Home view's "Aktuell"
 // card) — just enough to say "a lobby is waiting", less detail than the
 // socket payload the Arcade view itself uses.
-export function openLobbySummaries() {
-  return [...lobbies.values()].map((l) => ({
+export function openLobbySummaries(groupId?: string, eventId?: string | null) {
+  return [...lobbies.values()].filter((l) => !groupId || (l.groupId === groupId && (eventId === undefined || l.eventId === eventId))).map((l) => ({
     id: l.id,
     hostName: l.host.name,
     playerCount: l.players.length,
@@ -111,11 +119,9 @@ function realPlayerIds(players: PlayerRef[]): string[] {
 }
 
 function loadQuestionFor(match: MatchState): QuizQuestion | null {
-  const scope = currentArcadeDataScope(realPlayerIds(match.players));
-  if (!scope) return null;
   const questions = db
     .prepare('SELECT id, question, answers, category, difficulty FROM quiz_questions WHERE group_id = ? ORDER BY created_at')
-    .all(scope.groupId) as QuizQuestion[];
+    .all(match.groupId) as QuizQuestion[];
   const seenRows = db
     .prepare(
       `SELECT question_id
@@ -124,7 +130,7 @@ function loadQuestionFor(match: MatchState): QuizQuestion | null {
        GROUP BY question_id
        HAVING COUNT(DISTINCT player_id) = ?`
     )
-    .all(scope.groupId, scope.eventId, ...match.players.map((p) => p.id), match.players.length) as Array<{ question_id: string }>;
+    .all(match.groupId, match.eventId, ...match.players.map((p) => p.id), match.players.length) as Array<{ question_id: string }>;
   const id = pickQuestion(
     questions.map((q) => q.id),
     new Set(seenRows.map((r) => r.question_id))
@@ -147,8 +153,6 @@ function firstAcceptedAnswer(question: QuizQuestion): string {
 function markSeen(match: MatchState, winnerId: string | null) {
   if (!match.currentQuestion) return;
   const players = realPlayerIds(match.players);
-  const scope = currentArcadeDataScope(players);
-  if (!scope) return;
   const now = Date.now();
   const stmt = db.prepare(
     `INSERT INTO quiz_seen
@@ -165,8 +169,8 @@ function markSeen(match: MatchState, winnerId: string | null) {
       p.id,
       now,
       winnerId === null ? null : winnerId === p.id ? 1 : 0,
-      scope.groupId,
-      scope.eventId,
+      match.groupId,
+      match.eventId,
       p.name,
     );
   }
@@ -174,7 +178,7 @@ function markSeen(match: MatchState, winnerId: string | null) {
 
 function finishMatch(io: Server, match: MatchState, winner: PlayerRef | null, reason = 'completed') {
   clearQuestionTimer(match);
-  endArcadeSession(realPlayerIds(match.players), 'quiz');
+  endArcadeSession(realPlayerIds(match.players), 'quiz', match);
   recordArcadeResult({
     gameType: 'quiz',
     winnerId: winner?.id === QUIZ_BOT.id ? null : winner?.id ?? null,
@@ -182,9 +186,10 @@ function finishMatch(io: Server, match: MatchState, winner: PlayerRef | null, re
     scores: scorePayload(match),
     reason,
     startedAt: match.startedAt,
+    scope: match,
   });
-  io.to(match.room).emit('arcade:match:end', { matchId: match.id, winner, reason, scores: scorePayload(match) });
-  broadcastArcadeKiosk(io, { gameType: null, matchId: match.id });
+  emitArcadeRoom(io, match.room, 'arcade:match:end', { matchId: match.id, winner, reason, scores: scorePayload(match) }, match);
+  broadcastArcadeKiosk(io, { gameType: null, matchId: match.id, groupId: match.groupId, eventId: match.eventId });
   matches.delete(match.id);
 }
 
@@ -193,12 +198,12 @@ function scheduleQuestionTimeout(io: Server, match: MatchState, delayMs: number)
     if (!matches.has(match.id) || match.answered || match.paused || !match.currentQuestion) return;
     match.answered = true;
     markSeen(match, null);
-    io.to(match.room).emit('arcade:quiz:timeout', {
+    emitArcadeRoom(io, match.room, 'arcade:quiz:timeout', {
       matchId: match.id,
       correctAnswer: firstAcceptedAnswer(match.currentQuestion),
       scores: scorePayload(match),
-    });
-    broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, phase: 'result', scores: scorePayload(match), paused: false });
+    }, match);
+    broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'result', scores: scorePayload(match), paused: false });
     setTimeout(() => {
       if (matches.has(match.id)) sendQuestion(io, match);
     }, 1400);
@@ -216,7 +221,7 @@ function sendQuestion(io: Server, match: MatchState) {
 
   const startedAt = Date.now();
   match.questionExpiresAt = startedAt + QUESTION_MS;
-  io.to(match.room).emit('arcade:quiz:question', {
+  emitArcadeRoom(io, match.room, 'arcade:quiz:question', {
     matchId: match.id,
     questionId: question.id,
     question: question.question,
@@ -226,8 +231,8 @@ function sendQuestion(io: Server, match: MatchState) {
     targetScore: match.targetScore,
     startedAt,
     expiresAt: match.questionExpiresAt,
-  });
-  broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, phase: 'playing', category: question.category, scores: scorePayload(match), startedAt, expiresAt: match.questionExpiresAt });
+  }, match);
+  broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'playing', category: question.category, scores: scorePayload(match), startedAt, expiresAt: match.questionExpiresAt });
 
   scheduleQuestionTimeout(io, match, QUESTION_MS);
   const bot = match.players.find((player) => player.id === QUIZ_BOT.id);
@@ -247,8 +252,8 @@ function answerCorrect(io: Server, match: MatchState, player: PlayerRef) {
   match.scores.set(player.id, (match.scores.get(player.id) ?? 0) + 1);
   markSeen(match, player.id);
   const scores = scorePayload(match);
-  io.to(match.room).emit('arcade:quiz:result', { matchId: match.id, winner: player, correctAnswer: accepted[0], scores });
-  broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, phase: 'result', scores, paused: false });
+  emitArcadeRoom(io, match.room, 'arcade:quiz:result', { matchId: match.id, winner: player, correctAnswer: accepted[0], scores }, match);
+  broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'result', scores, paused: false });
   if ((match.scores.get(player.id) ?? 0) >= match.targetScore) finishMatch(io, match, player);
   else setTimeout(() => { if (matches.has(match.id)) sendQuestion(io, match); }, 1400);
 }
@@ -261,7 +266,7 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
     if (lobby.host.id === player[0]) {
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'quiz', id);
       lobbies.delete(id);
-      resolvePushTopic(quizLobbyPushKey(id));
+      resolvePushTopic(quizLobbyPushKey(id), false, lobby);
     } else {
       releaseLobbyMembership(player[0], 'quiz', id);
       lobby.socketIds.delete(player[0]);
@@ -275,19 +280,25 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
 
 export function registerArcadeSockets(io: Server): void {
   io.on('connection', (socket: Socket) => {
-    socket.emit('arcade:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
+    const emitSocketLobbies = () => {
+      const scope = socketArcadeScope(socket);
+      if (scope) socket.emit('arcade:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) });
+    };
+    emitSocketLobbies();
 
-    socket.on('arcade:lobbies:get', () => {
-      socket.emit('arcade:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
-    });
+    socket.on('arcade:lobbies:get', emitSocketLobbies);
+    socket.on('scope:subscribe', emitSocketLobbies);
+    socket.on('room:subscribe', emitSocketLobbies);
 
     socket.on('arcade:lobby:create', (payload: { gameType?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const player = playerById(payload?.playerId);
       if (!player || payload?.gameType !== 'quiz') return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
-      if (socketGroupId(socket) && socketGroupId(socket) !== playerGroupId(player.id)) return ack?.({ ok: false, error: 'Gruppenzugriff verweigert.' });
+      const scope = socketArcadeScope(socket, player.id);
+      if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
 
       const lobby: Lobby = {
         id: nanoid(),
+        ...scope,
         gameType: 'quiz',
         host: player,
         players: [player],
@@ -308,9 +319,7 @@ export function registerArcadeSockets(io: Server): void {
       // is waiting for them. Throttled per game type (see lobbyPush.ts) so
       // rapid re-creation cannot spam every phone on the LAN.
       if (shouldSendLobbyPush('quiz')) {
-        const otherPlayerIds = (db.prepare('SELECT id FROM players WHERE id != ?').all(player.id) as Array<{ id: string }>).map(
-          (p) => p.id
-        );
+        const otherPlayerIds = communicationRecipientIds(lobby.groupId, lobby.eventId).filter((id) => id !== player.id);
         notifyPlayers(
           otherPlayerIds,
           {
@@ -319,7 +328,8 @@ export function registerArcadeSockets(io: Server): void {
             url: '/#arcade',
           },
           'all',
-          { key: quizLobbyPushKey(lobby.id) }
+          { key: quizLobbyPushKey(lobby.id) },
+          lobby,
         );
       }
     });
@@ -328,8 +338,9 @@ export function registerArcadeSockets(io: Server): void {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
-      if (socketGroupId(socket) && socketGroupId(socket) !== playerGroupId(player.id)) return ack?.({ ok: false, error: 'Gruppenzugriff verweigert.' });
-      const lobby: Lobby = { id: nanoid(), gameType: 'quiz', host: player, players: [player, QUIZ_BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([QUIZ_BOT.id]), createdAt: Date.now() };
+      const scope = socketArcadeScope(socket, player.id);
+      if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
+      const lobby: Lobby = { id: nanoid(), ...scope, gameType: 'quiz', host: player, players: [player, QUIZ_BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([QUIZ_BOT.id]), createdAt: Date.now() };
       if (!claimLobbyMembership(player.id, 'quiz', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromOpenLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby);
@@ -340,11 +351,12 @@ export function registerArcadeSockets(io: Server): void {
     socket.on('arcade:lobby:close', (payload: { lobbyId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
       if (!lobby) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
+      if (!canUseLobby(socket, lobby)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' });
       if (payload?.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann die Lobby schließen.' });
 
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'quiz', lobby.id);
       lobbies.delete(lobby.id);
-      resolvePushTopic(quizLobbyPushKey(lobby.id));
+      resolvePushTopic(quizLobbyPushKey(lobby.id), false, lobby);
       emitLobbies(io);
       ack?.({ ok: true });
     });
@@ -367,11 +379,11 @@ export function registerArcadeSockets(io: Server): void {
 
     socket.on('arcade:lobby:leave', (payload: { lobbyId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
-      if (!lobby || typeof payload?.playerId !== 'string') return ack?.({ ok: true });
+      if (!lobby || !canUseLobby(socket, lobby) || typeof payload?.playerId !== 'string') return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' });
       if (lobby.host.id === payload.playerId) {
         releaseLobbyMemberships(lobby.players.map((p) => p.id), 'quiz', lobby.id);
         lobbies.delete(lobby.id);
-        resolvePushTopic(quizLobbyPushKey(lobby.id));
+        resolvePushTopic(quizLobbyPushKey(lobby.id), false, lobby);
       } else {
         releaseLobbyMembership(payload.playerId, 'quiz', lobby.id);
         lobby.socketIds.delete(payload.playerId);
@@ -384,7 +396,7 @@ export function registerArcadeSockets(io: Server): void {
 
     socket.on('arcade:lobby:ready', (payload: { lobbyId?: string; playerId?: string; ready?: boolean }, ack?: (res: unknown) => void) => {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
-      if (!lobby || !setLobbyReady(lobby, payload?.playerId, payload?.ready)) {
+      if (!lobby || !canUseLobby(socket, lobby) || !setLobbyReady(lobby, payload?.playerId, payload?.ready)) {
         return ack?.({ ok: false, error: 'Bereit-Status konnte nicht gesetzt werden.' });
       }
       emitLobbies(io);
@@ -395,6 +407,7 @@ export function registerArcadeSockets(io: Server): void {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
       const score = targetScore(payload?.targetScore) ?? DEFAULT_TARGET_SCORE;
       if (!lobby) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
+      if (!canUseLobby(socket, lobby)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' });
       if (payload?.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' });
       if (lobby.players.length < 2) return ack?.({ ok: false, error: 'Mindestens zwei Spieler werden gebraucht.' });
 
@@ -404,6 +417,8 @@ export function registerArcadeSockets(io: Server): void {
       }
       const match: MatchState = {
         id: nanoid(),
+        groupId: lobby.groupId,
+        eventId: lobby.eventId,
         room,
         host: lobby.host,
         players: lobby.players,
@@ -422,19 +437,19 @@ export function registerArcadeSockets(io: Server): void {
       matches.set(match.id, match);
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'quiz', lobby.id);
       lobbies.delete(lobby.id);
-      resolvePushTopic(quizLobbyPushKey(lobby.id));
+      resolvePushTopic(quizLobbyPushKey(lobby.id), false, lobby);
       emitLobbies(io);
-      startArcadeSession(realPlayerIds(match.players), 'quiz');
+      startArcadeSession(realPlayerIds(match.players), 'quiz', match);
       const beginsAt = Date.now() + COUNTDOWN_MS;
-      io.to(room).emit('arcade:match:start', {
+      emitArcadeRoom(io, room, 'arcade:match:start', {
         matchId: match.id,
         gameType: 'quiz',
         host: match.host,
         players: match.players,
         targetScore: score,
         beginsAt,
-      });
-      broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, phase: 'countdown', players: match.players, scores: scorePayload(match) });
+      }, match);
+      broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'countdown', players: match.players, scores: scorePayload(match) });
       ack?.({ ok: true, matchId: match.id });
       // Hold the first question until the shared 3-2-1 countdown finishes.
       setTimeout(() => {
@@ -445,7 +460,7 @@ export function registerArcadeSockets(io: Server): void {
     socket.on('arcade:quiz:answer', (payload: { matchId?: string; playerId?: string; text?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
       const player = match?.players.find((p) => p.id === payload?.playerId);
-      if (!match || !player || player.id === QUIZ_BOT.id || !match.currentQuestion || match.answered || match.paused || typeof payload?.text !== 'string') {
+      if (!match || !canUseLobby(socket, match) || !player || player.id === QUIZ_BOT.id || !match.currentQuestion || match.answered || match.paused || typeof payload?.text !== 'string') {
         return ack?.({ ok: false, error: 'Antwort nicht angenommen.' });
       }
       const accepted = JSON.parse(match.currentQuestion.answers) as string[];
@@ -457,7 +472,7 @@ export function registerArcadeSockets(io: Server): void {
 
     socket.on('arcade:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
       if (!match.currentQuestion || match.answered || match.paused) return ack?.({ ok: true });
 
@@ -466,18 +481,18 @@ export function registerArcadeSockets(io: Server): void {
       match.questionTimer = null;
       match.questionExpiresAt = null;
       match.paused = true;
-      io.to(match.room).emit('arcade:match:paused', {
+      emitArcadeRoom(io, match.room, 'arcade:match:paused', {
         matchId: match.id,
         scores: scorePayload(match),
         remainingMs: match.questionRemainingMs,
-      });
-      broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, phase: 'playing', paused: true, scores: scorePayload(match), remainingMs: match.questionRemainingMs });
+      }, match);
+      broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'playing', paused: true, scores: scorePayload(match), remainingMs: match.questionRemainingMs });
       ack?.({ ok: true });
     });
 
     socket.on('arcade:match:resume', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann fortsetzen.' });
       if (!match.currentQuestion || match.answered || !match.paused) return ack?.({ ok: true });
 
@@ -486,18 +501,18 @@ export function registerArcadeSockets(io: Server): void {
       match.questionRemainingMs = null;
       match.paused = false;
       scheduleQuestionTimeout(io, match, remainingMs);
-      io.to(match.room).emit('arcade:match:resumed', {
+      emitArcadeRoom(io, match.room, 'arcade:match:resumed', {
         matchId: match.id,
         scores: scorePayload(match),
         expiresAt: match.questionExpiresAt,
-      });
-      broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, phase: 'playing', paused: false, scores: scorePayload(match), expiresAt: match.questionExpiresAt });
+      }, match);
+      broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'playing', paused: false, scores: scorePayload(match), expiresAt: match.questionExpiresAt });
       ack?.({ ok: true });
     });
 
     socket.on('arcade:match:finish', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann beenden.' });
       finishMatch(io, match, null, 'ended-by-host');
       ack?.({ ok: true });
@@ -508,13 +523,13 @@ export function registerArcadeSockets(io: Server): void {
     // outcome as a disconnect mid-match.
     socket.on('arcade:match:leave', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       const leaver = match.players.find((p) => p.id === payload?.playerId);
       if (!leaver) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
       // socket.to (not io.to): the leaver's own socket is still joined to
       // match.room at this point (unlike a real disconnect), so io.to would
       // also show them their own "opponent left" toast.
-      socket.to(match.room).emit('arcade:match:opponent-left', { matchId: match.id, playerId: leaver.id });
+      emitArcadeRoom(io, match.room, 'arcade:match:opponent-left', { matchId: match.id, playerId: leaver.id }, match, socket.id);
       finishMatch(io, match, null, 'player-left');
       ack?.({ ok: true });
     });
@@ -524,7 +539,7 @@ export function registerArcadeSockets(io: Server): void {
       for (const [id, match] of matches) {
         const player = [...match.socketIds.entries()].find(([, socketId]) => socketId === socket.id);
         if (!player) continue;
-        io.to(match.room).emit('arcade:match:opponent-left', { matchId: id, playerId: player[0] });
+        emitArcadeRoom(io, match.room, 'arcade:match:opponent-left', { matchId: id, playerId: player[0] }, match);
         finishMatch(io, match, null, 'player-left');
       }
     });

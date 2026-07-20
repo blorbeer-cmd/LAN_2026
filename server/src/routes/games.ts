@@ -12,6 +12,7 @@ import { isNonEmptyString, isIntInRange, isValidAvatar } from '../validation';
 import { writeAdminAudit } from '../adminAudit';
 import { requireRecentReauthentication, withBodyPlayerIdentity } from '../sessions';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
+import { getLiveBoard } from '../liveStatus';
 
 export const gamesRouter = Router();
 
@@ -212,7 +213,7 @@ gamesRouter.post(
       row.group_id,
     );
 
-    broadcast(Events.gamesChanged, null);
+    broadcast(Events.gamesChanged, null, { groupId: req.group!.id });
     res.status(201).json(withProcessNames(row));
   },
 );
@@ -292,7 +293,7 @@ gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => 
     next.id,
   );
 
-  broadcast(Events.gamesChanged, null);
+  broadcast(Events.gamesChanged, null, { groupId: req.group!.id });
   res.json(withProcessNames(next));
 });
 
@@ -309,7 +310,7 @@ gamesRouter.post('/:id/promote', resolveGame, requireGroupRole('admin'), (req, r
     .run(existing.id);
   if (result.changes === 0) return res.status(409).json({ error: 'Spiel ist bereits im Katalog.' });
 
-  broadcast(Events.gamesChanged, null);
+  broadcast(Events.gamesChanged, null, { groupId: req.group!.id });
   res.json(withProcessNames(db.prepare('SELECT * FROM games WHERE id = ?').get(existing.id) as GameRow));
 });
 
@@ -340,8 +341,8 @@ gamesRouter.delete(
       targetType: 'game',
       targetId: existing.id,
     });
-    broadcast(Events.gamesChanged, null);
-    broadcast(Events.liveStatusChanged, null);
+    broadcast(Events.gamesChanged, null, { groupId: req.group!.id });
+    broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
     res.status(204).end();
   },
 );
@@ -370,7 +371,7 @@ gamesRouter.post('/:id/processes', resolveGame, requireGroupRole('admin'), (req,
     normalized,
   );
 
-  broadcast(Events.gamesChanged, null);
+  broadcast(Events.gamesChanged, null, { groupId: req.group!.id });
   res.status(201).json({ processName: normalized });
 });
 
@@ -383,6 +384,6 @@ gamesRouter.delete('/:id/processes/:processName', resolveGame, requireGroupRole(
   if (result.changes === 0) {
     return res.status(404).json({ error: 'Zuordnung nicht gefunden.' });
   }
-  broadcast(Events.gamesChanged, null);
+  broadcast(Events.gamesChanged, null, { groupId: req.group!.id });
   res.status(204).end();
 });

@@ -7,11 +7,11 @@
 // on an agent report that will never come.
 
 import { nanoid } from 'nanoid';
-import { db, ARCADE_GAME_DEFS, DEFAULT_GROUP_ID } from '../db';
+import { db, ARCADE_GAME_DEFS, OUTSIDE_EVENTS_ID } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getLiveBoard } from '../liveStatus';
-import { getTrackingEvent, getTrackingEventId } from '../events';
 import { currentArcadeDataScope } from './arcadeData';
+import type { ArcadeDataScope } from './arcadeData';
 
 export type ArcadeGameKey = (typeof ARCADE_GAME_DEFS)[number]['key'];
 
@@ -36,13 +36,13 @@ function arcadeGameId(key: ArcadeGameKey): string | null {
 
 // Marks the given real players (bots already filtered out by the caller) as
 // currently playing an arcade match.
-export function startArcadeSession(playerIds: string[], key: ArcadeGameKey): void {
+export function startArcadeSession(playerIds: string[], key: ArcadeGameKey, immutableScope?: ArcadeDataScope): void {
   const gameId = arcadeGameId(key);
   if (!gameId || playerIds.length === 0) return;
-  const scope = currentArcadeDataScope(playerIds);
+  const scope = immutableScope ?? currentArcadeDataScope(playerIds);
   if (!scope) return;
   const now = Date.now();
-  const eventId = getTrackingEventId();
+  const eventId = scope.eventId ?? OUTSIDE_EVENTS_ID;
   // The Arcade titles themselves are shared system fixtures (games.group_id
   // NULL, see db.ts), but a live session still belongs to whichever group its
   // players are actually in — same "current tracking context" resolution
@@ -78,10 +78,10 @@ export function startArcadeSession(playerIds: string[], key: ArcadeGameKey): voi
 // Ends the arcade session for the given real players — called on every match
 // end path (completed, aborted, opponent left), mirroring how agent.ts closes
 // a play_sessions row the moment a game is no longer detected as running.
-export function endArcadeSession(playerIds: string[], key: ArcadeGameKey): void {
+export function endArcadeSession(playerIds: string[], key: ArcadeGameKey, immutableScope?: ArcadeDataScope): void {
   const gameId = arcadeGameId(key);
   if (!gameId || playerIds.length === 0) return;
-  const scope = currentArcadeDataScope(playerIds);
+  const scope = immutableScope ?? currentArcadeDataScope(playerIds);
   if (!scope) return;
   const now = Date.now();
 
@@ -125,7 +125,12 @@ export function startArcadeHeartbeat(): void {
       for (const id of ids) touch.run(now, id);
     });
     run();
-    const groupId = getTrackingEvent().group_id ?? DEFAULT_GROUP_ID;
-    broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+    const groups = db.prepare(
+      `SELECT DISTINCT lsg.group_id AS groupId
+       FROM live_status_games lsg WHERE lsg.game_id IN (${ids.map(() => '?').join(',')})`,
+    ).all(...ids) as Array<{ groupId: string }>;
+    for (const { groupId } of groups) {
+      broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+    }
   }, 20_000).unref();
 }

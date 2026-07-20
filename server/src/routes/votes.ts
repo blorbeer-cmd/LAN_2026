@@ -425,7 +425,7 @@ votesRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   })();
 
   const payload = buildPayload(req.group!.id);
-  broadcast(Events.votesChanged, payload, { groupId });
+  broadcast(Events.votesChanged, payload, { groupId, eventId });
 
   notifyPlayers(
     voteNotificationPlayerIds(groupId, eventId),
@@ -490,7 +490,7 @@ votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   }
 
   const payload = buildPayload(req.group!.id);
-  broadcast(Events.votesChanged, payload, { groupId });
+  broadcast(Events.votesChanged, payload, { groupId, eventId: meta.eventId });
   res.json(payload);
 });
 
@@ -566,7 +566,7 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
   }
 
   const payload = buildPayload(req.group!.id);
-  broadcast(Events.votesChanged, payload, { groupId });
+  broadcast(Events.votesChanged, payload, { groupId, eventId: meta.eventId });
   res.json(payload);
 });
 
@@ -594,7 +594,7 @@ votesRouter.post('/close', requireGroupRole('admin'), (req, res) => {
   resolvePushTopic(`vote:${state.round}`, false, { groupId, eventId: meta.eventId });
 
   const payload = buildPayload(req.group!.id, { winnerGameIds });
-  broadcast(Events.votesChanged, payload, { groupId });
+  broadcast(Events.votesChanged, payload, { groupId, eventId: meta.eventId });
   res.json(payload);
 });
 
@@ -613,7 +613,7 @@ votesRouter.post('/cancel', requireGroupRole('admin'), (req, res) => {
   resolvePushTopic(`vote:${state.round}`, false, { groupId, eventId: meta.eventId });
 
   const payload = buildPayload(req.group!.id);
-  broadcast(Events.votesChanged, payload, { groupId });
+  broadcast(Events.votesChanged, payload, { groupId, eventId: meta.eventId });
   res.json(payload);
 });
 

@@ -11,6 +11,10 @@ declare global {
       group?: GroupRow;
       groupMembership?: GroupMembershipRow;
       groupResource?: unknown;
+      // Set by the read-only kiosk REST branch: the validated token's scope,
+      // so kiosk-facing handlers (e.g. /push/last) can mirror the socket
+      // delivery rules instead of resolving a request event like a user would.
+      kioskScope?: { groupId: string; eventId: string | null };
     }
   }
 }

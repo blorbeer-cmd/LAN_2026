@@ -1,5 +1,5 @@
 import { config } from './config';
-import { db, OUTSIDE_EVENTS_ID } from './db';
+import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 
 export type GroupEventScope = string | null;
 
@@ -35,6 +35,18 @@ export function resolveGroupEventScope(groupId: string, requestedEventId: unknow
     .prepare("SELECT id FROM events WHERE tracking_enabled = 1 AND group_id = ? AND id != ?")
     .get(groupId, OUTSIDE_EVENTS_ID) as { id: string } | undefined;
   return { ok: true, eventId: tracking?.id ?? null };
+}
+
+// Arrivals and food orders still use the legacy event-owned schema with a
+// non-null event_id and no denormalized group_id. Resolve that storage key
+// from the already-authorized group instead of using the instance-wide
+// getTrackingEventId(). Only the migrated start group may use the historic
+// outside-events sentinel; for every other group, no tracking event means
+// that these event-only resources are currently unavailable.
+export function resolveGroupEventStorageId(groupId: string): string | null {
+  const scope = resolveGroupEventScope(groupId, undefined);
+  if (!scope.ok) return null;
+  return scope.eventId ?? (groupId === DEFAULT_GROUP_ID ? OUTSIDE_EVENTS_ID : null);
 }
 
 export function groupPlayerRows<T>(groupId: string, columns: string): T[] {

@@ -217,11 +217,11 @@ matchesRouter.post('/', (req, res) => {
         seatConflicts,
         drawId
       );
-      broadcast(Events.matchmakingDrawsChanged, { id: drawId, matchId: row.id });
+      broadcast(Events.matchmakingDrawsChanged, { id: drawId, matchId: row.id }, { groupId: req.group!.id });
     }
   }
 
-  broadcast(Events.leaderboardChanged, null);
+  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id });
   res.status(201).json(parseMatch(row));
 });
 
@@ -280,7 +280,7 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
     existing.id
   );
 
-  broadcast(Events.leaderboardChanged, null);
+  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id });
   res.json(
     parseMatch({
       id: existing.id,
@@ -304,6 +304,6 @@ matchesRouter.delete('/:id', resolveMatch, requireGroupRole('admin'), requireRec
     targetType: 'match',
     targetId: existing.id,
   });
-  broadcast(Events.leaderboardChanged, null);
+  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id });
   res.status(204).end();
 });

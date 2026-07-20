@@ -31,7 +31,7 @@ import {
   markSessionReauthenticated,
 } from '../sessions';
 import { createInvite, findValidInvite, markInviteUsed, voidOutstandingInvites, revokeInvite, type InvitePurpose } from '../invites';
-import { ensureDefaultGroupMembership } from '../groups';
+import { DEFAULT_GROUP_ID, ensureDefaultGroupMembership } from '../groups';
 import {
   consumeGlobalAuthRequest,
   isLoginLocked,
@@ -181,7 +181,7 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
     throw error;
   }
 
-  broadcast(Events.playersChanged, null);
+  broadcast(Events.playersChanged, null, { groupId: DEFAULT_GROUP_ID });
   if (isBootstrap) {
     writeAdminAudit({
       actorPlayerId: player.id,
@@ -254,7 +254,7 @@ authRouter.post('/claim', limitAnonymousAuthAttempts, (req, res) => {
     throw error;
   }
 
-  broadcast(Events.playersChanged, null);
+  broadcast(Events.playersChanged, null, { groupId: DEFAULT_GROUP_ID });
   if (isBootstrap) {
     writeAdminAudit({
       actorPlayerId: existing.id,

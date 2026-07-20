@@ -127,6 +127,36 @@ export function getLastPushLogEntry(groupId: string, eventId: string | null): Pu
   return row ?? null;
 }
 
+// The kiosk banner variant, kept in lockstep with the socket delivery rules
+// in realtime.ts: a group kiosk shows the newest active group-wide entry from
+// its group room OR its currently tracking event, while an event kiosk stays
+// exact to its own event. Using the same union on both the live push:sent and
+// this REST refresh prevents a group-room banner from vanishing (or being
+// replaced by a stale event banner) on the next refreshAll().
+export function getLastKioskPushLogEntry(
+  groupId: string,
+  opts: { includeGroupRoom: boolean; eventId: string | null },
+): PushLogEntry | null {
+  const clauses: string[] = [];
+  const params: unknown[] = [groupId, Date.now()];
+  if (opts.includeGroupRoom) clauses.push('event_id IS NULL');
+  if (opts.eventId) {
+    clauses.push('event_id = ?');
+    params.push(opts.eventId);
+  }
+  if (clauses.length === 0) return null;
+  const row = db
+    .prepare(
+      `SELECT id, group_id AS groupId, event_id AS eventId, title, body, url, audience,
+              expires_at AS expiresAt, created_at AS createdAt
+       FROM push_log
+       WHERE group_id = ? AND audience = 'all' AND ${ACTIVE_PUSH_SQL} AND (${clauses.join(' OR ')})
+       ORDER BY created_at DESC LIMIT 1`
+    )
+    .get(...params) as PushLogEntry | undefined;
+  return row ?? null;
+}
+
 // The app header needs the same active-only view as the shared Kiosk, but
 // scoped to the current player so direct match notifications remain private.
 export function getCurrentPushLogEntryFor(groupId: string, eventId: string | null, playerId: string): PushLogEntry | null {
@@ -197,7 +227,7 @@ export function markPushSeen(groupId: string, pushId: string, playerId: string):
     .prepare('INSERT OR IGNORE INTO push_log_seen (push_id, player_id, seen_at) VALUES (?, ?, ?)')
     .run(pushId, playerId, Date.now());
   if (result.changes === 0) return 'already_seen';
-  broadcast(Events.pushSeen, { playerId }, { groupId });
+  broadcast(Events.pushSeen, { playerId }, { groupId, recipientPlayerIds: [playerId] });
   return 'seen';
 }
 
@@ -211,7 +241,7 @@ export function hidePushForPlayer(groupId: string, pushId: string, playerId: str
     .prepare('INSERT OR IGNORE INTO push_log_hidden (push_id, player_id, hidden_at) VALUES (?, ?, ?)')
     .run(pushId, playerId, Date.now());
   if (result.changes === 0) return 'already_hidden';
-  broadcast(Events.pushSeen, { playerId }, { groupId });
+  broadcast(Events.pushSeen, { playerId }, { groupId, recipientPlayerIds: [playerId] });
   return 'hidden';
 }
 
@@ -237,7 +267,7 @@ export function markAllPushSeen(groupId: string, eventId: string | null, playerI
   const changes = db.transaction(() =>
     entries.reduce((sum, entry) => sum + insert.run(entry.id, playerId, seenAt).changes, 0)
   )();
-  if (changes > 0) broadcast(Events.pushSeen, { playerId }, { groupId });
+  if (changes > 0) broadcast(Events.pushSeen, { playerId }, { groupId, recipientPlayerIds: [playerId] });
   return changes;
 }
 
@@ -249,7 +279,7 @@ export function hideAllPushForPlayer(groupId: string, eventId: string | null, pl
   const changes = db.transaction(() =>
     entries.reduce((sum, entry) => sum + insert.run(entry.id, playerId, hiddenAt).changes, 0)
   )();
-  if (changes > 0) broadcast(Events.pushSeen, { playerId }, { groupId });
+  if (changes > 0) broadcast(Events.pushSeen, { playerId }, { groupId, recipientPlayerIds: [playerId] });
   return changes;
 }
 
@@ -287,10 +317,6 @@ export function getPushLogEntriesFor(
     .filter((row) => row.playerIds === null || (JSON.parse(row.playerIds) as string[]).includes(playerId))
     .slice(0, limit)
     .map(({ playerIds: _playerIds, seen, ...entry }) => ({ ...entry, seen: seen === 1 }));
-}
-
-function broadcastPushChanged(changes: number): void {
-  if (changes > 0) broadcast(Events.pushChanged, null);
 }
 
 // Resolving a topic only removes it from active banners; the notification
@@ -359,7 +385,14 @@ export function notifyPlayers(
   if (playerIds.length === 0) return;
 
   const entry = recordPushLog(playerIds, payload, audience, topic, scope);
-  broadcast(Events.pushSent, entry, scope);
+  // Group-wide entries stay a plain group broadcast (the kiosk banner is
+  // their deliberate consumer); personally targeted entries bind delivery to
+  // exactly the resolved recipients and never reach the shared kiosk.
+  broadcast(
+    Events.pushSent,
+    entry,
+    audience === 'direct' ? { ...scope, recipientPlayerIds: playerIds } : scope,
+  );
 
   const recipientPlaceholders = playerIds.map(() => '?').join(',');
   const rows = db

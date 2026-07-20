@@ -24,6 +24,7 @@ import { broadcast, Events } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { isNonEmptyString } from '../validation';
 import { requireConfiguredGroupMembership, requireGroupRole, resolveGroupResource } from '../groupAuthorization';
+import { activePlayerGroupIds } from '../groups';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { config } from '../config';
@@ -177,7 +178,7 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
     targetType: 'event',
     targetId: event.id,
   });
-  broadcast(Events.eventsChanged, null);
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
   res.status(201).json(serializeEvent(event));
 });
 
@@ -240,7 +241,7 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     targetType: 'event',
     targetId: req.params.id,
   });
-  broadcast(Events.eventsChanged, null);
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
   res.json(serializeEvent(updated));
 });
 
@@ -269,8 +270,8 @@ eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin')
     targetType: 'event',
     targetId: req.params.id,
   });
-  broadcast(Events.eventsChanged, null);
-  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
   res.json(serializeEvent(result.event));
 });
 
@@ -286,8 +287,8 @@ eventsRouter.post('/:id/tracking/stop', resolveEvent, requireGroupRole('admin'),
     targetType: 'event',
     targetId: req.params.id,
   });
-  broadcast(Events.eventsChanged, null);
-  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
   res.json(serializeEvent(updated));
 });
 
@@ -303,8 +304,8 @@ eventsRouter.post('/:id/end', resolveEvent, requireGroupRole('admin'), (req, res
     targetType: 'event',
     targetId: req.params.id,
   });
-  broadcast(Events.eventsChanged, null);
-  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
   res.json(serializeEvent(updated));
 });
 
@@ -346,7 +347,15 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
   const trackingEvent = getTrackingEvent();
   const removedIds =
     trackingEvent.id === req.params.id ? [...previousIds].filter((playerId) => !uniqueIds.includes(playerId)) : [];
-  for (const playerId of removedIds) clearPlayerLiveStatus(playerId);
+  // clearPlayerLiveStatus wipes the player's tracking rows across every group,
+  // not just this event's group, so every one of those groups needs a live
+  // refresh — otherwise the offline sweep will not include them again and
+  // their clients keep showing the player as live.
+  const liveRefreshGroupIds = new Set<string>([req.group!.id]);
+  for (const playerId of removedIds) {
+    for (const gid of activePlayerGroupIds(playerId)) liveRefreshGroupIds.add(gid);
+    clearPlayerLiveStatus(playerId);
+  }
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     groupId: req.player ? req.group!.id : undefined,
@@ -355,8 +364,12 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
     targetId: req.params.id,
     details: { participantCount: uniqueIds.length },
   });
-  broadcast(Events.eventsChanged, null);
-  if (removedIds.length > 0) broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  if (removedIds.length > 0) {
+    for (const gid of liveRefreshGroupIds) {
+      broadcast(Events.liveStatusChanged, getLiveBoard(gid), { groupId: gid });
+    }
+  }
   res.json(serializeEvent(getEvent(req.params.id)));
 });
 
@@ -370,6 +383,6 @@ eventsRouter.delete('/:id', resolveEvent, requireGroupRole('admin'), requireRece
     targetType: 'event',
     targetId: req.params.id,
   });
-  broadcast(Events.eventsChanged, null);
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
   res.json(serializeEvent(cancelled));
 });

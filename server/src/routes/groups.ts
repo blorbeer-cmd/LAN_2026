@@ -22,7 +22,7 @@ import { db, DEFAULT_GROUP_ID } from '../db';
 import { requireRecentReauthentication, requireUser } from '../sessions';
 import { isNonEmptyString } from '../validation';
 import { writeAdminAudit } from '../adminAudit';
-import { broadcast, Events } from '../realtime';
+import { broadcast, broadcastInstanceSignal, disconnectKioskTokenSockets, Events } from '../realtime';
 import { requireGroupMembership, requireGroupRole } from '../groupAuthorization';
 import { countTestUsers, createTestUsers, deleteTestUsers, MAX_TEST_USERS_PER_CALL } from '../testUsers';
 import { getLiveBoard } from '../liveStatus';
@@ -107,7 +107,7 @@ groupsRouter.post('/', requireMultiGroups, (req, res) => {
     targetType: 'group',
     targetId: group.id,
   });
-  broadcast(Events.groupsChanged, null);
+  broadcastInstanceSignal(Events.groupsChanged);
   res.status(201).json(serializeGroup(group, 'owner', false));
 });
 
@@ -143,7 +143,7 @@ groupsRouter.post('/invites/:code/accept', requireMultiGroups, (req, res) => {
     targetType: 'group',
     targetId: result.group.id,
   });
-  broadcast(Events.groupsChanged, null);
+  broadcastInstanceSignal(Events.groupsChanged);
   res.json(serializeGroup(result.group, result.membership.role, false));
 });
 
@@ -174,6 +174,9 @@ groupsRouter.post('/:groupId/kiosk-tokens', requireGroupMembership, requireGroup
 
 groupsRouter.delete('/:groupId/kiosk-tokens/:tokenId', requireGroupMembership, requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
   if (!revokeKioskToken(req.group!.id, req.params.tokenId)) return res.status(404).json({ error: 'Kiosk-Token nicht gefunden.' });
+  // Delivery re-checks the token anyway; ending the sockets eagerly makes the
+  // revocation visible on the shared screen immediately.
+  disconnectKioskTokenSockets(req.params.tokenId);
   res.status(204).end();
 });
 
@@ -190,7 +193,7 @@ groupsRouter.post('/:groupId/tracking-consent', requireGroupMembership, (req, re
     db.prepare('UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND group_id = ? AND event_id IS NULL AND ended_at IS NULL')
       .run(Date.now(), req.player!.id, req.group!.id);
   }
-  broadcast(Events.groupsChanged, null);
+  broadcastInstanceSignal(Events.groupsChanged);
   res.json({ ok: true, granted });
 });
 
@@ -219,7 +222,7 @@ groupsRouter.patch('/:groupId', requireGroupMembership, requireGroupRole('admin'
     targetType: 'group',
     targetId: group.id,
   });
-  broadcast(Events.groupsChanged, null);
+  broadcastInstanceSignal(Events.groupsChanged);
   res.json(serializeGroup(group, req.groupMembership!.role, Boolean(req.groupMembership!.outside_tracking_enabled)));
 });
 
@@ -245,7 +248,7 @@ groupsRouter.delete(
       targetType: 'group',
       targetId: group.id,
     });
-    broadcast(Events.groupsChanged, null);
+    broadcastInstanceSignal(Events.groupsChanged);
     res.status(204).end();
   },
 );
@@ -285,7 +288,7 @@ groupsRouter.patch(
       targetId: req.params.playerId,
       details: { role },
     });
-    broadcast(Events.groupsChanged, null);
+    broadcastInstanceSignal(Events.groupsChanged);
     res.json({ playerId: result.membership.player_id, role: result.membership.role, status: result.membership.status });
   },
 );
@@ -310,7 +313,13 @@ groupsRouter.delete(
       targetType: 'player',
       targetId: req.params.playerId,
     });
-    broadcast(Events.groupsChanged, null);
+    // groups:changed only makes clients refetch their own group list; it does
+    // not drop the removed person from the remaining members' roster/live
+    // views. A group-scoped roster + live refresh does (getLiveBoard already
+    // excludes the now-inactive membership).
+    broadcastInstanceSignal(Events.groupsChanged);
+    broadcast(Events.playersChanged, null, { groupId: req.group!.id });
+    broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
     res.status(204).end();
   },
 );
@@ -330,7 +339,9 @@ groupsRouter.post('/:groupId/leave', requireGroupMembership, requireRecentReauth
     targetType: 'player',
     targetId: req.player!.id,
   });
-  broadcast(Events.groupsChanged, null);
+  broadcastInstanceSignal(Events.groupsChanged);
+  broadcast(Events.playersChanged, null, { groupId: req.group!.id });
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
   res.status(204).end();
 });
 
@@ -371,9 +382,9 @@ groupsRouter.post('/:groupId/test-users', requireGroupMembership, requireGroupRo
     targetType: 'test_user_batch',
     details: { count: created.length },
   });
-  broadcast(Events.playersChanged, null);
-  broadcast(Events.skillsChanged, null);
-  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
+  broadcast(Events.playersChanged, null, { groupId: req.group!.id });
+  broadcast(Events.skillsChanged, null, { groupId: req.group!.id });
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
   res.status(201).json({ created, totalTestUsers: countTestUsers(req.group!.id) });
 });
 
@@ -392,9 +403,9 @@ groupsRouter.delete(
       details: { count: deleted },
     });
     if (deleted > 0) {
-      broadcast(Events.playersChanged, null);
-      broadcast(Events.skillsChanged, null);
-      broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id));
+      broadcast(Events.playersChanged, null, { groupId: req.group!.id });
+      broadcast(Events.skillsChanged, null, { groupId: req.group!.id });
+      broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
     }
     res.json({ deleted });
   },

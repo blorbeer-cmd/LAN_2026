@@ -18,6 +18,7 @@ Hier sind alle in den PR-Metadaten gefundenen Arbeitsbranches zusammengefasst. D
 - [`claude/lan-tools-quality-e2e-x6k61w`](./claude-lan-tools-quality-e2e-x6k61w.md) — 6 gemergt, 0 offen
 - [`claude/live-page-home-redesign-ailuxo`](./claude-live-page-home-redesign-ailuxo.md) — 4 gemergt, 0 offen
 - [`claude/merge-conflicts-ui-symbols-0b61av`](./claude-merge-conflicts-ui-symbols-0b61av.md) — 2 gemergt, 0 offen
+- [`claude/multigroup-realtime-delivery-pschci`](./claude-multigroup-realtime-delivery-pschci.md) — 0 gemergt, 1 offen
 - [`claude/pause-live-tracking-bug-uilj46`](./claude-pause-live-tracking-bug-uilj46.md) — 2 gemergt, 0 offen
 - [`claude/pr-merge-order-p67vj8`](./claude-pr-merge-order-p67vj8.md) — 1 gemergt, 0 offen
 - [`claude/push-notification-types-9djvav`](./claude-push-notification-types-9djvav.md) — 1 gemergt, 0 offen

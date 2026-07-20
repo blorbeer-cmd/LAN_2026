@@ -59,11 +59,19 @@ eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur d
 - Arcade-Daten und die sessiongebundenen REST-Auswertungen deckt
   `src/test/api.groupArcadeData.required.test.ts` ab: getrennte Ergebnis-/Statistik-/Historienleser,
   Eventfilter, Spielerzuordnung und historische Snapshots sowie gruppenlokale Quiz-Inhalte. Socket-
-  Discovery, Rooms, Zuschauer, Streams und Kiosk bleiben Teil von Phase 5e.
+  Discovery, Rooms, Zuschauer, Streams und Kiosk werden in der Phase-5e-Zustellmatrix geprüft.
 - Die Phase-5e-Socket-Isolation läuft in `src/test/e2e/phase5eIsolation.e2e.test.ts`: zwei getrennte
   authentifizierte Verbindungen abonnieren verschiedene Gruppenräume und erhalten nur den jeweils
   aktuellen Gruppen-Emit. Kiosk-Token-Hashing, Scope und Widerruf werden zusätzlich in
   `src/test/kioskTokens.test.ts` geprüft.
+- Die Zustellmatrix des gescopten Broadcast-Modells liegt in
+  `src/test/realtime.delivery.required.test.ts`: Zwei-Gruppen-Isolation, default-deny für
+  unabonnierte Sockets, Kiosk-Token mit eigener und fremder Gruppe samt Event-Allowlist,
+  Eventzugriff für Teilnehmer/Admins/Owner, Produzenten eventgebundener Payloads,
+  empfängergebundene Legacy-Pushes, immutable Arcade-Lobby-/Match-Scopes samt Watch-/Replay-Pfaden,
+  Mitgliedschaftsentzug und Gruppenwechsel bei offenem Socket, ungescopte Fach-Broadcasts sowie
+  das globale Instanz-Signal. Der Offline-Sweep über mehrere Gruppen wird mit konkreten
+  Empfänger- und Negativassertions in `src/liveStatus.sweepOnce.test.ts` abgedeckt.
 
 ## Datenbank-Migrationen
 

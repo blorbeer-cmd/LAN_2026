@@ -21,7 +21,7 @@ import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
 import { recordArcadeResult } from './arcadeData';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
-import { canJoinLobby, lobbyGroupId, socketGroupId } from './scope';
+import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 import {
   Board,
   Piece,
@@ -64,6 +64,8 @@ interface PlayerRef {
 
 interface TetrisLobby {
   id: string;
+  groupId: string;
+  eventId: string | null;
   host: PlayerRef;
   players: PlayerRef[];
   socketIds: Map<string, string>;
@@ -86,6 +88,8 @@ interface PlayerState {
 
 interface TetrisMatch {
   id: string;
+  groupId: string;
+  eventId: string | null;
   room: string;
   host: PlayerRef;
   players: PlayerRef[];
@@ -112,8 +116,8 @@ function playerById(playerId: unknown): PlayerRef | null {
   return row ?? null;
 }
 
-function publicLobbies(groupId?: string | null) {
-  return [...lobbies.values()].filter((l) => !groupId || lobbyGroupId(l) === groupId).map((l) => ({
+function publicLobbies(groupId: string, eventId: string | null) {
+  return [...lobbies.values()].filter((l) => l.groupId === groupId && l.eventId === eventId).map((l) => ({
     id: l.id,
     host: l.host,
     players: l.players.map((p) => ({ ...p, ready: isLobbyReady(l, p.id) })),
@@ -122,12 +126,12 @@ function publicLobbies(groupId?: string | null) {
 }
 
 function emitLobbies(io: Server) {
-  for (const socket of io.sockets.sockets.values()) socket.emit('tetris:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
+  for (const socket of io.sockets.sockets.values()) { const scope = socketArcadeScope(socket); if (scope) socket.emit('tetris:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) }); }
 }
 
 // Open-lobby summary for GET /api/arcade/lobbies — see arcade.ts.
-export function openLobbySummaries() {
-  return [...lobbies.values()].map((l) => ({
+export function openLobbySummaries(groupId?: string, eventId?: string | null) {
+  return [...lobbies.values()].filter((l) => !groupId || (l.groupId === groupId && (eventId === undefined || l.eventId === eventId))).map((l) => ({
     id: l.id,
     hostName: l.host.name,
     playerCount: l.players.length,
@@ -172,8 +176,8 @@ function broadcastState(io: Server, match: TetrisMatch) {
     players: match.players.map((p) => serializeState(match, match.states.get(p.id)!)),
     scores: scorePayload(match),
   };
-  io.to(match.room).emit('tetris:state', payload);
-  broadcastArcadeKiosk(io, { gameType: 'tetris', ...payload, playerRefs: match.players });
+  emitArcadeRoom(io, match.room, 'tetris:state', payload, match);
+  broadcastArcadeKiosk(io, { gameType: 'tetris', groupId: match.groupId, eventId: match.eventId, ...payload, playerRefs: match.players });
 }
 
 function opponentState(match: TetrisMatch, playerId: string): PlayerState | null {
@@ -270,7 +274,7 @@ function finishMatch(io: Server, match: TetrisMatch, winner: PlayerRef | null, r
   if (match.loop) clearInterval(match.loop);
   match.loop = null;
   match.running = false;
-  endArcadeSession(realPlayerIds(match.players), 'tetris');
+  endArcadeSession(realPlayerIds(match.players), 'tetris', match);
   recordArcadeResult({
     gameType: 'tetris',
     winnerId: winner?.id === BOT_ID ? null : winner?.id ?? null,
@@ -278,14 +282,15 @@ function finishMatch(io: Server, match: TetrisMatch, winner: PlayerRef | null, r
     scores: scorePayload(match),
     reason,
     startedAt: match.startedAt,
+    scope: match,
   });
-  io.to(match.room).emit('tetris:match:end', {
+  emitArcadeRoom(io, match.room, 'tetris:match:end', {
     matchId: match.id,
     winner,
     reason,
     scores: scorePayload(match),
-  });
-  broadcastArcadeKiosk(io, { gameType: null, matchId: match.id });
+  }, match);
+  broadcastArcadeKiosk(io, { gameType: null, matchId: match.id, groupId: match.groupId, eventId: match.eventId });
   matches.delete(match.id);
 }
 
@@ -468,17 +473,21 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
 
 export function registerTetrisSockets(io: Server): void {
   io.on('connection', (socket: Socket) => {
-    socket.emit('tetris:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
+    const emitSocketLobbies = () => { const scope = socketArcadeScope(socket); if (scope) socket.emit('tetris:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) }); };
+    emitSocketLobbies();
 
-    socket.on('tetris:lobbies:get', () => {
-      socket.emit('tetris:lobbies', { lobbies: publicLobbies(socketGroupId(socket)) });
-    });
+    socket.on('tetris:lobbies:get', emitSocketLobbies);
+    socket.on('scope:subscribe', emitSocketLobbies);
+    socket.on('room:subscribe', emitSocketLobbies);
 
     socket.on('tetris:lobby:create', (payload: { playerId?: string }, ack?: (res: unknown) => void) => {
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
+      const scope = socketArcadeScope(socket, player.id);
+      if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
       const lobby: TetrisLobby = {
         id: nanoid(),
+        ...scope,
         host: player,
         players: [player],
         socketIds: new Map([[player.id, socket.id]]),
@@ -495,7 +504,9 @@ export function registerTetrisSockets(io: Server): void {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
-      const lobby: TetrisLobby = { id: nanoid(), host: player, players: [player, BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now() };
+      const scope = socketArcadeScope(socket, player.id);
+      if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
+      const lobby: TetrisLobby = { id: nanoid(), ...scope, host: player, players: [player, BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now() };
       if (!claimLobbyMembership(player.id, 'tetris', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromOpenLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby); emitLobbies(io); ack?.({ ok: true, lobbyId: lobby.id });
@@ -519,7 +530,7 @@ export function registerTetrisSockets(io: Server): void {
 
     socket.on('tetris:lobby:leave', (payload: { lobbyId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
-      if (!lobby || typeof payload?.playerId !== 'string') return ack?.({ ok: true });
+      if (!lobby || !canUseLobby(socket, lobby) || typeof payload?.playerId !== 'string') return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' });
       if (lobby.host.id === payload.playerId) {
         releaseLobbyMemberships(lobby.players.map((p) => p.id), 'tetris', lobby.id);
         lobbies.delete(lobby.id);
@@ -535,7 +546,7 @@ export function registerTetrisSockets(io: Server): void {
 
     socket.on('tetris:lobby:ready', (payload: { lobbyId?: string; playerId?: string; ready?: boolean }, ack?: (res: unknown) => void) => {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
-      if (!lobby || !setLobbyReady(lobby, payload?.playerId, payload?.ready)) {
+      if (!lobby || !canUseLobby(socket, lobby) || !setLobbyReady(lobby, payload?.playerId, payload?.ready)) {
         return ack?.({ ok: false, error: 'Bereit-Status konnte nicht gesetzt werden.' });
       }
       emitLobbies(io);
@@ -545,6 +556,7 @@ export function registerTetrisSockets(io: Server): void {
     socket.on('tetris:lobby:start', (payload: { lobbyId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
       if (!lobby) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
+      if (!canUseLobby(socket, lobby)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' });
       if (payload?.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' });
       if (lobby.players.length !== 2) return ack?.({ ok: false, error: 'Tetris Battle ist genau 1 gegen 1.' });
 
@@ -555,6 +567,8 @@ export function registerTetrisSockets(io: Server): void {
       const rng = makeRng(stringToSeed(matchId));
       const match: TetrisMatch = {
         id: matchId,
+        groupId: lobby.groupId,
+        eventId: lobby.eventId,
         room,
         host: lobby.host,
         players: lobby.players,
@@ -591,15 +605,15 @@ export function registerTetrisSockets(io: Server): void {
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'tetris', lobby.id);
       lobbies.delete(lobby.id);
       emitLobbies(io);
-      startArcadeSession(realPlayerIds(match.players), 'tetris');
+      startArcadeSession(realPlayerIds(match.players), 'tetris', match);
 
       const beginsAt = Date.now() + COUNTDOWN_MS;
-      io.to(room).emit('tetris:match:start', {
+      emitArcadeRoom(io, room, 'tetris:match:start', {
         matchId,
         host: match.host,
         players: match.players,
         beginsAt,
-      });
+      }, match);
       broadcastState(io, match);
       ack?.({ ok: true, matchId });
 
@@ -615,7 +629,7 @@ export function registerTetrisSockets(io: Server): void {
 
     socket.on('tetris:input', (payload: { matchId?: string; playerId?: string; action?: InputAction }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-      if (!match || !match.running || match.paused) return ack?.({ ok: false });
+      if (!match || !canUseLobby(socket, match) || !match.running || match.paused) return ack?.({ ok: false });
       const state = typeof payload?.playerId === 'string' ? match.states.get(payload.playerId) : null;
       if (!state || state.ref.id === BOT_ID || !state.alive) return ack?.({ ok: false });
       const valid: InputAction[] = ['left', 'right', 'rotate', 'rotateCcw', 'soft', 'hard'];
@@ -631,30 +645,30 @@ export function registerTetrisSockets(io: Server): void {
 
     socket.on('tetris:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
       if (!match.running || match.paused) return ack?.({ ok: true });
       match.paused = true;
-      io.to(match.room).emit('tetris:match:paused', { matchId: match.id });
+      emitArcadeRoom(io, match.room, 'tetris:match:paused', { matchId: match.id }, match);
       broadcastState(io, match);
       ack?.({ ok: true });
     });
 
     socket.on('tetris:match:resume', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann fortsetzen.' });
       if (!match.running || !match.paused) return ack?.({ ok: true });
       match.paused = false;
       match.lastTick = Date.now();
-      io.to(match.room).emit('tetris:match:resumed', { matchId: match.id });
+      emitArcadeRoom(io, match.room, 'tetris:match:resumed', { matchId: match.id }, match);
       broadcastState(io, match);
       ack?.({ ok: true });
     });
 
     socket.on('tetris:match:finish', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       if (payload?.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann beenden.' });
       finishMatch(io, match, null, 'ended-by-host');
       ack?.({ ok: true });
@@ -665,14 +679,14 @@ export function registerTetrisSockets(io: Server): void {
     // outcome as a disconnect mid-match: the match ends, opponent wins.
     socket.on('tetris:match:leave', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
-      if (!match) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       const leaver = match.players.find((p) => p.id === payload?.playerId);
       if (!leaver) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
       const winner = match.players.find((p) => p.id !== leaver.id) ?? null;
       // socket.to (not io.to): the leaver's own socket is still joined to
       // match.room at this point (unlike a real disconnect), so io.to would
       // also show them their own "opponent left" toast.
-      socket.to(match.room).emit('tetris:opponent-left', { matchId: match.id, playerId: leaver.id });
+      emitArcadeRoom(io, match.room, 'tetris:opponent-left', { matchId: match.id, playerId: leaver.id }, match, socket.id);
       finishMatch(io, match, winner, 'player-left');
       ack?.({ ok: true });
     });
@@ -684,7 +698,7 @@ export function registerTetrisSockets(io: Server): void {
         if (!entry) continue;
         const leaver = entry[0];
         const winner = match.players.find((p) => p.id !== leaver) ?? null;
-        io.to(match.room).emit('tetris:opponent-left', { matchId: match.id, playerId: leaver });
+        emitArcadeRoom(io, match.room, 'tetris:opponent-left', { matchId: match.id, playerId: leaver }, match);
         finishMatch(io, match, winner, 'player-left');
       }
     });
