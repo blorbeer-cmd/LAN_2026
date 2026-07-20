@@ -313,7 +313,13 @@ groupsRouter.delete(
       targetType: 'player',
       targetId: req.params.playerId,
     });
+    // groups:changed only makes clients refetch their own group list; it does
+    // not drop the removed person from the remaining members' roster/live
+    // views. A group-scoped roster + live refresh does (getLiveBoard already
+    // excludes the now-inactive membership).
     broadcastInstanceSignal(Events.groupsChanged);
+    broadcast(Events.playersChanged, null, { groupId: req.group!.id });
+    broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
     res.status(204).end();
   },
 );
@@ -334,6 +340,8 @@ groupsRouter.post('/:groupId/leave', requireGroupMembership, requireRecentReauth
     targetId: req.player!.id,
   });
   broadcastInstanceSignal(Events.groupsChanged);
+  broadcast(Events.playersChanged, null, { groupId: req.group!.id });
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
   res.status(204).end();
 });
 

@@ -208,14 +208,16 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   const sendAtNote = row.send_at ? ` (geht raus um ${new Date(row.send_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})` : '';
 
   // The socket payload carries a toast for everyone except the creator
-  // (they just tapped the button themselves).
+  // (they just tapped the button themselves). Scoped to the order's event so
+  // non-participants of an event-only order are not prompted for it — the
+  // same recipient set the push below is limited to.
+  const eventScope = communicationEventId(row.event_id);
   broadcast(Events.foodOrdersChanged, {
     notify: {
       message: `Neue Sammelbestellung: ${row.title}${sendAtNote} – jetzt eintragen!`,
       excludePlayerId: playerId,
     },
-  }, { groupId: req.group!.id });
-  const eventScope = communicationEventId(row.event_id);
+  }, { groupId: req.group!.id, eventId: eventScope });
   const allPlayerIds = communicationRecipientIds(req.group!.id, eventScope);
   notifyPlayers(
     allPlayerIds,

@@ -868,13 +868,21 @@ function saveTournamentResult(req: Request, res: Response) {
   for (const matchId of readyRoundRobinMatchIds) {
     const roundNotify = buildMatchReadyNotify(matchId);
     if (!roundNotify) continue;
-    broadcast(Events.tournamentsChanged, {
+    const roundBase = {
       type: 'match_ready',
       tournamentId: tournament.id,
       tournamentName: tournament.name,
       gameId: tournament.game_id,
-      notify: roundNotify,
-    }, { groupId: req.group!.id });
+    };
+    // notify.message carries the next lobby's name/password and names the two
+    // teams; deliver those details only to the players in the match, and give
+    // the rest of the group a plain refresh signal without the private notify.
+    broadcast(Events.tournamentsChanged, roundBase, { groupId: req.group!.id });
+    broadcast(
+      Events.tournamentsChanged,
+      { ...roundBase, notify: roundNotify },
+      { groupId: req.group!.id, recipientPlayerIds: roundNotify.playerIds },
+    );
   }
 
   const currentTournament = db.prepare('SELECT status FROM tournaments WHERE id = ?').get(tournament.id) as
@@ -882,13 +890,22 @@ function saveTournamentResult(req: Request, res: Response) {
     | undefined;
   if (currentTournament?.status !== 'active') resolvePushTopic(`tournament:${tournament.id}`, true, notificationScope);
 
-  broadcast(Events.tournamentsChanged, {
+  const mainBase = {
     type: notify ? (knockoutJustGenerated ? 'knockout_stage_started' : 'match_ready') : 'updated',
     tournamentId: tournament.id,
     tournamentName: tournament.name,
     gameId: tournament.game_id,
-    ...(notify ? { notify } : {}),
-  }, { groupId: req.group!.id });
+  };
+  // Everyone in the group gets the refresh; the notify (lobby name/password,
+  // intended teams) rides a second broadcast bound to its named players only.
+  broadcast(Events.tournamentsChanged, mainBase, { groupId: req.group!.id });
+  if (notify) {
+    broadcast(
+      Events.tournamentsChanged,
+      { ...mainBase, notify },
+      { groupId: req.group!.id, recipientPlayerIds: notify.playerIds },
+    );
+  }
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id });
   res.json(buildDetail(tournament.id, req.group!.id));
 }

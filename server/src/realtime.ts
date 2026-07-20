@@ -309,14 +309,23 @@ export function broadcast(event: string, payload: unknown, scope: BroadcastScope
       if (recipients) continue; // personally targeted payloads never reach the shared screen
       if (!KIOSK_DELIVERED_EVENTS.has(event)) continue;
       if (socket.data.kioskGroupId !== groupId) continue;
-      if ((socket.data.kioskEventId ?? null) !== eventId) continue;
       if (!kioskDeliveryAllowed(socket)) continue;
-      // The kiosk gets refresh signals, not data: fachliche payloads can
-      // carry member-only details (e.g. match-ready lobby credentials in
-      // tournaments:changed). The group-wide push banner is the one
-      // deliberate payload consumer; its entries are already
-      // recipient-guarded above.
-      socket.emit(event, event === 'push:sent' ? payload : null);
+      if (event === 'push:sent') {
+        // The push banner is the one payload the kiosk renders directly, so
+        // it is delivered only for the kiosk's exact scope: a group kiosk
+        // never shows an event-only banner and an event kiosk never shows a
+        // group-room one.
+        if ((socket.data.kioskEventId ?? null) !== eventId) continue;
+        socket.emit(event, payload);
+      } else {
+        // Every other allowlisted event is a null refresh signal (fachliche
+        // payloads can carry member-only details, e.g. match-ready lobby
+        // credentials). The kiosk refetches through its own token-scoped REST
+        // reads, so it must fire on any change in its group — including
+        // event-room changes that routes emit as a plain { groupId } signal,
+        // which an exact eventId match would otherwise drop for an event kiosk.
+        socket.emit(event, null);
+      }
       continue;
     }
     if (socket.data.groupId !== groupId) continue;

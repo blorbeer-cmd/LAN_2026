@@ -228,7 +228,7 @@ test('kiosks receive refresh signals without fachliche payloads, members get the
   });
 });
 
-test('an event-scoped kiosk token does not receive group-room broadcasts', async () => {
+test('an event kiosk refreshes on group signals but banner-matches its exact push scope', async () => {
   const groupA = createGroup('Kiosk Event A');
   const owner = createPlayer('Kiosk Event Owner');
   addMembership(groupA, owner, 'owner');
@@ -245,10 +245,22 @@ test('an event-scoped kiosk token does not receive group-room broadcasts', async
     const eventKiosk = await connectKiosk(baseUrl, eventToken);
     try {
       const votes = collect(eventKiosk, Events.votesChanged);
+      // Refresh signals: routes emit event changes as a plain { groupId }
+      // signal, so the event kiosk must fire on both group-room and
+      // event-scoped changes and refetch through its own token scope.
       broadcast(Events.votesChanged, { round: 3 }, { groupId: groupA });
       broadcast(Events.votesChanged, { round: 4 }, { groupId: groupA, eventId });
       await settle();
-      assert.equal(votes.count(), 1, 'exactly the event-scoped broadcast reaches the event kiosk');
+      assert.equal(votes.count(), 2, 'both the group-room and event refresh signals reach the event kiosk');
+
+      // Banner content stays scope-exact: only the event-scoped push reaches
+      // the event kiosk, never a group-room banner.
+      const banners: unknown[] = [];
+      eventKiosk.on(Events.pushSent, (payload: unknown) => banners.push(payload));
+      broadcast(Events.pushSent, { title: 'Gruppe' }, { groupId: groupA });
+      broadcast(Events.pushSent, { title: 'Event' }, { groupId: groupA, eventId });
+      await settle();
+      assert.deepEqual(banners, [{ title: 'Event' }], 'only the event-scoped banner reaches the event kiosk');
     } finally {
       eventKiosk.close();
     }
@@ -293,6 +305,46 @@ test('a direct push reaches only its resolved recipients and never the kiosk', a
       assert.equal(alicePush.count(), 2);
       assert.equal(bobPush.count(), 1);
       assert.equal(kioskPush.count(), 1, 'group-wide entries remain the kiosk banner source');
+    } finally {
+      aliceSocket.close();
+      bobSocket.close();
+      kiosk.close();
+    }
+  });
+});
+
+test('a recipient-scoped fachbroadcast reaches only named members, and never the kiosk', async () => {
+  // Models the tournament match-ready split: the group gets a plain refresh
+  // (tested via the null-payload kiosk path elsewhere), while the detailed
+  // notify carrying private lobby credentials rides a recipient-scoped
+  // broadcast that must reach exactly the named players.
+  const groupA = createGroup('Recipient Scope A');
+  const alice = createPlayer('Recipient Alice');
+  const bob = createPlayer('Recipient Bob');
+  addMembership(groupA, alice, 'owner');
+  addMembership(groupA, bob);
+  const kioskToken = issueKioskToken(groupA, null, alice, null).token;
+
+  await withRequiredServer(async ({ baseUrl }) => {
+    const aliceSocket = await connectSession(baseUrl, alice);
+    const bobSocket = await connectSession(baseUrl, bob);
+    const kiosk = await connectKiosk(baseUrl, kioskToken);
+    try {
+      await subscribeScope(aliceSocket, groupA);
+      await subscribeScope(bobSocket, groupA);
+      const aliceTourneys = collect(aliceSocket, Events.tournamentsChanged);
+      const bobTourneys = collect(bobSocket, Events.tournamentsChanged);
+      const kioskTourneys = collect(kiosk, Events.tournamentsChanged);
+
+      broadcast(
+        Events.tournamentsChanged,
+        { type: 'match_ready', notify: { playerIds: [alice], message: 'Lobby "Geheim", PW: 1234' } },
+        { groupId: groupA, recipientPlayerIds: [alice] },
+      );
+      await settle();
+      assert.equal(aliceTourneys.count(), 1, 'the named recipient receives the detailed notify');
+      assert.equal(bobTourneys.count(), 0, 'a non-recipient member never sees the private lobby notify');
+      assert.equal(kioskTourneys.count(), 0, 'the shared kiosk never receives a recipient-scoped payload');
     } finally {
       aliceSocket.close();
       bobSocket.close();
