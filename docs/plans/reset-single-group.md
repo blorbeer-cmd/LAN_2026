@@ -109,8 +109,10 @@ Testbasis liefert, auf der R2 aufsetzt.
   Changelog-Pflege).
 - **Kein** Codeänderungsanteil.
 
-### R1 — PR #238 mergen (Größe S, nur Merge + Changelog)
+### R1 — PR #238 mergen (Größe S, nur Merge + Changelog) — ✅ erledigt 2026-07-20
 
+- Squash-Merge als [`601d43e`](https://github.com/blorbeer-cmd/LAN_2026/commit/601d43ee18b0b102c22e2ccbf47f089a7de14aad);
+  Changelog-Eintrag liegt in diesem PR bei.
 - #238 ist unabhängig delta-reviewt (`DELTA APPROVED`, CI grün) und behebt die realen
   Ein-Gruppen-Regressionen (F3/F4) sowie die Event-Scope-Härtung, die auch im Ein-Gruppen-Modell
   gebraucht wird (Events bleiben!).
