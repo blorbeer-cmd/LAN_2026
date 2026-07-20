@@ -439,9 +439,16 @@ export function registerArcadeKioskSockets(server: Server): void {
       const requestedGroup = payload?.groupId;
       const requestedEvent = payload?.eventId;
       const groupMatches = requestedGroup === undefined || requestedGroup === socket.data.kioskGroupId;
-      const eventMatches = socket.data.kioskEventId === null
-        ? requestedEvent === undefined || requestedEvent === null
-        : requestedEvent === socket.data.kioskEventId;
+      // kiosk.js emits kiosk:subscribe without a payload, so an absent event
+      // must fall back to the socket's already-bound token scope. Requiring an
+      // explicit match otherwise rejected every event kiosk's replay request
+      // (kioskEventId set, requestedEvent undefined) and left it blank on join.
+      const eventMatches =
+        requestedEvent === undefined
+          ? true
+          : socket.data.kioskEventId === null
+            ? requestedEvent === null
+            : requestedEvent === socket.data.kioskEventId;
       if (!socket.data.kioskReadOnly || !groupMatches || !eventMatches || !kioskDeliveryAllowed(socket)) {
         ack?.({ ok: false, error: 'Kiosk-Scope stimmt nicht mit dem Token überein.' });
         return;

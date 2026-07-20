@@ -418,6 +418,38 @@ test('archiving the group silences an already-connected env-token kiosk too', as
   }, 'env-kiosk-token');
 });
 
+test('an event kiosk gets its arcade replay from an empty kiosk:subscribe', async () => {
+  const groupA = createGroup('Arcade Replay A');
+  const owner = createPlayer('Arcade Replay Owner');
+  addMembership(groupA, owner, 'owner');
+  const eventId = nanoid();
+  db.prepare('INSERT INTO events (id, name, starts_at, group_id) VALUES (?, ?, ?, ?)').run(
+    eventId,
+    'Arcade Replay Evt',
+    Date.now(),
+    groupA
+  );
+  const eventToken = issueKioskToken(groupA, eventId, owner, null).token;
+  const matchId = `arcade-replay-${nanoid()}`;
+
+  await withRequiredServer(async ({ io, baseUrl }) => {
+    const kiosk = await connectKiosk(baseUrl, eventToken);
+    try {
+      broadcastArcadeKiosk(io, { matchId, gameType: 'pong', groupId: groupA, running: true, players: [], scores: [] });
+      // kiosk.js emits kiosk:subscribe with no payload; before the fix an event
+      // kiosk was rejected here and never received its replay.
+      const replay = await new Promise<{ matchId?: string }>((resolve) => {
+        kiosk.on('arcade:kiosk:game', (payload: { matchId?: string }) => resolve(payload));
+        kiosk.emit('kiosk:subscribe');
+      });
+      assert.equal(replay.matchId, matchId, 'the event kiosk receives the arcade replay from an empty subscribe');
+    } finally {
+      broadcastArcadeKiosk(io, { gameType: null, matchId });
+      kiosk.close();
+    }
+  });
+});
+
 test('read-only kiosks never receive arcade watch lists', async () => {
   const groupA = createGroup('Watch List A');
   const owner = createPlayer('Watch List Owner');

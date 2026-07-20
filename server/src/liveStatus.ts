@@ -9,6 +9,7 @@ import { Server } from 'socket.io';
 import { db, DEFAULT_GROUP_ID } from './db';
 import { config } from './config';
 import { broadcast, Events } from './realtime';
+import { activePlayerGroupIds } from './groups';
 
 export interface LiveGameEntry {
   game_id: string;
@@ -224,6 +225,13 @@ export function sweepOnce(now: number = Date.now()): void {
     }
     for (const row of db.prepare('SELECT DISTINCT group_id AS id FROM tracking_live_games').all() as Array<{ id: string }>) {
       groupIds.add(row.id);
+    }
+    // Manual pauses/notes without an agent create a group-less live_status row
+    // and no tracking rows, so the queries above miss them. Fan out to each
+    // such player's active groups so a non-default group's Home/Seating board
+    // keeps ticking instead of freezing on a stale manual state.
+    for (const row of db.prepare('SELECT DISTINCT player_id AS id FROM live_status').all() as Array<{ id: string }>) {
+      for (const gid of activePlayerGroupIds(row.id)) groupIds.add(gid);
     }
     for (const groupId of groupIds) {
       broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
