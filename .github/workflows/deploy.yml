@@ -154,7 +154,7 @@ jobs:
       # clean npm ci, while ordinary PR and post-merge runs restore it directly.
       - name: Cache installed server dependencies
         id: server-node-modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: server/node_modules
           key: server-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('server/package-lock.json') }}
@@ -196,7 +196,7 @@ jobs:
           cache-dependency-path: server/package-lock.json
       - name: Cache installed server dependencies
         id: server-node-modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: server/node_modules
           key: server-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('server/package-lock.json') }}
@@ -207,7 +207,7 @@ jobs:
       # lacked the toolchain needed to build better-sqlite3 on a cache miss.
       - name: Cache Playwright browsers
         id: playwright-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}
@@ -238,7 +238,7 @@ jobs:
       # The agent-server integration test drives the real built server.
       - name: Cache installed server dependencies
         id: server-node-modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: server/node_modules
           key: server-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('server/package-lock.json') }}
