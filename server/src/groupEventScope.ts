@@ -25,12 +25,9 @@ export function resolveGroupEventScope(groupId: string, requestedEventId: unknow
   }
 
   // Deliberately scoped to this group, not the single-row global tracking
-  // helper (getTrackingEvent()/getTrackingEventId() in events.ts): with
-  // MULTI_GROUPS_ENABLED, several groups can each have their own event
-  // tracking_enabled at the same time (see startTracking() in events.ts),
-  // and the global helper only ever returns one arbitrary row across all of
-  // them. Filtering by group_id here is what actually makes "this group's
-  // currently tracked event" well-defined once more than one exists.
+  // helper (getTrackingEvent()/getTrackingEventId() in events.ts): filtering
+  // by group_id here is what makes "this group's currently tracked event"
+  // well-defined, independent of how that global helper resolves ties.
   const tracking = db
     .prepare("SELECT id FROM events WHERE tracking_enabled = 1 AND group_id = ? AND id != ?")
     .get(groupId, OUTSIDE_EVENTS_ID) as { id: string } | undefined;

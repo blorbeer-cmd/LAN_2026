@@ -1783,40 +1783,6 @@ button.draft-pool-player {
   gap: var(--space-3);
 }
 
-.group-list {
-  display: grid;
-  gap: var(--space-2);
-}
-.group-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  width: 100%;
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-elevated-2);
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.group-option.is-active {
-  border-color: var(--accent);
-}
-.group-option span:first-child {
-  display: grid;
-  gap: var(--space-1);
-}
-.group-option small {
-  color: var(--text-muted);
-}
-.group-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
 .group-member-list {
   display: grid;
   gap: var(--space-2);
