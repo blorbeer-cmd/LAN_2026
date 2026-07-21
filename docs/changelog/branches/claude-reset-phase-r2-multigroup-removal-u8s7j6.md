@@ -46,5 +46,6 @@ Betriebsregel; keine Migration nötig, rein vorsorglich).
 
 ## Pull Requests
 
-- [PR #258](https://github.com/blorbeer-cmd/LAN_2026/pull/258) (Draft, offen): R2 — Mehrgruppen-
-  Oberfläche entfernen.
+- [PR #258](https://github.com/blorbeer-cmd/LAN_2026/pull/258), gemergt am 2026-07-21 als
+  [`3f8debf`](https://github.com/blorbeer-cmd/LAN_2026/commit/3f8debface151ed9fc9cce822ad0d6693f5c37f7):
+  R2 — Mehrgruppen-Oberfläche entfernen.

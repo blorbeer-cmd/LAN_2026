@@ -1,6 +1,6 @@
 # Reset-Plan: Eine Gruppe pro Instanz
 
-Stand: 2026-07-20 · Status: **Entscheidungsvorlage / Umsetzungsplan**
+Stand: 2026-07-21 · Status: **Umsetzung — R0 bis R4 erledigt, R5 offen**
 
 Produktentscheidung: **Eine Instanz bedient genau eine Freundesgruppe.** Events bleiben als
 eigenständige Entität (zeitlich begrenzte Unterräume mit Teilnehmerliste, Tracking-Zeitfenster und
@@ -98,18 +98,19 @@ PR #238 erledigt oder durch den Reset gegenstandslos.
 Jede Phase ist ein eigener PR mit vollständiger CI. Reihenfolge ist verbindlich, weil R1 die
 Testbasis liefert, auf der R2 aufsetzt.
 
-### R0 — Entscheidung fixieren und Konzept Rev. 5 (Docs, Größe S)
+### R0 — Entscheidung fixieren und Konzept Rev. 5 (Docs, Größe S) — ✅ erledigt 2026-07-21 ([PR #255](https://github.com/blorbeer-cmd/LAN_2026/pull/255))
 
 - `docs/KONZEPT-USER-MANAGEMENT.md` als Rev. 5 neu fassen: eine Gruppe pro Instanz, Events als
   einzige Scoping-Dimension, Rollenmodell eingefroren, Nicht-Ziele ausdrücklich: Mehrgruppen,
   MFA/ASVS-L2-Vollkonformität (Anspruch auf „L1 + sinnvolle L2-Härtungen“ zurücksetzen —
   angemessen für ~15 Freunde im LAN).
 - `docs/plans/user-management-status.md` als historisch markieren und auf diesen Plan verweisen.
-- Offene Alt-PRs schließen: #177 (Konzept-Review-Draft, obsolet), #179 prüfen/mergen (reine
-  Changelog-Pflege).
+- Alt-PR [#177](https://github.com/blorbeer-cmd/LAN_2026/pull/177) wurde als obsolet geschlossen;
+  [#179](https://github.com/blorbeer-cmd/LAN_2026/pull/179) blieb nach Prüfung als separater,
+  ungemergter Changelog-PR offen und ist kein Bestandteil von R0.
 - **Kein** Codeänderungsanteil.
 
-### R1 — PR #238 mergen (Größe S, nur Merge + Changelog) — ✅ erledigt 2026-07-20
+### R1 — PR #238 mergen (Größe S, nur Merge + Changelog) — ✅ erledigt 2026-07-20 ([PR #238](https://github.com/blorbeer-cmd/LAN_2026/pull/238))
 
 - Squash-Merge als [`601d43e`](https://github.com/blorbeer-cmd/LAN_2026/commit/601d43ee18b0b102c22e2ccbf47f089a7de14aad);
   Changelog-Eintrag liegt in diesem PR bei.
@@ -120,7 +121,7 @@ Testbasis liefert, auf der R2 aufsetzt.
   Zustell-Testmatrix die Absicherung für den Rückschnitt.
 - Changelog-Einträge gemäß `docs/changelog/AGENTS.md` nachziehen (zahlt auf F15 ein).
 
-### R2 — Mehrgruppen-Oberfläche entfernen (Größe M)
+### R2 — Mehrgruppen-Oberfläche entfernen (Größe M) — ✅ erledigt 2026-07-21 ([PR #258](https://github.com/blorbeer-cmd/LAN_2026/pull/258))
 
 Server:
 
@@ -152,7 +153,7 @@ Tests:
   Legacy-Direct-Push). Das ist die bleibende Sicherheits-Testmatrix des Ein-Gruppen-Modells.
 - `TESTING.md` und `OPERATIONS.md` (Flag-Verweise `OPERATIONS.md:91,108`) anpassen.
 
-### R3 — Innenleben vereinfachen, nur wo es Wartung spart (Größe S–M, optional)
+### R3 — Innenleben vereinfachen, nur wo es Wartung spart (Größe S–M, optional) — ✅ erledigt 2026-07-21 ([PR #260](https://github.com/blorbeer-cmd/LAN_2026/pull/260))
 
 Bewusst zurückhaltend — kein Purismus-Refactoring:
 
@@ -162,7 +163,7 @@ Bewusst zurückhaltend — kein Purismus-Refactoring:
   Zustellregeln, `group_id`-Spalten, Rollenprüfungen. Eine funktionierende, getestete Signatur mit
   konstantem Argument ist billiger als jede Umbau-Regression.
 
-### R4 — Migrations-Hygiene (Größe S, gruppenunabhängig; F7+F8)
+### R4 — Migrations-Hygiene (Größe S, gruppenunabhängig; F7+F8) — ✅ erledigt 2026-07-21 ([PR #257](https://github.com/blorbeer-cmd/LAN_2026/pull/257))
 
 - Migrationen vor Ausführung nach `version` sortieren statt Registrierungsreihenfolge
   (`db.ts:663 ff.`; v44 ist derzeit vor v41–43 registriert).

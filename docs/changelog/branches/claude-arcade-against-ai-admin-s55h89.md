@@ -6,4 +6,4 @@ Dieser Branch ist mit einem PR in der GitHub-Historie vertreten.
 
 | PR | Status | Titel |
 |---:|---|---|
-| [#142](https://github.com/blorbeer-cmd/Respawn/pull/142) | open | Allow everyone to play arcade games against the AI |
+| [#142](https://github.com/blorbeer-cmd/Respawn/pull/142) | geschlossen, nicht gemergt | Allow everyone to play arcade games against the AI |
