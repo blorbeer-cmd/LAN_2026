@@ -17,7 +17,6 @@
 import { nanoid } from 'nanoid';
 import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 import { closeEventContexts } from './trackingContexts';
-import { config } from './config';
 
 export { OUTSIDE_EVENTS_ID };
 
@@ -171,11 +170,9 @@ export function startTracking(id: string): StartTrackingResult {
   }
   if (event.tracking_enabled) return { ok: true, event };
 
-  if (!config.multiGroupsEnabled) {
-    const current = db.prepare('SELECT id, name FROM events WHERE tracking_enabled = 1').get() as { id: string; name: string } | undefined;
-    if (current && current.id !== id) return { ok: false, code: 'conflict', error: `Tracking läuft bereits für „${current.name}" – dort erst stoppen.`, conflictEventId: current.id, conflictEventName: current.name };
-    wipeLiveStatus();
-  }
+  const current = db.prepare('SELECT id, name FROM events WHERE tracking_enabled = 1').get() as { id: string; name: string } | undefined;
+  if (current && current.id !== id) return { ok: false, code: 'conflict', error: `Tracking läuft bereits für „${current.name}" – dort erst stoppen.`, conflictEventId: current.id, conflictEventName: current.name };
+  wipeLiveStatus();
 
   db.prepare('UPDATE events SET tracking_enabled = 1 WHERE id = ?').run(id);
 

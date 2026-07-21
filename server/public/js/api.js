@@ -7,15 +7,14 @@ import { filterTestUsers } from './testFilter.js';
 const TOKEN_KEY = 'respawn_access_token';
 const PLAYER_ID_KEY = 'respawn_my_player_id';
 let kioskMode = false;
+// One instance, one group: this is no longer sent as a request header (the
+// server always resolves the single start group on its own) but stays as the
+// client-side key for the group id used to build /api/groups/:groupId/...
+// URLs (see groupContext.js, socket.js, checklist.js).
 export const GROUP_KEY = 'respawn_group_id';
 
 export function setKioskMode(enabled) {
   kioskMode = Boolean(enabled);
-}
-
-function addGroupHeader(headers) {
-  const groupId = sessionStorage.getItem(GROUP_KEY);
-  if (groupId) headers['x-group-id'] = groupId;
 }
 
 export function getToken() {
@@ -33,7 +32,6 @@ export async function apiFetch(path, options = {}) {
   const playerId = localStorage.getItem(PLAYER_ID_KEY);
   if (playerId) headers['x-player-id'] = playerId;
   if (kioskMode) headers['x-kiosk-mode'] = '1';
-  addGroupHeader(headers);
   // Tells the server this device currently sees test players (admin mode).
   // Needed for replace-style writes like the seating layout: a non-admin
   // client's state has test users filtered out, so its saves must not be
@@ -76,7 +74,6 @@ export async function fetchText(path) {
   const playerId = localStorage.getItem(PLAYER_ID_KEY);
   if (playerId) headers['x-player-id'] = playerId;
   if (localStorage.getItem('respawn_admin') === '1') headers['x-admin-mode'] = '1';
-  addGroupHeader(headers);
   const res = await fetch(path, { headers });
   const text = await res.text();
   if (!res.ok) {
@@ -103,7 +100,6 @@ export async function fetchBlob(path, options = {}) {
   const playerId = localStorage.getItem(PLAYER_ID_KEY);
   if (playerId) headers['x-player-id'] = playerId;
   if (localStorage.getItem('respawn_admin') === '1') headers['x-admin-mode'] = '1';
-  addGroupHeader(headers);
   const res = await fetch(path, { ...options, headers });
   if (!res.ok) {
     let message = `Fehler ${res.status}`;
@@ -132,13 +128,11 @@ export const api = {
   groups: {
     list: () => apiFetch('/api/groups'),
     get: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}`),
-    create: (data) => apiFetch('/api/groups', { method: 'POST', body: JSON.stringify(data) }),
     update: (groupId, data) =>
       apiFetch(`/api/groups/${encodeURIComponent(groupId)}`, {
         method: 'PATCH',
         body: JSON.stringify(data),
       }),
-    archive: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}`, { method: 'DELETE' }),
     members: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/members`),
     updateMember: (groupId, playerId, role) =>
       apiFetch(`/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(playerId)}`, {
@@ -149,7 +143,6 @@ export const api = {
       apiFetch(`/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(playerId)}`, {
         method: 'DELETE',
       }),
-    leave: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/leave`, { method: 'POST' }),
     audit: (groupId, limit = 100) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/audit?limit=${limit}`),
     createTestUsers: (groupId, count) =>
       apiFetch(`/api/groups/${encodeURIComponent(groupId)}/test-users`, {
@@ -158,16 +151,6 @@ export const api = {
       }),
     cleanupTestUsers: (groupId) =>
       apiFetch(`/api/groups/${encodeURIComponent(groupId)}/test-users`, { method: 'DELETE' }),
-    invitePreview: (code) => apiFetch(`/api/groups/invites/${encodeURIComponent(code)}`),
-    acceptInvite: (code) => apiFetch(`/api/groups/invites/${encodeURIComponent(code)}/accept`, { method: 'POST' }),
-    invites: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/invites`),
-    createInvite: (groupId, data = {}) =>
-      apiFetch(`/api/groups/${encodeURIComponent(groupId)}/invites`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
-    revokeInvite: (groupId, code) =>
-      apiFetch(`/api/groups/${encodeURIComponent(groupId)}/invites/${encodeURIComponent(code)}`, { method: 'DELETE' }),
   },
 
   // Real per-user login (see docs/KONZEPT-USER-MANAGEMENT.md). Only used by

@@ -1,4 +1,6 @@
-// Phase 5c organisation/communication tenant-boundary suite.
+// Single-group organisation/communication suite: roles, group-room vs.
+// event-scoped info/broadcasts (two sequential events in the one real
+// group), push-log binding to the session player, aggregates and exports.
 
 import { execFileSync } from 'child_process';
 import path from 'path';
@@ -9,17 +11,17 @@ const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
 const PUSH_JS_PATH = path.join(__dirname, '..', 'push.js');
 const RECOVERY_CODE = 'organisation-communication-recovery-code';
 
-test('organisation communication isolates groups, events, roles, recipients, aggregates and exports', () => {
+test('organisation communication is roles-gated and event-scoped inside the one real group', () => {
   const script = `
     const assert = require('assert/strict');
     const request = require('supertest');
     const { createApp } = require(${JSON.stringify(APP_JS_PATH)});
-    const { db } = require(${JSON.stringify(DB_JS_PATH)});
+    const { db, DEFAULT_GROUP_ID } = require(${JSON.stringify(DB_JS_PATH)});
     const { pushTransport } = require(${JSON.stringify(PUSH_JS_PATH)});
 
     function cookie(response) { return response.headers['set-cookie'][0].split(';')[0]; }
-    function scoped(app, method, url, user, groupId) {
-      return request(app)[method](url).set('Cookie', user.cookie).set('x-group-id', groupId);
+    function scoped(app, method, url, user) {
+      return request(app)[method](url).set('Cookie', user.cookie).set('x-group-id', DEFAULT_GROUP_ID);
     }
 
     (async () => {
@@ -42,111 +44,77 @@ test('organisation communication isolates groups, events, roles, recipients, agg
         return { account: response.body, cookie: cookie(response), password };
       }
       const bob = await register('Comms Bob', 'comms bob secure passphrase');
-      const carol = await register('Comms Carol', 'comms carol secure passphrase');
-      const dave = await register('Comms Dave', 'comms dave secure passphrase');
-      assert.equal((await request(app).post('/api/auth/reauth').set('Cookie', carol.cookie)
-        .send({ password: carol.password })).status, 204);
-
-      const groupAResponse = await request(app).post('/api/groups').set('Cookie', alice.cookie).send({ name: 'Comms Group A' });
-      const groupBResponse = await request(app).post('/api/groups').set('Cookie', carol.cookie).send({ name: 'Comms Group B' });
-      assert.equal(groupAResponse.status, 201);
-      assert.equal(groupBResponse.status, 201);
-      const groupA = groupAResponse.body.id;
-      const groupB = groupBResponse.body.id;
-
-      async function addMember(owner, groupId, target) {
-        const invite = await request(app).post('/api/groups/' + groupId + '/invites')
-          .set('Cookie', owner.cookie).send({ targetPlayerId: target.account.id });
-        assert.equal(invite.status, 201, JSON.stringify(invite.body));
-        const accepted = await request(app).post('/api/groups/invites/' + invite.body.code + '/accept')
-          .set('Cookie', target.cookie);
-        assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
-      }
-      await addMember(alice, groupA, bob);
-      await addMember(carol, groupB, dave);
-      await addMember(carol, groupB, alice);
-      for (const user of [alice, carol]) {
-        assert.equal((await request(app).post('/api/auth/reauth').set('Cookie', user.cookie)
-          .send({ password: user.password })).status, 204);
-      }
 
       const now = Date.now();
-      const eventA = await scoped(app, 'post', '/api/events', alice, groupA)
+      const eventA = await scoped(app, 'post', '/api/events', alice)
         .send({ name: 'Comms Event A', startsAt: now, endsAt: now + 60_000 });
-      const eventB = await scoped(app, 'post', '/api/events', carol, groupB)
-        .send({ name: 'Comms Event B', startsAt: now, endsAt: now + 60_000 });
       assert.equal(eventA.status, 201);
-      assert.equal(eventB.status, 201);
-      assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice, groupA)
+      assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice)
         .send({ playerIds: [alice.account.id] })).status, 200);
-      assert.equal((await scoped(app, 'put', '/api/events/' + eventB.body.id + '/participants', carol, groupB)
-        .send({ playerIds: [carol.account.id, dave.account.id] })).status, 200);
 
-      // Info-board moderation is vertical: a group member and an instance
-      // admin who is only a member in B cannot write there.
-      assert.equal((await scoped(app, 'post', '/api/info', bob, groupA).send({ title: 'No', content: 'member' })).status, 403);
-      assert.equal((await scoped(app, 'post', '/api/info', alice, groupB).send({ title: 'No', content: 'global admin' })).status, 403);
-      const infoA = await scoped(app, 'post', '/api/info', alice, groupA)
-        .send({ title: 'A room', content: 'A only' });
-      const eventInfoA = await scoped(app, 'post', '/api/info', alice, groupA)
-        .send({ title: 'A event', content: 'event only', eventId: eventA.body.id });
-      const infoB = await scoped(app, 'post', '/api/info', carol, groupB)
-        .send({ title: 'B room', content: 'B only' });
-      assert.equal(infoA.status, 201);
-      assert.equal(eventInfoA.status, 201);
-      assert.equal(infoB.status, 201);
-      assert.deepEqual((await scoped(app, 'get', '/api/info', alice, groupA)).body.entries.map((e) => e.title), ['A room']);
-      assert.deepEqual((await scoped(app, 'get', '/api/info?eventId=' + eventA.body.id, alice, groupA)).body.entries.map((e) => e.title), ['A event']);
-      assert.deepEqual((await scoped(app, 'get', '/api/info', carol, groupB)).body.entries.map((e) => e.title), ['B room']);
-      assert.equal((await scoped(app, 'get', '/api/info?eventId=' + eventB.body.id, alice, groupA)).status, 404);
-      assert.equal((await scoped(app, 'patch', '/api/info/' + infoB.body.id, alice, groupA).send({ content: 'leak' })).status, 404);
+      // Info-board moderation is vertical: a plain member cannot write there.
+      assert.equal((await scoped(app, 'post', '/api/info', bob).send({ title: 'No', content: 'member' })).status, 403);
+      const infoRoom = await scoped(app, 'post', '/api/info', alice)
+        .send({ title: 'Room entry', content: 'group room' });
+      const infoEventA = await scoped(app, 'post', '/api/info', alice)
+        .send({ title: 'Event A entry', content: 'event only', eventId: eventA.body.id });
+      assert.equal(infoRoom.status, 201);
+      assert.equal(infoEventA.status, 201);
+      assert.deepEqual((await scoped(app, 'get', '/api/info', alice)).body.entries.map((e) => e.title), ['Room entry']);
+      assert.deepEqual((await scoped(app, 'get', '/api/info?eventId=' + eventA.body.id, alice)).body.entries.map((e) => e.title), ['Event A entry']);
 
       // Group-room and event recipient definitions are durable snapshots.
-      const groupBroadcastA = await scoped(app, 'post', '/api/broadcasts', bob, groupA)
-        .send({ message: 'A group room' });
-      const eventBroadcastA = await scoped(app, 'post', '/api/broadcasts', alice, groupA)
-        .send({ message: 'A event only', eventId: eventA.body.id });
-      const groupBroadcastB = await scoped(app, 'post', '/api/broadcasts', dave, groupB)
-        .send({ message: 'B group room' });
-      assert.equal(groupBroadcastA.status, 201, JSON.stringify(groupBroadcastA.body));
+      const groupBroadcast = await scoped(app, 'post', '/api/broadcasts', bob)
+        .send({ message: 'group room' });
+      const eventBroadcastA = await scoped(app, 'post', '/api/broadcasts', alice)
+        .send({ message: 'event A only', eventId: eventA.body.id });
+      assert.equal(groupBroadcast.status, 201, JSON.stringify(groupBroadcast.body));
       assert.equal(eventBroadcastA.status, 201, JSON.stringify(eventBroadcastA.body));
-      assert.equal(groupBroadcastB.status, 201, JSON.stringify(groupBroadcastB.body));
-      assert.deepEqual(groupBroadcastA.body.recipientIds.sort(), [alice.account.id, bob.account.id].sort());
+      assert.deepEqual(groupBroadcast.body.recipientIds.sort(), [alice.account.id, bob.account.id].sort());
       assert.deepEqual(eventBroadcastA.body.recipientIds, [alice.account.id]);
       assert.equal(deliveries, 0, 'data-only broadcasts must not invoke Web Push transport');
-      assert.deepEqual((await scoped(app, 'get', '/api/broadcasts', alice, groupA)).body.broadcasts.map((e) => e.message), ['A group room']);
-      assert.deepEqual((await scoped(app, 'get', '/api/broadcasts', carol, groupB)).body.broadcasts.map((e) => e.message), ['B group room']);
-      assert.equal((await scoped(app, 'get', '/api/broadcasts?eventId=' + eventB.body.id, alice, groupA)).status, 404);
-      assert.equal((await scoped(app, 'post', '/api/broadcasts/' + groupBroadcastB.body.id + '/end', alice, groupA)
-        .send({})).status, 404);
+      assert.deepEqual((await scoped(app, 'get', '/api/broadcasts', alice)).body.broadcasts.map((e) => e.message), ['group room']);
 
-      const aliceEventPush = await scoped(app, 'get', '/api/push/log?playerId=' + alice.account.id + '&eventId=' + eventA.body.id, alice, groupA);
-      const bobEventPush = await scoped(app, 'get', '/api/push/log?playerId=' + bob.account.id + '&eventId=' + eventA.body.id, bob, groupA);
+      const aliceEventPush = await scoped(app, 'get', '/api/push/log?playerId=' + alice.account.id + '&eventId=' + eventA.body.id, alice);
+      const bobEventPush = await scoped(app, 'get', '/api/push/log?playerId=' + bob.account.id + '&eventId=' + eventA.body.id, bob);
       assert.equal(aliceEventPush.body.entries.length, 1);
       assert.equal(aliceEventPush.body.summary.groupWide, 1);
       assert.equal(bobEventPush.body.entries.length, 0);
-      assert.equal((await scoped(app, 'get', '/api/push/log?playerId=' + alice.account.id, carol, groupB)).status, 200);
-      const spoofedPlayer = await scoped(app, 'get', '/api/push/log?playerId=' + bob.account.id, carol, groupB);
+      // required mode binds push history to the session player, regardless
+      // of what playerId is spoofed on the query string.
+      const spoofedPlayer = await scoped(app, 'get', '/api/push/log?playerId=' + alice.account.id, bob);
       assert.equal(spoofedPlayer.status, 200);
-      assert.deepEqual(spoofedPlayer.body.entries.map((entry) => entry.body), ['B group room'],
-        'required mode must bind push history to the session player');
+      assert.deepEqual(spoofedPlayer.body.entries.map((entry) => entry.body), ['group room'],
+        'required mode must bind push history to the session player, not the query string');
 
-      const exportA = await scoped(app, 'get', '/api/export?eventId=' + eventA.body.id, alice, groupA);
+      const exportA = await scoped(app, 'get', '/api/export?eventId=' + eventA.body.id, alice);
       assert.equal(exportA.status, 200, JSON.stringify(exportA.body));
-      assert.deepEqual(exportA.body.communications.broadcasts.map((e) => e.message), ['A event only']);
-      assert.deepEqual(exportA.body.communications.infoEntries.map((e) => e.title), ['A event']);
+      assert.deepEqual(exportA.body.communications.broadcasts.map((e) => e.message), ['event A only']);
+      assert.deepEqual(exportA.body.communications.infoEntries.map((e) => e.title), ['Event A entry']);
       assert.equal(exportA.body.communications.pushHistory.total, 1);
 
-      // Database constraints reject event and sender ownership drift.
+      // Switching the group's tracked event to a second event keeps event A's
+      // entries untouched and filters event B's own writes separately.
+      const eventB = await scoped(app, 'post', '/api/events', alice)
+        .send({ name: 'Comms Event B', startsAt: now, endsAt: now + 60_000 });
+      assert.equal(eventB.status, 201);
+      const infoEventB = await scoped(app, 'post', '/api/info', alice)
+        .send({ title: 'Event B entry', content: 'event only', eventId: eventB.body.id });
+      assert.equal(infoEventB.status, 201);
+      assert.deepEqual((await scoped(app, 'get', '/api/info?eventId=' + eventA.body.id, alice)).body.entries.map((e) => e.title), ['Event A entry']);
+      assert.deepEqual((await scoped(app, 'get', '/api/info?eventId=' + eventB.body.id, alice)).body.entries.map((e) => e.title), ['Event B entry']);
+      assert.equal((await scoped(app, 'patch', '/api/info/' + infoEventB.body.id, alice).send({ content: 'still A? no' })).status, 200);
+
+      // Database constraints reject event/sender ownership drift.
       assert.throws(() => db.prepare(
         "INSERT INTO info_entries (id, group_id, event_id, title, content, created_at, updated_at) VALUES ('bad-info', ?, ?, 'x', 'x', ?, ?)"
-      ).run(groupA, eventB.body.id, now, now), /FOREIGN KEY/);
+      ).run(DEFAULT_GROUP_ID, 'does-not-exist', now, now), /FOREIGN KEY/);
       assert.throws(() => db.prepare(
         "INSERT INTO broadcasts (id, group_id, event_id, player_id, player_name_snapshot, message, ends_at, recipient_ids, created_at) VALUES ('bad-broadcast', ?, NULL, ?, 'Foreign', 'x', ?, '[]', ?)"
-      ).run(groupA, carol.account.id, now + 1000, now), /FOREIGN KEY/);
+      ).run(DEFAULT_GROUP_ID, 'does-not-exist', now + 1000, now), /FOREIGN KEY/);
       assert.throws(() => db.prepare(
         "INSERT INTO push_log (id, group_id, event_id, title, body, audience, player_ids, created_at) VALUES ('bad-push', ?, NULL, 'x', 'x', 'all', ?, ?)"
-      ).run(groupA, JSON.stringify([carol.account.id]), now), /group mismatch/);
+      ).run(DEFAULT_GROUP_ID, JSON.stringify(['does-not-exist']), now), /group mismatch/);
     })().catch((error) => { console.error(error); process.exit(1); });
   `;
 
@@ -158,7 +126,6 @@ test('organisation communication isolates groups, events, roles, recipients, agg
         ADMIN_RECOVERY_CODE: RECOVERY_CODE,
         COOKIE_SECURE: '0',
         DB_FILE: ':memory:',
-        MULTI_GROUPS_ENABLED: '1',
       },
       stdio: 'pipe',
     });

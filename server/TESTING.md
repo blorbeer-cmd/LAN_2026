@@ -40,38 +40,32 @@ eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur d
 - E2E startet den gebauten Server (`dist/index.js`) als eigenen Kindprozess auf einem Test-Port,
   ebenfalls mit `DB_FILE=:memory:`, und schließt ihn danach automatisch wieder.
 - Jede Test-Datei läuft in einem eigenen Prozess (Isolation durch den Node-Runner).
-- Die verpflichtende Zwei-Gruppen-Autorisierungsmatrix liegt in
-  `src/test/api.groupAuthorization.required.test.ts`. Sie prüft fremde Ressourcen (`404`),
-  unzureichende Rollen (`403`), sofortige Rollenwirkung, gruppengebundene Events/Audits,
-  Test-Spieler-Eigentum, den Last-Owner-Race, deaktivierte Owner, den Entfernungsschutz der
-  Startgruppe und die Archivierungssperre bei laufendem Tracking.
-- Der Phase-5c-Cluster Votes/Drafts hat eine eigene Zwei-Gruppen-Suite in
-  `src/test/api.groupVotesDrafts.required.test.ts`. Sie deckt gruppenlokale CRUD-/Listen-Zustände,
-  Rollen, aktive Spieler-Mitgliedschaften, historische Snapshots, Aggregationen, Foreign Keys und
-  Event-Exporte ab.
-- Seating/Pings wird entsprechend in `src/test/api.groupSeatingPings.required.test.ts` geprüft:
-  getrennte Gruppenraum-/Event-Historien, fremde Spieler- und Eventreferenzen, 403-Rollenpfade,
-  bekannte Fremd-IDs sowie Datenbank-Trigger und -Foreign-Keys.
-- Organisation/Kommunikation liegt in
-  `src/test/api.groupOrganisationCommunication.required.test.ts`: Zwei Gruppen, Gruppenraum- und
-  Event-Empfänger, Broadcast-/Push-Historien, Infoboard-Rollen, Aggregationen, Event-Export,
-  Cross-Tenant-404s und der bewusst ausbleibende Web-Push-Transport werden gemeinsam geprüft.
-- Arcade-Daten und die sessiongebundenen REST-Auswertungen deckt
-  `src/test/api.groupArcadeData.required.test.ts` ab: getrennte Ergebnis-/Statistik-/Historienleser,
-  Eventfilter, Spielerzuordnung und historische Snapshots sowie gruppenlokale Quiz-Inhalte. Socket-
-  Discovery, Rooms, Zuschauer, Streams und Kiosk werden in der Phase-5e-Zustellmatrix geprüft.
-- Die Phase-5e-Socket-Isolation läuft in `src/test/e2e/phase5eIsolation.e2e.test.ts`: zwei getrennte
-  authentifizierte Verbindungen abonnieren verschiedene Gruppenräume und erhalten nur den jeweils
-  aktuellen Gruppen-Emit. Kiosk-Token-Hashing, Scope und Widerruf werden zusätzlich in
-  `src/test/kioskTokens.test.ts` geprüft.
+- Eine Instanz bedient genau eine Gruppe (`docs/plans/reset-single-group.md`); Events sind die
+  einzige verbleibende Scoping-Dimension. Die required-mode-Suiten unter `src/test/api.group*.
+  required.test.ts` prüfen deshalb Rollen (`403` für unzureichende Rechte, sofortige Rollenwirkung),
+  unbekannte Ressourcen-IDs (`404`), Datenbank-Trigger/Foreign-Keys sowie — wo die jeweilige Domäne
+  event-gebundene Daten hält — die Isolation zwischen zwei nacheinander getrackten Events derselben
+  Gruppe:
+  `api.groupAuthorization.required.test.ts` (Rollen, Last-Owner-Schutz, Entfernungsschutz der
+  Startgruppe, Gruppen- vs. Instanz-Audit), `api.groupVotesDrafts.required.test.ts`,
+  `api.groupOrganisationCommunication.required.test.ts`, `api.groupCompetition.required.test.ts`,
+  `api.groupSeatingPings.required.test.ts`, `api.groupArcadeData.required.test.ts`,
+  `api.groupCatalogPresence.required.test.ts` und `api.groupChecklist.required.test.ts`.
+- Die Phase-5e-Socket-Isolation läuft in `src/test/e2e/phase5eIsolation.e2e.test.ts`: eine
+  authentifizierte Verbindung abonniert die eine reale Gruppe, eine zweite versucht eine unbekannte
+  Gruppen-ID zu abonnieren (wird abgelehnt) und erhält entsprechend keine Signale (default-deny).
+  Kiosk-Token-Hashing, Scope und Widerruf werden zusätzlich in `src/test/kioskTokens.test.ts` geprüft.
 - Die Zustellmatrix des gescopten Broadcast-Modells liegt in
-  `src/test/realtime.delivery.required.test.ts`: Zwei-Gruppen-Isolation, default-deny für
-  unabonnierte Sockets, Kiosk-Token mit eigener und fremder Gruppe samt Event-Allowlist,
-  Eventzugriff für Teilnehmer/Admins/Owner, Produzenten eventgebundener Payloads,
-  empfängergebundene Legacy-Pushes, immutable Arcade-Lobby-/Match-Scopes samt Watch-/Replay-Pfaden,
-  Mitgliedschaftsentzug und Gruppenwechsel bei offenem Socket, ungescopte Fach-Broadcasts sowie
-  das globale Instanz-Signal. Der Offline-Sweep über mehrere Gruppen wird mit konkreten
-  Empfänger- und Negativassertions in `src/liveStatus.sweepOnce.test.ts` abgedeckt.
+  `src/test/realtime.delivery.required.test.ts`: default-deny für unabonnierte Sockets, Kiosk-Token
+  samt Event-Allowlist, Eventzugriff für Teilnehmer/Admins/Owner, Produzenten eventgebundener
+  Payloads, empfängergebundene Legacy-Pushes, immutable Arcade-Lobby-/Match-Scopes samt
+  Watch-/Replay-Pfaden, Mitgliedschaftsentzug und Gruppenwechsel bei offenem Socket, ungescopte
+  Fach-Broadcasts sowie das globale Instanz-Signal. Ein Teil dieser Suite legt ihre Testgruppen
+  direkt per SQL an (nicht über die API) und bleibt damit unabhängig vom Ein-Gruppen-Rückschnitt
+  eine gültige Regression für den weiterhin bestehenden `groups`/`group_memberships`-Mechanismus
+  („Stilllegen statt Rückbau“, siehe `docs/plans/reset-single-group.md` Abschnitt 2). Der
+  Offline-Sweep über mehrere Gruppen wird mit konkreten Empfänger- und Negativassertions in
+  `src/liveStatus.sweepOnce.test.ts` abgedeckt.
 
 ## Datenbank-Migrationen
 

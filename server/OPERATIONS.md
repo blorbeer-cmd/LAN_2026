@@ -88,24 +88,23 @@ vom Dashboard benötigten GET-Endpunkte und das Socket-Ereignis `kiosk:subscribe
 `KIOSK_TOKEN` bleibt der Kiosk im Required-Modus gesperrt. Die spätere eventbezogene Token-Ausgabe
 aus dem User-Management-Konzept ersetzt diesen vorläufigen installationsweiten Token.
 
-`MULTI_GROUPS_ENABLED` bleibt in Produktion auf dem Standardwert `0`, solange die Fach- und
-Trackingtabellen noch nicht vollständig nach Gruppen isoliert sind. Die Migration legt bereits die
-dauerhafte Startgruppe an und ordnet bestehende Konten zu; `1` schaltet nur in Entwicklungs- und
-Testumgebungen das Anlegen weiterer Gruppen und deren Einladungslinks frei.
+Eine Instanz bedient genau eine Freundesgruppe (`docs/plans/reset-single-group.md`); es gibt keine
+API oder Oberfläche mehr, um weitere Gruppen anzulegen, ihnen beizutreten oder sie zu verlassen. Die
+Migration legt die dauerhafte Startgruppe an und ordnet bestehende Konten zu; das ist die einzige
+Gruppe, die je existiert. Ein zweiter Freundeskreis erhält ein eigenes Deployment statt einer
+zweiten Gruppe in derselben Instanz.
 
-Seit Phase 5b werden Gruppenrollen und gruppengebundene Events bei jedem Request serverseitig neu
-aufgelöst. Der vom Browser gesendete `x-group-id` ist nur die Auswahl des Tabs und niemals ein
-Berechtigungsnachweis; Objektzugriffe leiten die besitzende Gruppe aus der Ressource ab. Änderungen
+Gruppenrollen und gruppengebundene Events werden bei jedem Request serverseitig neu aufgelöst. Der
+vom Browser optional gesendete `x-group-id` wird weiterhin akzeptiert, aber jede Anfrage auf die
+Startgruppe aufgelöst; er ist nur die Anzeige des aktuellen Kontexts und niemals ein
+Berechtigungsnachweis. Objektzugriffe leiten die besitzende Gruppe aus der Ressource ab. Änderungen
 an Mitgliedschaften und Rollen wirken deshalb ohne neue Anmeldung. Gruppenaktionen stehen im
-jeweiligen Gruppen-Audit, während `/api/admin/audit` ausschließlich Instanzaktionen enthält.
-Der letzte aktive Owner kann weder herabgestuft, entfernt, aus der Gruppe austreten noch als Konto
-deaktiviert werden. Die Startgruppe verliert im Ein-Gruppen-Rollout keine Mitglieder, und eine
-Gruppe mit laufendem Event-Tracking kann nicht archiviert werden.
-Owner-/Rollen-/Entfernungs- und Archivierungsaktionen verlangen weiterhin Step-up-Reauth.
-
-Das ist noch keine Freigabe für mehrere produktive Gruppen: Spiele, Skills, Tracking, Realtime,
-Push, Kiosk und Arcade werden erst in den Phasen 5c–5e vollständig isoliert. Bis dahin bleibt
-`MULTI_GROUPS_ENABLED=0` verbindlich.
+Gruppen-Audit, während `/api/admin/audit` ausschließlich Instanzaktionen enthält.
+Der letzte aktive Owner kann weder herabgestuft, entfernt noch als Konto deaktiviert werden. Aus der
+Startgruppe können generell keine Mitglieder entfernt werden — anders als in einem Mehrgruppenmodell
+gibt es keine andere Gruppe, in die sie wechseln könnten; das Deaktivieren des Kontos (siehe oben)
+ist der vorgesehene, reversible Weg, jemandes Teilnahme zu beenden.
+Owner-/Rollenaktionen verlangen weiterhin Step-up-Reauth.
 
 Die in Workflows verwendeten Actions werden über `.github/dependabot.yml` wöchentlich auf Updates
 geprüft. Runtime-Deprecation-Warnungen in Action-Post-Steps stammen aus der jeweiligen Action und

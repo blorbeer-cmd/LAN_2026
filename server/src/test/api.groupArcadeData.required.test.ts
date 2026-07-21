@@ -7,7 +7,7 @@ const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
 const ARCADE_DATA_JS_PATH = path.join(__dirname, '..', 'arcade', 'arcadeData.js');
 const RECOVERY_CODE = 'arcade-data-recovery-code';
 
-test('arcade data and REST history stay isolated across groups, events and player assignments', () => {
+test('arcade data and REST history stay event-scoped inside the one real group', () => {
   const script = `
     const assert = require('assert/strict');
     const request = require('supertest');
@@ -43,48 +43,17 @@ test('arcade data and REST history stay isolated across groups, events and playe
       }
 
       const bob = await register('Arcade Bob', 'arcade bob secure passphrase');
-      const carol = await register('Arcade Carol', 'arcade carol secure passphrase');
-      const groupAResponse = await request(app).post('/api/groups').set('Cookie', alice.cookie).send({ name: 'Arcade Group A' });
-      const groupBResponse = await request(app).post('/api/groups').set('Cookie', carol.cookie).send({ name: 'Arcade Group B' });
-      assert.equal(groupAResponse.status, 201, JSON.stringify(groupAResponse.body));
-      assert.equal(groupBResponse.status, 201, JSON.stringify(groupBResponse.body));
-      const groupA = groupAResponse.body.id;
-      const groupB = groupBResponse.body.id;
-
-      for (const user of [alice, carol]) {
-        const reauth = await request(app).post('/api/auth/reauth').set('Cookie', user.cookie).send({ password: user.password });
-        assert.equal(reauth.status, 204);
-      }
-
-      async function addMember(owner, groupId, target) {
-        const invite = await request(app).post('/api/groups/' + groupId + '/invites')
-          .set('Cookie', owner.cookie).send({ targetPlayerId: target.account.id });
-        assert.equal(invite.status, 201, JSON.stringify(invite.body));
-        const accepted = await request(app).post('/api/groups/invites/' + invite.body.code + '/accept')
-          .set('Cookie', target.cookie);
-        assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
-      }
-      await addMember(alice, groupA, bob);
-      await addMember(carol, groupB, alice);
-
-      for (const user of [alice, carol]) {
-        const reauth = await request(app).post('/api/auth/reauth').set('Cookie', user.cookie).send({ password: user.password });
-        assert.equal(reauth.status, 204);
-      }
+      const groupsResponse = await request(app).get('/api/groups').set('Cookie', alice.cookie);
+      const groupId = groupsResponse.body[0].id;
 
       const now = Date.now();
-      const eventA = await scoped(app, 'post', '/api/events', alice, groupA)
+      const eventA = await scoped(app, 'post', '/api/events', alice, groupId)
         .send({ name: 'Arcade Event A', startsAt: now, endsAt: now + 60_000 });
-      const eventB = await scoped(app, 'post', '/api/events', carol, groupB)
-        .send({ name: 'Arcade Event B', startsAt: now, endsAt: now + 60_000 });
       assert.equal(eventA.status, 201, JSON.stringify(eventA.body));
-      assert.equal(eventB.status, 201, JSON.stringify(eventB.body));
-      assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice, groupA)
+      assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice, groupId)
         .send({ playerIds: [alice.account.id, bob.account.id] })).status, 200);
-      assert.equal((await scoped(app, 'put', '/api/events/' + eventB.body.id + '/participants', carol, groupB)
-        .send({ playerIds: [carol.account.id, alice.account.id] })).status, 200);
 
-      assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/start', alice, groupA).send({})).status, 200);
+      assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/start', alice, groupId).send({})).status, 200);
       const resultA = recordArcadeResult({
         gameType: 'quiz', winnerId: alice.account.id,
         players: [{ id: alice.account.id, name: 'Arcade Alice' }, { id: bob.account.id, name: 'Arcade Bob' }],
@@ -92,67 +61,70 @@ test('arcade data and REST history stay isolated across groups, events and playe
         reason: 'completed', startedAt: now, endedAt: now + 1000,
       });
       assert.ok(resultA);
+      // A real player row with no active membership in this group (unlike a
+      // merely nonexistent id, which recordArcadeResult silently drops
+      // before the membership check even runs) must reject the whole write.
+      const outsiderId = 'arcade-outsider';
+      db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+        .run(outsiderId, 'Arcade Outsider', 'arcade-outsider-key', now);
       assert.equal(recordArcadeResult({
         gameType: 'quiz', winnerId: alice.account.id,
-        players: [{ id: alice.account.id, name: 'Arcade Alice' }, { id: carol.account.id, name: 'Arcade Carol' }],
-        scores: [{ playerId: alice.account.id, name: 'Arcade Alice', score: 5 }, { playerId: carol.account.id, name: 'Arcade Carol', score: 3 }],
+        players: [{ id: alice.account.id, name: 'Arcade Alice' }, { id: outsiderId, name: 'Arcade Outsider' }],
+        scores: [{ playerId: alice.account.id, name: 'Arcade Alice', score: 5 }, { playerId: outsiderId, name: 'Arcade Outsider', score: 3 }],
         reason: 'completed', startedAt: now, endedAt: now + 1000,
-      }), null, 'a foreign player must reject the whole result write');
-      assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/stop', alice, groupA).send({})).status, 200);
+      }), null, 'a player with no active membership must reject the whole result write');
+      assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/stop', alice, groupId).send({})).status, 200);
 
-      assert.equal((await scoped(app, 'post', '/api/events/' + eventB.body.id + '/tracking/start', carol, groupB).send({})).status, 200);
+      // Only one event can track at a time - switch sequentially before
+      // creating event B's own data.
+      const eventB = await scoped(app, 'post', '/api/events', alice, groupId)
+        .send({ name: 'Arcade Event B', startsAt: now, endsAt: now + 60_000 });
+      assert.equal(eventB.status, 201, JSON.stringify(eventB.body));
+      assert.equal((await scoped(app, 'put', '/api/events/' + eventB.body.id + '/participants', alice, groupId)
+        .send({ playerIds: [alice.account.id, bob.account.id] })).status, 200);
+      assert.equal((await scoped(app, 'post', '/api/events/' + eventB.body.id + '/tracking/start', alice, groupId).send({})).status, 200);
       const resultB = recordArcadeResult({
-        gameType: 'pong', winnerId: carol.account.id,
-        players: [{ id: carol.account.id, name: 'Arcade Carol' }, { id: alice.account.id, name: 'Arcade Alice' }],
-        scores: [{ playerId: carol.account.id, name: 'Arcade Carol', score: 7 }, { playerId: alice.account.id, name: 'Arcade Alice', score: 4 }],
+        gameType: 'pong', winnerId: bob.account.id,
+        players: [{ id: bob.account.id, name: 'Arcade Bob' }, { id: alice.account.id, name: 'Arcade Alice' }],
+        scores: [{ playerId: bob.account.id, name: 'Arcade Bob', score: 7 }, { playerId: alice.account.id, name: 'Arcade Alice', score: 4 }],
         reason: 'completed', startedAt: now + 2000, endedAt: now + 3000,
       });
       assert.ok(resultB);
 
-      const historyA = await scoped(app, 'get', '/api/arcade/history', alice, groupA);
-      const historyB = await scoped(app, 'get', '/api/arcade/results', carol, groupB);
+      const historyA = await scoped(app, 'get', '/api/arcade/history', alice, groupId).query({ eventId: eventA.body.id });
+      const historyB = await scoped(app, 'get', '/api/arcade/results', alice, groupId).query({ eventId: eventB.body.id });
       assert.deepEqual(historyA.body.results.map((row) => row.id), [resultA]);
       assert.deepEqual(historyB.body.results.map((row) => row.id), [resultB]);
-      assert.equal((await scoped(app, 'get', '/api/arcade/results/' + resultB, alice, groupA)).status, 404);
-      assert.equal((await scoped(app, 'get', '/api/arcade/history', alice, groupA).query({ eventId: eventB.body.id })).status, 404);
-      assert.equal((await scoped(app, 'get', '/api/arcade/results', alice, groupA).query({ playerId: carol.account.id })).status, 404);
 
-      const statsA = await scoped(app, 'get', '/api/arcade/stats', alice, groupA);
-      const statsB = await scoped(app, 'get', '/api/arcade/stats', carol, groupB);
-      assert.deepEqual(statsA.body.games.map((game) => game.gameType), ['quiz']);
-      assert.deepEqual(statsB.body.games.map((game) => game.gameType), ['pong']);
-      const analyticsA = await scoped(app, 'get', '/api/analytics/arcade', alice, groupA);
-      const analyticsB = await scoped(app, 'get', '/api/analytics/arcade', carol, groupB);
-      assert.deepEqual(analyticsA.body.games.map((game) => game.gameType), ['quiz']);
-      assert.deepEqual(analyticsB.body.games.map((game) => game.gameType), ['pong']);
-      const exportA = await scoped(app, 'get', '/api/export', alice, groupA).query({ eventId: eventA.body.id });
-      const exportB = await scoped(app, 'get', '/api/export', carol, groupB).query({ eventId: eventB.body.id });
+      const statsA = await scoped(app, 'get', '/api/arcade/stats', alice, groupId);
+      assert.ok(statsA.body.games.map((game) => game.gameType).includes('quiz'));
+      assert.ok(statsA.body.games.map((game) => game.gameType).includes('pong'));
+
+      const exportA = await scoped(app, 'get', '/api/export', alice, groupId).query({ eventId: eventA.body.id });
+      const exportB = await scoped(app, 'get', '/api/export', alice, groupId).query({ eventId: eventB.body.id });
       assert.deepEqual(exportA.body.arcadeResults.map((result) => result.id), [resultA]);
       assert.deepEqual(exportB.body.arcadeResults.map((result) => result.id), [resultB]);
 
-      const memberQuestion = await scoped(app, 'post', '/api/quiz/questions', bob, groupA)
+      const memberQuestion = await scoped(app, 'post', '/api/quiz/questions', bob, groupId)
         .send({ question: 'Nicht erlaubt?', answers: ['Nein'], category: 'Test', difficulty: 'leicht' });
       assert.equal(memberQuestion.status, 403);
-      const questionA = await scoped(app, 'post', '/api/quiz/questions', alice, groupA)
-        .send({ question: 'Nur Gruppe A?', answers: ['Ja'], category: 'Test', difficulty: 'leicht' });
+      const questionA = await scoped(app, 'post', '/api/quiz/questions', alice, groupId)
+        .send({ question: 'Eigene Gruppe?', answers: ['Ja'], category: 'Test', difficulty: 'leicht' });
       assert.equal(questionA.status, 201, JSON.stringify(questionA.body));
-      const questionsB = await scoped(app, 'get', '/api/quiz/questions', carol, groupB);
-      assert.equal(questionsB.body.questions.some((question) => question.question === 'Nur Gruppe A?'), false);
 
-      assert.equal((await request(app).delete('/api/groups/' + groupA + '/members/' + bob.account.id)
-        .set('Cookie', alice.cookie)).status, 204);
-      const stableHistory = await scoped(app, 'get', '/api/arcade/results/' + resultA, alice, groupA);
-      assert.equal(stableHistory.status, 200);
-      assert.equal(stableHistory.body.players.some((player) => player.name === 'Arcade Bob'), true);
+      // The start group can never remove a member (see routes/groups.ts) -
+      // deactivating the account is the sanctioned path instead.
+      assert.equal((await request(app).delete('/api/groups/' + groupId + '/members/' + bob.account.id)
+        .set('Cookie', alice.cookie)).status, 409);
 
       const globalTitles = db.prepare('SELECT COUNT(*) AS count FROM games WHERE arcade_key IS NOT NULL AND group_id IS NULL').get();
       assert.ok(globalTitles.count > 0, 'immutable Arcade title definitions remain global');
       assert.throws(() => db.prepare(
         "INSERT INTO arcade_result_participants (result_id, group_id, player_id, participant_key, player_name_snapshot, score_snapshot) VALUES (?, ?, ?, ?, 'Foreign', '{}')"
-      ).run(resultA, groupA, carol.account.id, carol.account.id), /FOREIGN KEY/);
+      ).run(resultA, groupId, 'does-not-exist', 'does-not-exist'), /FOREIGN KEY/);
       assert.throws(() => db.prepare(
         "INSERT INTO arcade_results (id, group_id, event_id, game_type, winner_id, players, scores, reason, started_at, ended_at) VALUES ('bad-event-result', ?, ?, 'quiz', NULL, '[]', '[]', 'completed', ?, ?)"
-      ).run(groupA, eventB.body.id, now, now + 1), /event group mismatch/);
+      ).run(groupId, 'does-not-exist', now, now + 1), /event group mismatch/);
     })().catch((error) => {
       console.error(error);
       process.exit(1);
@@ -167,7 +139,6 @@ test('arcade data and REST history stay isolated across groups, events and playe
         ADMIN_RECOVERY_CODE: RECOVERY_CODE,
         COOKIE_SECURE: '0',
         DB_FILE: ':memory:',
-        MULTI_GROUPS_ENABLED: '1',
       },
       stdio: 'pipe',
     });
