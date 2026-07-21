@@ -166,9 +166,6 @@ jobs:
     if: needs.changes.outputs.e2e == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    container:
-      image: mcr.microsoft.com/playwright:v1.56.1-noble
-      options: --user 1001
     defaults:
       run:
         working-directory: server
@@ -187,9 +184,22 @@ jobs:
           key: server-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('server/package-lock.json') }}
       - run: npm ci
         if: steps.server-node-modules.outputs.cache-hit != 'true'
-      # The pinned Playwright image already contains the exact Chromium build
-      # and Linux libraries required by package.json. test:e2e builds the
-      # server itself before starting it.
+      # Restoring Chromium is faster than pulling the Playwright container;
+      # the pinned-container benchmark added ~45 seconds before tests and also
+      # lacked the toolchain needed to build better-sqlite3 on a cache miss.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}
+      - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Chromium system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      # test:e2e builds the server itself before starting it.
       - run: npm run test:e2e
 
   agent:
