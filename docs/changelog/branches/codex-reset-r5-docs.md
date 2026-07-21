@@ -8,4 +8,5 @@ rein dokumentarisch; Code, Schema und Verhalten werden nicht geändert.
 
 ## Pull Requests
 
-- Der Draft-PR wird nach dem ersten Push dieses Branches ergänzt.
+- [PR #261](https://github.com/blorbeer-cmd/LAN_2026/pull/261) (Draft, offen): R5 — Doku- und
+  Changelog-Nachpflege sowie Plan-Statuskorrektur.
