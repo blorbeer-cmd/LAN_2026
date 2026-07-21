@@ -1,43 +1,49 @@
-# Multi-stage build: compile TypeScript + native better-sqlite3 addon in a
-# full build image, then ship only the runtime bits. Both stages use the same
-# base image so the native addon's glibc ABI matches between build and run.
+# syntax=docker/dockerfile:1
 
-FROM node:24-bookworm-slim AS builder
+FROM node:24-bookworm-slim AS dependency-base
 WORKDIR /app
-
-# better-sqlite3 compiles a native addon at install time.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 make g++ \
-    && rm -rf /var/lib/apt/lists/*
 
 # npm runs the repository's prepare hook during npm ci. Include that tiny
 # script before dependency installation so container builds stay quiet; it
 # intentionally becomes a no-op because the image has no .git checkout.
-COPY package.json package-lock.json ./
-COPY scripts/setup-git-hooks.js ./scripts/setup-git-hooks.js
-RUN npm ci
+COPY --link package.json package-lock.json ./
+COPY --link scripts/setup-git-hooks.js ./scripts/setup-git-hooks.js
 
-COPY tsconfig.json ./
-COPY src ./src
+# better-sqlite3 12.11.1 provides a Node 24 Linux prebuild, so neither this
+# stage nor the production dependency stage needs a native compiler toolchain.
+# The cache only accelerates downloads; an empty cache still produces the
+# package-lock.json-pinned dependency tree.
+FROM dependency-base AS build-deps
+RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci
+
+FROM dependency-base AS prod-deps
+RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --omit=dev
+
+FROM build-deps AS builder
+
+COPY --link tsconfig.json ./
+COPY --link src ./src
 RUN npm run build
-
-# Drop devDependencies now that the build output exists, so the runtime stage
-# only copies production node_modules.
-RUN npm prune --omit=dev
 
 FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY public ./public
-COPY agent-dist ./agent-dist
-COPY scripts/jam-controller.mjs ./scripts/jam-controller.mjs
+COPY --link --chown=1000:1000 --from=prod-deps /app/package.json ./package.json
+COPY --link --chown=1000:1000 --from=prod-deps /app/node_modules ./node_modules
+COPY --link --chown=1000:1000 --from=builder /app/dist ./dist
 
-# node:24-bookworm-slim ships a non-root "node" user out of the box.
-RUN chown -R node:node /app
+# Keep the large, infrequently changing Windows agent payload independent so
+# BuildKit can rebase and reuse this layer when other application files change.
+COPY --link --chown=1000:1000 agent-dist ./agent-dist
+COPY --link --chown=1000:1000 public ./public
+COPY --link --chown=1000:1000 scripts/jam-controller.mjs ./scripts/jam-controller.mjs
+
+# node:24-bookworm-slim ships a non-root "node" user out of the box. The data
+# directory remains writable even when the image is started without Compose's
+# production bind mount; all shipped application files stay read-only at run
+# time and already have the correct owner from COPY --chown.
+RUN install -d -o node -g node /app/data
 USER node
 
 EXPOSE 3000

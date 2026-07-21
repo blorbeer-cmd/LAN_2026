@@ -272,6 +272,10 @@ jobs:
     if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # This non-publishing gate needs neither the downloadable BuildKit record
+      # nor an attestation. The publish build below keeps its default provenance.
+      DOCKER_BUILD_RECORD_UPLOAD: false
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -279,6 +283,7 @@ jobs:
         with:
           context: ./server
           push: false
+          provenance: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

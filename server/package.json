@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "archiver": "^6.0.2",
-    "better-sqlite3": "^11.3.0",
+    "better-sqlite3": "^12.11.1",
     "express": "^4.19.2",
     "helmet": "^8.2.0",
     "nanoid": "^3.3.7",
