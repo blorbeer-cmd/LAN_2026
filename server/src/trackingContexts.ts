@@ -10,38 +10,50 @@ export interface TrackingContext { groupId: string; eventId: string | null; weig
 // the report's time proportionally, so analytics never double-count a tick.
 export function activeTrackingContexts(playerId: string, now = Date.now()): TrackingContext[] {
   const groups = db.prepare(
-    `SELECT gm.group_id FROM group_memberships gm
+    `SELECT gm.group_id, gm.outside_tracking_enabled FROM group_memberships gm
      JOIN groups g ON g.id = gm.group_id
-     WHERE gm.player_id = ? AND gm.status = 'active' AND g.archived_at IS NULL
-       AND (EXISTS (SELECT 1 FROM group_tracking_consents c WHERE c.group_id = gm.group_id AND c.player_id = gm.player_id AND c.revoked_at IS NULL)
-            OR (? = 'legacy' AND gm.outside_tracking_enabled = 1))`,
-  ).all(playerId, config.authMode) as Array<{ group_id: string }>;
-  if (!groups.length && config.authMode === 'legacy' && !(db.prepare('SELECT 1 FROM group_memberships WHERE player_id = ? LIMIT 1').get(playerId))) groups.push({ group_id: DEFAULT_GROUP_ID });
+     WHERE gm.player_id = ? AND gm.status = 'active' AND g.archived_at IS NULL`,
+  ).all(playerId) as Array<{ group_id: string; outside_tracking_enabled: number }>;
+  if (!groups.length && config.authMode === 'legacy' && !(db.prepare('SELECT 1 FROM group_memberships WHERE player_id = ? LIMIT 1').get(playerId))) {
+    groups.push({ group_id: DEFAULT_GROUP_ID, outside_tracking_enabled: 1 });
+  }
   const result: TrackingContext[] = [];
-  for (const { group_id: groupId } of groups) {
+  for (const { group_id: groupId, outside_tracking_enabled: outsideTrackingEnabled } of groups) {
+    const hasGroupConsent = Boolean(
+      db.prepare(
+        `SELECT 1 FROM group_tracking_consents
+         WHERE group_id = ? AND player_id = ? AND revoked_at IS NULL
+         LIMIT 1`,
+      ).get(groupId, playerId),
+    ) || (config.authMode === 'legacy' && Boolean(outsideTrackingEnabled));
     const events = db.prepare(
       `SELECT e.id, e.visibility_scope FROM events e
-       LEFT JOIN event_tracking_consents c ON c.event_id = e.id AND c.player_id = ? AND c.revoked_at IS NULL
        WHERE e.group_id = ? AND e.tracking_enabled = 1 AND e.status = 'published'
          AND (
-           e.visibility_scope IN ('group', 'public')
+           (? = 1 AND e.visibility_scope IN ('group', 'public'))
            OR (
              e.visibility_scope = 'participants'
              AND EXISTS (
                SELECT 1 FROM event_participants ep
                WHERE ep.event_id = e.id AND ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
              )
-             AND (c.id IS NOT NULL OR ? = 'legacy')
+             AND (
+               EXISTS (
+                 SELECT 1 FROM event_tracking_consents c
+                 WHERE c.event_id = e.id AND c.player_id = ? AND c.revoked_at IS NULL
+               )
+               OR ? = 'legacy'
+             )
            )
          )
          AND e.starts_at <= ? AND (e.ends_at IS NULL OR e.ends_at > ?)
        ORDER BY e.id`,
-    ).all(playerId, groupId, playerId, config.authMode, now, now) as Array<{ id: string; visibility_scope: string }>;
+    ).all(groupId, hasGroupConsent ? 1 : 0, playerId, playerId, config.authMode, now, now) as Array<{ id: string; visibility_scope: string }>;
     const activeEventCount = (db.prepare("SELECT COUNT(*) AS count FROM events WHERE group_id = ? AND tracking_enabled = 1 AND status = 'published' AND starts_at <= ? AND (ends_at IS NULL OR ends_at > ?)").get(groupId, now, now) as { count: number }).count;
     if (events.length) {
       const weight = 1 / events.length;
       for (const event of events) result.push({ groupId, eventId: event.id, weight });
-    } else if (activeEventCount === 0 && (config.authMode === 'legacy' || db.prepare("SELECT 1 FROM group_memberships WHERE group_id = ? AND player_id = ? AND status = 'active' AND outside_tracking_enabled = 1").get(groupId, playerId))) {
+    } else if (activeEventCount === 0 && hasGroupConsent) {
       result.push({ groupId, eventId: null, weight: 1 });
     }
   }
@@ -50,25 +62,74 @@ export function activeTrackingContexts(playerId: string, now = Date.now()): Trac
 
 export function setGroupTrackingConsent(groupId: string, playerId: string, granted: boolean, now = Date.now()): void {
   db.transaction(() => {
-    const current = db.prepare('SELECT id FROM group_tracking_consents WHERE group_id = ? AND player_id = ? AND revoked_at IS NULL ORDER BY granted_at DESC LIMIT 1').get(groupId, playerId) as {id:string}|undefined;
-    if (granted && !current) db.prepare('INSERT INTO group_tracking_consents (id, group_id, player_id, granted_at, source) VALUES (?, ?, ?, ?, ?)').run(nanoid(), groupId, playerId, now, 'user');
-    if (!granted && current) db.prepare('UPDATE group_tracking_consents SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL').run(now, current.id);
+    const current = db.prepare(
+      'SELECT 1 FROM group_tracking_consents WHERE group_id = ? AND player_id = ? AND revoked_at IS NULL LIMIT 1',
+    ).get(groupId, playerId);
+    if (granted && !current) {
+      db.prepare(
+        'INSERT INTO group_tracking_consents (id, group_id, player_id, granted_at, source) VALUES (?, ?, ?, ?, ?)',
+      ).run(nanoid(), groupId, playerId, now, 'user');
+    }
+    if (!granted) {
+      db.prepare(
+        `UPDATE group_tracking_consents
+         SET revoked_at = CASE WHEN granted_at > ? THEN granted_at ELSE ? END
+         WHERE group_id = ? AND player_id = ? AND revoked_at IS NULL`,
+      ).run(now, now, groupId, playerId);
+      closeTrackingContextRows(playerId, groupId, null, now);
+    }
   })();
 }
 
 export function setEventTrackingConsent(eventId: string, groupId: string, playerId: string, accepted: boolean, now = Date.now()): void {
   db.transaction(() => {
-    const current = db.prepare('SELECT id FROM event_tracking_consents WHERE event_id = ? AND player_id = ? AND revoked_at IS NULL ORDER BY accepted_at DESC LIMIT 1').get(eventId, playerId) as {id:string}|undefined;
-    if (accepted && !current) db.prepare('INSERT INTO event_tracking_consents (id, event_id, group_id, player_id, accepted_at, source) VALUES (?, ?, ?, ?, ?, ?)').run(nanoid(), eventId, groupId, playerId, now, 'user');
-    if (!accepted && current) db.prepare('UPDATE event_tracking_consents SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL').run(now, current.id);
+    const current = db.prepare(
+      'SELECT 1 FROM event_tracking_consents WHERE event_id = ? AND player_id = ? AND revoked_at IS NULL LIMIT 1',
+    ).get(eventId, playerId);
+    if (accepted && !current) {
+      const latest = db.prepare(
+        'SELECT MAX(accepted_at) AS accepted_at FROM event_tracking_consents WHERE event_id = ? AND player_id = ?',
+      ).get(eventId, playerId) as { accepted_at: number | null };
+      const acceptedAt = latest.accepted_at === null ? now : Math.max(now, latest.accepted_at + 1);
+      db.prepare(
+        'INSERT INTO event_tracking_consents (id, event_id, group_id, player_id, accepted_at, source) VALUES (?, ?, ?, ?, ?, ?)',
+      ).run(nanoid(), eventId, groupId, playerId, acceptedAt, 'user');
+    }
+    if (!accepted) {
+      db.prepare(
+        `UPDATE event_tracking_consents
+         SET revoked_at = CASE WHEN accepted_at > ? THEN accepted_at ELSE ? END
+         WHERE event_id = ? AND player_id = ? AND revoked_at IS NULL`,
+      ).run(now, now, eventId, playerId);
+      closeTrackingContextRows(playerId, groupId, eventId, now);
+    }
   })();
+}
+
+function closeTrackingContextRows(
+  playerId: string,
+  groupId: string,
+  eventId: string | null,
+  endedAt: number,
+): void {
+  db.prepare(
+    'UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND group_id = ? AND event_id = ? AND ended_at IS NULL',
+  ).run(endedAt, playerId, groupId, eventId ?? OUTSIDE_EVENTS_ID);
+  db.prepare('DELETE FROM tracking_live_games WHERE player_id = ? AND group_id = ? AND event_id IS ?').run(
+    playerId,
+    groupId,
+    eventId,
+  );
+  db.prepare('DELETE FROM tracking_live_contexts WHERE player_id = ? AND group_id = ? AND event_id IS ?').run(
+    playerId,
+    groupId,
+    eventId,
+  );
 }
 
 export function closeTrackingContext(playerId: string, groupId: string, eventId: string | null, endedAt: number): void {
   db.transaction(() => {
-    db.prepare('UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND group_id = ? AND event_id = ? AND ended_at IS NULL').run(endedAt, playerId, groupId, eventId ?? OUTSIDE_EVENTS_ID);
-    db.prepare('DELETE FROM tracking_live_games WHERE player_id = ? AND group_id = ? AND event_id IS ?').run(playerId, groupId, eventId);
-    db.prepare('DELETE FROM tracking_live_contexts WHERE player_id = ? AND group_id = ? AND event_id IS ?').run(playerId, groupId, eventId);
+    closeTrackingContextRows(playerId, groupId, eventId, endedAt);
   })();
 }
 

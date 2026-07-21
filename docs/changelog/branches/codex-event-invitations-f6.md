@@ -14,4 +14,6 @@ Die nummerierte Migration v53 übernimmt alle vorhandenen Event-Teilnahmen verlu
 
 ## Pull Requests
 
-- [PR #264](https://github.com/blorbeer-cmd/LAN_2026/pull/264) gegen `main` (Draft).
+- [PR #264](https://github.com/blorbeer-cmd/LAN_2026/pull/264), gemergt am 2026-07-21 als
+  [`06a3c8b`](https://github.com/blorbeer-cmd/LAN_2026/commit/06a3c8bde6e87b7d5b8c6d96730ad62bf965addc):
+  Add event invitation responses.

@@ -76,14 +76,14 @@ empfohlen.
 | F3 `broadcast()` verwirft ungescopte Events | **erledigt durch #238** (Pflicht-Scope, alle Aufrufer versorgt) | gruppenunabhängiger Bug, Fix bleibt |
 | F4 Kiosk/Legacy erhalten nichts | **erledigt durch #238** | gruppenunabhängiger Bug, Fix bleibt |
 | F5 „erste Mitgliedschaft“-Ableitung | **obsolet** | mit einer Gruppe ist die Ableitung immer korrekt; #238 hat sie zudem ersetzt |
-| F6 Event-Teilnahme ohne Zustände/Einladungsprüfung | **herabgestuft auf P3-Produktentscheidung** | Events bleiben; aber im Freundeskreis ist Selbst-Freischaltung ein UX-, kein Sicherheitsthema. Optional später `invited/accepted` ergänzen |
+| F6 Event-Teilnahme ohne Zustände/Einladungsprüfung | **erledigt durch [PR #264](https://github.com/blorbeer-cmd/LAN_2026/pull/264)** | `invited`/`accepted`/`declined` sind umgesetzt; nur `accepted` zählt als normale Teilnahme |
 | F7 Migrationen in Registrierungs- statt Versionsreihenfolge | **bleibt** (Phase R4) | gruppenunabhängige Wartungsschuld (`db.ts:663 ff.`, v44 vor v41–43 registriert) |
 | F8 Tabellen außerhalb des Migrationszählers, unguarded `ALTER` | **bleibt** (Phase R4) | gruppenunabhängig (`db.ts:2561,2588`) |
 | F9 globales `getTrackingEventId()` | **obsolet als Sicherheitsthema** | mit einer Gruppe ist „das eine Tracking-Event“ wieder wohldefiniert; #238 nutzt ohnehin schon die gruppenlokale Auflösung |
 | F10 Arcade-Ergebnis-Scope global | **obsolet** (eine Gruppe) · #238 übergibt zudem den unveränderlichen Match-Scope | — |
 | F11 Arcade-Pushes → Default-Gruppe | **obsolet** — Default-Gruppe ist jetzt per Definition richtig | — |
 | F12 Offline-Sweep nur Startgruppe | **obsolet** — es gibt nur die Startgruppe; #238-Fanout schadet nicht | — |
-| F13 Consent-Abweichungen §7.3/§7.4 | **herabgestuft auf P3** | Event-Consent bleibt relevant (Privatsphäre unter Freunden), aber ohne Mandanten-Dimension; bei Konzept Rev. 5 neu und einfacher fassen |
+| F13 Consent-Abweichungen §7.3/§7.4 | **in Umsetzung auf `codex/f13-tracking-consent` (P3)** | Rev. 5 §§5.1–5.3 trennt Gruppenraum- und Event-Consent; privates Event-Tracking verlangt `accepted` + Consent, Widerrufe wirken idempotent und sofort |
 | F14 Testmatrix unvollständig | **schrumpft** | Cross-Group-Matrix entfällt mit der API; Event-Matrix (Teilnehmer/Nichtteilnehmer/Admin, Kiosk, Widerruf) existiert seit #238 |
 | F15 Changelog-Lücken ab PR #214 | **bleibt** (Phase R5) | Doku-Hygiene, unabhängig vom Modell |
 | F16 Prozessverstöße | **bleibt als Arbeitsregel** | Direkt-Pushes/Merges ohne CI auch künftig nicht |

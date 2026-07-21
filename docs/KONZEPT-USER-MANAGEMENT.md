@@ -233,7 +233,18 @@ Der Agent authentifiziert das globale Konto. Ein Report wird verarbeitet, wenn:
 
 - das Konto aktiv (nicht deaktiviert) ist,
 - außerhalb eines Events: das Instanz-Tracking durch die Person aktiviert ist,
-- innerhalb eines akzeptierten Events: die Event-Tracking-Zustimmung aktiv ist.
+- innerhalb eines teilnehmerprivaten Events: die Person den Teilnahmestatus `accepted` hat und ihre
+  Event-Tracking-Zustimmung aktiv ist,
+- innerhalb eines gruppenweit oder öffentlich sichtbaren Events: das Instanz-Tracking aktiv ist;
+  diese bestehenden Sichtbarkeitsverträge werden nicht in teilnehmerprivates Event-Consent
+  umgedeutet.
+
+Instanz- und Event-Consent sind eigenständige Freigaben: Ein deaktiviertes Instanz-Tracking
+blockiert keinen ausdrücklich freigegebenen teilnehmerprivaten Event-Kontext. Umgekehrt ersetzt
+Instanz-Tracking niemals den Event-Consent. Owner-/Adminrechte gewähren administrativen
+Event-Zugriff, aber keine persönliche Tracking-Einwilligung und keinen Tracking-Teilnahmestatus.
+Im Legacy-Modus bleibt ausschließlich für bereits `accepted`-Teilnehmende die bisherige
+rosterbasierte Event-Kompatibilität erhalten.
 
 Es gibt weiterhin keine dauerhaft gespeicherte globale Rohaktivität ohne Einwilligung. Ist kein
 Tracking erlaubt, wird der Report nur als technischer Heartbeat verarbeitet.
@@ -243,16 +254,34 @@ Tracking erlaubt, wird der Report nur als technischer Heartbeat verarbeitet.
 - Außerhalb von Events gilt eine persönliche Einstellung, standardmäßig aus.
 - Beim Zuordnen zu einem Event wird transparent erklärt, dass Tracking während des Eventzeitraums
   für Event-Auswertungen verwendet wird; die Zustimmung ist separat widerrufbar.
+- `POST /api/groups/:groupId/tracking-consent` setzt den Gruppenraum-Consent mit
+  `{ "granted": true|false }`. `POST /api/events/:id/tracking-consent` setzt entsprechend den
+  Event-Consent. Ein leerer Event-Request und der historische Alias `POST /api/events/:id/accept`
+  bleiben aus Kompatibilitätsgründen eine Zustimmung; nur der kanonische Consent-Endpunkt nimmt
+  mit `{ "granted": false }` einen Widerruf entgegen.
+- Zustimmung, wiederholte Zustimmung, Widerruf und wiederholter Widerruf sind idempotent. Eine
+  erneute Zustimmung nach Widerruf erzeugt ein neues Historienintervall; alte Consent-Zeilen werden
+  weder überschrieben noch gelöscht.
+- Für ein teilnehmerprivates Event darf Zustimmung nur bei `accepted` erteilt werden. Vorhandene
+  Consent-Historie für `invited` oder `declined` gewährt keinen Tracking-Kontext und ändert den
+  Teilnahmestatus nicht. Widerrufen darf die Person eine alte Freigabe unabhängig vom aktuellen
+  Teilnahmestatus.
 - Ein globaler „Tracking pausieren“-Notschalter bleibt bestehen und gewinnt immer.
 - Admins/Owner können Einwilligungen sehen, aber niemals für andere aktivieren.
 - Widerruf stoppt neue Erfassung sofort, beendet offene Sessions und entfernt Live-Status.
-  Rechtmäßig erfasste Historie bleibt, bis die Person sie separat löschen lässt.
+  Die aktualisierte Live-Projektion wird unmittelbar per Realtime verteilt. Rechtmäßig erfasste
+  Historie bleibt, bis die Person sie separat löschen lässt.
 
 ### 5.3 Zeitgrenzen
 
 Event-Tracking beginnt frühestens bei `starts_at` und endet spätestens bei `ends_at`. Offene
 Sessions werden bei Ende des Zeitraums, Widerruf oder Kontodeaktivierung sauber und idempotent
 geschlossen, damit verspätete Agent-Reports keine beendete Session wieder öffnen.
+
+Bei einem Eventwechsel werden nicht mehr berechtigte Live-Kontexte vor Verarbeitung des nächsten
+Reports geschlossen. Falls technische Bestandsdaten mehrere zeitlich aktive Events enthalten,
+wird ein Report nur auf die jeweils zulässigen Kontexte verteilt und proportional gewichtet; ein
+Widerruf schließt dabei ausschließlich den betroffenen Event-Kontext.
 
 ---
 
@@ -370,6 +399,10 @@ wartet.
    Merge-Voraussetzung.
 9. Mehrgruppenbetrieb, vollständige ASVS-L2-Konformität und MFA als Merge-Voraussetzung sind
    Nicht-Ziele dieses Konzepts (Abschnitt 2.2).
+10. Gruppenraum- und teilnehmerprivater Event-Tracking-Consent sind unabhängig. Privates
+    Event-Tracking verlangt `accepted` plus aktiven Event-Consent; Owner/Admins erhalten keinen
+    Einwilligungs-Bypass. Widerrufe wirken sofort auf Live-Daten, löschen aber keine rechtmäßig
+    erfasste Historie.
 
 ## 11. Offene, unverbindliche Backlog-Ideen
 

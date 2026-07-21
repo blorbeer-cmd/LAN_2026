@@ -105,8 +105,7 @@ groupsRouter.post('/:groupId/tracking-consent', requireGroupMembership, (req, re
   db.prepare('UPDATE group_memberships SET outside_tracking_enabled = ? WHERE group_id = ? AND player_id = ?')
     .run(granted ? 1 : 0, req.group!.id, req.player!.id);
   if (!granted) {
-    db.prepare('UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND group_id = ? AND event_id IS NULL AND ended_at IS NULL')
-      .run(Date.now(), req.player!.id, req.group!.id);
+    broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
   }
   broadcastInstanceSignal(Events.groupsChanged);
   res.json({ ok: true, granted });
