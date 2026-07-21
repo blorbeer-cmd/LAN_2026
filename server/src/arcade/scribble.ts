@@ -22,6 +22,7 @@ import { broadcastArcadeKiosk } from '../realtime';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { shouldSendLobbyPush } from './lobbyPush';
 import { recordArcadeResult } from './arcadeData';
+import { arcadeTiming } from './timing';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, emitArcadeSocket, socketArcadeScope, socketCanUseArcadeScope } from './scope';
 import { communicationRecipientIds } from '../communicationRecipients';
 import {
@@ -42,7 +43,7 @@ function scribbleLobbyPushKey(lobbyId: string): string {
 
 const CHOICE_MS = 15_000;
 const REVEAL_MS = 3_000;
-const COUNTDOWN_MS = 3000; // "3, 2, 1" before the first turn's word choice
+const COUNTDOWN_MS = arcadeTiming.countdownMs; // "3, 2, 1" before the first turn's word choice
 const DEFAULT_ROUNDS = 2;
 const DEFAULT_TURN_MS = 60_000;
 const MIN_TURN_MS = 20_000;

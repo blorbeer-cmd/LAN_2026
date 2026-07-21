@@ -12,10 +12,11 @@ import { shouldSendLobbyPush } from './lobbyPush';
 import { recordArcadeResult } from './arcadeData';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 import { communicationRecipientIds } from '../communicationRecipients';
+import { arcadeTiming } from './timing';
 
 const DEFAULT_TARGET_SCORE = 5;
 const QUESTION_MS = 20_000;
-const COUNTDOWN_MS = 3000; // "3, 2, 1" intro before the first question
+const COUNTDOWN_MS = arcadeTiming.countdownMs; // "3, 2, 1" intro before the first question
 const QUIZ_BOT = { id: 'quiz-bot', name: 'Quiz-Bot' };
 
 function quizLobbyPushKey(lobbyId: string): string {

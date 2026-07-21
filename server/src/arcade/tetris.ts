@@ -20,6 +20,7 @@ import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
 import { recordArcadeResult } from './arcadeData';
+import { arcadeTiming } from './timing';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 import {
@@ -49,7 +50,7 @@ import {
 } from './tetrisLogic';
 
 const TICK_MS = 40; // gravity/loop resolution
-const COUNTDOWN_MS = 3000; // "3, 2, 1" before the first piece falls
+const COUNTDOWN_MS = arcadeTiming.countdownMs; // "3, 2, 1" before the first piece falls
 const LOCK_STEP_BONUS = 1; // soft-drop point per row
 const HARD_DROP_BONUS = 2; // hard-drop points per row
 const BOT_ID = 'tetris-bot';
