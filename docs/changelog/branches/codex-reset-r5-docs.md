@@ -8,5 +8,5 @@ rein dokumentarisch; Code, Schema und Verhalten werden nicht geändert.
 
 ## Pull Requests
 
-- [PR #261](https://github.com/blorbeer-cmd/LAN_2026/pull/261) (Draft, offen): R5 — Doku- und
+- [PR #261](https://github.com/blorbeer-cmd/LAN_2026/pull/261) (offen): R5 — Doku- und
   Changelog-Nachpflege sowie Plan-Statuskorrektur.

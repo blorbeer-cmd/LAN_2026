@@ -105,8 +105,9 @@ Testbasis liefert, auf der R2 aufsetzt.
   MFA/ASVS-L2-Vollkonformität (Anspruch auf „L1 + sinnvolle L2-Härtungen“ zurücksetzen —
   angemessen für ~15 Freunde im LAN).
 - `docs/plans/user-management-status.md` als historisch markieren und auf diesen Plan verweisen.
-- Offene Alt-PRs schließen: #177 (Konzept-Review-Draft, obsolet), #179 prüfen/mergen (reine
-  Changelog-Pflege).
+- Alt-PR [#177](https://github.com/blorbeer-cmd/LAN_2026/pull/177) wurde als obsolet geschlossen;
+  [#179](https://github.com/blorbeer-cmd/LAN_2026/pull/179) blieb nach Prüfung als separater,
+  ungemergter Changelog-PR offen und ist kein Bestandteil von R0.
 - **Kein** Codeänderungsanteil.
 
 ### R1 — PR #238 mergen (Größe S, nur Merge + Changelog) — ✅ erledigt 2026-07-20 ([PR #238](https://github.com/blorbeer-cmd/LAN_2026/pull/238))
