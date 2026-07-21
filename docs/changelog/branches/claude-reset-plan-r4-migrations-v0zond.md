@@ -20,5 +20,6 @@ Abschnitt 5. Läuft gruppenunabhängig und parallel zum Hauptstrang R0→R1→R2
 
 ## Pull Requests
 
-- [PR #257](https://github.com/blorbeer-cmd/LAN_2026/pull/257), offen (Draft): R4: Run DB migrations
-  in version order and guard v44 schema changes (F7 + F8).
+- [PR #257](https://github.com/blorbeer-cmd/LAN_2026/pull/257), gemergt am 2026-07-21 als
+  [`f91ca2c`](https://github.com/blorbeer-cmd/LAN_2026/commit/f91ca2c38b6dab0baf3353faed145e70e478fae1):
+  R4: Run DB migrations in version order and guard v44 schema changes (F7 + F8).

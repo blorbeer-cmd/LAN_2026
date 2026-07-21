@@ -954,8 +954,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 51 }, (_, index) => index + 1),
-    'every version 1..51 runs exactly once',
+    Array.from({ length: 52 }, (_, index) => index + 1),
+    'every version 1..52 runs exactly once',
   );
 });
 

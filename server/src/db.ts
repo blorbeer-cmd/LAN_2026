@@ -670,8 +670,18 @@ const recordMigration = db.prepare('INSERT INTO schema_migrations (version, name
 // registrations are in place (see the call near the end of this file).
 const registeredMigrations: Migration[] = [];
 const registeredMigrationVersions = new Set<number>();
+let migrationsHaveRun = false;
 
 function registerMigration(migration: Migration): void {
+  // Fail fast if a migration is registered after runRegisteredMigrations() has
+  // already fired: it would land in the array but never execute (silently
+  // leaving the DB one version behind). New migrations must be registered
+  // above the runner call, alongside the others.
+  if (migrationsHaveRun) {
+    throw new Error(
+      `Migration ${migration.version} (${migration.name}) wurde nach dem Migrationslauf registriert — Registrierung muss vor runRegisteredMigrations() erfolgen`,
+    );
+  }
   if (registeredMigrationVersions.has(migration.version)) {
     throw new Error(`Doppelte Migrationsversion ${migration.version} (${migration.name})`);
   }
@@ -690,6 +700,7 @@ function migrationsInRunOrder(): Migration[] {
 // schema_migrations, so an already migrated database re-runs nothing and no
 // version is skipped — only the never-applied ones execute, oldest first.
 function runRegisteredMigrations(): void {
+  migrationsHaveRun = true;
   for (const migration of migrationsInRunOrder()) {
     if (hasAppliedMigration.get(migration.version)) continue;
     db.transaction(() => {
@@ -2856,6 +2867,17 @@ function addChecklistTaskClaimComment(): void {
 }
 registerMigration({ version: 51, name: 'add checklist task claim comment', up: addChecklistTaskClaimComment });
 
+// Optional due date for a To-Do (docs/KONZEPT-PACKLISTE-TICKETS.md): lets
+// "Mir zugewiesen" sort by urgency and surface an overdue/due-soon badge.
+// Stored as an epoch-ms timestamp, same convention as the other *_at columns
+// on this table, so existing formatting/serialization helpers apply as-is.
+function addChecklistTaskDueAt(): void {
+  const columns = db.prepare('PRAGMA table_info(checklist_tasks)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'due_at')) return;
+  db.exec('ALTER TABLE checklist_tasks ADD COLUMN due_at INTEGER');
+}
+registerMigration({ version: 52, name: 'add checklist task due date', up: addChecklistTaskDueAt });
+
 // Every migration is registered by now — run them all in ascending version
 // order (see registerMigration/runRegisteredMigrations above). This is the
 // single place migrations actually execute.
@@ -2871,17 +2893,6 @@ runRegisteredMigrations();
 // no-op. It runs after runRegisteredMigrations() so the referenced groups table
 // (created by v30) exists on a brand-new database.
 createPushMuteTable();
-
-// Optional due date for a To-Do (docs/KONZEPT-PACKLISTE-TICKETS.md): lets
-// "Mir zugewiesen" sort by urgency and surface an overdue/due-soon badge.
-// Stored as an epoch-ms timestamp, same convention as the other *_at columns
-// on this table, so existing formatting/serialization helpers apply as-is.
-function addChecklistTaskDueAt(): void {
-  const columns = db.prepare('PRAGMA table_info(checklist_tasks)').all() as Array<{ name: string }>;
-  if (columns.some((c) => c.name === 'due_at')) return;
-  db.exec('ALTER TABLE checklist_tasks ADD COLUMN due_at INTEGER');
-}
-runMigration({ version: 52, name: 'add checklist task due date', up: addChecklistTaskDueAt });
 
 function createPushMuteTable(): void {
   db.exec(`
