@@ -1,3 +1,4 @@
 # CLAUDE.md
 
 @AGENTS.md
+@../DESIGN_SYSTEM.md
