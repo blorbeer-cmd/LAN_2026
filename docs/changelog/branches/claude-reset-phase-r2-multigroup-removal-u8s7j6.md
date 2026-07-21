@@ -46,4 +46,5 @@ Betriebsregel; keine Migration nötig, rein vorsorglich).
 
 ## Pull Requests
 
-- PR folgt (Draft) — wird nach Erstellung ergänzt.
+- [PR #258](https://github.com/blorbeer-cmd/LAN_2026/pull/258) (Draft, offen): R2 — Mehrgruppen-
+  Oberfläche entfernen.
