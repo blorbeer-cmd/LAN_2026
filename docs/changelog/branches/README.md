@@ -1,6 +1,6 @@
 # Branch-Historie
 
-Stand: 2026-07-21 · 137 Branch-Seiten. Die Statusangaben wurden gegen die GitHub-PR-Metadaten
+Stand: 2026-07-21 · 138 Branch-Seiten. Die Statusangaben wurden gegen die GitHub-PR-Metadaten
 abgeglichen; mehrere PRs desselben Arbeitsbranches bleiben als gemeinsamer Themenstrang erkennbar.
 
 - [`agent/arcade-kiosk-stream`](./agent-arcade-kiosk-stream.md) — 1 gemergt, 0 offen
@@ -97,7 +97,8 @@ abgeglichen; mehrere PRs desselben Arbeitsbranches bleiben als gemeinsamer Theme
 - [`codex/changelog-deploy-hardening`](./codex-changelog-deploy-hardening.md) — 1 gemergt, 0 offen
 - [`codex/deploy-optimizations`](./codex-deploy-optimizations.md) — 1 gemergt, 0 offen
 - [`codex/docker-prepare-fix`](./codex-docker-prepare-fix.md) — 1 gemergt, 0 offen
-- [`codex/event-invitations-f6`](./codex-event-invitations-f6.md) — 0 gemergt, 1 offen (Draft-PR #264)
+- [`codex/event-invitations-f6`](./codex-event-invitations-f6.md) — 1 gemergt, 0 offen
+- [`codex/f13-tracking-consent`](./codex-f13-tracking-consent.md) — 0 gemergt, 1 offen (Draft-PR #268)
 - [`codex/feedback-general-ui-polish`](./codex-feedback-general-ui-polish.md) — 1 gemergt, 0 offen
 - [`codex/fix-arcade-spectator-views`](./codex-fix-arcade-spectator-views.md) — 1 gemergt, 0 offen
 - [`codex/fix-scribble-watch-rerender`](./codex-fix-scribble-watch-rerender.md) — 2 gemergt, 0 offen

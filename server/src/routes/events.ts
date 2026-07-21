@@ -100,24 +100,34 @@ eventsRouter.get('/:id', resolveEvent, (req, res) => {
   res.json(serializeEvent(event));
 });
 
-// Event tracking is an explicit personal acceptance, separate from an
-// administrator's roster.  In legacy mode the historical roster remains a
-// compatibility acceptance; required mode must use this endpoint.
-function acceptEventTracking(req: Request, res: Response): void {
+// Event tracking is an explicit personal decision, separate from an
+// administrator's roster. In legacy mode the historical accepted roster
+// remains a compatibility acceptance; required mode must grant here.
+function updateEventTrackingConsent(req: Request, res: Response, granted: boolean): void {
   const event = req.groupResource as EventRow;
   if (!event || event.id === OUTSIDE_EVENTS_ID) { res.status(404).json({ error: 'Event nicht gefunden.' }); return; }
   const playerId = requestPlayerId(req);
   if (!playerId) { res.status(400).json({ error: 'Spieleridentität ist erforderlich.' }); return; }
-  if (event.visibility_scope === 'participants' && !isParticipant(event.id, playerId)) {
+  if (granted && event.visibility_scope === 'participants' && !isParticipant(event.id, playerId)) {
     res.status(409).json({ error: 'Tracking kann erst nach Annahme der Event-Einladung aktiviert werden.' });
     return;
   }
-  setEventTrackingConsent(event.id, event.group_id!, playerId, true);
-  res.json({ ok: true, eventId: event.id, accepted: true });
+  setEventTrackingConsent(event.id, event.group_id!, playerId, granted);
+  if (!granted) {
+    broadcast(Events.liveStatusChanged, getLiveBoard(event.group_id!), { groupId: event.group_id! });
+  }
+  res.json({ ok: true, eventId: event.id, accepted: granted });
 }
 
-eventsRouter.post('/:id/accept', resolveEvent, acceptEventTracking);
-eventsRouter.post('/:id/tracking-consent', resolveEvent, acceptEventTracking);
+// Compatibility alias: this historical route always grants consent.
+eventsRouter.post('/:id/accept', resolveEvent, (req, res) => updateEventTrackingConsent(req, res, true));
+eventsRouter.post('/:id/tracking-consent', resolveEvent, (req, res) => {
+  const granted = req.body?.granted ?? true;
+  if (typeof granted !== 'boolean') {
+    return res.status(400).json({ error: 'granted muss ein Boolean sein.' });
+  }
+  updateEventTrackingConsent(req, res, granted);
+});
 
 // POST /api/events/:id/invitations - invite (or re-invite) one active group
 // member. Existing invited/accepted rows are idempotent; a declined row is
