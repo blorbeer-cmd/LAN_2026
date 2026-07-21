@@ -6,12 +6,13 @@ import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { BALL_RADIUS, PADDLE_HEIGHT, PADDLE_WIDTH, PONG_HEIGHT, PONG_WIDTH, PongInput, PongWorld, createWorld, stepWorld } from './pongLogic';
 import { broadcastArcadeKiosk } from '../realtime';
 import { recordArcadeResult } from './arcadeData';
+import { arcadeTiming } from './timing';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 
 const TICK_MS = 1000 / 60;
 const SNAPSHOT_MS = 50;
-const COUNTDOWN_MS = 3000;
+const COUNTDOWN_MS = arcadeTiming.countdownMs;
 const DEFAULT_TARGET_SCORE = 7;
 const BOT_ID = 'pong-bot';
 const BOT = { id: BOT_ID, name: 'Pong-Bot', avatar: null, color: '#ef5da8' };

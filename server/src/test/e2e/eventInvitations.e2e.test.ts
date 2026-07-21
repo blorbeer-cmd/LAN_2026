@@ -4,7 +4,7 @@ import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { chromium, Browser, Page } from 'playwright';
 
-const PORT = 3913;
+const PORT = 3914; // 3901 flows, 3902 access, 3903 arcade, 3904 authGate, 3910 agent integration, 3911 phase5eIsolation, 3912 checklist, 3913 flowsArcade
 const BASE_URL = `http://localhost:${PORT}`;
 const RECOVERY_CODE = 'event-invitations-e2e-recovery';
 const OWNER_NAME = 'E2E Event Owner';

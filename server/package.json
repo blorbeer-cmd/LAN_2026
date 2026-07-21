@@ -16,7 +16,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "test": "tsc -p tsconfig.test.json && cross-env DB_FILE=:memory: node --test \"dist-test/*.test.js\" \"dist-test/arcade/*.test.js\" \"dist-test/test/*.test.js\" && node --test \"public/js/*.test.js\"",
     "test:coverage": "tsc -p tsconfig.test.json && cross-env DB_FILE=:memory: node --test --experimental-test-coverage --test-coverage-exclude=\"dist-test/test/**\" --test-coverage-exclude=\"dist-test/**/*.test.js\" \"dist-test/*.test.js\" \"dist-test/arcade/*.test.js\" \"dist-test/test/*.test.js\"",
-    "test:e2e": "npm run build && tsc -p tsconfig.test.json && node --test \"dist-test/test/e2e/*.test.js\"",
+    "test:e2e": "npm run build && tsc -p tsconfig.test.json && cross-env NODE_ENV=test E2E_FAST_TIMERS=1 node --test \"dist-test/test/e2e/*.test.js\"",
     "check:tokens": "node scripts/check-design-tokens.js",
     "lint": "eslint src public/js",
     "format:check": "prettier --check eslint.config.mjs .prettierrc.json ../agent/eslint.config.mjs ../agent/.prettierrc.json"
