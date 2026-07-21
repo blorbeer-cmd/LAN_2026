@@ -29,12 +29,17 @@ agentRouter.post('/report', (req, res) => {
     ON CONFLICT(player_id) DO UPDATE SET agent_version=excluded.agent_version, last_report_at=excluded.last_report_at, process_names=excluded.process_names`)
     .run(player.id, typeof agentVersion === 'string' && agentVersion.trim() ? agentVersion.trim() : null, now, JSON.stringify(normalized));
   const contexts = player.tracking_paused ? [] : activeTrackingContexts(player.id, now);
-  if (!contexts.length) return res.json({ ok: true, playerId: player.id, gameIds: [], tracked: false, trackingPaused: Boolean(player.tracking_paused) });
+  const previousContexts = db.prepare(
+    'SELECT group_id, event_id FROM tracking_live_contexts WHERE player_id = ?',
+  ).all(player.id) as Array<{ group_id: string; event_id: string | null }>;
+  const affectedGroupIds = new Set([
+    ...previousContexts.map((context) => context.group_id),
+    ...contexts.map((context) => context.groupId),
+  ]);
 
   const sync = db.transaction(() => {
     const wanted = new Set(contexts.map((c) => `${c.groupId}:${c.eventId ?? ''}`));
-    const oldContexts = db.prepare('SELECT group_id, event_id FROM tracking_live_contexts WHERE player_id = ?').all(player.id) as Array<{ group_id: string; event_id: string | null }>;
-    for (const old of oldContexts) if (!wanted.has(`${old.group_id}:${old.event_id ?? ''}`)) closeTrackingContext(player.id, old.group_id, old.event_id, now);
+    for (const old of previousContexts) if (!wanted.has(`${old.group_id}:${old.event_id ?? ''}`)) closeTrackingContext(player.id, old.group_id, old.event_id, now);
     for (const context of contexts) {
       const eventId = context.eventId;
       const previous = db.prepare('SELECT last_seen FROM tracking_live_contexts WHERE player_id = ? AND group_id = ? AND event_id IS ?').get(player.id, context.groupId, eventId) as { last_seen: number } | undefined;
@@ -70,9 +75,9 @@ agentRouter.post('/report', (req, res) => {
     }
   });
   sync();
-  for (const groupId of [...new Set(contexts.map((c) => c.groupId))]) broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+  for (const groupId of affectedGroupIds) broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
   const gameIds = [...new Set((db.prepare('SELECT game_id FROM tracking_live_games WHERE player_id = ?').all(player.id) as Array<{ game_id: string }>).map((row) => row.game_id))];
-  res.json({ ok: true, playerId: player.id, gameIds, tracked: true, trackingPaused: false });
+  res.json({ ok: true, playerId: player.id, gameIds, tracked: contexts.length > 0, trackingPaused: Boolean(player.tracking_paused) });
 });
 
 agentRouter.post('/tracking-paused', (req, res) => {
