@@ -131,6 +131,7 @@ test('manager invites a member who accepts and both open clients update', async 
   );
   await inviteButton.click();
   await memberRefresh;
+  assert.equal(await ownerPage.locator('.modal-backdrop').count(), 1, 'participant dialog stays open after inviting');
 
   const pending = memberPage.locator(`[data-pending-invitation="${eventId}"]`);
   await pending.waitFor();
@@ -151,6 +152,7 @@ test('manager invites a member who accepts and both open clients update', async 
   await pending.waitFor({ state: 'detached' });
   await ownerRefresh;
 
+  await ownerPage.locator('.modal-backdrop [data-close]').click();
   await ownerPage.click(`[data-participants-event="${eventId}"]`);
   const memberRow = ownerPage.locator('.modal-backdrop .card', { hasText: MEMBER_NAME });
   await memberRow.waitFor();

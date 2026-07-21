@@ -339,6 +339,26 @@ function participationStatus(status) {
   return { label: 'Eingeladen', badge: 'badge-paused' };
 }
 
+function renderParticipantsBody(event) {
+  const participants = new Map((event.participants ?? []).map((entry) => [entry.playerId, entry.status]));
+  const rows = state.players
+    .map((p) => {
+      const status = participants.get(p.id);
+      const presentation = status ? participationStatus(status) : null;
+      return `
+        <div class="card row-between">
+          <span class="player-name" style="min-width:0;">${escapeHtml(p.name)}</span>
+          <span class="row" style="gap:var(--space-2);flex-wrap:wrap;justify-content:flex-end;">
+            ${presentation ? `<span class="badge ${presentation.badge}">${presentation.label}</span>` : ''}
+            ${!status || status === 'declined' ? `<button type="button" class="btn btn-sm" data-invite-participant="${p.id}">${status === 'declined' ? 'Erneut einladen' : 'Einladen'}</button>` : ''}
+            ${status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${p.id}">Entfernen</button>` : ''}
+          </span>
+        </div>`;
+    })
+    .join('');
+  return `<div class="stack"><p class="muted" style="font-size:var(--font-size-xs);">Nur zugesagte Spieler erhalten Teilnehmerdaten und werden bei aktivem Event-Tracking berücksichtigt.</p>${state.players.length === 0 ? `<div class="empty-state">Noch keine Spieler.</div>` : rows}</div>`;
+}
+
 // Event managers invite active group members here. Acceptance remains a
 // personal action; administrative removal stays available for every status.
 function openParticipantsForm(ctx, event) {
@@ -375,35 +395,25 @@ function openParticipantsForm(ctx, event) {
     `,
     {
       onMount: (modalEl) => {
-        modalEl.querySelectorAll('[data-invite-participant]').forEach((button) => {
-          button.addEventListener('click', async () => {
-            button.disabled = true;
-            try {
-              await api.events.inviteParticipant(event.id, button.dataset.inviteParticipant);
-              close();
-              await ctx.refresh();
-              document.querySelector(`[data-participants-event="${event.id}"]`)?.focus();
-              showToast('Einladung gesendet.');
-            } catch (err) {
-              button.disabled = false;
-              showToast(err.message, { error: true });
-            }
-          });
-        });
-        modalEl.querySelectorAll('[data-remove-participant]').forEach((button) => {
-          button.addEventListener('click', async () => {
-            button.disabled = true;
-            try {
-              await api.events.removeParticipant(event.id, button.dataset.removeParticipant);
-              close();
-              await ctx.refresh();
-              document.querySelector(`[data-participants-event="${event.id}"]`)?.focus();
-              showToast('Event-Teilnahme entfernt.');
-            } catch (err) {
-              button.disabled = false;
-              showToast(err.message, { error: true });
-            }
-          });
+        modalEl.addEventListener('click', async (clickEvent) => {
+          const button = clickEvent.target.closest('[data-invite-participant], [data-remove-participant]');
+          if (!button) return;
+          const playerId = button.dataset.inviteParticipant || button.dataset.removeParticipant;
+          const isInvite = Boolean(button.dataset.inviteParticipant);
+          button.disabled = true;
+          try {
+            if (isInvite) await api.events.inviteParticipant(event.id, playerId);
+            else await api.events.removeParticipant(event.id, playerId);
+            await ctx.refresh();
+            const updatedEvent = (state.events || []).find((candidate) => candidate.id === event.id);
+            if (!updatedEvent) return close();
+            modalEl.querySelector('.modal-body').innerHTML = renderParticipantsBody(updatedEvent);
+            modalEl.querySelector('[data-invite-participant], [data-remove-participant]')?.focus();
+            showToast(isInvite ? 'Einladung gesendet.' : 'Event-Teilnahme entfernt.');
+          } catch (err) {
+            button.disabled = false;
+            showToast(err.message, { error: true });
+          }
         });
       },
     }

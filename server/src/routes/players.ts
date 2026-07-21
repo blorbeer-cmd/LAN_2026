@@ -547,7 +547,10 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const { eventId } = req.query;
-  const filterEventId = typeof eventId === 'string' ? eventId : null;
+  const scope = resolveGroupEventScope(req.group!.id, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const filterEventId = scope.eventId;
   const now = Date.now();
 
   const ownClauses = ['player_id = ?', 'group_id = ?'];

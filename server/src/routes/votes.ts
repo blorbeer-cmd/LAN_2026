@@ -31,6 +31,7 @@ import { requireGroupRole } from '../groupAuthorization';
 import { activeGroupPlayers } from '../groupPlayers';
 import { trackingEventIdForGroup } from '../competitionScope';
 import { communicationRecipientIds } from '../communicationRecipients';
+import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
 
 export const votesRouter = Router();
 
@@ -647,6 +648,9 @@ function voteEventFilter(groupId: string, requested: unknown): string | null {
 votesRouter.get('/history', (req, res) => {
   const { eventId, limit } = req.query;
   const groupId = req.group!.id;
+  const scope = resolveGroupEventScope(groupId, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const filterEventId = voteEventFilter(groupId, eventId);
   const limitNum = Math.min(50, Math.max(1, parseInt(typeof limit === 'string' ? limit : '', 10) || 20));
   const eventClause = filterEventId === null ? 'vr.event_id IS NULL' : 'vr.event_id = ?';
@@ -708,6 +712,10 @@ votesRouter.get('/history/:round', (req, res) => {
   if (!Number.isInteger(round) || round < 1) {
     return res.status(400).json({ error: 'round muss eine positive Ganzzahl sein.' });
   }
+
+  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
 
   const row = db
     .prepare(

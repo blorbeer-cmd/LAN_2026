@@ -131,6 +131,40 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
 
       assert.equal((await call(app, 'post', '/api/events/' + declineEvent.body.id + '/invitation/accept', carol)).status, 409);
       assert.equal((await call(app, 'post', '/api/events/missing/invitation/accept', bob)).status, 404);
+
+      const scopeEvent = await call(app, 'post', '/api/events', owner).send({
+        name: 'Invitation Scope Event', startsAt: now, endsAt: now + 60_000, visibilityScope: 'participants',
+      });
+      assert.equal(scopeEvent.status, 201, JSON.stringify(scopeEvent.body));
+      db.prepare('UPDATE events SET tracking_enabled = 1 WHERE id = ?').run(scopeEvent.body.id);
+      db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'invited')").run(scopeEvent.body.id, bob.account.id);
+      db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'declined')").run(scopeEvent.body.id, carol.account.id);
+
+      const scopedRoutes = (actor) => [
+        ['/api/arrivals', 'get'],
+        ['/api/food-orders', 'get'],
+        ['/api/broadcasts?eventId=' + scopeEvent.body.id, 'get'],
+        ['/api/info?eventId=' + scopeEvent.body.id, 'get'],
+        ['/api/players/' + actor.account.id + '/neighbors?eventId=' + scopeEvent.body.id, 'get'],
+        ['/api/players/' + actor.account.id + '/stats?eventId=' + scopeEvent.body.id, 'get'],
+        ['/api/push/last?eventId=' + scopeEvent.body.id, 'get'],
+        ['/api/analytics/arcade?eventId=' + scopeEvent.body.id, 'get'],
+        ['/api/arcade/stats?eventId=' + scopeEvent.body.id, 'get'],
+        ['/api/seating?eventId=' + scopeEvent.body.id, 'get'],
+        ['/api/votes/history?eventId=' + scopeEvent.body.id, 'get'],
+      ];
+      for (const actor of [bob, carol]) {
+        for (const [path, method] of scopedRoutes(actor)) {
+          assert.equal((await call(app, method, path, actor)).status, 404, method.toUpperCase() + ' ' + path + ' must reject ' + actor.account.name);
+        }
+      }
+      db.prepare("UPDATE event_participants SET status = 'accepted' WHERE event_id = ? AND player_id = ?").run(scopeEvent.body.id, bob.account.id);
+      for (const [path, method] of scopedRoutes(bob)) {
+        assert.equal((await call(app, method, path, bob)).status, 200, method.toUpperCase() + ' ' + path + ' must admit accepted participants');
+      }
+      for (const [path, method] of scopedRoutes(owner)) {
+        assert.equal((await call(app, method, path, owner)).status, 200, method.toUpperCase() + ' ' + path + ' must admit event admins');
+      }
     })().catch((error) => {
       console.error(error);
       process.exit(1);
