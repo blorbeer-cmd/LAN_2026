@@ -6,8 +6,7 @@ import { openLobbySummaries as scribbleLobbies } from '../arcade/scribble';
 import { openLobbySummaries as blobbyLobbies } from '../arcade/blobby';
 import { openLobbySummaries as pongLobbies } from '../arcade/pong';
 import { openLobbySummaries as snakeLobbies } from '../arcade/snake';
-import { resolveGroupEventScope } from '../groupEventScope';
-import { config } from '../config';
+import { requestCanAccessGroupEvent, requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
 
 export const arcadeRouter = Router();
 
@@ -91,15 +90,7 @@ function resultPayload(row: ArcadeResultRow) {
 arcadeRouter.get('/lobbies', (req, res) => {
   const selectedEvent = resolveGroupEventScope(req.group!.id, req.query.eventId);
   if (!selectedEvent.ok) return res.status(selectedEvent.status).json({ error: selectedEvent.error });
-  if (config.authMode === 'required' && selectedEvent.eventId) {
-    const mayAccess = req.groupMembership?.role === 'admin' || req.groupMembership?.role === 'owner' || Boolean(
-      db.prepare('SELECT 1 FROM event_participants WHERE event_id = ? AND player_id = ?').get(
-        selectedEvent.eventId,
-        req.player?.id,
-      ),
-    );
-    if (!mayAccess) return res.json({ lobbies: [] });
-  }
+  if (!requestCanAccessGroupEvent(req, selectedEvent.eventId)) return res.json({ lobbies: [] });
   const groupId = req.group!.id;
   const eventId = selectedEvent.eventId;
   const lobbies = [
@@ -118,6 +109,7 @@ arcadeRouter.get('/lobbies', (req, res) => {
 arcadeRouter.get('/stats', (req, res) => {
   const selectedEvent = eventFilter(req.group!.id, req.query.eventId);
   if (!selectedEvent.ok) return res.status(selectedEvent.status).json({ error: selectedEvent.error });
+  if (selectedEvent.eventId !== undefined && !requireGroupEventAccess(req, res, selectedEvent.eventId)) return;
   const clauses = ["group_id = ?", "reason = 'completed'"];
   const params: Array<string | null> = [req.group!.id];
   if (selectedEvent.eventId !== undefined) {
@@ -224,6 +216,7 @@ arcadeRouter.get('/stats', (req, res) => {
 arcadeRouter.get('/scribble/gallery', (req, res) => {
   const selectedEvent = eventFilter(req.group!.id, req.query.eventId);
   if (!selectedEvent.ok) return res.status(selectedEvent.status).json({ error: selectedEvent.error });
+  if (selectedEvent.eventId !== undefined && !requireGroupEventAccess(req, res, selectedEvent.eventId)) return;
   const clauses = ['d.group_id = ?', 'd.is_round_winner = 1'];
   const params: Array<string | null> = [req.group!.id];
   if (selectedEvent.eventId !== undefined) {
@@ -269,6 +262,7 @@ arcadeRouter.get('/scribble/gallery', (req, res) => {
 function listResults(req: Request, res: Response) {
   const selectedEvent = eventFilter(req.group!.id, req.query.eventId);
   if (!selectedEvent.ok) return res.status(selectedEvent.status).json({ error: selectedEvent.error });
+  if (selectedEvent.eventId !== undefined && !requireGroupEventAccess(req, res, selectedEvent.eventId)) return;
   const clauses = ['r.group_id = ?'];
   const params: Array<string | number | null> = [req.group!.id];
   if (selectedEvent.eventId !== undefined) {

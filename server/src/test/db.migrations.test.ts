@@ -642,10 +642,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 52);
+  assert.equal(migrations.length, 53);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 52 }, (_, index) => index + 1),
+    Array.from({ length: 53 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -692,6 +692,8 @@ test('records the complete migration history and does not duplicate it on restar
   const eventColumns = migrated.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
   assert.ok(eventColumns.some((column) => column.name === 'group_id'));
   assert.ok(eventColumns.some((column) => column.name === 'status'));
+  const participantColumns = migrated.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  assert.ok(participantColumns.some((column) => column.name === 'status'));
   const auditColumns = migrated.prepare('PRAGMA table_info(admin_log)').all() as Array<{ name: string }>;
   assert.ok(auditColumns.some((column) => column.name === 'group_id'));
   for (const table of ['seating_layouts', 'seat_neighbors', 'game_pings', 'game_ping_interested']) {
@@ -954,9 +956,58 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 52 }, (_, index) => index + 1),
-    'every version 1..52 runs exactly once',
+    Array.from({ length: 53 }, (_, index) => index + 1),
+    'every version 1..53 runs exactly once',
   );
+});
+
+test('migration 53 preserves legacy event participants as accepted and is restart-safe', () => {
+  const dbFile = makeTempDbPath('event-participant-status');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = OFF');
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('legacy-event-player', 'Legacy Event Player', 'legacy-event-player-key', Date.now());
+  fixture
+    .prepare(
+      `INSERT INTO events (id, name, starts_at, ends_at, group_id, status, visibility_scope)
+       VALUES (?, ?, ?, ?, 'default-group', 'published', 'participants')`,
+    )
+    .run('legacy-event', 'Legacy Event', Date.now(), Date.now() + 60_000);
+  fixture.exec(`
+    CREATE TABLE event_participants_legacy (
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      PRIMARY KEY (event_id, player_id)
+    );
+    INSERT INTO event_participants_legacy (event_id, player_id)
+      VALUES ('legacy-event', 'legacy-event-player');
+    DROP TABLE event_participants;
+    ALTER TABLE event_participants_legacy RENAME TO event_participants;
+    DELETE FROM schema_migrations WHERE version = 53;
+  `);
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'a second start must skip the recorded migration');
+
+  const migrated = new Database(dbFile);
+  const row = migrated
+    .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
+    .get('legacy-event', 'legacy-event-player');
+  assert.deepEqual(row, { status: 'accepted' });
+  assert.throws(
+    () =>
+      migrated
+        .prepare('UPDATE event_participants SET status = ? WHERE event_id = ? AND player_id = ?')
+        .run('unknown', 'legacy-event', 'legacy-event-player'),
+    /CHECK constraint failed/,
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 53').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
 test('re-running migration 44 does not crash on the guarded allocation_weight column', () => {

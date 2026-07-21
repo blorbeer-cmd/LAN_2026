@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io';
 import { config } from '../config';
 import { db, DEFAULT_GROUP_ID } from '../db';
 import { resolveGroupEventScope } from '../groupEventScope';
+import { isParticipant } from '../events';
 
 export interface ArcadeScope {
   groupId: string;
@@ -31,10 +32,8 @@ function activeEventAccess(groupId: string, eventId: string, playerId: unknown):
   if (membership?.role === 'admin' || membership?.role === 'owner') {
     return Boolean(db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, groupId));
   }
-  return Boolean(db.prepare(
-    `SELECT 1 FROM event_participants ep JOIN events e ON e.id = ep.event_id
-     WHERE ep.event_id = ? AND ep.player_id = ? AND e.group_id = ?`,
-  ).get(eventId, playerId, groupId));
+  const event = db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, groupId);
+  return typeof playerId === 'string' && Boolean(event) && isParticipant(eventId, playerId);
 }
 
 export function socketArcadeScope(socket: Socket, playerId?: unknown): ArcadeScope | null {

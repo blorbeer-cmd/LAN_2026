@@ -8,7 +8,7 @@
 import { Router } from 'express';
 import { db } from '../db';
 import { activeGroupPlayers } from '../groupPlayers';
-import { groupPlayerRows, resolveGroupEventScope, type GroupEventScope } from '../groupEventScope';
+import { groupPlayerRows, requireGroupEventAccess, resolveGroupEventScope, type GroupEventScope } from '../groupEventScope';
 import { requireGroupRole } from '../groupAuthorization';
 import {
   SIDES,
@@ -52,6 +52,7 @@ function getLayoutResponse(groupId: string, eventId: GroupEventScope) {
 seatingRouter.get('/layout', (req, res) => {
   const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json(getLayoutResponse(req.group!.id, scope.eventId));
 });
 
@@ -60,6 +61,7 @@ seatingRouter.get('/layout', (req, res) => {
 seatingRouter.put('/layout', requireGroupRole('admin'), (req, res) => {
   const scope = resolveGroupEventScope(req.group!.id, req.body?.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const eventId = scope.eventId;
   const body = req.body ?? {};
   const sideNames = { top: 'topSeats', right: 'rightSeats', bottom: 'bottomSeats', left: 'leftSeats' } as const;
@@ -125,6 +127,7 @@ seatingRouter.put('/layout', requireGroupRole('admin'), (req, res) => {
 seatingRouter.get('/', (req, res) => {
   const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const filterEventId = scope.eventId;
 
   const pairRows = db

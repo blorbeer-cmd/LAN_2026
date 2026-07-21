@@ -7,7 +7,7 @@ import { db } from '../db';
 import { isNonEmptyString } from '../validation';
 import { recordPushLog, resolvePushTopic } from '../push';
 import { withBodyPlayerIdentity } from '../sessions';
-import { resolveGroupEventScope } from '../groupEventScope';
+import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
 import { communicationRecipientIds } from '../communicationRecipients';
 import { activeGroupPlayers } from '../groupPlayers';
 
@@ -64,6 +64,7 @@ function buildList(groupId: string, eventId: string | null) {
 broadcastsRouter.get('/', (req, res) => {
   const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json(buildList(req.group!.id, scope.eventId));
 });
 
@@ -77,6 +78,7 @@ broadcastsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   }
   const scope = resolveGroupEventScope(req.group!.id, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   }

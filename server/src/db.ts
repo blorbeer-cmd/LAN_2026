@@ -72,6 +72,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS event_participants (
     event_id  TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    status    TEXT NOT NULL DEFAULT 'accepted' CHECK (status IN ('invited', 'accepted', 'declined')),
     PRIMARY KEY (event_id, player_id)
   );
 
@@ -2877,6 +2878,19 @@ function addChecklistTaskDueAt(): void {
   db.exec('ALTER TABLE checklist_tasks ADD COLUMN due_at INTEGER');
 }
 registerMigration({ version: 52, name: 'add checklist task due date', up: addChecklistTaskDueAt });
+
+// Event invitations reuse the existing event roster instead of introducing a
+// second membership model. SQLite applies the DEFAULT to every pre-existing
+// row while adding the column, so all historical participants remain accepted
+// without a destructive table rebuild.
+function addEventParticipantStatus(): void {
+  const columns = db.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === 'status')) return;
+  db.exec(
+    "ALTER TABLE event_participants ADD COLUMN status TEXT NOT NULL DEFAULT 'accepted' CHECK (status IN ('invited', 'accepted', 'declined'))",
+  );
+}
+registerMigration({ version: 53, name: 'add event participant invitation status', up: addEventParticipantStatus });
 
 // Every migration is registered by now — run them all in ascending version
 // order (see registerMigration/runRegisteredMigrations above). This is the

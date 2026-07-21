@@ -21,6 +21,7 @@ import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db, getState, setState } from '../db';
 import { broadcast, Events } from '../realtime';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from '../eventParticipation';
 import { getTrackingEventId, OUTSIDE_EVENTS_ID } from '../events';
 import { notifyPlayers, resolvePushTopic } from '../push';
 import { isIntInRange } from '../validation';
@@ -30,6 +31,7 @@ import { requireGroupRole } from '../groupAuthorization';
 import { activeGroupPlayers } from '../groupPlayers';
 import { trackingEventIdForGroup } from '../competitionScope';
 import { communicationRecipientIds } from '../communicationRecipients';
+import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
 
 export const votesRouter = Router();
 
@@ -61,7 +63,10 @@ export function voteNotificationPlayerIds(groupId?: string, scopedEventId?: stri
     return (db.prepare('SELECT id FROM players').all() as Array<{ id: string }>).map((player) => player.id);
   }
   return (
-    db.prepare('SELECT player_id AS id FROM event_participants WHERE event_id = ?').all(eventId) as Array<{
+    db.prepare(
+      `SELECT ep.player_id AS id FROM event_participants ep
+       WHERE ep.event_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}`,
+    ).all(eventId) as Array<{
       id: string;
     }>
   ).map((player) => player.id);
@@ -643,6 +648,9 @@ function voteEventFilter(groupId: string, requested: unknown): string | null {
 votesRouter.get('/history', (req, res) => {
   const { eventId, limit } = req.query;
   const groupId = req.group!.id;
+  const scope = resolveGroupEventScope(groupId, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const filterEventId = voteEventFilter(groupId, eventId);
   const limitNum = Math.min(50, Math.max(1, parseInt(typeof limit === 'string' ? limit : '', 10) || 20));
   const eventClause = filterEventId === null ? 'vr.event_id IS NULL' : 'vr.event_id = ?';
@@ -704,6 +712,10 @@ votesRouter.get('/history/:round', (req, res) => {
   if (!Number.isInteger(round) || round < 1) {
     return res.status(400).json({ error: 'round muss eine positive Ganzzahl sein.' });
   }
+
+  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
 
   const row = db
     .prepare(

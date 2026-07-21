@@ -10,6 +10,7 @@ import webpush from 'web-push';
 import { db, DEFAULT_GROUP_ID, getState, setState } from './db';
 import { broadcast, Events } from './realtime';
 import { config } from './config';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 
 // Only recent entries matter (the Kiosk shows the latest one, the personal
 // notification center a short list) - trimmed on every insert so this never
@@ -379,7 +380,7 @@ export function notifyPlayers(
        AND gm.player_id IN (${placeholders})
        AND NOT EXISTS (SELECT 1 FROM push_mutes pm WHERE pm.group_id = gm.group_id AND pm.player_id = gm.player_id
                       AND (pm.event_id IS NULL OR pm.event_id IS ?))
-       AND (? IS NULL OR EXISTS (SELECT 1 FROM event_participants ep WHERE ep.event_id = ? AND ep.player_id = gm.player_id))`
+       AND (? IS NULL OR EXISTS (SELECT 1 FROM event_participants ep WHERE ep.event_id = ? AND ep.player_id = gm.player_id AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}))`
   ).all(scope.groupId, ...playerIds, scope.eventId ?? null, scope.eventId ?? null, scope.eventId ?? null) as Array<{ playerId: string }>;
   playerIds = eligible.map((row) => row.playerId);
   if (playerIds.length === 0) return;

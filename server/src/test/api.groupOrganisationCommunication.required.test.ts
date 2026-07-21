@@ -79,7 +79,7 @@ test('organisation communication is roles-gated and event-scoped inside the one 
       const bobEventPush = await scoped(app, 'get', '/api/push/log?playerId=' + bob.account.id + '&eventId=' + eventA.body.id, bob);
       assert.equal(aliceEventPush.body.entries.length, 1);
       assert.equal(aliceEventPush.body.summary.groupWide, 1);
-      assert.equal(bobEventPush.body.entries.length, 0);
+      assert.equal(bobEventPush.status, 404, 'a non-participant cannot read participant-scoped event push data');
       // required mode binds push history to the session player, regardless
       // of what playerId is spoofed on the query string.
       const spoofedPlayer = await scoped(app, 'get', '/api/push/log?playerId=' + alice.account.id, bob);

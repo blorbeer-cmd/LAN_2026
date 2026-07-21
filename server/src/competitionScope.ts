@@ -1,5 +1,6 @@
 import { config } from './config';
 import { db, OUTSIDE_EVENTS_ID } from './db';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 import { getTrackingEvent } from './events';
 
 export function trackingEventIdForGroup(groupId: string): string | undefined {
@@ -36,7 +37,7 @@ export function competitionPlayersBelongToGroup(groupId: string, eventId: string
            OR (
              ? != ? AND EXISTS (
                SELECT 1 FROM event_participants ep
-               WHERE ep.event_id = ? AND ep.player_id = p.id
+               WHERE ep.event_id = ? AND ep.player_id = p.id AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
              )
            )
          )`,

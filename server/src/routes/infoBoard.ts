@@ -8,7 +8,7 @@ import { isNonEmptyString } from '../validation';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { requireGroupRole } from '../groupAuthorization';
-import { resolveGroupEventScope } from '../groupEventScope';
+import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
 
 export const infoBoardRouter = Router();
 
@@ -40,6 +40,7 @@ function serialize(row: InfoRow) {
 infoBoardRouter.get('/', (req, res) => {
   const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const rows = db
     .prepare('SELECT * FROM info_entries WHERE group_id = ? AND event_id IS ? ORDER BY created_at')
     .all(req.group!.id, scope.eventId) as InfoRow[];
@@ -56,6 +57,7 @@ infoBoardRouter.post('/', requireGroupRole('admin'), (req, res) => {
   }
   const scope = resolveGroupEventScope(req.group!.id, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const now = Date.now();
   const row: InfoRow = {
     id: nanoid(),

@@ -16,6 +16,7 @@
 
 import { nanoid } from 'nanoid';
 import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL, type EventParticipationStatus } from './eventParticipation';
 import { closeEventContexts } from './trackingContexts';
 
 export { OUTSIDE_EVENTS_ID };
@@ -32,6 +33,11 @@ export interface EventRow {
   group_id: string | null;
   status: 'draft' | 'published' | 'cancelled' | 'ended';
   visibility_scope: 'group' | 'participants' | 'public';
+}
+
+export interface EventParticipantRow {
+  playerId: string;
+  status: EventParticipationStatus;
 }
 
 // Whichever event currently has tracking_enabled — or the permanent
@@ -216,17 +222,119 @@ export function cancelEvent(id: string): EventRow | undefined {
 // ---------- roster ----------
 
 export function getParticipantIds(eventId: string): string[] {
-  const rows = db.prepare('SELECT player_id FROM event_participants WHERE event_id = ?').all(eventId) as Array<{
-    player_id: string;
-  }>;
+  const rows = db
+    .prepare(
+      `SELECT ep.player_id
+       FROM event_participants ep
+       WHERE ep.event_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
+       ORDER BY ep.rowid`,
+    )
+    .all(eventId) as Array<{ player_id: string }>;
   return rows.map((r) => r.player_id);
+}
+
+export function getEventParticipants(eventId: string): EventParticipantRow[] {
+  return db
+    .prepare(
+      `SELECT ep.player_id AS playerId, ep.status
+       FROM event_participants ep
+       WHERE ep.event_id = ?
+       ORDER BY ep.rowid`,
+    )
+    .all(eventId) as EventParticipantRow[];
 }
 
 export function isParticipant(eventId: string, playerId: string): boolean {
   const row = db
-    .prepare('SELECT 1 FROM event_participants WHERE event_id = ? AND player_id = ?')
+    .prepare(
+      `SELECT 1 FROM event_participants ep
+       WHERE ep.event_id = ? AND ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}`,
+    )
     .get(eventId, playerId);
   return Boolean(row);
+}
+
+export type InviteParticipantResult = {
+  participant: EventParticipantRow;
+  changed: boolean;
+};
+
+export function inviteParticipant(eventId: string, playerId: string): InviteParticipantResult {
+  const transaction = db.transaction((): InviteParticipantResult => {
+    const existing = db
+      .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
+      .get(eventId, playerId) as { status: EventParticipationStatus } | undefined;
+    if (!existing) {
+      db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'invited')").run(
+        eventId,
+        playerId,
+      );
+      return { participant: { playerId, status: 'invited' }, changed: true };
+    }
+    if (existing.status === 'declined') {
+      db.prepare("UPDATE event_participants SET status = 'invited' WHERE event_id = ? AND player_id = ?").run(
+        eventId,
+        playerId,
+      );
+      return { participant: { playerId, status: 'invited' }, changed: true };
+    }
+    return { participant: { playerId, status: existing.status }, changed: false };
+  });
+  return transaction();
+}
+
+export type RespondToEventInvitationResult =
+  | { ok: true; participant: EventParticipantRow; changed: boolean }
+  | { ok: false; currentStatus: EventParticipationStatus | null };
+
+export function respondToEventInvitation(
+  eventId: string,
+  playerId: string,
+  response: 'accepted' | 'declined',
+): RespondToEventInvitationResult {
+  const transaction = db.transaction((): RespondToEventInvitationResult => {
+    const existing = db
+      .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
+      .get(eventId, playerId) as { status: EventParticipationStatus } | undefined;
+    if (!existing) return { ok: false, currentStatus: null };
+    if (existing.status === response) {
+      return { ok: true, participant: { playerId, status: response }, changed: false };
+    }
+    if (existing.status !== 'invited') return { ok: false, currentStatus: existing.status };
+
+    const updated = db
+      .prepare(
+        `UPDATE event_participants SET status = ?
+         WHERE event_id = ? AND player_id = ? AND status = 'invited'`,
+      )
+      .run(response, eventId, playerId);
+    if (updated.changes === 1) {
+      return { ok: true, participant: { playerId, status: response }, changed: true };
+    }
+
+    // The conditional write is the database-side race guard. Re-read the
+    // winner if another request changed the row before this one acquired the
+    // write lock, then preserve idempotency only for an identical outcome.
+    const current = db
+      .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
+      .get(eventId, playerId) as { status: EventParticipationStatus } | undefined;
+    if (current?.status === response) {
+      return { ok: true, participant: { playerId, status: response }, changed: false };
+    }
+    return { ok: false, currentStatus: current?.status ?? null };
+  });
+  return transaction();
+}
+
+export function removeEventParticipant(eventId: string, playerId: string): EventParticipationStatus | null {
+  return db.transaction(() => {
+    const existing = db
+      .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
+      .get(eventId, playerId) as { status: EventParticipationStatus } | undefined;
+    if (!existing) return null;
+    db.prepare('DELETE FROM event_participants WHERE event_id = ? AND player_id = ?').run(eventId, playerId);
+    return existing.status;
+  })();
 }
 
 // Replaces the whole roster in one go — simpler for the UI than incremental
@@ -234,7 +342,9 @@ export function isParticipant(eventId: string, playerId: string): boolean {
 export function setParticipants(eventId: string, playerIds: string[]): void {
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM event_participants WHERE event_id = ?').run(eventId);
-    const insert = db.prepare('INSERT INTO event_participants (event_id, player_id) VALUES (?, ?)');
+    const insert = db.prepare(
+      "INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')",
+    );
     for (const playerId of new Set(playerIds)) insert.run(eventId, playerId);
   });
   tx();

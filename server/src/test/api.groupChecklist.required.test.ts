@@ -57,6 +57,8 @@ test('checklist mutations 404 across an event-scope boundary and group admins mo
       const eventA = await scoped(app, 'post', '/api/events', alice, groupId)
         .send({ name: 'Checklist Event A', startsAt: now, endsAt: now + 60_000 });
       assert.equal(eventA.status, 201);
+      assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice, groupId)
+        .send({ playerIds: [alice.account.id, bob.account.id, dave.account.id] })).status, 200);
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/start', alice, groupId)).status, 200);
 
       const itemA = await scoped(app, 'post', '/api/checklist/items', alice, groupId).send({ label: 'Sache A' });
@@ -120,6 +122,8 @@ test('checklist mutations 404 across an event-scope boundary and group admins mo
       const eventA2 = await scoped(app, 'post', '/api/events', alice, groupId)
         .send({ name: 'Checklist Event A2', startsAt: now, endsAt: now + 60_000 });
       assert.equal(eventA2.status, 201);
+      assert.equal((await scoped(app, 'put', '/api/events/' + eventA2.body.id + '/participants', alice, groupId)
+        .send({ playerIds: [alice.account.id, bob.account.id, dave.account.id] })).status, 200);
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/stop', alice, groupId)).status, 200);
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA2.body.id + '/tracking/start', alice, groupId)).status, 200);
 

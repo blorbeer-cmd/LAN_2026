@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid';
 import { writeAdminAudit } from '../adminAudit';
 import { config } from '../config';
 import { db } from '../db';
-import { resolveGroupEventScope, type GroupEventScope } from '../groupEventScope';
+import { requireGroupEventAccess, resolveGroupEventScope, type GroupEventScope } from '../groupEventScope';
 import { resolveGroupResource } from '../groupAuthorization';
 import { activeGroupPlayers } from '../groupPlayers';
 import { withBodyPlayerIdentity } from '../sessions';
@@ -112,6 +112,7 @@ pingsRouter.get('/history', (req, res) => {
   }
   const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json({ groupId: req.group!.id, eventId: scope.eventId, pings: buildPings(req.group!.id, scope.eventId, true) });
 });
 
@@ -119,6 +120,7 @@ pingsRouter.get('/history', (req, res) => {
 pingsRouter.get('/', (req, res) => {
   const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json({ groupId: req.group!.id, eventId: scope.eventId, pings: buildPings(req.group!.id, scope.eventId, false) });
 });
 
@@ -148,6 +150,7 @@ pingsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
 
   const scope = resolveGroupEventScope(req.group!.id, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const player = activeGroupPlayers(req.group!.id, [playerId]).get(playerId);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   const game = db

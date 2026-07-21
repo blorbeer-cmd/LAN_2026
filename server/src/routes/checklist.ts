@@ -40,7 +40,7 @@ import { isNonEmptyString } from '../validation';
 import { notifyPlayers, resolvePushTopic } from '../push';
 import { withBodyPlayerIdentity, withQueryPlayerIdentity } from '../sessions';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
-import { resolveGroupEventScope } from '../groupEventScope';
+import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
 import { communicationRecipientIds } from '../communicationRecipients';
 import { activeGroupPlayers } from '../groupPlayers';
 import { DEFAULT_CHECKLIST_ITEMS } from '../checklistDefaults';
@@ -229,6 +229,7 @@ function currentEventScope(req: Request, res: Response): { eventId: string | nul
     res.status(scope.status).json({ error: scope.error });
     return null;
   }
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return null;
   return scope;
 }
 
@@ -245,6 +246,7 @@ checklistRouter.get('/items', ...withQueryPlayerIdentity, (req, res) => {
   const groupId = req.group!.id;
   const scope = resolveGroupEventScope(groupId, undefined);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   ensureDefaultItems(groupId, scope.eventId, playerId);
   res.json({ items: listItems(groupId, scope.eventId, playerId).map(serializeItem) });
 });
@@ -264,6 +266,7 @@ checklistRouter.post('/items', ...withBodyPlayerIdentity, (req, res) => {
   const groupId = req.group!.id;
   const scope = resolveGroupEventScope(groupId, undefined);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const row: ItemRow = {
     id: nanoid(),
     group_id: groupId,
@@ -326,6 +329,7 @@ checklistRouter.get('/tasks', (req, res) => {
   const groupId = req.group!.id;
   const scope = resolveGroupEventScope(groupId, undefined);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json({ tasks: listTasks(groupId, scope.eventId).map(serializeTask) });
 });
 
@@ -373,6 +377,7 @@ checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
 
   const scope = resolveGroupEventScope(groupId, undefined);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const eventId = scope.eventId;
   const now = Date.now();
   const trimmedTitle = title.trim();
@@ -503,6 +508,7 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
 
   const scope = resolveGroupEventScope(groupId, undefined);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const eventId = scope.eventId;
   const now = Date.now();
   const trimmedTitle = title.trim();

@@ -21,7 +21,7 @@ import {
   isPushMuted,
 } from '../push';
 import { withBodyPlayerIdentity, withQueryPlayerIdentity } from '../sessions';
-import { resolveGroupEventScope } from '../groupEventScope';
+import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
 import { activeGroupPlayers } from '../groupPlayers';
 
 export const pushRouter = Router();
@@ -38,6 +38,7 @@ pushRouter.get('/mute', ...withQueryPlayerIdentity, (req, res) => {
   const eventId = req.query.eventId === undefined ? null : (typeof req.query.eventId === 'string' ? req.query.eventId : null);
   const scope = resolveGroupEventScope(req.group!.id, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json({ muted: isPushMuted(req.group!.id, playerId, scope.eventId) });
 });
 
@@ -47,6 +48,7 @@ pushRouter.put('/mute', ...withBodyPlayerIdentity, (req, res) => {
   if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   const scope = resolveGroupEventScope(req.group!.id, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   setPushMute(req.group!.id, playerId, scope.eventId, muted);
   res.json({ muted });
 });
@@ -75,6 +77,7 @@ pushRouter.get('/last', (req, res) => {
   }
   const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json({ entry: getLastPushLogEntry(req.group!.id, scope.eventId) });
 });
 
@@ -91,6 +94,7 @@ pushRouter.get('/current', ...withQueryPlayerIdentity, (req, res) => {
   }
   const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json({ entry: getCurrentPushLogEntryFor(req.group!.id, scope.eventId, playerId) });
 });
 
@@ -107,6 +111,7 @@ pushRouter.get('/log', ...withQueryPlayerIdentity, (req, res) => {
   }
   const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const entries = getPushLogEntriesFor(req.group!.id, scope.eventId, playerId);
   res.json({
     entries,
@@ -130,6 +135,7 @@ pushRouter.post('/seen-all', ...withBodyPlayerIdentity, (req, res) => {
   }
   const scope = resolveGroupEventScope(req.group!.id, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json({ changed: markAllPushSeen(req.group!.id, scope.eventId, playerId) });
 });
 
@@ -143,6 +149,7 @@ pushRouter.delete('/', ...withBodyPlayerIdentity, (req, res) => {
   }
   const scope = resolveGroupEventScope(req.group!.id, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json({ changed: hideAllPushForPlayer(req.group!.id, scope.eventId, playerId) });
 });
 

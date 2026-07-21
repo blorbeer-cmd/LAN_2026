@@ -173,13 +173,18 @@ Der Instanzraum ("außerhalb von Events") existiert unabhängig von Events dauer
 
 ### 3.5 Event-Teilnahme
 
-Aktuell werden Event-Teilnehmende von Admins/Owner gepflegt (Hinzufügen/Entfernen), ohne eigenen
-Einladungs-Annahme-/Ablehnungs-Workflow. Ein Selbst-Beitritt mit `invited`/`accepted`-Zuständen ist
-eine mögliche spätere UX-Verbesserung, aber **kein Sicherheitsthema**: Da alle Konten derselben,
-einzigen Instanz angehören, entsteht durch fehlende Einladungszustände keine Mandantengrenzen-
-Verletzung. Diese Einstufung ist eine getroffene Produktentscheidung (siehe
-`docs/plans/reset-single-group.md` Abschnitt 9.2) und liegt außerhalb des Sicherheitsanspruchs
-dieses Dokuments.
+Admins/Owner laden aktive Instanzmitglieder zu einem Event ein und können Event-Teilnahmen weiterhin
+administrativ entfernen. `event_participants.status` bildet den persönlichen Ablauf ab:
+
+- `invited`: Einladung ist offen; noch kein normaler Event-Zugriff.
+- `accepted`: aktive Teilnahme; nur dieser Zustand zählt für teilnehmergebundene Eventdaten,
+  Realtime-, Push-, Tracking- und Arcade-Prüfungen.
+- `declined`: Einladung wurde abgelehnt; erneutes Einladen setzt sie wieder auf `invited`.
+
+Nur die betroffene Person selbst kann `invited` nach `accepted` oder `declined` überführen.
+Wiederholte identische Antworten sind idempotent; konkurrierende, widersprüchliche Antworten werden
+atomar auf genau einen Zustand festgelegt. Owner/Admins behalten ihre bestehenden administrativen
+Event-Sonderrechte. Kiosk-Token und Event-Allowlist bleiben davon unabhängig und unverändert.
 
 ### 3.6 Spielerreferenzen
 
@@ -207,6 +212,9 @@ Autorisierung läuft serverseitig:
   Admin-/Ownerrechte für ein konkretes Event zu verlangen.
 - Ressourcen werden immer zusammen mit ihrem Event geladen und mutiert, nie erst global per ID und
   danach ungeprüft.
+- Event-Einladungen verwenden `POST /api/events/:id/invitations`; persönliche Antworten laufen über
+  `POST /api/events/:id/invitation/accept` bzw. `.../decline`. Der ältere Pfad
+  `POST /api/events/:id/accept` bleibt ausschließlich der Tracking-Zustimmung vorbehalten.
 
 Serverantwort bei Grenzverletzungen bleibt unverändert:
 

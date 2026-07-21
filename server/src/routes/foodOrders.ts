@@ -14,13 +14,20 @@ import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db, OUTSIDE_EVENTS_ID } from '../db';
 import { broadcast, Events } from '../realtime';
-import { resolveGroupEventStorageId } from '../groupEventScope';
+import { requireGroupEventAccess, resolveGroupEventStorageId } from '../groupEventScope';
 import { isIntInRange, isNonEmptyString, isValidUrl } from '../validation';
 import { notifyPlayers, resolvePushTopic, updatePushTopicExpiry } from '../push';
 import { requireConfiguredUser, withBodyPlayerIdentity } from '../sessions';
 import { communicationRecipientIds } from '../communicationRecipients';
 
 export const foodOrdersRouter = Router();
+
+foodOrdersRouter.use((req, res, next) => {
+  const storageEventId = resolveGroupEventStorageId(req.group!.id);
+  const eventId = storageEventId && storageEventId !== OUTSIDE_EVENTS_ID ? storageEventId : null;
+  if (!requireGroupEventAccess(req, res, eventId)) return;
+  next();
+});
 
 const MAX_TITLE_LENGTH = 80;
 const MAX_ITEM_LENGTH = 120;

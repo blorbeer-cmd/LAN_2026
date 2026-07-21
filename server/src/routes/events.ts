@@ -14,6 +14,11 @@ import {
   stopTracking,
   endEvent,
   getParticipantIds,
+  getEventParticipants,
+  inviteParticipant,
+  isParticipant,
+  removeEventParticipant,
+  respondToEventInvitation,
   setParticipants,
   OUTSIDE_EVENTS_ID,
   type UpdateEventFields,
@@ -29,6 +34,7 @@ import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { config } from '../config';
 import { setEventTrackingConsent } from '../trackingContexts';
+import { activeGroupPlayers } from '../groupPlayers';
 
 export const eventsRouter = Router();
 
@@ -57,7 +63,14 @@ function serializeEvent(event: ReturnType<typeof getEvent>) {
     visibilityScope: event.visibility_scope,
     isOutsideEvents: event.id === OUTSIDE_EVENTS_ID,
     participantIds: event.id === OUTSIDE_EVENTS_ID ? undefined : getParticipantIds(event.id),
+    participants: event.id === OUTSIDE_EVENTS_ID ? undefined : getEventParticipants(event.id),
   };
+}
+
+function requestPlayerId(req: Request): string | undefined {
+  if (req.player) return req.player.id;
+  const legacyIdentity = req.header('x-player-id');
+  return legacyIdentity && legacyIdentity.length <= 200 ? legacyIdentity : undefined;
 }
 
 // GET /api/events - every real event plus the "außerhalb von Events"
@@ -93,12 +106,104 @@ eventsRouter.get('/:id', resolveEvent, (req, res) => {
 function acceptEventTracking(req: Request, res: Response): void {
   const event = req.groupResource as EventRow;
   if (!event || event.id === OUTSIDE_EVENTS_ID) { res.status(404).json({ error: 'Event nicht gefunden.' }); return; }
-  setEventTrackingConsent(event.id, event.group_id!, req.player!.id, true);
+  const playerId = requestPlayerId(req);
+  if (!playerId) { res.status(400).json({ error: 'Spieleridentität ist erforderlich.' }); return; }
+  if (event.visibility_scope === 'participants' && !isParticipant(event.id, playerId)) {
+    res.status(409).json({ error: 'Tracking kann erst nach Annahme der Event-Einladung aktiviert werden.' });
+    return;
+  }
+  setEventTrackingConsent(event.id, event.group_id!, playerId, true);
   res.json({ ok: true, eventId: event.id, accepted: true });
 }
 
 eventsRouter.post('/:id/accept', resolveEvent, acceptEventTracking);
 eventsRouter.post('/:id/tracking-consent', resolveEvent, acceptEventTracking);
+
+// POST /api/events/:id/invitations - invite (or re-invite) one active group
+// member. Existing invited/accepted rows are idempotent; a declined row is
+// reopened as invited.
+eventsRouter.post('/:id/invitations', resolveEvent, requireGroupRole('admin'), (req, res) => {
+  const event = req.groupResource as EventRow;
+  if (!event || event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
+  const { playerId } = req.body ?? {};
+  if (typeof playerId !== 'string' || !playerId || playerId.length > 200) {
+    return res.status(400).json({ error: 'playerId ist erforderlich.' });
+  }
+  if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
+
+  const result = inviteParticipant(event.id, playerId);
+  writeAdminAudit({
+    actorPlayerId: req.player?.id,
+    groupId: req.group!.id,
+    action: result.changed ? 'event_participant_invited' : 'event_participant_invite_repeated',
+    targetType: 'event_participant',
+    targetId: `${event.id}:${playerId}`,
+    details: { eventId: event.id, playerId, status: result.participant.status },
+  });
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  res.status(result.changed ? 201 : 200).json(result.participant);
+});
+
+function answerEventInvitation(response: 'accepted' | 'declined') {
+  return (req: Request, res: Response): Response => {
+    const event = req.groupResource as EventRow;
+    if (!event || event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
+    const playerId = requestPlayerId(req);
+    if (!playerId) return res.status(400).json({ error: 'Spieleridentität ist erforderlich.' });
+
+    const result = respondToEventInvitation(event.id, playerId, response);
+    if (!result.ok) {
+      return res.status(409).json({
+        error:
+          result.currentStatus === null
+            ? 'Für dieses Event liegt keine Einladung vor.'
+            : 'Die Einladung ist nicht mehr offen.',
+        currentStatus: result.currentStatus,
+      });
+    }
+    writeAdminAudit({
+      actorPlayerId: req.player?.id ?? playerId,
+      groupId: req.group!.id,
+      action: response === 'accepted' ? 'event_invitation_accepted' : 'event_invitation_declined',
+      targetType: 'event_participant',
+      targetId: `${event.id}:${playerId}`,
+      details: { eventId: event.id, playerId, status: response, changed: result.changed },
+    });
+    broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+    return res.json(result.participant);
+  };
+}
+
+eventsRouter.post('/:id/invitation/accept', resolveEvent, answerEventInvitation('accepted'));
+eventsRouter.post('/:id/invitation/decline', resolveEvent, answerEventInvitation('declined'));
+
+// DELETE /api/events/:id/participants/:playerId - administrative removal
+// remains distinct from a member declining their own invitation.
+eventsRouter.delete('/:id/participants/:playerId', resolveEvent, requireGroupRole('admin'), (req, res) => {
+  const event = req.groupResource as EventRow;
+  if (!event || event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
+  const previousStatus = removeEventParticipant(event.id, req.params.playerId);
+  if (previousStatus === null) return res.status(404).json({ error: 'Event-Teilnehmer nicht gefunden.' });
+
+  if (previousStatus === 'accepted' && getTrackingEvent().id === event.id) {
+    clearPlayerLiveStatus(req.params.playerId);
+    for (const groupId of new Set([req.group!.id, ...activePlayerGroupIds(req.params.playerId)])) {
+      broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+    }
+  }
+  writeAdminAudit({
+    actorPlayerId: req.player?.id,
+    groupId: req.group!.id,
+    action: 'event_participant_removed',
+    targetType: 'event_participant',
+    targetId: `${event.id}:${req.params.playerId}`,
+    details: { eventId: event.id, playerId: req.params.playerId, previousStatus },
+  });
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  return res.status(204).end();
+});
 
 // Optional freeform text (location/description): undefined = not provided,
 // '' or null = explicitly cleared, otherwise validated against maxLength.

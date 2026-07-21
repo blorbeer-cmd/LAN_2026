@@ -21,7 +21,7 @@ import { parseTimeRangeQuery } from './queryHelpers';
 import { computeAwards } from '../awards';
 import { matchCountsByGame, biggestRivalry, bestDuo, biggestUnderdogWin, type MatchForUnderdog } from '../gameStats';
 import { ARCADE_TITLES } from './arcade';
-import { resolveGroupEventScope } from '../groupEventScope';
+import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
 
 export const analyticsRouter = Router();
 
@@ -482,6 +482,7 @@ analyticsRouter.get('/arcade', (req, res) => {
   if (req.query.eventId !== undefined) {
     const event = resolveGroupEventScope(req.group!.id, req.query.eventId);
     if (!event.ok) return res.status(event.status).json({ error: event.error });
+    if (!requireGroupEventAccess(req, res, event.eventId)) return;
     clauses.push('event_id IS ?');
     params.push(event.eventId);
   }
