@@ -69,6 +69,14 @@ Deploy bleibt über die Concurrency-Gruppe `production-deploy` für den einzelne
 serialisiert. Die veröffentlichte Environment-URL ist `https://lan.dbehnke.dev`. Referenziert eine
 Branch-Protection-Regel noch den früheren Sammel-Check „Build and test“, muss sie auf die neuen
 Job-Namen umgestellt werden.
+
+Der reine, nicht veröffentlichende Image-Gate-Build erzeugt keinen Build-Record und keine
+Provenance-Attestation. Der nach allen Pflichtchecks ausgeführte Publish-Build behält die
+standardmäßige Provenance des Docker-Builds bei. `better-sqlite3` wird als offizielles
+Node-24-Linux-Prebuild installiert; deshalb enthält die Builder-Stage keine native
+Compiler-Toolchain. Ein leerer BuildKit-Cache bleibt unterstützt, da `npm ci` weiterhin exakt das
+versionierte `package-lock.json` verwendet.
+
 Die Compose-Konfiguration verwendet den lokalen Docker-Logging-Treiber mit Größen- und
 Dateilimits, damit App- und Tunnel-Logs den Datenträger nicht unbegrenzt füllen.
 
