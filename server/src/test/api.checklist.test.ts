@@ -392,3 +392,65 @@ test('cancel (DELETE): creator/admin only, blocked once done, not re-cancellable
   const cancelDoneTask = await request(app).delete(`/api/checklist/tasks/${requestTaskId}`).send({ playerId: alice.id });
   assert.equal(cancelDoneTask.status, 409);
 });
+
+// The frontend rewrite (docs/KONZEPT-PACKLISTE-TICKETS.md) touched every
+// create route and added direct assignment to POST /tasks - verifies the
+// underlying push wiring (notifyPlayers/resolvePushTopic calls) still fires
+// with correct wording/audience/topic for every path, not just that the API
+// response looks right.
+test('push notifications: open creation broadcasts, direct assignment notifies just the assignee, claim notifies the creator, release/done/cancel resolve the topic', async () => {
+  const openRequest = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Grillkohle mitbringen?' });
+  assert.equal(openRequest.status, 201);
+  const lastAfterOpenRequest = await request(app).get('/api/push/last');
+  assert.equal(lastAfterOpenRequest.body.entry.title, 'Neue Mitbring-Anfrage');
+  assert.match(lastAfterOpenRequest.body.entry.body, /Grillkohle mitbringen\?/);
+
+  // New capability: POST /tasks with assigneePlayerIds now notifies the
+  // assignee directly instead of broadcasting, mirroring /tasks/todo.
+  const assignedRequest = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Eis besorgen', assigneePlayerIds: [bob.id] });
+  assert.equal(assignedRequest.status, 201);
+  const bobCurrentAfterAssignedRequest = await request(app).get(`/api/push/current?playerId=${bob.id}`);
+  assert.equal(bobCurrentAfterAssignedRequest.body.entry.title, 'Dir wurde eine Mitbring-Anfrage zugewiesen');
+  assert.match(bobCurrentAfterAssignedRequest.body.entry.body, /Eis besorgen/);
+
+  const openTodo = await request(app).post('/api/checklist/tasks/todo').send({ playerId: alice.id, title: 'Tische aufbauen' });
+  assert.equal(openTodo.status, 201);
+  const lastAfterOpenTodo = await request(app).get('/api/push/last');
+  assert.equal(lastAfterOpenTodo.body.entry.title, 'Neue Aufgabe');
+  assert.match(lastAfterOpenTodo.body.entry.body, /Tische aufbauen/);
+
+  const assignedTodo = await request(app)
+    .post('/api/checklist/tasks/todo')
+    .send({ playerId: alice.id, title: 'Kabeltrommel mitbringen', assigneePlayerIds: [carol.id] });
+  assert.equal(assignedTodo.status, 201);
+  const carolCurrentAfterAssignedTodo = await request(app).get(`/api/push/current?playerId=${carol.id}`);
+  assert.equal(carolCurrentAfterAssignedTodo.body.entry.title, 'Dir wurde eine Aufgabe zugewiesen');
+  assert.match(carolCurrentAfterAssignedTodo.body.entry.body, /Kabeltrommel mitbringen/);
+
+  // Releasing must resolve that "assigned to you" topic - otherwise Carol's
+  // notification center would keep claiming she's still on a task that's
+  // back in the open pool.
+  const carolTaskId = assignedTodo.body.tasks[0].id;
+  await request(app).post(`/api/checklist/tasks/${carolTaskId}/release`).send({ playerId: carol.id });
+  const carolCurrentAfterRelease = await request(app).get(`/api/push/current?playerId=${carol.id}`);
+  assert.notEqual(carolCurrentAfterRelease.body.entry?.title, 'Dir wurde eine Aufgabe zugewiesen');
+
+  const claimed = await request(app).post(`/api/checklist/tasks/${openTodo.body.tasks[0].id}/claim`).send({ playerId: bob.id });
+  assert.equal(claimed.status, 200);
+  const aliceCurrentAfterClaim = await request(app).get(`/api/push/current?playerId=${alice.id}`);
+  assert.equal(aliceCurrentAfterClaim.body.entry.title, 'Übernommen');
+  assert.match(aliceCurrentAfterClaim.body.entry.body, /Tische aufbauen/);
+
+  // done also resolves its own "assigned to you" topic.
+  const bobAssignedRequestTaskId = assignedRequest.body.tasks[0].id;
+  const doneAssignedRequest = await request(app)
+    .patch(`/api/checklist/tasks/${bobAssignedRequestTaskId}/done`)
+    .send({ playerId: bob.id });
+  assert.equal(doneAssignedRequest.status, 200);
+  const bobCurrentAfterDone = await request(app).get(`/api/push/current?playerId=${bob.id}`);
+  assert.notEqual(bobCurrentAfterDone.body.entry?.title, 'Dir wurde eine Mitbring-Anfrage zugewiesen');
+});
