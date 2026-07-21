@@ -449,16 +449,34 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   label („Bezahlt“, „Sammelzahlung“) instead of relying on an aria-label alone; a single contextual
   tooltip beside „Sammelzahlung“, shown once per card when the order has a PayPal link, explains
   that any position — including someone else's — can be picked for the combined payment below.
-- **Packliste** — „Meine Packliste“ and „Aufgaben & Anfragen“ are separate grouped-page sections.
-  The personal list is a compact checkbox row per item (Grundstock plus freely added/removable
+- **Checkliste** — the area's own nav/view title (formerly „Packliste“; docs/KONZEPT-PACKLISTE-TICKETS.md
+  Abschnitt 9 records the rename). „Meine Packliste“ and „To-Dos“ inside it are two `.btn`/
+  `.btn-primary` toggle tabs, same active-marking convention as Team formation's „Modus“ toggle; the
+  „To-Dos“ tab label carries a live count of the current identity's own open+taken items. The
+  personal list is unchanged: a compact checkbox row per item (Grundstock plus freely added/removable
   custom entries) with a checked item shown via muted, struck-through text instead of a separate
-  badge, followed by the plain add-item field/button row. Shared tasks and open Mitbring-Anfragen
-  use one bare `.badge` to distinguish the two types and share the same nested-card layout as an
-  open request card; „Übernehmen“ replaces the claim action once someone else already committed to
-  it, and the requester/organizer sees „Zurückziehen“ on their own open entry instead. Tasks already
-  taken move into the „Unterwegs“ subsection with the current assignee's avatar/name and, for that
-  assignee only, „Freigeben“/„Erledigt“ actions. Completed tasks live in one standard, initially
-  collapsed „Historie“ section whose open state survives live re-renders, same as Food orders.
+  badge, followed by the plain add-item field/button row.
+  Any active member — not only Owner/Admin — can create a To-Do of either Art (Aufgabe/
+  Mitbring-Anfrage) through one unified „To-Do erstellen“ dialog: a `.selection-toolbar` Art toggle,
+  Titel/Beschreibung, a second `.selection-toolbar` for „Zuweisen an“ (Niemand/Ich/Personen wählen —
+  the last reveals the existing player-selection grid plus „Alle auswählen“/„Alle abwählen“), and an
+  optional „Fällig bis“ date using `dateTimeFieldHtml`'s `dateOnly` mode (no time-of-day picker, since
+  none is meaningful here). Switching Art or Zuweisen-an mid-form preserves already-typed field values
+  across the internal re-render, the same survives-its-own-rerender pattern the add-item field uses.
+  „Mir zugewiesen“ is a dedicated first subsection listing the current identity's own open+taken
+  To-Dos sorted by due date (undated ones last); an overdue card gets the `checklist-task-overdue`
+  border/background treatment and every card with a due date carries a `.badge-overdue`/
+  `.badge-due-soon`/`.badge-neutral` pill (never color alone — the badge text itself says „Überfällig“/
+  „Heute fällig“/„Morgen fällig“/„Fällig in N Tagen“/a plain date). „Offen“ (the shared pool) gets
+  `.chip` filter toggles for Art (Alle/Aufgaben/Mitbring-Anfragen) plus a „Von mir erstellt“ toggle,
+  each marked `.chip.is-active` when selected; the pool otherwise still uses one bare `.badge` to
+  distinguish the two types and the same nested-card layout as before. „Übernehmen“ replaces the claim
+  action once someone else already committed to it, and the creator sees „Zurückziehen“ on their own
+  open entry instead. To-Dos already taken by someone else move into the „Unterwegs“ subsection with
+  the current assignee's avatar/name and due badge; taken by the current identity, they show in „Mir
+  zugewiesen“ with „Freigeben“/„Erledigt“ actions instead. Completed To-Dos live in one standard,
+  initially collapsed „Historie“ section whose open state survives live re-renders, same as Food
+  orders.
 - **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
   grid. „Nach LAN“ uses one directly labeled event dropdown and shows every overall placement for
   the selected LAN, followed by tournament winners in the same leaderboard-row structure. Blue and

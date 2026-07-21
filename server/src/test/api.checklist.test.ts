@@ -147,14 +147,46 @@ test('POST /api/checklist/tasks creates an open item_request, validated', async 
     .post('/api/checklist/tasks')
     .send({ playerId: alice.id, title: 'Controller mitbringen?', description: 'Für Mario Kart' });
   assert.equal(created.status, 201);
-  assert.equal(created.body.type, 'item_request');
-  assert.equal(created.body.status, 'open');
-  assert.equal(created.body.assignee, null);
-  assert.equal(created.body.createdBy.id, alice.id);
-  requestTaskId = created.body.id;
+  assert.equal(created.body.tasks.length, 1);
+  assert.equal(created.body.tasks[0].type, 'item_request');
+  assert.equal(created.body.tasks[0].status, 'open');
+  assert.equal(created.body.tasks[0].assignee, null);
+  assert.equal(created.body.tasks[0].createdBy.id, alice.id);
+  requestTaskId = created.body.tasks[0].id;
 
   const list = await request(app).get('/api/checklist/tasks');
   assert.ok(list.body.tasks.some((t: { id: string }) => t.id === requestTaskId));
+});
+
+test('POST /api/checklist/tasks with assigneePlayerIds addresses a request directly (self or others), same shape as /tasks/todo', async () => {
+  const badList = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Grillkohle', assigneePlayerIds: 'not-an-array' });
+  assert.equal(badList.status, 400);
+
+  const unknownAssignee = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Grillkohle', assigneePlayerIds: ['ghost'] });
+  assert.equal(unknownAssignee.status, 404);
+
+  const self = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'An mich selbst', assigneePlayerIds: [alice.id] });
+  assert.equal(self.status, 201);
+  assert.equal(self.body.tasks.length, 1);
+  assert.equal(self.body.tasks[0].status, 'taken');
+  assert.equal(self.body.tasks[0].assignee.id, alice.id);
+  assert.equal(self.body.tasks[0].batchId, null);
+
+  const batch = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Grillkohle für beide', assigneePlayerIds: [bob.id, carol.id] });
+  assert.equal(batch.status, 201);
+  assert.equal(batch.body.tasks.length, 2);
+  assert.ok(batch.body.tasks[0].batchId);
+  assert.equal(batch.body.tasks[0].batchId, batch.body.tasks[1].batchId);
+  const assignees = batch.body.tasks.map((t: { assignee: { id: string } }) => t.assignee.id).sort();
+  assert.deepEqual(assignees, [bob.id, carol.id].sort());
 });
 
 test('POST /api/checklist/tasks/todo creates an open organizer task without assignees', async () => {
@@ -200,6 +232,50 @@ test('POST /api/checklist/tasks/todo with assigneePlayerIds assigns directly and
   assert.deepEqual(assignees, [bob.id, carol.id].sort());
 });
 
+test('POST /api/checklist/tasks accepts and validates an optional dueAt', async () => {
+  const badDueAt = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Mit falschem Datum', dueAt: 'not-a-number' });
+  assert.equal(badDueAt.status, 400);
+
+  const dueAtValue = Date.now() + 86_400_000;
+  const created = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Mit Fälligkeit', dueAt: dueAtValue });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.tasks[0].dueAt, dueAtValue);
+
+  const withoutDueAt = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Ohne Fälligkeit' });
+  assert.equal(withoutDueAt.status, 201);
+  assert.equal(withoutDueAt.body.tasks[0].dueAt, null);
+
+  const list = await request(app).get('/api/checklist/tasks');
+  const listed = list.body.tasks.find((t: { id: string }) => t.id === created.body.tasks[0].id);
+  assert.equal(listed.dueAt, dueAtValue);
+});
+
+test('POST /api/checklist/tasks/todo accepts and validates an optional dueAt on both the open and directly-assigned paths', async () => {
+  const badDueAt = await request(app)
+    .post('/api/checklist/tasks/todo')
+    .send({ playerId: alice.id, title: 'Falsches Datum', dueAt: 'gestern' });
+  assert.equal(badDueAt.status, 400);
+
+  const dueAtValue = Date.now() + 3 * 86_400_000;
+  const open = await request(app)
+    .post('/api/checklist/tasks/todo')
+    .send({ playerId: alice.id, title: 'Mit Fälligkeit offen', dueAt: dueAtValue });
+  assert.equal(open.status, 201);
+  assert.equal(open.body.tasks[0].dueAt, dueAtValue);
+
+  const assigned = await request(app)
+    .post('/api/checklist/tasks/todo')
+    .send({ playerId: alice.id, title: 'Mit Fälligkeit zugewiesen', assigneePlayerIds: [bob.id], dueAt: dueAtValue });
+  assert.equal(assigned.status, 201);
+  assert.equal(assigned.body.tasks[0].dueAt, dueAtValue);
+});
+
 test('claim: cannot claim your own task/request, unknown task 404, exactly one winner on a race', async () => {
   const missing = await request(app).post('/api/checklist/tasks/nope/claim').send({ playerId: bob.id });
   assert.equal(missing.status, 404);
@@ -229,7 +305,7 @@ test('claim: optional comment is validated, stored, echoed in the response and c
   const created = await request(app)
     .post('/api/checklist/tasks')
     .send({ playerId: alice.id, title: 'Fernseher mitbringen?' });
-  const taskId = created.body.id;
+  const taskId = created.body.tasks[0].id;
 
   const tooLong = await request(app)
     .post(`/api/checklist/tasks/${taskId}/claim`)
@@ -294,7 +370,7 @@ test('cancel (DELETE): creator/admin only, blocked once done, not re-cancellable
   const created = await request(app)
     .post('/api/checklist/tasks')
     .send({ playerId: alice.id, title: 'Wird storniert' });
-  const cancelTaskId = created.body.id;
+  const cancelTaskId = created.body.tasks[0].id;
 
   const notAllowed = await request(app).delete(`/api/checklist/tasks/${cancelTaskId}`).send({ playerId: bob.id });
   assert.equal(notAllowed.status, 403);
@@ -315,4 +391,94 @@ test('cancel (DELETE): creator/admin only, blocked once done, not re-cancellable
   assert.equal(doneAlready.status, 409);
   const cancelDoneTask = await request(app).delete(`/api/checklist/tasks/${requestTaskId}`).send({ playerId: alice.id });
   assert.equal(cancelDoneTask.status, 409);
+});
+
+// The frontend rewrite (docs/KONZEPT-PACKLISTE-TICKETS.md) touched every
+// create route and added direct assignment to POST /tasks - verifies the
+// underlying push wiring (notifyPlayers/resolvePushTopic calls) still fires
+// with correct wording/audience/topic for every path, not just that the API
+// response looks right.
+test('push notifications: open creation broadcasts, direct assignment notifies just the assignee, claim notifies the creator, release/done/cancel resolve the topic', async () => {
+  const openRequest = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Grillkohle mitbringen?' });
+  assert.equal(openRequest.status, 201);
+  const lastAfterOpenRequest = await request(app).get('/api/push/last');
+  assert.equal(lastAfterOpenRequest.body.entry.title, 'Neue Mitbring-Anfrage');
+  assert.match(lastAfterOpenRequest.body.entry.body, /Grillkohle mitbringen\?/);
+
+  // New capability: POST /tasks with assigneePlayerIds now notifies the
+  // assignee directly instead of broadcasting, mirroring /tasks/todo.
+  const assignedRequest = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Eis besorgen', assigneePlayerIds: [bob.id] });
+  assert.equal(assignedRequest.status, 201);
+  const bobCurrentAfterAssignedRequest = await request(app).get(`/api/push/current?playerId=${bob.id}`);
+  assert.equal(bobCurrentAfterAssignedRequest.body.entry.title, 'Dir wurde eine Mitbring-Anfrage zugewiesen');
+  assert.match(bobCurrentAfterAssignedRequest.body.entry.body, /Eis besorgen/);
+
+  const openTodo = await request(app).post('/api/checklist/tasks/todo').send({ playerId: alice.id, title: 'Tische aufbauen' });
+  assert.equal(openTodo.status, 201);
+  const lastAfterOpenTodo = await request(app).get('/api/push/last');
+  assert.equal(lastAfterOpenTodo.body.entry.title, 'Neue Aufgabe');
+  assert.match(lastAfterOpenTodo.body.entry.body, /Tische aufbauen/);
+
+  const assignedTodo = await request(app)
+    .post('/api/checklist/tasks/todo')
+    .send({ playerId: alice.id, title: 'Kabeltrommel mitbringen', assigneePlayerIds: [carol.id] });
+  assert.equal(assignedTodo.status, 201);
+  const carolCurrentAfterAssignedTodo = await request(app).get(`/api/push/current?playerId=${carol.id}`);
+  assert.equal(carolCurrentAfterAssignedTodo.body.entry.title, 'Dir wurde eine Aufgabe zugewiesen');
+  assert.match(carolCurrentAfterAssignedTodo.body.entry.body, /Kabeltrommel mitbringen/);
+
+  // Releasing must resolve that "assigned to you" topic - otherwise Carol's
+  // notification center would keep claiming she's still on a task that's
+  // back in the open pool.
+  const carolTaskId = assignedTodo.body.tasks[0].id;
+  await request(app).post(`/api/checklist/tasks/${carolTaskId}/release`).send({ playerId: carol.id });
+  const carolCurrentAfterRelease = await request(app).get(`/api/push/current?playerId=${carol.id}`);
+  assert.notEqual(carolCurrentAfterRelease.body.entry?.title, 'Dir wurde eine Aufgabe zugewiesen');
+
+  const claimed = await request(app).post(`/api/checklist/tasks/${openTodo.body.tasks[0].id}/claim`).send({ playerId: bob.id });
+  assert.equal(claimed.status, 200);
+  const aliceCurrentAfterClaim = await request(app).get(`/api/push/current?playerId=${alice.id}`);
+  assert.equal(aliceCurrentAfterClaim.body.entry.title, 'Übernommen');
+  assert.match(aliceCurrentAfterClaim.body.entry.body, /Tische aufbauen/);
+
+  // done also resolves its own "assigned to you" topic.
+  const bobAssignedRequestTaskId = assignedRequest.body.tasks[0].id;
+  const doneAssignedRequest = await request(app)
+    .patch(`/api/checklist/tasks/${bobAssignedRequestTaskId}/done`)
+    .send({ playerId: bob.id });
+  assert.equal(doneAssignedRequest.status, 200);
+  const bobCurrentAfterDone = await request(app).get(`/api/push/current?playerId=${bob.id}`);
+  assert.notEqual(bobCurrentAfterDone.body.entry?.title, 'Dir wurde eine Mitbring-Anfrage zugewiesen');
+});
+
+test('push notifications: self-assignment ("Ich") does not push a notification to yourself', async () => {
+  const beforeTodo = await request(app).get(`/api/push/current?playerId=${alice.id}`);
+  const selfTodo = await request(app)
+    .post('/api/checklist/tasks/todo')
+    .send({ playerId: alice.id, title: 'Preise vorbereiten', assigneePlayerIds: [alice.id] });
+  assert.equal(selfTodo.status, 201);
+  const afterTodo = await request(app).get(`/api/push/current?playerId=${alice.id}`);
+  assert.equal(afterTodo.body.entry?.title, beforeTodo.body.entry?.title, 'self-assigning a todo must not change what shows as your current push');
+
+  const beforeRequest = await request(app).get(`/api/push/current?playerId=${alice.id}`);
+  const selfRequest = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Kopfschmerztabletten', assigneePlayerIds: [alice.id] });
+  assert.equal(selfRequest.status, 201);
+  const afterRequest = await request(app).get(`/api/push/current?playerId=${alice.id}`);
+  assert.equal(afterRequest.body.entry?.title, beforeRequest.body.entry?.title, 'self-assigning a request must not change what shows as your current push');
+
+  // A batch that includes yourself alongside someone else still notifies
+  // that other person - only the self-targeted row is skipped.
+  const batch = await request(app)
+    .post('/api/checklist/tasks/todo')
+    .send({ playerId: alice.id, title: 'Müll rausbringen', assigneePlayerIds: [alice.id, bob.id] });
+  assert.equal(batch.status, 201);
+  const bobCurrentAfterBatch = await request(app).get(`/api/push/current?playerId=${bob.id}`);
+  assert.equal(bobCurrentAfterBatch.body.entry.title, 'Dir wurde eine Aufgabe zugewiesen');
+  assert.match(bobCurrentAfterBatch.body.entry.body, /Müll rausbringen/);
 });

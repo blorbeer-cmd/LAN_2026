@@ -22,6 +22,7 @@ Hier sind alle in den PR-Metadaten gefundenen Arbeitsbranches zusammengefasst. D
 - [`claude/multigroup-realtime-delivery-pschci`](./claude-multigroup-realtime-delivery-pschci.md) — 0 gemergt, 1 offen
 - [`claude/pause-live-tracking-bug-uilj46`](./claude-pause-live-tracking-bug-uilj46.md) — 2 gemergt, 0 offen
 - [`claude/pr-merge-order-p67vj8`](./claude-pr-merge-order-p67vj8.md) — 1 gemergt, 0 offen
+- [`claude/reset-plan-r4-migrations-v0zond`](./claude-reset-plan-r4-migrations-v0zond.md) — 1 gemergt, 0 offen
 - [`claude/push-notification-types-9djvav`](./claude-push-notification-types-9djvav.md) — 1 gemergt, 0 offen
 - [`claude/rematch-result-history-05t4qm`](./claude-rematch-result-history-05t4qm.md) — 1 gemergt, 0 offen
 - [`claude/scribble-io-analysis-h2vfeb`](./claude-scribble-io-analysis-h2vfeb.md) — 1 gemergt, 0 offen

@@ -660,13 +660,61 @@ db.exec(`
 const hasAppliedMigration = db.prepare('SELECT 1 FROM schema_migrations WHERE version = ?');
 const recordMigration = db.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)');
 
-function runMigration(migration: Migration): void {
-  if (hasAppliedMigration.get(migration.version)) return;
+// Migrations are declared throughout this file in roughly the order they were
+// written, but a handful landed out of order across parallel branches (v44 and
+// v45 sit textually before v41–v43). Executing them in declaration order would
+// apply a higher version before a lower one. To make "lower versions always run
+// first" a structural guarantee — rather than a property of how the calls below
+// happen to be arranged — every migration is only *registered* here and then
+// executed together, sorted by version, by runRegisteredMigrations() once all
+// registrations are in place (see the call near the end of this file).
+const registeredMigrations: Migration[] = [];
+const registeredMigrationVersions = new Set<number>();
+let migrationsHaveRun = false;
 
-  db.transaction(() => {
-    migration.up();
-    recordMigration.run(migration.version, migration.name, Date.now());
-  })();
+function registerMigration(migration: Migration): void {
+  // Fail fast if a migration is registered after runRegisteredMigrations() has
+  // already fired: it would land in the array but never execute (silently
+  // leaving the DB one version behind). New migrations must be registered
+  // above the runner call, alongside the others.
+  if (migrationsHaveRun) {
+    throw new Error(
+      `Migration ${migration.version} (${migration.name}) wurde nach dem Migrationslauf registriert — Registrierung muss vor runRegisteredMigrations() erfolgen`,
+    );
+  }
+  if (registeredMigrationVersions.has(migration.version)) {
+    throw new Error(`Doppelte Migrationsversion ${migration.version} (${migration.name})`);
+  }
+  registeredMigrationVersions.add(migration.version);
+  registeredMigrations.push(migration);
+}
+
+// Registered migrations in strict ascending version order, independent of the
+// textual registration order above.
+function migrationsInRunOrder(): Migration[] {
+  return [...registeredMigrations].sort((a, b) => a.version - b.version);
+}
+
+// Runs every registered migration that has not been applied yet, in ascending
+// version order. Each version is still guarded individually via
+// schema_migrations, so an already migrated database re-runs nothing and no
+// version is skipped — only the never-applied ones execute, oldest first.
+function runRegisteredMigrations(): void {
+  migrationsHaveRun = true;
+  for (const migration of migrationsInRunOrder()) {
+    if (hasAppliedMigration.get(migration.version)) continue;
+    db.transaction(() => {
+      migration.up();
+      recordMigration.run(migration.version, migration.name, Date.now());
+    })();
+  }
+}
+
+// Exposed for the migration tests: the versions in the exact order they will
+// run (ascending), so a regression back to declaration-order execution is
+// caught even though the two orders currently converge on the same schema.
+export function getMigrationRunOrder(): number[] {
+  return migrationsInRunOrder().map((migration) => migration.version);
 }
 
 export function getAppliedMigrations(): Array<{ version: number; name: string; applied_at: number }> {
@@ -686,7 +734,7 @@ function migrateAvatarColumn(): void {
   if (columns.some((c) => c.name === 'avatar')) return;
   db.exec('ALTER TABLE players ADD COLUMN avatar TEXT');
 }
-runMigration({ version: 1, name: 'add players.avatar', up: migrateAvatarColumn });
+registerMigration({ version: 1, name: 'add players.avatar', up: migrateAvatarColumn });
 
 // Migration: older databases predate the is_admin moderation flag.
 function migrateAdminColumn(): void {
@@ -694,7 +742,7 @@ function migrateAdminColumn(): void {
   if (columns.some((c) => c.name === 'is_admin')) return;
   db.exec('ALTER TABLE players ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0');
 }
-runMigration({ version: 2, name: 'add players.is_admin', up: migrateAdminColumn });
+registerMigration({ version: 2, name: 'add players.is_admin', up: migrateAdminColumn });
 
 // Migration: older databases predate the is_test flag for admin-seeded test
 // players (see testUsers.ts).
@@ -703,7 +751,7 @@ function migrateTestColumn(): void {
   if (columns.some((c) => c.name === 'is_test')) return;
   db.exec('ALTER TABLE players ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0');
 }
-runMigration({ version: 3, name: 'add players.is_test', up: migrateTestColumn });
+registerMigration({ version: 3, name: 'add players.is_test', up: migrateTestColumn });
 
 // Migration: older databases predate the optional real_name column (the
 // actual person's name, shown in small next to the gamer name in the
@@ -713,21 +761,21 @@ function migrateRealNameColumn(): void {
   if (columns.some((c) => c.name === 'real_name')) return;
   db.exec('ALTER TABLE players ADD COLUMN real_name TEXT');
 }
-runMigration({ version: 4, name: 'add players.real_name', up: migrateRealNameColumn });
+registerMigration({ version: 4, name: 'add players.real_name', up: migrateRealNameColumn });
 
 function migrateGameIconImageColumn(): void {
   const columns = db.prepare('PRAGMA table_info(games)').all() as Array<{ name: string }>;
   if (columns.some((c) => c.name === 'icon_image')) return;
   db.exec('ALTER TABLE games ADD COLUMN icon_image TEXT');
 }
-runMigration({ version: 5, name: 'add games.icon_image', up: migrateGameIconImageColumn });
+registerMigration({ version: 5, name: 'add games.icon_image', up: migrateGameIconImageColumn });
 
 function migrateGameArcadeKeyColumn(): void {
   const columns = db.prepare('PRAGMA table_info(games)').all() as Array<{ name: string }>;
   if (columns.some((c) => c.name === 'arcade_key')) return;
   db.exec('ALTER TABLE games ADD COLUMN arcade_key TEXT');
 }
-runMigration({ version: 6, name: 'add games.arcade_key', up: migrateGameArcadeKeyColumn });
+registerMigration({ version: 6, name: 'add games.arcade_key', up: migrateGameArcadeKeyColumn });
 
 // Migration: older databases predate the games/game_catalog merge (see
 // server/CLAUDE.md games reorg) — games itself needs the catalog columns
@@ -746,7 +794,7 @@ function migrateGamesCatalogMergeColumns(): void {
   if (!has('created_by'))
     db.exec('ALTER TABLE games ADD COLUMN created_by TEXT REFERENCES players(id) ON DELETE SET NULL');
 }
-runMigration({ version: 7, name: 'add games catalog columns', up: migrateGamesCatalogMergeColumns });
+registerMigration({ version: 7, name: 'add games catalog columns', up: migrateGamesCatalogMergeColumns });
 
 function migrateLegacyGameCatalogIntoGames(): void {
   const catalogTableExists = db
@@ -823,7 +871,7 @@ function migrateLegacyGameCatalogIntoGames(): void {
     db.exec('DROP TABLE game_catalog');
   })();
 }
-runMigration({ version: 8, name: 'merge legacy game catalog', up: migrateLegacyGameCatalogIntoGames });
+registerMigration({ version: 8, name: 'merge legacy game catalog', up: migrateLegacyGameCatalogIntoGames });
 
 // Migration: older databases predate the optional "wann geht's raus"
 // send_at field on food orders.
@@ -832,7 +880,7 @@ function migrateFoodOrderSendAtColumn(): void {
   if (columns.some((c) => c.name === 'send_at')) return;
   db.exec('ALTER TABLE food_orders ADD COLUMN send_at INTEGER');
 }
-runMigration({ version: 9, name: 'add food_orders.send_at', up: migrateFoodOrderSendAtColumn });
+registerMigration({ version: 9, name: 'add food_orders.send_at', up: migrateFoodOrderSendAtColumn });
 
 // Migration: older databases predate the optional notes/link fields on food
 // orders (free-text info + link to the menu/delivery service).
@@ -842,7 +890,7 @@ function migrateFoodOrderNotesLinkColumns(): void {
   if (!has('notes')) db.exec('ALTER TABLE food_orders ADD COLUMN notes TEXT');
   if (!has('link')) db.exec('ALTER TABLE food_orders ADD COLUMN link TEXT');
 }
-runMigration({ version: 10, name: 'add food order notes links', up: migrateFoodOrderNotesLinkColumns });
+registerMigration({ version: 10, name: 'add food order notes links', up: migrateFoodOrderNotesLinkColumns });
 
 // Migration: older databases predate the carpool driver plan (when/where
 // they start, ETA, seat count).
@@ -854,7 +902,7 @@ function migrateCarpoolPlanColumns(): void {
   if (!has('eta_at')) db.exec('ALTER TABLE carpools ADD COLUMN eta_at INTEGER');
   if (!has('seats_total')) db.exec('ALTER TABLE carpools ADD COLUMN seats_total INTEGER NOT NULL DEFAULT 3');
 }
-runMigration({ version: 11, name: 'add carpool plan columns', up: migrateCarpoolPlanColumns });
+registerMigration({ version: 11, name: 'add carpool plan columns', up: migrateCarpoolPlanColumns });
 
 // Migration: older databases predate the group-knockout format and score
 // tracking (both added together) — add the columns they need if missing.
@@ -880,7 +928,7 @@ function migrateTournamentColumns(): void {
   if (!has('lobby_name')) db.exec('ALTER TABLE tournaments ADD COLUMN lobby_name TEXT');
   if (!has('lobby_password')) db.exec('ALTER TABLE tournaments ADD COLUMN lobby_password TEXT');
 }
-runMigration({ version: 12, name: 'add tournament columns', up: migrateTournamentColumns });
+registerMigration({ version: 12, name: 'add tournament columns', up: migrateTournamentColumns });
 
 // Migration: older databases predate linking a matchmaking draw to the match
 // result eventually recorded for it (Team-Historie -> Ergebnis-Historie).
@@ -893,7 +941,7 @@ function migrateMatchmakingDrawsColumns(): void {
     db.exec('ALTER TABLE matchmaking_draws ADD COLUMN source TEXT');
   }
 }
-runMigration({ version: 13, name: 'add matchmaking draw columns', up: migrateMatchmakingDrawsColumns });
+registerMigration({ version: 13, name: 'add matchmaking draw columns', up: migrateMatchmakingDrawsColumns });
 
 // Migration: older databases predate the foreground-game tracking columns
 // (which game of possibly several is actually focused right now).
@@ -907,7 +955,7 @@ function migrateForegroundColumns(): void {
     db.exec('ALTER TABLE live_status_games ADD COLUMN is_foreground INTEGER NOT NULL DEFAULT 0');
   }
 }
-runMigration({ version: 14, name: 'add foreground columns', up: migrateForegroundColumns });
+registerMigration({ version: 14, name: 'add foreground columns', up: migrateForegroundColumns });
 
 // Migration: older databases predate the points-mode voting round (added
 // alongside the "Bock"/preference feature). votes used to have
@@ -961,7 +1009,7 @@ function migrateVotesPointsMode(): void {
     }
   })();
 }
-runMigration({ version: 15, name: 'add votes points mode', up: migrateVotesPointsMode });
+registerMigration({ version: 15, name: 'add votes points mode', up: migrateVotesPointsMode });
 
 // Migration: older databases predate the round title/info/selected-games
 // fields (a round used to be identified only by its number and mode).
@@ -973,7 +1021,7 @@ function migrateVoteRoundsMetaColumns(): void {
     db.exec('ALTER TABLE vote_rounds ADD COLUMN selected_game_ids TEXT');
   }
 }
-runMigration({ version: 16, name: 'add vote round metadata', up: migrateVoteRoundsMetaColumns });
+registerMigration({ version: 16, name: 'add vote round metadata', up: migrateVoteRoundsMetaColumns });
 
 // Migration: older databases predate the optional location/description
 // event fields.
@@ -983,7 +1031,7 @@ function migrateEventColumns(): void {
   if (!has('location')) db.exec('ALTER TABLE events ADD COLUMN location TEXT');
   if (!has('description')) db.exec('ALTER TABLE events ADD COLUMN description TEXT');
 }
-runMigration({ version: 17, name: 'add event location and description', up: migrateEventColumns });
+registerMigration({ version: 17, name: 'add event location and description', up: migrateEventColumns });
 
 // Fixed id for the permanent "außerhalb von Events" sentinel — see the
 // `events` table comment above for why this exists. Exported so events.ts
@@ -1074,7 +1122,7 @@ export function setState(key: string, value: string): void {
 
 // Needs app_state (just above) to exist first for its upgrade-continuity
 // backfill, which reads the old active_event_id key.
-runMigration({ version: 18, name: 'add event tracking', up: migrateEventTrackingColumns });
+registerMigration({ version: 18, name: 'add event tracking', up: migrateEventTrackingColumns });
 
 // Historical one-time backfill from the retired all-admin phase. It remains
 // idempotent for databases that have already recorded the migration; new
@@ -1084,14 +1132,14 @@ function migrateAllPlayersAdminBackfill(): void {
   db.exec('UPDATE players SET is_admin = 1');
   setState('all_players_admin_backfill', 'done');
 }
-runMigration({ version: 19, name: 'backfill player admins', up: migrateAllPlayersAdminBackfill });
+registerMigration({ version: 19, name: 'backfill player admins', up: migrateAllPlayersAdminBackfill });
 
 function migrateSeatNeighborsSourceColumn(): void {
   const columns = db.prepare('PRAGMA table_info(seat_neighbors)').all() as Array<{ name: string }>;
   if (columns.some((c) => c.name === 'source')) return;
   db.exec("ALTER TABLE seat_neighbors ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'");
 }
-runMigration({ version: 20, name: 'add seat neighbor source', up: migrateSeatNeighborsSourceColumn });
+registerMigration({ version: 20, name: 'add seat neighbor source', up: migrateSeatNeighborsSourceColumn });
 
 // Migration: older databases predate the notification center's extra
 // push_log fields (deep-link url, recipient list, all/direct audience).
@@ -1104,7 +1152,7 @@ function migratePushLogFeedColumns(): void {
   if (!has('audience')) db.exec("ALTER TABLE push_log ADD COLUMN audience TEXT NOT NULL DEFAULT 'all'");
   if (!has('player_ids')) db.exec('ALTER TABLE push_log ADD COLUMN player_ids TEXT');
 }
-runMigration({ version: 21, name: 'add push log feed columns', up: migratePushLogFeedColumns });
+registerMigration({ version: 21, name: 'add push log feed columns', up: migratePushLogFeedColumns });
 
 // Migration: the "Jetzt zocken" ping feature was removed (spontaneous
 // play requests go through Durchsagen or a vote round instead) — drop its
@@ -1115,7 +1163,7 @@ function removeGamePingTables(): void {
   // migration 35; databases upgrading from before version 22 must retain
   // their legacy rows so that migration can preserve them as group history.
 }
-runMigration({ version: 22, name: 'remove game ping tables', up: removeGamePingTables });
+registerMigration({ version: 22, name: 'remove game ping tables', up: removeGamePingTables });
 
 function createScribbleGalleryTables(): void {
   db.exec(`
@@ -1153,7 +1201,7 @@ function createScribbleGalleryTables(): void {
     CREATE INDEX IF NOT EXISTS idx_scribble_favorites_drawing ON scribble_drawing_favorites(drawing_id);
   `);
 }
-runMigration({ version: 23, name: 'add scribble drawing gallery', up: createScribbleGalleryTables });
+registerMigration({ version: 23, name: 'add scribble drawing gallery', up: createScribbleGalleryTables });
 
 // Banner notifications about short-lived subjects need their own lifecycle:
 // the push log remains a history, while topic_key/resolved_at/expires_at let
@@ -1168,7 +1216,7 @@ function migratePushLogLifecycleColumns(): void {
   if (!has('resolved_at')) db.exec('ALTER TABLE push_log ADD COLUMN resolved_at INTEGER');
   db.exec('CREATE INDEX IF NOT EXISTS idx_push_log_topic_lifecycle ON push_log(topic_key, resolved_at, expires_at)');
 }
-runMigration({ version: 24, name: 'add push log lifecycle', up: migratePushLogLifecycleColumns });
+registerMigration({ version: 24, name: 'add push log lifecycle', up: migratePushLogLifecycleColumns });
 
 // Durchsagen now have an explicit lifetime (legacy messages receive the same
 // one-hour default as new ones), and banner dismissals are stored per player.
@@ -1188,7 +1236,7 @@ function migrateBroadcastLifecycleAndPushSeen(): void {
     CREATE INDEX IF NOT EXISTS idx_push_log_seen_player ON push_log_seen(player_id, push_id);
   `);
 }
-runMigration({ version: 25, name: 'add broadcast lifecycle and push seen', up: migrateBroadcastLifecycleAndPushSeen });
+registerMigration({ version: 25, name: 'add broadcast lifecycle and push seen', up: migrateBroadcastLifecycleAndPushSeen });
 
 // Real per-user login (see docs/KONZEPT-USER-MANAGEMENT.md): players gain a
 // password (NULL = not yet claimed/registered), sessions are looked up by the
@@ -1229,7 +1277,7 @@ function migrateAccountsAuth(): void {
     CREATE INDEX IF NOT EXISTS idx_invites_player ON invites(player_id);
   `);
 }
-runMigration({ version: 26, name: 'add accounts auth (sessions, invites)', up: migrateAccountsAuth });
+registerMigration({ version: 26, name: 'add accounts auth (sessions, invites)', up: migrateAccountsAuth });
 
 // Early development databases may already have recorded migration 26 with
 // created_by NOT NULL and without ON DELETE actions. Rebuild the table once
@@ -1266,7 +1314,7 @@ function repairInviteAuditForeignKeys(): void {
     CREATE INDEX idx_invites_player ON invites(player_id);
   `);
 }
-runMigration({ version: 27, name: 'repair invite audit foreign keys', up: repairInviteAuditForeignKeys });
+registerMigration({ version: 27, name: 'repair invite audit foreign keys', up: repairInviteAuditForeignKeys });
 
 // Critical admin actions require a freshly confirmed password. Keeping the
 // timestamp on the individual session (rather than the player) means a
@@ -1277,7 +1325,7 @@ function addSessionReauthentication(): void {
     db.exec('ALTER TABLE sessions ADD COLUMN reauthenticated_at INTEGER');
   }
 }
-runMigration({ version: 28, name: 'add session reauthentication', up: addSessionReauthentication });
+registerMigration({ version: 28, name: 'add session reauthentication', up: addSessionReauthentication });
 
 function addAccountDeactivationAndAdminLog(): void {
   const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
@@ -1303,7 +1351,7 @@ function addAccountDeactivationAndAdminLog(): void {
   // bootstrap admin (and any roles granted afterwards) remains untouched.
   db.prepare('UPDATE players SET is_admin = 0 WHERE password_hash IS NULL OR is_test = 1').run();
 }
-runMigration({ version: 29, name: 'add account deactivation and admin log', up: addAccountDeactivationAndAdminLog });
+registerMigration({ version: 29, name: 'add account deactivation and admin log', up: addAccountDeactivationAndAdminLog });
 
 // Phase 5a multi-group foundation. Existing feature tables intentionally stay
 // on the single migrated default group until the later data-scoping phases;
@@ -1391,7 +1439,7 @@ function addGroupFoundation(): void {
     }
   }
 }
-runMigration({ version: 30, name: 'add multi-group foundation', up: addGroupFoundation });
+registerMigration({ version: 30, name: 'add multi-group foundation', up: addGroupFoundation });
 
 // Phase 5b gives events and audit records an owning group. The broader feature
 // tables follow in 5c; columns stay nullable at the SQLite level during this
@@ -1421,7 +1469,7 @@ function addGroupAuthorizationFoundation(): void {
   }
   db.exec('CREATE INDEX IF NOT EXISTS idx_admin_log_group_created ON admin_log(group_id, created_at DESC)');
 }
-runMigration({ version: 31, name: 'add group authorization foundation', up: addGroupAuthorizationFoundation });
+registerMigration({ version: 31, name: 'add group authorization foundation', up: addGroupAuthorizationFoundation });
 
 // Phase 5c (cluster 1): game catalog, skills, preferences and live/presence
 // data become group-owned. Columns stay nullable at the SQLite level (same
@@ -1508,7 +1556,7 @@ function addCatalogAndPresenceGroupScoping(): void {
     db.exec('CREATE INDEX IF NOT EXISTS idx_game_process_names_game ON game_process_names(game_id)');
   }
 }
-runMigration({ version: 32, name: 'add catalog and presence group scoping', up: addCatalogAndPresenceGroupScoping });
+registerMigration({ version: 32, name: 'add catalog and presence group scoping', up: addCatalogAndPresenceGroupScoping });
 
 // Phase 5c (cluster 2): matches, matchmaking draws and tournaments become
 // group-owned. All three already carry event_id, and events have had
@@ -1548,7 +1596,7 @@ function addCompetitionGroupScoping(): void {
   ).run();
   db.exec('CREATE INDEX IF NOT EXISTS idx_tournaments_group_created ON tournaments(group_id, created_at DESC)');
 }
-runMigration({ version: 33, name: 'add competition group scoping', up: addCompetitionGroupScoping });
+registerMigration({ version: 33, name: 'add competition group scoping', up: addCompetitionGroupScoping });
 
 // Phase 5c (cluster 3): votes, vote rounds and captain drafts become strict
 // group resources. These tables are rebuilt instead of receiving nullable
@@ -1787,7 +1835,7 @@ function addVotesAndDraftsGroupScoping(): void {
     }
   }
 }
-runMigration({ version: 34, name: 'add votes and drafts group scoping', up: addVotesAndDraftsGroupScoping });
+registerMigration({ version: 34, name: 'add votes and drafts group scoping', up: addVotesAndDraftsGroupScoping });
 
 function migrateScopedGamePings(
   ensureHistoricalMembership: (groupId: string, playerId: string, timestamp: number) => void,
@@ -2065,7 +2113,7 @@ function addSeatingAndPingsGroupScoping(): void {
 
   migrateScopedGamePings(ensureHistoricalMembership);
 }
-runMigration({ version: 35, name: 'add seating and pings group scoping', up: addSeatingAndPingsGroupScoping });
+registerMigration({ version: 35, name: 'add seating and pings group scoping', up: addSeatingAndPingsGroupScoping });
 
 // Notification-center removal is personal: hiding an entry must never
 // delete the shared push-log row for its other recipients.
@@ -2082,7 +2130,7 @@ function createPushLogHiddenTable(): void {
     CREATE INDEX IF NOT EXISTS idx_push_log_hidden_player ON push_log_hidden(player_id, push_id);
   `);
 }
-runMigration({ version: 36, name: 'add per-player hidden push log', up: createPushLogHiddenTable });
+registerMigration({ version: 36, name: 'add per-player hidden push log', up: createPushLogHiddenTable });
 
 // Admin-generated historical Hall-of-Fame fixtures must be distinguishable
 // from real LANs so the cleanup action can remove them without relying on a
@@ -2095,7 +2143,7 @@ function migrateEventTestColumn(): void {
   }
   db.prepare("UPDATE events SET is_test = 1 WHERE name LIKE 'Respawn Test-LAN %'").run();
 }
-runMigration({ version: 37, name: 'add events.is_test', up: migrateEventTestColumn });
+registerMigration({ version: 37, name: 'add events.is_test', up: migrateEventTestColumn });
 
 // Quantity is separate from the free-text item description so totals can be
 // calculated correctly and users no longer have to encode "2x" in the name.
@@ -2104,7 +2152,7 @@ function migrateFoodOrderItemQuantityColumn(): void {
   if (columns.some((c) => c.name === 'quantity')) return;
   db.exec('ALTER TABLE food_order_items ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1');
 }
-runMigration({ version: 38, name: 'add food order item quantity', up: migrateFoodOrderItemQuantityColumn });
+registerMigration({ version: 38, name: 'add food order item quantity', up: migrateFoodOrderItemQuantityColumn });
 
 // Phase 5c (organisation/communication): communication records belong to a
 // group room or one concrete event. Recipient snapshots remain durable after
@@ -2266,7 +2314,7 @@ function addOrganisationCommunicationGroupScoping(): void {
     END;
   `);
 }
-runMigration({
+registerMigration({
   version: 39,
   name: 'add organisation communication group scoping',
   up: addOrganisationCommunicationGroupScoping,
@@ -2485,7 +2533,7 @@ function addArcadeDataGroupScoping(): void {
     }
   }
 }
-runMigration({ version: 40, name: 'add arcade data group scoping', up: addArcadeDataGroupScoping });
+registerMigration({ version: 40, name: 'add arcade data group scoping', up: addArcadeDataGroupScoping });
 
 // Phase 5d: tracking consent is an auditable, append-only decision.  The
 // current state is the row with no revoked_at; old group memberships and event
@@ -2558,8 +2606,16 @@ function addTrackingConsentHistory(): void {
       revoked_at INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_kiosk_tokens_group ON kiosk_tokens(group_id, revoked_at);
-    ALTER TABLE play_sessions ADD COLUMN allocation_weight REAL NOT NULL DEFAULT 1.0;
   `);
+  // Guarded like every other column-adding migration in this file: a database
+  // that already has allocation_weight (a fresh DB re-running v44 after its
+  // schema_migrations record was cleared, or any partially applied state) must
+  // not crash on a duplicate-column ALTER. The bare ALTER used to live in the
+  // db.exec block above and was the one unguarded schema change here.
+  const playSessionColumns = db.prepare('PRAGMA table_info(play_sessions)').all() as Array<{ name: string }>;
+  if (!playSessionColumns.some((column) => column.name === 'allocation_weight')) {
+    db.exec('ALTER TABLE play_sessions ADD COLUMN allocation_weight REAL NOT NULL DEFAULT 1.0');
+  }
   const now = Date.now();
   const insertGroup = db.prepare(
     `INSERT OR IGNORE INTO group_tracking_consents (id, group_id, player_id, granted_at, revoked_at, source)
@@ -2581,11 +2637,7 @@ function addTrackingConsentHistory(): void {
     insertEvent.run(nanoid(), now, row.event_id, row.player_id);
   }
 }
-runMigration({ version: 44, name: 'add historized tracking consents and fan-out contexts', up: addTrackingConsentHistory });
-
-// Delivery tables are idempotently ensured outside the migration counter as
-// well, so databases that already recorded 44 receive the Phase-5e surface.
-createPushMuteTable();
+registerMigration({ version: 44, name: 'add historized tracking consents and fan-out contexts', up: addTrackingConsentHistory });
 
 // Packliste: a personal packing checklist per player/event (Grundstock items
 // materialized from DEFAULT_CHECKLIST_ITEMS plus freely added custom ones),
@@ -2651,7 +2703,7 @@ function addChecklistTables(): void {
     CREATE INDEX IF NOT EXISTS idx_checklist_tasks_assignee ON checklist_tasks(assignee_id, status);
   `);
 }
-runMigration({ version: 45, name: 'add checklist items and tasks', up: addChecklistTables });
+registerMigration({ version: 45, name: 'add checklist items and tasks', up: addChecklistTables });
 
 // Lets whoever collects the money (the order's creator/an admin) check off
 // each item once that person has paid their share.
@@ -2660,7 +2712,7 @@ function migrateFoodOrderItemPaidColumn(): void {
   if (columns.some((c) => c.name === 'paid')) return;
   db.exec('ALTER TABLE food_order_items ADD COLUMN paid INTEGER NOT NULL DEFAULT 0');
 }
-runMigration({ version: 41, name: 'add food order item paid flag', up: migrateFoodOrderItemPaidColumn });
+registerMigration({ version: 41, name: 'add food order item paid flag', up: migrateFoodOrderItemPaidColumn });
 
 // finalized_at lets the creator/admin permanently lock a closed order (no
 // more reopening, items or paid edits); paypal_link is the co-orderers'
@@ -2678,7 +2730,7 @@ function migrateFoodOrderFinalizeAndPaypalColumns(): void {
   }
   if (!has('paypal_link')) db.exec('ALTER TABLE food_orders ADD COLUMN paypal_link TEXT');
 }
-runMigration({
+registerMigration({
   version: 42,
   name: 'add food order finalize and paypal link',
   up: migrateFoodOrderFinalizeAndPaypalColumns,
@@ -2691,7 +2743,7 @@ function migrateFoodOrderTipPercentColumn(): void {
   if (columns.some((c) => c.name === 'tip_percent')) return;
   db.exec('ALTER TABLE food_orders ADD COLUMN tip_percent INTEGER');
 }
-runMigration({ version: 43, name: 'add food order tip percent', up: migrateFoodOrderTipPercentColumn });
+registerMigration({ version: 43, name: 'add food order tip percent', up: migrateFoodOrderTipPercentColumn });
 
 // A Respawn Jam session stores only the shared queue and public playback
 // snapshot. Spotify authorization belongs to the local playback controller
@@ -2739,7 +2791,7 @@ function createMusicSessionTables(): void {
       WHERE status IN ('sending', 'queued', 'playing');
   `);
 }
-runMigration({ version: 46, name: 'add Spotify music sessions', up: createMusicSessionTables });
+registerMigration({ version: 46, name: 'add Spotify music sessions', up: createMusicSessionTables });
 
 // Spotify authorization belongs to one dedicated playback device (for
 // example the kiosk Raspberry Pi), never to the Respawn server. The server
@@ -2773,7 +2825,7 @@ function migrateMusicToLocalController(): void {
       ON music_controller_pairings(expires_at);
   `);
 }
-runMigration({ version: 47, name: 'move Spotify authorization to local Jam controller', up: migrateMusicToLocalController });
+registerMigration({ version: 47, name: 'move Spotify authorization to local Jam controller', up: migrateMusicToLocalController });
 
 function closeOrphanedLegacyMusicSessions(): void {
   const now = Date.now();
@@ -2789,13 +2841,13 @@ function closeOrphanedLegacyMusicSessions(): void {
      WHERE status = 'active' AND group_id NOT IN (SELECT group_id FROM music_controllers)`,
   ).run(now);
 }
-runMigration({ version: 48, name: 'close music sessions orphaned by local controller migration', up: closeOrphanedLegacyMusicSessions });
+registerMigration({ version: 48, name: 'close music sessions orphaned by local controller migration', up: closeOrphanedLegacyMusicSessions });
 
 // Version 45 was used by both the checklist and Jam branches before they
 // were merged. Existing databases created from the Jam branch may therefore
 // have recorded the music migration as version 45 and skipped the checklist
 // migration. Re-run the idempotent checklist DDL once to repair that state.
-runMigration({ version: 49, name: 'repair checklist tables after migration merge', up: addChecklistTables });
+registerMigration({ version: 49, name: 'repair checklist tables after migration merge', up: addChecklistTables });
 
 // The personal packing list no longer includes an ID card. Remove only the
 // materialized built-in rows; custom entries with the same visible label are
@@ -2803,7 +2855,7 @@ runMigration({ version: 49, name: 'repair checklist tables after migration merge
 function removeChecklistIdCardDefault(): void {
   db.prepare("DELETE FROM checklist_items WHERE template_key = 'id-card'").run();
 }
-runMigration({ version: 50, name: 'remove ID card from checklist defaults', up: removeChecklistIdCardDefault });
+registerMigration({ version: 50, name: 'remove ID card from checklist defaults', up: removeChecklistIdCardDefault });
 
 // Lets whoever claims a task/request leave a short note along with it (e.g.
 // "Bringe einen XBOX Controller mit."), shown to the creator and everyone
@@ -2813,7 +2865,34 @@ function addChecklistTaskClaimComment(): void {
   if (columns.some((c) => c.name === 'claim_comment')) return;
   db.exec('ALTER TABLE checklist_tasks ADD COLUMN claim_comment TEXT');
 }
-runMigration({ version: 51, name: 'add checklist task claim comment', up: addChecklistTaskClaimComment });
+registerMigration({ version: 51, name: 'add checklist task claim comment', up: addChecklistTaskClaimComment });
+
+// Optional due date for a To-Do (docs/KONZEPT-PACKLISTE-TICKETS.md): lets
+// "Mir zugewiesen" sort by urgency and surface an overdue/due-soon badge.
+// Stored as an epoch-ms timestamp, same convention as the other *_at columns
+// on this table, so existing formatting/serialization helpers apply as-is.
+function addChecklistTaskDueAt(): void {
+  const columns = db.prepare('PRAGMA table_info(checklist_tasks)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'due_at')) return;
+  db.exec('ALTER TABLE checklist_tasks ADD COLUMN due_at INTEGER');
+}
+registerMigration({ version: 52, name: 'add checklist task due date', up: addChecklistTaskDueAt });
+
+// Every migration is registered by now — run them all in ascending version
+// order (see registerMigration/runRegisteredMigrations above). This is the
+// single place migrations actually execute.
+runRegisteredMigrations();
+
+// createPushMuteTable() ensures the delivery tables push_mutes and kiosk_tokens
+// (both also created inside v44) *outside* the version counter, on every start.
+// This is a deliberate, documented idempotent exception to "all schema lives in
+// a numbered migration": databases that recorded v44 in an older build — before
+// those tables were part of v44's body — will never re-run v44, so a plain
+// version step could not backfill them. Both statements are CREATE TABLE/INDEX
+// IF NOT EXISTS, so re-running on an already-current database is a guaranteed
+// no-op. It runs after runRegisteredMigrations() so the referenced groups table
+// (created by v30) exists on a brand-new database.
+createPushMuteTable();
 
 function createPushMuteTable(): void {
   db.exec(`

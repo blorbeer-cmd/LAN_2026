@@ -8,18 +8,21 @@
 // purpose (a new LAN may need different gear), even though the Grundstock
 // itself is the same list every time.
 //
-// "Aufgaben & Anfragen" (checklist_tasks) is the shared pool: an organizer
-// (group admin/owner) distributes to-dos, either straight to one or several
-// people or left open for anyone to claim, and any member can post an open
-// "kann mir jemand X mitnehmen"-style request. Both share one lifecycle -
-// open (unassigned, in the pool) -> taken (an assignee is set, either by the
-// organizer directly or by someone claiming it) -> done, with cancelled as a
+// "To-Dos" (checklist_tasks, docs/KONZEPT-PACKLISTE-TICKETS.md) is the
+// shared pool: any active group member - not just an admin/owner - can
+// distribute a to-do, either straight to one or several people or left open
+// for anyone to claim, and any member can likewise post an open "kann mir
+// jemand X mitnehmen"-style request. Both share one lifecycle - open
+// (unassigned, in the pool) -> taken (an assignee is set, either directly by
+// the creator or by someone claiming it) -> done, with cancelled as a
 // separate terminal state for withdrawing something no longer needed.
 // Claiming is immediate and binding (first request wins, same as a captain-
-// draft pick) - no confirmation step. An organizer batch-assignment to
-// several people at once inserts one independent row per person sharing a
-// batch_id, so each person's own progress (and own push topic) stays
-// separate even though they were assigned together.
+// draft pick) - no confirmation step. A batch-assignment to several people at
+// once inserts one independent row per person sharing a batch_id, so each
+// person's own progress (and own push topic) stays separate even though they
+// were assigned together. Both creation routes accept an optional due_at
+// (epoch ms) surfaced to the frontend as dueAt, purely a display/sort hint -
+// nothing here enforces or reacts to it passing.
 //
 // event_id is null for "the group's room, no specific event" (resolved per
 // request via resolveGroupEventScope) rather than the global sentinel -
@@ -78,6 +81,7 @@ interface TaskRow {
   done_at: number | null;
   cancelled_at: number | null;
   claim_comment: string | null;
+  due_at: number | null;
 }
 
 function serializeItem(row: ItemRow) {
@@ -114,7 +118,20 @@ function serializeTask(row: TaskRow) {
     doneAt: row.done_at,
     cancelledAt: row.cancelled_at,
     claimComment: row.claim_comment,
+    dueAt: row.due_at,
   };
+}
+
+// Optional due date (epoch ms), same shape/convention as events.ts's own
+// timestamp parser. undefined/null both mean "no due date" (returns null);
+// anything else must be a finite number, or creation is rejected instead of
+// silently storing a garbage value.
+function parseOptionalDueAt(value: unknown): { ok: true; value: number | null } | { ok: false; error: string } {
+  if (value === undefined || value === null) return { ok: true, value: null };
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return { ok: false, error: 'dueAt muss ein Zeitstempel (ms) sein.' };
+  }
+  return { ok: true, value };
 }
 
 // Inserts the Grundstock exactly once per player/event (tracked in
@@ -186,12 +203,14 @@ const resolveChecklistTask = resolveGroupResource<TaskRow>({
   },
 });
 
-// Group owners/admins moderate the shared pool the same way requireGroupRole
-// gates creating an organizer todo. Deliberately *not* falling back to the
-// global req.player.is_admin flag: that's an instance-wide moderation role
-// unrelated to any specific group's management and must not let someone who
-// merely has a "member" role in this group override its own admins/owner
-// (see the required-mode regression in api.groupChecklist.required.test.ts).
+// Group owners/admins additionally moderate the shared pool (done/cancel on
+// someone else's task) - creating and assigning a to-do no longer needs this
+// role (see requireGroupRole('member') on POST /tasks/todo above). Deliberately
+// *not* falling back to the global req.player.is_admin flag: that's an
+// instance-wide moderation role unrelated to any specific group's management
+// and must not let someone who merely has a "member" role in this group
+// override its own admins/owner (see the required-mode regression in
+// api.groupChecklist.required.test.ts).
 // Legacy mode never populates req.groupMembership, so this is creator/
 // assignee-only there - matching requireGroupRole's own legacy behavior of
 // having no group-role concept to check in the first place.
@@ -312,11 +331,16 @@ checklistRouter.get('/tasks', (req, res) => {
   res.json({ tasks: listTasks(groupId, scope.eventId).map(serializeTask) });
 });
 
-// POST /api/checklist/tasks - body: { playerId, title, description? }. Any
-// member can post an open "kann mir jemand X mitnehmen"-style request;
-// it always starts unassigned in the shared pool.
+// POST /api/checklist/tasks - body: { playerId, title, description?,
+// assigneePlayerIds?, dueAt? }. Any member can post a "kann mir jemand X
+// mitnehmen"-style request. Without assigneePlayerIds it starts open in the
+// shared pool (the common case - a request is usually addressed to nobody in
+// particular); the same optional direct-assignment shape as /tasks/todo lets
+// someone address it straight at themselves or specific others instead of
+// leaving it in the pool, mirroring the unified create form (docs/
+// KONZEPT-PACKLISTE-TICKETS.md Abschnitt 6).
 checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
-  const { playerId, title, description } = req.body ?? {};
+  const { playerId, title, description, assigneePlayerIds, dueAt } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
@@ -325,6 +349,19 @@ checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
   }
   if (description !== undefined && description !== null && !isNonEmptyString(description, MAX_TASK_DESCRIPTION)) {
     return res.status(400).json({ error: `Beschreibung darf höchstens ${MAX_TASK_DESCRIPTION} Zeichen lang sein.` });
+  }
+  const parsedDueAt = parseOptionalDueAt(dueAt);
+  if (!parsedDueAt.ok) return res.status(400).json({ error: parsedDueAt.error });
+  let assigneeIds: string[] = [];
+  if (assigneePlayerIds !== undefined && assigneePlayerIds !== null) {
+    if (
+      !Array.isArray(assigneePlayerIds) ||
+      assigneePlayerIds.length > MAX_BATCH_ASSIGNEES ||
+      !assigneePlayerIds.every((id) => typeof id === 'string' && id)
+    ) {
+      return res.status(400).json({ error: 'assigneePlayerIds muss eine Liste von Spieler-IDs sein.' });
+    }
+    assigneeIds = [...new Set(assigneePlayerIds)];
   }
   const player = db.prepare('SELECT id, name FROM players WHERE id = ?').get(playerId) as
     | { id: string; name: string }
@@ -332,50 +369,108 @@ checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const groupId = req.group!.id;
+  if (assigneeIds.length > 0 && activeGroupPlayers(groupId, assigneeIds).size !== assigneeIds.length) {
+    return res.status(404).json({ error: 'Mindestens eine zugewiesene Person wurde nicht gefunden.' });
+  }
+
   const scope = resolveGroupEventScope(groupId, undefined);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
-  const row: TaskRow = {
-    id: nanoid(),
-    group_id: groupId,
-    event_id: scope.eventId,
-    type: 'item_request',
-    title: title.trim(),
-    description: description ? description.trim() : null,
-    created_by: playerId,
-    assignee_id: null,
-    batch_id: null,
-    status: 'open',
-    created_at: Date.now(),
-    taken_at: null,
-    done_at: null,
-    cancelled_at: null,
-    claim_comment: null,
-  };
-  db.prepare(
-    `INSERT INTO checklist_tasks (id, group_id, event_id, type, title, description, created_by, assignee_id, batch_id, status, created_at)
-     VALUES (?, ?, ?, 'item_request', ?, ?, ?, NULL, NULL, 'open', ?)`,
-  ).run(row.id, row.group_id, row.event_id, row.title, row.description, row.created_by, row.created_at);
+  const eventId = scope.eventId;
+  const now = Date.now();
+  const trimmedTitle = title.trim();
+  const trimmedDescription = description ? description.trim() : null;
+  const batchId = assigneeIds.length > 1 ? nanoid() : null;
 
-  const recipients = communicationRecipientIds(groupId, scope.eventId).filter((id) => id !== playerId);
-  notifyPlayers(
-    recipients,
-    { title: 'Neue Mitbring-Anfrage', body: `${player.name}: ${row.title}`, url: '/#checklist' },
-    'all',
-    { key: `checklist-task:${row.id}` },
-    { groupId, eventId: scope.eventId },
+  const insert = db.prepare(
+    `INSERT INTO checklist_tasks (id, group_id, event_id, type, title, description, created_by, assignee_id, batch_id, status, created_at, taken_at, due_at)
+     VALUES (?, ?, ?, 'item_request', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
 
-  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId, eventId: scope.eventId });
-  res.status(201).json(serializeTask(row));
+  const rows: TaskRow[] =
+    assigneeIds.length === 0
+      ? [
+          {
+            id: nanoid(),
+            group_id: groupId,
+            event_id: eventId,
+            type: 'item_request',
+            title: trimmedTitle,
+            description: trimmedDescription,
+            created_by: playerId,
+            assignee_id: null,
+            batch_id: null,
+            status: 'open',
+            created_at: now,
+            taken_at: null,
+            done_at: null,
+            cancelled_at: null,
+            claim_comment: null,
+            due_at: parsedDueAt.value,
+          },
+        ]
+      : assigneeIds.map((assigneeId) => ({
+          id: nanoid(),
+          group_id: groupId,
+          event_id: eventId,
+          type: 'item_request' as const,
+          title: trimmedTitle,
+          description: trimmedDescription,
+          created_by: playerId,
+          assignee_id: assigneeId,
+          batch_id: batchId,
+          status: 'taken' as const,
+          created_at: now,
+          taken_at: now,
+          done_at: null,
+          cancelled_at: null,
+          claim_comment: null,
+          due_at: parsedDueAt.value,
+        }));
+
+  db.transaction(() => {
+    for (const row of rows) {
+      insert.run(row.id, row.group_id, row.event_id, row.title, row.description, row.created_by, row.assignee_id, row.batch_id, row.status, row.created_at, row.taken_at, row.due_at);
+    }
+  })();
+
+  if (assigneeIds.length === 0) {
+    const recipients = communicationRecipientIds(groupId, eventId).filter((id) => id !== playerId);
+    notifyPlayers(
+      recipients,
+      { title: 'Neue Mitbring-Anfrage', body: `${player.name}: ${trimmedTitle}`, url: '/#checklist' },
+      'all',
+      { key: `checklist-task:${rows[0].id}` },
+      { groupId, eventId },
+    );
+  } else {
+    // Self-assigning ("Ich") skips its own notification - you already know,
+    // you just did it. Still notified if you assigned yourself alongside
+    // others in the same batch.
+    for (const row of rows) {
+      if (row.assignee_id === playerId) continue;
+      notifyPlayers(
+        [row.assignee_id!],
+        { title: 'Dir wurde eine Mitbring-Anfrage zugewiesen', body: `${player.name}: ${trimmedTitle}`, url: '/#checklist' },
+        'direct',
+        { key: `checklist-task:${row.id}` },
+        { groupId, eventId },
+      );
+    }
+  }
+
+  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId, eventId });
+  res.status(201).json({ tasks: rows.map(serializeTask) });
 });
 
 // POST /api/checklist/tasks/todo - body: { playerId, title, description?,
-// assigneePlayerIds? }. Organizer-only. Without assigneePlayerIds, creates
-// one open task in the shared pool (anyone can claim it). With one or more
-// ids, creates one independently-tracked row per person right away instead
-// (skips the pool entirely) and pushes each of them a direct notification.
-checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole('admin'), (req, res) => {
-  const { playerId, title, description, assigneePlayerIds } = req.body ?? {};
+// assigneePlayerIds?, dueAt? }. Any active group member (not just Owner/
+// Admin - docs/KONZEPT-PACKLISTE-TICKETS.md Abschnitt 4/9). Without
+// assigneePlayerIds, creates one open task in the shared pool (anyone can
+// claim it). With one or more ids, creates one independently-tracked row per
+// person right away instead (skips the pool entirely) and pushes each of
+// them a direct notification.
+checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole('member'), (req, res) => {
+  const { playerId, title, description, assigneePlayerIds, dueAt } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
@@ -385,6 +480,8 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
   if (description !== undefined && description !== null && !isNonEmptyString(description, MAX_TASK_DESCRIPTION)) {
     return res.status(400).json({ error: `Beschreibung darf höchstens ${MAX_TASK_DESCRIPTION} Zeichen lang sein.` });
   }
+  const parsedDueAt = parseOptionalDueAt(dueAt);
+  if (!parsedDueAt.ok) return res.status(400).json({ error: parsedDueAt.error });
   let assigneeIds: string[] = [];
   if (assigneePlayerIds !== undefined && assigneePlayerIds !== null) {
     if (
@@ -415,8 +512,8 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
   const batchId = assigneeIds.length > 1 ? nanoid() : null;
 
   const insert = db.prepare(
-    `INSERT INTO checklist_tasks (id, group_id, event_id, type, title, description, created_by, assignee_id, batch_id, status, created_at, taken_at)
-     VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO checklist_tasks (id, group_id, event_id, type, title, description, created_by, assignee_id, batch_id, status, created_at, taken_at, due_at)
+     VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
 
   const rows: TaskRow[] =
@@ -438,6 +535,7 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
             done_at: null,
             cancelled_at: null,
             claim_comment: null,
+            due_at: parsedDueAt.value,
           },
         ]
       : assigneeIds.map((assigneeId) => ({
@@ -456,11 +554,12 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
           done_at: null,
           cancelled_at: null,
           claim_comment: null,
+          due_at: parsedDueAt.value,
         }));
 
   db.transaction(() => {
     for (const row of rows) {
-      insert.run(row.id, row.group_id, row.event_id, row.title, row.description, row.created_by, row.assignee_id, row.batch_id, row.status, row.created_at, row.taken_at);
+      insert.run(row.id, row.group_id, row.event_id, row.title, row.description, row.created_by, row.assignee_id, row.batch_id, row.status, row.created_at, row.taken_at, row.due_at);
     }
   })();
 
@@ -474,7 +573,11 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
       { groupId, eventId },
     );
   } else {
+    // Self-assigning ("Ich") skips its own notification - you already know,
+    // you just did it. Still notified if you assigned yourself alongside
+    // others in the same batch.
     for (const row of rows) {
+      if (row.assignee_id === playerId) continue;
       notifyPlayers(
         [row.assignee_id!],
         { title: 'Dir wurde eine Aufgabe zugewiesen', body: `${organizer.name}: ${trimmedTitle}`, url: '/#checklist' },

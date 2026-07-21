@@ -1,8 +1,8 @@
-// Regression coverage for the Packliste finding that mutations must be
-// scoped to the group's *currently tracked event*, not just the group as a
-// whole - switching which event tracks must make the previous event's items
-// un-mutable even though they remain group-owned. Events stay the one real
-// scoping dimension once there is only ever one group (see
+// Regression coverage for the Packliste/Checkliste finding that mutations
+// must be scoped to the group's *currently tracked event*, not just the
+// group as a whole - switching which event tracks must make the previous
+// event's items un-mutable even though they remain group-owned. Events stay
+// the one real scoping dimension once there is only ever one group (see
 // docs/plans/reset-single-group.md).
 //
 // Same execFileSync-child-process pattern as api.groupSeatingPings.required.test.ts
@@ -65,14 +65,14 @@ test('checklist mutations 404 across an event-scope boundary and group admins mo
       assert.equal(taskA.status, 201, JSON.stringify(taskA.body));
 
       const itemARow = db.prepare('SELECT group_id, event_id FROM checklist_items WHERE id = ?').get(itemA.body.id);
-      const taskARow = db.prepare('SELECT group_id, event_id FROM checklist_tasks WHERE id = ?').get(taskA.body.id);
+      const taskARow = db.prepare('SELECT group_id, event_id FROM checklist_tasks WHERE id = ?').get(taskA.body.tasks[0].id);
       assert.equal(itemARow.group_id, groupId);
       assert.equal(itemARow.event_id, eventA.body.id);
       assert.equal(taskARow.group_id, groupId);
       assert.equal(taskARow.event_id, eventA.body.id);
 
       const listA = await scoped(app, 'get', '/api/checklist/tasks', alice, groupId);
-      assert.deepEqual(listA.body.tasks.map((t) => t.id), [taskA.body.id]);
+      assert.deepEqual(listA.body.tasks.map((t) => t.id), [taskA.body.tasks[0].id]);
 
       // --- id-based mutations must 404 for an unknown id ---
       assert.equal((await scoped(app, 'patch', '/api/checklist/items/does-not-exist', bob, groupId).send({ checked: true })).status, 404);
@@ -80,12 +80,20 @@ test('checklist mutations 404 across an event-scope boundary and group admins mo
       assert.equal((await scoped(app, 'post', '/api/checklist/tasks/does-not-exist/claim', dave, groupId).send({})).status, 404);
 
       // --- group admins (not just the creator/assignee) moderate their own group's tasks ---
-      const claimedA = await scoped(app, 'post', '/api/checklist/tasks/' + taskA.body.id + '/claim', bob, groupId).send({});
+      const claimedA = await scoped(app, 'post', '/api/checklist/tasks/' + taskA.body.tasks[0].id + '/claim', bob, groupId).send({});
       assert.equal(claimedA.status, 409, JSON.stringify(claimedA.body), 'Bob created taskA and cannot claim his own request');
       // Alice (owner, not creator/assignee of taskA which Bob created and
       // nobody claimed yet) attempting done must also fail - a task has to
       // be taken before it can be done regardless of role.
-      assert.equal((await scoped(app, 'patch', '/api/checklist/tasks/' + taskA.body.id + '/done', alice, groupId).send({})).status, 409);
+      assert.equal((await scoped(app, 'patch', '/api/checklist/tasks/' + taskA.body.tasks[0].id + '/done', alice, groupId).send({})).status, 409);
+
+      // --- docs/KONZEPT-PACKLISTE-TICKETS.md: creating+directly-assigning a
+      // to-do no longer requires Owner/Admin - Bob is a plain member and
+      // must still be able to do this. ---
+      const memberTodo = await scoped(app, 'post', '/api/checklist/tasks/todo', bob, groupId)
+        .send({ title: 'Bierpong-Set (von Bob verteilt)', assigneePlayerIds: [alice.account.id] });
+      assert.equal(memberTodo.status, 201, JSON.stringify(memberTodo.body));
+      assert.equal(memberTodo.body.tasks[0].assignee.id, alice.account.id);
 
       const todoBob = await scoped(app, 'post', '/api/checklist/tasks/todo', alice, groupId)
         .send({ title: 'Mehrfachsteckdosen', assigneePlayerIds: [bob.account.id] });
@@ -120,7 +128,7 @@ test('checklist mutations 404 across an event-scope boundary and group admins mo
       // mismatch check would incorrectly let these through.
       assert.equal((await scoped(app, 'patch', '/api/checklist/items/' + itemA.body.id, alice, groupId).send({ checked: true })).status, 404);
       assert.equal((await scoped(app, 'delete', '/api/checklist/items/' + itemA.body.id, alice, groupId).send({})).status, 404);
-      assert.equal((await scoped(app, 'post', '/api/checklist/tasks/' + taskA.body.id + '/claim', dave, groupId).send({})).status, 404);
+      assert.equal((await scoped(app, 'post', '/api/checklist/tasks/' + taskA.body.tasks[0].id + '/claim', dave, groupId).send({})).status, 404);
 
       // A fresh item/task created now lands under eventA2 and stays mutable.
       const itemA2 = await scoped(app, 'post', '/api/checklist/items', alice, groupId).send({ label: 'Zweites Event' });

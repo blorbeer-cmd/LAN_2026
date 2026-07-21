@@ -26,6 +26,10 @@
     var(--danger)
   );
   --accent-text: #ffffff;
+  /* Tinted accent background - the same "-bg" companion pattern as the
+     semantic state colors below, for selected/active chip-style controls
+     that need a light fill rather than a solid gradient. */
+  --accent-bg: rgba(91, 140, 255, 0.16);
   --rank-1-gold: #ffd166;
   --danger: #ef4444;
   --danger-bg: rgba(239, 68, 68, 0.15);
@@ -3122,6 +3126,23 @@ button.card {
   background: var(--state-offline-bg);
   color: var(--state-offline);
 }
+/* Neutral label badge (e.g. a To-Do's Art, or a plain not-yet-urgent due
+   date) - visually quiet, distinct from the semantic state badges above. */
+.badge-neutral {
+  background: var(--bg-elevated-2);
+  color: var(--text-muted);
+}
+/* To-Do due-date badges (docs/KONZEPT-PACKLISTE-TICKETS.md): reuse the same
+   danger/paused semantics as everywhere else in the app rather than
+   inventing new colors - overdue is an error state, due-soon a caution one. */
+.badge-overdue {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.badge-due-soon {
+  background: var(--state-paused-bg);
+  color: var(--state-paused);
+}
 
 .chip {
   display: inline-flex;
@@ -3136,6 +3157,14 @@ button.card {
      this they'd pick up the browser's default blue/underlined link style. */
   color: inherit;
   text-decoration: none;
+}
+/* Selected-filter state (To-Dos' Art/"von mir erstellt" chips) - same
+   accent-border convention as .group-option.is-active, plus a light fill so
+   a row of several chips still reads clearly on a phone at a glance. */
+.chip.is-active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--text);
 }
 @media (hover: hover) {
   a.chip:hover {

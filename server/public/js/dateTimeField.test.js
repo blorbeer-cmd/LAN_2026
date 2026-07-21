@@ -48,3 +48,15 @@ test('the correct hour/minute <option> is marked selected', () => {
   assert.match(html, /<option value="9" selected>09<\/option>/);
   assert.match(html, /<option value="20" selected>20<\/option>/);
 });
+
+test('opts.dateOnly omits the whole hour/minute row, e.g. for a due date with no meaningful time-of-day', () => {
+  const d = new Date(2026, 6, 8, 14, 37, 0);
+  const html = dateTimeFieldHtml('f1', d.getTime(), { dateOnly: true });
+  assert.doesNotMatch(html, /dt-time-group/);
+  assert.doesNotMatch(html, /data-dt-hour/);
+  assert.doesNotMatch(html, /data-dt-minute/);
+  // Unlike the time-aware path, an already-set value is not snapped to the
+  // 5-minute step - there is no time granularity here to snap.
+  assert.match(html, /value="2026-07-08T14:37"/);
+  assert.match(html, /Mi\., 08\.07\.2026/);
+});

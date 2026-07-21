@@ -33,6 +33,18 @@ function runMigrations(dbFile: string): void {
   });
 }
 
+// Reads db.ts's computed migration run order from a fresh child process (same
+// module-side-effect isolation as runMigrations) against a throwaway in-memory
+// database, so the assertion sees exactly the order the module would execute.
+function readMigrationRunOrder(): number[] {
+  const stdout = execFileSync(
+    process.execPath,
+    ['-e', `process.stdout.write(JSON.stringify(require(${JSON.stringify(DB_JS_PATH)}).getMigrationRunOrder()))`],
+    { env: { ...process.env, DB_FILE: ':memory:' }, stdio: ['ignore', 'pipe', 'inherit'] },
+  );
+  return JSON.parse(stdout.toString()) as number[];
+}
+
 test('legacy game_catalog tables are merged into games and preferences', () => {
   const dbFile = makeTempDbPath('catalog-merge');
   const now = Date.now();
@@ -630,10 +642,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 51);
+  assert.equal(migrations.length, 52);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 51 }, (_, index) => index + 1),
+    Array.from({ length: 52 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -926,6 +938,130 @@ test('migration 39 preserves legacy communication rows in the default group', ()
   );
   assert.ok(migrated.prepare('SELECT 1 FROM push_log_seen WHERE push_id = ?').get('legacy-push'));
   assert.ok(migrated.prepare('SELECT 1 FROM push_log_hidden WHERE push_id = ?').get('legacy-push'));
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('runs migrations in ascending version order regardless of declaration order', () => {
+  // db.ts registers v44 and v45 textually before v41–v43 (they landed on
+  // parallel branches). The module must still execute migrations sorted by
+  // version, so a higher version never runs before a lower one.
+  const order = readMigrationRunOrder();
+  assert.deepEqual(
+    order,
+    [...order].sort((a, b) => a - b),
+    'migrations must run in ascending version order, not declaration order',
+  );
+  assert.deepEqual(
+    order,
+    Array.from({ length: 52 }, (_, index) => index + 1),
+    'every version 1..52 runs exactly once',
+  );
+});
+
+test('re-running migration 44 does not crash on the guarded allocation_weight column', () => {
+  const dbFile = makeTempDbPath('v44-alter-idempotent');
+  runMigrations(dbFile);
+
+  // Simulate a database that still carries the v44 schema (allocation_weight
+  // and the consent/kiosk tables) but whose migration record was cleared,
+  // forcing v44 to run a second time over an already-migrated schema. Before
+  // the guard, the bare `ALTER TABLE play_sessions ADD COLUMN allocation_weight`
+  // crashed here with "duplicate column name: allocation_weight".
+  const fixture = new Database(dbFile);
+  const before = fixture.prepare('PRAGMA table_info(play_sessions)').all() as Array<{ name: string }>;
+  assert.ok(before.some((column) => column.name === 'allocation_weight'), 'v44 should have added allocation_weight');
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 44').run();
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+
+  const migrated = new Database(dbFile, { readonly: true });
+  const allocationColumns = (migrated.prepare('PRAGMA table_info(play_sessions)').all() as Array<{ name: string }>).filter(
+    (column) => column.name === 'allocation_weight',
+  );
+  assert.equal(allocationColumns.length, 1, 'allocation_weight must exist exactly once after re-running v44');
+  assert.ok(
+    migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 44').get(),
+    'v44 is recorded again after the forced re-run',
+  );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('re-applying the reordered v41–v45 migrations over populated data is idempotent and lossless', () => {
+  const dbFile = makeTempDbPath('reorder-upgrade-no-data-loss');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  const game = fixture.prepare('SELECT id FROM games WHERE group_id = ? LIMIT 1').get('default-group') as { id: string };
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('keep-player', 'Keep Player', 'keep-player-key', now);
+  // allocation_weight (v44), food-order paid (v41)/finalize+paypal (v42)/tip
+  // (v43) and checklist rows (v45) are exactly the columns/tables the
+  // out-of-order migrations own. Seed a value in each so a destructive or
+  // duplicated re-run would be observable.
+  fixture
+    .prepare(
+      `INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at, active_ms, group_id, allocation_weight)
+       VALUES (?, ?, ?, 'outside-events', ?, ?, 0, 'default-group', 2.5)`,
+    )
+    .run('keep-session', 'keep-player', game.id, now, now + 1000);
+  fixture
+    .prepare(
+      `INSERT INTO food_orders (id, event_id, title, created_by, created_at, closed_at, finalized_at, paypal_link, tip_percent)
+       VALUES (?, 'outside-events', 'Keep Order', 'keep-player', ?, ?, ?, 'http://pay.example', 15)`,
+    )
+    .run('keep-order', now, now + 10, now + 20);
+  fixture
+    .prepare(
+      `INSERT INTO food_order_items (id, order_id, player_id, description, quantity, price_cents, paid, created_at)
+       VALUES (?, 'keep-order', 'keep-player', 'Pizza', 3, 900, 1, ?)`,
+    )
+    .run('keep-item', now);
+  fixture
+    .prepare(
+      `INSERT INTO checklist_items (id, group_id, event_id, player_id, label, template_key, checked_at, created_at)
+       VALUES (?, 'default-group', NULL, 'keep-player', 'Maus', NULL, NULL, ?)`,
+    )
+    .run('keep-checklist', now);
+  // Clear the records for the out-of-order versions so the sorted runner
+  // re-applies them over the existing rows — the exact situation a database
+  // that first saw v44/v45 before v41–v43 faces on the next start after the fix.
+  fixture.prepare('DELETE FROM schema_migrations WHERE version IN (41, 42, 43, 44, 45)').run();
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+
+  const migrated = new Database(dbFile, { readonly: true });
+  const session = migrated.prepare('SELECT allocation_weight FROM play_sessions WHERE id = ?').get('keep-session') as {
+    allocation_weight: number;
+  };
+  assert.equal(session.allocation_weight, 2.5, 'existing allocation_weight must survive the v44 re-run');
+  const order = migrated
+    .prepare('SELECT finalized_at, paypal_link, tip_percent FROM food_orders WHERE id = ?')
+    .get('keep-order') as { finalized_at: number; paypal_link: string; tip_percent: number };
+  assert.equal(order.finalized_at, now + 20);
+  assert.equal(order.paypal_link, 'http://pay.example');
+  assert.equal(order.tip_percent, 15);
+  const item = migrated.prepare('SELECT quantity, paid FROM food_order_items WHERE id = ?').get('keep-item') as {
+    quantity: number;
+    paid: number;
+  };
+  assert.equal(item.quantity, 3);
+  assert.equal(item.paid, 1);
+  const checklist = migrated.prepare('SELECT label FROM checklist_items WHERE id = ?').get('keep-checklist') as {
+    label: string;
+  };
+  assert.equal(checklist.label, 'Maus', 'existing checklist rows must survive the v45 re-run');
+  const versions = (
+    migrated.prepare('SELECT version FROM schema_migrations WHERE version IN (41, 42, 43, 44, 45) ORDER BY version').all() as Array<{
+      version: number;
+    }>
+  ).map((row) => row.version);
+  assert.deepEqual(versions, [41, 42, 43, 44, 45], 'the cleared versions are recorded again after re-applying');
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

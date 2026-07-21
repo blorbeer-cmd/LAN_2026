@@ -28,7 +28,7 @@ export const SEARCH_ENTRIES = [
   { view: 'foodOrders', title: 'Essen', category: 'Bereich', description: 'Sammelbestellungen koordinieren', aliases: 'bestellung food pizza lieferdienst', priority: 68 },
   { view: 'hallOfFame', title: 'Hall of Fame', category: 'Bereich', description: 'Champions vergangener Events', aliases: 'champions sieger historie ruhmeshalle', priority: 61 },
   { view: 'infoBoard', title: 'Info', category: 'Bereich', description: 'WLAN, Discord, Server und Hausregeln', aliases: 'info board information wlan discord server hausregeln', priority: 69 },
-  { view: 'checklist', title: 'Packliste', category: 'Bereich', description: 'Persönliche Packliste, Aufgaben und Mitbring-Anfragen', aliases: 'packen todo aufgabe anfrage mitbringen checkliste', priority: 66 },
+  { view: 'checklist', title: 'Checkliste', category: 'Bereich', description: 'Persönliche Packliste, To-Dos und Mitbring-Anfragen', aliases: 'packen todo aufgabe anfrage mitbringen packliste', priority: 66 },
   { view: 'seating', title: 'Sitzplan', category: 'Bereich', description: 'Plätze und sichtbare Monitore verwalten', aliases: 'sitzplatz tisch monitore nachbarn', priority: 67, adminOnly: true },
 ];
 
