@@ -79,9 +79,11 @@ Beim Start legt der Server die Tabelle `schema_migrations` an und führt fehlend
 aufsteigender Reihenfolge aus. Jede Version wird erst nach erfolgreichem Abschluss ihrer
 Transaktion eingetragen und bei späteren Starts übersprungen.
 
-Eine neue Migration wird in `src/db.ts` als nummerierte `runMigration({ version, name, up })`-
-Definition ergänzt. Die bestehende Prüfung per `PRAGMA table_info(...)` bleibt innerhalb der
-Migration, damit auch ältere Zwischenstände sicher aktualisiert werden können. Für Änderungen an
+Eine neue Migration wird in `src/db.ts` als nummerierte `registerMigration({ version, name, up })`-
+Definition ergänzt; alle registrierten Migrationen werden anschließend gesammelt und nach `version`
+sortiert ausgeführt, unabhängig von ihrer Registrierungsreihenfolge. Die bestehende Prüfung per
+`PRAGMA table_info(...)` bleibt innerhalb der Migration, damit auch ältere Zwischenstände sicher
+aktualisiert werden können. Für Änderungen an
 der Migrationslogik deckt `src/test/db.migrations.test.ts` sowohl Legacy-Datenbanken als auch den
 Wiederholungsfall ab.
 
