@@ -117,9 +117,8 @@ function validateTeams(
 }
 
 // GET /api/matches - list, newest first, optionally filtered by ?gameId=
-// and/or ?eventId=. Always scoped to the caller's current group, so an
-// ?eventId= from a foreign group simply matches nothing rather than leaking
-// its matches.
+// and/or ?eventId=. Always scoped to the request's retained group_id, so an
+// event whose stored group_id does not match simply returns no matches.
 matchesRouter.get('/', (req, res) => {
   const { gameId, eventId } = req.query;
   const clauses: string[] = ['group_id = ?'];

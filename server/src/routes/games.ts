@@ -105,9 +105,8 @@ gamesRouter.get('/', (req, res) => {
 });
 
 // GET /api/games/:id - the built-in Arcade titles (group_id NULL) are shared
-// system fixtures readable from any group; a real catalog entry is only
-// readable from its own group (404 otherwise, existence hidden like every
-// other cross-group boundary).
+// system fixtures. A real catalog entry must match the request's retained
+// group_id scope (404 otherwise, with existence hidden).
 gamesRouter.get('/:id', (req, res) => {
   const row = db.prepare('SELECT * FROM games WHERE id = ?').get(req.params.id) as GameRow | undefined;
   if (!row || (row.group_id !== null && row.group_id !== req.group!.id)) {
@@ -218,9 +217,9 @@ gamesRouter.post(
   },
 );
 
-// Resolves :id to a game owned by the caller's current group, 404-ing
-// (existence hidden) for a foreign group's game or an arcade fixture
-// (group_id NULL) — neither is editable through this generic route.
+// Resolves :id to a game whose retained group_id matches the request, 404-ing
+// (with existence hidden) on a mismatch or an Arcade fixture (group_id NULL)
+// — neither is editable through this generic route.
 const resolveGame = resolveGroupResource<GameRow>({
   resourceType: 'Spiel',
   load: (id) => {

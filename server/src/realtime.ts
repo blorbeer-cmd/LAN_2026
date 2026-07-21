@@ -304,10 +304,11 @@ function kioskDeliveryAllowed(socket: Socket): boolean {
   return Boolean(db.prepare('SELECT 1 FROM kiosk_tokens WHERE id = ? AND revoked_at IS NULL').get(tokenId));
 }
 
-// A group's currently tracking event, resolved per group (not the global
-// getTrackingEventId() helper, which returns one arbitrary row across all
-// groups). A group kiosk's /api/push/last banner view is scoped to exactly
-// this event, so the live push:sent banner must accept it too.
+// The tracking event for the supplied retained group_id scope. Do not use the
+// unscoped getTrackingEventId() helper here: legacy or regression data may
+// contain rows outside the start group. A group kiosk's /api/push/last banner
+// view is scoped to exactly this event, so the live push:sent banner must
+// accept it too.
 function groupCurrentTrackingEventId(groupId: string): string | null {
   const row = db
     .prepare("SELECT id FROM events WHERE tracking_enabled = 1 AND group_id = ? AND id != ?")
@@ -370,7 +371,8 @@ export function broadcast(event: string, payload: unknown, scope: BroadcastScope
     return;
   }
   // Socket.IO rooms are only a routing hint. Re-check the current membership
-  // at delivery time so a revoke/group switch cannot leak a queued payload.
+  // at delivery time so revocation or a stale socket scope cannot leak a
+  // queued payload.
   // Kiosk sockets are authenticated with a read-only kiosk token rather than
   // a player session; only the server-set kioskReadOnly flag counts (a
   // handshake claim alone must never select the kiosk path). Legacy mode is
@@ -529,7 +531,8 @@ export function registerArcadeKioskSockets(server: Server): void {
       ack?.({ ok: true, groupId: socket.data.kioskGroupId, eventId: socket.data.kioskEventId });
     });
     // Same kiosk exclusion as emitArcadeWatchList: the initial list on
-    // connect must not hand a read-only kiosk cross-group match summaries.
+    // connect must not show a read-only kiosk match summaries outside its token's
+    // retained group/event scope.
     socket.on('arcade:watch:list', () => emitArcadeWatchListToSocket(socket));
     socket.on('arcade:watch:join', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const matchId = payload?.matchId;

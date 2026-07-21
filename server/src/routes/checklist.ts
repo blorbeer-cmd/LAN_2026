@@ -29,9 +29,8 @@
 // this is a group-owned feature, so the event scope must be resolved
 // relative to req.group, never from the single global tracking event (see
 // resolveGroupEventScope's own doc comment). Every :id-based mutation loads
-// its row through resolveGroupResource so a task/item id from a group the
-// caller isn't an active member of 404s instead of being reachable by
-// switching the selected group header.
+// its row through resolveGroupResource, so a retained group_id mismatch stays
+// hidden behind a 404.
 
 import { Router, type Request, type Response } from 'express';
 import { nanoid } from 'nanoid';
@@ -183,10 +182,9 @@ function listTasks(groupId: string, eventId: string | null): TaskRow[] {
     .all(groupId, eventId) as TaskRow[];
 }
 
-// A resource route never trusts the selected group header as ownership
-// evidence - the loader hands the resource's own group_id to
-// resolveGroupResource, which re-verifies active membership in *that* group
-// (not whatever the caller currently has selected) before exposing it.
+// A resource route never treats request scope as ownership evidence. The
+// loader hands the resource's own group_id to resolveGroupResource, which
+// re-verifies active membership for that retained scope before exposing it.
 const resolveChecklistItem = resolveGroupResource<ItemRow>({
   resourceType: 'Packlisten-Position',
   load: (id) => {

@@ -1353,9 +1353,9 @@ function addAccountDeactivationAndAdminLog(): void {
 }
 registerMigration({ version: 29, name: 'add account deactivation and admin log', up: addAccountDeactivationAndAdminLog });
 
-// Phase 5a multi-group foundation. Existing feature tables intentionally stay
-// on the single migrated default group until the later data-scoping phases;
-// creating additional production groups is feature-flagged off meanwhile.
+// Phase 5a originally introduced the group tables. They now retain the
+// start-group authorization model and migration compatibility; production no
+// longer exposes any way to create additional groups.
 function addGroupFoundation(): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS groups (
@@ -1477,8 +1477,8 @@ registerMigration({ version: 31, name: 'add group authorization foundation', up:
 // group; application code treats them as required for every real write.
 // game_process_names.process_name carried a column-level UNIQUE constraint
 // that SQLite cannot relax via ALTER TABLE, so that table is rebuilt to scope
-// uniqueness to (group_id, process_name) instead — different groups may
-// track the same process name against their own, independent game entries.
+// uniqueness to (group_id, process_name). This preserves the retained
+// group_id boundary even though production exposes only the start group.
 function addCatalogAndPresenceGroupScoping(): void {
   const addGroupIdColumn = (table: string, onDelete: 'RESTRICT' | 'CASCADE' = 'RESTRICT'): void => {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
@@ -1488,9 +1488,9 @@ function addCatalogAndPresenceGroupScoping(): void {
   };
 
   addGroupIdColumn('games');
-  // The 5 built-in Arcade titles (arcade_key set) are system-wide fixtures
-  // shared by every group, not a group's curated catalog entry — they stay
-  // group_id = NULL forever; only real catalog/suggestion games get an owner.
+  // The 5 built-in Arcade titles (arcade_key set) are system-wide fixtures,
+  // not entries in the start group's curated catalog — they stay group_id =
+  // NULL forever; only real catalog/suggestion games get an owner.
   db.prepare('UPDATE games SET group_id = ? WHERE group_id IS NULL AND arcade_key IS NULL').run(DEFAULT_GROUP_ID);
   // Composite unique index so game_process_names (and future tables) can
   // enforce a composite foreign key of (group_id, game_id) -> (group_id, id),
@@ -1561,9 +1561,9 @@ registerMigration({ version: 32, name: 'add catalog and presence group scoping',
 // Phase 5c (cluster 2): matches, matchmaking draws and tournaments become
 // group-owned. All three already carry event_id, and events have had
 // group_id since 5b, so the backfill joins through that instead of games
-// (unlike cluster 1's games-owned tables) — a match/draw/tournament's group
-// is its event's group, not necessarily its game's owning group under any
-// future cross-group game sharing. tournament_teams/tournament_matches stay
+// (unlike cluster 1's games-owned tables). Event ownership is authoritative
+// for a match/draw/tournament's retained group_id; game ownership is not used
+// to infer it. tournament_teams/tournament_matches stay
 // without their own column: they're always reached via tournament_id, so
 // their group is resolved with a join to tournaments rather than a
 // denormalized copy that could drift.
@@ -2156,7 +2156,8 @@ registerMigration({ version: 38, name: 'add food order item quantity', up: migra
 
 // Phase 5c (organisation/communication): communication records belong to a
 // group room or one concrete event. Recipient snapshots remain durable after
-// membership changes; composite foreign keys prevent cross-group references.
+// membership changes; composite foreign keys prevent mismatched retained
+// group_id references.
 function addOrganisationCommunicationGroupScoping(): void {
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_events_group_pk ON events(group_id, id)');
 
@@ -2645,11 +2646,10 @@ registerMigration({ version: 44, name: 'add historized tracking consents and fan
 // assigned to one/several people, plus "kann mir jemand X mitnehmen"
 // requests anyone can claim). See routes/checklist.ts for the full lifecycle.
 //
-// event_id is nullable (NULL = the group's permanent room, no specific
+// event_id is nullable (NULL = the start group's permanent room, no specific
 // event - resolved per request via resolveGroupEventScope) rather than the
-// global "outside events" sentinel: this is a group-owned feature, and a
-// single global tracking event would let one group's writes land under a
-// completely different group's event. SQLite treats every NULL as distinct
+// global "outside events" sentinel. This keeps the retained group/event
+// boundary explicit in storage. SQLite treats every NULL as distinct
 // for UNIQUE/PRIMARY KEY purposes, so nothing below actually relies on a
 // SQL-level uniqueness constraint to enforce "exactly one Grundstock
 // materialization per player/event" - the check-then-insert in
@@ -3184,9 +3184,9 @@ function seedCatalogGames(): void {
     { title: 'Wreckfest', platform: 'Steam', platformUrl: 'https://store.steampowered.com/app/228380/Wreckfest/' },
   ];
 
-  // This shared planning-sheet seed only ever targeted the single migrated
-  // group; scoping the lookup/insert to it keeps that intent correct even
-  // once other groups' catalogs can contain a same-named game.
+  // This shared planning-sheet seed only ever targeted the migrated start
+  // group; keeping the lookup/insert scoped to it makes that intent explicit
+  // within the retained group_id schema.
   const findByName = db.prepare('SELECT id FROM games WHERE name = ? COLLATE NOCASE AND group_id = ?');
   const insertGame = db.prepare(
     `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at, platform, platform_url, trailer_url, status, group_id)

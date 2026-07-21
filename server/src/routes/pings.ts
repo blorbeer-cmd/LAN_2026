@@ -103,8 +103,9 @@ function buildPings(groupId: string, eventId: GroupEventScope | undefined, histo
   }));
 }
 
-// GET /api/pings/history - durable group history, optionally narrowed to a
-// same-group event. Without eventId it spans the whole selected group.
+// GET /api/pings/history - durable group history, optionally narrowed to an
+// event in the same retained group_id scope. Without eventId it spans the
+// request's group scope.
 pingsRouter.get('/history', (req, res) => {
   if (req.query.eventId === undefined) {
     return res.json({ groupId: req.group!.id, pings: buildPings(req.group!.id, undefined, true) });

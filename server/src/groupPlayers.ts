@@ -9,8 +9,8 @@ export interface GroupPlayerSnapshot {
 }
 
 // New or still-mutable group data may only reference active members of the
-// selected group. Legacy mode keeps its single-group compatibility behaviour
-// until the required-auth rollout is complete.
+// request's retained group_id scope. Legacy mode keeps its single-group
+// compatibility behaviour until the required-auth rollout is complete.
 export function activeGroupPlayers(groupId: string, playerIds: string[]): Map<string, GroupPlayerSnapshot> {
   const uniqueIds = [...new Set(playerIds)];
   if (uniqueIds.length === 0) return new Map();
