@@ -198,13 +198,11 @@ function openClaimForm(ctx, myId, taskId) {
   );
 }
 
-// state.players is the whole instance's roster, not the selected group's
-// membership - in required multi-group mode that would let an organizer
-// pick someone from a different group, and creation 404s server-side
-// (activeGroupPlayers only accepts the current group's active members).
-// Group-scoped membership needs a real session, so this quietly falls back
-// to the global roster wherever that's unavailable (legacy mode has no
-// session at all, and there's only ever the one implicit group).
+// state.players is the whole instance roster. In required mode, use the
+// start group's active memberships because activeGroupPlayers validates the
+// same retained group_id boundary on creation. Membership lookup needs a real
+// session, so legacy mode falls back to the global roster; it has no account
+// session and uses the same single implicit group.
 async function assigneeCandidates() {
   const groupId = sessionStorage.getItem(GROUP_KEY);
   if (!groupId) return state.players;

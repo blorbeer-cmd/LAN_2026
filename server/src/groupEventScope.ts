@@ -38,8 +38,8 @@ export function resolveGroupEventScope(groupId: string, requestedEventId: unknow
 // non-null event_id and no denormalized group_id. Resolve that storage key
 // from the already-authorized group instead of using the instance-wide
 // getTrackingEventId(). Only the migrated start group may use the historic
-// outside-events sentinel; for every other group, no tracking event means
-// that these event-only resources are currently unavailable.
+// outside-events sentinel. Any other retained group_id (for example in direct
+// database regression fixtures) has no storage scope without a tracking event.
 export function resolveGroupEventStorageId(groupId: string): string | null {
   const scope = resolveGroupEventScope(groupId, undefined);
   if (!scope.ok) return null;

@@ -161,8 +161,8 @@ function clearKnockoutStage(tournamentId: string): void {
 }
 
 // Builds the full detail payload shared by create/list-one/record-result.
-// groupId is required so a foreign group's tournament id 404s the same way
-// every other group-owned resource does (existence hidden).
+// groupId stays required so a tournament whose retained group_id does not
+// match the request returns 404 with its existence hidden.
 function buildDetail(tournamentId: string, groupId: string) {
   const tournament = db.prepare('SELECT * FROM tournaments WHERE id = ?').get(tournamentId) as
     | TournamentRow
