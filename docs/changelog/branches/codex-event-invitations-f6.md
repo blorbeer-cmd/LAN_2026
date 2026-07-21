@@ -14,4 +14,4 @@ Die nummerierte Migration v53 übernimmt alle vorhandenen Event-Teilnahmen verlu
 
 ## Pull Requests
 
-- Draft-PR gegen `main` folgt nach Abschluss der lokalen Qualitätsprüfungen.
+- [PR #264](https://github.com/blorbeer-cmd/LAN_2026/pull/264) gegen `main` (Draft).

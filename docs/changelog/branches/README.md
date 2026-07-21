@@ -97,7 +97,7 @@ abgeglichen; mehrere PRs desselben Arbeitsbranches bleiben als gemeinsamer Theme
 - [`codex/changelog-deploy-hardening`](./codex-changelog-deploy-hardening.md) — 1 gemergt, 0 offen
 - [`codex/deploy-optimizations`](./codex-deploy-optimizations.md) — 1 gemergt, 0 offen
 - [`codex/docker-prepare-fix`](./codex-docker-prepare-fix.md) — 1 gemergt, 0 offen
-- [`codex/event-invitations-f6`](./codex-event-invitations-f6.md) — lokaler Arbeitsbranch, Draft-PR folgt
+- [`codex/event-invitations-f6`](./codex-event-invitations-f6.md) — 0 gemergt, 1 offen (Draft-PR #264)
 - [`codex/feedback-general-ui-polish`](./codex-feedback-general-ui-polish.md) — 1 gemergt, 0 offen
 - [`codex/fix-arcade-spectator-views`](./codex-fix-arcade-spectator-views.md) — 1 gemergt, 0 offen
 - [`codex/fix-scribble-watch-rerender`](./codex-fix-scribble-watch-rerender.md) — 2 gemergt, 0 offen
