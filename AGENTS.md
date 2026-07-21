@@ -17,10 +17,11 @@ Vor Analyse, Planung oder Änderung
   führen oder neue Berechtigungen bzw. schwer rückgängige externe Aktionen nötig wären.
 - Bei Änderungsaufträgen den gemeinsamen Preflight genau einmal mit dem passendsten Bereich
   (`root`, `server`, `frontend`, `agent`, `docs` oder `infra`) ausführen, zum Beispiel
-  `./scripts/agent-preflight.ps1 -Scope frontend`. Seine Ausgabe ersetzt getrennte Einstiegsaufrufe
-  für Git-Status, Laufzeit, Abhängigkeiten und Standardprüfungen.
+  `node ./scripts/agent-preflight.mjs --scope frontend`. Seine Ausgabe ersetzt getrennte
+  Einstiegsaufrufe für Git-Status, Laufzeit, Abhängigkeiten und Standardprüfungen.
 - Mit genannten Pfaden beginnen. Ohne Pfadangabe anhand der untenstehenden Landkarte gezielt
-  suchen; keine vorsorgliche repositoryweite Volltextsuche oder vollständige Dokumentationslektüre.
+  suchen; keine vorsorgliche repositoryweite Volltextsuche und keine Lektüre von Dokumentation,
+  die weder vorgeschrieben noch für den Auftrag relevant ist.
 - Planungstiefe an das Risiko anpassen. Kleine, klar begrenzte Änderungen direkt bearbeiten;
   komplexe oder mehrdeutige Vorhaben erst planen. Die Definition of Done bleibt in beiden Fällen
   unverändert.
