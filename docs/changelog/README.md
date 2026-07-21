@@ -18,6 +18,7 @@ lückenhaft (u. a. #250, #252–#254 fehlen noch); der vollständige Nachtrag is
 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
+| 2026-07-21 | [#257](https://github.com/blorbeer-cmd/LAN_2026/pull/257) | [R4: Run DB migrations in version order and guard v44 schema changes (F7 + F8)](pr/pr-257-run-db-migrations-in-version-order-and-guard-v44-schema-changes.md) | `claude/reset-plan-r4-migrations-v0zond` |
 | 2026-07-21 | [#255](https://github.com/blorbeer-cmd/LAN_2026/pull/255) | [R0: rewrite user-management concept as Rev. 5 single-group model](pr/pr-255-rewrite-user-management-concept-as-rev-5-single-group-model.md) | `claude/konzept-rev5-single-group-k78eou` |
 | 2026-07-20 | [#251](https://github.com/blorbeer-cmd/LAN_2026/pull/251) | [Stabilize the two remaining flows-E2E flakes at their root causes](pr/pr-251-stabilize-the-two-remaining-flows-e2e-flakes-at-their-root-causes.md) | `claude/search-palette-keyboard-flake` |
 | 2026-07-20 | [#238](https://github.com/blorbeer-cmd/LAN_2026/pull/238) | [Enforce group- and event-scoped realtime delivery](pr/pr-238-enforce-group-and-event-scoped-realtime-delivery.md) | `claude/multigroup-realtime-delivery-pschci` |
