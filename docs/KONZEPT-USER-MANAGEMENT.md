@@ -135,9 +135,9 @@ Rechtemodell der gesamten Instanz, nicht einer von mehreren Gruppen.
 | `admin` | verwaltet Mitglieder, Events und Fachdaten der Instanz |
 | `member` | normale Teilnahme, eigene Einstellungen, eigene Tracking-Einwilligung |
 
-Diese Rolle ist in rund 30 Routen-Dateien über `requireGroupRole` verdrahtet und getestet. Diese
-Verdrahtung bleibt unverändert bestehen; sie wird nicht auf `is_admin` zurückgebaut und nicht durch
-ein neues Berechtigungsmodell ersetzt. "Eingefroren" bedeutet konkret:
+Diese Rolle ist in rund einem Drittel der Routen-Dateien über `requireGroupRole` verdrahtet und
+getestet. Diese Verdrahtung bleibt unverändert bestehen; sie wird nicht auf `is_admin`
+zurückgebaut und nicht durch ein neues Berechtigungsmodell ersetzt. "Eingefroren" bedeutet konkret:
 
 - Kein Rollenwechsel-Feature über Gruppen hinweg, weil es nur eine Gruppe gibt.
 - Der letzte Owner bleibt geschützt (kann nicht austreten, entfernt oder degradiert werden).
@@ -199,11 +199,12 @@ Da es keinen Gruppenkontext mehr zu wählen gibt, reduziert sich die Kontextfrag
 oder ein bestimmtes Event?** Die UI zeigt diesen Kontext an ("Instanzraum" bzw. Eventname); die
 Autorisierung läuft serverseitig:
 
-- `requireGroupRole('admin')` / `requireGroupOwner` – verlangt Admin bzw. Owner der Instanz. Der
-  Name der Helfer bleibt aus historischen Gründen an `group` angelehnt, prüft aber gegen die eine
-  feste Instanzgruppe.
-- `requireEventAccess` – prüft akzeptierte Event-Teilnahme bzw. Admin-/Ownerrechte für ein
-  konkretes Event.
+- `requireGroupRole('admin')` bzw. `requireGroupRole('owner')` – verlangt Admin- bzw.
+  Owner-Rechte. Die Namen der Helfer bleiben aus historischen Gründen an `group` angelehnt, prüfen
+  aber gegen die eine feste Instanzgruppe.
+- `resolveGroupResource` (in den Event-Routen als `resolveEvent` eingesetzt) lädt ein Event
+  zusammen mit seinem Gruppenbezug und kombiniert das mit `requireGroupRole('admin')`, um
+  Admin-/Ownerrechte für ein konkretes Event zu verlangen.
 - Ressourcen werden immer zusammen mit ihrem Event geladen und mutiert, nie erst global per ID und
   danach ungeprüft.
 
