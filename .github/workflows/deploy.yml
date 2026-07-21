@@ -54,7 +54,18 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: server/package-lock.json
+      # npm's download cache still leaves npm ci rebuilding all 432 packages
+      # (~90 seconds on the hosted runner). Cache the installed tree behind an
+      # exact platform/Node/lockfile key; a dependency change still forces a
+      # clean npm ci, while ordinary PR and post-merge runs restore it directly.
+      - name: Cache installed server dependencies
+        id: server-node-modules
+        uses: actions/cache@v4
+        with:
+          path: server/node_modules
+          key: server-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('server/package-lock.json') }}
       - run: npm ci
+        if: steps.server-node-modules.outputs.cache-hit != 'true'
       - name: Check design tokens
         shell: bash
         env:
@@ -87,7 +98,14 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: server/package-lock.json
+      - name: Cache installed server dependencies
+        id: server-node-modules
+        uses: actions/cache@v4
+        with:
+          path: server/node_modules
+          key: server-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('server/package-lock.json') }}
       - run: npm ci
+        if: steps.server-node-modules.outputs.cache-hit != 'true'
       # The Chromium download (~150 MB) dominated this step — cache it keyed
       # on the lockfile, so only a Playwright version bump re-downloads.
       - name: Cache Playwright browsers
@@ -119,9 +137,19 @@ jobs:
             server/package-lock.json
             agent/package-lock.json
       # The agent-server integration test drives the real built server.
+      - name: Cache installed server dependencies
+        id: server-node-modules
+        uses: actions/cache@v4
+        with:
+          path: server/node_modules
+          key: server-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('server/package-lock.json') }}
+      - name: Install server dependencies
+        if: steps.server-node-modules.outputs.cache-hit != 'true'
+        working-directory: server
+        run: npm ci
       - name: Build server for the integration test
         working-directory: server
-        run: npm ci && npm run build
+        run: npm run build
       - name: Install agent dependencies
         working-directory: agent
         run: npm ci
