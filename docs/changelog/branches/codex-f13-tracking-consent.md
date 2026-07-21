@@ -14,4 +14,4 @@ Realtime-Regressionstests; eine Schemaänderung ist nicht erforderlich.
 
 ## Pull Requests
 
-- Draft-PR gegen `main` wird nach dem initialen Push angelegt.
+- [Draft-PR #268](https://github.com/blorbeer-cmd/LAN_2026/pull/268) gegen `main`.

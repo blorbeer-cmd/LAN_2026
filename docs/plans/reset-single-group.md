@@ -83,7 +83,7 @@ empfohlen.
 | F10 Arcade-Ergebnis-Scope global | **obsolet** (eine Gruppe) · #238 übergibt zudem den unveränderlichen Match-Scope | — |
 | F11 Arcade-Pushes → Default-Gruppe | **obsolet** — Default-Gruppe ist jetzt per Definition richtig | — |
 | F12 Offline-Sweep nur Startgruppe | **obsolet** — es gibt nur die Startgruppe; #238-Fanout schadet nicht | — |
-| F13 Consent-Abweichungen §7.3/§7.4 | **in Umsetzung auf `codex/f13-tracking-consent` (P3)** | Rev. 5 §§5.1–5.3 trennt Gruppenraum- und Event-Consent; privates Event-Tracking verlangt `accepted` + Consent, Widerrufe wirken idempotent und sofort |
+| F13 Consent-Abweichungen §7.3/§7.4 | **in Umsetzung mit [Draft-PR #268](https://github.com/blorbeer-cmd/LAN_2026/pull/268) (P3)** | Rev. 5 §§5.1–5.3 trennt Gruppenraum- und Event-Consent; privates Event-Tracking verlangt `accepted` + Consent, Widerrufe wirken idempotent und sofort |
 | F14 Testmatrix unvollständig | **schrumpft** | Cross-Group-Matrix entfällt mit der API; Event-Matrix (Teilnehmer/Nichtteilnehmer/Admin, Kiosk, Widerruf) existiert seit #238 |
 | F15 Changelog-Lücken ab PR #214 | **bleibt** (Phase R5) | Doku-Hygiene, unabhängig vom Modell |
 | F16 Prozessverstöße | **bleibt als Arbeitsregel** | Direkt-Pushes/Merges ohne CI auch künftig nicht |
