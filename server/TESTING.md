@@ -90,8 +90,12 @@ Wiederholungsfall ab.
   Script `test:e2e`), da sie einen Server + Browser brauchen und entsprechend langsamer sind.
 - Die E2E-Dateien laufen parallel (eine pro Prozess) und starten je einen eigenen Server — jede
   Datei braucht deshalb einen **eigenen Test-Port** (aktuell: 3901 `flows`, 3902 `access`,
-  3903 `arcade`, 3910 Agent-Integration in `agent/`). Ein doppelt vergebener Port lässt alle Tests
+  3903 `arcade`, 3904 `authGate`, 3911 `phase5eIsolation`, 3912 `checklist`, 3913
+  `flowsArcade`, 3910 Agent-Integration in `agent/`). Ein doppelt vergebener Port lässt alle Tests
   der betroffenen Datei mit „Server did not become ready“ scheitern.
+- `npm run test:e2e` setzt `E2E_FAST_TIMERS=1`. Der Schnellmodus verkürzt Arcade-Countdowns nur
+  zusammen mit `NODE_ENV=test`; in Produktion und bei allen anderen Aufrufen bleiben die regulären
+  drei Sekunden aktiv.
 - Der Produktions-Build (`npm run build`) schließt alle Testdateien aus – sie landen nie in `dist/`.
 - `index.ts` startet den Server nur, wenn es direkt ausgeführt wird (`require.main === module`),
   damit Tests die App importieren können, ohne einen Port zu belegen.
