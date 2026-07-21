@@ -14,6 +14,7 @@ Hier sind alle in den PR-Metadaten gefundenen Arbeitsbranches zusammengefasst. D
 - [`claude/games-features-reorganization-k3lbwv`](./claude-games-features-reorganization-k3lbwv.md) — 1 gemergt, 0 offen
 - [`claude/home-tiles-games-display-c6uua7`](./claude-home-tiles-games-display-c6uua7.md) — 2 gemergt, 0 offen
 - [`claude/kiosk-push-notification-sound-oaiiy9`](./claude-kiosk-push-notification-sound-oaiiy9.md) — 1 gemergt, 0 offen
+- [`claude/konzept-rev5-single-group-k78eou`](./claude-konzept-rev5-single-group-k78eou.md) — 0 gemergt, 1 offen
 - [`claude/lan-party-tools-6jqu4g`](./claude-lan-party-tools-6jqu4g.md) — 1 gemergt, 0 offen
 - [`claude/lan-tools-quality-e2e-x6k61w`](./claude-lan-tools-quality-e2e-x6k61w.md) — 6 gemergt, 0 offen
 - [`claude/live-page-home-redesign-ailuxo`](./claude-live-page-home-redesign-ailuxo.md) — 4 gemergt, 0 offen
