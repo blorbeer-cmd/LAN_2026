@@ -454,3 +454,31 @@ test('push notifications: open creation broadcasts, direct assignment notifies j
   const bobCurrentAfterDone = await request(app).get(`/api/push/current?playerId=${bob.id}`);
   assert.notEqual(bobCurrentAfterDone.body.entry?.title, 'Dir wurde eine Mitbring-Anfrage zugewiesen');
 });
+
+test('push notifications: self-assignment ("Ich") does not push a notification to yourself', async () => {
+  const beforeTodo = await request(app).get(`/api/push/current?playerId=${alice.id}`);
+  const selfTodo = await request(app)
+    .post('/api/checklist/tasks/todo')
+    .send({ playerId: alice.id, title: 'Preise vorbereiten', assigneePlayerIds: [alice.id] });
+  assert.equal(selfTodo.status, 201);
+  const afterTodo = await request(app).get(`/api/push/current?playerId=${alice.id}`);
+  assert.equal(afterTodo.body.entry?.title, beforeTodo.body.entry?.title, 'self-assigning a todo must not change what shows as your current push');
+
+  const beforeRequest = await request(app).get(`/api/push/current?playerId=${alice.id}`);
+  const selfRequest = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Kopfschmerztabletten', assigneePlayerIds: [alice.id] });
+  assert.equal(selfRequest.status, 201);
+  const afterRequest = await request(app).get(`/api/push/current?playerId=${alice.id}`);
+  assert.equal(afterRequest.body.entry?.title, beforeRequest.body.entry?.title, 'self-assigning a request must not change what shows as your current push');
+
+  // A batch that includes yourself alongside someone else still notifies
+  // that other person - only the self-targeted row is skipped.
+  const batch = await request(app)
+    .post('/api/checklist/tasks/todo')
+    .send({ playerId: alice.id, title: 'Müll rausbringen', assigneePlayerIds: [alice.id, bob.id] });
+  assert.equal(batch.status, 201);
+  const bobCurrentAfterBatch = await request(app).get(`/api/push/current?playerId=${bob.id}`);
+  assert.equal(bobCurrentAfterBatch.body.entry.title, 'Dir wurde eine Aufgabe zugewiesen');
+  assert.match(bobCurrentAfterBatch.body.entry.body, /Müll rausbringen/);
+});

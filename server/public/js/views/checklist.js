@@ -238,9 +238,25 @@ async function openCreateTodoForm(ctx, myId) {
     return { title, description, dueAtMs };
   }
 
+  // A selector that will match the *replacement* of a toggle button after
+  // renderForm() rebuilds the form - lets focus survive a click on one of
+  // these even though the element itself gets torn down and recreated with
+  // the same identifying data-attribute/value.
+  function focusRestoreSelector(el) {
+    if (!el) return null;
+    if (el.dataset.todoKind !== undefined) return `[data-todo-kind="${el.dataset.todoKind}"]`;
+    if (el.dataset.todoAssignMode !== undefined) return `[data-todo-assign-mode="${el.dataset.todoAssignMode}"]`;
+    if (el.hasAttribute('data-todo-select-all')) return '[data-todo-select-all]';
+    if (el.hasAttribute('data-todo-select-none')) return '[data-todo-select-none]';
+    return null;
+  }
+
   function renderForm() {
     const isFreshOpen = !bodyEl.querySelector('#todo-title');
     const prev = isFreshOpen ? { title: '', description: '', dueAtMs: null } : fieldValues();
+    const restoreSelector = isFreshOpen
+      ? null
+      : focusRestoreSelector(bodyEl.contains(document.activeElement) ? document.activeElement : null);
 
     const assigneeOptions = candidates
       .map(
@@ -345,7 +361,11 @@ async function openCreateTodoForm(ctx, myId) {
       }
     });
 
-    if (isFreshOpen) bodyEl.querySelector('#todo-title').focus();
+    if (isFreshOpen) {
+      bodyEl.querySelector('#todo-title').focus();
+    } else if (restoreSelector) {
+      bodyEl.querySelector(restoreSelector)?.focus();
+    }
   }
 
   const { close } = openModal('To-Do erstellen', '<div data-todo-form-body></div>', {
@@ -354,10 +374,15 @@ async function openCreateTodoForm(ctx, myId) {
       bodyEl = el.querySelector('[data-todo-form-body]');
       // Attached once on the stable wrapper (never replaced by renderForm()'s
       // innerHTML rewrites, unlike its children) so it survives every
-      // kind/assignment toggle without stacking duplicate listeners.
-      bodyEl.addEventListener('input', () => {
+      // kind/assignment toggle without stacking duplicate listeners. Both
+      // events are needed: 'input' for the text fields and the due-date
+      // picker (see its own dispatched 'input' in dateTimeField.js), 'change'
+      // for the assignee checkboxes, which never fire 'input'.
+      const markTouched = () => {
         anyFieldEverTouched = true;
-      });
+      };
+      bodyEl.addEventListener('input', markTouched);
+      bodyEl.addEventListener('change', markTouched);
       renderForm();
     },
   });

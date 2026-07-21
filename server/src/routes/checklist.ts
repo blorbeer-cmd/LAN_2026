@@ -443,7 +443,11 @@ checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
       { groupId, eventId },
     );
   } else {
+    // Self-assigning ("Ich") skips its own notification - you already know,
+    // you just did it. Still notified if you assigned yourself alongside
+    // others in the same batch.
     for (const row of rows) {
+      if (row.assignee_id === playerId) continue;
       notifyPlayers(
         [row.assignee_id!],
         { title: 'Dir wurde eine Mitbring-Anfrage zugewiesen', body: `${player.name}: ${trimmedTitle}`, url: '/#checklist' },
@@ -569,7 +573,11 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
       { groupId, eventId },
     );
   } else {
+    // Self-assigning ("Ich") skips its own notification - you already know,
+    // you just did it. Still notified if you assigned yourself alongside
+    // others in the same batch.
     for (const row of rows) {
+      if (row.assignee_id === playerId) continue;
       notifyPlayers(
         [row.assignee_id!],
         { title: 'Dir wurde eine Aufgabe zugewiesen', body: `${organizer.name}: ${trimmedTitle}`, url: '/#checklist' },

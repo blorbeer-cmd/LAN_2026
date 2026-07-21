@@ -88,6 +88,21 @@ test('create a To-Do as one member, claim and complete it as another, "Mir zugew
   await page.fill('#todo-title', 'Mehrfachsteckdosen mitbringen');
   await page.fill('#todo-description', 'Mindestens zwei Stück.');
 
+  // Toggling "Art" rebuilds the whole form (the assignee grid needs to
+  // appear/disappear for "Zuweisen an"), which also tears down and recreates
+  // every button in it - focus must land back on the equivalent new button,
+  // not fall through to <body>, or keyboard/screen-reader users have to
+  // re-tab through the entire modal after every toggle.
+  await page.click('[data-todo-kind="item_request"]');
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.getAttribute('data-todo-kind')),
+    'item_request',
+    'focus should follow the clicked Art toggle across its own re-render',
+  );
+  assert.equal(await page.inputValue('#todo-title'), 'Mehrfachsteckdosen mitbringen', 'title survives the Art toggle');
+  await page.click('[data-todo-kind="todo"]');
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-todo-kind')), 'todo');
+
   // Pick a due date via the themed date-only picker (no time-of-day row).
   await page.click('[data-dt-field="todo-due"] [data-dt-trigger]');
   await page.waitForSelector('.dt-popover');

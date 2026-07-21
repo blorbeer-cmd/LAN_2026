@@ -208,6 +208,11 @@ export function wireDateTimeField(container, id) {
       if (minuteSel) minuteSel.value = String(d.getMinutes());
     }
     if (clearBtn) clearBtn.hidden = !ms;
+    // Setting .value programmatically never fires a native input/change
+    // event - dispatch one so a call site's own "did anything change"
+    // listener (e.g. an unsaved-changes warning) sees a date picked through
+    // the calendar/today button the same way it'd see any other field edit.
+    hidden.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
   function openCalendar() {
