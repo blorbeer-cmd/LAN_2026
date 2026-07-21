@@ -23,3 +23,6 @@ Abschnitt 5. Läuft gruppenunabhängig und parallel zum Hauptstrang R0→R1→R2
 - [PR #257](https://github.com/blorbeer-cmd/LAN_2026/pull/257), gemergt am 2026-07-21 als
   [`f91ca2c`](https://github.com/blorbeer-cmd/LAN_2026/commit/f91ca2c38b6dab0baf3353faed145e70e478fae1):
   R4: Run DB migrations in version order and guard v44 schema changes (F7 + F8).
+- [PR #259](https://github.com/blorbeer-cmd/LAN_2026/pull/259), gemergt am 2026-07-21 als
+  [`de9d3df`](https://github.com/blorbeer-cmd/LAN_2026/commit/de9d3dfbab0a1dfc76da67e161959941ca7c1529):
+  Fix broken main (semantic conflict #253×#257) + record PR #257 changelog.

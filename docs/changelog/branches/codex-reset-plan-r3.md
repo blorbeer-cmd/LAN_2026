@@ -17,5 +17,6 @@ R4-Migrationshygiene bleibt ein unabhängiger Themenstrang.
 
 ## Pull Requests
 
-- [PR #260](https://github.com/blorbeer-cmd/LAN_2026/pull/260) (Draft, offen): R3 — Innenleben
-  dokumentarisch auf das Ein-Gruppen-Modell ausrichten.
+- [PR #260](https://github.com/blorbeer-cmd/LAN_2026/pull/260), gemergt am 2026-07-21 als
+  [`cfc1aac`](https://github.com/blorbeer-cmd/LAN_2026/commit/cfc1aac375b53fd4215b0863d19927df02616c8f):
+  R3 — Innenleben dokumentarisch auf das Ein-Gruppen-Modell ausrichten.

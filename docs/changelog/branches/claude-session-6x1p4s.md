@@ -10,7 +10,8 @@ derselben Session das unabhängige Delta-Review von PR #238 (`bd93ef9..9379aeb`,
 
 ## Pull Requests
 
-- [PR #250](https://github.com/blorbeer-cmd/LAN_2026/pull/250), offen (Draft): Add single-group
-  reset plan for user management. Enthält zusätzlich die Changelog-Pflege für den in dieser
-  Session per Squash gemergten [PR #238](https://github.com/blorbeer-cmd/LAN_2026/pull/238)
+- [PR #250](https://github.com/blorbeer-cmd/LAN_2026/pull/250), gemergt am 2026-07-20 als
+  [`25e5aca`](https://github.com/blorbeer-cmd/LAN_2026/commit/25e5aca8a3871fb748e98086c7fece0fe49da049):
+  Add single-group reset plan for user management. Enthält zusätzlich die Changelog-Pflege für den
+  in dieser Session per Squash gemergten [PR #238](https://github.com/blorbeer-cmd/LAN_2026/pull/238)
   (Phase R1 des Plans).
