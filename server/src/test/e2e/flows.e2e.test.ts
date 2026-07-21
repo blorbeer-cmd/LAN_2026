@@ -4,15 +4,26 @@
 // unit/integration suite (`npm test`) — run via `npm run test:e2e` since it
 // spawns a server process and a browser, which is much slower.
 
-import { test, before, after } from 'node:test';
+import { test as nodeTest, before, after, TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { chromium, Browser, Page } from 'playwright';
 import { normalizeAnswer } from '../../arcade/quizLogic';
 
-const PORT = 3901;
+const RUN_ARCADE_FLOWS = process.env.E2E_FLOW_PARTITION === 'arcade';
+const PORT = RUN_ARCADE_FLOWS ? 3913 : 3901;
 const BASE_URL = `http://localhost:${PORT}`;
+
+// The broad flow suite used to put every scenario into one stateful file,
+// making its ~120 second serial runtime the lower bound for the whole E2E
+// job. A tiny partition entry point imports this module in a second Node test
+// process and selects the Arcade scenarios by title. Both partitions keep
+// their own in-memory database, server port and browser, so they can run in
+// parallel without weakening isolation or duplicating the scenario bodies.
+const test = (name: string, fn: (context: TestContext) => void | Promise<void>): void => {
+  if (name.startsWith('Arcade:') === RUN_ARCADE_FLOWS) nodeTest(name, fn);
+};
 
 let serverProcess: ChildProcess;
 let browser: Browser;
@@ -82,6 +93,22 @@ before(async () => {
   page.on('console', (msg) => {
     if (msg.type() === 'error') console.error('[console.error]', msg.text());
   });
+
+  if (RUN_ARCADE_FLOWS) {
+    const createPlayer = async (name: string): Promise<{ id: string }> => {
+      const response = await page.request.post(`${BASE_URL}/api/players`, { data: { name } });
+      assert.equal(response.status(), 201, `failed to seed ${name}`);
+      return response.json() as Promise<{ id: string }>;
+    };
+    const host = await createPlayer('E2E Alice Pro');
+    await createPlayer('E2E Bob');
+    await createPlayer('Analytics E2E Player');
+
+    await page.goto(BASE_URL);
+    await page.evaluate((playerId) => localStorage.setItem('respawn_my_player_id', playerId), host.id);
+    await page.reload();
+    await page.waitForSelector('.nav-btn[data-view="home"]');
+  }
 });
 
 after(async () => {

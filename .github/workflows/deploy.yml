@@ -32,8 +32,84 @@ concurrency:
 # but now run as parallel jobs; the runtime image builds alongside them and is
 # only published (and deployed) after every check has passed.
 jobs:
+  changes:
+    name: Classify changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      server: ${{ steps.filter.outputs.server }}
+      e2e: ${{ steps.filter.outputs.e2e }}
+      agent: ${{ steps.filter.outputs.agent }}
+      image: ${{ steps.filter.outputs.image }}
+      deploy: ${{ steps.filter.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Select required work
+        id: filter
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          server=false
+          e2e=false
+          agent=false
+          image=false
+          deploy=false
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            server=true
+            e2e=true
+            agent=true
+            image=true
+            deploy=true
+          else
+            base="$BASE_SHA"
+            if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+              base="$(git rev-parse "$HEAD_SHA^")"
+            fi
+
+            while IFS= read -r -d '' file; do
+              case "$file" in
+                server/*)
+                  server=true
+                  e2e=true
+                  agent=true
+                  image=true
+                  deploy=true
+                  ;;
+                agent/*)
+                  agent=true
+                  ;;
+                docker-compose.yml)
+                  image=true
+                  deploy=true
+                  ;;
+                .nvmrc | .github/workflows/*)
+                  server=true
+                  e2e=true
+                  agent=true
+                  image=true
+                  deploy=true
+                  ;;
+              esac
+            done < <(git diff --name-only -z "$base" "$HEAD_SHA")
+          fi
+
+          echo "server=$server" >> "$GITHUB_OUTPUT"
+          echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
+          echo "agent=$agent" >> "$GITHUB_OUTPUT"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
+          printf 'Selected work: server=%s e2e=%s agent=%s image=%s deploy=%s\n' \
+            "$server" "$e2e" "$agent" "$image" "$deploy"
+
   server-checks:
     name: Server lint, build and tests
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -86,8 +162,13 @@ jobs:
 
   e2e:
     name: Browser E2E
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+      options: --user 1001
     defaults:
       run:
         working-directory: server
@@ -106,25 +187,15 @@ jobs:
           key: server-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('server/package-lock.json') }}
       - run: npm ci
         if: steps.server-node-modules.outputs.cache-hit != 'true'
-      # The Chromium download (~150 MB) dominated this step — cache it keyed
-      # on the lockfile, so only a Playwright version bump re-downloads.
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}
-      - name: Install Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
-      - name: Install Chromium system dependencies
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-      # test:e2e builds the server itself before starting it.
+      # The pinned Playwright image already contains the exact Chromium build
+      # and Linux libraries required by package.json. test:e2e builds the
+      # server itself before starting it.
       - run: npm run test:e2e
 
   agent:
     name: Agent lint and tests
+    needs: changes
+    if: needs.changes.outputs.agent == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -169,6 +240,8 @@ jobs:
   # cache once all checks are green.
   image:
     name: Build runtime image
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -186,8 +259,16 @@ jobs:
   # input. The image itself comes out of the layer cache written by the
   # parallel build above, so this job is quick.
   publish:
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy)
-    needs: [server-checks, e2e, agent, image]
+    if: >-
+      always() &&
+      needs.changes.outputs.deploy == 'true' &&
+      needs.changes.result == 'success' &&
+      (needs.server-checks.result == 'success' || needs.server-checks.result == 'skipped') &&
+      (needs.e2e.result == 'success' || needs.e2e.result == 'skipped') &&
+      (needs.agent.result == 'success' || needs.agent.result == 'skipped') &&
+      needs.image.result == 'success' &&
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy))
+    needs: [changes, server-checks, e2e, agent, image]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

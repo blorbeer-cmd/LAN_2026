@@ -7,11 +7,12 @@ import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
 import { recordArcadeResult } from './arcadeData';
+import { arcadeTiming } from './timing';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 
 const TICK_MS = 125;
-const COUNTDOWN_MS = 3000;
+const COUNTDOWN_MS = arcadeTiming.countdownMs;
 const BOT_ID = 'snake-bot';
 const BOT = { id: BOT_ID, name: 'Snake-Bot', avatar: null, color: '#ef5da8' };
 
