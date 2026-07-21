@@ -147,14 +147,46 @@ test('POST /api/checklist/tasks creates an open item_request, validated', async 
     .post('/api/checklist/tasks')
     .send({ playerId: alice.id, title: 'Controller mitbringen?', description: 'Für Mario Kart' });
   assert.equal(created.status, 201);
-  assert.equal(created.body.type, 'item_request');
-  assert.equal(created.body.status, 'open');
-  assert.equal(created.body.assignee, null);
-  assert.equal(created.body.createdBy.id, alice.id);
-  requestTaskId = created.body.id;
+  assert.equal(created.body.tasks.length, 1);
+  assert.equal(created.body.tasks[0].type, 'item_request');
+  assert.equal(created.body.tasks[0].status, 'open');
+  assert.equal(created.body.tasks[0].assignee, null);
+  assert.equal(created.body.tasks[0].createdBy.id, alice.id);
+  requestTaskId = created.body.tasks[0].id;
 
   const list = await request(app).get('/api/checklist/tasks');
   assert.ok(list.body.tasks.some((t: { id: string }) => t.id === requestTaskId));
+});
+
+test('POST /api/checklist/tasks with assigneePlayerIds addresses a request directly (self or others), same shape as /tasks/todo', async () => {
+  const badList = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Grillkohle', assigneePlayerIds: 'not-an-array' });
+  assert.equal(badList.status, 400);
+
+  const unknownAssignee = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Grillkohle', assigneePlayerIds: ['ghost'] });
+  assert.equal(unknownAssignee.status, 404);
+
+  const self = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'An mich selbst', assigneePlayerIds: [alice.id] });
+  assert.equal(self.status, 201);
+  assert.equal(self.body.tasks.length, 1);
+  assert.equal(self.body.tasks[0].status, 'taken');
+  assert.equal(self.body.tasks[0].assignee.id, alice.id);
+  assert.equal(self.body.tasks[0].batchId, null);
+
+  const batch = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Grillkohle für beide', assigneePlayerIds: [bob.id, carol.id] });
+  assert.equal(batch.status, 201);
+  assert.equal(batch.body.tasks.length, 2);
+  assert.ok(batch.body.tasks[0].batchId);
+  assert.equal(batch.body.tasks[0].batchId, batch.body.tasks[1].batchId);
+  const assignees = batch.body.tasks.map((t: { assignee: { id: string } }) => t.assignee.id).sort();
+  assert.deepEqual(assignees, [bob.id, carol.id].sort());
 });
 
 test('POST /api/checklist/tasks/todo creates an open organizer task without assignees', async () => {
@@ -200,6 +232,50 @@ test('POST /api/checklist/tasks/todo with assigneePlayerIds assigns directly and
   assert.deepEqual(assignees, [bob.id, carol.id].sort());
 });
 
+test('POST /api/checklist/tasks accepts and validates an optional dueAt', async () => {
+  const badDueAt = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Mit falschem Datum', dueAt: 'not-a-number' });
+  assert.equal(badDueAt.status, 400);
+
+  const dueAtValue = Date.now() + 86_400_000;
+  const created = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Mit Fälligkeit', dueAt: dueAtValue });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.tasks[0].dueAt, dueAtValue);
+
+  const withoutDueAt = await request(app)
+    .post('/api/checklist/tasks')
+    .send({ playerId: alice.id, title: 'Ohne Fälligkeit' });
+  assert.equal(withoutDueAt.status, 201);
+  assert.equal(withoutDueAt.body.tasks[0].dueAt, null);
+
+  const list = await request(app).get('/api/checklist/tasks');
+  const listed = list.body.tasks.find((t: { id: string }) => t.id === created.body.tasks[0].id);
+  assert.equal(listed.dueAt, dueAtValue);
+});
+
+test('POST /api/checklist/tasks/todo accepts and validates an optional dueAt on both the open and directly-assigned paths', async () => {
+  const badDueAt = await request(app)
+    .post('/api/checklist/tasks/todo')
+    .send({ playerId: alice.id, title: 'Falsches Datum', dueAt: 'gestern' });
+  assert.equal(badDueAt.status, 400);
+
+  const dueAtValue = Date.now() + 3 * 86_400_000;
+  const open = await request(app)
+    .post('/api/checklist/tasks/todo')
+    .send({ playerId: alice.id, title: 'Mit Fälligkeit offen', dueAt: dueAtValue });
+  assert.equal(open.status, 201);
+  assert.equal(open.body.tasks[0].dueAt, dueAtValue);
+
+  const assigned = await request(app)
+    .post('/api/checklist/tasks/todo')
+    .send({ playerId: alice.id, title: 'Mit Fälligkeit zugewiesen', assigneePlayerIds: [bob.id], dueAt: dueAtValue });
+  assert.equal(assigned.status, 201);
+  assert.equal(assigned.body.tasks[0].dueAt, dueAtValue);
+});
+
 test('claim: cannot claim your own task/request, unknown task 404, exactly one winner on a race', async () => {
   const missing = await request(app).post('/api/checklist/tasks/nope/claim').send({ playerId: bob.id });
   assert.equal(missing.status, 404);
@@ -229,7 +305,7 @@ test('claim: optional comment is validated, stored, echoed in the response and c
   const created = await request(app)
     .post('/api/checklist/tasks')
     .send({ playerId: alice.id, title: 'Fernseher mitbringen?' });
-  const taskId = created.body.id;
+  const taskId = created.body.tasks[0].id;
 
   const tooLong = await request(app)
     .post(`/api/checklist/tasks/${taskId}/claim`)
@@ -294,7 +370,7 @@ test('cancel (DELETE): creator/admin only, blocked once done, not re-cancellable
   const created = await request(app)
     .post('/api/checklist/tasks')
     .send({ playerId: alice.id, title: 'Wird storniert' });
-  const cancelTaskId = created.body.id;
+  const cancelTaskId = created.body.tasks[0].id;
 
   const notAllowed = await request(app).delete(`/api/checklist/tasks/${cancelTaskId}`).send({ playerId: bob.id });
   assert.equal(notAllowed.status, 403);

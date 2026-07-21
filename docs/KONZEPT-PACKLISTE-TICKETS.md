@@ -1,15 +1,17 @@
-# Konzept: Packliste & Tickets
+# Konzept: Packliste & To-Dos
 
-Stand: Juli 2026 · Status: **Konzeptentwurf zur Abstimmung** (Rev. 1)
+Stand: Juli 2026 · Status: **in Umsetzung** (Rev. 2 – Benennung „To-Do“ statt „Ticket“, Entscheidungen
+aus Rev. 1 übernommen)
 
-Dieses Dokument schlägt vor, den heutigen Bereich „Packliste“ in ein stimmiges, leichtgewichtiges
-**Ticketsystem** zu überführen. Ziel ist, dass jede Person Aufgaben und Anfragen erstellen, verteilen
-und annehmen kann und dabei jederzeit einen klaren Überblick über die **eigene Packliste** und die
-**eigenen Aufgaben** behält – ohne das Ganze zu überladen.
+Dieses Dokument beschreibt das Zielbild für den heutigen Bereich „Packliste“: eine stimmige,
+leichtgewichtige To-Do-Verwaltung statt zweier unverbundener Listen. Ziel ist, dass jede Person
+Aufgaben und Anfragen erstellen, verteilen und annehmen kann und dabei jederzeit einen klaren
+Überblick über die **eigene Packliste** und die **eigenen Aufgaben** behält – ohne das Ganze zu
+überladen.
 
-Es ist ausdrücklich **nur ein Konzept**. Keine Implementierung, keine Migration, kein UI-Rebuild.
-Die Entscheidungen hier sind Vorschläge des Produktmanagements und brauchen die Zustimmung des
-Nutzers, bevor umgesetzt wird.
+Rev. 1 war ein reiner Konzeptentwurf mit vier offenen Entscheidungen (siehe Abschnitt 9). Der Nutzer
+hat die Benennung „Ticket“ → „To-Do“ korrigiert und für den Rest grünes Licht zur Umsetzung gegeben;
+Abschnitt 9 hält fest, wie die übrigen drei Punkte dabei entschieden wurden.
 
 ---
 
@@ -46,7 +48,7 @@ sehr unterschiedliche Dinge unter einem Namen:
 
 ## 2. Zielbild in einem Satz
 
-> Eine Person erstellt ein **Ticket**, wählt dessen **Art**, weist es **sich selbst, niemandem
+> Eine Person erstellt ein **To-Do**, wählt dessen **Art**, weist es **sich selbst, niemandem
 > (offen) oder anderen** zu – und sieht in **„Mir zugewiesen“** sofort, was bei ihr liegt, getrennt
 > von der privaten **Packliste**.
 
@@ -56,9 +58,9 @@ Enterprise-Ticketing. Im Zweifel weglassen.
 
 ---
 
-## 3. Kernidee: Ticket statt „Aufgabe vs. Anfrage“
+## 3. Kernidee: To-Do statt „Aufgabe vs. Anfrage“
 
-Der gemeinsame Pool wird konzeptionell zu **Tickets** vereinheitlicht. Ein Ticket ist alles, was
+Der gemeinsame Pool wird konzeptionell zu **To-Dos** vereinheitlicht. Ein To-Do ist alles, was
 zwischen mehreren Personen koordiniert wird. Beim Erstellen wählt man die **Art**:
 
 | Art | Bedeutung | Beispiel |
@@ -69,7 +71,7 @@ zwischen mehreren Personen koordiniert wird. Beim Erstellen wählt man die **Art
 Bewusst **nur zwei Arten** zum Start – sie decken alles ab, was heute existiert. Das Enum bleibt
 erweiterbar (z. B. später „Einkauf“ oder „Frage“), aber ohne konkreten Bedarf fügen wir nichts hinzu.
 
-Der bestehende **Lebenszyklus bleibt unverändert** und trägt das Ticketmodell 1:1:
+Der bestehende **Lebenszyklus bleibt unverändert** und trägt das To-Do-Modell 1:1:
 
 ```
 offen ──übernehmen/zuweisen──▶ übernommen ──erledigt──▶ erledigt
@@ -84,14 +86,14 @@ neuen Zustände, keine Statusmaschine erweitern.
 
 ## 4. Wer darf was (bewusste Lockerung)
 
-Die wichtigste Verhaltensänderung: **jedes aktive Gruppenmitglied darf Tickets jeder Art erstellen,
+Die wichtigste Verhaltensänderung: **jedes aktive Gruppenmitglied darf To-Dos jeder Art erstellen,
 sich selbst zuweisen oder anderen zuweisen.** Das Orga-Monopol auf Aufgaben entfällt.
 
 | Aktion | Heute | Vorschlag |
 | --- | --- | --- |
 | Mitbring-Anfrage erstellen | jedes Mitglied | jedes Mitglied |
 | Aufgabe erstellen | **nur Owner/Admin** | **jedes Mitglied** |
-| Sich selbst zuweisen / offenes Ticket übernehmen | jedes Mitglied | jedes Mitglied |
+| Sich selbst zuweisen / offenes To-Do übernehmen | jedes Mitglied | jedes Mitglied |
 | Anderen Personen zuweisen | nur Orga (bei `todo`) | **jedes Mitglied** |
 | Freigeben (zurück in den Pool) | Zugewiesene/r | Zugewiesene/r |
 | Als erledigt markieren | Zugewiesene/r, Ersteller, Orga | unverändert |
@@ -100,7 +102,7 @@ sich selbst zuweisen oder anderen zuweisen.** Das Orga-Monopol auf Aufgaben entf
 Warum unbedenklich: Eine Zuweisung an andere ist **nicht bindend** – die Person wird benachrichtigt
 und kann jederzeit **freigeben**. Für eine 15-köpfige Freundesgruppe ist das der natürliche Umgang und
 genau das, was gewünscht ist („man kann sich selber assignen oder assigned werden“). Owner/Admin
-behalten ihre Moderationsrechte (fremde Tickets zurückziehen).
+behalten ihre Moderationsrechte (fremde To-Dos zurückziehen).
 
 ---
 
@@ -111,22 +113,22 @@ oben mit zwei Tabs plus einer Zählmarke:
 
 ```
 ┌───────────────────────────────────────────────┐
-│   Meine Packliste        Tickets ( 3 )         │   ← Zähler = mir zugewiesen & offen für mich
+│   Meine Packliste        To-Dos ( 3 )          │   ← Zähler = mir zugewiesen & offen für mich
 ├───────────────────────────────────────────────┤
 ```
 
 ### 5.1 Tab „Meine Packliste“
 Bleibt inhaltlich **wie heute**: privater Grundstock + eigene Positionen, abhaken/ergänzen/entfernen.
-Kein Ticket, keine Zuweisung – ein Solo-Werkzeug. Nur visuell in den neuen Bereich eingebettet.
+Kein To-Do, keine Zuweisung – ein Solo-Werkzeug. Nur visuell in den neuen Bereich eingebettet.
 
-### 5.2 Tab „Tickets“
+### 5.2 Tab „To-Dos“
 Von oben nach unten, damit das Persönliche zuerst kommt:
 
-1. **`+ Ticket erstellen`** – ein einziger Button (ersetzt „Anfrage stellen“ + „Aufgabe verteilen“).
-2. **Mir zugewiesen (N)** – die eigenen offenen/übernommenen Tickets, **nach Fälligkeit sortiert**,
+1. **`+ To-Do erstellen`** – ein einziger Button (ersetzt „Anfrage stellen“ + „Aufgabe verteilen“).
+2. **Mir zugewiesen (N)** – die eigenen offenen/übernommenen To-Dos, **nach Fälligkeit sortiert**,
    Überfälliges hervorgehoben. Das ist der zentrale „Überblick über meine Aufgaben“. Freundliche
    Leerseite, wenn nichts anliegt.
-3. **Offen (Pool)** – nicht zugewiesene Tickets, die jede/r übernehmen kann. Filter-Chips nach Art
+3. **Offen (Pool)** – nicht zugewiesene To-Dos, die jede/r übernehmen kann. Filter-Chips nach Art
    (Alle / Aufgaben / Mitbring-Anfragen).
 4. **Unterwegs** – von anderen übernommen (Transparenz, wer sich um was kümmert).
 5. **Historie** – erledigt, eingeklappt wie heute.
@@ -135,16 +137,15 @@ Optionaler leichter Filter „**Von mir erstellt**“ (als Chip), damit man selb
 nachverfolgen kann – kein eigener schwerer Abschnitt.
 
 ### 5.3 Namensgebung des Bereichs
-Der Nav-Eintrag „Packliste“ unterschätzt heute den Aufgabenteil. Empfehlung: Umbenennung in **„Orga“**
-(enthält Tabs „Meine Packliste“ und „Tickets“). Alternative mit weniger Umgewöhnung: „Packliste“ als
-Label behalten. Der Preis ist die bekannte Inkohärenz – deshalb Empfehlung zur Umbenennung, aber als
-bewusst entscheidbarer Punkt (siehe Abschnitt 9).
+Zurückgestellt (siehe Abschnitt 9, Entscheidung 1): Der Nav-Eintrag heißt vorerst weiter
+**„Packliste“**; nur der gemeinsame Pool darin heißt „To-Dos“. Eine spätere Umbenennung des ganzen
+Bereichs (z. B. „Orga“) bleibt eine separate, leicht nachrüstbare Änderung.
 
 ---
 
-## 6. Ticket erstellen – ein Formular
+## 6. To-Do erstellen – ein Formular
 
-Ein einziger Dialog „Ticket erstellen“ ersetzt die zwei heutigen Buttons:
+Ein einziger Dialog „To-Do erstellen“ ersetzt die zwei heutigen Buttons:
 
 - **Art** (Segmented: *Aufgabe* / *Mitbring-Anfrage*) – ändert nur Beschriftung/Platzhalter.
 - **Titel** (Pflicht, ≤ 80 Zeichen – wie heute).
@@ -153,7 +154,7 @@ Ein einziger Dialog „Ticket erstellen“ ersetzt die zwei heutigen Buttons:
   Orga-Verteilung, aber für alle verfügbar).
 - **Fällig bis** (optional, nur Datum) – siehe Feld-Bewertung unten.
 
-Damit sind alle Wünsche in einem Fluss abgedeckt: Ticket anlegen, Art wählen, sich selbst oder andere
+Damit sind alle Wünsche in einem Fluss abgedeckt: To-Do anlegen, Art wählen, sich selbst oder andere
 zuweisen oder offen lassen.
 
 ---
@@ -180,57 +181,62 @@ bewusst zurückgestellt. Das hält das System schlank.
 
 ---
 
-## 8. Datenmodell & API – Auswirkungen (Skizze)
-
-Bewusst **minimal**, damit der Aufwand überschaubar bleibt:
+## 8. Datenmodell & API – Auswirkungen
 
 - **`checklist_items`**: unverändert (private Packliste bleibt wie sie ist).
-- **`checklist_tasks`**: eine neue Spalte `due_at INTEGER NULL` (Migration). Kein Statuswechsel, keine
+- **`checklist_tasks`**: neue Spalte `due_at INTEGER NULL` (Migration). Kein Statuswechsel, keine
   neuen Tabellen. Serialisierung ergänzt `dueAt`.
-- **Erstellen**: die zwei Endpunkte werden gedanklich zu einem vereinheitlicht (`POST /tickets` mit
-  `type`, optional `assigneePlayerIds`, optional `dueAt`). Der bisherige Rollen-Gate auf
-  `POST /tasks/todo` **entfällt** (jedes Mitglied darf anlegen). Direkte Zuweisung an andere bleibt
-  über den bestehenden Batch-Mechanismus (`batch_id`, eine Zeile pro Person, eigener Push-Topic).
+- **Erstellen**: die beiden bestehenden Endpunkte (`POST /tasks` für Mitbring-Anfragen,
+  `POST /tasks/todo` für Aufgaben, optional mit `assigneePlayerIds`) bleiben als zwei Routen
+  bestehen – nur der Rollen-Gate auf `POST /tasks/todo` fällt von „nur Owner/Admin“ auf „jedes aktive
+  Mitglied“ (`requireGroupRole('member')` statt `'admin'`). Beide Endpunkte akzeptieren neu ein
+  optionales `dueAt`.
 - **Sichten** („Mir zugewiesen“, „Offen“, „Unterwegs“, „Historie“) sind reine Client-Filter über die
-  ohnehin gelieferte Ticketliste; der vorhandene `idx_checklist_tasks_assignee` deckt serverseitige
-  Filter bei Bedarf ab.
-- **Validierung** (Guideline 4): `dueAt` als Zahl/ISO-Datum prüfen, plausibles Fenster, optional.
-  Erwartbare Fehler dürfen keine ungefangene Exception auslösen.
+  ohnehin gelieferte Liste, wie bisher.
+- **Validierung**: `dueAt` muss, falls gesetzt, eine gültige Zahl (Epoch-Millisekunden) sein;
+  erwartbare Fehler lösen keine ungefangene Exception aus.
 - **Realtime/Push**: bestehende `checklist:changed`-Broadcasts und Push-Topics greifen weiter;
   Zuweisung an andere nutzt den vorhandenen „direct“-Benachrichtigungspfad.
-- **Tests** (Guideline 4): Happy Path je Art, Validierungsfehler (`dueAt`, leerer Titel),
-  Zuständigkeits-/Zustandskonflikte (Übernahme-Race, Freigabe durch Nicht-Zugewiesene).
-
-Die Namensfrage (Bereich, Enum-Anzeigenamen) berührt vor allem Frontend und Texte, nicht das Schema.
+- **Tests**: Happy Path je Art, Validierungsfehler (`dueAt`, leerer Titel), das gelockerte
+  Rollen-Verhalten (Mitglied darf jetzt anlegen+zuweisen), Zuständigkeits-/Zustandskonflikte
+  (Übernahme-Race, Freigabe durch Nicht-Zugewiesene) – unverändert aus Rev. 1 übernommen.
 
 ---
 
-## 9. Offene Entscheidungen für den Nutzer
+## 9. Entscheidungen
 
-1. **Bereichsname:** Umbenennung in „Orga“ (empfohlen) oder „Packliste“ beibehalten?
-2. **Zuweisung an andere für alle** freigeben – bestätigt so gewollt? (Empfehlung: ja, da Freigabe
-   jederzeit möglich und für die Gruppengröße passend.)
-3. **„Wichtig“-Flag** trotz „vorerst weglassen“ doch von Anfang an? (Empfehlung: nein, erst bei Bedarf.)
-4. **Ticket-Arten:** bei zwei bleiben, oder ist eine dritte (z. B. „Einkauf“) absehbar nötig?
+Rev. 1 hatte vier offene Punkte. Der Nutzer hat Punkt 0 (Benennung „Ticket“) korrigiert und für den
+Rest die Umsetzung freigegeben; die Standardentscheidungen aus Rev. 1 gelten damit wie folgt:
+
+0. **Benennung der Entität:** ~~„Ticket“~~ → **„To-Do“** (Nutzerentscheidung, umgesetzt).
+1. **Bereichsname:** **zurückgestellt** – Nav-Eintrag bleibt vorerst „Packliste“, nicht „Orga“. Kann
+   separat nachgezogen werden, sollte sich das nach dem Testen als nötig erweisen.
+2. **Zuweisung an andere für alle:** **umgesetzt wie empfohlen** – jedes Mitglied darf zuweisen,
+   Freigabe bleibt jederzeit möglich.
+3. **„Wichtig“-Flag:** **weiterhin weggelassen**, wie empfohlen.
+4. **To-Do-Arten:** **bei zwei belassen** (Aufgabe / Mitbring-Anfrage), wie empfohlen.
 
 ---
 
 ## 10. Nicht-Ziele
 
 - Kein Rollen-/Rechte-Ausbau über die eine beschriebene Lockerung hinaus.
-- Keine Kommentarthreads, Anhänge, Zeiterfassung, Sub-Tickets oder Boards mit frei definierbaren
+- Keine Kommentarthreads, Anhänge, Zeiterfassung, Sub-To-Dos oder Boards mit frei definierbaren
   Spalten.
 - Keine Änderung an der privaten Packliste außer der visuellen Einbettung.
 - Keine externen Abhängigkeiten oder neuen Frameworks.
 
 ---
 
-## 11. Nächste Schritte
+## 11. Umsetzungspaket (dieser Branch)
 
-1. Diese vier Entscheidungen (Abschnitt 9) mit dem Nutzer klären.
-2. Danach ein schlankes Umsetzungspaket schneiden: `due_at`-Migration, vereinheitlichter
-   Erstellen-Endpunkt ohne Rollen-Gate, Zwei-Tab-UI mit „Mir zugewiesen“, Umbenennung/Texte, Tests.
-3. Erst dann implementieren – dieses Dokument bleibt die fachliche Referenz und wird bei Abweichungen
-   mit dem Code in Einklang gehalten (Guideline 1).
-</content>
-</invoke>
+1. `due_at`-Migration auf `checklist_tasks`.
+2. Rollen-Gate auf `POST /tasks/todo` von `admin` auf `member` gesenkt; `dueAt` auf beiden
+   Erstellen-Routen ergänzt und validiert.
+3. Zwei-Tab-UI (`Meine Packliste` / `To-Dos`) mit „Mir zugewiesen“, Fälligkeits-Badges
+   (überfällig/bald fällig), Art-Filtern und „Nur von mir erstellt“.
+4. Tests (Integration, gelockerte Rolle, `dueAt`-Validierung) und ein neuer E2E-Happy-Path.
+5. `DESIGN_SYSTEM.md`-Abschnitt „Packliste“ entsprechend nachgeführt.
+
+Dieses Dokument bleibt die fachliche Referenz und wird bei Abweichungen mit dem Code in Einklang
+gehalten (Guideline 1).
