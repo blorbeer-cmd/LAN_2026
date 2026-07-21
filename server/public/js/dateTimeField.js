@@ -51,6 +51,11 @@ function parseMs(value) {
   return Number.isFinite(t) ? t : null;
 }
 
+// Exported so call sites reading the field's hidden input back out (e.g. a
+// form's own submit handler) share the exact same parsing as the field
+// itself, instead of re-implementing "parse a datetime-local string" locally.
+export const parseDatetimeLocalMs = parseMs;
+
 // Only one popover open at a time across the whole page.
 let active = null;
 
@@ -61,31 +66,44 @@ function closeActive() {
   cleanup();
 }
 
+// opts.dateOnly omits the hour/minute row entirely (e.g. a due date, where a
+// specific time of day would be a false affordance - nothing downstream
+// reads or displays it). wireDateTimeField() detects this purely from the
+// row's absence in the DOM, so it needs no matching opts parameter of its
+// own; the stored value's time-of-day is pinned to midnight (see the
+// data-dt-day/data-dt-today handlers below) rather than left at whatever
+// moment the date happened to be picked.
 export function dateTimeFieldHtml(id, rawValueMs, opts = {}) {
-  const valueMs = rawValueMs ? snapToStep(rawValueMs) : rawValueMs;
+  const valueMs = rawValueMs ? (opts.dateOnly ? rawValueMs : snapToStep(rawValueMs)) : rawValueMs;
   const hasValue = Boolean(valueMs);
   const d = hasValue ? new Date(valueMs) : null;
-  const hourOptions = Array.from(
-    { length: 24 },
-    (_, h) => `<option value="${h}"${d && d.getHours() === h ? ' selected' : ''}>${pad(h)}</option>`
-  ).join('');
-  const minuteOptions = Array.from(
-    { length: 60 / MINUTE_STEP },
-    (_, i) => i * MINUTE_STEP
-  )
-    .map((m) => `<option value="${m}"${d && d.getMinutes() === m ? ' selected' : ''}>${pad(m)}</option>`)
-    .join('');
+  const timeGroupHtml = opts.dateOnly
+    ? ''
+    : (() => {
+        const hourOptions = Array.from(
+          { length: 24 },
+          (_, h) => `<option value="${h}"${d && d.getHours() === h ? ' selected' : ''}>${pad(h)}</option>`
+        ).join('');
+        const minuteOptions = Array.from(
+          { length: 60 / MINUTE_STEP },
+          (_, i) => i * MINUTE_STEP
+        )
+          .map((m) => `<option value="${m}"${d && d.getMinutes() === m ? ' selected' : ''}>${pad(m)}</option>`)
+          .join('');
+        return `
+      <div class="dt-time-group">
+        <select class="dt-time-select" data-dt-hour ${hasValue ? '' : 'disabled'} ${opts.disabled ? 'disabled' : ''}>${hourOptions}</select>
+        <span class="dt-time-sep">:</span>
+        <select class="dt-time-select" data-dt-minute ${hasValue ? '' : 'disabled'} ${opts.disabled ? 'disabled' : ''}>${minuteOptions}</select>
+      </div>`;
+      })();
   return `
     <div class="dt-field" data-dt-field="${id}">
       <input type="hidden" id="${id}" value="${hasValue ? toDatetimeLocal(valueMs) : ''}" />
       <button type="button" class="dt-date-btn" data-dt-trigger ${opts.disabled ? 'disabled' : ''}>
         <span class="dt-date-btn-label">${formatDateLabel(valueMs)}</span>
       </button>
-      <div class="dt-time-group">
-        <select class="dt-time-select" data-dt-hour ${hasValue ? '' : 'disabled'} ${opts.disabled ? 'disabled' : ''}>${hourOptions}</select>
-        <span class="dt-time-sep">:</span>
-        <select class="dt-time-select" data-dt-minute ${hasValue ? '' : 'disabled'} ${opts.disabled ? 'disabled' : ''}>${minuteOptions}</select>
-      </div>
+      ${timeGroupHtml}
       ${opts.clearable ? `<button type="button" class="dt-clear-btn icon-btn" data-dt-clear title="Datum löschen" aria-label="Datum löschen" ${hasValue ? '' : 'hidden'} ${opts.disabled ? 'disabled' : ''}>${icon('x')}</button>` : ''}
     </div>`;
 }
@@ -173,6 +191,7 @@ export function wireDateTimeField(container, id) {
   const minuteSel = field.querySelector('[data-dt-minute]');
   const clearBtn = field.querySelector('[data-dt-clear]');
   if (!hidden || !trigger) return;
+  const dateOnly = !hourSel && !minuteSel;
 
   function currentMs() {
     return parseMs(hidden.value);
@@ -189,6 +208,11 @@ export function wireDateTimeField(container, id) {
       if (minuteSel) minuteSel.value = String(d.getMinutes());
     }
     if (clearBtn) clearBtn.hidden = !ms;
+    // Setting .value programmatically never fires a native input/change
+    // event - dispatch one so a call site's own "did anything change"
+    // listener (e.g. an unsaved-changes warning) sees a date picked through
+    // the calendar/today button the same way it'd see any other field edit.
+    hidden.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
   function openCalendar() {
@@ -233,7 +257,8 @@ export function wireDateTimeField(container, id) {
       if (day) {
         const prevMs = currentMs();
         const prevDate = new Date(prevMs ?? snapToStep(Date.now()));
-        applyMs(new Date(viewYear, viewMonth, Number(day.dataset.dtDay), prevDate.getHours(), prevDate.getMinutes()).getTime());
+        const [h, m] = dateOnly ? [0, 0] : [prevDate.getHours(), prevDate.getMinutes()];
+        applyMs(new Date(viewYear, viewMonth, Number(day.dataset.dtDay), h, m).getTime());
         closeActive();
         return;
       }
@@ -241,7 +266,8 @@ export function wireDateTimeField(container, id) {
         const now = new Date();
         const prevMs = currentMs();
         const prevDate = new Date(prevMs ?? snapToStep(now.getTime()));
-        applyMs(new Date(now.getFullYear(), now.getMonth(), now.getDate(), prevDate.getHours(), prevDate.getMinutes()).getTime());
+        const [h, m] = dateOnly ? [0, 0] : [prevDate.getHours(), prevDate.getMinutes()];
+        applyMs(new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m).getTime());
         closeActive();
       }
     }

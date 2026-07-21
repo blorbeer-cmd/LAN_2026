@@ -496,12 +496,15 @@ export const api = {
     removeItem: (itemId, playerId) =>
       apiFetch(`/api/checklist/items/${itemId}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
     tasks: () => apiFetch('/api/checklist/tasks'),
-    createRequest: (playerId, title, description) =>
-      apiFetch('/api/checklist/tasks', { method: 'POST', body: JSON.stringify({ playerId, title, description }) }),
-    createTodo: (playerId, title, description, assigneePlayerIds) =>
+    createRequest: (playerId, title, description, assigneePlayerIds, dueAt) =>
+      apiFetch('/api/checklist/tasks', {
+        method: 'POST',
+        body: JSON.stringify({ playerId, title, description, assigneePlayerIds, dueAt }),
+      }),
+    createTodo: (playerId, title, description, assigneePlayerIds, dueAt) =>
       apiFetch('/api/checklist/tasks/todo', {
         method: 'POST',
-        body: JSON.stringify({ playerId, title, description, assigneePlayerIds }),
+        body: JSON.stringify({ playerId, title, description, assigneePlayerIds, dueAt }),
       }),
     claim: (taskId, playerId, comment) =>
       apiFetch(`/api/checklist/tasks/${taskId}/claim`, { method: 'POST', body: JSON.stringify({ playerId, comment }) }),

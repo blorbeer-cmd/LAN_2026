@@ -109,7 +109,7 @@ test('checklist isolates two groups: cross-group mutations 404, group admins mod
       assert.equal(itemB.status, 201, JSON.stringify(itemB.body));
 
       const itemARow = db.prepare('SELECT group_id, event_id FROM checklist_items WHERE id = ?').get(itemA.body.id);
-      const taskARow = db.prepare('SELECT group_id, event_id FROM checklist_tasks WHERE id = ?').get(taskA.body.id);
+      const taskARow = db.prepare('SELECT group_id, event_id FROM checklist_tasks WHERE id = ?').get(taskA.body.tasks[0].id);
       const itemBRow = db.prepare('SELECT group_id, event_id FROM checklist_items WHERE id = ?').get(itemB.body.id);
       assert.equal(itemARow.group_id, groupA);
       assert.equal(itemARow.event_id, eventA.body.id, 'group A writes must land under group A\\'s own tracking event');
@@ -119,35 +119,43 @@ test('checklist isolates two groups: cross-group mutations 404, group admins mod
       assert.equal(itemBRow.event_id, eventB.body.id, 'group B writes must never land under group A\\'s event');
 
       const listA = await scoped(app, 'get', '/api/checklist/tasks', alice, groupA);
-      assert.deepEqual(listA.body.tasks.map((t) => t.id), [taskA.body.id]);
+      assert.deepEqual(listA.body.tasks.map((t) => t.id), [taskA.body.tasks[0].id]);
       const listB = await scoped(app, 'get', '/api/checklist/tasks', carol, groupB);
       assert.deepEqual(listB.body.tasks.map((t) => t.id), []);
+
+      // --- docs/KONZEPT-PACKLISTE-TICKETS.md: creating+directly-assigning a
+      // to-do no longer requires Owner/Admin - Bob is a plain member of A
+      // and must still be able to do this (previously 403'd here). ---
+      const memberTodo = await scoped(app, 'post', '/api/checklist/tasks/todo', bob, groupA)
+        .send({ title: 'Bierpong-Set (von Bob verteilt)', assigneePlayerIds: [alice.account.id] });
+      assert.equal(memberTodo.status, 201, JSON.stringify(memberTodo.body));
+      assert.equal(memberTodo.body.tasks[0].assignee.id, alice.account.id);
 
       // --- Finding: id-based mutations must 404 across a group boundary ---
       // Bob only belongs to A; selecting A while pointing at B's task/item
       // ids must 404, not silently touch B's rows.
       assert.equal((await scoped(app, 'patch', '/api/checklist/items/' + itemB.body.id, bob, groupA).send({ checked: true })).status, 404);
       assert.equal((await scoped(app, 'delete', '/api/checklist/items/' + itemB.body.id, bob, groupA).send({})).status, 404);
-      assert.equal((await scoped(app, 'post', '/api/checklist/tasks/' + taskA.body.id + '/claim', dave, groupB).send({})).status, 404);
+      assert.equal((await scoped(app, 'post', '/api/checklist/tasks/' + taskA.body.tasks[0].id + '/claim', dave, groupB).send({})).status, 404);
 
       // Alice is a genuine member of both groups, but the task id belongs to
       // B while she has A selected - still 404, not reachable just because
       // she could legitimately see it after switching groups.
       const taskB = await scoped(app, 'post', '/api/checklist/tasks', dave, groupB).send({ title: 'Gruppe B Anfrage' });
       assert.equal(taskB.status, 201);
-      assert.equal((await scoped(app, 'post', '/api/checklist/tasks/' + taskB.body.id + '/claim', alice, groupA).send({})).status, 404);
+      assert.equal((await scoped(app, 'post', '/api/checklist/tasks/' + taskB.body.tasks[0].id + '/claim', alice, groupA).send({})).status, 404);
       // Switching her selected group to B, the same id now resolves normally.
-      const claimAsB = await scoped(app, 'post', '/api/checklist/tasks/' + taskB.body.id + '/claim', alice, groupB).send({});
+      const claimAsB = await scoped(app, 'post', '/api/checklist/tasks/' + taskB.body.tasks[0].id + '/claim', alice, groupB).send({});
       assert.equal(claimAsB.status, 200, JSON.stringify(claimAsB.body));
       assert.equal(claimAsB.body.assignee.id, alice.account.id);
 
       // --- Finding: group admins (not just creator/assignee) moderate their own group's tasks ---
-      const claimedA = await scoped(app, 'post', '/api/checklist/tasks/' + taskA.body.id + '/claim', bob, groupA).send({});
+      const claimedA = await scoped(app, 'post', '/api/checklist/tasks/' + taskA.body.tasks[0].id + '/claim', bob, groupA).send({});
       assert.equal(claimedA.status, 409, JSON.stringify(claimedA.body), 'Bob created taskA and cannot claim his own request');
       // Re-target: have Alice (group A owner, not creator/assignee of taskA
       // which Bob created and nobody claimed yet) attempt done - must fail,
       // a task has to be taken before it can be done regardless of role.
-      assert.equal((await scoped(app, 'patch', '/api/checklist/tasks/' + taskA.body.id + '/done', alice, groupA).send({})).status, 409);
+      assert.equal((await scoped(app, 'patch', '/api/checklist/tasks/' + taskA.body.tasks[0].id + '/done', alice, groupA).send({})).status, 409);
 
       // A fresh organizer-assigned task in B, taken by Dave: Dave (assignee)
       // could mark it done himself, but here we prove the *admin* path -
@@ -187,7 +195,7 @@ test('checklist isolates two groups: cross-group mutations 404, group admins mod
       // mismatch check would incorrectly let these through.
       assert.equal((await scoped(app, 'patch', '/api/checklist/items/' + itemA.body.id, alice, groupA).send({ checked: true })).status, 404);
       assert.equal((await scoped(app, 'delete', '/api/checklist/items/' + itemA.body.id, alice, groupA).send({})).status, 404);
-      assert.equal((await scoped(app, 'post', '/api/checklist/tasks/' + taskA.body.id + '/claim', dave, groupA).send({})).status, 404);
+      assert.equal((await scoped(app, 'post', '/api/checklist/tasks/' + taskA.body.tasks[0].id + '/claim', dave, groupA).send({})).status, 404);
 
       // A fresh item/task created now lands under eventA2 and stays mutable.
       const itemA2 = await scoped(app, 'post', '/api/checklist/items', alice, groupA).send({ label: 'Gruppe A, zweites Event' });

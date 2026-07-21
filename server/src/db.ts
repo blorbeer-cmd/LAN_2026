@@ -2815,6 +2815,17 @@ function addChecklistTaskClaimComment(): void {
 }
 runMigration({ version: 51, name: 'add checklist task claim comment', up: addChecklistTaskClaimComment });
 
+// Optional due date for a To-Do (docs/KONZEPT-PACKLISTE-TICKETS.md): lets
+// "Mir zugewiesen" sort by urgency and surface an overdue/due-soon badge.
+// Stored as an epoch-ms timestamp, same convention as the other *_at columns
+// on this table, so existing formatting/serialization helpers apply as-is.
+function addChecklistTaskDueAt(): void {
+  const columns = db.prepare('PRAGMA table_info(checklist_tasks)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'due_at')) return;
+  db.exec('ALTER TABLE checklist_tasks ADD COLUMN due_at INTEGER');
+}
+runMigration({ version: 52, name: 'add checklist task due date', up: addChecklistTaskDueAt });
+
 function createPushMuteTable(): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS push_mutes (
