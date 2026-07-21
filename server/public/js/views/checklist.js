@@ -1,4 +1,4 @@
-// "Packliste" view: a private per-event packing checklist (Grundstock plus
+// "Checkliste" view: a private per-event packing checklist (Grundstock plus
 // freely added/removable custom items) and a shared To-Do pool
 // (docs/KONZEPT-PACKLISTE-TICKETS.md). Any active member can create a To-Do
 // of either kind (Aufgabe/Mitbring-Anfrage), leave it open for anyone to
@@ -412,7 +412,7 @@ export function renderChecklist(container, ctx) {
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-    <h1 class="view-title">Packliste</h1>
+    <h1 class="view-title">Checkliste</h1>
     ${whoAmICardHtml('checklist-whoami')}
     <div class="row" style="gap:var(--space-2);margin-top:var(--space-3);">
       <button type="button" class="btn${activeTab === 'packliste' ? ' btn-primary' : ''}" aria-pressed="${activeTab === 'packliste'}" data-checklist-tab="packliste" style="flex:1;">Meine Packliste</button>

@@ -11,7 +11,7 @@ export const FEED_LINK_LABELS = {
   tournaments: 'Zum Turnier',
   matchmaking: 'Zu den Teams',
   foodOrders: 'Zur Bestellung',
-  checklist: 'Zur Packliste',
+  checklist: 'Zur Checkliste',
   arcade: 'Zur Arcade',
   broadcast: 'Zu den Durchsagen',
 };

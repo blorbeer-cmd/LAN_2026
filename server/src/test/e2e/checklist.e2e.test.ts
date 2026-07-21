@@ -1,4 +1,4 @@
-// Browser E2E test for the Packliste To-Do flow
+// Browser E2E test for the Checkliste To-Do flow
 // (docs/KONZEPT-PACKLISTE-TICKETS.md): any active member creates a To-Do,
 // picks its Art and an optional due date, another member claims it and sees
 // it under "Mir zugewiesen", then marks it done. Separate from the fast
@@ -34,7 +34,7 @@ async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
 async function openChecklist(): Promise<void> {
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="checklist"]');
-  await page.waitForSelector('.view-title:has-text("Packliste")');
+  await page.waitForSelector('.view-title:has-text("Checkliste")');
 }
 
 async function switchIdentity(label: string): Promise<void> {

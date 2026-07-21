@@ -1,17 +1,17 @@
 # Konzept: Packliste & To-Dos
 
-Stand: Juli 2026 · Status: **in Umsetzung** (Rev. 2 – Benennung „To-Do“ statt „Ticket“, Entscheidungen
-aus Rev. 1 übernommen)
+Stand: Juli 2026 · Status: **umgesetzt** (Rev. 3 – Bereichsname „Checkliste“ entschieden)
 
-Dieses Dokument beschreibt das Zielbild für den heutigen Bereich „Packliste“: eine stimmige,
-leichtgewichtige To-Do-Verwaltung statt zweier unverbundener Listen. Ziel ist, dass jede Person
-Aufgaben und Anfragen erstellen, verteilen und annehmen kann und dabei jederzeit einen klaren
-Überblick über die **eigene Packliste** und die **eigenen Aufgaben** behält – ohne das Ganze zu
-überladen.
+Dieses Dokument beschreibt das Zielbild für den Bereich, der bis zu diesem Konzept „Packliste“ hieß
+und jetzt **„Checkliste“** heißt: eine stimmige, leichtgewichtige To-Do-Verwaltung statt zweier
+unverbundener Listen. Ziel ist, dass jede Person Aufgaben und Anfragen erstellen, verteilen und
+annehmen kann und dabei jederzeit einen klaren Überblick über die **eigene Packliste** und die
+**eigenen Aufgaben** behält – ohne das Ganze zu überladen.
 
-Rev. 1 war ein reiner Konzeptentwurf mit vier offenen Entscheidungen (siehe Abschnitt 9). Der Nutzer
-hat die Benennung „Ticket“ → „To-Do“ korrigiert und für den Rest grünes Licht zur Umsetzung gegeben;
-Abschnitt 9 hält fest, wie die übrigen drei Punkte dabei entschieden wurden.
+Rev. 1 war ein reiner Konzeptentwurf mit vier offenen Entscheidungen (siehe Abschnitt 9). Rev. 2
+übernahm die Nutzerkorrektur „Ticket“ → „To-Do“ und setzte die übrigen Empfehlungen um. Rev. 3
+entscheidet den zuvor zurückgestellten Punkt 1: der Bereich heißt **„Checkliste“**, nicht „Orga“ und
+nicht weiter „Packliste“ (siehe Abschnitt 9).
 
 ---
 
@@ -137,9 +137,10 @@ Optionaler leichter Filter „**Von mir erstellt**“ (als Chip), damit man selb
 nachverfolgen kann – kein eigener schwerer Abschnitt.
 
 ### 5.3 Namensgebung des Bereichs
-Zurückgestellt (siehe Abschnitt 9, Entscheidung 1): Der Nav-Eintrag heißt vorerst weiter
-**„Packliste“**; nur der gemeinsame Pool darin heißt „To-Dos“. Eine spätere Umbenennung des ganzen
-Bereichs (z. B. „Orga“) bleibt eine separate, leicht nachrüstbare Änderung.
+Entschieden (siehe Abschnitt 9, Entscheidung 1): Der Nav-Eintrag heißt **„Checkliste“** statt weiter
+„Packliste“ – deckt sowohl die private Packliste als auch die To-Dos ab, ohne wie „Orga“ nach einem
+Admin-Bereich zu klingen. Die Tab-Bezeichnung „Meine Packliste“ innerhalb des Bereichs bleibt
+unverändert, da sie weiterhin konkret die persönliche Geräteliste meint.
 
 ---
 
@@ -205,12 +206,13 @@ bewusst zurückgestellt. Das hält das System schlank.
 
 ## 9. Entscheidungen
 
-Rev. 1 hatte vier offene Punkte. Der Nutzer hat Punkt 0 (Benennung „Ticket“) korrigiert und für den
-Rest die Umsetzung freigegeben; die Standardentscheidungen aus Rev. 1 gelten damit wie folgt:
+Rev. 1 hatte vier offene Punkte. Der Nutzer hat Punkt 0 (Benennung „Ticket“) korrigiert, für den Rest
+zunächst die Umsetzung freigegeben (Rev. 2) und anschließend Punkt 1 (Bereichsname) nach dem lokalen
+Testen entschieden (Rev. 3):
 
 0. **Benennung der Entität:** ~~„Ticket“~~ → **„To-Do“** (Nutzerentscheidung, umgesetzt).
-1. **Bereichsname:** **zurückgestellt** – Nav-Eintrag bleibt vorerst „Packliste“, nicht „Orga“. Kann
-   separat nachgezogen werden, sollte sich das nach dem Testen als nötig erweisen.
+1. **Bereichsname:** ~~„Packliste“~~ → **„Checkliste“** (Nutzerentscheidung, umgesetzt) – nicht „Orga“.
+   Nur der Nav-Eintrag/View-Titel ändert sich; die Tab-Bezeichnung „Meine Packliste“ bleibt bestehen.
 2. **Zuweisung an andere für alle:** **umgesetzt wie empfohlen** – jedes Mitglied darf zuweisen,
    Freigabe bleibt jederzeit möglich.
 3. **„Wichtig“-Flag:** **weiterhin weggelassen**, wie empfohlen.
@@ -236,7 +238,9 @@ Rest die Umsetzung freigegeben; die Standardentscheidungen aus Rev. 1 gelten dam
 3. Zwei-Tab-UI (`Meine Packliste` / `To-Dos`) mit „Mir zugewiesen“, Fälligkeits-Badges
    (überfällig/bald fällig), Art-Filtern und „Nur von mir erstellt“.
 4. Tests (Integration, gelockerte Rolle, `dueAt`-Validierung) und ein neuer E2E-Happy-Path.
-5. `DESIGN_SYSTEM.md`-Abschnitt „Packliste“ entsprechend nachgeführt.
+5. `DESIGN_SYSTEM.md`-Abschnitt zum Bereich entsprechend nachgeführt.
+6. Nav-Eintrag/View-Titel von „Packliste“ auf „Checkliste“ umbenannt (Entscheidung 1, Rev. 3),
+   inklusive Suchindex (`searchPalette.js`) und Push-Feed-Linktext (`pushFeed.js`).
 
 Dieses Dokument bleibt die fachliche Referenz und wird bei Abweichungen mit dem Code in Einklang
 gehalten (Guideline 1).

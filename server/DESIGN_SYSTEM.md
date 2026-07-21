@@ -449,7 +449,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   label („Bezahlt“, „Sammelzahlung“) instead of relying on an aria-label alone; a single contextual
   tooltip beside „Sammelzahlung“, shown once per card when the order has a PayPal link, explains
   that any position — including someone else's — can be picked for the combined payment below.
-- **Packliste** — „Meine Packliste“ and „To-Dos“ (docs/KONZEPT-PACKLISTE-TICKETS.md) are two `.btn`/
+- **Checkliste** — the area's own nav/view title (formerly „Packliste“; docs/KONZEPT-PACKLISTE-TICKETS.md
+  Abschnitt 9 records the rename). „Meine Packliste“ and „To-Dos“ inside it are two `.btn`/
   `.btn-primary` toggle tabs, same active-marking convention as Team formation's „Modus“ toggle; the
   „To-Dos“ tab label carries a live count of the current identity's own open+taken items. The
   personal list is unchanged: a compact checkbox row per item (Grundstock plus freely added/removable
