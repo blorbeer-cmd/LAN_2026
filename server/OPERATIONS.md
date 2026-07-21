@@ -75,7 +75,10 @@ Provenance-Attestation. Der nach allen Pflichtchecks ausgeführte Publish-Build 
 standardmäßige Provenance des Docker-Builds bei. `better-sqlite3` wird als offizielles
 Node-24-Linux-Prebuild installiert; deshalb enthält die Builder-Stage keine native
 Compiler-Toolchain. Ein leerer BuildKit-Cache bleibt unterstützt, da `npm ci` weiterhin exakt das
-versionierte `package-lock.json` verwendet.
+versionierte `package-lock.json` verwendet. Dessen Integritätswert deckt das npm-Paket ab, nicht
+jedoch das separat aus dem Upstream-GitHub-Release geladene native Prebuild. Ist dieses Prebuild
+nicht verfügbar, schlägt der Image-Build bewusst fehl, statt auf eine lokale Kompilierung
+zurückzufallen.
 
 Die Compose-Konfiguration verwendet den lokalen Docker-Logging-Treiber mit Größen- und
 Dateilimits, damit App- und Tunnel-Logs den Datenträger nicht unbegrenzt füllen.
