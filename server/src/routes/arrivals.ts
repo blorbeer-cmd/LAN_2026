@@ -5,12 +5,19 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db, OUTSIDE_EVENTS_ID } from '../db';
-import { resolveGroupEventStorageId } from '../groupEventScope';
+import { requireGroupEventAccess, resolveGroupEventStorageId } from '../groupEventScope';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString } from '../validation';
 import { withBodyPlayerIdentity } from '../sessions';
 
 export const arrivalsRouter = Router();
+
+arrivalsRouter.use((req, res, next) => {
+  const storageEventId = resolveGroupEventStorageId(req.group!.id);
+  const eventId = storageEventId && storageEventId !== OUTSIDE_EVENTS_ID ? storageEventId : null;
+  if (!requireGroupEventAccess(req, res, eventId)) return;
+  next();
+});
 
 const MAX_NOTE_LENGTH = 240;
 const MAX_LABEL_LENGTH = 120;

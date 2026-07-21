@@ -1,5 +1,6 @@
 import { config } from './config';
 import { db } from './db';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 
 // A group-room message targets every active member. An event message targets
 // the current event roster, intersected with active accounts/memberships so a
@@ -13,7 +14,8 @@ export function communicationRecipientIds(groupId: string, eventId: string | nul
             .prepare(
               `SELECT ep.player_id AS id
                FROM event_participants ep JOIN players p ON p.id = ep.player_id
-               WHERE ep.event_id = ? AND p.deactivated_at IS NULL ORDER BY ep.player_id`,
+               WHERE ep.event_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
+                 AND p.deactivated_at IS NULL ORDER BY ep.player_id`,
             )
             .all(eventId) as Array<{ id: string }>)
     ).map((row) => row.id);
@@ -46,7 +48,8 @@ export function communicationRecipientIds(groupId: string, eventId: string | nul
          JOIN events e ON e.id = ep.event_id AND e.group_id = ?
          JOIN group_memberships gm ON gm.group_id = e.group_id AND gm.player_id = ep.player_id
          JOIN players p ON p.id = ep.player_id
-         WHERE ep.event_id = ? AND gm.status = 'active' AND p.deactivated_at IS NULL
+         WHERE ep.event_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
+           AND gm.status = 'active' AND p.deactivated_at IS NULL
          ORDER BY ep.player_id`,
       )
       .all(groupId, eventId) as Array<{ id: string }>

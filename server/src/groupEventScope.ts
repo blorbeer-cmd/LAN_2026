@@ -1,5 +1,7 @@
 import { config } from './config';
 import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
+import type { Request, Response } from 'express';
+import { isParticipant } from './events';
 
 export type GroupEventScope = string | null;
 
@@ -32,6 +34,34 @@ export function resolveGroupEventScope(groupId: string, requestedEventId: unknow
     .prepare("SELECT id FROM events WHERE tracking_enabled = 1 AND group_id = ? AND id != ?")
     .get(groupId, OUTSIDE_EVENTS_ID) as { id: string } | undefined;
   return { ok: true, eventId: tracking?.id ?? null };
+}
+
+// Applies the existing visibility/role contracts after an event id has been
+// resolved inside the request's group. Participant-private events admit only
+// accepted participants plus admins/owners. Kiosk requests keep their own
+// validated token/allowlist contract and group/public events remain readable
+// to every active group member.
+export function requestCanAccessGroupEvent(req: Request, eventId: GroupEventScope): boolean {
+  if (eventId === null || req.kioskScope) return true;
+  const event = db.prepare('SELECT group_id, visibility_scope FROM events WHERE id = ?').get(eventId) as
+    | { group_id: string | null; visibility_scope: string }
+    | undefined;
+  if (!event || event.group_id !== req.group?.id) return false;
+  if (event.visibility_scope === 'group' || event.visibility_scope === 'public') return true;
+  if (req.groupMembership?.role === 'admin' || req.groupMembership?.role === 'owner') return true;
+  if (req.player) return isParticipant(eventId, req.player.id);
+
+  // Legacy mode has no authenticated request player. Enforce the selected
+  // device identity when present, while preserving identity-less legacy API
+  // compatibility until required auth becomes universal.
+  const legacyPlayerId = req.header('x-player-id');
+  return config.authMode === 'legacy' && (!legacyPlayerId || isParticipant(eventId, legacyPlayerId));
+}
+
+export function requireGroupEventAccess(req: Request, res: Response, eventId: GroupEventScope): boolean {
+  if (requestCanAccessGroupEvent(req, eventId)) return true;
+  res.status(404).json({ error: 'Event nicht gefunden.' });
+  return false;
 }
 
 // Arrivals and food orders still use the legacy event-owned schema with a

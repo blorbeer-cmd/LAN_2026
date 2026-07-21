@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import { config } from '../config';
 import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from '../db';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from '../eventParticipation';
 import { getTrackingEvent } from '../events';
 
 export interface ArcadeDataScope {
@@ -61,8 +62,9 @@ export function currentArcadeDataScope(playerIds: string[] = []): ArcadeDataScop
     const participantCount = (
       db
         .prepare(
-          `SELECT COUNT(*) AS count FROM event_participants
-           WHERE event_id = ? AND player_id IN (${placeholders})`,
+          `SELECT COUNT(*) AS count FROM event_participants ep
+           WHERE ep.event_id = ? AND ep.player_id IN (${placeholders})
+             AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}`,
         )
         .get(eventId, ...uniquePlayerIds) as { count: number }
     ).count;
@@ -101,6 +103,7 @@ export function recordArcadeResult(options: {
          AND g.archived_at IS NULL AND p.deactivated_at IS NULL
          AND (? IS NULL OR gm.role IN ('admin', 'owner') OR EXISTS (
            SELECT 1 FROM event_participants ep WHERE ep.event_id = ? AND ep.player_id = gm.player_id
+             AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
          ))`,
     ).get(scope.groupId, playerId, scope.eventId, scope.eventId)));
     if (!eventExists || !permitted) return null;

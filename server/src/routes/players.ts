@@ -17,7 +17,7 @@ import { writeAdminAudit } from '../adminAudit';
 import { voidOutstandingInvites } from '../invites';
 import { activeGroupPlayers } from '../groupPlayers';
 import { activePlayerGroupIds } from '../groups';
-import { resolveGroupEventScope } from '../groupEventScope';
+import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
 import { config } from '../config';
 
 export const playersRouter = Router();
@@ -453,6 +453,7 @@ playersRouter.get('/:id/neighbors', ...withParamPlayerIdentity('id'), (req, res)
 
   const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
 
   const rows = db
     .prepare('SELECT neighbor_id FROM seat_neighbors WHERE group_id = ? AND event_id IS ? AND player_id = ?')
@@ -478,6 +479,7 @@ playersRouter.put('/:id/neighbors', ...withParamPlayerIdentity('id'), (req, res)
   }
   const scope = resolveGroupEventScope(req.group!.id, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
 
   // Silently drop yourself and anything that isn't actually a player, rather
   // than erroring — a stale id from a checkbox list a moment after someone

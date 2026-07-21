@@ -10,7 +10,7 @@ und **Playwright** für echte Browser-Klickpfade.
 | ----------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Unit**          | `node:test` + `assert`                                  | Reine Logik ohne I/O: Zugangs-Guard, Live-Status-Ableitung, Matchmaking-Balancing, Leaderboard-Scoring (`src/*.test.ts`). Ebenso die DOM-freien Frontend-Helfer (Formatierung, Avatar-Palette, Prozessnamen-Vorschläge, State-Lookups, `dateTimeFieldHtml`) direkt unter `public/js/*.test.js` — läuft ohne Build-Step als ESM (`public/package.json` setzt `"type": "module"` nur für den Node-Testlauf, ohne Auswirkung auf die im Browser statisch ausgelieferten Dateien). |
 | **Integration**   | `node:test` + `supertest`                               | Echte HTTP-Requests gegen die Express-App (`src/test/*.test.ts`), gegen eine **In-Memory-DB**.                                                                                                                                                                                                                                                                                                                                                                                 |
-| **E2E (Browser)** | `node:test` + Playwright (`src/test/e2e/*.e2e.test.ts`) | Startet den echten gebauten Server + einen echten Chromium und klickt durch die Web-UI: Spieler anlegen, Teams auslosen, abstimmen, Ergebnis eintragen, Zugangs-Token-Login.                                                                                                                                                                                                                                                                                                   |
+| **E2E (Browser)** | `node:test` + Playwright (`src/test/e2e/*.e2e.test.ts`) | Startet den echten gebauten Server + einen echten Chromium und klickt durch die Web-UI: Spieler anlegen, Teams auslosen, abstimmen, Ergebnis eintragen, Zugangs-Token-Login und Event-Einladungen mit zwei offenen Clients.                                                                                                                                                                                                                                                        |
 
 ## Ausführen
 
@@ -66,6 +66,10 @@ eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur d
   („Stilllegen statt Rückbau“, siehe `docs/plans/reset-single-group.md` Abschnitt 2). Der
   Offline-Sweep über mehrere Gruppen wird mit konkreten Empfänger- und Negativassertions in
   `src/liveStatus.sweepOnce.test.ts` abgedeckt.
+- Event-Einladungen werden in `src/test/api.eventInvitations.required.test.ts` als vollständige
+  Status-/Rollenmatrix einschließlich parallelem Accept-vs-Decline geprüft. Der echte Zwei-Client-
+  Browserpfad (Admin lädt ein, Mitglied nimmt per Tastatur an, beide Ansichten aktualisieren sich per
+  Realtime) liegt in `src/test/e2e/eventInvitations.e2e.test.ts`.
 
 ## Datenbank-Migrationen
 
@@ -90,7 +94,8 @@ Wiederholungsfall ab.
   Script `test:e2e`), da sie einen Server + Browser brauchen und entsprechend langsamer sind.
 - Die E2E-Dateien laufen parallel (eine pro Prozess) und starten je einen eigenen Server — jede
   Datei braucht deshalb einen **eigenen Test-Port** (aktuell: 3901 `flows`, 3902 `access`,
-  3903 `arcade`, 3910 Agent-Integration in `agent/`). Ein doppelt vergebener Port lässt alle Tests
+  3903 `arcade`, 3904 `authGate`, 3911 `phase5eIsolation`, 3912 `checklist`, 3913
+  `eventInvitations`, 3910 Agent-Integration in `agent/`). Ein doppelt vergebener Port lässt alle Tests
   der betroffenen Datei mit „Server did not become ready“ scheitern.
 - Der Produktions-Build (`npm run build`) schließt alle Testdateien aus – sie landen nie in `dist/`.
 - `index.ts` startet den Server nur, wenn es direkt ausgeführt wird (`require.main === module`),

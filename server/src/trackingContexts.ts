@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 import { config } from './config';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 
 export interface TrackingContext { groupId: string; eventId: string | null; weight: number; }
 
@@ -22,10 +23,20 @@ export function activeTrackingContexts(playerId: string, now = Date.now()): Trac
       `SELECT e.id, e.visibility_scope FROM events e
        LEFT JOIN event_tracking_consents c ON c.event_id = e.id AND c.player_id = ? AND c.revoked_at IS NULL
        WHERE e.group_id = ? AND e.tracking_enabled = 1 AND e.status = 'published'
-         AND (e.visibility_scope IN ('group', 'public') OR c.id IS NOT NULL OR (? = 'legacy' AND EXISTS (SELECT 1 FROM event_participants ep WHERE ep.event_id = e.id AND ep.player_id = ?)))
+         AND (
+           e.visibility_scope IN ('group', 'public')
+           OR (
+             e.visibility_scope = 'participants'
+             AND EXISTS (
+               SELECT 1 FROM event_participants ep
+               WHERE ep.event_id = e.id AND ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
+             )
+             AND (c.id IS NOT NULL OR ? = 'legacy')
+           )
+         )
          AND e.starts_at <= ? AND (e.ends_at IS NULL OR e.ends_at > ?)
        ORDER BY e.id`,
-    ).all(playerId, groupId, config.authMode, playerId, now, now) as Array<{ id: string; visibility_scope: string }>;
+    ).all(playerId, groupId, playerId, config.authMode, now, now) as Array<{ id: string; visibility_scope: string }>;
     const activeEventCount = (db.prepare("SELECT COUNT(*) AS count FROM events WHERE group_id = ? AND tracking_enabled = 1 AND status = 'published' AND starts_at <= ? AND (ends_at IS NULL OR ends_at > ?)").get(groupId, now, now) as { count: number }).count;
     if (events.length) {
       const weight = 1 / events.length;

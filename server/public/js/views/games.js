@@ -13,6 +13,7 @@ import { showToast } from '../toast.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { withStepUp } from '../reauth.js';
+import { getMyId } from '../whoami.js';
 
 const EVENT_HELP = 'Mehrere Events sind möglich. Nur ein Event erfasst gleichzeitig Live-Status und Spielzeit; alles andere bleibt „Außerhalb von Events“.';
 const INVITE_HELP = 'Link oder QR-Code teilen: öffnet Respawn eingeloggt und führt neue Spieler direkt zur Profil-Erstellung.';
@@ -168,6 +169,28 @@ function renderEventCard(e) {
 function renderEventSection() {
   const realEvents = (state.events || []).filter((e) => !e.isOutsideEvents);
   const cards = realEvents.map(renderEventCard).join('');
+  const myId = getMyId();
+  const pendingInvitations = myId
+    ? realEvents.filter((event) => event.participants?.some((entry) => entry.playerId === myId && entry.status === 'invited'))
+    : [];
+  const invitationRows = pendingInvitations
+    .map(
+      (event) => `
+        <div class="card stack" data-pending-invitation="${event.id}">
+          <div class="row-between">
+            <strong>${escapeHtml(event.name)}</strong>
+            <span class="badge badge-paused">Eingeladen</span>
+          </div>
+          <div class="muted" style="font-size:var(--font-size-sm);">
+            ${icon('calendar')} ${new Date(event.starts_at).toLocaleDateString('de-DE')} – ${new Date(event.ends_at).toLocaleDateString('de-DE')}
+          </div>
+          <div class="row" style="gap:var(--space-2);">
+            <button type="button" class="btn btn-primary" data-accept-invitation="${event.id}">Annehmen</button>
+            <button type="button" class="btn" data-decline-invitation="${event.id}">Ablehnen</button>
+          </div>
+        </div>`,
+    )
+    .join('');
 
   return `
     <section class="card stack grouped-page-section" aria-labelledby="settings-events-title">
@@ -178,6 +201,14 @@ function renderEventSection() {
         </span>
         <button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>
       </div>
+      ${
+        pendingInvitations.length > 0
+          ? `<div class="stack" aria-labelledby="settings-invitations-title">
+               <div class="section-title" id="settings-invitations-title" tabindex="-1">Ausstehende Einladungen</div>
+               <div class="two-column-card-grid">${invitationRows}</div>
+             </div>`
+          : ''
+      }
       ${
         realEvents.length === 0
           ? `<div class="empty-state"><span class="empty-state-icon">${icon('calendar')}</span>Noch keine Events angelegt.</div>`
@@ -302,51 +333,77 @@ function openEventForm(ctx, existing) {
   );
 }
 
-// Replaces an event's whole roster in one go — who counts as "in" the
-// event, so tracking (once started) only follows them.
+function participationStatus(status) {
+  if (status === 'accepted') return { label: 'Zugesagt', badge: 'badge-playing' };
+  if (status === 'declined') return { label: 'Abgelehnt', badge: 'badge-offline' };
+  return { label: 'Eingeladen', badge: 'badge-paused' };
+}
+
+// Event managers invite active group members here. Acceptance remains a
+// personal action; administrative removal stays available for every status.
 function openParticipantsForm(ctx, event) {
-  const checked = new Set(event.participantIds ?? []);
+  const participants = new Map((event.participants ?? []).map((entry) => [entry.playerId, entry.status]));
   const rows = state.players
-    .map(
-      (p) => `
-      <label class="check-row">
-        <input type="checkbox" data-participant="${p.id}" ${checked.has(p.id) ? 'checked' : ''} />
-        <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
-      </label>`
-    )
+    .map((p) => {
+      const status = participants.get(p.id);
+      const presentation = status ? participationStatus(status) : null;
+      return `
+        <div class="card row-between">
+          <span class="player-name" style="min-width:0;">${escapeHtml(p.name)}</span>
+          <span class="row" style="gap:var(--space-2);flex-wrap:wrap;justify-content:flex-end;">
+            ${presentation ? `<span class="badge ${presentation.badge}">${presentation.label}</span>` : ''}
+            ${
+              !status || status === 'declined'
+                ? `<button type="button" class="btn btn-sm" data-invite-participant="${p.id}">${status === 'declined' ? 'Erneut einladen' : 'Einladen'}</button>`
+                : ''
+            }
+            ${status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${p.id}">Entfernen</button>` : ''}
+          </span>
+        </div>`;
+    })
     .join('');
 
-  let capturedEl;
   const { close } = openModal(
     `Teilnehmer – ${escapeHtml(event.name)}`,
     `
       <div class="stack">
         <p class="muted" style="font-size:var(--font-size-xs);">
-          Nur diese Spieler werden getrackt, sobald dieses Event Tracking aktiv hat.
+          Nur zugesagte Spieler erhalten Teilnehmerdaten und werden bei aktivem Event-Tracking berücksichtigt.
         </p>
         ${state.players.length === 0 ? `<div class="empty-state">Noch keine Spieler.</div>` : rows}
-        <button type="button" class="btn btn-primary btn-block" id="participants-save">Speichern</button>
       </div>
     `,
     {
-      confirmClose: () => {
-        if (!capturedEl) return null;
-        const ids = [...capturedEl.querySelectorAll('[data-participant]:checked')].map((cb) => cb.dataset.participant);
-        const same = ids.length === checked.size && ids.every((id) => checked.has(id));
-        return same ? null : 'Die geänderte Teilnehmerauswahl wird nicht gespeichert.';
-      },
       onMount: (modalEl) => {
-        capturedEl = modalEl;
-        modalEl.querySelector('#participants-save').addEventListener('click', async () => {
-          const ids = [...modalEl.querySelectorAll('[data-participant]:checked')].map((cb) => cb.dataset.participant);
-          try {
-            await api.events.setParticipants(event.id, ids);
-            close();
-            await ctx.refresh();
-            showToast('Teilnehmer gespeichert.');
-          } catch (err) {
-            showToast(err.message, { error: true });
-          }
+        modalEl.querySelectorAll('[data-invite-participant]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            button.disabled = true;
+            try {
+              await api.events.inviteParticipant(event.id, button.dataset.inviteParticipant);
+              close();
+              await ctx.refresh();
+              document.querySelector(`[data-participants-event="${event.id}"]`)?.focus();
+              showToast('Einladung gesendet.');
+            } catch (err) {
+              button.disabled = false;
+              showToast(err.message, { error: true });
+            }
+          });
+        });
+        modalEl.querySelectorAll('[data-remove-participant]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            button.disabled = true;
+            try {
+              await api.events.removeParticipant(event.id, button.dataset.removeParticipant);
+              close();
+              await ctx.refresh();
+              document.querySelector(`[data-participants-event="${event.id}"]`)?.focus();
+              showToast('Event-Teilnahme entfernt.');
+            } catch (err) {
+              button.disabled = false;
+              showToast(err.message, { error: true });
+            }
+          });
         });
       },
     }
@@ -380,6 +437,23 @@ export function renderSettings(container, ctx) {
     btn.addEventListener('click', () => {
       const event = (state.events || []).find((e) => e.id === btn.dataset.participantsEvent);
       if (event) openParticipantsForm(ctx, event);
+    });
+  });
+  container.querySelectorAll('[data-accept-invitation], [data-decline-invitation]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const accept = Boolean(btn.dataset.acceptInvitation);
+      const eventId = btn.dataset.acceptInvitation || btn.dataset.declineInvitation;
+      btn.disabled = true;
+      try {
+        if (accept) await api.events.acceptInvitation(eventId);
+        else await api.events.declineInvitation(eventId);
+        await ctx.refresh();
+        (document.querySelector('#settings-invitations-title') || document.querySelector('#settings-events-title'))?.focus();
+        showToast(accept ? 'Einladung angenommen.' : 'Einladung abgelehnt.');
+      } catch (err) {
+        btn.disabled = false;
+        showToast(err.message, { error: true });
+      }
     });
   });
   container.querySelectorAll('[data-start-tracking]').forEach((btn) => {

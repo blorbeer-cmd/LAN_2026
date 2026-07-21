@@ -45,6 +45,8 @@ test('seating and pings are roles-gated and event-scoped inside the one real gro
       const eventA = await scoped(app, 'post', '/api/events', alice, groupId)
         .send({ name: 'Seating Event A', startsAt: now, endsAt: now + 60_000 });
       assert.equal(eventA.status, 201);
+      assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice, groupId)
+        .send({ playerIds: [alice.account.id, bob.account.id] })).status, 200);
 
       // Layout moderation is vertical: members can read but only a group
       // Admin/Owner may replace the shared seating plan.

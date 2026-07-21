@@ -6,6 +6,7 @@ import { config } from './config';
 import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 import { isSessionActive, parseCookieHeader, verifySession, SESSION_COOKIE_NAME } from './sessions';
 import { resolveKioskToken } from './kioskTokens';
+import { isParticipant } from './events';
 
 let io: Server | null = null;
 let authSessionSweep: NodeJS.Timeout | null = null;
@@ -43,16 +44,15 @@ function activeGroupMember(groupId: string, playerId: unknown): boolean {
 
 function activeEventAccess(groupId: string, eventId: string, playerId: unknown): boolean {
   if (!activeGroupMember(groupId, playerId)) return false;
+  if (typeof playerId !== 'string') return false;
   const membership = db
     .prepare("SELECT role FROM group_memberships WHERE group_id = ? AND player_id = ? AND status = 'active'")
     .get(groupId, playerId) as { role: string } | undefined;
   if (membership?.role === 'admin' || membership?.role === 'owner') {
     return Boolean(db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, groupId));
   }
-  return Boolean(db.prepare(
-    `SELECT 1 FROM event_participants ep JOIN events e ON e.id = ep.event_id
-     WHERE ep.event_id = ? AND ep.player_id = ? AND e.group_id = ?`
-  ).get(eventId, playerId, groupId));
+  const event = db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, groupId);
+  return Boolean(event) && isParticipant(eventId, playerId);
 }
 
 function validScope(socket: Socket, groupId: unknown, eventId: unknown): boolean {

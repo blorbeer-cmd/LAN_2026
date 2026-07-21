@@ -1,6 +1,6 @@
 # Branch-Historie
 
-Stand: 2026-07-21 · 136 Branch-Seiten. Die Statusangaben wurden gegen die GitHub-PR-Metadaten
+Stand: 2026-07-21 · 137 Branch-Seiten. Die Statusangaben wurden gegen die GitHub-PR-Metadaten
 abgeglichen; mehrere PRs desselben Arbeitsbranches bleiben als gemeinsamer Themenstrang erkennbar.
 
 - [`agent/arcade-kiosk-stream`](./agent-arcade-kiosk-stream.md) — 1 gemergt, 0 offen
@@ -97,6 +97,7 @@ abgeglichen; mehrere PRs desselben Arbeitsbranches bleiben als gemeinsamer Theme
 - [`codex/changelog-deploy-hardening`](./codex-changelog-deploy-hardening.md) — 1 gemergt, 0 offen
 - [`codex/deploy-optimizations`](./codex-deploy-optimizations.md) — 1 gemergt, 0 offen
 - [`codex/docker-prepare-fix`](./codex-docker-prepare-fix.md) — 1 gemergt, 0 offen
+- [`codex/event-invitations-f6`](./codex-event-invitations-f6.md) — lokaler Arbeitsbranch, Draft-PR folgt
 - [`codex/feedback-general-ui-polish`](./codex-feedback-general-ui-polish.md) — 1 gemergt, 0 offen
 - [`codex/fix-arcade-spectator-views`](./codex-fix-arcade-spectator-views.md) — 1 gemergt, 0 offen
 - [`codex/fix-scribble-watch-rerender`](./codex-fix-scribble-watch-rerender.md) — 2 gemergt, 0 offen
@@ -104,7 +105,7 @@ abgeglichen; mehrere PRs desselben Arbeitsbranches bleiben als gemeinsamer Theme
 - [`codex/phase5c-seating-pings`](./codex-phase5c-seating-pings.md) — 1 gemergt, 0 offen
 - [`codex/pr201-hardening`](./codex-pr201-hardening.md) — 1 gemergt, 0 offen
 - [`codex/reset-plan-r3`](./codex-reset-plan-r3.md) — 1 gemergt, 0 offen
-- [`codex/reset-r5-docs`](./codex-reset-r5-docs.md) — 0 gemergt, 1 offen
+- [`codex/reset-r5-docs`](./codex-reset-r5-docs.md) — 1 gemergt, 0 offen
 - [`codex/spotify-music-session`](./codex-spotify-music-session.md) — lokaler Arbeitsbranch, kein eigener PR-Eintrag
 - [`codex/update-arcade-changelog`](./codex-update-arcade-changelog.md) — 1 gemergt, 0 offen
 - [`codex/update-seat-neighbor-labels`](./codex-update-seat-neighbor-labels.md) — 1 gemergt, 0 offen

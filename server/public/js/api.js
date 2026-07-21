@@ -311,6 +311,12 @@ export const api = {
     cancel: (id) => apiFetch(`/api/events/${id}`, { method: 'DELETE' }),
     setParticipants: (id, playerIds) =>
       apiFetch(`/api/events/${id}/participants`, { method: 'PUT', body: JSON.stringify({ playerIds }) }),
+    inviteParticipant: (id, playerId) =>
+      apiFetch(`/api/events/${id}/invitations`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    removeParticipant: (id, playerId) =>
+      apiFetch(`/api/events/${id}/participants/${playerId}`, { method: 'DELETE' }),
+    acceptInvitation: (id) => apiFetch(`/api/events/${id}/invitation/accept`, { method: 'POST' }),
+    declineInvitation: (id) => apiFetch(`/api/events/${id}/invitation/decline`, { method: 'POST' }),
   },
 
   tournaments: {

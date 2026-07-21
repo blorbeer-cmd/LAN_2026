@@ -378,10 +378,14 @@ test('event sockets admit participants plus group admins and owners, and revalid
   const groupA = createGroup('Event Access A');
   const participant = createPlayer('Event Participant');
   const outsider = createPlayer('Event Outsider');
+  const invited = createPlayer('Event Invited');
+  const declined = createPlayer('Event Declined');
   const admin = createPlayer('Event Admin');
   const owner = createPlayer('Event Owner');
   addMembership(groupA, participant);
   addMembership(groupA, outsider);
+  addMembership(groupA, invited);
+  addMembership(groupA, declined);
   addMembership(groupA, admin, 'admin');
   addMembership(groupA, owner, 'owner');
   const eventId = nanoid();
@@ -392,10 +396,14 @@ test('event sockets admit participants plus group admins and owners, and revalid
     groupA,
   );
   db.prepare('INSERT INTO event_participants (event_id, player_id) VALUES (?, ?)').run(eventId, participant);
+  db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'invited')").run(eventId, invited);
+  db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'declined')").run(eventId, declined);
 
   await withRequiredServer(async ({ baseUrl }) => {
     const participantSocket = await connectSession(baseUrl, participant);
     const outsiderSocket = await connectSession(baseUrl, outsider);
+    const invitedSocket = await connectSession(baseUrl, invited);
+    const declinedSocket = await connectSession(baseUrl, declined);
     const adminSocket = await connectSession(baseUrl, admin);
     const ownerSocket = await connectSession(baseUrl, owner);
     try {
@@ -403,10 +411,23 @@ test('event sockets admit participants plus group admins and owners, and revalid
       assert.equal((await subscribeEventScope(adminSocket, groupA, eventId)).ok, true);
       assert.equal((await subscribeEventScope(ownerSocket, groupA, eventId)).ok, true);
       assert.equal((await subscribeEventScope(outsiderSocket, groupA, eventId)).ok, false);
+      assert.equal((await subscribeEventScope(invitedSocket, groupA, eventId)).ok, false);
+      assert.equal((await subscribeEventScope(declinedSocket, groupA, eventId)).ok, false);
       await subscribeScope(outsiderSocket, groupA);
+      await subscribeScope(invitedSocket, groupA);
+      await subscribeScope(declinedSocket, groupA);
+
+      const invitedRosterEvents = collect(invitedSocket, Events.eventsChanged);
+      const declinedRosterEvents = collect(declinedSocket, Events.eventsChanged);
+      broadcast(Events.eventsChanged, null, { groupId: groupA });
+      await settle();
+      assert.equal(invitedRosterEvents.count(), 1, 'invited clients receive the group-level roster refresh signal');
+      assert.equal(declinedRosterEvents.count(), 1, 'declined clients receive the group-level roster refresh signal');
 
       const participantEvents = collect(participantSocket, Events.tournamentsChanged);
       const outsiderEvents = collect(outsiderSocket, Events.tournamentsChanged);
+      const invitedEvents = collect(invitedSocket, Events.tournamentsChanged);
+      const declinedEvents = collect(declinedSocket, Events.tournamentsChanged);
       const adminEvents = collect(adminSocket, Events.tournamentsChanged);
       const ownerEvents = collect(ownerSocket, Events.tournamentsChanged);
 
@@ -414,6 +435,8 @@ test('event sockets admit participants plus group admins and owners, and revalid
       await settle();
       assert.equal(participantEvents.count(), 1);
       assert.equal(outsiderEvents.count(), 0, 'a normal non-participant receives no event payload');
+      assert.equal(invitedEvents.count(), 0, 'an invited member receives no participant-scoped event payload');
+      assert.equal(declinedEvents.count(), 0, 'a declined member receives no participant-scoped event payload');
       assert.equal(adminEvents.count(), 1, 'a group admin may administer the event without a participant row');
       assert.equal(ownerEvents.count(), 1, 'a group owner may administer the event without a participant row');
 
@@ -429,6 +452,8 @@ test('event sockets admit participants plus group admins and owners, and revalid
     } finally {
       participantSocket.close();
       outsiderSocket.close();
+      invitedSocket.close();
+      declinedSocket.close();
       adminSocket.close();
       ownerSocket.close();
     }

@@ -1,6 +1,6 @@
 # Reset-Plan: Eine Gruppe pro Instanz
 
-Stand: 2026-07-21 · Status: **Umsetzung — R0 bis R4 erledigt, R5 offen**
+Stand: 2026-07-21 · Status: **Umsetzung abgeschlossen — R0 bis R5 erledigt**
 
 Produktentscheidung: **Eine Instanz bedient genau eine Freundesgruppe.** Events bleiben als
 eigenständige Entität (zeitlich begrenzte Unterräume mit Teilnehmerliste, Tracking-Zeitfenster und
@@ -172,7 +172,7 @@ Bewusst zurückhaltend — kein Purismus-Refactoring:
   Migrationszähler überführen oder als dokumentierte idempotente Ausnahme kennzeichnen.
 - Tests: frische DB, Upgrade von Bestands-Fixture, wiederholter Start.
 
-### R5 — Doku- und Changelog-Nachpflege (Größe S; F15/F17)
+### R5 — Doku- und Changelog-Nachpflege (Größe S; F15/F17) — ✅ erledigt 2026-07-21 ([PR #261](https://github.com/blorbeer-cmd/LAN_2026/pull/261))
 
 - Changelog-Lücken ab PR #214 nachtragen (`docs/changelog/AGENTS.md`-Regeln).
 - `TESTING.md`-Migrationsbehauptung an R4 angleichen; veraltete Mehrgruppen-Kommentare final raus.
