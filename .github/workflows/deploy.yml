@@ -3,9 +3,9 @@ name: CI/CD
 on:
   push:
     branches: [main]
-    # Pull requests still run the complete CI below. Once a docs-only PR is
-    # merged, do not rebuild and restart production for Markdown that cannot
-    # change the shipped image.
+    # Pull requests still run the path classifier below. Once a docs-only PR
+    # is merged, do not rebuild and restart production for Markdown that
+    # cannot change the shipped image.
     paths-ignore:
       - "docs/**"
       - "**/*.md"
@@ -59,43 +59,61 @@ jobs:
           image=false
           deploy=false
 
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+          select_all() {
             server=true
             e2e=true
             agent=true
             image=true
             deploy=true
+          }
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            select_all
           else
             base="$BASE_SHA"
             if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
-              base="$(git rev-parse "$HEAD_SHA^")"
+              base="$(git rev-parse "$HEAD_SHA^" 2>/dev/null || true)"
             fi
 
-            while IFS= read -r -d '' file; do
-              case "$file" in
-                server/*)
-                  server=true
-                  e2e=true
-                  agent=true
-                  image=true
-                  deploy=true
-                  ;;
-                agent/*)
-                  agent=true
-                  ;;
-                docker-compose.yml)
-                  image=true
-                  deploy=true
-                  ;;
-                .nvmrc | .github/workflows/*)
-                  server=true
-                  e2e=true
-                  agent=true
-                  image=true
-                  deploy=true
-                  ;;
-              esac
-            done < <(git diff --name-only -z "$base" "$HEAD_SHA")
+            if [[ -z "$base" ]] ||
+              ! git cat-file -e "$base^{commit}" 2>/dev/null ||
+              ! git cat-file -e "$HEAD_SHA^{commit}" 2>/dev/null; then
+              echo "Unable to resolve diff range; selecting all work." >&2
+              select_all
+            else
+              changed_files="$(mktemp)"
+              if git diff --no-renames --name-only -z "$base" "$HEAD_SHA" > "$changed_files"; then
+                while IFS= read -r -d '' file; do
+                  case "$file" in
+                    server/*)
+                      select_all
+                      ;;
+                    agent/*)
+                      agent=true
+                      ;;
+                    docker-compose.yml)
+                      image=true
+                      deploy=true
+                      ;;
+                    .nvmrc | .github/workflows/*)
+                      select_all
+                      ;;
+                    docs/* | *.md)
+                      # Known documentation-only paths need no runtime checks.
+                      ;;
+                    *)
+                      # New root or infrastructure paths are safety-sensitive
+                      # until they are explicitly classified above.
+                      select_all
+                      ;;
+                  esac
+                done < "$changed_files"
+              else
+                echo "Unable to calculate changed paths; selecting all work." >&2
+                select_all
+              fi
+              rm -f "$changed_files"
+            fi
           fi
 
           echo "server=$server" >> "$GITHUB_OUTPUT"
