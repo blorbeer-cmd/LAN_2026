@@ -271,6 +271,92 @@ test('admin creates, displays and revokes a registration link in the UI', async 
   }
 });
 
+test('admin mints a test-session link; a second browser opens it as the seeded test player and sees its test peer', async () => {
+  // Required mode retires POST /api/admin/test-users (see admin.ts) in favor
+  // of the group-scoped endpoint; seed two so the redeemed identity's
+  // visibility of its *peer* (not just itself) can be checked.
+  const groupsRes = await fetch(`${BASE_URL}/api/groups`, { headers: { Cookie: adminCookie } });
+  const groupList = (await groupsRes.json()) as Array<{ id: string }>;
+  const groupId = groupList[0].id;
+  const seeded = await fetch(`${BASE_URL}/api/groups/${groupId}/test-users`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    body: JSON.stringify({ count: 2 }),
+  });
+  assert.equal(seeded.status, 201, JSON.stringify(await seeded.clone().json()));
+  const seededBody = (await seeded.json()) as { created: Array<{ id: string; name: string }> };
+  const [testPlayer, peerTestPlayer] = seededBody.created;
+
+  const adminPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  let testSessionLink = '';
+  try {
+    await adminPage.goto(BASE_URL);
+    await adminPage.waitForSelector('#auth-screen:not([hidden])');
+    await adminPage.fill('#auth-name', 'E2E Bootstrap Admin');
+    await adminPage.fill('#auth-password', 'e2e bootstrap password');
+    await adminPage.click('#auth-form button[type="submit"]');
+    await adminPage.waitForSelector('#app:not([hidden])');
+    await adminPage.waitForTimeout(500);
+
+    await adminPage.click('.nav-btn[data-view="more"]');
+    await adminPage.click('[data-navigate="admin"]');
+    const testSessionButton = adminPage.locator(`[data-test-session="${testPlayer.id}"]`);
+    await testSessionButton.waitFor();
+    await testSessionButton.click();
+
+    await adminPage.waitForSelector('#reauth-form');
+    await adminPage.fill('#reauth-password', 'e2e bootstrap password');
+    await adminPage.click('#reauth-form button[type="submit"]');
+    await adminPage.waitForSelector('#admin-invite-link');
+    testSessionLink = await adminPage.inputValue('#admin-invite-link');
+    assert.equal(new URL(testSessionLink).searchParams.has('testSession'), true);
+  } finally {
+    await adminPage.close();
+  }
+
+  const testPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  try {
+    await testPage.goto(testSessionLink);
+    await testPage.waitForSelector('#auth-screen:not([hidden])');
+    await testPage.click('#auth-form button[type="submit"]');
+    await testPage.waitForSelector('#app:not([hidden])');
+    assert.equal(new URL(testPage.url()).search, '', 'the consumed test-session code should be dropped from the URL');
+    await testPage.waitForTimeout(500);
+
+    // The session behind this browser is the redeemed test player itself.
+    const me = await (await testPage.request.get(`${BASE_URL}/api/me`)).json();
+    assert.equal(me.id, testPlayer.id);
+    assert.equal(me.isTest, true);
+    assert.equal(me.isAdmin, false);
+
+    await testPage.click('#profile-btn');
+    await testPage.waitForSelector('#profile-logout');
+    await testPage.keyboard.press('Escape');
+
+    // Despite having no real admin role, it must see its seeded peer (not
+    // just itself) - otherwise it could never join a carpool/vote/arcade
+    // lobby created by another test player (see testFilter.js isTestIdentity()).
+    await testPage.click('.nav-btn[data-view="more"]');
+    await testPage.click('[data-navigate="players"]');
+    await testPage.waitForSelector(`text=${peerTestPlayer.name}`);
+
+    // But it does not gain real admin rights.
+    await testPage.click('.nav-btn[data-view="more"]');
+    await testPage.click('[data-navigate="admin"]');
+    await testPage.waitForSelector('text=Dieses Konto hat keine Admin-Rechte.');
+  } finally {
+    await testPage.close();
+  }
+
+  // The single-use link is now dead for anyone else who might have it.
+  const reused = await fetch(`${BASE_URL}/api/auth/test-session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: new URL(testSessionLink).searchParams.get('testSession') }),
+  });
+  assert.equal(reused.status, 400);
+});
+
 test('group context button opens read-only group details for the one real group', async () => {
   // `page` is logged in as a plain member (E2E New Person), not the owner -
   // it sees the group's name/member list but neither the edit form nor the

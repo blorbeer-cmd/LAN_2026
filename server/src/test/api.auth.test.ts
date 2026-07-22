@@ -300,6 +300,62 @@ test('revoking a nonexistent invite code 404s', async () => {
   assert.equal(res.status, 404);
 });
 
+// --- test-player sessions ("Testsitzung öffnen") ---
+
+test('POST /api/auth/invites rejects purpose "test_login" for a real (non-test) player', async () => {
+  const real = await request(app).post('/api/players').send({ name: 'Real Not Test Player' });
+  const res = await request(app)
+    .post('/api/auth/invites')
+    .set('Cookie', adminCookie)
+    .send({ purpose: 'test_login', playerId: real.body.id });
+  assert.equal(res.status, 409);
+});
+
+test('a full test-session round trip: mint as admin, redeem once, then the code is dead', async () => {
+  const testPlayer = await request(app).post('/api/players').send({ name: 'Seeded Test Player' });
+  db.prepare('UPDATE players SET is_test = 1 WHERE id = ?').run(testPlayer.body.id);
+
+  const minted = await request(app)
+    .post('/api/auth/invites')
+    .set('Cookie', adminCookie)
+    .send({ purpose: 'test_login', playerId: testPlayer.body.id });
+  assert.equal(minted.status, 201, JSON.stringify(minted.body));
+  assert.equal(minted.body.purpose, 'test_login');
+  assert.ok(minted.body.expiresAt < Date.now() + 20 * 60 * 1000, 'test-session codes should be short-lived');
+
+  const badCode = await request(app).post('/api/auth/test-session').send({ code: 'not-a-real-code' });
+  assert.equal(badCode.status, 400);
+
+  const redeemed = await request(app).post('/api/auth/test-session').send({ code: minted.body.code });
+  assert.equal(redeemed.status, 200, JSON.stringify(redeemed.body));
+  assert.equal(redeemed.body.id, testPlayer.body.id);
+  assert.equal(redeemed.body.isTest, true);
+  const testPlayerCookie = sessionCookie(redeemed);
+
+  const me = await request(app).get('/api/me').set('Cookie', testPlayerCookie);
+  assert.equal(me.status, 200);
+  assert.equal(me.body.id, testPlayer.body.id);
+
+  const reused = await request(app).post('/api/auth/test-session').send({ code: minted.body.code });
+  assert.equal(reused.status, 400);
+});
+
+test('a test-session code stops working if the player loses its is_test marking before redemption', async () => {
+  const testPlayer = await request(app).post('/api/players').send({ name: 'Unmarked Before Redeem' });
+  db.prepare('UPDATE players SET is_test = 1 WHERE id = ?').run(testPlayer.body.id);
+
+  const minted = await request(app)
+    .post('/api/auth/invites')
+    .set('Cookie', adminCookie)
+    .send({ purpose: 'test_login', playerId: testPlayer.body.id });
+  assert.equal(minted.status, 201);
+
+  db.prepare('UPDATE players SET is_test = 0 WHERE id = ?').run(testPlayer.body.id);
+
+  const redeemed = await request(app).post('/api/auth/test-session').send({ code: minted.body.code });
+  assert.equal(redeemed.status, 409);
+});
+
 test('registered players and invite creators remain deletable', async () => {
   const creator = await request(app).post('/api/players').send({ name: 'Disposable Invite Creator' });
   const invite = createInvite({ purpose: 'register', createdBy: creator.body.id });

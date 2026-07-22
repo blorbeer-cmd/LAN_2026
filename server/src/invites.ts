@@ -9,10 +9,15 @@
 import { nanoid } from 'nanoid';
 import { db } from './db';
 
-export type InvitePurpose = 'register' | 'claim' | 'reset';
+// 'test_login' mints a one-time link that logs the browser in directly as an
+// admin-seeded is_test player (no password) — see docs/KONZEPT-TEST-USER.md
+// "Als Testspieler anmelden". Kept short-lived since, unlike claim/reset, it
+// grants a session on redemption without any further credential check.
+export type InvitePurpose = 'register' | 'claim' | 'reset' | 'test_login';
 
 export const DEFAULT_INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 export const DEFAULT_RESET_TTL_MS = 24 * 60 * 60 * 1000;
+export const DEFAULT_TEST_LOGIN_TTL_MS = 15 * 60 * 1000;
 export const MAX_INVITE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
 export interface InviteRow {
@@ -37,7 +42,12 @@ export interface CreateInviteOptions {
 export function createInvite(options: CreateInviteOptions): InviteRow {
   const code = nanoid(24);
   const now = Date.now();
-  const defaultTtl = options.purpose === 'reset' ? DEFAULT_RESET_TTL_MS : DEFAULT_INVITE_TTL_MS;
+  const defaultTtl =
+    options.purpose === 'reset'
+      ? DEFAULT_RESET_TTL_MS
+      : options.purpose === 'test_login'
+        ? DEFAULT_TEST_LOGIN_TTL_MS
+        : DEFAULT_INVITE_TTL_MS;
   const requestedTtl = options.expiresInMs ?? defaultTtl;
   if (!Number.isFinite(requestedTtl) || requestedTtl <= 0) {
     throw new RangeError('Invite expiry must be a positive, finite duration.');
