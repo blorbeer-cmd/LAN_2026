@@ -204,25 +204,21 @@ playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   if (isAdmin !== undefined && typeof isAdmin !== 'boolean') {
     return res.status(400).json({ error: 'isAdmin muss ein Boolean sein.' });
   }
-  if (req.player && isAdmin !== undefined && !req.player.is_admin) {
-    return res.status(403).json({ error: 'Nur Admins können Rollen ändern.' });
+  // Required mode freezes the group role (owner/admin/member) as the
+  // instance rights model (docs/plans/reset-single-group.md §9.1): is_admin
+  // is derived from it (see groups.ts, changeGroupMemberRole) instead of
+  // being settable here, so the two flags can no longer silently diverge.
+  // Legacy mode keeps this toggle exactly as before.
+  if (isAdmin !== undefined && config.authMode === 'required') {
+    return res.status(400).json({
+      error: 'Admin-Rechte werden im required-Modus über die Gruppenrolle vergeben (Gruppe → Mitglieder).',
+    });
   }
   if (isAdmin === true && existing.is_test) {
     return res.status(409).json({ error: 'Test-Spieler können keine Admin-Rechte erhalten.' });
   }
-  if (
-    req.player &&
-    isAdmin !== undefined &&
-    Number(isAdmin) !== existing.is_admin &&
-    !hasRecentReauthentication(req.sessionId)
-  ) {
-    return res.status(403).json({
-      error: 'Bitte bestätige dein Passwort, bevor du Rollen änderst.',
-      code: 'reauth_required',
-    });
-  }
-  // Granting/revoking admin remains an admin-panel action in the UI; the
-  // endpoint keeps the existing trusted-friend-group API shape.
+  // Granting/revoking admin remains a legacy-mode admin-panel action; in
+  // required mode it happens exclusively via the group role.
 
   const nextName = name !== undefined ? name.trim() : existing.name;
   if (name !== undefined && nameTaken(nextName, existing.id)) {

@@ -90,6 +90,10 @@ test('group roles, event resources and audit stay isolated inside the one real g
         .set('Cookie', alice.cookie)
         .send({ role: 'admin' });
       assert.equal(promoteBob.status, 200, JSON.stringify(promoteBob.body));
+      // Required mode derives the instance-wide is_admin flag from the group
+      // role (groups.ts, changeGroupMemberRole) so the two flags can no
+      // longer silently diverge (docs/plans/reset-single-group.md §9.1).
+      assert.equal(db.prepare('SELECT is_admin FROM players WHERE id = ?').get(bob.account.id).is_admin, 1);
       const testUsers = await request(app)
         .post('/api/groups/' + DEFAULT_GROUP_ID + '/test-users')
         .set('Cookie', bob.cookie)
@@ -136,6 +140,12 @@ test('group roles, event resources and audit stay isolated inside the one real g
         "SELECT player_id FROM group_memberships WHERE group_id = ? AND status = 'active' AND role = 'owner'"
       ).all(DEFAULT_GROUP_ID);
       assert.equal(owners.length, 1);
+      // The demoted co-owner also loses the instance-wide is_admin flag; the
+      // remaining owner keeps it. Confirms the sync stays correct even under
+      // the concurrent role-change race above, not just for a solo change.
+      const demotedOwnerId = owners[0].player_id === alice.account.id ? bob.account.id : alice.account.id;
+      assert.equal(db.prepare('SELECT is_admin FROM players WHERE id = ?').get(demotedOwnerId).is_admin, 0);
+      assert.equal(db.prepare('SELECT is_admin FROM players WHERE id = ?').get(owners[0].player_id).is_admin, 1);
 
       // The start group can never lose a member through the removal endpoint
       // (see routes/groups.ts) - deactivating the account is the sanctioned,
