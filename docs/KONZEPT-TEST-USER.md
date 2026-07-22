@@ -118,6 +118,39 @@ Solange der Admin-Modus aktiv ist:
   `x-admin-pin` sowie `GET /api/admin/status` und `POST /api/admin/unlock` sind entfernt.
   Der Legacy-Modus behält bis zum Cutover bewusst seinen lokalen Ein-Klick-Vertrauensmodus.
 
+### 6. Als Testspieler anmelden (Testsitzung)
+
+Unter `AUTH_MODE=required` bindet jede Anfrage an genau eine Session — ein Admin kann sich
+also nicht einfach clientseitig als Test-Spieler ausgeben, um Multi-User-Features (Vote,
+Mitfahrgelegenheiten, Arcade-Lobbys, Push-Zustellung) allein zu testen. Statt die
+Session-Bindung aufzuweichen, bekommt ein zweites Gerät/Browserfenster eine **echte, zweite
+Session**:
+
+- Neue Invite-`purpose: 'test_login'` (`invites.ts`) mit eigener, kurzer Default-TTL
+  (15 Minuten – deutlich kürzer als `register`/`reset`, weil das Einlösen sofort eine
+  Session ohne Passwortabfrage erzeugt).
+- **Mint:** `POST /api/auth/invites` mit `purpose: 'test_login'`, weiterhin
+  `requireSessionAdmin` + `requireRecentReauthentication`. Die Zielprüfung ist gegenüber
+  `register`/`claim`/`reset` umgekehrt: nur ein `is_test`-Spieler ist ein gültiges Ziel.
+  Im Admin-Panel löst der Button „Testsitzung öffnen" neben jedem Test-Spieler das bestehende
+  Invite-Link/QR-Modal aus (`views/admin.js`) — keine neue UI-Komponente.
+- **Redeem:** neuer Endpoint `POST /api/auth/test-session` (`routes/auth.ts`). Prüft
+  `is_test` und `deactivated_at` erneut zum Einlöse-Zeitpunkt (nicht nur beim Minten),
+  konsumiert den Code atomar über `markInviteUsed` und erzeugt eine normale Session für den
+  Test-Spieler. `authGate.js` bekommt dafür einen eigenen Login-Modus `testSession`
+  (`?testSession=CODE`), der ohne Formular direkt auf „Anmelden" wartet.
+- **Sichtbarkeit der Test-Peers:** Eine eingeloggte Testsitzung hat serverseitig kein
+  Admin-Recht (`is_admin` bleibt `0`), muss aber ihre Test-Spieler-Peers sehen, um z. B.
+  einer von einem anderen Test-Spieler angelegten Mitfahrgelegenheit beitreten zu können.
+  Dafür bekommt `testFilter.js` ein eigenes, rein clientseitiges Flag
+  (`respawn_test_identity`, gesetzt/gelöscht über `setTestIdentity()`), das wie das
+  bestehende `isAdmin()`-Flag **keine Sicherheitsgrenze** ist — es steuert nur, ob Test-Spieler
+  im UI dieses Geräts sichtbar bleiben.
+
+Bewusst **nicht** im Scope: ein serverseitiges „Act as" auf der Session des Admins selbst
+(einzige Identität pro Browser-Kontext bliebe bestehen, echtes Push und paralleles Arcade-
+Testen wären damit nicht abbildbar).
+
 ## Sinnvolle Ergänzungen (im Scope)
 
 - **„Test-Daten aufräumen"**-Button (siehe oben) – ohne ihn müllt jeder Testlauf die DB zu.

@@ -28,6 +28,10 @@ const TEST_IDENTITY_KEY = 'respawn_test_identity';
 export function setTestIdentity(isTest) {
   if (isTest) localStorage.setItem(TEST_IDENTITY_KEY, '1');
   else localStorage.removeItem(TEST_IDENTITY_KEY);
+  // Mirrors admin.js's setAdmin(), which fires 'respawn:admin-changed' for the
+  // same reason: any module reacting to "who can see test players" should be
+  // able to listen for this instead of polling isAdmin()/isTestIdentity().
+  window.dispatchEvent(new CustomEvent('respawn:test-identity-changed'));
 }
 
 function isTestIdentity() {

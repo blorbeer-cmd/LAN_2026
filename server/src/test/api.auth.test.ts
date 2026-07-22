@@ -356,6 +356,22 @@ test('a test-session code stops working if the player loses its is_test marking 
   assert.equal(redeemed.status, 409);
 });
 
+test('a test-session code stops working if the player is deactivated before redemption', async () => {
+  const testPlayer = await request(app).post('/api/players').send({ name: 'Deactivated Before Redeem' });
+  db.prepare('UPDATE players SET is_test = 1 WHERE id = ?').run(testPlayer.body.id);
+
+  const minted = await request(app)
+    .post('/api/auth/invites')
+    .set('Cookie', adminCookie)
+    .send({ purpose: 'test_login', playerId: testPlayer.body.id });
+  assert.equal(minted.status, 201);
+
+  db.prepare('UPDATE players SET deactivated_at = ? WHERE id = ?').run(Date.now(), testPlayer.body.id);
+
+  const redeemed = await request(app).post('/api/auth/test-session').send({ code: minted.body.code });
+  assert.equal(redeemed.status, 409);
+});
+
 test('registered players and invite creators remain deletable', async () => {
   const creator = await request(app).post('/api/players').send({ name: 'Disposable Invite Creator' });
   const invite = createInvite({ purpose: 'register', createdBy: creator.body.id });
