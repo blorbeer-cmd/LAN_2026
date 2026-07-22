@@ -1,10 +1,11 @@
 // Invite codes: the only way into the app for real per-user login (see
 // docs/KONZEPT-USER-MANAGEMENT.md). purpose keeps 'register' (brand-new
-// player), 'claim' (an existing, not-yet-claimed player) and 'reset'
-// (forgotten password) as separate code families — a stale claim link must
-// never double as a password-reset master key once the account is claimed,
-// so claiming voids the other outstanding claim codes for that player, and
-// changing a password voids outstanding reset codes the same way.
+// player), 'claim' (an existing, not-yet-claimed player), 'reset' (forgotten
+// password) and 'test_login' (admin-minted test-player session, see
+// docs/KONZEPT-TEST-USER.md) as separate code families — a stale claim link
+// must never double as a password-reset master key once the account is
+// claimed, so claiming voids the other outstanding claim codes for that
+// player, and changing a password voids outstanding reset codes the same way.
 
 import { nanoid } from 'nanoid';
 import { db } from './db';
