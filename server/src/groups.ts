@@ -76,7 +76,7 @@ export function listGroupsForPlayer(
 export function ensureDefaultGroupMembership(playerId: string): GroupMembershipRow {
   return db.transaction(() => {
     const player = db
-      .prepare('SELECT id, is_test, deactivated_at, tracking_paused, password_hash FROM players WHERE id = ?')
+      .prepare('SELECT id, is_test, deactivated_at, tracking_paused, password_hash, is_admin FROM players WHERE id = ?')
       .get(playerId) as
       | {
           id: string;
@@ -84,6 +84,7 @@ export function ensureDefaultGroupMembership(playerId: string): GroupMembershipR
           deactivated_at: number | null;
           tracking_paused: number;
           password_hash: string | null;
+          is_admin: number;
         }
       | undefined;
     if (!player || player.deactivated_at !== null)
@@ -94,12 +95,22 @@ export function ensureDefaultGroupMembership(playerId: string): GroupMembershipR
         .prepare("SELECT 1 FROM group_memberships WHERE group_id = ? AND status = 'active' AND role = 'owner'")
         .get(DEFAULT_GROUP_ID),
     );
+    // The recovery-code bootstrap (routes/auth.ts) sets players.is_admin
+    // before calling this function, based on its own hasClaimedAdmin() check
+    // - a check independent of hasOwner above. A fresh is_admin=1 grant must
+    // win here regardless of what hasOwner reads (e.g. a stale/hand-repaired
+    // group_memberships row from an unclaimed legacy owner): otherwise this
+    // function's own is_admin<->role sync would immediately revert the grant
+    // the recovery code exists to make, and the caller would report success
+    // while leaving the instance with zero admins.
+    const grantsOwner = Boolean(player.is_admin) || !hasOwner;
     const existing = getGroupMembership(DEFAULT_GROUP_ID, playerId);
     // Legacy players are backfilled before they claim their personal account.
     // The first successful real claim therefore already has a membership but
-    // must still become owner when the migrated group has none.
+    // must still become owner when the migrated group has none (or when this
+    // specific claim just carried a fresh is_admin grant, see above).
     if (existing) {
-      if (!hasOwner && !player.is_test && player.password_hash) {
+      if (grantsOwner && !player.is_test && player.password_hash) {
         db.prepare(
           `UPDATE group_memberships
            SET role = 'owner', status = 'active', ended_at = NULL, joined_at = COALESCE(joined_at, ?)
@@ -111,7 +122,7 @@ export function ensureDefaultGroupMembership(playerId: string): GroupMembershipR
       return existing;
     }
 
-    const role: GroupRole = !hasOwner && !player.is_test ? 'owner' : 'member';
+    const role: GroupRole = grantsOwner && !player.is_test ? 'owner' : 'member';
     const now = Date.now();
     db.prepare(
       `INSERT INTO group_memberships
@@ -239,6 +250,11 @@ export function removeGroupMember(
        SET status = 'removed', ended_at = ?, outside_tracking_enabled = 0
        WHERE group_id = ? AND player_id = ? AND status = 'active'`,
     ).run(Date.now(), groupId, targetPlayerId);
+    // Currently unreachable for the one real group (routes/groups.ts blocks
+    // removal from DEFAULT_GROUP_ID with 409), but kept in sync for defense
+    // in depth: a removed member has no membership row left to ever trigger
+    // reconciliation later, so is_admin must be dropped here too.
+    syncInstanceAdminForRole(groupId, targetPlayerId, 'member', actorPlayerId);
     return { ok: true, membership: getGroupMembership(groupId, targetPlayerId)! } as const;
   })();
 }
