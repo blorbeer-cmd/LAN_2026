@@ -7,6 +7,28 @@ Umgebungsvariablen (der Server-`.env`) – **niemals aus dem Code oder dem Repos
 Das ist v. a. für `AUTH_MODE=required` gedacht (persönliche Logins). Ohne gesetzte Variablen passiert
 nichts – die Funktion ist dann ein reiner No-Op.
 
+## Voraussetzung: persönliche Logins müssen erst aktiv sein
+
+> **Wichtig:** Auf diesem Server sind `AUTH_MODE` und `ADMIN_RECOVERY_CODE` **noch nicht** gesetzt.
+> Solange der Server im Standard `AUTH_MODE=legacy` läuft, sind die Bootstrap-Admins wirkungslos
+> (kein persönlicher Login). Setze deshalb im selben `.env`-Schritt zuerst:
+
+```
+AUTH_MODE=required
+ADMIN_RECOVERY_CODE=<starkes Secret, z. B. `openssl rand -hex 32`>
+KIOSK_TOKEN=<eigenes Secret; ohne diesen bleibt der TV-/Kiosk-Zugang im Required-Modus gesperrt>
+```
+
+- `AUTH_MODE=required` schaltet persönliche Logins scharf und ersetzt den geteilten Web-Zugang.
+- `ADMIN_RECOVERY_CODE` ist in Produktion mit `AUTH_MODE=required` **Pflicht**: Ohne ihn verweigert
+  der Server bewusst den Start (Break-Glass für den ersten/letzten Admin). Geheim halten, nicht an
+  Teilnehmende verteilen.
+- Ein bestehendes `ACCESS_TOKEN` kann für Rollbacks auf alte Images in der `.env` bleiben; im
+  Required-Modus wird es ignoriert.
+
+Diese drei Zeilen und die `BOOTSTRAP_ADMIN_*`-Zeilen unten trägst du **gemeinsam in einem Rutsch**
+ein und startest danach einmal neu (siehe „Wo eintragen").
+
 ## Was eintragen
 
 Pro Admin ein nummerierter Block (Slot `1`, `2`, …, bis maximal `20`):
@@ -35,13 +57,16 @@ Bootstrap läuft einmal beim Hochfahren.
 ### A) Docker auf dem Hetzner-Server
 
 1. `ssh deploy@<HETZNER_HOST>`
-2. `sudo nano /opt/respawn/.env` – die Zeilen ans Ende hängen (dort stehen schon `AUTH_MODE`,
-   `ADMIN_RECOVERY_CODE`, `KIOSK_TOKEN` …).
+2. `sudo nano /opt/respawn/.env` – falls `AUTH_MODE`, `ADMIN_RECOVERY_CODE` und `KIOSK_TOKEN` dort
+   noch **nicht** stehen (aktuell der Fall), zuerst die drei Zeilen aus „Voraussetzung" oben ergänzen
+   und danach die `BOOTSTRAP_ADMIN_*`-Zeilen ans Ende hängen.
 3. Neu starten, damit die Variablen greifen:
    ```bash
    cd /opt/respawn && docker compose up -d --wait app
    ```
-4. Danach kannst du dich direkt mit Name + Startpasswort anmelden.
+4. Danach kannst du dich direkt mit Name + Startpasswort anmelden. Startet der Container **nicht**
+   (Healthcheck rot, automatischer Rollback), fehlt fast sicher der `ADMIN_RECOVERY_CODE` – dann
+   Schritt 2 nachholen.
 
 ### B) Lokal / manuell (Node ohne Docker)
 
