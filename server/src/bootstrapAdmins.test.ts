@@ -28,6 +28,13 @@ function hasActiveDefaultMembership(playerId: string): boolean {
   return Boolean(row);
 }
 
+function membershipRole(playerId: string): string | undefined {
+  const row = db
+    .prepare("SELECT role FROM group_memberships WHERE player_id = ? AND status = 'active'")
+    .get(playerId) as { role: string } | undefined;
+  return row?.role;
+}
+
 test('parseBootstrapAdmins reads configured slots and ignores empty ones', () => {
   const entries = parseBootstrapAdmins(
     env({
@@ -46,6 +53,9 @@ test('parseBootstrapAdmins reads configured slots and ignores empty ones', () =>
 });
 
 test('runBootstrapAdmins creates a ready-to-use admin with password and membership', () => {
+  // This is the first account to claim the default group in this file, so it
+  // must also become its owner (ensureDefaultGroupMembership: first claimed
+  // non-test account with a password owns the ownerless startup group).
   const name = `Boot Create ${nanoid(6)}`;
   const results = runBootstrapAdmins(
     env({ BOOTSTRAP_ADMIN_1_NAME: name, BOOTSTRAP_ADMIN_1_PASSWORD: 'a-fresh-password' }),
@@ -61,6 +71,21 @@ test('runBootstrapAdmins creates a ready-to-use admin with password and membersh
   assert.ok(player!.password_hash);
   assert.equal(verifyPassword('a-fresh-password', player!.password_hash!), true);
   assert.equal(hasActiveDefaultMembership(player!.id), true);
+  assert.equal(membershipRole(player!.id), 'owner');
+});
+
+test('a second bootstrap admin becomes a plain admin, not a second owner', () => {
+  // An owner already exists (created by the test above), so the next seeded
+  // account keeps is_admin but joins as a member rather than a second owner.
+  const name = `Boot Second ${nanoid(6)}`;
+  const results = runBootstrapAdmins(env({ BOOTSTRAP_ADMIN_1_NAME: name, BOOTSTRAP_ADMIN_1_PASSWORD: 'second-admin-password' }));
+  assert.deepEqual(
+    results.map((r) => r.action),
+    ['created'],
+  );
+  const player = playerByName(name)!;
+  assert.equal(player.is_admin, 1);
+  assert.equal(membershipRole(player.id), 'member');
 });
 
 test('runBootstrapAdmins is idempotent and never overwrites an existing password', () => {
@@ -126,4 +151,31 @@ test('runBootstrapAdmins refuses to turn a test player into an admin', () => {
   const player = playerByName(name)!;
   assert.equal(player.is_admin, 0);
   assert.equal(player.password_hash, null);
+});
+
+test('runBootstrapAdmins refuses to claim or promote a deactivated profile', () => {
+  const name = `Boot Deactivated ${nanoid(6)}`;
+  const id = nanoid();
+  db.prepare(
+    'INSERT INTO players (id, name, api_key, is_admin, is_test, deactivated_at, created_at) VALUES (?, ?, ?, 0, 0, ?, ?)',
+  ).run(id, name, nanoid(24), Date.now(), Date.now());
+
+  const results = runBootstrapAdmins(env({ BOOTSTRAP_ADMIN_1_NAME: name, BOOTSTRAP_ADMIN_1_PASSWORD: 'a-valid-password' }));
+  assert.deepEqual(
+    results.map((r) => r.action),
+    ['skipped-deactivated'],
+  );
+  const player = playerByName(name)!;
+  assert.equal(player.is_admin, 0);
+  assert.equal(player.password_hash, null);
+});
+
+test('runBootstrapAdmins skips a slot without a usable name', () => {
+  // A password is set but the name is missing/blank — surfaced as a skip
+  // rather than silently ignored, and nothing is created.
+  const results = runBootstrapAdmins(env({ BOOTSTRAP_ADMIN_1_NAME: '   ', BOOTSTRAP_ADMIN_1_PASSWORD: 'a-valid-password' }));
+  assert.deepEqual(
+    results.map((r) => r.action),
+    ['skipped-invalid-name'],
+  );
 });
