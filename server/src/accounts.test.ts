@@ -29,10 +29,10 @@ test('verifyPasswordConstantTime rejects when stored is null (unclaimed account)
   assert.equal(verifyPasswordConstantTime('anything', null), false);
 });
 
-test('isValidPassword enforces the length bounds', () => {
-  assert.equal(isValidPassword('short'), false);
-  assert.equal(isValidPassword('a'.repeat(14)), false);
-  assert.equal(isValidPassword('a'.repeat(15)), true);
+test('isValidPassword only rejects empty and over-long input', () => {
+  assert.equal(isValidPassword(''), false);
+  assert.equal(isValidPassword('a'), true);
+  assert.equal(isValidPassword('short'), true);
   assert.equal(isValidPassword('a'.repeat(200)), true);
   assert.equal(isValidPassword('a'.repeat(201)), false);
   assert.equal(isValidPassword(12345678), false);

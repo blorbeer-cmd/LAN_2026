@@ -125,10 +125,10 @@ test('POST /api/auth/invites rejects a non-expiring code', async () => {
 
 // --- register ---
 
-test('POST /api/auth/register rejects a short password', async () => {
+test('POST /api/auth/register rejects an empty password', async () => {
   const res = await request(app)
     .post('/api/auth/register')
-    .send({ code: registerCode, name: 'New Person', password: 'short' });
+    .send({ code: registerCode, name: 'New Person', password: '' });
   assert.equal(res.status, 400);
 });
 

@@ -6,6 +6,7 @@ import { Server } from 'socket.io';
 
 import { config, productionConfigError } from './config';
 import './db'; // side-effect: open DB, create schema, seed defaults
+import { runBootstrapAdmins } from './bootstrapAdmins';
 import { createApp } from './app';
 import { setIo, createSocketAuthGuard, registerArcadeKioskSockets } from './realtime';
 import { accessProtectionEnabled } from './auth';
@@ -32,6 +33,10 @@ function start(): void {
       process.exit(1);
     }
   }
+
+  // Seed any configured ready-to-use admin accounts (BOOTSTRAP_ADMIN_<n>_*)
+  // before the first request can arrive. Idempotent and a no-op when unset.
+  runBootstrapAdmins();
 
   const app = createApp();
   const server = http.createServer(app);

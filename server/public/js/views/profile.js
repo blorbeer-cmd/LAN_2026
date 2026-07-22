@@ -372,10 +372,10 @@ export function renderProfile(container, ctx) {
                    <button type="button" class="icon-btn" data-password-toggle="profile-current-password" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
                  </div>
                  <div class="row">
-                   <input type="password" id="profile-new-password" autocomplete="new-password" minlength="15" maxlength="1024" required style="flex:1;" placeholder="Neues Passwort" />
+                   <input type="password" id="profile-new-password" autocomplete="new-password" minlength="1" maxlength="1024" required style="flex:1;" placeholder="Neues Passwort" />
                    <button type="button" class="icon-btn" data-password-toggle="profile-new-password" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
                  </div>
-                 <p class="muted" style="font-size:var(--font-size-xs);margin:0;">Mindestens 15 Zeichen. Drei Wörter reichen, eine lange Passphrase ist besser als Zeichensalat.</p>
+                 <p class="muted" style="font-size:var(--font-size-xs);margin:0;">Wähl ein Passwort, das du dir gut merken kannst.</p>
                  <button type="submit" class="btn btn-primary btn-sm">Passwort speichern</button>
                </form>
              </section>`
