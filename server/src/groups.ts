@@ -73,10 +73,13 @@ export function listGroupsForPlayer(
 // Every account in the compatibility period belongs to the migrated default
 // group. A fresh database has no owner until its first real account is
 // bootstrapped; that account becomes owner atomically here.
-export function ensureDefaultGroupMembership(playerId: string): GroupMembershipRow {
+export function ensureDefaultGroupMembership(
+  playerId: string,
+  options: { bootstrapAdmin?: boolean } = {},
+): GroupMembershipRow {
   return db.transaction(() => {
     const player = db
-      .prepare('SELECT id, is_test, deactivated_at, tracking_paused, password_hash, is_admin FROM players WHERE id = ?')
+      .prepare('SELECT id, is_test, deactivated_at, tracking_paused, password_hash FROM players WHERE id = ?')
       .get(playerId) as
       | {
           id: string;
@@ -84,7 +87,6 @@ export function ensureDefaultGroupMembership(playerId: string): GroupMembershipR
           deactivated_at: number | null;
           tracking_paused: number;
           password_hash: string | null;
-          is_admin: number;
         }
       | undefined;
     if (!player || player.deactivated_at !== null)
@@ -95,15 +97,24 @@ export function ensureDefaultGroupMembership(playerId: string): GroupMembershipR
         .prepare("SELECT 1 FROM group_memberships WHERE group_id = ? AND status = 'active' AND role = 'owner'")
         .get(DEFAULT_GROUP_ID),
     );
-    // The recovery-code bootstrap (routes/auth.ts) sets players.is_admin
-    // before calling this function, based on its own hasClaimedAdmin() check
-    // - a check independent of hasOwner above. A fresh is_admin=1 grant must
-    // win here regardless of what hasOwner reads (e.g. a stale/hand-repaired
+    // options.bootstrapAdmin is an explicit signal from the recovery-code
+    // paths in routes/auth.ts (register/claim), which gate on their own
+    // hasClaimedAdmin() check - independent of hasOwner above. It must win
+    // here regardless of what hasOwner reads (e.g. a stale/hand-repaired
     // group_memberships row from an unclaimed legacy owner): otherwise this
     // function's own is_admin<->role sync would immediately revert the grant
     // the recovery code exists to make, and the caller would report success
     // while leaving the instance with zero admins.
-    const grantsOwner = Boolean(player.is_admin) || !hasOwner;
+    //
+    // Deliberately NOT inferred from the player's ambient is_admin value:
+    // an owner/admin can promote an invited-but-unclaimed member to 'admin'
+    // via changeGroupMemberRole (which has no password_hash gate on the
+    // target) before that member ever claims their account. Treating any
+    // pre-existing is_admin=1 as "this claim should become owner" would
+    // silently escalate that deliberate admin grant to owner the moment the
+    // member sets a password - bypassing the "only an owner may grant
+    // owner" rule enforced in changeGroupMemberRole.
+    const grantsOwner = Boolean(options.bootstrapAdmin) || !hasOwner;
     const existing = getGroupMembership(DEFAULT_GROUP_ID, playerId);
     // Legacy players are backfilled before they claim their personal account.
     // The first successful real claim therefore already has a membership but
