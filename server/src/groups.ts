@@ -1,4 +1,6 @@
 import { db, DEFAULT_GROUP_ID } from './db';
+import { config } from './config';
+import { writeAdminAudit } from './adminAudit';
 
 export { DEFAULT_GROUP_ID };
 
@@ -103,6 +105,7 @@ export function ensureDefaultGroupMembership(playerId: string): GroupMembershipR
            SET role = 'owner', status = 'active', ended_at = NULL, joined_at = COALESCE(joined_at, ?)
            WHERE group_id = ? AND player_id = ?`,
         ).run(Date.now(), DEFAULT_GROUP_ID, playerId);
+        syncInstanceAdminForRole(DEFAULT_GROUP_ID, playerId, 'owner', playerId);
         return getGroupMembership(DEFAULT_GROUP_ID, playerId)!;
       }
       return existing;
@@ -115,6 +118,7 @@ export function ensureDefaultGroupMembership(playerId: string): GroupMembershipR
          (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
        VALUES (?, ?, ?, 'active', ?, NULL, ?, NULL)`,
     ).run(DEFAULT_GROUP_ID, playerId, role, now, player.tracking_paused ? 0 : 1);
+    syncInstanceAdminForRole(DEFAULT_GROUP_ID, playerId, role, playerId);
     if (player.is_test) {
       db.prepare('UPDATE players SET test_owner_group_id = ? WHERE id = ?').run(DEFAULT_GROUP_ID, playerId);
     }
@@ -157,6 +161,31 @@ function activeOwnerCount(groupId: string): number {
   ).count;
 }
 
+// Required mode freezes group role (owner/admin/member) as the instance
+// rights model (see docs/plans/reset-single-group.md §9.1). players.is_admin
+// — the separate flag still gating account-management routes (invites,
+// backup, (de)activation, see auth.ts/players.ts) — is derived from it here
+// instead of staying independently settable, so the two can no longer
+// silently diverge. Scoped to the one real group on purpose: a hypothetical
+// future secondary group must not be able to grant instance-wide rights.
+// Legacy mode keeps is_admin a directly togglable flag and is untouched.
+function syncInstanceAdminForRole(groupId: string, playerId: string, role: GroupRole, actorPlayerId?: string): void {
+  if (config.authMode !== 'required' || groupId !== DEFAULT_GROUP_ID) return;
+  const player = db.prepare('SELECT is_admin FROM players WHERE id = ?').get(playerId) as
+    { is_admin: number } | undefined;
+  if (!player) return;
+  const nextIsAdmin = role === 'member' ? 0 : 1;
+  if (nextIsAdmin === player.is_admin) return;
+  db.prepare('UPDATE players SET is_admin = ? WHERE id = ?').run(nextIsAdmin, playerId);
+  writeAdminAudit({
+    actorPlayerId,
+    action: nextIsAdmin ? 'admin_granted' : 'admin_revoked',
+    targetType: 'player',
+    targetId: playerId,
+    details: { via: 'group_role', role },
+  });
+}
+
 export function changeGroupMemberRole(
   groupId: string,
   actorPlayerId: string,
@@ -184,6 +213,7 @@ export function changeGroupMemberRole(
       targetPlayerId,
       'active',
     );
+    syncInstanceAdminForRole(groupId, targetPlayerId, nextRole, actorPlayerId);
     return { ok: true, membership: getGroupMembership(groupId, targetPlayerId)! } as const;
   })();
 }

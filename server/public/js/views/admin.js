@@ -19,6 +19,7 @@ import { getMyId } from '../whoami.js';
 const SEATING_HELP = 'Tisch, Plätze und Sitzordnung verwalten.';
 const BACKUP_HELP = 'Aktuellen Stand als SQLite-Datei sichern.';
 const TEST_DATA_HELP = 'Kommen fertig eingerichtet: Platz im Sitzplan samt sichtbarer Monitore, Skill- und Bock-Werte pro Spiel, Spielzeit fürs aktive Event – zwei davon spielen gerade. Nur im Admin-Modus sichtbar.';
+const ADMIN_ROLE_HELP = 'Wird über die Gruppen-Mitgliederverwaltung vergeben: Gruppenname oben antippen → Rolle in der Mitgliederliste ändern.';
 
 let agentDiagnostics = null;
 let diagnosticsLoading = false;
@@ -300,7 +301,11 @@ function renderPanel(container, ctx) {
         </span>
         <span class="row admin-player-actions" style="gap:var(--space-2);">
           ${authRequired && p.is_test && !p.deactivated_at ? `<button type="button" class="btn btn-sm" data-test-session="${p.id}">Testsitzung öffnen</button>` : ''}
-          ${p.deactivated_at ? `<button type="button" class="btn btn-sm" data-reactivate-player="${p.id}">Reaktivieren</button>` : `<button type="button" class="btn btn-sm" data-toggle-admin="${p.id}" ${p.is_test ? 'disabled' : ''}>${p.is_admin ? 'Admin entziehen' : 'Admin machen'}</button>`}
+          ${p.deactivated_at
+            ? `<button type="button" class="btn btn-sm" data-reactivate-player="${p.id}">Reaktivieren</button>`
+            : authRequired
+              ? ''
+              : `<button type="button" class="btn btn-sm" data-toggle-admin="${p.id}" ${p.is_test ? 'disabled' : ''}>${p.is_admin ? 'Admin entziehen' : 'Admin machen'}</button>`}
           ${p.deactivated_at ? '' : p.is_test ? `<button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">Löschen</button>` : `<button type="button" class="btn btn-sm btn-danger" data-deactivate-player="${p.id}">Deaktivieren</button>`}
         </span>
       </div>`
@@ -416,7 +421,12 @@ function renderPanel(container, ctx) {
         </div>
       </section>
       <section class="card stack grouped-page-section" aria-labelledby="admin-players-title">
-        <div class="grouped-page-section-title"><h2 id="admin-players-title">Spieler (${players.length})</h2></div>
+        <div class="grouped-page-section-title">
+          <span class="title-with-info">
+            <h2 id="admin-players-title">Spieler (${players.length})</h2>
+            ${authRequired ? infoTooltipHtml('admin-role-help', 'Admin-Rolle', ADMIN_ROLE_HELP) : ''}
+          </span>
+        </div>
         <div class="card">${rows || '<span class="muted">Noch keine Spieler.</span>'}</div>
       </section>
       <section class="card stack grouped-page-section" aria-labelledby="admin-agent-title">
