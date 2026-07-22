@@ -81,8 +81,10 @@ Das Auth-Fundament aus PR #197 (Phasen 1–4) ist von der Mehrgruppen-Frage unab
 Rev. 5 nicht neu bewertet:
 
 - Name + Passwort mit persönlichem, serverseitig gehashtem Session-Token im HTTP-only-Cookie.
-- Passwortlänge 15–200 Zeichen, keine Komplexitätsregeln, keine erzwungene Rotation; UI mit
-  Sichtbar-Toggle, Passphrase-Hinweis und Passwortmanager-kompatiblem `autocomplete`.
+- Passwortlänge 1–200 Zeichen (bewusste Lockerung für den privaten Freundeskreis: keine
+  Mindestlänge über „nicht leer" hinaus, keine Komplexitätsregeln, keine erzwungene Rotation); UI mit
+  Sichtbar-Toggle und Passwortmanager-kompatiblem `autocomplete`. Die Obergrenze bleibt, damit
+  scrypt-Hashing nicht zum DoS-Vektor wird.
 - scrypt-Hashing für Passwörter.
 - 90 Tage gleitende Session-Laufzeit, hart begrenzt auf 180 Tage.
 - Cookie `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, im HTTPS-Modus mit `__Host-`-Präfix;
@@ -367,7 +369,7 @@ Was das konkret bedeutet:
 
 | Bereich | Stand nach Rev. 5 |
 |---|---|
-| Passwortregeln, Session-Token, Cookie-Attribute, Logout, Rate-Limits | ✅ vollständig aus PR #197, unverändert |
+| Passwortregeln, Session-Token, Cookie-Attribute, Logout, Rate-Limits | ✅ aus PR #197; Passwort-Mindestlänge bewusst auf 1 Zeichen gelockert (privater Freundeskreis), Mechanik unverändert |
 | Step-up für kritische Aktionen | ✅ als Mechanismus vorhanden |
 | Event-Scoping für REST/Realtime/Push/Kiosk/Arcade | ✅ aus PR #238, bleibt gültig |
 | Mehrfaktor-Authentifizierung (`v5.0.0-6.3.3`, L2) | ⚪ optionales Backlog-Feature, keine Bedingung |

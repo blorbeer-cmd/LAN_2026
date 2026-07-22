@@ -93,6 +93,11 @@ Der Bootstrap-Pfad ist danach geschlossen. Gibt es genau einen aktiven, beanspru
 `/?reset=<RECOVERY_CODE>` dieses letzte Admin-Konto wiederherstellen; bei mehreren Admins wird der
 Recovery-Code für Resets abgelehnt.
 
+Alternativ zum Recovery-Claim können ein oder mehrere Admins beim Start direkt aus der `.env`
+angelegt werden (`BOOTSTRAP_ADMIN_<n>_NAME` / `BOOTSTRAP_ADMIN_<n>_PASSWORD`). Das Seeding ist
+idempotent und überschreibt kein bereits gesetztes Passwort; Details und Betriebshinweise stehen in
+[`../docs/BOOTSTRAP-ADMINS.md`](../docs/BOOTSTRAP-ADMINS.md).
+
 Der gemeinsam genutzte Bildschirm erhält im Required-Modus einen separaten `KIOSK_TOKEN` und wird
 einmalig über `/kiosk.html?token=<KIOSK_TOKEN>` eingerichtet. Dieser Zugang ist serverseitig auf die
 vom Dashboard benötigten GET-Endpunkte und das Socket-Ereignis `kiosk:subscribe` begrenzt. Ohne

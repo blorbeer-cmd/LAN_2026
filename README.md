@@ -228,6 +228,7 @@ bisher `npm install && npm run build && npm start` auf einem Laptop im WLAN.
 | `DB_FILE` | `server/data/lan.db` | Pfad zur SQLite-Datei. Wird beim ersten Start angelegt. |
 | `AUTH_MODE` | `legacy` | `required` aktiviert persönliche Logins und ersetzt den geteilten Web-Zugang vollständig durch Session-Authentifizierung. |
 | `ADMIN_RECOVERY_CODE` | *(leer)* | Starkes Bootstrap-/Recovery-Secret für den ersten beziehungsweise letzten Admin. In Produktion mit `AUTH_MODE=required` Pflicht. |
+| `BOOTSTRAP_ADMIN_<n>_NAME` / `BOOTSTRAP_ADMIN_<n>_PASSWORD` | *(leer)* | Optionale, beim Start angelegte fertige Admin-Konten (Slot `n` = 1…20), damit du nicht den Recovery-Weg gehen musst. Idempotent, überschreibt kein bestehendes Passwort. Details in [`docs/BOOTSTRAP-ADMINS.md`](docs/BOOTSTRAP-ADMINS.md). |
 | `KIOSK_TOKEN` | *(leer = Kiosk in Required-Mode gesperrt)* | Separater Read-only-Zugang für die Kiosk-GET-Endpunkte und `kiosk:subscribe`; Aufruf als `/kiosk.html?token=...`. |
 | `ACCESS_TOKEN` | *(leer = kein Schutz)* | Nur im Legacy-Modus: geteiltes Zugangs-Token für die Web-Oberfläche. Im Required-Modus wird es ignoriert. |
 | `COOKIE_SECURE` | `1` | Sichere Session-Cookies; nur für bewusstes lokales HTTP-Hosting mit `0` abschalten. |

@@ -17,6 +17,7 @@ import {
   isValidPassword,
   hasClaimedAdmin,
   MIN_PASSWORD_LENGTH,
+  MAX_PASSWORD_LENGTH,
 } from '../accounts';
 import {
   createSession,
@@ -131,7 +132,7 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
   if (!isNonEmptyString(code, 200)) return res.status(400).json({ error: 'Einladungscode ist erforderlich.' });
   if (!isNonEmptyString(name)) return res.status(400).json({ error: 'Name ist erforderlich (1-60 Zeichen).' });
   if (!isValidPassword(password)) {
-    return res.status(400).json({ error: `Passwort muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen lang sein.` });
+    return res.status(400).json({ error: `Passwort muss zwischen ${MIN_PASSWORD_LENGTH} und ${MAX_PASSWORD_LENGTH} Zeichen lang sein.` });
   }
   if (color !== undefined && !isHexColor(color)) {
     return res.status(400).json({ error: 'Farbe muss ein Hex-Code sein, z.B. #4f9dff.' });
@@ -206,7 +207,7 @@ authRouter.post('/claim', limitAnonymousAuthAttempts, (req, res) => {
 
   if (!isNonEmptyString(code, 200)) return res.status(400).json({ error: 'Einladungscode ist erforderlich.' });
   if (!isValidPassword(password)) {
-    return res.status(400).json({ error: `Passwort muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen lang sein.` });
+    return res.status(400).json({ error: `Passwort muss zwischen ${MIN_PASSWORD_LENGTH} und ${MAX_PASSWORD_LENGTH} Zeichen lang sein.` });
   }
 
   const isBootstrap = recoveryCodeUsable(code);
@@ -346,7 +347,7 @@ authRouter.post('/password', requireUser, (req, res) => {
     return res.status(400).json({ error: 'Aktuelles Passwort ist erforderlich.' });
   }
   if (!isValidPassword(newPassword)) {
-    return res.status(400).json({ error: `Neues Passwort muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen lang sein.` });
+    return res.status(400).json({ error: `Neues Passwort muss zwischen ${MIN_PASSWORD_LENGTH} und ${MAX_PASSWORD_LENGTH} Zeichen lang sein.` });
   }
 
   const existing = db.prepare('SELECT * FROM players WHERE id = ?').get(req.player!.id) as PlayerRow;
@@ -399,7 +400,7 @@ authRouter.post('/reset', limitAnonymousAuthAttempts, (req, res) => {
     return res.status(400).json({ error: 'Reset-Code ist erforderlich.' });
   }
   if (!isValidPassword(newPassword)) {
-    return res.status(400).json({ error: `Neues Passwort muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen lang sein.` });
+    return res.status(400).json({ error: `Neues Passwort muss zwischen ${MIN_PASSWORD_LENGTH} und ${MAX_PASSWORD_LENGTH} Zeichen lang sein.` });
   }
 
   const recoveryTarget = soleClaimedAdminForRecovery(code);
