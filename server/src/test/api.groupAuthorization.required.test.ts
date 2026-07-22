@@ -192,3 +192,98 @@ test('group roles, event resources and audit stay isolated inside the one real g
     );
   }
 });
+
+// changeGroupMemberRole has no password_hash gate on its target, so an
+// owner/admin can promote an invited-but-unclaimed member to 'admin' before
+// that member ever sets a password (syncing is_admin=1 immediately). When
+// they later claim normally, ensureDefaultGroupMembership must not read that
+// ambient is_admin=1 as "promote to owner" - only the recovery-code paths in
+// routes/auth.ts may pass that signal (see ensureDefaultGroupMembership's
+// explicit bootstrapAdmin option). Regression for a privilege escalation
+// found in PR review: a plain admin promotion silently became owner on
+// claim, bypassing the "only an owner may grant owner" rule.
+test('promoting an unclaimed member to admin does not silently escalate them to owner on claim', () => {
+  const script = `
+    const assert = require('assert/strict');
+    const request = require('supertest');
+    const { createApp } = require(${JSON.stringify(APP_JS_PATH)});
+    const { db, DEFAULT_GROUP_ID } = require(${JSON.stringify(DB_JS_PATH)});
+
+    function cookie(response) {
+      return response.headers['set-cookie'][0].split(';')[0];
+    }
+
+    (async () => {
+      const app = createApp();
+      const ownerResponse = await request(app).post('/api/auth/register').send({
+        code: ${JSON.stringify(RECOVERY_CODE)},
+        name: 'Escalation Owner',
+        password: 'escalation owner secure passphrase',
+      });
+      assert.equal(ownerResponse.status, 201, JSON.stringify(ownerResponse.body));
+      const owner = { account: ownerResponse.body, cookie: cookie(ownerResponse) };
+      assert.equal((await request(app).post('/api/auth/reauth').set('Cookie', owner.cookie).send({ password: 'escalation owner secure passphrase' })).status, 204);
+
+      // A migrated legacy member: already has an active group_memberships
+      // row (as migration 30 would backfill) but no password yet.
+      db.prepare(
+        'INSERT INTO players (id, name, api_key, is_admin, password_hash, created_at) VALUES (?, ?, ?, 0, NULL, ?)'
+      ).run('unclaimed-member', 'Unclaimed Member', 'unclaimed-member-key', Date.now());
+      db.prepare(
+        \`INSERT INTO group_memberships (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
+         VALUES (?, ?, 'member', 'active', ?, NULL, 1, NULL)\`
+      ).run(DEFAULT_GROUP_ID, 'unclaimed-member', Date.now());
+
+      const promote = await request(app)
+        .patch('/api/groups/' + DEFAULT_GROUP_ID + '/members/unclaimed-member')
+        .set('Cookie', owner.cookie)
+        .send({ role: 'admin' });
+      assert.equal(promote.status, 200, JSON.stringify(promote.body));
+      assert.equal(db.prepare('SELECT is_admin FROM players WHERE id = ?').get('unclaimed-member').is_admin, 1);
+
+      const claimInvite = await request(app).post('/api/auth/invites').set('Cookie', owner.cookie).send({
+        purpose: 'claim',
+        playerId: 'unclaimed-member',
+      });
+      assert.equal(claimInvite.status, 201, JSON.stringify(claimInvite.body));
+
+      const claimed = await request(app).post('/api/auth/claim').send({
+        code: claimInvite.body.code,
+        password: 'unclaimed member secure passphrase',
+      });
+      assert.equal(claimed.status, 200, JSON.stringify(claimed.body));
+      assert.equal(claimed.body.isAdmin, true);
+
+      const membership = db.prepare(
+        "SELECT role FROM group_memberships WHERE group_id = ? AND player_id = ? AND status = 'active'"
+      ).get(DEFAULT_GROUP_ID, 'unclaimed-member');
+      assert.equal(membership.role, 'admin', 'a normal claim must not escalate a promoted admin to owner');
+
+      const owners = db.prepare(
+        "SELECT player_id FROM group_memberships WHERE group_id = ? AND status = 'active' AND role = 'owner'"
+      ).all(DEFAULT_GROUP_ID);
+      assert.deepEqual(owners.map((row) => row.player_id), [owner.account.id], 'ownership must not have moved');
+    })().catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+  `;
+
+  try {
+    execFileSync(process.execPath, ['-e', script], {
+      env: {
+        ...process.env,
+        AUTH_MODE: 'required',
+        ADMIN_RECOVERY_CODE: RECOVERY_CODE,
+        COOKIE_SECURE: '0',
+        DB_FILE: ':memory:',
+      },
+      stdio: 'pipe',
+    });
+  } catch (error) {
+    const child = error as { stdout?: Buffer; stderr?: Buffer };
+    throw new Error(
+      `admin-promotion-escalation child failed:\n${child.stderr?.toString() ?? ''}\n${child.stdout?.toString() ?? ''}`,
+    );
+  }
+});
