@@ -29,13 +29,14 @@ let activeInvites = null;
 let activeInvitesLoading = false;
 
 function inviteUrl(invite) {
-  const param = invite.purpose === 'register' ? 'invite' : invite.purpose;
+  const param = invite.purpose === 'register' ? 'invite' : invite.purpose === 'test_login' ? 'testSession' : invite.purpose;
   return `${location.origin}/?${param}=${encodeURIComponent(invite.code)}`;
 }
 
 function invitePurposeLabel(purpose) {
   if (purpose === 'claim') return 'Konto übernehmen';
   if (purpose === 'reset') return 'Passwort zurücksetzen';
+  if (purpose === 'test_login') return 'Testsitzung';
   return 'Neue Person';
 }
 
@@ -298,6 +299,7 @@ function renderPanel(container, ctx) {
           ${p.deactivated_at ? '<span class="badge badge-offline">Deaktiviert</span>' : ''}
         </span>
         <span class="row admin-player-actions" style="gap:var(--space-2);">
+          ${authRequired && p.is_test && !p.deactivated_at ? `<button type="button" class="btn btn-sm" data-test-session="${p.id}">Testsitzung öffnen</button>` : ''}
           ${p.deactivated_at ? `<button type="button" class="btn btn-sm" data-reactivate-player="${p.id}">Reaktivieren</button>` : `<button type="button" class="btn btn-sm" data-toggle-admin="${p.id}" ${p.is_test ? 'disabled' : ''}>${p.is_admin ? 'Admin entziehen' : 'Admin machen'}</button>`}
           ${p.deactivated_at ? '' : p.is_test ? `<button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">Löschen</button>` : `<button type="button" class="btn btn-sm btn-danger" data-deactivate-player="${p.id}">Deaktivieren</button>`}
         </span>
@@ -465,6 +467,13 @@ function renderPanel(container, ctx) {
   wireInfoTooltips(container);
 
   container.querySelector('#agent-diagnostics-refresh').addEventListener('click', () => loadAgentDiagnostics(ctx, true));
+
+  container.querySelectorAll('[data-test-session]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const player = players.find((p) => p.id === btn.dataset.testSession);
+      if (player) createLoginInvite('test_login', player, ctx);
+    });
+  });
 
   container.querySelectorAll('[data-toggle-admin]').forEach((btn) => {
     btn.addEventListener('click', () => {

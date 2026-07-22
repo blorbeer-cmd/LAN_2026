@@ -167,6 +167,7 @@ export const api = {
     invites: () => apiFetch('/api/auth/invites'),
     createInvite: (data) => apiFetch('/api/auth/invites', { method: 'POST', body: JSON.stringify(data) }),
     revokeInvite: (code) => apiFetch(`/api/auth/invites/${encodeURIComponent(code)}`, { method: 'DELETE' }),
+    testSession: (code) => apiFetch('/api/auth/test-session', { method: 'POST', body: JSON.stringify({ code }) }),
   },
 
   players: {

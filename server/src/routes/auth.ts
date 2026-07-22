@@ -445,7 +445,39 @@ authRouter.post('/reset', limitAnonymousAuthAttempts, (req, res) => {
   res.json(toPublicAccount(existing));
 });
 
-const INVITE_PURPOSES: InvitePurpose[] = ['register', 'claim', 'reset'];
+// POST /api/auth/test-session - consumes an admin-minted 'test_login' code and
+// logs this device in directly as the targeted is_test player (no password –
+// test players never have one). Body: { code }. Re-checks is_test at
+// redemption time, not just at mint time, in case the player's marking
+// changed in between.
+authRouter.post('/test-session', limitAnonymousAuthAttempts, (req, res) => {
+  const { code } = req.body ?? {};
+  if (!isNonEmptyString(code, 200)) return res.status(400).json({ error: 'Der Link ist ungültig.' });
+
+  const invite = findValidInvite(code, 'test_login');
+  if (!invite || !invite.player_id) {
+    return res.status(400).json({ error: 'Der Link ist ungültig oder abgelaufen.' });
+  }
+  const target = db.prepare('SELECT * FROM players WHERE id = ?').get(invite.player_id) as PlayerRow | undefined;
+  if (!target || !target.is_test || target.deactivated_at !== null) {
+    return res.status(409).json({ error: 'Dieser Test-Spieler ist nicht mehr verfügbar.' });
+  }
+
+  if (!markInviteUsed(invite.code, target.id, 'test_login')) {
+    return res.status(409).json({ error: 'Der Link wurde bereits verwendet.' });
+  }
+
+  writeAdminAudit({
+    action: 'test_session_started',
+    targetType: 'player',
+    targetId: target.id,
+  });
+  const token = createSession(target.id);
+  setSessionCookie(res, token);
+  res.json(toPublicAccount(target));
+});
+
+const INVITE_PURPOSES: InvitePurpose[] = ['register', 'claim', 'reset', 'test_login'];
 
 // GET /api/auth/invites - active, still-shareable links for the admin UI.
 // Used/revoked/expired codes stay in the DB audit trail but are not returned.
@@ -485,13 +517,19 @@ authRouter.post('/invites', ...requireSessionAdmin, requireRecentReauthenticatio
       | { id: string; password_hash: string | null; is_test: number; deactivated_at: number | null }
       | undefined;
     if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-    if (target.is_test) return res.status(409).json({ error: 'Test-Spieler erhalten keine Anmeldelinks.' });
     if (target.deactivated_at !== null) return res.status(409).json({ error: 'Dieses Konto ist deaktiviert.' });
-    if (purpose === 'claim' && target.password_hash) {
-      return res.status(409).json({ error: 'Dieser Spieler hat bereits ein Passwort gesetzt.' });
-    }
-    if (purpose === 'reset' && !target.password_hash) {
-      return res.status(409).json({ error: 'Dieser Spieler hat noch kein Passwort gesetzt.' });
+    if (purpose === 'test_login') {
+      // The inverse of the other purposes: a test-session link only ever
+      // targets an admin-seeded is_test player, never a real account.
+      if (!target.is_test) return res.status(409).json({ error: 'Testsitzungen gibt es nur für Test-Spieler.' });
+    } else {
+      if (target.is_test) return res.status(409).json({ error: 'Test-Spieler erhalten keine Anmeldelinks.' });
+      if (purpose === 'claim' && target.password_hash) {
+        return res.status(409).json({ error: 'Dieser Spieler hat bereits ein Passwort gesetzt.' });
+      }
+      if (purpose === 'reset' && !target.password_hash) {
+        return res.status(409).json({ error: 'Dieser Spieler hat noch kein Passwort gesetzt.' });
+      }
     }
   }
 

@@ -17,6 +17,27 @@ import { isAdmin } from './admin.js';
 // player IDs arrive.
 const testIds = new Set();
 
+// Set once a device's session itself belongs to an is_test player (opened via
+// an admin-minted test-session link, see docs/KONZEPT-TEST-USER.md "Als
+// Testspieler anmelden"). A test player has no real admin role of its own, so
+// this is deliberately separate from isAdmin() — it only needs to see its
+// test-player peers (other seeded players it should be able to join/vote
+// with), not gain the admin-mode banner or any real privilege.
+const TEST_IDENTITY_KEY = 'respawn_test_identity';
+
+export function setTestIdentity(isTest) {
+  if (isTest) localStorage.setItem(TEST_IDENTITY_KEY, '1');
+  else localStorage.removeItem(TEST_IDENTITY_KEY);
+  // Mirrors admin.js's setAdmin(), which fires 'respawn:admin-changed' for the
+  // same reason: app.js's wireAdminMode() listens for this exact event to
+  // refetch already-loaded data through the updated filterTestUsers() result.
+  window.dispatchEvent(new CustomEvent('respawn:test-identity-changed'));
+}
+
+function isTestIdentity() {
+  return localStorage.getItem(TEST_IDENTITY_KEY) === '1';
+}
+
 export function knownTestIds() {
   return testIds;
 }
@@ -63,6 +84,6 @@ function strip(value) {
 // learns test IDs from it, and hides them unless the device is in admin mode.
 export function filterTestUsers(payload) {
   collect(payload);
-  if (isAdmin() || testIds.size === 0) return payload;
+  if (isAdmin() || isTestIdentity() || testIds.size === 0) return payload;
   return strip(payload);
 }

@@ -197,6 +197,10 @@ function wireAdminMode() {
     invalidateMusic();
     ctx.refresh();
   });
+  // A redeemed test-session identity also needs its test-player peers visible
+  // (see testFilter.js) — same "refetch so already-loaded data gets
+  // re-filtered" reason as admin-changed above.
+  window.addEventListener('respawn:test-identity-changed', () => ctx.refresh());
 }
 
 async function tokenWorks(candidate) {

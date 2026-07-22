@@ -11,6 +11,7 @@ import { escapeHtml } from './format.js';
 import { icon } from './icons.js';
 import { detachPushSubscription, rebindExistingPushSubscription } from './push.js';
 import { setAdmin } from './admin.js';
+import { setTestIdentity } from './testFilter.js';
 
 function paramFromUrl(name) {
   return new URLSearchParams(location.search).get(name);
@@ -18,8 +19,19 @@ function paramFromUrl(name) {
 
 function clearAuthActionUrl() {
   const cleanUrl = new URL(location.href);
-  for (const name of ['invite', 'claim', 'reset', 'playerId']) cleanUrl.searchParams.delete(name);
+  for (const name of ['invite', 'claim', 'reset', 'playerId', 'testSession']) cleanUrl.searchParams.delete(name);
   history.replaceState(null, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+}
+
+// Applies a resolved account (from /api/me or any auth response) to this
+// device: locks the compatibility identity, mirrors the account's real admin
+// role, and separately marks this device as a test identity when the account
+// itself is an is_test player (see testFilter.js) so it can see its seeded
+// peers without gaining any real admin privilege.
+function applySession(account) {
+  lockMyIdToSession(account.id);
+  setAdmin(Boolean(account.isAdmin));
+  setTestIdentity(Boolean(account.isTest));
 }
 
 // Whether real per-user login is active for this session — true exactly
@@ -34,6 +46,7 @@ export async function logout() {
     await detachPushSubscription().catch(() => {});
     await api.auth.logout();
     setAdmin(false);
+    setTestIdentity(false);
   } finally {
     // Simplest correct reset: every piece of client state that assumed a
     // logged-in identity (whoami's stored id, in-memory view state, socket
@@ -116,6 +129,14 @@ function renderResetForm() {
   );
 }
 
+function renderTestSessionForm() {
+  return cardShell(
+    'Respawn',
+    'Dieser Link meldet dich direkt als Test-Spieler an, ohne Passwort.',
+    `<button type="submit" class="btn btn-primary">Anmelden</button>`
+  );
+}
+
 // Resolves once this device is logged in — either because a still-valid
 // session already exists (GET /api/me succeeds), or after the visitor
 // completes whichever form applies (login by default, or register/claim
@@ -125,7 +146,16 @@ export async function ensureLogin() {
   const inviteCode = paramFromUrl('invite');
   const claimCode = paramFromUrl('claim');
   const resetCode = paramFromUrl('reset');
-  const mode = inviteCode ? 'register' : claimCode ? 'claim' : resetCode ? 'reset' : 'login';
+  const testSessionCode = paramFromUrl('testSession');
+  const mode = inviteCode
+    ? 'register'
+    : claimCode
+      ? 'claim'
+      : resetCode
+        ? 'reset'
+        : testSessionCode
+          ? 'testSession'
+          : 'login';
   let existingSession = null;
   try {
     existingSession = await api.me();
@@ -145,8 +175,7 @@ export async function ensureLogin() {
   // Shared party devices commonly still have somebody else logged in.
   if (mode === 'login') {
     if (existingSession) {
-      lockMyIdToSession(existingSession.id);
-      setAdmin(Boolean(existingSession.isAdmin));
+      applySession(existingSession);
       await rebindExistingPushSubscription(existingSession.id).catch(() => {});
       return;
     }
@@ -160,7 +189,9 @@ export async function ensureLogin() {
         ? renderClaimForm(bootstrapAccounts)
         : mode === 'reset'
           ? renderResetForm()
-          : renderLoginForm();
+          : mode === 'testSession'
+            ? renderTestSessionForm()
+            : renderLoginForm();
   screen.hidden = false;
 
   if (existingSession && mode !== 'login') {
@@ -190,8 +221,7 @@ export async function ensureLogin() {
 
     screen.querySelector('#auth-continue-session')?.addEventListener('click', async () => {
       clearAuthActionUrl();
-      lockMyIdToSession(existingSession.id);
-      setAdmin(Boolean(existingSession.isAdmin));
+      applySession(existingSession);
       await rebindExistingPushSubscription(existingSession.id).catch(() => {});
       screen.hidden = true;
       resolve();
@@ -200,7 +230,7 @@ export async function ensureLogin() {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       errorEl.hidden = true;
-      const password = screen.querySelector('#auth-password').value;
+      const password = screen.querySelector('#auth-password')?.value;
 
       try {
         let me;
@@ -212,12 +242,13 @@ export async function ensureLogin() {
           me = await api.auth.claim({ code: claimCode, password, ...(playerId ? { playerId } : {}) });
         } else if (mode === 'reset') {
           me = await api.auth.reset({ code: resetCode, newPassword: password });
+        } else if (mode === 'testSession') {
+          me = await api.auth.testSession(testSessionCode);
         } else {
           const name = screen.querySelector('#auth-name').value.trim();
           me = await api.auth.login({ name, password });
         }
-        lockMyIdToSession(me.id);
-        setAdmin(Boolean(me.isAdmin));
+        applySession(me);
         await rebindExistingPushSubscription(me.id).catch(() => {});
         // Drop the invite/claim/reset code from the URL once it's been used —
         // reloading the page must not re-attempt (and fail) the same

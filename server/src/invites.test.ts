@@ -9,6 +9,7 @@ import {
   createInvite,
   DEFAULT_INVITE_TTL_MS,
   DEFAULT_RESET_TTL_MS,
+  DEFAULT_TEST_LOGIN_TTL_MS,
   findValidInvite,
   markInviteUsed,
   revokeInvite,
@@ -45,6 +46,14 @@ test('reset codes use a shorter default expiry and zero-length expiry is rejecte
     () => createInvite({ purpose: 'register', createdBy: admin, expiresInMs: 0 }),
     /positive, finite/
   );
+});
+
+test('test_login codes use an even shorter default expiry than reset codes', () => {
+  const admin = makePlayer();
+  const target = makePlayer();
+  const testLogin = createInvite({ purpose: 'test_login', playerId: target, createdBy: admin });
+  assert.ok(testLogin.expires_at >= testLogin.created_at + DEFAULT_TEST_LOGIN_TTL_MS);
+  assert.ok(testLogin.expires_at < testLogin.created_at + DEFAULT_RESET_TTL_MS);
 });
 
 test('findValidInvite rejects a purpose mismatch', () => {
