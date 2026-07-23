@@ -1,0 +1,98 @@
+name: Update server .env
+
+# Manually patch one or more ENV values on the live server without a full
+# redeploy. Each input maps to a line in /opt/respawn/.env; leave a field
+# empty to keep the current value unchanged.
+on:
+  workflow_dispatch:
+    inputs:
+      admin_recovery_code:
+        description: ADMIN_RECOVERY_CODE (leave empty to keep current)
+        required: false
+        default: ''
+      kiosk_token:
+        description: KIOSK_TOKEN (leave empty to keep current)
+        required: false
+        default: ''
+      bootstrap_admin_1_name:
+        description: BOOTSTRAP_ADMIN_1_NAME (leave empty to keep current)
+        required: false
+        default: ''
+      bootstrap_admin_1_password:
+        description: BOOTSTRAP_ADMIN_1_PASSWORD (leave empty to keep current)
+        required: false
+        default: ''
+      bootstrap_admin_2_name:
+        description: BOOTSTRAP_ADMIN_2_NAME (leave empty to keep current)
+        required: false
+        default: ''
+      bootstrap_admin_2_password:
+        description: BOOTSTRAP_ADMIN_2_PASSWORD (leave empty to keep current)
+        required: false
+        default: ''
+      auth_mode:
+        description: AUTH_MODE — "required" (personal login) or "legacy" (shared token). Leave empty to keep current.
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - required
+          - legacy
+
+permissions:
+  contents: read
+
+jobs:
+  update-env:
+    name: Patch .env and restart app
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: production
+      url: https://lan.dbehnke.dev
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: appleboy/ssh-action@v1.2.5
+        env:
+          NEW_ADMIN_RECOVERY_CODE: ${{ inputs.admin_recovery_code }}
+          NEW_KIOSK_TOKEN: ${{ inputs.kiosk_token }}
+          NEW_BOOTSTRAP_ADMIN_1_NAME: ${{ inputs.bootstrap_admin_1_name }}
+          NEW_BOOTSTRAP_ADMIN_1_PASSWORD: ${{ inputs.bootstrap_admin_1_password }}
+          NEW_BOOTSTRAP_ADMIN_2_NAME: ${{ inputs.bootstrap_admin_2_name }}
+          NEW_BOOTSTRAP_ADMIN_2_PASSWORD: ${{ inputs.bootstrap_admin_2_password }}
+          NEW_AUTH_MODE: ${{ inputs.auth_mode }}
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: deploy
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: NEW_ADMIN_RECOVERY_CODE,NEW_KIOSK_TOKEN,NEW_BOOTSTRAP_ADMIN_1_NAME,NEW_BOOTSTRAP_ADMIN_1_PASSWORD,NEW_BOOTSTRAP_ADMIN_2_NAME,NEW_BOOTSTRAP_ADMIN_2_PASSWORD,NEW_AUTH_MODE
+          script: |
+            set -euo pipefail
+            cd /opt/respawn
+
+            patch_or_append() {
+              local key="$1"
+              local value="$2"
+              if grep -q "^${key}=" .env; then
+                sed -i "s#^${key}=.*#${key}=${value}#" .env
+              else
+                echo "${key}=${value}" >> .env
+              fi
+            }
+
+            [ -n "$NEW_ADMIN_RECOVERY_CODE" ]       && patch_or_append ADMIN_RECOVERY_CODE       "$NEW_ADMIN_RECOVERY_CODE"
+            [ -n "$NEW_KIOSK_TOKEN" ]               && patch_or_append KIOSK_TOKEN               "$NEW_KIOSK_TOKEN"
+            [ -n "$NEW_BOOTSTRAP_ADMIN_1_NAME" ]    && patch_or_append BOOTSTRAP_ADMIN_1_NAME    "$NEW_BOOTSTRAP_ADMIN_1_NAME"
+            [ -n "$NEW_BOOTSTRAP_ADMIN_1_PASSWORD" ] && patch_or_append BOOTSTRAP_ADMIN_1_PASSWORD "$NEW_BOOTSTRAP_ADMIN_1_PASSWORD"
+            [ -n "$NEW_BOOTSTRAP_ADMIN_2_NAME" ]    && patch_or_append BOOTSTRAP_ADMIN_2_NAME    "$NEW_BOOTSTRAP_ADMIN_2_NAME"
+            [ -n "$NEW_BOOTSTRAP_ADMIN_2_PASSWORD" ] && patch_or_append BOOTSTRAP_ADMIN_2_PASSWORD "$NEW_BOOTSTRAP_ADMIN_2_PASSWORD"
+            [ -n "$NEW_AUTH_MODE" ]                  && patch_or_append AUTH_MODE                  "$NEW_AUTH_MODE"
+
+            echo "--- Current .env (secrets redacted) ---"
+            sed 's/=.*/=***/' .env
+
+            docker compose up -d --wait --wait-timeout 90 app
+            docker compose ps app
