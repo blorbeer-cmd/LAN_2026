@@ -15,7 +15,7 @@ test('required auth binds personal APIs to the session and protects API keys', (
     const assert = require('assert/strict');
     const request = require('supertest');
     const { createApp } = require(${JSON.stringify(APP_JS_PATH)});
-    const { db } = require(${JSON.stringify(DB_JS_PATH)});
+    const { db, DEFAULT_GROUP_ID } = require(${JSON.stringify(DB_JS_PATH)});
 
     function cookie(response) {
       return response.headers['set-cookie'][0].split(';')[0];
@@ -138,7 +138,16 @@ test('required auth binds personal APIs to the session and protects API keys', (
       const foreignPatch = await request(app).patch('/api/players/' + bob.account.id).set('Cookie', alice.cookie).send({ name: 'Spoofed Bob' });
       assert.equal(foreignPatch.status, 403);
 
-      const roleWithoutStepUp = await request(app).patch('/api/players/' + alice.account.id).set('Cookie', adminCookie).send({ isAdmin: true });
+      // Required mode retires the direct isAdmin toggle: instance admin
+      // rights are derived from the group role instead (groups.ts,
+      // changeGroupMemberRole; docs/plans/reset-single-group.md §9.1).
+      const legacyIsAdminToggle = await request(app).patch('/api/players/' + alice.account.id).set('Cookie', adminCookie).send({ isAdmin: true });
+      assert.equal(legacyIsAdminToggle.status, 400);
+
+      const roleWithoutStepUp = await request(app)
+        .patch('/api/groups/' + DEFAULT_GROUP_ID + '/members/' + alice.account.id)
+        .set('Cookie', adminCookie)
+        .send({ role: 'admin' });
       assert.equal(roleWithoutStepUp.status, 403);
       assert.equal(roleWithoutStepUp.body.code, 'reauth_required');
       const wrongStepUp = await request(app).post('/api/auth/reauth').set('Cookie', adminCookie).send({ password: 'wrong password' });
@@ -156,16 +165,25 @@ test('required auth binds personal APIs to the session and protects API keys', (
       assert.equal(backupWithoutStepUp.body.code, 'reauth_required');
       const backupWithStepUp = await request(app).get('/api/backup').set('Cookie', adminCookie);
       assert.equal(backupWithStepUp.status, 409);
-      const roleAfterStepUp = await request(app).patch('/api/players/' + alice.account.id).set('Cookie', adminCookie).send({ isAdmin: true });
+      const roleAfterStepUp = await request(app)
+        .patch('/api/groups/' + DEFAULT_GROUP_ID + '/members/' + alice.account.id)
+        .set('Cookie', adminCookie)
+        .send({ role: 'admin' });
       assert.equal(roleAfterStepUp.status, 200, JSON.stringify(roleAfterStepUp.body));
-      const revokeSecondAdmin = await request(app).patch('/api/players/' + alice.account.id).set('Cookie', adminCookie).send({ isAdmin: false });
+      assert.equal(db.prepare('SELECT is_admin FROM players WHERE id = ?').get(alice.account.id).is_admin, 1);
+      const revokeSecondAdmin = await request(app)
+        .patch('/api/groups/' + DEFAULT_GROUP_ID + '/members/' + alice.account.id)
+        .set('Cookie', adminCookie)
+        .send({ role: 'member' });
       assert.equal(revokeSecondAdmin.status, 200);
-      db.prepare(
-        'INSERT INTO players (id, name, api_key, is_admin, password_hash, created_at) VALUES (?, ?, ?, 1, NULL, ?)'
-      ).run('unclaimed-admin', 'Unclaimed Legacy Admin', 'unclaimed-admin-key', Date.now());
-      const revokeLastAdmin = await request(app).patch('/api/players/' + admin.body.id).set('Cookie', adminCookie).send({ isAdmin: false });
+      assert.equal(db.prepare('SELECT is_admin FROM players WHERE id = ?').get(alice.account.id).is_admin, 0);
+      // The sole owner can never be demoted (last_owner guard in groups.ts) -
+      // the group-role path this instance admin now goes through.
+      const revokeLastAdmin = await request(app)
+        .patch('/api/groups/' + DEFAULT_GROUP_ID + '/members/' + admin.body.id)
+        .set('Cookie', adminCookie)
+        .send({ role: 'member' });
       assert.equal(revokeLastAdmin.status, 409);
-      db.prepare('DELETE FROM players WHERE id = ?').run('unclaimed-admin');
       const deleteLastAdmin = await request(app).delete('/api/players/' + admin.body.id).set('Cookie', adminCookie);
       assert.equal(deleteLastAdmin.status, 409);
 
@@ -237,23 +255,15 @@ test('required auth binds personal APIs to the session and protects API keys', (
       assert.equal(audit.status, 200);
       assert.ok(audit.body.some((entry) => entry.action === 'player_deactivated' && entry.target_id === bob.account.id));
       assert.ok(audit.body.some((entry) => entry.action === 'api_key_rotated' && entry.target_id === alice.account.id));
-
-      const promoteAliceAgain = await request(app).patch('/api/players/' + alice.account.id).set('Cookie', adminCookie).send({ isAdmin: true });
-      assert.equal(promoteAliceAgain.status, 200, JSON.stringify(promoteAliceAgain.body));
-      const aliceStepUp = await request(app).post('/api/auth/reauth').set('Cookie', alice.cookie).send({
-        password: 'required alice secure passphrase',
-      });
-      assert.equal(aliceStepUp.status, 204);
-      const concurrentRevocations = await Promise.all([
-        request(app).patch('/api/players/' + alice.account.id).set('Cookie', adminCookie).send({ isAdmin: false }),
-        request(app).patch('/api/players/' + admin.body.id).set('Cookie', alice.cookie).send({ isAdmin: false }),
-      ]);
-      assert.equal(concurrentRevocations.filter((response) => response.status === 200).length, 1);
-      assert.ok(concurrentRevocations.every((response) => [200, 403, 409].includes(response.status)));
-      const activeAdminCount = db.prepare(
-        'SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL'
-      ).get().count;
-      assert.equal(activeAdminCount, 1);
+      // is_admin changes driven by the group role still land in the
+      // instance-wide audit (group_id NULL), same as the retired direct
+      // toggle used to, so /api/admin/audit stays the authoritative trail
+      // for "who currently holds instance admin rights". The concurrent
+      // last-owner-vs-demotion race is covered in
+      // api.groupAuthorization.required.test.ts's ownerRace, which also
+      // asserts the resulting is_admin state.
+      assert.ok(audit.body.some((entry) => entry.action === 'admin_granted' && entry.target_id === alice.account.id));
+      assert.ok(audit.body.some((entry) => entry.action === 'admin_revoked' && entry.target_id === alice.account.id));
 
       db.exec('DROP INDEX IF EXISTS idx_players_name_unique');
       const duplicateHash = db.prepare('SELECT password_hash FROM players WHERE id = ?').get(admin.body.id).password_hash;
