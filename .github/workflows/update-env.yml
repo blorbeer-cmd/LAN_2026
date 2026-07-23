@@ -30,6 +30,15 @@ on:
         description: BOOTSTRAP_ADMIN_2_PASSWORD (leave empty to keep current)
         required: false
         default: ''
+      auth_mode:
+        description: AUTH_MODE — "required" (personal login) or "legacy" (shared token). Leave empty to keep current.
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - required
+          - legacy
 
 permissions:
   contents: read
@@ -54,11 +63,12 @@ jobs:
           NEW_BOOTSTRAP_ADMIN_1_PASSWORD: ${{ inputs.bootstrap_admin_1_password }}
           NEW_BOOTSTRAP_ADMIN_2_NAME: ${{ inputs.bootstrap_admin_2_name }}
           NEW_BOOTSTRAP_ADMIN_2_PASSWORD: ${{ inputs.bootstrap_admin_2_password }}
+          NEW_AUTH_MODE: ${{ inputs.auth_mode }}
         with:
           host: ${{ secrets.HETZNER_HOST }}
           username: deploy
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: NEW_ADMIN_RECOVERY_CODE,NEW_KIOSK_TOKEN,NEW_BOOTSTRAP_ADMIN_1_NAME,NEW_BOOTSTRAP_ADMIN_1_PASSWORD,NEW_BOOTSTRAP_ADMIN_2_NAME,NEW_BOOTSTRAP_ADMIN_2_PASSWORD
+          envs: NEW_ADMIN_RECOVERY_CODE,NEW_KIOSK_TOKEN,NEW_BOOTSTRAP_ADMIN_1_NAME,NEW_BOOTSTRAP_ADMIN_1_PASSWORD,NEW_BOOTSTRAP_ADMIN_2_NAME,NEW_BOOTSTRAP_ADMIN_2_PASSWORD,NEW_AUTH_MODE
           script: |
             set -euo pipefail
             cd /opt/respawn
@@ -79,6 +89,7 @@ jobs:
             [ -n "$NEW_BOOTSTRAP_ADMIN_1_PASSWORD" ] && patch_or_append BOOTSTRAP_ADMIN_1_PASSWORD "$NEW_BOOTSTRAP_ADMIN_1_PASSWORD"
             [ -n "$NEW_BOOTSTRAP_ADMIN_2_NAME" ]    && patch_or_append BOOTSTRAP_ADMIN_2_NAME    "$NEW_BOOTSTRAP_ADMIN_2_NAME"
             [ -n "$NEW_BOOTSTRAP_ADMIN_2_PASSWORD" ] && patch_or_append BOOTSTRAP_ADMIN_2_PASSWORD "$NEW_BOOTSTRAP_ADMIN_2_PASSWORD"
+            [ -n "$NEW_AUTH_MODE" ]                  && patch_or_append AUTH_MODE                  "$NEW_AUTH_MODE"
 
             echo "--- Current .env (secrets redacted) ---"
             sed 's/=.*/=***/' .env
