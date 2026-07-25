@@ -18,7 +18,10 @@ The foundation is deliberately read-only:
   changed yet.
 
 Do not make `Agent pipeline / contract` a required check until this foundation has been merged:
-the trusted base branch must contain the validator before the workflow can execute it.
+the trusted base branch must contain the validator before the workflow can enforce contracts.
+During this one-time bootstrap, the workflow detects the missing trusted validator, executes no
+code from the pull-request head and reports a successful, documented skip. Once the foundation is
+on the base branch, every later run executes and enforces the trusted validator normally.
 
 ## Activating a PR
 
