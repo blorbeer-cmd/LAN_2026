@@ -20,7 +20,7 @@ export function competitionPlayersBelongToGroup(groupId: string, eventId: string
 
   const placeholders = uniqueIds.map(() => '?').join(',');
   if (config.authMode === 'legacy') {
-    const players = db.prepare(`SELECT id FROM players WHERE id IN (${placeholders})`).all(...uniqueIds);
+    const players = db.prepare(`SELECT id FROM players WHERE deactivated_at IS NULL AND id IN (${placeholders})`).all(...uniqueIds);
     return players.length === uniqueIds.length;
   }
 
@@ -28,7 +28,7 @@ export function competitionPlayersBelongToGroup(groupId: string, eventId: string
     .prepare(
       `SELECT p.id
        FROM players p
-       WHERE p.id IN (${placeholders})
+       WHERE p.deactivated_at IS NULL AND p.id IN (${placeholders})
          AND (
            EXISTS (
              SELECT 1 FROM group_memberships gm

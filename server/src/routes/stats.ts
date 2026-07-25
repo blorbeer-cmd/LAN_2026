@@ -47,7 +47,7 @@ statsRouter.get('/playtime', (req, res) => {
     sqlParams.push(filterEventId);
   }
   const rows = db
-    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${clauses.join(' AND ')}`)
+    .prepare(`SELECT ps.player_id, ps.game_id, ps.started_at, ps.ended_at, ps.active_ms FROM play_sessions ps JOIN players p ON p.id = ps.player_id AND p.deactivated_at IS NULL WHERE ${clauses.map((clause) => clause.replace('group_id', 'ps.group_id').replace('game_id', 'ps.game_id').replace('event_id', 'ps.event_id')).join(' AND ')}`)
     .all(...sqlParams) as Array<{
     player_id: string;
     game_id: string;
@@ -74,7 +74,7 @@ statsRouter.get('/playtime', (req, res) => {
   let players: PlayerRow[] = [];
   if (playerIds.length > 0) {
     const ph = playerIds.map(() => '?').join(',');
-    players = db.prepare(`SELECT id, name, color FROM players WHERE id IN (${ph})`).all(...playerIds) as PlayerRow[];
+    players = db.prepare(`SELECT id, name, color FROM players WHERE deactivated_at IS NULL AND id IN (${ph})`).all(...playerIds) as PlayerRow[];
   }
   let games: GameRow[] = [];
   if (gameIds.length > 0) {

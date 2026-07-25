@@ -109,9 +109,12 @@ async function loadAdminPlayers(ctx, force = false) {
   adminPlayersLoading = true;
   try {
     adminPlayers = await api.admin.players();
+    const group = authRequired ? currentGroup() : null;
+    adminMembers = group ? await api.groups.members(group.id) : [];
   } catch (error) {
     showToast(error.message, { error: true });
     adminPlayers = [];
+    adminMembers = [];
   } finally {
     adminPlayersLoading = false;
     ctx.rerender();
@@ -288,7 +291,7 @@ async function toggleAdmin(player, ctx) {
 }
 
 async function deletePlayer(player, ctx) {
-  if (!(await confirmDialog(`Spieler "${player.name}" wirklich löschen?`))) return;
+  if (!(await confirmDialog(`Spieler "${player.name}" wirklich löschen? Alle Tracking-Daten, Sitzungen und persönlichen Kontodaten werden unwiderruflich entfernt.`))) return;
   try {
     const removed = await withStepUp(() => api.players.remove(player.id));
     if (removed === undefined) return;
@@ -386,6 +389,7 @@ function renderPanel(container, ctx) {
         </span>
         <span class="row admin-player-actions" style="gap:var(--space-2);">
           ${roleControl(p)}
+          ${!p.is_test || p.deactivated_at ? `<button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">${p.deactivated_at ? 'Dauerhaft loeschen' : 'Loeschen'}</button>` : ''}
           ${authRequired && p.is_test && !p.deactivated_at ? `<button type="button" class="btn btn-sm" data-test-session="${p.id}">Testsitzung öffnen</button>` : ''}
           ${p.deactivated_at
             ? `<button type="button" class="btn btn-sm" data-reactivate-player="${p.id}">Reaktivieren</button>`
