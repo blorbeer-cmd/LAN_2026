@@ -166,7 +166,7 @@ export function updateGroupDetails(
 }
 
 export type MembershipMutationResult =
-  | { ok: true; membership: GroupMembershipRow }
+  | { ok: true; membership: GroupMembershipRow; instanceAdminChanged?: boolean }
   | { ok: false; code: 'not_found' | 'forbidden' | 'last_owner' | 'test_role' | 'self_removal' };
 
 function activeOwnerCount(groupId: string): number {
@@ -183,6 +183,20 @@ function activeOwnerCount(groupId: string): number {
   ).count;
 }
 
+function activeClaimedOwnerCount(groupId: string): number {
+  return (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM group_memberships gm
+         JOIN players p ON p.id = gm.player_id
+         WHERE gm.group_id = ? AND gm.status = 'active' AND gm.role = 'owner'
+           AND p.deactivated_at IS NULL AND p.password_hash IS NOT NULL`,
+      )
+      .get(groupId) as { count: number }
+  ).count;
+}
+
 // Required mode freezes group role (owner/admin/member) as the instance
 // rights model (see docs/plans/reset-single-group.md §9.1). players.is_admin
 // — the separate flag still gating account-management routes (invites,
@@ -191,13 +205,13 @@ function activeOwnerCount(groupId: string): number {
 // silently diverge. Scoped to the one real group on purpose: a hypothetical
 // future secondary group must not be able to grant instance-wide rights.
 // Legacy mode keeps is_admin a directly togglable flag and is untouched.
-function syncInstanceAdminForRole(groupId: string, playerId: string, role: GroupRole, actorPlayerId?: string): void {
-  if (config.authMode !== 'required' || groupId !== DEFAULT_GROUP_ID) return;
+function syncInstanceAdminForRole(groupId: string, playerId: string, role: GroupRole, actorPlayerId?: string): boolean {
+  if (config.authMode !== 'required' || groupId !== DEFAULT_GROUP_ID) return false;
   const player = db.prepare('SELECT is_admin FROM players WHERE id = ?').get(playerId) as
     { is_admin: number } | undefined;
-  if (!player) return;
+  if (!player) return false;
   const nextIsAdmin = role === 'member' ? 0 : 1;
-  if (nextIsAdmin === player.is_admin) return;
+  if (nextIsAdmin === player.is_admin) return false;
   db.prepare('UPDATE players SET is_admin = ? WHERE id = ?').run(nextIsAdmin, playerId);
   writeAdminAudit({
     actorPlayerId,
@@ -206,6 +220,29 @@ function syncInstanceAdminForRole(groupId: string, playerId: string, role: Group
     targetId: playerId,
     details: { via: 'group_role', role },
   });
+  return true;
+}
+
+export function syncInstanceAdminForCurrentRole(playerId: string, actorPlayerId?: string): boolean {
+  const membership = getGroupMembership(DEFAULT_GROUP_ID, playerId);
+  const role = membership?.status === 'active' ? membership.role : 'member';
+  return syncInstanceAdminForRole(DEFAULT_GROUP_ID, playerId, role, actorPlayerId);
+}
+
+export function ensureBootstrapAdminMembership(playerId: string): GroupMembershipRow {
+  return db.transaction(() => {
+    let membership = ensureDefaultGroupMembership(playerId);
+    if (config.authMode === 'required' && membership.status === 'active' && membership.role === 'member') {
+      db.prepare(
+        `UPDATE group_memberships SET role = 'admin'
+         WHERE group_id = ? AND player_id = ? AND status = 'active'`,
+      ).run(DEFAULT_GROUP_ID, playerId);
+      membership = getGroupMembership(DEFAULT_GROUP_ID, playerId)!;
+    }
+    const effectiveRole = membership.status === 'active' ? membership.role : 'member';
+    syncInstanceAdminForRole(DEFAULT_GROUP_ID, playerId, effectiveRole);
+    return membership;
+  })();
 }
 
 export function changeGroupMemberRole(
@@ -222,12 +259,20 @@ export function changeGroupMemberRole(
     if (actor.role !== 'owner' && (target.role === 'owner' || nextRole === 'owner')) {
       return { ok: false, code: 'forbidden' } as const;
     }
-    const targetPlayer = db.prepare('SELECT is_test FROM players WHERE id = ?').get(targetPlayerId) as
-      { is_test: number } | undefined;
+    const targetPlayer = db.prepare('SELECT is_test, password_hash FROM players WHERE id = ?').get(targetPlayerId) as
+      { is_test: number; password_hash: string | null } | undefined;
     if (!targetPlayer) return { ok: false, code: 'not_found' } as const;
     if (targetPlayer.is_test && nextRole !== 'member') return { ok: false, code: 'test_role' } as const;
-    if (target.role === 'owner' && nextRole !== 'owner' && activeOwnerCount(groupId) <= 1) {
-      return { ok: false, code: 'last_owner' } as const;
+    if (target.role === 'owner' && nextRole !== 'owner') {
+      const removesLastActiveOwner = activeOwnerCount(groupId) <= 1;
+      const removesLastClaimedOwner =
+        config.authMode === 'required' &&
+        groupId === DEFAULT_GROUP_ID &&
+        targetPlayer.password_hash !== null &&
+        activeClaimedOwnerCount(groupId) <= 1;
+      if (removesLastActiveOwner || removesLastClaimedOwner) {
+        return { ok: false, code: 'last_owner' } as const;
+      }
     }
     db.prepare('UPDATE group_memberships SET role = ? WHERE group_id = ? AND player_id = ? AND status = ?').run(
       nextRole,
@@ -235,8 +280,8 @@ export function changeGroupMemberRole(
       targetPlayerId,
       'active',
     );
-    syncInstanceAdminForRole(groupId, targetPlayerId, nextRole, actorPlayerId);
-    return { ok: true, membership: getGroupMembership(groupId, targetPlayerId)! } as const;
+    const instanceAdminChanged = syncInstanceAdminForRole(groupId, targetPlayerId, nextRole, actorPlayerId);
+    return { ok: true, membership: getGroupMembership(groupId, targetPlayerId)!, instanceAdminChanged } as const;
   })();
 }
 
@@ -253,8 +298,18 @@ export function removeGroupMember(
     if (actor.role === 'member' || (target.role === 'owner' && actor.role !== 'owner')) {
       return { ok: false, code: 'forbidden' } as const;
     }
-    if (target.role === 'owner' && activeOwnerCount(groupId) <= 1) {
-      return { ok: false, code: 'last_owner' } as const;
+    if (target.role === 'owner') {
+      const targetPlayer = db.prepare('SELECT password_hash FROM players WHERE id = ?').get(targetPlayerId) as
+        { password_hash: string | null } | undefined;
+      const removesLastActiveOwner = activeOwnerCount(groupId) <= 1;
+      const removesLastClaimedOwner =
+        config.authMode === 'required' &&
+        groupId === DEFAULT_GROUP_ID &&
+        targetPlayer?.password_hash != null &&
+        activeClaimedOwnerCount(groupId) <= 1;
+      if (removesLastActiveOwner || removesLastClaimedOwner) {
+        return { ok: false, code: 'last_owner' } as const;
+      }
     }
     db.prepare(
       `UPDATE group_memberships

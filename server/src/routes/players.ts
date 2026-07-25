@@ -16,7 +16,7 @@ import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { writeAdminAudit } from '../adminAudit';
 import { voidOutstandingInvites } from '../invites';
 import { activeGroupPlayers } from '../groupPlayers';
-import { activePlayerGroupIds } from '../groups';
+import { activePlayerGroupIds, syncInstanceAdminForCurrentRole } from '../groups';
 import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
 import { config } from '../config';
 
@@ -285,8 +285,10 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
     });
   }
   const target = db
-    .prepare('SELECT id, is_admin, is_test, deactivated_at FROM players WHERE id = ?')
-    .get(req.params.id) as Pick<PlayerRow, 'id' | 'is_admin' | 'is_test' | 'deactivated_at'> | undefined;
+    .prepare('SELECT id, is_admin, is_test, deactivated_at, password_hash FROM players WHERE id = ?')
+    .get(req.params.id) as
+    | Pick<PlayerRow, 'id' | 'is_admin' | 'is_test' | 'deactivated_at' | 'password_hash'>
+    | undefined;
   if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   if (target.is_test) return res.status(409).json({ error: 'Test-Spieler werden vollständig gelöscht.' });
   if (target.deactivated_at !== null) return res.status(409).json({ error: 'Dieses Konto ist bereits deaktiviert.' });
@@ -322,6 +324,26 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
       )
       .get(target.id);
     if (soleOwnedGroup) return 'last_group_owner';
+    if (config.authMode === 'required' && target.password_hash) {
+      const soleClaimedOwnedGroup = db
+        .prepare(
+          `SELECT gm.group_id
+           FROM group_memberships gm
+           JOIN groups g ON g.id = gm.group_id AND g.archived_at IS NULL
+           WHERE gm.player_id = ? AND gm.status = 'active' AND gm.role = 'owner'
+             AND NOT EXISTS (
+               SELECT 1
+               FROM group_memberships other
+               JOIN players p ON p.id = other.player_id
+               WHERE other.group_id = gm.group_id AND other.player_id != gm.player_id
+                 AND other.status = 'active' AND other.role = 'owner'
+                 AND p.deactivated_at IS NULL AND p.password_hash IS NOT NULL
+             )
+           LIMIT 1`,
+        )
+        .get(target.id);
+      if (soleClaimedOwnedGroup) return 'last_group_owner';
+    }
     db.prepare('UPDATE players SET deactivated_at = ?, is_admin = 0, tracking_paused = 1 WHERE id = ?').run(
       now,
       target.id,
@@ -365,16 +387,21 @@ playersRouter.post('/:id/reactivate', requireAdmin, (req, res) => {
       code: 'reauth_required',
     });
   }
-  const result = db
-    .prepare('UPDATE players SET deactivated_at = NULL WHERE id = ? AND deactivated_at IS NOT NULL')
-    .run(req.params.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Deaktiviertes Konto nicht gefunden.' });
-  writeAdminAudit({
-    actorPlayerId: req.player?.id,
-    action: 'player_reactivated',
-    targetType: 'player',
-    targetId: req.params.id,
-  });
+  const reactivated = db.transaction(() => {
+    const result = db
+      .prepare('UPDATE players SET deactivated_at = NULL WHERE id = ? AND deactivated_at IS NOT NULL')
+      .run(req.params.id);
+    if (result.changes === 0) return false;
+    syncInstanceAdminForCurrentRole(req.params.id, req.player?.id);
+    writeAdminAudit({
+      actorPlayerId: req.player?.id,
+      action: 'player_reactivated',
+      targetType: 'player',
+      targetId: req.params.id,
+    });
+    return true;
+  })();
+  if (!reactivated) return res.status(404).json({ error: 'Deaktiviertes Konto nicht gefunden.' });
   for (const groupId of activePlayerGroupIds(req.params.id)) {
     broadcast(Events.playersChanged, null, { groupId });
   }
