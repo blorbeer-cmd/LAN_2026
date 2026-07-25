@@ -236,6 +236,13 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     await adminPage.click('.nav-btn[data-view="more"]');
     await adminPage.click('[data-navigate="admin"]');
     await adminPage.waitForSelector('#admin-register-link');
+    await adminPage.waitForSelector('.admin-role-select');
+    assert.equal(await adminPage.locator('#group-btn').count(), 0);
+    assert.match((await adminPage.locator('#admin-players-title').textContent()) ?? '', /^Benutzer \(\d+\)$/);
+    assert.deepEqual(
+      await adminPage.locator('.admin-role-select').first().locator('option').allTextContents(),
+      ['Mitglied', 'Admin', 'Owner'],
+    );
     assert.equal(
       await adminPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       true,
@@ -266,6 +273,94 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     await adminPage.locator('[data-revoke-login-link]').first().click();
     await adminPage.click('[data-confirm]');
     await activeLink.waitFor({ state: 'detached' });
+  } finally {
+    await adminPage.close();
+  }
+});
+
+test('admin roster retries role loading, serializes changes and follows group role signals', async () => {
+  const groupsResponse = await fetch(`${BASE_URL}/api/groups`, { headers: { Cookie: adminCookie } });
+  const [{ id: groupId }] = (await groupsResponse.json()) as Array<{ id: string }>;
+  const playersResponse = await fetch(`${BASE_URL}/api/admin/players`, { headers: { Cookie: adminCookie } });
+  const target = ((await playersResponse.json()) as Array<{ id: string; name: string }>).find(
+    (player) => player.name === NAME,
+  );
+  assert.ok(target);
+
+  const adminPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  let failNextMembersRequest = true;
+  let rolePatchRequests = 0;
+  adminPage.on('request', (request) => {
+    if (request.method() === 'PATCH' && request.url().includes(`/members/${target.id}`)) rolePatchRequests += 1;
+  });
+  await adminPage.route(`**/api/groups/${groupId}/members`, async (route) => {
+    if (failNextMembersRequest) {
+      failNextMembersRequest = false;
+      await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"Temporärer Rollenfehler."}' });
+      return;
+    }
+    await route.continue();
+  });
+
+  try {
+    await adminPage.goto(BASE_URL);
+    await adminPage.fill('#auth-name', 'E2E Bootstrap Admin');
+    await adminPage.fill('#auth-password', 'e2e bootstrap password');
+    await adminPage.click('#auth-form button[type="submit"]');
+    await adminPage.waitForSelector('#app:not([hidden])');
+    await adminPage.click('.nav-btn[data-view="more"]');
+    await adminPage.click('[data-navigate="admin"]');
+
+    await adminPage.waitForSelector('#admin-members-retry');
+    assert.match((await adminPage.locator('#admin-players-title').textContent()) ?? '', /^Benutzer \([1-9]\d*\)$/);
+    await adminPage.waitForSelector(`.admin-player-row:has-text("${NAME}")`);
+    await adminPage.click('#admin-members-retry');
+
+    let roleSelect = adminPage.locator(`[data-player-role="${target.id}"]`);
+    await roleSelect.waitFor();
+    await roleSelect.selectOption('admin');
+    assert.equal(await roleSelect.isDisabled(), true, 'the role control locks before reauthentication and mutation');
+    await roleSelect.evaluate((select) => {
+      (select as HTMLSelectElement).value = 'member';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await adminPage.fill('#reauth-password', 'e2e bootstrap password');
+    await adminPage.click('#reauth-form button[type="submit"]');
+    await adminPage.waitForFunction(
+      (playerId) =>
+        (document.querySelector(`[data-player-role="${playerId}"]`) as HTMLSelectElement | null)?.value === 'admin',
+      target.id,
+    );
+    assert.equal(
+      rolePatchRequests,
+      2,
+      'only the expected initial 403 plus the post-reauth retry may run; the busy change must add no request',
+    );
+
+    const reauth = await fetch(`${BASE_URL}/api/auth/reauth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+      body: JSON.stringify({ password: 'e2e bootstrap password' }),
+    });
+    assert.equal(reauth.status, 204);
+    const promoteOwner = await fetch(`${BASE_URL}/api/groups/${groupId}/members/${target.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+      body: JSON.stringify({ role: 'owner' }),
+    });
+    assert.equal(promoteOwner.status, 200, JSON.stringify(await promoteOwner.clone().json()));
+    await adminPage.waitForFunction(
+      (playerId) =>
+        (document.querySelector(`[data-player-role="${playerId}"]`) as HTMLSelectElement | null)?.value === 'owner',
+      target.id,
+    );
+
+    const restoreMember = await fetch(`${BASE_URL}/api/groups/${groupId}/members/${target.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+      body: JSON.stringify({ role: 'member' }),
+    });
+    assert.equal(restoreMember.status, 200, JSON.stringify(await restoreMember.clone().json()));
   } finally {
     await adminPage.close();
   }
@@ -357,20 +452,6 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
   assert.equal(reused.status, 400);
 });
 
-test('group context button opens read-only group details for the one real group', async () => {
-  // `page` is logged in as a plain member (E2E New Person), not the owner -
-  // it sees the group's name/member list but neither the edit form nor the
-  // admin-only test-user section.
-  await page.click('#group-btn');
-  await page.waitForSelector('.group-member-list');
-  await page.locator('.group-member-row').first().waitFor();
-  assert.ok((await page.locator('.group-member-row').count()) >= 2, 'the owner and this member both show up');
-  assert.equal(await page.locator('#group-edit-form').count(), 0);
-  assert.equal(await page.locator('#group-test-users-form').count(), 0);
-  assert.equal(
-    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-    true,
-    'the group context modal must not introduce horizontal scrolling',
-  );
-  await page.click('.modal-backdrop [data-close]');
+test('single-group access context is no longer exposed as a separate topbar control', async () => {
+  assert.equal(await page.locator('#group-btn').count(), 0);
 });

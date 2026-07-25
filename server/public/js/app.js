@@ -39,7 +39,7 @@ import { invalidateHallOfFame, renderHallOfFame } from './views/hallOfFame.js';
 import { renderSeating, invalidateSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
 import { renderMore } from './views/more.js';
-import { renderAdmin } from './views/admin.js';
+import { invalidateAdminMemberships, renderAdmin } from './views/admin.js';
 import { invalidateMusic, renderMusic } from './views/music.js';
 import { icon, installIconReplacement } from './icons.js';
 import { initNumberStepper } from './numberStepper.js';
@@ -266,7 +266,6 @@ function wireNav() {
   // (index.html stays free of hand-copied SVG paths); the app shell is
   // hidden until this boot code runs, so nothing renders icon-less.
   document.getElementById('notifications-btn').insertAdjacentHTML('afterbegin', icon('bell'));
-  document.getElementById('group-btn').insertAdjacentHTML('afterbegin', icon('users'));
   document.getElementById('profile-btn').innerHTML = icon('circleUser');
   document.getElementById('settings-btn').innerHTML = icon('settings');
   document.querySelector('.admin-banner-label').insertAdjacentHTML('afterbegin', icon('shield'));
@@ -543,7 +542,11 @@ function wireSocket() {
     invalidateMusic();
     if (currentView === 'music') renderCurrent();
   });
-  socket.on('groups:changed', () => refreshGroupContext());
+  socket.on('groups:changed', async () => {
+    await refreshGroupContext();
+    invalidateAdminMemberships();
+    if (currentView === 'admin') renderCurrent();
+  });
 }
 
 async function main() {
