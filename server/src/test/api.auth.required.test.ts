@@ -218,9 +218,12 @@ test('required auth binds personal APIs to the session and protects API keys', (
       const isolatedStepUp = await request(app).delete('/api/players/' + bob.account.id).set('Cookie', cookie(secondAdminLogin));
       assert.equal(isolatedStepUp.status, 403);
       assert.equal(isolatedStepUp.body.code, 'reauth_required');
-      const hardDeleteRealPlayer = await request(app).delete('/api/players/' + bob.account.id).set('Cookie', adminCookie);
-      assert.equal(hardDeleteRealPlayer.status, 409);
       const bobFull = await request(app).get('/api/players/' + bob.account.id).set('Cookie', adminCookie);
+      const promoteBobBeforeDeactivation = await request(app)
+        .patch('/api/groups/' + DEFAULT_GROUP_ID + '/members/' + bob.account.id)
+        .set('Cookie', adminCookie)
+        .send({ role: 'admin' });
+      assert.equal(promoteBobBeforeDeactivation.status, 200, JSON.stringify(promoteBobBeforeDeactivation.body));
       const deactivate = await request(app).post('/api/players/' + bob.account.id + '/deactivate').set('Cookie', adminCookie);
       assert.equal(deactivate.status, 204, JSON.stringify(deactivate.body));
       assert.equal((await request(app).get('/api/me').set('Cookie', bob.cookie)).status, 401);
@@ -231,6 +234,7 @@ test('required auth binds personal APIs to the session and protects API keys', (
       assert.ok(adminRoster.body.find((player) => player.id === bob.account.id).deactivated_at);
       const reactivate = await request(app).post('/api/players/' + bob.account.id + '/reactivate').set('Cookie', adminCookie);
       assert.equal(reactivate.status, 204);
+      assert.equal(db.prepare('SELECT is_admin FROM players WHERE id = ?').get(bob.account.id).is_admin, 1);
       const bobRelogin = await request(app).post('/api/auth/login').send({ name: 'Required Bob', password: 'required bob secure passphrase' });
       assert.equal(bobRelogin.status, 200);
 
@@ -249,8 +253,12 @@ test('required auth binds personal APIs to the session and protects API keys', (
       assert.equal(passwordChange.status, 204);
       assert.equal(db.prepare('SELECT 1 FROM push_subscriptions WHERE endpoint = ?').get(passwordChangeSubscription.endpoint), undefined);
 
-      const nonAdminAdminRoute = await request(app).get('/api/admin/players').set('Cookie', cookie(bobRelogin));
-      assert.equal(nonAdminAdminRoute.status, 403);
+      const reactivatedAdminRoute = await request(app).get('/api/admin/players').set('Cookie', cookie(bobRelogin));
+      assert.equal(reactivatedAdminRoute.status, 200);
+      const deleteTarget = await request(app).post('/api/players').set('Cookie', adminCookie).send({ name: 'Required Delete Target' });
+      assert.equal(deleteTarget.status, 201);
+      const hardDeleteRealPlayer = await request(app).delete('/api/players/' + deleteTarget.body.id).set('Cookie', adminCookie);
+      assert.equal(hardDeleteRealPlayer.status, 204);
       const audit = await request(app).get('/api/admin/audit').set('Cookie', adminCookie);
       assert.equal(audit.status, 200);
       assert.ok(audit.body.some((entry) => entry.action === 'player_deactivated' && entry.target_id === bob.account.id));

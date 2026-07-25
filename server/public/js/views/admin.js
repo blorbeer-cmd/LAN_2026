@@ -15,17 +15,19 @@ import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { authRequired } from '../authGate.js';
 import { getMyId } from '../whoami.js';
+import { currentGroup, refreshGroupContext } from '../groupContext.js';
 
 const SEATING_HELP = 'Tisch, Plätze und Sitzordnung verwalten.';
 const BACKUP_HELP = 'Aktuellen Stand als SQLite-Datei sichern.';
 const TEST_DATA_HELP = 'Kommen fertig eingerichtet: Platz im Sitzplan samt sichtbarer Monitore, Skill- und Bock-Werte pro Spiel, Spielzeit fürs aktive Event – zwei davon spielen gerade. Nur im Admin-Modus sichtbar.';
-const ADMIN_ROLE_HELP = 'Wird über die Gruppen-Mitgliederverwaltung vergeben: Gruppenname oben antippen → Rolle in der Mitgliederliste ändern.';
+const ADMIN_ROLE_HELP = 'Owner und Admins dürfen den Admin-Bereich verwalten. Mindestens ein aktiver Owner muss erhalten bleiben.';
 
 let agentDiagnostics = null;
 let diagnosticsLoading = false;
 let seedBusy = false;
 let adminPlayers = null;
 let adminPlayersLoading = false;
+let adminMembers = [];
 let activeInvites = null;
 let activeInvitesLoading = false;
 
@@ -104,12 +106,58 @@ async function loadAdminPlayers(ctx, force = false) {
   adminPlayersLoading = true;
   try {
     adminPlayers = await api.admin.players();
+    const group = authRequired ? currentGroup() : null;
+    adminMembers = group ? await api.groups.members(group.id) : [];
   } catch (error) {
     showToast(error.message, { error: true });
     adminPlayers = [];
+    adminMembers = [];
   } finally {
     adminPlayersLoading = false;
     ctx.rerender();
+  }
+}
+
+function roleLabel(role) {
+  return { owner: 'Owner', admin: 'Admin', member: 'Mitglied' }[role] ?? role;
+}
+
+function roleControl(player) {
+  const membership = adminMembers.find((member) => member.playerId === player.id);
+  if (!authRequired || !membership || player.deactivated_at) return '';
+
+  const myRole = currentGroup()?.role;
+  const canChangeOwner = myRole === 'owner';
+  const canChangeMember = myRole === 'admin' && membership.role !== 'owner';
+  if (player.is_test || (!canChangeOwner && !canChangeMember)) {
+    return `<span class="badge">${escapeHtml(roleLabel(membership.role))}</span>`;
+  }
+
+  const roles = canChangeOwner ? ['member', 'admin', 'owner'] : ['member', 'admin'];
+  return `<select class="admin-role-select" data-player-role="${escapeHtml(player.id)}" aria-label="Rolle von ${escapeHtml(player.name)}">
+    ${roles.map((role) => `<option value="${role}" ${membership.role === role ? 'selected' : ''}>${roleLabel(role)}</option>`).join('')}
+  </select>`;
+}
+
+async function changeRole(player, role, ctx) {
+  const group = currentGroup();
+  if (!group) return;
+  try {
+    const result = await withStepUp(() => api.groups.updateMember(group.id, player.id, role));
+    if (result === undefined) {
+      await loadAdminPlayers(ctx, true);
+      return;
+    }
+    showToast(`Rolle von ${player.name} geändert.`);
+    await refreshGroupContext();
+    if (player.id === getMyId() && role === 'member') {
+      await ctx.refresh();
+      return;
+    }
+    await refreshAdminData(ctx);
+  } catch (error) {
+    showToast(error.message, { error: true });
+    await loadAdminPlayers(ctx, true);
   }
 }
 
@@ -204,7 +252,7 @@ async function toggleAdmin(player, ctx) {
 }
 
 async function deletePlayer(player, ctx) {
-  if (!(await confirmDialog(`Spieler "${player.name}" wirklich löschen?`))) return;
+  if (!(await confirmDialog(`Spieler "${player.name}" wirklich löschen? Alle Tracking-Daten, Sitzungen und persönlichen Kontodaten werden unwiderruflich entfernt.`))) return;
   try {
     const removed = await withStepUp(() => api.players.remove(player.id));
     if (removed === undefined) return;
@@ -300,6 +348,8 @@ function renderPanel(container, ctx) {
           ${p.deactivated_at ? '<span class="badge badge-offline">Deaktiviert</span>' : ''}
         </span>
         <span class="row admin-player-actions" style="gap:var(--space-2);">
+          ${roleControl(p)}
+          ${!p.is_test || p.deactivated_at ? `<button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">${p.deactivated_at ? 'Dauerhaft loeschen' : 'Loeschen'}</button>` : ''}
           ${authRequired && p.is_test && !p.deactivated_at ? `<button type="button" class="btn btn-sm" data-test-session="${p.id}">Testsitzung öffnen</button>` : ''}
           ${p.deactivated_at
             ? `<button type="button" class="btn btn-sm" data-reactivate-player="${p.id}">Reaktivieren</button>`
@@ -423,8 +473,8 @@ function renderPanel(container, ctx) {
       <section class="card stack grouped-page-section" aria-labelledby="admin-players-title">
         <div class="grouped-page-section-title">
           <span class="title-with-info">
-            <h2 id="admin-players-title">Spieler (${players.length})</h2>
-            ${authRequired ? infoTooltipHtml('admin-role-help', 'Admin-Rolle', ADMIN_ROLE_HELP) : ''}
+            <h2 id="admin-players-title">Benutzer (${players.length})</h2>
+            ${authRequired ? infoTooltipHtml('admin-role-help', 'Rollen', ADMIN_ROLE_HELP) : ''}
           </span>
         </div>
         <div class="card">${rows || '<span class="muted">Noch keine Spieler.</span>'}</div>
@@ -489,6 +539,13 @@ function renderPanel(container, ctx) {
     btn.addEventListener('click', () => {
       const player = players.find((p) => p.id === btn.dataset.toggleAdmin);
       if (player) toggleAdmin(player, ctx);
+    });
+  });
+
+  container.querySelectorAll('[data-player-role]').forEach((select) => {
+    select.addEventListener('change', () => {
+      const player = players.find((entry) => entry.id === select.dataset.playerRole);
+      if (player) changeRole(player, select.value, ctx);
     });
   });
 

@@ -231,22 +231,19 @@ test('PUT /api/players/:id/neighbors 404s for an unknown player', async () => {
   assert.equal(res.status, 404);
 });
 
-test('real players are deactivated instead of hard-deleted', async () => {
-  assert.equal((await request(app).delete(`/api/players/${createdId}`)).status, 409);
-  const res = await request(app).post(`/api/players/${createdId}/deactivate`);
+test('real players can be hard-deleted and their tracking data is removed', async () => {
+  const res = await request(app).delete(`/api/players/${createdId}`);
   assert.equal(res.status, 204);
 
   const after = await request(app).get(`/api/players/${createdId}`);
   assert.equal(after.status, 404);
-  const stored = db.prepare('SELECT deactivated_at FROM players WHERE id = ?').get(createdId) as {
-    deactivated_at: number | null;
-  };
-  assert.ok(stored.deactivated_at);
+  assert.equal(db.prepare('SELECT 1 FROM players WHERE id = ?').get(createdId), undefined);
+  assert.equal(db.prepare('SELECT 1 FROM live_status WHERE player_id = ?').get(createdId), undefined);
   const roster = await request(app).get('/api/players');
   assert.equal(roster.body.some((player: { id: string }) => player.id === createdId), false);
 });
 
-test('deactivation rejects an already inactive player', async () => {
+test('deactivation returns not found after a player was deleted', async () => {
   const res = await request(app).post(`/api/players/${createdId}/deactivate`);
-  assert.equal(res.status, 409);
+  assert.equal(res.status, 404);
 });
