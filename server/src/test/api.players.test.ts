@@ -234,6 +234,10 @@ test('PUT /api/players/:id/neighbors 404s for an unknown player', async () => {
 test('real players can be hard-deleted and their tracking data is removed', async () => {
   const sender = await request(app).post('/api/players').send({ name: 'Delete Sender' });
   const now = Date.now();
+  db.prepare("INSERT OR IGNORE INTO group_memberships (group_id, player_id, role, status, joined_at, outside_tracking_enabled) VALUES (?, ?, 'member', 'active', ?, 0)")
+    .run(DEFAULT_GROUP_ID, createdId, now);
+  db.prepare("INSERT OR IGNORE INTO group_memberships (group_id, player_id, role, status, joined_at, outside_tracking_enabled) VALUES (?, ?, 'member', 'active', ?, 0)")
+    .run(DEFAULT_GROUP_ID, sender.body.id, now);
   db.prepare('INSERT INTO push_log (id, group_id, event_id, title, body, audience, player_ids, created_at) VALUES (?, ?, NULL, ?, ?, ?, ?, ?)')
     .run('delete-test-push', DEFAULT_GROUP_ID, 'Test', 'Test', 'all', JSON.stringify([createdId, sender.body.id]), now);
   db.prepare('INSERT INTO broadcasts (id, group_id, event_id, player_id, player_name_snapshot, message, ends_at, recipient_ids, created_at) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?)')

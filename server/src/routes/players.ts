@@ -491,8 +491,8 @@ playersRouter.delete('/:id', requireAdmin, (req, res) => {
       db.prepare(`DELETE FROM arcade_result_participants WHERE group_id IN (${placeholders}) AND player_id = ?`).run(...groupIds, target.id);
       db.prepare(`DELETE FROM broadcasts WHERE group_id IN (${placeholders}) AND player_id = ?`).run(...groupIds, target.id);
     }
-    db.prepare('DELETE FROM group_memberships WHERE player_id = ?').run(target.id);
     removePlayerFromRecipientSnapshots(target.id);
+    db.prepare('DELETE FROM group_memberships WHERE player_id = ?').run(target.id);
     for (const table of ['play_sessions', 'live_status_games', 'live_status', 'agent_diagnostics', 'tracking_live_games', 'tracking_game_state', 'group_tracking_consents', 'event_tracking_consents', 'push_subscriptions', 'sessions']) {
       try {
         db.prepare(`DELETE FROM ${table} WHERE player_id = ?`).run(target.id);
