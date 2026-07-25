@@ -255,6 +255,18 @@ export function disconnectPlayerSockets(playerId: string, exceptSessionId?: stri
   }
 }
 
+// Browser presence is intentionally tied to an authenticated, currently
+// connected socket instead of the existence of a long-lived login session.
+// A player may have several tabs/devices open, so they stay connected until
+// the last matching socket disappears.
+export function isPlayerConnected(playerId: string): boolean {
+  if (!io?.sockets?.sockets) return false;
+  for (const socket of io.sockets.sockets.values()) {
+    if (socket.connected && socket.data.authPlayerId === playerId) return true;
+  }
+  return false;
+}
+
 // Every fachliche Auslieferung carries an explicit, server-derived scope.
 // Callers pass the group of the validated request or loaded resource — never
 // unchecked client input.

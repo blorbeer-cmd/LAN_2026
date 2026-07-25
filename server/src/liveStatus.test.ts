@@ -18,6 +18,34 @@ test('recent report with several active games => playing', () => {
   assert.equal(state, 'playing');
 });
 
+test('recent report without an active game => online', () => {
+  const now = 1_000_000;
+  const state = deriveState({ last_seen: now - 1_000, manual_note: null, activeGamesCount: 0 }, now);
+  assert.equal(state, 'online');
+});
+
+test('an active browser without an agent report => online', () => {
+  const state = deriveState(
+    { last_seen: null, manual_note: null, activeGamesCount: 0, browserOnline: true },
+    1_000_000
+  );
+  assert.equal(state, 'online');
+});
+
+test('an active browser keeps a stale agent report online', () => {
+  const now = 1_000_000;
+  const state = deriveState(
+    {
+      last_seen: now - config.offlineTimeoutMs - 1,
+      manual_note: null,
+      activeGamesCount: 0,
+      browserOnline: true,
+    },
+    now
+  );
+  assert.equal(state, 'online');
+});
+
 test('report just inside the timeout => still playing', () => {
   const now = 1_000_000;
   const state = deriveState(
@@ -59,6 +87,15 @@ test('a manual note without an agent report remains paused', () => {
 test('recent report with an active game but a manual note => paused (manual pause wins while still playing)', () => {
   const now = 1_000_000;
   const state = deriveState({ last_seen: now - 1_000, manual_note: 'Pause / Essen', activeGamesCount: 1 }, now);
+  assert.equal(state, 'paused');
+});
+
+test('a manual pause wins over browser presence', () => {
+  const now = 1_000_000;
+  const state = deriveState(
+    { last_seen: now - 1_000, manual_note: 'Pause / Essen', activeGamesCount: 0, browserOnline: true },
+    now
+  );
   assert.equal(state, 'paused');
 });
 
