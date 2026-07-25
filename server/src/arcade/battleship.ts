@@ -11,6 +11,7 @@ import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './
 import { applyShot, fleetSnapshot, remainingSegments, remainingShips, ShipState, validatePlacements } from './battleshipLogic';
 
 const COUNTDOWN_MS = arcadeTiming.countdownMs;
+const END_REVEAL_MS = 12_000;
 
 interface Player { id: string; name: string; avatar: string | null; color: string | null }
 interface Lobby { id: string; groupId: string; eventId: string | null; mode: 'duel' | 'team'; host: Player; players: Player[]; socketIds: Map<string, string>; ready: Set<string>; createdAt: number }
@@ -145,6 +146,7 @@ function finish(io: Server, match: Match, winnerId: string | null, reason: strin
   emitArcadeRoom(io, match.room, 'battleship:match:end', { matchId: match.id, winnerId, reason, scores, fleets }, match);
   broadcastArcadeKiosk(io, { gameType: 'battleship', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'ended', players: spectatorState(match, true) });
   emitPersonalized(io, match);
+  setTimeout(() => broadcastArcadeKiosk(io, { gameType: null, matchId: match.id, groupId: match.groupId, eventId: match.eventId }), END_REVEAL_MS);
   cleanupMatch(io, match);
 }
 
@@ -280,6 +282,7 @@ export function registerBattleshipSockets(io: Server): void {
       if (!match || match.phase !== 'setup' || !canUseLobby(socket, match) || !socketOwnsPlayer(socket, payload.playerId) || !match.players.some((player) => player.id === payload.playerId)) return ack?.({ ok: false, error: 'Platzierung nicht möglich.' });
       const result = validatePlacements(payload.placements);
       if (!result.ok) return ack?.({ ok: false, error: result.error });
+      if (match.fleets.has(payload.playerId as string)) return ack?.({ ok: false, error: 'Deine Flotte ist bereits bestätigt.' });
       match.fleets.set(payload.playerId as string, result.fleet);
       emitPersonalized(io, match);
       beginBattle(io, match);
@@ -308,14 +311,14 @@ export function registerBattleshipSockets(io: Server): void {
 
     socket.on('battleship:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
-      if (!match || payload.playerId !== match.host.id || !canUseLobby(socket, match) || !socketOwnsPlayer(socket, payload.playerId)) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
+      if (!match || match.phase !== 'playing' || payload.playerId !== match.host.id || !canUseLobby(socket, match) || !socketOwnsPlayer(socket, payload.playerId)) return ack?.({ ok: false, error: 'Pausieren ist nur während des Gefechts möglich.' });
       match.paused = true;
       emitPersonalized(io, match);
       ack?.({ ok: true });
     });
     socket.on('battleship:match:resume', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
-      if (!match || payload.playerId !== match.host.id || !canUseLobby(socket, match) || !socketOwnsPlayer(socket, payload.playerId)) return ack?.({ ok: false, error: 'Nur der Host kann fortsetzen.' });
+      if (!match || match.phase !== 'playing' || payload.playerId !== match.host.id || !canUseLobby(socket, match) || !socketOwnsPlayer(socket, payload.playerId)) return ack?.({ ok: false, error: 'Fortsetzen ist nur während des Gefechts möglich.' });
       match.paused = false;
       emitPersonalized(io, match);
       ack?.({ ok: true });

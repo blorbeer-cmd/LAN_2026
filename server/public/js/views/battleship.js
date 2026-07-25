@@ -60,6 +60,7 @@ export function ensureBattleshipSocket() {
   });
   socket.on('battleship:state', (payload) => {
     if (!match || payload.matchId !== match.matchId) return;
+    if (payload.currentPlayerId !== match.currentPlayerId || payload.phase !== match.phase || payload.paused !== match.paused) selectedCoordinate = null;
     match = { ...match, ...payload, ended: payload.phase === 'ended' };
     if (payload.phase === 'countdown' && payload.beginsAt) showCountdown(payload.beginsAt);
     if (currentView() === 'battleship') rerender();
@@ -203,6 +204,7 @@ export function renderBattleship(container) {
   container.innerHTML = match.ended ? renderResult() : match.phase === 'setup' || match.phase === 'countdown' ? renderPlacement() : renderBattle();
   if (match.phase === 'setup' || match.phase === 'countdown') wirePlacement(container);
   if (!match.ended && match.phase === 'playing') wireBattle(container);
+  wireBattleshipGridKeyboard(container);
   if (!match.ended) wireArcadeExpandControl(container);
   container.querySelector('#battleship-back')?.addEventListener('click', () => { match = null; cancelCountdown(); navigate('arcade'); });
 }
@@ -240,6 +242,31 @@ function wirePlacement(container) {
     const result = await emitAck('battleship:setup:submit', { matchId: match.matchId, playerId: myId(), placements });
     if (!result?.ok) showToast(result?.error || 'Flotte konnte nicht bestätigt werden.', { error: true });
     else rerender();
+  });
+}
+
+function wireBattleshipGridKeyboard(container) {
+  container.querySelectorAll('[role="grid"]').forEach((grid) => {
+    const cells = [...grid.querySelectorAll('[role="gridcell"]')];
+    if (!cells.length) return;
+    cells.forEach((cell, index) => { cell.setAttribute('tabindex', index === 0 ? '0' : '-1'); });
+    grid.addEventListener('keydown', (event) => {
+      const current = cells.indexOf(document.activeElement);
+      if (current < 0) return;
+      let next = current;
+      if (event.key === 'ArrowRight') next = Math.min(cells.length - 1, current + 1);
+      else if (event.key === 'ArrowLeft') next = Math.max(0, current - 1);
+      else if (event.key === 'ArrowDown') next = Math.min(cells.length - 1, current + SIZE);
+      else if (event.key === 'ArrowUp') next = Math.max(0, current - SIZE);
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = cells.length - 1;
+      else if ((event.key === 'Enter' || event.key === ' ') && typeof cells[current].click === 'function') { event.preventDefault(); cells[current].click(); return; }
+      else return;
+      event.preventDefault();
+      cells[current].setAttribute('tabindex', '-1');
+      cells[next].setAttribute('tabindex', '0');
+      cells[next].focus();
+    });
   });
 }
 

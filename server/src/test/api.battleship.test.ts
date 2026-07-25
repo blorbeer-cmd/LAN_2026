@@ -71,6 +71,9 @@ test('Battleship enforces the duel lobby gate and validates placement before fir
     assert.equal((await emitAck(hostSocket, 'battleship:setup:submit', { matchId, playerId: host, placements: [{ ...placements[0], col: 9 }, ...placements.slice(1)] })).ok, false);
     const countdown = waitForStatePhase(hostSocket, 'countdown');
     assert.equal((await emitAck(hostSocket, 'battleship:setup:submit', { matchId, playerId: host, placements })).ok, true);
+    const overwrite = await emitAck(hostSocket, 'battleship:setup:submit', { matchId, playerId: host, placements: placements.map((placement) => ({ ...placement, row: placement.row + 1 })) });
+    assert.equal(overwrite.ok, false);
+    assert.match(String(overwrite.error), /bereits bestätigt/);
     assert.equal((await emitAck(guestSocket, 'battleship:setup:submit', { matchId, playerId: guest, placements })).ok, true);
     assert.equal((await countdown).phase, 'countdown');
   } finally {
