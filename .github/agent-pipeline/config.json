@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "defaultBaseBranch": "main",
+  "branchPrefixes": {
+    "codex": "codex/",
+    "claude": "claude/"
+  },
+  "allowedScopes": ["root", "server", "frontend", "agent", "docs", "infra"],
+  "uiPathPrefixes": ["server/public/"],
+  "protectedPathPrefixes": [".github/workflows/", "infra/"],
+  "reviewPromptPath": ".github/agent-pipeline/review-session-prompt.md",
+  "statusContext": "Agent pipeline / ready for human merge",
+  "reviewTimeoutMinutes": 45,
+  "waitingEscalationHours": 24,
+  "labels": {
+    "pipeline": "agent:pipeline",
+    "implementing": "agent:implementing",
+    "ciFix": "agent:ci-fix",
+    "conflictFix": "agent:conflict-fix",
+    "review": "agent:review",
+    "reviewFallback": "agent:review-fallback",
+    "waiting": "agent:waiting",
+    "needsHuman": "agent:needs-human",
+    "readyForMerge": "agent:ready-for-merge",
+    "uiChanged": "ui:changed",
+    "noAuto": "agent:no-auto"
+  }
+}

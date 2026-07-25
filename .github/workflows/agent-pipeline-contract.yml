@@ -1,0 +1,49 @@
+name: Agent pipeline contract
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: agent-pipeline-contract-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Agent pipeline / contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Run only the validator and configuration from the trusted base commit.
+      # The PR head is fetched as data for the diff but no code from it executes.
+      - name: Check out trusted pipeline validator
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Fetch pull-request head as diff input
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        shell: bash
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: git fetch --no-tags origin "$HEAD_SHA"
+
+      - name: Validate agent task contract
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          node scripts/agent-pipeline.mjs validate-event
+          --event "$GITHUB_EVENT_PATH"
+          --base-sha "$BASE_SHA"
+          --head-sha "$HEAD_SHA"

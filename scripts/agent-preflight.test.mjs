@@ -60,3 +60,9 @@ test("explains the documentation-only verification path", () => {
     assert.match(result.stdout, /Codepruefungen entfallen/);
   }
 });
+
+test("names the agent-pipeline test for infrastructure work", () => {
+  const result = runPreflight(["--scope", "infra"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /node --test scripts\/agent-pipeline\.test\.mjs/);
+});

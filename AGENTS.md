@@ -51,3 +51,28 @@ Zusätzliche Regeln werden nur im betroffenen Unterbaum geladen:
 - Vorhandene, sachfremde Änderungen im Arbeitsbaum gehören dem Nutzer und bleiben unangetastet.
 - Bei Widersprüchen gilt `DEVELOPMENT_GUIDELINES.md`; den Konflikt melden oder in einem passenden
   Dokumentationsauftrag beheben.
+
+## Agenten-Pipeline für Pull Requests
+
+Sobald ein Coding-Agent im Rahmen eines Nutzerauftrags einen Branch oder Pull Request erstellen,
+pushen oder weiterbearbeiten soll, gilt zusätzlich
+[`docs/plans/auto-feature-to-deploy-pipeline.md`](docs/plans/auto-feature-to-deploy-pipeline.md).
+Das vollständige Konzept nur für Arbeiten am PR-Lebenszyklus oder an der Pipeline selbst laden;
+für normale Implementierungsdetails gelten diese Kurzregeln:
+
+- Agenten-PRs erhalten den maschinenlesbaren Task-Vertrag aus der PR-Vorlage. Anbieter, Branch,
+  Scope und Ausgangs-SHA müssen der tatsächlichen Arbeit entsprechen.
+- Der Implementierungs-Agent behebt eigene CI-Fehler, Mergekonflikte und berechtigte
+  Review-Findings. Nach jedem neuen Commit sind CI und Review für den neuen Head-SHA erneut nötig.
+- Claude-Implementierungen werden regulär von Codex, Codex-Implementierungen von Claude geprüft.
+  Ist der Gegen-Agent nicht verfügbar, erfolgt das Review in einer frischen, isolierten und
+  schreibgeschützten Session des Implementierungs-Anbieters. Ein Review darf nie übersprungen
+  werden. Separate Reviews verwenden den Prompt und Ablauf unter
+  `.github/agent-pipeline/review-session-prompt.md`.
+- Nur kritische oder wesentlich mehrdeutige Entscheidungen werden dem Nutzer vorgelegt. Normale
+  Fixes laufen bis zum grünen, konfliktfreien und vollständig reviewten PR automatisch weiter.
+- Bei sichtbaren UI/UX-Änderungen den Nutzer informieren, sobald der Branch sinnvoll prüfbar ist:
+  Änderung, exakter Branch, PR-Link und konkrete Prüfschritte nennen.
+- Kein Coding-Agent approvt oder merged. `main`, Branch-Schutz, Workflows, Infrastruktur, Secrets
+  und Deploy-Berechtigungen bleiben außerhalb automatischer Fixes. Der finale Merge gehört immer
+  dem Nutzer.

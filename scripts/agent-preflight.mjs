@@ -151,6 +151,7 @@ const standardChecks = {
   ],
   infra: [
     "Keine pauschale Testsuite; betroffene Konfiguration statisch validieren und Betriebsrisiko nennen.",
+    "Agenten-Pipeline: node --test scripts/agent-pipeline.test.mjs",
   ],
 };
 
