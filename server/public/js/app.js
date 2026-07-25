@@ -28,6 +28,7 @@ import { renderScribbleRoom } from './views/arcadeScribble.js';
 import { renderBlobby } from './views/blobby.js';
 import { renderPong } from './views/pong.js';
 import { renderSnake } from './views/snake.js';
+import { renderBattleship } from './views/battleship.js';
 import { renderGameCatalog, invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
 import { renderArrivals, invalidateArrivals } from './views/arrivals.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
@@ -77,6 +78,7 @@ const VIEWS = {
   blobby: renderBlobby,
   pong: renderPong,
   snake: renderSnake,
+  battleship: renderBattleship,
   gameCatalog: renderGameCatalog,
   arrivals: renderArrivals,
   admin: renderAdmin,
@@ -266,7 +268,6 @@ function wireNav() {
   // (index.html stays free of hand-copied SVG paths); the app shell is
   // hidden until this boot code runs, so nothing renders icon-less.
   document.getElementById('notifications-btn').insertAdjacentHTML('afterbegin', icon('bell'));
-  document.getElementById('group-btn').insertAdjacentHTML('afterbegin', icon('users'));
   document.getElementById('profile-btn').innerHTML = icon('circleUser');
   document.getElementById('settings-btn').innerHTML = icon('settings');
   document.querySelector('.admin-banner-label').insertAdjacentHTML('afterbegin', icon('shield'));
@@ -468,7 +469,7 @@ function wireSocket() {
   // Arcade views consume these payloads themselves; Home just refetches the
   // cross-game summary (GET /api/arcade/lobbies) instead of tracking four
   // different payload shapes.
-  ['arcade:lobbies', 'tetris:lobbies', 'scribble:lobbies', 'pong:lobbies', 'blobby:lobbies', 'snake:lobbies'].forEach((event) =>
+  ['arcade:lobbies', 'tetris:lobbies', 'scribble:lobbies', 'pong:lobbies', 'blobby:lobbies', 'snake:lobbies', 'battleship:lobbies'].forEach((event) =>
     socket.on(event, () => {
       invalidateAktuellStatus();
       if (currentView === 'home') renderCurrent();

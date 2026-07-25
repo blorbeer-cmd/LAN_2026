@@ -6,6 +6,7 @@ import { openLobbySummaries as scribbleLobbies } from '../arcade/scribble';
 import { openLobbySummaries as blobbyLobbies } from '../arcade/blobby';
 import { openLobbySummaries as pongLobbies } from '../arcade/pong';
 import { openLobbySummaries as snakeLobbies } from '../arcade/snake';
+import { openLobbySummaries as battleshipLobbies } from '../arcade/battleship';
 import { requestCanAccessGroupEvent, requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
 
 export const arcadeRouter = Router();
@@ -19,6 +20,7 @@ export const ARCADE_TITLES: Record<string, string> = {
   blobby: 'Blobby Volley',
   pong: 'Pong',
   snake: 'Snake',
+  battleship: 'Schiffe versenken',
 };
 interface ArcadeResultRow {
   id: string;
@@ -36,6 +38,7 @@ interface ScoreEntry {
   playerId: string;
   name: string;
   score: number;
+  isWinner?: boolean;
 }
 
 interface ScribbleArtStatsRow {
@@ -100,6 +103,7 @@ arcadeRouter.get('/lobbies', (req, res) => {
     ...pongLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'pong' })),
     ...blobbyLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'blobby' })),
     ...snakeLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'snake' })),
+    ...battleshipLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'battleship' })),
   ]
     .map((l) => ({ ...l, title: ARCADE_TITLES[l.gameType] ?? l.gameType }))
     .sort((a, b) => b.createdAt - a.createdAt);
@@ -150,7 +154,7 @@ arcadeRouter.get('/stats', (req, res) => {
         wins: 0,
       };
       current.matches += 1;
-      if (row.winner_id === score.playerId) current.wins += 1;
+      if (row.winner_id === score.playerId || score.isWinner === true) current.wins += 1;
       game.players.set(score.playerId, current);
     }
     games.set(row.game_type, game);

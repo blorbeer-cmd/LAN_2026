@@ -18,6 +18,7 @@ import { registerScribbleSockets } from './arcade/scribble';
 import { registerBlobbySockets } from './arcade/blobby';
 import { registerPongSockets } from './arcade/pong';
 import { registerSnakeSockets } from './arcade/snake';
+import { registerBattleshipSockets } from './arcade/battleship';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -52,6 +53,7 @@ function start(): void {
   registerBlobbySockets(io);
   registerPongSockets(io);
   registerSnakeSockets(io);
+  registerBattleshipSockets(io);
 
   // Periodically flip stale players to offline.
   startOfflineSweeper(io);

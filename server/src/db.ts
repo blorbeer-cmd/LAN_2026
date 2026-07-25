@@ -2897,6 +2897,56 @@ registerMigration({ version: 53, name: 'add event participant invitation status'
 // single place migrations actually execute.
 runRegisteredMigrations();
 
+// In required mode the default-group role is the source of truth for
+// instance admin rights. Reconcile on every required-mode startup rather
+// than only in a numbered migration: legacy deployments remain untouched,
+// and an installation switched from legacy to required later still receives
+// the cutover instead of having skipped it permanently when that migration
+// was recorded. The update is deterministic and therefore restart-safe.
+function reconcileRequiredModeInstanceAdmins(): void {
+  if (config.authMode !== 'required') return;
+  const mismatches = db
+    .prepare(
+      `WITH derived AS (
+         SELECT p.id, p.is_admin,
+                CASE
+                  WHEN p.is_test = 0 AND p.deactivated_at IS NULL AND gm.role IN ('owner', 'admin') THEN 1
+                  ELSE 0
+                END AS next_is_admin,
+                COALESCE(gm.role, 'member') AS role
+         FROM players p
+         LEFT JOIN group_memberships gm
+           ON gm.group_id = ? AND gm.player_id = p.id AND gm.status = 'active'
+       )
+       SELECT id, is_admin, next_is_admin, role
+       FROM derived
+       WHERE is_admin != next_is_admin`,
+    )
+    .all(DEFAULT_GROUP_ID) as Array<{ id: string; is_admin: number; next_is_admin: number; role: string }>;
+  if (mismatches.length === 0) return;
+
+  const update = db.prepare('UPDATE players SET is_admin = ? WHERE id = ?');
+  const audit = db.prepare(
+    `INSERT INTO admin_log (id, actor_player_id, group_id, action, target_type, target_id, details, created_at)
+     VALUES (?, NULL, NULL, ?, 'player', ?, ?, ?)`,
+  );
+  db.transaction(() => {
+    const now = Date.now();
+    for (const mismatch of mismatches) {
+      update.run(mismatch.next_is_admin, mismatch.id);
+      audit.run(
+        nanoid(),
+        mismatch.next_is_admin ? 'admin_granted' : 'admin_revoked',
+        mismatch.id,
+        JSON.stringify({ via: 'group_role_reconciliation', role: mismatch.role }),
+        now,
+      );
+    }
+  })();
+}
+
+reconcileRequiredModeInstanceAdmins();
+
 // createPushMuteTable() ensures the delivery tables push_mutes and kiosk_tokens
 // (both also created inside v44) *outside* the version counter, on every start.
 // This is a deliberate, documented idempotent exception to "all schema lives in
@@ -2987,6 +3037,7 @@ export const ARCADE_GAME_DEFS = [
   { key: 'scribble', name: 'Scribble', icon: '✏️' },
   { key: 'blobby', name: 'Blobby Volley', icon: '🏐' },
   { key: 'snake', name: 'Snake', icon: '🐍' },
+  { key: 'battleship', name: 'Schiffe versenken', icon: '⚓' },
 ] as const;
 
 function seedArcadeGames(): void {

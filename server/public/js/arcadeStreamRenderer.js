@@ -4,6 +4,7 @@ const GAME_CANVAS_SIZES = {
   snake: [800, 500],
   pong: [960, 540],
   blobby: [1000, 600],
+  battleship: [960, 540],
 };
 
 const TETRIS_COLORS = {
@@ -185,11 +186,44 @@ function drawBlobby(ctx, game, width, height) {
   const netTop = (render.groundY - render.netHeight) * scaleY;
   ctx.fillRect(netX - 5 * scaleX, netTop, 10 * scaleX, groundY - netTop);
   world.blobs.forEach((blob, index) => {
-    ctx.fillStyle = index ? cssColor('--accent-3') : cssColor('--accent');
+    ctx.fillStyle = blob.side === 'right' ? cssColor('--accent-3') : cssColor('--accent');
     ctx.beginPath(); ctx.arc(blob.x * scaleX, blob.y * scaleY, render.blobRadius * radiusScale, 0, Math.PI * 2); ctx.fill();
   });
   ctx.fillStyle = cssColor('--rank-1-gold');
   ctx.beginPath(); ctx.arc(world.ball.x * scaleX, world.ball.y * scaleY, render.ballRadius * radiusScale, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawBattleship(ctx, game, width, height) {
+  const players = game.players ?? [];
+  const columns = players.length > 2 ? 2 : Math.max(1, players.length);
+  const rows = Math.ceil(players.length / columns);
+  const boardWidth = width / columns;
+  const boardHeight = height / Math.max(1, rows);
+  players.forEach((player, index) => {
+    const cell = Math.min((boardWidth * 0.78) / 10, (boardHeight * 0.78) / 10);
+    const left = index % columns * boardWidth + (boardWidth - cell * 10) / 2;
+    const top = Math.floor(index / columns) * boardHeight + (boardHeight - cell * 10) / 2;
+    ctx.fillStyle = cssColor('--bg-elevated');
+    ctx.fillRect(left, top, cell * 10, cell * 10);
+    ctx.strokeStyle = cssColor('--border');
+    ctx.globalAlpha = 0.35;
+    for (let grid = 1; grid < 10; grid += 1) {
+      ctx.beginPath(); ctx.moveTo(left + grid * cell, top); ctx.lineTo(left + grid * cell, top + cell * 10); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(left, top + grid * cell); ctx.lineTo(left + cell * 10, top + grid * cell); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    for (const shot of player.shots ?? []) {
+      const row = Math.floor(shot.coordinate / 10);
+      const column = shot.coordinate % 10;
+      ctx.fillStyle = shot.kind === 'miss' ? cssColor('--text-muted') : cssColor('--danger');
+      ctx.fillRect(left + column * cell + 2, top + row * cell + 2, cell - 4, cell - 4);
+    }
+    ctx.fillStyle = cssColor('--text');
+    ctx.font = `${Math.max(12, cell * 0.6)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(player.name || 'Spieler', left + cell * 5, top + cell * 11);
+    ctx.textAlign = 'start';
+  });
 }
 
 export function drawArcadeStreamCanvas(canvas, game) {
@@ -207,4 +241,5 @@ export function drawArcadeStreamCanvas(canvas, game) {
   else if (game.world && game.gameType === 'snake') drawSnake(ctx, game, width, height);
   else if (game.world && game.gameType === 'pong') drawPong(ctx, game, width, height);
   else if (game.world && game.gameType === 'blobby') drawBlobby(ctx, game, width, height);
+  else if (game.gameType === 'battleship') drawBattleship(ctx, game, width, height);
 }

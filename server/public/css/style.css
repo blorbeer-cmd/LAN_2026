@@ -521,6 +521,19 @@ textarea {
   }
 }
 
+@media (max-width: 639px) { /* --bp-md */
+  .topbar-title .brand-title,
+  .github-icon-btn {
+    display: none;
+  }
+  .topbar-actions {
+    gap: var(--space-1);
+  }
+  .group-switcher {
+    max-width: 132px;
+  }
+}
+
 .group-switcher {
   display: inline-flex;
   align-items: center;
@@ -547,16 +560,87 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------- Battleship ---------- */
+.battleship-board-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.battleship-grid {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: var(--space-1);
+  width: min(100%, 560px);
+  margin: 0 auto;
+  aspect-ratio: 1;
+}
+
+.battleship-cell {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: var(--tap-target-size);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  cursor: pointer;
+}
+
+.battleship-cell.is-ship {
+  background: var(--accent);
+}
+
+.battleship-cell.is-hit,
+.battleship-cell.is-sunk {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.battleship-cell.is-miss {
+  background: var(--state-offline-bg);
+  color: var(--text-muted);
+}
+
+.battleship-cell:disabled {
+  cursor: default;
+  opacity: 0.9;
+}
+
+.battleship-ship-picker,
+.battleship-setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.battleship-setup-actions {
+  justify-content: space-between;
+}
+
+.battleship-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
 @media (max-width: 639px) { /* --bp-md */
-  .topbar-title .brand-title,
-  .github-icon-btn {
-    display: none;
+  .battleship-board-layout {
+    grid-template-columns: 1fr;
   }
-  .topbar-actions {
-    gap: var(--space-1);
+
+  .battleship-cell {
+    min-height: 0;
   }
-  .group-switcher {
-    max-width: 132px;
+
+  .battleship-setup-actions .btn {
+    flex: 1 1 calc(50% - var(--space-2));
   }
 }
 
@@ -1783,64 +1867,6 @@ button.draft-pool-player {
   gap: var(--space-3);
 }
 
-.group-member-list {
-  display: grid;
-  gap: var(--space-2);
-}
-.group-member-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-elevated-2);
-}
-.group-member-row > span:first-child {
-  display: grid;
-  gap: var(--space-1);
-}
-.group-member-row small {
-  color: var(--text-muted);
-}
-.group-member-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-.group-role-select {
-  width: auto;
-  min-width: 112px;
-}
-.group-audit-list {
-  display: grid;
-  gap: var(--space-2);
-  margin: var(--space-3) 0 0;
-  padding-left: var(--space-5);
-  color: var(--text-muted);
-  font-size: var(--font-size-sm);
-}
-.group-test-users-form {
-  align-items: stretch;
-  margin-top: var(--space-3);
-}
-.group-test-users-form input {
-  flex: 1 1 80px;
-  min-width: 72px;
-}
-@media (max-width: 479px) { /* --bp-sm */
-  .group-member-row {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .group-member-actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-}
 .notice {
   margin: 0;
   padding: var(--space-3);
@@ -3118,6 +3144,10 @@ button.card {
   background: var(--state-playing-bg);
   color: var(--state-playing);
 }
+.badge-online {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
 .badge-paused {
   background: var(--state-paused-bg);
   color: var(--state-paused);
@@ -4102,6 +4132,10 @@ input[type='number'].tournament-score-input {
   justify-content: flex-end;
   margin-left: auto;
 }
+.admin-role-select {
+  width: auto;
+  min-width: var(--assignment-select-width);
+}
 @media (min-width: 640px) { /* --bp-md */
   .two-column-card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4969,6 +5003,7 @@ input.food-order-price-input {
   background: var(--danger);
 }
 .seating-status-indicator.is-playing,
+.seating-status-indicator.is-online,
 .seating-status-indicator.is-paused {
   animation: seating-status-pulse 1.8s ease-in-out infinite;
   will-change: transform, box-shadow;
@@ -4976,6 +5011,10 @@ input.food-order-price-input {
 .seating-status-indicator.is-playing {
   --seating-status-halo: var(--state-playing-bg);
   background: var(--state-playing);
+}
+.seating-status-indicator.is-online {
+  --seating-status-halo: var(--accent-bg);
+  background: var(--accent);
 }
 .seating-status-indicator.is-paused {
   --seating-status-halo: var(--state-paused-bg);
