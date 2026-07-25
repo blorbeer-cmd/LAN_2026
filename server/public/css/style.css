@@ -3118,6 +3118,10 @@ button.card {
   background: var(--state-playing-bg);
   color: var(--state-playing);
 }
+.badge-online {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
 .badge-paused {
   background: var(--state-paused-bg);
   color: var(--state-paused);
@@ -4969,6 +4973,7 @@ input.food-order-price-input {
   background: var(--danger);
 }
 .seating-status-indicator.is-playing,
+.seating-status-indicator.is-online,
 .seating-status-indicator.is-paused {
   animation: seating-status-pulse 1.8s ease-in-out infinite;
   will-change: transform, box-shadow;
@@ -4976,6 +4981,10 @@ input.food-order-price-input {
 .seating-status-indicator.is-playing {
   --seating-status-halo: var(--state-playing-bg);
   background: var(--state-playing);
+}
+.seating-status-indicator.is-online {
+  --seating-status-halo: var(--accent-bg);
+  background: var(--accent);
 }
 .seating-status-indicator.is-paused {
   --seating-status-halo: var(--state-paused-bg);

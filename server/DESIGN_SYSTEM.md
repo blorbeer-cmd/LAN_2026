@@ -265,7 +265,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   underneath the pointer).
 - **Card** — `.card`.
 - **Badge** (status pill) — `.badge` + one of `.badge-playing` /
-  `.badge-paused` / `.badge-offline`.
+  `.badge-online` / `.badge-paused` / `.badge-offline`. Online reuses the
+  accent color pair so it stays distinct from the green active-game state.
 - **Chip** — `.chip` (generic pill, works on `<span>`, `<button>`, `<a>`).
 - **List row** — `.list-row` (+ `.list-row-icon`, `.list-row-desc`) for
   Spieler/Spiele/Turniere lists and the "Mehr" hub.
@@ -299,8 +300,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   cards: a full bordered card whose chevron rotates when opened. Section-specific content lives in
   `.collapsible-section-content`; decorative heading icons are omitted.
 - **Seating status** — `.seating-status-indicator` sits directly after the gamer name and mirrors
-  the shared live state as green „Spielt“, yellow „Pause“ or red „Offline“. Its German title and
-  accessible label preserve the meaning beyond color. Playing and pause indicators pulse gently,
+  the shared live state as green „Spielt“, blue „Online“, yellow „Pause“ or red „Offline“. Its German title and
+  accessible label preserve the meaning beyond color. Playing, online and pause indicators pulse gently,
   while offline stays static; the global reduced-motion rule disables that motion when requested.
   Every `.seating-seat` uses the same width and height on all four table sides, so vertical sides
   no longer stretch into wide rows. Phones switch all four sides to one shared compact size and
