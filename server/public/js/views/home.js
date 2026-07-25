@@ -16,7 +16,7 @@ import { icon } from '../icons.js';
 import { renderSeatingPlan } from './seating.js';
 import { ensureAktuellLoaded, aktuellItems } from '../aktuellStatus.js';
 
-const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
+const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
 
 let seatingCache = null;
 let seatingLoading = false;

@@ -127,23 +127,12 @@ export const api = {
 
   groups: {
     list: () => apiFetch('/api/groups'),
-    get: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}`),
-    update: (groupId, data) =>
-      apiFetch(`/api/groups/${encodeURIComponent(groupId)}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-      }),
     members: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/members`),
     updateMember: (groupId, playerId, role) =>
       apiFetch(`/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(playerId)}`, {
         method: 'PATCH',
         body: JSON.stringify({ role }),
       }),
-    removeMember: (groupId, playerId) =>
-      apiFetch(`/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(playerId)}`, {
-        method: 'DELETE',
-      }),
-    audit: (groupId, limit = 100) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/audit?limit=${limit}`),
     createTestUsers: (groupId, count) =>
       apiFetch(`/api/groups/${encodeURIComponent(groupId)}/test-users`, {
         method: 'POST',

@@ -8,7 +8,7 @@
 import { Server } from 'socket.io';
 import { db, DEFAULT_GROUP_ID } from './db';
 import { config } from './config';
-import { broadcast, Events } from './realtime';
+import { broadcast, Events, isPlayerConnected } from './realtime';
 import { activePlayerGroupIds } from './groups';
 
 export interface LiveGameEntry {
@@ -34,7 +34,7 @@ export interface LiveBoardEntry {
   activity_tracked: boolean;
 }
 
-export type LiveState = 'playing' | 'paused' | 'offline';
+export type LiveState = 'playing' | 'online' | 'paused' | 'offline';
 
 // Removes one player's currently detected games and closes their open play
 // sessions. The next agent report starts a clean live-status window.
@@ -53,10 +53,16 @@ export function clearPlayerLiveStatus(playerId: string, endedAt = Date.now()): v
 
 // Pure derivation rule, kept independent of the exact row shape so it's easy
 // to unit-test: playing if the agent reported recently AND at least one game
-// is currently detected; paused if a manual note is set (regardless of agent
-// freshness — it's a player-set override); otherwise offline.
+// is currently detected; paused if a manual note is set; online if either a
+// browser is active or the agent recently reported without a detected game;
+// otherwise offline.
 export function deriveState(
-  input: { last_seen: number | null; manual_note: string | null; activeGamesCount: number },
+  input: {
+    last_seen: number | null;
+    manual_note: string | null;
+    activeGamesCount: number;
+    browserOnline?: boolean;
+  },
   now: number
 ): LiveState {
   const fresh = input.last_seen != null && now - input.last_seen <= config.offlineTimeoutMs;
@@ -65,6 +71,7 @@ export function deriveState(
   // the stale note must not hide the offline state.
   if (input.manual_note && (input.last_seen == null || fresh)) return 'paused';
   if (fresh && input.activeGamesCount > 0) return 'playing';
+  if (fresh || input.browserOnline) return 'online';
   return 'offline';
 }
 
@@ -77,6 +84,15 @@ export function deriveState(
 // games list and the roster are group-scoped.
 export function getLiveBoard(groupId: string): LiveBoardEntry[] {
   const now = Date.now();
+  const recentSessionRows = db
+    .prepare(
+      `SELECT player_id
+       FROM sessions
+       WHERE last_seen_at >= ? AND expires_at > ?
+       GROUP BY player_id`
+    )
+    .all(now - config.offlineTimeoutMs, now) as Array<{ player_id: string }>;
+  const recentlyActiveSessionPlayers = new Set(recentSessionRows.map((row) => row.player_id));
 
   // Legacy mode predates the group system: players created via the simple
   // "add a participant" flow never get a group_memberships row at all (there
@@ -147,6 +163,7 @@ export function getLiveBoard(groupId: string): LiveBoardEntry[] {
     const games = gamesByPlayer.get(p.id) ?? [];
     const lastSeen = status?.last_seen ?? null;
     const manualNote = status?.manual_note ?? null;
+    const browserOnline = recentlyActiveSessionPlayers.has(p.id) || isPlayerConnected(p.id);
     return {
       player_id: p.id,
       name: p.name,
@@ -155,7 +172,7 @@ export function getLiveBoard(groupId: string): LiveBoardEntry[] {
       last_seen: lastSeen,
       manual_note: manualNote,
       games,
-      state: deriveState({ last_seen: lastSeen, manual_note: manualNote, activeGamesCount: games.length }, now),
+      state: deriveState({ last_seen: lastSeen, manual_note: manualNote, activeGamesCount: games.length, browserOnline }, now),
       activity_tracked: Boolean(status?.activity_tracked),
     };
   });
@@ -233,6 +250,12 @@ export function sweepOnce(now: number = Date.now()): void {
     for (const row of db.prepare('SELECT DISTINCT player_id AS id FROM live_status').all() as Array<{ id: string }>) {
       for (const gid of activePlayerGroupIds(row.id)) groupIds.add(gid);
     }
+    // Login presence also needs a periodic refresh: after the short activity
+    // window expires there may be no tracking row to otherwise make the
+    // board broadcast the transition back to offline.
+    for (const row of db.prepare('SELECT DISTINCT player_id AS id FROM sessions WHERE expires_at > ?').all(now) as Array<{ id: string }>) {
+      for (const gid of activePlayerGroupIds(row.id)) groupIds.add(gid);
+    }
     for (const groupId of groupIds) {
       broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
     }
@@ -245,7 +268,23 @@ export function sweepOnce(now: number = Date.now()): void {
 
 // Periodically re-broadcasts the board so clients transition players to
 // "offline" even when no new report arrives (e.g. a PC was switched off).
-export function startOfflineSweeper(_io: Server): void {
+export function startOfflineSweeper(io: Server): void {
+  io.on('connection', (socket) => {
+    const playerId = socket.data.authPlayerId;
+    if (typeof playerId !== 'string') return;
+
+    const refreshPresence = () => {
+      const groupIds = activePlayerGroupIds(playerId);
+      if (config.authMode === 'legacy' || groupIds.length === 0) groupIds.push(DEFAULT_GROUP_ID);
+      for (const groupId of new Set(groupIds)) {
+        broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+      }
+    };
+
+    refreshPresence();
+    socket.on('disconnect', refreshPresence);
+  });
+
   // Half the timeout is a good cadence: reacts quickly without busy-looping.
   const interval = Math.max(5_000, Math.floor(config.offlineTimeoutMs / 2));
   setInterval(() => sweepOnce(), interval).unref();

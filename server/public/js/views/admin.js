@@ -15,17 +15,22 @@ import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { authRequired } from '../authGate.js';
 import { getMyId } from '../whoami.js';
+import { currentGroup, refreshGroupContext } from '../groupContext.js';
 
 const SEATING_HELP = 'Tisch, Plätze und Sitzordnung verwalten.';
 const BACKUP_HELP = 'Aktuellen Stand als SQLite-Datei sichern.';
 const TEST_DATA_HELP = 'Kommen fertig eingerichtet: Platz im Sitzplan samt sichtbarer Monitore, Skill- und Bock-Werte pro Spiel, Spielzeit fürs aktive Event – zwei davon spielen gerade. Nur im Admin-Modus sichtbar.';
-const ADMIN_ROLE_HELP = 'Wird über die Gruppen-Mitgliederverwaltung vergeben: Gruppenname oben antippen → Rolle in der Mitgliederliste ändern.';
+const ADMIN_ROLE_HELP = 'Owner und Admins dürfen den Admin-Bereich verwalten. Mindestens ein aktiver Owner muss erhalten bleiben.';
 
 let agentDiagnostics = null;
 let diagnosticsLoading = false;
 let seedBusy = false;
 let adminPlayers = null;
 let adminPlayersLoading = false;
+let adminMembers = null;
+let adminMembersLoading = false;
+let adminMembersError = null;
+const roleChangesInFlight = new Set();
 let activeInvites = null;
 let activeInvitesLoading = false;
 
@@ -113,9 +118,88 @@ async function loadAdminPlayers(ctx, force = false) {
   }
 }
 
+async function loadAdminMembers(ctx, force = false) {
+  if (!authRequired || adminMembersLoading || (adminMembers !== null && !force)) return;
+  adminMembersLoading = true;
+  adminMembersError = null;
+  ctx.rerender();
+  try {
+    const group = currentGroup();
+    if (!group) throw new Error('Der interne Zugriffskontext ist nicht verfügbar.');
+    adminMembers = await api.groups.members(group.id);
+  } catch (error) {
+    showToast(error.message, { error: true });
+    adminMembersError = error.message;
+    if (adminMembers === null) adminMembers = [];
+  } finally {
+    adminMembersLoading = false;
+    ctx.rerender();
+  }
+}
+
+export function invalidateAdminMemberships() {
+  adminMembers = null;
+  adminMembersError = null;
+}
+
+function roleLabel(role) {
+  return { owner: 'Owner', admin: 'Admin', member: 'Mitglied' }[role] ?? role;
+}
+
+function roleControl(player) {
+  const membership = adminMembers?.find((member) => member.playerId === player.id);
+  if (!authRequired || !membership || player.deactivated_at) return '';
+
+  const myRole = currentGroup()?.role;
+  const canChangeOwner = myRole === 'owner';
+  const canChangeMember = myRole === 'admin' && membership.role !== 'owner';
+  if (player.is_test || (!canChangeOwner && !canChangeMember)) {
+    return `<span class="badge">${escapeHtml(roleLabel(membership.role))}</span>`;
+  }
+
+  const roles = canChangeOwner ? ['member', 'admin', 'owner'] : ['member', 'admin'];
+  return `<select class="admin-role-select" data-player-role="${escapeHtml(player.id)}" aria-label="Rolle von ${escapeHtml(player.name)}" ${roleChangesInFlight.has(player.id) ? 'disabled' : ''}>
+    ${roles.map((role) => `<option value="${role}" ${membership.role === role ? 'selected' : ''}>${roleLabel(role)}</option>`).join('')}
+  </select>`;
+}
+
+async function changeRole(player, role, ctx) {
+  if (roleChangesInFlight.has(player.id)) return;
+  const group = currentGroup();
+  if (!group) {
+    showToast('Der interne Zugriffskontext ist nicht verfügbar.', { error: true });
+    ctx.rerender();
+    return;
+  }
+  roleChangesInFlight.add(player.id);
+  try {
+    const result = await withStepUp(() => api.groups.updateMember(group.id, player.id, role));
+    if (result === undefined) {
+      await loadAdminMembers(ctx, true);
+      return;
+    }
+    showToast(`Rolle von ${player.name} geändert.`);
+    await refreshGroupContext();
+    if (player.id === getMyId() && role === 'member') {
+      await ctx.refresh();
+      return;
+    }
+    await refreshAdminData(ctx);
+  } catch (error) {
+    showToast(error.message, { error: true });
+    await loadAdminMembers(ctx, true);
+  } finally {
+    roleChangesInFlight.delete(player.id);
+    ctx.rerender();
+  }
+}
+
 async function refreshAdminData(ctx) {
   await ctx.refresh();
-  await Promise.all([loadAdminPlayers(ctx, true), ...(authRequired ? [loadActiveInvites(ctx, true)] : [])]);
+  await Promise.all([
+    loadAdminPlayers(ctx, true),
+    ...(authRequired ? [loadAdminMembers(ctx, true), loadActiveInvites(ctx, true)] : []),
+  ]);
 }
 
 async function createLoginInvite(purpose, player, ctx) {
@@ -284,6 +368,7 @@ function renderActivate(container) {
 
 function renderPanel(container, ctx) {
   if (adminPlayers === null && !adminPlayersLoading) loadAdminPlayers(ctx);
+  if (authRequired && adminMembers === null && !adminMembersLoading && !adminMembersError) loadAdminMembers(ctx);
   if (authRequired && activeInvites === null && !activeInvitesLoading) loadActiveInvites(ctx);
   const players = adminPlayers || [];
   const testCount = players.filter((p) => p.is_test).length;
@@ -300,6 +385,7 @@ function renderPanel(container, ctx) {
           ${p.deactivated_at ? '<span class="badge badge-offline">Deaktiviert</span>' : ''}
         </span>
         <span class="row admin-player-actions" style="gap:var(--space-2);">
+          ${roleControl(p)}
           ${authRequired && p.is_test && !p.deactivated_at ? `<button type="button" class="btn btn-sm" data-test-session="${p.id}">Testsitzung öffnen</button>` : ''}
           ${p.deactivated_at
             ? `<button type="button" class="btn btn-sm" data-reactivate-player="${p.id}">Reaktivieren</button>`
@@ -423,10 +509,20 @@ function renderPanel(container, ctx) {
       <section class="card stack grouped-page-section" aria-labelledby="admin-players-title">
         <div class="grouped-page-section-title">
           <span class="title-with-info">
-            <h2 id="admin-players-title">Spieler (${players.length})</h2>
-            ${authRequired ? infoTooltipHtml('admin-role-help', 'Admin-Rolle', ADMIN_ROLE_HELP) : ''}
+            <h2 id="admin-players-title">Benutzer (${players.length})</h2>
+            ${authRequired ? infoTooltipHtml('admin-role-help', 'Rollen', ADMIN_ROLE_HELP) : ''}
           </span>
         </div>
+        ${
+          adminMembersError
+            ? `<div class="notice row-between" style="gap:var(--space-2);">
+                <span>Rollen konnten nicht geladen werden.</span>
+                <button type="button" class="btn btn-sm" id="admin-members-retry">Erneut versuchen</button>
+              </div>`
+            : adminMembersLoading
+              ? '<div class="muted">Rollen werden geladen…</div>'
+              : ''
+        }
         <div class="card">${rows || '<span class="muted">Noch keine Spieler.</span>'}</div>
       </section>
       <section class="card stack grouped-page-section" aria-labelledby="admin-agent-title">
@@ -477,6 +573,7 @@ function renderPanel(container, ctx) {
   wireInfoTooltips(container);
 
   container.querySelector('#agent-diagnostics-refresh').addEventListener('click', () => loadAgentDiagnostics(ctx, true));
+  container.querySelector('#admin-members-retry')?.addEventListener('click', () => loadAdminMembers(ctx, true));
 
   container.querySelectorAll('[data-test-session]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -489,6 +586,16 @@ function renderPanel(container, ctx) {
     btn.addEventListener('click', () => {
       const player = players.find((p) => p.id === btn.dataset.toggleAdmin);
       if (player) toggleAdmin(player, ctx);
+    });
+  });
+
+  container.querySelectorAll('[data-player-role]').forEach((select) => {
+    select.addEventListener('change', () => {
+      const player = players.find((entry) => entry.id === select.dataset.playerRole);
+      if (player) {
+        select.disabled = true;
+        changeRole(player, select.value, ctx);
+      }
     });
   });
 

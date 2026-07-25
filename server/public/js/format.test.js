@@ -52,6 +52,7 @@ test('toDatetimeLocal pads single-digit month/day/hour/minute', () => {
 
 test('stateLabel maps known live states to their German label', () => {
   assert.equal(stateLabel('playing'), 'Spielt');
+  assert.equal(stateLabel('online'), 'Online');
   assert.equal(stateLabel('paused'), 'Pause');
   assert.equal(stateLabel('offline'), 'Offline');
 });
