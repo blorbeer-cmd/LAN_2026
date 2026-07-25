@@ -196,7 +196,6 @@ function activeClaimedOwnerCount(groupId: string): number {
       .get(groupId) as { count: number }
   ).count;
 }
-
 // Required mode freezes group role (owner/admin/member) as the instance
 // rights model (see docs/plans/reset-single-group.md §9.1). players.is_admin
 // — the separate flag still gating account-management routes (invites,
