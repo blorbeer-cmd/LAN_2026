@@ -3825,10 +3825,13 @@ button.bracket-team-row {
    selector to win outright instead of reaching for !important. */
 input[type='number'].bracket-score-input,
 input[type='number'].tournament-score-input {
-  width: var(--space-7);
+  /* The shared number stepper occupies the right side of the field. Keep
+     enough room for it plus a two-digit score instead of letting the value
+     sit underneath the arrows. */
+  width: calc(var(--space-7) + var(--space-7));
   height: var(--space-7);
-  flex: 0 0 var(--space-7);
-  padding: 0;
+  flex: 0 0 calc(var(--space-7) + var(--space-7));
+  padding: 0 var(--space-7) 0 var(--space-2);
   text-align: center;
   font-size: var(--font-size-sm);
 }
