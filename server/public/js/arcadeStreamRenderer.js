@@ -184,8 +184,8 @@ function drawBlobby(ctx, game, width, height) {
   ctx.fillStyle = cssColor('--text-muted');
   const netTop = (render.groundY - render.netHeight) * scaleY;
   ctx.fillRect(netX - 5 * scaleX, netTop, 10 * scaleX, groundY - netTop);
-  world.blobs.forEach((blob, index) => {
-    ctx.fillStyle = index ? cssColor('--accent-3') : cssColor('--accent');
+  world.blobs.forEach((blob) => {
+    ctx.fillStyle = blob.side === 'right' ? cssColor('--accent-3') : cssColor('--accent');
     ctx.beginPath(); ctx.arc(blob.x * scaleX, blob.y * scaleY, render.blobRadius * radiusScale, 0, Math.PI * 2); ctx.fill();
   });
   ctx.fillStyle = cssColor('--rank-1-gold');

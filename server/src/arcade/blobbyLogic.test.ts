@@ -46,3 +46,48 @@ test('ball speed is capped after a strong collision', () => {
   stepWorld(world, [idle, idle], 1 / 60);
   assert.ok(Math.hypot(world.ball.vx, world.ball.vy) <= 620.01);
 });
+
+test('doubles creates two independently moving blobs on each side', () => {
+  const world = createWorld('left', 'doubles');
+  assert.deepEqual(world.blobs.map((blob) => blob.side), ['left', 'left', 'right', 'right']);
+
+  const startingX = world.blobs.map((blob) => blob.x);
+  stepWorld(world, [
+    { ...idle, right: true },
+    { ...idle, left: true },
+    { ...idle, right: true },
+    { ...idle, left: true },
+  ], 1 / 60);
+
+  assert.ok(world.blobs[0].x > startingX[0]);
+  assert.ok(world.blobs[1].x < startingX[1]);
+  assert.ok(world.blobs[2].x > startingX[2]);
+  assert.ok(world.blobs[3].x < startingX[3]);
+});
+
+test('doubles keeps every blob on its team side', () => {
+  const world = createWorld('left', 'doubles');
+  const inputs = [
+    { ...idle, right: true },
+    { ...idle, right: true },
+    { ...idle, left: true },
+    { ...idle, left: true },
+  ];
+  for (let i = 0; i < 180; i += 1) stepWorld(world, inputs, 1 / 60);
+
+  assert.ok(world.blobs.slice(0, 2).every((blob) => blob.x < NET_X));
+  assert.ok(world.blobs.slice(2).every((blob) => blob.x > NET_X));
+});
+
+test('ball collides with the second blob of a doubles team', () => {
+  const world = createWorld('left', 'doubles');
+  const secondBlob = world.blobs[1];
+  world.ball.x = secondBlob.x + 40;
+  world.ball.y = secondBlob.y;
+  world.ball.vx = -320;
+  world.ball.vy = 0;
+
+  stepWorld(world, [idle, idle, idle, idle], 1 / 60);
+
+  assert.ok(world.ball.vx > -320 || world.ball.vy < 0);
+});
