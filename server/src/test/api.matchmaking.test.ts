@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
+import { db } from '../db';
 
 const app = createApp();
 let gameId: string;
@@ -49,6 +50,16 @@ test('POST /api/matchmaking 404s if a player does not exist', async () => {
     .post('/api/matchmaking')
     .send({ gameId, playerIds: [...playerIds, 'ghost'] });
   assert.equal(res.status, 404);
+});
+
+test('POST /api/matchmaking rejects a deactivated player', async () => {
+  db.prepare('UPDATE players SET deactivated_at = ? WHERE id = ?').run(Date.now(), playerIds[0]);
+  try {
+    const res = await request(app).post('/api/matchmaking').send({ gameId, playerIds });
+    assert.equal(res.status, 404);
+  } finally {
+    db.prepare('UPDATE players SET deactivated_at = NULL WHERE id = ?').run(playerIds[0]);
+  }
 });
 
 test('POST /api/matchmaking draws two balanced teams by default', async () => {

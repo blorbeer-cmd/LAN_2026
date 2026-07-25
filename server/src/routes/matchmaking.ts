@@ -50,7 +50,7 @@ export function buildTeamsSnapshot(gameId: string, teamPlayerIdLists: string[][]
   if (allIds.length > 0) {
     const placeholders = allIds.map(() => '?').join(',');
     const players = db
-      .prepare(`SELECT id, name, color, avatar FROM players WHERE id IN (${placeholders})`)
+      .prepare(`SELECT id, name, color, avatar FROM players WHERE deactivated_at IS NULL AND id IN (${placeholders})`)
       .all(...allIds) as PlayerRow[];
     players.forEach((p) => playerById.set(p.id, p));
     const ratingRows = db
@@ -168,7 +168,7 @@ matchmakingRouter.post('/', (req, res) => {
 
   const placeholders = uniqueIds.map(() => '?').join(',');
   const players = db
-    .prepare(`SELECT id, name, color, avatar FROM players WHERE id IN (${placeholders})`)
+    .prepare(`SELECT id, name, color, avatar FROM players WHERE deactivated_at IS NULL AND id IN (${placeholders})`)
     .all(...uniqueIds) as PlayerRow[];
   if (players.length !== uniqueIds.length) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
@@ -284,7 +284,7 @@ matchmakingRouter.post('/rematch', (req, res) => {
 
   const placeholders = uniqueIds.map(() => '?').join(',');
   const players = db
-    .prepare(`SELECT id, name, color, avatar FROM players WHERE id IN (${placeholders})`)
+    .prepare(`SELECT id, name, color, avatar FROM players WHERE deactivated_at IS NULL AND id IN (${placeholders})`)
     .all(...uniqueIds) as PlayerRow[];
   if (players.length !== uniqueIds.length) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
