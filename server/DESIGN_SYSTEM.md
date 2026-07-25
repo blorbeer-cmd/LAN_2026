@@ -376,7 +376,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   need no separate Admin action. The test-data fixture explanation and the existing test-player count live in adjacent
   tooltips; the compact count input, „Test-Daten aufräumen“ and create action share one control row
   in that order. Cleanup removes every marked test player and test LAN
-  without touching real events.
+  without touching real events. The single-instance access context is not shown as a separate group
+  control in the topbar. Owner/Admin/Member roles are managed directly in Admin's consolidated
+  „Benutzer“ list; test players keep a read-only member role there.
   The seating editor follows the same grouped-page hierarchy: the editable plan comes first, followed
   by „Spieler“ and „Konfiguration“. Unassigned players use the shared rectangular two-column player
   rows instead of pills; phones keep one column. Empty seats use an accent border and only the
