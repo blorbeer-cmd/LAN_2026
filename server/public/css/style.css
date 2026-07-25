@@ -521,32 +521,6 @@ textarea {
   }
 }
 
-.group-switcher {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  max-width: 180px;
-  min-height: 40px;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  background: var(--bg-elevated-2);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-}
-.group-switcher[hidden] {
-  display: none;
-}
-.group-switcher .ui-icon {
-  flex: 0 0 auto;
-}
-.group-switcher span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 @media (max-width: 639px) { /* --bp-md */
   .topbar-title .brand-title,
   .github-icon-btn {
@@ -554,9 +528,6 @@ textarea {
   }
   .topbar-actions {
     gap: var(--space-1);
-  }
-  .group-switcher {
-    max-width: 132px;
   }
 }
 
@@ -1783,64 +1754,6 @@ button.draft-pool-player {
   gap: var(--space-3);
 }
 
-.group-member-list {
-  display: grid;
-  gap: var(--space-2);
-}
-.group-member-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-elevated-2);
-}
-.group-member-row > span:first-child {
-  display: grid;
-  gap: var(--space-1);
-}
-.group-member-row small {
-  color: var(--text-muted);
-}
-.group-member-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-.group-role-select {
-  width: auto;
-  min-width: 112px;
-}
-.group-audit-list {
-  display: grid;
-  gap: var(--space-2);
-  margin: var(--space-3) 0 0;
-  padding-left: var(--space-5);
-  color: var(--text-muted);
-  font-size: var(--font-size-sm);
-}
-.group-test-users-form {
-  align-items: stretch;
-  margin-top: var(--space-3);
-}
-.group-test-users-form input {
-  flex: 1 1 80px;
-  min-width: 72px;
-}
-@media (max-width: 479px) { /* --bp-sm */
-  .group-member-row {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .group-member-actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-}
 .notice {
   margin: 0;
   padding: var(--space-3);
@@ -3118,6 +3031,10 @@ button.card {
   background: var(--state-playing-bg);
   color: var(--state-playing);
 }
+.badge-online {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
 .badge-paused {
   background: var(--state-paused-bg);
   color: var(--state-paused);
@@ -4102,6 +4019,10 @@ input[type='number'].tournament-score-input {
   justify-content: flex-end;
   margin-left: auto;
 }
+.admin-role-select {
+  width: auto;
+  min-width: var(--assignment-select-width);
+}
 @media (min-width: 640px) { /* --bp-md */
   .two-column-card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4969,6 +4890,7 @@ input.food-order-price-input {
   background: var(--danger);
 }
 .seating-status-indicator.is-playing,
+.seating-status-indicator.is-online,
 .seating-status-indicator.is-paused {
   animation: seating-status-pulse 1.8s ease-in-out infinite;
   will-change: transform, box-shadow;
@@ -4976,6 +4898,10 @@ input.food-order-price-input {
 .seating-status-indicator.is-playing {
   --seating-status-halo: var(--state-playing-bg);
   background: var(--state-playing);
+}
+.seating-status-indicator.is-online {
+  --seating-status-halo: var(--accent-bg);
+  background: var(--accent);
 }
 .seating-status-indicator.is-paused {
   --seating-status-halo: var(--state-paused-bg);

@@ -7,6 +7,7 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { db } from '../db';
 import { config } from '../config';
+import { createSession } from '../sessions';
 
 const app = createApp();
 let playerId: string;
@@ -14,6 +15,25 @@ let playerId: string;
 test('setup: a player with no agent report yet', async () => {
   const player = await request(app).post('/api/players').send({ name: 'Note Tester' });
   playerId = player.body.id;
+});
+
+test('a recently used login session shows the player as online without an agent report', async () => {
+  createSession(playerId);
+
+  const board = await request(app).get('/api/live');
+  const entry = board.body.find((row: { player_id: string }) => row.player_id === playerId);
+  assert.equal(entry.state, 'online');
+});
+
+test('a login session stops implying online after the short presence window', async () => {
+  db.prepare('UPDATE sessions SET last_seen_at = ? WHERE player_id = ?').run(
+    Date.now() - config.offlineTimeoutMs - 1,
+    playerId
+  );
+
+  const board = await request(app).get('/api/live');
+  const entry = board.body.find((row: { player_id: string }) => row.player_id === playerId);
+  assert.equal(entry.state, 'offline');
 });
 
 test('POST /api/live/:playerId/note 404s for an unknown player', async () => {
@@ -38,13 +58,13 @@ test('setting a note flips a never-reported player to "paused"', async () => {
   assert.equal(entry.manual_note, 'Essen');
 });
 
-test('clearing the note (null) flips them back to offline', async () => {
+test('clearing the note (null) leaves the player online while that action is fresh', async () => {
   const res = await request(app).post(`/api/live/${playerId}/note`).send({ note: null });
   assert.equal(res.status, 200);
 
   const board = await request(app).get('/api/live');
   const entry = board.body.find((r: { player_id: string }) => r.player_id === playerId);
-  assert.equal(entry.state, 'offline');
+  assert.equal(entry.state, 'online');
   assert.equal(entry.manual_note, null);
 });
 
