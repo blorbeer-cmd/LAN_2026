@@ -15,7 +15,7 @@ const COUNTDOWN_MS = arcadeTiming.countdownMs;
 interface Player { id: string; name: string; avatar: string | null; color: string | null }
 interface Lobby { id: string; groupId: string; eventId: string | null; mode: 'duel' | 'team'; host: Player; players: Player[]; socketIds: Map<string, string>; ready: Set<string>; createdAt: number }
 interface ShotRecord { playerId: string; targetId: string; coordinate: number; kind: 'miss' | 'hit' | 'sunk' }
-interface Match { id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[]; socketIds: Map<string, string>; fleets: Map<string, ShipState[]>; fired: Map<string, Set<number>>; shots: ShotRecord[]; phase: 'setup' | 'countdown' | 'playing' | 'ended'; currentPlayerId: string | null; paused: boolean; startedAt: number; beginsAt: number | null }
+interface Match { id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[]; socketIds: Map<string, string>; fleets: Map<string, ShipState[]>; fired: Map<string, Set<number>>; shots: ShotRecord[]; phase: 'setup' | 'countdown' | 'playing' | 'ended'; currentPlayerId: string | null; paused: boolean; startedAt: number; beginsAt: number | null; timers: Set<ReturnType<typeof setTimeout>> }
 
 const lobbies = new Map<string, Lobby>();
 const matches = new Map<string, Match>();
@@ -96,7 +96,7 @@ function publicState(match: Match, viewerId?: string) {
   };
 }
 
-function spectatorState(match: Match) {
+function spectatorState(match: Match, reveal = false) {
   return publicState(match).players.map((player) => ({
     id: player.id,
     name: player.name,
@@ -105,7 +105,20 @@ function spectatorState(match: Match) {
     shipsRemaining: player.shipsRemaining,
     segmentsRemaining: player.segmentsRemaining,
     shots: match.shots.filter((shot) => shot.targetId === player.id).map((shot) => ({ coordinate: shot.coordinate, kind: shot.kind })),
+    ...(reveal ? { fleet: fleetSnapshot(match.fleets.get(player.id) ?? [], true) } : {}),
   }));
+}
+
+function schedule(match: Match, callback: () => void, delay: number) {
+  const timer = setTimeout(() => { match.timers.delete(timer); callback(); }, delay);
+  match.timers.add(timer);
+}
+
+function cleanupMatch(io: Server, match: Match) {
+  for (const timer of match.timers) clearTimeout(timer);
+  match.timers.clear();
+  matches.delete(match.id);
+  for (const socketId of match.socketIds.values()) io.sockets.sockets.get(socketId)?.leave(match.room);
 }
 
 function emitPersonalized(io: Server, match: Match) {
@@ -119,6 +132,8 @@ function finish(io: Server, match: Match, winnerId: string | null, reason: strin
   if (match.phase === 'ended') return;
   match.phase = 'ended';
   match.paused = false;
+  for (const timer of match.timers) clearTimeout(timer);
+  match.timers.clear();
   endArcadeSession(realPlayerIds(match.players), 'battleship', match);
   const scores = match.players.map((player) => ({
     playerId: player.id,
@@ -126,9 +141,11 @@ function finish(io: Server, match: Match, winnerId: string | null, reason: strin
     score: remainingSegments(match.fleets.get(player.id) ?? []),
   }));
   recordArcadeResult({ gameType: 'battleship', winnerId, players: match.players, scores, reason, startedAt: match.startedAt, scope: match });
-  emitArcadeRoom(io, match.room, 'battleship:match:end', { matchId: match.id, winnerId, reason, scores }, match);
-  broadcastArcadeKiosk(io, { gameType: null, matchId: match.id, groupId: match.groupId, eventId: match.eventId });
+  const fleets = match.players.map((player) => ({ playerId: player.id, fleet: fleetSnapshot(match.fleets.get(player.id) ?? [], true) }));
+  emitArcadeRoom(io, match.room, 'battleship:match:end', { matchId: match.id, winnerId, reason, scores, fleets }, match);
+  broadcastArcadeKiosk(io, { gameType: 'battleship', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'ended', players: spectatorState(match, true) });
   emitPersonalized(io, match);
+  cleanupMatch(io, match);
 }
 
 function beginBattle(io: Server, match: Match) {
@@ -138,7 +155,7 @@ function beginBattle(io: Server, match: Match) {
   match.currentPlayerId = match.players[Math.floor(Math.random() * match.players.length)].id;
   emitPersonalized(io, match);
   broadcastArcadeKiosk(io, { gameType: 'battleship', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'countdown', players: spectatorState(match) });
-  setTimeout(() => {
+  schedule(match, () => {
     if (matches.get(match.id) !== match || match.phase !== 'countdown') return;
     match.phase = 'playing';
     match.beginsAt = null;
@@ -152,7 +169,7 @@ function startMatch(io: Server, lobby: Lobby): Match {
   for (const socketId of lobby.socketIds.values()) io.sockets.sockets.get(socketId)?.join(room);
   const match: Match = {
     id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: [...lobby.players], socketIds: new Map(lobby.socketIds),
-    fleets: new Map(), fired: new Map(lobby.players.map((player) => [player.id, new Set()])), shots: [], phase: 'setup', currentPlayerId: null, paused: false, startedAt: Date.now(), beginsAt: null,
+    fleets: new Map(), fired: new Map(lobby.players.map((player) => [player.id, new Set()])), shots: [], phase: 'setup', currentPlayerId: null, paused: false, startedAt: Date.now(), beginsAt: null, timers: new Set(),
   };
   matches.set(id, match);
   releaseLobbyMemberships(lobby.players.map((player) => player.id), 'battleship', lobby.id);

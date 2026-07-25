@@ -23,12 +23,20 @@ let match = null;
 let placements = [];
 let selectedShip = SHIPS[0].id;
 let orientation = 'horizontal';
+let selectedCoordinate = null;
+let pendingAction = null;
+let connectionState = 'connecting';
 
 const myId = () => getMyId();
 const currentView = () => document.getElementById('view-container')?.dataset.view;
 const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
 const navigate = (view) => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view }));
-const emitAck = (event, payload) => new Promise((resolve) => socket.emit(event, payload, resolve));
+const emitAck = (event, payload) => new Promise((resolve) => {
+  if (pendingAction) return resolve({ ok: false, error: 'Eine Aktion wird noch verarbeitet.' });
+  pendingAction = event;
+  const timer = setTimeout(() => { pendingAction = null; resolve({ ok: false, error: 'Keine Antwort vom Server erhalten.' }); }, 8000);
+  socket.emit(event, payload, (result) => { clearTimeout(timer); pendingAction = null; resolve(result); });
+});
 
 export function battleshipLobbies() { return lobbies; }
 export function myBattleshipLobby() { return lobbies.find((lobby) => lobby.players.some((player) => player.id === myId())) ?? null; }
@@ -37,6 +45,9 @@ export function hasBattleshipMatch() { return Boolean(match); }
 export function ensureBattleshipSocket() {
   if (socket) return socket;
   socket = io({ auth: { token: getToken() } });
+  socket.on('connect', () => { connectionState = 'connected'; rerender(); });
+  socket.on('disconnect', () => { connectionState = 'offline'; rerender(); });
+  socket.on('connect_error', () => { connectionState = 'offline'; rerender(); });
   socket.on('battleship:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
     if (!match && currentView() === 'arcade') rerender();
@@ -44,6 +55,7 @@ export function ensureBattleshipSocket() {
   socket.on('battleship:match:start', (payload) => {
     match = { ...payload, phase: 'setup', paused: false, ended: false, players: payload.players ?? [] };
     placements = [];
+    selectedCoordinate = null;
     navigate('battleship');
   });
   socket.on('battleship:state', (payload) => {
@@ -108,6 +120,8 @@ function placementGridHtml() {
 }
 
 function renderPlacement() {
+  const me = match.players.find((player) => player.id === myId());
+  const locked = match.phase !== 'setup' || Boolean(me?.placementReady) || pendingAction;
   const readyPlayers = (match.players ?? []).filter((player) => player.placementReady).length;
   return `<div class="arcade-game-shell">
     <h1 class="view-title">Schiffe versenken</h1>
@@ -116,16 +130,16 @@ function renderPlacement() {
       <div class="grouped-page-section-title"><h2 id="battleship-setup-title">Flotte platzieren</h2></div>
       <p class="muted">Wähle ein Schiff und tippe auf das Startfeld. Berührungen zwischen Schiffen sind erlaubt.</p>
       <div class="battleship-ship-picker" role="list" aria-label="Schiffe">
-        ${SHIPS.map((ship) => `<button type="button" class="btn btn-sm ${selectedShip === ship.id ? 'btn-primary' : ''}" data-select-ship="${ship.id}" aria-pressed="${selectedShip === ship.id}">${escapeHtml(ship.name)} · ${ship.length}</button>`).join('')}
+        ${SHIPS.map((ship) => `<button type="button" class="btn btn-sm ${selectedShip === ship.id ? 'btn-primary' : ''}" data-select-ship="${ship.id}" aria-pressed="${selectedShip === ship.id}" ${locked ? 'disabled' : ''}>${escapeHtml(ship.name)} · ${ship.length}</button>`).join('')}
       </div>
       <div class="row battleship-setup-actions">
-        <button type="button" class="btn btn-sm" id="battleship-rotate">Drehen</button>
-        <button type="button" class="btn btn-sm" id="battleship-random">Zufällig platzieren</button>
-        <button type="button" class="btn btn-sm" id="battleship-clear">Zurücksetzen</button>
+        <button type="button" class="btn btn-sm" id="battleship-rotate" ${locked ? 'disabled' : ''}>Drehen</button>
+        <button type="button" class="btn btn-sm" id="battleship-random" ${locked ? 'disabled' : ''}>Zufällig platzieren</button>
+        <button type="button" class="btn btn-sm" id="battleship-clear" ${locked ? 'disabled' : ''}>Zurücksetzen</button>
       </div>
-      ${placementGridHtml()}
-      <div class="muted">Bereit: ${readyPlayers}/${match.players.length}</div>
-      <button type="button" class="btn btn-primary btn-block" id="battleship-submit-setup" ${match.phase === 'setup' && placementValid(placements) ? '' : 'disabled'}>Flotte bereit</button>
+      <div class="${locked ? 'battleship-placement-locked' : ''}">${placementGridHtml()}</div>
+      <div class="muted" aria-live="polite">Bereit: ${readyPlayers}/${match.players.length}${locked ? ' · Deine Flotte ist bestätigt.' : ''}</div>
+      <button type="button" class="btn btn-primary btn-block" id="battleship-submit-setup" ${locked || !placementValid(placements) ? 'disabled' : ''}>${locked ? 'Flotte bestätigt' : 'Flotte bereit'}</button>
     </section>
   </div>`;
 }
@@ -137,7 +151,10 @@ function targetGridHtml(target, ownShots, canFire) {
       const row = Math.floor(cell / SIZE);
       const col = cell % SIZE;
       const shot = shots.get(cell);
-      return `<button type="button" class="battleship-cell ${shot ? `is-${shot}` : ''}" data-fire-cell="${cell}" ${!canFire || shot ? 'disabled' : ''} role="gridcell" aria-label="${String.fromCharCode(65 + col)} ${row + 1}${shot ? `, ${shot}` : ''}">${shot === 'miss' ? '·' : shot ? '×' : ''}</button>`;
+      const coordinateName = `${String.fromCharCode(65 + col)}${row + 1}`;
+      const selected = selectedCoordinate === cell;
+      const label = shot === 'miss' ? 'Wasser' : shot === 'hit' ? 'Treffer' : shot === 'sunk' ? 'Versenkt' : selected ? 'ausgewählt' : 'unbeschossen';
+      return `<button type="button" class="battleship-cell ${shot ? `is-${shot}` : ''} ${selected ? 'is-selected' : ''}" data-fire-cell="${cell}" ${!canFire || shot || pendingAction ? 'disabled' : ''} role="gridcell" aria-label="${coordinateName}, ${label}" aria-selected="${selected}">${shot === 'miss' ? '·' : shot ? '×' : selected ? '•' : ''}</button>`;
     }).join('')}
   </div>`;
 }
@@ -147,7 +164,7 @@ function ownGridHtml(player) {
   for (const ship of player.fleet ?? []) for (const cell of ship.cells ?? []) ships.set(cell, ship);
   const hits = new Set((player.fleet ?? []).flatMap((ship) => ship.hits ?? []));
   return `<div class="battleship-grid battleship-own-grid" role="grid" aria-label="Eigenes Flottenraster">
-    ${Array.from({ length: SIZE * SIZE }, (_, cell) => `<div class="battleship-cell ${ships.has(cell) ? 'is-ship' : ''} ${hits.has(cell) ? 'is-hit' : ''}" role="gridcell" aria-label="Feld ${cell + 1}">${hits.has(cell) ? '×' : ships.has(cell) ? '■' : ''}</div>`).join('')}
+    ${Array.from({ length: SIZE * SIZE }, (_, cell) => { const row = Math.floor(cell / SIZE); const col = cell % SIZE; const coordinateName = `${String.fromCharCode(65 + col)}${row + 1}`; const label = hits.has(cell) ? 'Treffer' : ships.has(cell) ? 'Schiff' : 'Wasser'; return `<div class="battleship-cell ${ships.has(cell) ? 'is-ship' : ''} ${hits.has(cell) ? 'is-hit' : ''}" role="gridcell" aria-label="${coordinateName}, ${label}">${hits.has(cell) ? '×' : ships.has(cell) ? '■' : ''}</div>`; }).join('')}
   </div>`;
 }
 
@@ -157,13 +174,14 @@ function renderBattle() {
   if (!me || !target) return '<div class="empty-state">Gegner nicht gefunden.</div>';
   const canFire = match.phase === 'playing' && !match.paused && match.currentPlayerId === myId();
   const status = match.paused ? 'Pause' : canFire ? 'Du bist am Zug' : `Warte auf ${escapeHtml(match.players.find((player) => player.id === match.currentPlayerId)?.name ?? 'Gegner')}`;
-  const result = match.lastShot ? `<div class="badge badge-playing">Letzter Schuss: ${escapeHtml(match.lastShot.kind)}</div>` : '';
+  const resultLabels = { miss: 'Wasser', hit: 'Treffer', sunk: 'Versenkt' };
+  const result = match.lastShot ? `<div class="badge badge-playing" aria-live="polite">Letzter Schuss: ${resultLabels[match.lastShot.kind] ?? 'Aufgelöst'}</div>` : '';
   return `<div class="arcade-game-shell">
     <h1 class="view-title">Schiffe versenken</h1>
     ${arcadeExpandControlHtml()}
-    <div class="battleship-status card"><strong>${status}</strong>${result}</div>
+    <div class="battleship-status card" aria-live="polite"><strong>${connectionState === 'offline' ? 'Verbindung verloren' : status}</strong>${result}${connectionState === 'offline' ? '<span class="muted">Verbindung wird wiederhergestellt …</span>' : ''}</div>
     <div class="battleship-board-layout">
-      <section class="card stack" aria-labelledby="battleship-target-title"><h2 id="battleship-target-title">Zielraster · ${escapeHtml(target.name)}</h2>${targetGridHtml(target, me.shots ?? [], canFire)}<p class="muted">Treffer: ${17 - (target.segmentsRemaining ?? 17)} · Verbleibend: ${target.segmentsRemaining ?? 17}</p></section>
+      <section class="card stack" aria-labelledby="battleship-target-title"><h2 id="battleship-target-title">Zielraster · ${escapeHtml(target.name)}</h2>${targetGridHtml(target, me.shots ?? [], canFire)}<p class="muted">Treffer: ${17 - (target.segmentsRemaining ?? 17)} · Verbleibend: ${target.segmentsRemaining ?? 17}</p>${selectedCoordinate !== null ? `<button type="button" class="btn btn-primary btn-block" id="battleship-fire" ${pendingAction ? 'disabled' : ''}>Feuern (${String.fromCharCode(65 + (selectedCoordinate % SIZE))}${Math.floor(selectedCoordinate / SIZE) + 1})</button>` : ''}</section>
       <section class="card stack" aria-labelledby="battleship-own-title"><h2 id="battleship-own-title">Deine Flotte</h2>${ownGridHtml(me)}<p class="muted">Eigene Schiffe: ${me.shipsRemaining ?? 5} · Felder: ${me.segmentsRemaining ?? 17}</p></section>
     </div>
     ${match.host?.id === myId() ? `<div class="arcade-match-controls"><button type="button" class="btn btn-sm" id="battleship-pause">${match.paused ? 'Fortsetzen' : 'Pausieren'}</button><button type="button" class="btn btn-sm btn-danger" id="battleship-finish">Beenden</button></div>` : `<div class="arcade-match-controls"><button type="button" class="btn btn-sm btn-danger" id="battleship-leave">Verlassen</button></div>`}
@@ -190,6 +208,8 @@ export function renderBattleship(container) {
 }
 
 function wirePlacement(container) {
+  const me = match.players.find((player) => player.id === myId());
+  if (match.phase !== 'setup' || me?.placementReady || pendingAction) return;
   container.querySelectorAll('[data-select-ship]').forEach((button) => button.addEventListener('click', () => { selectedShip = button.dataset.selectShip; rerender(); }));
   container.querySelector('#battleship-rotate')?.addEventListener('click', () => { orientation = orientation === 'horizontal' ? 'vertical' : 'horizontal'; });
   container.querySelector('#battleship-clear')?.addEventListener('click', () => { placements = []; rerender(); });
@@ -219,21 +239,38 @@ function wirePlacement(container) {
   container.querySelector('#battleship-submit-setup')?.addEventListener('click', async () => {
     const result = await emitAck('battleship:setup:submit', { matchId: match.matchId, playerId: myId(), placements });
     if (!result?.ok) showToast(result?.error || 'Flotte konnte nicht bestätigt werden.', { error: true });
+    else rerender();
   });
 }
 
 function wireBattle(container) {
-  container.querySelectorAll('[data-fire-cell]').forEach((button) => button.addEventListener('click', async () => {
-    const cell = Number(button.dataset.fireCell);
+  container.querySelectorAll('[data-fire-cell]').forEach((button) => button.addEventListener('click', () => {
+    selectedCoordinate = Number(button.dataset.fireCell);
+    rerender();
+  }));
+  container.querySelector('#battleship-fire')?.addEventListener('click', async () => {
+    if (selectedCoordinate === null) return;
+    const cell = selectedCoordinate;
     const result = await emitAck('battleship:shot:fire', { matchId: match.matchId, playerId: myId(), row: Math.floor(cell / SIZE), col: cell % SIZE });
     if (!result?.ok) showToast(result?.error || 'Schuss wurde nicht angenommen.', { error: true });
-  }));
-  container.querySelector('#battleship-pause')?.addEventListener('click', () => emitAck(match.paused ? 'battleship:match:resume' : 'battleship:match:pause', { matchId: match.matchId, playerId: myId() }));
+    else selectedCoordinate = null;
+    rerender();
+  });
+  container.querySelector('#battleship-pause')?.addEventListener('click', async () => {
+    const result = await emitAck(match.paused ? 'battleship:match:resume' : 'battleship:match:pause', { matchId: match.matchId, playerId: myId() });
+    if (!result?.ok) showToast(result?.error || 'Aktion konnte nicht ausgeführt werden.', { error: true });
+  });
   container.querySelector('#battleship-finish')?.addEventListener('click', async () => {
-    if (await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true })) await emitAck('battleship:match:finish', { matchId: match.matchId, playerId: myId() });
+    if (await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true })) {
+      const result = await emitAck('battleship:match:finish', { matchId: match.matchId, playerId: myId() });
+      if (!result?.ok) showToast(result?.error || 'Match konnte nicht beendet werden.', { error: true });
+    }
   });
   container.querySelector('#battleship-leave')?.addEventListener('click', async () => {
-    if (await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true })) await emitAck('battleship:match:leave', { matchId: match.matchId, playerId: myId() });
+    if (await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true })) {
+      const result = await emitAck('battleship:match:leave', { matchId: match.matchId, playerId: myId() });
+      if (!result?.ok) showToast(result?.error || 'Match konnte nicht verlassen werden.', { error: true });
+    }
   });
 }
 

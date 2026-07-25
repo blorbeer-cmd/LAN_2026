@@ -575,6 +575,7 @@ textarea {
   width: min(100%, 560px);
   margin: 0 auto;
   aspect-ratio: 1;
+  min-width: calc(10 * var(--tap-target-size) + 9 * var(--space-1));
 }
 
 .battleship-cell {
@@ -636,7 +637,18 @@ textarea {
   }
 
   .battleship-cell {
-    min-height: 0;
+    min-height: var(--tap-target-size);
+  }
+
+  .battleship-board-layout,
+  .battleship-placement-locked,
+  .battleship-setup {
+    min-width: 0;
+  }
+
+  .battleship-board-layout > .card,
+  .battleship-setup {
+    overflow-x: auto;
   }
 
   .battleship-setup-actions .btn {
