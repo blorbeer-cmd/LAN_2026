@@ -31,12 +31,12 @@ leaderboardRouter.get('/', (req, res) => {
   if (playerIds.length > 0) {
     const placeholders = playerIds.map(() => '?').join(',');
     players = db
-      .prepare(`SELECT id, name, color FROM players WHERE id IN (${placeholders})`)
+      .prepare(`SELECT id, name, color FROM players WHERE deactivated_at IS NULL AND id IN (${placeholders})`)
       .all(...playerIds) as PlayerRow[];
   }
   const playerById = new Map(players.map((p) => [p.id, p]));
 
-  const enriched = standings.map((s) => ({
+  const enriched = standings.filter((s) => playerById.has(s.playerId)).map((s) => ({
     ...s,
     name: playerById.get(s.playerId)?.name ?? 'Unbekannt',
     color: playerById.get(s.playerId)?.color ?? '#999999',

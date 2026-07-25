@@ -218,8 +218,6 @@ test('required auth binds personal APIs to the session and protects API keys', (
       const isolatedStepUp = await request(app).delete('/api/players/' + bob.account.id).set('Cookie', cookie(secondAdminLogin));
       assert.equal(isolatedStepUp.status, 403);
       assert.equal(isolatedStepUp.body.code, 'reauth_required');
-      const hardDeleteRealPlayer = await request(app).delete('/api/players/' + bob.account.id).set('Cookie', adminCookie);
-      assert.equal(hardDeleteRealPlayer.status, 409);
       const bobFull = await request(app).get('/api/players/' + bob.account.id).set('Cookie', adminCookie);
       const promoteBobBeforeDeactivation = await request(app)
         .patch('/api/groups/' + DEFAULT_GROUP_ID + '/members/' + bob.account.id)
@@ -257,6 +255,10 @@ test('required auth binds personal APIs to the session and protects API keys', (
 
       const reactivatedAdminRoute = await request(app).get('/api/admin/players').set('Cookie', cookie(bobRelogin));
       assert.equal(reactivatedAdminRoute.status, 200);
+      const deleteTarget = await request(app).post('/api/players').set('Cookie', adminCookie).send({ name: 'Required Delete Target' });
+      assert.equal(deleteTarget.status, 201);
+      const hardDeleteRealPlayer = await request(app).delete('/api/players/' + deleteTarget.body.id).set('Cookie', adminCookie);
+      assert.equal(hardDeleteRealPlayer.status, 204);
       const audit = await request(app).get('/api/admin/audit').set('Cookie', adminCookie);
       assert.equal(audit.status, 200);
       assert.ok(audit.body.some((entry) => entry.action === 'player_deactivated' && entry.target_id === bob.account.id));

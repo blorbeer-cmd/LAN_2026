@@ -204,7 +204,7 @@ function activeClaimedOwnerCount(groupId: string): number {
 // silently diverge. Scoped to the one real group on purpose: a hypothetical
 // future secondary group must not be able to grant instance-wide rights.
 // Legacy mode keeps is_admin a directly togglable flag and is untouched.
-function syncInstanceAdminForRole(groupId: string, playerId: string, role: GroupRole, actorPlayerId?: string): boolean {
+export function syncInstanceAdminForRole(groupId: string, playerId: string, role: GroupRole, actorPlayerId?: string): boolean {
   if (config.authMode !== 'required' || groupId !== DEFAULT_GROUP_ID) return false;
   const player = db.prepare('SELECT is_admin FROM players WHERE id = ?').get(playerId) as
     { is_admin: number } | undefined;
