@@ -88,9 +88,6 @@ test('group roles, event resources and audit stay isolated inside the one real g
         .send({ playerIds: [bob.account.id] });
       assert.equal(ownParticipant.status, 200, JSON.stringify(ownParticipant.body));
 
-      // An unclaimed legacy owner must not let the only claimed owner revoke
-      // their own owner/admin rights. Otherwise no claimed account can use
-      // owner-only or requireAdmin routes after the demotion.
       db.prepare(
         'INSERT INTO players (id, name, api_key, is_admin, password_hash, created_at) VALUES (?, ?, ?, 1, NULL, ?)'
       ).run('stale-unclaimed-owner', 'Stale Unclaimed Owner', 'stale-unclaimed-owner-key', Date.now());
@@ -103,28 +100,25 @@ test('group roles, event resources and audit stay isolated inside the one real g
         .set('Cookie', alice.cookie)
         .send({ role: 'admin' });
       assert.equal(promoteBob.status, 200, JSON.stringify(promoteBob.body));
-      assert.ok(
-        realtimeSignals.some((signal) => signal.event === Events.playersChanged),
-        'a role-derived is_admin change must refresh player state without a reload',
-      );
-      const deactivateLastClaimedOwner = await request(app)
+      assert.ok(realtimeSignals.some((signal) => signal.event === Events.playersChanged));
+      const deactivateBeforeReauth = await request(app)
         .post('/api/players/' + alice.account.id + '/deactivate')
         .set('Cookie', bob.cookie);
-      assert.equal(deactivateLastClaimedOwner.status, 403, 'admin reauthentication is required first');
+      assert.equal(deactivateBeforeReauth.status, 403);
       assert.equal(
         (await request(app).post('/api/auth/reauth').set('Cookie', bob.cookie).send({ password: bob.password })).status,
         204,
       );
-      const deactivateLastClaimedOwnerAfterReauth = await request(app)
+      const deactivateLastClaimedOwner = await request(app)
         .post('/api/players/' + alice.account.id + '/deactivate')
         .set('Cookie', bob.cookie);
-      assert.equal(deactivateLastClaimedOwnerAfterReauth.status, 409);
+      assert.equal(deactivateLastClaimedOwner.status, 409);
       assert.equal(db.prepare('SELECT deactivated_at FROM players WHERE id = ?').get(alice.account.id).deactivated_at, null);
-      const claimedOwnerGuard = await request(app)
+      const demoteLastClaimedOwner = await request(app)
         .patch('/api/groups/' + DEFAULT_GROUP_ID + '/members/' + alice.account.id)
         .set('Cookie', alice.cookie)
         .send({ role: 'member' });
-      assert.equal(claimedOwnerGuard.status, 409);
+      assert.equal(demoteLastClaimedOwner.status, 409);
       assert.equal(db.prepare('SELECT is_admin FROM players WHERE id = ?').get(alice.account.id).is_admin, 1);
       db.prepare('DELETE FROM group_memberships WHERE group_id = ? AND player_id = ?').run(
         DEFAULT_GROUP_ID,

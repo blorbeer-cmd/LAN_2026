@@ -182,7 +182,7 @@ function buildDetail(tournamentId: string, groupId: string) {
   if (allPlayerIds.length > 0) {
     const placeholders = allPlayerIds.map(() => '?').join(',');
     const players = db
-      .prepare(`SELECT id, name, color, avatar FROM players WHERE id IN (${placeholders})`)
+      .prepare(`SELECT id, name, color, avatar FROM players WHERE deactivated_at IS NULL AND id IN (${placeholders})`)
       .all(...allPlayerIds) as PlayerRow[];
     players.forEach((p) => playerById.set(p.id, p));
   }
@@ -397,7 +397,7 @@ tournamentsRouter.post('/', (req, res) => {
   }
   const placeholders = allPlayerIds.map(() => '?').join(',');
   const foundPlayers = db
-    .prepare(`SELECT id FROM players WHERE id IN (${placeholders})`)
+      .prepare(`SELECT id FROM players WHERE deactivated_at IS NULL AND id IN (${placeholders})`)
     .all(...allPlayerIds) as Array<{ id: string }>;
   if (foundPlayers.length !== new Set(allPlayerIds).size) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });

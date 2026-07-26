@@ -16,7 +16,7 @@ import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { writeAdminAudit } from '../adminAudit';
 import { voidOutstandingInvites } from '../invites';
 import { activeGroupPlayers } from '../groupPlayers';
-import { activePlayerGroupIds, syncInstanceAdminForCurrentRole } from '../groups';
+import { activePlayerGroupIds, syncInstanceAdminForRole } from '../groups';
 import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
 import { config } from '../config';
 
@@ -72,6 +72,24 @@ function toPublicPlayer(row: PlayerRow) {
 function toPrivatePlayer(row: PlayerRow) {
   const { password_hash: _passwordHash, last_login_at: _lastLoginAt, ...rest } = row;
   return rest;
+}
+
+function removePlayerFromRecipientSnapshots(playerId: string): void {
+  const pushRows = db.prepare('SELECT id, player_ids FROM push_log WHERE player_ids IS NOT NULL').all() as Array<{ id: string; player_ids: string }>;
+  const updatePush = db.prepare('UPDATE push_log SET player_ids = ? WHERE id = ?');
+  for (const row of pushRows) {
+    const ids = JSON.parse(row.player_ids) as unknown;
+    if (!Array.isArray(ids) || !ids.includes(playerId)) continue;
+    updatePush.run(JSON.stringify(ids.filter((id): id is string => typeof id === 'string' && id !== playerId)), row.id);
+  }
+
+  const broadcastRows = db.prepare('SELECT id, recipient_ids FROM broadcasts').all() as Array<{ id: string; recipient_ids: string }>;
+  const updateBroadcast = db.prepare('UPDATE broadcasts SET recipient_ids = ? WHERE id = ?');
+  for (const row of broadcastRows) {
+    const ids = JSON.parse(row.recipient_ids) as unknown;
+    if (!Array.isArray(ids) || !ids.includes(playerId)) continue;
+    updateBroadcast.run(JSON.stringify(ids.filter((id): id is string => typeof id === 'string' && id !== playerId)), row.id);
+  }
 }
 
 // GET /api/players - roster without API keys.
@@ -395,7 +413,10 @@ playersRouter.post('/:id/reactivate', requireAdmin, (req, res) => {
       .prepare('UPDATE players SET deactivated_at = NULL WHERE id = ? AND deactivated_at IS NOT NULL')
       .run(req.params.id);
     if (result.changes === 0) return false;
-    syncInstanceAdminForCurrentRole(req.params.id, req.player?.id);
+    const membership = db
+      .prepare("SELECT role FROM group_memberships WHERE group_id = ? AND player_id = ? AND status = 'active'")
+      .get(req.group!.id, req.params.id) as { role: 'owner' | 'admin' | 'member' } | undefined;
+    syncInstanceAdminForRole(req.group!.id, req.params.id, membership?.role ?? 'member', req.player?.id);
     writeAdminAudit({
       actorPlayerId: req.player?.id,
       action: 'player_reactivated',
@@ -470,6 +491,7 @@ playersRouter.delete('/:id', requireAdmin, (req, res) => {
       db.prepare(`DELETE FROM arcade_result_participants WHERE group_id IN (${placeholders}) AND player_id = ?`).run(...groupIds, target.id);
       db.prepare(`DELETE FROM broadcasts WHERE group_id IN (${placeholders}) AND player_id = ?`).run(...groupIds, target.id);
     }
+    removePlayerFromRecipientSnapshots(target.id);
     db.prepare('DELETE FROM group_memberships WHERE player_id = ?').run(target.id);
     for (const table of ['play_sessions', 'live_status_games', 'live_status', 'agent_diagnostics', 'tracking_live_games', 'tracking_game_state', 'group_tracking_consents', 'event_tracking_consents', 'push_subscriptions', 'sessions']) {
       try {

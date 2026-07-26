@@ -379,6 +379,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   without touching real events. The single-instance access context is not shown as a separate group
   control in the topbar. Owner/Admin/Member roles are managed directly in Admin's consolidated
   „Benutzer“ list; test players keep a read-only member role there.
+  „Benutzer“ list; test players keep a read-only member role there. The underlying group detail,
+  update, removal and audit endpoints remain server-side compatibility interfaces and intentionally
+  have no separate frontend commands.
   The seating editor follows the same grouped-page hierarchy: the editable plan comes first, followed
   by „Spieler“ and „Konfiguration“. Unassigned players use the shared rectangular two-column player
   rows instead of pills; phones keep one column. Empty seats use an accent border and only the

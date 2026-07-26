@@ -41,7 +41,7 @@ import { invalidateHallOfFame, renderHallOfFame } from './views/hallOfFame.js';
 import { renderSeating, invalidateSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
 import { renderMore } from './views/more.js';
-import { renderAdmin } from './views/admin.js';
+import { invalidateAdminMemberships, renderAdmin } from './views/admin.js';
 import { invalidateMusic, renderMusic } from './views/music.js';
 import { icon, installIconReplacement } from './icons.js';
 import { initNumberStepper } from './numberStepper.js';
@@ -546,7 +546,11 @@ function wireSocket() {
     invalidateMusic();
     if (currentView === 'music') renderCurrent();
   });
-  socket.on('groups:changed', () => refreshGroupContext());
+  socket.on('groups:changed', async () => {
+    await refreshGroupContext();
+    invalidateAdminMemberships();
+    if (currentView === 'admin') renderCurrent();
+  });
 }
 
 async function main() {

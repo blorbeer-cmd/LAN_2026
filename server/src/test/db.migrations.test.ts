@@ -711,53 +711,45 @@ test('records the complete migration history and does not duplicate it on restar
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('required-mode startup reconciles instance admins from default-group roles without changing legacy mode', () => {
+test('required startup reconciles admin flags from active default-group roles once', () => {
   const dbFile = makeTempDbPath('required-admin-reconciliation');
   runMigrations(dbFile, { AUTH_MODE: 'legacy' });
-
   const fixture = new Database(dbFile);
   const now = Date.now();
-  const insertPlayer = fixture.prepare(
-    `INSERT INTO players
-       (id, name, api_key, is_admin, is_test, password_hash, deactivated_at, created_at)
+  const player = fixture.prepare(
+    `INSERT INTO players (id, name, api_key, is_admin, is_test, password_hash, deactivated_at, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   );
-  const insertMembership = fixture.prepare(
-    `INSERT INTO group_memberships
-       (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+  const member = fixture.prepare(
+    `INSERT INTO group_memberships (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
      VALUES ('default-group', ?, ?, 'active', ?, 1)`,
   );
-  insertPlayer.run('drift-member', 'Drift Member', 'drift-member-key', 1, 0, 'hash', null, now);
-  insertMembership.run('drift-member', 'member', now);
-  insertPlayer.run('drift-admin', 'Drift Admin', 'drift-admin-key', 0, 0, 'hash', null, now);
-  insertMembership.run('drift-admin', 'admin', now);
-  insertPlayer.run('inactive-owner', 'Inactive Owner', 'inactive-owner-key', 1, 0, 'hash', now, now);
-  insertMembership.run('inactive-owner', 'owner', now);
-  insertPlayer.run('test-owner', 'Test Owner', 'test-owner-key', 1, 1, null, null, now);
-  insertMembership.run('test-owner', 'owner', now);
+  player.run('drift-member', 'Drift Member', 'drift-member-key', 1, 0, 'hash', null, now);
+  member.run('drift-member', 'member', now);
+  player.run('drift-admin', 'Drift Admin', 'drift-admin-key', 0, 0, 'hash', null, now);
+  member.run('drift-admin', 'admin', now);
+  player.run('inactive-owner', 'Inactive Owner', 'inactive-owner-key', 1, 0, 'hash', now, now);
+  member.run('inactive-owner', 'owner', now);
+  player.run('test-owner', 'Test Owner', 'test-owner-key', 1, 1, null, null, now);
+  member.run('test-owner', 'owner', now);
   fixture.close();
 
   runMigrations(dbFile, { AUTH_MODE: 'legacy' });
   let inspected = new Database(dbFile, { readonly: true });
-  assert.deepEqual(
-    inspected.prepare('SELECT id, is_admin FROM players WHERE id IN (?, ?) ORDER BY id').all('drift-admin', 'drift-member'),
-    [
-      { id: 'drift-admin', is_admin: 0 },
-      { id: 'drift-member', is_admin: 1 },
-    ],
-    'legacy mode must preserve independently managed admin flags',
-  );
+  assert.deepEqual(inspected.prepare('SELECT id, is_admin FROM players WHERE id LIKE ? ORDER BY id').all('drift-%'), [
+    { id: 'drift-admin', is_admin: 0 },
+    { id: 'drift-member', is_admin: 1 },
+  ]);
   inspected.close();
 
-  const requiredEnv = { AUTH_MODE: 'required', ADMIN_RECOVERY_CODE: 'migration-reconciliation-code' };
-  assert.doesNotThrow(() => runMigrations(dbFile, requiredEnv));
-  assert.doesNotThrow(() => runMigrations(dbFile, requiredEnv), 'required-mode reconciliation must be restart-safe');
-
+  const required = { AUTH_MODE: 'required', ADMIN_RECOVERY_CODE: 'reconciliation-test-code' };
+  runMigrations(dbFile, required);
+  runMigrations(dbFile, required);
   inspected = new Database(dbFile, { readonly: true });
   assert.deepEqual(
-    inspected
-      .prepare('SELECT id, is_admin FROM players WHERE id IN (?, ?, ?, ?) ORDER BY id')
-      .all('drift-admin', 'drift-member', 'inactive-owner', 'test-owner'),
+    inspected.prepare('SELECT id, is_admin FROM players WHERE id IN (?, ?, ?, ?) ORDER BY id').all(
+      'drift-admin', 'drift-member', 'inactive-owner', 'test-owner',
+    ),
     [
       { id: 'drift-admin', is_admin: 1 },
       { id: 'drift-member', is_admin: 0 },
@@ -765,199 +757,111 @@ test('required-mode startup reconciles instance admins from default-group roles 
       { id: 'test-owner', is_admin: 0 },
     ],
   );
-  const reconciliationAudit = inspected
-    .prepare(
-      `SELECT action, target_id, details
-       FROM admin_log
-       WHERE target_id IN (?, ?, ?, ?)
-       ORDER BY target_id`,
-    )
-    .all('drift-admin', 'drift-member', 'inactive-owner', 'test-owner') as Array<{
-    action: string;
-    target_id: string;
-    details: string;
+  const audits = inspected.prepare(
+    `SELECT action, target_id, details FROM admin_log
+     WHERE target_id IN (?, ?, ?, ?) ORDER BY target_id`,
+  ).all('drift-admin', 'drift-member', 'inactive-owner', 'test-owner') as Array<{
+    action: string; target_id: string; details: string;
   }>;
-  assert.deepEqual(
-    reconciliationAudit.map((entry) => ({
-      action: entry.action,
-      targetId: entry.target_id,
-      via: (JSON.parse(entry.details) as { via: string }).via,
-    })),
-    [
-      { action: 'admin_granted', targetId: 'drift-admin', via: 'group_role_reconciliation' },
-      { action: 'admin_revoked', targetId: 'drift-member', via: 'group_role_reconciliation' },
-      { action: 'admin_revoked', targetId: 'inactive-owner', via: 'group_role_reconciliation' },
-      { action: 'admin_revoked', targetId: 'test-owner', via: 'group_role_reconciliation' },
-    ],
-    'only actual reconciliation changes are audited once',
-  );
+  assert.deepEqual(audits.map((row) => [row.action, row.target_id, JSON.parse(row.details).via]), [
+    ['admin_granted', 'drift-admin', 'group_role_reconciliation'],
+    ['admin_revoked', 'drift-member', 'group_role_reconciliation'],
+    ['admin_revoked', 'inactive-owner', 'group_role_reconciliation'],
+    ['admin_revoked', 'test-owner', 'group_role_reconciliation'],
+  ]);
   inspected.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('required startup bootstrap keeps a claimed existing member role-derived and restart-safe', () => {
-  const dbFile = makeTempDbPath('required-bootstrap-admin-sequence');
+test('required bootstrap promotes an active existing member once', () => {
+  const dbFile = makeTempDbPath('required-bootstrap-active');
   runMigrations(dbFile, { AUTH_MODE: 'legacy' });
-
   const fixture = new Database(dbFile);
   const now = Date.now();
-  fixture
-    .prepare(
-      `INSERT INTO players (id, name, api_key, is_admin, password_hash, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    )
-    .run('bootstrap-owner', 'Bootstrap Owner', 'bootstrap-owner-key', 1, 'claimed-owner-hash', now);
-  fixture
-    .prepare(
-      `INSERT INTO group_memberships
-         (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
-       VALUES ('default-group', 'bootstrap-owner', 'owner', 'active', ?, 1)`,
-    )
-    .run(now);
-  fixture
-    .prepare(
-      `INSERT INTO players (id, name, api_key, is_admin, password_hash, created_at)
-       VALUES (?, ?, ?, 0, NULL, ?)`,
-    )
-    .run('bootstrap-member', 'Bootstrap Existing Member', 'bootstrap-member-key', now);
-  fixture
-    .prepare(
-      `INSERT INTO group_memberships
-         (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
-       VALUES ('default-group', 'bootstrap-member', 'member', 'active', ?, 1)`,
-    )
-    .run(now);
-  fixture.close();
-
-  const startupEnv = {
-    AUTH_MODE: 'required',
-    ADMIN_RECOVERY_CODE: 'bootstrap-sequence-recovery-code',
-    BOOTSTRAP_ADMIN_1_NAME: 'Bootstrap Existing Member',
-    BOOTSTRAP_ADMIN_1_PASSWORD: 'bootstrap-existing-member-password',
-  };
-  const runStartup = () =>
-    execFileSync(
-      process.execPath,
-      [
-        '-e',
-        `require(${JSON.stringify(DB_JS_PATH)}); require(${JSON.stringify(BOOTSTRAP_ADMINS_JS_PATH)}).runBootstrapAdmins();`,
-      ],
-      { env: { ...process.env, ...startupEnv, DB_FILE: dbFile }, stdio: 'pipe' },
-    );
-
-  assert.doesNotThrow(runStartup);
-  assert.doesNotThrow(runStartup, 'a second startup must not duplicate the grant or overwrite the password');
-
-  const inspected = new Database(dbFile, { readonly: true });
-  assert.deepEqual(
-    inspected
-      .prepare(
-        `SELECT p.is_admin, gm.role, p.password_hash IS NOT NULL AS claimed
-         FROM players p
-         JOIN group_memberships gm ON gm.player_id = p.id AND gm.group_id = 'default-group'
-         WHERE p.id = 'bootstrap-member'`,
-      )
-      .get(),
-    { is_admin: 1, role: 'admin', claimed: 1 },
-  );
-  assert.equal(
-    (
-      inspected
-        .prepare("SELECT COUNT(*) AS count FROM admin_log WHERE target_id = 'bootstrap-member' AND action = 'admin_granted'")
-        .get() as { count: number }
-    ).count,
-    1,
-    'the role-derived bootstrap grant is audited exactly once',
-  );
-  inspected.close();
-  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
-});
-
-test('required startup bootstrap never derives rights from inactive memberships', () => {
-  const dbFile = makeTempDbPath('required-bootstrap-inactive-memberships');
-  runMigrations(dbFile, { AUTH_MODE: 'legacy' });
-
-  const fixture = new Database(dbFile);
-  const now = Date.now();
-  const insertPlayer = fixture.prepare(
+  fixture.prepare(
     `INSERT INTO players (id, name, api_key, is_admin, password_hash, created_at)
-     VALUES (?, ?, ?, 1, NULL, ?)`,
+     VALUES ('owner', 'Owner', 'owner-key', 1, 'hash', ?)`,
+  ).run(now);
+  fixture.prepare(
+    `INSERT INTO players (id, name, api_key, is_admin, password_hash, created_at)
+     VALUES ('bootstrap-member', 'Bootstrap Member', 'bootstrap-member-key', 0, NULL, ?)`,
+  ).run(now);
+  const membership = fixture.prepare(
+    `INSERT INTO group_memberships (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+     VALUES ('default-group', ?, ?, 'active', ?, 1)`,
   );
-  const insertMembership = fixture.prepare(
-    `INSERT INTO group_memberships
-       (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled)
+  membership.run('owner', 'owner', now);
+  membership.run('bootstrap-member', 'member', now);
+  fixture.close();
+  const env = {
+    AUTH_MODE: 'required', ADMIN_RECOVERY_CODE: 'bootstrap-test-code',
+    BOOTSTRAP_ADMIN_1_NAME: 'Bootstrap Member', BOOTSTRAP_ADMIN_1_PASSWORD: 'bootstrap-member-password',
+  };
+  const startup = () => execFileSync(process.execPath, ['-e',
+    `require(${JSON.stringify(DB_JS_PATH)}); require(${JSON.stringify(BOOTSTRAP_ADMINS_JS_PATH)}).runBootstrapAdmins();`,
+  ], { env: { ...process.env, ...env, DB_FILE: dbFile }, stdio: 'pipe' });
+  startup();
+  startup();
+  const inspected = new Database(dbFile, { readonly: true });
+  assert.deepEqual(inspected.prepare(
+    `SELECT p.is_admin, gm.role, p.password_hash IS NOT NULL AS claimed FROM players p
+     JOIN group_memberships gm ON gm.player_id = p.id AND gm.group_id = 'default-group'
+     WHERE p.id = 'bootstrap-member'`,
+  ).get(), { is_admin: 1, role: 'admin', claimed: 1 });
+  assert.equal((inspected.prepare(
+    `SELECT COUNT(*) AS count FROM admin_log
+     WHERE target_id = 'bootstrap-member' AND action = 'admin_granted'`,
+  ).get() as { count: number }).count, 1);
+  inspected.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('required bootstrap cannot derive rights from inactive memberships', () => {
+  const dbFile = makeTempDbPath('required-bootstrap-inactive');
+  runMigrations(dbFile, { AUTH_MODE: 'legacy' });
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  const player = fixture.prepare(
+    `INSERT INTO players (id, name, api_key, is_admin, password_hash, created_at) VALUES (?, ?, ?, 1, ?, ?)`,
+  );
+  const membership = fixture.prepare(
+    `INSERT INTO group_memberships (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled)
      VALUES ('default-group', ?, ?, ?, ?, ?, 0)`,
   );
-  fixture
-    .prepare(
-      `INSERT INTO players (id, name, api_key, is_admin, password_hash, created_at)
-       VALUES ('active-bootstrap-owner', 'Active Claimed Owner', 'active-claimed-owner-key', 1, 'owner-hash', ?)`,
-    )
-    .run(now);
-  insertMembership.run('active-bootstrap-owner', 'owner', 'active', now, null);
-  insertPlayer.run('removed-bootstrap-owner', 'Removed Bootstrap Owner', 'removed-bootstrap-owner-key', now);
-  insertMembership.run('removed-bootstrap-owner', 'owner', 'removed', now, now);
-  insertPlayer.run('invited-bootstrap-admin', 'Invited Bootstrap Admin', 'invited-bootstrap-admin-key', now);
-  insertMembership.run('invited-bootstrap-admin', 'admin', 'invited', null, null);
+  player.run('active-owner', 'Active Owner', 'active-owner-key', 'hash', now);
+  membership.run('active-owner', 'owner', 'active', now, null);
+  player.run('removed-owner', 'Removed Owner', 'removed-owner-key', null, now);
+  membership.run('removed-owner', 'owner', 'removed', now, now);
+  player.run('invited-admin', 'Invited Admin', 'invited-admin-key', null, now);
+  membership.run('invited-admin', 'admin', 'invited', null, null);
   fixture.close();
-
-  const startupEnv = {
-    AUTH_MODE: 'required',
-    ADMIN_RECOVERY_CODE: 'inactive-bootstrap-recovery-code',
-    BOOTSTRAP_ADMIN_1_NAME: 'Removed Bootstrap Owner',
-    BOOTSTRAP_ADMIN_1_PASSWORD: 'removed-bootstrap-password',
-    BOOTSTRAP_ADMIN_2_NAME: 'Invited Bootstrap Admin',
-    BOOTSTRAP_ADMIN_2_PASSWORD: 'invited-bootstrap-password',
+  const env = {
+    AUTH_MODE: 'required', ADMIN_RECOVERY_CODE: 'inactive-test-code',
+    BOOTSTRAP_ADMIN_1_NAME: 'Removed Owner', BOOTSTRAP_ADMIN_1_PASSWORD: 'removed-owner-password',
+    BOOTSTRAP_ADMIN_2_NAME: 'Invited Admin', BOOTSTRAP_ADMIN_2_PASSWORD: 'invited-admin-password',
   };
-  const runStartup = () =>
-    execFileSync(
-      process.execPath,
-      [
-        '-e',
-        `require(${JSON.stringify(DB_JS_PATH)}); require(${JSON.stringify(BOOTSTRAP_ADMINS_JS_PATH)}).runBootstrapAdmins();`,
-      ],
-      { env: { ...process.env, ...startupEnv, DB_FILE: dbFile }, stdio: 'pipe' },
-    );
-
-  assert.doesNotThrow(runStartup);
-  assert.doesNotThrow(runStartup, 'inactive bootstrap memberships must remain safe across restarts');
-
+  const startup = () => execFileSync(process.execPath, ['-e',
+    `require(${JSON.stringify(DB_JS_PATH)}); require(${JSON.stringify(BOOTSTRAP_ADMINS_JS_PATH)}).runBootstrapAdmins();`,
+  ], { env: { ...process.env, ...env, DB_FILE: dbFile }, stdio: 'pipe' });
+  startup();
+  startup();
   const inspected = new Database(dbFile, { readonly: true });
-  assert.deepEqual(
-    inspected
-      .prepare(
-        `SELECT p.id, p.is_admin, p.password_hash IS NOT NULL AS claimed, gm.role, gm.status
-         FROM players p
-         JOIN group_memberships gm ON gm.player_id = p.id AND gm.group_id = 'default-group'
-         WHERE p.id IN ('removed-bootstrap-owner', 'invited-bootstrap-admin')
-         ORDER BY p.id`,
-      )
-      .all(),
-    [
-      { id: 'invited-bootstrap-admin', is_admin: 0, claimed: 1, role: 'admin', status: 'invited' },
-      { id: 'removed-bootstrap-owner', is_admin: 0, claimed: 1, role: 'owner', status: 'removed' },
-    ],
-  );
-  const audit = inspected
-    .prepare(
-      `SELECT action, target_id, details
-       FROM admin_log
-       WHERE target_id IN ('removed-bootstrap-owner', 'invited-bootstrap-admin')
-       ORDER BY target_id, action`,
-    )
-    .all() as Array<{ action: string; target_id: string; details: string }>;
-  assert.deepEqual(
-    audit.map((entry) => ({
-      action: entry.action,
-      targetId: entry.target_id,
-      via: (JSON.parse(entry.details) as { via: string }).via,
-    })),
-    [
-      { action: 'admin_revoked', targetId: 'invited-bootstrap-admin', via: 'group_role_reconciliation' },
-      { action: 'admin_revoked', targetId: 'removed-bootstrap-owner', via: 'group_role_reconciliation' },
-    ],
-    'startup revokes stale flags once and bootstrap does not re-grant them',
-  );
+  assert.deepEqual(inspected.prepare(
+    `SELECT p.id, p.is_admin, p.password_hash IS NOT NULL AS claimed, gm.role, gm.status FROM players p
+     JOIN group_memberships gm ON gm.player_id = p.id AND gm.group_id = 'default-group'
+     WHERE p.id IN ('removed-owner', 'invited-admin') ORDER BY p.id`,
+  ).all(), [
+    { id: 'invited-admin', is_admin: 0, claimed: 1, role: 'admin', status: 'invited' },
+    { id: 'removed-owner', is_admin: 0, claimed: 1, role: 'owner', status: 'removed' },
+  ]);
+  const audits = inspected.prepare(
+    `SELECT action, target_id, details FROM admin_log
+     WHERE target_id IN ('removed-owner', 'invited-admin') ORDER BY target_id`,
+  ).all() as Array<{ action: string; target_id: string; details: string }>;
+  assert.deepEqual(audits.map((row) => [row.action, row.target_id, JSON.parse(row.details).via]), [
+    ['admin_revoked', 'invited-admin', 'group_role_reconciliation'],
+    ['admin_revoked', 'removed-owner', 'group_role_reconciliation'],
+  ]);
   inspected.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

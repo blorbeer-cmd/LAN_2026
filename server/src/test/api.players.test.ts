@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
-import { db } from '../db';
+import { db, DEFAULT_GROUP_ID } from '../db';
 
 const app = createApp();
 let createdId: string;
@@ -232,6 +232,16 @@ test('PUT /api/players/:id/neighbors 404s for an unknown player', async () => {
 });
 
 test('real players can be hard-deleted and their tracking data is removed', async () => {
+  const sender = await request(app).post('/api/players').send({ name: 'Delete Sender' });
+  const now = Date.now();
+  db.prepare("INSERT OR IGNORE INTO group_memberships (group_id, player_id, role, status, joined_at, outside_tracking_enabled) VALUES (?, ?, 'member', 'active', ?, 0)")
+    .run(DEFAULT_GROUP_ID, createdId, now);
+  db.prepare("INSERT OR IGNORE INTO group_memberships (group_id, player_id, role, status, joined_at, outside_tracking_enabled) VALUES (?, ?, 'member', 'active', ?, 0)")
+    .run(DEFAULT_GROUP_ID, sender.body.id, now);
+  db.prepare('INSERT INTO push_log (id, group_id, event_id, title, body, audience, player_ids, created_at) VALUES (?, ?, NULL, ?, ?, ?, ?, ?)')
+    .run('delete-test-push', DEFAULT_GROUP_ID, 'Test', 'Test', 'all', JSON.stringify([createdId, sender.body.id]), now);
+  db.prepare('INSERT INTO broadcasts (id, group_id, event_id, player_id, player_name_snapshot, message, ends_at, recipient_ids, created_at) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?)')
+    .run('delete-test-broadcast', DEFAULT_GROUP_ID, sender.body.id, sender.body.name, 'Test', now + 60_000, JSON.stringify([createdId, sender.body.id]), now);
   const res = await request(app).delete(`/api/players/${createdId}`);
   assert.equal(res.status, 204);
 
@@ -239,6 +249,8 @@ test('real players can be hard-deleted and their tracking data is removed', asyn
   assert.equal(after.status, 404);
   assert.equal(db.prepare('SELECT 1 FROM players WHERE id = ?').get(createdId), undefined);
   assert.equal(db.prepare('SELECT 1 FROM live_status WHERE player_id = ?').get(createdId), undefined);
+  assert.deepEqual(JSON.parse((db.prepare('SELECT player_ids FROM push_log WHERE id = ?').get('delete-test-push') as { player_ids: string }).player_ids), [sender.body.id]);
+  assert.deepEqual(JSON.parse((db.prepare('SELECT recipient_ids FROM broadcasts WHERE id = ?').get('delete-test-broadcast') as { recipient_ids: string }).recipient_ids), [sender.body.id]);
   const roster = await request(app).get('/api/players');
   assert.equal(roster.body.some((player: { id: string }) => player.id === createdId), false);
 });

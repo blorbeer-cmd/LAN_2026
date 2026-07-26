@@ -2897,12 +2897,9 @@ registerMigration({ version: 53, name: 'add event participant invitation status'
 // single place migrations actually execute.
 runRegisteredMigrations();
 
-// In required mode the default-group role is the source of truth for
-// instance admin rights. Reconcile on every required-mode startup rather
-// than only in a numbered migration: legacy deployments remain untouched,
-// and an installation switched from legacy to required later still receives
-// the cutover instead of having skipped it permanently when that migration
-// was recorded. The update is deterministic and therefore restart-safe.
+// In required mode the active default-group role is the source of truth for
+// instance admin rights. Run this on every startup so a later mode switch is
+// reconciled as well; only actual changes are audited.
 function reconcileRequiredModeInstanceAdmins(): void {
   if (config.authMode !== 'required') return;
   const mismatches = db
