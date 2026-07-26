@@ -87,7 +87,8 @@ window.addEventListener('resize', () => {
   if (resizeTrackedShell?.isConnected) syncExpandedPlayfieldHeight(resizeTrackedShell);
 });
 
-export function matchRosterHtml(players, { winnerId = null, scoreFor = null, detailFor = null } = {}) {
+export function matchRosterHtml(players, { winnerId = null, winnerIds = [], scoreFor = null, detailFor = null } = {}) {
+  const winners = new Set(winnerIds);
   return `
     <div class="arcade-roster">
       ${players
@@ -95,7 +96,7 @@ export function matchRosterHtml(players, { winnerId = null, scoreFor = null, det
           const score = scoreFor ? scoreFor(player, index) : null;
           const detail = detailFor ? detailFor(player, index) : '';
           const classes = ['arcade-player-tile'];
-          if (winnerId && winnerId === player.id) classes.push('is-winner');
+          if ((winnerId && winnerId === player.id) || winners.has(player.id)) classes.push('is-winner');
           return `
             <div class="${classes.join(' ')}">
               ${avatarHtml(player, 34)}

@@ -338,6 +338,53 @@ test('expanded Tetris keeps the page free of horizontal scroll and the board ali
   }
 });
 
+test('Blobby Doppel: mobile lobby assigns two full teams and starts four players', async () => {
+  const players = await Promise.all([
+    createPlayer('Blobby Blau Host'),
+    createPlayer('Blobby Blau Zwei'),
+    createPlayer('Blobby Pink Eins'),
+    createPlayer('Blobby Pink Zwei'),
+  ]);
+  const actors = await Promise.all(players.map((player) => openArcadeAs(player.id)));
+
+  try {
+    for (const actor of actors) {
+      await actor.page.click('[data-game="blobby"]');
+      await actor.page.waitForSelector('#blobby-create');
+    }
+    const [host, blue, pinkA, pinkB] = actors;
+    assert.equal(await host.page.locator('#blobby-mode').inputValue(), 'doubles');
+    await host.page.click('#blobby-create');
+    await host.page.waitForSelector('text=Team Blau');
+    await host.page.waitForSelector('text=Team Pink');
+    await host.page.waitForSelector('#blobby-start:disabled');
+
+    await blue.page.waitForSelector('[data-blobby-team="left"]');
+    await blue.page.click('[data-blobby-team="left"]');
+    await blue.page.waitForSelector('[data-blobby-ready][data-ready="1"]');
+    await blue.page.click('[data-blobby-ready][data-ready="1"]');
+
+    for (const actor of [pinkA, pinkB]) {
+      await actor.page.waitForSelector('[data-blobby-team="right"]');
+      await actor.page.click('[data-blobby-team="right"]');
+      await actor.page.waitForSelector('[data-blobby-ready][data-ready="1"]');
+      await actor.page.click('[data-blobby-ready][data-ready="1"]');
+    }
+
+    await host.page.waitForSelector('#blobby-start:not([disabled])');
+    assert.equal(await host.page.locator('.arcade-lobby-member-row .player-name').count(), 4);
+    await host.page.click('#blobby-start');
+
+    for (const actor of actors) {
+      await actor.page.waitForSelector('#blobby-canvas');
+      await actor.page.waitForSelector('.arcade-player-tile');
+      assert.equal(await actor.page.locator('.arcade-player-tile').count(), 4);
+    }
+  } finally {
+    await Promise.all(actors.map((actor) => actor.context.close()));
+  }
+});
+
 test('Scribble: expanded canvas keeps 8:5, live thumbs-up survives a reconnect, new turn starts blank', async () => {
   const hostPlayer = await createPlayer('Scribble Maler');
   const guestPlayer = await createPlayer('Scribble Rater');
