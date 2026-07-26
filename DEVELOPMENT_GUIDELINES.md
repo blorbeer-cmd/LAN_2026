@@ -29,6 +29,16 @@ Vor der Bearbeitung eines neuen Nutzerauftrags still prüfen, ob der aktuelle Ar
 passt:
 
 - Bei derselben Aufgabe, Phase, demselben PR und Branch in der aktuellen Session fortfahren.
+- Jeder neue Änderungsauftrag, jede neue Phase und jeder neue PR erhält einen eigenen Branch und
+  einen eigenen Worktree. Einen vorhandenen Worktree nur weiterverwenden, wenn er nachweislich
+  derselben Aufgabe und demselben PR gehört.
+- Einen Branch, dessen PR bereits gemergt wurde, niemals für Folgearbeiten weiterverwenden. Die
+  Folgearbeit beginnt auf einem neuen Branch vom aktuellen `origin/main`, auch wenn GitHub für den
+  alten Branch automatisch einen weiteren PR anbietet.
+- `main` dient als saubere Integrationsbasis und darf nur in genau einem Worktree ausgecheckt sein.
+  Die Git-Meldung, dass `main` bereits von einem anderen Worktree verwendet wird, nicht durch
+  Löschen oder Umhängen dieses Worktrees umgehen; für den Auftrag stattdessen einen neuen
+  Feature-Branch und Worktree von `origin/main` anlegen.
 - Innerhalb derselben Aufgabe einmalig `/compact` empfehlen, wenn lange Logs, Fehlversuche oder
   viele Zwischenschritte den relevanten Kontext deutlich überlagern.
 - Bei einer neuen Phase, einem neuen PR, einem anderen Branch oder einem wesentlich anderen Ziel die
@@ -79,7 +89,10 @@ Bei Zielkonflikten gewinnt die weiter oben stehende Priorität.
 - Vorhandene, nicht zum Auftrag gehörende Änderungen gehören dem Nutzer. Nicht überschreiben,
   zurücksetzen, verstecken, formatieren oder in eigene Commits aufnehmen.
 - Nur Dateien im Auftragsscope ändern; keine beiläufigen Großformatierungen oder Refactorings.
-- Auf dem aktuell gewählten Branch arbeiten. Branchwechsel oder neue Branches nur auf Wunsch.
+- Nach dem Session-Hygiene-Check auf dem zur Aufgabe gehörenden Branch arbeiten. Der Auftrag zu
+  einer neuen Änderung autorisiert genau einen neuen, aufgabenspezifischen Branch und Worktree,
+  sofern der aktuelle Kontext nicht bereits nachweislich zu derselben Aufgabe und demselben PR
+  gehört. Keine bestehenden Worktrees oder fremden Branches dafür umhängen.
 - Commit und Push nur auf ausdrücklichen Wunsch. Commits klein, in sich geschlossen und imperativ
   auf Englisch benennen.
 - Abhängigkeiten und Lockfiles nur ändern, wenn sie notwendig sind; neue Pakete auf Wartung,

@@ -48,6 +48,50 @@ function runGit(...gitArgs) {
   return result.stdout.trimEnd();
 }
 
+function checkMergedPullRequests(branch) {
+  if (process.env.AGENT_PREFLIGHT_DISABLE_GITHUB_CHECK === "1") {
+    return { status: "skipped" };
+  }
+
+  const result = spawnSync(
+    "gh",
+    [
+      "pr",
+      "list",
+      "--state",
+      "merged",
+      "--head",
+      branch,
+      "--limit",
+      "1",
+      "--json",
+      "number,title,url",
+    ],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      windowsHide: true,
+    },
+  );
+
+  if (result.error || result.status !== 0) {
+    return {
+      status: "unavailable",
+      detail: result.error?.message || (result.stderr || "").trim(),
+    };
+  }
+
+  try {
+    const pullRequests = JSON.parse(result.stdout);
+    return { status: "checked", pullRequest: pullRequests[0] };
+  } catch {
+    return {
+      status: "unavailable",
+      detail: "GitHub CLI returned invalid JSON.",
+    };
+  }
+}
+
 function writeSection(title) {
   console.log(`\n=== ${title} ===`);
 }
@@ -57,9 +101,9 @@ console.log(`Repository: ${repoRoot}`);
 console.log(`Bereich:    ${scope}`);
 
 writeSection("Git");
-console.log(
-  `Branch: ${runGit("branch", "--show-current").trim() || "detached HEAD"}`,
-);
+const branch = runGit("branch", "--show-current").trim();
+console.log(`Branch: ${branch || "detached HEAD"}`);
+console.log(`Worktree: ${runGit("rev-parse", "--show-toplevel")}`);
 
 const status = runGit("status", "--short");
 if (!status) {
@@ -67,6 +111,45 @@ if (!status) {
 } else {
   console.log("Arbeitsbaum: vorhandene Aenderungen bewahren");
   for (const line of status.split(/\r?\n/)) console.log(`  ${line}`);
+}
+
+writeSection("Branch-Sicherheit");
+let unsafeBranch = false;
+
+if (!branch) {
+  console.error(
+    "SICHERHEITSSTOPP: Aenderungsauftraege duerfen nicht auf einem detached HEAD beginnen.",
+  );
+  unsafeBranch = true;
+} else if (["main", "master"].includes(branch)) {
+  console.error(
+    `SICHERHEITSSTOPP: ${branch} ist nur Integrationsbasis. Fuer den Auftrag einen eigenen Branch und Worktree verwenden.`,
+  );
+  unsafeBranch = true;
+} else {
+  const githubCheck = checkMergedPullRequests(branch);
+  if (githubCheck.status === "skipped") {
+    console.log("GitHub-Pruefung: fuer den lokalen Skripttest deaktiviert");
+  } else if (githubCheck.status === "unavailable") {
+    console.warn(
+      `WARNUNG: Bereits gemergte PRs konnten nicht geprueft werden${githubCheck.detail ? ` (${githubCheck.detail})` : ""}.`,
+    );
+    console.warn(
+      "Vor Aenderungen manuell sicherstellen, dass dieser Branch noch nie gemergt wurde.",
+    );
+  } else if (githubCheck.pullRequest) {
+    const pullRequest = githubCheck.pullRequest;
+    console.error(
+      `SICHERHEITSSTOPP: Branch ${branch} gehoert zum bereits gemergten PR #${pullRequest.number} (${pullRequest.title}).`,
+    );
+    console.error(
+      "Diesen Branch nicht weiterverwenden. Fuer Folgearbeiten von aktuellem origin/main einen neuen Branch und Worktree anlegen.",
+    );
+    console.error(`PR: ${pullRequest.url}`);
+    unsafeBranch = true;
+  } else {
+    console.log("Kein bereits gemergter PR fuer diesen Branch gefunden.");
+  }
 }
 
 writeSection("Laufzeit");
@@ -166,3 +249,5 @@ writeSection("Naechster Schritt");
 console.log(
   "Auftrag intern aus der Prosa konkretisieren und direkt die relevanten Pfade lesen.",
 );
+
+if (unsafeBranch) process.exit(3);

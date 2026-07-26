@@ -13,6 +13,10 @@ function runPreflight(args = [], cwd = repoRoot) {
   return spawnSync(process.execPath, [scriptPath, ...args], {
     cwd,
     encoding: "utf8",
+    env: {
+      ...process.env,
+      AGENT_PREFLIGHT_DISABLE_GITHUB_CHECK: "1",
+    },
     windowsHide: true,
   });
 }
@@ -59,4 +63,12 @@ test("explains the documentation-only verification path", () => {
     assert.match(result.stdout, /Nur Dokumentation:/);
     assert.match(result.stdout, /Codepruefungen entfallen/);
   }
+});
+
+test("reports the worktree and branch safety check", () => {
+  const result = runPreflight(["--scope", "root"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Worktree:/);
+  assert.match(result.stdout, /=== Branch-Sicherheit ===/);
+  assert.match(result.stdout, /GitHub-Pruefung: fuer den lokalen Skripttest deaktiviert/);
 });
