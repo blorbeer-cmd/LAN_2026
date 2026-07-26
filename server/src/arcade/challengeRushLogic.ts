@@ -34,3 +34,17 @@ export function scoreNumberSalad(correct: number, errors: number, elapsedMs: num
   return Math.max(0, Math.min(100, Math.round(correct * 12.5 - errors * 8 - Math.max(0, elapsedMs - 2_000) / 180)));
 }
 export function scoreTiming10(elapsedMs: number): number { return Math.max(0, Math.round(100 - Math.abs(elapsedMs - 10_000) / 20)); }
+
+export function winnerIdForScores(scores: Array<{ playerId: string; score: number }>): string | null {
+  const highest = Math.max(0, ...scores.map((entry) => entry.score));
+  const winners = scores.filter((entry) => entry.score === highest);
+  return winners.length === 1 ? winners[0].playerId : null;
+}
+
+export function isCurrentChallenge(expectedIndex: number, actualIndex: number): boolean {
+  return Number.isInteger(expectedIndex) && expectedIndex === actualIndex;
+}
+
+export function remainingUntil(deadlineAt: number | null, now: number): number | null {
+  return deadlineAt === null ? null : Math.max(0, deadlineAt - now);
+}

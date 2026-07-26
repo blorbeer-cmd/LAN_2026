@@ -8,40 +8,219 @@ import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { arcadeTiming } from './timing';
-import { CHALLENGES, challengePayload, scoreCps, scoreNumberSalad, scoreReaction, scoreTiming10, type ChallengeKey } from './challengeRushLogic';
+import { CHALLENGES, challengePayload, isCurrentChallenge, remainingUntil, scoreCps, scoreNumberSalad, scoreReaction, scoreTiming10, winnerIdForScores, type ChallengeKey } from './challengeRushLogic';
+
+const MAX_PLAYERS = 15;
+const RECONNECT_GRACE_MS = 15_000;
+const RESULT_PAUSE_MS = 1_500;
+const END_REVEAL_MS = 12_000;
 
 interface Player { id: string; name: string; avatar: string | null; color: string | null }
 interface Lobby { id: string; groupId: string; eventId: string | null; host: Player; players: Player[]; socketIds: Map<string, string>; ready: Set<string>; createdAt: number }
-interface Progress { clicks: number; errors: number; correct: number; completed: boolean; score: number; startedAt: number; lastInputAt: number }
-interface Match { id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[]; socketIds: Map<string, string>; order: ChallengeKey[]; index: number; phase: 'countdown' | 'playing' | 'result' | 'ended'; seed: number; current: ReturnType<typeof challengePayload>; progress: Map<string, Progress>; scores: Map<string, number>; startedAt: number; timer: NodeJS.Timeout | null; paused: boolean }
+interface Progress { clicks: number; errors: number; correct: number; completed: boolean; score: number; startedAt: number; elapsedBeforePause: number; lastInputAt: number }
+interface Match {
+  id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[]; socketIds: Map<string, string>;
+  order: ChallengeKey[]; index: number; phase: 'countdown' | 'playing' | 'result' | 'ended'; seed: number;
+  current: ReturnType<typeof challengePayload>; progress: Map<string, Progress>; scores: Map<string, number>;
+  startedAt: number; timer: NodeJS.Timeout | null; deadlineAt: number | null; pausedRemainingMs: number | null; paused: boolean;
+  reconnectTimers: Map<string, NodeJS.Timeout>;
+}
 
-const lobbies = new Map<string, Lobby>(); const matches = new Map<string, Match>();
+const lobbies = new Map<string, Lobby>();
+const matches = new Map<string, Match>();
 const real = (players: Player[]) => players.filter((player) => !player.id.startsWith('bot-')).map((player) => player.id);
 const playerById = (id: unknown): Player | null => typeof id === 'string' ? (db.prepare('SELECT id,name,avatar,color FROM players WHERE id=?').get(id) as Player | undefined) ?? null : null;
 const owns = (socket: Socket, id: unknown): id is string => typeof id === 'string' && Boolean(socketArcadeScope(socket, id));
 const publicLobbies = (groupId: string, eventId: string | null) => [...lobbies.values()].filter((l) => l.groupId === groupId && l.eventId === eventId).map((l) => ({ id: l.id, host: l.host, players: l.players.map((p) => ({ ...p, ready: isLobbyReady(l, p.id) })), createdAt: l.createdAt }));
-function emitLobbies(io: Server) { for (const socket of io.sockets.sockets.values()) { const scope = socketArcadeScope(socket); if (scope) socket.emit('challenge-rush:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) }); } }
-function scorePayload(match: Match) { return match.players.map((p) => ({ playerId: p.id, name: p.name, score: match.scores.get(p.id) ?? 0 })); }
-function emitState(io: Server, match: Match) { const state = { matchId: match.id, phase: match.phase, challengeIndex: match.index, challengeCount: match.order.length, challenge: match.current, scores: scorePayload(match), paused: match.paused }; emitArcadeRoom(io, match.room, 'challenge-rush:state', state, match); broadcastArcadeKiosk(io, { gameType: 'challenge-rush', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: match.phase, challenge: match.current.title, scores: state.scores, paused: match.paused }); }
-function finishChallenge(io: Server, match: Match) {
-  if (match.phase !== 'playing') return;
-  match.phase = 'result'; if (match.timer) clearTimeout(match.timer);
-  for (const player of match.players) { const p = match.progress.get(player.id)!; if (!p.completed) { const elapsed = Math.min(Date.now() - p.startedAt, match.current.durationMs); p.score = match.current.key === 'cps' ? scoreCps(p.clicks) : match.current.key === 'number-salad' ? scoreNumberSalad(p.correct, p.errors, elapsed) : match.current.key === 'timing-10' ? scoreTiming10(elapsed) : 0; p.completed = true; } match.scores.set(player.id, (match.scores.get(player.id) ?? 0) + p.score); }
-  emitState(io, match); emitArcadeRoom(io, match.room, 'challenge-rush:challenge:end', { matchId: match.id, scores: scorePayload(match) }, match);
-  match.timer = setTimeout(() => nextChallenge(io, match), 1_500);
-}
-function nextChallenge(io: Server, match: Match) { if (matches.get(match.id) !== match) return; if (match.index + 1 >= match.order.length) return finishMatch(io, match); match.index += 1; match.phase = 'countdown'; match.current = challengePayload(match.order[match.index], (match.seed + match.index * 7919) >>> 0); match.progress = new Map(match.players.map((p) => [p.id, { clicks: 0, errors: 0, correct: 0, completed: false, score: 0, startedAt: 0, lastInputAt: 0 }])); emitState(io, match); match.timer = setTimeout(() => { if (match.phase !== 'countdown') return; match.phase = 'playing'; const now = Date.now(); for (const p of match.progress.values()) p.startedAt = now; emitState(io, match); match.timer = setTimeout(() => finishChallenge(io, match), match.current.durationMs); }, arcadeTiming.countdownMs); }
-function finishMatch(io: Server, match: Match) { if (match.phase === 'ended') return; match.phase = 'ended'; if (match.timer) clearTimeout(match.timer); const scores = scorePayload(match); const winner = [...scores].sort((a, b) => b.score - a.score)[0]?.playerId ?? null; endArcadeSession(real(match.players), 'challenge-rush', match); recordArcadeResult({ gameType: 'challenge-rush', winnerId: winner, players: match.players, scores, reason: 'completed', startedAt: match.startedAt, scope: match }); emitArcadeRoom(io, match.room, 'challenge-rush:match:end', { matchId: match.id, winnerId: winner, scores }, match); broadcastArcadeKiosk(io, { gameType: 'challenge-rush', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'ended', scores }); releaseLobbyMemberships([], 'challenge-rush', match.id); matches.delete(match.id); }
-function startMatch(io: Server, lobby: Lobby) { const id = nanoid(); const room = `challenge-rush:${id}`; for (const socketId of lobby.socketIds.values()) io.sockets.sockets.get(socketId)?.join(room); const seed = Math.floor(Math.random() * 0x7fffffff); const order = CHALLENGES.map((c) => c.key); const match: Match = { id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: [...lobby.players], socketIds: new Map(lobby.socketIds), order, index: -1, phase: 'countdown', seed, current: challengePayload(order[0], seed), progress: new Map(), scores: new Map(lobby.players.map((p) => [p.id, 0])), startedAt: Date.now(), timer: null, paused: false }; matches.set(id, match); releaseLobbyMemberships(lobby.players.map((p) => p.id), 'challenge-rush', lobby.id); lobbies.delete(lobby.id); emitLobbies(io); startArcadeSession(real(match.players), 'challenge-rush', match); emitArcadeRoom(io, room, 'challenge-rush:match:start', { matchId: id, players: match.players, challengeCount: order.length }, match); nextChallenge(io, match); return match; }
 
-export function registerChallengeRushSockets(io: Server): void { io.on('connection', (socket: Socket) => {
-  const sendLobbies = () => { const scope = socketArcadeScope(socket); if (scope) socket.emit('challenge-rush:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) }); }; sendLobbies(); socket.on('challenge-rush:lobbies:get', sendLobbies); socket.on('scope:subscribe', sendLobbies); socket.on('room:subscribe', sendLobbies);
-  socket.on('challenge-rush:lobby:create', (payload: { playerId?: string }, ack?: (r: unknown) => void) => { const player = playerById(payload?.playerId); const scope = player ? socketArcadeScope(socket, player.id) : null; if (!player || !scope) return ack?.({ ok: false, error: 'Spieler- oder Gruppenzugriff verweigert.' }); const lobby: Lobby = { id: nanoid(), ...scope, host: player, players: [player], socketIds: new Map([[player.id, socket.id]]), ready: new Set(), createdAt: Date.now() }; if (!claimLobbyMembership(player.id, 'challenge-rush', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer Arcade-Lobby.' }); lobbies.set(lobby.id, lobby); emitLobbies(io); ack?.({ ok: true, lobbyId: lobby.id }); });
-  socket.on('challenge-rush:lobby:join', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null; const player = playerById(payload?.playerId); if (!lobby || !player || !canJoinLobby(socket, lobby, player.id)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' }); if (!lobby.players.some((p) => p.id === player.id) && lobby.players.length >= 15) return ack?.({ ok: false, error: 'Lobby ist voll.' }); if (!claimLobbyMembership(player.id, 'challenge-rush', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer Arcade-Lobby.' }); if (!lobby.players.some((p) => p.id === player.id)) lobby.players.push(player); lobby.socketIds.set(player.id, socket.id); emitLobbies(io); ack?.({ ok: true }); });
-  socket.on('challenge-rush:lobby:leave', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null; if (!lobby || !canUseLobby(socket, lobby) || !owns(socket, payload.playerId)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' }); releaseLobbyMembership(payload.playerId, 'challenge-rush', lobby.id); if (payload.playerId === lobby.host.id) { releaseLobbyMemberships(lobby.players.map((p) => p.id), 'challenge-rush', lobby.id); lobbies.delete(lobby.id); } else { lobby.players = lobby.players.filter((p) => p.id !== payload.playerId); lobby.socketIds.delete(payload.playerId); lobby.ready.delete(payload.playerId); } emitLobbies(io); ack?.({ ok: true }); });
-  socket.on('challenge-rush:lobby:ready', (payload: { lobbyId?: string; playerId?: string; ready?: boolean }, ack?: (r: unknown) => void) => { const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null; if (!lobby || !canUseLobby(socket, lobby) || !owns(socket, payload.playerId) || !setLobbyReady(lobby, payload.playerId, payload.ready)) return ack?.({ ok: false, error: 'Bereit-Status konnte nicht gesetzt werden.' }); emitLobbies(io); ack?.({ ok: true }); });
-  socket.on('challenge-rush:lobby:start', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null; if (!lobby || !canUseLobby(socket, lobby) || !owns(socket, payload.playerId) || payload.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' }); if (lobby.players.length < 1 || lobby.players.some((p) => !isLobbyReady(lobby, p.id))) return ack?.({ ok: false, error: 'Alle Mitspieler müssen bereit sein.' }); const match = startMatch(io, lobby); ack?.({ ok: true, matchId: match.id }); });
-  socket.on('challenge-rush:challenge:input', (payload: { matchId?: string; playerId?: string; action?: string; value?: number | { x?: number; y?: number } }, ack?: (r: unknown) => void) => { const match = payload?.matchId ? matches.get(payload.matchId) : null; const p = match && payload.playerId ? match.progress.get(payload.playerId) : null; if (!match || match.phase !== 'playing' || match.paused || !p || !owns(socket, payload.playerId) || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Eingabe nicht möglich.' }); const now = Date.now(); if (p.completed) return ack?.({ ok: true, duplicate: true }); if (now - p.lastInputAt < 30) return ack?.({ ok: true, ignored: true }); p.lastInputAt = now; const elapsed = now - p.startedAt; if (match.current.key === 'reaction-circle') { const point = payload.value && typeof payload.value === 'object' ? payload.value : {}; const target = match.current.data; const validPoint = typeof point.x === 'number' && typeof point.y === 'number' && Math.abs(point.x - Number(target.x)) <= 12 && Math.abs(point.y - Number(target.y)) <= 12; if (payload.action !== 'hit' || !validPoint) return ack?.({ ok: false, error: 'Ungültiges Ziel.' }); p.score = scoreReaction(elapsed); p.completed = true; } else if (match.current.key === 'cps') { if (payload.action === 'click') p.clicks += 1; } else if (match.current.key === 'number-salad') { const expected = p.correct + 1; if (payload.action !== 'number' || payload.value !== expected) p.errors += 1; else p.correct += 1; if (p.correct >= 8) { p.score = scoreNumberSalad(p.correct, p.errors, elapsed); p.completed = true; } } else if (match.current.key === 'timing-10') { if (payload.action !== 'stop') return ack?.({ ok: false, error: 'Ungültige Eingabe.' }); p.score = scoreTiming10(elapsed); p.completed = true; } if ([...match.progress.values()].every((entry) => entry.completed)) finishChallenge(io, match); ack?.({ ok: true, score: p.score }); });
-  socket.on('challenge-rush:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const match = payload?.matchId ? matches.get(payload.matchId) : null; if (!match || payload.playerId !== match.host.id || !owns(socket, payload.playerId) || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' }); match.paused = !match.paused; emitState(io, match); ack?.({ ok: true }); });
-  socket.on('disconnect', () => { for (const [id, lobby] of lobbies) { if ([...lobby.socketIds.values()].includes(socket.id)) { releaseLobbyMemberships(lobby.players.map((p) => p.id), 'challenge-rush', id); lobbies.delete(id); } } emitLobbies(io); });
- }); }
+function emitLobbies(io: Server): void {
+  for (const socket of io.sockets.sockets.values()) {
+    const scope = socketArcadeScope(socket);
+    if (scope) socket.emit('challenge-rush:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) });
+  }
+}
+
+function scorePayload(match: Match) {
+  return match.players.map((player) => ({ playerId: player.id, name: player.name, score: match.scores.get(player.id) ?? 0, connected: match.socketIds.has(player.id) }));
+}
+
+function progressPayload(progress: Progress) {
+  return { clicks: progress.clicks, correct: progress.correct, errors: progress.errors, completed: progress.completed, score: progress.score };
+}
+
+function activeElapsed(progress: Progress, now = Date.now()): number {
+  return progress.elapsedBeforePause + (progress.startedAt > 0 ? Math.max(0, now - progress.startedAt) : 0);
+}
+
+function clearTimer(match: Match): void {
+  if (match.timer) clearTimeout(match.timer);
+  match.timer = null;
+}
+
+function schedule(match: Match, delayMs: number, callback: () => void): void {
+  clearTimer(match);
+  const delay = Math.max(0, delayMs);
+  match.deadlineAt = Date.now() + delay;
+  match.timer = setTimeout(() => { match.timer = null; match.deadlineAt = null; callback(); }, delay);
+}
+
+function pauseMatch(match: Match): void {
+  if (match.paused || match.phase === 'ended') return;
+  if (match.phase === 'playing') {
+    const now = Date.now();
+    for (const progress of match.progress.values()) {
+      if (!progress.completed && progress.startedAt > 0) { progress.elapsedBeforePause += now - progress.startedAt; progress.startedAt = 0; }
+    }
+  }
+  match.pausedRemainingMs = match.deadlineAt === null ? null : Math.max(0, match.deadlineAt - Date.now());
+  clearTimer(match);
+  match.paused = true;
+}
+
+function resumeMatch(io: Server, match: Match): void {
+  if (!match.paused || match.phase === 'ended') return;
+  match.paused = false;
+  const remaining = match.pausedRemainingMs ?? 0;
+  match.pausedRemainingMs = null;
+  if (match.phase === 'playing') for (const progress of match.progress.values()) if (!progress.completed) progress.startedAt = Date.now();
+  if (match.phase === 'countdown') schedule(match, remaining, () => beginChallenge(io, match));
+  else if (match.phase === 'playing') schedule(match, remaining, () => finishChallenge(io, match));
+  else if (match.phase === 'result') schedule(match, remaining, () => nextChallenge(io, match));
+}
+
+function publicState(match: Match) {
+  return {
+    matchId: match.id, phase: match.phase, challengeIndex: match.index, challengeCount: match.order.length,
+    challenge: match.current, scores: scorePayload(match), paused: match.paused,
+    remainingMs: match.paused ? match.pausedRemainingMs : remainingUntil(match.deadlineAt, Date.now()),
+  };
+}
+
+function emitState(io: Server, match: Match, target?: Socket): void {
+  const state = publicState(match);
+  if (target) target.emit('challenge-rush:state', state);
+  else emitArcadeRoom(io, match.room, 'challenge-rush:state', state, match);
+  broadcastArcadeKiosk(io, { gameType: 'challenge-rush', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: match.phase, challenge: match.current.title, challengeIndex: match.index, challengeCount: match.order.length, scores: state.scores, paused: match.paused });
+}
+
+function beginChallenge(io: Server, match: Match): void {
+  if (match.phase !== 'countdown' || match.paused) return;
+  match.phase = 'playing';
+  const now = Date.now();
+  for (const progress of match.progress.values()) { progress.startedAt = now; progress.elapsedBeforePause = 0; }
+  emitState(io, match);
+  schedule(match, match.current.durationMs, () => finishChallenge(io, match));
+}
+
+function finishChallenge(io: Server, match: Match): void {
+  if (match.phase !== 'playing' || match.paused) return;
+  match.phase = 'result';
+  clearTimer(match);
+  for (const player of match.players) {
+    const progress = match.progress.get(player.id)!;
+    if (!progress.completed) {
+      const elapsed = Math.min(activeElapsed(progress), match.current.durationMs);
+      progress.score = match.current.key === 'cps' ? scoreCps(progress.clicks) : match.current.key === 'number-salad' ? scoreNumberSalad(progress.correct, progress.errors, elapsed) : match.current.key === 'timing-10' ? scoreTiming10(elapsed) : 0;
+      progress.completed = true;
+    }
+    match.scores.set(player.id, (match.scores.get(player.id) ?? 0) + progress.score);
+  }
+  emitState(io, match);
+  emitArcadeRoom(io, match.room, 'challenge-rush:challenge:end', { matchId: match.id, scores: scorePayload(match) }, match);
+  schedule(match, RESULT_PAUSE_MS, () => nextChallenge(io, match));
+}
+
+function nextChallenge(io: Server, match: Match): void {
+  if (matches.get(match.id) !== match || match.phase === 'ended') return;
+  if (match.index + 1 >= match.order.length) return finishMatch(io, match);
+  match.index += 1;
+  match.phase = 'countdown';
+  match.current = challengePayload(match.order[match.index], (match.seed + match.index * 7919) >>> 0);
+  match.progress = new Map(match.players.map((player) => [player.id, { clicks: 0, errors: 0, correct: 0, completed: false, score: 0, startedAt: 0, elapsedBeforePause: 0, lastInputAt: 0 }]));
+  emitState(io, match);
+  schedule(match, arcadeTiming.countdownMs, () => beginChallenge(io, match));
+}
+
+function cleanupMatch(io: Server, match: Match): void {
+  for (const timer of match.reconnectTimers.values()) clearTimeout(timer);
+  match.reconnectTimers.clear();
+  matches.delete(match.id);
+  for (const socketId of match.socketIds.values()) io.sockets.sockets.get(socketId)?.leave(match.room);
+  broadcastArcadeKiosk(io, { gameType: null, matchId: match.id, groupId: match.groupId, eventId: match.eventId });
+}
+
+function finishMatch(io: Server, match: Match, reason = 'completed'): void {
+  if (match.phase === 'ended') return;
+  match.phase = 'ended'; clearTimer(match);
+  const scores = scorePayload(match);
+  const winnerId = reason === 'completed' ? winnerIdForScores(scores) : null;
+  endArcadeSession(real(match.players), 'challenge-rush', match);
+  recordArcadeResult({ gameType: 'challenge-rush', winnerId, players: match.players, scores: scores.map((score) => ({ ...score, isWinner: winnerId !== null && score.playerId === winnerId })), reason, startedAt: match.startedAt, scope: match });
+  emitArcadeRoom(io, match.room, 'challenge-rush:match:end', { matchId: match.id, winnerId, scores, draw: winnerId === null && reason === 'completed' }, match);
+  broadcastArcadeKiosk(io, { gameType: 'challenge-rush', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'ended', scores });
+  setTimeout(() => cleanupMatch(io, match), END_REVEAL_MS).unref();
+}
+
+function attachSocket(io: Server, socket: Socket, match: Match, playerId: string): void {
+  const previousTimer = match.reconnectTimers.get(playerId);
+  if (previousTimer) clearTimeout(previousTimer);
+  match.reconnectTimers.delete(playerId);
+  match.socketIds.set(playerId, socket.id);
+  socket.join(match.room);
+  socket.emit('challenge-rush:match:start', { matchId: match.id, host: match.host, players: match.players, challengeCount: match.order.length, reconnected: true });
+  emitState(io, match, socket);
+}
+
+function startMatch(io: Server, lobby: Lobby): Match {
+  const id = nanoid(); const room = `challenge-rush:${id}`;
+  for (const socketId of lobby.socketIds.values()) io.sockets.sockets.get(socketId)?.join(room);
+  const seed = Math.floor(Math.random() * 0x7fffffff); const order = CHALLENGES.map((challenge) => challenge.key);
+  const match: Match = { id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: [...lobby.players], socketIds: new Map(lobby.socketIds), order, index: -1, phase: 'countdown', seed, current: challengePayload(order[0], seed), progress: new Map(), scores: new Map(lobby.players.map((player) => [player.id, 0])), startedAt: Date.now(), timer: null, deadlineAt: null, pausedRemainingMs: null, paused: false, reconnectTimers: new Map() };
+  matches.set(id, match); releaseLobbyMemberships(lobby.players.map((player) => player.id), 'challenge-rush', lobby.id); lobbies.delete(lobby.id); emitLobbies(io);
+  startArcadeSession(real(match.players), 'challenge-rush', match); emitArcadeRoom(io, room, 'challenge-rush:match:start', { matchId: id, host: match.host, players: match.players, challengeCount: order.length }, match); nextChallenge(io, match); return match;
+}
+
+function removeDisconnectedLobbySocket(io: Server, socketId: string): void {
+  for (const [id, lobby] of lobbies) {
+    const player = [...lobby.socketIds.entries()].find(([, connectedSocketId]) => connectedSocketId === socketId);
+    if (!player) continue;
+    if (player[0] === lobby.host.id) { releaseLobbyMemberships(lobby.players.map((entry) => entry.id), 'challenge-rush', id); lobbies.delete(id); }
+    else { releaseLobbyMembership(player[0], 'challenge-rush', id); lobby.players = lobby.players.filter((entry) => entry.id !== player[0]); lobby.socketIds.delete(player[0]); lobby.ready.delete(player[0]); }
+  }
+  emitLobbies(io);
+}
+
+export function registerChallengeRushSockets(io: Server): void {
+  io.on('connection', (socket: Socket) => {
+    const sendLobbies = () => { const scope = socketArcadeScope(socket); if (scope) socket.emit('challenge-rush:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) }); };
+    sendLobbies(); socket.on('challenge-rush:lobbies:get', sendLobbies); socket.on('scope:subscribe', sendLobbies); socket.on('room:subscribe', sendLobbies);
+    const authPlayerId = socket.data.authPlayerId;
+    if (typeof authPlayerId === 'string') for (const match of matches.values()) if (match.players.some((player) => player.id === authPlayerId)) attachSocket(io, socket, match, authPlayerId);
+    socket.on('challenge-rush:match:reconnect', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const match = payload?.matchId ? matches.get(payload.matchId) : null; if (!match || !payload.playerId || !match.players.some((player) => player.id === payload.playerId) || !socketArcadeScope(socket, payload.playerId)) return ack?.({ ok: false, error: 'Match-Wiederaufnahme verweigert.' }); attachSocket(io, socket, match, payload.playerId); ack?.({ ok: true }); });
+
+    socket.on('challenge-rush:lobby:create', (payload: { playerId?: string }, ack?: (r: unknown) => void) => { const player = playerById(payload?.playerId); const scope = player ? socketArcadeScope(socket, player.id) : null; if (!player || !scope) return ack?.({ ok: false, error: 'Spieler- oder Gruppenzugriff verweigert.' }); const lobby: Lobby = { id: nanoid(), ...scope, host: player, players: [player], socketIds: new Map([[player.id, socket.id]]), ready: new Set(), createdAt: Date.now() }; if (!claimLobbyMembership(player.id, 'challenge-rush', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer Arcade-Lobby.' }); lobbies.set(lobby.id, lobby); emitLobbies(io); ack?.({ ok: true, lobbyId: lobby.id }); });
+    socket.on('challenge-rush:lobby:join', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null; const player = playerById(payload?.playerId); if (!lobby || !player || !canJoinLobby(socket, lobby, player.id)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' }); if (!lobby.players.some((entry) => entry.id === player.id) && lobby.players.length >= MAX_PLAYERS) return ack?.({ ok: false, error: 'Lobby ist voll.' }); if (!claimLobbyMembership(player.id, 'challenge-rush', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer Arcade-Lobby.' }); if (!lobby.players.some((entry) => entry.id === player.id)) lobby.players.push(player); lobby.socketIds.set(player.id, socket.id); emitLobbies(io); ack?.({ ok: true }); });
+    socket.on('challenge-rush:lobby:leave', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null; if (!lobby || !canUseLobby(socket, lobby) || !owns(socket, payload.playerId)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' }); if (payload.playerId === lobby.host.id) { releaseLobbyMemberships(lobby.players.map((player) => player.id), 'challenge-rush', lobby.id); lobbies.delete(lobby.id); } else { releaseLobbyMembership(payload.playerId, 'challenge-rush', lobby.id); lobby.players = lobby.players.filter((player) => player.id !== payload.playerId); lobby.socketIds.delete(payload.playerId); lobby.ready.delete(payload.playerId); } emitLobbies(io); ack?.({ ok: true }); });
+    socket.on('challenge-rush:lobby:ready', (payload: { lobbyId?: string; playerId?: string; ready?: boolean }, ack?: (r: unknown) => void) => { const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null; if (!lobby || !canUseLobby(socket, lobby) || !owns(socket, payload.playerId) || !setLobbyReady(lobby, payload.playerId, payload.ready)) return ack?.({ ok: false, error: 'Bereit-Status konnte nicht gesetzt werden.' }); emitLobbies(io); ack?.({ ok: true }); });
+    socket.on('challenge-rush:lobby:start', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null; if (!lobby || !canUseLobby(socket, lobby) || !owns(socket, payload.playerId) || payload.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' }); if (lobby.players.length < 1 || lobby.players.some((player) => !isLobbyReady(lobby, player.id))) return ack?.({ ok: false, error: 'Alle Mitspieler müssen bereit sein.' }); const match = startMatch(io, lobby); ack?.({ ok: true, matchId: match.id }); });
+    socket.on('challenge-rush:challenge:input', (payload: { matchId?: string; playerId?: string; challengeIndex?: number; action?: string; value?: number | { x?: number; y?: number } }, ack?: (r: unknown) => void) => {
+      const match = payload?.matchId ? matches.get(payload.matchId) : null; const p = match && payload.playerId ? match.progress.get(payload.playerId) : null;
+      if (!match || match.phase !== 'playing' || match.paused || !p || !owns(socket, payload.playerId) || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Eingabe nicht möglich.' });
+      const progress = () => ({ ok: true, progress: progressPayload(p) });
+      if (!isCurrentChallenge(payload.challengeIndex ?? -1, match.index)) return ack?.({ ...progress(), ignored: true, reason: 'stale-challenge' });
+      const now = Date.now(); if (p.completed) return ack?.({ ...progress(), duplicate: true }); if (now - p.lastInputAt < 30) return ack?.({ ...progress(), ignored: true }); p.lastInputAt = now;
+      const elapsed = Math.min(activeElapsed(p, now), match.current.durationMs);
+      if (match.current.key === 'reaction-circle') { const point = payload.value && typeof payload.value === 'object' ? payload.value : {}; const target = match.current.data; const validPoint = typeof point.x === 'number' && typeof point.y === 'number' && Math.abs(point.x - Number(target.x)) <= 12 && Math.abs(point.y - Number(target.y)) <= 12; if (payload.action !== 'hit' || !validPoint) return ack?.({ ok: false, error: 'Ungültiges Ziel.', progress: progressPayload(p) }); p.score = scoreReaction(elapsed); p.completed = true; }
+      else if (match.current.key === 'cps') { if (payload.action !== 'click') return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) }); p.clicks += 1; }
+      else if (match.current.key === 'number-salad') { const expected = p.correct + 1; if (payload.action !== 'number' || payload.value !== expected) p.errors += 1; else p.correct += 1; if (p.correct >= 8) { p.score = scoreNumberSalad(p.correct, p.errors, elapsed); p.completed = true; } }
+      else if (match.current.key === 'timing-10') { if (payload.action !== 'stop') return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) }); p.score = scoreTiming10(elapsed); p.completed = true; }
+      if ([...match.progress.values()].every((entry) => entry.completed)) finishChallenge(io, match);
+      ack?.({ ok: true, accepted: true, progress: progressPayload(p) });
+    });
+    socket.on('challenge-rush:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const match = payload?.matchId ? matches.get(payload.matchId) : null; if (!match || !['countdown', 'playing', 'result'].includes(match.phase) || payload.playerId !== match.host.id || !owns(socket, payload.playerId) || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Pause ist in dieser Phase nicht möglich.' }); if (match.paused) resumeMatch(io, match); else pauseMatch(match); emitState(io, match); ack?.({ ok: true, paused: match.paused, remainingMs: match.pausedRemainingMs }); });
+    socket.on('disconnect', () => {
+      removeDisconnectedLobbySocket(io, socket.id);
+      for (const match of matches.values()) for (const [playerId, socketId] of match.socketIds) if (socketId === socket.id) { match.socketIds.delete(playerId); const timer = setTimeout(() => { if (matches.get(match.id) === match && !match.socketIds.has(playerId)) finishMatch(io, match, 'player-left'); }, RECONNECT_GRACE_MS); match.reconnectTimers.set(playerId, timer); emitState(io, match); }
+    });
+  });
+}
