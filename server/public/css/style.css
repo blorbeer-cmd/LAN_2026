@@ -77,6 +77,7 @@
   --seating-seat-height-compact: calc(var(--row-min-h) + var(--space-5));
   --assignment-select-width: 112px;
   --arcade-lobby-mode-width: 112px;
+  --arcade-lobby-card-min-height: 220px;
   --challenge-rush-stage-max-width: 760px;
   --challenge-rush-playfield-min-height: 280px;
   --challenge-rush-button-min-width: 180px;
@@ -2249,12 +2250,14 @@ button.card {
   margin-top: var(--space-3);
 }
 .arcade-lobby-card {
+  min-height: var(--arcade-lobby-card-min-height);
   gap: var(--space-3);
 }
 .arcade-active-game-title {
   gap: var(--space-2);
 }
 .arcade-lobby-create-actions {
+  margin-top: auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
