@@ -176,6 +176,9 @@ groupsRouter.patch(
       details: { role },
     });
     broadcastInstanceSignal(Events.groupsChanged);
+    if (result.instanceAdminChanged) {
+      broadcast(Events.playersChanged, null, { groupId: req.group!.id });
+    }
     res.json({ playerId: result.membership.player_id, role: result.membership.role, status: result.membership.status });
   },
 );

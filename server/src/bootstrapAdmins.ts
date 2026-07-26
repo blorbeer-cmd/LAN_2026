@@ -12,9 +12,10 @@
 
 import { nanoid } from 'nanoid';
 import { db } from './db';
+import { config } from './config';
 import { hashPassword, isValidPassword } from './accounts';
 import { isNonEmptyString } from './validation';
-import { ensureDefaultGroupMembership } from './groups';
+import { ensureBootstrapAdminMembership } from './groups';
 
 const DEFAULT_COLOR = '#4f9dff';
 // How many BOOTSTRAP_ADMIN_<n>_* slots we look at. Far more than the handful a
@@ -90,17 +91,34 @@ function seedOne(entry: BootstrapAdminEntry): BootstrapAdminAction {
       if (existing.is_test) return 'skipped-test';
       if (existing.deactivated_at !== null) return 'skipped-deactivated';
 
-      db.prepare('UPDATE players SET password_hash = ?, is_admin = 1 WHERE id = ?').run(hashPassword(password), existing.id);
-      ensureDefaultGroupMembership(existing.id);
+      if (config.authMode === 'required') {
+        // Leave is_admin untouched until the membership helper derives it
+        // from the active role and writes any grant/revocation audit entry.
+        db.prepare('UPDATE players SET password_hash = ? WHERE id = ?').run(hashPassword(password), existing.id);
+      } else {
+        db.prepare('UPDATE players SET password_hash = ?, is_admin = 1 WHERE id = ?').run(
+          hashPassword(password),
+          existing.id,
+        );
+      }
+      ensureBootstrapAdminMembership(existing.id);
       return 'claimed';
     }
 
     const id = nanoid();
     db.prepare(
       `INSERT INTO players (id, name, color, avatar, api_key, tracking_paused, is_admin, is_test, password_hash, last_login_at, created_at)
-       VALUES (?, ?, ?, NULL, ?, 0, 1, 0, ?, NULL, ?)`,
-    ).run(id, name, DEFAULT_COLOR, nanoid(24), hashPassword(password), Date.now());
-    ensureDefaultGroupMembership(id);
+       VALUES (?, ?, ?, NULL, ?, 0, ?, 0, ?, NULL, ?)`,
+    ).run(
+      id,
+      name,
+      DEFAULT_COLOR,
+      nanoid(24),
+      config.authMode === 'required' ? 0 : 1,
+      hashPassword(password),
+      Date.now(),
+    );
+    ensureBootstrapAdminMembership(id);
     return 'created';
   })();
 }

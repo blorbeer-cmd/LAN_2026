@@ -1,14 +1,17 @@
-import { getToken } from '../api.js';
+import { connectSocket } from '../socket.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
+import { avatarHtml, escapeHtml } from '../format.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { infoTooltipHtml } from '../infoTooltip.js';
 
 const W = 1000;
 const H = 600;
+const cssColor = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const GROUND = 550;
 const NET_X = 500;
 const NET_TOP = 365;
@@ -27,6 +30,7 @@ const avatarImages = new Map();
 const courtBackground = new Image();
 courtBackground.src = '/img/blobby-beach-court.png';
 let targetScore = 7;
+let lobbyMode = 'doubles';
 
 const myId = () => getMyId();
 const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
@@ -42,7 +46,7 @@ export function blobbyLobbies() { return lobbies; }
 
 export function ensureBlobbySocket() {
   if (socket) return socket;
-  socket = io({ auth: { token: getToken() } });
+  socket = connectSocket();
   socket.on('blobby:lobbies', (payload) => { lobbies = payload?.lobbies ?? []; if (!match && currentView() === 'arcade') rerender(); });
   socket.on('blobby:match:start', (payload) => {
     match = { ...payload, ended: false, winner: null };
@@ -69,7 +73,12 @@ export function ensureBlobbySocket() {
   socket.on('blobby:match:resumed', () => { if (match) { match.paused = false; if (currentView() === 'blobby') rerender(); } });
   socket.on('blobby:match:end', (payload) => {
     if (!match) return;
-    match.ended = true; match.running = false; match.winner = payload.winner ?? null; match.scores = payload.scores ?? [];
+    match.ended = true;
+    match.running = false;
+    match.winner = payload.winner ?? null;
+    match.winners = payload.winners ?? [];
+    match.winnerTeam = payload.winnerTeam ?? null;
+    match.scores = payload.scores ?? [];
     cancelCountdown();
     window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
     stopAnimation();
@@ -102,13 +111,53 @@ function bindKeyboard() {
   });
 }
 
+function modeLabel(mode) {
+  return mode === 'doubles' ? 'Doppel' : 'Duell';
+}
+function teamLabel(team) {
+  return team === 'left' ? 'Team Blau' : 'Team Pink';
+}
+function lobbyMemberRow(player, lobby) {
+  const role = player.id === lobby.host.id ? 'Host' : player.ready ? 'Bereit' : 'Mitspieler';
+  return `<div class="arcade-lobby-member-row">
+    ${avatarHtml(player, 24)}
+    <span class="player-name">${escapeHtml(player.name)}</span>
+    <span class="arcade-lobby-member-role">${role}</span>
+  </div>`;
+}
+function teamLobbyHtml(lobby, team, joined) {
+  const players = lobby.players.filter((player) => player.team === team);
+  const limit = lobby.mode === 'doubles' ? 2 : 1;
+  const free = limit - players.length;
+  const join = !joined && free > 0
+    ? `<button type="button" class="btn btn-sm btn-primary" data-blobby-join="${lobby.id}" data-blobby-team="${team}">Beitreten</button>`
+    : '';
+  return `<div class="stack">
+    <div class="row-between"><strong>${teamLabel(team)}</strong><span class="badge">${players.length}/${limit}</span></div>
+    <div class="arcade-lobby-member-list">
+      ${players.map((player) => lobbyMemberRow(player, lobby)).join('')}
+      ${free > 0 ? `<div class="arcade-lobby-member-row arcade-lobby-free-row">
+        <span class="arcade-lobby-avatar-slot" aria-hidden="true"></span>
+        <span class="muted arcade-lobby-free-label">${free} frei</span>
+        ${join}
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+function startReason(lobby) {
+  const missing = lobby.playerLimit - lobby.players.length;
+  if (missing > 0) return `${missing} ${missing === 1 ? 'Platz' : 'Plätze'} frei`;
+  const waiting = lobby.players.filter((player) => player.id !== lobby.host.id && !player.ready).length;
+  return waiting > 0 ? `${waiting} nicht bereit` : '';
+}
 function lobbyList() {
   if (!lobbies.length) return '<div class="empty-state" style="padding:var(--space-4);">Keine offene Blobby-Volley-Lobby.</div>';
   return lobbies.map((l) => {
     const isHost = l.host.id === myId();
     const joined = l.players.some((p) => p.id === myId());
-    const full = l.players.length >= 2 && !joined;
-    const ready = l.players.length === 2;
+    const full = l.players.length >= l.playerLimit && !joined;
+    const ready = l.players.length === l.playerLimit && l.players.every((player) => player.id === l.host.id || player.ready);
+    const reason = startReason(l);
     const settingsHtml = isHost
       ? `<label class="arcade-lobby-target-score">
           <span>Punkte bis Sieg</span>
@@ -119,15 +168,37 @@ function lobbyList() {
       : '';
     const footerActions = isHost
       ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-blobby-close="${l.id}">Schließen</button>
-        <button type="button" class="btn btn-sm btn-equal btn-primary" id="blobby-start" ${ready ? '' : 'disabled'}>Start</button>`
+        <span class="row" style="gap:var(--space-1);">
+          <button type="button" class="btn btn-sm btn-equal btn-primary" id="blobby-start" ${ready ? '' : 'disabled'}>Start</button>
+          ${reason ? infoTooltipHtml(`blobby-start-${l.id}`, 'Start nicht möglich', reason, 'warning') : ''}
+        </span>`
       : joined
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-blobby-leave="${l.id}">Verlassen</button>
           ${readyToggleHtml(l, myId(), 'blobby-ready')}`
         : '';
-    const joinAction = !joined && !isHost
-      ? `<button type="button" class="btn btn-sm btn-primary" data-blobby-join="${l.id}" ${full ? 'disabled' : ''}>Beitreten</button>`
-      : '';
-    return arcadeLobbyEntryHtml(l, { playerLimit: 2, joinAction, settingsHtml, footerActions, full });
+    if (l.mode === 'duel') {
+      const joinAction = !joined && !isHost
+        ? `<button type="button" class="btn btn-sm btn-primary" data-blobby-join="${l.id}" data-blobby-team="right" ${full ? 'disabled' : ''}>Beitreten</button>`
+        : '';
+      return `<div class="stack">
+        <div class="row-between"><strong>${modeLabel(l.mode)}</strong><span class="badge">${l.players.length}/${l.playerLimit}</span></div>
+        ${arcadeLobbyEntryHtml(l, { joinAction, settingsHtml, footerActions, full })}
+      </div>`;
+    }
+    return `<div class="card stack arcade-lobby-entry">
+      <div class="arcade-lobby-entry-head">
+        <strong>${escapeHtml(l.host.name)}s Lobby</strong>
+        <span class="badge">${modeLabel(l.mode)} · ${l.players.length}/${l.playerLimit}</span>
+      </div>
+      <div class="two-column-card-grid">
+        ${teamLobbyHtml(l, 'left', joined)}
+        ${teamLobbyHtml(l, 'right', joined)}
+      </div>
+      <div class="arcade-lobby-control-bar">
+        ${settingsHtml ? `<div class="arcade-lobby-settings">${settingsHtml}</div>` : ''}
+        ${footerActions ? `<div class="arcade-lobby-entry-actions">${footerActions}</div>` : ''}
+      </div>
+    </div>`;
   }).join('');
 }
 export function renderBlobbyLobbyCard() {
@@ -135,6 +206,13 @@ export function renderBlobbyLobbyCard() {
   return `<div class="card stack arcade-lobby-card">
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
     ${lobbyList()}
+    ${!lobby ? `<label class="arcade-lobby-target-score arcade-lobby-mode">
+      <span class="title-with-info"><span>Modus</span>${infoTooltipHtml('blobby-mode-info', 'Blobby-Modus', 'Duell: 1 gegen 1. Doppel: 2 gegen 2.')}</span>
+      <select id="blobby-mode" aria-label="Blobby-Modus">
+        <option value="doubles" ${lobbyMode === 'doubles' ? 'selected' : ''}>Doppel · 4</option>
+        <option value="duel" ${lobbyMode === 'duel' ? 'selected' : ''}>Duell · 2</option>
+      </select>
+    </label>` : ''}
     <div class="arcade-lobby-create-actions">
       <button type="button" class="btn btn-primary btn-sm" id="blobby-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
       ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="blobby-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
@@ -149,9 +227,10 @@ export async function leaveMyBlobbyLobby() {
 
 export function wireBlobbyLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
   container.querySelectorAll('select[name="blobby-target"]').forEach((input) => input.addEventListener('change', () => { targetScore = Number(input.value); }));
+  container.querySelector('#blobby-mode')?.addEventListener('change', (event) => { lobbyMode = event.target.value; });
   container.querySelector('#blobby-create')?.addEventListener('click', async () => {
     if (beforeCreate && !(await beforeCreate())) return;
-    const res = await emitAck('blobby:lobby:create', { playerId: myId() });
+    const res = await emitAck('blobby:lobby:create', { playerId: myId(), mode: lobbyMode });
     if (!res?.ok) showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelector('#blobby-bot')?.addEventListener('click', async () => {
@@ -161,7 +240,7 @@ export function wireBlobbyLobbyCard(container, { beforeCreate, beforeJoin } = {}
   });
   container.querySelectorAll('[data-blobby-join]').forEach((b) => b.addEventListener('click', async () => {
     if (beforeJoin && !(await beforeJoin())) return;
-    const res = await emitAck('blobby:lobby:join', { lobbyId: b.dataset.blobbyJoin, playerId: myId() });
+    const res = await emitAck('blobby:lobby:join', { lobbyId: b.dataset.blobbyJoin, playerId: myId(), team: b.dataset.blobbyTeam || 'auto' });
     if (!res?.ok) showToast(res?.error || 'Beitritt fehlgeschlagen.', { error: true });
   }));
   for (const [selector, attr] of [['[data-blobby-close]', 'blobbyClose'], ['[data-blobby-leave]', 'blobbyLeave']]) {
@@ -205,10 +284,11 @@ function drawBlob(ctx, blob, color, player) {
     ctx.beginPath(); ctx.arc(blob.x, blob.y, 44, 0, Math.PI * 2); ctx.clip();
     ctx.drawImage(image, blob.x - 44, blob.y - 44, 88, 88);
     ctx.restore();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(blob.x, blob.y, 44, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = color; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(blob.x, blob.y, 44, 0, Math.PI * 2); ctx.stroke();
   } else {
     ctx.fillStyle = player?.color || color;
     ctx.beginPath(); ctx.arc(blob.x, blob.y, 44, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 5; ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.font = '700 32px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText((player?.name || '?').slice(0, 1).toUpperCase(), blob.x, blob.y + 1);
   }
@@ -267,7 +347,9 @@ function paint() {
   }
   ctx.fillStyle = '#dbe4ff'; ctx.fillRect(NET_X - 10, NET_TOP, 20, GROUND - NET_TOP); ctx.beginPath(); ctx.arc(NET_X, NET_TOP, 10, 0, Math.PI * 2); ctx.fill();
   if (world) {
-    drawBlob(ctx, world.blobs[0], '#5b8cff', match?.players?.[0]); drawBlob(ctx, world.blobs[1], '#c24bd8', match?.players?.[1]);
+    world.blobs.forEach((blob, index) => {
+      drawBlob(ctx, blob, cssColor(blob.side === 'right' ? '--accent-3' : '--accent'), match?.players?.[index]);
+    });
     drawVolleyball(ctx, world.ball);
   }
   animation = requestAnimationFrame(paint);
@@ -282,16 +364,18 @@ function updateScoreDisplay() {
   const roster = document.querySelector('#blobby-roster');
   if (!roster || !match) return;
   roster.innerHTML = matchRosterHtml(match.players, {
-    winnerId: match.winner?.id ?? null,
+    winnerIds: match.winners?.map((winner) => winner.id) ?? [],
     scoreFor: (player) => {
       const score = (match?.scores ?? latest?.scores ?? []).find((s) => s.playerId === player.id)?.score ?? 0;
       return `${score}/${match?.targetScore ?? latest?.targetScore ?? targetScore}`;
     },
+    detailFor: (player) => teamLabel(player.team),
   });
 }
 function resultHtml() {
   if (!match?.ended) return '';
-  return `<div class="card arcade-winner-card"><strong>Match beendet</strong><button class="btn btn-primary" id="blobby-back">Zur Arcade</button></div>`;
+  const title = match.winnerTeam ? `${teamLabel(match.winnerTeam)} gewinnt` : 'Match beendet';
+  return `<div class="card arcade-winner-card"><strong>${title}</strong><button class="btn btn-primary" id="blobby-back">Zur Arcade</button></div>`;
 }
 function matchControlsHtml(host) {
   if (!match || match.ended) return '';
@@ -308,11 +392,12 @@ export function renderBlobby(container) {
   if (!match) { container.innerHTML = '<button class="btn btn-sm" data-navigate="arcade">‹ Arcade</button><div class="empty-state">Kein laufendes Blobby-Volley-Match.</div>'; return; }
   const host = match.host?.id === myId();
   const roster = matchRosterHtml(match.players, {
-    winnerId: match.winner?.id ?? null,
+    winnerIds: match.winners?.map((winner) => winner.id) ?? [],
     scoreFor: (player) => {
       const score = (match?.scores ?? latest?.scores ?? []).find((s) => s.playerId === player.id)?.score ?? 0;
       return `${score}/${match?.targetScore ?? latest?.targetScore ?? targetScore}`;
     },
+    detailFor: (player) => teamLabel(player.team),
   });
   container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Blobby Volley</h1>${arcadeExpandControlHtml()}<div id="blobby-roster">${roster}</div>
     <div class="blobby-court"><canvas id="blobby-canvas" width="${W}" height="${H}"></canvas><div id="blobby-point" class="blobby-point" hidden></div>${match.paused ? '<div class="blobby-pause-overlay">Pause</div>' : ''}</div>

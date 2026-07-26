@@ -236,6 +236,13 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     await adminPage.click('.nav-btn[data-view="more"]');
     await adminPage.click('[data-navigate="admin"]');
     await adminPage.waitForSelector('#admin-register-link');
+    await adminPage.waitForSelector('.admin-role-select');
+    assert.equal(await adminPage.locator('#group-btn').count(), 0);
+    assert.match((await adminPage.locator('#admin-players-title').textContent()) ?? '', /^Benutzer \(\d+\)$/);
+    assert.deepEqual(
+      await adminPage.locator('.admin-role-select').first().locator('option').allTextContents(),
+      ['Mitglied', 'Admin', 'Owner'],
+    );
     assert.equal(
       await adminPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       true,
@@ -357,20 +364,22 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
   assert.equal(reused.status, 400);
 });
 
-test('group context button opens read-only group details for the one real group', async () => {
-  // `page` is logged in as a plain member (E2E New Person), not the owner -
-  // it sees the group's name/member list but neither the edit form nor the
-  // admin-only test-user section.
-  await page.click('#group-btn');
-  await page.waitForSelector('.group-member-list');
-  await page.locator('.group-member-row').first().waitFor();
-  assert.ok((await page.locator('.group-member-row').count()) >= 2, 'the owner and this member both show up');
-  assert.equal(await page.locator('#group-edit-form').count(), 0);
-  assert.equal(await page.locator('#group-test-users-form').count(), 0);
+test('single-group access context is no longer exposed as a separate topbar control', async () => {
+  assert.equal(await page.locator('#group-btn').count(), 0);
+});
+
+test('a required-mode member can open an Arcade lobby with a scoped game socket', async () => {
+  await page.click('.nav-btn[data-view="more"]');
+  await page.click('[data-navigate="arcade"]');
+  await page.waitForSelector('.arcade-tiles');
+  await page.click('[data-game="tetris"]');
+  await page.waitForSelector('#tetris-create:not([disabled])');
+  await page.click('#tetris-create');
+  await page.waitForSelector('[data-tetris-close]');
   assert.equal(
-    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-    true,
-    'the group context modal must not introduce horizontal scrolling',
+    await page.locator('.toast-error:has-text("Gruppen- oder Eventzugriff verweigert")').count(),
+    0,
   );
-  await page.click('.modal-backdrop [data-close]');
+  await page.click('[data-tetris-close]');
+  await page.waitForSelector('#tetris-create:not([disabled])');
 });

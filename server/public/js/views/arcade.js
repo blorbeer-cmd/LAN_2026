@@ -1,4 +1,5 @@
-import { api, getToken } from '../api.js';
+import { api } from '../api.js';
+import { connectSocket } from '../socket.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
@@ -148,7 +149,7 @@ async function loadStats(ctx) {
 
 function ensureSocket(ctx) {
   if (socket) return socket;
-  socket = io({ auth: { token: getToken() } });
+  socket = connectSocket();
   socket.on('arcade:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
     rerenderIfView(ctx, 'arcade');

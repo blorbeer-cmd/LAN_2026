@@ -42,7 +42,7 @@ export function toDatetimeLocal(timestampMs) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-const STATE_LABELS = { playing: 'Spielt', paused: 'Pause', offline: 'Offline' };
+const STATE_LABELS = { playing: 'Spielt', online: 'Online', paused: 'Pause', offline: 'Offline' };
 export function stateLabel(state) {
   return STATE_LABELS[state] || state;
 }

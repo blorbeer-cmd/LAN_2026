@@ -76,6 +76,7 @@
   --seating-seat-width-compact: calc(var(--avatar-size-lg) + var(--space-4));
   --seating-seat-height-compact: calc(var(--row-min-h) + var(--space-5));
   --assignment-select-width: 112px;
+  --arcade-lobby-mode-width: 112px;
   --notification-panel-width: 360px;
   --search-panel-width: 640px;
 
@@ -2338,6 +2339,9 @@ button.card {
   color: var(--text-muted);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
+}
+.arcade-lobby-target-score.arcade-lobby-mode {
+  grid-template-columns: minmax(0, 1fr) var(--arcade-lobby-mode-width);
 }
 .arcade-lobby-target-score select,
 .arcade-lobby-target-score input {

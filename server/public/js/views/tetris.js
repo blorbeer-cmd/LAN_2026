@@ -13,7 +13,7 @@
 // match takes over the dedicated full-screen `tetris` view; the app switches to
 // it automatically when the match starts and back to Arcade when it ends.
 
-import { getToken } from '../api.js';
+import { connectSocket } from '../socket.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
@@ -90,7 +90,7 @@ export function tetrisLobbies() {
 
 export function ensureTetrisSocket() {
   if (socket) return socket;
-  socket = io({ auth: { token: getToken() } });
+  socket = connectSocket();
 
   socket.on('tetris:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];

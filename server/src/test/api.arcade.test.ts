@@ -205,6 +205,33 @@ test('GET /api/arcade/stats labels Blobby Volley results', async () => {
   assert.equal(blobby.players[0].winRate, 1);
 });
 
+test('GET /api/arcade/stats counts both winners of a Blobby Doppel team', async () => {
+  const blueA = await request(app).post('/api/players').send({ name: 'Doppel Blau A' });
+  const blueB = await request(app).post('/api/players').send({ name: 'Doppel Blau B' });
+  const pinkA = await request(app).post('/api/players').send({ name: 'Doppel Pink A' });
+  const pinkB = await request(app).post('/api/players').send({ name: 'Doppel Pink B' });
+  const now = Date.now();
+  const scores = [
+    { playerId: blueA.body.id, name: blueA.body.name, team: 'left', score: 7, isWinner: true },
+    { playerId: blueB.body.id, name: blueB.body.name, team: 'left', score: 7, isWinner: true },
+    { playerId: pinkA.body.id, name: pinkA.body.name, team: 'right', score: 4, isWinner: false },
+    { playerId: pinkB.body.id, name: pinkB.body.name, team: 'right', score: 4, isWinner: false },
+  ];
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run('arcade-test-blobby-doubles', 'blobby-doubles-test', null, JSON.stringify(scores), JSON.stringify(scores), 'completed', now - 1000, now);
+
+  const res = await request(app).get('/api/arcade/stats');
+  assert.equal(res.status, 200);
+  const game = res.body.games.find((entry: { gameType: string }) => entry.gameType === 'blobby-doubles-test');
+  const players = new Map(game.players.map((player: { name: string; wins: number; losses: number }) => [player.name, player]));
+  assert.equal((players.get('Doppel Blau A') as { wins: number }).wins, 1);
+  assert.equal((players.get('Doppel Blau B') as { wins: number }).wins, 1);
+  assert.equal((players.get('Doppel Pink A') as { wins: number }).wins, 0);
+  assert.equal((players.get('Doppel Pink B') as { losses: number }).losses, 1);
+});
+
 test('GET /api/arcade/stats attributes Snake results to named players (title capitalized)', async () => {
   const gwen = await request(app).post('/api/players').send({ name: 'Snake Gwen' });
   const hank = await request(app).post('/api/players').send({ name: 'Snake Hank' });

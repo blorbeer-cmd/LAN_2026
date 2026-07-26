@@ -125,7 +125,7 @@ test('closing one of two games removes only that one', async () => {
   assert.equal(entry.state, 'playing');
 });
 
-test('reporting no matching process clears all games and flips state to offline', async () => {
+test('reporting no matching process clears all games but remains online while tracking is fresh', async () => {
   await request(app)
     .post('/api/agent/report')
     .set('x-api-key', apiKey)
@@ -134,7 +134,7 @@ test('reporting no matching process clears all games and flips state to offline'
   const res = await request(app).get('/api/live');
   const entry = res.body.find((r: { player_id: string }) => r.player_id === playerId);
   assert.deepEqual(entry.games, []);
-  assert.equal(entry.state, 'offline');
+  assert.equal(entry.state, 'online');
 });
 
 test('a player with no report at all appears as offline on the board', async () => {

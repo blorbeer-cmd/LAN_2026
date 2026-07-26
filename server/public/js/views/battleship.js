@@ -1,4 +1,4 @@
-import { getToken } from '../api.js';
+import { connectSocket } from '../socket.js';
 import { escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
 import { showToast } from '../toast.js';
@@ -54,7 +54,7 @@ export function hasBattleshipMatch() { return Boolean(match); }
 
 export function ensureBattleshipSocket() {
   if (socket) return socket;
-  socket = io({ auth: { token: getToken() } });
+  socket = connectSocket();
   socket.on('connect', () => {
     const returningAfterDisconnect = connectionState === 'offline';
     connectionState = 'connected';

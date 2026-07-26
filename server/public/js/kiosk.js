@@ -16,8 +16,8 @@ installIconReplacement();
 installDomainIcons();
 setKioskMode(true);
 
-const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
-const GAME_NAMES = { quiz: 'Gaming-Quiz', tetris: 'Tetris', scribble: 'Scribble', blobby: 'Blobby Volley', pong: 'Pong', snake: 'Snake' };
+const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
+const GAME_NAMES = { quiz: 'Gaming-Quiz', tetris: 'Tetris', scribble: 'Scribble', blobby: 'Blobby Volley', pong: 'Pong', snake: 'Snake', 'challenge-rush': 'Challenge Rush' };
 const cssColor = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 function drawLegacyKioskCanvas(canvas, game) {
