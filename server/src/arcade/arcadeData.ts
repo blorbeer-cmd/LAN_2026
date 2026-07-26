@@ -13,6 +13,7 @@ interface ArcadePlayerSnapshot {
   id?: string;
   playerId?: string;
   name?: string;
+  isWinner?: boolean;
 }
 
 export function currentArcadeDataScope(playerIds: string[] = []): ArcadeDataScope | null {
@@ -150,7 +151,7 @@ export function recordArcadeResult(options: {
         participantKey,
         String(score.name ?? player.name ?? realPlayer?.name ?? 'Unbekannt'),
         JSON.stringify(score),
-        options.winnerId === participantKey ? 1 : 0,
+        options.winnerId === participantKey || score.isWinner === true ? 1 : 0,
       );
     }
   })();

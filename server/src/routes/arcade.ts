@@ -36,6 +36,7 @@ interface ScoreEntry {
   playerId: string;
   name: string;
   score: number;
+  isWinner?: boolean;
 }
 
 interface ScribbleArtStatsRow {
@@ -150,7 +151,7 @@ arcadeRouter.get('/stats', (req, res) => {
         wins: 0,
       };
       current.matches += 1;
-      if (row.winner_id === score.playerId) current.wins += 1;
+      if (row.winner_id === score.playerId || score.isWinner === true) current.wins += 1;
       game.players.set(score.playerId, current);
     }
     games.set(row.game_type, game);

@@ -17,14 +17,23 @@ export interface Vec { x: number; y: number }
 export interface BlobState extends Vec { vx: number; vy: number; side: 'left' | 'right'; grounded: boolean }
 export interface BallState extends Vec { vx: number; vy: number }
 export interface BlobbyInput { left: boolean; right: boolean; jump: boolean }
-export interface BlobbyWorld { blobs: [BlobState, BlobState]; ball: BallState }
+export type BlobbyMode = 'duel' | 'doubles';
+export interface BlobbyWorld { blobs: BlobState[]; ball: BallState }
 
-export function createWorld(serveSide: 'left' | 'right' = 'left'): BlobbyWorld {
+export function createWorld(serveSide: 'left' | 'right' = 'left', mode: BlobbyMode = 'duel'): BlobbyWorld {
+  const blobs: BlobState[] = mode === 'doubles'
+    ? [
+        { x: 180, y: GROUND_Y - BLOB_RADIUS, vx: 0, vy: 0, side: 'left', grounded: true },
+        { x: 360, y: GROUND_Y - BLOB_RADIUS, vx: 0, vy: 0, side: 'left', grounded: true },
+        { x: 640, y: GROUND_Y - BLOB_RADIUS, vx: 0, vy: 0, side: 'right', grounded: true },
+        { x: 820, y: GROUND_Y - BLOB_RADIUS, vx: 0, vy: 0, side: 'right', grounded: true },
+      ]
+    : [
+        { x: 250, y: GROUND_Y - BLOB_RADIUS, vx: 0, vy: 0, side: 'left', grounded: true },
+        { x: 750, y: GROUND_Y - BLOB_RADIUS, vx: 0, vy: 0, side: 'right', grounded: true },
+      ];
   return {
-    blobs: [
-      { x: 250, y: GROUND_Y - BLOB_RADIUS, vx: 0, vy: 0, side: 'left', grounded: true },
-      { x: 750, y: GROUND_Y - BLOB_RADIUS, vx: 0, vy: 0, side: 'right', grounded: true },
-    ],
+    blobs,
     ball: {
       x: serveSide === 'left' ? 280 : 720,
       y: 170,
@@ -105,10 +114,9 @@ function capBallSpeed(ball: BallState) {
 }
 
 // Returns the side on which the ball touched the floor, otherwise null.
-export function stepWorld(world: BlobbyWorld, inputs: [BlobbyInput, BlobbyInput], dtSeconds: number): 'left' | 'right' | null {
+export function stepWorld(world: BlobbyWorld, inputs: BlobbyInput[], dtSeconds: number): 'left' | 'right' | null {
   const dt = Math.min(0.05, Math.max(0, dtSeconds));
-  stepBlob(world.blobs[0], inputs[0], dt);
-  stepBlob(world.blobs[1], inputs[1], dt);
+  world.blobs.forEach((blob, index) => stepBlob(blob, inputs[index] ?? { left: false, right: false, jump: false }, dt));
 
   const ball = world.ball;
   ball.vy += BALL_GRAVITY * dt;
@@ -128,8 +136,7 @@ export function stepWorld(world: BlobbyWorld, inputs: [BlobbyInput, BlobbyInput]
   }
 
   collideBallWithNet(ball);
-  collideBallWithBlob(ball, world.blobs[0]);
-  collideBallWithBlob(ball, world.blobs[1]);
+  for (const blob of world.blobs) collideBallWithBlob(ball, blob);
   capBallSpeed(ball);
 
   if (ball.y + BALL_RADIUS >= GROUND_Y) return ball.x < NET_X ? 'left' : 'right';

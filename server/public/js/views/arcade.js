@@ -56,7 +56,7 @@ const GAMES = [
     id: 'blobby',
     icon: icon('volleyball'),
     name: 'Blobby Volley',
-    help: 'Ziel: Erreiche zuerst die Punktzahl. Steuerung: Pfeiltasten.',
+    help: 'Duell oder Doppel. Ziel: Erreiche zuerst die Punktzahl. Steuerung: Pfeiltasten.',
   },
   {
     id: 'snake',
