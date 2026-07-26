@@ -162,6 +162,15 @@ function beginBattle(io: Server, match: Match) {
     match.phase = 'playing';
     match.beginsAt = null;
     emitPersonalized(io, match);
+    broadcastArcadeKiosk(io, {
+      gameType: 'battleship',
+      matchId: match.id,
+      groupId: match.groupId,
+      eventId: match.eventId,
+      phase: 'playing',
+      paused: false,
+      players: spectatorState(match),
+    });
   }, COUNTDOWN_MS);
 }
 
