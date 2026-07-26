@@ -146,6 +146,10 @@ function renderArcadeStream(game) {
     content.innerHTML = `<div class="kiosk-game-question">${escapeHtml(game.question || 'Nächste Frage kommt gleich.')}</div>`;
     return;
   }
+  if (game.gameType === 'challenge-rush') {
+    content.innerHTML = `<div class="kiosk-game-question">${escapeHtml(game.challenge || 'Mini-Challenge')}</div><div class="kiosk-game-scores">${(game.scores || []).map((score) => `<div>${escapeHtml(score.name || 'Spieler')}: <strong>${score.score || 0}</strong></div>`).join('')}</div>`;
+    return;
+  }
   let canvas = content.querySelector('canvas');
   if (!canvas) { content.innerHTML = '<canvas width="800" height="450" aria-label="Livebild des Arcade-Spiels"></canvas>'; canvas = content.querySelector('canvas'); }
   drawKioskCanvas(canvas, game);

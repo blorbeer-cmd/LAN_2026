@@ -13,6 +13,7 @@ const GAME_NAMES = {
   blobby: 'Blobby Volley',
   snake: 'Snake',
   battleship: 'Schiffe versenken',
+  'challenge-rush': 'Challenge Rush',
 };
 
 let socket = null;

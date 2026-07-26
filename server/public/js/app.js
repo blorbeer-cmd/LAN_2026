@@ -29,6 +29,7 @@ import { renderBlobby } from './views/blobby.js';
 import { renderPong } from './views/pong.js';
 import { renderSnake } from './views/snake.js';
 import { renderBattleship } from './views/battleship.js';
+import { renderChallengeRush } from './views/challengeRush.js';
 import { renderGameCatalog, invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
 import { renderArrivals, invalidateArrivals } from './views/arrivals.js';
 import { renderVotes, invalidateVoteHistory } from './views/votes.js';
@@ -79,6 +80,7 @@ const VIEWS = {
   pong: renderPong,
   snake: renderSnake,
   battleship: renderBattleship,
+  challengeRush: renderChallengeRush,
   gameCatalog: renderGameCatalog,
   arrivals: renderArrivals,
   admin: renderAdmin,
@@ -469,7 +471,7 @@ function wireSocket() {
   // Arcade views consume these payloads themselves; Home just refetches the
   // cross-game summary (GET /api/arcade/lobbies) instead of tracking four
   // different payload shapes.
-  ['arcade:lobbies', 'tetris:lobbies', 'scribble:lobbies', 'pong:lobbies', 'blobby:lobbies', 'snake:lobbies', 'battleship:lobbies'].forEach((event) =>
+  ['arcade:lobbies', 'tetris:lobbies', 'scribble:lobbies', 'pong:lobbies', 'blobby:lobbies', 'snake:lobbies', 'battleship:lobbies', 'challenge-rush:lobbies'].forEach((event) =>
     socket.on(event, () => {
       invalidateAktuellStatus();
       if (currentView === 'home') renderCurrent();

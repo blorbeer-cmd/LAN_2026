@@ -2224,6 +2224,14 @@ button.card {
   flex: 0 0 auto;
   margin-left: auto;
 }
+.challenge-rush-stage { max-width: 760px; margin-inline: auto; }
+.challenge-rush-playfield { position: relative; min-height: 280px; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+.challenge-rush-circle { position: absolute; width: var(--space-8); height: var(--space-8); transform: translate(-50%, -50%); border: 0; border-radius: var(--radius-full); background: var(--accent-gradient); box-shadow: var(--shadow-glow-accent); cursor: pointer; }
+.challenge-rush-big-button { min-width: 180px; min-height: 96px; border: 0; border-radius: var(--radius); color: var(--accent-text); background: var(--accent-gradient); font-size: var(--font-size-xl); font-weight: var(--font-weight-black); cursor: pointer; }
+.challenge-rush-number-grid { display: grid; grid-template-columns: repeat(4, minmax(48px, 1fr)); gap: var(--space-2); width: min(100%, 360px); }
+.challenge-rush-number { min-height: var(--space-8); font-size: var(--font-size-lg); }
+.challenge-rush-scoreboard { display: grid; gap: var(--space-1); }
+.challenge-rush-score-row { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--bg-elevated-2); }
 .arcade-tile-count {
   background: var(--state-playing-bg);
   color: var(--state-playing);
