@@ -6,8 +6,8 @@ Stand: 26. Juli 2026
 Flottenplatzierung, Zugwechsel, Ergebnis und responsive Matchansicht sind integriert. Der
 Teammodus bleibt bis zur parallelen Teamzug- und Mehrfachsieger-Implementierung bewusst nicht
 freigeschaltet.
-Die aktuelle Etappe beendet ein Match bei einem Disconnect; eine 60-Sekunden-Reconnect-Frist
-ist als nächste Härtung vorgesehen.
+Die aktuelle Etappe beendet ein Duell bei einem Disconnect sofort zugunsten der verbundenen
+Person. Das entspricht dem Verhalten der bestehenden Duellspiele im Arcade-Bereich.
 
 ## Fazit
 
@@ -107,8 +107,8 @@ bewerten.
 4. Nach der serverseitigen Auflösung wechselt der Zug unabhängig von Treffer oder Fehlschuss.
 5. Wer zuerst alle 17 gegnerischen Schiffssegmente trifft, gewinnt.
 
-Ein Treffer gewährt keinen Extrazug. Dadurch bleibt der Ablauf vorhersehbar und ein Zug kann nach
-einem Reconnect eindeutig wiederhergestellt werden.
+Ein Treffer gewährt keinen Extrazug. Dadurch bleibt der Ablauf vorhersehbar und der aktuelle Zug
+kann jederzeit eindeutig dargestellt werden.
 
 ### 2.3 Teamgefecht – genau 4 Spieler
 
@@ -133,8 +133,8 @@ Free-for-all, aber deutlich schlechter für die Arcade-UX.
 
 - Kein harter Zugtimer im MVP. Eine dezente Laufzeitanzeige darf später ergänzt werden, ohne einen
   langsamen Touch- oder Tastaturspieler zu bestrafen.
-- Verlässt jemand im Duell dauerhaft das Match, gewinnt die verbleibende Person nach einer
-  Reconnect-Frist von 60 Sekunden (`opponent-left`).
+- Verlässt jemand das Duell oder bricht die Verbindung ab, gewinnt die verbundene Person sofort
+  (`player-left`). Dieses Verhalten ist bewusst konsistent mit Pong, Tetris und Blobby.
 - Im Teamgefecht übernimmt nach 15 Sekunden Verbindungsunterbrechung der verbundene Teamkollege
   den fehlenden zweiten Schuss. Kehrt die Person zurück, erhält sie ihren Schuss ab dem nächsten
   Teamzug wieder.
@@ -279,7 +279,7 @@ Voraussichtlich neu:
 
 - `server/src/arcade/battleshipLogic.ts`: reine Regeln für Platzierung, Raster, Schüsse,
   Rundenauswertung, Teams und Siegerermittlung.
-- `server/src/arcade/battleship.ts`: Lobby-, Match- und Socket-State; Reconnect-Härtung folgt.
+- `server/src/arcade/battleship.ts`: Lobby-, Match-, Disconnect- und Socket-State.
 - `server/src/arcade/battleshipLogic.test.ts`: schnelle Unit-Tests der vollständigen Spiellogik.
 - `server/public/js/views/battleship.js`: Lobbykarte, Platzierung und Gefechtsansicht.
 
@@ -339,7 +339,7 @@ Zuschauer-State.
 | `battleship:setup:unlock` | C→S | Eigene Platzierung vor Gefechtsbeginn wieder öffnen. |
 | `battleship:shot:select` | C→S | Ziel vormerken oder ändern. |
 | `battleship:shot:commit` | C→S | Eigenen Schuss sperren; bei vollständiger Salve serverseitig auflösen. |
-| `battleship:state` | S→C | Personalisierter Vollzustand für Rendern und Reconnect. |
+| `battleship:state` | S→C | Personalisierter Vollzustand für das Rendern. |
 | `battleship:round:resolved` | S→C | Öffentliche Ergebnisse der gerade aufgelösten Schüsse. |
 | `battleship:match:*` | beide | Pause, Fortsetzen, Verlassen, Beenden und Abschluss. |
 
@@ -384,7 +384,7 @@ Empfohlene Anpassung:
 ### Etappe 1 – Spiellogik und Duell
 
 - Reine Raster-, Flotten- und Schusslogik mit Unit-Tests.
-- Duell-Lobby, Platzierung, Gefecht, Ergebnis und Live-Tracking. Reconnect-Härtung folgt.
+- Duell-Lobby, Platzierung, Gefecht, Ergebnis, Disconnect-Abschluss und Live-Tracking.
 - Arcade-Karte, Statistiktitel und Home-Lobbyübersicht.
 - Bereinigter Zuschauer-/Kiosk-State.
 
@@ -426,8 +426,8 @@ Beide Etappen bilden gemeinsam den empfohlenen Release. Die Trennung hält Revie
 - Lobby-Modus ist nach Erstellung unveränderlich.
 - Fremde Identität, fremder Scope, Nichtmitglied, falsche Phase und falscher Zug werden abgelehnt.
 - Zwei parallele `start`- oder `commit`-Pakete erzeugen genau einen Zustandsübergang.
-- Reconnect liefert nur den personalisierten eigenen Zustand; Watch-State enthält keine
-  ungetroffenen Schiffspositionen.
+- Disconnect beendet das Duell genau einmal; Watch-State enthält keine ungetroffenen
+  Schiffspositionen.
 - Teamresultat markiert beide Sieger und zählt beiden einen Sieg zu.
 
 ### E2E und UI
@@ -439,7 +439,7 @@ Beide Etappen bilden gemeinsam den empfohlenen Release. Die Trennung hält Revie
 - Handy-Viewport: Raster ohne Seiten-Scrollen, lokal scrollbare Ausnahme auf sehr schmalen
   Geräten, 44×44-Touchziele und bestätigungspflichtiger Schuss.
 - Tastatur: vollständige Platzierung und Zielwahl mit sichtbarem Fokus.
-- Lange Spielernamen, Loading, leere Lobbyliste, voller Modus, Fehler-Ack, Pause und Reconnect.
+- Lange Spielernamen, Loading, leere Lobbyliste, voller Modus, Fehler-Ack, Pause und Disconnect.
 - Zuschauer und Kiosk sehen während des Matches keine geheime Flottenzelle.
 
 ---

@@ -11,7 +11,7 @@ import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './
 import { applyShot, fleetSnapshot, remainingSegments, remainingShips, ShipState, validatePlacements } from './battleshipLogic';
 
 const COUNTDOWN_MS = arcadeTiming.countdownMs;
-const END_REVEAL_MS = 12_000;
+const END_REVEAL_MS = process.env.NODE_ENV === 'test' && process.env.E2E_FAST_TIMERS === '1' ? 250 : 12_000;
 
 interface Player { id: string; name: string; avatar: string | null; color: string | null }
 interface Lobby { id: string; groupId: string; eventId: string | null; mode: 'duel' | 'team'; host: Player; players: Player[]; socketIds: Map<string, string>; ready: Set<string>; createdAt: number }

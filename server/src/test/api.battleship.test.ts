@@ -25,10 +25,10 @@ function waitForEvent<T>(socket: ClientSocket, event: string): Promise<T> {
   return new Promise((resolve) => socket.once(event, resolve));
 }
 
-function waitForStatePhase(socket: ClientSocket, phase: string): Promise<{ phase: string }> {
+function waitForStatePhase(socket: ClientSocket, phase: string): Promise<{ phase: string; currentPlayerId?: string }> {
   return new Promise((resolve) => {
     const onState = (payload: { phase?: string }) => {
-      if (payload.phase === phase) resolve(payload as { phase: string });
+      if (payload.phase === phase) resolve(payload as { phase: string; currentPlayerId?: string });
       else socket.once('battleship:state', onState);
     };
     socket.once('battleship:state', onState);
@@ -65,17 +65,34 @@ test('Battleship enforces the duel lobby gate and validates placement before fir
     assert.equal((await emitAck(guestSocket, 'battleship:lobby:ready', { lobbyId: created.lobbyId, playerId: guest, ready: true })).ok, true);
 
     const start = waitForEvent<{ matchId: string }>(guestSocket, 'battleship:match:start');
-    const started = await emitAck(hostSocket, 'battleship:lobby:start', { lobbyId: created.lobbyId, playerId: host });
-    assert.equal(started.ok, true);
+    const starts = await Promise.all([
+      emitAck(hostSocket, 'battleship:lobby:start', { lobbyId: created.lobbyId, playerId: host }),
+      emitAck(hostSocket, 'battleship:lobby:start', { lobbyId: created.lobbyId, playerId: host }),
+    ]);
+    assert.equal(starts.filter((result) => result.ok).length, 1);
     const { matchId } = await start;
+    assert.equal((await emitAck(hostSocket, 'battleship:match:pause', { matchId, playerId: host })).ok, false);
+
     assert.equal((await emitAck(hostSocket, 'battleship:setup:submit', { matchId, playerId: host, placements: [{ ...placements[0], col: 9 }, ...placements.slice(1)] })).ok, false);
     const countdown = waitForStatePhase(hostSocket, 'countdown');
+    const playing = waitForStatePhase(guestSocket, 'playing');
     assert.equal((await emitAck(hostSocket, 'battleship:setup:submit', { matchId, playerId: host, placements })).ok, true);
     const overwrite = await emitAck(hostSocket, 'battleship:setup:submit', { matchId, playerId: host, placements: placements.map((placement) => ({ ...placement, row: placement.row + 1 })) });
     assert.equal(overwrite.ok, false);
     assert.match(String(overwrite.error), /bereits bestätigt/);
     assert.equal((await emitAck(guestSocket, 'battleship:setup:submit', { matchId, playerId: guest, placements })).ok, true);
     assert.equal((await countdown).phase, 'countdown');
+    const playingState = await playing;
+    const currentId = playingState.currentPlayerId as string;
+    const currentSocket = currentId === host ? hostSocket : guestSocket;
+    const duplicateShots = await Promise.all([
+      emitAck(currentSocket, 'battleship:shot:fire', { matchId, playerId: currentId, row: 9, col: 9 }),
+      emitAck(currentSocket, 'battleship:shot:fire', { matchId, playerId: currentId, row: 9, col: 9 }),
+    ]);
+    assert.equal(duplicateShots.filter((result) => result.ok).length, 1);
+    assert.equal((await emitAck(guestSocket, 'battleship:match:pause', { matchId, playerId: guest })).ok, false);
+    assert.equal((await emitAck(hostSocket, 'battleship:match:pause', { matchId, playerId: host })).ok, true);
+    assert.equal((await emitAck(hostSocket, 'battleship:match:resume', { matchId, playerId: host })).ok, true);
   } finally {
     hostSocket.close();
     guestSocket.close();

@@ -34,8 +34,18 @@ const navigate = (view) => window.dispatchEvent(new CustomEvent('respawn:navigat
 const emitAck = (event, payload) => new Promise((resolve) => {
   if (pendingAction) return resolve({ ok: false, error: 'Eine Aktion wird noch verarbeitet.' });
   pendingAction = event;
-  const timer = setTimeout(() => { pendingAction = null; resolve({ ok: false, error: 'Keine Antwort vom Server erhalten.' }); }, 8000);
-  socket.emit(event, payload, (result) => { clearTimeout(timer); pendingAction = null; resolve(result); });
+  rerender();
+  const timer = setTimeout(() => {
+    pendingAction = null;
+    rerender();
+    resolve({ ok: false, error: 'Keine Antwort vom Server erhalten.' });
+  }, 8000);
+  socket.emit(event, payload, (result) => {
+    clearTimeout(timer);
+    pendingAction = null;
+    rerender();
+    resolve(result);
+  });
 });
 
 export function battleshipLobbies() { return lobbies; }
@@ -45,7 +55,21 @@ export function hasBattleshipMatch() { return Boolean(match); }
 export function ensureBattleshipSocket() {
   if (socket) return socket;
   socket = io({ auth: { token: getToken() } });
-  socket.on('connect', () => { connectionState = 'connected'; rerender(); });
+  socket.on('connect', () => {
+    const returningAfterDisconnect = connectionState === 'offline';
+    connectionState = 'connected';
+    if (returningAfterDisconnect && match && !match.ended) {
+      match = {
+        ...match,
+        phase: 'ended',
+        ended: true,
+        reason: 'player-left',
+        winnerId: match.players.find((player) => player.id !== myId())?.id ?? null,
+      };
+      cancelCountdown();
+    }
+    rerender();
+  });
   socket.on('disconnect', () => { connectionState = 'offline'; rerender(); });
   socket.on('connect_error', () => { connectionState = 'offline'; rerender(); });
   socket.on('battleship:lobbies', (payload) => {
@@ -124,7 +148,7 @@ function renderPlacement() {
   const me = match.players.find((player) => player.id === myId());
   const locked = match.phase !== 'setup' || Boolean(me?.placementReady) || pendingAction;
   const readyPlayers = (match.players ?? []).filter((player) => player.placementReady).length;
-  return `<div class="arcade-game-shell">
+  return `<div class="arcade-game-shell" data-battleship-match="${escapeHtml(match.matchId)}">
     <h1 class="view-title">Schiffe versenken</h1>
     ${arcadeExpandControlHtml()}
     <section class="card stack battleship-setup" aria-labelledby="battleship-setup-title">
@@ -177,7 +201,7 @@ function renderBattle() {
   const status = match.paused ? 'Pause' : canFire ? 'Du bist am Zug' : `Warte auf ${escapeHtml(match.players.find((player) => player.id === match.currentPlayerId)?.name ?? 'Gegner')}`;
   const resultLabels = { miss: 'Wasser', hit: 'Treffer', sunk: 'Versenkt' };
   const result = match.lastShot ? `<div class="badge badge-playing" aria-live="polite">Letzter Schuss: ${resultLabels[match.lastShot.kind] ?? 'Aufgelöst'}</div>` : '';
-  return `<div class="arcade-game-shell">
+  return `<div class="arcade-game-shell" data-battleship-match="${escapeHtml(match.matchId)}">
     <h1 class="view-title">Schiffe versenken</h1>
     ${arcadeExpandControlHtml()}
     <div class="battleship-status card" aria-live="polite"><strong>${connectionState === 'offline' ? 'Verbindung verloren' : status}</strong>${result}${connectionState === 'offline' ? '<span class="muted">Verbindung wird wiederhergestellt …</span>' : ''}</div>
@@ -206,7 +230,11 @@ export function renderBattleship(container) {
   if (!match.ended && match.phase === 'playing') wireBattle(container);
   wireBattleshipGridKeyboard(container);
   if (!match.ended) wireArcadeExpandControl(container);
-  container.querySelector('#battleship-back')?.addEventListener('click', () => { match = null; cancelCountdown(); navigate('arcade'); });
+  container.querySelector('#battleship-back')?.addEventListener('click', () => {
+    match = null;
+    cancelCountdown();
+    navigate('arcade');
+  });
 }
 
 function wirePlacement(container) {
@@ -218,10 +246,13 @@ function wirePlacement(container) {
   container.querySelector('#battleship-random')?.addEventListener('click', () => {
     const next = [];
     for (const ship of SHIPS) {
-      let candidate;
-      do {
+      let candidate = null;
+      for (let attempt = 0; attempt < 500; attempt += 1) {
         candidate = { shipId: ship.id, row: Math.floor(Math.random() * SIZE), col: Math.floor(Math.random() * SIZE), orientation: Math.random() > 0.5 ? 'horizontal' : 'vertical' };
-      } while (!placementValid([...next, candidate], false));
+        if (placementValid([...next, candidate], false)) break;
+        candidate = null;
+      }
+      if (!candidate) return showToast('Zufällige Platzierung ist fehlgeschlagen. Bitte erneut versuchen.', { error: true });
       next.push(candidate);
     }
     placements = next;
