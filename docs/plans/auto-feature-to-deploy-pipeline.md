@@ -322,8 +322,11 @@ Produktionsdeployment.
   read-only bleiben.
 - Agenten dürfen nur den eigenen Feature-Branch ändern. Kein Token darf direkten Push auf `main`,
   Merge, Branch-Protection-Änderung oder Zugriff auf Deploy-Secrets erlauben.
-- Privilegierte Workflows verwenden ausschließlich die vertrauenswürdige Workflowversion aus dem
-  Base-Branch. Kein Checkout eines untrusted PR-Heads zusammen mit Schreibtoken oder Secrets.
+- PR-validierende Workflows verwenden `pull_request_target` oder einen Base-eigenen Dispatcher,
+  sodass GitHub ausschließlich die Workflowdefinition vom vertrauenswürdigen Default-Branch lädt.
+  Validator und Konfiguration stammen zusätzlich vom PR-Base-Commit. Der PR-Head wird nur als
+  Diff-Datenquelle verwendet und nie ausgeführt; insbesondere nie zusammen mit Schreibtoken oder
+  Secrets.
 - Schreibende Automatik nur für Branches im Hauptrepository, gültigen Task-Vertrag und erlaubte
   App-Identitäten.
 - Drittanbieter-Actions auf feste Commit-SHAs pinnen und Updates bewusst prüfen.

@@ -12,23 +12,27 @@ The foundation is deliberately read-only:
   orchestration phases.
 - `review-session-prompt.md` contains the copy-paste prompt and operating instructions for an
   isolated Codex or Claude review session.
-- The workflow runs the validator from the trusted PR base commit. It never executes code from the
-  pull-request head and currently has no write permissions.
+- The `pull_request_target` workflow definition is loaded from the trusted default branch and runs
+  the validator from the trusted PR base commit. The pull-request head is fetched only as diff data,
+  never executed, and the workflow currently has no write permissions or secrets.
 - No agent is invoked, no label or commit status is written, and no branch-protection setting is
   changed yet.
 
-Do not make `Agent pipeline / contract` a required check until this foundation has been merged:
-the trusted base branch must contain the validator before the workflow can enforce contracts.
-During this one-time bootstrap, the workflow detects the missing trusted validator, executes no
-code from the pull-request head and reports a successful, documented skip. Once the foundation is
-on the base branch, every later run executes and enforces the trusted validator normally.
+Do not make `Agent pipeline / contract` a required check until this foundation has been merged and
+the first post-merge pilot run has succeeded. GitHub does not run a newly introduced
+`pull_request_target` workflow from the introducing PR; this is the intentional trust-preserving
+bootstrap. Once the workflow exists on the default branch, its definition cannot be replaced by a
+feature branch. For PRs targeting an older base without the validator, it reports a documented
+skip and executes no pull-request-head code.
 
 ## Activating a PR
 
 Replace the placeholder values in the hidden `agent-pipeline:task` block from
 `.github/pull_request_template.md`. Leaving the template untouched keeps a human PR outside the
 pipeline. A participating PR must use a same-repository `codex/*` or `claude/*` branch matching its
-declared implementer.
+declared implementer. The declared scope must cover every non-documentation path in the merge-base
+diff; use `root` for intentional multi-area changes. `ui-change: unknown` remains blocking until a
+later classification resolves it.
 
 ## Local verification
 

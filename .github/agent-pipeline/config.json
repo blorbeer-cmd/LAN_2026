@@ -6,6 +6,19 @@
     "claude": "claude/"
   },
   "allowedScopes": ["root", "server", "frontend", "agent", "docs", "infra"],
+  "scopePathPrefixes": {
+    "server": ["server/src/", "server/package", "server/tsconfig"],
+    "frontend": ["server/public/"],
+    "agent": ["agent/"],
+    "docs": ["docs/"],
+    "infra": [".github/", "infra/", "scripts/agent-"]
+  },
+  "scopeSharedPaths": [
+    "AGENTS.md",
+    "DEVELOPMENT_GUIDELINES.md",
+    "README.md",
+    "docs/"
+  ],
   "uiPathPrefixes": ["server/public/"],
   "protectedPathPrefixes": [".github/workflows/", "infra/"],
   "reviewPromptPath": ".github/agent-pipeline/review-session-prompt.md",

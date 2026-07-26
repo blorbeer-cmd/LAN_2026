@@ -80,6 +80,16 @@ function parseRoundLimit(value, key, errors) {
   return parsed;
 }
 
+function scopeCoversPath(scope, path, config) {
+  if (scope === "root") return true;
+  if (config.scopeSharedPaths.some((prefix) => path.startsWith(prefix))) {
+    return true;
+  }
+  return (config.scopePathPrefixes[scope] ?? []).some((prefix) =>
+    path.startsWith(prefix),
+  );
+}
+
 export function validateTaskContract(contract, context, config = loadConfig()) {
   const errors = [];
   const warnings = [];
@@ -150,13 +160,29 @@ export function validateTaskContract(contract, context, config = loadConfig()) {
   );
 
   const changedFiles = context.changedFiles ?? [];
+  const uncoveredPaths = config.allowedScopes.includes(contract?.scope)
+    ? changedFiles.filter(
+        (path) => !scopeCoversPath(contract.scope, path, config),
+      )
+    : [];
+  if (uncoveredPaths.length) {
+    errors.push(
+      `scope ${contract.scope} does not cover changed paths: ${uncoveredPaths.join(", ")}.`,
+    );
+  }
   const uiPathChanged = changedFiles.some((path) =>
     config.uiPathPrefixes.some((prefix) => path.startsWith(prefix)),
   );
   const protectedPaths = changedFiles.filter((path) =>
     config.protectedPathPrefixes.some((prefix) => path.startsWith(prefix)),
   );
-  const uiChanged = contract?.["ui-change"] === "yes" || uiPathChanged;
+  const uiChanged = uiPathChanged
+    ? true
+    : contract?.["ui-change"] === "yes"
+      ? true
+      : contract?.["ui-change"] === "no"
+        ? false
+        : null;
   if (contract?.["ui-change"] === "no" && uiPathChanged) {
     warnings.push(
       "ui-change was declared no, but a configured UI path changed; treating it as yes.",
@@ -187,18 +213,25 @@ export function createPipelineState(contract, headSha) {
     throw new Error("A normalized contract and full head SHA are required.");
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     taskId: contract.taskId,
     implementer: contract.implementer,
     phase: "implementing",
     headSha,
     reviewedHeadSha: null,
     reviewMode: null,
+    reviewerProvider: null,
+    reviewSessionId: null,
+    lastReviewResultId: null,
+    lastReviewFailureHeadSha: null,
     verdict: null,
     ciPassed: false,
+    ciRunId: null,
+    lastCiFailureRunId: null,
+    lastCiFailureHeadSha: null,
     conflictFree: false,
-    uiChanged: Boolean(contract.uiChanged),
-    uiNotified: false,
+    uiChanged: contract.uiChanged,
+    uiNotifiedHeadSha: null,
     ciFixRounds: 0,
     reviewRounds: 0,
     maxCiFixRounds: contract.maxCiFixRounds,
@@ -216,6 +249,62 @@ function ensureCurrentReview(state, event) {
   }
 }
 
+function ensureCurrentCi(state, event) {
+  if (event.checkedHeadSha !== state.headSha) {
+    throw new Error(
+      `Stale CI result for ${event.checkedHeadSha ?? "unknown"}; current head is ${state.headSha}.`,
+    );
+  }
+  if (typeof event.runId !== "string" || event.runId.length === 0) {
+    throw new Error(`${event.type} requires a stable runId.`);
+  }
+}
+
+function validateReviewIdentity(state, event, requireStarted = false) {
+  if (!new Set(["codex", "claude"]).has(event.reviewerProvider)) {
+    throw new Error("Review events require reviewerProvider codex or claude.");
+  }
+  if (!new Set(["cross", "fallback"]).has(event.mode)) {
+    throw new Error("Review events require mode cross or fallback.");
+  }
+  const expectedCrossProvider =
+    state.implementer === "codex" ? "claude" : "codex";
+  if (
+    event.mode === "cross" &&
+    event.reviewerProvider !== expectedCrossProvider
+  ) {
+    throw new Error(
+      `Cross-review for ${state.implementer} must be performed by ${expectedCrossProvider}.`,
+    );
+  }
+  if (
+    event.mode === "fallback" &&
+    event.reviewerProvider !== state.implementer
+  ) {
+    throw new Error(
+      `Fallback review must be performed by the implementation provider ${state.implementer}.`,
+    );
+  }
+  if (
+    event.isolatedSession !== true ||
+    typeof event.reviewSessionId !== "string" ||
+    event.reviewSessionId.length === 0
+  ) {
+    throw new Error(
+      "Review events require a fresh isolated session and reviewSessionId.",
+    );
+  }
+  if (
+    requireStarted &&
+    (!state.reviewSessionId ||
+      state.reviewSessionId !== event.reviewSessionId ||
+      state.reviewerProvider !== event.reviewerProvider ||
+      state.reviewMode !== event.mode)
+  ) {
+    throw new Error("Review result does not match the started review session.");
+  }
+}
+
 function withReadiness(state) {
   const blockers = [];
   if (!state.ciPassed) blockers.push("ci");
@@ -223,7 +312,10 @@ function withReadiness(state) {
   if (state.verdict !== "pass" || state.reviewedHeadSha !== state.headSha) {
     blockers.push("review");
   }
-  if (state.uiChanged && !state.uiNotified) blockers.push("ui-notification");
+  if (state.uiChanged === null) blockers.push("ui-classification");
+  if (state.uiChanged === true && state.uiNotifiedHeadSha !== state.headSha) {
+    blockers.push("ui-notification");
+  }
 
   if (blockers.length === 0) {
     return { ...state, phase: "ready-for-merge", blockers: [] };
@@ -233,31 +325,58 @@ function withReadiness(state) {
 
 export function transitionPipelineState(current, event) {
   const state = structuredClone(current);
+  const terminalPhase = new Set(["disabled", "needs-human"]).has(state.phase);
+  if (terminalPhase && !new Set(["RESUME", "DISABLE"]).has(event.type)) {
+    return state;
+  }
   switch (event.type) {
-    case "HEAD_UPDATED":
+    case "HEAD_UPDATED": {
       if (!/^[0-9a-f]{40}$/i.test(event.headSha ?? "")) {
         throw new Error("HEAD_UPDATED requires a full head SHA.");
       }
+      if (event.headSha === state.headSha) return state;
+      const uiChanged =
+        event.uiChanged === true
+          ? true
+          : event.uiChanged === false && state.uiChanged === null
+            ? false
+            : state.uiChanged;
       return {
         ...state,
         phase: "implementing",
         headSha: event.headSha,
         reviewedHeadSha: null,
+        reviewMode: null,
+        reviewerProvider: null,
+        reviewSessionId: null,
+        lastReviewResultId: null,
         verdict: null,
         ciPassed: false,
+        ciRunId: null,
+        lastCiFailureRunId: null,
         conflictFree: false,
-        uiChanged: state.uiChanged || Boolean(event.uiChanged),
-        uiNotified: state.uiChanged ? state.uiNotified : false,
+        uiChanged,
+        uiNotifiedHeadSha: null,
         blockers: [],
         lastReason: null,
       };
+    }
     case "CI_FAILED": {
+      ensureCurrentCi(state, event);
+      if (
+        event.runId === state.lastCiFailureRunId ||
+        state.lastCiFailureHeadSha === state.headSha
+      ) {
+        return state;
+      }
       const nextRound = state.ciFixRounds + 1;
       if (nextRound > state.maxCiFixRounds) {
         return {
           ...state,
           phase: "needs-human",
           ciFixRounds: nextRound,
+          lastCiFailureRunId: event.runId,
+          lastCiFailureHeadSha: state.headSha,
           blockers: ["ci-round-limit"],
           lastReason: event.reason ?? "CI fix round limit exceeded.",
         };
@@ -266,12 +385,16 @@ export function transitionPipelineState(current, event) {
         ...state,
         phase: "ci-fix",
         ciPassed: false,
+        ciRunId: event.runId,
         ciFixRounds: nextRound,
+        lastCiFailureRunId: event.runId,
+        lastCiFailureHeadSha: state.headSha,
         blockers: ["ci"],
         lastReason: event.reason ?? null,
       };
     }
     case "CONFLICT_DETECTED":
+      ensureCurrentCi(state, event);
       return {
         ...state,
         phase: "conflict-fix",
@@ -280,18 +403,23 @@ export function transitionPipelineState(current, event) {
         lastReason: event.reason ?? null,
       };
     case "CI_PASSED":
+      ensureCurrentCi(state, event);
       return withReadiness({
         ...state,
         ciPassed: true,
-        conflictFree: event.conflictFree !== false,
+        ciRunId: event.runId,
+        conflictFree: event.conflictFree === true,
         phase: "review",
         lastReason: null,
       });
     case "REVIEW_STARTED":
+      validateReviewIdentity(state, event);
       return {
         ...state,
         phase: event.mode === "fallback" ? "review-fallback" : "review",
-        reviewMode: event.mode === "fallback" ? "fallback" : "cross",
+        reviewMode: event.mode,
+        reviewerProvider: event.reviewerProvider,
+        reviewSessionId: event.reviewSessionId,
         blockers: ["review"],
         lastReason: null,
       };
@@ -313,14 +441,26 @@ export function transitionPipelineState(current, event) {
       };
     case "REVIEW_CHANGES_REQUESTED": {
       ensureCurrentReview(state, event);
+      validateReviewIdentity(state, event, true);
+      if (typeof event.reviewId !== "string" || event.reviewId.length === 0) {
+        throw new Error("Review results require a stable reviewId.");
+      }
+      if (
+        event.reviewId === state.lastReviewResultId ||
+        state.lastReviewFailureHeadSha === state.headSha
+      ) {
+        return state;
+      }
       const nextRound = state.reviewRounds + 1;
-      if (nextRound >= state.maxReviewRounds) {
+      if (nextRound > state.maxReviewRounds) {
         return {
           ...state,
           phase: "needs-human",
           reviewedHeadSha: event.reviewedHeadSha,
           verdict: "changes-required",
           reviewRounds: nextRound,
+          lastReviewResultId: event.reviewId,
+          lastReviewFailureHeadSha: state.headSha,
           blockers: ["review-round-limit"],
           lastReason: event.reason ?? "Review round limit reached.",
         };
@@ -331,22 +471,47 @@ export function transitionPipelineState(current, event) {
         reviewedHeadSha: event.reviewedHeadSha,
         verdict: "changes-required",
         reviewRounds: nextRound,
+        lastReviewResultId: event.reviewId,
+        lastReviewFailureHeadSha: state.headSha,
         blockers: ["review-findings"],
         lastReason: event.reason ?? null,
       };
     }
     case "REVIEW_PASSED":
       ensureCurrentReview(state, event);
+      validateReviewIdentity(state, event, true);
+      if (typeof event.reviewId !== "string" || event.reviewId.length === 0) {
+        throw new Error("Review results require a stable reviewId.");
+      }
+      if (event.reviewId === state.lastReviewResultId) return state;
       return withReadiness({
         ...state,
         reviewedHeadSha: event.reviewedHeadSha,
-        reviewMode: event.mode === "fallback" ? "fallback" : "cross",
         verdict: "pass",
-        reviewRounds: state.reviewRounds + 1,
+        lastReviewResultId: event.reviewId,
+        lastReason: null,
+      });
+    case "UI_CLASSIFIED":
+      if (typeof event.uiChanged !== "boolean") {
+        throw new Error("UI_CLASSIFIED requires uiChanged true or false.");
+      }
+      return withReadiness({
+        ...state,
+        uiChanged: state.uiChanged === true ? true : event.uiChanged,
+        uiNotifiedHeadSha: event.uiChanged ? state.uiNotifiedHeadSha : null,
         lastReason: null,
       });
     case "UI_NOTIFIED":
-      return withReadiness({ ...state, uiNotified: true, lastReason: null });
+      if (event.notifiedHeadSha !== state.headSha) {
+        throw new Error(
+          `Stale UI notification for ${event.notifiedHeadSha ?? "unknown"}; current head is ${state.headSha}.`,
+        );
+      }
+      return withReadiness({
+        ...state,
+        uiNotifiedHeadSha: event.notifiedHeadSha,
+        lastReason: null,
+      });
     case "CRITICAL_BLOCKER":
       return {
         ...state,
@@ -361,6 +526,36 @@ export function transitionPipelineState(current, event) {
         blockers: ["no-auto"],
         lastReason: event.reason ?? "Pipeline disabled.",
       };
+    case "RESUME":
+      if (
+        event.authorization !== "human" ||
+        typeof event.authorizedBy !== "string" ||
+        event.authorizedBy.length === 0
+      ) {
+        throw new Error(
+          "RESUME requires an explicit human authorization and actor.",
+        );
+      }
+      return {
+        ...state,
+        phase: "implementing",
+        reviewedHeadSha: null,
+        reviewMode: null,
+        reviewerProvider: null,
+        reviewSessionId: null,
+        lastReviewResultId: null,
+        lastReviewFailureHeadSha: null,
+        verdict: null,
+        ciPassed: false,
+        ciRunId: null,
+        lastCiFailureRunId: null,
+        lastCiFailureHeadSha: null,
+        conflictFree: false,
+        ciFixRounds: 0,
+        reviewRounds: 0,
+        blockers: [],
+        lastReason: event.reason ?? "Pipeline explicitly resumed.",
+      };
     default:
       throw new Error(`Unsupported pipeline event: ${event.type}`);
   }
@@ -369,6 +564,9 @@ export function transitionPipelineState(current, event) {
 export function labelsForState(state, config = loadConfig()) {
   const labels = new Set([config.labels.pipeline]);
   if (state.uiChanged) labels.add(config.labels.uiChanged);
+  if (state.reviewMode === "fallback") {
+    labels.add(config.labels.reviewFallback);
+  }
   const phaseLabels = {
     implementing: config.labels.implementing,
     "ci-fix": config.labels.ciFix,
@@ -384,12 +582,12 @@ export function labelsForState(state, config = loadConfig()) {
   return [...labels].sort();
 }
 
-function changedFiles(baseSha, headSha) {
+export function changedFiles(baseSha, headSha, cwd = repoRoot) {
   if (!baseSha || !headSha) return [];
   const output = execFileSync(
     "git",
-    ["diff", "--name-only", "-z", baseSha, headSha],
-    { cwd: repoRoot, encoding: "utf8", windowsHide: true },
+    ["diff", "--name-only", "-z", `${baseSha}...${headSha}`],
+    { cwd, encoding: "utf8", windowsHide: true },
   );
   return output.split("\0").filter(Boolean);
 }
@@ -407,6 +605,24 @@ function isAncestor(baseSha, headSha) {
   } catch {
     return false;
   }
+}
+
+export function validateBaseShaAncestry(
+  declaredBaseSha,
+  prBaseSha,
+  headSha,
+  ancestor = isAncestor,
+) {
+  const errors = [];
+  if (declaredBaseSha && headSha && !ancestor(declaredBaseSha, headSha)) {
+    errors.push(
+      "The declared base-sha must be an ancestor of the current PR head.",
+    );
+  }
+  if (declaredBaseSha && prBaseSha && !ancestor(declaredBaseSha, prBaseSha)) {
+    errors.push("The declared base-sha must belong to the PR base branch.");
+  }
+  return errors;
 }
 
 function writeGithubOutput(values) {
@@ -467,14 +683,9 @@ function validateEventCommand(args) {
     loadConfig(),
   );
   result.errors.unshift(...parsed.errors);
-  if (
-    sameRepository &&
-    result.normalized.baseSha &&
-    headSha &&
-    !isAncestor(result.normalized.baseSha, headSha)
-  ) {
+  if (sameRepository) {
     result.errors.push(
-      "The declared base-sha must be an ancestor of the current PR head.",
+      ...validateBaseShaAncestry(result.normalized.baseSha, baseSha, headSha),
     );
   }
   result.valid = result.errors.length === 0;
@@ -484,7 +695,10 @@ function validateEventCommand(args) {
     valid: String(result.valid),
     task_id: result.normalized.taskId ?? "",
     implementer: result.normalized.implementer ?? "",
-    ui_changed: String(result.normalized.uiChanged),
+    ui_changed:
+      result.normalized.uiChanged === null
+        ? "unknown"
+        : String(result.normalized.uiChanged),
     protected_changed: String(result.normalized.protectedPaths.length > 0),
   });
   writeSummary([
@@ -492,7 +706,7 @@ function validateEventCommand(args) {
     "",
     `- Task: \`${result.normalized.taskId ?? "unknown"}\``,
     `- Implementer: \`${result.normalized.implementer ?? "unknown"}\``,
-    `- UI/UX change: \`${result.normalized.uiChanged}\``,
+    `- UI/UX change: \`${result.normalized.uiChanged === null ? "unknown" : result.normalized.uiChanged}\``,
     `- Protected paths changed: \`${result.normalized.protectedPaths.length > 0}\``,
     ...(result.warnings.length
       ? ["", "### Warnings", ...result.warnings.map((item) => `- ${item}`)]

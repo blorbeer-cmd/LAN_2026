@@ -18,6 +18,7 @@ Replace every `<PLACEHOLDER>` before starting the review:
 | `<IMPLEMENTER>`          | `codex` or `claude`                                                                                |
 | `<REVIEWER_PROVIDER>`    | Provider running this review: `codex` or `claude`                                                  |
 | `<REVIEW_MODE>`          | `cross` for the other provider, `fallback` for a fresh session of the implementation provider      |
+| `<REVIEW_SESSION_ID>`    | Unique identifier for this fresh, isolated review session                                          |
 | `<TASK_GOAL>`            | Original objective and acceptance criteria, without the implementation session's private reasoning |
 
 Resolve the current head immediately before the review. For example:
@@ -42,6 +43,7 @@ Erwarteter Head-SHA: <EXPECTED_HEAD_SHA>
 Implementierungs-Agent: <IMPLEMENTER>
 Review-Anbieter: <REVIEWER_PROVIDER>
 Review-Modus: <REVIEW_MODE>
+Review-Session-ID: <REVIEW_SESSION_ID>
 
 Ziel und Abnahmekriterien:
 <TASK_GOAL>
@@ -118,6 +120,8 @@ Beende die Antwort mit genau einem JSON-Block und danach keinem weiteren Text:
   "pull_request": "<PR_NUMBER_OR_URL>",
   "reviewer_provider": "<REVIEWER_PROVIDER>",
   "review_mode": "<REVIEW_MODE>",
+  "review_session_id": "<REVIEW_SESSION_ID>",
+  "isolated_session": true,
   "implementer": "<IMPLEMENTER>",
   "base_branch": "<BASE_BRANCH>",
   "head_branch": "<EXPECTED_HEAD_BRANCH>",

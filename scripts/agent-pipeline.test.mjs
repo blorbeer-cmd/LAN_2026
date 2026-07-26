@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,11 +7,13 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  changedFiles,
   createPipelineState,
   labelsForState,
   loadConfig,
   parseTaskContract,
   transitionPipelineState,
+  validateBaseShaAncestry,
   validateTaskContract,
 } from "./agent-pipeline.mjs";
 
@@ -19,6 +21,40 @@ const baseSha = "1".repeat(40);
 const headSha = "2".repeat(40);
 const nextHeadSha = "3".repeat(40);
 const config = loadConfig();
+const crossReview = {
+  mode: "cross",
+  reviewerProvider: "claude",
+  isolatedSession: true,
+  reviewSessionId: "claude-review-1",
+};
+
+function passCi(state, overrides = {}) {
+  return transitionPipelineState(state, {
+    type: "CI_PASSED",
+    checkedHeadSha: state.headSha,
+    runId: "ci-run-1",
+    conflictFree: true,
+    ...overrides,
+  });
+}
+
+function startCrossReview(state, overrides = {}) {
+  return transitionPipelineState(state, {
+    type: "REVIEW_STARTED",
+    ...crossReview,
+    ...overrides,
+  });
+}
+
+function passCrossReview(state, overrides = {}) {
+  return transitionPipelineState(state, {
+    type: "REVIEW_PASSED",
+    reviewedHeadSha: state.headSha,
+    reviewId: "review-result-1",
+    ...crossReview,
+    ...overrides,
+  });
+}
 
 function body(overrides = {}) {
   const values = {
@@ -160,7 +196,7 @@ test("branch identity, repository origin and required keys are enforced", () => 
 });
 
 test("UI paths override an incorrect no declaration and protected paths are reported", () => {
-  const parsed = parseTaskContract(body());
+  const parsed = parseTaskContract(body({ scope: "root" }));
   const result = validateTaskContract(
     parsed.contract,
     context(["server/public/app.js", ".github/workflows/deploy.yml"]),
@@ -177,12 +213,9 @@ test("UI paths override an incorrect no declaration and protected paths are repo
 test("a passing current review opens the gate when no UI notice is needed", () => {
   const contract = validContract();
   let state = createPipelineState(contract, headSha);
-  state = transitionPipelineState(state, { type: "CI_PASSED" });
-  state = transitionPipelineState(state, {
-    type: "REVIEW_PASSED",
-    reviewedHeadSha: headSha,
-    mode: "cross",
-  });
+  state = passCi(state);
+  state = startCrossReview(state);
+  state = passCrossReview(state);
   assert.equal(state.phase, "ready-for-merge");
   assert.deepEqual(state.blockers, []);
   assert.ok(labelsForState(state, config).includes("agent:ready-for-merge"));
@@ -191,12 +224,15 @@ test("a passing current review opens the gate when no UI notice is needed", () =
 test("a stale review cannot open the gate", () => {
   const contract = validContract();
   let state = createPipelineState(contract, headSha);
-  state = transitionPipelineState(state, { type: "CI_PASSED" });
+  state = passCi(state);
+  state = startCrossReview(state);
   assert.throws(
     () =>
       transitionPipelineState(state, {
         type: "REVIEW_PASSED",
         reviewedHeadSha: baseSha,
+        reviewId: "review-result-stale",
+        ...crossReview,
       }),
     /Stale review/,
   );
@@ -205,11 +241,9 @@ test("a stale review cannot open the gate", () => {
 test("a new head invalidates CI, review and readiness", () => {
   const contract = validContract();
   let state = createPipelineState(contract, headSha);
-  state = transitionPipelineState(state, { type: "CI_PASSED" });
-  state = transitionPipelineState(state, {
-    type: "REVIEW_PASSED",
-    reviewedHeadSha: headSha,
-  });
+  state = passCi(state);
+  state = startCrossReview(state);
+  state = passCrossReview(state);
   state = transitionPipelineState(state, {
     type: "HEAD_UPDATED",
     headSha: nextHeadSha,
@@ -223,14 +257,15 @@ test("a new head invalidates CI, review and readiness", () => {
 test("UI changes block readiness until the user notification exists", () => {
   const contract = validContract({ "ui-change": "yes" });
   let state = createPipelineState(contract, headSha);
-  state = transitionPipelineState(state, { type: "CI_PASSED" });
-  state = transitionPipelineState(state, {
-    type: "REVIEW_PASSED",
-    reviewedHeadSha: headSha,
-  });
+  state = passCi(state);
+  state = startCrossReview(state);
+  state = passCrossReview(state);
   assert.equal(state.phase, "review");
   assert.deepEqual(state.blockers, ["ui-notification"]);
-  state = transitionPipelineState(state, { type: "UI_NOTIFIED" });
+  state = transitionPipelineState(state, {
+    type: "UI_NOTIFIED",
+    notifiedHeadSha: headSha,
+  });
   assert.equal(state.phase, "ready-for-merge");
 });
 
@@ -258,16 +293,290 @@ test("CI and review round limits escalate instead of looping forever", () => {
     "max-review-rounds": "1",
   });
   let ciState = createPipelineState(contract, headSha);
-  ciState = transitionPipelineState(ciState, { type: "CI_FAILED" });
-  ciState = transitionPipelineState(ciState, { type: "CI_FAILED" });
+  ciState = transitionPipelineState(ciState, {
+    type: "CI_FAILED",
+    checkedHeadSha: headSha,
+    runId: "ci-failure-1",
+  });
+  ciState = transitionPipelineState(ciState, {
+    type: "HEAD_UPDATED",
+    headSha: nextHeadSha,
+  });
+  ciState = transitionPipelineState(ciState, {
+    type: "CI_FAILED",
+    checkedHeadSha: nextHeadSha,
+    runId: "ci-failure-2",
+  });
   assert.equal(ciState.phase, "needs-human");
   assert.deepEqual(ciState.blockers, ["ci-round-limit"]);
 
   let reviewState = createPipelineState(contract, headSha);
+  reviewState = startCrossReview(reviewState);
   reviewState = transitionPipelineState(reviewState, {
     type: "REVIEW_CHANGES_REQUESTED",
     reviewedHeadSha: headSha,
+    reviewId: "review-failure-1",
+    ...crossReview,
+  });
+  assert.equal(reviewState.phase, "implementing");
+  reviewState = transitionPipelineState(reviewState, {
+    type: "HEAD_UPDATED",
+    headSha: nextHeadSha,
+  });
+  reviewState = startCrossReview(reviewState, {
+    reviewSessionId: "claude-review-2",
+  });
+  reviewState = transitionPipelineState(reviewState, {
+    type: "REVIEW_CHANGES_REQUESTED",
+    reviewedHeadSha: nextHeadSha,
+    reviewId: "review-failure-2",
+    ...crossReview,
+    reviewSessionId: "claude-review-2",
   });
   assert.equal(reviewState.phase, "needs-human");
   assert.deepEqual(reviewState.blockers, ["review-round-limit"]);
+});
+
+test("CI results are SHA-bound and require explicit conflict confirmation", () => {
+  const initial = createPipelineState(validContract(), headSha);
+  assert.throws(
+    () =>
+      transitionPipelineState(initial, {
+        type: "CI_PASSED",
+        checkedHeadSha: baseSha,
+        runId: "stale-ci",
+        conflictFree: true,
+      }),
+    /Stale CI result/,
+  );
+  const noMergeability = transitionPipelineState(initial, {
+    type: "CI_PASSED",
+    checkedHeadSha: headSha,
+    runId: "ci-without-mergeability",
+  });
+  assert.equal(noMergeability.ciPassed, true);
+  assert.equal(noMergeability.conflictFree, false);
+  assert.ok(noMergeability.blockers.includes("merge-conflict"));
+});
+
+test("terminal states ignore delayed events until explicitly resumed", () => {
+  let state = createPipelineState(validContract(), headSha);
+  state = passCi(state);
+  state = transitionPipelineState(state, {
+    type: "DISABLE",
+    reason: "User kill switch.",
+  });
+  const delayed = passCrossReview(state);
+  assert.equal(delayed.phase, "disabled");
+  assert.deepEqual(delayed.blockers, ["no-auto"]);
+  assert.throws(
+    () => transitionPipelineState(delayed, { type: "RESUME" }),
+    /explicit human authorization/,
+  );
+  const resumed = transitionPipelineState(delayed, {
+    type: "RESUME",
+    authorization: "human",
+    authorizedBy: "repository-owner",
+  });
+  assert.equal(resumed.phase, "implementing");
+  assert.equal(resumed.ciPassed, false);
+});
+
+test("duplicate head and repeated CI failures for one head are idempotent", () => {
+  let state = createPipelineState(validContract(), headSha);
+  state = passCi(state);
+  const duplicateHead = transitionPipelineState(state, {
+    type: "HEAD_UPDATED",
+    headSha,
+  });
+  assert.deepEqual(duplicateHead, state);
+
+  state = createPipelineState(validContract(), headSha);
+  const failure = {
+    type: "CI_FAILED",
+    checkedHeadSha: headSha,
+    runId: "same-ci-failure",
+  };
+  state = transitionPipelineState(state, failure);
+  state = transitionPipelineState(state, {
+    ...failure,
+    runId: "different-run-same-head",
+  });
+  assert.equal(state.ciFixRounds, 1);
+});
+
+test("multiple review failure deliveries count once per head", () => {
+  let state = createPipelineState(validContract(), headSha);
+  state = startCrossReview(state);
+  state = transitionPipelineState(state, {
+    type: "REVIEW_CHANGES_REQUESTED",
+    reviewedHeadSha: headSha,
+    reviewId: "review-failure-delivery-1",
+    ...crossReview,
+  });
+  state = startCrossReview(state, {
+    reviewSessionId: "claude-review-redelivery",
+  });
+  state = transitionPipelineState(state, {
+    type: "REVIEW_CHANGES_REQUESTED",
+    reviewedHeadSha: headSha,
+    reviewId: "review-failure-delivery-2",
+    ...crossReview,
+    reviewSessionId: "claude-review-redelivery",
+  });
+  assert.equal(state.reviewRounds, 1);
+});
+
+test("review provider, isolation and session identity are enforced", () => {
+  const initial = createPipelineState(validContract(), headSha);
+  assert.throws(
+    () =>
+      transitionPipelineState(initial, {
+        type: "REVIEW_STARTED",
+        ...crossReview,
+        reviewerProvider: "codex",
+      }),
+    /must be performed by claude/,
+  );
+  assert.throws(
+    () =>
+      transitionPipelineState(initial, {
+        type: "REVIEW_STARTED",
+        ...crossReview,
+        isolatedSession: false,
+      }),
+    /fresh isolated session/,
+  );
+});
+
+test("successful reviews do not consume the findings round limit", () => {
+  let state = createPipelineState(validContract(), headSha);
+  state = startCrossReview(state);
+  state = passCrossReview(state);
+  assert.equal(state.reviewRounds, 0);
+});
+
+test("fallback review disclosure remains visible after readiness", () => {
+  let state = createPipelineState(validContract(), headSha);
+  state = passCi(state);
+  const fallbackIdentity = {
+    mode: "fallback",
+    reviewerProvider: "codex",
+    isolatedSession: true,
+    reviewSessionId: "codex-fallback-1",
+  };
+  state = transitionPipelineState(state, {
+    type: "REVIEW_STARTED",
+    ...fallbackIdentity,
+  });
+  state = transitionPipelineState(state, {
+    type: "REVIEW_PASSED",
+    reviewedHeadSha: headSha,
+    reviewId: "fallback-pass-1",
+    ...fallbackIdentity,
+  });
+  assert.equal(state.phase, "ready-for-merge");
+  assert.ok(labelsForState(state, config).includes("agent:review-fallback"));
+});
+
+test("unknown UI classification blocks readiness until explicitly resolved", () => {
+  let state = createPipelineState(
+    validContract({ "ui-change": "unknown" }),
+    headSha,
+  );
+  assert.equal(state.uiChanged, null);
+  state = passCi(state);
+  state = startCrossReview(state);
+  state = passCrossReview(state);
+  assert.deepEqual(state.blockers, ["ui-classification"]);
+  state = transitionPipelineState(state, {
+    type: "UI_CLASSIFIED",
+    uiChanged: false,
+  });
+  assert.equal(state.phase, "ready-for-merge");
+});
+
+test("a new UI head invalidates the previous notification", () => {
+  let state = createPipelineState(
+    validContract({ "ui-change": "yes" }),
+    headSha,
+  );
+  state = transitionPipelineState(state, {
+    type: "UI_NOTIFIED",
+    notifiedHeadSha: headSha,
+  });
+  state = transitionPipelineState(state, {
+    type: "HEAD_UPDATED",
+    headSha: nextHeadSha,
+    uiChanged: true,
+  });
+  assert.equal(state.uiNotifiedHeadSha, null);
+});
+
+test("declared scope must cover non-documentation changed paths", () => {
+  const parsed = parseTaskContract(body({ scope: "docs" }));
+  const invalid = validateTaskContract(
+    parsed.contract,
+    context(["server/src/index.ts"]),
+    config,
+  );
+  assert.equal(invalid.valid, false);
+  assert.match(invalid.errors.join("\n"), /scope docs does not cover/);
+
+  const root = validateTaskContract(
+    parseTaskContract(body({ scope: "root" })).contract,
+    context(["server/src/index.ts", ".github/workflows/deploy.yml"]),
+    config,
+  );
+  assert.equal(root.valid, true);
+});
+
+test("changed files are classified from the merge base", () => {
+  const directory = mkdtempSync(join(tmpdir(), "agent-pipeline-git-"));
+  try {
+    execFileSync("git", ["init", "-b", "main"], { cwd: directory });
+    execFileSync("git", ["config", "user.name", "Agent Pipeline Test"], {
+      cwd: directory,
+    });
+    execFileSync("git", ["config", "user.email", "agent@example.invalid"], {
+      cwd: directory,
+    });
+    writeFileSync(join(directory, "common.txt"), "common\n", "utf8");
+    execFileSync("git", ["add", "."], { cwd: directory });
+    execFileSync("git", ["commit", "-m", "common"], { cwd: directory });
+    execFileSync("git", ["checkout", "-b", "feature"], { cwd: directory });
+    writeFileSync(join(directory, "feature.txt"), "feature\n", "utf8");
+    execFileSync("git", ["add", "."], { cwd: directory });
+    execFileSync("git", ["commit", "-m", "feature"], { cwd: directory });
+    const featureSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: directory,
+      encoding: "utf8",
+    }).trim();
+    execFileSync("git", ["checkout", "main"], { cwd: directory });
+    writeFileSync(join(directory, "main-only.txt"), "main\n", "utf8");
+    execFileSync("git", ["add", "."], { cwd: directory });
+    execFileSync("git", ["commit", "-m", "main"], { cwd: directory });
+    const baseTip = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: directory,
+      encoding: "utf8",
+    }).trim();
+    assert.deepEqual(changedFiles(baseTip, featureSha, directory), [
+      "feature.txt",
+    ]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("declared base SHA must also belong to the PR base branch", () => {
+  const fabricatedBase = headSha;
+  const errors = validateBaseShaAncestry(
+    fabricatedBase,
+    baseSha,
+    headSha,
+    (ancestor, descendant) =>
+      ancestor === descendant ||
+      (ancestor === baseSha && descendant === headSha),
+  );
+  assert.ok(errors.some((error) => error.includes("base branch")));
 });

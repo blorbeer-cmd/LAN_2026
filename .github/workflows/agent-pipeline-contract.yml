@@ -1,7 +1,9 @@
 name: Agent pipeline contract
 
 on:
-  pull_request:
+  # This event always loads the workflow definition from the trusted default branch.
+  # Never execute or check out code from the pull-request head in this workflow.
+  pull_request_target:
     types: [opened, edited, synchronize, reopened, ready_for_review]
 
 permissions:
@@ -21,10 +23,11 @@ jobs:
       # Run only the validator and configuration from the trusted base commit.
       # The PR head is fetched as data for the diff but no code from it executes.
       - name: Check out trusted pipeline validator
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Detect trusted pipeline validator
         id: trusted-validator
@@ -37,7 +40,7 @@ jobs:
             echo "::notice::Trusted base commit does not contain the agent pipeline validator yet; safely skipping this bootstrap run."
           fi
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         if: steps.trusted-validator.outputs.available == 'true'
         with:
           node-version: 24
