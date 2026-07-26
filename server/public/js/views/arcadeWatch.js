@@ -12,6 +12,8 @@ const GAME_NAMES = {
   pong: 'Pong',
   blobby: 'Blobby Volley',
   snake: 'Snake',
+  battleship: 'Schiffe versenken',
+  'challenge-rush': 'Challenge Rush',
 };
 
 let socket = null;
@@ -143,6 +145,7 @@ function updateWatchMeta(state) {
 function stateHtml(state) {
   if (!state) return '<div class="empty-state">Verbindung zum Spiel wird hergestellt…</div>';
   if (state.gameType === 'quiz') return '<div class="arcade-watch-safe-note">Frage und Antworten werden für Zuschauer verborgen.</div>';
+  
   const [width, height] = arcadeStreamCanvasSize(state.gameType);
   return `<canvas id="arcade-watch-canvas" width="${width}" height="${height}" aria-label="Livebild des Spiels"></canvas>`;
 }
@@ -204,7 +207,7 @@ export function renderArcadeWatch(container) {
       ${rosterHtml(state ?? {})}
       ${stateHtml(state)}
       ${state?.gameType === 'scribble' ? scribbleVotingHtml(state) : ''}
-      ${state?.gameType === 'scribble' ? '<div class="arcade-watch-safe-note">Wort, Tipps und Chat werden für Zuschauer verborgen.</div>' : ''}
+      ${state?.gameType === 'scribble' ? '<div class="arcade-watch-safe-note">Wort, Tipps und Chat werden für Zuschauer verborgen.</div>' : state?.gameType === 'battleship' ? '<div class="arcade-watch-safe-note">Ungetroffene Flottenfelder bleiben für Zuschauer verborgen.</div>' : ''}
     </div>`;
   lastRenderSignature = votingSignature(state);
   container.querySelector('#arcade-watch-back')?.addEventListener('click', leaveWatch);

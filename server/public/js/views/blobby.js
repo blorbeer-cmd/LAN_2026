@@ -1,4 +1,4 @@
-import { getToken } from '../api.js';
+import { connectSocket } from '../socket.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
 import { avatarHtml, escapeHtml } from '../format.js';
@@ -46,7 +46,7 @@ export function blobbyLobbies() { return lobbies; }
 
 export function ensureBlobbySocket() {
   if (socket) return socket;
-  socket = io({ auth: { token: getToken() } });
+  socket = connectSocket();
   socket.on('blobby:lobbies', (payload) => { lobbies = payload?.lobbies ?? []; if (!match && currentView() === 'arcade') rerender(); });
   socket.on('blobby:match:start', (payload) => {
     match = { ...payload, ended: false, winner: null };
@@ -206,7 +206,7 @@ export function renderBlobbyLobbyCard() {
   return `<div class="card stack arcade-lobby-card">
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
     ${lobbyList()}
-    ${!lobby ? `<label class="arcade-lobby-target-score">
+    ${!lobby ? `<label class="arcade-lobby-target-score arcade-lobby-mode">
       <span class="title-with-info"><span>Modus</span>${infoTooltipHtml('blobby-mode-info', 'Blobby-Modus', 'Duell: 1 gegen 1. Doppel: 2 gegen 2.')}</span>
       <select id="blobby-mode" aria-label="Blobby-Modus">
         <option value="doubles" ${lobbyMode === 'doubles' ? 'selected' : ''}>Doppel · 4</option>

@@ -17,7 +17,7 @@ installDomainIcons();
 setKioskMode(true);
 
 const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
-const GAME_NAMES = { quiz: 'Gaming-Quiz', tetris: 'Tetris', scribble: 'Scribble', blobby: 'Blobby Volley', pong: 'Pong', snake: 'Snake' };
+const GAME_NAMES = { quiz: 'Gaming-Quiz', tetris: 'Tetris', scribble: 'Scribble', blobby: 'Blobby Volley', pong: 'Pong', snake: 'Snake', 'challenge-rush': 'Challenge Rush' };
 const cssColor = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 function drawLegacyKioskCanvas(canvas, game) {
@@ -144,6 +144,10 @@ function renderArcadeStream(game) {
   const content = document.getElementById('kiosk-game-content');
   if (game.gameType === 'quiz') {
     content.innerHTML = `<div class="kiosk-game-question">${escapeHtml(game.question || 'Nächste Frage kommt gleich.')}</div>`;
+    return;
+  }
+  if (game.gameType === 'challenge-rush') {
+    content.innerHTML = `<div class="kiosk-game-question">${escapeHtml(game.challenge || 'Mini-Challenge')}</div><div class="kiosk-game-scores">${(game.scores || []).map((score) => `<div>${escapeHtml(score.name || 'Spieler')}: <strong>${score.score || 0}</strong></div>`).join('')}</div>`;
     return;
   }
   let canvas = content.querySelector('canvas');

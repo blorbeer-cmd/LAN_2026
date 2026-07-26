@@ -18,7 +18,7 @@ import { getMyId } from '../whoami.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
-import { getToken } from '../api.js';
+import { connectSocket } from '../socket.js';
 import { icon } from '../icons.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
@@ -606,7 +606,7 @@ function emitWithAck(event, payload) {
 
 export function ensureScribbleSocket() {
   if (socket) return socket;
-  socket = io({ auth: { token: getToken() } });
+  socket = connectSocket();
 
   socket.on('scribble:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];

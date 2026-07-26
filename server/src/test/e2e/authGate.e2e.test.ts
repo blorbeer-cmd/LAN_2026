@@ -455,3 +455,19 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
 test('single-group access context is no longer exposed as a separate topbar control', async () => {
   assert.equal(await page.locator('#group-btn').count(), 0);
 });
+
+test('a required-mode member can open an Arcade lobby with a scoped game socket', async () => {
+  await page.click('.nav-btn[data-view="more"]');
+  await page.click('[data-navigate="arcade"]');
+  await page.waitForSelector('.arcade-tiles');
+  await page.click('[data-game="tetris"]');
+  await page.waitForSelector('#tetris-create:not([disabled])');
+  await page.click('#tetris-create');
+  await page.waitForSelector('[data-tetris-close]');
+  assert.equal(
+    await page.locator('.toast-error:has-text("Gruppen- oder Eventzugriff verweigert")').count(),
+    0,
+  );
+  await page.click('[data-tetris-close]');
+  await page.waitForSelector('#tetris-create:not([disabled])');
+});
