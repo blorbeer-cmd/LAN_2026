@@ -48,6 +48,77 @@ function runGit(...gitArgs) {
   return result.stdout.trimEnd();
 }
 
+function gitSucceeds(...gitArgs) {
+  const result = spawnSync("git", ["-C", repoRoot, ...gitArgs], {
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  return !result.error && result.status === 0;
+}
+
+function findWorktreeForBranch(branch) {
+  const blocks = runGit("worktree", "list", "--porcelain").split(
+    /(?:\r?\n){2,}/,
+  );
+  const branchRef = `branch refs/heads/${branch}`;
+
+  for (const block of blocks) {
+    const lines = block.split(/\r?\n/);
+    if (!lines.includes(branchRef)) continue;
+    return lines
+      .find((line) => line.startsWith("worktree "))
+      ?.slice("worktree ".length);
+  }
+
+  return undefined;
+}
+
+function checkMergedPullRequests(branch) {
+  if (process.env.AGENT_PREFLIGHT_DISABLE_GITHUB_CHECK === "1") {
+    return { status: "skipped" };
+  }
+
+  const result = spawnSync(
+    "gh",
+    [
+      "pr",
+      "list",
+      "--state",
+      "all",
+      "--head",
+      branch,
+      "--json",
+      "number,title,url,state",
+    ],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      timeout: 5000,
+      windowsHide: true,
+    },
+  );
+
+  if (result.error || result.status !== 0) {
+    return {
+      status: "unavailable",
+      detail: result.error?.message || (result.stderr || "").trim(),
+    };
+  }
+
+  try {
+    const pullRequests = JSON.parse(result.stdout);
+    return {
+      status: "checked",
+      mergedPullRequest: pullRequests.find(({ state }) => state === "MERGED"),
+    };
+  } catch {
+    return {
+      status: "unavailable",
+      detail: "GitHub CLI returned invalid JSON.",
+    };
+  }
+}
+
 function writeSection(title) {
   console.log(`\n=== ${title} ===`);
 }
@@ -57,9 +128,9 @@ console.log(`Repository: ${repoRoot}`);
 console.log(`Bereich:    ${scope}`);
 
 writeSection("Git");
-console.log(
-  `Branch: ${runGit("branch", "--show-current").trim() || "detached HEAD"}`,
-);
+const branch = runGit("branch", "--show-current").trim();
+console.log(`Branch: ${branch || "detached HEAD"}`);
+console.log(`Worktree: ${runGit("rev-parse", "--show-toplevel")}`);
 
 const status = runGit("status", "--short");
 if (!status) {
@@ -67,6 +138,77 @@ if (!status) {
 } else {
   console.log("Arbeitsbaum: vorhandene Aenderungen bewahren");
   for (const line of status.split(/\r?\n/)) console.log(`  ${line}`);
+}
+
+writeSection("Branch-Sicherheit");
+let unsafeBranch = false;
+
+if (!branch) {
+  console.error(
+    "SICHERHEITSSTOPP: Aenderungsauftraege duerfen nicht auf einem detached HEAD beginnen.",
+  );
+  unsafeBranch = true;
+} else if (["main", "master"].includes(branch)) {
+  console.error(
+    `SICHERHEITSSTOPP: ${branch} ist nur Integrationsbasis. Fuer den Auftrag einen eigenen Branch und Worktree verwenden.`,
+  );
+  unsafeBranch = true;
+} else {
+  const mainWorktree = findWorktreeForBranch("main");
+  if (!mainWorktree) {
+    console.error(
+      "SICHERHEITSSTOPP: main ist in keinem separaten Integrations-Worktree ausgecheckt.",
+    );
+    console.error(
+      "Den Feature-Branch nicht im main-Worktree anlegen; main zuerst in einem eigenen Worktree wiederherstellen.",
+    );
+    unsafeBranch = true;
+  } else {
+    console.log(`main-Worktree: ${mainWorktree}`);
+  }
+
+  if (!gitSucceeds("rev-parse", "--verify", "--quiet", "origin/main")) {
+    console.error(
+      "SICHERHEITSSTOPP: origin/main fehlt. Vor dem Arbeitsstart origin/main aktualisieren.",
+    );
+    unsafeBranch = true;
+  } else if (
+    !gitSucceeds("merge-base", "--is-ancestor", "origin/main", "HEAD")
+  ) {
+    console.error(
+      "SICHERHEITSSTOPP: Der Branch basiert nicht auf dem aktuellen origin/main.",
+    );
+    console.error(
+      "Fuer den Auftrag einen neuen Branch und Worktree vom aktuellen origin/main anlegen.",
+    );
+    unsafeBranch = true;
+  } else {
+    console.log("Branch enthaelt den aktuellen Stand von origin/main.");
+  }
+
+  const githubCheck = checkMergedPullRequests(branch);
+  if (githubCheck.status === "skipped") {
+    console.log("GitHub-Pruefung: fuer den lokalen Skripttest deaktiviert");
+  } else if (githubCheck.status === "unavailable") {
+    console.warn(
+      `WARNUNG: Bereits gemergte PRs konnten nicht geprueft werden${githubCheck.detail ? ` (${githubCheck.detail})` : ""}.`,
+    );
+    console.warn(
+      "Vor Aenderungen manuell sicherstellen, dass dieser Branch noch nie gemergt wurde.",
+    );
+  } else if (githubCheck.mergedPullRequest) {
+    const pullRequest = githubCheck.mergedPullRequest;
+    console.error(
+      `SICHERHEITSSTOPP: Branch ${branch} gehoert zum bereits gemergten PR #${pullRequest.number} (${pullRequest.title}).`,
+    );
+    console.error(
+      "Diesen Branch nicht weiterverwenden. Fuer Folgearbeiten von aktuellem origin/main einen neuen Branch und Worktree anlegen.",
+    );
+    console.error(`PR: ${pullRequest.url}`);
+    unsafeBranch = true;
+  } else {
+    console.log("Kein bereits gemergter PR fuer diesen Branch gefunden.");
+  }
 }
 
 writeSection("Laufzeit");
@@ -166,3 +308,5 @@ writeSection("Naechster Schritt");
 console.log(
   "Auftrag intern aus der Prosa konkretisieren und direkt die relevanten Pfade lesen.",
 );
+
+if (unsafeBranch) process.exit(3);
