@@ -5,6 +5,10 @@
     "codex": "codex/",
     "claude": "claude/"
   },
+  "providerAuthorAllowlist": {
+    "codex": ["blorbeer-cmd", "chatgpt-codex-connector[bot]"],
+    "claude": ["blorbeer-cmd"]
+  },
   "allowedScopes": ["root", "server", "frontend", "agent", "docs", "infra"],
   "scopePathPrefixes": {
     "server": ["server/src/", "server/package", "server/tsconfig"],

@@ -103,6 +103,15 @@ export function validateTaskContract(contract, context, config = loadConfig()) {
   if (!Object.hasOwn(config.branchPrefixes, implementer ?? "")) {
     errors.push("implementer must be codex or claude.");
   }
+  const allowedAuthors = config.providerAuthorAllowlist?.[implementer] ?? [];
+  if (
+    typeof context.authorLogin !== "string" ||
+    !allowedAuthors.includes(context.authorLogin)
+  ) {
+    errors.push(
+      `PR author ${context.authorLogin ?? "unknown"} is not allowed for implementer ${implementer ?? "unknown"}.`,
+    );
+  }
 
   if (contract?.["base-branch"] !== context.baseBranch) {
     errors.push(
@@ -218,7 +227,7 @@ export function createPipelineState(contract, headSha) {
     throw new Error("A normalized contract and full head SHA are required.");
   }
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     taskId: contract.taskId,
     implementer: contract.implementer,
     phase: "implementing",
@@ -227,6 +236,7 @@ export function createPipelineState(contract, headSha) {
     reviewMode: null,
     reviewerProvider: null,
     reviewSessionId: null,
+    reviewRequestId: `${contract.taskId}:${headSha}`,
     reviewSessionCompleted: false,
     lastReviewResultId: null,
     lastReviewFailureHeadSha: null,
@@ -242,6 +252,8 @@ export function createPipelineState(contract, headSha) {
     protectedPaths: [...(contract.protectedPaths ?? [])],
     protectedApprovedHeadSha: null,
     blockingReviewThreadIds: null,
+    reviewThreadSnapshotSequence: null,
+    reviewThreadSnapshotId: null,
     uiChanged: contract.uiChanged,
     uiNotifiedHeadSha: null,
     ciFixRounds: 0,
@@ -314,6 +326,8 @@ function validateReviewIdentity(state, event, requireStarted = false) {
   if (
     event.isolatedSession !== true ||
     event.readOnlyEnforced !== true ||
+    typeof event.reviewRequestId !== "string" ||
+    event.reviewRequestId.length === 0 ||
     typeof event.reviewSessionId !== "string" ||
     event.reviewSessionId.length === 0
   ) {
@@ -325,6 +339,7 @@ function validateReviewIdentity(state, event, requireStarted = false) {
     requireStarted &&
     (!state.reviewSessionId ||
       state.reviewSessionId !== event.reviewSessionId ||
+      state.reviewRequestId !== event.reviewRequestId ||
       state.reviewerProvider !== event.reviewerProvider ||
       state.reviewMode !== event.mode ||
       state.reviewSessionCompleted)
@@ -337,7 +352,9 @@ function withReadiness(state) {
   const blockers = [];
   if (!state.ciPassed) blockers.push("ci");
   if (!state.conflictFree) blockers.push("merge-conflict");
-  if (
+  if (state.protectedPaths === null) {
+    blockers.push("protected-path-status");
+  } else if (
     state.protectedPaths.length > 0 &&
     state.protectedApprovedHeadSha !== state.headSha
   ) {
@@ -387,6 +404,21 @@ export function transitionPipelineState(current, event) {
         throw new Error("HEAD_UPDATED requires a full head SHA.");
       }
       if (event.headSha === state.headSha) return state;
+      let protectedPaths = null;
+      if (event.protectedPaths !== undefined) {
+        if (
+          event.protectedClassificationTrusted !== true ||
+          !Array.isArray(event.protectedPaths) ||
+          event.protectedPaths.some(
+            (path) => typeof path !== "string" || path.length === 0,
+          )
+        ) {
+          throw new Error(
+            "HEAD_UPDATED protected paths require a trusted string-array classification.",
+          );
+        }
+        protectedPaths = [...new Set(event.protectedPaths)].sort();
+      }
       const uiChanged =
         event.uiChanged === true
           ? true
@@ -401,6 +433,7 @@ export function transitionPipelineState(current, event) {
         reviewMode: null,
         reviewerProvider: null,
         reviewSessionId: null,
+        reviewRequestId: `${state.taskId}:${event.headSha}`,
         reviewSessionCompleted: false,
         lastReviewResultId: null,
         verdict: null,
@@ -411,8 +444,11 @@ export function transitionPipelineState(current, event) {
         ciConclusion: null,
         lastCiFailureRunId: null,
         conflictFree: false,
+        protectedPaths,
         protectedApprovedHeadSha: null,
         blockingReviewThreadIds: null,
+        reviewThreadSnapshotSequence: null,
+        reviewThreadSnapshotId: null,
         uiChanged,
         uiNotifiedHeadSha: null,
         blockers: terminalPhase ? state.blockers : [],
@@ -422,13 +458,7 @@ export function transitionPipelineState(current, event) {
     case "CI_FAILED": {
       ensureCurrentCi(state, event);
       const order = compareCiOrder(state, event);
-      if (order < 0) return state;
-      if (
-        event.runId === state.lastCiFailureRunId ||
-        (order === 0 && state.ciConclusion === "failure")
-      ) {
-        return state;
-      }
+      if (order <= 0 || event.runId === state.lastCiFailureRunId) return state;
       if (state.lastCiFailureHeadSha === state.headSha) {
         return {
           ...state,
@@ -474,23 +504,24 @@ export function transitionPipelineState(current, event) {
         lastReason: event.reason ?? null,
       };
     }
-    case "CONFLICT_DETECTED":
+    case "CONFLICT_DETECTED": {
       ensureCurrentCi(state, event);
+      if (compareCiOrder(state, event) <= 0) return state;
       return {
         ...state,
         phase: "conflict-fix",
         conflictFree: false,
+        ciRunId: event.runId,
+        ciRunSequence: event.runSequence,
+        ciRunAttempt: event.runAttempt,
+        ciConclusion: "conflict",
         blockers: ["merge-conflict"],
         lastReason: event.reason ?? null,
       };
+    }
     case "CI_PASSED":
       ensureCurrentCi(state, event);
-      if (
-        compareCiOrder(state, event) < 0 ||
-        (compareCiOrder(state, event) === 0 && state.ciConclusion === "failure")
-      ) {
-        return state;
-      }
+      if (compareCiOrder(state, event) <= 0) return state;
       return withReadiness({
         ...state,
         ciPassed: true,
@@ -504,6 +535,15 @@ export function transitionPipelineState(current, event) {
       });
     case "REVIEW_STARTED":
       ensureCurrentReview(state, event);
+      validateReviewIdentity(state, event);
+      if (
+        state.reviewSessionId === event.reviewSessionId &&
+        state.reviewRequestId === event.reviewRequestId &&
+        state.reviewerProvider === event.reviewerProvider &&
+        state.reviewMode === event.mode
+      ) {
+        return state;
+      }
       if (
         state.verdict === "changes-required" &&
         state.reviewedHeadSha === state.headSha
@@ -512,23 +552,41 @@ export function transitionPipelineState(current, event) {
           "A review with findings requires a new head before another review can start.",
         );
       }
-      validateReviewIdentity(state, event);
+      if (state.reviewRequestId !== event.reviewRequestId) {
+        throw new Error(
+          "Review start does not match the active review request.",
+        );
+      }
       return {
         ...state,
         phase: event.mode === "fallback" ? "review-fallback" : "review",
         reviewMode: event.mode,
         reviewerProvider: event.reviewerProvider,
         reviewSessionId: event.reviewSessionId,
+        reviewRequestId: event.reviewRequestId,
         reviewSessionCompleted: false,
         blockers: ["review"],
         lastReason: null,
       };
     case "REVIEWER_UNAVAILABLE":
+      if (event.reviewedHeadSha !== state.headSha) return state;
+      if (
+        typeof event.reviewRequestId !== "string" ||
+        event.reviewRequestId.length === 0
+      ) {
+        throw new Error(
+          "REVIEWER_UNAVAILABLE requires a stable reviewRequestId.",
+        );
+      }
+      if (state.reviewRequestId !== event.reviewRequestId) {
+        return state;
+      }
       if (event.fallbackAvailable) {
         return {
           ...state,
           phase: "review-fallback",
           reviewMode: "fallback",
+          reviewRequestId: event.reviewRequestId,
           blockers: ["review"],
           lastReason: event.reason ?? "Regular reviewer unavailable.",
         };
@@ -536,6 +594,7 @@ export function transitionPipelineState(current, event) {
       return {
         ...state,
         phase: "waiting",
+        reviewRequestId: event.reviewRequestId,
         blockers: ["provider-unavailable"],
         lastReason: event.reason ?? "Both review paths unavailable.",
       };
@@ -623,9 +682,32 @@ export function transitionPipelineState(current, event) {
           "REVIEW_THREADS_UPDATED requires an array of blocking thread IDs.",
         );
       }
+      if (
+        !Number.isSafeInteger(event.snapshotSequence) ||
+        event.snapshotSequence < 1 ||
+        typeof event.snapshotId !== "string" ||
+        event.snapshotId.length === 0
+      ) {
+        throw new Error(
+          "REVIEW_THREADS_UPDATED requires a positive snapshotSequence and stable snapshotId.",
+        );
+      }
+      if (state.reviewThreadSnapshotSequence !== null) {
+        if (event.snapshotSequence < state.reviewThreadSnapshotSequence) {
+          return state;
+        }
+        if (event.snapshotSequence === state.reviewThreadSnapshotSequence) {
+          if (event.snapshotId === state.reviewThreadSnapshotId) return state;
+          throw new Error(
+            "Conflicting review-thread snapshots share the same sequence.",
+          );
+        }
+      }
       return withReadiness({
         ...state,
         blockingReviewThreadIds: [...new Set(event.blockingThreadIds)].sort(),
+        reviewThreadSnapshotSequence: event.snapshotSequence,
+        reviewThreadSnapshotId: event.snapshotId,
         lastReason: null,
       });
     case "PROTECTED_CHANGE_APPROVED":
@@ -690,6 +772,7 @@ export function transitionPipelineState(current, event) {
         reviewMode: null,
         reviewerProvider: null,
         reviewSessionId: null,
+        reviewRequestId: `${state.taskId}:${state.headSha}`,
         reviewSessionCompleted: false,
         lastReviewResultId: null,
         lastReviewFailureHeadSha: null,
@@ -704,6 +787,8 @@ export function transitionPipelineState(current, event) {
         conflictFree: false,
         protectedApprovedHeadSha: null,
         blockingReviewThreadIds: null,
+        reviewThreadSnapshotSequence: null,
+        reviewThreadSnapshotId: null,
         ciFixRounds: 0,
         reviewRounds: 0,
         blockers: [],
@@ -824,19 +909,48 @@ function validateEventCommand(args) {
 
   const sameRepository =
     pr.head?.repo?.full_name === event.repository?.full_name;
+  const shaErrors = [];
+  if (sameRepository) {
+    for (const [name, sha] of [
+      ["base-sha", baseSha],
+      ["head-sha", headSha],
+    ]) {
+      if (!/^[0-9a-f]{40}$/i.test(sha ?? "")) {
+        shaErrors.push(
+          `Active same-repository contracts require --${name} with a full commit SHA.`,
+        );
+        continue;
+      }
+      try {
+        execFileSync("git", ["cat-file", "-e", `${sha}^{commit}`], {
+          cwd: repoRoot,
+          encoding: "utf8",
+          windowsHide: true,
+          stdio: "pipe",
+        });
+      } catch {
+        shaErrors.push(`--${name} does not resolve to an available commit.`);
+      }
+    }
+  }
   const result = validateTaskContract(
     parsed.contract,
     {
       repository: event.repository?.full_name,
       headRepository: pr.head?.repo?.full_name,
+      authorLogin: pr.user?.login,
       baseBranch: pr.base?.ref,
       headBranch: pr.head?.ref,
-      changedFiles: sameRepository ? changedFiles(baseSha, headSha) : [],
+      changedFiles:
+        sameRepository && shaErrors.length === 0
+          ? changedFiles(baseSha, headSha)
+          : [],
     },
     loadConfig(),
   );
   result.errors.unshift(...parsed.errors);
-  if (sameRepository) {
+  result.errors.push(...shaErrors);
+  if (sameRepository && shaErrors.length === 0) {
     result.errors.push(
       ...validateBaseShaAncestry(result.normalized.baseSha, baseSha, headSha),
     );

@@ -32,14 +32,18 @@ const crossReview = {
   reviewerProvider: "claude",
   isolatedSession: true,
   readOnlyEnforced: true,
+  reviewRequestId: `agent-20260726-foundation:${headSha}`,
   reviewSessionId: "claude-review-1",
 };
 
 function clearReviewThreads(state) {
+  const snapshotSequence = (state.reviewThreadSnapshotSequence ?? 0) + 1;
   return transitionPipelineState(state, {
     type: "REVIEW_THREADS_UPDATED",
     checkedHeadSha: state.headSha,
     blockingThreadIds: [],
+    snapshotSequence,
+    snapshotId: `thread-snapshot-${snapshotSequence}`,
   });
 }
 
@@ -62,6 +66,7 @@ function startCrossReview(state, overrides = {}) {
     type: "REVIEW_STARTED",
     reviewedHeadSha: reconciled.headSha,
     ...crossReview,
+    reviewRequestId: reconciled.reviewRequestId,
     ...overrides,
   });
 }
@@ -72,6 +77,7 @@ function passCrossReview(state, overrides = {}) {
     reviewedHeadSha: state.headSha,
     reviewId: "review-result-1",
     ...crossReview,
+    reviewRequestId: state.reviewRequestId,
     ...overrides,
   });
 }
@@ -98,6 +104,7 @@ function context(changedFiles = ["scripts/agent-pipeline.mjs"]) {
   return {
     repository: "blorbeer-cmd/LAN_2026",
     headRepository: "blorbeer-cmd/LAN_2026",
+    authorLogin: "blorbeer-cmd",
     baseBranch: "main",
     headBranch: "codex/agent-pipeline-foundation",
     changedFiles,
@@ -116,7 +123,7 @@ function validContract(overrides = {}, changedFiles) {
   return validation.normalized;
 }
 
-function runValidatorCli(prBody, eventOverrides = {}) {
+function runValidatorCli(prBody, eventOverrides = {}, shaOptions = {}) {
   const directory = mkdtempSync(join(tmpdir(), "agent-pipeline-test-"));
   const eventPath = join(directory, "event.json");
   const outputPath = join(directory, "output.txt");
@@ -125,6 +132,7 @@ function runValidatorCli(prBody, eventOverrides = {}) {
     repository: { full_name: "blorbeer-cmd/LAN_2026" },
     pull_request: {
       body: prBody,
+      user: { login: "blorbeer-cmd" },
       base: { ref: "main" },
       head: {
         ref: "codex/agent-pipeline-foundation",
@@ -134,24 +142,27 @@ function runValidatorCli(prBody, eventOverrides = {}) {
     ...eventOverrides,
   };
   writeFileSync(eventPath, JSON.stringify(event), "utf8");
-  const result = spawnSync(
-    process.execPath,
-    [
-      fileURLToPath(new URL("./agent-pipeline.mjs", import.meta.url)),
-      "validate-event",
-      "--event",
-      eventPath,
-    ],
-    {
-      encoding: "utf8",
-      windowsHide: true,
-      env: {
-        ...process.env,
-        GITHUB_OUTPUT: outputPath,
-        GITHUB_STEP_SUMMARY: summaryPath,
-      },
+  const cliArgs = [
+    fileURLToPath(new URL("./agent-pipeline.mjs", import.meta.url)),
+    "validate-event",
+    "--event",
+    eventPath,
+  ];
+  if (shaOptions.baseSha) {
+    cliArgs.push("--base-sha", shaOptions.baseSha);
+  }
+  if (shaOptions.headSha) {
+    cliArgs.push("--head-sha", shaOptions.headSha);
+  }
+  const result = spawnSync(process.execPath, cliArgs, {
+    encoding: "utf8",
+    windowsHide: true,
+    env: {
+      ...process.env,
+      GITHUB_OUTPUT: outputPath,
+      GITHUB_STEP_SUMMARY: summaryPath,
     },
-  );
+  });
   const output = readFileSync(outputPath, "utf8");
   const summary = readFileSync(summaryPath, "utf8");
   rmSync(directory, { recursive: true, force: true });
@@ -174,7 +185,19 @@ test("a complete task contract is parsed and normalized", () => {
 });
 
 test("the CLI exposes validated contract metadata as GitHub outputs", () => {
-  const { result, output, summary } = runValidatorCli(body());
+  const actualHeadSha = execFileSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).trim();
+  const actualBaseSha = execFileSync(
+    "git",
+    ["merge-base", "HEAD", "origin/main"],
+    { encoding: "utf8" },
+  ).trim();
+  const { result, output, summary } = runValidatorCli(
+    body({ "base-sha": actualBaseSha }),
+    {},
+    { baseSha: actualBaseSha, headSha: actualHeadSha },
+  );
   assert.equal(result.status, 0, result.stderr);
   assert.match(output, /^participating=true$/m);
   assert.match(output, /^valid=true$/m);
@@ -187,6 +210,7 @@ test("the CLI rejects an active contract from a fork", () => {
     repository: { full_name: "blorbeer-cmd/LAN_2026" },
     pull_request: {
       body: body(),
+      user: { login: "blorbeer-cmd" },
       base: { ref: "main" },
       head: {
         ref: "codex/agent-pipeline-foundation",
@@ -213,6 +237,32 @@ test("branch identity, repository origin and required keys are enforced", () => 
     result.errors.some((error) => error.includes("fork pull requests")),
   );
   assert.ok(result.errors.some((error) => error.includes("claude/")));
+});
+
+test("the declared provider is bound to an allowed PR author", () => {
+  const parsed = parseTaskContract(body());
+  const denied = validateTaskContract(
+    parsed.contract,
+    { ...context(), authorLogin: "untrusted-user" },
+    config,
+  );
+  assert.equal(denied.valid, false);
+  assert.match(denied.errors.join("\n"), /not allowed for implementer codex/);
+
+  const allowed = validateTaskContract(
+    parsed.contract,
+    { ...context(), authorLogin: "chatgpt-codex-connector[bot]" },
+    config,
+  );
+  assert.equal(allowed.valid, true);
+});
+
+test("active same-repository CLI validation requires resolvable SHAs", () => {
+  const { result, output, summary } = runValidatorCli(body());
+  assert.equal(result.status, 1);
+  assert.match(output, /^valid=false$/m);
+  assert.match(summary, /require --base-sha with a full commit SHA/i);
+  assert.match(summary, /require --head-sha with a full commit SHA/i);
 });
 
 test("UI paths override an incorrect no declaration and protected paths are reported", () => {
@@ -294,6 +344,8 @@ test("reviewer unavailability selects fallback before waiting", () => {
   const initial = createPipelineState(contract, headSha);
   const fallback = transitionPipelineState(initial, {
     type: "REVIEWER_UNAVAILABLE",
+    reviewedHeadSha: headSha,
+    reviewRequestId: initial.reviewRequestId,
     fallbackAvailable: true,
     reason: "Codex quota exhausted.",
   });
@@ -302,6 +354,8 @@ test("reviewer unavailability selects fallback before waiting", () => {
 
   const waiting = transitionPipelineState(initial, {
     type: "REVIEWER_UNAVAILABLE",
+    reviewedHeadSha: headSha,
+    reviewRequestId: initial.reviewRequestId,
     fallbackAvailable: false,
   });
   assert.equal(waiting.phase, "waiting");
@@ -356,6 +410,7 @@ test("CI and review round limits escalate instead of looping forever", () => {
     reviewId: "review-failure-2",
     ...crossReview,
     reviewSessionId: "claude-review-2",
+    reviewRequestId: reviewState.reviewRequestId,
   });
   assert.equal(reviewState.phase, "needs-human");
   assert.deepEqual(reviewState.blockers, ["review-round-limit"]);
@@ -499,6 +554,7 @@ test("fallback review disclosure remains visible after readiness", () => {
     reviewerProvider: "codex",
     isolatedSession: true,
     readOnlyEnforced: true,
+    reviewRequestId: state.reviewRequestId,
     reviewSessionId: "codex-fallback-1",
   };
   state = clearReviewThreads(state);
@@ -651,6 +707,25 @@ test("later same-head CI failures cannot be overwritten by delayed passes", () =
   assert.equal(state.ciPassed, false);
 });
 
+test("a delayed CI pass cannot overwrite a newer conflict result", () => {
+  let state = createPipelineState(validContract(), headSha);
+  state = passCi(state, { runId: "pass-10", runSequence: 10 });
+  state = startCrossReview(state);
+  state = passCrossReview(state);
+  state = transitionPipelineState(state, {
+    type: "CONFLICT_DETECTED",
+    checkedHeadSha: headSha,
+    runId: "conflict-12",
+    runSequence: 12,
+    runAttempt: 1,
+  });
+  const conflictState = state;
+  state = passCi(state, { runId: "pass-11", runSequence: 11 });
+  assert.deepEqual(state, conflictState);
+  assert.equal(state.phase, "conflict-fix");
+  assert.deepEqual(state.blockers, ["merge-conflict"]);
+});
+
 test("protected changes require current-head human approval", () => {
   const contract = validContract({ scope: "root" }, [
     ".github/workflows/deploy.yml",
@@ -676,6 +751,31 @@ test("protected changes require current-head human approval", () => {
     authorizedBy: "repository-owner",
   });
   assert.equal(state.phase, "ready-for-merge");
+});
+
+test("head updates replace protected-path classification atomically", () => {
+  let state = createPipelineState(validContract(), headSha);
+  state = transitionPipelineState(state, {
+    type: "HEAD_UPDATED",
+    headSha: nextHeadSha,
+    protectedPaths: [".github/workflows/new.yml"],
+    protectedClassificationTrusted: true,
+  });
+  assert.deepEqual(state.protectedPaths, [".github/workflows/new.yml"]);
+  state = passCi(state);
+  state = startCrossReview(state);
+  state = passCrossReview(state);
+  assert.ok(state.blockers.includes("protected-change"));
+
+  let unknown = createPipelineState(validContract(), headSha);
+  unknown = transitionPipelineState(unknown, {
+    type: "HEAD_UPDATED",
+    headSha: nextHeadSha,
+  });
+  unknown = passCi(unknown);
+  unknown = startCrossReview(unknown);
+  unknown = passCrossReview(unknown);
+  assert.ok(unknown.blockers.includes("protected-path-status"));
 });
 
 test("review starts are bound to the current head", () => {
@@ -732,6 +832,50 @@ test("one review session can produce only one terminal result", () => {
     reviewSessionId: "new-session-new-head",
   });
   assert.equal(state.reviewSessionId, "new-session-new-head");
+});
+
+test("a completed review session ignores duplicate start delivery", () => {
+  let state = createPipelineState(validContract(), headSha);
+  state = passCi(state);
+  state = startCrossReview(state);
+  state = passCrossReview(state);
+  const completed = state;
+  state = transitionPipelineState(state, {
+    type: "REVIEW_STARTED",
+    reviewedHeadSha: headSha,
+    ...crossReview,
+  });
+  assert.deepEqual(state, completed);
+  assert.equal(state.reviewSessionCompleted, true);
+  assert.equal(state.phase, "ready-for-merge");
+});
+
+test("reviewer unavailability is bound to the current review request", () => {
+  let state = createPipelineState(validContract(), headSha);
+  state = transitionPipelineState(state, {
+    type: "HEAD_UPDATED",
+    headSha: nextHeadSha,
+    protectedPaths: [],
+    protectedClassificationTrusted: true,
+  });
+  state = startCrossReview(state, {
+    reviewSessionId: "session-for-head-b",
+  });
+  const current = state;
+  state = transitionPipelineState(state, {
+    type: "REVIEWER_UNAVAILABLE",
+    reviewedHeadSha: headSha,
+    reviewRequestId: `agent-20260726-foundation:${headSha}`,
+    fallbackAvailable: true,
+  });
+  assert.deepEqual(state, current);
+  state = transitionPipelineState(state, {
+    type: "REVIEWER_UNAVAILABLE",
+    reviewedHeadSha: nextHeadSha,
+    reviewRequestId: "different-request-for-head-b",
+    fallbackAvailable: true,
+  });
+  assert.deepEqual(state, current);
 });
 
 test("UI classifications are bound to the current head", () => {
@@ -829,6 +973,8 @@ test("blocking review threads prevent readiness until reconciled", () => {
     type: "REVIEW_THREADS_UPDATED",
     checkedHeadSha: headSha,
     blockingThreadIds: ["thread-2", "thread-1", "thread-1"],
+    snapshotSequence: 2,
+    snapshotId: "threads-2",
   });
   assert.deepEqual(state.blockingReviewThreadIds, ["thread-1", "thread-2"]);
   assert.ok(state.blockers.includes("review-threads"));
@@ -836,6 +982,32 @@ test("blocking review threads prevent readiness until reconciled", () => {
     type: "REVIEW_THREADS_UPDATED",
     checkedHeadSha: headSha,
     blockingThreadIds: [],
+    snapshotSequence: 3,
+    snapshotId: "threads-3",
   });
   assert.equal(state.phase, "ready-for-merge");
+});
+
+test("stale review-thread snapshots cannot clear newer blockers", () => {
+  let state = createPipelineState(validContract(), headSha);
+  state = passCi(state);
+  state = startCrossReview(state);
+  state = passCrossReview(state);
+  state = transitionPipelineState(state, {
+    type: "REVIEW_THREADS_UPDATED",
+    checkedHeadSha: headSha,
+    blockingThreadIds: ["new-thread"],
+    snapshotSequence: 3,
+    snapshotId: "threads-3",
+  });
+  const blocked = state;
+  state = transitionPipelineState(state, {
+    type: "REVIEW_THREADS_UPDATED",
+    checkedHeadSha: headSha,
+    blockingThreadIds: [],
+    snapshotSequence: 2,
+    snapshotId: "threads-2-delayed",
+  });
+  assert.deepEqual(state, blocked);
+  assert.ok(state.blockers.includes("review-threads"));
 });

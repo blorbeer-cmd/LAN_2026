@@ -277,6 +277,8 @@ erfolgreich, wenn:
 - das Review exakt den aktuellen Head-SHA geprüft hat,
 - das Review `pass` meldet,
 - alle Review-Findings und blockierenden Threads erledigt sind,
+- Thread-Snapshots für den aktuellen Head monoton versioniert sind und kein älterer Snapshot einen
+  neueren Diskussionsstand überschreiben kann,
 - kein `agent:waiting`, `agent:needs-human` oder `agent:no-auto` aktiv ist,
 - bei UI/UX-Änderungen die Prüfinformation versendet wurde,
 - Änderungen an Workflow oder Infrastruktur für den aktuellen Head ausdrücklich von einem Menschen
@@ -331,7 +333,7 @@ Produktionsdeployment.
   nur dieser konfigurierte Branch zulässig. Der PR-Head wird nur als Diff-Datenquelle verwendet und
   nie ausgeführt; insbesondere nie zusammen mit Schreibtoken oder Secrets.
 - Schreibende Automatik nur für Branches im Hauptrepository, gültigen Task-Vertrag und erlaubte
-  App-Identitäten.
+  App-Identitäten. Der verifizierte PR-Autor muss dabei zur provider-spezifischen Allow-List passen.
 - Drittanbieter-Actions auf feste Commit-SHAs pinnen und Updates bewusst prüfen.
 - Aktionen des Standard-`GITHUB_TOKEN` lösen meist keine Folgeworkflows aus. Interne Übergänge
   deshalb explizit über `workflow_dispatch`/`repository_dispatch`, App-Ereignisse oder den

@@ -31,13 +31,17 @@ executes no pull-request-head code.
 Replace the placeholder values in the hidden `agent-pipeline:task` block from
 `.github/pull_request_template.md`. Leaving the template untouched keeps a human PR outside the
 pipeline. A participating PR must use a same-repository `codex/*` or `claude/*` branch matching its
-declared implementer. The declared scope must cover every non-documentation path in the merge-base
-diff; use `root` for intentional multi-area changes. `ui-change: unknown` remains blocking until a
-later classification resolves it.
+declared implementer, and its verified PR author must appear in that provider's
+`providerAuthorAllowlist`. The declared scope must cover every non-documentation path in the
+merge-base diff; use `root` for intentional multi-area changes. `ui-change: unknown` remains
+blocking until a later classification resolves it.
 
 Protected workflow and infrastructure paths remain blocked until a human explicitly approves the
-current head. Readiness also requires a current-head reconciliation confirming that no blocking
-review threads remain.
+current head. Every new head requires a fresh trusted protected-path classification; missing
+classification remains blocking. Readiness also requires the newest monotonically versioned
+current-head reconciliation confirming that no blocking review threads remain. CI, conflict and
+reviewer-availability events are likewise ordered or request-bound so delayed deliveries cannot
+replace newer evidence.
 
 ## Local verification
 
@@ -66,7 +70,9 @@ Before enabling agent mutations:
 3. Store the GitHub username for notifications in repository variable `AGENT_PIPELINE_OWNER`.
 4. Verify both app identities can update their own feature branches but cannot push or merge to
    `main`.
-5. Add the final readiness status to branch protection only after that status exists and has been
+5. Replace or extend `providerAuthorAllowlist` with the verified GitHub actors that actually create
+   Codex and Claude PRs in this repository.
+6. Add the final readiness status to branch protection only after that status exists and has been
    validated in the pilot.
 
 Repository workflow defaults may remain read-only. Future jobs must request only the granular
