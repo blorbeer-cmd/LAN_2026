@@ -28,9 +28,27 @@ export function challengePayload(key: ChallengeKey, seed: number): ChallengePayl
   return { ...definition, seed, data: {} };
 }
 
-export function scoreReaction(elapsedMs: number): number { return Math.max(0, Math.min(100, Math.round(100 - Math.max(0, elapsedMs - 120) / 35))); }
-export function scoreCps(clicks: number): number { return Math.max(0, Math.min(100, Math.round(clicks * 5))); }
+export function safeScoreInput(value: number): number { return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0; }
+function safeCount(value: number): number { return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0; }
+function safeElapsed(value: number): number { return Number.isFinite(value) ? Math.max(0, value) : 0; }
+export function scoreReaction(elapsedMs: number): number { return safeScoreInput(Math.round(100 - Math.max(0, safeElapsed(elapsedMs) - 120) / 35)); }
+export function scoreCps(clicks: number): number { return safeScoreInput(Math.round(safeCount(clicks) * 5)); }
 export function scoreNumberSalad(correct: number, errors: number, elapsedMs: number): number {
-  return Math.max(0, Math.min(100, Math.round(correct * 12.5 - errors * 8 - Math.max(0, elapsedMs - 2_000) / 180)));
+  return safeScoreInput(Math.round(safeCount(correct) * 12.5 - safeCount(errors) * 8 - Math.max(0, safeElapsed(elapsedMs) - 2_000) / 180));
 }
-export function scoreTiming10(elapsedMs: number): number { return Math.max(0, Math.round(100 - Math.abs(elapsedMs - 10_000) / 20)); }
+export function scoreTiming10(elapsedMs: number): number { return safeScoreInput(Math.round(100 - Math.abs(safeElapsed(elapsedMs) - 10_000) / 20)); }
+
+export function winnerIdForScores(scores: Array<{ playerId: string; score: number }>): string | null {
+  const normalized = scores.map((entry) => ({ ...entry, score: safeScoreInput(entry.score) }));
+  const highest = Math.max(0, ...normalized.map((entry) => entry.score));
+  const winners = normalized.filter((entry) => entry.score === highest);
+  return winners.length === 1 ? winners[0].playerId : null;
+}
+
+export function isCurrentChallenge(expectedIndex: number, actualIndex: number): boolean {
+  return Number.isInteger(expectedIndex) && expectedIndex === actualIndex;
+}
+
+export function remainingUntil(deadlineAt: number | null, now: number): number | null {
+  return deadlineAt === null ? null : Math.max(0, deadlineAt - now);
+}

@@ -145,6 +145,13 @@ function updateWatchMeta(state) {
 function stateHtml(state) {
   if (!state) return '<div class="empty-state">Verbindung zum Spiel wird hergestellt…</div>';
   if (state.gameType === 'quiz') return '<div class="arcade-watch-safe-note">Frage und Antworten werden für Zuschauer verborgen.</div>';
+  if (state.gameType === 'challenge-rush') {
+    const challenge = typeof state.challenge === 'object' ? state.challenge : null;
+    const title = challenge?.title ?? state.challenge ?? 'Mini-Challenge';
+    const progress = `${Number(state.challengeIndex ?? 0) + 1} / ${Number(state.challengeCount ?? 4)}`;
+    const scores = (state.scores ?? []).map((score) => `<div class="challenge-rush-score-row"><span>${escapeHtml(score.name ?? 'Spieler')}${score.forfeited ? ' · Forfait' : ''}</span><strong>${escapeHtml(String(score.score ?? 0))}</strong></div>`).join('');
+    return `<section class="challenge-rush-watch card stack"><div class="row-between"><strong>${escapeHtml(String(title))}</strong><span>${escapeHtml(progress)}</span></div><p class="muted">${state.paused ? 'Pause' : state.phase === 'countdown' ? 'Startet gleich' : state.phase === 'result' ? 'Auswertung' : 'Läuft'}</p><div class="challenge-rush-scoreboard">${scores || '<span class="muted">Noch keine Punkte</span>'}</div></section>`;
+  }
   
   const [width, height] = arcadeStreamCanvasSize(state.gameType);
   return `<canvas id="arcade-watch-canvas" width="${width}" height="${height}" aria-label="Livebild des Spiels"></canvas>`;
@@ -211,7 +218,7 @@ export function renderArcadeWatch(container) {
     </div>`;
   lastRenderSignature = votingSignature(state);
   container.querySelector('#arcade-watch-back')?.addEventListener('click', leaveWatch);
-  if (state && state.gameType !== 'quiz' && container.querySelector('#arcade-watch-canvas')) {
+  if (state && state.gameType !== 'quiz' && state.gameType !== 'challenge-rush' && container.querySelector('#arcade-watch-canvas')) {
     drawArcadeStreamCanvas(container.querySelector('#arcade-watch-canvas'), state);
   }
   if (state?.gameType === 'scribble') {

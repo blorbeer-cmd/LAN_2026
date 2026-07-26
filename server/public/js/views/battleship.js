@@ -349,7 +349,7 @@ function lobbyList() {
 }
 
 export function renderBattleshipLobbyCard() {
-  return `<div class="card stack arcade-lobby-card"><p class="muted">Duell · genau 2 Spieler</p>${lobbyList()}<div class="arcade-lobby-create-actions"><button type="button" class="btn btn-primary btn-sm" id="battleship-create" ${myBattleshipLobby() || !myId() ? 'disabled' : ''}>Lobby öffnen</button></div></div>`;
+  return `<div class="card stack arcade-lobby-card">${lobbyList()}<div class="arcade-lobby-create-actions"><button type="button" class="btn btn-primary btn-sm" id="battleship-create" ${myBattleshipLobby() || !myId() ? 'disabled' : ''}>Lobby öffnen</button></div></div>`;
 }
 
 export function wireBattleshipLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
