@@ -13,8 +13,9 @@ The foundation is deliberately read-only:
 - `review-session-prompt.md` contains the copy-paste prompt and operating instructions for an
   isolated Codex or Claude review session.
 - The `pull_request_target` workflow definition is loaded from the trusted default branch and runs
-  the validator from the trusted PR base commit. The pull-request head is fetched only as diff data,
-  never executed, and the workflow currently has no write permissions or secrets.
+  the validator and configuration from that same trusted branch. The declared PR base must equal the
+  configured default branch. The pull-request head is fetched only as diff data, never executed,
+  and the workflow currently has no write permissions or secrets.
 - No agent is invoked, no label or commit status is written, and no branch-protection setting is
   changed yet.
 
@@ -22,8 +23,8 @@ Do not make `Agent pipeline / contract` a required check until this foundation h
 the first post-merge pilot run has succeeded. GitHub does not run a newly introduced
 `pull_request_target` workflow from the introducing PR; this is the intentional trust-preserving
 bootstrap. Once the workflow exists on the default branch, its definition cannot be replaced by a
-feature branch. For PRs targeting an older base without the validator, it reports a documented
-skip and executes no pull-request-head code.
+feature branch. Until the default branch contains the validator, it reports a documented skip and
+executes no pull-request-head code.
 
 ## Activating a PR
 
@@ -33,6 +34,10 @@ pipeline. A participating PR must use a same-repository `codex/*` or `claude/*` 
 declared implementer. The declared scope must cover every non-documentation path in the merge-base
 diff; use `root` for intentional multi-area changes. `ui-change: unknown` remains blocking until a
 later classification resolves it.
+
+Protected workflow and infrastructure paths remain blocked until a human explicitly approves the
+current head. Readiness also requires a current-head reconciliation confirming that no blocking
+review threads remain.
 
 ## Local verification
 

@@ -19,6 +19,7 @@ Replace every `<PLACEHOLDER>` before starting the review:
 | `<REVIEWER_PROVIDER>`    | Provider running this review: `codex` or `claude`                                                  |
 | `<REVIEW_MODE>`          | `cross` for the other provider, `fallback` for a fresh session of the implementation provider      |
 | `<REVIEW_SESSION_ID>`    | Unique identifier for this fresh, isolated review session                                          |
+| `<READ_ONLY_ENFORCED>`   | Must be `true`; otherwise the reviewer is unavailable and the review is blocked                    |
 | `<TASK_GOAL>`            | Original objective and acceptance criteria, without the implementation session's private reasoning |
 
 Resolve the current head immediately before the review. For example:
@@ -44,6 +45,7 @@ Implementierungs-Agent: <IMPLEMENTER>
 Review-Anbieter: <REVIEWER_PROVIDER>
 Review-Modus: <REVIEW_MODE>
 Review-Session-ID: <REVIEW_SESSION_ID>
+Read-only technisch erzwungen: <READ_ONLY_ENFORCED>
 
 Ziel und Abnahmekriterien:
 <TASK_GOAL>
@@ -52,6 +54,9 @@ Unabhängigkeits- und Sicherheitsregeln:
 
 1. Dies ist ausschließlich ein Review. Ändere keine Datei, erstelle keinen Commit, pushe nichts,
    approviere und merge den PR nicht und löse keine Review-Threads auf.
+   Diese Einschränkung muss zusätzlich durch Sandbox, Berechtigungsmodus oder einen technisch
+   schreibgeschützten Token erzwungen sein. Eine reine Prompt-Anweisung genügt nicht. Kann die
+   Umgebung das nicht garantieren, stoppe mit verdict "blocked".
 2. Verwende keinen Implementierungs-Chatverlauf und übernimm keine dortige Begründung. Leite das
    Verhalten selbst aus Auftrag, Diff, aktuellem Quellcode, Tests und Repository-Regeln ab.
 3. Lies zuerst AGENTS.md und DEVELOPMENT_GUIDELINES.md vollständig. Lade danach nur die für die
@@ -122,6 +127,7 @@ Beende die Antwort mit genau einem JSON-Block und danach keinem weiteren Text:
   "review_mode": "<REVIEW_MODE>",
   "review_session_id": "<REVIEW_SESSION_ID>",
   "isolated_session": true,
+  "read_only_enforced": true,
   "implementer": "<IMPLEMENTER>",
   "base_branch": "<BASE_BRANCH>",
   "head_branch": "<EXPECTED_HEAD_BRANCH>",
@@ -154,8 +160,9 @@ Beende die Antwort mit genau einem JSON-Block und danach keinem weiteren Text:
    implementation worktree.
 4. Start `/review` against `<BASE_BRANCH>` with custom review instructions, or paste the complete
    prompt above into the new task and name the PR explicitly.
-5. Keep the permission mode read-only. If the selected surface cannot guarantee read-only tools,
-   rely on the prompt restriction and verify afterward that `git status --short` is unchanged.
+5. Require an enforced read-only sandbox/tool mode and credentials without repository write
+   permissions. If the selected surface cannot guarantee both, treat Codex as unavailable and do
+   not perform the review. A prompt restriction and a later `git status` check are insufficient.
 6. Confirm that the final `reviewed_head_sha` equals the current GitHub head SHA. Treat a mismatch,
    missing JSON block or `blocked` verdict as no completed review.
 7. Put actionable findings into the PR discussion or hand the complete result to the
@@ -168,9 +175,9 @@ Beende die Antwort mit genau einem JSON-Block und danach keinem weiteren Text:
 1. Fetch the PR metadata and fill every placeholder.
 2. Open a new Claude Code process or a new Claude task. Do not use `--continue`, `--resume`, or the
    implementation conversation.
-3. Prefer a clean, dedicated worktree checked out at `<EXPECTED_HEAD_BRANCH>`. Start Claude with a
-   non-editing permission mode, for example `claude --permission-mode plan`, and paste the complete
-   prompt.
+3. Prefer a clean, dedicated worktree checked out at `<EXPECTED_HEAD_BRANCH>`. Start Claude only
+   with a technically enforced non-editing permission mode and credentials without repository
+   write access. If that cannot be guaranteed, treat Claude as unavailable.
 4. Do not use `--from-pr` if it would resume a session previously linked to the implementation PR;
    session separation is more important than convenience.
 5. Confirm that no files changed and that the final `reviewed_head_sha` matches GitHub.
@@ -181,5 +188,6 @@ Beende die Antwort mit genau einem JSON-Block und danach keinem weiteren Text:
 
 For the normal cross-review, set `review_mode` to `cross` and use the provider opposite the
 implementer. If that provider is unavailable, start a fresh session of the implementation
-provider and set `review_mode` to `fallback`. Never reuse the implementation conversation and
-never change `verdict` to `pass` merely because the preferred reviewer ran out of quota.
+provider and set `review_mode` to `fallback`, but only with enforced read-only permissions. Never
+reuse the implementation conversation, never rely on prompt-only write restrictions and never
+change `verdict` to `pass` merely because the preferred reviewer ran out of quota.

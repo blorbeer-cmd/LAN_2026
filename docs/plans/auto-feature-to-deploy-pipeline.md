@@ -95,7 +95,9 @@ sondern ein Review mit reduzierter Anbieter-Unabhängigkeit. Er wird im PR sicht
 - Als Kontext nur Task-Vertrag, Repository-Regeln, Diff gegen `main`, CI-Ergebnisse und bereits
   veröffentlichte PR-Diskussion.
 - Frischer Checkout oder Worktree auf dem geprüften Head-SHA.
-- Read-only: keine Dateiänderung, kein Commit und kein Push durch die Review-Session.
+- Read-only muss technisch durch Sandbox, Berechtigungsmodus und schreibgeschützte Credentials
+  erzwungen sein. Eine reine Prompt-Anweisung genügt nicht. Kann die gewählte Oberfläche das nicht
+  garantieren, gilt der Reviewer als nicht verfügbar.
 - Gleiches strukturiertes Reviewformat und dieselben Qualitätsregeln wie beim Cross-Review.
 - Das Ergebnis muss Anbieter, Sessiontyp und geprüften Head-SHA nennen.
 
@@ -277,7 +279,8 @@ erfolgreich, wenn:
 - alle Review-Findings und blockierenden Threads erledigt sind,
 - kein `agent:waiting`, `agent:needs-human` oder `agent:no-auto` aktiv ist,
 - bei UI/UX-Änderungen die Prüfinformation versendet wurde,
-- keine verbotenen automatischen Änderungen an Workflow, Infrastruktur oder Secrets vorliegen.
+- Änderungen an Workflow oder Infrastruktur für den aktuellen Head ausdrücklich von einem Menschen
+  freigegeben wurden und keine Secrets automatisiert verändert werden.
 
 Das Gate setzt `agent:ready-for-merge` und informiert den Nutzer. Es approvt und merged nicht.
 Auto-Merge bleibt aus. Der Nutzer prüft den PR und führt den Merge selbst aus. Damit ist dieser
@@ -322,11 +325,11 @@ Produktionsdeployment.
   read-only bleiben.
 - Agenten dürfen nur den eigenen Feature-Branch ändern. Kein Token darf direkten Push auf `main`,
   Merge, Branch-Protection-Änderung oder Zugriff auf Deploy-Secrets erlauben.
-- PR-validierende Workflows verwenden `pull_request_target` oder einen Base-eigenen Dispatcher,
+- PR-validierende Workflows verwenden `pull_request_target` oder einen Default-Branch-eigenen Dispatcher,
   sodass GitHub ausschließlich die Workflowdefinition vom vertrauenswürdigen Default-Branch lädt.
-  Validator und Konfiguration stammen zusätzlich vom PR-Base-Commit. Der PR-Head wird nur als
-  Diff-Datenquelle verwendet und nie ausgeführt; insbesondere nie zusammen mit Schreibtoken oder
-  Secrets.
+  Validator und Konfiguration stammen ebenfalls ausschließlich vom Default-Branch; als PR-Base ist
+  nur dieser konfigurierte Branch zulässig. Der PR-Head wird nur als Diff-Datenquelle verwendet und
+  nie ausgeführt; insbesondere nie zusammen mit Schreibtoken oder Secrets.
 - Schreibende Automatik nur für Branches im Hauptrepository, gültigen Task-Vertrag und erlaubte
   App-Identitäten.
 - Drittanbieter-Actions auf feste Commit-SHAs pinnen und Updates bewusst prüfen.

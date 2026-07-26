@@ -109,6 +109,11 @@ export function validateTaskContract(contract, context, config = loadConfig()) {
       `base-branch must match the PR base (${context.baseBranch ?? "unknown"}).`,
     );
   }
+  if (context.baseBranch !== config.defaultBaseBranch) {
+    errors.push(
+      `PR base must be the configured default branch (${config.defaultBaseBranch}).`,
+    );
+  }
   if (contract?.["head-branch"] !== context.headBranch) {
     errors.push(
       `head-branch must match the PR head (${context.headBranch ?? "unknown"}).`,
@@ -213,7 +218,7 @@ export function createPipelineState(contract, headSha) {
     throw new Error("A normalized contract and full head SHA are required.");
   }
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     taskId: contract.taskId,
     implementer: contract.implementer,
     phase: "implementing",
@@ -222,14 +227,21 @@ export function createPipelineState(contract, headSha) {
     reviewMode: null,
     reviewerProvider: null,
     reviewSessionId: null,
+    reviewSessionCompleted: false,
     lastReviewResultId: null,
     lastReviewFailureHeadSha: null,
     verdict: null,
     ciPassed: false,
     ciRunId: null,
+    ciRunSequence: null,
+    ciRunAttempt: null,
+    ciConclusion: null,
     lastCiFailureRunId: null,
     lastCiFailureHeadSha: null,
     conflictFree: false,
+    protectedPaths: [...(contract.protectedPaths ?? [])],
+    protectedApprovedHeadSha: null,
+    blockingReviewThreadIds: null,
     uiChanged: contract.uiChanged,
     uiNotifiedHeadSha: null,
     ciFixRounds: 0,
@@ -258,6 +270,20 @@ function ensureCurrentCi(state, event) {
   if (typeof event.runId !== "string" || event.runId.length === 0) {
     throw new Error(`${event.type} requires a stable runId.`);
   }
+  if (!Number.isSafeInteger(event.runSequence) || event.runSequence < 1) {
+    throw new Error(`${event.type} requires a positive integer runSequence.`);
+  }
+  if (!Number.isSafeInteger(event.runAttempt) || event.runAttempt < 1) {
+    throw new Error(`${event.type} requires a positive integer runAttempt.`);
+  }
+}
+
+function compareCiOrder(state, event) {
+  if (state.ciRunSequence === null) return 1;
+  if (event.runSequence !== state.ciRunSequence) {
+    return event.runSequence - state.ciRunSequence;
+  }
+  return event.runAttempt - state.ciRunAttempt;
 }
 
 function validateReviewIdentity(state, event, requireStarted = false) {
@@ -287,11 +313,12 @@ function validateReviewIdentity(state, event, requireStarted = false) {
   }
   if (
     event.isolatedSession !== true ||
+    event.readOnlyEnforced !== true ||
     typeof event.reviewSessionId !== "string" ||
     event.reviewSessionId.length === 0
   ) {
     throw new Error(
-      "Review events require a fresh isolated session and reviewSessionId.",
+      "Review events require a fresh isolated, enforced read-only session and reviewSessionId.",
     );
   }
   if (
@@ -299,7 +326,8 @@ function validateReviewIdentity(state, event, requireStarted = false) {
     (!state.reviewSessionId ||
       state.reviewSessionId !== event.reviewSessionId ||
       state.reviewerProvider !== event.reviewerProvider ||
-      state.reviewMode !== event.mode)
+      state.reviewMode !== event.mode ||
+      state.reviewSessionCompleted)
   ) {
     throw new Error("Review result does not match the started review session.");
   }
@@ -309,6 +337,17 @@ function withReadiness(state) {
   const blockers = [];
   if (!state.ciPassed) blockers.push("ci");
   if (!state.conflictFree) blockers.push("merge-conflict");
+  if (
+    state.protectedPaths.length > 0 &&
+    state.protectedApprovedHeadSha !== state.headSha
+  ) {
+    blockers.push("protected-change");
+  }
+  if (state.blockingReviewThreadIds === null) {
+    blockers.push("review-thread-status");
+  } else if (state.blockingReviewThreadIds.length > 0) {
+    blockers.push("review-threads");
+  }
   if (state.verdict !== "pass" || state.reviewedHeadSha !== state.headSha) {
     blockers.push("review");
   }
@@ -320,13 +359,26 @@ function withReadiness(state) {
   if (blockers.length === 0) {
     return { ...state, phase: "ready-for-merge", blockers: [] };
   }
-  return { ...state, blockers, phase: "review" };
+  const activePhase = new Set([
+    "implementing",
+    "ci-fix",
+    "conflict-fix",
+    "waiting",
+  ]).has(state.phase);
+  return {
+    ...state,
+    blockers,
+    phase: activePhase ? state.phase : "review",
+  };
 }
 
 export function transitionPipelineState(current, event) {
   const state = structuredClone(current);
   const terminalPhase = new Set(["disabled", "needs-human"]).has(state.phase);
-  if (terminalPhase && !new Set(["RESUME", "DISABLE"]).has(event.type)) {
+  if (
+    terminalPhase &&
+    !new Set(["RESUME", "DISABLE", "HEAD_UPDATED"]).has(event.type)
+  ) {
     return state;
   }
   switch (event.type) {
@@ -343,31 +395,53 @@ export function transitionPipelineState(current, event) {
             : state.uiChanged;
       return {
         ...state,
-        phase: "implementing",
+        phase: terminalPhase ? state.phase : "implementing",
         headSha: event.headSha,
         reviewedHeadSha: null,
         reviewMode: null,
         reviewerProvider: null,
         reviewSessionId: null,
+        reviewSessionCompleted: false,
         lastReviewResultId: null,
         verdict: null,
         ciPassed: false,
         ciRunId: null,
+        ciRunSequence: null,
+        ciRunAttempt: null,
+        ciConclusion: null,
         lastCiFailureRunId: null,
         conflictFree: false,
+        protectedApprovedHeadSha: null,
+        blockingReviewThreadIds: null,
         uiChanged,
         uiNotifiedHeadSha: null,
-        blockers: [],
-        lastReason: null,
+        blockers: terminalPhase ? state.blockers : [],
+        lastReason: terminalPhase ? state.lastReason : null,
       };
     }
     case "CI_FAILED": {
       ensureCurrentCi(state, event);
+      const order = compareCiOrder(state, event);
+      if (order < 0) return state;
       if (
         event.runId === state.lastCiFailureRunId ||
-        state.lastCiFailureHeadSha === state.headSha
+        (order === 0 && state.ciConclusion === "failure")
       ) {
         return state;
+      }
+      if (state.lastCiFailureHeadSha === state.headSha) {
+        return {
+          ...state,
+          phase: "ci-fix",
+          ciPassed: false,
+          ciRunId: event.runId,
+          ciRunSequence: event.runSequence,
+          ciRunAttempt: event.runAttempt,
+          ciConclusion: "failure",
+          lastCiFailureRunId: event.runId,
+          blockers: ["ci"],
+          lastReason: event.reason ?? null,
+        };
       }
       const nextRound = state.ciFixRounds + 1;
       if (nextRound > state.maxCiFixRounds) {
@@ -375,6 +449,10 @@ export function transitionPipelineState(current, event) {
           ...state,
           phase: "needs-human",
           ciFixRounds: nextRound,
+          ciRunId: event.runId,
+          ciRunSequence: event.runSequence,
+          ciRunAttempt: event.runAttempt,
+          ciConclusion: "failure",
           lastCiFailureRunId: event.runId,
           lastCiFailureHeadSha: state.headSha,
           blockers: ["ci-round-limit"],
@@ -386,6 +464,9 @@ export function transitionPipelineState(current, event) {
         phase: "ci-fix",
         ciPassed: false,
         ciRunId: event.runId,
+        ciRunSequence: event.runSequence,
+        ciRunAttempt: event.runAttempt,
+        ciConclusion: "failure",
         ciFixRounds: nextRound,
         lastCiFailureRunId: event.runId,
         lastCiFailureHeadSha: state.headSha,
@@ -404,15 +485,33 @@ export function transitionPipelineState(current, event) {
       };
     case "CI_PASSED":
       ensureCurrentCi(state, event);
+      if (
+        compareCiOrder(state, event) < 0 ||
+        (compareCiOrder(state, event) === 0 && state.ciConclusion === "failure")
+      ) {
+        return state;
+      }
       return withReadiness({
         ...state,
         ciPassed: true,
         ciRunId: event.runId,
+        ciRunSequence: event.runSequence,
+        ciRunAttempt: event.runAttempt,
+        ciConclusion: "success",
         conflictFree: event.conflictFree === true,
         phase: "review",
         lastReason: null,
       });
     case "REVIEW_STARTED":
+      ensureCurrentReview(state, event);
+      if (
+        state.verdict === "changes-required" &&
+        state.reviewedHeadSha === state.headSha
+      ) {
+        throw new Error(
+          "A review with findings requires a new head before another review can start.",
+        );
+      }
       validateReviewIdentity(state, event);
       return {
         ...state,
@@ -420,6 +519,7 @@ export function transitionPipelineState(current, event) {
         reviewMode: event.mode,
         reviewerProvider: event.reviewerProvider,
         reviewSessionId: event.reviewSessionId,
+        reviewSessionCompleted: false,
         blockers: ["review"],
         lastReason: null,
       };
@@ -441,14 +541,12 @@ export function transitionPipelineState(current, event) {
       };
     case "REVIEW_CHANGES_REQUESTED": {
       ensureCurrentReview(state, event);
-      validateReviewIdentity(state, event, true);
       if (typeof event.reviewId !== "string" || event.reviewId.length === 0) {
         throw new Error("Review results require a stable reviewId.");
       }
-      if (
-        event.reviewId === state.lastReviewResultId ||
-        state.lastReviewFailureHeadSha === state.headSha
-      ) {
+      if (event.reviewId === state.lastReviewResultId) return state;
+      validateReviewIdentity(state, event, true);
+      if (state.lastReviewFailureHeadSha === state.headSha) {
         return state;
       }
       const nextRound = state.reviewRounds + 1;
@@ -460,6 +558,7 @@ export function transitionPipelineState(current, event) {
           verdict: "changes-required",
           reviewRounds: nextRound,
           lastReviewResultId: event.reviewId,
+          reviewSessionCompleted: true,
           lastReviewFailureHeadSha: state.headSha,
           blockers: ["review-round-limit"],
           lastReason: event.reason ?? "Review round limit reached.",
@@ -472,6 +571,7 @@ export function transitionPipelineState(current, event) {
         verdict: "changes-required",
         reviewRounds: nextRound,
         lastReviewResultId: event.reviewId,
+        reviewSessionCompleted: true,
         lastReviewFailureHeadSha: state.headSha,
         blockers: ["review-findings"],
         lastReason: event.reason ?? null,
@@ -479,19 +579,25 @@ export function transitionPipelineState(current, event) {
     }
     case "REVIEW_PASSED":
       ensureCurrentReview(state, event);
-      validateReviewIdentity(state, event, true);
       if (typeof event.reviewId !== "string" || event.reviewId.length === 0) {
         throw new Error("Review results require a stable reviewId.");
       }
       if (event.reviewId === state.lastReviewResultId) return state;
+      validateReviewIdentity(state, event, true);
       return withReadiness({
         ...state,
         reviewedHeadSha: event.reviewedHeadSha,
         verdict: "pass",
         lastReviewResultId: event.reviewId,
+        reviewSessionCompleted: true,
         lastReason: null,
       });
     case "UI_CLASSIFIED":
+      if (event.classifiedHeadSha !== state.headSha) {
+        throw new Error(
+          `Stale UI classification for ${event.classifiedHeadSha ?? "unknown"}; current head is ${state.headSha}.`,
+        );
+      }
       if (typeof event.uiChanged !== "boolean") {
         throw new Error("UI_CLASSIFIED requires uiChanged true or false.");
       }
@@ -499,6 +605,47 @@ export function transitionPipelineState(current, event) {
         ...state,
         uiChanged: state.uiChanged === true ? true : event.uiChanged,
         uiNotifiedHeadSha: event.uiChanged ? state.uiNotifiedHeadSha : null,
+        lastReason: null,
+      });
+    case "REVIEW_THREADS_UPDATED":
+      if (event.checkedHeadSha !== state.headSha) {
+        throw new Error(
+          `Stale review-thread status for ${event.checkedHeadSha ?? "unknown"}; current head is ${state.headSha}.`,
+        );
+      }
+      if (
+        !Array.isArray(event.blockingThreadIds) ||
+        event.blockingThreadIds.some(
+          (id) => typeof id !== "string" || id.length === 0,
+        )
+      ) {
+        throw new Error(
+          "REVIEW_THREADS_UPDATED requires an array of blocking thread IDs.",
+        );
+      }
+      return withReadiness({
+        ...state,
+        blockingReviewThreadIds: [...new Set(event.blockingThreadIds)].sort(),
+        lastReason: null,
+      });
+    case "PROTECTED_CHANGE_APPROVED":
+      if (
+        event.authorization !== "human" ||
+        typeof event.authorizedBy !== "string" ||
+        event.authorizedBy.length === 0
+      ) {
+        throw new Error(
+          "PROTECTED_CHANGE_APPROVED requires explicit human authorization.",
+        );
+      }
+      if (event.approvedHeadSha !== state.headSha) {
+        throw new Error(
+          `Stale protected-change approval for ${event.approvedHeadSha ?? "unknown"}; current head is ${state.headSha}.`,
+        );
+      }
+      return withReadiness({
+        ...state,
+        protectedApprovedHeadSha: event.approvedHeadSha,
         lastReason: null,
       });
     case "UI_NOTIFIED":
@@ -543,14 +690,20 @@ export function transitionPipelineState(current, event) {
         reviewMode: null,
         reviewerProvider: null,
         reviewSessionId: null,
+        reviewSessionCompleted: false,
         lastReviewResultId: null,
         lastReviewFailureHeadSha: null,
         verdict: null,
         ciPassed: false,
         ciRunId: null,
+        ciRunSequence: null,
+        ciRunAttempt: null,
+        ciConclusion: null,
         lastCiFailureRunId: null,
         lastCiFailureHeadSha: null,
         conflictFree: false,
+        protectedApprovedHeadSha: null,
+        blockingReviewThreadIds: null,
         ciFixRounds: 0,
         reviewRounds: 0,
         blockers: [],
@@ -586,7 +739,7 @@ export function changedFiles(baseSha, headSha, cwd = repoRoot) {
   if (!baseSha || !headSha) return [];
   const output = execFileSync(
     "git",
-    ["diff", "--name-only", "-z", `${baseSha}...${headSha}`],
+    ["diff", "--no-renames", "--name-only", "-z", `${baseSha}...${headSha}`],
     { cwd, encoding: "utf8", windowsHide: true },
   );
   return output.split("\0").filter(Boolean);

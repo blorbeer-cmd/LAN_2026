@@ -20,12 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # Run only the validator and configuration from the trusted base commit.
+      # Run only the validator and configuration from the trusted default branch.
       # The PR head is fetched as data for the diff but no code from it executes.
       - name: Check out trusted pipeline validator
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -37,7 +37,7 @@ jobs:
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Trusted base commit does not contain the agent pipeline validator yet; safely skipping this bootstrap run."
+            echo "::notice::Trusted default branch does not contain the agent pipeline validator yet; safely skipping this bootstrap run."
           fi
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -73,6 +73,6 @@ jobs:
           {
             echo "## Agent pipeline contract"
             echo
-            echo "Skipped safely because the trusted PR base commit does not contain the validator yet."
+            echo "Skipped safely because the trusted default branch does not contain the validator yet."
             echo "No code from the pull-request head was executed."
           } >> "$GITHUB_STEP_SUMMARY"

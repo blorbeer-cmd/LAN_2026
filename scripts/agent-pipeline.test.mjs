@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -25,22 +31,36 @@ const crossReview = {
   mode: "cross",
   reviewerProvider: "claude",
   isolatedSession: true,
+  readOnlyEnforced: true,
   reviewSessionId: "claude-review-1",
 };
+
+function clearReviewThreads(state) {
+  return transitionPipelineState(state, {
+    type: "REVIEW_THREADS_UPDATED",
+    checkedHeadSha: state.headSha,
+    blockingThreadIds: [],
+  });
+}
 
 function passCi(state, overrides = {}) {
   return transitionPipelineState(state, {
     type: "CI_PASSED",
     checkedHeadSha: state.headSha,
     runId: "ci-run-1",
+    runSequence: 1,
+    runAttempt: 1,
     conflictFree: true,
     ...overrides,
   });
 }
 
 function startCrossReview(state, overrides = {}) {
-  return transitionPipelineState(state, {
+  const reconciled =
+    state.blockingReviewThreadIds === null ? clearReviewThreads(state) : state;
+  return transitionPipelineState(reconciled, {
     type: "REVIEW_STARTED",
+    reviewedHeadSha: reconciled.headSha,
     ...crossReview,
     ...overrides,
   });
@@ -297,6 +317,8 @@ test("CI and review round limits escalate instead of looping forever", () => {
     type: "CI_FAILED",
     checkedHeadSha: headSha,
     runId: "ci-failure-1",
+    runSequence: 1,
+    runAttempt: 1,
   });
   ciState = transitionPipelineState(ciState, {
     type: "HEAD_UPDATED",
@@ -306,6 +328,8 @@ test("CI and review round limits escalate instead of looping forever", () => {
     type: "CI_FAILED",
     checkedHeadSha: nextHeadSha,
     runId: "ci-failure-2",
+    runSequence: 2,
+    runAttempt: 1,
   });
   assert.equal(ciState.phase, "needs-human");
   assert.deepEqual(ciState.blockers, ["ci-round-limit"]);
@@ -345,6 +369,8 @@ test("CI results are SHA-bound and require explicit conflict confirmation", () =
         type: "CI_PASSED",
         checkedHeadSha: baseSha,
         runId: "stale-ci",
+        runSequence: 1,
+        runAttempt: 1,
         conflictFree: true,
       }),
     /Stale CI result/,
@@ -353,6 +379,8 @@ test("CI results are SHA-bound and require explicit conflict confirmation", () =
     type: "CI_PASSED",
     checkedHeadSha: headSha,
     runId: "ci-without-mergeability",
+    runSequence: 1,
+    runAttempt: 1,
   });
   assert.equal(noMergeability.ciPassed, true);
   assert.equal(noMergeability.conflictFree, false);
@@ -396,34 +424,29 @@ test("duplicate head and repeated CI failures for one head are idempotent", () =
     type: "CI_FAILED",
     checkedHeadSha: headSha,
     runId: "same-ci-failure",
+    runSequence: 1,
+    runAttempt: 1,
   };
   state = transitionPipelineState(state, failure);
   state = transitionPipelineState(state, {
     ...failure,
     runId: "different-run-same-head",
+    runSequence: 2,
   });
   assert.equal(state.ciFixRounds, 1);
 });
 
-test("multiple review failure deliveries count once per head", () => {
+test("duplicate review failure deliveries are idempotent", () => {
   let state = createPipelineState(validContract(), headSha);
   state = startCrossReview(state);
-  state = transitionPipelineState(state, {
+  const failure = {
     type: "REVIEW_CHANGES_REQUESTED",
     reviewedHeadSha: headSha,
     reviewId: "review-failure-delivery-1",
     ...crossReview,
-  });
-  state = startCrossReview(state, {
-    reviewSessionId: "claude-review-redelivery",
-  });
-  state = transitionPipelineState(state, {
-    type: "REVIEW_CHANGES_REQUESTED",
-    reviewedHeadSha: headSha,
-    reviewId: "review-failure-delivery-2",
-    ...crossReview,
-    reviewSessionId: "claude-review-redelivery",
-  });
+  };
+  state = transitionPipelineState(state, failure);
+  state = transitionPipelineState(state, failure);
   assert.equal(state.reviewRounds, 1);
 });
 
@@ -433,6 +456,7 @@ test("review provider, isolation and session identity are enforced", () => {
     () =>
       transitionPipelineState(initial, {
         type: "REVIEW_STARTED",
+        reviewedHeadSha: headSha,
         ...crossReview,
         reviewerProvider: "codex",
       }),
@@ -442,10 +466,21 @@ test("review provider, isolation and session identity are enforced", () => {
     () =>
       transitionPipelineState(initial, {
         type: "REVIEW_STARTED",
+        reviewedHeadSha: headSha,
         ...crossReview,
         isolatedSession: false,
       }),
-    /fresh isolated session/,
+    /fresh isolated/,
+  );
+  assert.throws(
+    () =>
+      transitionPipelineState(initial, {
+        type: "REVIEW_STARTED",
+        reviewedHeadSha: headSha,
+        ...crossReview,
+        readOnlyEnforced: false,
+      }),
+    /enforced read-only/,
   );
 });
 
@@ -463,10 +498,13 @@ test("fallback review disclosure remains visible after readiness", () => {
     mode: "fallback",
     reviewerProvider: "codex",
     isolatedSession: true,
+    readOnlyEnforced: true,
     reviewSessionId: "codex-fallback-1",
   };
+  state = clearReviewThreads(state);
   state = transitionPipelineState(state, {
     type: "REVIEW_STARTED",
+    reviewedHeadSha: headSha,
     ...fallbackIdentity,
   });
   state = transitionPipelineState(state, {
@@ -491,6 +529,7 @@ test("unknown UI classification blocks readiness until explicitly resolved", () 
   assert.deepEqual(state.blockers, ["ui-classification"]);
   state = transitionPipelineState(state, {
     type: "UI_CLASSIFIED",
+    classifiedHeadSha: headSha,
     uiChanged: false,
   });
   assert.equal(state.phase, "ready-for-merge");
@@ -542,9 +581,19 @@ test("changed files are classified from the merge base", () => {
       cwd: directory,
     });
     writeFileSync(join(directory, "common.txt"), "common\n", "utf8");
+    mkdirSync(join(directory, "server", "src"), { recursive: true });
+    writeFileSync(
+      join(directory, "server", "src", "auth.ts"),
+      "export {};\n",
+      "utf8",
+    );
     execFileSync("git", ["add", "."], { cwd: directory });
     execFileSync("git", ["commit", "-m", "common"], { cwd: directory });
     execFileSync("git", ["checkout", "-b", "feature"], { cwd: directory });
+    mkdirSync(join(directory, "docs"), { recursive: true });
+    execFileSync("git", ["mv", "server/src/auth.ts", "docs/auth.ts"], {
+      cwd: directory,
+    });
     writeFileSync(join(directory, "feature.txt"), "feature\n", "utf8");
     execFileSync("git", ["add", "."], { cwd: directory });
     execFileSync("git", ["commit", "-m", "feature"], { cwd: directory });
@@ -561,7 +610,9 @@ test("changed files are classified from the merge base", () => {
       encoding: "utf8",
     }).trim();
     assert.deepEqual(changedFiles(baseTip, featureSha, directory), [
+      "docs/auth.ts",
       "feature.txt",
+      "server/src/auth.ts",
     ]);
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -579,4 +630,212 @@ test("declared base SHA must also belong to the PR base branch", () => {
       (ancestor === baseSha && descendant === headSha),
   );
   assert.ok(errors.some((error) => error.includes("base branch")));
+});
+
+test("later same-head CI failures cannot be overwritten by delayed passes", () => {
+  let state = createPipelineState(validContract(), headSha);
+  state = passCi(state, { runId: "run-a", runSequence: 10 });
+  state = startCrossReview(state);
+  state = passCrossReview(state);
+  state = transitionPipelineState(state, {
+    type: "CI_FAILED",
+    checkedHeadSha: headSha,
+    runId: "run-b",
+    runSequence: 11,
+    runAttempt: 1,
+  });
+  const failedState = state;
+  state = passCi(state, { runId: "run-a", runSequence: 10 });
+  assert.deepEqual(state, failedState);
+  assert.equal(state.phase, "ci-fix");
+  assert.equal(state.ciPassed, false);
+});
+
+test("protected changes require current-head human approval", () => {
+  const contract = validContract({ scope: "root" }, [
+    ".github/workflows/deploy.yml",
+  ]);
+  let state = createPipelineState(contract, headSha);
+  state = passCi(state);
+  state = startCrossReview(state);
+  state = passCrossReview(state);
+  assert.ok(state.blockers.includes("protected-change"));
+  assert.equal(state.phase, "review");
+  assert.throws(
+    () =>
+      transitionPipelineState(state, {
+        type: "PROTECTED_CHANGE_APPROVED",
+        approvedHeadSha: headSha,
+      }),
+    /human authorization/,
+  );
+  state = transitionPipelineState(state, {
+    type: "PROTECTED_CHANGE_APPROVED",
+    approvedHeadSha: headSha,
+    authorization: "human",
+    authorizedBy: "repository-owner",
+  });
+  assert.equal(state.phase, "ready-for-merge");
+});
+
+test("review starts are bound to the current head", () => {
+  let state = createPipelineState(validContract(), headSha);
+  state = startCrossReview(state);
+  assert.throws(
+    () =>
+      transitionPipelineState(state, {
+        type: "REVIEW_STARTED",
+        reviewedHeadSha: baseSha,
+        ...crossReview,
+        reviewSessionId: "stale-session",
+      }),
+    /Stale review/,
+  );
+  assert.equal(state.reviewSessionId, crossReview.reviewSessionId);
+});
+
+test("one review session can produce only one terminal result", () => {
+  let state = createPipelineState(validContract(), headSha);
+  state = passCi(state);
+  state = startCrossReview(state);
+  state = transitionPipelineState(state, {
+    type: "REVIEW_CHANGES_REQUESTED",
+    reviewedHeadSha: headSha,
+    reviewId: "changes-result",
+    ...crossReview,
+  });
+  assert.throws(
+    () =>
+      transitionPipelineState(state, {
+        type: "REVIEW_PASSED",
+        reviewedHeadSha: headSha,
+        reviewId: "contradicting-pass",
+        ...crossReview,
+      }),
+    /started review session/,
+  );
+  assert.throws(
+    () =>
+      transitionPipelineState(state, {
+        type: "REVIEW_STARTED",
+        reviewedHeadSha: headSha,
+        ...crossReview,
+        reviewSessionId: "new-session-same-head",
+      }),
+    /requires a new head/,
+  );
+  state = transitionPipelineState(state, {
+    type: "HEAD_UPDATED",
+    headSha: nextHeadSha,
+  });
+  state = startCrossReview(state, {
+    reviewSessionId: "new-session-new-head",
+  });
+  assert.equal(state.reviewSessionId, "new-session-new-head");
+});
+
+test("UI classifications are bound to the current head", () => {
+  let state = createPipelineState(
+    validContract({ "ui-change": "unknown" }),
+    headSha,
+  );
+  assert.throws(
+    () =>
+      transitionPipelineState(state, {
+        type: "UI_CLASSIFIED",
+        classifiedHeadSha: baseSha,
+        uiChanged: false,
+      }),
+    /Stale UI classification/,
+  );
+  state = transitionPipelineState(state, {
+    type: "UI_CLASSIFIED",
+    classifiedHeadSha: headSha,
+    uiChanged: false,
+  });
+  assert.equal(state.uiChanged, false);
+});
+
+test("readiness updates preserve active fix phases", () => {
+  let state = createPipelineState(validContract(), headSha);
+  state = transitionPipelineState(state, {
+    type: "CI_FAILED",
+    checkedHeadSha: headSha,
+    runId: "failed-run",
+    runSequence: 1,
+    runAttempt: 1,
+  });
+  state = transitionPipelineState(state, {
+    type: "UI_NOTIFIED",
+    notifiedHeadSha: headSha,
+  });
+  assert.equal(state.phase, "ci-fix");
+
+  state = transitionPipelineState(state, {
+    type: "CONFLICT_DETECTED",
+    checkedHeadSha: headSha,
+    runId: "conflict-check",
+    runSequence: 2,
+    runAttempt: 1,
+  });
+  state = clearReviewThreads(state);
+  assert.equal(state.phase, "conflict-fix");
+});
+
+test("only the configured default base branch is accepted", () => {
+  const parsed = parseTaskContract(
+    body({ "base-branch": "agent-controlled-base" }),
+  );
+  const result = validateTaskContract(
+    parsed.contract,
+    {
+      ...context(),
+      baseBranch: "agent-controlled-base",
+    },
+    config,
+  );
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join("\n"), /configured default branch/);
+});
+
+test("terminal states record new heads without clearing terminal blockers", () => {
+  let state = createPipelineState(validContract(), headSha);
+  state = transitionPipelineState(state, {
+    type: "DISABLE",
+    reason: "User kill switch.",
+  });
+  state = transitionPipelineState(state, {
+    type: "HEAD_UPDATED",
+    headSha: nextHeadSha,
+  });
+  assert.equal(state.headSha, nextHeadSha);
+  assert.equal(state.phase, "disabled");
+  assert.deepEqual(state.blockers, ["no-auto"]);
+  state = transitionPipelineState(state, {
+    type: "RESUME",
+    authorization: "human",
+    authorizedBy: "repository-owner",
+  });
+  assert.equal(state.headSha, nextHeadSha);
+});
+
+test("blocking review threads prevent readiness until reconciled", () => {
+  let state = createPipelineState(validContract(), headSha);
+  state = passCi(state);
+  state = startCrossReview(state);
+  state = passCrossReview(state);
+  assert.equal(state.phase, "ready-for-merge");
+  state = transitionPipelineState(state, {
+    type: "REVIEW_THREADS_UPDATED",
+    checkedHeadSha: headSha,
+    blockingThreadIds: ["thread-2", "thread-1", "thread-1"],
+  });
+  assert.deepEqual(state.blockingReviewThreadIds, ["thread-1", "thread-2"]);
+  assert.ok(state.blockers.includes("review-threads"));
+  state = transitionPipelineState(state, {
+    type: "REVIEW_THREADS_UPDATED",
+    checkedHeadSha: headSha,
+    blockingThreadIds: [],
+  });
+  assert.equal(state.phase, "ready-for-merge");
 });
