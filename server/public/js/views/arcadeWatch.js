@@ -149,7 +149,8 @@ function stateHtml(state) {
     const challenge = typeof state.challenge === 'object' ? state.challenge : null;
     const title = challenge?.title ?? state.challenge ?? 'Mini-Challenge';
     const progress = `${Number(state.challengeIndex ?? 0) + 1} / ${Number(state.challengeCount ?? 4)}`;
-    return `<section class="challenge-rush-watch card stack"><div class="row-between"><strong>${escapeHtml(String(title))}</strong><span>${escapeHtml(progress)}</span></div><p class="muted">${state.paused ? 'Pause' : state.phase === 'countdown' ? 'Startet gleich' : state.phase === 'result' ? 'Auswertung' : 'Läuft'}</p></section>`;
+    const scores = (state.scores ?? []).map((score) => `<div class="challenge-rush-score-row"><span>${escapeHtml(score.name ?? 'Spieler')}${score.forfeited ? ' · Forfait' : ''}</span><strong>${escapeHtml(String(score.score ?? 0))}</strong></div>`).join('');
+    return `<section class="challenge-rush-watch card stack"><div class="row-between"><strong>${escapeHtml(String(title))}</strong><span>${escapeHtml(progress)}</span></div><p class="muted">${state.paused ? 'Pause' : state.phase === 'countdown' ? 'Startet gleich' : state.phase === 'result' ? 'Auswertung' : 'Läuft'}</p><div class="challenge-rush-scoreboard">${scores || '<span class="muted">Noch keine Punkte</span>'}</div></section>`;
   }
   
   const [width, height] = arcadeStreamCanvasSize(state.gameType);

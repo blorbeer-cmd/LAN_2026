@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { challengePayload, isCurrentChallenge, remainingUntil, scoreCps, scoreNumberSalad, scoreReaction, scoreTiming10, winnerIdForScores } from './challengeRushLogic';
+import { challengePayload, isCurrentChallenge, remainingUntil, safeScoreInput, scoreCps, scoreNumberSalad, scoreReaction, scoreTiming10, winnerIdForScores } from './challengeRushLogic';
 
 test('same seed creates the same challenge data', () => {
   assert.deepEqual(challengePayload('number-salad', 123).data, challengePayload('number-salad', 123).data);
@@ -21,4 +21,16 @@ test('stale challenge generations and expired deadlines are rejected safely', ()
   assert.equal(isCurrentChallenge(1, 2), false);
   assert.equal(remainingUntil(1_000, 1_250), 0);
   assert.equal(remainingUntil(null, 1_250), null);
+});
+test('score helpers normalize non-finite and extreme inputs', () => {
+  for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    assert.equal(scoreReaction(value), 100);
+    assert.equal(scoreCps(value), 0);
+    assert.equal(scoreNumberSalad(value, value, value), 0);
+    assert.equal(scoreTiming10(value), 0);
+    assert.equal(safeScoreInput(value), 0);
+  }
+  assert.equal(scoreCps(Number.MAX_SAFE_INTEGER), 100);
+  assert.equal(scoreNumberSalad(Number.MAX_SAFE_INTEGER, 0, 0), 100);
+  assert.equal(winnerIdForScores([{ playerId: 'a', score: Number.NaN }, { playerId: 'b', score: 0 }]), null);
 });

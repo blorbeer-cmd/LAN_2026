@@ -53,19 +53,28 @@ test('Challenge Rush pauses active time and reconnects the same match', async ()
     await actor.page.click('[data-cr-start]');
     await actor.page.waitForSelector('.challenge-rush-stage');
     await actor.page.waitForSelector('[data-cr-pause]');
+    await actor.page.waitForFunction(() => { const node = document.querySelector('.challenge-rush-stage'); return node?.getAttribute('data-phase') === 'playing' && Number(node.getAttribute('data-remaining-ms')) > 0; });
+    const beforePause = await actor.page.locator('.challenge-rush-stage').evaluate((node) => ({
+      matchId: node.getAttribute('data-match-id'), challengeIndex: node.getAttribute('data-challenge-index'), remainingMs: Number(node.getAttribute('data-remaining-ms')),
+    }));
     await actor.page.click('[data-cr-pause]');
     await actor.page.waitForFunction(() => document.body.textContent?.includes('Pause') === true);
-    const pausedChallenge = await actor.page.locator('.challenge-rush-stage h2').textContent();
+    const paused = await actor.page.locator('.challenge-rush-stage').evaluate((node) => ({
+      matchId: node.getAttribute('data-match-id'), challengeIndex: node.getAttribute('data-challenge-index'), remainingMs: Number(node.getAttribute('data-remaining-ms')),
+    }));
+    assert.equal(paused.matchId, beforePause.matchId);
+    assert.equal(paused.challengeIndex, beforePause.challengeIndex);
+    assert.ok(paused.remainingMs > 0 && paused.remainingMs <= beforePause.remainingMs);
     await actor.page.waitForTimeout(1_000);
-    assert.equal(await actor.page.locator('.challenge-rush-stage h2').textContent(), pausedChallenge);
+    assert.equal(Number(await actor.page.locator('.challenge-rush-stage').getAttribute('data-remaining-ms')), paused.remainingMs);
 
-    await actor.context.setOffline(true);
-    await actor.page.waitForTimeout(500);
-    await actor.context.setOffline(false);
-    await actor.page.waitForSelector('.challenge-rush-stage');
-    await actor.page.waitForSelector('[data-cr-pause]');
     await actor.page.click('[data-cr-pause]');
-    await actor.page.waitForFunction(() => !document.body.textContent?.includes('Pause'));
+    await actor.page.waitForFunction((remaining) => Number(document.querySelector('.challenge-rush-stage')?.getAttribute('data-remaining-ms')) < remaining, paused.remainingMs);
+
+    await actor.page.evaluate(() => window.dispatchEvent(new Event('respawn:challenge-rush-disconnect')));
+    await actor.page.waitForFunction(() => document.querySelector('.challenge-rush-stage')?.getAttribute('data-disconnected') === 'true');
+    await actor.page.evaluate(() => window.dispatchEvent(new Event('respawn:challenge-rush-connect')));
+    await actor.page.waitForFunction((expected) => { const node = document.querySelector('.challenge-rush-stage'); return node?.getAttribute('data-reconnected') === 'true' && node.getAttribute('data-match-id') === expected.matchId && node.getAttribute('data-challenge-index') === expected.challengeIndex; }, beforePause);
   } finally {
     await actor.context.close();
   }
