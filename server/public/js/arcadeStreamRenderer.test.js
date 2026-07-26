@@ -7,6 +7,7 @@ test('stream canvases keep each game world aspect ratio', () => {
   assert.deepEqual(arcadeStreamCanvasSize('blobby'), [1000, 600]);
   assert.deepEqual(arcadeStreamCanvasSize('snake'), [800, 500]);
   assert.deepEqual(arcadeStreamCanvasSize('scribble'), [800, 500]);
+  assert.deepEqual(arcadeStreamCanvasSize('battleship'), [960, 540]);
 
   const canvas = { width: 1, height: 1 };
   prepareArcadeStreamCanvas(canvas, 'snake');

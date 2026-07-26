@@ -69,6 +69,7 @@ const ICONS = {
   play: '<polygon points="6 3 20 12 6 21 6 3"/>',
   crosshair: '<circle cx="12" cy="12" r="8"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/>',
   shield: '<path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3v8Z"/>',
+  ship: '<path d="M3 17h18l-2 3H5l-2-3Z"/><path d="M5 17V8h14v9"/><path d="M9 8V4h6v4"/><path d="M2 15c2 0 2 2 5 2s3-2 6-2 3 2 6 2 3-2 3-2"/>',
   blocks: '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/>',
   slash: '<path d="M5 5l14 14"/>',
   gitCommitVertical: '<circle cx="12" cy="5" r="3"/><circle cx="12" cy="19" r="3"/><path d="M12 8v8"/>',

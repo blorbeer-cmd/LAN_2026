@@ -196,6 +196,7 @@ function activeClaimedOwnerCount(groupId: string): number {
       .get(groupId) as { count: number }
   ).count;
 }
+
 // Required mode freezes group role (owner/admin/member) as the instance
 // rights model (see docs/plans/reset-single-group.md §9.1). players.is_admin
 // — the separate flag still gating account-management routes (invites,
@@ -228,6 +229,12 @@ export function syncInstanceAdminForCurrentRole(playerId: string, actorPlayerId?
   return syncInstanceAdminForRole(DEFAULT_GROUP_ID, playerId, role, actorPlayerId);
 }
 
+// Startup bootstrap accounts are system-managed rather than changed by a
+// signed-in owner. In required mode they still have to go through the group
+// role source of truth so seeding cannot recreate is_admin/role drift after
+// the startup reconciliation has already run. The first account remains the
+// owner selected by ensureDefaultGroupMembership; later bootstrap accounts
+// become admins.
 export function ensureBootstrapAdminMembership(playerId: string): GroupMembershipRow {
   return db.transaction(() => {
     let membership = ensureDefaultGroupMembership(playerId);

@@ -247,6 +247,9 @@ async function loadNeighbors(playerId, ctx) {
   } catch (err) {
     showToast(err.message, { error: true });
     neighborsCache = null;
+    // Mark as attempted so a failed load doesn't immediately retry on the
+    // next rerender and flood the user with repeated error toasts.
+    neighborsForPlayerId = playerId;
   } finally {
     neighborsLoading = false;
     ctx.rerender();

@@ -3034,6 +3034,8 @@ export const ARCADE_GAME_DEFS = [
   { key: 'scribble', name: 'Scribble', icon: '✏️' },
   { key: 'blobby', name: 'Blobby Volley', icon: '🏐' },
   { key: 'snake', name: 'Snake', icon: '🐍' },
+  { key: 'battleship', name: 'Schiffe versenken', icon: '⚓' },
+  { key: 'challenge-rush', name: 'Challenge Rush', icon: '🎯' },
 ] as const;
 
 function seedArcadeGames(): void {

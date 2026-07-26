@@ -14,6 +14,14 @@ export function currentGroup() {
   return selectedGroup();
 }
 
+// Returns true when the current user holds at least the 'admin' role in the
+// internal access context. Views use this so their controls match the
+// server-side authorization check.
+export function isGroupAdmin() {
+  const group = selectedGroup();
+  return group ? ['owner', 'admin'].includes(group.role) : false;
+}
+
 export async function refreshGroupContext() {
   try {
     groups = await api.groups.list();

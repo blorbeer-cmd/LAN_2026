@@ -1,4 +1,5 @@
-import { api, getToken } from '../api.js';
+import { api } from '../api.js';
+import { connectSocket } from '../socket.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
@@ -18,6 +19,8 @@ import {
 import { ensureBlobbySocket, renderBlobbyLobbyCard, wireBlobbyLobbyCard, myBlobbyLobby, hasBlobbyMatch, blobbyLobbies, leaveMyBlobbyLobby } from './blobby.js';
 import { ensurePongSocket, renderPongLobbyCard, wirePongLobbyCard, myPongLobby, hasPongMatch, pongLobbies, leaveMyPongLobby } from './pong.js';
 import { ensureSnakeSocket, renderSnakeLobbyCard, wireSnakeLobbyCard, mySnakeLobby, hasSnakeMatch, snakeLobbies, leaveMySnakeLobby } from './snake.js';
+import { ensureBattleshipSocket, renderBattleshipLobbyCard, wireBattleshipLobbyCard, myBattleshipLobby, hasBattleshipMatch, battleshipLobbies } from './battleship.js';
+import { ensureChallengeRushSocket, renderChallengeRushLobbyCard, wireChallengeRushLobbyCard, myChallengeRushLobby, hasChallengeRushMatch, challengeRushLobbies, leaveMyChallengeRushLobby } from './challengeRush.js';
 import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
 import { startArcadeWatch } from './arcadeWatch.js';
 import { confirmDialog } from '../modal.js';
@@ -63,6 +66,18 @@ const GAMES = [
     icon: icon('snake'),
     name: 'Snake',
     help: 'Ziel: Länger leben als die andere Schlange. Steuerung: Pfeiltasten.',
+  },
+  {
+    id: 'battleship',
+    icon: icon('ship'),
+    name: 'Schiffe versenken',
+    help: 'Ziel: Versenke die gegnerische Flotte. Steuerung: Raster antippen oder mit der Tastatur bedienen.',
+  },
+  {
+    id: 'challenge-rush',
+    icon: icon('crosshair'),
+    name: 'Challenge Rush',
+    help: 'Ziel: In vier kurzen Mini-Challenges möglichst viele Punkte sammeln. Steuerung: Tippen oder klicken.',
   },
 ];
 
@@ -134,7 +149,7 @@ async function loadStats(ctx) {
 
 function ensureSocket(ctx) {
   if (socket) return socket;
-  socket = io({ auth: { token: getToken() } });
+  socket = connectSocket();
   socket.on('arcade:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
     rerenderIfView(ctx, 'arcade');
@@ -400,6 +415,8 @@ function engagedGame() {
   if (myPongLobby() || hasPongMatch()) return 'pong';
   if (myBlobbyLobby() || hasBlobbyMatch()) return 'blobby';
   if (mySnakeLobby() || hasSnakeMatch()) return 'snake';
+  if (myBattleshipLobby() || hasBattleshipMatch()) return 'battleship';
+  if (myChallengeRushLobby() || hasChallengeRushMatch()) return 'challenge-rush';
   return null;
 }
 
@@ -417,6 +434,8 @@ async function leaveCurrentLobbyBeforeAction(targetGame, action) {
     { name: 'Pong', lobby: myPongLobby(), leave: leaveMyPongLobby },
     { name: 'Blobby Volley', lobby: myBlobbyLobby(), leave: leaveMyBlobbyLobby },
     { name: 'Snake', lobby: mySnakeLobby(), leave: leaveMySnakeLobby },
+    { name: 'Schiffe versenken', lobby: myBattleshipLobby(), leave: async (lobby) => emitWithAck('battleship:lobby:leave', { lobbyId: lobby.id, playerId }) },
+    { name: 'Challenge Rush', lobby: myChallengeRushLobby(), leave: leaveMyChallengeRushLobby },
   ];
   const current = candidates.find((entry) => entry.lobby);
   if (!current) return true;
@@ -454,6 +473,10 @@ function gameLobbies(gameId) {
       return blobbyLobbies();
     case 'snake':
       return snakeLobbies();
+    case 'battleship':
+      return battleshipLobbies();
+    case 'challenge-rush':
+      return challengeRushLobbies();
     default:
       return [];
   }
@@ -522,6 +545,8 @@ function activeGameHtml() {
   if (game === 'pong') return `<div>${renderPongLobbyCard()}</div>`;
   if (game === 'blobby') return `<div>${renderBlobbyLobbyCard()}</div>`;
   if (game === 'snake') return `<div>${renderSnakeLobbyCard()}</div>`;
+  if (game === 'battleship') return `<div>${renderBattleshipLobbyCard()}</div>`;
+  if (game === 'challenge-rush') return `<div>${renderChallengeRushLobbyCard()}</div>`;
   return '';
 }
 
@@ -532,6 +557,8 @@ export function renderArcade(container, ctx) {
   ensurePongSocket();
   ensureBlobbySocket();
   ensureSnakeSocket();
+  ensureBattleshipSocket();
+  ensureChallengeRushSocket();
   if (!stats && !statsLoading) loadStats(ctx);
   const lobby = myLobby();
 
@@ -576,6 +603,8 @@ export function renderArcade(container, ctx) {
   wirePongLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('pong', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('pong', 'join') });
   wireBlobbyLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('blobby', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('blobby', 'join') });
   wireSnakeLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('snake', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('snake', 'join') });
+  wireBattleshipLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('battleship', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('battleship', 'join') });
+  wireChallengeRushLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('challenge-rush', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('challenge-rush', 'join') });
 
   container.querySelectorAll('[data-game]').forEach((btn) => {
     btn.addEventListener('click', () => {

@@ -92,6 +92,8 @@ function seedOne(entry: BootstrapAdminEntry): BootstrapAdminAction {
       if (existing.deactivated_at !== null) return 'skipped-deactivated';
 
       if (config.authMode === 'required') {
+        // Leave is_admin untouched until the membership helper derives it
+        // from the active role and writes any grant/revocation audit entry.
         db.prepare('UPDATE players SET password_hash = ? WHERE id = ?').run(hashPassword(password), existing.id);
       } else {
         db.prepare('UPDATE players SET password_hash = ?, is_admin = 1 WHERE id = ?').run(

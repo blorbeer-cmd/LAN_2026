@@ -76,6 +76,7 @@
   --seating-seat-width-compact: calc(var(--avatar-size-lg) + var(--space-4));
   --seating-seat-height-compact: calc(var(--row-min-h) + var(--space-5));
   --assignment-select-width: 112px;
+  --arcade-lobby-mode-width: 112px;
   --notification-panel-width: 360px;
   --search-panel-width: 640px;
 
@@ -528,6 +529,138 @@ textarea {
   }
   .topbar-actions {
     gap: var(--space-1);
+  }
+  .group-switcher {
+    max-width: 132px;
+  }
+}
+
+.group-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 180px;
+  min-height: 40px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+.group-switcher[hidden] {
+  display: none;
+}
+.group-switcher .ui-icon {
+  flex: 0 0 auto;
+}
+.group-switcher span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Battleship ---------- */
+.battleship-board-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.battleship-grid {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: var(--space-1);
+  width: min(100%, 560px);
+  margin: 0 auto;
+  aspect-ratio: 1;
+  min-width: calc(10 * var(--tap-target-size) + 9 * var(--space-1));
+}
+
+.battleship-cell {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: var(--tap-target-size);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  cursor: pointer;
+}
+
+.battleship-cell.is-ship {
+  background: var(--accent);
+}
+
+.battleship-cell.is-hit,
+.battleship-cell.is-sunk {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.battleship-cell.is-sunk {
+  background: var(--danger);
+  color: var(--bg);
+  outline: 2px solid var(--danger);
+  outline-offset: -3px;
+}
+
+.battleship-cell.is-miss {
+  background: var(--state-offline-bg);
+  color: var(--text-muted);
+}
+
+.battleship-cell:disabled {
+  cursor: default;
+  opacity: 0.9;
+}
+
+.battleship-ship-picker,
+.battleship-setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.battleship-setup-actions {
+  justify-content: space-between;
+}
+
+.battleship-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+@media (max-width: 639px) { /* --bp-md */
+  .battleship-board-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .battleship-cell {
+    min-height: var(--tap-target-size);
+  }
+
+  .battleship-board-layout,
+  .battleship-placement-locked,
+  .battleship-setup {
+    min-width: 0;
+  }
+
+  .battleship-board-layout > .card,
+  .battleship-setup {
+    overflow-x: auto;
+  }
+
+  .battleship-setup-actions .btn {
+    flex: 1 1 calc(50% - var(--space-2));
   }
 }
 
@@ -2092,6 +2225,14 @@ button.card {
   flex: 0 0 auto;
   margin-left: auto;
 }
+.challenge-rush-stage { max-width: 760px; margin-inline: auto; }
+.challenge-rush-playfield { position: relative; min-height: 280px; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+.challenge-rush-circle { position: absolute; width: var(--space-8); height: var(--space-8); transform: translate(-50%, -50%); border: 0; border-radius: var(--radius-full); background: var(--accent-gradient); box-shadow: var(--shadow-glow-accent); cursor: pointer; }
+.challenge-rush-big-button { min-width: 180px; min-height: 96px; border: 0; border-radius: var(--radius); color: var(--accent-text); background: var(--accent-gradient); font-size: var(--font-size-xl); font-weight: var(--font-weight-black); cursor: pointer; }
+.challenge-rush-number-grid { display: grid; grid-template-columns: repeat(4, minmax(48px, 1fr)); gap: var(--space-2); width: min(100%, 360px); }
+.challenge-rush-number { min-height: var(--space-8); font-size: var(--font-size-lg); }
+.challenge-rush-scoreboard { display: grid; gap: var(--space-1); }
+.challenge-rush-score-row { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--bg-elevated-2); }
 .arcade-tile-count {
   background: var(--state-playing-bg);
   color: var(--state-playing);
@@ -2198,6 +2339,9 @@ button.card {
   color: var(--text-muted);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
+}
+.arcade-lobby-target-score.arcade-lobby-mode {
+  grid-template-columns: minmax(0, 1fr) var(--arcade-lobby-mode-width);
 }
 .arcade-lobby-target-score select,
 .arcade-lobby-target-score input {

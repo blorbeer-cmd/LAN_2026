@@ -4,6 +4,7 @@ const GAME_CANVAS_SIZES = {
   snake: [800, 500],
   pong: [960, 540],
   blobby: [1000, 600],
+  battleship: [960, 540],
 };
 
 const TETRIS_COLORS = {

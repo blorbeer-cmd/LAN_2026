@@ -378,6 +378,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   in that order. Cleanup removes every marked test player and test LAN
   without touching real events. The single-instance access context is not shown as a separate group
   control in the topbar. Owner/Admin/Member roles are managed directly in Admin's consolidated
+  „Benutzer“ list; test players keep a read-only member role there.
   „Benutzer“ list; test players keep a read-only member role there. The underlying group detail,
   update, removal and audit endpoints remain server-side compatibility interfaces and intentionally
   have no separate frontend commands.
