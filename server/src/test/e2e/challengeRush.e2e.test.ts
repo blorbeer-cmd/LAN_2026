@@ -4,7 +4,7 @@ import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 
-const PORT = 3915;
+const PORT = 3916;
 const BASE_URL = `http://localhost:${PORT}`;
 let serverProcess: ChildProcess;
 let browser: Browser;
