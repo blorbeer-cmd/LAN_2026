@@ -54,6 +54,9 @@ function playerById(id: unknown): PlayerRef | null {
 function lobbyPlayer(player: PlayerRef, team: TeamSide): LobbyPlayer {
   return { ...player, team };
 }
+function socketControlsPlayer(socket: Socket, resource: { socketIds: Map<string, string> }, playerId: unknown): playerId is string {
+  return typeof playerId === 'string' && resource.socketIds.get(playerId) === socket.id;
+}
 function teamSize(lobby: Lobby, team: TeamSide): number {
   return lobby.players.filter((player) => player.team === team).length;
 }
@@ -255,14 +258,14 @@ export function registerBlobbySockets(io: Server): void {
     });
     socket.on('blobby:lobby:leave', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
-      if (!lobby || !canUseLobby(socket, lobby) || typeof payload.playerId !== 'string') return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' });
+      if (!lobby || !canUseLobby(socket, lobby) || !socketControlsPlayer(socket, lobby, payload.playerId)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' });
       if (lobby.host.id === payload.playerId) { releaseLobbyMemberships(lobby.players.map((p) => p.id), 'blobby', lobby.id); lobbies.delete(lobby.id); }
       else { releaseLobbyMembership(payload.playerId, 'blobby', lobby.id); lobby.players = lobby.players.filter((p) => p.id !== payload.playerId); lobby.socketIds.delete(payload.playerId); lobby.ready.delete(payload.playerId); }
       emitLobbies(io); ack?.({ ok: true });
     });
     socket.on('blobby:lobby:ready', (payload: { lobbyId?: string; playerId?: string; ready?: boolean }, ack?: (r: unknown) => void) => {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
-      if (!lobby || !canUseLobby(socket, lobby) || !setLobbyReady(lobby, payload?.playerId, payload?.ready)) {
+      if (!lobby || !canUseLobby(socket, lobby) || !socketControlsPlayer(socket, lobby, payload.playerId) || !setLobbyReady(lobby, payload.playerId, payload?.ready)) {
         return ack?.({ ok: false, error: 'Bereit-Status konnte nicht gesetzt werden.' });
       }
       emitLobbies(io); ack?.({ ok: true });
@@ -271,7 +274,7 @@ export function registerBlobbySockets(io: Server): void {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
       if (!lobby) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
       if (!canUseLobby(socket, lobby)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' });
-      if (payload.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' });
+      if (payload.playerId !== lobby.host.id || !socketControlsPlayer(socket, lobby, payload.playerId)) return ack?.({ ok: false, error: 'Nur der Host kann starten.' });
       if (!lobbyCanStart(lobby)) {
         return ack?.({ ok: false, error: lobby.mode === 'doubles' ? 'Doppel braucht zwei bereite Teams.' : 'Duell braucht zwei bereite Spieler.' });
       }
@@ -296,18 +299,21 @@ export function registerBlobbySockets(io: Server): void {
       snapshot(io, match); startLoop(io, match); ack?.({ ok: true, matchId: id });
       setTimeout(() => { if (matches.get(id) === match) { match.running = true; match.lastTick = Date.now(); } }, COUNTDOWN_MS);
     });
-    socket.on('blobby:input', (payload: { matchId?: string; playerId?: string; input?: Partial<BlobbyInput> }) => {
+    socket.on('blobby:input', (payload: { matchId?: string; playerId?: string; input?: Partial<BlobbyInput> }, ack?: (r: unknown) => void) => {
       const match = typeof payload.matchId === 'string' ? matches.get(payload.matchId) : null;
       const input = typeof payload.playerId === 'string' ? match?.inputs.get(payload.playerId) : null;
-      if (!match || !canUseLobby(socket, match) || !input || payload.playerId === BOT_ID || match.paused || !match.running) return;
+      if (!match || !canUseLobby(socket, match) || !socketControlsPlayer(socket, match, payload.playerId) || !input || payload.playerId === BOT_ID || match.paused || !match.running) {
+        return ack?.({ ok: false, error: 'Eingabe nicht erlaubt.' });
+      }
       input.left = payload.input?.left === true;
       input.right = payload.input?.right === true;
       if (payload.input?.jump === true) input.jump = true;
+      ack?.({ ok: true });
     });
     socket.on('blobby:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => {
       const match = typeof payload.matchId === 'string' ? matches.get(payload.matchId) : null;
       if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
-      if (payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
+      if (payload.playerId !== match.host.id || !socketControlsPlayer(socket, match, payload.playerId)) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
       match.paused = true;
       emitArcadeRoom(io, match.room, 'blobby:match:paused', { matchId: match.id }, match);
       snapshot(io, match); ack?.({ ok: true });
@@ -315,7 +321,7 @@ export function registerBlobbySockets(io: Server): void {
     socket.on('blobby:match:resume', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => {
       const match = typeof payload.matchId === 'string' ? matches.get(payload.matchId) : null;
       if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
-      if (payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann fortsetzen.' });
+      if (payload.playerId !== match.host.id || !socketControlsPlayer(socket, match, payload.playerId)) return ack?.({ ok: false, error: 'Nur der Host kann fortsetzen.' });
       match.paused = false; match.lastTick = Date.now();
       emitArcadeRoom(io, match.room, 'blobby:match:resumed', { matchId: match.id }, match);
       snapshot(io, match); ack?.({ ok: true });
@@ -323,7 +329,7 @@ export function registerBlobbySockets(io: Server): void {
     socket.on('blobby:match:finish', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => {
       const match = typeof payload.matchId === 'string' ? matches.get(payload.matchId) : null;
       if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
-      if (payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann beenden.' });
+      if (payload.playerId !== match.host.id || !socketControlsPlayer(socket, match, payload.playerId)) return ack?.({ ok: false, error: 'Nur der Host kann beenden.' });
       finish(io, match, null, 'ended-by-host'); ack?.({ ok: true });
     });
     // Lets a non-host participant end a running match themselves instead of
@@ -333,7 +339,7 @@ export function registerBlobbySockets(io: Server): void {
       const match = typeof payload.matchId === 'string' ? matches.get(payload.matchId) : null;
       if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       const leaver = match.players.find((p) => p.id === payload?.playerId);
-      if (!leaver) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
+      if (!leaver || !socketControlsPlayer(socket, match, payload.playerId)) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
       finish(io, match, opposingTeam(leaver.team), 'player-left');
       ack?.({ ok: true });
     });
