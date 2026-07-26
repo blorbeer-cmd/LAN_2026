@@ -48,6 +48,31 @@ function runGit(...gitArgs) {
   return result.stdout.trimEnd();
 }
 
+function gitSucceeds(...gitArgs) {
+  const result = spawnSync("git", ["-C", repoRoot, ...gitArgs], {
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  return !result.error && result.status === 0;
+}
+
+function findWorktreeForBranch(branch) {
+  const blocks = runGit("worktree", "list", "--porcelain").split(
+    /(?:\r?\n){2,}/,
+  );
+  const branchRef = `branch refs/heads/${branch}`;
+
+  for (const block of blocks) {
+    const lines = block.split(/\r?\n/);
+    if (!lines.includes(branchRef)) continue;
+    return lines
+      .find((line) => line.startsWith("worktree "))
+      ?.slice("worktree ".length);
+  }
+
+  return undefined;
+}
+
 function checkMergedPullRequests(branch) {
   if (process.env.AGENT_PREFLIGHT_DISABLE_GITHUB_CHECK === "1") {
     return { status: "skipped" };
@@ -59,17 +84,16 @@ function checkMergedPullRequests(branch) {
       "pr",
       "list",
       "--state",
-      "merged",
+      "all",
       "--head",
       branch,
-      "--limit",
-      "1",
       "--json",
-      "number,title,url",
+      "number,title,url,state",
     ],
     {
       cwd: repoRoot,
       encoding: "utf8",
+      timeout: 5000,
       windowsHide: true,
     },
   );
@@ -83,7 +107,10 @@ function checkMergedPullRequests(branch) {
 
   try {
     const pullRequests = JSON.parse(result.stdout);
-    return { status: "checked", pullRequest: pullRequests[0] };
+    return {
+      status: "checked",
+      mergedPullRequest: pullRequests.find(({ state }) => state === "MERGED"),
+    };
   } catch {
     return {
       status: "unavailable",
@@ -127,6 +154,38 @@ if (!branch) {
   );
   unsafeBranch = true;
 } else {
+  const mainWorktree = findWorktreeForBranch("main");
+  if (!mainWorktree) {
+    console.error(
+      "SICHERHEITSSTOPP: main ist in keinem separaten Integrations-Worktree ausgecheckt.",
+    );
+    console.error(
+      "Den Feature-Branch nicht im main-Worktree anlegen; main zuerst in einem eigenen Worktree wiederherstellen.",
+    );
+    unsafeBranch = true;
+  } else {
+    console.log(`main-Worktree: ${mainWorktree}`);
+  }
+
+  if (!gitSucceeds("rev-parse", "--verify", "--quiet", "origin/main")) {
+    console.error(
+      "SICHERHEITSSTOPP: origin/main fehlt. Vor dem Arbeitsstart origin/main aktualisieren.",
+    );
+    unsafeBranch = true;
+  } else if (
+    !gitSucceeds("merge-base", "--is-ancestor", "origin/main", "HEAD")
+  ) {
+    console.error(
+      "SICHERHEITSSTOPP: Der Branch basiert nicht auf dem aktuellen origin/main.",
+    );
+    console.error(
+      "Fuer den Auftrag einen neuen Branch und Worktree vom aktuellen origin/main anlegen.",
+    );
+    unsafeBranch = true;
+  } else {
+    console.log("Branch enthaelt den aktuellen Stand von origin/main.");
+  }
+
   const githubCheck = checkMergedPullRequests(branch);
   if (githubCheck.status === "skipped") {
     console.log("GitHub-Pruefung: fuer den lokalen Skripttest deaktiviert");
@@ -137,8 +196,8 @@ if (!branch) {
     console.warn(
       "Vor Aenderungen manuell sicherstellen, dass dieser Branch noch nie gemergt wurde.",
     );
-  } else if (githubCheck.pullRequest) {
-    const pullRequest = githubCheck.pullRequest;
+  } else if (githubCheck.mergedPullRequest) {
+    const pullRequest = githubCheck.mergedPullRequest;
     console.error(
       `SICHERHEITSSTOPP: Branch ${branch} gehoert zum bereits gemergten PR #${pullRequest.number} (${pullRequest.title}).`,
     );
