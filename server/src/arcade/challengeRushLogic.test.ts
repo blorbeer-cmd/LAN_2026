@@ -16,6 +16,9 @@ test('ties do not select an arbitrary winner', () => {
   assert.equal(winnerIdForScores([{ playerId: 'a', score: 10 }, { playerId: 'b', score: 10 }]), null);
   assert.equal(winnerIdForScores([{ playerId: 'a', score: 11 }, { playerId: 'b', score: 10 }]), 'a');
 });
+test('cumulative match totals above the single-challenge 0..100 range are not falsely tied', () => {
+  assert.equal(winnerIdForScores([{ playerId: 'a', score: 236 }, { playerId: 'b', score: 151 }]), 'a');
+});
 test('stale challenge generations and expired deadlines are rejected safely', () => {
   assert.equal(isCurrentChallenge(2, 2), true);
   assert.equal(isCurrentChallenge(1, 2), false);
