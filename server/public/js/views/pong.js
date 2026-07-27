@@ -8,6 +8,7 @@ import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { infoTooltipHtml } from '../infoTooltip.js';
 
 const W = 960;
 const H = 540;
@@ -115,9 +116,13 @@ function lobbyList() {
           </select>
         </label>`
       : '';
+    const startReason = ready ? '' : 'Noch nicht genug Spieler (mind. 2).';
     const footerActions = isHost
       ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-pong-close="${lobby.id}">Schließen</button>
-        <button type="button" class="btn btn-sm btn-equal btn-primary" id="pong-start" ${ready ? '' : 'disabled'}>Start</button>`
+        <span class="row" style="gap:var(--space-1);">
+          <button type="button" class="btn btn-sm btn-equal btn-primary" id="pong-start" ${ready ? '' : 'disabled'}>Start</button>
+          ${startReason ? infoTooltipHtml(`pong-start-${lobby.id}`, 'Start nicht möglich', startReason, 'warning') : ''}
+        </span>`
       : joined
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-pong-leave="${lobby.id}">Verlassen</button>
           ${readyToggleHtml(lobby, myId(), 'pong-ready')}`
@@ -132,13 +137,17 @@ function lobbyList() {
 export function renderPongLobbyCard() {
   const lobby = myPongLobby();
   const noMe = !myId();
+  const createReason = !noMe && match ? 'Beende zuerst dein aktuelles Spiel.' : '';
   return `<div class="card stack arcade-lobby-card">
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
-    ${lobbyList()}
     <div class="arcade-lobby-create-actions">
-      <button type="button" class="btn btn-primary btn-sm" id="pong-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+      <span class="row" style="gap:var(--space-1);">
+        <button type="button" class="btn btn-primary btn-sm" id="pong-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+        ${createReason ? infoTooltipHtml('pong-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+      </span>
       ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="pong-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
     </div>
+    ${lobbyList()}
   </div>`;
 }
 
