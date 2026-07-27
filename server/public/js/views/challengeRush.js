@@ -8,12 +8,13 @@ import { infoTooltipHtml } from '../infoTooltip.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 
-let socket = null; let lobbies = []; let match = null; let latestResult = null; let rerender = null; let numberOrder = 1; let prevMyScore = null;
+let socket = null; let lobbies = []; let match = null; let latestResult = null; let numberOrder = 1; let prevMyScore = null;
 let countdownKey = null; let startedKey = null;
 const myId = () => getMyId();
+const currentView = () => document.getElementById('view-container')?.dataset.view;
+const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
 function navigate(view) { window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view })); }
 function emit(event, payload) { return new Promise((resolve) => socket?.emit(event, payload, resolve)); }
-function refresh() { rerender?.(); }
 
 // Drives the shared 3-2-1 overlay per challenge (not just once per match) and
 // the start sound, keyed by match+challenge so re-renders/reconnects never
@@ -34,10 +35,10 @@ function syncPresentation(state) {
 export function ensureChallengeRushSocket() {
   if (socket) return socket;
   socket = connectSocket();
-  socket.on('challenge-rush:lobbies', (payload) => { lobbies = payload?.lobbies ?? []; refresh(); });
+  socket.on('challenge-rush:lobbies', (payload) => { lobbies = payload?.lobbies ?? []; if (!match && currentView() === 'arcade') rerender(); });
   socket.on('challenge-rush:match:start', (payload) => { match = { ...payload }; latestResult = null; prevMyScore = null; countdownKey = null; startedKey = null; navigate('challengeRush'); });
-  socket.on('challenge-rush:match:state', (payload) => { match = { ...match, ...payload }; refresh(); });
-  socket.on('challenge-rush:state', (payload) => { match = { ...match, ...payload }; if (payload.phase === 'countdown' && payload.challenge?.key === 'number-salad') numberOrder = 1; syncPresentation(payload); refresh(); });
+  socket.on('challenge-rush:match:state', (payload) => { match = { ...match, ...payload }; if (currentView() === 'challengeRush') rerender(); });
+  socket.on('challenge-rush:state', (payload) => { match = { ...match, ...payload }; if (payload.phase === 'countdown' && payload.challenge?.key === 'number-salad') numberOrder = 1; syncPresentation(payload); if (currentView() === 'challengeRush') rerender(); });
   socket.on('challenge-rush:challenge:end', (payload) => {
     latestResult = payload;
     const myScore = payload.scores?.find((score) => score.playerId === myId())?.score;
@@ -45,7 +46,7 @@ export function ensureChallengeRushSocket() {
       if (prevMyScore !== null && myScore > prevMyScore) playArcadeSound('challenge-point');
       prevMyScore = myScore;
     }
-    refresh();
+    if (currentView() === 'challengeRush') rerender();
   });
   socket.on('challenge-rush:match:end', (payload) => {
     cancelCountdown();
@@ -53,10 +54,10 @@ export function ensureChallengeRushSocket() {
     match = { ...match, phase: 'ended', scores: payload.scores, draw: payload.draw === true, history: payload.history ?? match?.history ?? [] };
     if (payload.winnerId) playArcadeSound(payload.winnerId === myId() ? 'challenge-highscore' : 'challenge-gameover');
     else if (!payload.draw) playArcadeSound('challenge-gameover');
-    refresh();
+    if (currentView() === 'challengeRush') rerender();
   });
-  socket.on('disconnect', () => { if (match) match = { ...match, disconnected: true }; refresh(); });
-  socket.on('connect', () => { if (match?.matchId) socket.emit('challenge-rush:match:reconnect', { matchId: match.matchId, playerId: myId() }, (result) => { if (result?.ok) { match = { ...match, reconnected: true, disconnected: false }; refresh(); } }); });
+  socket.on('disconnect', () => { if (match) match = { ...match, disconnected: true }; if (currentView() === 'challengeRush') rerender(); });
+  socket.on('connect', () => { if (match?.matchId) socket.emit('challenge-rush:match:reconnect', { matchId: match.matchId, playerId: myId() }, (result) => { if (result?.ok) { match = { ...match, reconnected: true, disconnected: false }; if (currentView() === 'challengeRush') rerender(); } }); });
   window.addEventListener('respawn:challenge-rush-disconnect', () => socket?.disconnect());
   window.addEventListener('respawn:challenge-rush-connect', () => socket?.connect());
   socket.emit('challenge-rush:lobbies:get');
@@ -132,7 +133,7 @@ function finalSummaryHtml(scores) {
   return `<section class="card stack"><h2>${match?.draw ? 'Unentschieden' : 'Gesamtergebnis'}</h2><div class="challenge-rush-scoreboard">${rows}</div><button type="button" class="btn btn-primary" id="cr-back">Zur Arcade</button></section>`;
 }
 export function renderChallengeRush(container, ctx) {
-  ensureChallengeRushSocket(); rerender = () => renderChallengeRush(container, ctx);
+  ensureChallengeRushSocket();
   const scores = match?.scores ?? [];
   const body = match?.phase === 'ended'
     ? finalSummaryHtml(scores)

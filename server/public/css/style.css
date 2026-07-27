@@ -583,7 +583,6 @@ textarea {
   width: min(100%, 560px);
   margin: 0 auto;
   aspect-ratio: 1;
-  min-width: calc(10 * var(--tap-target-size) + 9 * var(--space-1));
 }
 
 .battleship-cell {
