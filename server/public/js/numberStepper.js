@@ -12,8 +12,20 @@ import { icon } from './icons.js';
 
 function step(input, direction) {
   const before = input.value;
-  if (direction > 0) input.stepUp();
-  else input.stepDown();
+  // `stepUp()`/`stepDown()` throw InvalidStateError on a `step="any"` field
+  // (e.g. the free-form "Wert" score input) since the browser has no fixed
+  // step size to apply there — fall back to whole-number steps, the same
+  // default the browser uses when no step attribute is present at all.
+  if (input.step === 'any') {
+    let next = (Number(input.value) || 0) + direction;
+    if (input.min !== '') next = Math.max(next, Number(input.min));
+    if (input.max !== '') next = Math.min(next, Number(input.max));
+    input.value = String(next);
+  } else if (direction > 0) {
+    input.stepUp();
+  } else {
+    input.stepDown();
+  }
   if (input.value === before) return;
   input.dispatchEvent(new Event('input', { bubbles: true }));
   input.dispatchEvent(new Event('change', { bubbles: true }));

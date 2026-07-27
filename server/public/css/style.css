@@ -76,7 +76,7 @@
   --seating-seat-width-compact: calc(var(--avatar-size-lg) + var(--space-4));
   --seating-seat-height-compact: calc(var(--row-min-h) + var(--space-5));
   --assignment-select-width: 112px;
-  --arcade-lobby-mode-width: 112px;
+  --arcade-lobby-mode-width: 134px;
   --arcade-lobby-card-min-height: 220px;
   --challenge-rush-stage-max-width: 760px;
   --challenge-rush-playfield-min-height: 280px;
@@ -2257,17 +2257,35 @@ button.card {
   gap: var(--space-2);
 }
 .arcade-lobby-create-actions {
-  margin-top: auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   margin-right: var(--space-3);
   margin-left: var(--space-3);
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--border);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
 }
 .arcade-lobby-create-actions .btn {
   width: 100%;
+}
+.arcade-lobby-create-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.arcade-lobby-create-row .btn {
+  width: auto;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.arcade-lobby-mode-compact {
+  flex: 0 0 auto;
+  width: var(--arcade-lobby-mode-width);
+  height: var(--space-7);
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+  text-align: center;
 }
 .arcade-lobby-entry {
   gap: var(--space-2);
@@ -2348,9 +2366,6 @@ button.card {
   color: var(--text-muted);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-}
-.arcade-lobby-target-score.arcade-lobby-mode {
-  grid-template-columns: minmax(0, 1fr) var(--arcade-lobby-mode-width);
 }
 .arcade-lobby-target-score select,
 .arcade-lobby-target-score input {
