@@ -3,42 +3,20 @@ import { connectSocket } from '../socket.js';
 import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeMuteControlHtml, wireArcadeMuteControl, playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../infoTooltip.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 
-let socket = null; let lobbies = []; let match = null; let latestResult = null; let rerender = null; let numberOrder = 1;
-let countdownKey = null; let startedKey = null; let audioCtx = null;
+let socket = null; let lobbies = []; let match = null; let latestResult = null; let rerender = null; let numberOrder = 1; let prevMyScore = null;
+let countdownKey = null; let startedKey = null;
 const myId = () => getMyId();
 function navigate(view) { window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view })); }
 function emit(event, payload) { return new Promise((resolve) => socket?.emit(event, payload, resolve)); }
 function refresh() { rerender?.(); }
 
-function ensureAudioCtx() {
-  if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch { audioCtx = null; } }
-  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
-  return audioCtx;
-}
-// Synthesized instead of shipped as an audio file (same reasoning as the
-// kiosk push chime): no extra asset, same "Los!" tone on every device.
-// Wrapped in try/catch since a blocked/missing AudioContext must never break the game itself.
-function playStartTone() {
-  try {
-    const ctx = ensureAudioCtx();
-    if (!ctx) return;
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator(); const gain = ctx.createGain();
-    osc.type = 'sine'; osc.frequency.setValueAtTime(880, now);
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.3, now + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.start(now); osc.stop(now + 0.3);
-  } catch { /* Ton ist optional, darf das Spiel nicht stören. */ }
-}
-
 // Drives the shared 3-2-1 overlay per challenge (not just once per match) and
-// the start tone, keyed by match+challenge so re-renders/reconnects never
+// the start sound, keyed by match+challenge so re-renders/reconnects never
 // replay either; a pause cancels the overlay and lets a resume re-show it
 // against the recalculated remaining time.
 function syncPresentation(state) {
@@ -50,20 +28,33 @@ function syncPresentation(state) {
   } else {
     cancelCountdown();
   }
-  // Deferred off the synchronous render path: audio-context setup must never be able to
-  // delay the DOM update that actually reveals the challenge (e.g. under CI/CPU contention).
-  if (state.phase === 'playing' && startedKey !== key) { startedKey = key; setTimeout(playStartTone, 0); }
+  if (state.phase === 'playing' && startedKey !== key) { startedKey = key; playArcadeSound('challenge-start'); }
 }
 
 export function ensureChallengeRushSocket() {
   if (socket) return socket;
   socket = connectSocket();
   socket.on('challenge-rush:lobbies', (payload) => { lobbies = payload?.lobbies ?? []; refresh(); });
-  socket.on('challenge-rush:match:start', (payload) => { match = { ...payload }; latestResult = null; countdownKey = null; startedKey = null; navigate('challengeRush'); });
+  socket.on('challenge-rush:match:start', (payload) => { match = { ...payload }; latestResult = null; prevMyScore = null; countdownKey = null; startedKey = null; navigate('challengeRush'); });
   socket.on('challenge-rush:match:state', (payload) => { match = { ...match, ...payload }; refresh(); });
   socket.on('challenge-rush:state', (payload) => { match = { ...match, ...payload }; if (payload.phase === 'countdown' && payload.challenge?.key === 'number-salad') numberOrder = 1; syncPresentation(payload); refresh(); });
-  socket.on('challenge-rush:challenge:end', (payload) => { latestResult = payload; refresh(); });
-  socket.on('challenge-rush:match:end', (payload) => { cancelCountdown(); latestResult = payload; match = { ...match, phase: 'ended', scores: payload.scores, draw: payload.draw === true, history: payload.history ?? match?.history ?? [] }; refresh(); });
+  socket.on('challenge-rush:challenge:end', (payload) => {
+    latestResult = payload;
+    const myScore = payload.scores?.find((score) => score.playerId === myId())?.score;
+    if (myScore !== undefined) {
+      if (prevMyScore !== null && myScore > prevMyScore) playArcadeSound('challenge-point');
+      prevMyScore = myScore;
+    }
+    refresh();
+  });
+  socket.on('challenge-rush:match:end', (payload) => {
+    cancelCountdown();
+    latestResult = payload;
+    match = { ...match, phase: 'ended', scores: payload.scores, draw: payload.draw === true, history: payload.history ?? match?.history ?? [] };
+    if (payload.winnerId) playArcadeSound(payload.winnerId === myId() ? 'challenge-highscore' : 'challenge-gameover');
+    else if (!payload.draw) playArcadeSound('challenge-gameover');
+    refresh();
+  });
   socket.on('disconnect', () => { if (match) match = { ...match, disconnected: true }; refresh(); });
   socket.on('connect', () => { if (match?.matchId) socket.emit('challenge-rush:match:reconnect', { matchId: match.matchId, playerId: myId() }, (result) => { if (result?.ok) { match = { ...match, reconnected: true, disconnected: false }; refresh(); } }); });
   window.addEventListener('respawn:challenge-rush-disconnect', () => socket?.disconnect());
@@ -148,7 +139,8 @@ export function renderChallengeRush(container, ctx) {
     : match?.phase === 'result'
       ? `${resultView()}${matchControlsHtml()}`
       : `${challengeView(container)}${matchControlsHtml()}<section class="card stack"><h2>Zwischenstand</h2><div class="challenge-rush-scoreboard">${scoreText(scores)}</div></section>`;
-  container.innerHTML = `<div class="arcade-game-shell"><button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button><h1 class="view-title">Challenge Rush</h1>${body}</div>`;
+  container.innerHTML = `<div class="arcade-game-shell"><button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button><h1 class="view-title">Challenge Rush</h1><div class="arcade-toolbar">${arcadeMuteControlHtml()}</div>${body}</div>`;
+  wireArcadeMuteControl(container);
   container.querySelector('#cr-back')?.addEventListener('click', () => { match = null; latestResult = null; navigate('arcade'); });
   container.querySelector('[data-navigate="arcade"]')?.addEventListener('click', () => navigate('arcade'));
   container.querySelector('[data-cr-pause]')?.addEventListener('click', () => socket.emit('challenge-rush:match:pause', { matchId: match.matchId, playerId: myId() }, (result) => { if (!result?.ok) showToast(result?.error || 'Pause konnte nicht geändert werden.', { error: true }); }));

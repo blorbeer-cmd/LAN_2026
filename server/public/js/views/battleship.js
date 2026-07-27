@@ -6,7 +6,8 @@ import { confirmDialog } from '../modal.js';
 import { getMyId } from '../whoami.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeToolbarHtml, wireArcadeToolbar } from './arcadeUi.js';
+import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 const SIZE = 10;
@@ -27,6 +28,7 @@ let orientation = 'horizontal';
 let selectedCoordinate = null;
 let pendingAction = null;
 let connectionState = 'connecting';
+let lastShotKey = null; // last seen `${playerId}-${coordinate}-${kind}`, to fire the hit/miss/sunk cue only once per shot
 
 const myId = () => getMyId();
 const currentView = () => document.getElementById('view-container')?.dataset.view;
@@ -81,11 +83,19 @@ export function ensureBattleshipSocket() {
     match = { ...payload, phase: 'setup', paused: false, ended: false, players: payload.players ?? [] };
     placements = [];
     selectedCoordinate = null;
+    lastShotKey = null;
     navigate('battleship');
   });
   socket.on('battleship:state', (payload) => {
     if (!match || payload.matchId !== match.matchId) return;
     if (payload.currentPlayerId !== match.currentPlayerId || payload.phase !== match.phase || payload.paused !== match.paused) selectedCoordinate = null;
+    if (payload.lastShot) {
+      const shotKey = `${payload.lastShot.playerId}-${payload.lastShot.coordinate}-${payload.lastShot.kind}`;
+      if (shotKey !== lastShotKey) {
+        lastShotKey = shotKey;
+        playArcadeSound(payload.lastShot.kind === 'hit' ? 'battleship-hit' : payload.lastShot.kind === 'sunk' ? 'battleship-sunk' : 'battleship-miss');
+      }
+    }
     match = { ...match, ...payload, ended: payload.phase === 'ended' };
     if (payload.phase === 'countdown' && payload.beginsAt) showCountdown(payload.beginsAt);
     if (currentView() === 'battleship') rerender();
@@ -94,6 +104,7 @@ export function ensureBattleshipSocket() {
     if (!match || payload.matchId !== match.matchId) return;
     cancelCountdown();
     match = { ...match, ...payload, phase: 'ended', ended: true };
+    if (match.winnerId) playArcadeSound(match.winnerId === myId() ? 'battleship-win' : 'battleship-lose');
     window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
     if (currentView() === 'battleship' || currentView() === 'arcade') rerender();
   });
@@ -154,7 +165,7 @@ function renderPlacement() {
   const submitReason = !locked && missing > 0 ? `Es fehlen noch ${missing} von ${SHIPS.length} Schiffen.` : '';
   return `<div class="arcade-game-shell" data-battleship-match="${escapeHtml(match.matchId)}">
     <h1 class="view-title">Schiffe versenken</h1>
-    ${arcadeExpandControlHtml()}
+    ${arcadeToolbarHtml()}
     <section class="card stack battleship-setup" aria-labelledby="battleship-setup-title">
       <div class="grouped-page-section-title"><h2 id="battleship-setup-title">Flotte platzieren</h2></div>
       <p class="muted">Wähle ein Schiff und tippe auf das Startfeld. Berührungen zwischen Schiffen sind erlaubt.</p>
@@ -226,7 +237,7 @@ function renderBattle() {
   const result = match.lastShot ? `<div class="badge badge-playing" aria-live="polite">Letzter Schuss: ${resultLabels[hideSunkDuringPlay(match.lastShot.kind)] ?? 'Aufgelöst'}</div>` : '';
   return `<div class="arcade-game-shell" data-battleship-match="${escapeHtml(match.matchId)}">
     <h1 class="view-title">Schiffe versenken</h1>
-    ${arcadeExpandControlHtml()}
+    ${arcadeToolbarHtml()}
     <div class="battleship-status card" aria-live="polite"><strong>${connectionState === 'offline' ? 'Verbindung verloren' : status}</strong>${result}${connectionState === 'offline' ? '<span class="muted">Verbindung wird wiederhergestellt …</span>' : ''}</div>
     <div class="battleship-board-layout">
       <section class="card stack" aria-labelledby="battleship-target-title"><h2 id="battleship-target-title">Zielraster · ${escapeHtml(target.name)}</h2>${targetGridHtml(target, me.shots ?? [], canFire)}<p class="muted">Treffer: ${17 - (target.segmentsRemaining ?? 17)} · Verbleibend: ${target.segmentsRemaining ?? 17}</p>${canFire && selectedCoordinate !== null ? `<button type="button" class="btn btn-primary btn-block" id="battleship-fire" ${pendingAction ? 'disabled' : ''}>Feuern (${String.fromCharCode(65 + (selectedCoordinate % SIZE))}${Math.floor(selectedCoordinate / SIZE) + 1})</button>` : ''}</section>
@@ -278,7 +289,7 @@ export function renderBattleship(container) {
   if (match.phase === 'setup' || match.phase === 'countdown') wirePlacement(container);
   if (!match.ended && match.phase === 'playing') wireBattle(container);
   wireBattleshipGridKeyboard(container);
-  if (!match.ended) wireArcadeExpandControl(container);
+  if (!match.ended) wireArcadeToolbar(container);
   wireInfoTooltips(container);
   container.querySelector('#battleship-back')?.addEventListener('click', () => {
     match = null;

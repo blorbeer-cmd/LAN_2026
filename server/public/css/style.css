@@ -3355,6 +3355,24 @@ button.card {
   justify-content: flex-end;
   margin-bottom: var(--space-3);
 }
+.arcade-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.arcade-toolbar .arcade-expand-control {
+  margin-bottom: 0;
+}
+.arcade-mute-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-target-size);
+  height: var(--tap-target-size);
+  padding: 0;
+}
 .arcade-game-shell.is-expanded {
   width: min(100%, calc(100vw - var(--space-4) - var(--space-4)));
   max-width: none;
