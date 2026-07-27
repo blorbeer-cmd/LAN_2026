@@ -12,7 +12,7 @@ import { clearLobbyMemberships } from '../arcade/lobbyMembership';
 process.env.CHALLENGE_RUSH_RECONNECT_GRACE_MS = '100';
 
 type Ack = { ok: boolean; error?: string; [key: string]: unknown };
-type State = { matchId: string; phase: string; challengeIndex: number; challenge: { key: string; data: Record<string, unknown> }; scores: Array<{ playerId: string; connected: boolean; forfeited: boolean }>; };
+type State = { matchId: string; phase: string; challengeIndex: number; challenge: { key: string; data: Record<string, unknown> }; scores: Array<{ playerId: string; connected: boolean; forfeited: boolean }>; history: Array<{ key: string; title: string; scores: Array<{ playerId: string; name: string; score: number }> }>; readyNext: string[] };
 
 function connect(baseUrl: string, playerId?: string): Promise<ClientSocket> {
   return new Promise((resolve, reject) => {
@@ -135,5 +135,135 @@ test('Challenge Rush serializes parallel last inputs and completes a player once
     assert.equal(results.filter((result) => result.accepted !== true).length, 1);
   } finally {
     socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
+  }
+});
+
+async function completeReactionCircle(socket: ClientSocket, matchId: string, playerId: string, challengeIndex: number, target: Record<string, unknown>): Promise<void> {
+  await emitAck(socket, 'challenge-rush:challenge:input', { matchId, playerId, challengeIndex, action: 'hit', value: { x: Number(target.x), y: Number(target.y) } });
+}
+
+test('Challenge Rush only advances past a result once every connected player is ready, and records per-challenge history', async () => {
+  clearLobbyMemberships();
+  const server = await makeServer();
+  const hostSocket = await connect(server.baseUrl);
+  const guestSocket = await connect(server.baseUrl);
+  try {
+    const hostId = await player(server.baseUrl, 'Challenge Rush Ready Host');
+    const guestId = await player(server.baseUrl, 'Challenge Rush Ready Guest');
+    const created = await emitAck(hostSocket, 'challenge-rush:lobby:create', { playerId: hostId });
+    await emitAck(guestSocket, 'challenge-rush:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
+    await emitAck(guestSocket, 'challenge-rush:lobby:ready', { lobbyId: created.lobbyId, playerId: guestId, ready: true });
+    const started = nextEvent<{ matchId: string }>(hostSocket, 'challenge-rush:match:start');
+    await emitAck(hostSocket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId: hostId });
+    const match = await started;
+
+    const playing = await nextState(hostSocket, (state) => state.phase === 'playing');
+    const target = playing.challenge.data;
+    const resultPromise = nextState(hostSocket, (state) => state.phase === 'result');
+    await completeReactionCircle(hostSocket, match.matchId, hostId, playing.challengeIndex, target);
+    await completeReactionCircle(guestSocket, match.matchId, guestId, playing.challengeIndex, target);
+    const result = await resultPromise;
+    assert.equal(result.challengeIndex, 0);
+
+    const afterOneReady = nextEvent<State>(hostSocket, 'challenge-rush:state');
+    assert.equal((await emitAck(guestSocket, 'challenge-rush:challenge:ready', { matchId: match.matchId, playerId: guestId })).ok, true);
+    const stillWaiting = await afterOneReady;
+    assert.equal(stillWaiting.phase, 'result');
+    assert.equal(stillWaiting.challengeIndex, 0);
+
+    const advanced = nextState(hostSocket, (state) => state.phase === 'countdown' && state.challengeIndex === 1);
+    assert.equal((await emitAck(hostSocket, 'challenge-rush:challenge:ready', { matchId: match.matchId, playerId: hostId })).ok, true);
+    const finalState = await advanced;
+    assert.equal(finalState.history.length, 1);
+    assert.equal(finalState.history[0].key, 'reaction-circle');
+    assert.deepEqual(finalState.history[0].scores.map((s) => s.playerId).sort(), [guestId, hostId].sort());
+  } finally {
+    hostSocket.close(); guestSocket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
+  }
+});
+
+test('Challenge Rush advances past a result on a reliability timeout even without a ready click', async () => {
+  clearLobbyMemberships();
+  process.env.CHALLENGE_RUSH_RESULT_TIMEOUT_MS = '80';
+  const server = await makeServer();
+  const socket = await connect(server.baseUrl);
+  try {
+    const playerId = await player(server.baseUrl, 'Challenge Rush Timeout');
+    const created = await emitAck(socket, 'challenge-rush:lobby:create', { playerId });
+    const started = nextEvent<{ matchId: string }>(socket, 'challenge-rush:match:start');
+    await emitAck(socket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId });
+    const match = await started;
+    const playing = await nextState(socket, (state) => state.phase === 'playing');
+    const advanced = nextState(socket, (state) => state.phase === 'countdown' && state.challengeIndex === 1);
+    await completeReactionCircle(socket, match.matchId, playerId, playing.challengeIndex, playing.challenge.data);
+    await advanced;
+  } finally {
+    delete process.env.CHALLENGE_RUSH_RESULT_TIMEOUT_MS;
+    socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
+  }
+});
+
+test('Challenge Rush lets a player leave without ending the match for the others', async () => {
+  clearLobbyMemberships();
+  const server = await makeServer();
+  const hostSocket = await connect(server.baseUrl);
+  const guestSocket = await connect(server.baseUrl);
+  try {
+    const hostId = await player(server.baseUrl, 'Challenge Rush Leave Host');
+    const guestId = await player(server.baseUrl, 'Challenge Rush Leave Guest');
+    const created = await emitAck(hostSocket, 'challenge-rush:lobby:create', { playerId: hostId });
+    await emitAck(guestSocket, 'challenge-rush:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
+    await emitAck(guestSocket, 'challenge-rush:lobby:ready', { lobbyId: created.lobbyId, playerId: guestId, ready: true });
+    const started = nextEvent<{ matchId: string }>(hostSocket, 'challenge-rush:match:start');
+    await emitAck(hostSocket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId: hostId });
+    const match = await started;
+    const playing = await nextState(hostSocket, (state) => state.phase === 'playing');
+
+    const afterLeave = nextEvent<State>(hostSocket, 'challenge-rush:state');
+    assert.equal((await emitAck(guestSocket, 'challenge-rush:match:leave', { matchId: match.matchId, playerId: guestId })).ok, true);
+    const leftState = await afterLeave;
+    assert.equal(leftState.phase, 'playing');
+    assert.equal(leftState.scores.find((s) => s.playerId === guestId)?.forfeited, true);
+    assert.equal(leftState.scores.find((s) => s.playerId === hostId)?.forfeited, false);
+
+    const resultPromise = nextState(hostSocket, (state) => state.phase === 'result');
+    await completeReactionCircle(hostSocket, match.matchId, hostId, playing.challengeIndex, playing.challenge.data);
+    await resultPromise;
+
+    const advanced = nextState(hostSocket, (state) => state.phase === 'countdown' && state.challengeIndex === 1);
+    assert.equal((await emitAck(hostSocket, 'challenge-rush:challenge:ready', { matchId: match.matchId, playerId: hostId })).ok, true);
+    await advanced;
+  } finally {
+    hostSocket.close(); guestSocket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
+  }
+});
+
+test('Challenge Rush lets only the host end the match for everyone', async () => {
+  clearLobbyMemberships();
+  const server = await makeServer();
+  const hostSocket = await connect(server.baseUrl);
+  const guestSocket = await connect(server.baseUrl);
+  try {
+    const hostId = await player(server.baseUrl, 'Challenge Rush Finish Host');
+    const guestId = await player(server.baseUrl, 'Challenge Rush Finish Guest');
+    const created = await emitAck(hostSocket, 'challenge-rush:lobby:create', { playerId: hostId });
+    await emitAck(guestSocket, 'challenge-rush:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
+    await emitAck(guestSocket, 'challenge-rush:lobby:ready', { lobbyId: created.lobbyId, playerId: guestId, ready: true });
+    const started = nextEvent<{ matchId: string }>(hostSocket, 'challenge-rush:match:start');
+    await emitAck(hostSocket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId: hostId });
+    const match = await started;
+    await nextState(hostSocket, (state) => state.phase === 'playing');
+
+    const denied = await emitAck(guestSocket, 'challenge-rush:match:finish', { matchId: match.matchId, playerId: guestId });
+    assert.equal(denied.ok, false);
+
+    const ended = nextEvent<{ matchId: string; winnerId: string | null; history: unknown[] }>(hostSocket, 'challenge-rush:match:end');
+    assert.equal((await emitAck(hostSocket, 'challenge-rush:match:finish', { matchId: match.matchId, playerId: hostId })).ok, true);
+    const endedState = await ended;
+    assert.equal(endedState.matchId, match.matchId);
+    assert.equal(endedState.winnerId, null);
+    assert.ok(Array.isArray(endedState.history));
+  } finally {
+    hostSocket.close(); guestSocket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
   }
 });
