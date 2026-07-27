@@ -85,7 +85,7 @@ export function createContentSearchEntries(appState, content = {}) {
     title: game.name,
     category: 'Spiel',
     description: game.platform ? `${game.platform} · Spiel im Katalog` : 'Spiel im Katalog',
-    aliases: `${game.processNames?.join(' ') ?? ''} ${game.genre ?? ''}`,
+    aliases: `${game.processNames?.join(' ') ?? ''} ${game.genres?.join(' ') ?? ''}`,
     priority: 82,
     target: { type: 'game', id: game.id },
   }));
