@@ -36,7 +36,7 @@ function getPlayers(groupId: string, includeHistorical = false): PlayerRow[] {
       .prepare(
         `SELECT p.id, p.name, p.real_name, p.color, p.avatar, p.is_test
          FROM players p JOIN group_memberships gm ON gm.player_id = p.id
-         WHERE gm.group_id = ? ORDER BY p.name COLLATE NOCASE`,
+         WHERE gm.group_id = ? AND p.deactivated_at IS NULL ORDER BY p.name COLLATE NOCASE`,
       )
       .all(groupId) as PlayerRow[];
   }
