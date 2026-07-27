@@ -21,7 +21,8 @@ import { confirmDialog } from '../modal.js';
 import { connectSocket } from '../socket.js';
 import { icon } from '../icons.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
+import { playArcadeSound } from '../arcadeSound.js';
 
 const SWATCHES = [
   '#1a1a1a',
@@ -177,6 +178,7 @@ function updateCountdownBadge() {
   countdownEl.textContent = paused ? 'Pause' : `${left}s`;
   countdownEl.classList.toggle('badge-paused', paused || left <= 5);
   countdownEl.classList.toggle('badge-playing', !paused && left > 5);
+  if (!paused && turn?.phase === 'drawing' && left > 0 && left <= 5) playArcadeSound('scribble-tick');
 }
 
 function setupCanvas(el) {
@@ -655,6 +657,7 @@ export function ensureScribbleSocket() {
       thumbsToken = payload.thumbsToken ?? null;
       thumbsCount = 0;
       myThumbActive = false;
+      playArcadeSound('scribble-round-start');
     }
     rerender();
   });
@@ -710,6 +713,7 @@ export function ensureScribbleSocket() {
   socket.on('scribble:chat', (payload) => {
     if (!match || payload.matchId !== match.matchId) return;
     appendChatLine(payload);
+    if (payload.correct && payload.playerId === myId()) playArcadeSound('scribble-correct');
   });
 
   socket.on('scribble:scores', (payload) => {
@@ -974,14 +978,14 @@ export function renderScribbleRoom(container) {
 
   container.innerHTML = `
     <div class="arcade-game-shell"><h1 class="view-title">Scribble</h1>
-    ${arcadeExpandControlHtml()}
+    ${arcadeToolbarHtml()}
     <div id="scribble-roster">${rosterScoreHtml()}</div>
     ${lastDrawingThumbHtml()}
     ${wordChoiceHtml()}
     ${turn?.phase === 'drawing' ? drawingAreaHtml() : ''}
     ${matchControlsHtml()}
     </div>`;
-  wireArcadeExpandControl(container);
+  wireArcadeToolbar(container);
   wireRoom(container);
 }
 

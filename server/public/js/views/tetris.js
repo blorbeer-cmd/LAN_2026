@@ -21,7 +21,8 @@ import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
+import { playArcadeSound } from '../arcadeSound.js';
 
 const COLS = 10;
 const ROWS = 20;
@@ -48,6 +49,7 @@ let lobbies = [];
 let match = null; // { matchId, host, players, beginsAt, running, paused, ended, winner }
 let latestState = null; // last tetris:state payload
 let prevLines = {}; // playerId -> last seen line count, to detect fresh clears for FX
+let prevLevels = {}; // playerId -> last seen level, to detect level-ups for the level-up cue
 let inputBound = false;
 
 function myId() {
@@ -103,6 +105,7 @@ export function ensureTetrisSocket() {
     match = { ...payload, running: false, paused: false, ended: false, winner: null };
     latestState = null;
     prevLines = {};
+    prevLevels = {};
     navigate('tetris'); // hand over to the full-screen board view
     showCountdown(match.beginsAt);
   });
@@ -140,6 +143,7 @@ export function ensureTetrisSocket() {
     match.winner = payload.winner ?? null;
     match.endScores = payload.scores ?? null;
     cancelCountdown();
+    playArcadeSound('tetris-gameover');
     // A finished match adds a new highscore row — let the Arcade view know its
     // cached stats are stale so they refresh when the player heads back.
     window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
@@ -351,13 +355,22 @@ function updateRosterDisplay() {
   });
 }
 
-// Fire the clear FX when a board's line count jumps between snapshots.
+// Fire the clear FX when a board's line count jumps between snapshots. Only
+// the local player's own board plays a sound cue — otherwise a busy 1v1 would
+// double up cues for the same event on both boards.
 function checkClearFx(prefix, playerState) {
   if (!playerState) return;
-  const prev = prevLines[playerState.playerId];
+  const prevLineCount = prevLines[playerState.playerId];
   prevLines[playerState.playerId] = playerState.lines;
-  if (prev !== undefined && playerState.lines > prev) {
-    triggerClearFx(prefix, playerState.lines - prev);
+  if (prevLineCount !== undefined && playerState.lines > prevLineCount) {
+    const cleared = playerState.lines - prevLineCount;
+    triggerClearFx(prefix, cleared);
+    if (prefix === 'tetris-mine') playArcadeSound(cleared >= 4 ? 'tetris-tetris' : 'tetris-line');
+  }
+  const prevLevel = prevLevels[playerState.playerId];
+  prevLevels[playerState.playerId] = playerState.level;
+  if (prefix === 'tetris-mine' && prevLevel !== undefined && playerState.level > prevLevel) {
+    playArcadeSound('tetris-levelup');
   }
 }
 
@@ -561,7 +574,7 @@ export function renderTetris(container, ctx) {
   });
   container.innerHTML = `
     <div class="arcade-game-shell"><h1 class="view-title">Tetris</h1>
-    ${arcadeExpandControlHtml()}
+    ${arcadeToolbarHtml()}
     <div id="tetris-game">
       <div id="tetris-roster">${roster}</div>
       <div id="tetris-boards" class="tetris-boards">
@@ -573,7 +586,7 @@ export function renderTetris(container, ctx) {
     </div></div>`;
   paint();
   wireMatch(container);
-  wireArcadeExpandControl(container);
+  wireArcadeToolbar(container);
 }
 
 function wireMatch(container) {

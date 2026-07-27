@@ -7,7 +7,8 @@ import { getMyId } from '../whoami.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
+import { playArcadeSound } from '../arcadeSound.js';
 
 const COLS = 32;
 const ROWS = 20;
@@ -17,6 +18,7 @@ let lobbies = [];
 let match = null;
 let world = null;
 let keyboardBound = false;
+let prevMyScore = null; // last seen score for my own snake, to detect an eaten food for the cue
 
 const myId = () => getMyId();
 const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
@@ -40,6 +42,7 @@ export function ensureSnakeSocket() {
   socket.on('snake:match:start', (payload) => {
     match = { ...payload, running: false, paused: false, ended: false };
     world = null;
+    prevMyScore = null;
     navigate('snake');
     requestAnimationFrame(() => showCountdown(payload.beginsAt));
   });
@@ -48,6 +51,12 @@ export function ensureSnakeSocket() {
     if (match) {
       match.running = payload.running;
       match.paused = payload.paused;
+    }
+    const myIndex = match?.players?.findIndex((p) => p.id === myId()) ?? -1;
+    const myScore = myIndex >= 0 ? world?.snakes?.[myIndex]?.score : undefined;
+    if (myScore !== undefined) {
+      if (prevMyScore !== null && myScore > prevMyScore) playArcadeSound('snake-eat');
+      prevMyScore = myScore;
     }
     paintBoard();
     updateRosterDisplay();
@@ -61,6 +70,7 @@ export function ensureSnakeSocket() {
     match.winner = payload.winner ?? null;
     match.scores = payload.scores ?? [];
     cancelCountdown();
+    playArcadeSound('snake-gameover');
     window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
     if (currentView() === 'snake' || currentView() === 'arcade') rerender();
   });
@@ -228,11 +238,11 @@ export function renderSnake(container) {
       : isPlayer
         ? `<div class="arcade-match-controls"><button class="btn btn-sm btn-equal btn-danger" id="snake-leave-match">Verlassen</button></div>`
         : '';
-  container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Snake</h1>${arcadeExpandControlHtml()}
+  container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Snake</h1>${arcadeToolbarHtml()}
     <div id="snake-roster">${roster}</div>
     <div class="card snake-game"><canvas id="snake-canvas"></canvas>${match.paused ? '<div class="snake-overlay">Pause</div>' : ''}</div>
     ${controls}${result}</div>`;
-  wireArcadeExpandControl(container);
+  wireArcadeToolbar(container);
   paintBoard();
   wireSwipeControls(container.querySelector('#snake-canvas'));
   container.querySelector('#snake-pause')?.addEventListener('click', async () => {
@@ -249,6 +259,7 @@ export function renderSnake(container) {
   container.querySelector('#snake-back')?.addEventListener('click', () => {
     match = null;
     world = null;
+    prevMyScore = null;
     cancelCountdown();
     navigate('arcade');
   });

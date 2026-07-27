@@ -21,7 +21,8 @@ import { ensurePongSocket, renderPongLobbyCard, wirePongLobbyCard, myPongLobby, 
 import { ensureSnakeSocket, renderSnakeLobbyCard, wireSnakeLobbyCard, mySnakeLobby, hasSnakeMatch, snakeLobbies, leaveMySnakeLobby } from './snake.js';
 import { ensureBattleshipSocket, renderBattleshipLobbyCard, wireBattleshipLobbyCard, myBattleshipLobby, hasBattleshipMatch, battleshipLobbies } from './battleship.js';
 import { ensureChallengeRushSocket, renderChallengeRushLobbyCard, wireChallengeRushLobbyCard, myChallengeRushLobby, hasChallengeRushMatch, challengeRushLobbies, leaveMyChallengeRushLobby } from './challengeRush.js';
-import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
+import { playArcadeSound } from '../arcadeSound.js';
 import { startArcadeWatch } from './arcadeWatch.js';
 import { confirmDialog } from '../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
@@ -122,6 +123,7 @@ function updateCountdownBadge() {
   badge.textContent = `${left}s`;
   badge.classList.toggle('badge-paused', left <= 5);
   badge.classList.toggle('badge-playing', left > 5);
+  if (!match?.paused && left > 0 && left <= 5) playArcadeSound('quiz-tick');
 }
 
 function startCountdown() {
@@ -693,12 +695,12 @@ export function renderQuizRoom(container, ctx) {
   }
   container.innerHTML = `
     <div class="arcade-game-shell"><h1 class="view-title">Gaming-Quiz</h1>
-    ${arcadeExpandControlHtml()}
+    ${arcadeToolbarHtml()}
     ${renderMatch()}
     ${match.ended ? `<button type="button" class="btn btn-primary btn-block" id="quiz-back" style="margin-top:var(--space-4);">Zurück zum Arcade</button>` : ''}
     </div>`;
   wireQuizMatch(container);
-  wireArcadeExpandControl(container);
+  wireArcadeToolbar(container);
   if (currentQuestion && !match.paused) startCountdown();
   // Every socket update (new question, opponent's result, ...) rebuilds this
   // view's DOM from scratch, which otherwise drops focus and forces a click
@@ -715,7 +717,8 @@ function wireQuizMatch(container) {
     const text = input.value.trim();
     if (!playerId || !match?.matchId || !text) return;
     const res = await emitWithAck('arcade:quiz:answer', { matchId: match.matchId, playerId, text });
-    if (res?.ok && res.correct === false) showToast('Noch nicht richtig.');
+    if (res?.ok && res.correct === false) { showToast('Noch nicht richtig.'); playArcadeSound('quiz-wrong'); }
+    if (res?.ok && res.correct === true) playArcadeSound('quiz-correct');
     if (!res?.ok) showToast(res?.error || 'Antwort nicht angenommen.', { error: true });
     input.value = '';
     input.focus();
