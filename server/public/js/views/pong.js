@@ -7,7 +7,8 @@ import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
+import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../infoTooltip.js';
 
 const W = 960;
@@ -66,6 +67,7 @@ export function ensurePongSocket() {
   socket.on('pong:state', (payload) => {
     if (latest?.world?.ball && payload?.world?.ball && latest.world.ball.vx * payload.world.ball.vx < 0) {
       impact = { x: payload.world.ball.x, y: payload.world.ball.y, life: 1 };
+      playArcadeSound('pong-hit');
     }
     previous = latest;
     latest = payload;
@@ -83,6 +85,7 @@ export function ensurePongSocket() {
     if (match) match.scores = payload.scores;
     updateRoster();
     flashPoint(payload.scorer?.name);
+    playArcadeSound('pong-score');
   });
   socket.on('pong:match:paused', () => { if (match) { match.paused = true; if (currentView() === 'pong') rerender(); } });
   socket.on('pong:match:resumed', () => { if (match) { match.paused = false; if (currentView() === 'pong') rerender(); } });
@@ -93,6 +96,7 @@ export function ensurePongSocket() {
     match.winner = payload.winner ?? null;
     match.scores = payload.scores ?? [];
     cancelCountdown();
+    if (match.winner) playArcadeSound(match.winner.id === myId() ? 'pong-win' : 'pong-lose');
     window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
     stopAnimation();
     if (currentView() === 'pong' || currentView() === 'arcade') rerender();
@@ -372,11 +376,11 @@ export function renderPong(container) {
     winnerId: match.winner?.id ?? null,
     scoreFor: (player) => `${match.scores?.find((score) => score.playerId === player.id)?.score ?? 0}/${match.targetScore ?? targetScore}`,
   });
-  container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Pong</h1>${arcadeExpandControlHtml()}<div id="pong-roster">${roster}</div>
+  container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Pong</h1>${arcadeToolbarHtml()}<div id="pong-roster">${roster}</div>
     <div class="pong-arena"><canvas id="pong-canvas" width="${W}" height="${H}"></canvas><div id="pong-point" class="pong-point" hidden></div>${match.paused ? '<div class="pong-overlay">Pause</div>' : ''}</div>
     ${matchControlsHtml(isHost)}${resultHtml()}</div>`;
   wireGame(container);
-  wireArcadeExpandControl(container);
+  wireArcadeToolbar(container);
   startAnimation();
 }
 

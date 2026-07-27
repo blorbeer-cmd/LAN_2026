@@ -3,9 +3,10 @@ import { connectSocket } from '../socket.js';
 import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeMuteControlHtml, wireArcadeMuteControl, playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../infoTooltip.js';
 
-let socket = null; let lobbies = []; let match = null; let latestResult = null; let rerender = null; let numberOrder = 1;
+let socket = null; let lobbies = []; let match = null; let latestResult = null; let rerender = null; let numberOrder = 1; let prevMyScore = null;
 const myId = () => getMyId();
 function navigate(view) { window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view })); }
 function emit(event, payload) { return new Promise((resolve) => socket?.emit(event, payload, resolve)); }
@@ -14,11 +15,25 @@ export function ensureChallengeRushSocket() {
   if (socket) return socket;
   socket = connectSocket();
   socket.on('challenge-rush:lobbies', (payload) => { lobbies = payload?.lobbies ?? []; refresh(); });
-  socket.on('challenge-rush:match:start', (payload) => { match = { ...payload }; latestResult = null; navigate('challengeRush'); });
+  socket.on('challenge-rush:match:start', (payload) => { match = { ...payload }; latestResult = null; prevMyScore = null; navigate('challengeRush'); });
   socket.on('challenge-rush:match:state', (payload) => { match = { ...match, ...payload }; refresh(); });
   socket.on('challenge-rush:state', (payload) => { match = { ...match, ...payload }; if (payload.phase === 'countdown' && payload.challenge?.key === 'number-salad') numberOrder = 1; refresh(); });
-  socket.on('challenge-rush:challenge:end', (payload) => { latestResult = payload; refresh(); });
-  socket.on('challenge-rush:match:end', (payload) => { latestResult = payload; match = { ...match, phase: 'ended', scores: payload.scores, draw: payload.draw === true }; refresh(); });
+  socket.on('challenge-rush:challenge:end', (payload) => {
+    latestResult = payload;
+    const myScore = payload.scores?.find((score) => score.playerId === myId())?.score;
+    if (myScore !== undefined) {
+      if (prevMyScore !== null && myScore > prevMyScore) playArcadeSound('challenge-point');
+      prevMyScore = myScore;
+    }
+    refresh();
+  });
+  socket.on('challenge-rush:match:end', (payload) => {
+    latestResult = payload;
+    match = { ...match, phase: 'ended', scores: payload.scores, draw: payload.draw === true };
+    if (payload.winnerId) playArcadeSound(payload.winnerId === myId() ? 'challenge-highscore' : 'challenge-gameover');
+    else if (!payload.draw) playArcadeSound('challenge-gameover');
+    refresh();
+  });
   socket.on('disconnect', () => { if (match) match = { ...match, disconnected: true }; refresh(); });
   socket.on('connect', () => { if (match?.matchId) socket.emit('challenge-rush:match:reconnect', { matchId: match.matchId, playerId: myId() }, (result) => { if (result?.ok) { match = { ...match, reconnected: true, disconnected: false }; refresh(); } }); });
   window.addEventListener('respawn:challenge-rush-disconnect', () => socket?.disconnect());
@@ -66,7 +81,7 @@ function challengeView(container) {
   const hostControls = match?.host?.id === myId() && match?.phase !== 'ended' ? `<button type="button" class="btn btn-sm" data-cr-pause>${match.paused ? 'Fortsetzen' : 'Pausieren'}</button>` : '';
   return `<section class="card stack challenge-rush-stage" data-match-id="${escapeHtml(match?.matchId ?? '')}" data-challenge-index="${match?.challengeIndex ?? -1}" data-phase="${escapeHtml(match?.phase ?? '')}" data-remaining-ms="${match?.remainingMs ?? ''}" data-reconnected="${match?.reconnected === true}" data-disconnected="${match?.disconnected === true}" aria-live="polite"><div class="row-between"><span class="badge badge-playing">Challenge ${(match?.challengeIndex ?? 0) + 1} / ${match?.challengeCount ?? 4}</span><span>${match?.paused ? 'Pause' : match?.phase === 'countdown' ? 'Startet gleich' : match?.phase === 'result' ? 'Auswertung' : 'Läuft'}</span></div><h2>${escapeHtml(challenge?.title ?? 'Mini-Challenge')}</h2><p class="muted">${escapeHtml(challenge?.description ?? '')}</p><div class="challenge-rush-playfield">${body}</div>${hostControls}${match?.phase === 'result' ? `<div class="challenge-rush-result">Runde abgeschlossen</div>` : ''}</section>`;
 }
-export function renderChallengeRush(container, ctx) { ensureChallengeRushSocket(); rerender = () => renderChallengeRush(container, ctx); const scores = match?.scores ?? []; container.innerHTML = `<div class="arcade-game-shell"><button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button><h1 class="view-title">Challenge Rush</h1>${match?.phase === 'ended' ? `<section class="card stack"><h2>${match.draw ? 'Unentschieden' : 'Gesamtergebnis'}</h2><div class="challenge-rush-scoreboard">${scoreText(scores)}</div><button type="button" class="btn btn-primary" id="cr-back">Zur Arcade</button></section>` : `${challengeView(container)}<section class="card stack"><h2>Zwischenstand</h2><div class="challenge-rush-scoreboard">${scoreText(scores)}</div></section>`}</div>`; container.querySelector('#cr-back')?.addEventListener('click', () => { match = null; latestResult = null; navigate('arcade'); }); container.querySelector('[data-navigate="arcade"]')?.addEventListener('click', () => navigate('arcade'));
+export function renderChallengeRush(container, ctx) { ensureChallengeRushSocket(); rerender = () => renderChallengeRush(container, ctx); const scores = match?.scores ?? []; container.innerHTML = `<div class="arcade-game-shell"><button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button><h1 class="view-title">Challenge Rush</h1><div class="arcade-toolbar">${arcadeMuteControlHtml()}</div>${match?.phase === 'ended' ? `<section class="card stack"><h2>${match.draw ? 'Unentschieden' : 'Gesamtergebnis'}</h2><div class="challenge-rush-scoreboard">${scoreText(scores)}</div><button type="button" class="btn btn-primary" id="cr-back">Zur Arcade</button></section>` : `${challengeView(container)}<section class="card stack"><h2>Zwischenstand</h2><div class="challenge-rush-scoreboard">${scoreText(scores)}</div></section>`}</div>`; wireArcadeMuteControl(container); container.querySelector('#cr-back')?.addEventListener('click', () => { match = null; latestResult = null; navigate('arcade'); }); container.querySelector('[data-navigate="arcade"]')?.addEventListener('click', () => navigate('arcade'));
   container.querySelector('[data-cr-pause]')?.addEventListener('click', () => socket.emit('challenge-rush:match:pause', { matchId: match.matchId, playerId: myId() }, (result) => { if (!result?.ok) showToast(result?.error || 'Pause konnte nicht geändert werden.', { error: true }); }));
   const send = (action, value, onAccepted = () => {}) => socket.emit('challenge-rush:challenge:input', { matchId: match.matchId, playerId: myId(), challengeIndex: match.challengeIndex, action, value }, (result) => { if (!result?.ok && !result?.ignored) return showToast(result?.error || 'Eingabe abgelehnt.', { error: true }); if (result?.ok && !result?.ignored && !result?.duplicate) onAccepted(result.progress); });
   container.querySelector('.challenge-rush-circle')?.addEventListener('click', (event) => { const circle = event.currentTarget; send('hit', { x: Number(circle.dataset.crX), y: Number(circle.dataset.crY) }); });
