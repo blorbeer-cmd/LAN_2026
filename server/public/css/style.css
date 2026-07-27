@@ -609,6 +609,7 @@ textarea {
 .battleship-cell.is-sunk {
   background: var(--danger-bg);
   color: var(--danger);
+  border-color: var(--danger);
 }
 
 .battleship-cell.is-sunk {
@@ -621,6 +622,13 @@ textarea {
 .battleship-cell.is-miss {
   background: var(--state-offline-bg);
   color: var(--text-muted);
+  border-color: var(--text-muted);
+  font-size: var(--font-size-lg);
+}
+
+.battleship-cell.is-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .battleship-cell:disabled {
