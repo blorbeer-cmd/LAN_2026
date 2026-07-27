@@ -497,13 +497,29 @@ function gameTileHtml(game, active, count) {
     </button>`;
 }
 
+// Battleship and Challenge Rush keep a finished match watchable for a short
+// reveal window so late spectators can still see the final board/scores —
+// but the player who was actually in that match already knows it's over, so
+// it must not show up as if it were still running on their own overview.
+function isOwnFinishedMatch(live) {
+  if (live.phase !== 'ended') return false;
+  const myId = getMyId();
+  if (!myId) return false;
+  const ids = [
+    ...(live.players ?? []).map((player) => player.id ?? player.ref?.id),
+    ...(live.scores ?? []).map((score) => score.playerId),
+  ];
+  return ids.includes(myId);
+}
+
 function runningMatchesOverviewHtml() {
-  if (watchMatches.length === 0) return '';
+  const matches = watchMatches.filter((live) => !isOwnFinishedMatch(live));
+  if (matches.length === 0) return '';
   return `
     <section class="card stack grouped-page-section" aria-labelledby="arcade-running-title">
       <div class="grouped-page-section-title"><h2 id="arcade-running-title">Laufende Spiele</h2></div>
       <div class="arcade-watch-list two-column-card-grid">
-        ${watchMatches
+        ${matches
           .map((live) => {
             const game = GAMES.find((entry) => entry.id === live.gameType);
             const players = (live.players ?? []).map((player) => escapeHtml(player.name ?? player.ref?.name ?? 'Spieler')).join(' · ');
