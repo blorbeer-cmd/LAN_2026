@@ -107,22 +107,31 @@ test('Challenge Rush hides the reaction target until play, gates the next challe
   const actor = await openArcade(await createPlayer());
   try {
     await actor.page.click('[data-game="challenge-rush"]');
+
+    // First challenge is always reaction-circle (fixed CHALLENGES order): its target must stay
+    // invisible during the countdown and only appear once play begins. In E2E_FAST_TIMERS mode the
+    // countdown is only 50ms, and Playwright's default waitForFunction polling runs on
+    // requestAnimationFrame — under real CI CPU contention, whole animation frames can be skipped,
+    // silently missing a state that transient. A MutationObserver installed before the match even
+    // starts fires synchronously on every DOM mutation regardless of frame scheduling, so it can't
+    // miss the circle appearing even for a single render.
+    await actor.page.evaluate(() => {
+      (window as unknown as { __crViolation: boolean }).__crViolation = false;
+      const observer = new MutationObserver(() => {
+        const node = document.querySelector('.challenge-rush-stage');
+        if (node?.getAttribute('data-phase') !== 'playing' && document.querySelector('.challenge-rush-circle')) {
+          (window as unknown as { __crViolation: boolean }).__crViolation = true;
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+      (window as unknown as { __crObserver: MutationObserver }).__crObserver = observer;
+    });
+
     await actor.page.click('#cr-create');
     await actor.page.waitForSelector('[data-cr-start]');
     await actor.page.click('[data-cr-start]');
-    await actor.page.waitForSelector('.challenge-rush-stage');
-
-    // First challenge is always reaction-circle (fixed CHALLENGES order): its
-    // target must stay invisible during the countdown and only appear once play begins.
-    // Phase and circle-absence are checked in one atomic browser-side evaluation — checking
-    // them as two separate round-trips would race the (deliberately short, fast-timer) countdown.
-    // The shared countdown overlay itself (countdown.js) is already covered by every other
-    // arcade game's e2e tests, so it isn't re-asserted here — its own on-screen window is very
-    // short in fast-timer mode and not worth chasing as a separate, timing-sensitive check.
-    await actor.page.waitForFunction(() => document.querySelector('.challenge-rush-stage')?.getAttribute('data-phase') === 'countdown' && !document.querySelector('.challenge-rush-circle'));
-
-    // Again atomic (phase + circle-presence in one evaluation) for the same reason as above.
-    await actor.page.waitForFunction(() => document.querySelector('.challenge-rush-stage')?.getAttribute('data-phase') === 'playing' && !!document.querySelector('.challenge-rush-circle'));
+    await actor.page.waitForSelector('.challenge-rush-circle');
+    assert.equal(await actor.page.evaluate(() => (window as unknown as { __crViolation: boolean }).__crViolation), false);
     await actor.page.click('.challenge-rush-circle');
 
     // The result stays on screen until the player explicitly clicks ready — no automatic advance.
