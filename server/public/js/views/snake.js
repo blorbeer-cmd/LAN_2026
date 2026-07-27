@@ -9,6 +9,7 @@ import { showCountdown, cancelCountdown } from '../countdown.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
+import { infoTooltipHtml } from '../infoTooltip.js';
 
 const COLS = 32;
 const ROWS = 20;
@@ -85,9 +86,13 @@ function lobbyList() {
     const joined = lobby.players.some((player) => player.id === myId());
     const full = lobby.players.length >= 2 && !joined;
     const ready = lobby.players.length === 2;
+    const startReason = ready ? '' : 'Noch nicht genug Spieler (mind. 2).';
     const footerActions = isHost
       ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-snake-close="${lobby.id}">Schließen</button>
-        <button type="button" class="btn btn-sm btn-equal btn-primary" id="snake-start" ${ready ? '' : 'disabled'}>Start</button>`
+        <span class="row" style="gap:var(--space-1);">
+          <button type="button" class="btn btn-sm btn-equal btn-primary" id="snake-start" ${ready ? '' : 'disabled'}>Start</button>
+          ${startReason ? infoTooltipHtml(`snake-start-${lobby.id}`, 'Start nicht möglich', startReason, 'warning') : ''}
+        </span>`
       : joined
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-snake-leave="${lobby.id}">Verlassen</button>
           ${readyToggleHtml(lobby, myId(), 'snake-ready')}`
@@ -102,13 +107,17 @@ function lobbyList() {
 export function renderSnakeLobbyCard() {
   const lobby = mySnakeLobby();
   const noMe = !myId();
+  const createReason = !noMe && match ? 'Beende zuerst dein aktuelles Spiel.' : '';
   return `<div class="card stack arcade-lobby-card">
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
-    ${lobbyList()}
     <div class="arcade-lobby-create-actions">
-      <button type="button" class="btn btn-primary btn-sm" id="snake-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+      <span class="row" style="gap:var(--space-1);">
+        <button type="button" class="btn btn-primary btn-sm" id="snake-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+        ${createReason ? infoTooltipHtml('snake-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+      </span>
       ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="snake-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
     </div>
+    ${lobbyList()}
   </div>`;
 }
 

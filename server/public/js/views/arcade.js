@@ -28,6 +28,7 @@ import { confirmDialog } from '../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { isOwnFinishedMatch } from '../arcadeWatchFilter.js';
 
 // The Arcade opens as a launcher: a compact grid of playable game tiles.
 // Picking one reveals that game's lobby below.
@@ -327,9 +328,13 @@ function renderLobbyList() {
             <input type="number" id="target-score" min="1" max="100" value="${escapeHtml(customTarget)}" aria-label="Punkte bis Sieg" />
           </label>`
         : '';
+      const startReason = l.players.length < 2 ? 'Noch nicht genug Spieler (mind. 2).' : '';
       const footerActions = isHost
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-close-lobby="${l.id}">Schließen</button>
-          <button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-start-lobby" ${l.players.length < 2 ? 'disabled' : ''}>Start</button>`
+          <span class="row" style="gap:var(--space-1);">
+            <button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-start-lobby" ${l.players.length < 2 ? 'disabled' : ''}>Start</button>
+            ${startReason ? infoTooltipHtml(`quiz-start-${l.id}`, 'Start nicht möglich', startReason, 'warning') : ''}
+          </span>`
         : joined
           ? readyToggleHtml(l, getMyId(), 'quiz-ready')
           : '';
@@ -500,12 +505,14 @@ function gameTileHtml(game, active, count) {
 }
 
 function runningMatchesOverviewHtml() {
-  if (watchMatches.length === 0) return '';
+  const myId = getMyId();
+  const matches = watchMatches.filter((live) => !isOwnFinishedMatch(live, myId));
+  if (matches.length === 0) return '';
   return `
     <section class="card stack grouped-page-section" aria-labelledby="arcade-running-title">
       <div class="grouped-page-section-title"><h2 id="arcade-running-title">Laufende Spiele</h2></div>
       <div class="arcade-watch-list two-column-card-grid">
-        ${watchMatches
+        ${matches
           .map((live) => {
             const game = GAMES.find((entry) => entry.id === live.gameType);
             const players = (live.players ?? []).map((player) => escapeHtml(player.name ?? player.ref?.name ?? 'Spieler')).join(' · ');
@@ -529,13 +536,17 @@ function runningMatchesOverviewHtml() {
 function activeGameHtml() {
   const game = currentGame();
   if (game === 'quiz') {
+    const createReason = match ? 'Beende zuerst dein aktuelles Spiel.' : '';
     return `
       <div class="card stack arcade-lobby-card">
-        ${renderLobbyList()}
         <div class="arcade-lobby-create-actions">
-          <button type="button" class="btn btn-primary btn-sm" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button>
+          <span class="row" style="gap:var(--space-1);">
+            <button type="button" class="btn btn-primary btn-sm" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button>
+            ${createReason ? infoTooltipHtml('quiz-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+          </span>
           ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="quiz-bot" ${match ? 'disabled' : ''}>Gegen KI</button>` : ''}
         </div>
+        ${renderLobbyList()}
       </div>`;
   }
   if (game === 'tetris') {

@@ -23,6 +23,7 @@ import { icon } from '../icons.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
+import { infoTooltipHtml } from '../infoTooltip.js';
 
 const SWATCHES = [
   '#1a1a1a',
@@ -838,9 +839,13 @@ function renderLobbyList() {
               .join('')}
           </div>`
         : '';
+      const startReason = ready ? '' : 'Noch nicht genug Spieler (mind. 2).';
       const footerActions = isHost
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-close="${l.id}">Schließen</button>
-          <button type="button" class="btn btn-sm btn-equal btn-primary" id="scribble-start" ${ready ? '' : 'disabled'}>Start</button>`
+          <span class="row" style="gap:var(--space-1);">
+            <button type="button" class="btn btn-sm btn-equal btn-primary" id="scribble-start" ${ready ? '' : 'disabled'}>Start</button>
+            ${startReason ? infoTooltipHtml(`scribble-start-${l.id}`, 'Start nicht möglich', startReason, 'warning') : ''}
+          </span>`
         : joined
           ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-leave="${l.id}">Verlassen</button>
             ${readyToggleHtml(l, myId(), 'scribble-ready')}`
@@ -857,14 +862,18 @@ function renderLobbyList() {
 export function renderScribbleLobbyCard() {
   const lobby = myScribbleLobby();
   const noMe = !myId();
+  const createReason = !noMe && match ? 'Beende zuerst dein aktuelles Spiel.' : '';
   return `
     <div class="card stack arcade-lobby-card">
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
-      ${renderLobbyList()}
       <div class="arcade-lobby-create-actions">
-        <button type="button" class="btn btn-primary btn-sm" id="scribble-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+        <span class="row" style="gap:var(--space-1);">
+          <button type="button" class="btn btn-primary btn-sm" id="scribble-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+          ${createReason ? infoTooltipHtml('scribble-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+        </span>
         ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="scribble-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
       </div>
+      ${renderLobbyList()}
     </div>`;
 }
 
