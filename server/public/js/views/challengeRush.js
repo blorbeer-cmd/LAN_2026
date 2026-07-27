@@ -50,7 +50,9 @@ function syncPresentation(state) {
   } else {
     cancelCountdown();
   }
-  if (state.phase === 'playing' && startedKey !== key) { startedKey = key; playStartTone(); }
+  // Deferred off the synchronous render path: audio-context setup must never be able to
+  // delay the DOM update that actually reveals the challenge (e.g. under CI/CPU contention).
+  if (state.phase === 'playing' && startedKey !== key) { startedKey = key; setTimeout(playStartTone, 0); }
 }
 
 export function ensureChallengeRushSocket() {
