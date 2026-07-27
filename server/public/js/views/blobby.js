@@ -203,9 +203,9 @@ function lobbyList() {
 }
 export function renderBlobbyLobbyCard() {
   const lobby = myBlobbyLobby(); const noMe = !myId();
+  const createReason = !noMe && match ? 'Beende zuerst dein aktuelles Spiel.' : '';
   return `<div class="card stack arcade-lobby-card">
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
-    ${lobbyList()}
     <div class="arcade-lobby-create-actions">
       ${!lobby ? `<label class="arcade-lobby-target-score arcade-lobby-mode">
         <span class="title-with-info"><span>Modus</span>${infoTooltipHtml('blobby-mode-info', 'Blobby-Modus', 'Duell: 1 gegen 1. Doppel: 2 gegen 2.')}</span>
@@ -214,9 +214,13 @@ export function renderBlobbyLobbyCard() {
           <option value="duel" ${lobbyMode === 'duel' ? 'selected' : ''}>Duell · 2</option>
         </select>
       </label>` : ''}
-      <button type="button" class="btn btn-primary btn-sm" id="blobby-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+      <span class="row" style="gap:var(--space-1);">
+        <button type="button" class="btn btn-primary btn-sm" id="blobby-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+        ${createReason ? infoTooltipHtml('blobby-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+      </span>
       ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="blobby-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
     </div>
+    ${lobbyList()}
   </div>`;
 }
 export async function leaveMyBlobbyLobby() {

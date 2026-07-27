@@ -2257,14 +2257,13 @@ button.card {
   gap: var(--space-2);
 }
 .arcade-lobby-create-actions {
-  margin-top: auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   margin-right: var(--space-3);
   margin-left: var(--space-3);
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--border);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
 }
 .arcade-lobby-create-actions .btn {
   width: 100%;
