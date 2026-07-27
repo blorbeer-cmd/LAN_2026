@@ -27,6 +27,7 @@ import { confirmDialog } from '../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { isOwnFinishedMatch } from '../arcadeWatchFilter.js';
 
 // The Arcade opens as a launcher: a compact grid of playable game tiles.
 // Picking one reveals that game's lobby below.
@@ -502,12 +503,14 @@ function gameTileHtml(game, active, count) {
 }
 
 function runningMatchesOverviewHtml() {
-  if (watchMatches.length === 0) return '';
+  const myId = getMyId();
+  const matches = watchMatches.filter((live) => !isOwnFinishedMatch(live, myId));
+  if (matches.length === 0) return '';
   return `
     <section class="card stack grouped-page-section" aria-labelledby="arcade-running-title">
       <div class="grouped-page-section-title"><h2 id="arcade-running-title">Laufende Spiele</h2></div>
       <div class="arcade-watch-list two-column-card-grid">
-        ${watchMatches
+        ${matches
           .map((live) => {
             const game = GAMES.find((entry) => entry.id === live.gameType);
             const players = (live.players ?? []).map((player) => escapeHtml(player.name ?? player.ref?.name ?? 'Spieler')).join(' · ');
