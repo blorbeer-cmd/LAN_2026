@@ -22,8 +22,30 @@ const MAX_TEAM_SIZE_CEIL = 20;
 const MAX_TITLE_LENGTH = 60;
 const MAX_PLATFORM_LENGTH = 80;
 const MAX_URL_LENGTH = 500;
-const MAX_GENRE_LENGTH = 40;
 const MAX_INFO_LENGTH = 300;
+
+// Fixed multiselect options for a game's genre tags. Mirrored in the frontend
+// as GAME_GENRES in server/public/js/gameGenres.js — keep both in sync, and
+// the migration-time copy in db.ts's "normalize games genre column to
+// multiselect json" migration.
+const GAME_GENRES = [
+  'Shooter',
+  'Fighting',
+  'Racing',
+  'Sport',
+  'Party',
+  'Strategie',
+  'Rollenspiel',
+  'Plattformer',
+  'Puzzle',
+  'Simulation',
+  'Kartenspiel',
+  'Geschicklichkeit',
+  'Koop',
+  'Horror',
+  'Sonstiges',
+] as const;
+const MAX_GENRES_PER_GAME = 5;
 
 type GameStatus = 'suggestion' | 'catalog';
 
@@ -60,10 +82,12 @@ function withProcessNames(game: GameRow) {
   const procs = db
     .prepare('SELECT process_name FROM game_process_names WHERE game_id = ? ORDER BY process_name')
     .all(game.id) as Array<{ process_name: string }>;
+  const { genre, ...rest } = game;
   return {
-    ...game,
+    ...rest,
     isSuggestion: game.status === 'suggestion',
     processNames: procs.map((p) => p.process_name),
+    genres: parseGenreColumn(genre),
   };
 }
 
@@ -74,6 +98,35 @@ function optionalText(value: unknown, maxLength: number): string | null | undefi
   const trimmed = value.trim();
   if (!trimmed) return null;
   return trimmed.length <= maxLength ? trimmed : undefined;
+}
+
+// Stored as a JSON array of GAME_GENRES entries in the existing `genre` TEXT
+// column (no schema change needed) — parsing failures or legacy free text
+// from before the multiselect just read back as "no genres" instead of
+// crashing the games list.
+function parseGenreColumn(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((g): g is string => typeof g === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+// undefined = field omitted entirely (caller keeps the existing value).
+// Any other invalid shape also returns undefined but is distinguished by the
+// caller checking `value !== undefined`, same convention as optionalText.
+function validateGenres(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return [];
+  if (!Array.isArray(value) || value.length > MAX_GENRES_PER_GAME) return undefined;
+  const genres = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== 'string' || !(GAME_GENRES as readonly string[]).includes(entry)) return undefined;
+    genres.add(entry);
+  }
+  return [...genres];
 }
 
 function optionalUrl(value: unknown): string | null | undefined {
@@ -93,6 +146,14 @@ function assertPlayer(playerId: unknown): string | null | undefined {
   const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);
   return player ? playerId : undefined;
 }
+
+// GET /api/games/genres - the fixed genre multiselect options, so the
+// frontend's edit form and filters render from one server-side list instead
+// of duplicating it (still mirrored as a constant for the client-side
+// filter/chip rendering itself, since there's no bundler to share code).
+gamesRouter.get('/genres', (_req, res) => {
+  res.json(GAME_GENRES);
+});
 
 // GET /api/games - all games (suggestions, catalog and tracked alike),
 // including their process-name mappings. Excludes the 5 built-in Arcade
@@ -151,7 +212,7 @@ gamesRouter.post(
     next();
   },
   (req, res) => {
-    const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, genre, info, status, playerId } =
+    const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, genres, info, status, playerId } =
       req.body ?? {};
 
     if (!isNonEmptyString(name, MAX_TITLE_LENGTH)) {
@@ -172,8 +233,8 @@ gamesRouter.post(
       return res.status(400).json({ error: 'Plattform-Link muss mit http(s) beginnen.' });
     const parsedTrailer = optionalUrl(trailerUrl ?? null);
     if (parsedTrailer === undefined) return res.status(400).json({ error: 'Trailer-Link muss mit http(s) beginnen.' });
-    const parsedGenre = optionalText(genre ?? null, MAX_GENRE_LENGTH);
-    if (parsedGenre === undefined) return res.status(400).json({ error: 'Genre ist zu lang.' });
+    const parsedGenres = validateGenres(genres ?? null);
+    if (parsedGenres === undefined) return res.status(400).json({ error: 'Genre-Auswahl ist ungültig.' });
     const parsedInfo = optionalText(info ?? null, MAX_INFO_LENGTH);
     if (parsedInfo === undefined) return res.status(400).json({ error: 'Info ist zu lang.' });
     const resolvedStatus: GameStatus = status === 'suggestion' ? 'suggestion' : 'catalog';
@@ -195,7 +256,7 @@ gamesRouter.post(
       platform: parsedPlatform ?? null,
       platform_url: parsedPlatformUrl ?? null,
       trailer_url: parsedTrailer ?? null,
-      genre: parsedGenre ?? null,
+      genre: parsedGenres.length ? JSON.stringify(parsedGenres) : null,
       info: parsedInfo ?? null,
       status: resolvedStatus,
       created_by: createdBy,
@@ -244,7 +305,7 @@ const resolveGame = resolveGroupResource<GameRow>({
 gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => {
   const existing = req.groupResource as GameRow;
 
-  const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, genre, info } =
+  const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, genres, info } =
     req.body ?? {};
   if (name !== undefined && !isNonEmptyString(name, MAX_TITLE_LENGTH)) {
     return res.status(400).json({ error: `Name muss 1-${MAX_TITLE_LENGTH} Zeichen lang sein.` });
@@ -272,9 +333,9 @@ gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => 
   if (parsedTrailer === undefined && trailerUrl !== undefined) {
     return res.status(400).json({ error: 'Trailer-Link muss mit http(s) beginnen.' });
   }
-  const parsedGenre = optionalText(genre, MAX_GENRE_LENGTH);
-  if (parsedGenre === undefined && genre !== undefined) {
-    return res.status(400).json({ error: 'Genre ist zu lang.' });
+  const parsedGenres = validateGenres(genres);
+  if (parsedGenres === undefined && genres !== undefined) {
+    return res.status(400).json({ error: 'Genre-Auswahl ist ungültig.' });
   }
   const parsedInfo = optionalText(info, MAX_INFO_LENGTH);
   if (parsedInfo === undefined && info !== undefined) {
@@ -295,7 +356,7 @@ gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => 
     platform: platform !== undefined ? (parsedPlatform ?? null) : existing.platform,
     platform_url: platformUrl !== undefined ? (parsedPlatformUrl ?? null) : existing.platform_url,
     trailer_url: trailerUrl !== undefined ? (parsedTrailer ?? null) : existing.trailer_url,
-    genre: genre !== undefined ? (parsedGenre ?? null) : existing.genre,
+    genre: genres !== undefined ? (parsedGenres!.length ? JSON.stringify(parsedGenres) : null) : existing.genre,
     info: info !== undefined ? (parsedInfo ?? null) : existing.info,
   };
 

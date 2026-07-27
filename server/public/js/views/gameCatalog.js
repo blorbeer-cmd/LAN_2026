@@ -16,10 +16,20 @@ import { suggestProcessNames } from '../gameProcessSuggestions.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { domainIcon } from '../domainIcons.js';
 import { withStepUp } from '../reauth.js';
+import { GAME_GENRES, MAX_GENRES_PER_GAME } from '../gameGenres.js';
 
 let activeTab = 'catalog'; // 'catalog' | 'suggestions'
 let sortKey = 'name';
 let sortDir = 'asc';
+// Genre chip filter for the list (OR semantics: a game matches if it has at
+// least one of the selected genres). Empty set means "no filter, show all".
+let genreFilter = new Set();
+
+function sameGenres(a, b) {
+  if (a.length !== b.length) return false;
+  const setA = new Set(a);
+  return b.every((g) => setA.has(g));
+}
 
 // No dedicated fetch/cache here on purpose for games/skills/preferences:
 // they're all already part of the app-wide loadAll() round trip (see
@@ -285,7 +295,7 @@ function gameRowHtml(game, myId) {
     <div class="card game-table-row" data-search-game="${game.id}">
       <div class="game-row-name">
                 <strong class="game-row-title">${escapeHtml(game.name)}</strong>
-        ${game.genre ? `<span class="muted game-row-genre">${escapeHtml(game.genre)}</span>` : ''}
+        ${game.genres?.length ? `<span class="muted game-row-genre">${escapeHtml(game.genres.join(', '))}</span>` : ''}
         ${gameRowIconsHtml(game)}
       </div>
       <div class="game-row-sliders">
@@ -355,9 +365,18 @@ function openSuggestForm(ctx) {
   );
 }
 
+function genreChipsHtml(selectedGenres) {
+  return GAME_GENRES.map(
+    (g) =>
+      `<button type="button" class="chip${selectedGenres.has(g) ? ' is-active' : ''}" data-genre-toggle="${escapeHtml(g)}" aria-pressed="${selectedGenres.has(g)}">${escapeHtml(g)}</button>`,
+  ).join('');
+}
+
 function openGameDetail(gameId, ctx) {
   const game = state.games.find((g) => g.id === gameId);
   if (!game) return;
+
+  const selectedGenres = new Set(game.genres ?? []);
 
   const processChips = game.processNames
     .map(
@@ -392,8 +411,8 @@ function openGameDetail(gameId, ctx) {
           <input type="url" id="edit-trailer" maxlength="500" value="${escapeHtml(game.trailer_url ?? '')}" placeholder="https://…" />
         </div>
         <div>
-          <label class="field-label" for="edit-genre">Genre</label>
-          <input type="text" id="edit-genre" maxlength="40" value="${escapeHtml(game.genre ?? '')}" placeholder="Shooter, Racing, Party…" />
+          <span class="field-label" id="edit-genre-label">Genre</span>
+          <div class="chip-list" role="group" aria-labelledby="edit-genre-label" id="edit-genre-chips">${genreChipsHtml(selectedGenres)}</div>
         </div>
         <div>
           <label class="field-label" for="edit-info">Info</label>
@@ -438,7 +457,6 @@ function openGameDetail(gameId, ctx) {
         const platform = modalEl.querySelector('#edit-platform').value.trim();
         const platformUrl = modalEl.querySelector('#edit-platform-url').value.trim();
         const trailerUrl = modalEl.querySelector('#edit-trailer').value.trim();
-        const genre = modalEl.querySelector('#edit-genre').value.trim();
         const info = modalEl.querySelector('#edit-info').value.trim();
         const minTeamSize = modalEl.querySelector('#edit-min').value;
         const maxTeamSize = modalEl.querySelector('#edit-max').value;
@@ -448,7 +466,7 @@ function openGameDetail(gameId, ctx) {
           platform !== (game.platform ?? '') ||
           platformUrl !== (game.platform_url ?? '') ||
           trailerUrl !== (game.trailer_url ?? '') ||
-          genre !== (game.genre ?? '') ||
+          !sameGenres([...selectedGenres], game.genres ?? []) ||
           info !== (game.info ?? '') ||
           Number(minTeamSize) !== game.min_team_size ||
           Number(maxTeamSize) !== game.max_team_size ||
@@ -457,6 +475,23 @@ function openGameDetail(gameId, ctx) {
       },
       onMount: (el) => {
         modalEl = el;
+        el.querySelectorAll('[data-genre-toggle]').forEach((chip) => {
+          chip.addEventListener('click', () => {
+            const g = chip.dataset.genreToggle;
+            if (selectedGenres.has(g)) {
+              selectedGenres.delete(g);
+            } else {
+              if (selectedGenres.size >= MAX_GENRES_PER_GAME) {
+                showToast(`Maximal ${MAX_GENRES_PER_GAME} Genres auswählen.`, { error: true });
+                return;
+              }
+              selectedGenres.add(g);
+            }
+            const active = selectedGenres.has(g);
+            chip.classList.toggle('is-active', active);
+            chip.setAttribute('aria-pressed', String(active));
+          });
+        });
         el.querySelector('#edit-save').addEventListener('click', async () => {
           const name = el.querySelector('#edit-name').value.trim();
           const minTeamSize = parseInt(el.querySelector('#edit-min').value, 10);
@@ -464,7 +499,6 @@ function openGameDetail(gameId, ctx) {
           const platform = el.querySelector('#edit-platform').value.trim();
           const platformUrl = el.querySelector('#edit-platform-url').value.trim();
           const trailerUrl = el.querySelector('#edit-trailer').value.trim();
-          const genre = el.querySelector('#edit-genre').value.trim();
           const info = el.querySelector('#edit-info').value.trim();
           try {
             await api.games.update(gameId, {
@@ -474,7 +508,7 @@ function openGameDetail(gameId, ctx) {
               platform: platform || null,
               platformUrl: platformUrl || null,
               trailerUrl: trailerUrl || null,
-              genre: genre || null,
+              genres: [...selectedGenres],
               info: info || null,
             });
             close();
@@ -580,8 +614,11 @@ export function renderGameCatalog(container, ctx) {
   if (suggestionsCache === null && !suggestionsLoading) loadSuggestions(ctx);
 
   const myId = getMyId();
-  const games = state.games.filter((g) => (activeTab === 'suggestions' ? g.isSuggestion : !g.isSuggestion));
+  const games = state.games
+    .filter((g) => (activeTab === 'suggestions' ? g.isSuggestion : !g.isSuggestion))
+    .filter((g) => genreFilter.size === 0 || (g.genres ?? []).some((genre) => genreFilter.has(genre)));
   const rows = sortedGames(games, myId);
+  const usedGenres = GAME_GENRES.filter((g) => state.games.some((game) => (game.genres ?? []).includes(g)));
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
@@ -603,6 +640,18 @@ export function renderGameCatalog(container, ctx) {
           ${sortButton('avgBock', 'Ø Bock')}
           ${activeTab === 'catalog' ? sortButton('avgSkill', 'Ø Skill') : ''}
         </div>
+        ${
+          usedGenres.length
+            ? `<div class="chip-list" role="group" aria-label="Nach Genre filtern">
+                 ${usedGenres
+                   .map(
+                     (g) =>
+                       `<button type="button" class="chip${genreFilter.has(g) ? ' is-active' : ''}" data-genre-filter="${escapeHtml(g)}" aria-pressed="${genreFilter.has(g)}">${escapeHtml(g)}</button>`,
+                   )
+                   .join('')}
+               </div>`
+            : ''
+        }
         <div class="game-table">
           ${
             rows.length === 0
@@ -619,6 +668,15 @@ export function renderGameCatalog(container, ctx) {
   container.querySelectorAll('[data-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {
       activeTab = btn.dataset.tab;
+      ctx.rerender();
+    });
+  });
+
+  container.querySelectorAll('[data-genre-filter]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const g = btn.dataset.genreFilter;
+      if (genreFilter.has(g)) genreFilter.delete(g);
+      else genreFilter.add(g);
       ctx.rerender();
     });
   });
