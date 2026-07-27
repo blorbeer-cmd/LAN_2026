@@ -642,6 +642,14 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
     true,
     'advanced result fields should remain inside the result group'
   );
+  // The "Wert" field uses step="any" (arbitrary decimal scores) while "Platz"
+  // uses the default whole-number step — native stepUp()/stepDown() throws on
+  // a step="any" field, so the shared numberStepper.js click handler needs
+  // its own fallback there instead of silently doing nothing.
+  await page.click('[data-team-score="0"] + .number-stepper-steps .number-stepper-btn[aria-label="Wert erhöhen"]');
+  assert.equal(await page.locator('[data-team-score="0"]').inputValue(), '1');
+  await page.click('[data-team-rank="0"] + .number-stepper-steps .number-stepper-btn[aria-label="Wert erhöhen"]');
+  assert.equal(await page.locator('[data-team-rank="0"]').inputValue(), '1');
   await page.uncheck('#match-advanced');
   const teamSelects = page.locator('[data-team-for]');
   await teamSelects.nth(0).selectOption('0');
