@@ -117,6 +117,17 @@ test('seating and pings are roles-gated and event-scoped inside the one real gro
       assert.equal(eventPingA.status, 201);
       const eventHistoryA = await scoped(app, 'get', '/api/pings/history?eventId=' + eventA.body.id, alice, groupId);
       assert.deepEqual(eventHistoryA.body.pings.map((ping) => ping.id), [eventPingA.body.pings[0].id]);
+
+      // A deactivated account must disappear from the seating roster in both
+      // the plain group room and the event-scoped historical view - the
+      // latter joins group_memberships directly and previously skipped the
+      // deactivated_at filter every other player listing applies.
+      assert.equal((await request(app).post('/api/players/' + bob.account.id + '/deactivate')
+        .set('Cookie', alice.cookie)).status, 204);
+      assert.ok(!(await scoped(app, 'get', '/api/seating/layout', alice, groupId))
+        .body.players.some((player) => player.id === bob.account.id));
+      assert.ok(!(await scoped(app, 'get', '/api/seating/layout?eventId=' + eventA.body.id, alice, groupId))
+        .body.players.some((player) => player.id === bob.account.id));
     })().catch((error) => { console.error(error); process.exit(1); });
   `;
 
