@@ -107,8 +107,9 @@ test('Challenge Rush hides the reaction target until play, gates the next challe
 
     // First challenge is always reaction-circle (fixed CHALLENGES order): its
     // target must stay invisible during the countdown and only appear once play begins.
-    await actor.page.waitForFunction(() => document.querySelector('.challenge-rush-stage')?.getAttribute('data-phase') === 'countdown');
-    assert.equal(await actor.page.locator('.challenge-rush-circle').count(), 0);
+    // Phase and circle-absence are checked in one atomic browser-side evaluation — checking
+    // them as two separate round-trips would race the (deliberately short, fast-timer) countdown.
+    await actor.page.waitForFunction(() => document.querySelector('.challenge-rush-stage')?.getAttribute('data-phase') === 'countdown' && !document.querySelector('.challenge-rush-circle'));
     await actor.page.waitForSelector('.countdown-overlay');
 
     await actor.page.waitForFunction(() => document.querySelector('.challenge-rush-stage')?.getAttribute('data-phase') === 'playing');
