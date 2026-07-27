@@ -183,6 +183,7 @@ export const api = {
     update: (id, data) => apiFetch(`/api/games/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     remove: (id) => apiFetch(`/api/games/${id}`, { method: 'DELETE' }),
     promote: (id) => apiFetch(`/api/games/${id}/promote`, { method: 'POST' }),
+    demote: (id) => apiFetch(`/api/games/${id}/demote`, { method: 'POST' }),
     addProcess: (id, processName) =>
       apiFetch(`/api/games/${id}/processes`, { method: 'POST', body: JSON.stringify({ processName }) }),
     removeProcess: (id, processName) =>

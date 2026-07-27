@@ -388,8 +388,14 @@ function lobbyList() {
     const joined = lobby.players.some((player) => player.id === myId());
     const isHost = lobby.host.id === myId();
     const full = lobby.players.length >= (lobby.capacity ?? 2) && !joined;
+    const startReady = lobby.players.length === 2 && lobby.players.every((player) => player.ready);
+    const startReason = startReady
+      ? ''
+      : lobby.players.length < 2
+        ? 'Noch nicht genug Spieler (mind. 2).'
+        : 'Nicht alle Mitspieler sind bereit.';
     const footerActions = isHost
-      ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-battleship-close="${lobby.id}">Schließen</button><button type="button" class="btn btn-sm btn-equal btn-primary" data-battleship-start="${lobby.id}" ${lobby.players.length === 2 && lobby.players.every((player) => player.ready) ? '' : 'disabled'}>Start</button>`
+      ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-battleship-close="${lobby.id}">Schließen</button><span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-sm btn-equal btn-primary" data-battleship-start="${lobby.id}" ${startReady ? '' : 'disabled'}>Start</button>${startReason ? infoTooltipHtml(`battleship-start-${lobby.id}`, 'Start nicht möglich', startReason, 'warning') : ''}</span>`
       : joined
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-battleship-leave="${lobby.id}">Verlassen</button>${readyToggleHtml(lobby, myId(), 'battleship-ready')}`
         : '';
@@ -399,7 +405,10 @@ function lobbyList() {
 }
 
 export function renderBattleshipLobbyCard() {
-  return `<div class="card stack arcade-lobby-card">${lobbyList()}<div class="arcade-lobby-create-actions"><button type="button" class="btn btn-primary btn-sm" id="battleship-create" ${myBattleshipLobby() || !myId() ? 'disabled' : ''}>Lobby öffnen</button></div></div>`;
+  const noMe = !myId();
+  const hasLobby = Boolean(myBattleshipLobby());
+  const createReason = noMe ? 'Wähle zuerst aus, wer du bist.' : hasLobby ? 'Du hast bereits eine offene Lobby.' : '';
+  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions"><span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-primary btn-sm" id="battleship-create" ${hasLobby || noMe ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('battleship-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}</span></div>${lobbyList()}</div>`;
 }
 
 export function wireBattleshipLobbyCard(container, { beforeCreate, beforeJoin } = {}) {

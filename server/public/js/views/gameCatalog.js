@@ -285,6 +285,7 @@ function gameRowHtml(game, myId) {
     <div class="card game-table-row" data-search-game="${game.id}">
       <div class="game-row-name">
                 <strong class="game-row-title">${escapeHtml(game.name)}</strong>
+        ${game.genre ? `<span class="muted game-row-genre">${escapeHtml(game.genre)}</span>` : ''}
         ${gameRowIconsHtml(game)}
       </div>
       <div class="game-row-sliders">
@@ -390,6 +391,14 @@ function openGameDetail(gameId, ctx) {
           <label class="field-label" for="edit-trailer">Gameplay-Trailer</label>
           <input type="url" id="edit-trailer" maxlength="500" value="${escapeHtml(game.trailer_url ?? '')}" placeholder="https://…" />
         </div>
+        <div>
+          <label class="field-label" for="edit-genre">Genre</label>
+          <input type="text" id="edit-genre" maxlength="40" value="${escapeHtml(game.genre ?? '')}" placeholder="Shooter, Racing, Party…" />
+        </div>
+        <div>
+          <label class="field-label" for="edit-info">Info</label>
+          <textarea id="edit-info" maxlength="300" placeholder="Zusätzliche Hinweise…">${escapeHtml(game.info ?? '')}</textarea>
+        </div>
         <div class="row" style="align-items:flex-start;">
           <div style="flex:1;">
             <label for="edit-min" class="field-label">Min. Teamgröße</label>
@@ -417,7 +426,7 @@ function openGameDetail(gameId, ctx) {
         ${
           game.isSuggestion
             ? `<button type="button" class="btn btn-primary btn-block" id="edit-promote">In Katalog übernehmen</button>`
-            : ''
+            : `<button type="button" class="btn btn-block" id="edit-demote">Zurück zu Vorschlägen</button>`
         }
         <button type="button" class="btn btn-danger btn-block" id="edit-delete">Spiel löschen</button>
       </div>
@@ -429,6 +438,8 @@ function openGameDetail(gameId, ctx) {
         const platform = modalEl.querySelector('#edit-platform').value.trim();
         const platformUrl = modalEl.querySelector('#edit-platform-url').value.trim();
         const trailerUrl = modalEl.querySelector('#edit-trailer').value.trim();
+        const genre = modalEl.querySelector('#edit-genre').value.trim();
+        const info = modalEl.querySelector('#edit-info').value.trim();
         const minTeamSize = modalEl.querySelector('#edit-min').value;
         const maxTeamSize = modalEl.querySelector('#edit-max').value;
         const newProcess = modalEl.querySelector('#new-process').value.trim();
@@ -437,6 +448,8 @@ function openGameDetail(gameId, ctx) {
           platform !== (game.platform ?? '') ||
           platformUrl !== (game.platform_url ?? '') ||
           trailerUrl !== (game.trailer_url ?? '') ||
+          genre !== (game.genre ?? '') ||
+          info !== (game.info ?? '') ||
           Number(minTeamSize) !== game.min_team_size ||
           Number(maxTeamSize) !== game.max_team_size ||
           Boolean(newProcess);
@@ -451,6 +464,8 @@ function openGameDetail(gameId, ctx) {
           const platform = el.querySelector('#edit-platform').value.trim();
           const platformUrl = el.querySelector('#edit-platform-url').value.trim();
           const trailerUrl = el.querySelector('#edit-trailer').value.trim();
+          const genre = el.querySelector('#edit-genre').value.trim();
+          const info = el.querySelector('#edit-info').value.trim();
           try {
             await api.games.update(gameId, {
               name,
@@ -459,6 +474,8 @@ function openGameDetail(gameId, ctx) {
               platform: platform || null,
               platformUrl: platformUrl || null,
               trailerUrl: trailerUrl || null,
+              genre: genre || null,
+              info: info || null,
             });
             close();
             await ctx.refresh();
@@ -476,6 +493,19 @@ function openGameDetail(gameId, ctx) {
             activeTab = 'catalog';
             ctx.rerender();
             showToast('Spiel in den Katalog übernommen.');
+          } catch (err) {
+            showToast(err.message, { error: true });
+          }
+        });
+
+        el.querySelector('#edit-demote')?.addEventListener('click', async () => {
+          try {
+            await api.games.demote(gameId);
+            close();
+            await ctx.refresh();
+            activeTab = 'suggestions';
+            ctx.rerender();
+            showToast('Spiel zurück in die Vorschlagsliste verschoben.');
           } catch (err) {
             showToast(err.message, { error: true });
           }

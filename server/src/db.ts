@@ -92,6 +92,8 @@ db.exec(`
     platform      TEXT,
     platform_url  TEXT,
     trailer_url   TEXT,
+    genre         TEXT,
+    info          TEXT,
     status        TEXT NOT NULL DEFAULT 'catalog' CHECK (status IN ('suggestion', 'catalog')),
     created_by    TEXT REFERENCES players(id) ON DELETE SET NULL,
     created_at    INTEGER NOT NULL,
@@ -2891,6 +2893,16 @@ function addEventParticipantStatus(): void {
   );
 }
 registerMigration({ version: 53, name: 'add event participant invitation status', up: addEventParticipantStatus });
+
+// Lets a catalog entry carry a short genre tag and a free-text info note
+// (house rules, "nur mit Freunden", server details, ...) alongside the
+// existing platform/trailer metadata.
+function addGamesInfoGenreColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(games)').all() as Array<{ name: string }>;
+  if (!columns.some((c) => c.name === 'info')) db.exec('ALTER TABLE games ADD COLUMN info TEXT');
+  if (!columns.some((c) => c.name === 'genre')) db.exec('ALTER TABLE games ADD COLUMN genre TEXT');
+}
+registerMigration({ version: 54, name: 'add games info and genre columns', up: addGamesInfoGenreColumns });
 
 // Every migration is registered by now — run them all in ascending version
 // order (see registerMigration/runRegisteredMigrations above). This is the

@@ -125,3 +125,9 @@ test("reports the worktree and branch safety check", () => {
     /GitHub-Pruefung: fuer den lokalen Skripttest deaktiviert/,
   );
 });
+
+test("names the agent-pipeline test for infrastructure work", () => {
+  const result = runPreflight(["--scope", "infra"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /node --test scripts\/agent-pipeline\.test\.mjs/);
+});
