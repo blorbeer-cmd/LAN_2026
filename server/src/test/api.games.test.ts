@@ -222,19 +222,35 @@ test('POST /api/games/:id/promote 404s for an unknown id', async () => {
   assert.equal(res.status, 404);
 });
 
-test('POST /api/games accepts genre and info', async () => {
+test('GET /api/games/genres returns the fixed genre multiselect options', async () => {
+  const res = await request(app).get('/api/games/genres');
+  assert.equal(res.status, 200);
+  assert.ok(Array.isArray(res.body));
+  assert.ok(res.body.includes('Shooter'));
+  assert.ok(res.body.includes('Party'));
+});
+
+test('POST /api/games accepts genres and info', async () => {
   const res = await request(app)
     .post('/api/games')
-    .send({ name: 'Info-Genre-Spiel', genre: 'Shooter', info: 'Nur mit Freunden.' });
+    .send({ name: 'Info-Genre-Spiel', genres: ['Shooter', 'Koop'], info: 'Nur mit Freunden.' });
   assert.equal(res.status, 201);
-  assert.equal(res.body.genre, 'Shooter');
+  assert.deepEqual(res.body.genres, ['Shooter', 'Koop']);
   assert.equal(res.body.info, 'Nur mit Freunden.');
 });
 
-test('POST /api/games rejects a too-long genre', async () => {
+test('POST /api/games rejects an unknown genre', async () => {
   const res = await request(app)
     .post('/api/games')
-    .send({ name: 'Zu langes Genre', genre: 'x'.repeat(41) });
+    .send({ name: 'Unbekanntes Genre', genres: ['Battle Royale FPS Extreme'] });
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /Genre/);
+});
+
+test('POST /api/games rejects more than the allowed number of genres', async () => {
+  const res = await request(app)
+    .post('/api/games')
+    .send({ name: 'Zu viele Genres', genres: ['Shooter', 'Fighting', 'Racing', 'Sport', 'Party', 'Strategie'] });
   assert.equal(res.status, 400);
   assert.match(res.body.error, /Genre/);
 });
@@ -247,18 +263,18 @@ test('POST /api/games rejects too-long info', async () => {
   assert.match(res.body.error, /Info/);
 });
 
-test('PATCH /api/games/:id updates genre and info, and clears them on null', async () => {
+test('PATCH /api/games/:id updates genres and info, and clears them on null', async () => {
   const created = await request(app).post('/api/games').send({ name: 'Patch-Info-Genre' });
   const id = created.body.id;
 
-  const updated = await request(app).patch(`/api/games/${id}`).send({ genre: 'Party', info: 'Bis zu 8 Spieler.' });
+  const updated = await request(app).patch(`/api/games/${id}`).send({ genres: ['Party'], info: 'Bis zu 8 Spieler.' });
   assert.equal(updated.status, 200);
-  assert.equal(updated.body.genre, 'Party');
+  assert.deepEqual(updated.body.genres, ['Party']);
   assert.equal(updated.body.info, 'Bis zu 8 Spieler.');
 
-  const cleared = await request(app).patch(`/api/games/${id}`).send({ genre: null, info: null });
+  const cleared = await request(app).patch(`/api/games/${id}`).send({ genres: null, info: null });
   assert.equal(cleared.status, 200);
-  assert.equal(cleared.body.genre, null);
+  assert.deepEqual(cleared.body.genres, []);
   assert.equal(cleared.body.info, null);
 });
 
