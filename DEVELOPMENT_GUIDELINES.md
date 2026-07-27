@@ -28,6 +28,19 @@ Bereich tatsächlich betrifft.
 Vor der Bearbeitung eines neuen Nutzerauftrags still prüfen, ob der aktuelle Arbeitskontext noch
 passt:
 
+- Eine neue Codex-Session beginnt standardmäßig mit einem neuen aufgabenspezifischen Branch und
+  einem eigenen Worktree. Die Session darf nur dann auf einem bestehenden Branch oder PR starten,
+  wenn der Nutzer dies zu Beginn ausdrücklich sagt und den bestehenden Kontext benennt.
+- Diese Ausnahme gilt für die gesamte Session und nicht rückwirkend für bereits begonnene Arbeit.
+  Fehlt die ausdrückliche Ansage, ist ein neuer Branch vom aktuellen `origin/main` anzulegen.
+- Vor einer möglichen Wiederverwendung eines bestehenden Branches prüft Codex mindestens: Bezug
+  zur gleichen Aufgabe oder zum gleichen PR, offenen und nicht bereits gemergten PR-Status,
+  thematisch passende Arbeitsbaum- und Commit-Änderungen, Aktualität gegenüber `origin/main` sowie
+  parallele Nutzung durch andere Sessions oder Worktrees.
+- Nur wenn diese Prüfung eindeutig für eine Wiederverwendung spricht, darf der bestehende Branch
+  übernommen werden. Bei gemischten Änderungen, unklarem Eigentum oder widersprüchlichem Kontext
+  wird ein neuer Branch angelegt; hätte die Entscheidung Auswirkungen auf einen bestehenden PR,
+  wird vor dem Start nachgefragt.
 - Bei derselben Aufgabe, Phase, demselben PR und Branch in der aktuellen Session fortfahren.
 - Jeder neue Änderungsauftrag, jede neue Phase und jeder neue PR erhält einen eigenen Branch und
   einen eigenen Worktree. Einen vorhandenen Worktree nur weiterverwenden, wenn er nachweislich

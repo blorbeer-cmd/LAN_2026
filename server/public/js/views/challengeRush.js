@@ -3,6 +3,7 @@ import { connectSocket } from '../socket.js';
 import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { infoTooltipHtml } from '../infoTooltip.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 
@@ -75,8 +76,21 @@ export function leaveMyChallengeRushLobby() { const lobby = myChallengeRushLobby
 function scoreText(scores = []) { return [...scores].sort((a, b) => b.score - a.score).map((score, index) => `<div class="challenge-rush-score-row"><span>${index + 1}. ${escapeHtml(score.name)}${score.forfeited ? ' · Forfait' : ''}</span><strong>${score.score}</strong></div>`).join(''); }
 export function renderChallengeRushLobbyCard() {
   const current = myChallengeRushLobby();
-  const cards = lobbies.map((lobby) => arcadeLobbyEntryHtml(lobby, { full: lobby.players.length >= 15, joinAction: lobby.players.some((p) => p.id === myId()) ? '' : `<button type="button" class="btn btn-sm btn-primary" data-cr-join="${lobby.id}" ${lobby.players.length >= 15 ? 'disabled' : ''}>Beitreten</button>`, footerActions: lobby.host.id === myId() ? `<button type="button" class="btn btn-sm btn-danger" data-cr-leave="${lobby.id}">Schließen</button><button type="button" class="btn btn-sm btn-primary" data-cr-start="${lobby.id}" ${lobby.players.every((p) => p.ready || p.id === lobby.host.id) ? '' : 'disabled'}>Start</button>` : `<button type="button" class="btn btn-sm btn-danger" data-cr-leave="${lobby.id}">Verlassen</button>${readyToggleHtml(lobby, myId(), 'cr-ready')}` })).join('');
-  return `<div class="card stack arcade-lobby-card">${cards || '<div class="empty-state">Noch keine Lobby offen.</div>'}<div class="arcade-lobby-create-actions"><button type="button" class="btn btn-primary btn-sm" id="cr-create" ${current ? 'disabled' : ''}>Lobby öffnen</button></div></div>`;
+  const cards = lobbies.map((lobby) => {
+    const joined = lobby.players.some((p) => p.id === myId());
+    const isHost = lobby.host.id === myId();
+    const startReady = lobby.players.every((p) => p.ready || p.id === lobby.host.id);
+    const startReason = startReady ? '' : 'Nicht alle Mitspieler sind bereit.';
+    const footerActions = isHost
+      ? `<button type="button" class="btn btn-sm btn-danger" data-cr-leave="${lobby.id}">Schließen</button><span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-sm btn-primary" data-cr-start="${lobby.id}" ${startReady ? '' : 'disabled'}>Start</button>${startReason ? infoTooltipHtml(`cr-start-${lobby.id}`, 'Start nicht möglich', startReason, 'warning') : ''}</span>`
+      : joined
+        ? `<button type="button" class="btn btn-sm btn-danger" data-cr-leave="${lobby.id}">Verlassen</button>${readyToggleHtml(lobby, myId(), 'cr-ready')}`
+        : '';
+    return arcadeLobbyEntryHtml(lobby, { full: lobby.players.length >= 15, joinAction: joined ? '' : `<button type="button" class="btn btn-sm btn-primary" data-cr-join="${lobby.id}" ${lobby.players.length >= 15 ? 'disabled' : ''}>Beitreten</button>`, footerActions });
+  }).join('');
+  const noMe = !myId();
+  const createReason = noMe ? 'Wähle zuerst aus, wer du bist.' : current ? 'Du hast bereits eine offene Lobby.' : '';
+  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions"><span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-primary btn-sm" id="cr-create" ${current || noMe ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('cr-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}</span></div>${cards || '<div class="empty-state">Noch keine Lobby offen.</div>'}</div>`;
 }
 export function wireChallengeRushLobbyCard(container, { beforeCreate = async () => true, beforeJoin = async () => true } = {}) {
   container.querySelector('#cr-create')?.addEventListener('click', async () => { if (!(await beforeCreate())) return; const result = await emit('challenge-rush:lobby:create', { playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true }); });
