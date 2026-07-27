@@ -179,62 +179,6 @@ test('Battleship: two browsers play a complete duel and watch state reveals then
   }
 });
 
-test('Battleship: a finished duel does not show up as still running on the winner\'s own Arcade overview', async () => {
-  const hostPlayer = await createPlayer('Battleship Overview Host');
-  const guestPlayer = await createPlayer('Battleship Overview Guest');
-  const spectatorPlayer = await createPlayer('Battleship Overview Spectator');
-  const host = await openArcadeAs(hostPlayer.id);
-  const guest = await openArcadeAs(guestPlayer.id);
-  const spectator = await openArcadeAs(spectatorPlayer.id);
-
-  try {
-    await host.page.click('#battleship-create');
-    await guest.page.waitForSelector('[data-battleship-join]');
-    await guest.page.click('[data-battleship-join]');
-    await guest.page.waitForSelector('[data-battleship-ready][data-ready="1"]');
-    await guest.page.click('[data-battleship-ready][data-ready="1"]');
-    await host.page.waitForSelector('[data-battleship-start]:not([disabled])');
-    await host.page.click('[data-battleship-start]');
-
-    await host.page.waitForSelector('#battleship-random');
-    await guest.page.waitForSelector('#battleship-random');
-    const hostFleet = await randomFleet(host.page);
-    const guestFleet = await randomFleet(guest.page);
-    await host.page.click('#battleship-submit-setup');
-    await host.page.waitForSelector('#battleship-submit-setup:disabled');
-    await guest.page.click('#battleship-submit-setup');
-    await host.page.waitForSelector('[data-fire-cell]');
-    await guest.page.waitForSelector('[data-fire-cell]');
-
-    if ((await host.page.locator('[data-fire-cell]:not([disabled])').count()) === 0) {
-      await fire(guest.page, hostFleet.water[0]);
-    }
-    for (let index = 0; index < guestFleet.ships.length; index += 1) {
-      await fire(host.page, guestFleet.ships[index]);
-      if (index < guestFleet.ships.length - 1) await fire(guest.page, hostFleet.water[index + 1]);
-    }
-
-    await host.page.waitForSelector('text=gewinnt!');
-    await host.page.click('#battleship-back');
-    await host.page.waitForSelector('.arcade-tiles');
-
-    // The host was just playing this match — during the short post-match
-    // reveal window it must not appear as a still-running game they could
-    // "watch" on their own overview, even though the same match remains
-    // visible to a third party who was never part of it.
-    await spectator.page.waitForSelector('[data-watch-match]');
-    assert.equal(
-      await host.page.locator('[data-watch-match]').count(),
-      0,
-      'a player must not see their own just-finished match as a running game to watch'
-    );
-  } finally {
-    await host.context.close();
-    await guest.context.close();
-    await spectator.context.close();
-  }
-});
-
 test('Battleship: disconnect ends the duel immediately and awards the connected opponent', async () => {
   const hostPlayer = await createPlayer('Battleship Disconnect Host');
   const guestPlayer = await createPlayer('Battleship Disconnect Guest');

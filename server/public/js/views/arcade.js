@@ -27,6 +27,7 @@ import { confirmDialog } from '../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { isOwnFinishedMatch } from '../arcadeWatchFilter.js';
 
 // The Arcade opens as a launcher: a compact grid of playable game tiles.
 // Picking one reveals that game's lobby below.
@@ -497,23 +498,9 @@ function gameTileHtml(game, active, count) {
     </button>`;
 }
 
-// Battleship and Challenge Rush keep a finished match watchable for a short
-// reveal window so late spectators can still see the final board/scores —
-// but the player who was actually in that match already knows it's over, so
-// it must not show up as if it were still running on their own overview.
-function isOwnFinishedMatch(live) {
-  if (live.phase !== 'ended') return false;
-  const myId = getMyId();
-  if (!myId) return false;
-  const ids = [
-    ...(live.players ?? []).map((player) => player.id ?? player.ref?.id),
-    ...(live.scores ?? []).map((score) => score.playerId),
-  ];
-  return ids.includes(myId);
-}
-
 function runningMatchesOverviewHtml() {
-  const matches = watchMatches.filter((live) => !isOwnFinishedMatch(live));
+  const myId = getMyId();
+  const matches = watchMatches.filter((live) => !isOwnFinishedMatch(live, myId));
   if (matches.length === 0) return '';
   return `
     <section class="card stack grouped-page-section" aria-labelledby="arcade-running-title">
