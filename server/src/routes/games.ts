@@ -22,6 +22,8 @@ const MAX_TEAM_SIZE_CEIL = 20;
 const MAX_TITLE_LENGTH = 60;
 const MAX_PLATFORM_LENGTH = 80;
 const MAX_URL_LENGTH = 500;
+const MAX_GENRE_LENGTH = 40;
+const MAX_INFO_LENGTH = 300;
 
 type GameStatus = 'suggestion' | 'catalog';
 
@@ -35,6 +37,8 @@ interface GameRow {
   platform: string | null;
   platform_url: string | null;
   trailer_url: string | null;
+  genre: string | null;
+  info: string | null;
   status: GameStatus;
   created_by: string | null;
   created_at: number;
@@ -147,7 +151,7 @@ gamesRouter.post(
     next();
   },
   (req, res) => {
-    const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, status, playerId } =
+    const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, genre, info, status, playerId } =
       req.body ?? {};
 
     if (!isNonEmptyString(name, MAX_TITLE_LENGTH)) {
@@ -168,6 +172,10 @@ gamesRouter.post(
       return res.status(400).json({ error: 'Plattform-Link muss mit http(s) beginnen.' });
     const parsedTrailer = optionalUrl(trailerUrl ?? null);
     if (parsedTrailer === undefined) return res.status(400).json({ error: 'Trailer-Link muss mit http(s) beginnen.' });
+    const parsedGenre = optionalText(genre ?? null, MAX_GENRE_LENGTH);
+    if (parsedGenre === undefined) return res.status(400).json({ error: 'Genre ist zu lang.' });
+    const parsedInfo = optionalText(info ?? null, MAX_INFO_LENGTH);
+    if (parsedInfo === undefined) return res.status(400).json({ error: 'Info ist zu lang.' });
     const resolvedStatus: GameStatus = status === 'suggestion' ? 'suggestion' : 'catalog';
     const createdBy = assertPlayer(playerId);
     if (createdBy === undefined) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
@@ -187,6 +195,8 @@ gamesRouter.post(
       platform: parsedPlatform ?? null,
       platform_url: parsedPlatformUrl ?? null,
       trailer_url: parsedTrailer ?? null,
+      genre: parsedGenre ?? null,
+      info: parsedInfo ?? null,
       status: resolvedStatus,
       created_by: createdBy,
       created_at: Date.now(),
@@ -194,8 +204,8 @@ gamesRouter.post(
     };
 
     db.prepare(
-      `INSERT INTO games (id, name, icon, icon_image, min_team_size, max_team_size, platform, platform_url, trailer_url, status, created_by, created_at, group_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO games (id, name, icon, icon_image, min_team_size, max_team_size, platform, platform_url, trailer_url, genre, info, status, created_by, created_at, group_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       row.id,
       row.name,
@@ -206,6 +216,8 @@ gamesRouter.post(
       row.platform,
       row.platform_url,
       row.trailer_url,
+      row.genre,
+      row.info,
       row.status,
       row.created_by,
       row.created_at,
@@ -232,7 +244,8 @@ const resolveGame = resolveGroupResource<GameRow>({
 gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => {
   const existing = req.groupResource as GameRow;
 
-  const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl } = req.body ?? {};
+  const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, genre, info } =
+    req.body ?? {};
   if (name !== undefined && !isNonEmptyString(name, MAX_TITLE_LENGTH)) {
     return res.status(400).json({ error: `Name muss 1-${MAX_TITLE_LENGTH} Zeichen lang sein.` });
   }
@@ -259,6 +272,14 @@ gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => 
   if (parsedTrailer === undefined && trailerUrl !== undefined) {
     return res.status(400).json({ error: 'Trailer-Link muss mit http(s) beginnen.' });
   }
+  const parsedGenre = optionalText(genre, MAX_GENRE_LENGTH);
+  if (parsedGenre === undefined && genre !== undefined) {
+    return res.status(400).json({ error: 'Genre ist zu lang.' });
+  }
+  const parsedInfo = optionalText(info, MAX_INFO_LENGTH);
+  if (parsedInfo === undefined && info !== undefined) {
+    return res.status(400).json({ error: 'Info ist zu lang.' });
+  }
 
   if (name !== undefined && nameTaken(req.group!.id, name.trim(), existing.id)) {
     return res.status(409).json({ error: `Das Spiel "${name.trim()}" gibt es schon.` });
@@ -274,11 +295,13 @@ gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => 
     platform: platform !== undefined ? (parsedPlatform ?? null) : existing.platform,
     platform_url: platformUrl !== undefined ? (parsedPlatformUrl ?? null) : existing.platform_url,
     trailer_url: trailerUrl !== undefined ? (parsedTrailer ?? null) : existing.trailer_url,
+    genre: genre !== undefined ? (parsedGenre ?? null) : existing.genre,
+    info: info !== undefined ? (parsedInfo ?? null) : existing.info,
   };
 
   db.prepare(
     `UPDATE games
-     SET name = ?, icon = ?, icon_image = ?, min_team_size = ?, max_team_size = ?, platform = ?, platform_url = ?, trailer_url = ?
+     SET name = ?, icon = ?, icon_image = ?, min_team_size = ?, max_team_size = ?, platform = ?, platform_url = ?, trailer_url = ?, genre = ?, info = ?
      WHERE id = ?`,
   ).run(
     next.name,
@@ -289,6 +312,8 @@ gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => 
     next.platform,
     next.platform_url,
     next.trailer_url,
+    next.genre,
+    next.info,
     next.id,
   );
 
@@ -308,6 +333,22 @@ gamesRouter.post('/:id/promote', resolveGame, requireGroupRole('admin'), (req, r
     .prepare(`UPDATE games SET status = 'catalog' WHERE id = ? AND status = 'suggestion'`)
     .run(existing.id);
   if (result.changes === 0) return res.status(409).json({ error: 'Spiel ist bereits im Katalog.' });
+
+  broadcast(Events.gamesChanged, null, { groupId: req.group!.id });
+  res.json(withProcessNames(db.prepare('SELECT * FROM games WHERE id = ?').get(existing.id) as GameRow));
+});
+
+// POST /api/games/:id/demote - the inverse of promote: pushes a catalog entry
+// back into the suggestions list. Guarded the same way against a double-tap
+// racing itself.
+gamesRouter.post('/:id/demote', resolveGame, requireGroupRole('admin'), (req, res) => {
+  const existing = req.groupResource as GameRow;
+  if (existing.status !== 'catalog') return res.status(409).json({ error: 'Spiel ist bereits ein Vorschlag.' });
+
+  const result = db
+    .prepare(`UPDATE games SET status = 'suggestion' WHERE id = ? AND status = 'catalog'`)
+    .run(existing.id);
+  if (result.changes === 0) return res.status(409).json({ error: 'Spiel ist bereits ein Vorschlag.' });
 
   broadcast(Events.gamesChanged, null, { groupId: req.group!.id });
   res.json(withProcessNames(db.prepare('SELECT * FROM games WHERE id = ?').get(existing.id) as GameRow));

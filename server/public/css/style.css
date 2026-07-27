@@ -2547,6 +2547,15 @@ button.card {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Optional genre tag next to the title; never allowed to shrink the title
+   below readability, so it's the one that gives way first on narrow rows. */
+.game-row-genre {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-xs);
+}
 /* Static (non-interactive) marker for "agent can detect this game", reusing
    the same green already used for "spielt"/"trackt gerade" elsewhere so the
    color itself carries the meaning at a glance. Sized to match the glyph
