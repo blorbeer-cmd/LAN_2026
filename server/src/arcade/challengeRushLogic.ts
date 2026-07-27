@@ -39,7 +39,7 @@ export function scoreNumberSalad(correct: number, errors: number, elapsedMs: num
 export function scoreTiming10(elapsedMs: number): number { return safeScoreInput(Math.round(100 - Math.abs(safeElapsed(elapsedMs) - 10_000) / 20)); }
 
 export function winnerIdForScores(scores: Array<{ playerId: string; score: number }>): string | null {
-  const normalized = scores.map((entry) => ({ ...entry, score: safeScoreInput(entry.score) }));
+  const normalized = scores.map((entry) => ({ ...entry, score: Number.isFinite(entry.score) ? Math.max(0, entry.score) : 0 }));
   const highest = Math.max(0, ...normalized.map((entry) => entry.score));
   const winners = normalized.filter((entry) => entry.score === highest);
   return winners.length === 1 ? winners[0].playerId : null;
