@@ -9,11 +9,12 @@ import { createApp } from '../app';
 import { registerChallengeRushSockets } from '../arcade/challengeRush';
 import { clearLobbyMemberships } from '../arcade/lobbyMembership';
 import { arcadeTiming } from '../arcade/timing';
+import { MEMORY_REVEAL_TOTAL_MS } from '../arcade/challengeRushLogic';
 
 process.env.CHALLENGE_RUSH_RECONNECT_GRACE_MS = '100';
 
 type Ack = { ok: boolean; error?: string; [key: string]: unknown };
-type State = { matchId: string; phase: string; challengeIndex: number; challenge: { key: string; data: Record<string, unknown> }; scores: Array<{ playerId: string; connected: boolean; forfeited: boolean }>; history: Array<{ key: string; title: string; scores: Array<{ playerId: string; name: string; score: number }> }>; readyNext: string[]; remainingMs: number | null; paused: boolean };
+type State = { matchId: string; phase: string; challengeIndex: number; challenge: { key: string; data: Record<string, unknown> }; scores: Array<{ playerId: string; score: number; connected: boolean; forfeited: boolean }>; history: Array<{ key: string; title: string; scores: Array<{ playerId: string; name: string; score: number }> }>; readyNext: string[]; remainingMs: number | null; paused: boolean; trafficLightGreen?: boolean };
 
 function connect(baseUrl: string, playerId?: string): Promise<ClientSocket> {
   return new Promise((resolve, reject) => {
@@ -195,7 +196,10 @@ test('Challenge Rush announces every phase with its own remaining time', async (
 
     const playing = await nextState(socket, (state) => state.phase === 'playing');
     const resultPromise = nextState(socket, (state) => state.phase === 'result');
-    await completeReactionCircle(socket, match.matchId, playerId, playing.challengeIndex, playing.challenge.data);
+    // The challenge order is seeded/shuffled per match (see startMatch), so this
+    // can land on any of the 10 mini-challenges, not just reaction-circle —
+    // completeChallenge dispatches generically by key.
+    await completeChallenge(socket, match.matchId, playerId, playing);
     const result = await resultPromise;
     // The result phase reports its own ready-timeout fallback, never the finished challenge's deadline.
     assert.ok(result.remainingMs !== null && result.remainingMs > arcadeTiming.countdownMs, `result phase reported ${result.remainingMs}ms`);
@@ -278,6 +282,27 @@ async function sendSequence<T>(send: (action: string, value?: unknown) => Promis
   for (const item of items) { await send(action, toValue(item)); await sleep(35); }
 }
 
+// aim-trainer, whack-a-mole and color-word only ever expose the current step
+// in `data` (see challengeRush.ts's challengeForPlayer/nextStepPayload data
+// minimization) — the following step's value comes back on the accepted
+// ack's `next` field instead of being readable up front.
+async function sendSteps(
+  send: (action: string, value?: unknown) => Promise<unknown>,
+  action: string,
+  count: number,
+  firstValue: unknown,
+  nextValue: (next: Record<string, unknown> | undefined) => unknown,
+): Promise<unknown> {
+  let value = firstValue;
+  let last: unknown;
+  for (let index = 0; index < count; index += 1) {
+    last = await send(action, value);
+    await sleep(35);
+    if (index < count - 1) value = nextValue((last as { next?: Record<string, unknown> }).next);
+  }
+  return last;
+}
+
 // Plays through challenges generically (order is seeded/shuffled per match,
 // see challengeRush.ts's startMatch) until the given key comes up, then
 // returns that challenge's 'playing' state WITHOUT completing it — so the
@@ -301,15 +326,21 @@ async function completeChallenge(socket: ClientSocket, matchId: string, playerId
   const challengeIndex = state.challengeIndex;
   const send = (action: string, value?: unknown) => emitAck(socket, 'challenge-rush:challenge:input', { matchId, playerId, challengeIndex, action, value });
   if (key === 'reaction-circle') { const target = data as unknown as { x: number; y: number }; return send('hit', { x: target.x, y: target.y }); }
-  if (key === 'aim-trainer') return sendSequence(send, 'hit', data.targets as Array<{ x: number; y: number }>, (target) => ({ x: target.x, y: target.y }));
+  if (key === 'aim-trainer') {
+    const target = data.target as { x: number; y: number };
+    return sendSteps(send, 'hit', (data.targetCount as number) ?? 6, { x: target.x, y: target.y }, (next) => { const t = next?.target as { x: number; y: number }; return { x: t.x, y: t.y }; });
+  }
   if (key === 'cps') return send('click');
   if (key === 'number-salad') { const sorted = [...(data.numbers as number[])].sort((a, b) => a - b); return sendSequence(send, 'number', sorted, (n) => n); }
   if (key === 'timing-10') return send('stop');
-  if (key === 'memory-sequence') return sendSequence(send, 'tile', data.sequence as number[], (tile) => tile);
+  if (key === 'memory-sequence') { await sleep(MEMORY_REVEAL_TOTAL_MS + 50); return sendSequence(send, 'tile', data.sequence as number[], (tile) => tile); }
   if (key === 'odd-one-out') return send('select', data.oddIndex);
-  if (key === 'whack-a-mole') return sendSequence(send, 'hit', data.sequence as number[], (hole) => hole);
+  if (key === 'whack-a-mole') return sendSteps(send, 'hit', (data.totalHits as number) ?? 8, data.activeHole, (next) => next?.activeHole);
   if (key === 'traffic-light') return send('click');
-  if (key === 'color-word') return sendSequence(send, 'answer', data.rounds as Array<{ textColor: string }>, (round) => round.textColor);
+  if (key === 'color-word') {
+    const round = data.round as { textColor: string };
+    return sendSteps(send, 'answer', (data.roundCount as number) ?? 6, round.textColor, (next) => (next?.round as { textColor: string } | undefined)?.textColor);
+  }
   throw new Error(`Unbekannte Challenge: ${key}`);
 }
 
@@ -362,7 +393,7 @@ test('Challenge Rush rejects an invalid Aim Trainer target and accepts the real 
     const match = await started;
 
     const aimPlaying = await advanceToChallenge(socket, match.matchId, playerId, 'aim-trainer');
-    const target = (aimPlaying.challenge.data.targets as Array<{ x: number; y: number }>)[0];
+    const target = aimPlaying.challenge.data.target as { x: number; y: number };
     const rejected = await emitAck(socket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId, challengeIndex: aimPlaying.challengeIndex, action: 'hit', value: { x: target.x + 40, y: target.y + 40 } });
     assert.equal(rejected.ok, false);
     await sleep(35);
@@ -442,14 +473,27 @@ test('Challenge Rush ends memory-sequence on the first wrong tile with partial c
 
     const playing = await advanceToChallenge(socket, match.matchId, playerId, 'memory-sequence');
     const sequence = playing.challenge.data.sequence as number[];
-    const correctFirst = sequence[0];
-    const wrongFirst = (correctFirst + 1) % 9;
+    // Two correct tiles first, then a deliberately wrong third one: verifies
+    // the round ends with genuine partial credit (2/5 = 40), not just the
+    // degenerate all-wrong case where scoreMemorySequence(0) is always 0
+    // regardless of the formula.
+    const wrongThird = (sequence[2] + 1) % 9;
+    // The server rejects memory-sequence taps until the reveal animation
+    // window has actually elapsed (see MEMORY_REVEAL_TOTAL_MS), so this test
+    // must wait it out before sending real input, same as an honest player.
+    await sleep(MEMORY_REVEAL_TOTAL_MS + 50);
     const resultPromise = nextState(socket, (state) => state.phase === 'result' && state.challengeIndex === playing.challengeIndex);
-    const rejected = await emitAck(socket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId, challengeIndex: playing.challengeIndex, action: 'tile', value: wrongFirst });
+    const first = await emitAck(socket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId, challengeIndex: playing.challengeIndex, action: 'tile', value: sequence[0] });
+    assert.equal((first.progress as { correct: number }).correct, 1);
+    await sleep(35);
+    const second = await emitAck(socket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId, challengeIndex: playing.challengeIndex, action: 'tile', value: sequence[1] });
+    assert.equal((second.progress as { correct: number }).correct, 2);
+    await sleep(35);
+    const rejected = await emitAck(socket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId, challengeIndex: playing.challengeIndex, action: 'tile', value: wrongThird });
     assert.equal(rejected.accepted, true);
     assert.equal((rejected.progress as { errors: number }).errors, 1);
     const result = await resultPromise;
-    assert.equal(result.history[result.history.length - 1].scores.find((s) => s.playerId === playerId)?.score, 0);
+    assert.equal(result.history[result.history.length - 1].scores.find((s) => s.playerId === playerId)?.score, 40);
   } finally {
     socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
   }
@@ -467,14 +511,14 @@ test('Challenge Rush continues whack-a-mole after a wrong hole instead of ending
     const match = await started;
 
     const playing = await advanceToChallenge(socket, match.matchId, playerId, 'whack-a-mole');
-    const sequence = playing.challenge.data.sequence as number[];
-    const wrongFirst = (sequence[0] + 1) % 9;
+    const activeHole = playing.challenge.data.activeHole as number;
+    const wrongFirst = (activeHole + 1) % 9;
     const wrongResult = await emitAck(socket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId, challengeIndex: playing.challengeIndex, action: 'hit', value: wrongFirst });
     assert.equal(wrongResult.accepted, true);
     assert.equal((wrongResult.progress as { errors: number; completed: boolean }).errors, 1);
     assert.equal((wrongResult.progress as { errors: number; completed: boolean }).completed, false);
     await sleep(35);
-    const correctResult = await emitAck(socket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId, challengeIndex: playing.challengeIndex, action: 'hit', value: sequence[0] });
+    const correctResult = await emitAck(socket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId, challengeIndex: playing.challengeIndex, action: 'hit', value: activeHole });
     assert.equal((correctResult.progress as { correct: number }).correct, 1);
   } finally {
     socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
@@ -493,8 +537,8 @@ test('Challenge Rush completes whack-a-mole exactly once under parallel identica
     const match = await started;
 
     const playing = await advanceToChallenge(socket, match.matchId, playerId, 'whack-a-mole');
-    const sequence = playing.challenge.data.sequence as number[];
-    const payload = { matchId: match.matchId, playerId, challengeIndex: playing.challengeIndex, action: 'hit', value: sequence[0] };
+    const activeHole = playing.challenge.data.activeHole as number;
+    const payload = { matchId: match.matchId, playerId, challengeIndex: playing.challengeIndex, action: 'hit', value: activeHole };
     const results = await Promise.all([emitAck(socket, 'challenge-rush:challenge:input', payload), emitAck(socket, 'challenge-rush:challenge:input', payload)]);
     assert.equal(results.filter((result) => result.accepted === true).length, 1);
     assert.equal(results.filter((result) => result.accepted !== true).length, 1);
@@ -551,19 +595,167 @@ test('Challenge Rush gives two players independent scores on the same color-word
       await emitAck(guestSocket, 'challenge-rush:challenge:ready', { matchId: match.matchId, playerId: guestId });
       playing = await nextPlaying;
     }
-    const rounds = playing.challenge.data.rounds as Array<{ textColor: string }>;
+    const roundCount = (playing.challenge.data.roundCount as number) ?? 6;
+    const initialRound = playing.challenge.data.round as { textColor: string };
     const resultPromise = nextState(hostSocket, (state) => state.phase === 'result' && state.challengeIndex === playing.challengeIndex);
     // Host answers every round correctly; guest answers every round wrong —
-    // each player's own progress must only reflect their own inputs.
-    for (const round of rounds) { await emitAck(hostSocket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId: hostId, challengeIndex: playing.challengeIndex, action: 'answer', value: round.textColor }); await sleep(35); }
+    // each player's own progress must only reflect their own inputs. Each
+    // socket walks its own per-player round chain via the accepted ack's
+    // `next` field (see sendSteps), since the server only ever exposes the
+    // current step's round to each player.
     const wrongColor = (color: string) => ['red', 'blue', 'green', 'yellow'].find((candidate) => candidate !== color)!;
-    for (const round of rounds) { await emitAck(guestSocket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId: guestId, challengeIndex: playing.challengeIndex, action: 'answer', value: wrongColor(round.textColor) }); await sleep(35); }
+    let hostRound = initialRound;
+    let guestRound = initialRound;
+    for (let index = 0; index < roundCount; index += 1) {
+      const hostResult = await emitAck(hostSocket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId: hostId, challengeIndex: playing.challengeIndex, action: 'answer', value: hostRound.textColor });
+      await sleep(35);
+      const guestResult = await emitAck(guestSocket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId: guestId, challengeIndex: playing.challengeIndex, action: 'answer', value: wrongColor(guestRound.textColor) });
+      await sleep(35);
+      if (index < roundCount - 1) {
+        hostRound = (hostResult.next as { round: { textColor: string } }).round;
+        guestRound = (guestResult.next as { round: { textColor: string } }).round;
+      }
+    }
     const result = await resultPromise;
     const entry = result.history[result.history.length - 1];
     const hostScore = entry.scores.find((s) => s.playerId === hostId)?.score ?? 0;
     const guestScore = entry.scores.find((s) => s.playerId === guestId)?.score ?? 0;
     assert.equal(hostScore, 100);
     assert.equal(guestScore, 0);
+  } finally {
+    hostSocket.close(); guestSocket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
+  }
+});
+
+test('Challenge Rush restores the traffic-light green state after a reconnect instead of leaving the client stuck on red', async () => {
+  clearLobbyMemberships();
+  const server = await makeServer(true);
+  const socket = await connect(server.baseUrl);
+  try {
+    const playerId = await player(server.baseUrl, 'Challenge Rush Traffic Reconnect');
+    const created = await emitAck(socket, 'challenge-rush:lobby:create', { playerId });
+    const started = nextEvent<{ matchId: string }>(socket, 'challenge-rush:match:start');
+    await emitAck(socket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId });
+    const match = await started;
+
+    const trafficPlaying = await advanceToChallenge(socket, match.matchId, playerId, 'traffic-light');
+    assert.equal(trafficPlaying.trafficLightGreen, false);
+    await nextEvent(socket, 'challenge-rush:traffic-light:green');
+
+    // Reconnect with a fresh socket instead of reusing the existing one —
+    // this is exactly the path a page reload takes (attachSocket via the
+    // authenticated connection handler), so it must not rely on having
+    // received the one-shot green event on this new connection.
+    socket.close();
+    const replacement = ioClient(server.baseUrl, { transports: ['websocket'], reconnection: false, auth: { playerId } });
+    // Both listeners must be registered before awaiting 'connect': the
+    // server's authenticated-connection handler emits 'challenge-rush:
+    // match:start' and the follow-up state synchronously once the socket is
+    // connected, so attaching them only after the 'connect' promise resolves
+    // risks missing both — an EventEmitter drops an emit with no listener
+    // instead of queuing it, which otherwise hangs this test forever.
+    const matchStart = nextEvent(replacement, 'challenge-rush:match:start');
+    const freshStatePromise = nextEvent<State>(replacement, 'challenge-rush:state');
+    await new Promise<void>((resolve, reject) => { replacement.once('connect', () => resolve()); replacement.once('connect_error', reject); });
+    try {
+      await matchStart;
+      const freshState = await freshStatePromise;
+      assert.equal(freshState.trafficLightGreen, true);
+
+      const resultPromise = nextState(replacement, (state) => state.phase === 'result' && state.challengeIndex === trafficPlaying.challengeIndex);
+      const reaction = await emitAck(replacement, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId, challengeIndex: trafficPlaying.challengeIndex, action: 'click' });
+      assert.equal(reaction.accepted, true);
+      const result = await resultPromise;
+      const score = result.history[result.history.length - 1].scores.find((s) => s.playerId === playerId)?.score;
+      assert.ok((score ?? 0) > 0, `expected a real reaction after reconnect-past-green to score above 0, got ${score}`);
+    } finally {
+      replacement.close();
+    }
+  } finally {
+    socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
+  }
+});
+
+// Each match's challenge order is a per-match random shuffle (see
+// startMatch/shuffled in challengeRush.ts), so a single match visits every
+// challenge exactly once but never in a assumable relative order — a prior
+// version of this test chained three advanceToChallenge calls on one match
+// assuming aim-trainer, whack-a-mole and color-word would come up in that
+// order, which deadlocks forever whenever the shuffle puts an earlier one
+// after a later one already passed. A fresh match per target sidesteps the
+// ordering assumption entirely: advanceToChallenge is guaranteed to find any
+// single key exactly once per match.
+async function assertStepBasedDataMinimization(server: { baseUrl: string }, targetKey: string, verify: (data: Record<string, unknown>) => void): Promise<void> {
+  clearLobbyMemberships();
+  const socket = await connect(server.baseUrl);
+  try {
+    const playerId = await player(server.baseUrl, `CR Data Min ${targetKey}`);
+    const created = await emitAck(socket, 'challenge-rush:lobby:create', { playerId });
+    const started = nextEvent<{ matchId: string }>(socket, 'challenge-rush:match:start');
+    await emitAck(socket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId });
+    const match = await started;
+    const playing = await advanceToChallenge(socket, match.matchId, playerId, targetKey);
+    verify(playing.challenge.data);
+  } finally {
+    socket.close();
+    clearLobbyMemberships();
+  }
+}
+
+test('Challenge Rush never sends the full future targets, holes or rounds for the current step-based challenges', async () => {
+  const server = await makeServer();
+  try {
+    await assertStepBasedDataMinimization(server, 'aim-trainer', (data) => {
+      assert.equal(data.targets, undefined);
+      assert.ok(data.target && typeof data.target === 'object');
+    });
+    await assertStepBasedDataMinimization(server, 'whack-a-mole', (data) => {
+      assert.equal(data.sequence, undefined);
+      assert.equal(typeof data.activeHole, 'number');
+    });
+    await assertStepBasedDataMinimization(server, 'color-word', (data) => {
+      assert.equal(data.rounds, undefined);
+      assert.ok(data.round && typeof data.round === 'object');
+    });
+  } finally {
+    server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve()));
+  }
+});
+
+test('Challenge Rush rejects input from a forfeited player in a later challenge instead of letting them keep scoring', async () => {
+  clearLobbyMemberships();
+  const server = await makeServer();
+  const hostSocket = await connect(server.baseUrl);
+  const guestSocket = await connect(server.baseUrl);
+  try {
+    const hostId = await player(server.baseUrl, 'Challenge Rush Forfeit Host');
+    const guestId = await player(server.baseUrl, 'Challenge Rush Forfeit Guest');
+    const created = await emitAck(hostSocket, 'challenge-rush:lobby:create', { playerId: hostId });
+    await emitAck(guestSocket, 'challenge-rush:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
+    await emitAck(guestSocket, 'challenge-rush:lobby:ready', { lobbyId: created.lobbyId, playerId: guestId, ready: true });
+    const started = nextEvent<{ matchId: string }>(hostSocket, 'challenge-rush:match:start');
+    await emitAck(hostSocket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId: hostId });
+    const match = await started;
+    const playing = await nextState(hostSocket, (state) => state.phase === 'playing');
+
+    assert.equal((await emitAck(guestSocket, 'challenge-rush:match:leave', { matchId: match.matchId, playerId: guestId })).ok, true);
+
+    const resultPromise = nextState(hostSocket, (state) => state.phase === 'result' && state.challengeIndex === playing.challengeIndex);
+    await completeChallenge(hostSocket, match.matchId, hostId, playing);
+    await resultPromise;
+    const nextPlaying = nextState(hostSocket, (state) => state.phase === 'playing' && state.challengeIndex === playing.challengeIndex + 1);
+    await emitAck(hostSocket, 'challenge-rush:challenge:ready', { matchId: match.matchId, playerId: hostId });
+    const secondChallenge = await nextPlaying;
+
+    const guestScoreBefore = secondChallenge.scores.find((s) => s.playerId === guestId)?.score ?? 0;
+    const rejected = await emitAck(guestSocket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId: guestId, challengeIndex: secondChallenge.challengeIndex, action: 'click' });
+    assert.equal(rejected.ok, false);
+
+    const thirdChallengeResultPromise = nextState(hostSocket, (state) => state.phase === 'result' && state.challengeIndex === secondChallenge.challengeIndex);
+    await completeChallenge(hostSocket, match.matchId, hostId, secondChallenge);
+    const thirdChallengeResult = await thirdChallengeResultPromise;
+    const guestScoreAfter = thirdChallengeResult.scores.find((s) => s.playerId === guestId)?.score ?? 0;
+    assert.equal(guestScoreAfter, guestScoreBefore);
   } finally {
     hostSocket.close(); guestSocket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
   }

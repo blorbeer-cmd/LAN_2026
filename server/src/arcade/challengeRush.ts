@@ -12,7 +12,7 @@ import {
   CHALLENGES, challengePayload, isCurrentChallenge, isReadyForNext, remainingUntil, seededRandom, shuffled,
   scoreAimTrainer, scoreColorWord, scoreCps, scoreMemorySequence, scoreNumberSalad, scoreOddOneOut,
   scoreReaction, scoreTiming10, scoreTrafficLight, scoreWhackAMole, winnerIdForScores,
-  COLOR_WORD_ROUND_COUNT, MEMORY_SEQUENCE_LENGTH, WHACK_A_MOLE_SEQUENCE_LENGTH, AIM_TRAINER_TARGET_COUNT,
+  COLOR_WORD_ROUND_COUNT, MEMORY_SEQUENCE_LENGTH, MEMORY_REVEAL_TOTAL_MS, WHACK_A_MOLE_SEQUENCE_LENGTH, AIM_TRAINER_TARGET_COUNT,
   type ChallengeKey, type ChallengePayload,
 } from './challengeRushLogic';
 
@@ -78,12 +78,61 @@ function matchProgressPayload(match: Match) {
 // instead of client-computed data, so no script can pre-calculate the exact
 // reaction window.
 function sanitizeChallengeForClient(match: Match): ChallengePayload {
-  if (match.phase === 'countdown') return { ...match.current, data: {} };
+  // The seed deterministically regenerates the entire challenge payload
+  // (challengePayload/seededRandom), so it must never reach the client —
+  // otherwise it would defeat every other redaction below and the
+  // per-player step trimming in challengeForPlayer, since anyone holding it
+  // can just recompute the withheld targets/sequence/rounds/greenAtMs
+  // locally instead of waiting for the server to reveal them. The client
+  // never reads `seed`, so it's always zeroed out rather than conditionally
+  // included.
+  if (match.phase === 'countdown') return { ...match.current, seed: 0, data: {} };
   if (match.current.key === 'traffic-light') {
     const { greenAtMs: _greenAtMs, ...safeData } = match.current.data as { greenAtMs?: number };
-    return { ...match.current, data: safeData };
+    return { ...match.current, seed: 0, data: safeData };
   }
-  return match.current;
+  return { ...match.current, seed: 0 };
+}
+
+// Per-recipient view of the current challenge: aim-trainer, whack-a-mole and
+// color-word each hold a full array of future targets/holes/rounds server-
+// side, but a player is only ever meant to see the one they're currently on
+// — sending the whole array during 'playing' would let a script read every
+// remaining answer at once and blast through the 30ms input floor for a
+// guaranteed-perfect score. memory-sequence and odd-one-out are
+// intentionally excluded: the former's whole point is the player seeing and
+// memorizing the sequence via the reveal animation, and the latter's
+// oddIndex is required just to render which tile looks different.
+function challengeForPlayer(match: Match, playerId: string): ChallengePayload {
+  const sanitized = sanitizeChallengeForClient(match);
+  if (match.phase !== 'playing') return sanitized;
+  const p = match.progress.get(playerId);
+  if (!p) return sanitized;
+  if (match.current.key === 'aim-trainer') {
+    const { targets, ...rest } = sanitized.data as { targets: Array<{ x: number; y: number }> };
+    return { ...sanitized, data: { ...rest, target: targets[p.correct] ?? null } };
+  }
+  if (match.current.key === 'whack-a-mole') {
+    const { sequence, ...rest } = sanitized.data as { sequence: number[] };
+    return { ...sanitized, data: { ...rest, activeHole: sequence[p.correct] ?? null } };
+  }
+  if (match.current.key === 'color-word') {
+    const { rounds, ...rest } = sanitized.data as { rounds: Array<{ word: string; textColor: string; options: string[] }> };
+    return { ...sanitized, data: { ...rest, round: rounds[p.correct + p.errors] ?? null } };
+  }
+  return sanitized;
+}
+
+// The next step's data for whichever challenge just accepted an input —
+// merged into the client's local state from the input ack (see
+// registerChallengeRushSockets' challenge-rush:challenge:input handler)
+// instead of waiting for a full state broadcast, since individual accepted
+// inputs don't otherwise trigger one.
+function nextStepPayload(match: Match, p: Progress): Record<string, unknown> | undefined {
+  if (match.current.key === 'aim-trainer') { const targets = (match.current.data as { targets: Array<{ x: number; y: number }> }).targets; return { target: targets[p.correct] ?? null }; }
+  if (match.current.key === 'whack-a-mole') { const sequence = (match.current.data as { sequence: number[] }).sequence; return { activeHole: sequence[p.correct] ?? null }; }
+  if (match.current.key === 'color-word') { const rounds = (match.current.data as { rounds: Array<{ word: string; textColor: string; options: string[] }> }).rounds; return { round: rounds[p.correct + p.errors] ?? null }; }
+  return undefined;
 }
 
 function activeElapsed(progress: Progress, now = Date.now()): number {
@@ -155,21 +204,32 @@ function resumeMatch(io: Server, match: Match): void {
   }
 }
 
-function publicState(match: Match) {
+// trafficLightGreen tells every player whether the light has already turned
+// green, independent of any single client having received (or missed, via a
+// reload/reconnect) the one-shot 'challenge-rush:traffic-light:green' push —
+// it's derived from whether the green timer has already fired, not from the
+// hidden greenAtMs delay itself, so it reveals nothing before the fact.
+function publicState(match: Match, playerId: string) {
   return {
     matchId: match.id, phase: match.phase, challengeIndex: match.index, challengeCount: match.order.length,
-    challenge: sanitizeChallengeForClient(match), scores: scorePayload(match), paused: match.paused,
+    challenge: challengeForPlayer(match, playerId), scores: scorePayload(match), paused: match.paused,
     remainingMs: match.paused ? match.pausedRemainingMs : remainingUntil(match.deadlineAt, Date.now()),
     history: match.history, readyNext: match.phase === 'result' ? [...match.readyNext] : [],
     progress: matchProgressPayload(match),
+    trafficLightGreen: match.phase === 'playing' && match.current.key === 'traffic-light' && match.greenTimer === null && match.greenPausedRemainingMs === null,
   };
 }
 
-function emitState(io: Server, match: Match, target?: Socket): void {
-  const state = publicState(match);
-  if (target) target.emit('challenge-rush:state', state);
-  else emitArcadeRoom(io, match.room, 'challenge-rush:state', state, match);
-  broadcastArcadeKiosk(io, { gameType: 'challenge-rush', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: match.phase, challenge: match.current.title, challengeIndex: match.index, challengeCount: match.order.length, scores: state.scores, paused: match.paused });
+function emitState(io: Server, match: Match, target?: Socket, targetPlayerId?: string): void {
+  if (target && targetPlayerId) {
+    target.emit('challenge-rush:state', publicState(match, targetPlayerId));
+  } else {
+    for (const [playerId, socketId] of match.socketIds) {
+      const socket = io.sockets.sockets.get(socketId);
+      socket?.emit('challenge-rush:state', publicState(match, playerId));
+    }
+  }
+  broadcastArcadeKiosk(io, { gameType: 'challenge-rush', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: match.phase, challenge: match.current.title, challengeIndex: match.index, challengeCount: match.order.length, scores: scorePayload(match), paused: match.paused });
 }
 
 function beginChallenge(io: Server, match: Match): void {
@@ -231,7 +291,15 @@ function nextChallenge(io: Server, match: Match): void {
   match.index += 1;
   match.phase = 'countdown';
   match.current = challengePayload(match.order[match.index], (match.seed + match.index * 7919) >>> 0);
-  match.progress = new Map(match.players.map((player) => [player.id, { clicks: 0, errors: 0, correct: 0, completed: false, score: 0, startedAt: 0, elapsedBeforePause: 0, lastInputAt: 0 }]));
+  // A forfeited player's Progress entry is rebuilt below like everyone
+  // else's, but starts pre-completed at score 0 instead of `completed: false`
+  // — otherwise it would silently accept real input again next round and,
+  // since match.players is never pruned, keep contributing to their overall
+  // score despite having left.
+  match.progress = new Map(match.players.map((player) => {
+    const forfeited = match.forfeited.has(player.id);
+    return [player.id, { clicks: 0, errors: 0, correct: 0, completed: forfeited, score: 0, startedAt: 0, elapsedBeforePause: 0, lastInputAt: 0 }];
+  }));
   // Arm the countdown before announcing the phase: the clients derive their
   // 3-2-1 overlay from this state's remainingMs, so it has to already be the
   // countdown deadline and not the result phase's ready-timeout.
@@ -283,7 +351,7 @@ function attachSocket(io: Server, socket: Socket, match: Match, playerId: string
   match.socketIds.set(playerId, socket.id);
   socket.join(match.room);
   socket.emit('challenge-rush:match:start', { matchId: match.id, host: match.host, players: match.players, challengeCount: match.order.length, reconnected: true });
-  emitState(io, match, socket);
+  emitState(io, match, socket, playerId);
 }
 
 function startMatch(io: Server, lobby: Lobby): Match {
@@ -320,7 +388,7 @@ export function registerChallengeRushSockets(io: Server): void {
     socket.on('challenge-rush:lobby:start', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null; if (!lobby || !canUseLobby(socket, lobby) || !owns(socket, payload.playerId) || payload.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' }); if (lobby.players.length < 1 || lobby.players.some((player) => !isLobbyReady(lobby, player.id))) return ack?.({ ok: false, error: 'Alle Mitspieler müssen bereit sein.' }); const match = startMatch(io, lobby); ack?.({ ok: true, matchId: match.id }); });
     socket.on('challenge-rush:challenge:input', (payload: { matchId?: string; playerId?: string; challengeIndex?: number; action?: string; value?: number | string | { x?: number; y?: number } }, ack?: (r: unknown) => void) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null; const p = match && payload.playerId ? match.progress.get(payload.playerId) : null;
-      if (!match || match.phase !== 'playing' || match.paused || !p || !owns(socket, payload.playerId) || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Eingabe nicht möglich.' });
+      if (!match || match.phase !== 'playing' || match.paused || !p || !owns(socket, payload.playerId) || !canUseLobby(socket, match) || match.forfeited.has(payload.playerId as string)) return ack?.({ ok: false, error: 'Eingabe nicht möglich.' });
       const progress = () => ({ ok: true, progress: progressPayload(p) });
       if (!isCurrentChallenge(payload.challengeIndex ?? -1, match.index)) return ack?.({ ...progress(), ignored: true, reason: 'stale-challenge' });
       const now = Date.now(); if (p.completed) return ack?.({ ...progress(), duplicate: true }); if (now - p.lastInputAt < 30) return ack?.({ ...progress(), ignored: true }); p.lastInputAt = now;
@@ -340,6 +408,11 @@ export function registerChallengeRushSockets(io: Server): void {
       else if (match.current.key === 'memory-sequence') {
         const sequence = match.current.data.sequence as number[];
         if (payload.action !== 'tile' || typeof payload.value !== 'number') return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) });
+        // The full sequence is already in the wire payload for the reveal
+        // animation, so a scripted client could otherwise answer the instant
+        // 'playing' starts and always score 100 — reject taps before the
+        // reveal has actually finished.
+        if (elapsed < MEMORY_REVEAL_TOTAL_MS) return ack?.({ ok: false, error: 'Bitte die Reihenfolge erst abwarten.', progress: progressPayload(p) });
         if (payload.value === sequence[p.correct]) p.correct += 1; else p.errors += 1;
         if (p.errors > 0 || p.correct >= MEMORY_SEQUENCE_LENGTH) { p.score = scoreMemorySequence(p.correct); p.completed = true; }
       }
@@ -369,7 +442,7 @@ export function registerChallengeRushSockets(io: Server): void {
         if (p.correct + p.errors >= COLOR_WORD_ROUND_COUNT) { p.score = scoreColorWord(p.correct, p.errors, elapsed); p.completed = true; }
       }
       if ([...match.progress.values()].every((entry) => entry.completed)) finishChallenge(io, match);
-      ack?.({ ok: true, accepted: true, progress: progressPayload(p) });
+      ack?.({ ok: true, accepted: true, progress: progressPayload(p), next: p.completed ? undefined : nextStepPayload(match, p) });
     });
     socket.on('challenge-rush:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const match = payload?.matchId ? matches.get(payload.matchId) : null; if (!match || !['countdown', 'playing', 'result'].includes(match.phase) || payload.playerId !== match.host.id || !owns(socket, payload.playerId) || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Pause ist in dieser Phase nicht möglich.' }); if (match.paused) resumeMatch(io, match); else pauseMatch(match); emitState(io, match); ack?.({ ok: true, paused: match.paused, remainingMs: match.pausedRemainingMs }); });
     socket.on('challenge-rush:challenge:ready', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => {

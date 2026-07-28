@@ -42,6 +42,14 @@ function randomSequence(random: () => number, length: number, max: number): numb
 export const AIM_TRAINER_TARGET_COUNT = 6;
 export const MEMORY_SEQUENCE_TILE_COUNT = 9;
 export const MEMORY_SEQUENCE_LENGTH = 5;
+// Matches the client's reveal animation step (server/public/js/views/challengeRush.js,
+// MEMORY_REVEAL_STEP_MS) — the two aren't otherwise linked since public/ has no build
+// step to share a constant with src/. The full sequence is sent up front so the client
+// can render the reveal, so the server must independently withhold real input
+// acceptance until that reveal is actually over; without this, a scripted client could
+// answer instantly and always score 100.
+export const MEMORY_REVEAL_STEP_MS = 700;
+export const MEMORY_REVEAL_TOTAL_MS = MEMORY_SEQUENCE_LENGTH * MEMORY_REVEAL_STEP_MS;
 export const ODD_ONE_OUT_TILE_COUNT = 16;
 export const WHACK_A_MOLE_HOLE_COUNT = 9;
 export const WHACK_A_MOLE_SEQUENCE_LENGTH = 8;
@@ -61,7 +69,11 @@ export function challengePayload(key: ChallengeKey, seed: number): ChallengePayl
   }
   if (key === 'aim-trainer') {
     const targets = Array.from({ length: AIM_TRAINER_TARGET_COUNT }, () => ({ x: 15 + random() * 70, y: 20 + random() * 60 }));
-    return { ...definition, seed, data: { targets } };
+    // targetCount is a fixed, non-secret constant (not derived from the
+    // targets array): the per-player wire payload later strips `targets`
+    // down to just the current one, so the total needs its own field to
+    // still render "X / 6 getroffen".
+    return { ...definition, seed, data: { targets, targetCount: AIM_TRAINER_TARGET_COUNT } };
   }
   if (key === 'memory-sequence') {
     return { ...definition, seed, data: { tileCount: MEMORY_SEQUENCE_TILE_COUNT, sequence: randomSequence(random, MEMORY_SEQUENCE_LENGTH, MEMORY_SEQUENCE_TILE_COUNT) } };
@@ -70,7 +82,7 @@ export function challengePayload(key: ChallengeKey, seed: number): ChallengePayl
     return { ...definition, seed, data: { tileCount: ODD_ONE_OUT_TILE_COUNT, oddIndex: Math.floor(random() * ODD_ONE_OUT_TILE_COUNT) } };
   }
   if (key === 'whack-a-mole') {
-    return { ...definition, seed, data: { holeCount: WHACK_A_MOLE_HOLE_COUNT, sequence: randomSequence(random, WHACK_A_MOLE_SEQUENCE_LENGTH, WHACK_A_MOLE_HOLE_COUNT) } };
+    return { ...definition, seed, data: { holeCount: WHACK_A_MOLE_HOLE_COUNT, sequence: randomSequence(random, WHACK_A_MOLE_SEQUENCE_LENGTH, WHACK_A_MOLE_HOLE_COUNT), totalHits: WHACK_A_MOLE_SEQUENCE_LENGTH } };
   }
   if (key === 'traffic-light') {
     return { ...definition, seed, data: { greenAtMs: 2_000 + Math.floor(random() * 3_500) } };
@@ -81,7 +93,7 @@ export function challengePayload(key: ChallengeKey, seed: number): ChallengePayl
       const textColor = COLOR_WORD_COLORS[Math.floor(random() * COLOR_WORD_COLORS.length)];
       return { word: word.word, textColor: textColor.key, options: shuffled(COLOR_WORD_COLORS.map((entry) => entry.key), random) };
     });
-    return { ...definition, seed, data: { rounds } };
+    return { ...definition, seed, data: { rounds, roundCount: COLOR_WORD_ROUND_COUNT } };
   }
   return { ...definition, seed, data: {} };
 }

@@ -44,9 +44,15 @@ function scheduleMemoryReveal(state) {
   clearRevealTimers();
   const sequence = state.challenge?.data?.sequence ?? [];
   const elapsed = elapsedInChallenge(state);
+  memoryRevealIndex = -1;
   sequence.forEach((tile, index) => {
     const showAt = index * MEMORY_REVEAL_STEP_MS; const hideAt = showAt + MEMORY_REVEAL_SHOW_MS;
-    if (elapsed < showAt) scheduleAt(showAt - elapsed, () => { memoryRevealIndex = tile; rerenderIfVisible(); });
+    // The first tile's showAt is exactly 0, so "elapsed < showAt" never fires
+    // for it (elapsed is never negative) — a tile already inside its show
+    // window (covers both that boundary case and a mid-reveal reconnect)
+    // must be shown immediately instead of only ever being scheduled.
+    if (elapsed >= showAt && elapsed < hideAt) memoryRevealIndex = tile;
+    else if (elapsed < showAt) scheduleAt(showAt - elapsed, () => { memoryRevealIndex = tile; rerenderIfVisible(); });
     if (elapsed < hideAt) scheduleAt(hideAt - elapsed, () => { memoryRevealIndex = -1; rerenderIfVisible(); });
   });
   const doneAt = sequence.length * MEMORY_REVEAL_STEP_MS;
@@ -78,6 +84,12 @@ function syncPresentation(state) {
   // sequence again once resumed.
   if (state.phase === 'playing' && !state.paused && state.challenge?.key === 'memory-sequence') scheduleMemoryReveal(state);
   else clearRevealTimers();
+  // The server-derived boolean (see publicState's trafficLightGreen) is the
+  // source of truth for whether the light has already turned green — a
+  // reload/reconnect only ever gets a fresh state push, never a replay of
+  // the one-shot 'challenge-rush:traffic-light:green' event, so relying on
+  // that event alone would leave a reconnected client stuck on red forever.
+  if (state.challenge?.key === 'traffic-light') trafficGreen = state.trafficLightGreen === true;
 }
 
 // Restores this client's own progress within the current challenge from the
@@ -181,7 +193,12 @@ function challengeView(container) {
   if (challenge?.key === 'number-salad') body = `<div class="challenge-rush-number-grid">${(data.numbers ?? []).map((number) => `<button type="button" class="btn challenge-rush-number" data-cr-number="${number}" ${playing ? '' : 'disabled'}>${number}</button>`).join('')}</div><p class="muted">Nächste Zahl: <strong>${numberOrder}</strong></p>`;
   if (challenge?.key === 'timing-10') body = `<button type="button" class="challenge-rush-big-button" data-cr-stop ${playing ? '' : 'disabled'}>STOPP</button><p class="muted">Keine laufende Zeit sichtbar – vertraue deinem Gefühl.</p>`;
   if (challenge?.key === 'aim-trainer') {
-    const targets = data.targets ?? []; const target = playing ? targets[progressStep] : null;
+    // The server only ever sends the single current target (data.target),
+    // not the full targets array — otherwise a script could read every
+    // remaining position at once and blast through all six with only the
+    // input floor as a delay. targetCount is a separate, non-secret constant
+    // sent alongside it purely for the "X / 6" progress text.
+    const target = playing ? data.target : null;
     body = target
       ? `<button type="button" class="challenge-rush-circle" data-cr-x="${target.x}" data-cr-y="${target.y}" aria-label="Ziel treffen" style="left:${target.x}%;top:${target.y}%"></button>`
       : '<p class="muted">Die Ziele erscheinen, sobald es losgeht.</p>';
@@ -190,7 +207,7 @@ function challengeView(container) {
     // in the field), which pulls it out of the grid's auto-placed rows and
     // leaves a flow paragraph centered in the same cell — directly on top of
     // whichever target happens to render near the field's center.
-    body += `<p class="muted challenge-rush-playfield-badge">${Math.min(progressStep, targets.length)} / ${targets.length} getroffen</p>`;
+    body += `<p class="muted challenge-rush-playfield-badge">${Math.min(progressStep, data.targetCount ?? 6)} / ${data.targetCount ?? 6} getroffen</p>`;
   }
   if (challenge?.key === 'memory-sequence') {
     const tileCount = data.tileCount ?? 9;
@@ -203,18 +220,24 @@ function challengeView(container) {
     body = `<div class="challenge-rush-tile-grid" style="grid-template-columns:repeat(4,1fr);">${tiles}</div>`;
   }
   if (challenge?.key === 'whack-a-mole') {
-    const holeCount = data.holeCount ?? 9; const active = playing ? data.sequence?.[progressStep] : null;
+    // Same minimization as Aim Trainer: only the current active hole
+    // (data.activeHole) is sent, not the whole sequence.
+    const holeCount = data.holeCount ?? 9; const active = playing ? data.activeHole : null;
+    const totalHits = data.totalHits ?? 8;
     const tiles = Array.from({ length: holeCount }, (_, index) => `<button type="button" class="challenge-rush-tile ${active === index ? 'is-active' : ''}" data-cr-tile="${index}" ${playing ? '' : 'disabled'} aria-label="Loch ${index + 1}"></button>`).join('');
-    body = `<div class="challenge-rush-tile-grid" style="grid-template-columns:repeat(3,1fr);">${tiles}</div><p class="muted challenge-rush-target-progress">${Math.min(progressStep, data.sequence?.length ?? 0)} / ${data.sequence?.length ?? 0} getroffen</p>`;
+    body = `<div class="challenge-rush-tile-grid" style="grid-template-columns:repeat(3,1fr);">${tiles}</div><p class="muted challenge-rush-target-progress">${Math.min(progressStep, totalHits)} / ${totalHits} getroffen</p>`;
   }
   if (challenge?.key === 'traffic-light') {
     body = `<button type="button" class="challenge-rush-traffic-light ${trafficGreen ? 'is-green' : 'is-red'}" data-cr-traffic ${playing ? '' : 'disabled'} aria-label="Klicken sobald Grün">${trafficGreen ? 'GRÜN' : 'ROT'}</button><p class="muted">Zu früh klicken zählt als Fehlstart.</p>`;
   }
   if (challenge?.key === 'color-word') {
-    const rounds = data.rounds ?? []; const round = playing ? rounds[progressStep] : null;
+    // Same minimization: only the current round (data.round) is sent, not
+    // every remaining word/color/option set.
+    const round = playing ? data.round : null;
+    const roundCount = data.roundCount ?? 6;
     const word = round ? `<div class="challenge-rush-color-word" style="color:${COLOR_WORD_VARS[round.textColor] ?? 'inherit'}">${escapeHtml(round.word)}</div>` : '<p class="muted">Bereithalten …</p>';
     const options = round ? `<div class="challenge-rush-color-options">${round.options.map((key) => `<button type="button" class="btn challenge-rush-color-option" data-cr-color="${key}" style="border-color:${COLOR_WORD_VARS[key]};"><span class="challenge-rush-color-dot" style="background:${COLOR_WORD_VARS[key]};"></span>${COLOR_WORD_LABELS[key] ?? key}</button>`).join('')}</div>` : '';
-    body = `${word}${options}<p class="muted challenge-rush-target-progress">${Math.min(progressStep, rounds.length)} / ${rounds.length}</p>`;
+    body = `${word}${options}<p class="muted challenge-rush-target-progress">${Math.min(progressStep, roundCount)} / ${roundCount}</p>`;
   }
   return `<section class="card stack challenge-rush-stage" data-match-id="${escapeHtml(match?.matchId ?? '')}" data-challenge-index="${match?.challengeIndex ?? -1}" data-phase="${escapeHtml(match?.phase ?? '')}" data-remaining-ms="${match?.remainingMs ?? ''}" data-reconnected="${match?.reconnected === true}" data-disconnected="${match?.disconnected === true}" data-challenge-key="${escapeHtml(challenge?.key ?? '')}" aria-live="polite"><div class="row-between"><span class="badge badge-playing">Challenge ${(match?.challengeIndex ?? 0) + 1} / ${match?.challengeCount ?? 4}</span><span>${match?.paused ? 'Pause' : match?.phase === 'countdown' ? 'Startet gleich' : 'Läuft'}</span></div><h2>${escapeHtml(challenge?.title ?? 'Mini-Challenge')}</h2><p class="muted">${escapeHtml(challenge?.description ?? '')}</p><div class="challenge-rush-playfield">${body}</div></section>`;
 }
@@ -251,19 +274,34 @@ export function renderChallengeRush(container, ctx) {
   container.querySelector('[data-navigate="arcade"]')?.addEventListener('click', () => navigate('arcade'));
   container.querySelector('[data-cr-pause]')?.addEventListener('click', () => socket.emit('challenge-rush:match:pause', { matchId: match.matchId, playerId: myId() }, (result) => { if (!result?.ok) showToast(result?.error || 'Pause konnte nicht geändert werden.', { error: true }); }));
   container.querySelector('[data-cr-finish]')?.addEventListener('click', async () => { if (!(await confirmDialog('Challenge Rush wirklich für alle beenden?', { confirmText: 'Beenden', danger: true }))) return; const result = await emit('challenge-rush:match:finish', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Beenden fehlgeschlagen.', { error: true }); });
-  container.querySelector('[data-cr-leave-match]')?.addEventListener('click', async () => { if (!(await confirmDialog('Challenge Rush wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return; const result = await emit('challenge-rush:match:leave', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Verlassen fehlgeschlagen.', { error: true }); });
+  container.querySelector('[data-cr-leave-match]')?.addEventListener('click', async () => { if (!(await confirmDialog('Challenge Rush wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return; const result = await emit('challenge-rush:match:leave', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) return showToast(result?.error || 'Verlassen fehlgeschlagen.', { error: true }); match = null; navigate('arcade'); });
   container.querySelector('#cr-ready-next')?.addEventListener('click', async () => { const result = await emit('challenge-rush:challenge:ready', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Bereit-Status fehlgeschlagen.', { error: true }); });
-  const send = (action, value, onAccepted = () => {}) => socket.emit('challenge-rush:challenge:input', { matchId: match.matchId, playerId: myId(), challengeIndex: match.challengeIndex, action, value }, (result) => { if (!result?.ok && !result?.ignored) return showToast(result?.error || 'Eingabe abgelehnt.', { error: true }); if (result?.ok && !result?.ignored && !result?.duplicate) onAccepted(result.progress); });
-  container.querySelector('.challenge-rush-circle')?.addEventListener('click', (event) => { const circle = event.currentTarget; send('hit', { x: Number(circle.dataset.crX), y: Number(circle.dataset.crY) }, (progress) => { if (match?.challenge?.key === 'aim-trainer') { progressStep = progress.correct; rerender(); } }); });
+  // The ack's optional `next` field (only set for aim-trainer/whack-a-mole/
+  // color-word) carries the freshly revealed current step — merged in here
+  // so every send() caller automatically sees it, since individual accepted
+  // inputs don't otherwise trigger a full state broadcast.
+  const send = (action, value, onAccepted = () => {}) => socket.emit('challenge-rush:challenge:input', { matchId: match.matchId, playerId: myId(), challengeIndex: match.challengeIndex, action, value }, (result) => {
+    if (!result?.ok && !result?.ignored) return showToast(result?.error || 'Eingabe abgelehnt.', { error: true });
+    if (result?.ok && !result?.ignored && !result?.duplicate) {
+      if (result.next && match?.challenge) match = { ...match, challenge: { ...match.challenge, data: { ...match.challenge.data, ...result.next } } };
+      onAccepted(result.progress);
+    }
+  });
+  container.querySelector('.challenge-rush-circle')?.addEventListener('click', (event) => { const circle = event.currentTarget; send('hit', { x: Number(circle.dataset.crX), y: Number(circle.dataset.crY) }, (progress) => { if (match?.challenge?.key === 'aim-trainer') { progressStep = progress.correct; rerender(); container.querySelector('.challenge-rush-circle')?.focus(); } }); });
   container.querySelector('.challenge-rush-big-button:not([data-cr-stop])')?.addEventListener('click', () => send('click', undefined, (progress) => { const counter = container.querySelector('#cr-clicks'); if (counter) counter.textContent = String(progress.clicks); }));
   container.querySelector('[data-cr-stop]')?.addEventListener('click', () => send('stop'));
   container.querySelectorAll('[data-cr-number]').forEach((button) => button.addEventListener('click', () => { const value = Number(button.dataset.crNumber); send('number', value, (progress) => { numberOrder = progress.correct + 1; if (progress.correct === value) button.disabled = true; }); }));
+  // Refocusing the equivalent element after each rerender (instead of
+  // leaving focus on `<body>`, where the full innerHTML replace drops it)
+  // keeps these rapid, timed challenges actually playable by keyboard —
+  // otherwise a keyboard user would have to tab back in from the top of the
+  // page after every single tile.
   container.querySelectorAll('[data-cr-tile]').forEach((button) => button.addEventListener('click', () => {
     const value = Number(button.dataset.crTile); const key = match?.challenge?.key;
-    if (key === 'memory-sequence') send('tile', value, (progress) => { progressStep = progress.correct; rerender(); });
-    else if (key === 'odd-one-out') send('select', value, () => rerender());
-    else if (key === 'whack-a-mole') send('hit', value, (progress) => { progressStep = progress.correct; rerender(); });
+    if (key === 'memory-sequence') send('tile', value, (progress) => { progressStep = progress.correct; rerender(); container.querySelector(`[data-cr-tile="${value}"]`)?.focus(); });
+    else if (key === 'odd-one-out') send('select', value, () => { rerender(); container.querySelector(`[data-cr-tile="${value}"]`)?.focus(); });
+    else if (key === 'whack-a-mole') send('hit', value, (progress) => { progressStep = progress.correct; rerender(); container.querySelector('.challenge-rush-tile.is-active')?.focus(); });
   }));
   container.querySelector('[data-cr-traffic]')?.addEventListener('click', () => send('click', undefined, () => rerender()));
-  container.querySelectorAll('[data-cr-color]').forEach((button) => button.addEventListener('click', () => send('answer', button.dataset.crColor, (progress) => { progressStep = progress.correct + progress.errors; rerender(); })));
+  container.querySelectorAll('[data-cr-color]').forEach((button) => button.addEventListener('click', () => send('answer', button.dataset.crColor, (progress) => { progressStep = progress.correct + progress.errors; rerender(); container.querySelector('.challenge-rush-color-option')?.focus(); })));
 }
