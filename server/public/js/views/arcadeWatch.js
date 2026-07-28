@@ -4,6 +4,7 @@ import { arcadeStreamCanvasSize, drawArcadeStreamCanvas } from '../arcadeStreamR
 import { getMyId } from '../whoami.js';
 import { icon } from '../icons.js';
 import { showToast } from '../toast.js';
+import { snakeArenaLegendHtml } from '../snakeArenaLegend.js';
 
 const GAME_NAMES = {
   quiz: 'Gaming-Quiz',
@@ -212,6 +213,7 @@ export function renderArcadeWatch(container) {
       <h1 class="view-title">${escapeHtml(name)} ansehen</h1>
       <div class="arcade-watch-header"><span id="arcade-watch-status">${state?.paused ? 'Pause' : 'Läuft'}</span><span class="muted">Nur Zuschauer</span></div>
       ${rosterHtml(state ?? {})}
+      ${snakeArenaLegendHtml(state)}
       ${stateHtml(state)}
       ${state?.gameType === 'scribble' ? scribbleVotingHtml(state) : ''}
       ${state?.gameType === 'scribble' ? '<div class="arcade-watch-safe-note">Wort, Tipps und Chat werden für Zuschauer verborgen.</div>' : state?.gameType === 'battleship' ? '<div class="arcade-watch-safe-note">Ungetroffene Flottenfelder bleiben für Zuschauer verborgen.</div>' : ''}

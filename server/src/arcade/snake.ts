@@ -122,6 +122,7 @@ function removeMatchPlayer(io: Server, match: Match, playerId: string): void {
     finish(io, match, match.players.find((player) => player.id !== playerId) ?? null, 'player-left');
     return;
   }
+  endArcadeSession([playerId], 'snake', match);
   match.world.snakes[leaverIndex].alive = false;
   const livingPlayers = match.players.filter((_, index) => match.world.snakes[index].alive);
   if (match.host.id === playerId && livingPlayers[0]) match.host = livingPlayers[0];

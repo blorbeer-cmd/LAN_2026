@@ -138,6 +138,37 @@ after(async () => {
   serverProcess?.kill();
 });
 
+test('classic Snake guest returns to the Arcade immediately after leaving', async () => {
+  const hostPlayer = await createPlayer('Snake Leave Host');
+  const guestPlayer = await createPlayer('Snake Leave Guest');
+  const host = await openArcadeAs(hostPlayer.id);
+  const guest = await openArcadeAs(guestPlayer.id);
+  try {
+    await host.page.click('[data-game="snake"]');
+    await host.page.waitForSelector('#snake-create:not([disabled])');
+    await host.page.click('#snake-create');
+
+    await guest.page.click('[data-game="snake"]');
+    await guest.page.waitForSelector('[data-snake-join]');
+    await guest.page.click('[data-snake-join]');
+    await host.page.waitForSelector('#snake-start:not([disabled])');
+    await host.page.click('#snake-start');
+    await guest.page.waitForSelector('#snake-canvas');
+
+    await guest.page.click('#snake-leave-match');
+    await guest.page.click('[data-confirm]');
+    await guest.page.waitForSelector('.arcade-tiles');
+    assert.equal(await activeView(guest.page), 'arcade');
+    assert.equal(await guest.page.locator('#snake-canvas').count(), 0);
+
+    await host.page.waitForSelector('#snake-back');
+    await host.page.click('#snake-back');
+  } finally {
+    await host.context.close();
+    await guest.context.close();
+  }
+});
+
 test('watch list: a finished match disappears and active watchers are sent back to the Arcade', async () => {
   const hostPlayer = await createPlayer('Watch Host');
   const guestPlayer = await createPlayer('Watch Guest');

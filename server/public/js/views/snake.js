@@ -322,10 +322,9 @@ export function renderSnake(container) {
   });
   container.querySelector('#snake-leave-match')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
-    const leavingArena = match.mode === 'arena';
     const res = await emitAck('snake:match:leave', { matchId: match.matchId, playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
-    else if (leavingArena) {
+    else {
       match = null;
       world = null;
       prevMyScore = null;

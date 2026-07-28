@@ -11,6 +11,7 @@ import { installIconReplacement, icon } from './icons.js';
 import { bannerContentHtml } from './pushFeed.js';
 import { drawArcadeStreamCanvas } from './arcadeStreamRenderer.js';
 import { domainIcon, installDomainIcons } from './domainIcons.js';
+import { snakeArenaLegendHtml } from './snakeArenaLegend.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -168,8 +169,13 @@ function renderArcadeStream(game) {
     content.innerHTML = `<div class="kiosk-game-question">${escapeHtml(game.challenge || 'Mini-Challenge')}</div><div class="kiosk-game-scores">${(game.scores || []).map((score) => `<div>${escapeHtml(score.name || 'Spieler')}: <strong>${score.score || 0}</strong></div>`).join('')}</div>`;
     return;
   }
+  const legendHtml = snakeArenaLegendHtml(game);
+  const existingLegend = content.querySelector('.snake-arena-legend');
+  if (legendHtml && !existingLegend) content.insertAdjacentHTML('afterbegin', legendHtml);
+  else if (legendHtml && existingLegend?.outerHTML !== legendHtml) existingLegend.outerHTML = legendHtml;
+  else if (!legendHtml) existingLegend?.remove();
   let canvas = content.querySelector('canvas');
-  if (!canvas) { content.innerHTML = '<canvas width="800" height="450" aria-label="Livebild des Arcade-Spiels"></canvas>'; canvas = content.querySelector('canvas'); }
+  if (!canvas) { content.insertAdjacentHTML('beforeend', '<canvas width="800" height="450" aria-label="Livebild des Arcade-Spiels"></canvas>'); canvas = content.querySelector('canvas'); }
   drawKioskCanvas(canvas, game);
 }
 
