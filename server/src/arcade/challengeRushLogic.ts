@@ -1,31 +1,379 @@
-export type ChallengeKey = 'reaction-circle' | 'cps' | 'number-salad' | 'timing-10';
+export type ChallengeKey =
+  | 'reaction-circle' | 'cps' | 'number-salad' | 'timing-10'
+  | 'aim-trainer' | 'memory-sequence' | 'odd-one-out' | 'whack-a-mole' | 'traffic-light' | 'color-word'
+  | 'number-sequence' | 'logic-equation' | 'pattern-complete' | 'category-sort' | 'direction-match'
+  | 'mental-rotation' | 'word-scramble' | 'count-shapes' | 'logic-order' | 'delayed-recall'
+  | 'prime-check' | 'balance-scale' | 'clock-angle' | 'binary-pattern' | 'rule-switch'
+  | 'matrix-missing' | 'coin-change' | 'letter-order' | 'digit-sum' | 'sequence-transform'
+  | 'sequence-echo' | 'reverse-echo' | 'memory-matrix' | 'number-blind'
+  | 'n-back' | 'seen-before' | 'missing-item' | 'memory-pairs'
+  | 'path-memory' | 'suitcase-memory';
+
+export type TrialPhase = 'preview' | 'input';
 
 export interface ChallengeDefinition { key: ChallengeKey; title: string; description: string; durationMs: number }
 export const CHALLENGES: ChallengeDefinition[] = [
-  { key: 'reaction-circle', title: 'Klick den Kreis', description: 'Klicke den Kreis so schnell wie möglich.', durationMs: 8_000 },
-  { key: 'cps', title: 'CPS-Test', description: 'Klicke fünf Sekunden lang so oft du kannst.', durationMs: 5_000 },
-  { key: 'number-salad', title: 'Zahlensalat', description: 'Klicke die Zahlen in aufsteigender Reihenfolge.', durationMs: 12_000 },
-  { key: 'timing-10', title: 'Stoppe bei 10 Sekunden', description: 'Stoppe den unsichtbaren Timer möglichst genau bei 10,00 Sekunden.', durationMs: 15_000 },
+  { key: 'reaction-circle', title: 'Kreis-Serie', description: 'Treffe in 30 Sekunden so viele Kreise wie möglich.', durationMs: 30_000 },
+  { key: 'cps', title: 'CPS-Serie', description: 'Klicke 30 Sekunden lang so oft du kannst.', durationMs: 30_000 },
+  { key: 'number-salad', title: 'Zahlensalat-Serie', description: 'Klicke möglichst viele Zahlenfolgen in aufsteigender Reihenfolge.', durationMs: 30_000 },
+  { key: 'timing-10', title: 'Timing-Serie', description: 'Stoppe wiederholt möglichst genau bei zehn Sekunden.', durationMs: 30_000 },
+  { key: 'aim-trainer', title: 'Aim-Trainer-Serie', description: 'Treffe in 30 Sekunden so viele Ziele wie möglich.', durationMs: 30_000 },
+  { key: 'memory-sequence', title: 'Reihenfolge-Merker', description: 'Merke dir aufleuchtende Felder und wiederhole sie.', durationMs: 30_000 },
+  { key: 'odd-one-out', title: 'Finde den Unterschied', description: 'Finde das eine abweichende Feld im Raster.', durationMs: 30_000 },
+  { key: 'whack-a-mole', title: 'Whack-a-Mole-Serie', description: 'Treffe die aufleuchtenden Felder in der richtigen Reihenfolge.', durationMs: 30_000 },
+  { key: 'traffic-light', title: 'Ampel-Reaktion', description: 'Klicke erst bei Grün und reagiere so schnell wie möglich.', durationMs: 30_000 },
+  { key: 'color-word', title: 'Farbwort-Chaos', description: 'Wähle die Schriftfarbe, nicht das geschriebene Wort.', durationMs: 30_000 },
+  { key: 'number-sequence', title: 'Zahlenfolge', description: 'Erkenne die Regel und wähle die nächste Zahl.', durationMs: 30_000 },
+  { key: 'logic-equation', title: 'Rechenlogik', description: 'Löse kurze Kopfrechenaufgaben unter Zeitdruck.', durationMs: 30_000 },
+  { key: 'pattern-complete', title: 'Muster ergänzen', description: 'Erkenne das wiederkehrende Symbolmuster.', durationMs: 30_000 },
+  { key: 'category-sort', title: 'Kategorie-Sortierung', description: 'Ordne Begriffe möglichst schnell der richtigen Kategorie zu.', durationMs: 30_000 },
+  { key: 'direction-match', title: 'Richtungslogik', description: 'Verfolge Drehungen und bestimme die Endrichtung.', durationMs: 30_000 },
+  { key: 'mental-rotation', title: 'Mentale Rotation', description: 'Drehe ein Symbol gedanklich und finde das Ergebnis.', durationMs: 30_000 },
+  { key: 'word-scramble', title: 'Buchstaben-Salat', description: 'Setze einen verdrehten Begriff wieder zusammen.', durationMs: 30_000 },
+  { key: 'count-shapes', title: 'Formen zählen', description: 'Zähle ein bestimmtes Symbol in einer Reihe.', durationMs: 30_000 },
+  { key: 'logic-order', title: 'Reihenfolge-Logik', description: 'Setze drei Elemente anhand von Hinweisen in die richtige Reihenfolge.', durationMs: 30_000 },
+  { key: 'delayed-recall', title: 'Verzögerter Abruf', description: 'Merke dir eine Liste und wähle später den gesuchten Begriff.', durationMs: 30_000 },
+  { key: 'prime-check', title: 'Primzahl-Check', description: 'Erkenne schnell, ob eine Zahl eine Primzahl ist.', durationMs: 30_000 },
+  { key: 'balance-scale', title: 'Waagenlogik', description: 'Bestimme das fehlende Gewicht aus Gleichungen.', durationMs: 30_000 },
+  { key: 'clock-angle', title: 'Uhrwinkel', description: 'Berechne den kleineren Winkel zwischen den Zeigern.', durationMs: 30_000 },
+  { key: 'binary-pattern', title: 'Binärmuster', description: 'Erkenne die nächste Folge aus Nullen und Einsen.', durationMs: 30_000 },
+  { key: 'rule-switch', title: 'Regelwechsel', description: 'Wechsle zwischen gerader und ungerader Sortierregel.', durationMs: 30_000 },
+  { key: 'matrix-missing', title: 'Zahlenmatrix', description: 'Finde die fehlende Zahl in einer kleinen Matrix.', durationMs: 30_000 },
+  { key: 'coin-change', title: 'Münzwechsel', description: 'Finde die minimale Anzahl an Münzen für einen Betrag.', durationMs: 30_000 },
+  { key: 'letter-order', title: 'Buchstabenordnung', description: 'Bringe Buchstaben gedanklich ins Alphabet.', durationMs: 30_000 },
+  { key: 'digit-sum', title: 'Ziffernsumme', description: 'Berechne die Quersumme einer Zahl.', durationMs: 30_000 },
+  { key: 'sequence-transform', title: 'Folgen-Operator', description: 'Erkenne die Rechenoperation zwischen den Folgengliedern.', durationMs: 30_000 },
+  { key: 'sequence-echo', title: 'Sequenz-Echo', description: 'Merke dir Feldfolgen und wiederhole sie.', durationMs: 30_000 },
+  { key: 'reverse-echo', title: 'Rückwärts-Echo', description: 'Wiederhole die gezeigte Feldfolge rückwärts.', durationMs: 30_000 },
+  { key: 'memory-matrix', title: 'Memory-Matrix', description: 'Merke dir markierte Felder im Raster.', durationMs: 30_000 },
+  { key: 'number-blind', title: 'Zahlenblende', description: 'Merke dir Zahlenpositionen und klicke sie aufsteigend.', durationMs: 30_000 },
+  { key: 'n-back', title: 'N-zurück', description: 'Erkenne, ob das aktuelle Symbol vor N Schritten erschien.', durationMs: 30_000 },
+  { key: 'seen-before', title: 'Schon gesehen?', description: 'Ordne Symbole als neu oder bereits gesehen ein.', durationMs: 30_000 },
+  { key: 'missing-item', title: 'Was fehlt?', description: 'Finde den Gegenstand, der aus einer Gruppe verschwunden ist.', durationMs: 30_000 },
+  { key: 'memory-pairs', title: 'Memory-Paare-Blitz', description: 'Finde möglichst viele Paare in wechselnden Spielfeldern.', durationMs: 30_000 },
+  { key: 'path-memory', title: 'Pfad-Gedächtnis', description: 'Merke dir Wege und tippe sie anschließend nach.', durationMs: 30_000 },
+  { key: 'suitcase-memory', title: 'Kofferpacken', description: 'Merke dir geordnete Gegenstandslisten.', durationMs: 30_000 },
 ];
 
 export interface ChallengePayload { key: ChallengeKey; title: string; description: string; durationMs: number; seed: number; data: Record<string, unknown> }
+export interface TrialPayload { trialId: string; index: number; difficulty: number; phase: TrialPhase; phaseMs: number; data: Record<string, unknown> }
+export interface TrialResult { accepted: boolean; complete: boolean; correct: boolean; errors: number; rawScore: number; next?: TrialPayload; error?: string }
 
 export function seededRandom(seed: number): () => number {
   let value = seed >>> 0;
   return () => { value = (value * 1_664_525 + 1_013_904_223) >>> 0; return value / 0x1_0000_0000; };
 }
 
+function definition(key: ChallengeKey): ChallengeDefinition {
+  const result = CHALLENGES.find((entry) => entry.key === key);
+  if (!result) throw new Error('Unbekannte Challenge.');
+  return result;
+}
+
+function shuffled<T>(values: T[], random: () => number): T[] {
+  const result = [...values];
+  for (let index = result.length - 1; index > 0; index -= 1) { const swap = Math.floor(random() * (index + 1)); [result[index], result[swap]] = [result[swap], result[index]]; }
+  return result;
+}
+
+function gridSequence(random: () => number, count: number, size: number): number[] {
+  return shuffled(Array.from({ length: size * size }, (_, index) => index), random).slice(0, count);
+}
+
+const MEMORY_KEYS = new Set<ChallengeKey>(['sequence-echo', 'reverse-echo', 'memory-matrix', 'number-blind', 'n-back', 'seen-before', 'missing-item', 'memory-pairs', 'path-memory', 'suitcase-memory']);
+const LOGIC_KEYS = new Set<ChallengeKey>(['number-sequence', 'logic-equation', 'pattern-complete', 'category-sort', 'direction-match', 'mental-rotation', 'word-scramble', 'count-shapes', 'logic-order', 'delayed-recall', 'prime-check', 'balance-scale', 'clock-angle', 'binary-pattern', 'rule-switch', 'matrix-missing', 'coin-change', 'letter-order', 'digit-sum', 'sequence-transform']);
+const TRIAL_KEYS = new Set<ChallengeKey>([...MEMORY_KEYS, ...LOGIC_KEYS, 'aim-trainer', 'memory-sequence', 'odd-one-out', 'whack-a-mole', 'traffic-light', 'color-word']);
+export function isMemoryChallenge(key: ChallengeKey): boolean { return MEMORY_KEYS.has(key); }
+export function isTrialChallenge(key: ChallengeKey): boolean { return TRIAL_KEYS.has(key); }
+export function difficultyFor(streak: number): number { return Math.max(1, Math.min(5, 1 + Math.floor(Math.max(0, streak) / 2))); }
+
 export function challengePayload(key: ChallengeKey, seed: number): ChallengePayload {
-  const definition = CHALLENGES.find((entry) => entry.key === key);
-  if (!definition) throw new Error('Unbekannte Challenge.');
+  const current = definition(key);
   const random = seededRandom(seed);
-  if (key === 'reaction-circle') return { ...definition, seed, data: { x: 15 + random() * 70, y: 20 + random() * 60 } };
+  if (key === 'reaction-circle') return { ...current, seed, data: { x: 15 + random() * 70, y: 20 + random() * 60, radius: 8 } };
   if (key === 'number-salad') {
-    const numbers = Array.from({ length: 8 }, (_, index) => index + 1);
-    for (let index = numbers.length - 1; index > 0; index -= 1) { const swap = Math.floor(random() * (index + 1)); [numbers[index], numbers[swap]] = [numbers[swap], numbers[index]]; }
-    return { ...definition, seed, data: { numbers } };
+    const numbers = shuffled(Array.from({ length: 8 }, (_, index) => index + 1), random);
+    return { ...current, seed, data: { numbers } };
   }
-  return { ...definition, seed, data: {} };
+  if (key === 'aim-trainer') return { ...current, seed, data: { targetCount: 1 } };
+  if (key === 'memory-sequence') return { ...current, seed, data: { type: 'memory-sequence' } };
+  if (key === 'odd-one-out') return { ...current, seed, data: { type: 'odd-one-out' } };
+  if (key === 'whack-a-mole') return { ...current, seed, data: { type: 'whack-a-mole' } };
+  if (key === 'traffic-light') return { ...current, seed, data: { type: 'traffic-light' } };
+  if (key === 'color-word') return { ...current, seed, data: { type: 'color-word' } };
+  return { ...current, seed, data: {} };
+}
+
+const SYMBOLS = ['◆', '●', '▲', '■', '★', '⬟', '✚', '☀', '☘', '⬢'];
+const ITEMS = ['Schlüssel', 'Becher', 'Würfel', 'Lampe', 'Karte', 'Stern', 'Brille', 'Uhr', 'Ball', 'Pfeil', 'Ring', 'Buch'];
+const COLOR_WORDS = [
+  { key: 'red', word: 'Rot' }, { key: 'blue', word: 'Blau' }, { key: 'green', word: 'Grün' }, { key: 'yellow', word: 'Gelb' },
+];
+const CATEGORY_ITEMS = [
+  { item: 'Apfel', category: 'Obst' }, { item: 'Karotte', category: 'Gemüse' }, { item: 'Banane', category: 'Obst' },
+  { item: 'Paprika', category: 'Gemüse' }, { item: 'Birne', category: 'Obst' }, { item: 'Gurke', category: 'Gemüse' },
+];
+const SCRAMBLE_WORDS = ['KARTE', 'LAMPE', 'STERN', 'BRILLE', 'WÜRFEL', 'KAMERA', 'FENSTER'];
+const DIRECTIONS = ['Norden', 'Osten', 'Süden', 'Westen'];
+
+export interface InternalTrial extends TrialPayload {
+  expected: unknown;
+  state: Record<string, unknown>;
+}
+
+function trialId(index: number, seed: number): string { return `${index}-${seed >>> 0}`; }
+function phaseMs(key: ChallengeKey, difficulty: number): number { return key === 'n-back' || key === 'seen-before' ? Math.max(420, 900 - difficulty * 80) : Math.max(450, 1_000 - difficulty * 100); }
+function choiceTrial(key: ChallengeKey, id: string, index: number, difficulty: number, data: Record<string, unknown>, expected: string | number, phase: TrialPhase = 'input', previewMs = 0): InternalTrial {
+  return { trialId: id, index, difficulty, phase, phaseMs: previewMs, data, expected, state: {} };
+}
+
+export function createTrial(key: ChallengeKey, seed: number, index: number, difficulty: number): InternalTrial {
+  const random = seededRandom(seed);
+  const id = trialId(index, seed);
+  const size = difficulty >= 4 ? 5 : difficulty >= 2 ? 4 : 3;
+  if (key === 'aim-trainer') {
+    const target = { x: 15 + random() * 70, y: 20 + random() * 60 };
+    return { trialId: id, index, difficulty, phase: 'input', phaseMs: 0, data: { type: 'aim-trainer', target }, expected: target, state: {} };
+  }
+  if (key === 'memory-sequence') {
+    const length = Math.min(9, 2 + difficulty + Math.floor(index / 4));
+    const sequence = gridSequence(random, length, size);
+    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: Math.max(450, 700 - difficulty * 50), data: { type: 'memory-sequence', size, sequence }, expected: sequence, state: {} };
+  }
+  if (key === 'odd-one-out') {
+    const tileCount = difficulty >= 4 ? 25 : difficulty >= 2 ? 16 : 9;
+    const oddIndex = Math.floor(random() * tileCount);
+    return { trialId: id, index, difficulty, phase: 'input', phaseMs: 0, data: { type: 'odd-one-out', size: Math.sqrt(tileCount), tileCount, oddIndex }, expected: oddIndex, state: {} };
+  }
+  if (key === 'whack-a-mole') {
+    const length = Math.min(10, 3 + difficulty + Math.floor(index / 4));
+    const sequence = gridSequence(random, length, size);
+    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: Math.max(400, 650 - difficulty * 45), data: { type: 'whack-a-mole', size, sequence }, expected: sequence, state: { correct: 0 } };
+  }
+  if (key === 'traffic-light') {
+    const greenAtMs = 1_000 + Math.floor(random() * Math.max(500, 2_500 - difficulty * 250));
+    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: greenAtMs, data: { type: 'traffic-light', greenAtMs }, expected: true, state: {} };
+  }
+  if (key === 'color-word') {
+    const word = COLOR_WORDS[Math.floor(random() * COLOR_WORDS.length)];
+    const textColor = COLOR_WORDS[Math.floor(random() * COLOR_WORDS.length)];
+    return { trialId: id, index, difficulty, phase: 'input', phaseMs: 0, data: { type: 'color-word', word: word.word, textColor: textColor.key, options: shuffled(COLOR_WORDS.map((entry) => entry.key), random) }, expected: textColor.key, state: {} };
+  }
+  if (key === 'number-sequence') {
+    const start = 2 + Math.floor(random() * 8); const step = 1 + difficulty + Math.floor(random() * 3); const expected = start + step * 3;
+    const options = shuffled([expected, expected - step, expected + step, expected + 1].map(String), random);
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `${start}, ${start + step}, ${start + step * 2}, ?`, options }, String(expected));
+  }
+  if (key === 'logic-equation') {
+    const a = 2 + Math.floor(random() * 8); const b = 2 + Math.floor(random() * 6); const c = 1 + Math.floor(random() * 4); const expected = a + b * c;
+    const options = shuffled([expected, expected + b, expected - c, expected + 2].map(String), random);
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `${a} + ${b} × ${c} = ?`, options }, String(expected));
+  }
+  if (key === 'pattern-complete') {
+    const symbols = ['◆', '●', '▲', '■']; const base = Math.floor(random() * symbols.length); const pattern = [0, 1, 2, 0, 1, 2].map((offset) => symbols[(base + offset) % symbols.length]);
+    const expected = pattern[pattern.length - 1]; const options = shuffled([expected, symbols[(base + 1) % symbols.length], symbols[(base + 3) % symbols.length], symbols[(base + 2) % symbols.length]], random);
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `${pattern.slice(0, 5).join(' ')} ?`, options }, expected);
+  }
+  if (key === 'category-sort') {
+    const entry = CATEGORY_ITEMS[Math.floor(random() * CATEGORY_ITEMS.length)];
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Wohin gehört „${entry.item}“?`, options: ['Obst', 'Gemüse'] }, entry.category);
+  }
+  if (key === 'direction-match') {
+    const start = Math.floor(random() * DIRECTIONS.length); const turns = 1 + Math.floor(random() * 3); const expected = DIRECTIONS[(start + turns) % DIRECTIONS.length];
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Starte im ${DIRECTIONS[start]} und drehe dich ${turns}× nach rechts.`, options: DIRECTIONS }, expected);
+  }
+  if (key === 'mental-rotation') {
+    const start = ['↑', '→', '↓', '←'][Math.floor(random() * 4)]; const turns = 1 + Math.floor(random() * 3); const arrows = ['↑', '→', '↓', '←']; const expected = arrows[(arrows.indexOf(start) + turns) % arrows.length];
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Drehe ${start} um ${turns * 90}° nach rechts.`, options: arrows }, expected);
+  }
+  if (key === 'word-scramble') {
+    const word = SCRAMBLE_WORDS[Math.floor(random() * SCRAMBLE_WORDS.length)]; const letters = shuffled([...word], random).join('');
+    const options = shuffled([word, ...SCRAMBLE_WORDS.filter((entry) => entry !== word).slice(0, 3)], random);
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Welches Wort steckt in „${letters}“?`, options }, word);
+  }
+  if (key === 'count-shapes') {
+    const shapes = ['◆', '●', '▲']; const target = shapes[Math.floor(random() * shapes.length)]; const sequence = Array.from({ length: 6 + difficulty }, () => shapes[Math.floor(random() * shapes.length)]); const expected = sequence.filter((shape) => shape === target).length;
+    const options = shuffled([...new Set([expected, Math.max(0, expected - 1), expected + 1, expected + 2])].map(String), random);
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Wie oft kommt ${target} vor?  ${sequence.join(' ')}`, options }, String(expected));
+  }
+  if (key === 'logic-order') {
+    const order = shuffled(['A', 'B', 'C'], random); const options = shuffled(['ABC', 'ACB', 'BAC', 'BCA', 'CAB', 'CBA'], random);
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `${order[0]} kommt vor ${order[1]}, ${order[1]} kommt vor ${order[2]}.`, options }, order.join(''));
+  }
+  if (key === 'delayed-recall') {
+    const items = shuffled(ITEMS, random).slice(0, Math.min(7, 3 + difficulty)); const expected = items[Math.floor(random() * items.length)]; const options = shuffled([expected, ...ITEMS.filter((item) => !items.includes(item)).slice(0, 3)], random);
+    return choiceTrial(key, id, index, difficulty, { type: 'delayed-recall', prompt: 'Welcher Gegenstand war in der Liste?', items, options }, expected, 'preview', phaseMs(key, difficulty));
+  }
+  if (key === 'prime-check') {
+    const candidate = 11 + Math.floor(random() * 45); const prime = candidate > 1 && Array.from({ length: Math.floor(Math.sqrt(candidate)) - 1 }, (_, offset) => offset + 2).every((divisor) => candidate % divisor !== 0);
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Ist ${candidate} eine Primzahl?`, options: ['Ja', 'Nein'] }, prime ? 'Ja' : 'Nein');
+  }
+  if (key === 'balance-scale') {
+    const known = 3 + Math.floor(random() * 8); const total = known + 8 + Math.floor(random() * 8); const expected = total - known;
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Eine Kugel + ${known} kg = ${total} kg. Wie schwer ist die Kugel?`, options: shuffled([expected, expected - 1, expected + 1, expected + 2].map(String), random) }, String(expected));
+  }
+  if (key === 'clock-angle') {
+    const hour = 1 + Math.floor(random() * 11); const minute = [0, 15, 30, 45][Math.floor(random() * 4)]; const hourAngle = (hour % 12) * 30 + minute * 0.5; const minuteAngle = minute * 6; const expected = Math.round(Math.min(Math.abs(hourAngle - minuteAngle), 360 - Math.abs(hourAngle - minuteAngle)));
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Wie groß ist der kleinere Winkel bei ${hour}:${String(minute).padStart(2, '0')} Uhr?`, options: shuffled([expected, expected + 15, Math.max(0, expected - 15), (expected + 30) % 180].map(String), random) }, String(expected));
+  }
+  if (key === 'binary-pattern') {
+    const startsWithOne = random() > 0.5; const bits = Array.from({ length: 5 }, (_, position) => (startsWithOne ? position % 2 : (position + 1) % 2)); const expected = startsWithOne ? 1 : 0;
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `${bits.join(' ')} ?`, options: ['0', '1'] }, String(expected));
+  }
+  if (key === 'rule-switch') {
+    const number = 2 + Math.floor(random() * 20); const evenRule = random() > 0.5; const expected = number % 2 === 0 ? (evenRule ? 'Blau' : 'Rot') : (evenRule ? 'Rot' : 'Blau');
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `${evenRule ? 'Gerade Zahlen = Blau' : 'Ungerade Zahlen = Blau'}, sonst Rot. Zahl ${number}?`, options: ['Blau', 'Rot'] }, expected);
+  }
+  if (key === 'matrix-missing') {
+    const a = 1 + Math.floor(random() * 8); const b = a + 1 + Math.floor(random() * 5); const c = b + 1 + Math.floor(random() * 5); const expected = c + (b - a);
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `${a}  ${b}\n${c}  ?`, options: shuffled([expected, expected - 1, expected + 1, expected + 2].map(String), random) }, String(expected));
+  }
+  if (key === 'coin-change') {
+    const amount = 8 + Math.floor(random() * 18); const expected = Math.floor(amount / 5) + Math.floor((amount % 5) / 2) + amount % 2;
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Wie viele Münzen brauchst du mindestens für ${amount} € (1 €, 2 €, 5 €)?`, options: shuffled([expected, expected + 1, Math.max(1, expected - 1), expected + 2].map(String), random) }, String(expected));
+  }
+  if (key === 'letter-order') {
+    const letters = shuffled(['A', 'F', 'K', 'M', 'R'], random).slice(0, 3); const expected = [...letters].sort()[0];
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Welcher Buchstabe steht alphabetisch zuerst: ${letters.join(', ')}?`, options: shuffled(letters, random) }, expected);
+  }
+  if (key === 'digit-sum') {
+    const number = 12 + Math.floor(random() * 87); const expected = String(number).split('').reduce((sum, digit) => sum + Number(digit), 0);
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Wie hoch ist die Ziffernsumme von ${number}?`, options: shuffled([expected, expected + 1, Math.max(1, expected - 1), expected + 2].map(String), random) }, String(expected));
+  }
+  if (key === 'sequence-transform') {
+    const start = 2 + Math.floor(random() * 5); const expected = (start * 2 + 1) * 2 + 1;
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `${start} → ${start * 2 + 1} → ${(start * 2 + 1) * 2 + 1} → ?`, options: shuffled([expected, expected - 1, expected + 2, expected + 4].map(String), random) }, String(expected));
+  }
+  if (key === 'sequence-echo' || key === 'reverse-echo') {
+    const length = Math.min(9, 2 + difficulty + Math.floor(index / 4));
+    const sequence = gridSequence(random, length, size);
+    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: phaseMs(key, difficulty), data: { type: 'sequence', size, sequence }, expected: key === 'reverse-echo' ? [...sequence].reverse() : sequence, state: {} };
+  }
+  if (key === 'memory-matrix') {
+    const count = Math.min(size * size - 1, 2 + difficulty + Math.floor(index / 5));
+    const highlights = gridSequence(random, count, size);
+    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: phaseMs(key, difficulty), data: { type: 'matrix', size, highlights }, expected: highlights, state: {} };
+  }
+  if (key === 'number-blind') {
+    const count = Math.min(12, 3 + difficulty + Math.floor(index / 5));
+    const positions = gridSequence(random, count, size);
+    const numbers = shuffled(Array.from({ length: count }, (_, value) => value + 1), random).map((number, position) => ({ number, position: positions[position] }));
+    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: phaseMs(key, difficulty), data: { type: 'number-blind', size, numbers }, expected: numbers.sort((a, b) => a.number - b.number).map((entry) => entry.position), state: {} };
+  }
+  if (key === 'n-back') {
+    const n = difficulty >= 3 ? 2 : 1;
+    const currentIndex = Math.max(n, index);
+    const shouldMatch = random() > 0.67;
+    const baseSeed = (seed - index * 104_729) >>> 0;
+    const previousSeed = (baseSeed + (currentIndex - n) * 104_729) >>> 0;
+    const previous = SYMBOLS[Math.floor(seededRandom(previousSeed)() * SYMBOLS.length)];
+    const symbol = shouldMatch ? previous : SYMBOLS[(SYMBOLS.indexOf(previous) + 1 + Math.floor(random() * (SYMBOLS.length - 1))) % SYMBOLS.length];
+    return { trialId: id, index, difficulty, phase: 'input', phaseMs: phaseMs(key, difficulty), data: { type: 'choice', symbol, n, itemIndex: currentIndex }, expected: shouldMatch, state: {} };
+  }
+  if (key === 'seen-before') {
+    const repeated = index > 0 && random() > 0.55;
+    const symbolIndex = repeated ? Math.floor(random() * Math.max(1, Math.min(SYMBOLS.length, index))) : Math.floor(random() * SYMBOLS.length);
+    const symbol = SYMBOLS[symbolIndex];
+    return { trialId: id, index, difficulty, phase: 'input', phaseMs: phaseMs(key, difficulty), data: { type: 'choice', symbol }, expected: repeated, state: {} };
+  }
+  if (key === 'missing-item') {
+    const count = Math.min(9, 3 + difficulty + Math.floor(index / 4));
+    const items = shuffled(ITEMS, random).slice(0, count);
+    const missingIndex = Math.floor(random() * items.length);
+    const missing = items[missingIndex];
+    const visible = items.filter((_, itemIndex) => itemIndex !== missingIndex);
+    const options = shuffled([missing, ...shuffled(ITEMS.filter((item) => !items.includes(item)), random).slice(0, 3)], random);
+    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: phaseMs(key, difficulty), data: { type: 'missing', items: visible, options }, expected: missing, state: {} };
+  }
+  if (key === 'memory-pairs') {
+    const pairCount = difficulty >= 4 ? 6 : difficulty >= 2 ? 3 : 2;
+    const values = shuffled(SYMBOLS, random).slice(0, pairCount);
+    const board = shuffled([...values, ...values], random);
+    return { trialId: id, index, difficulty, phase: 'input', phaseMs: 0, data: { type: 'pairs', boardSize: pairCount * 2 <= 6 ? 2 : 3, cards: board.map((value, cardIndex) => ({ index: cardIndex, value })) }, expected: board, state: { found: [], attempts: 0 }, };
+  }
+  if (key === 'path-memory') {
+    const pathLength = Math.min(10, 2 + difficulty + Math.floor(index / 4));
+    const path = gridSequence(random, pathLength, size);
+    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: Math.max(350, 700 - difficulty * 60), data: { type: 'path', size, path }, expected: path, state: {} };
+  }
+  const count = Math.min(8, 2 + difficulty + Math.floor(index / 4));
+  const list = shuffled(ITEMS, random).slice(0, count);
+  const position = Math.floor(random() * list.length);
+  const options = shuffled([list[position], ...shuffled(ITEMS.filter((item) => !list.includes(item)), random).slice(0, 3)], random);
+  return { trialId: id, index, difficulty, phase: 'preview', phaseMs: phaseMs(key, difficulty), data: { type: 'suitcase', items: list, position: position + 1, options }, expected: list[position], state: {} };
+}
+
+export function validateTrialInput(key: ChallengeKey, trial: InternalTrial, action: string, value: unknown): TrialResult {
+  const wrong = (error = 'Falsche Antwort.') => ({ accepted: true, complete: true, correct: false, errors: 1, rawScore: 0, error });
+  if (trial.phase === 'preview' && key !== 'memory-pairs') return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Die Vorschau läuft noch.' };
+  if (key === 'aim-trainer') {
+    const point = value && typeof value === 'object' ? value as { x?: unknown; y?: unknown } : {};
+    const target = trial.expected as { x: number; y: number };
+    const valid = action === 'hit' && typeof point.x === 'number' && typeof point.y === 'number' && Math.abs(point.x - target.x) <= 12 && Math.abs(point.y - target.y) <= 12;
+    return valid ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 55 + trial.difficulty * 7 } : wrong('Ungültiges Ziel.');
+  }
+  if (key === 'odd-one-out') {
+    if (action !== 'select' || !Number.isInteger(Number(value))) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültiges Feld.' };
+    return Number(value) === trial.expected ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 65 + trial.difficulty * 6 } : wrong();
+  }
+  if (key === 'traffic-light') {
+    if (action !== 'click') return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Reaktion.' };
+    return { accepted: true, complete: true, correct: true, errors: 0, rawScore: 45 + trial.difficulty * 7 };
+  }
+  if (key === 'color-word') {
+    if (action !== 'answer' || typeof value !== 'string') return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Farbwahl.' };
+    return value === trial.expected ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 55 + trial.difficulty * 7 } : wrong();
+  }
+  if (LOGIC_KEYS.has(key)) {
+    if (action !== 'choice' || (typeof value !== 'string' && typeof value !== 'number')) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Auswahl.' };
+    return String(value) === String(trial.expected) ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 58 + trial.difficulty * 7 } : wrong();
+  }
+  if (key === 'whack-a-mole') {
+    if (action !== 'hit' || !Number.isInteger(Number(value))) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültiges Feld.' };
+    const sequence = trial.expected as number[]; const current = Number(trial.state.correct ?? 0);
+    if (Number(value) !== sequence[current]) return wrong();
+    const next = current + 1; trial.state.correct = next;
+    return { accepted: true, complete: next >= sequence.length, correct: true, errors: 0, rawScore: next >= sequence.length ? 75 + trial.difficulty * 5 : 12 + trial.difficulty * 2 };
+  }
+  if (key === 'sequence-echo' || key === 'reverse-echo' || key === 'memory-sequence' || key === 'path-memory') {
+    if (action !== 'sequence' || !Array.isArray(value)) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Folge.' };
+    const expected = trial.expected as number[]; const received = value.map(Number);
+    const correct = received.length === expected.length && received.every((entry, index) => entry === expected[index]);
+    return correct ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 70 + trial.difficulty * 6 } : wrong();
+  }
+  if (key === 'memory-matrix') {
+    if (action !== 'cells' || !Array.isArray(value)) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Felder.' };
+    const expected = [...(trial.expected as number[])].sort((a, b) => a - b); const received = value.map(Number).sort((a, b) => a - b);
+    const correct = expected.length === received.length && expected.every((entry, index) => entry === received[index]);
+    return correct ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 70 + trial.difficulty * 6 } : wrong();
+  }
+  if (key === 'number-blind') {
+    if (action !== 'sequence' || !Array.isArray(value)) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Zahlenfolge.' };
+    const expected = trial.expected as number[]; const received = value.map(Number); const correct = expected.length === received.length && expected.every((entry, index) => entry === received[index]);
+    return correct ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 72 + trial.difficulty * 5 } : wrong();
+  }
+  if (key === 'n-back' || key === 'seen-before') {
+    if (action !== 'choice' || typeof value !== 'boolean') return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Auswahl.' };
+    const correct = value === trial.expected; return correct ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 45 + trial.difficulty * 7 } : wrong();
+  }
+  if (key === 'missing-item' || key === 'suitcase-memory') {
+    if (action !== 'choice' || typeof value !== 'string') return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Auswahl.' };
+    const correct = value === trial.expected; return correct ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 65 + trial.difficulty * 6 } : wrong();
+  }
+  if (key === 'memory-pairs') {
+    if (action !== 'pair' || !Array.isArray(value) || value.length !== 2) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültiges Paar.' };
+    const board = trial.expected as string[]; const first = Number(value[0]); const second = Number(value[1]);
+    if (!Number.isInteger(first) || !Number.isInteger(second) || first < 0 || second < 0 || first >= board.length || second >= board.length || first === second) {
+      return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Karten.' };
+    }
+    const found = (trial.state.found as number[] | undefined) ?? []; if (found.includes(first) || found.includes(second)) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Karte bereits gefunden.' };
+    trial.state.attempts = Number(trial.state.attempts ?? 0) + 1;
+    if (board[first] !== board[second]) return { accepted: true, complete: false, correct: false, errors: 1, rawScore: -4 };
+    found.push(first, second); trial.state.found = found;
+    const complete = found.length === board.length;
+    return { accepted: true, complete, correct: true, errors: 0, rawScore: complete ? 80 + trial.difficulty * 5 : 14 + trial.difficulty * 2 };
+  }
+  return wrong('Nicht unterstützte Eingabe.');
 }
 
 export function safeScoreInput(value: number): number { return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0; }
@@ -33,9 +381,7 @@ function safeCount(value: number): number { return Number.isFinite(value) ? Math
 function safeElapsed(value: number): number { return Number.isFinite(value) ? Math.max(0, value) : 0; }
 export function scoreReaction(elapsedMs: number): number { return safeScoreInput(Math.round(100 - Math.max(0, safeElapsed(elapsedMs) - 120) / 35)); }
 export function scoreCps(clicks: number): number { return safeScoreInput(Math.round(safeCount(clicks) * 5)); }
-export function scoreNumberSalad(correct: number, errors: number, elapsedMs: number): number {
-  return safeScoreInput(Math.round(safeCount(correct) * 12.5 - safeCount(errors) * 8 - Math.max(0, safeElapsed(elapsedMs) - 2_000) / 180));
-}
+export function scoreNumberSalad(correct: number, errors: number, elapsedMs: number): number { return safeScoreInput(Math.round(safeCount(correct) * 12.5 - safeCount(errors) * 8 - Math.max(0, safeElapsed(elapsedMs) - 2_000) / 180)); }
 export function scoreTiming10(elapsedMs: number): number { return safeScoreInput(Math.round(100 - Math.abs(safeElapsed(elapsedMs) - 10_000) / 20)); }
 
 export function winnerIdForScores(scores: Array<{ playerId: string; score: number }>): string | null {
@@ -45,10 +391,5 @@ export function winnerIdForScores(scores: Array<{ playerId: string; score: numbe
   return winners.length === 1 ? winners[0].playerId : null;
 }
 
-export function isCurrentChallenge(expectedIndex: number, actualIndex: number): boolean {
-  return Number.isInteger(expectedIndex) && expectedIndex === actualIndex;
-}
-
-export function remainingUntil(deadlineAt: number | null, now: number): number | null {
-  return deadlineAt === null ? null : Math.max(0, deadlineAt - now);
-}
+export function isCurrentChallenge(expectedIndex: number, actualIndex: number): boolean { return Number.isInteger(expectedIndex) && expectedIndex === actualIndex; }
+export function remainingUntil(deadlineAt: number | null, now: number): number | null { return deadlineAt === null ? null : Math.max(0, deadlineAt - now); }

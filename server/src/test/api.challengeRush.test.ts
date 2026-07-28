@@ -83,9 +83,10 @@ test('Challenge Rush reconnects within grace and forfeits after grace while the 
     const created = await emitAck(hostSocket, 'challenge-rush:lobby:create', { playerId: hostId });
     await emitAck(guestSocket, 'challenge-rush:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
     await emitAck(guestSocket, 'challenge-rush:lobby:ready', { lobbyId: created.lobbyId, playerId: guestId, ready: true });
-    const started = nextEvent<{ matchId: string }>(hostSocket, 'challenge-rush:match:start');
+    const started = nextEvent<{ matchId: string; challengeCount: number }>(hostSocket, 'challenge-rush:match:start');
     assert.equal((await emitAck(hostSocket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId: hostId })).ok, true);
     const match = await started;
+    assert.equal(match.challengeCount, 40);
     const playing = nextState(hostSocket, (state) => state.phase === 'playing');
     const initialState = await playing;
     assert.equal(initialState.matchId, match.matchId);
@@ -133,6 +134,43 @@ test('Challenge Rush serializes parallel last inputs and completes a player once
     const results = await Promise.all([emitAck(socket, 'challenge-rush:challenge:input', payload), emitAck(socket, 'challenge-rush:challenge:input', payload)]);
     assert.equal(results.filter((result) => result.accepted === true).length, 1);
     assert.equal(results.filter((result) => result.accepted !== true).length, 1);
+  } finally {
+    socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
+  }
+});
+
+test('Challenge Rush rejects stale trial ids without ending the repeated challenge', async () => {
+  clearLobbyMemberships();
+  const server = await makeServer();
+  const socket = await connect(server.baseUrl);
+  try {
+    const playerId = await player(server.baseUrl, 'Challenge Rush Trial Guard');
+    const created = await emitAck(socket, 'challenge-rush:lobby:create', { playerId });
+    const started = nextEvent<{ matchId: string }>(socket, 'challenge-rush:match:start');
+    const trialEvent = nextEvent<{ matchId: string; challengeIndex: number; trial: { trialId: string; data: Record<string, unknown> } }>(socket, 'challenge-rush:trial');
+    await emitAck(socket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId });
+    const [match, trial] = await Promise.all([started, trialEvent]);
+    const target = trial.trial.data;
+    const result = await emitAck(socket, 'challenge-rush:challenge:input', {
+      matchId: match.matchId,
+      playerId,
+      challengeIndex: trial.challengeIndex,
+      trialId: 'stale-trial-id',
+      action: 'hit',
+      value: { x: Number(target.x), y: Number(target.y) },
+    });
+    assert.equal(result.ignored, true);
+    assert.equal(result.reason, 'stale-trial');
+    assert.equal((result.trial as { trialId?: string } | undefined)?.trialId, trial.trial.trialId);
+    const accepted = await emitAck(socket, 'challenge-rush:challenge:input', {
+      matchId: match.matchId,
+      playerId,
+      challengeIndex: trial.challengeIndex,
+      trialId: trial.trial.trialId,
+      action: 'hit',
+      value: { x: Number(target.x), y: Number(target.y) },
+    });
+    assert.equal(accepted.accepted, true);
   } finally {
     socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
   }
