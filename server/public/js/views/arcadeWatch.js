@@ -4,6 +4,7 @@ import { arcadeStreamCanvasSize, drawArcadeStreamCanvas } from '../arcadeStreamR
 import { getMyId } from '../whoami.js';
 import { icon } from '../icons.js';
 import { showToast } from '../toast.js';
+import { snakeArenaLegendHtml } from '../snakeArenaLegend.js';
 
 const GAME_NAMES = {
   quiz: 'Gaming-Quiz',
@@ -42,7 +43,7 @@ function resetVoting() {
   lastRenderSignature = '';
 }
 
-function votingSignature(state) {
+function renderSignature(state) {
   const voting = state?.voting;
   // A new token means the vote reset for a new drawing — drop any stale
   // "already thumbed" state from the previous one.
@@ -50,7 +51,12 @@ function votingSignature(state) {
     watchThumbToken = voting?.token ?? null;
     watchThumbActive = false;
   }
-  return JSON.stringify({ phase: state?.phase, token: voting?.token, count: voting?.count });
+  return JSON.stringify({
+    phase: state?.phase,
+    token: voting?.token,
+    count: voting?.count,
+    snakeAlive: state?.gameType === 'snake' ? state.world?.snakes?.map((snake) => snake.alive !== false) : undefined,
+  });
 }
 
 function joinWatch(matchId) {
@@ -94,7 +100,7 @@ function ensureSocket() {
   });
   socket.on('arcade:watch:state', (payload) => {
     if (!watchedMatchId || payload?.matchId !== watchedMatchId) return;
-    const signature = votingSignature(payload);
+    const signature = renderSignature(payload);
     const shouldRender = signature !== lastRenderSignature;
     watchedState = payload;
     const canvas = document.querySelector('#arcade-watch-canvas');
@@ -213,11 +219,12 @@ export function renderArcadeWatch(container) {
       <h1 class="view-title">${escapeHtml(name)} ansehen</h1>
       <div class="arcade-watch-header"><span id="arcade-watch-status">${state?.paused ? 'Pause' : 'Läuft'}</span><span class="muted">Nur Zuschauer</span></div>
       ${rosterHtml(state ?? {})}
+      ${snakeArenaLegendHtml(state)}
       ${stateHtml(state)}
       ${state?.gameType === 'scribble' ? scribbleVotingHtml(state) : ''}
       ${state?.gameType === 'scribble' ? '<div class="arcade-watch-safe-note">Wort, Tipps und Chat werden für Zuschauer verborgen.</div>' : state?.gameType === 'battleship' ? '<div class="arcade-watch-safe-note">Ungetroffene Flottenfelder bleiben für Zuschauer verborgen.</div>' : ''}
     </div>`;
-  lastRenderSignature = votingSignature(state);
+  lastRenderSignature = renderSignature(state);
   container.querySelector('#arcade-watch-back')?.addEventListener('click', leaveWatch);
   if (state && state.gameType !== 'quiz' && state.gameType !== 'challenge-rush' && container.querySelector('#arcade-watch-canvas')) {
     drawArcadeStreamCanvas(container.querySelector('#arcade-watch-canvas'), state);

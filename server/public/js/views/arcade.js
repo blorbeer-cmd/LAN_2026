@@ -68,7 +68,7 @@ const GAMES = [
     id: 'snake',
     icon: icon('snake'),
     name: 'Snake',
-    help: 'Ziel: Länger leben als die andere Schlange. Steuerung: Pfeiltasten.',
+    help: 'Klassisch: 1 gegen 1. Arena: 3 bis 8 Spieler, die sichere Zone schrumpft regelmäßig und die letzte Schlange gewinnt. Steuerung: Pfeiltasten oder Wischen.',
   },
   {
     id: 'battleship',
