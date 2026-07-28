@@ -728,7 +728,7 @@ test('Vote: game-limit selection survives an unrelated re-render and select-all/
   // `respawn:rerender` is the same generic re-render signal the app itself
   // dispatches; firing it here simulates that unrelated event without
   // needing a second browser context.
-  await page.click('[data-view="votes"]');
+  await page.click('.nav-btn[data-view="votes"]');
   await page.waitForSelector('#votes-start');
   await page.click('#votes-limit-games');
   await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
@@ -763,6 +763,105 @@ test('Vote: game-limit selection survives an unrelated re-render and select-all/
   // Restore the idle default so later tests in this file start clean.
   await page.click('#votes-limit-games');
   await page.waitForSelector('#votes-game-select-wrap[hidden]', { state: 'attached' });
+});
+
+test('Vote: genre filter scopes the game-limit list, select-all/none and the started round to visible games', async (t) => {
+  // Regression test: the genre chip filter only ever narrowed which games
+  // were *displayed* in the "Nur bestimmte Spiele" checkbox grid. "Alle
+  // markieren"/"Auswahl aufheben" and the actual start action still touched
+  // every game regardless of the active filter, so e.g. filtering to
+  // "Shooter" and clicking "Alle markieren" silently (re-)selected every
+  // other genre's games too, and starting the round could still include
+  // games the filter was hiding.
+  //
+  // This test starts a round partway through (to verify what actually gets
+  // offered) and only closes it via UI clicks at the end — same hazard as
+  // "full click-through" above: if an assertion throws first, the round
+  // stays open for the rest of the shared page/session and cascades into
+  // later tests expecting the idle "start a round" form. Cancel any round
+  // left open directly through the API, independent of wherever the test
+  // aborted.
+  t.after(async () => {
+    const current = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
+    if (current.open) {
+      const cancelled = await page.request.post(`${BASE_URL}/api/votes/cancel`);
+      assert.ok(cancelled.ok(), `vote cleanup failed (${cancelled.status()}): ${await cancelled.text()}`);
+    }
+    // This test also mutates votes.js's own module state (limitGamesChecked,
+    // voteGenreFilter, excludedGameIds) — a lingering "Shooter"-only filter
+    // or excluded game would silently break a later test's default all-games
+    // "Abstimmung starten" (an empty/limited selection either starts the
+    // wrong round or, worse, gets silently rejected with nothing checked).
+    // A reload is the only way to reset that in-memory state.
+    await page.reload();
+    await page.waitForSelector('#view-container[data-view]');
+  });
+  const gamesRes = await page.request.get(`${BASE_URL}/api/games`);
+  const games = (await gamesRes.json()) as Array<{ id: string; name: string }>;
+  const cs2 = games.find((g) => g.name === 'Counter-Strike 2')!;
+  const rocketLeague = games.find((g) => g.name === 'Rocket League')!;
+
+  // A round left open by an earlier test (see the same guard in
+  // "full click-through" above) would otherwise hide the idle "start a
+  // round" form this test needs from its very first step.
+  const initialVotes = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
+  if (initialVotes.open) {
+    const cancelled = await page.request.post(`${BASE_URL}/api/votes/cancel`);
+    assert.ok(cancelled.ok(), `initial vote cleanup failed (${cancelled.status()}): ${await cancelled.text()}`);
+  }
+
+  await page.click('.nav-btn[data-view="votes"]');
+  await page.waitForSelector('#votes-start');
+  await page.click('#votes-limit-games');
+  await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
+  // Manually deselect a game that the upcoming "Shooter" filter will hide -
+  // its excluded state must survive untouched by the filtered select-all/none.
+  const rocketLeagueCheckbox = `[data-vote-game-checkbox][value="${rocketLeague.id}"]`;
+  await page.locator(rocketLeagueCheckbox).uncheck();
+
+  // Tag genres via the API now, with the panel already open — the resulting
+  // 'games:changed' broadcast re-renders this whole view from scratch (see
+  // the neighboring test above), so wait for the genre chip it introduces
+  // instead of assuming the patch settles before the next interaction.
+  await page.request.patch(`${BASE_URL}/api/games/${cs2.id}`, { data: { genres: ['Shooter'] } });
+  await page.request.patch(`${BASE_URL}/api/games/${rocketLeague.id}`, { data: { genres: ['Racing'] } });
+  await page.waitForSelector('[data-vote-genre-filter="Shooter"]');
+  await page.click('[data-vote-genre-filter="Shooter"]');
+  const visibleRows = page.locator('#votes-game-select label.check-row');
+  await page.waitForFunction(() => document.querySelectorAll('#votes-game-select label.check-row').length === 1);
+  assert.equal(await visibleRows.count(), 1, 'only the Shooter-tagged game should be listed while filtered');
+  assert.match((await visibleRows.first().innerText()).trim(), /Counter-Strike 2/);
+
+  // "Auswahl aufheben" while filtered must only uncheck the visible game.
+  await page.click('#votes-select-none');
+  assert.equal(await visibleRows.first().locator('input').isChecked(), false);
+
+  // "Alle markieren" while filtered must only re-check the visible game, not
+  // the Rocket League checkbox this test manually excluded above.
+  await page.click('#votes-select-all');
+  assert.equal(await visibleRows.first().locator('input').isChecked(), true);
+
+  await page.click('[data-vote-genre-filter="Shooter"]');
+  await page.waitForFunction(() => document.querySelectorAll('#votes-game-select label.check-row').length > 1);
+  assert.equal(
+    await page.locator(rocketLeagueCheckbox).isChecked(),
+    false,
+    'Rocket League must stay excluded — the filtered select-all above must not have touched it',
+  );
+
+  // Starting the round while the Shooter filter is active must only offer
+  // the currently visible, checked game(s) for voting, even though other
+  // games remain checked underneath the filter.
+  await page.click('[data-vote-genre-filter="Shooter"]');
+  await page.waitForFunction(() => document.querySelectorAll('#votes-game-select label.check-row').length === 1);
+  await page.click('#votes-start');
+  await page.waitForSelector('#votes-submit');
+  const openGameNames = await page.locator('.vote-row > div:first-of-type span.row').allInnerTexts();
+  assert.deepEqual(openGameNames.map((t) => t.trim()), ['Counter-Strike 2']);
+
+  await page.click('#votes-cancel');
+  await page.click('[data-confirm]');
+  await page.waitForSelector('#votes-start');
 });
 
 test('matchmaking Historie marks a recorded draw as Unentschieden', async () => {
