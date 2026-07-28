@@ -7,6 +7,7 @@ import { getMyId } from '../whoami.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeExpandControlHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 
 const SIZE = 10;
 const SHIPS = [
@@ -349,7 +350,8 @@ function lobbyList() {
 }
 
 export function renderBattleshipLobbyCard() {
-  return `<div class="card stack arcade-lobby-card">${lobbyList()}<div class="arcade-lobby-create-actions"><button type="button" class="btn btn-primary btn-sm" id="battleship-create" ${myBattleshipLobby() || !myId() ? 'disabled' : ''}>Lobby öffnen</button></div></div>`;
+  const unavailable = myBattleshipLobby() || !myId();
+  return `<div class="card stack arcade-lobby-card">${lobbyList()}<div class="arcade-lobby-create-actions"><button type="button" class="btn btn-primary btn-sm" id="battleship-create" ${unavailable ? 'disabled' : ''}>Lobby öffnen</button>${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="battleship-bot" ${unavailable ? 'disabled' : ''}>Gegen KI</button>` : ''}</div></div>`;
 }
 
 export function wireBattleshipLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
@@ -357,6 +359,11 @@ export function wireBattleshipLobbyCard(container, { beforeCreate, beforeJoin } 
     if (beforeCreate && !(await beforeCreate())) return;
     const result = await emitAck('battleship:lobby:create', { playerId: myId(), mode: 'duel' });
     if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
+  });
+  container.querySelector('#battleship-bot')?.addEventListener('click', async () => {
+    if (beforeCreate && !(await beforeCreate())) return;
+    const result = await emitAck('battleship:lobby:bot', { playerId: myId() });
+    if (!result?.ok) showToast(result?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelectorAll('[data-battleship-join]').forEach((button) => button.addEventListener('click', async () => {
     if (beforeJoin && !(await beforeJoin())) return;

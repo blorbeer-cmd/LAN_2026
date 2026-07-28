@@ -3,20 +3,24 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcastArcadeKiosk } from '../realtime';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
+import { playerMayUseArcadeAi } from './adminAccess';
 import { arcadeTiming } from './timing';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { recordArcadeResult } from './arcadeData';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
-import { applyShot, fleetSnapshot, remainingSegments, remainingShips, ShipState, validatePlacements } from './battleshipLogic';
+import { applyShot, chooseBotShot, createRandomPlacements, fleetSnapshot, remainingSegments, remainingShips, ShipState, validatePlacements } from './battleshipLogic';
 
 const COUNTDOWN_MS = arcadeTiming.countdownMs;
 const END_REVEAL_MS = process.env.NODE_ENV === 'test' && process.env.E2E_FAST_TIMERS === '1' ? 250 : 12_000;
+const BOT_TURN_MS = process.env.NODE_ENV === 'test' ? 20 : 650;
+const BOT_ID = 'battleship-bot';
+const BOT = { id: BOT_ID, name: 'Flotten-Bot', avatar: null, color: '#9163f5' };
 
 interface Player { id: string; name: string; avatar: string | null; color: string | null }
 interface Lobby { id: string; groupId: string; eventId: string | null; mode: 'duel' | 'team'; host: Player; players: Player[]; socketIds: Map<string, string>; ready: Set<string>; createdAt: number }
 interface ShotRecord { playerId: string; targetId: string; coordinate: number; kind: 'miss' | 'hit' | 'sunk' }
-interface Match { id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[]; socketIds: Map<string, string>; fleets: Map<string, ShipState[]>; fired: Map<string, Set<number>>; shots: ShotRecord[]; phase: 'setup' | 'countdown' | 'playing' | 'ended'; currentPlayerId: string | null; paused: boolean; startedAt: number; beginsAt: number | null; timers: Set<ReturnType<typeof setTimeout>> }
+interface Match { id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[]; socketIds: Map<string, string>; fleets: Map<string, ShipState[]>; fired: Map<string, Set<number>>; shots: ShotRecord[]; phase: 'setup' | 'countdown' | 'playing' | 'ended'; currentPlayerId: string | null; paused: boolean; startedAt: number; beginsAt: number | null; timers: Set<ReturnType<typeof setTimeout>>; botTurnPending: boolean }
 
 const lobbies = new Map<string, Lobby>();
 const matches = new Map<string, Match>();
@@ -27,7 +31,7 @@ function playerById(id?: string): Player | null {
 }
 
 function modeLimit(mode: Lobby['mode']): number { return mode === 'team' ? 4 : 2; }
-function realPlayerIds(players: Player[]): string[] { return players.map((player) => player.id); }
+function realPlayerIds(players: Player[]): string[] { return players.filter((player) => player.id !== BOT_ID).map((player) => player.id); }
 function socketOwnsPlayer(socket: Socket, playerId: unknown): playerId is string {
   return typeof playerId === 'string' && Boolean(socketArcadeScope(socket, playerId));
 }
@@ -141,13 +145,48 @@ function finish(io: Server, match: Match, winnerId: string | null, reason: strin
     name: player.name,
     score: remainingSegments(match.fleets.get(player.id) ?? []),
   }));
-  recordArcadeResult({ gameType: 'battleship', winnerId, players: match.players, scores, reason, startedAt: match.startedAt, scope: match });
+  recordArcadeResult({ gameType: 'battleship', winnerId: winnerId === BOT_ID ? null : winnerId, players: match.players, scores, reason, startedAt: match.startedAt, scope: match });
   const fleets = match.players.map((player) => ({ playerId: player.id, fleet: fleetSnapshot(match.fleets.get(player.id) ?? [], true) }));
   emitArcadeRoom(io, match.room, 'battleship:match:end', { matchId: match.id, winnerId, reason, scores, fleets }, match);
   broadcastArcadeKiosk(io, { gameType: 'battleship', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'ended', players: spectatorState(match, true) });
   emitPersonalized(io, match);
   setTimeout(() => broadcastArcadeKiosk(io, { gameType: null, matchId: match.id, groupId: match.groupId, eventId: match.eventId }), END_REVEAL_MS);
   cleanupMatch(io, match);
+}
+
+function emitPlayingState(io: Server, match: Match) {
+  emitPersonalized(io, match);
+  broadcastArcadeKiosk(io, { gameType: 'battleship', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'playing', paused: match.paused, players: spectatorState(match) });
+}
+
+function resolveShot(io: Server, match: Match, playerId: string, row: number, col: number) {
+  const target = match.players.find((player) => player.id !== playerId);
+  if (!target) return { ok: false as const, error: 'invalid-coordinate' as const };
+  const result = applyShot(match.fleets.get(target.id) ?? [], match.fired.get(playerId) ?? new Set(), row, col);
+  if (!result.ok) return result;
+  match.shots.push({ playerId, targetId: target.id, coordinate: result.coordinate, kind: result.kind });
+  if (result.remainingSegments === 0) {
+    finish(io, match, playerId, 'completed');
+  } else {
+    match.currentPlayerId = target.id;
+    emitPlayingState(io, match);
+    queueBotTurn(io, match);
+  }
+  return result;
+}
+
+function queueBotTurn(io: Server, match: Match) {
+  if (match.botTurnPending || match.phase !== 'playing' || match.paused || match.currentPlayerId !== BOT_ID) return;
+  match.botTurnPending = true;
+  schedule(match, () => {
+    match.botTurnPending = false;
+    if (matches.get(match.id) !== match || match.phase !== 'playing' || match.paused || match.currentPlayerId !== BOT_ID) return;
+    const fired = match.fired.get(BOT_ID) ?? new Set<number>();
+    const hits = match.shots.filter((shot) => shot.playerId === BOT_ID && shot.kind !== 'miss').map((shot) => shot.coordinate);
+    const coordinate = chooseBotShot(fired, hits);
+    if (coordinate === null) return finish(io, match, null, 'aborted');
+    resolveShot(io, match, BOT_ID, Math.floor(coordinate / 10), coordinate % 10);
+  }, BOT_TURN_MS);
 }
 
 function beginBattle(io: Server, match: Match) {
@@ -161,16 +200,8 @@ function beginBattle(io: Server, match: Match) {
     if (matches.get(match.id) !== match || match.phase !== 'countdown') return;
     match.phase = 'playing';
     match.beginsAt = null;
-    emitPersonalized(io, match);
-    broadcastArcadeKiosk(io, {
-      gameType: 'battleship',
-      matchId: match.id,
-      groupId: match.groupId,
-      eventId: match.eventId,
-      phase: 'playing',
-      paused: false,
-      players: spectatorState(match),
-    });
+    emitPlayingState(io, match);
+    queueBotTurn(io, match);
   }, COUNTDOWN_MS);
 }
 
@@ -180,8 +211,12 @@ function startMatch(io: Server, lobby: Lobby): Match {
   for (const socketId of lobby.socketIds.values()) io.sockets.sockets.get(socketId)?.join(room);
   const match: Match = {
     id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: [...lobby.players], socketIds: new Map(lobby.socketIds),
-    fleets: new Map(), fired: new Map(lobby.players.map((player) => [player.id, new Set()])), shots: [], phase: 'setup', currentPlayerId: null, paused: false, startedAt: Date.now(), beginsAt: null, timers: new Set(),
+    fleets: new Map(), fired: new Map(lobby.players.map((player) => [player.id, new Set()])), shots: [], phase: 'setup', currentPlayerId: null, paused: false, startedAt: Date.now(), beginsAt: null, timers: new Set(), botTurnPending: false,
   };
+  if (match.players.some((player) => player.id === BOT_ID)) {
+    const placement = validatePlacements(createRandomPlacements());
+    if (placement.ok) match.fleets.set(BOT_ID, placement.fleet);
+  }
   matches.set(id, match);
   releaseLobbyMemberships(lobby.players.map((player) => player.id), 'battleship', lobby.id);
   lobbies.delete(lobby.id);
@@ -230,6 +265,23 @@ export function registerBattleshipSockets(io: Server): void {
       const scope = socketArcadeScope(socket, player.id);
       if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
       const lobby: Lobby = { id: nanoid(), ...scope, mode, host: player, players: [player], socketIds: new Map([[player.id, socket.id]]), ready: new Set(), createdAt: Date.now() };
+      if (!claimLobbyMembership(player.id, 'battleship', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
+      removeFromLobbies(io, socket.id);
+      lobbies.set(lobby.id, lobby);
+      emitLobbies(io);
+      ack?.({ ok: true, lobbyId: lobby.id });
+    });
+
+    socket.on('battleship:lobby:bot', (payload: { playerId?: string }, ack?: (result: unknown) => void) => {
+      if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
+      const player = playerById(payload?.playerId);
+      if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
+      const scope = socketArcadeScope(socket, player.id);
+      if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
+      const lobby: Lobby = {
+        id: nanoid(), ...scope, mode: 'duel', host: player, players: [player, BOT],
+        socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now(),
+      };
       if (!claimLobbyMembership(player.id, 'battleship', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby);
@@ -302,19 +354,9 @@ export function registerBattleshipSockets(io: Server): void {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
       if (!match || match.phase !== 'playing' || match.paused || !canUseLobby(socket, match) || !socketOwnsPlayer(socket, payload.playerId)) return ack?.({ ok: false, error: 'Jetzt kann nicht gefeuert werden.' });
       if (payload.playerId !== match.currentPlayerId) return ack?.({ ok: false, error: 'Du bist nicht am Zug.' });
-      const target = match.players.find((player) => player.id !== payload.playerId);
-      if (!target || !Number.isInteger(payload.row) || !Number.isInteger(payload.col)) return ack?.({ ok: false, error: 'Zielkoordinate ist ungültig.' });
-      const result = applyShot(match.fleets.get(target.id) ?? [], match.fired.get(payload.playerId as string) ?? new Set(), payload.row as number, payload.col as number);
+      if (!Number.isInteger(payload.row) || !Number.isInteger(payload.col)) return ack?.({ ok: false, error: 'Zielkoordinate ist ungültig.' });
+      const result = resolveShot(io, match, payload.playerId as string, payload.row as number, payload.col as number);
       if (!result.ok) return ack?.({ ok: false, error: result.error === 'already-shot' ? 'Dieses Feld wurde bereits beschossen.' : 'Zielkoordinate ist ungültig.' });
-      match.shots.push({ playerId: payload.playerId as string, targetId: target.id, coordinate: result.coordinate, kind: result.kind });
-      if (result.remainingSegments === 0) {
-        finish(io, match, payload.playerId as string, 'completed');
-      } else {
-        const next = match.players.find((player) => player.id !== payload.playerId);
-        match.currentPlayerId = next?.id ?? null;
-        emitPersonalized(io, match);
-        broadcastArcadeKiosk(io, { gameType: 'battleship', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'playing', players: spectatorState(match) });
-      }
       ack?.({ ok: true, result: { kind: result.kind, coordinate: result.coordinate, shipId: result.shipId } });
     });
 
@@ -330,6 +372,7 @@ export function registerBattleshipSockets(io: Server): void {
       if (!match || match.phase !== 'playing' || payload.playerId !== match.host.id || !canUseLobby(socket, match) || !socketOwnsPlayer(socket, payload.playerId)) return ack?.({ ok: false, error: 'Fortsetzen ist nur während des Gefechts möglich.' });
       match.paused = false;
       emitPersonalized(io, match);
+      queueBotTurn(io, match);
       ack?.({ ok: true });
     });
     socket.on('battleship:match:finish', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
