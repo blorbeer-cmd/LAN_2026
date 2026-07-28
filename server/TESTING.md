@@ -95,8 +95,9 @@ Wiederholungsfall ab.
 - Die E2E-Dateien laufen parallel (eine pro Prozess) und starten je einen eigenen Server — jede
   Datei braucht deshalb einen **eigenen Test-Port** (aktuell: 3901 `flows`, 3902 `access`,
   3903 `arcade`, 3904 `authGate`, 3910 Agent-Integration in `agent/`, 3911 `phase5eIsolation`,
-  3912 `checklist`, 3913 `flowsArcade`, 3914 `eventInvitations`). Ein doppelt vergebener Port lässt
-  alle Tests der betroffenen Datei mit „Server did not become ready“ scheitern.
+  3912 `checklist`, 3913 `flowsArcade`, 3914 `eventInvitations`, 3915 `battleship`,
+  3916 `challengeRush`). Ein doppelt vergebener Port lässt alle Tests der betroffenen Datei mit
+  „Server did not become ready“ scheitern.
 - `npm run test:e2e` setzt `E2E_FAST_TIMERS=1`. Der Schnellmodus verkürzt Arcade-Countdowns nur
   zusammen mit `NODE_ENV=test`; in Produktion und bei allen anderen Aufrufen bleiben die regulären
   drei Sekunden aktiv.

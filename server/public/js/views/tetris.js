@@ -21,7 +21,9 @@ import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
+import { playArcadeSound } from '../arcadeSound.js';
+import { infoTooltipHtml } from '../infoTooltip.js';
 
 const COLS = 10;
 const ROWS = 20;
@@ -48,6 +50,7 @@ let lobbies = [];
 let match = null; // { matchId, host, players, beginsAt, running, paused, ended, winner }
 let latestState = null; // last tetris:state payload
 let prevLines = {}; // playerId -> last seen line count, to detect fresh clears for FX
+let prevLevels = {}; // playerId -> last seen level, to detect level-ups for the level-up cue
 let inputBound = false;
 
 function myId() {
@@ -103,6 +106,7 @@ export function ensureTetrisSocket() {
     match = { ...payload, running: false, paused: false, ended: false, winner: null };
     latestState = null;
     prevLines = {};
+    prevLevels = {};
     navigate('tetris'); // hand over to the full-screen board view
     showCountdown(match.beginsAt);
   });
@@ -140,6 +144,7 @@ export function ensureTetrisSocket() {
     match.winner = payload.winner ?? null;
     match.endScores = payload.scores ?? null;
     cancelCountdown();
+    playArcadeSound('tetris-gameover');
     // A finished match adds a new highscore row — let the Arcade view know its
     // cached stats are stale so they refresh when the player heads back.
     window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
@@ -351,13 +356,22 @@ function updateRosterDisplay() {
   });
 }
 
-// Fire the clear FX when a board's line count jumps between snapshots.
+// Fire the clear FX when a board's line count jumps between snapshots. Only
+// the local player's own board plays a sound cue — otherwise a busy 1v1 would
+// double up cues for the same event on both boards.
 function checkClearFx(prefix, playerState) {
   if (!playerState) return;
-  const prev = prevLines[playerState.playerId];
+  const prevLineCount = prevLines[playerState.playerId];
   prevLines[playerState.playerId] = playerState.lines;
-  if (prev !== undefined && playerState.lines > prev) {
-    triggerClearFx(prefix, playerState.lines - prev);
+  if (prevLineCount !== undefined && playerState.lines > prevLineCount) {
+    const cleared = playerState.lines - prevLineCount;
+    triggerClearFx(prefix, cleared);
+    if (prefix === 'tetris-mine') playArcadeSound(cleared >= 4 ? 'tetris-tetris' : 'tetris-line');
+  }
+  const prevLevel = prevLevels[playerState.playerId];
+  prevLevels[playerState.playerId] = playerState.level;
+  if (prefix === 'tetris-mine' && prevLevel !== undefined && playerState.level > prevLevel) {
+    playArcadeSound('tetris-levelup');
   }
 }
 
@@ -402,9 +416,13 @@ function renderLobbyList() {
       const full = l.players.length >= 2 && !joined;
       // Host can close their lobby; a joined guest can leave; otherwise join.
       const ready = l.players.length === 2;
+      const startReason = ready ? '' : 'Noch nicht genug Spieler (mind. 2).';
       const footerActions = isHost
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-tetris-close="${l.id}">Schließen</button>
-          <button type="button" class="btn btn-sm btn-equal btn-primary" id="tetris-start" ${ready ? '' : 'disabled'}>Start</button>`
+          <span class="row" style="gap:var(--space-1);">
+            <button type="button" class="btn btn-sm btn-equal btn-primary" id="tetris-start" ${ready ? '' : 'disabled'}>Start</button>
+            ${startReason ? infoTooltipHtml(`tetris-start-${l.id}`, 'Start nicht möglich', startReason, 'warning') : ''}
+          </span>`
         : joined
           ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-tetris-leave="${l.id}">Verlassen</button>
             ${readyToggleHtml(l, myId(), 'tetris-ready')}`
@@ -424,14 +442,18 @@ export function renderTetrisLobbyCard() {
   // obvious (disabled button + hint) instead of only flashing a toast on click,
   // which reads as "nothing happened".
   const noMe = !myId();
+  const createReason = !noMe && match ? 'Beende zuerst dein aktuelles Spiel.' : '';
   return `
     <div class="card stack arcade-lobby-card">
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
-      ${renderLobbyList()}
       <div class="arcade-lobby-create-actions">
-        <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+        <span class="row" style="gap:var(--space-1);">
+          <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+          ${createReason ? infoTooltipHtml('tetris-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+        </span>
         ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="tetris-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
       </div>
+      ${renderLobbyList()}
     </div>`;
 }
 
@@ -561,7 +583,7 @@ export function renderTetris(container, ctx) {
   });
   container.innerHTML = `
     <div class="arcade-game-shell"><h1 class="view-title">Tetris</h1>
-    ${arcadeExpandControlHtml()}
+    ${arcadeToolbarHtml()}
     <div id="tetris-game">
       <div id="tetris-roster">${roster}</div>
       <div id="tetris-boards" class="tetris-boards">
@@ -573,7 +595,7 @@ export function renderTetris(container, ctx) {
     </div></div>`;
   paint();
   wireMatch(container);
-  wireArcadeExpandControl(container);
+  wireArcadeToolbar(container);
 }
 
 function wireMatch(container) {

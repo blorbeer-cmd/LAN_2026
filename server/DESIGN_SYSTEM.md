@@ -515,12 +515,16 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   grid and row height. A host's game settings belong inside that lobby card; the compact
   „Punkte bis Sieg“ control shares the separated footer with „Schließen“ and „Start“ from `--bp-md`
   instead of forming a wide radio-button block. Readiness is communicated in the player rows without
-  a duplicate status sentence. „Lobby öffnen“ follows the lobby cards at full width, while the
-  temporary „Gegen KI“ mode occupies its own full-width row below it. An empty lobby no longer adds
+  a duplicate status sentence. „Lobby öffnen“ precedes the lobby cards at full width, so opening a
+  new lobby never requires scrolling past every existing one first; the temporary „Gegen KI“ mode
+  occupies its own full-width row below it. An empty lobby no longer adds
   a redundant waiting sentence. Member actions use the same destructive treatment for „Verlassen“
-  as the host's „Schließen“ action. Guest footers place „Verlassen“ before the readiness toggle;
+  as the host's „Schließen“ action, and only render for a member who actually joined that lobby.
+  Guest footers place „Verlassen“ before the readiness toggle;
   compact score selectors use the smaller shared row height. Create actions use the same inset as
-  lobby footer actions, so „Lobby öffnen“ and readiness controls align exactly.
+  lobby footer actions, so „Lobby öffnen“ and readiness controls align exactly. A disabled „Lobby
+  öffnen“ or „Start“ carries the same red `.info-tooltip-trigger--warning` reason pattern as Team
+  formation's „Teams auslosen“/„Draft starten“.
   Blobby Volley and Pong both offer Duell (1 gegen 1) and Doppel (2 gegen 2). Doppel lobbies expose
   two explicit teams with two slots each, require all four participants to be ready and award the
   shared team score and win to both teammates. Pong follows Atari's Pong-4 rules: each participant

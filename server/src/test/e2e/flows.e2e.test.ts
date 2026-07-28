@@ -609,8 +609,15 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
     );
   }
   await page.setViewportSize({ width: 390, height: 844 });
-  const filteredGameId = await page.locator('#lb-filter option').nth(2).getAttribute('value');
-  assert.ok(filteredGameId);
+  // #lb-filter is a searchable stand-in (searchSelect.js), not a native
+  // <select>: typing an option's exact datalist label into #lb-filter-search
+  // resolves the hidden #lb-filter input to that game's id, same as picking
+  // it from the browser's native suggestion list would.
+  const gamesRes = await page.request.get(`${BASE_URL}/api/games`);
+  const games = await gamesRes.json();
+  const filteredGame = games[1];
+  assert.ok(filteredGame);
+  const filteredGameId = filteredGame.id;
   const [filteredPlaytimeResponse, allPlaytimeResponse] = await Promise.all([
     page.waitForResponse((response) => {
       const url = new URL(response.url());
@@ -620,7 +627,7 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
       const url = new URL(response.url());
       return url.pathname === '/api/stats/playtime' && !url.searchParams.has('gameId');
     }),
-    page.selectOption('#lb-filter', filteredGameId),
+    page.fill('#lb-filter-search', `${filteredGame.icon} ${filteredGame.name}`),
   ]);
   assert.equal(filteredPlaytimeResponse.ok(), true, 'per-player playtime should follow the selected game');
   assert.equal(allPlaytimeResponse.ok(), true, 'per-game playtime should keep loading all games');
@@ -642,6 +649,14 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
     true,
     'advanced result fields should remain inside the result group'
   );
+  // The "Wert" field uses step="any" (arbitrary decimal scores) while "Platz"
+  // uses the default whole-number step — native stepUp()/stepDown() throws on
+  // a step="any" field, so the shared numberStepper.js click handler needs
+  // its own fallback there instead of silently doing nothing.
+  await page.click('[data-team-score="0"] + .number-stepper-steps .number-stepper-btn[aria-label="Wert erhöhen"]');
+  assert.equal(await page.locator('[data-team-score="0"]').inputValue(), '1');
+  await page.click('[data-team-rank="0"] + .number-stepper-steps .number-stepper-btn[aria-label="Wert erhöhen"]');
+  assert.equal(await page.locator('[data-team-rank="0"]').inputValue(), '1');
   await page.uncheck('#match-advanced');
   const teamSelects = page.locator('[data-team-for]');
   await teamSelects.nth(0).selectOption('0');

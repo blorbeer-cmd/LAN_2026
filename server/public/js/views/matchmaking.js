@@ -14,6 +14,7 @@ import { getMyId } from '../whoami.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { domainIcon } from '../domainIcons.js';
 import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
+import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -529,15 +530,13 @@ export function renderMatchmaking(container, ctx) {
   draftPlayerIds = new Set([...draftPlayerIds].filter((id) => availablePlayerIds.has(id)));
   draftCaptainIds = new Set([...draftCaptainIds].filter((id) => draftPlayerIds.has(id)));
 
-  const selectedGameId = state.selectedGameId || state.games[0].id;
+  const selectedGameId = state.games.some((g) => g.id === state.selectedGameId) ? state.selectedGameId : state.games[0].id;
 
   if (historyForGameId !== selectedGameId && !historyLoading) {
     loadHistory(selectedGameId, ctx);
   }
 
-  const gameOptions = state.games
-    .map((g) => `<option value="${g.id}" ${g.id === selectedGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`)
-    .join('');
+  const gameSelectOptions = state.games.map((g) => ({ value: g.id, label: `${g.icon} ${g.name}` }));
 
   const playerRows = state.players
     .map(
@@ -599,8 +598,8 @@ export function renderMatchmaking(container, ctx) {
     <h1 class="view-title">Teams</h1>
     <div class="card stack">
       <div>
-        <label class="field-label" for="mm-game">Spiel auswählen</label>
-        <select id="mm-game">${gameOptions}</select>
+        <label class="field-label" for="mm-game-search">Spiel auswählen</label>
+        ${searchSelectHtml('mm-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen…' })}
       </div>
       ${modeToggleHtml}
 
@@ -758,6 +757,7 @@ export function renderMatchmaking(container, ctx) {
     }
   });
 
+  wireSearchSelect(container, 'mm-game', gameSelectOptions);
   container.querySelector('#mm-game').addEventListener('change', (event) => {
     state.selectedGameId = event.target.value;
     ctx.rerender();

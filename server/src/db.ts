@@ -92,6 +92,8 @@ db.exec(`
     platform      TEXT,
     platform_url  TEXT,
     trailer_url   TEXT,
+    genre         TEXT,
+    info          TEXT,
     status        TEXT NOT NULL DEFAULT 'catalog' CHECK (status IN ('suggestion', 'catalog')),
     created_by    TEXT REFERENCES players(id) ON DELETE SET NULL,
     created_at    INTEGER NOT NULL,
@@ -2891,6 +2893,69 @@ function addEventParticipantStatus(): void {
   );
 }
 registerMigration({ version: 53, name: 'add event participant invitation status', up: addEventParticipantStatus });
+
+// Lets a catalog entry carry a short genre tag and a free-text info note
+// (house rules, "nur mit Freunden", server details, ...) alongside the
+// existing platform/trailer metadata.
+function addGamesInfoGenreColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(games)').all() as Array<{ name: string }>;
+  if (!columns.some((c) => c.name === 'info')) db.exec('ALTER TABLE games ADD COLUMN info TEXT');
+  if (!columns.some((c) => c.name === 'genre')) db.exec('ALTER TABLE games ADD COLUMN genre TEXT');
+}
+registerMigration({ version: 54, name: 'add games info and genre columns', up: addGamesInfoGenreColumns });
+
+// Turns the free-text genre column into a fixed multiselect: existing values
+// are matched case-insensitively against the allowed genre list and wrapped
+// into a JSON array in the same TEXT column (no schema change); anything
+// that doesn't match a known genre is cleared, since a stale free-text value
+// could no longer be selected or filtered on going forward.
+//
+// This is a deliberate historical snapshot of the genres that existed when
+// migration 55 was written; it is intentionally NOT extended when GAME_GENRES
+// in server/src/routes/games.ts grows. A one-shot migration has to produce the
+// same result on every installation regardless of which server version first
+// ran it — otherwise the same legacy free text would survive on a late-migrated
+// database and be cleared on an early-migrated one. Genres added later are
+// selectable in the UI, they just don't retro-match legacy free text.
+const GAME_GENRES_AT_MIGRATION_55 = [
+  'Shooter',
+  'Fighting',
+  'Racing',
+  'Sport',
+  'Party',
+  'Strategie',
+  'Rollenspiel',
+  'Plattformer',
+  'Puzzle',
+  'Simulation',
+  'Kartenspiel',
+  'Geschicklichkeit',
+  'Koop',
+  'Horror',
+  'Sonstiges',
+];
+function normalizeGamesGenreToMultiselect(): void {
+  const rows = db.prepare('SELECT id, genre FROM games WHERE genre IS NOT NULL').all() as Array<{
+    id: string;
+    genre: string;
+  }>;
+  const update = db.prepare('UPDATE games SET genre = ? WHERE id = ?');
+  for (const row of rows) {
+    const trimmed = row.genre.trim();
+    if (trimmed.startsWith('[')) continue; // already migrated (idempotent re-run)
+    if (!trimmed) {
+      update.run(null, row.id);
+      continue;
+    }
+    const match = GAME_GENRES_AT_MIGRATION_55.find((g) => g.toLowerCase() === trimmed.toLowerCase());
+    update.run(match ? JSON.stringify([match]) : null, row.id);
+  }
+}
+registerMigration({
+  version: 55,
+  name: 'normalize games genre column to multiselect json',
+  up: normalizeGamesGenreToMultiselect,
+});
 
 // Every migration is registered by now — run them all in ascending version
 // order (see registerMigration/runRegisteredMigrations above). This is the

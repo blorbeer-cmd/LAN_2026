@@ -16,6 +16,7 @@ import { moveTournamentDraftPlayer } from '../tournamentTeamDraft.js';
 import { selectActiveLobbyMatches } from '../tournamentLobbies.js';
 import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
 import { withStepUp } from '../reauth.js';
+import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
@@ -273,9 +274,7 @@ function renderCreateForm(el, ctx) {
     : state.games[0].id;
   state.selectedGameId = selectedGameId;
 
-  const gameOptions = state.games
-    .map((g) => `<option value="${g.id}" ${g.id === selectedGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`)
-    .join('');
+  const gameSelectOptions = state.games.map((g) => ({ value: g.id, label: `${g.icon} ${g.name}` }));
 
   const playerRows = state.players
     .map(
@@ -342,8 +341,8 @@ function renderCreateForm(el, ctx) {
           <h3 id="tournament-draw-step-title">Auslosung</h3>
           <span class="muted">Teams zusammenstellen</span>
         </div>
-        <label class="field-label" for="tourn-game">Spiel auswählen</label>
-        <select id="tourn-game">${gameOptions}</select>
+        <label class="field-label" for="tourn-game-search">Spiel auswählen</label>
+        ${searchSelectHtml('tourn-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen…' })}
         <div class="selection-toolbar">
           <div class="tournament-team-count-field">
             <label class="field-label" for="tourn-teamcount">Anzahl Teams</label>
@@ -471,6 +470,7 @@ function renderCreateForm(el, ctx) {
     ctx.rerender();
   });
 
+  wireSearchSelect(el, 'tourn-game', gameSelectOptions);
   el.querySelector('#tourn-game').addEventListener('change', (e) => {
     state.selectedGameId = e.target.value;
     createProposedTeams = null;
