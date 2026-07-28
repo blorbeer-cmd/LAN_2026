@@ -183,10 +183,28 @@ function drawPong(ctx, game, width, height) {
   ctx.strokeStyle = cssColor('--border');
   ctx.setLineDash([12, 14]);
   ctx.beginPath(); ctx.moveTo(width / 2, 0); ctx.lineTo(width / 2, height); ctx.stroke();
+  if (game.mode === 'doubles') {
+    ctx.beginPath(); ctx.moveTo(0, height / 2); ctx.lineTo(width, height / 2); ctx.stroke();
+  }
   ctx.setLineDash([]);
   world.paddles.forEach((paddle, index) => {
-    ctx.fillStyle = index ? cssColor('--accent-3') : cssColor('--accent');
+    const isRightTeam = paddle.team ? paddle.team === 'right' : index > 0;
+    ctx.fillStyle = isRightTeam ? cssColor('--accent-3') : cssColor('--accent');
     ctx.fillRect(paddle.x * scaleX, paddle.y * scaleY, render.paddleWidth * scaleX, render.paddleHeight * scaleY);
+    const name = game.players?.find((player) => player.id === paddle.playerId)?.name?.trim();
+    if (name) {
+      const parts = name.split(/\s+/);
+      const label = (parts.length > 1 ? `${parts[0][0]}${parts.at(-1)[0]}` : parts[0].slice(0, 2)).toUpperCase();
+      ctx.fillStyle = cssColor('--text');
+      ctx.font = `${Math.max(14, 18 * Math.min(scaleX, scaleY))}px sans-serif`;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = isRightTeam ? 'right' : 'left';
+      ctx.fillText(
+        label,
+        (paddle.x + (isRightTeam ? 0 : render.paddleWidth)) * scaleX + (isRightTeam ? -9 : 9),
+        (paddle.y + render.paddleHeight / 2) * scaleY
+      );
+    }
   });
   ctx.fillStyle = cssColor('--text');
   ctx.beginPath();
