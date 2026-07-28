@@ -39,6 +39,13 @@ interface ScoreEntry {
   name: string;
   score: number;
   isWinner?: boolean;
+  isBot?: boolean;
+  mode?: 'duel' | 'arena';
+  placement?: number | null;
+  lines?: number;
+  garbageSent?: number;
+  garbageReceived?: number;
+  knockouts?: number;
 }
 
 interface ScribbleArtStatsRow {
@@ -131,8 +138,76 @@ arcadeRouter.get('/stats', (req, res) => {
 
   const games = new Map<
     string,
-    { gameType: string; matches: number; players: Map<string, { playerId: string; name: string; matches: number; wins: number }> }
+    {
+      gameType: string;
+      baseGameType: string;
+      mode: string | null;
+      matches: number;
+      players: Map<
+        string,
+        {
+          playerId: string;
+          name: string;
+          matches: number;
+          wins: number;
+          topThree: number;
+          placementTotal: number;
+          placedMatches: number;
+          lines: number;
+          garbageSent: number;
+          garbageReceived: number;
+          knockouts: number;
+        }
+      >;
+    }
   >();
+
+  const addResultToGame = (
+    statsKey: string,
+    gameType: string,
+    baseGameType: string,
+    mode: string | null,
+    row: ArcadeResultRow,
+    scores: ScoreEntry[],
+  ) => {
+    const game = games.get(statsKey) ?? {
+      gameType,
+      baseGameType,
+      mode,
+      matches: 0,
+      players: new Map(),
+    };
+    game.matches += 1;
+    for (const score of scores) {
+      if (score.isBot === true || score.playerId.startsWith('tetris-bot')) continue;
+      const current = game.players.get(score.playerId) ?? {
+        playerId: score.playerId,
+        name: score.name,
+        matches: 0,
+        wins: 0,
+        topThree: 0,
+        placementTotal: 0,
+        placedMatches: 0,
+        lines: 0,
+        garbageSent: 0,
+        garbageReceived: 0,
+        knockouts: 0,
+      };
+      current.matches += 1;
+      if (row.winner_id === score.playerId || score.isWinner === true) current.wins += 1;
+      if (typeof score.placement === 'number') {
+        current.placementTotal += score.placement;
+        current.placedMatches += 1;
+        if (score.placement <= 3) current.topThree += 1;
+      }
+      current.lines += Number(score.lines) || 0;
+      current.garbageSent += Number(score.garbageSent) || 0;
+      current.garbageReceived += Number(score.garbageReceived) || 0;
+      current.knockouts += Number(score.knockouts) || 0;
+      game.players.set(score.playerId, current);
+    }
+    games.set(statsKey, game);
+  };
 
   for (const row of rows) {
     const parsed = parseJsonArray(row.scores);
@@ -144,20 +219,20 @@ arcadeRouter.get('/stats', (req, res) => {
     );
     if (scores.length === 0) continue;
 
-    const game = games.get(row.game_type) ?? { gameType: row.game_type, matches: 0, players: new Map() };
-    game.matches += 1;
-    for (const score of scores) {
-      const current = game.players.get(score.playerId) ?? {
-        playerId: score.playerId,
-        name: score.name,
-        matches: 0,
-        wins: 0,
-      };
-      current.matches += 1;
-      if (row.winner_id === score.playerId || score.isWinner === true) current.wins += 1;
-      game.players.set(score.playerId, current);
+    const baseMode = scores.some((score) => score.mode === 'arena') ? 'arena' : 'duel';
+    const mode =
+      row.game_type === 'tetris'
+        ? `${baseMode}${scores.some((score) => score.isBot === true || score.playerId.startsWith('tetris-bot')) ? '-ai' : ''}`
+        : null;
+    const statsKey = mode ? `${row.game_type}:${mode}` : row.game_type;
+    if (row.game_type === 'tetris') {
+      // Preserve the legacy unique tetris entry and expose mode-specific
+      // variants under their own versioned gameType/statsKey values.
+      addResultToGame('tetris', 'tetris', 'tetris', null, row, scores);
+      addResultToGame(statsKey, statsKey, 'tetris', mode, row, scores);
+    } else {
+      addResultToGame(statsKey, row.game_type, row.game_type, mode, row, scores);
     }
-    games.set(row.game_type, game);
   }
 
   const drawingClauses = ['d.group_id = ?'];
@@ -190,15 +265,30 @@ arcadeRouter.get('/stats', (req, res) => {
           ...player,
           losses: player.matches - player.wins,
           winRate: player.matches > 0 ? player.wins / player.matches : 0,
+          averagePlacement: player.placedMatches > 0 ? player.placementTotal / player.placedMatches : null,
         }))
-        .sort((a, b) => b.winRate - a.winRate || b.wins - a.wins || a.name.localeCompare(b.name, 'de'));
+        .sort((a, b) =>
+          game.mode?.startsWith('arena')
+            ? b.wins - a.wins ||
+              b.topThree - a.topThree ||
+              (a.averagePlacement ?? Number.MAX_SAFE_INTEGER) - (b.averagePlacement ?? Number.MAX_SAFE_INTEGER) ||
+              b.knockouts - a.knockouts ||
+              a.name.localeCompare(b.name, 'de')
+            : b.winRate - a.winRate || b.wins - a.wins || a.name.localeCompare(b.name, 'de'),
+        );
       return {
         gameType: game.gameType,
-        title: ARCADE_TITLES[game.gameType] ?? game.gameType,
+        statsKey: game.gameType,
+        ...(game.baseGameType !== game.gameType ? { baseGameType: game.baseGameType } : {}),
+        mode: game.mode,
+        title:
+          game.baseGameType === 'tetris' && game.mode
+            ? `Tetris ${game.mode?.startsWith('arena') ? 'Arena' : 'Duell'}${game.mode?.endsWith('-ai') ? ' · KI-Test' : ''}`
+            : ARCADE_TITLES[game.baseGameType] ?? game.baseGameType,
         matches: game.matches,
         leader: players[0] ?? null,
         players,
-        ...(game.gameType === 'scribble'
+        ...(game.baseGameType === 'scribble'
           ? {
               artPlayers: scribbleArtPlayers.map((player) => ({
                 playerId: player.player_id,
