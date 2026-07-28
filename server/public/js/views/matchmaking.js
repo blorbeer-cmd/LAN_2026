@@ -14,7 +14,7 @@ import { getMyId } from '../whoami.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { domainIcon } from '../domainIcons.js';
 import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
-import { GAME_GENRES } from '../gameGenres.js';
+import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -27,10 +27,6 @@ let selectedDrawPlayer = null;
 // shared game picker — only one shows at a time so the game+mode choice
 // reads as one linear step instead of two competing panels.
 let teamsMode = 'draw';
-
-// Genre chip filter narrowing the "Spiel auswählen" picker (OR semantics,
-// same as the Spiele view's list filter). Empty set means "no filter".
-let mmGenreFilter = new Set();
 
 // Captain-draft state: the latest draft (active or finished) as delivered by
 // GET /api/draft or the draft:changed socket event. A running draft takes
@@ -534,31 +530,13 @@ export function renderMatchmaking(container, ctx) {
   draftPlayerIds = new Set([...draftPlayerIds].filter((id) => availablePlayerIds.has(id)));
   draftCaptainIds = new Set([...draftCaptainIds].filter((id) => draftPlayerIds.has(id)));
 
-  const usedGenres = GAME_GENRES.filter((g) => state.games.some((game) => (game.genres ?? []).includes(g)));
-  const genreFilteredGames =
-    mmGenreFilter.size === 0 ? state.games : state.games.filter((g) => (g.genres ?? []).some((genre) => mmGenreFilter.has(genre)));
-  const gamesForPicker = genreFilteredGames.length > 0 ? genreFilteredGames : state.games;
-  const selectedGameId = gamesForPicker.some((g) => g.id === state.selectedGameId) ? state.selectedGameId : gamesForPicker[0].id;
+  const selectedGameId = state.games.some((g) => g.id === state.selectedGameId) ? state.selectedGameId : state.games[0].id;
 
   if (historyForGameId !== selectedGameId && !historyLoading) {
     loadHistory(selectedGameId, ctx);
   }
 
-  const gameOptions = gamesForPicker
-    .map((g) => `<option value="${g.id}" ${g.id === selectedGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`)
-    .join('');
-
-  const genreFilterHtml = usedGenres.length
-    ? `<div class="chip-list" role="group" aria-label="Nach Genre filtern">
-         ${usedGenres
-           .map(
-             (g) =>
-               `<button type="button" class="chip${mmGenreFilter.has(g) ? ' is-active' : ''}" data-mm-genre-filter="${escapeHtml(g)}" aria-pressed="${mmGenreFilter.has(g)}">${escapeHtml(g)}</button>`,
-           )
-           .join('')}
-       </div>
-       ${genreFilteredGames.length === 0 ? `<p class="muted" style="font-size:var(--font-size-xs);">Keine Spiele mit den gewählten Genres – zeige alle Spiele.</p>` : ''}`
-    : '';
+  const gameSelectOptions = state.games.map((g) => ({ value: g.id, label: `${g.icon} ${g.name}` }));
 
   const playerRows = state.players
     .map(
@@ -619,10 +597,9 @@ export function renderMatchmaking(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Teams</h1>
     <div class="card stack">
-      ${genreFilterHtml}
       <div>
-        <label class="field-label" for="mm-game">Spiel auswählen</label>
-        <select id="mm-game">${gameOptions}</select>
+        <label class="field-label" for="mm-game-search">Spiel auswählen</label>
+        ${searchSelectHtml('mm-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen…' })}
       </div>
       ${modeToggleHtml}
 
@@ -780,18 +757,10 @@ export function renderMatchmaking(container, ctx) {
     }
   });
 
+  wireSearchSelect(container, 'mm-game', gameSelectOptions);
   container.querySelector('#mm-game').addEventListener('change', (event) => {
     state.selectedGameId = event.target.value;
     ctx.rerender();
-  });
-
-  container.querySelectorAll('[data-mm-genre-filter]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const g = btn.dataset.mmGenreFilter;
-      if (mmGenreFilter.has(g)) mmGenreFilter.delete(g);
-      else mmGenreFilter.add(g);
-      ctx.rerender();
-    });
   });
 
   container.querySelectorAll('[data-player]').forEach((cb) => {
