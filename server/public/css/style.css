@@ -3587,6 +3587,25 @@ button.card {
 .arcade-watch-player strong {
   color: var(--accent);
 }
+.snake-arena-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.snake-arena-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+}
+.snake-arena-legend-item strong {
+  color: var(--text);
+}
 .arcade-watch-shell canvas {
   display: block;
   width: 100%;

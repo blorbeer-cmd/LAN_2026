@@ -544,6 +544,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   many non-winning placements do not distort the duel win rate. Arena rows instead show wins,
   Top-3 finishes, average placement, cleared lines, sent garbage and knockouts. Matches containing
   bots appear as separate „KI-Test“ entries and never alter the human-only Duell/Arena rankings.
+  Snake exposes a two-button mode toggle before lobby creation. „Klassisch“ remains the two-player
+  duel; „Arena“ accepts three to eight players and labels every lobby with mode and occupancy.
+  Arena matches keep eliminated players visibly in the roster with a textual status, while the
+  canvas dims their snake and marks the shrinking safe zone with the shared danger treatment.
+  Numbered head markers and a matching `Schlange N · Name` legend identify every participant
+  without relying on color; the same legend appears in player, spectator and kiosk contexts.
 - **Jam sessions** — Jam is a grouped page below „Mehr“. A dedicated local controller on the
   playback PC or kiosk Raspberry Pi connects Spotify through PKCE and never appears as a player.
   The server stores neither Spotify application credentials nor OAuth tokens. One participant

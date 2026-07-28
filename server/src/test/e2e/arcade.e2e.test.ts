@@ -138,6 +138,133 @@ after(async () => {
   serverProcess?.kill();
 });
 
+test('classic Snake guest returns to the Arcade immediately after leaving', async () => {
+  const hostPlayer = await createPlayer('Snake Leave Host');
+  const guestPlayer = await createPlayer('Snake Leave Guest');
+  const host = await openArcadeAs(hostPlayer.id);
+  const guest = await openArcadeAs(guestPlayer.id);
+  try {
+    await host.page.click('[data-game="snake"]');
+    await host.page.waitForSelector('#snake-create:not([disabled])');
+    await host.page.click('#snake-create');
+
+    await guest.page.click('[data-game="snake"]');
+    await guest.page.waitForSelector('[data-snake-join]');
+    await guest.page.click('[data-snake-join]');
+    await host.page.waitForSelector('#snake-start:not([disabled])');
+    await host.page.click('#snake-start');
+    await guest.page.waitForSelector('#snake-canvas');
+
+    await guest.page.click('#snake-leave-match');
+    await guest.page.click('[data-confirm]');
+    await guest.page.waitForSelector('.arcade-tiles');
+    assert.equal(await activeView(guest.page), 'arcade');
+    assert.equal(await guest.page.locator('#snake-canvas').count(), 0);
+
+    await host.page.waitForSelector('#snake-back');
+    await host.page.click('#snake-back');
+  } finally {
+    await host.context.close();
+    await guest.context.close();
+  }
+});
+
+test('the kiosk removes stale quiz markup before rendering a canvas game', async () => {
+  const hostPlayer = await createPlayer('Kiosk Transition Host');
+  const guestPlayer = await createPlayer('Kiosk Transition Guest');
+  const host = await openArcadeAs(hostPlayer.id);
+  const guest = await openArcadeAs(guestPlayer.id);
+  const kiosk = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  try {
+    await kiosk.goto(`${BASE_URL}/kiosk.html`);
+    await kiosk.waitForSelector('#kiosk-dashboard:not([hidden])');
+    await startQuizMatch(host.page, guest.page);
+    await kiosk.waitForSelector('#kiosk-game-content .kiosk-game-question');
+
+    await finishQuizMatch(host.page);
+    await guest.page.waitForSelector('#quiz-back');
+    await guest.page.click('#quiz-back');
+    await guest.page.waitForSelector('.arcade-tiles');
+
+    await host.page.click('[data-game="snake"]');
+    await host.page.waitForSelector('#snake-create:not([disabled])');
+    await host.page.click('#snake-create');
+    await guest.page.click('[data-game="snake"]');
+    await guest.page.waitForSelector('[data-snake-join]');
+    await guest.page.click('[data-snake-join]');
+    await host.page.waitForSelector('#snake-start:not([disabled])');
+    await host.page.click('#snake-start');
+
+    await kiosk.waitForSelector('#kiosk-game-content canvas');
+    assert.equal(await kiosk.locator('#kiosk-game-content .kiosk-game-question').count(), 0);
+
+    await host.page.click('#snake-finish');
+    await host.page.waitForSelector('#snake-back');
+    await host.page.click('#snake-back');
+  } finally {
+    await kiosk.close();
+    await host.context.close();
+    await guest.context.close();
+  }
+});
+
+test('Snake Arena elimination status updates in spectator and kiosk legends', async () => {
+  const players = await Promise.all([
+    createPlayer('Snake Status Host'),
+    createPlayer('Snake Status Zwei'),
+    createPlayer('Snake Status Drei'),
+    createPlayer('Snake Status Zuschauer'),
+  ]);
+  const actors = await Promise.all(players.map((player) => openArcadeAs(player.id)));
+  const [host, guest, leaver, spectator] = actors;
+  const kiosk = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  try {
+    await kiosk.goto(`${BASE_URL}/kiosk.html`);
+    await kiosk.waitForSelector('#kiosk-dashboard:not([hidden])');
+
+    await host.page.click('[data-game="snake"]');
+    await host.page.click('[data-snake-mode="arena"]');
+    await host.page.waitForSelector('[data-snake-mode="arena"][aria-pressed="true"]');
+    await host.page.click('#snake-create');
+
+    for (const actor of [guest, leaver]) {
+      await actor.page.click('[data-game="snake"]');
+      await actor.page.waitForSelector('[data-snake-join]');
+      await actor.page.click('[data-snake-join]');
+    }
+    await host.page.waitForSelector('#snake-start:not([disabled])');
+    await host.page.click('#snake-start');
+    await host.page.waitForSelector('#snake-pause');
+    await host.page.click('#snake-pause');
+    await host.page.waitForSelector('.snake-overlay');
+
+    await kiosk.waitForSelector('#kiosk-game-content .snake-arena-legend');
+    await spectator.page.waitForSelector('[data-watch-match]');
+    await spectator.page.click('[data-watch-match]');
+    await spectator.page.waitForSelector('.snake-arena-legend');
+
+    await leaver.page.waitForSelector('#snake-leave-match');
+    await leaver.page.click('#snake-leave-match');
+    await leaver.page.click('[data-confirm]');
+
+    for (const page of [spectator.page, kiosk]) {
+      await page.waitForFunction((playerName) => Array.from(document.querySelectorAll('.snake-arena-legend-item')).some(
+        (item) => item.textContent?.includes(playerName) && item.textContent.includes('Ausgeschieden')
+      ), players[2].name);
+      const legendItems = await page.locator('.snake-arena-legend-item').allTextContents();
+      assert.ok(legendItems.some((item) => item.includes(`${players[0].name} · Im Rennen`)));
+      assert.ok(legendItems.some((item) => item.includes(`${players[2].name} · Ausgeschieden`)));
+    }
+
+    await host.page.click('#snake-finish');
+    await host.page.waitForSelector('#snake-back');
+    await host.page.click('#snake-back');
+  } finally {
+    await kiosk.close();
+    await Promise.all(actors.map((actor) => actor.context.close()));
+  }
+});
+
 test('watch list: a finished match disappears and active watchers are sent back to the Arcade', async () => {
   const hostPlayer = await createPlayer('Watch Host');
   const guestPlayer = await createPlayer('Watch Guest');

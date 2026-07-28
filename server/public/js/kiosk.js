@@ -11,6 +11,7 @@ import { installIconReplacement, icon } from './icons.js';
 import { bannerContentHtml } from './pushFeed.js';
 import { drawArcadeStreamCanvas } from './arcadeStreamRenderer.js';
 import { domainIcon, installDomainIcons } from './domainIcons.js';
+import { snakeArenaLegendHtml } from './snakeArenaLegend.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -103,17 +104,7 @@ function drawLegacyKioskCanvas(canvas, game) {
 
   const world = game.world;
   if (!world) return;
-  if (game.gameType === 'snake') {
-    const cw = w / 32;
-    const ch = h / 20;
-    ctx.strokeStyle = cssColor('--accent-2');
-    ctx.globalAlpha = 0.12;
-    for (let x = 1; x < 32; x++) { ctx.beginPath(); ctx.moveTo(x * cw, 0); ctx.lineTo(x * cw, h); ctx.stroke(); }
-    for (let y = 1; y < 20; y++) { ctx.beginPath(); ctx.moveTo(0, y * ch); ctx.lineTo(w, y * ch); ctx.stroke(); }
-    ctx.globalAlpha = 1;
-    world.snakes.forEach((snake, index) => { ctx.fillStyle = index ? cssColor('--accent-3') : cssColor('--accent'); snake.body.forEach((part) => ctx.fillRect(part.x * cw, part.y * ch, cw - 2, ch - 2)); });
-    ctx.fillStyle = cssColor('--rank-1-gold'); ctx.beginPath(); ctx.arc((world.food.x + 0.5) * cw, (world.food.y + 0.5) * ch, Math.min(cw, ch) * 0.35, 0, Math.PI * 2); ctx.fill();
-  } else if (game.gameType === 'pong') {
+  if (game.gameType === 'pong') {
     const scaleX = w / 800;
     const scaleY = h / 450;
     ctx.fillStyle = cssColor('--accent'); ctx.fillRect(world.paddles[0].x * scaleX, world.paddles[0].y * scaleY, 12, world.paddles[0].height * scaleY);
@@ -158,7 +149,13 @@ function renderArcadeStream(game) {
     return;
   }
   let canvas = content.querySelector('canvas');
-  if (!canvas) { content.innerHTML = '<canvas width="800" height="450" aria-label="Livebild des Arcade-Spiels"></canvas>'; canvas = content.querySelector('canvas'); }
+  if (!canvas) content.innerHTML = '';
+  const legendHtml = snakeArenaLegendHtml(game);
+  const existingLegend = content.querySelector('.snake-arena-legend');
+  if (legendHtml && !existingLegend) content.insertAdjacentHTML('afterbegin', legendHtml);
+  else if (legendHtml && existingLegend?.outerHTML !== legendHtml) existingLegend.outerHTML = legendHtml;
+  else if (!legendHtml) existingLegend?.remove();
+  if (!canvas) { content.insertAdjacentHTML('beforeend', '<canvas width="800" height="450" aria-label="Livebild des Arcade-Spiels"></canvas>'); canvas = content.querySelector('canvas'); }
   drawKioskCanvas(canvas, game);
 }
 
