@@ -1,0 +1,78 @@
+name: Agent pipeline contract
+
+on:
+  # This event always loads the workflow definition from the trusted default branch.
+  # Never execute or check out code from the pull-request head in this workflow.
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: agent-pipeline-contract-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Agent pipeline / contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Run only the validator and configuration from the trusted default branch.
+      # The PR head is fetched as data for the diff but no code from it executes.
+      - name: Check out trusted pipeline validator
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect trusted pipeline validator
+        id: trusted-validator
+        shell: bash
+        run: |
+          if [[ -f scripts/agent-pipeline.mjs && -f .github/agent-pipeline/config.json ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Trusted default branch does not contain the agent pipeline validator yet; safely skipping this bootstrap run."
+          fi
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        if: steps.trusted-validator.outputs.available == 'true'
+        with:
+          node-version: 24
+
+      - name: Fetch pull-request head as diff input
+        if: >-
+          steps.trusted-validator.outputs.available == 'true' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        shell: bash
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: git fetch --no-tags origin "$HEAD_SHA"
+
+      - name: Validate agent task contract
+        if: steps.trusted-validator.outputs.available == 'true'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          node scripts/agent-pipeline.mjs validate-event
+          --event "$GITHUB_EVENT_PATH"
+          --base-sha "$BASE_SHA"
+          --head-sha "$HEAD_SHA"
+
+      - name: Document bootstrap skip
+        if: steps.trusted-validator.outputs.available != 'true'
+        shell: bash
+        run: |
+          {
+            echo "## Agent pipeline contract"
+            echo
+            echo "Skipped safely because the trusted default branch does not contain the validator yet."
+            echo "No code from the pull-request head was executed."
+          } >> "$GITHUB_STEP_SUMMARY"

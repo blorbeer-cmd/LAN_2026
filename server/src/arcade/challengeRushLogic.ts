@@ -39,7 +39,7 @@ export function scoreNumberSalad(correct: number, errors: number, elapsedMs: num
 export function scoreTiming10(elapsedMs: number): number { return safeScoreInput(Math.round(100 - Math.abs(safeElapsed(elapsedMs) - 10_000) / 20)); }
 
 export function winnerIdForScores(scores: Array<{ playerId: string; score: number }>): string | null {
-  const normalized = scores.map((entry) => ({ ...entry, score: safeScoreInput(entry.score) }));
+  const normalized = scores.map((entry) => ({ ...entry, score: Number.isFinite(entry.score) ? Math.max(0, entry.score) : 0 }));
   const highest = Math.max(0, ...normalized.map((entry) => entry.score));
   const winners = normalized.filter((entry) => entry.score === highest);
   return winners.length === 1 ? winners[0].playerId : null;
@@ -51,4 +51,14 @@ export function isCurrentChallenge(expectedIndex: number, actualIndex: number): 
 
 export function remainingUntil(deadlineAt: number | null, now: number): number | null {
   return deadlineAt === null ? null : Math.max(0, deadlineAt - now);
+}
+
+export interface ReadyGateEntry { playerId: string; connected: boolean; forfeited: boolean }
+
+// Only still-connected, non-forfeited players are required to confirm ready —
+// someone who left or dropped must not stall the rest of the group forever.
+export function isReadyForNext(entries: ReadyGateEntry[], readyIds: Set<string> | string[]): boolean {
+  const ready = readyIds instanceof Set ? readyIds : new Set(readyIds);
+  const pending = entries.filter((entry) => entry.connected && !entry.forfeited);
+  return pending.length > 0 && pending.every((entry) => ready.has(entry.playerId));
 }

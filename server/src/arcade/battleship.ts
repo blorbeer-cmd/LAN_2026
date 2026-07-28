@@ -75,6 +75,13 @@ function targetShots(match: Match, playerId: string) {
   }));
 }
 
+function incomingShots(match: Match, playerId: string) {
+  return match.shots.filter((shot) => shot.targetId === playerId).map((shot) => ({
+    coordinate: shot.coordinate,
+    kind: shot.kind,
+  }));
+}
+
 function publicState(match: Match, viewerId?: string) {
   const players = match.players.map((player) => {
     const fleet = match.fleets.get(player.id) ?? [];
@@ -87,6 +94,7 @@ function publicState(match: Match, viewerId?: string) {
       segmentsRemaining: remainingSegments(fleet),
       fleet: own ? fleetSnapshot(fleet, true) : fleetSnapshot(fleet, false),
       shots: own ? targetShots(match, player.id) : undefined,
+      incomingShots: own ? incomingShots(match, player.id) : undefined,
     };
   });
   return {
@@ -147,7 +155,7 @@ function finish(io: Server, match: Match, winnerId: string | null, reason: strin
   }));
   recordArcadeResult({ gameType: 'battleship', winnerId: winnerId === BOT_ID ? null : winnerId, players: match.players, scores, reason, startedAt: match.startedAt, scope: match });
   const fleets = match.players.map((player) => ({ playerId: player.id, fleet: fleetSnapshot(match.fleets.get(player.id) ?? [], true) }));
-  emitArcadeRoom(io, match.room, 'battleship:match:end', { matchId: match.id, winnerId, reason, scores, fleets }, match);
+  emitArcadeRoom(io, match.room, 'battleship:match:end', { matchId: match.id, winnerId, reason, scores, fleets, shots: match.shots }, match);
   broadcastArcadeKiosk(io, { gameType: 'battleship', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'ended', players: spectatorState(match, true) });
   emitPersonalized(io, match);
   setTimeout(() => broadcastArcadeKiosk(io, { gameType: null, matchId: match.id, groupId: match.groupId, eventId: match.eventId }), END_REVEAL_MS);
