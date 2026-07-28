@@ -2257,6 +2257,7 @@ button.card {
 .challenge-rush-final-row-main { display: flex; justify-content: space-between; gap: var(--space-3); }
 .challenge-rush-final-breakdown { font-size: var(--font-size-xs); }
 .challenge-rush-target-progress { text-align: center; }
+.challenge-rush-playfield-badge { position: absolute; top: var(--space-2); left: var(--space-2); margin: 0; padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--bg-elevated-2); }
 .challenge-rush-tile-grid { display: grid; gap: var(--space-2); width: min(100%, var(--challenge-rush-tile-grid-width)); }
 .challenge-rush-tile { aspect-ratio: 1; min-width: var(--challenge-rush-tile-min-size); min-height: var(--challenge-rush-tile-min-size); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated-2); cursor: pointer; }
 .challenge-rush-tile.is-active { background: var(--accent-gradient); border-color: transparent; box-shadow: var(--shadow-glow-accent); }

@@ -167,7 +167,12 @@ function challengeView(container) {
     body = target
       ? `<button type="button" class="challenge-rush-circle" data-cr-x="${target.x}" data-cr-y="${target.y}" aria-label="Ziel treffen" style="left:${target.x}%;top:${target.y}%"></button>`
       : '<p class="muted">Die Ziele erscheinen, sobald es losgeht.</p>';
-    body += `<p class="muted challenge-rush-target-progress">${Math.min(progressStep, targets.length)} / ${targets.length} getroffen</p>`;
+    // Positioned as an absolute corner badge, not a normal-flow paragraph:
+    // the target button is itself position:absolute (so it can sit anywhere
+    // in the field), which pulls it out of the grid's auto-placed rows and
+    // leaves a flow paragraph centered in the same cell — directly on top of
+    // whichever target happens to render near the field's center.
+    body += `<p class="muted challenge-rush-playfield-badge">${Math.min(progressStep, targets.length)} / ${targets.length} getroffen</p>`;
   }
   if (challenge?.key === 'memory-sequence') {
     const tileCount = data.tileCount ?? 9;
