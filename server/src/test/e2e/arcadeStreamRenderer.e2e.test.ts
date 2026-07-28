@@ -28,7 +28,10 @@ const probeHtml = `<!doctype html>
       leftBoard[19].splice(0, 4, 1, 2, 3, 4);
       rightBoard[19].splice(6, 4, 5, 6, 7, 8);
       const games = {
-        pong: { gameType: 'pong', world: { paddles: [{ x: 48, y: 100 }, { x: 896, y: 260 }], ball: { x: 480, y: 270 } } },
+        pong: { gameType: 'pong', world: { paddles: [
+          { x: 48, y: 52, team: 'left' }, { x: 48, y: 376, team: 'left' },
+          { x: 896, y: 52, team: 'right' }, { x: 896, y: 376, team: 'right' },
+        ], ball: { x: 480, y: 270 } } },
         blobby: { gameType: 'blobby', world: { blobs: [{ x: 250, y: 506 }, { x: 750, y: 506 }], ball: { x: 500, y: 220 } } },
         snake: { gameType: 'snake', world: { snakes: [{ body: [{ x: 2, y: 3 }], score: 1 }, { body: [{ x: 29, y: 16 }], score: 2 }], food: { x: 16, y: 10 } } },
         tetris: { gameType: 'tetris', players: [
@@ -113,8 +116,8 @@ test('Arcade spectator canvases fit a mobile viewport and render every game worl
       };
       return { left: countChanged(40, 72), right: countChanged(888, 920) };
     });
-    assert.ok(pongPixels.left > 500, 'the left Pong paddle is visible');
-    assert.ok(pongPixels.right > 500, 'the right Pong paddle is visible');
+    assert.ok(pongPixels.left > 1_000, 'both left-team Pong paddles are visible');
+    assert.ok(pongPixels.right > 1_000, 'both right-team Pong paddles are visible');
 
     const scribbleFillVisible = await page.locator('canvas[data-game="scribble"]').evaluate((element) => {
       const canvas = element as HTMLCanvasElement;

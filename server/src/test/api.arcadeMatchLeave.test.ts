@@ -111,6 +111,7 @@ test('a non-host participant can leave a running match in every arcade game', as
       const [hostId, guestId] = await makePlayers(baseUrl, ['Pong Host', 'Pong Guest']);
       const created = await emitAck(hostSocket, 'pong:lobby:create', { playerId: hostId });
       await emitAck(guestSocket, 'pong:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
+      await emitAck(guestSocket, 'pong:lobby:ready', { lobbyId: created.lobbyId, playerId: guestId, ready: true });
       const startPromise = waitForEvent(guestSocket, 'pong:match:start') as Promise<{ matchId: string }>;
       await emitAck(hostSocket, 'pong:lobby:start', { lobbyId: created.lobbyId, playerId: hostId });
       const { matchId } = await startPromise;
