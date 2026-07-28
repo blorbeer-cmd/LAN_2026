@@ -55,9 +55,13 @@ function activeElapsed(progress: Progress, now = Date.now()): number {
   return progress.elapsedBeforePause + (progress.startedAt > 0 ? Math.max(0, now - progress.startedAt) : 0);
 }
 
+// Timer and deadline always move together: a state emitted while no timer is
+// pending must report "no deadline" instead of the previous phase's leftover
+// one (an old deadline would surface as a wrong countdown in the clients).
 function clearTimer(match: Match): void {
   if (match.timer) clearTimeout(match.timer);
   match.timer = null;
+  match.deadlineAt = null;
 }
 
 function schedule(match: Match, delayMs: number, callback: () => void): void {
@@ -131,11 +135,12 @@ function finishChallenge(io: Server, match: Match): void {
     match.scores.set(player.id, (match.scores.get(player.id) ?? 0) + progress.score);
   }
   match.history.push({ key: match.current.key, title: match.current.title, scores: match.players.map((player) => ({ playerId: player.id, name: player.name, score: match.progress.get(player.id)!.score })) });
-  emitState(io, match);
-  emitArcadeRoom(io, match.room, 'challenge-rush:challenge:end', { matchId: match.id, scores: scorePayload(match) }, match);
   // Players confirm they've seen the result via challenge-rush:challenge:ready;
   // this is only the reliability fallback so an AFK/forgotten click can't stall the match forever.
+  // Armed before the emit so the announced remainingMs belongs to this phase.
   schedule(match, resultReadyTimeoutMs(), () => nextChallenge(io, match));
+  emitState(io, match);
+  emitArcadeRoom(io, match.room, 'challenge-rush:challenge:end', { matchId: match.id, scores: scorePayload(match) }, match);
 }
 
 function nextChallenge(io: Server, match: Match): void {
@@ -145,8 +150,11 @@ function nextChallenge(io: Server, match: Match): void {
   match.phase = 'countdown';
   match.current = challengePayload(match.order[match.index], (match.seed + match.index * 7919) >>> 0);
   match.progress = new Map(match.players.map((player) => [player.id, { clicks: 0, errors: 0, correct: 0, completed: false, score: 0, startedAt: 0, elapsedBeforePause: 0, lastInputAt: 0 }]));
-  emitState(io, match);
+  // Arm the countdown before announcing the phase: the clients derive their
+  // 3-2-1 overlay from this state's remainingMs, so it has to already be the
+  // countdown deadline and not the result phase's ready-timeout.
   schedule(match, arcadeTiming.countdownMs, () => beginChallenge(io, match));
+  emitState(io, match);
 }
 
 function cleanupMatch(io: Server, match: Match): void {
