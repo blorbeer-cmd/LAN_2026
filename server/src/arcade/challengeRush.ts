@@ -8,7 +8,13 @@ import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { arcadeTiming } from './timing';
-import { CHALLENGES, challengePayload, isCurrentChallenge, isReadyForNext, remainingUntil, scoreCps, scoreNumberSalad, scoreReaction, scoreTiming10, winnerIdForScores, type ChallengeKey } from './challengeRushLogic';
+import {
+  CHALLENGES, challengePayload, isCurrentChallenge, isReadyForNext, remainingUntil,
+  scoreAimTrainer, scoreColorWord, scoreCps, scoreMemorySequence, scoreNumberSalad, scoreOddOneOut,
+  scoreReaction, scoreTiming10, scoreTrafficLight, scoreWhackAMole, winnerIdForScores,
+  COLOR_WORD_ROUND_COUNT, MEMORY_SEQUENCE_LENGTH, WHACK_A_MOLE_SEQUENCE_LENGTH, AIM_TRAINER_TARGET_COUNT,
+  type ChallengeKey,
+} from './challengeRushLogic';
 
 const MAX_PLAYERS = 15;
 const DEFAULT_RECONNECT_GRACE_MS = 15_000;
@@ -116,6 +122,21 @@ function beginChallenge(io: Server, match: Match): void {
   emitState(io, match);
 }
 
+// Score for a player who never reached their own completion condition before
+// the shared challenge deadline hit (e.g. didn't hit every aim target). Time-
+// only challenges without a completable end state (reaction-circle, traffic-
+// light) fall through to 0, matching "no reaction recorded".
+function timeoutScore(key: ChallengeKey, progress: Progress, elapsedMs: number): number {
+  if (key === 'cps') return scoreCps(progress.clicks);
+  if (key === 'number-salad') return scoreNumberSalad(progress.correct, progress.errors, elapsedMs);
+  if (key === 'timing-10') return scoreTiming10(elapsedMs);
+  if (key === 'aim-trainer') return scoreAimTrainer(progress.correct, elapsedMs);
+  if (key === 'memory-sequence') return scoreMemorySequence(progress.correct);
+  if (key === 'whack-a-mole') return scoreWhackAMole(progress.correct, progress.errors, elapsedMs);
+  if (key === 'color-word') return scoreColorWord(progress.correct, progress.errors, elapsedMs);
+  return 0;
+}
+
 function finishChallenge(io: Server, match: Match): void {
   if (match.phase !== 'playing' || match.paused) return;
   match.phase = 'result';
@@ -125,7 +146,7 @@ function finishChallenge(io: Server, match: Match): void {
     const progress = match.progress.get(player.id)!;
     if (!progress.completed) {
       const elapsed = Math.min(activeElapsed(progress), match.current.durationMs);
-      progress.score = match.current.key === 'cps' ? scoreCps(progress.clicks) : match.current.key === 'number-salad' ? scoreNumberSalad(progress.correct, progress.errors, elapsed) : match.current.key === 'timing-10' ? scoreTiming10(elapsed) : 0;
+      progress.score = timeoutScore(match.current.key, progress, elapsed);
       progress.completed = true;
     }
     match.scores.set(player.id, (match.scores.get(player.id) ?? 0) + progress.score);
@@ -228,17 +249,56 @@ export function registerChallengeRushSockets(io: Server): void {
     socket.on('challenge-rush:lobby:leave', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null; if (!lobby || !canUseLobby(socket, lobby) || !owns(socket, payload.playerId)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' }); if (payload.playerId === lobby.host.id) { releaseLobbyMemberships(lobby.players.map((player) => player.id), 'challenge-rush', lobby.id); lobbies.delete(lobby.id); } else { releaseLobbyMembership(payload.playerId, 'challenge-rush', lobby.id); lobby.players = lobby.players.filter((player) => player.id !== payload.playerId); lobby.socketIds.delete(payload.playerId); lobby.ready.delete(payload.playerId); } emitLobbies(io); ack?.({ ok: true }); });
     socket.on('challenge-rush:lobby:ready', (payload: { lobbyId?: string; playerId?: string; ready?: boolean }, ack?: (r: unknown) => void) => { const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null; if (!lobby || !canUseLobby(socket, lobby) || !owns(socket, payload.playerId) || !setLobbyReady(lobby, payload.playerId, payload.ready)) return ack?.({ ok: false, error: 'Bereit-Status konnte nicht gesetzt werden.' }); emitLobbies(io); ack?.({ ok: true }); });
     socket.on('challenge-rush:lobby:start', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null; if (!lobby || !canUseLobby(socket, lobby) || !owns(socket, payload.playerId) || payload.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' }); if (lobby.players.length < 1 || lobby.players.some((player) => !isLobbyReady(lobby, player.id))) return ack?.({ ok: false, error: 'Alle Mitspieler müssen bereit sein.' }); const match = startMatch(io, lobby); ack?.({ ok: true, matchId: match.id }); });
-    socket.on('challenge-rush:challenge:input', (payload: { matchId?: string; playerId?: string; challengeIndex?: number; action?: string; value?: number | { x?: number; y?: number } }, ack?: (r: unknown) => void) => {
+    socket.on('challenge-rush:challenge:input', (payload: { matchId?: string; playerId?: string; challengeIndex?: number; action?: string; value?: number | string | { x?: number; y?: number } }, ack?: (r: unknown) => void) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null; const p = match && payload.playerId ? match.progress.get(payload.playerId) : null;
       if (!match || match.phase !== 'playing' || match.paused || !p || !owns(socket, payload.playerId) || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Eingabe nicht möglich.' });
       const progress = () => ({ ok: true, progress: progressPayload(p) });
       if (!isCurrentChallenge(payload.challengeIndex ?? -1, match.index)) return ack?.({ ...progress(), ignored: true, reason: 'stale-challenge' });
       const now = Date.now(); if (p.completed) return ack?.({ ...progress(), duplicate: true }); if (now - p.lastInputAt < 30) return ack?.({ ...progress(), ignored: true }); p.lastInputAt = now;
       const elapsed = Math.min(activeElapsed(p, now), match.current.durationMs);
-      if (match.current.key === 'reaction-circle') { const point = payload.value && typeof payload.value === 'object' ? payload.value : {}; const target = match.current.data; const validPoint = typeof point.x === 'number' && typeof point.y === 'number' && Math.abs(point.x - Number(target.x)) <= 12 && Math.abs(point.y - Number(target.y)) <= 12; if (payload.action !== 'hit' || !validPoint) return ack?.({ ok: false, error: 'Ungültiges Ziel.', progress: progressPayload(p) }); p.score = scoreReaction(elapsed); p.completed = true; }
+      const pointValue = (): { x?: number; y?: number } => (payload.value && typeof payload.value === 'object' ? payload.value : {});
+      const hitsPoint = (target: { x?: unknown; y?: unknown }): boolean => { const point = pointValue(); return typeof point.x === 'number' && typeof point.y === 'number' && Math.abs(point.x - Number(target.x)) <= 12 && Math.abs(point.y - Number(target.y)) <= 12; };
+      if (match.current.key === 'reaction-circle') { if (payload.action !== 'hit' || !hitsPoint(match.current.data as { x: number; y: number })) return ack?.({ ok: false, error: 'Ungültiges Ziel.', progress: progressPayload(p) }); p.score = scoreReaction(elapsed); p.completed = true; }
       else if (match.current.key === 'cps') { if (payload.action !== 'click') return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) }); p.clicks += 1; }
       else if (match.current.key === 'number-salad') { const expected = p.correct + 1; if (payload.action !== 'number' || payload.value !== expected) p.errors += 1; else p.correct += 1; if (p.correct >= 8) { p.score = scoreNumberSalad(p.correct, p.errors, elapsed); p.completed = true; } }
       else if (match.current.key === 'timing-10') { if (payload.action !== 'stop') return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) }); p.score = scoreTiming10(elapsed); p.completed = true; }
+      else if (match.current.key === 'aim-trainer') {
+        const targets = match.current.data.targets as Array<{ x: number; y: number }>;
+        if (payload.action !== 'hit' || !hitsPoint(targets[p.correct] ?? {})) return ack?.({ ok: false, error: 'Ungültiges Ziel.', progress: progressPayload(p) });
+        p.correct += 1;
+        if (p.correct >= AIM_TRAINER_TARGET_COUNT) { p.score = scoreAimTrainer(p.correct, elapsed); p.completed = true; }
+      }
+      else if (match.current.key === 'memory-sequence') {
+        const sequence = match.current.data.sequence as number[];
+        if (payload.action !== 'tile' || typeof payload.value !== 'number') return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) });
+        if (payload.value === sequence[p.correct]) p.correct += 1; else p.errors += 1;
+        if (p.errors > 0 || p.correct >= MEMORY_SEQUENCE_LENGTH) { p.score = scoreMemorySequence(p.correct); p.completed = true; }
+      }
+      else if (match.current.key === 'odd-one-out') {
+        if (payload.action !== 'select' || typeof payload.value !== 'number') return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) });
+        if (payload.value === match.current.data.oddIndex) { p.score = scoreOddOneOut(elapsed); p.completed = true; } else p.errors += 1;
+      }
+      else if (match.current.key === 'whack-a-mole') {
+        const sequence = match.current.data.sequence as number[];
+        if (payload.action !== 'hit' || typeof payload.value !== 'number') return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) });
+        if (payload.value === sequence[p.correct]) p.correct += 1; else p.errors += 1;
+        if (p.correct >= WHACK_A_MOLE_SEQUENCE_LENGTH) { p.score = scoreWhackAMole(p.correct, p.errors, elapsed); p.completed = true; }
+      }
+      else if (match.current.key === 'traffic-light') {
+        if (payload.action !== 'click') return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) });
+        const greenAtMs = Number(match.current.data.greenAtMs);
+        const falseStart = elapsed < greenAtMs;
+        p.score = scoreTrafficLight(elapsed - greenAtMs, falseStart);
+        if (falseStart) p.errors += 1;
+        p.completed = true;
+      }
+      else if (match.current.key === 'color-word') {
+        const rounds = match.current.data.rounds as Array<{ textColor: string }>;
+        const roundIndex = p.correct + p.errors;
+        if (payload.action !== 'answer' || typeof payload.value !== 'string' || roundIndex >= rounds.length) return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) });
+        if (payload.value === rounds[roundIndex].textColor) p.correct += 1; else p.errors += 1;
+        if (p.correct + p.errors >= COLOR_WORD_ROUND_COUNT) { p.score = scoreColorWord(p.correct, p.errors, elapsed); p.completed = true; }
+      }
       if ([...match.progress.values()].every((entry) => entry.completed)) finishChallenge(io, match);
       ack?.({ ok: true, accepted: true, progress: progressPayload(p) });
     });

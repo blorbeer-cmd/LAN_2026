@@ -8,13 +8,54 @@ import { infoTooltipHtml } from '../infoTooltip.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 
+const COLOR_WORD_LABELS = { red: 'Rot', blue: 'Blau', green: 'Grün', yellow: 'Gelb' };
+const COLOR_WORD_VARS = { red: 'var(--danger)', blue: 'var(--accent)', green: 'var(--state-playing)', yellow: 'var(--state-paused)' };
+const MEMORY_REVEAL_STEP_MS = 700; const MEMORY_REVEAL_SHOW_MS = 500;
+
 let socket = null; let lobbies = []; let match = null; let latestResult = null; let numberOrder = 1; let prevMyScore = null;
-let countdownKey = null; let startedKey = null;
+let countdownKey = null; let startedKey = null; let presentationKey = null;
+// Shared "how far into the current sequence" pointer for aim-trainer,
+// whack-a-mole, memory-sequence and color-word — only one of them is ever
+// the active challenge at a time, so one counter is enough.
+let progressStep = 0;
+let memoryRevealDone = false; let memoryRevealIndex = -1; let trafficGreen = false;
+let revealTimers = [];
 const myId = () => getMyId();
 const currentView = () => document.getElementById('view-container')?.dataset.view;
 const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
 function navigate(view) { window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view })); }
 function emit(event, payload) { return new Promise((resolve) => socket?.emit(event, payload, resolve)); }
+function clearRevealTimers() { revealTimers.forEach(clearTimeout); revealTimers = []; }
+function scheduleAt(delayMs, callback) { revealTimers.push(setTimeout(callback, Math.max(0, delayMs))); }
+function rerenderIfVisible() { if (currentView() === 'challengeRush') rerender(); }
+function elapsedInChallenge(state) { return (state.challenge?.durationMs ?? 0) - (state.remainingMs ?? 0); }
+// Both timers below are purely presentational: the server independently
+// validates timing from its own elapsed clock, so a client that paused,
+// reconnected or drifted only ever sees a wrong *animation*, never an unfair
+// score. Scheduling is re-derived from remainingMs on every relevant state
+// push (challenge start, pause, resume) instead of running once, so it stays
+// correct across those transitions.
+function scheduleTrafficLight(state) {
+  clearRevealTimers();
+  const elapsed = elapsedInChallenge(state);
+  const greenAtMs = Number(state.challenge?.data?.greenAtMs ?? 0);
+  if (elapsed >= greenAtMs) { trafficGreen = true; return; }
+  trafficGreen = false;
+  scheduleAt(greenAtMs - elapsed, () => { trafficGreen = true; rerenderIfVisible(); });
+}
+function scheduleMemoryReveal(state) {
+  clearRevealTimers();
+  const sequence = state.challenge?.data?.sequence ?? [];
+  const elapsed = elapsedInChallenge(state);
+  sequence.forEach((tile, index) => {
+    const showAt = index * MEMORY_REVEAL_STEP_MS; const hideAt = showAt + MEMORY_REVEAL_SHOW_MS;
+    if (elapsed < showAt) scheduleAt(showAt - elapsed, () => { memoryRevealIndex = tile; rerenderIfVisible(); });
+    if (elapsed < hideAt) scheduleAt(hideAt - elapsed, () => { memoryRevealIndex = -1; rerenderIfVisible(); });
+  });
+  const doneAt = sequence.length * MEMORY_REVEAL_STEP_MS;
+  if (elapsed < doneAt) scheduleAt(doneAt - elapsed, () => { memoryRevealDone = true; memoryRevealIndex = -1; rerenderIfVisible(); });
+  else memoryRevealDone = true;
+}
 
 // Drives the shared 3-2-1 overlay per challenge (not just once per match) and
 // the start sound, keyed by match+challenge so re-renders/reconnects never
@@ -22,6 +63,10 @@ function emit(event, payload) { return new Promise((resolve) => socket?.emit(eve
 // against the recalculated remaining time.
 function syncPresentation(state) {
   const key = `${state.matchId}:${state.challengeIndex}`;
+  if (key !== presentationKey) {
+    presentationKey = key; clearRevealTimers();
+    progressStep = 0; memoryRevealDone = false; memoryRevealIndex = -1; trafficGreen = false;
+  }
   if (state.phase === 'countdown' && !state.paused) {
     if (countdownKey !== key) { countdownKey = key; showCountdown(Date.now() + (state.remainingMs ?? 0)); }
   } else if (state.paused) {
@@ -30,6 +75,12 @@ function syncPresentation(state) {
     cancelCountdown();
   }
   if (state.phase === 'playing' && startedKey !== key) { startedKey = key; playArcadeSound('challenge-start'); }
+  if (state.phase === 'playing' && !state.paused) {
+    if (state.challenge?.key === 'traffic-light') scheduleTrafficLight(state);
+    else if (state.challenge?.key === 'memory-sequence') scheduleMemoryReveal(state);
+  } else if (state.phase !== 'playing') {
+    clearRevealTimers();
+  }
 }
 
 export function ensureChallengeRushSocket() {
@@ -111,7 +162,38 @@ function challengeView(container) {
   if (challenge?.key === 'cps') body = `<button type="button" class="challenge-rush-big-button" ${playing ? '' : 'disabled'}>KLICKEN</button><p class="muted">Klicks: <strong id="cr-clicks">0</strong></p>`;
   if (challenge?.key === 'number-salad') body = `<div class="challenge-rush-number-grid">${(data.numbers ?? []).map((number) => `<button type="button" class="btn challenge-rush-number" data-cr-number="${number}" ${playing ? '' : 'disabled'}>${number}</button>`).join('')}</div><p class="muted">Nächste Zahl: <strong>${numberOrder}</strong></p>`;
   if (challenge?.key === 'timing-10') body = `<button type="button" class="challenge-rush-big-button" data-cr-stop ${playing ? '' : 'disabled'}>STOPP</button><p class="muted">Keine laufende Zeit sichtbar – vertraue deinem Gefühl.</p>`;
-  return `<section class="card stack challenge-rush-stage" data-match-id="${escapeHtml(match?.matchId ?? '')}" data-challenge-index="${match?.challengeIndex ?? -1}" data-phase="${escapeHtml(match?.phase ?? '')}" data-remaining-ms="${match?.remainingMs ?? ''}" data-reconnected="${match?.reconnected === true}" data-disconnected="${match?.disconnected === true}" aria-live="polite"><div class="row-between"><span class="badge badge-playing">Challenge ${(match?.challengeIndex ?? 0) + 1} / ${match?.challengeCount ?? 4}</span><span>${match?.paused ? 'Pause' : match?.phase === 'countdown' ? 'Startet gleich' : 'Läuft'}</span></div><h2>${escapeHtml(challenge?.title ?? 'Mini-Challenge')}</h2><p class="muted">${escapeHtml(challenge?.description ?? '')}</p><div class="challenge-rush-playfield">${body}</div></section>`;
+  if (challenge?.key === 'aim-trainer') {
+    const targets = data.targets ?? []; const target = playing ? targets[progressStep] : null;
+    body = target
+      ? `<button type="button" class="challenge-rush-circle" data-cr-x="${target.x}" data-cr-y="${target.y}" aria-label="Ziel treffen" style="left:${target.x}%;top:${target.y}%"></button>`
+      : '<p class="muted">Die Ziele erscheinen, sobald es losgeht.</p>';
+    body += `<p class="muted challenge-rush-target-progress">${Math.min(progressStep, targets.length)} / ${targets.length} getroffen</p>`;
+  }
+  if (challenge?.key === 'memory-sequence') {
+    const tileCount = data.tileCount ?? 9;
+    const tiles = Array.from({ length: tileCount }, (_, index) => `<button type="button" class="challenge-rush-tile ${memoryRevealIndex === index ? 'is-active' : ''}" data-cr-tile="${index}" ${playing && memoryRevealDone ? '' : 'disabled'} aria-label="Feld ${index + 1}"></button>`).join('');
+    body = `<div class="challenge-rush-tile-grid" style="grid-template-columns:repeat(3,1fr);">${tiles}</div><p class="muted">${!playing ? 'Bereithalten …' : memoryRevealDone ? `Feld ${progressStep + 1} von ${data.sequence?.length ?? 0}` : 'Merke dir die Reihenfolge …'}</p>`;
+  }
+  if (challenge?.key === 'odd-one-out') {
+    const tileCount = data.tileCount ?? 16;
+    const tiles = Array.from({ length: tileCount }, (_, index) => `<button type="button" class="challenge-rush-tile ${playing && index === data.oddIndex ? 'is-odd' : ''}" data-cr-tile="${index}" ${playing ? '' : 'disabled'} aria-label="Feld ${index + 1}"></button>`).join('');
+    body = `<div class="challenge-rush-tile-grid" style="grid-template-columns:repeat(4,1fr);">${tiles}</div>`;
+  }
+  if (challenge?.key === 'whack-a-mole') {
+    const holeCount = data.holeCount ?? 9; const active = playing ? data.sequence?.[progressStep] : null;
+    const tiles = Array.from({ length: holeCount }, (_, index) => `<button type="button" class="challenge-rush-tile ${active === index ? 'is-active' : ''}" data-cr-tile="${index}" ${playing ? '' : 'disabled'} aria-label="Loch ${index + 1}"></button>`).join('');
+    body = `<div class="challenge-rush-tile-grid" style="grid-template-columns:repeat(3,1fr);">${tiles}</div><p class="muted challenge-rush-target-progress">${Math.min(progressStep, data.sequence?.length ?? 0)} / ${data.sequence?.length ?? 0} getroffen</p>`;
+  }
+  if (challenge?.key === 'traffic-light') {
+    body = `<button type="button" class="challenge-rush-traffic-light ${trafficGreen ? 'is-green' : 'is-red'}" data-cr-traffic ${playing ? '' : 'disabled'} aria-label="Klicken sobald Grün">${trafficGreen ? 'GRÜN' : 'ROT'}</button><p class="muted">Zu früh klicken zählt als Fehlstart.</p>`;
+  }
+  if (challenge?.key === 'color-word') {
+    const rounds = data.rounds ?? []; const round = playing ? rounds[progressStep] : null;
+    const word = round ? `<div class="challenge-rush-color-word" style="color:${COLOR_WORD_VARS[round.textColor] ?? 'inherit'}">${escapeHtml(round.word)}</div>` : '<p class="muted">Bereithalten …</p>';
+    const options = round ? `<div class="challenge-rush-color-options">${round.options.map((key) => `<button type="button" class="btn challenge-rush-color-option" data-cr-color="${key}" style="border-color:${COLOR_WORD_VARS[key]};"><span class="challenge-rush-color-dot" style="background:${COLOR_WORD_VARS[key]};"></span>${COLOR_WORD_LABELS[key] ?? key}</button>`).join('')}</div>` : '';
+    body = `${word}${options}<p class="muted challenge-rush-target-progress">${Math.min(progressStep, rounds.length)} / ${rounds.length}</p>`;
+  }
+  return `<section class="card stack challenge-rush-stage" data-match-id="${escapeHtml(match?.matchId ?? '')}" data-challenge-index="${match?.challengeIndex ?? -1}" data-phase="${escapeHtml(match?.phase ?? '')}" data-remaining-ms="${match?.remainingMs ?? ''}" data-reconnected="${match?.reconnected === true}" data-disconnected="${match?.disconnected === true}" data-challenge-key="${escapeHtml(challenge?.key ?? '')}" aria-live="polite"><div class="row-between"><span class="badge badge-playing">Challenge ${(match?.challengeIndex ?? 0) + 1} / ${match?.challengeCount ?? 4}</span><span>${match?.paused ? 'Pause' : match?.phase === 'countdown' ? 'Startet gleich' : 'Läuft'}</span></div><h2>${escapeHtml(challenge?.title ?? 'Mini-Challenge')}</h2><p class="muted">${escapeHtml(challenge?.description ?? '')}</p><div class="challenge-rush-playfield">${body}</div></section>`;
 }
 function resultView() {
   const entry = match?.history?.[match.history.length - 1];
@@ -149,8 +231,16 @@ export function renderChallengeRush(container, ctx) {
   container.querySelector('[data-cr-leave-match]')?.addEventListener('click', async () => { if (!(await confirmDialog('Challenge Rush wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return; const result = await emit('challenge-rush:match:leave', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Verlassen fehlgeschlagen.', { error: true }); });
   container.querySelector('#cr-ready-next')?.addEventListener('click', async () => { const result = await emit('challenge-rush:challenge:ready', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Bereit-Status fehlgeschlagen.', { error: true }); });
   const send = (action, value, onAccepted = () => {}) => socket.emit('challenge-rush:challenge:input', { matchId: match.matchId, playerId: myId(), challengeIndex: match.challengeIndex, action, value }, (result) => { if (!result?.ok && !result?.ignored) return showToast(result?.error || 'Eingabe abgelehnt.', { error: true }); if (result?.ok && !result?.ignored && !result?.duplicate) onAccepted(result.progress); });
-  container.querySelector('.challenge-rush-circle')?.addEventListener('click', (event) => { const circle = event.currentTarget; send('hit', { x: Number(circle.dataset.crX), y: Number(circle.dataset.crY) }); });
+  container.querySelector('.challenge-rush-circle')?.addEventListener('click', (event) => { const circle = event.currentTarget; send('hit', { x: Number(circle.dataset.crX), y: Number(circle.dataset.crY) }, (progress) => { if (match?.challenge?.key === 'aim-trainer') { progressStep = progress.correct; rerender(); } }); });
   container.querySelector('.challenge-rush-big-button:not([data-cr-stop])')?.addEventListener('click', () => send('click', undefined, (progress) => { const counter = container.querySelector('#cr-clicks'); if (counter) counter.textContent = String(progress.clicks); }));
   container.querySelector('[data-cr-stop]')?.addEventListener('click', () => send('stop'));
   container.querySelectorAll('[data-cr-number]').forEach((button) => button.addEventListener('click', () => { const value = Number(button.dataset.crNumber); send('number', value, (progress) => { numberOrder = progress.correct + 1; if (progress.correct === value) button.disabled = true; }); }));
+  container.querySelectorAll('[data-cr-tile]').forEach((button) => button.addEventListener('click', () => {
+    const value = Number(button.dataset.crTile); const key = match?.challenge?.key;
+    if (key === 'memory-sequence') send('tile', value, (progress) => { progressStep = progress.correct; rerender(); });
+    else if (key === 'odd-one-out') send('select', value, () => rerender());
+    else if (key === 'whack-a-mole') send('hit', value, (progress) => { progressStep = progress.correct; rerender(); });
+  }));
+  container.querySelector('[data-cr-traffic]')?.addEventListener('click', () => send('click', undefined, () => rerender()));
+  container.querySelectorAll('[data-cr-color]').forEach((button) => button.addEventListener('click', () => send('answer', button.dataset.crColor, (progress) => { progressStep = progress.correct + progress.errors; rerender(); })));
 }

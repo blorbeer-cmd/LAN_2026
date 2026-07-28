@@ -238,6 +238,130 @@ test('Challenge Rush lets a player leave without ending the match for the others
   }
 });
 
+function sleep(ms: number): Promise<void> { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+// Each step waits out the server's 30ms per-player input throttle so a fast
+// local round trip never gets silently ignored and forces a full-duration
+// timeout instead (still correct, just needlessly slow for this test).
+async function sendSequence<T>(send: (action: string, value?: unknown) => Promise<unknown>, action: string, items: T[], toValue: (item: T) => unknown): Promise<void> {
+  for (const item of items) { await send(action, toValue(item)); await sleep(35); }
+}
+
+async function completeChallenge(socket: ClientSocket, matchId: string, playerId: string, state: State): Promise<unknown> {
+  const { key, data } = state.challenge as { key: string; data: Record<string, unknown> };
+  const challengeIndex = state.challengeIndex;
+  const send = (action: string, value?: unknown) => emitAck(socket, 'challenge-rush:challenge:input', { matchId, playerId, challengeIndex, action, value });
+  if (key === 'reaction-circle') { const target = data as unknown as { x: number; y: number }; return send('hit', { x: target.x, y: target.y }); }
+  if (key === 'aim-trainer') return sendSequence(send, 'hit', data.targets as Array<{ x: number; y: number }>, (target) => ({ x: target.x, y: target.y }));
+  if (key === 'cps') return send('click');
+  if (key === 'number-salad') { const sorted = [...(data.numbers as number[])].sort((a, b) => a - b); return sendSequence(send, 'number', sorted, (n) => n); }
+  if (key === 'timing-10') return send('stop');
+  if (key === 'memory-sequence') return sendSequence(send, 'tile', data.sequence as number[], (tile) => tile);
+  if (key === 'odd-one-out') return send('select', data.oddIndex);
+  if (key === 'whack-a-mole') return sendSequence(send, 'hit', data.sequence as number[], (hole) => hole);
+  if (key === 'traffic-light') return send('click');
+  if (key === 'color-word') return sendSequence(send, 'answer', data.rounds as Array<{ textColor: string }>, (round) => round.textColor);
+  throw new Error(`Unbekannte Challenge: ${key}`);
+}
+
+test('Challenge Rush plays through every Phase 3 mini-challenge and records a complete history', async () => {
+  clearLobbyMemberships();
+  const server = await makeServer();
+  const socket = await connect(server.baseUrl);
+  try {
+    const playerId = await player(server.baseUrl, 'Challenge Rush Full Run');
+    const created = await emitAck(socket, 'challenge-rush:lobby:create', { playerId });
+    const started = nextEvent<{ matchId: string; challengeCount: number }>(socket, 'challenge-rush:match:start');
+    await emitAck(socket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId });
+    const match = await started;
+    assert.equal(match.challengeCount, 10);
+
+    const ended = nextEvent<{ history: Array<{ key: string }> }>(socket, 'challenge-rush:match:end');
+    for (let index = 0; index < match.challengeCount; index += 1) {
+      const playing = await nextState(socket, (state) => state.phase === 'playing' && state.challengeIndex === index);
+      const result = nextState(socket, (state) => state.phase === 'result' && state.challengeIndex === index);
+      await completeChallenge(socket, match.matchId, playerId, playing);
+      await result;
+      if (index < match.challengeCount - 1) {
+        const advanced = nextState(socket, (state) => state.phase === 'countdown' && state.challengeIndex === index + 1);
+        assert.equal((await emitAck(socket, 'challenge-rush:challenge:ready', { matchId: match.matchId, playerId })).ok, true);
+        await advanced;
+      } else {
+        assert.equal((await emitAck(socket, 'challenge-rush:challenge:ready', { matchId: match.matchId, playerId })).ok, true);
+      }
+    }
+    const finalState = await ended;
+    assert.equal(finalState.history.length, 10);
+    assert.deepEqual(finalState.history.map((entry) => entry.key).sort(), [
+      'aim-trainer', 'color-word', 'cps', 'memory-sequence', 'number-salad', 'odd-one-out',
+      'reaction-circle', 'timing-10', 'traffic-light', 'whack-a-mole',
+    ]);
+  } finally {
+    socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
+  }
+});
+
+test('Challenge Rush rejects invalid input and enforces round-specific rules for new mini-challenges', async () => {
+  clearLobbyMemberships();
+  const server = await makeServer();
+  const socket = await connect(server.baseUrl);
+  try {
+    const playerId = await player(server.baseUrl, 'Challenge Rush Validation');
+    const created = await emitAck(socket, 'challenge-rush:lobby:create', { playerId });
+    const started = nextEvent<{ matchId: string }>(socket, 'challenge-rush:match:start');
+    await emitAck(socket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId });
+    const match = await started;
+
+    // Skip ahead to 'aim-trainer' (index 4) by completing and confirming the first four challenges.
+    for (let index = 0; index < 4; index += 1) {
+      const playing = await nextState(socket, (state) => state.phase === 'playing' && state.challengeIndex === index);
+      const result = nextState(socket, (state) => state.phase === 'result' && state.challengeIndex === index);
+      await completeChallenge(socket, match.matchId, playerId, playing);
+      await result;
+      const advanced = nextState(socket, (state) => state.phase === 'countdown' && state.challengeIndex === index + 1);
+      await emitAck(socket, 'challenge-rush:challenge:ready', { matchId: match.matchId, playerId });
+      await advanced;
+    }
+
+    const aimPlaying = await nextState(socket, (state) => state.phase === 'playing' && state.challengeIndex === 4);
+    const target = (aimPlaying.challenge.data.targets as Array<{ x: number; y: number }>)[0];
+    const rejected = await emitAck(socket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId, challengeIndex: 4, action: 'hit', value: { x: target.x + 40, y: target.y + 40 } });
+    assert.equal(rejected.ok, false);
+    await sleep(35);
+    const accepted = await emitAck(socket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId, challengeIndex: 4, action: 'hit', value: { x: target.x, y: target.y } });
+    assert.equal(accepted.accepted, true);
+    assert.equal((accepted.progress as { correct: number }).correct, 1);
+
+    for (let index = 4; index < 8; index += 1) {
+      const playing = index === 4 ? aimPlaying : await nextState(socket, (state) => state.phase === 'playing' && state.challengeIndex === index);
+      const result = nextState(socket, (state) => state.phase === 'result' && state.challengeIndex === index);
+      if (index === 4) { for (const t of (playing.challenge.data.targets as Array<{ x: number; y: number }>).slice(1)) { await emitAck(socket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId, challengeIndex: index, action: 'hit', value: { x: t.x, y: t.y } }); await sleep(35); } }
+      else await completeChallenge(socket, match.matchId, playerId, playing);
+      await result;
+      const advanced = nextState(socket, (state) => state.phase === 'countdown' && state.challengeIndex === index + 1);
+      await emitAck(socket, 'challenge-rush:challenge:ready', { matchId: match.matchId, playerId });
+      await advanced;
+    }
+
+    // Now on 'traffic-light' (index 8): clicking before the green delay is a
+    // false start that must score 0 and still end the round immediately.
+    const trafficPlaying = await nextState(socket, (state) => state.phase === 'playing' && state.challengeIndex === 8);
+    const resultPromise = nextState(socket, (state) => state.phase === 'result' && state.challengeIndex === 8);
+    const falseStart = await emitAck(socket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId, challengeIndex: 8, action: 'click' });
+    assert.equal(falseStart.accepted, true);
+    const trafficResult = await resultPromise;
+    assert.equal(trafficResult.history[trafficResult.history.length - 1].scores.find((s) => s.playerId === playerId)?.score, 0);
+
+    // The round already ended for everyone (the only player just completed
+    // it), so a second input is rejected outright rather than accepted as a
+    // no-op duplicate.
+    const afterRoundEnd = await emitAck(socket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId, challengeIndex: 8, action: 'click' });
+    assert.equal(afterRoundEnd.ok, false);
+  } finally {
+    socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
+  }
+});
+
 test('Challenge Rush lets only the host end the match for everyone', async () => {
   clearLobbyMemberships();
   const server = await makeServer();

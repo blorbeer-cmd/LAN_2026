@@ -84,6 +84,10 @@
   --challenge-rush-button-min-height: 96px;
   --challenge-rush-number-min-width: 48px;
   --challenge-rush-number-grid-width: 360px;
+  --challenge-rush-tile-grid-width: 360px;
+  --challenge-rush-tile-min-size: 56px;
+  --challenge-rush-traffic-light-size: 140px;
+  --challenge-rush-color-dot-size: 16px;
   --notification-panel-width: 360px;
   --search-panel-width: 640px;
 
@@ -2252,6 +2256,20 @@ button.card {
 .challenge-rush-final-row { flex-direction: column; align-items: stretch; gap: var(--space-1); text-align: left; }
 .challenge-rush-final-row-main { display: flex; justify-content: space-between; gap: var(--space-3); }
 .challenge-rush-final-breakdown { font-size: var(--font-size-xs); }
+.challenge-rush-target-progress { text-align: center; }
+.challenge-rush-tile-grid { display: grid; gap: var(--space-2); width: min(100%, var(--challenge-rush-tile-grid-width)); }
+.challenge-rush-tile { aspect-ratio: 1; min-width: var(--challenge-rush-tile-min-size); min-height: var(--challenge-rush-tile-min-size); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated-2); cursor: pointer; }
+.challenge-rush-tile.is-active { background: var(--accent-gradient); border-color: transparent; box-shadow: var(--shadow-glow-accent); }
+.challenge-rush-tile.is-odd { background: var(--accent-gradient); border-style: dashed; border-color: var(--accent-text); }
+.challenge-rush-tile:disabled { cursor: default; opacity: 0.7; }
+.challenge-rush-traffic-light { width: var(--challenge-rush-traffic-light-size); height: var(--challenge-rush-traffic-light-size); margin-inline: auto; border: 0; border-radius: var(--radius-full); color: var(--accent-text); font-size: var(--font-size-lg); font-weight: var(--font-weight-black); cursor: pointer; }
+.challenge-rush-traffic-light.is-red { background: var(--danger); }
+.challenge-rush-traffic-light.is-green { background: var(--state-playing); }
+.challenge-rush-traffic-light:disabled { cursor: default; opacity: 0.7; }
+.challenge-rush-color-word { text-align: center; font-size: var(--font-size-3xl); font-weight: var(--font-weight-black); }
+.challenge-rush-color-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-2); width: 100%; }
+.challenge-rush-color-option { display: flex; align-items: center; justify-content: center; gap: var(--space-2); border-width: 2px; }
+.challenge-rush-color-dot { width: var(--challenge-rush-color-dot-size); height: var(--challenge-rush-color-dot-size); border-radius: var(--radius-full); }
 .arcade-tile-count {
   background: var(--state-playing-bg);
   color: var(--state-playing);
