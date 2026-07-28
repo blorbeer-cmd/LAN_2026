@@ -140,6 +140,7 @@ arcadeRouter.get('/stats', (req, res) => {
     string,
     {
       gameType: string;
+      baseGameType: string;
       mode: string | null;
       matches: number;
       players: Map<
@@ -161,23 +162,21 @@ arcadeRouter.get('/stats', (req, res) => {
     }
   >();
 
-  for (const row of rows) {
-    const parsed = parseJsonArray(row.scores);
-    // Only per-player score entries count. Legacy snake results serialized a
-    // bare score array ([12, 8]) with no player attribution — those rows are
-    // skipped entirely (not counted as matches, no phantom nameless player).
-    const scores = (Array.isArray(parsed) ? parsed : []).filter(
-      (s): s is ScoreEntry => !!s && typeof (s as ScoreEntry).playerId === 'string'
-    );
-    if (scores.length === 0) continue;
-
-    const baseMode = scores.some((score) => score.mode === 'arena') ? 'arena' : 'duel';
-    const mode =
-      row.game_type === 'tetris'
-        ? `${baseMode}${scores.some((score) => score.isBot === true || score.playerId.startsWith('tetris-bot')) ? '-ai' : ''}`
-        : null;
-    const statsKey = mode ? `${row.game_type}:${mode}` : row.game_type;
-    const game = games.get(statsKey) ?? { gameType: row.game_type, mode, matches: 0, players: new Map() };
+  const addResultToGame = (
+    statsKey: string,
+    gameType: string,
+    baseGameType: string,
+    mode: string | null,
+    row: ArcadeResultRow,
+    scores: ScoreEntry[],
+  ) => {
+    const game = games.get(statsKey) ?? {
+      gameType,
+      baseGameType,
+      mode,
+      matches: 0,
+      players: new Map(),
+    };
     game.matches += 1;
     for (const score of scores) {
       if (score.isBot === true || score.playerId.startsWith('tetris-bot')) continue;
@@ -208,6 +207,32 @@ arcadeRouter.get('/stats', (req, res) => {
       game.players.set(score.playerId, current);
     }
     games.set(statsKey, game);
+  };
+
+  for (const row of rows) {
+    const parsed = parseJsonArray(row.scores);
+    // Only per-player score entries count. Legacy snake results serialized a
+    // bare score array ([12, 8]) with no player attribution — those rows are
+    // skipped entirely (not counted as matches, no phantom nameless player).
+    const scores = (Array.isArray(parsed) ? parsed : []).filter(
+      (s): s is ScoreEntry => !!s && typeof (s as ScoreEntry).playerId === 'string'
+    );
+    if (scores.length === 0) continue;
+
+    const baseMode = scores.some((score) => score.mode === 'arena') ? 'arena' : 'duel';
+    const mode =
+      row.game_type === 'tetris'
+        ? `${baseMode}${scores.some((score) => score.isBot === true || score.playerId.startsWith('tetris-bot')) ? '-ai' : ''}`
+        : null;
+    const statsKey = mode ? `${row.game_type}:${mode}` : row.game_type;
+    if (row.game_type === 'tetris') {
+      // Preserve the legacy unique tetris entry and expose mode-specific
+      // variants under their own versioned gameType/statsKey values.
+      addResultToGame('tetris', 'tetris', 'tetris', null, row, scores);
+      addResultToGame(statsKey, statsKey, 'tetris', mode, row, scores);
+    } else {
+      addResultToGame(statsKey, row.game_type, row.game_type, mode, row, scores);
+    }
   }
 
   const drawingClauses = ['d.group_id = ?'];
@@ -253,16 +278,17 @@ arcadeRouter.get('/stats', (req, res) => {
         );
       return {
         gameType: game.gameType,
-        statsKey: game.mode ? `${game.gameType}:${game.mode}` : game.gameType,
+        statsKey: game.gameType,
+        ...(game.baseGameType !== game.gameType ? { baseGameType: game.baseGameType } : {}),
         mode: game.mode,
         title:
-          game.gameType === 'tetris'
+          game.baseGameType === 'tetris' && game.mode
             ? `Tetris ${game.mode?.startsWith('arena') ? 'Arena' : 'Duell'}${game.mode?.endsWith('-ai') ? ' · KI-Test' : ''}`
-            : ARCADE_TITLES[game.gameType] ?? game.gameType,
+            : ARCADE_TITLES[game.baseGameType] ?? game.baseGameType,
         matches: game.matches,
         leader: players[0] ?? null,
         players,
-        ...(game.gameType === 'scribble'
+        ...(game.baseGameType === 'scribble'
           ? {
               artPlayers: scribbleArtPlayers.map((player) => ({
                 playerId: player.player_id,

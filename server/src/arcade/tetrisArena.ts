@@ -4,8 +4,9 @@ export const TETRIS_DUEL_PLAYERS = 2;
 export const TETRIS_ARENA_MIN_PLAYERS = 3;
 export const TETRIS_ARENA_MAX_PLAYERS = 8;
 
-export function tetrisMode(value: unknown): TetrisMode {
-  return value === 'arena' ? 'arena' : 'duel';
+export function tetrisMode(value: unknown): TetrisMode | null {
+  if (value === undefined) return 'duel';
+  return value === 'duel' || value === 'arena' ? value : null;
 }
 
 export function tetrisPlayerLimit(mode: TetrisMode): number {
@@ -44,4 +45,8 @@ export function nextArenaTarget(
 
 export function placementForElimination(aliveBeforeElimination: number): number {
   return Math.max(2, aliveBeforeElimination);
+}
+
+export function placementForEliminationBatch(aliveBeforeElimination: number, eliminatedCount: number): number {
+  return Math.max(1, aliveBeforeElimination - Math.max(1, eliminatedCount) + 1);
 }

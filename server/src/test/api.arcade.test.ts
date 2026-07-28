@@ -95,11 +95,14 @@ test('GET /api/arcade/stats labels and aggregates tetris results too', async () 
   const res = await request(app).get('/api/arcade/stats');
   assert.equal(res.status, 200);
   const tetris = res.body.games.find((game: { gameType: string }) => game.gameType === 'tetris');
-  assert.equal(tetris.title, 'Tetris Duell');
+  const duel = res.body.games.find((game: { gameType: string }) => game.gameType === 'tetris:duel');
+  assert.equal(tetris.title, 'Tetris');
   assert.equal(tetris.matches, 1);
   assert.equal(tetris.leader.name, 'Tetris Cara');
   assert.equal(tetris.players[0].wins, 1);
   assert.equal(tetris.players[0].losses, 0);
+  assert.equal(duel.title, 'Tetris Duell');
+  assert.equal(duel.matches, 1);
 });
 
 test('GET /api/arcade/stats separates KI Arena placements and excludes KI opponents', async () => {
@@ -158,7 +161,14 @@ test('GET /api/arcade/stats separates KI Arena placements and excludes KI oppone
 
   const res = await request(app).get('/api/arcade/stats');
   assert.equal(res.status, 200);
+  assert.equal(new Set(res.body.games.map((game: { gameType: string }) => game.gameType)).size, res.body.games.length);
+  const aggregate = res.body.games.find((game: { gameType: string }) => game.gameType === 'tetris');
   const arena = res.body.games.find((game: { statsKey: string }) => game.statsKey === 'tetris:arena-ai');
+  assert.equal(aggregate.title, 'Tetris');
+  assert.ok(aggregate.matches >= 1);
+  assert.ok(aggregate.players.some((player: { name: string }) => player.name === 'Arena Sieger'));
+  assert.equal(arena.gameType, 'tetris:arena-ai');
+  assert.equal(arena.baseGameType, 'tetris');
   assert.equal(arena.title, 'Tetris Arena · KI-Test');
   assert.equal(arena.matches, 1);
   assert.equal(arena.players.length, 2);

@@ -100,18 +100,19 @@ function drawTetris(ctx, game, width, height) {
     const cell = Math.min((boardWidth * 0.78) / 10, (boardHeight * 0.78) / 20);
     const left = column * boardWidth + (boardWidth - cell * 10) / 2;
     const top = row * boardHeight + (boardHeight - cell * 20) / 2;
-    ctx.globalAlpha = player.alive === false ? 0.45 : 1;
+    const playerAlpha = player.alive === false ? 0.45 : 1;
+    ctx.globalAlpha = playerAlpha;
     ctx.fillStyle = cssColor('--bg-elevated');
     ctx.fillRect(left, top, cell * 10, cell * 20);
     ctx.strokeStyle = cssColor('--border');
-    ctx.globalAlpha = 0.25;
+    ctx.globalAlpha = playerAlpha * 0.25;
     for (let x = 1; x < 10; x += 1) {
       ctx.beginPath(); ctx.moveTo(left + x * cell, top); ctx.lineTo(left + x * cell, top + cell * 20); ctx.stroke();
     }
     for (let y = 1; y < 20; y += 1) {
       ctx.beginPath(); ctx.moveTo(left, top + y * cell); ctx.lineTo(left + cell * 10, top + y * cell); ctx.stroke();
     }
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = playerAlpha;
     (player.board ?? []).forEach((row, y) => row.forEach((value, x) => {
       if (!value) return;
       ctx.fillStyle = TETRIS_COLORS[value] ?? cssColor('--text-muted');

@@ -344,6 +344,7 @@ test('Tetris Arena supports four ready players with one large local board and th
   );
   const actors = await Promise.all(players.map((player) => openArcadeAs(player.id)));
   const [host, ...guests] = actors;
+  let hostClosed = false;
   try {
     await host.page.click('[data-game="tetris"]');
     await host.page.waitForSelector('#tetris-mode');
@@ -379,11 +380,19 @@ test('Tetris Arena supports four ready players with one large local board and th
     assert.ok(layout.primaryWidth > layout.opponentWidth);
     assert.ok(layout.scrollWidth <= layout.clientWidth);
 
-    await host.page.click('#tetris-finish');
-    await host.page.click('[data-confirm]');
-    await host.page.waitForSelector('#tetris-back');
+    await host.page.click('#tetris-pause');
+    await host.page.waitForSelector('#tetris-resume');
+    await host.context.close();
+    hostClosed = true;
+    await guests[0].page.waitForSelector('#tetris-resume');
+    await guests[0].page.click('#tetris-resume');
+    await guests[0].page.waitForSelector('#tetris-finish');
+    await guests[0].page.click('#tetris-finish');
+    await guests[0].page.click('[data-confirm]');
+    await guests[0].page.waitForSelector('#tetris-back');
   } finally {
-    for (const actor of actors) await actor.context.close();
+    if (!hostClosed) await host.context.close();
+    for (const actor of guests) await actor.context.close();
   }
 });
 

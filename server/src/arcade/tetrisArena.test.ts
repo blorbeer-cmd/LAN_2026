@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   canStartTetris,
   nextArenaTarget,
+  placementForEliminationBatch,
   placementForElimination,
   tetrisBotCount,
   tetrisMode,
@@ -13,7 +14,9 @@ import { emptyBoard, lockPiece, spawnPiece } from './tetrisLogic';
 
 test('Tetris modes keep duel exact and arena bounded to three through eight players', () => {
   assert.equal(tetrisMode('arena'), 'arena');
-  assert.equal(tetrisMode('unknown'), 'duel');
+  assert.equal(tetrisMode('duel'), 'duel');
+  assert.equal(tetrisMode(undefined), 'duel');
+  assert.equal(tetrisMode('unknown'), null);
   assert.equal(tetrisPlayerLimit('duel'), 2);
   assert.equal(tetrisPlayerLimit('arena'), 8);
   assert.equal(canStartTetris('duel', 2), true);
@@ -45,6 +48,12 @@ test('elimination placement reflects the number alive before top-out', () => {
   assert.equal(placementForElimination(8), 8);
   assert.equal(placementForElimination(3), 3);
   assert.equal(placementForElimination(1), 2);
+});
+
+test('simultaneous eliminations share the same competition placement', () => {
+  assert.equal(placementForEliminationBatch(4, 2), 3);
+  assert.equal(placementForEliminationBatch(3, 2), 2);
+  assert.equal(placementForEliminationBatch(2, 2), 1);
 });
 
 test('the KI planner deterministically finds a legal target and ends with a hard drop', () => {

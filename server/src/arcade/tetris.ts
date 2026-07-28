@@ -29,6 +29,7 @@ import {
   TetrisMode,
   canStartTetris,
   nextArenaTarget,
+  placementForEliminationBatch,
   placementForElimination,
   tetrisBotCount,
   tetrisMode,
@@ -131,6 +132,12 @@ interface TetrisMatch {
   lastTick: number;
   stateDirty: boolean;
   startedAt: number;
+}
+
+interface PendingElimination {
+  state: PlayerState;
+  reason: string;
+  sourcePlayerId: string | null;
 }
 
 const lobbies = new Map<string, TetrisLobby>();
@@ -372,24 +379,40 @@ function finishMatch(io: Server, match: TetrisMatch, winner: PlayerRef | null, r
   matches.delete(match.id);
 }
 
-function eliminatePlayer(match: TetrisMatch, state: PlayerState, reason: string, sourcePlayerId: string | null = null) {
-  if (!state.alive) return;
+function eliminatePlayers(match: TetrisMatch, pending: PendingElimination[]) {
+  const eliminations = pending.filter(
+    ({ state }, index) => state.alive && pending.findIndex((entry) => entry.state === state) === index,
+  );
+  if (eliminations.length === 0) return;
   const aliveBefore = aliveIds(match).size;
-  state.alive = false;
-  state.current = null;
-  state.placement = placementForElimination(aliveBefore);
-  state.eliminatedAt = Date.now();
-  state.eliminationReason = reason;
-  if (!isBotId(state.ref.id)) endArcadeSession([state.ref.id], 'tetris', match);
+  const placement = eliminations.length === 1
+    ? placementForElimination(aliveBefore)
+    : placementForEliminationBatch(aliveBefore, eliminations.length);
+  const eliminatedAt = Date.now();
+  for (const { state, reason } of eliminations) {
+    state.alive = false;
+    state.current = null;
+    state.placement = placement;
+    state.eliminatedAt = eliminatedAt;
+    state.eliminationReason = reason;
+    if (!isBotId(state.ref.id)) endArcadeSession([state.ref.id], 'tetris', match);
+  }
   const living = aliveIds(match);
+  const eliminatedIds = new Set(eliminations.map(({ state }) => state.ref.id));
   const playerOrder = match.players.map((player) => player.id);
   for (const other of match.states.values()) {
-    if (other.alive && other.targetId === state.ref.id) {
-      other.targetId = nextArenaTarget(playerOrder, living, other.ref.id, state.ref.id);
+    if (other.alive && other.targetId && eliminatedIds.has(other.targetId)) {
+      other.targetId = nextArenaTarget(playerOrder, living, other.ref.id, other.targetId);
     }
   }
-  const source = sourcePlayerId ? match.states.get(sourcePlayerId) : null;
-  if (source && source.ref.id !== state.ref.id) source.knockouts += 1;
+  for (const { state, sourcePlayerId } of eliminations) {
+    const source = sourcePlayerId ? match.states.get(sourcePlayerId) : null;
+    if (source && source.ref.id !== state.ref.id) source.knockouts += 1;
+  }
+}
+
+function eliminatePlayer(match: TetrisMatch, state: PlayerState, reason: string, sourcePlayerId: string | null = null) {
+  eliminatePlayers(match, [{ state, reason, sourcePlayerId }]);
 }
 
 // If exactly one player is left standing, end the match. Returns true if ended.
@@ -402,10 +425,17 @@ function checkGameOver(io: Server, match: TetrisMatch): boolean {
 }
 
 // Spawns the next piece for a player; if it collides immediately, they top out.
-function spawnNext(match: TetrisMatch, state: PlayerState) {
+function spawnNext(match: TetrisMatch, state: PlayerState, pendingEliminations?: PendingElimination[]) {
   const piece = spawnPiece(drawPieceType(match, state));
+  const sourcePlayerId = state.lastGarbageSourceId;
+  state.lastGarbageSourceId = null;
   if (collides(state.board, piece)) {
-    eliminatePlayer(match, state, 'top-out', state.lastGarbageSourceId);
+    if (pendingEliminations) {
+      state.current = null;
+      pendingEliminations.push({ state, reason: 'top-out', sourcePlayerId });
+    } else {
+      eliminatePlayer(match, state, 'top-out', sourcePlayerId);
+    }
   } else {
     state.current = piece;
     state.dropAcc = 0;
@@ -428,7 +458,7 @@ function cancelIncoming(state: PlayerState, attack: number): number {
 // the next piece. The garbage rules: clearing lines first cancels your own
 // pending garbage, then sends the surplus to your opponent; placing a piece
 // without clearing anything drops your pending garbage onto your own field.
-function lockAndAdvance(match: TetrisMatch, state: PlayerState) {
+function lockAndAdvance(match: TetrisMatch, state: PlayerState, pendingEliminations?: PendingElimination[]) {
   if (!state.current) return;
   const locked = lockPiece(state.board, state.current);
   const { board: cleared, cleared: clearedCount } = clearLines(locked);
@@ -456,10 +486,15 @@ function lockAndAdvance(match: TetrisMatch, state: PlayerState) {
     state.incoming = [];
   }
 
-  spawnNext(match, state);
+  spawnNext(match, state, pendingEliminations);
 }
 
-function applyInput(match: TetrisMatch, state: PlayerState, action: InputAction): boolean {
+function applyInput(
+  match: TetrisMatch,
+  state: PlayerState,
+  action: InputAction,
+  pendingEliminations?: PendingElimination[],
+): boolean {
   if (!state.current || !state.alive) return false;
   switch (action) {
     case 'left': {
@@ -491,14 +526,14 @@ function applyInput(match: TetrisMatch, state: PlayerState, action: InputAction)
         return true;
       }
       // Can't drop further -> lock in place.
-      lockAndAdvance(match, state);
+      lockAndAdvance(match, state, pendingEliminations);
       return true;
     }
     case 'hard': {
       const distance = dropDistance(state.board, state.current);
       state.current = { ...state.current, y: state.current.y + distance };
       state.score += distance * HARD_DROP_BONUS;
-      lockAndAdvance(match, state);
+      lockAndAdvance(match, state, pendingEliminations);
       return true;
     }
     default:
@@ -507,13 +542,13 @@ function applyInput(match: TetrisMatch, state: PlayerState, action: InputAction)
 }
 
 // One gravity step: drop the piece a row, or lock it if it can't fall.
-function gravityStep(match: TetrisMatch, state: PlayerState) {
+function gravityStep(match: TetrisMatch, state: PlayerState, pendingEliminations?: PendingElimination[]) {
   if (!state.current || !state.alive) return;
   const moved = tryMove(state.board, state.current, 0, 1);
   if (moved) {
     state.current = moved;
   } else {
-    lockAndAdvance(match, state);
+    lockAndAdvance(match, state, pendingEliminations);
   }
 }
 
@@ -528,6 +563,7 @@ function startLoop(io: Server, match: TetrisMatch) {
     const dt = now - match.lastTick;
     match.lastTick = now;
     let changed = false;
+    const pendingEliminations: PendingElimination[] = [];
 
     for (const bot of match.states.values()) {
       if (!isBotId(bot.ref.id) || !bot.alive || !bot.current) continue;
@@ -540,7 +576,7 @@ function startLoop(io: Server, match: TetrisMatch) {
       }
       if (now >= bot.nextBotMoveAt && bot.botPlan.length > 0) {
         const action = bot.botPlan.shift()!;
-        const acted = applyInput(match, bot, action);
+        const acted = applyInput(match, bot, action, pendingEliminations);
         bot.nextBotMoveAt = now + (action === 'hard' ? 0 : 55);
         changed = changed || acted;
       }
@@ -553,10 +589,11 @@ function startLoop(io: Server, match: TetrisMatch) {
       const gravityMs = gravityMsForLevel(state.level);
       while (state.dropAcc >= gravityMs && state.alive && state.current) {
         state.dropAcc -= gravityMs;
-        gravityStep(match, state);
+        gravityStep(match, state, pendingEliminations);
         changed = true;
       }
     }
+    eliminatePlayers(match, pendingEliminations);
     if (changed || match.stateDirty) {
       match.stateDirty = false;
       broadcastState(io, match);
@@ -610,7 +647,14 @@ function handleMatchDeparture(io: Server, match: TetrisMatch, playerId: string, 
     const nextHost = match.players.find(
       (player) => !isBotId(player.id) && match.states.get(player.id)?.alive && match.socketIds.has(player.id),
     );
-    if (nextHost) match.host = nextHost;
+    const livingBot = match.players.find((player) => isBotId(player.id) && match.states.get(player.id)?.alive);
+    if (nextHost) {
+      match.host = nextHost;
+    } else if (livingBot) {
+      match.host = livingBot;
+      finishMatch(io, match, livingBot, 'no-human-players');
+      return;
+    }
   }
   match.stateDirty = true;
   if (!checkGameOver(io, match)) broadcastState(io, match);
@@ -631,6 +675,7 @@ export function registerTetrisSockets(io: Server): void {
       const scope = socketArcadeScope(socket, player.id);
       if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
       const mode = tetrisMode(payload?.mode);
+      if (!mode) return ack?.({ ok: false, error: 'Unbekannter Tetris-Modus.' });
       const lobby: TetrisLobby = {
         id: nanoid(),
         ...scope,
@@ -655,6 +700,7 @@ export function registerTetrisSockets(io: Server): void {
       const scope = socketArcadeScope(socket, player.id);
       if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
       const mode = tetrisMode(payload?.mode);
+      if (!mode) return ack?.({ ok: false, error: 'Unbekannter Tetris-Modus.' });
       const botCount = tetrisBotCount(mode, payload?.botCount);
       const bots = mode === 'arena' ? arenaBots(botCount) : [BOT];
       const lobby: TetrisLobby = {

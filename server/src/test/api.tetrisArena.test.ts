@@ -44,6 +44,10 @@ test('Tetris Arena starts with four players, survives departures and records pla
     }
     const [hostId, secondId, thirdId, fourthId] = playerIds;
 
+    const invalidMode = await emitAck(sockets[0], 'tetris:lobby:create', { playerId: hostId, mode: 'typo' });
+    assert.equal(invalidMode.ok, false);
+    assert.match(invalidMode.error ?? '', /Modus/);
+
     const created = await emitAck(sockets[0], 'tetris:lobby:create', { playerId: hostId, mode: 'arena' });
     assert.equal(created.ok, true);
     const lobbyId = created.lobbyId as string;
@@ -105,6 +109,57 @@ test('Tetris Arena starts with four players, survives departures and records pla
     assert.equal(persisted.count, 1);
   } finally {
     for (const socket of sockets) socket.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    clearLobbyMemberships();
+  }
+});
+
+test('a paused KI Arena ends when its last human host leaves', async () => {
+  clearLobbyMemberships();
+  const httpServer = http.createServer(createApp());
+  const io = new Server(httpServer);
+  registerTetrisSockets(io);
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+  const hostSocket = await connect(baseUrl);
+  const observerSocket = await connect(baseUrl);
+
+  try {
+    const player = await request(baseUrl).post('/api/players').send({ name: 'Arena KI Host' });
+    assert.equal(player.status, 201);
+    db.prepare('UPDATE players SET is_admin = 1 WHERE id = ?').run(player.body.id);
+
+    const created = await emitAck(hostSocket, 'tetris:lobby:bot', {
+      playerId: player.body.id,
+      mode: 'arena',
+      botCount: 2,
+    });
+    assert.equal(created.ok, true);
+    const startedPromise = waitForEvent<{ matchId: string; beginsAt: number }>(hostSocket, 'tetris:match:start');
+    assert.equal(
+      (await emitAck(hostSocket, 'tetris:lobby:start', { lobbyId: created.lobbyId, playerId: player.body.id })).ok,
+      true,
+    );
+    const started = await startedPromise;
+    io.sockets.sockets.get(observerSocket.id!)?.join(`tetris:${started.matchId}`);
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, started.beginsAt - Date.now()) + 25));
+
+    assert.equal(
+      (await emitAck(hostSocket, 'tetris:match:pause', { matchId: started.matchId, playerId: player.body.id })).ok,
+      true,
+    );
+    const endedPromise = waitForEvent<{ winner: { id: string }; reason: string }>(observerSocket, 'tetris:match:end');
+    assert.equal(
+      (await emitAck(hostSocket, 'tetris:match:leave', { matchId: started.matchId, playerId: player.body.id })).ok,
+      true,
+    );
+    const ended = await endedPromise;
+    assert.match(ended.winner.id, /^tetris-bot-/);
+    assert.equal(ended.reason, 'no-human-players');
+  } finally {
+    hostSocket.close();
+    observerSocket.close();
     io.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     clearLobbyMemberships();

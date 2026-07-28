@@ -115,6 +115,7 @@ export function ensureTetrisSocket() {
 
   socket.on('tetris:state', (payload) => {
     latestState = payload;
+    const previousHostId = match?.host?.id ?? null;
     if (match) {
       match.running = payload.running;
       match.paused = payload.paused;
@@ -125,7 +126,10 @@ export function ensureTetrisSocket() {
     // The socket remains connected while the user visits other views. Never
     // trigger a render there: a frequent state tick must not compete with
     // bottom-navigation clicks or repaint the current view unnecessarily.
-    if (tetrisViewMounted()) paint();
+    if (tetrisViewMounted()) {
+      if ((match?.host?.id ?? null) !== previousHostId) rerender();
+      else paint();
+    }
   });
 
   socket.on('tetris:match:paused', () => {
