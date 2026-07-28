@@ -765,7 +765,7 @@ test('Vote: game-limit selection survives an unrelated re-render and select-all/
   await page.waitForSelector('#votes-game-select-wrap[hidden]', { state: 'attached' });
 });
 
-test('Vote: genre filter scopes the game-limit list, select-all/none and the started round to visible games', async () => {
+test('Vote: genre filter scopes the game-limit list, select-all/none and the started round to visible games', async (t) => {
   // Regression test: the genre chip filter only ever narrowed which games
   // were *displayed* in the "Nur bestimmte Spiele" checkbox grid. "Alle
   // markieren"/"Auswahl aufheben" and the actual start action still touched
@@ -773,6 +773,18 @@ test('Vote: genre filter scopes the game-limit list, select-all/none and the sta
   // "Shooter" and clicking "Alle markieren" silently (re-)selected every
   // other genre's games too, and starting the round could still include
   // games the filter was hiding.
+  //
+  // This test starts a round partway through (to verify what actually gets
+  // offered) and only closes it via UI clicks at the end — same hazard as
+  // "full click-through" above: if an assertion throws first, the round
+  // stays open for the rest of the shared page/session and cascades into
+  // later tests expecting the idle "start a round" form. Cancel any round
+  // left open directly through the API, independent of wherever the test
+  // aborted.
+  t.after(async () => {
+    const current = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
+    if (current.open) await page.request.post(`${BASE_URL}/api/votes/cancel`);
+  });
   const gamesRes = await page.request.get(`${BASE_URL}/api/games`);
   const games = (await gamesRes.json()) as Array<{ id: string; name: string }>;
   const cs2 = games.find((g) => g.name === 'Counter-Strike 2')!;
@@ -784,6 +796,11 @@ test('Vote: genre filter scopes the game-limit list, select-all/none and the sta
 
   await page.click('[data-view="votes"]');
   await page.waitForSelector('#votes-start');
+  // The idle Votes view kicks off its own async history fetch on first
+  // render (see votes.js's loadHistory) and re-renders the whole view from
+  // scratch once that resolves — settle that race before interacting, or a
+  // click can land on a checkbox that gets replaced out from under it.
+  await page.waitForLoadState('networkidle');
   await page.click('#votes-limit-games');
   await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
   // Manually deselect a game that the upcoming "Shooter" filter will hide -
