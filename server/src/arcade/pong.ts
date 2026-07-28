@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { playerMayUseArcadeAi } from './adminAccess';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
-import { BALL_RADIUS, PADDLE_HEIGHT, PADDLE_WIDTH, PONG_HEIGHT, PONG_WIDTH, PongInput, PongMode, PongTeam, PongWorld, createWorld, stepWorld } from './pongLogic';
+import { BALL_RADIUS, PADDLE_HEIGHT, PADDLE_WIDTH, PONG_HEIGHT, PONG_WIDTH, PongInput, PongMode, PongTeam, PongWorld, createWorld, pongPointScorerName, stepWorld } from './pongLogic';
 import { broadcastArcadeKiosk } from '../realtime';
 import { recordArcadeResult } from './arcadeData';
 import { arcadeTiming } from './timing';
@@ -48,7 +48,6 @@ const matches = new Map<string, Match>();
 const idle = (): PongInput => ({ up: false, down: false });
 const playerLimit = (mode: PongMode) => mode === 'doubles' ? 4 : 2;
 const opposingTeam = (team: PongTeam): PongTeam => team === 'left' ? 'right' : 'left';
-const teamName = (team: PongTeam) => team === 'left' ? 'Team Blau' : 'Team Pink';
 
 function playerById(id: unknown): Player | null {
   if (typeof id !== 'string' || !id) return null;
@@ -168,9 +167,8 @@ function finish(io: Server, match: Match, winnerTeam: PongTeam | null, reason: s
 }
 
 function steerBot(match: Match) {
-  const index = match.players.findIndex((player) => player.id === BOT_ID);
-  if (index < 0) return;
-  const paddle = match.world.paddles[index];
+  const paddle = match.world.paddles.find((entry) => entry.playerId === BOT_ID);
+  if (!paddle) return;
   const input = match.inputs.get(BOT_ID);
   if (!input) return;
   const ballApproaching = paddle.team === 'left' ? match.world.ball.vx < 0 : match.world.ball.vx > 0;
@@ -191,18 +189,25 @@ function startLoop(io: Server, match: Match) {
     steerBot(match);
     const scoringTeam = stepWorld(
       match.world,
-      match.players.map((player) => match.inputs.get(player.id) ?? idle()),
+      match.world.paddles.map((paddle) => match.inputs.get(paddle.playerId ?? '') ?? idle()),
       dt
     );
     if (scoringTeam !== null) {
       const nextScore = (match.scores.get(scoringTeam) ?? 0) + 1;
       match.scores.set(scoringTeam, nextScore);
       emitArcadeRoom(io, match.room, 'pong:point', {
-        scorer: { team: scoringTeam, name: teamName(scoringTeam) },
+        scorer: {
+          team: scoringTeam,
+          name: pongPointScorerName(match.mode, scoringTeam, match.players),
+        },
         scores: scorePayload(match),
       }, match);
       if (nextScore >= match.targetScore) return finish(io, match, scoringTeam, 'completed');
-      match.world = createWorld(opposingTeam(scoringTeam), match.mode);
+      match.world = createWorld(
+        opposingTeam(scoringTeam),
+        match.mode,
+        match.players.map((player) => player.id)
+      );
       for (const player of match.players) match.inputs.set(player.id, idle());
       match.rallyResumeAt = now + 1000;
       snapshot(io, match);
@@ -333,6 +338,7 @@ export function registerPongSockets(io: Server): void {
       const id = nanoid();
       const room = `pong:${id}`;
       for (const socketId of lobby.socketIds.values()) io.sockets.sockets.get(socketId)?.join(room);
+      const players = [...lobby.players].sort((a, b) => a.team.localeCompare(b.team));
       const match: Match = {
         id,
         groupId: lobby.groupId,
@@ -340,9 +346,9 @@ export function registerPongSockets(io: Server): void {
         room,
         mode: lobby.mode,
         host: lobby.host,
-        players: [...lobby.players].sort((a, b) => a.team.localeCompare(b.team)),
+        players,
         socketIds: new Map(lobby.socketIds),
-        world: createWorld('right', lobby.mode),
+        world: createWorld('right', lobby.mode, players.map((player) => player.id)),
         inputs: new Map(lobby.players.map((player) => [player.id, idle()])),
         scores: new Map<PongTeam, number>([['left', 0], ['right', 0]]),
         targetScore,

@@ -14,7 +14,15 @@ const BALL_HIT_BOOST = 12;
 export interface PongInput { up: boolean; down: boolean }
 export type PongMode = 'duel' | 'doubles';
 export type PongTeam = 'left' | 'right';
-export interface PongPaddle { x: number; y: number; vy: number; team: PongTeam }
+export type PongLane = 'full' | 'upper' | 'lower';
+export interface PongPaddle {
+  x: number;
+  y: number;
+  vy: number;
+  team: PongTeam;
+  lane: PongLane;
+  playerId?: string;
+}
 export interface PongBall { x: number; y: number; vx: number; vy: number }
 export interface PongWorld { paddles: PongPaddle[]; ball: PongBall }
 
@@ -22,7 +30,11 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-export function createWorld(serveToward: PongTeam = 'right', mode: PongMode = 'duel'): PongWorld {
+export function createWorld(
+  serveToward: PongTeam = 'right',
+  mode: PongMode = 'duel',
+  paddlePlayerIds: string[] = []
+): PongWorld {
   const leftX = PADDLE_MARGIN;
   const rightX = PONG_WIDTH - PADDLE_MARGIN - PADDLE_WIDTH;
   const centerY = (PONG_HEIGHT - PADDLE_HEIGHT) / 2;
@@ -30,15 +42,18 @@ export function createWorld(serveToward: PongTeam = 'right', mode: PongMode = 'd
   const lowerY = PONG_HEIGHT * 3 / 4 - PADDLE_HEIGHT / 2;
   const paddles: PongPaddle[] = mode === 'doubles'
     ? [
-        { x: leftX, y: upperY, vy: 0, team: 'left' },
-        { x: leftX, y: lowerY, vy: 0, team: 'left' },
-        { x: rightX, y: upperY, vy: 0, team: 'right' },
-        { x: rightX, y: lowerY, vy: 0, team: 'right' },
+        { x: leftX, y: upperY, vy: 0, team: 'left', lane: 'upper' },
+        { x: leftX, y: lowerY, vy: 0, team: 'left', lane: 'lower' },
+        { x: rightX, y: upperY, vy: 0, team: 'right', lane: 'upper' },
+        { x: rightX, y: lowerY, vy: 0, team: 'right', lane: 'lower' },
       ]
     : [
-        { x: leftX, y: centerY, vy: 0, team: 'left' },
-        { x: rightX, y: centerY, vy: 0, team: 'right' },
+        { x: leftX, y: centerY, vy: 0, team: 'left', lane: 'full' },
+        { x: rightX, y: centerY, vy: 0, team: 'right', lane: 'full' },
       ];
+  paddles.forEach((paddle, index) => {
+    if (paddlePlayerIds[index]) paddle.playerId = paddlePlayerIds[index];
+  });
   return {
     paddles,
     ball: {
@@ -51,8 +66,24 @@ export function createWorld(serveToward: PongTeam = 'right', mode: PongMode = 'd
 }
 
 function movePaddle(paddle: PongPaddle, input: PongInput, dt: number) {
+  const minY = paddle.lane === 'lower' ? PONG_HEIGHT / 2 : 0;
+  const maxY = paddle.lane === 'upper'
+    ? PONG_HEIGHT / 2 - PADDLE_HEIGHT
+    : PONG_HEIGHT - PADDLE_HEIGHT;
   paddle.vy = (input.down ? PADDLE_SPEED : 0) - (input.up ? PADDLE_SPEED : 0);
-  paddle.y = clamp(paddle.y + paddle.vy * dt, 0, PONG_HEIGHT - PADDLE_HEIGHT);
+  paddle.y = clamp(paddle.y + paddle.vy * dt, minY, maxY);
+}
+
+export function pongPointScorerName(
+  mode: PongMode,
+  scoringTeam: PongTeam,
+  players: Array<{ name: string; team: PongTeam }>
+): string {
+  if (mode === 'duel') {
+    const scorer = players.find((player) => player.team === scoringTeam);
+    if (scorer) return scorer.name;
+  }
+  return scoringTeam === 'left' ? 'Team Blau' : 'Team Pink';
 }
 
 function bounceFromPaddle(ball: PongBall, paddle: PongPaddle, direction: 1 | -1) {

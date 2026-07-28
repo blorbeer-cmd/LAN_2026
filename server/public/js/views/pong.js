@@ -318,6 +318,8 @@ function interpolatedWorld() {
       x: paddle.x,
       y: lerp(previous.world.paddles[index].y, paddle.y, progress),
       team: paddle.team,
+      lane: paddle.lane,
+      playerId: paddle.playerId,
     })),
   };
 }
@@ -343,8 +345,21 @@ function drawArena(context) {
   context.strokeStyle = 'rgba(226,232,255,.30)';
   context.lineWidth = 3;
   context.beginPath(); context.moveTo(W / 2, 24); context.lineTo(W / 2, H - 24); context.stroke();
+  if (match?.mode === 'doubles') {
+    context.strokeStyle = 'rgba(226,232,255,.22)';
+    context.lineWidth = 2;
+    context.setLineDash([10, 12]);
+    context.beginPath(); context.moveTo(24, H / 2); context.lineTo(W - 24, H / 2); context.stroke();
+  }
   context.setLineDash([]);
   context.beginPath(); context.arc(W / 2, H / 2, 72, 0, Math.PI * 2); context.stroke();
+}
+
+function playerInitials(playerId, players = match?.players ?? []) {
+  const name = players.find((player) => player.id === playerId)?.name?.trim();
+  if (!name) return '';
+  const parts = name.split(/\s+/);
+  return (parts.length > 1 ? `${parts[0][0]}${parts.at(-1)[0]}` : parts[0].slice(0, 2)).toUpperCase();
 }
 
 function drawPaddle(context, paddle, color) {
@@ -359,6 +374,19 @@ function drawPaddle(context, paddle, color) {
   context.beginPath();
   context.roundRect(paddle.x, paddle.y, PADDLE_WIDTH, PADDLE_HEIGHT, 8);
   context.fill();
+  const label = playerInitials(paddle.playerId);
+  if (label) {
+    context.shadowBlur = 0;
+    context.fillStyle = '#ffffff'; // design-token-ok: canvas player initials need maximum contrast.
+    context.font = '700 18px sans-serif';
+    context.textBaseline = 'middle';
+    context.textAlign = paddle.team === 'left' ? 'left' : 'right';
+    context.fillText(
+      label,
+      paddle.team === 'left' ? paddle.x + PADDLE_WIDTH + 9 : paddle.x - 9,
+      paddle.y + PADDLE_HEIGHT / 2
+    );
+  }
   context.restore();
 }
 
@@ -429,8 +457,16 @@ function updateRoster() {
     winnerId: match.winner?.id ?? null,
     winnerIds: match.winners?.map((winner) => winner.id) ?? [],
     scoreFor: (player) => `${match.scores?.find((score) => score.playerId === player.id)?.score ?? 0}/${match.targetScore ?? targetScore}`,
-    detailFor: (player) => teamLabel(player.team),
+    detailFor: playerDetail,
   });
+}
+
+function playerDetail(player) {
+  if (match?.mode !== 'doubles') return teamLabel(player.team);
+  const paddle = latest?.world?.paddles?.find((entry) => entry.playerId === player.id);
+  const fallbackIndex = match.players.filter((entry) => entry.team === player.team).findIndex((entry) => entry.id === player.id);
+  const lane = paddle?.lane ?? (fallbackIndex === 0 ? 'upper' : 'lower');
+  return `${teamLabel(player.team)} · ${lane === 'upper' ? 'Oben' : 'Unten'}`;
 }
 
 function resultHtml() {
@@ -466,7 +502,7 @@ export function renderPong(container) {
     winnerId: match.winner?.id ?? null,
     winnerIds: match.winners?.map((winner) => winner.id) ?? [],
     scoreFor: (player) => `${match.scores?.find((score) => score.playerId === player.id)?.score ?? 0}/${match.targetScore ?? targetScore}`,
-    detailFor: (player) => teamLabel(player.team),
+    detailFor: playerDetail,
   });
   container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Pong</h1>${arcadeToolbarHtml()}<div id="pong-roster">${roster}</div>
     <div class="pong-arena"><canvas id="pong-canvas" width="${W}" height="${H}"></canvas><div id="pong-point" class="pong-point" hidden></div>${match.paused ? '<div class="pong-overlay">Pause</div>' : ''}</div>

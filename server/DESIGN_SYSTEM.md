@@ -528,7 +528,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Blobby Volley and Pong both offer Duell (1 gegen 1) and Doppel (2 gegen 2). Doppel lobbies expose
   two explicit teams with two slots each, require all four participants to be ready and award the
   shared team score and win to both teammates. Pong follows Atari's Pong-4 rules: each participant
-  controls a separate paddle, the paddles start in upper/lower zones, and Doppel defaults to 21 points.
+  controls a separate paddle that remains in its assigned upper/lower half, player initials and roster
+  lane labels identify all four paddles, and Doppel defaults to 21 points.
   Statistics use the concise title „Statistiken“ and one full-width game dropdown whose options
   include each game's match count. The selected game is not repeated above its results. Those
   results follow directly without another enclosing card or accent rail; player rows reuse

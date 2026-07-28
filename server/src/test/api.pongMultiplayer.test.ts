@@ -75,7 +75,9 @@ test('Pong Doppel requires two full ready teams and awards the whole winning tea
       targetScore: number;
       players: Array<{ id: string; team: string }>;
     }>(sockets[1], 'pong:match:start');
-    const stateReceived = waitForEvent<{ world: { paddles: Array<{ team: string }> } }>(sockets[1], 'pong:state');
+    const stateReceived = waitForEvent<{
+      world: { paddles: Array<{ team: string; lane: string; playerId: string }> };
+    }>(sockets[1], 'pong:state');
     assert.equal((await emitAck(sockets[4], 'pong:lobby:start', { lobbyId, playerId: hostId })).ok, false);
     assert.equal((await emitAck(sockets[0], 'pong:lobby:start', { lobbyId, playerId: hostId })).ok, true);
     const match = await matchStarted;
@@ -85,6 +87,8 @@ test('Pong Doppel requires two full ready teams and awards the whole winning tea
 
     const state = await stateReceived;
     assert.deepEqual(state.world.paddles.map((paddle) => paddle.team), ['left', 'left', 'right', 'right']);
+    assert.deepEqual(state.world.paddles.map((paddle) => paddle.lane), ['upper', 'lower', 'upper', 'lower']);
+    assert.deepEqual(state.world.paddles.map((paddle) => paddle.playerId), match.players.map((player) => player.id));
 
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, match.beginsAt - Date.now() + 20)));
     assert.equal((await emitAck(sockets[1], 'pong:input', {

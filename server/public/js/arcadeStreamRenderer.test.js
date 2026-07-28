@@ -17,6 +17,7 @@ test('stream canvases keep each game world aspect ratio', () => {
 test('the Pong stream draws both full paddles inside the real 960 by 540 world', () => {
   const rectangles = [];
   const arcs = [];
+  const labels = [];
   const context = {
     clearRect() {},
     fillRect: (...args) => rectangles.push(args),
@@ -26,9 +27,13 @@ test('the Pong stream draws both full paddles inside the real 960 by 540 world',
     stroke() {},
     setLineDash() {},
     arc: (...args) => arcs.push(args),
+    fillText: (...args) => labels.push(args),
     fill() {},
     fillStyle: '',
     strokeStyle: '',
+    font: '',
+    textAlign: 'start',
+    textBaseline: 'alphabetic',
   };
   const canvas = { width: 1, height: 1, getContext: () => context };
   const originalDocument = globalThis.document;
@@ -39,8 +44,16 @@ test('the Pong stream draws both full paddles inside the real 960 by 540 world',
   try {
     drawArcadeStreamCanvas(canvas, {
       gameType: 'pong',
+      mode: 'doubles',
+      players: [
+        { id: 'ada', name: 'Ada Lovelace' },
+        { id: 'grace', name: 'Grace Hopper' },
+      ],
       world: {
-        paddles: [{ x: 48, y: 100 }, { x: 896, y: 200 }],
+        paddles: [
+          { x: 48, y: 100, team: 'left', lane: 'upper', playerId: 'ada' },
+          { x: 896, y: 200, team: 'right', lane: 'lower', playerId: 'grace' },
+        ],
         ball: { x: 480, y: 270 },
       },
     });
@@ -55,6 +68,7 @@ test('the Pong stream draws both full paddles inside the real 960 by 540 world',
     [48, 100, 16, 112],
     [896, 200, 16, 112],
   ]);
+  assert.deepEqual(labels.map(([label]) => label), ['AL', 'GH']);
   assert.deepEqual(arcs.at(-1), [480, 270, 12, 0, Math.PI * 2]);
 });
 
