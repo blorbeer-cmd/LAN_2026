@@ -228,6 +228,18 @@ test('GET /api/games/genres returns the fixed genre multiselect options', async 
   assert.ok(Array.isArray(res.body));
   assert.ok(res.body.includes('Shooter'));
   assert.ok(res.body.includes('Party'));
+  assert.ok(res.body.includes('MOBA'));
+  assert.ok(res.body.includes('4X'));
+  assert.equal(new Set(res.body).size, res.body.length, 'genres are offered exactly once');
+  assert.equal(res.body.at(-1), 'Sonstiges', 'the catch-all option stays last');
+});
+
+test('POST /api/games accepts the genres added after the original set', async () => {
+  const res = await request(app)
+    .post('/api/games')
+    .send({ name: 'Neue-Genres-Spiel', genres: ['MOBA', '4X', 'Battle Royale', 'Survival', 'Tower Defense'] });
+  assert.equal(res.status, 201);
+  assert.deepEqual(res.body.genres, ['MOBA', '4X', 'Battle Royale', 'Survival', 'Tower Defense']);
 });
 
 test('POST /api/games accepts genres and info', async () => {
