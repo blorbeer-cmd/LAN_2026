@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "defaultBaseBranch": "main",
+  "branchPrefixes": {
+    "codex": "codex/",
+    "claude": "claude/"
+  },
+  "providerAuthorAllowlist": {
+    "codex": ["blorbeer-cmd", "chatgpt-codex-connector[bot]"],
+    "claude": ["blorbeer-cmd"]
+  },
+  "allowedScopes": ["root", "server", "frontend", "agent", "docs", "infra"],
+  "scopePathPrefixes": {
+    "server": ["server/src/", "server/package", "server/tsconfig"],
+    "frontend": ["server/public/"],
+    "agent": ["agent/"],
+    "docs": ["docs/"],
+    "infra": [".github/", "infra/", "scripts/agent-"]
+  },
+  "scopeSharedPaths": [
+    "AGENTS.md",
+    "DEVELOPMENT_GUIDELINES.md",
+    "README.md",
+    "docs/"
+  ],
+  "uiPathPrefixes": ["server/public/"],
+  "protectedPathPrefixes": [".github/workflows/", "infra/"],
+  "reviewPromptPath": ".github/agent-pipeline/review-session-prompt.md",
+  "statusContext": "Agent pipeline / ready for human merge",
+  "reviewTimeoutMinutes": 45,
+  "waitingEscalationHours": 24,
+  "labels": {
+    "pipeline": "agent:pipeline",
+    "implementing": "agent:implementing",
+    "ciFix": "agent:ci-fix",
+    "conflictFix": "agent:conflict-fix",
+    "review": "agent:review",
+    "reviewFallback": "agent:review-fallback",
+    "waiting": "agent:waiting",
+    "needsHuman": "agent:needs-human",
+    "readyForMerge": "agent:ready-for-merge",
+    "uiChanged": "ui:changed",
+    "noAuto": "agent:no-auto"
+  }
+}

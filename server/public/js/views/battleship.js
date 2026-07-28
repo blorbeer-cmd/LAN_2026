@@ -6,7 +6,9 @@ import { confirmDialog } from '../modal.js';
 import { getMyId } from '../whoami.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeToolbarHtml, wireArcadeToolbar } from './arcadeUi.js';
+import { playArcadeSound } from '../arcadeSound.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 const SIZE = 10;
 const SHIPS = [
@@ -26,6 +28,7 @@ let orientation = 'horizontal';
 let selectedCoordinate = null;
 let pendingAction = null;
 let connectionState = 'connecting';
+let lastShotKey = null; // last seen `${playerId}-${coordinate}-${kind}`, to fire the hit/miss/sunk cue only once per shot
 
 const myId = () => getMyId();
 const currentView = () => document.getElementById('view-container')?.dataset.view;
@@ -80,11 +83,19 @@ export function ensureBattleshipSocket() {
     match = { ...payload, phase: 'setup', paused: false, ended: false, players: payload.players ?? [] };
     placements = [];
     selectedCoordinate = null;
+    lastShotKey = null;
     navigate('battleship');
   });
   socket.on('battleship:state', (payload) => {
     if (!match || payload.matchId !== match.matchId) return;
     if (payload.currentPlayerId !== match.currentPlayerId || payload.phase !== match.phase || payload.paused !== match.paused) selectedCoordinate = null;
+    if (payload.lastShot) {
+      const shotKey = `${payload.lastShot.playerId}-${payload.lastShot.coordinate}-${payload.lastShot.kind}`;
+      if (shotKey !== lastShotKey) {
+        lastShotKey = shotKey;
+        playArcadeSound(payload.lastShot.kind === 'hit' ? 'battleship-hit' : payload.lastShot.kind === 'sunk' ? 'battleship-sunk' : 'battleship-miss');
+      }
+    }
     match = { ...match, ...payload, ended: payload.phase === 'ended' };
     if (payload.phase === 'countdown' && payload.beginsAt) showCountdown(payload.beginsAt);
     if (currentView() === 'battleship') rerender();
@@ -93,6 +104,7 @@ export function ensureBattleshipSocket() {
     if (!match || payload.matchId !== match.matchId) return;
     cancelCountdown();
     match = { ...match, ...payload, phase: 'ended', ended: true };
+    if (match.winnerId) playArcadeSound(match.winnerId === myId() ? 'battleship-win' : 'battleship-lose');
     window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
     if (currentView() === 'battleship' || currentView() === 'arcade') rerender();
   });
@@ -148,9 +160,12 @@ function renderPlacement() {
   const me = match.players.find((player) => player.id === myId());
   const locked = match.phase !== 'setup' || Boolean(me?.placementReady) || pendingAction;
   const readyPlayers = (match.players ?? []).filter((player) => player.placementReady).length;
+  const submitDisabled = locked || !placementValid(placements);
+  const missing = SHIPS.length - placements.length;
+  const submitReason = !locked && missing > 0 ? `Es fehlen noch ${missing} von ${SHIPS.length} Schiffen.` : '';
   return `<div class="arcade-game-shell" data-battleship-match="${escapeHtml(match.matchId)}">
     <h1 class="view-title">Schiffe versenken</h1>
-    ${arcadeExpandControlHtml()}
+    ${arcadeToolbarHtml()}
     <section class="card stack battleship-setup" aria-labelledby="battleship-setup-title">
       <div class="grouped-page-section-title"><h2 id="battleship-setup-title">Flotte platzieren</h2></div>
       <p class="muted">Wähle ein Schiff und tippe auf das Startfeld. Berührungen zwischen Schiffen sind erlaubt.</p>
@@ -158,19 +173,28 @@ function renderPlacement() {
         ${SHIPS.map((ship) => `<button type="button" class="btn btn-sm ${selectedShip === ship.id ? 'btn-primary' : ''}" data-select-ship="${ship.id}" aria-pressed="${selectedShip === ship.id}" ${locked ? 'disabled' : ''}>${escapeHtml(ship.name)} · ${ship.length}</button>`).join('')}
       </div>
       <div class="row battleship-setup-actions">
-        <button type="button" class="btn btn-sm" id="battleship-rotate" ${locked ? 'disabled' : ''}>Drehen</button>
+        <button type="button" class="btn btn-sm" id="battleship-rotate" aria-pressed="${orientation === 'vertical'}" ${locked ? 'disabled' : ''}>Ausrichtung: ${orientation === 'horizontal' ? 'Waagerecht' : 'Senkrecht'}</button>
         <button type="button" class="btn btn-sm" id="battleship-random" ${locked ? 'disabled' : ''}>Zufällig platzieren</button>
         <button type="button" class="btn btn-sm" id="battleship-clear" ${locked ? 'disabled' : ''}>Zurücksetzen</button>
       </div>
       <div class="${locked ? 'battleship-placement-locked' : ''}">${placementGridHtml()}</div>
       <div class="muted" aria-live="polite">Bereit: ${readyPlayers}/${match.players.length}${locked ? ' · Deine Flotte ist bestätigt.' : ''}</div>
-      <button type="button" class="btn btn-primary btn-block" id="battleship-submit-setup" ${locked || !placementValid(placements) ? 'disabled' : ''}>${locked ? 'Flotte bestätigt' : 'Flotte bereit'}</button>
+      <div class="row">
+        <button type="button" class="btn btn-primary" style="flex:1;" id="battleship-submit-setup" ${submitDisabled ? 'disabled' : ''}>${locked ? 'Flotte bestätigt' : 'Flotte bereit'}</button>
+        ${submitReason ? infoTooltipHtml('battleship-setup-reason', 'Flotte bereit nicht möglich', submitReason, 'warning') : ''}
+      </div>
     </section>
   </div>`;
 }
 
+// A sunk ship is intentionally displayed like a plain hit during active play:
+// naming the exact moment a whole ship (not just one segment) went down
+// leaks its length/boundaries to the shooter. The full picture is only
+// revealed once the match has ended (see renderResult/revealGridHtml).
+function hideSunkDuringPlay(kind) { return kind === 'sunk' ? 'hit' : kind; }
+
 function targetGridHtml(target, ownShots, canFire) {
-  const shots = new Map(ownShots.filter((shot) => shot.targetId === target.id).map((shot) => [shot.coordinate, shot.kind]));
+  const shots = new Map(ownShots.filter((shot) => shot.targetId === target.id).map((shot) => [shot.coordinate, hideSunkDuringPlay(shot.kind)]));
   return `<div class="battleship-grid" role="grid" aria-label="Zielraster von ${escapeHtml(target.name)}">
     ${Array.from({ length: SIZE * SIZE }, (_, cell) => {
       const row = Math.floor(cell / SIZE);
@@ -178,7 +202,7 @@ function targetGridHtml(target, ownShots, canFire) {
       const shot = shots.get(cell);
       const coordinateName = `${String.fromCharCode(65 + col)}${row + 1}`;
       const selected = selectedCoordinate === cell;
-      const label = shot === 'miss' ? 'Wasser' : shot === 'hit' ? 'Treffer' : shot === 'sunk' ? 'Versenkt' : selected ? 'ausgewählt' : 'unbeschossen';
+      const label = shot === 'miss' ? 'Wasser' : shot === 'hit' ? 'Treffer' : selected ? 'ausgewählt' : 'unbeschossen';
       return `<button type="button" class="battleship-cell ${shot ? `is-${shot}` : ''} ${selected ? 'is-selected' : ''}" data-fire-cell="${cell}" ${!canFire || shot || pendingAction ? 'disabled' : ''} role="gridcell" aria-label="${coordinateName}, ${label}" aria-selected="${selected}">${shot === 'miss' ? '·' : shot ? '×' : selected ? '•' : ''}</button>`;
     }).join('')}
   </div>`;
@@ -188,8 +212,18 @@ function ownGridHtml(player) {
   const ships = new Map();
   for (const ship of player.fleet ?? []) for (const cell of ship.cells ?? []) ships.set(cell, ship);
   const hits = new Set((player.fleet ?? []).flatMap((ship) => ship.hits ?? []));
+  const misses = new Set((player.incomingShots ?? []).filter((shot) => shot.kind === 'miss').map((shot) => shot.coordinate));
   return `<div class="battleship-grid battleship-own-grid" role="grid" aria-label="Eigenes Flottenraster">
-    ${Array.from({ length: SIZE * SIZE }, (_, cell) => { const row = Math.floor(cell / SIZE); const col = cell % SIZE; const coordinateName = `${String.fromCharCode(65 + col)}${row + 1}`; const label = hits.has(cell) ? 'Treffer' : ships.has(cell) ? 'Schiff' : 'Wasser'; return `<div class="battleship-cell ${ships.has(cell) ? 'is-ship' : ''} ${hits.has(cell) ? 'is-hit' : ''}" role="gridcell" aria-label="${coordinateName}, ${label}">${hits.has(cell) ? '×' : ships.has(cell) ? '■' : ''}</div>`; }).join('')}
+    ${Array.from({ length: SIZE * SIZE }, (_, cell) => {
+      const row = Math.floor(cell / SIZE);
+      const col = cell % SIZE;
+      const coordinateName = `${String.fromCharCode(65 + col)}${row + 1}`;
+      const isHit = hits.has(cell);
+      const isMiss = !isHit && misses.has(cell);
+      const isShip = ships.has(cell);
+      const label = isHit ? 'Treffer' : isMiss ? 'Wasser beschossen' : isShip ? 'Schiff' : 'Unbeschossen';
+      return `<div class="battleship-cell ${isShip ? 'is-ship' : ''} ${isHit ? 'is-hit' : ''} ${isMiss ? 'is-miss' : ''}" data-own-cell="${cell}" role="gridcell" aria-label="${coordinateName}, ${label}">${isHit ? '×' : isMiss ? '·' : isShip ? '■' : ''}</div>`;
+    }).join('')}
   </div>`;
 }
 
@@ -199,11 +233,11 @@ function renderBattle() {
   if (!me || !target) return '<div class="empty-state">Gegner nicht gefunden.</div>';
   const canFire = match.phase === 'playing' && !match.paused && match.currentPlayerId === myId();
   const status = match.paused ? 'Pause' : canFire ? 'Du bist am Zug' : `Warte auf ${escapeHtml(match.players.find((player) => player.id === match.currentPlayerId)?.name ?? 'Gegner')}`;
-  const resultLabels = { miss: 'Wasser', hit: 'Treffer', sunk: 'Versenkt' };
-  const result = match.lastShot ? `<div class="badge badge-playing" aria-live="polite">Letzter Schuss: ${resultLabels[match.lastShot.kind] ?? 'Aufgelöst'}</div>` : '';
+  const resultLabels = { miss: 'Wasser', hit: 'Treffer' };
+  const result = match.lastShot ? `<div class="badge badge-playing" aria-live="polite">Letzter Schuss: ${resultLabels[hideSunkDuringPlay(match.lastShot.kind)] ?? 'Aufgelöst'}</div>` : '';
   return `<div class="arcade-game-shell" data-battleship-match="${escapeHtml(match.matchId)}">
     <h1 class="view-title">Schiffe versenken</h1>
-    ${arcadeExpandControlHtml()}
+    ${arcadeToolbarHtml()}
     <div class="battleship-status card" aria-live="polite"><strong>${connectionState === 'offline' ? 'Verbindung verloren' : status}</strong>${result}${connectionState === 'offline' ? '<span class="muted">Verbindung wird wiederhergestellt …</span>' : ''}</div>
     <div class="battleship-board-layout">
       <section class="card stack" aria-labelledby="battleship-target-title"><h2 id="battleship-target-title">Zielraster · ${escapeHtml(target.name)}</h2>${targetGridHtml(target, me.shots ?? [], canFire)}<p class="muted">Treffer: ${17 - (target.segmentsRemaining ?? 17)} · Verbleibend: ${target.segmentsRemaining ?? 17}</p>${canFire && selectedCoordinate !== null ? `<button type="button" class="btn btn-primary btn-block" id="battleship-fire" ${pendingAction ? 'disabled' : ''}>Feuern (${String.fromCharCode(65 + (selectedCoordinate % SIZE))}${Math.floor(selectedCoordinate / SIZE) + 1})</button>` : ''}</section>
@@ -213,9 +247,35 @@ function renderBattle() {
   </div>`;
 }
 
+function revealGridHtml(player, fleet, shotsAgainst) {
+  const ships = new Map();
+  for (const ship of fleet) for (const cell of ship.cells ?? []) ships.set(cell, ship);
+  const sunkCells = new Set(fleet.filter((ship) => ship.sunk).flatMap((ship) => ship.cells ?? []));
+  const hitCells = new Set(fleet.flatMap((ship) => ship.hits ?? []));
+  const missCells = new Set(shotsAgainst.filter((shot) => shot.kind === 'miss').map((shot) => shot.coordinate));
+  return `<div class="battleship-grid battleship-own-grid" role="grid" aria-label="Aufgedeckte Flotte von ${escapeHtml(player.name)}">
+    ${Array.from({ length: SIZE * SIZE }, (_, cell) => {
+      const row = Math.floor(cell / SIZE);
+      const col = cell % SIZE;
+      const coordinateName = `${String.fromCharCode(65 + col)}${row + 1}`;
+      const isSunk = sunkCells.has(cell);
+      const isHit = !isSunk && hitCells.has(cell);
+      const isMiss = !isSunk && !isHit && missCells.has(cell);
+      const isShip = ships.has(cell);
+      const label = isSunk ? 'Versenkt' : isHit ? 'Treffer' : isMiss ? 'Wasser' : isShip ? 'Schiff' : 'Unbeschossen';
+      return `<div class="battleship-cell ${isShip ? 'is-ship' : ''} ${isHit ? 'is-hit' : ''} ${isSunk ? 'is-sunk' : ''} ${isMiss ? 'is-miss' : ''}" data-reveal-cell="${cell}" role="gridcell" aria-label="${coordinateName}, ${label}">${isSunk || isHit ? '×' : isMiss ? '·' : isShip ? '■' : ''}</div>`;
+    }).join('')}
+  </div>`;
+}
+
 function renderResult() {
   const winner = match.winnerId ? match.players.find((player) => player.id === match.winnerId) : null;
-  return `<div class="arcade-game-shell"><h1 class="view-title">Schiffe versenken</h1><section class="card arcade-winner-card stack"><h2>${winner ? `${escapeHtml(winner.name)} gewinnt!` : 'Match beendet'}</h2><p class="muted">${match.reason === 'aborted' ? 'Das Match wurde beendet.' : match.reason === 'player-left' ? 'Ein Spieler hat das Match verlassen.' : 'Alle gegnerischen Schiffe wurden versenkt.'}</p><button type="button" class="btn btn-primary" id="battleship-back">Zur Arcade</button></section></div>`;
+  const boards = match.players.map((player) => {
+    const fleet = (match.fleets ?? []).find((entry) => entry.playerId === player.id)?.fleet ?? [];
+    const shotsAgainst = (match.shots ?? []).filter((shot) => shot.targetId === player.id);
+    return `<section class="card stack" data-battleship-reveal="${escapeHtml(player.id)}" aria-labelledby="battleship-reveal-${escapeHtml(player.id)}"><h2 id="battleship-reveal-${escapeHtml(player.id)}">${escapeHtml(player.name)}${player.id === match.winnerId ? ` ${icon('trophy')}` : ''}</h2>${revealGridHtml(player, fleet, shotsAgainst)}</section>`;
+  }).join('');
+  return `<div class="arcade-game-shell"><h1 class="view-title">Schiffe versenken</h1><section class="card arcade-winner-card stack"><h2>${winner ? `${escapeHtml(winner.name)} gewinnt!` : 'Match beendet'}</h2><p class="muted">${match.reason === 'aborted' ? 'Das Match wurde beendet.' : match.reason === 'player-left' ? 'Ein Spieler hat das Match verlassen.' : 'Alle gegnerischen Schiffe wurden versenkt.'}</p></section><div class="battleship-board-layout">${boards}</div><section class="card"><button type="button" class="btn btn-primary btn-block" id="battleship-back">Zur Arcade</button></section></div>`;
 }
 
 export function renderBattleship(container) {
@@ -229,7 +289,8 @@ export function renderBattleship(container) {
   if (match.phase === 'setup' || match.phase === 'countdown') wirePlacement(container);
   if (!match.ended && match.phase === 'playing') wireBattle(container);
   wireBattleshipGridKeyboard(container);
-  if (!match.ended) wireArcadeExpandControl(container);
+  if (!match.ended) wireArcadeToolbar(container);
+  wireInfoTooltips(container);
   container.querySelector('#battleship-back')?.addEventListener('click', () => {
     match = null;
     cancelCountdown();
@@ -241,7 +302,7 @@ function wirePlacement(container) {
   const me = match.players.find((player) => player.id === myId());
   if (match.phase !== 'setup' || me?.placementReady || pendingAction) return;
   container.querySelectorAll('[data-select-ship]').forEach((button) => button.addEventListener('click', () => { selectedShip = button.dataset.selectShip; rerender(); }));
-  container.querySelector('#battleship-rotate')?.addEventListener('click', () => { orientation = orientation === 'horizontal' ? 'vertical' : 'horizontal'; });
+  container.querySelector('#battleship-rotate')?.addEventListener('click', () => { orientation = orientation === 'horizontal' ? 'vertical' : 'horizontal'; rerender(); });
   container.querySelector('#battleship-clear')?.addEventListener('click', () => { placements = []; rerender(); });
   container.querySelector('#battleship-random')?.addEventListener('click', () => {
     const next = [];
@@ -263,7 +324,7 @@ function wirePlacement(container) {
     const ship = SHIPS.find((entry) => entry.id === selectedShip);
     const nextPlacement = { shipId: selectedShip, row: Math.floor(cell / SIZE), col: cell % SIZE, orientation };
     const next = [...placements.filter((placement) => placement.shipId !== selectedShip), nextPlacement];
-    if (!ship || !placementValid(next)) return showToast('Dieses Schiff passt dort nicht hin.', { error: true });
+    if (!ship || !placementValid(next, false)) return showToast('Dieses Schiff passt dort nicht hin.', { error: true });
     placements = next;
     const nextShip = SHIPS.find((entry) => !placements.some((placement) => placement.shipId === entry.id));
     if (nextShip) selectedShip = nextShip.id;
@@ -338,8 +399,14 @@ function lobbyList() {
     const joined = lobby.players.some((player) => player.id === myId());
     const isHost = lobby.host.id === myId();
     const full = lobby.players.length >= (lobby.capacity ?? 2) && !joined;
+    const startReady = lobby.players.length === 2 && lobby.players.every((player) => player.ready);
+    const startReason = startReady
+      ? ''
+      : lobby.players.length < 2
+        ? 'Noch nicht genug Spieler (mind. 2).'
+        : 'Nicht alle Mitspieler sind bereit.';
     const footerActions = isHost
-      ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-battleship-close="${lobby.id}">Schließen</button><button type="button" class="btn btn-sm btn-equal btn-primary" data-battleship-start="${lobby.id}" ${lobby.players.length === 2 && lobby.players.every((player) => player.ready) ? '' : 'disabled'}>Start</button>`
+      ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-battleship-close="${lobby.id}">Schließen</button><span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-sm btn-equal btn-primary" data-battleship-start="${lobby.id}" ${startReady ? '' : 'disabled'}>Start</button>${startReason ? infoTooltipHtml(`battleship-start-${lobby.id}`, 'Start nicht möglich', startReason, 'warning') : ''}</span>`
       : joined
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-battleship-leave="${lobby.id}">Verlassen</button>${readyToggleHtml(lobby, myId(), 'battleship-ready')}`
         : '';
@@ -349,7 +416,10 @@ function lobbyList() {
 }
 
 export function renderBattleshipLobbyCard() {
-  return `<div class="card stack arcade-lobby-card">${lobbyList()}<div class="arcade-lobby-create-actions"><button type="button" class="btn btn-primary btn-sm" id="battleship-create" ${myBattleshipLobby() || !myId() ? 'disabled' : ''}>Lobby öffnen</button></div></div>`;
+  const noMe = !myId();
+  const hasLobby = Boolean(myBattleshipLobby());
+  const createReason = noMe ? 'Wähle zuerst aus, wer du bist.' : hasLobby ? 'Du hast bereits eine offene Lobby.' : '';
+  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions"><span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-primary btn-sm" id="battleship-create" ${hasLobby || noMe ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('battleship-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}</span></div>${lobbyList()}</div>`;
 }
 
 export function wireBattleshipLobbyCard(container, { beforeCreate, beforeJoin } = {}) {

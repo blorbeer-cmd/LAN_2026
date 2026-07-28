@@ -21,7 +21,9 @@ import { confirmDialog } from '../modal.js';
 import { connectSocket } from '../socket.js';
 import { icon } from '../icons.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
+import { playArcadeSound } from '../arcadeSound.js';
+import { infoTooltipHtml } from '../infoTooltip.js';
 
 const SWATCHES = [
   '#1a1a1a',
@@ -177,6 +179,7 @@ function updateCountdownBadge() {
   countdownEl.textContent = paused ? 'Pause' : `${left}s`;
   countdownEl.classList.toggle('badge-paused', paused || left <= 5);
   countdownEl.classList.toggle('badge-playing', !paused && left > 5);
+  if (!paused && turn?.phase === 'drawing' && left > 0 && left <= 5) playArcadeSound('scribble-tick');
 }
 
 function setupCanvas(el) {
@@ -655,6 +658,7 @@ export function ensureScribbleSocket() {
       thumbsToken = payload.thumbsToken ?? null;
       thumbsCount = 0;
       myThumbActive = false;
+      playArcadeSound('scribble-round-start');
     }
     rerender();
   });
@@ -710,6 +714,7 @@ export function ensureScribbleSocket() {
   socket.on('scribble:chat', (payload) => {
     if (!match || payload.matchId !== match.matchId) return;
     appendChatLine(payload);
+    if (payload.correct && payload.playerId === myId()) playArcadeSound('scribble-correct');
   });
 
   socket.on('scribble:scores', (payload) => {
@@ -834,9 +839,13 @@ function renderLobbyList() {
               .join('')}
           </div>`
         : '';
+      const startReason = ready ? '' : 'Noch nicht genug Spieler (mind. 2).';
       const footerActions = isHost
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-close="${l.id}">Schließen</button>
-          <button type="button" class="btn btn-sm btn-equal btn-primary" id="scribble-start" ${ready ? '' : 'disabled'}>Start</button>`
+          <span class="row" style="gap:var(--space-1);">
+            <button type="button" class="btn btn-sm btn-equal btn-primary" id="scribble-start" ${ready ? '' : 'disabled'}>Start</button>
+            ${startReason ? infoTooltipHtml(`scribble-start-${l.id}`, 'Start nicht möglich', startReason, 'warning') : ''}
+          </span>`
         : joined
           ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-leave="${l.id}">Verlassen</button>
             ${readyToggleHtml(l, myId(), 'scribble-ready')}`
@@ -853,14 +862,18 @@ function renderLobbyList() {
 export function renderScribbleLobbyCard() {
   const lobby = myScribbleLobby();
   const noMe = !myId();
+  const createReason = !noMe && match ? 'Beende zuerst dein aktuelles Spiel.' : '';
   return `
     <div class="card stack arcade-lobby-card">
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
-      ${renderLobbyList()}
       <div class="arcade-lobby-create-actions">
-        <button type="button" class="btn btn-primary btn-sm" id="scribble-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+        <span class="row" style="gap:var(--space-1);">
+          <button type="button" class="btn btn-primary btn-sm" id="scribble-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+          ${createReason ? infoTooltipHtml('scribble-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+        </span>
         ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="scribble-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
       </div>
+      ${renderLobbyList()}
     </div>`;
 }
 
@@ -974,14 +987,14 @@ export function renderScribbleRoom(container) {
 
   container.innerHTML = `
     <div class="arcade-game-shell"><h1 class="view-title">Scribble</h1>
-    ${arcadeExpandControlHtml()}
+    ${arcadeToolbarHtml()}
     <div id="scribble-roster">${rosterScoreHtml()}</div>
     ${lastDrawingThumbHtml()}
     ${wordChoiceHtml()}
     ${turn?.phase === 'drawing' ? drawingAreaHtml() : ''}
     ${matchControlsHtml()}
     </div>`;
-  wireArcadeExpandControl(container);
+  wireArcadeToolbar(container);
   wireRoom(container);
 }
 

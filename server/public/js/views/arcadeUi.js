@@ -1,4 +1,5 @@
 import { escapeHtml, avatarHtml } from '../format.js';
+import { arcadeMuteControlHtml, wireArcadeMuteControl } from '../arcadeSound.js';
 
 const ARCADE_EXPANDED_KEY = 'lan-arcade-expanded';
 
@@ -45,6 +46,18 @@ export function arcadeExpandControlHtml() {
         <span data-arcade-expand-label>Spielfläche vergrößern</span>
       </button>
     </div>`;
+}
+
+// Combines the mute toggle with the expand control in one right-aligned row
+// so every game exposes both from the same shell header instead of each view
+// wiring its own placement.
+export function arcadeToolbarHtml() {
+  return `<div class="arcade-toolbar">${arcadeMuteControlHtml()}${arcadeExpandControlHtml()}</div>`;
+}
+
+export function wireArcadeToolbar(container) {
+  wireArcadeMuteControl(container);
+  wireArcadeExpandControl(container);
 }
 
 export function wireArcadeExpandControl(container) {
