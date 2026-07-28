@@ -12,6 +12,7 @@ test('classic Snake keeps the existing two-player board', () => {
   const world = createWorld();
   assert.equal(world.mode, 'classic');
   assert.equal(world.snakes.length, 2);
+  assert.deepEqual(world.food, { x: 16, y: 5 });
   assert.deepEqual(world.safeBounds, { minX: 0, maxX: 31, minY: 0, maxY: 19 });
 });
 
@@ -19,6 +20,7 @@ test('Snake Arena creates distinct starting positions for up to eight players', 
   const world = createWorld(SNAKE_ARENA_MAX_PLAYERS, 'arena');
   const occupied = world.snakes.flatMap((snake) => snake.body.map((cell) => `${cell.x}:${cell.y}`));
   assert.equal(world.snakes.length, SNAKE_ARENA_MAX_PLAYERS);
+  assert.deepEqual(world.food, { x: 16, y: 8 });
   assert.equal(new Set(occupied).size, occupied.length);
   assert.throws(() => createWorld(2, 'arena'), /3 to 8/);
   assert.throws(() => createWorld(9, 'arena'), /3 to 8/);

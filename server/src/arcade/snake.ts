@@ -30,7 +30,7 @@ const BOT = { id: BOT_ID, name: 'Snake-Bot', avatar: null, color: '#ef5da8' };
 
 interface Player { id: string; name: string; avatar: string | null; color: string | null }
 interface Lobby { id: string; groupId: string; eventId: string | null; host: Player; players: Player[]; socketIds: Map<string, string>; ready: Set<string>; mode: SnakeMode; createdAt: number }
-interface Match { id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[]; mode: SnakeMode; world: SnakeWorld; loop: NodeJS.Timeout | null; running: boolean; paused: boolean; startedAt: number }
+interface Match { id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[]; socketIds: Map<string, string>; mode: SnakeMode; world: SnakeWorld; loop: NodeJS.Timeout | null; running: boolean; paused: boolean; startedAt: number }
 
 const lobbies = new Map<string, Lobby>();
 const matches = new Map<string, Match>();
@@ -72,6 +72,7 @@ function snapshot(io: Server, match: Match) {
     world: match.world,
     running: match.running,
     paused: match.paused,
+    host: match.host,
     serverTime: Date.now(),
     scores,
     render: { width: SNAKE_WIDTH, height: SNAKE_HEIGHT },
@@ -107,6 +108,25 @@ function finish(io: Server, match: Match, winner: Player | null, reason: string)
   emitArcadeRoom(io, match.room, 'snake:match:end', { winner, reason, scores: match.world.snakes.map((snake) => snake.score) }, match);
   broadcastArcadeKiosk(io, { gameType: null, matchId: match.id, groupId: match.groupId, eventId: match.eventId });
   matches.delete(match.id);
+}
+function matchPlayerIdForSocket(match: Match, socket: Socket): string | null {
+  return [...match.socketIds].find(([, socketId]) => socketId === socket.id)?.[0] ?? null;
+}
+function removeMatchPlayer(io: Server, match: Match, playerId: string): void {
+  const leaverIndex = match.players.findIndex((player) => player.id === playerId);
+  if (leaverIndex < 0) return;
+  const socketId = match.socketIds.get(playerId);
+  match.socketIds.delete(playerId);
+  if (socketId) io.sockets.sockets.get(socketId)?.leave(match.room);
+  if (match.mode !== 'arena') {
+    finish(io, match, match.players.find((player) => player.id !== playerId) ?? null, 'player-left');
+    return;
+  }
+  match.world.snakes[leaverIndex].alive = false;
+  const livingPlayers = match.players.filter((_, index) => match.world.snakes[index].alive);
+  if (match.host.id === playerId && livingPlayers[0]) match.host = livingPlayers[0];
+  if (livingPlayers.length <= 1) finish(io, match, livingPlayers[0] ?? null, livingPlayers.length ? 'completed' : 'draw');
+  else snapshot(io, match);
 }
 function removeFromLobbies(io: Server, socketId: string) {
   let changed = false;
@@ -161,6 +181,7 @@ function startMatch(io: Server, lobby: Lobby) {
     room,
     host: lobby.host,
     players: lobby.players,
+    socketIds: new Map(lobby.socketIds),
     mode: lobby.mode,
     world: createWorld(lobby.players.length, lobby.mode),
     loop: null,
@@ -269,12 +290,12 @@ export function registerSnakeSockets(io: Server): void {
     socket.on('snake:input', (payload: { matchId?: string; playerId?: string; direction?: Direction }) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
       const index = match?.players.findIndex((player) => player.id === payload.playerId) ?? -1;
-      if (!match || !canUseLobby(socket, match) || index < 0 || match.players[index].id === BOT_ID || !payload.direction || !match.running || match.paused) return;
+      if (!match || !canUseLobby(socket, match) || payload.playerId !== matchPlayerIdForSocket(match, socket) || index < 0 || match.players[index].id === BOT_ID || !payload.direction || !match.running || match.paused) return;
       setDirection(match.world.snakes[index], payload.direction);
     });
     socket.on('snake:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
-      if (!match || !canUseLobby(socket, match) || payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
+      if (!match || !canUseLobby(socket, match) || payload.playerId !== matchPlayerIdForSocket(match, socket) || payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
       match.paused = true;
       emitArcadeRoom(io, match.room, 'snake:match:paused', undefined, match);
       snapshot(io, match);
@@ -282,7 +303,7 @@ export function registerSnakeSockets(io: Server): void {
     });
     socket.on('snake:match:resume', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
-      if (!match || !canUseLobby(socket, match) || payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann fortsetzen.' });
+      if (!match || !canUseLobby(socket, match) || payload.playerId !== matchPlayerIdForSocket(match, socket) || payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann fortsetzen.' });
       match.paused = false;
       emitArcadeRoom(io, match.room, 'snake:match:resumed', undefined, match);
       snapshot(io, match);
@@ -290,29 +311,26 @@ export function registerSnakeSockets(io: Server): void {
     });
     socket.on('snake:match:finish', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
-      if (!match || !canUseLobby(socket, match) || payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann beenden.' });
+      if (!match || !canUseLobby(socket, match) || payload.playerId !== matchPlayerIdForSocket(match, socket) || payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann beenden.' });
       finish(io, match, null, 'aborted');
       ack?.({ ok: true });
     });
-    // Lets a non-host participant end a running match themselves instead of
-    // relying on the host (who might be AFK) — same outcome as a disconnect
-    // mid-match: the match ends, opponent wins.
+    // Explicit leave and disconnect are both immediate forfeits. Arena
+    // matches continue while at least two snakes remain.
     socket.on('snake:match:leave', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
       if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
-      const leaver = match.players.find((p) => p.id === payload?.playerId);
-      if (!leaver) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
-      if (match.mode === 'arena') {
-        const leaverIndex = match.players.findIndex((player) => player.id === leaver.id);
-        match.world.snakes[leaverIndex].alive = false;
-        const survivor = match.players.find((_, index) => match.world.snakes[index].alive) ?? null;
-        if (match.world.snakes.filter((snake) => snake.alive).length <= 1) finish(io, match, survivor, survivor ? 'completed' : 'draw');
-        else snapshot(io, match);
-      } else {
-        finish(io, match, match.players.find((p) => p.id !== leaver.id) ?? null, 'player-left');
-      }
+      const socketPlayerId = matchPlayerIdForSocket(match, socket);
+      if (!socketPlayerId || payload?.playerId !== socketPlayerId) return ack?.({ ok: false, error: 'Du kannst nur dein eigenes Match verlassen.' });
+      removeMatchPlayer(io, match, socketPlayerId);
       ack?.({ ok: true });
     });
-    socket.on('disconnect', () => removeFromLobbies(io, socket.id));
+    socket.on('disconnect', () => {
+      removeFromLobbies(io, socket.id);
+      for (const match of [...matches.values()]) {
+        const playerId = matchPlayerIdForSocket(match, socket);
+        if (playerId) removeMatchPlayer(io, match, playerId);
+      }
+    });
   });
 }

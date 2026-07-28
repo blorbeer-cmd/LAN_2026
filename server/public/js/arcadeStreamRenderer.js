@@ -159,6 +159,14 @@ function drawSnake(ctx, game, width, height) {
     ctx.globalAlpha = snake.alive === false ? 0.3 : 1;
     ctx.fillStyle = cssColor(snakeColors[index % snakeColors.length]);
     snake.body.forEach((part) => ctx.fillRect(part.x * cellWidth + 1, part.y * cellHeight + 1, cellWidth - 2, cellHeight - 2));
+    if (world.mode === 'arena' && snake.body[0]) {
+      const head = snake.body[0];
+      ctx.fillStyle = cssColor('--bg');
+      ctx.font = `700 ${Math.max(12, Math.min(cellWidth, cellHeight) * 0.55)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${index + 1}`, (head.x + 0.5) * cellWidth, (head.y + 0.52) * cellHeight);
+    }
   });
   ctx.globalAlpha = 1;
   ctx.fillStyle = cssColor('--rank-1-gold');

@@ -52,9 +52,11 @@ export function ensureSnakeSocket() {
   });
   socket.on('snake:state', (payload) => {
     world = payload.world;
+    const hostChanged = Boolean(match && payload.host?.id && payload.host.id !== match.host?.id);
     if (match) {
       match.running = payload.running;
       match.paused = payload.paused;
+      match.host = payload.host ?? match.host;
     }
     const myIndex = match?.players?.findIndex((p) => p.id === myId()) ?? -1;
     const myScore = myIndex >= 0 ? world?.snakes?.[myIndex]?.score : undefined;
@@ -64,6 +66,7 @@ export function ensureSnakeSocket() {
     }
     paintBoard();
     updateRosterDisplay();
+    if (hostChanged && currentView() === 'snake') rerender();
     if (!document.querySelector('#snake-canvas') && currentView() === 'arcade') rerender();
   });
   socket.on('snake:match:paused', () => { if (match) { match.paused = true; if (currentView() === 'snake') rerender(); } });
@@ -77,6 +80,15 @@ export function ensureSnakeSocket() {
     playArcadeSound('snake-gameover');
     window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
     if (currentView() === 'snake' || currentView() === 'arcade') rerender();
+  });
+  socket.on('disconnect', () => {
+    if (!match || match.ended || !match.players.some((player) => player.id === myId())) return;
+    match = null;
+    world = null;
+    prevMyScore = null;
+    cancelCountdown();
+    showToast('Verbindung verloren. Du bist aus dem Snake-Match ausgeschieden.', { error: true });
+    if (currentView() === 'snake' || currentView() === 'arcade') navigate('arcade');
   });
   bindKeyboard();
   return socket;
@@ -228,16 +240,27 @@ function paintBoard() {
   for (let x = 1; x < COLS; x++) { context.beginPath(); context.moveTo(x * cellWidth, 0); context.lineTo(x * cellWidth, height); context.stroke(); }
   for (let y = 1; y < ROWS; y++) { context.beginPath(); context.moveTo(0, y * cellHeight); context.lineTo(width, y * cellHeight); context.stroke(); }
   const colors = ['--accent', '--accent-3', '--state-playing', '--state-paused', '--accent-2', '--danger', '--rank-1-gold', '--text'];
-  world.snakes.forEach((snake, snakeIndex) => snake.body.forEach((part, partIndex) => {
-    const glow = cssColor(colors[snakeIndex % colors.length]);
-    context.globalAlpha = snake.alive ? 1 : 0.3;
-    context.shadowColor = glow;
-    context.shadowBlur = partIndex === 0 ? 18 : 8;
-    context.fillStyle = glow;
-    context.beginPath();
-    context.roundRect(part.x * cellWidth + 1.5, part.y * cellHeight + 1.5, cellWidth - 3, cellHeight - 3, Math.min(cellWidth, cellHeight) * .3);
-    context.fill();
-  }));
+  world.snakes.forEach((snake, snakeIndex) => {
+    snake.body.forEach((part, partIndex) => {
+      const glow = cssColor(colors[snakeIndex % colors.length]);
+      context.globalAlpha = snake.alive ? 1 : 0.3;
+      context.shadowColor = glow;
+      context.shadowBlur = partIndex === 0 ? 18 : 8;
+      context.fillStyle = glow;
+      context.beginPath();
+      context.roundRect(part.x * cellWidth + 1.5, part.y * cellHeight + 1.5, cellWidth - 3, cellHeight - 3, Math.min(cellWidth, cellHeight) * .3);
+      context.fill();
+    });
+    if (world.mode === 'arena' && snake.body[0]) {
+      const head = snake.body[0];
+      context.shadowBlur = 0;
+      context.fillStyle = cssColor('--bg');
+      context.font = `700 ${Math.max(10, Math.min(cellWidth, cellHeight) * .55)}px sans-serif`;
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(`${snakeIndex + 1}`, (head.x + .5) * cellWidth, (head.y + .52) * cellHeight);
+    }
+  });
   context.globalAlpha = 1;
   context.shadowColor = '#f5c542'; // design-token-ok: canvas food glow needs a fixed high-contrast color.
   context.shadowBlur = 20;
@@ -254,7 +277,7 @@ function updateRosterDisplay() {
   roster.innerHTML = matchRosterHtml(match.players, {
     winnerId: match.winner?.id ?? null,
     scoreFor: (player, index) => `${world.snakes?.[index]?.score ?? 0} Punkte`,
-    detailFor: (player, index) => match.mode === 'arena' ? (world.snakes?.[index]?.alive ? 'Im Rennen' : 'Ausgeschieden') : '',
+    detailFor: (player, index) => match.mode === 'arena' ? `Schlange ${index + 1} · ${world.snakes?.[index]?.alive ? 'Im Rennen' : 'Ausgeschieden'}` : '',
   });
 }
 
@@ -270,18 +293,19 @@ export function renderSnake(container) {
   const roster = matchRosterHtml(match.players, {
     winnerId: match.winner?.id ?? null,
     scoreFor: (player, index) => `${world?.snakes?.[index]?.score ?? 0} Punkte`,
-    detailFor: (player, index) => match.mode === 'arena' && world ? (world.snakes?.[index]?.alive ? 'Im Rennen' : 'Ausgeschieden') : '',
+    detailFor: (player, index) => match.mode === 'arena' && world ? `Schlange ${index + 1} · ${world.snakes?.[index]?.alive ? 'Im Rennen' : 'Ausgeschieden'}` : '',
   });
   const result = match.ended ? `<div class="card arcade-winner-card"><strong>${endedText}</strong><button type="button" class="btn btn-primary" id="snake-back">Zur Arcade</button></div>` : '';
   const isPlayer = match.players.some((p) => p.id === myId());
-  // A non-host player can't pause (shared timer state, host-only), but must
-  // still have a way out instead of only a raw tab close.
+  // Every Arena participant can forfeit independently; the host retains a
+  // separate action for aborting the whole match.
+  const leaveButton = isPlayer && match.mode === 'arena' ? '<button class="btn btn-sm btn-equal btn-danger" id="snake-leave-match">Arena verlassen</button>' : '';
   const controls = match.ended
     ? ''
     : isHost
-      ? `<div class="arcade-match-controls"><button class="btn btn-sm btn-equal" id="snake-pause">${match.paused ? 'Fortsetzen' : 'Pausieren'}</button><button class="btn btn-sm btn-equal btn-danger" id="snake-finish">Beenden</button></div>`
+      ? `<div class="arcade-match-controls"><button class="btn btn-sm btn-equal" id="snake-pause">${match.paused ? 'Fortsetzen' : 'Pausieren'}</button>${leaveButton}<button class="btn btn-sm btn-equal btn-danger" id="snake-finish">${match.mode === 'arena' ? 'Arena beenden' : 'Beenden'}</button></div>`
       : isPlayer
-        ? `<div class="arcade-match-controls"><button class="btn btn-sm btn-equal btn-danger" id="snake-leave-match">Verlassen</button></div>`
+        ? `<div class="arcade-match-controls">${leaveButton || '<button class="btn btn-sm btn-equal btn-danger" id="snake-leave-match">Verlassen</button>'}</div>`
         : '';
   container.innerHTML = `<div class="arcade-game-shell"><div class="row"><h1 class="view-title">Snake</h1>${match.mode === 'arena' ? '<span class="badge">Arena</span>' : ''}</div>${arcadeToolbarHtml()}
     <div id="snake-roster">${roster}</div>

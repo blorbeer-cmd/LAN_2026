@@ -44,7 +44,7 @@ export function createWorld(playerCount = 2, mode: SnakeMode = 'classic'): Snake
   if (!valid) throw new RangeError(mode === 'classic' ? 'Classic Snake requires exactly 2 players.' : 'Snake Arena requires 3 to 8 players.');
   return {
     snakes: SPAWNS.slice(0, playerCount).map(spawnSnake),
-    food: { x: 16, y: 8 },
+    food: mode === 'arena' ? { x: 16, y: 8 } : { x: 16, y: 5 },
     tick: 0,
     mode,
     safeBounds: { ...INITIAL_BOUNDS },

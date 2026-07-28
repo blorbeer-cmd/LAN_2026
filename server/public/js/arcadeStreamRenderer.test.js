@@ -60,6 +60,7 @@ test('the Pong stream draws both full paddles inside the real 960 by 540 world',
 
 test('the Snake stream renders an Arena safe zone and more than two snakes', () => {
   const rectangles = [];
+  const labels = [];
   const context = {
     clearRect() {},
     fillRect: (...args) => rectangles.push(args),
@@ -70,9 +71,13 @@ test('the Snake stream renders an Arena safe zone and more than two snakes', () 
     stroke() {},
     arc() {},
     fill() {},
+    fillText: (...args) => labels.push(args),
     fillStyle: '',
     strokeStyle: '',
     globalAlpha: 1,
+    font: '',
+    textAlign: 'start',
+    textBaseline: 'alphabetic',
   };
   const canvas = { width: 1, height: 1, getContext: () => context };
   const originalDocument = globalThis.document;
@@ -103,6 +108,7 @@ test('the Snake stream renders an Arena safe zone and more than two snakes', () 
   assert.equal(canvas.width, 800);
   assert.equal(canvas.height, 500);
   assert.equal(rectangles.length, 8); // background, four hazard bands and three snake cells
+  assert.deepEqual(labels.map(([label]) => label), ['1', '2', '3']);
   assert.equal(context.globalAlpha, 1);
 });
 
