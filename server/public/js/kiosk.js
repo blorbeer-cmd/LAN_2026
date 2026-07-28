@@ -147,7 +147,7 @@ function renderArcadeStream(game) {
   dashboard.hidden = true;
   gameView.hidden = false;
   document.getElementById('kiosk-game-title').textContent = GAME_NAMES[game.gameType] || 'Arcade';
-  document.getElementById('kiosk-game-status').textContent = game.phase === 'countdown' ? 'Startet gleich' : game.paused ? 'Pause' : 'Läuft';
+  document.getElementById('kiosk-game-status').textContent = game.phase === 'ended' ? 'Beendet' : game.phase === 'countdown' ? 'Startet gleich' : game.paused ? 'Pause' : 'Läuft';
   const content = document.getElementById('kiosk-game-content');
   if (game.gameType === 'quiz') {
     content.innerHTML = `<div class="kiosk-game-question">${escapeHtml(game.question || 'Nächste Frage kommt gleich.')}</div>`;
