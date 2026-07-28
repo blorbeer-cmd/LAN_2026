@@ -530,6 +530,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   results follow directly without another enclosing card or accent rail; player rows reuse
   `.leaderboard-list-grid` for the shared one-/two-column ranking presentation and spell out wins
   and losses in German.
+  Snake exposes a two-button mode toggle before lobby creation. „Klassisch“ remains the two-player
+  duel; „Arena“ accepts three to eight players and labels every lobby with mode and occupancy.
+  Arena matches keep eliminated players visibly in the roster with a textual status, while the
+  canvas dims their snake and marks the shrinking safe zone with the shared danger treatment.
 - **Jam sessions** — Jam is a grouped page below „Mehr“. A dedicated local controller on the
   playback PC or kiosk Raspberry Pi connects Spotify through PKCE and never appears as a player.
   The server stores neither Spotify application credentials nor OAuth tokens. One participant

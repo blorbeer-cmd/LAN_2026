@@ -104,7 +104,25 @@ function drawLegacyKioskCanvas(canvas, game) {
     for (let x = 1; x < 32; x++) { ctx.beginPath(); ctx.moveTo(x * cw, 0); ctx.lineTo(x * cw, h); ctx.stroke(); }
     for (let y = 1; y < 20; y++) { ctx.beginPath(); ctx.moveTo(0, y * ch); ctx.lineTo(w, y * ch); ctx.stroke(); }
     ctx.globalAlpha = 1;
-    world.snakes.forEach((snake, index) => { ctx.fillStyle = index ? cssColor('--accent-3') : cssColor('--accent'); snake.body.forEach((part) => ctx.fillRect(part.x * cw, part.y * ch, cw - 2, ch - 2)); });
+    const snakeColors = ['--accent', '--accent-3', '--state-playing', '--state-paused', '--accent-2', '--danger', '--rank-1-gold', '--text'];
+    const bounds = world.safeBounds ?? { minX: 0, maxX: 31, minY: 0, maxY: 19 };
+    if (world.mode === 'arena') {
+      const left = bounds.minX * cw;
+      const top = bounds.minY * ch;
+      const right = (bounds.maxX + 1) * cw;
+      const bottom = (bounds.maxY + 1) * ch;
+      ctx.fillStyle = cssColor('--danger-bg');
+      ctx.fillRect(0, 0, w, top);
+      ctx.fillRect(0, bottom, w, h - bottom);
+      ctx.fillRect(0, top, left, bottom - top);
+      ctx.fillRect(right, top, w - right, bottom - top);
+    }
+    world.snakes.forEach((snake, index) => {
+      ctx.globalAlpha = snake.alive === false ? 0.3 : 1;
+      ctx.fillStyle = cssColor(snakeColors[index % snakeColors.length]);
+      snake.body.forEach((part) => ctx.fillRect(part.x * cw, part.y * ch, cw - 2, ch - 2));
+    });
+    ctx.globalAlpha = 1;
     ctx.fillStyle = cssColor('--rank-1-gold'); ctx.beginPath(); ctx.arc((world.food.x + 0.5) * cw, (world.food.y + 0.5) * ch, Math.min(cw, ch) * 0.35, 0, Math.PI * 2); ctx.fill();
   } else if (game.gameType === 'pong') {
     const scaleX = w / 800;

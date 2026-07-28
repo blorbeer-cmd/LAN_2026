@@ -131,6 +131,20 @@ function drawSnake(ctx, game, width, height) {
   const rows = game.render?.height ?? 20;
   const cellWidth = width / columns;
   const cellHeight = height / rows;
+  const bounds = world.safeBounds ?? { minX: 0, maxX: columns - 1, minY: 0, maxY: rows - 1 };
+  if (world.mode === 'arena') {
+    const left = bounds.minX * cellWidth;
+    const top = bounds.minY * cellHeight;
+    const right = (bounds.maxX + 1) * cellWidth;
+    const bottom = (bounds.maxY + 1) * cellHeight;
+    ctx.fillStyle = cssColor('--danger-bg');
+    ctx.fillRect(0, 0, width, top);
+    ctx.fillRect(0, bottom, width, height - bottom);
+    ctx.fillRect(0, top, left, bottom - top);
+    ctx.fillRect(right, top, width - right, bottom - top);
+    ctx.strokeStyle = cssColor('--danger');
+    ctx.strokeRect(left, top, right - left, bottom - top);
+  }
   ctx.strokeStyle = cssColor('--accent-2');
   ctx.globalAlpha = 0.12;
   for (let x = 1; x < columns; x += 1) {
@@ -140,10 +154,13 @@ function drawSnake(ctx, game, width, height) {
     ctx.beginPath(); ctx.moveTo(0, y * cellHeight); ctx.lineTo(width, y * cellHeight); ctx.stroke();
   }
   ctx.globalAlpha = 1;
+  const snakeColors = ['--accent', '--accent-3', '--state-playing', '--state-paused', '--accent-2', '--danger', '--rank-1-gold', '--text'];
   world.snakes.forEach((snake, index) => {
-    ctx.fillStyle = index ? cssColor('--accent-3') : cssColor('--accent');
+    ctx.globalAlpha = snake.alive === false ? 0.3 : 1;
+    ctx.fillStyle = cssColor(snakeColors[index % snakeColors.length]);
     snake.body.forEach((part) => ctx.fillRect(part.x * cellWidth + 1, part.y * cellHeight + 1, cellWidth - 2, cellHeight - 2));
   });
+  ctx.globalAlpha = 1;
   ctx.fillStyle = cssColor('--rank-1-gold');
   ctx.beginPath();
   ctx.arc((world.food.x + 0.5) * cellWidth, (world.food.y + 0.5) * cellHeight, Math.min(cellWidth, cellHeight) * 0.35, 0, Math.PI * 2);
