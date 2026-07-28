@@ -789,24 +789,32 @@ test('Vote: genre filter scopes the game-limit list, select-all/none and the sta
   const games = (await gamesRes.json()) as Array<{ id: string; name: string }>;
   const cs2 = games.find((g) => g.name === 'Counter-Strike 2')!;
   const rocketLeague = games.find((g) => g.name === 'Rocket League')!;
-  await page.request.patch(`${BASE_URL}/api/games/${cs2.id}`, { data: { genres: ['Shooter'] } });
-  await page.request.patch(`${BASE_URL}/api/games/${rocketLeague.id}`, { data: { genres: ['Racing'] } });
-  await page.reload();
-  await page.waitForSelector('.nav-btn[data-view="home"]');
+
+  // A round left open by an earlier test (see the same guard in
+  // "full click-through" above) would otherwise hide the idle "start a
+  // round" form this test needs from its very first step.
+  const initialVotes = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
+  if (initialVotes.open) await page.request.post(`${BASE_URL}/api/votes/cancel`);
 
   await page.click('[data-view="votes"]');
   await page.waitForSelector('#votes-start');
-  // The idle Votes view kicks off its own async history fetch on first
-  // render (see votes.js's loadHistory) and re-renders the whole view from
-  // scratch once that resolves — settle that race before interacting, or a
-  // click can land on a checkbox that gets replaced out from under it.
-  await page.waitForLoadState('networkidle');
   await page.click('#votes-limit-games');
   await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
   // Manually deselect a game that the upcoming "Shooter" filter will hide -
   // its excluded state must survive untouched by the filtered select-all/none.
-  const rocketLeagueRow = page.locator('#votes-game-select label.check-row').filter({ hasText: 'Rocket League' });
+  let rocketLeagueRow = page.locator('#votes-game-select label.check-row').filter({ hasText: 'Rocket League' });
   await rocketLeagueRow.locator('input').uncheck();
+
+  // Tag genres via the API now, with the panel already open — the resulting
+  // 'games:changed' broadcast re-renders this whole view from scratch (see
+  // the neighboring test above), so wait for the genre chip it introduces
+  // instead of assuming the patch settles before the next interaction.
+  await page.request.patch(`${BASE_URL}/api/games/${cs2.id}`, { data: { genres: ['Shooter'] } });
+  await page.request.patch(`${BASE_URL}/api/games/${rocketLeague.id}`, { data: { genres: ['Racing'] } });
+  await page.waitForSelector('[data-vote-genre-filter="Shooter"]');
+  // The re-render replaced every row — re-acquire it before relying on its
+  // (still-preserved) unchecked state again below.
+  rocketLeagueRow = page.locator('#votes-game-select label.check-row').filter({ hasText: 'Rocket League' });
 
   await page.click('[data-vote-genre-filter="Shooter"]');
   const visibleRows = page.locator('#votes-game-select label.check-row');
