@@ -2247,6 +2247,11 @@ button.card {
 .challenge-rush-number { min-height: var(--space-8); font-size: var(--font-size-lg); }
 .challenge-rush-scoreboard { display: grid; gap: var(--space-1); }
 .challenge-rush-score-row { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--bg-elevated-2); }
+.challenge-rush-result { max-width: var(--challenge-rush-stage-max-width); margin-inline: auto; text-align: center; }
+.challenge-rush-ready-count { text-align: center; }
+.challenge-rush-final-row { flex-direction: column; align-items: stretch; gap: var(--space-1); text-align: left; }
+.challenge-rush-final-row-main { display: flex; justify-content: space-between; gap: var(--space-3); }
+.challenge-rush-final-breakdown { font-size: var(--font-size-xs); }
 .arcade-tile-count {
   background: var(--state-playing-bg);
   color: var(--state-playing);

@@ -150,9 +150,11 @@ const SOUND_CUES = {
   'scribble-correct': (ctx, now) => melody(ctx, now, [{ freq: 523, at: 0 }, { freq: 659, at: 0.07 }, { freq: 784, at: 0.14 }, { freq: 1046, at: 0.21 }], { type: 'triangle', dur: 0.16, peak: 0.2 }),
   'scribble-tick': (ctx, now) => tone(ctx, now, { freq: 1000, dur: 0.04, type: 'square', peak: 0.12 }),
 
-  // Challenge Rush: a quick upward blip per point (arcade score-attack
-  // feel), a triumphant fanfare for a new high score and a plain descending
-  // tone for an ordinary game over.
+  // Challenge Rush: a crisp "go!" stab the instant a challenge starts (so
+  // the countdown's end is heard, not just seen), a quick upward blip per
+  // point (arcade score-attack feel), a triumphant fanfare for a new high
+  // score and a plain descending tone for an ordinary game over.
+  'challenge-start': (ctx, now) => melody(ctx, now, [{ freq: 660, at: 0 }, { freq: 880, at: 0.05 }], { type: 'sine', dur: 0.16, peak: 0.22 }),
   'challenge-point': (ctx, now) => tone(ctx, now, { freq: 700, freqEnd: 1000, dur: 0.07, type: 'square', peak: 0.18 }),
   'challenge-highscore': (ctx, now) => melody(ctx, now, [{ freq: 523, at: 0 }, { freq: 659, at: 0.09 }, { freq: 784, at: 0.18 }, { freq: 1046, at: 0.27 }], { type: 'square', dur: 0.18, peak: 0.22 }),
   'challenge-gameover': (ctx, now) => tone(ctx, now, { freq: 330, freqEnd: 90, dur: 0.5, type: 'sawtooth', peak: 0.18 }),
