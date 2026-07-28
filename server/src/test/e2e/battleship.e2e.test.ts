@@ -39,6 +39,15 @@ async function createPlayer(name: string): Promise<{ id: string }> {
   return response.json() as Promise<{ id: string }>;
 }
 
+async function grantAdmin(playerId: string): Promise<void> {
+  const response = await fetch(`${BASE_URL}/api/players/${playerId}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ isAdmin: true }),
+  });
+  assert.equal(response.status, 200);
+}
+
 async function openArcadeAs(playerId: string): Promise<Actor> {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
@@ -309,5 +318,26 @@ test('Battleship: disconnect ends the duel immediately and awards the connected 
   } finally {
     await host.context.close();
     if (!guestClosed) await guest.context.close();
+  }
+});
+
+test('Battleship: an admin starts a playable match against the AI', async () => {
+  const adminPlayer = await createPlayer('Battleship AI E2E Admin');
+  await grantAdmin(adminPlayer.id);
+  const admin = await openArcadeAs(adminPlayer.id);
+
+  try {
+    await admin.page.waitForSelector('#battleship-bot');
+    await admin.page.click('#battleship-bot');
+    await admin.page.waitForSelector('[data-battleship-start]:not([disabled])');
+    assert.match(await admin.page.locator('.arcade-lobby-card').innerText(), /Flotten-Bot/);
+    await admin.page.click('[data-battleship-start]');
+    await admin.page.waitForSelector('#battleship-random');
+    await randomFleet(admin.page);
+    await admin.page.click('#battleship-submit-setup');
+    await admin.page.waitForSelector('[data-fire-cell]:not([disabled])');
+    assert.match(await admin.page.locator('#battleship-target-title').innerText(), /Flotten-Bot/);
+  } finally {
+    await admin.context.close();
   }
 });
