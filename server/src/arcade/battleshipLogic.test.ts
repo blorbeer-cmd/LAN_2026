@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyShot, remainingSegments, validatePlacements } from './battleshipLogic';
+import { applyShot, chooseBotShot, createRandomPlacements, remainingSegments, validatePlacements } from './battleshipLogic';
 
 const validPlacements = [
   { shipId: 'carrier', row: 0, col: 0, orientation: 'horizontal' },
@@ -78,4 +78,18 @@ test('the final fleet segment reports zero remaining and invalid coordinates nev
   }
   assert.equal(lastRemaining, 0);
   assert.equal(remainingSegments(result.fleet), 0);
+});
+
+test('creates a valid random bot fleet', () => {
+  const placements = createRandomPlacements(() => 0.42);
+  const result = validatePlacements(placements);
+  assert.equal(result.ok, true);
+  assert.equal(new Set(placements.map((placement) => placement.shipId)).size, 5);
+});
+
+test('the bot follows up next to hits before searching the remaining board', () => {
+  const fired = new Set([1, 10, 11]);
+  assert.equal(chooseBotShot(fired, [11], () => 0), 21);
+  assert.equal(chooseBotShot(new Set([0, 1, 10]), [], () => 0), 2);
+  assert.equal(chooseBotShot(new Set(Array.from({ length: 100 }, (_, cell) => cell)), [], () => 0), null);
 });
