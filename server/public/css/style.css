@@ -85,7 +85,6 @@
   --challenge-rush-number-min-width: 48px;
   --challenge-rush-number-grid-width: 360px;
   --challenge-rush-tile-grid-width: 360px;
-  --challenge-rush-tile-min-size: 56px;
   --challenge-rush-traffic-light-size: 140px;
   --challenge-rush-color-dot-size: 16px;
   --notification-panel-width: 360px;
@@ -2258,8 +2257,15 @@ button.card {
 .challenge-rush-final-breakdown { font-size: var(--font-size-xs); }
 .challenge-rush-target-progress { text-align: center; }
 .challenge-rush-playfield-badge { position: absolute; top: var(--space-2); left: var(--space-2); margin: 0; padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--bg-elevated-2); }
+/* Columns use minmax(0, 1fr) rather than a plain 1fr (equivalent to
+   minmax(auto, 1fr)): auto would floor each track at .challenge-rush-tile's
+   content size, which together with a fixed per-tile min-width/min-height
+   made the grid unable to shrink below tileCount/cols * min-size at narrow
+   effective widths (e.g. a zoomed-in phone) — the outer playfield's
+   `overflow: hidden` then clipped the outer tiles instead of letting the
+   grid reflow. Tiles now scale down together with the container instead. */
 .challenge-rush-tile-grid { display: grid; gap: var(--space-2); width: min(100%, var(--challenge-rush-tile-grid-width)); }
-.challenge-rush-tile { aspect-ratio: 1; min-width: var(--challenge-rush-tile-min-size); min-height: var(--challenge-rush-tile-min-size); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated-2); cursor: pointer; }
+.challenge-rush-tile { aspect-ratio: 1; width: 100%; min-width: 0; min-height: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated-2); cursor: pointer; }
 .challenge-rush-tile.is-active { background: var(--accent-gradient); border-color: transparent; box-shadow: var(--shadow-glow-accent); }
 .challenge-rush-tile.is-odd { background: var(--accent-gradient); border-style: dashed; border-color: var(--accent-text); }
 .challenge-rush-tile:disabled { cursor: default; opacity: 0.7; }

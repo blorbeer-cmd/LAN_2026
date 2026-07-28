@@ -19,6 +19,11 @@ let countdownKey = null; let startedKey = null; let presentationKey = null;
 // the active challenge at a time, so one counter is enough.
 let progressStep = 0;
 let memoryRevealDone = false; let memoryRevealIndex = -1; let trafficGreen = false;
+// Whether this player has already completed the current challenge — the
+// match itself stays in 'playing' until every player is done, but this
+// player's own controls must stop accepting input immediately instead of
+// silently swallowing further clicks as server-side duplicate-acks.
+let iCompleted = false;
 let revealTimers = [];
 const myId = () => getMyId();
 const currentView = () => document.getElementById('view-container')?.dataset.view;
@@ -68,7 +73,7 @@ function syncPresentation(state) {
   const key = `${state.matchId}:${state.challengeIndex}`;
   if (key !== presentationKey) {
     presentationKey = key; clearRevealTimers();
-    progressStep = 0; memoryRevealDone = false; memoryRevealIndex = -1; trafficGreen = false;
+    progressStep = 0; memoryRevealDone = false; memoryRevealIndex = -1; trafficGreen = false; iCompleted = false;
   }
   if (state.phase === 'countdown' && !state.paused) {
     if (countdownKey !== key) { countdownKey = key; showCountdown(Date.now() + (state.remainingMs ?? 0)); }
@@ -102,6 +107,7 @@ function syncProgressFromServer(state) {
   const mine = state.progress?.find((entry) => entry.playerId === myId());
   if (!mine) return;
   progressStep = state.challenge?.key === 'color-word' ? mine.correct + mine.errors : mine.correct;
+  iCompleted = mine.completed === true;
 }
 
 export function ensureChallengeRushSocket() {
@@ -183,7 +189,13 @@ function matchControlsHtml() {
   return `<div class="arcade-match-controls">${pause}${finish}${leave}</div>`;
 }
 function challengeView(container) {
-  const challenge = match?.challenge; const playing = match?.phase === 'playing' && !match?.paused; const data = challenge?.data ?? {};
+  const challenge = match?.challenge;
+  // The match itself stays 'playing' until every player finishes this
+  // challenge, so a player who's already done must stop being offered live
+  // controls — folding !iCompleted into `playing` disables every button
+  // below the same way the pre-start/paused states already do.
+  const playing = match?.phase === 'playing' && !match?.paused && !iCompleted;
+  const data = challenge?.data ?? {};
   let body = '<p class="muted">Bereithalten – gleich geht’s los …</p>';
   // The reaction target's exact position is only rendered once play actually
   // starts, so nobody can pre-aim at it during the countdown (requirement:
@@ -211,21 +223,37 @@ function challengeView(container) {
   }
   if (challenge?.key === 'memory-sequence') {
     const tileCount = data.tileCount ?? 9;
-    const tiles = Array.from({ length: tileCount }, (_, index) => `<button type="button" class="challenge-rush-tile ${memoryRevealIndex === index ? 'is-active' : ''}" data-cr-tile="${index}" ${playing && memoryRevealDone ? '' : 'disabled'} aria-label="Feld ${index + 1}"></button>`).join('');
-    body = `<div class="challenge-rush-tile-grid" style="grid-template-columns:repeat(3,1fr);">${tiles}</div><p class="muted">${!playing ? 'Bereithalten …' : memoryRevealDone ? `Feld ${progressStep + 1} von ${data.sequence?.length ?? 0}` : 'Merke dir die Reihenfolge …'}</p>`;
+    // The reveal only toggles `is-active` visually; a screen reader gets no
+    // signal that a tile just flashed unless the accessible name says so too.
+    const tiles = Array.from({ length: tileCount }, (_, index) => {
+      const isActive = memoryRevealIndex === index;
+      return `<button type="button" class="challenge-rush-tile ${isActive ? 'is-active' : ''}" data-cr-tile="${index}" ${playing && memoryRevealDone ? '' : 'disabled'} aria-label="Feld ${index + 1}${isActive ? ' (leuchtet gerade)' : ''}"></button>`;
+    }).join('');
+    body = `<div class="challenge-rush-tile-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));">${tiles}</div><p class="muted" aria-live="polite">${!playing ? 'Bereithalten …' : memoryRevealDone ? `Feld ${progressStep + 1} von ${data.sequence?.length ?? 0}` : 'Merke dir die Reihenfolge …'}</p>`;
   }
   if (challenge?.key === 'odd-one-out') {
     const tileCount = data.tileCount ?? 16;
-    const tiles = Array.from({ length: tileCount }, (_, index) => `<button type="button" class="challenge-rush-tile ${playing && index === data.oddIndex ? 'is-odd' : ''}" data-cr-tile="${index}" ${playing ? '' : 'disabled'} aria-label="Feld ${index + 1}"></button>`).join('');
-    body = `<div class="challenge-rush-tile-grid" style="grid-template-columns:repeat(4,1fr);">${tiles}</div>`;
+    // The `is-odd` class only conveys the differing tile visually; a screen
+    // reader user gets no equivalent signal from the identical "Feld N"
+    // labels, so the odd tile's accessible name states it explicitly too.
+    const tiles = Array.from({ length: tileCount }, (_, index) => {
+      const isOdd = playing && index === data.oddIndex;
+      return `<button type="button" class="challenge-rush-tile ${isOdd ? 'is-odd' : ''}" data-cr-tile="${index}" ${playing ? '' : 'disabled'} aria-label="Feld ${index + 1}${isOdd ? ' (abweichend)' : ''}"></button>`;
+    }).join('');
+    body = `<div class="challenge-rush-tile-grid" style="grid-template-columns:repeat(4,minmax(0,1fr));">${tiles}</div>`;
   }
   if (challenge?.key === 'whack-a-mole') {
     // Same minimization as Aim Trainer: only the current active hole
     // (data.activeHole) is sent, not the whole sequence.
     const holeCount = data.holeCount ?? 9; const active = playing ? data.activeHole : null;
     const totalHits = data.totalHits ?? 8;
-    const tiles = Array.from({ length: holeCount }, (_, index) => `<button type="button" class="challenge-rush-tile ${active === index ? 'is-active' : ''}" data-cr-tile="${index}" ${playing ? '' : 'disabled'} aria-label="Loch ${index + 1}"></button>`).join('');
-    body = `<div class="challenge-rush-tile-grid" style="grid-template-columns:repeat(3,1fr);">${tiles}</div><p class="muted challenge-rush-target-progress">${Math.min(progressStep, totalHits)} / ${totalHits} getroffen</p>`;
+    // As with the odd-one-out tile, `is-active` alone conveys nothing to a
+    // screen reader — the active hole's accessible name says so directly.
+    const tiles = Array.from({ length: holeCount }, (_, index) => {
+      const isActive = active === index;
+      return `<button type="button" class="challenge-rush-tile ${isActive ? 'is-active' : ''}" data-cr-tile="${index}" ${playing ? '' : 'disabled'} aria-label="Loch ${index + 1}${isActive ? ' (aktiv)' : ''}"></button>`;
+    }).join('');
+    body = `<div class="challenge-rush-tile-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));">${tiles}</div><p class="muted challenge-rush-target-progress">${Math.min(progressStep, totalHits)} / ${totalHits} getroffen</p>`;
   }
   if (challenge?.key === 'traffic-light') {
     body = `<button type="button" class="challenge-rush-traffic-light ${trafficGreen ? 'is-green' : 'is-red'}" data-cr-traffic ${playing ? '' : 'disabled'} aria-label="Klicken sobald Grün">${trafficGreen ? 'GRÜN' : 'ROT'}</button><p class="muted">Zu früh klicken zählt als Fehlstart.</p>`;
@@ -235,9 +263,17 @@ function challengeView(container) {
     // every remaining word/color/option set.
     const round = playing ? data.round : null;
     const roundCount = data.roundCount ?? 6;
-    const word = round ? `<div class="challenge-rush-color-word" style="color:${COLOR_WORD_VARS[round.textColor] ?? 'inherit'}">${escapeHtml(round.word)}</div>` : '<p class="muted">Bereithalten …</p>';
+    // The correct answer is the rendered font color, not the printed word —
+    // a sighted player sees that directly, but a screen reader only reads
+    // the text content, never an inline CSS color. The accessible name
+    // states the actual color explicitly so both paths carry the same
+    // information.
+    const word = round ? `<div class="challenge-rush-color-word" style="color:${COLOR_WORD_VARS[round.textColor] ?? 'inherit'}" aria-label="Schriftfarbe: ${COLOR_WORD_LABELS[round.textColor] ?? round.textColor}">${escapeHtml(round.word)}</div>` : '<p class="muted">Bereithalten …</p>';
     const options = round ? `<div class="challenge-rush-color-options">${round.options.map((key) => `<button type="button" class="btn challenge-rush-color-option" data-cr-color="${key}" style="border-color:${COLOR_WORD_VARS[key]};"><span class="challenge-rush-color-dot" style="background:${COLOR_WORD_VARS[key]};"></span>${COLOR_WORD_LABELS[key] ?? key}</button>`).join('')}</div>` : '';
     body = `${word}${options}<p class="muted challenge-rush-target-progress">${Math.min(progressStep, roundCount)} / ${roundCount}</p>`;
+  }
+  if (iCompleted && match?.phase === 'playing' && !match?.paused) {
+    body = '<p class="muted">Fertig! Warte auf die anderen Mitspieler …</p>';
   }
   return `<section class="card stack challenge-rush-stage" data-match-id="${escapeHtml(match?.matchId ?? '')}" data-challenge-index="${match?.challengeIndex ?? -1}" data-phase="${escapeHtml(match?.phase ?? '')}" data-remaining-ms="${match?.remainingMs ?? ''}" data-reconnected="${match?.reconnected === true}" data-disconnected="${match?.disconnected === true}" data-challenge-key="${escapeHtml(challenge?.key ?? '')}" aria-live="polite"><div class="row-between"><span class="badge badge-playing">Challenge ${(match?.challengeIndex ?? 0) + 1} / ${match?.challengeCount ?? 4}</span><span>${match?.paused ? 'Pause' : match?.phase === 'countdown' ? 'Startet gleich' : 'Läuft'}</span></div><h2>${escapeHtml(challenge?.title ?? 'Mini-Challenge')}</h2><p class="muted">${escapeHtml(challenge?.description ?? '')}</p><div class="challenge-rush-playfield">${body}</div></section>`;
 }
@@ -284,6 +320,12 @@ export function renderChallengeRush(container, ctx) {
     if (!result?.ok && !result?.ignored) return showToast(result?.error || 'Eingabe abgelehnt.', { error: true });
     if (result?.ok && !result?.ignored && !result?.duplicate) {
       if (result.next && match?.challenge) match = { ...match, challenge: { ...match.challenge, data: { ...match.challenge.data, ...result.next } } };
+      // Reflected immediately from this ack instead of waiting for the next
+      // full state broadcast — the match stays 'playing' until every player
+      // finishes, so this player's own controls must stop accepting input
+      // (and show a waiting state) the moment they're done, not several
+      // silently-ignored duplicate acks later.
+      if (result.progress?.completed) { iCompleted = true; rerender(); }
       onAccepted(result.progress);
     }
   });

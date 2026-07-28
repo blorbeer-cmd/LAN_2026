@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 export type ChallengeKey =
   | 'reaction-circle' | 'cps' | 'number-salad' | 'timing-10'
   | 'aim-trainer' | 'memory-sequence' | 'odd-one-out' | 'whack-a-mole' | 'traffic-light' | 'color-word';
@@ -18,9 +20,22 @@ export const CHALLENGES: ChallengeDefinition[] = [
 
 export interface ChallengePayload { key: ChallengeKey; title: string; description: string; durationMs: number; seed: number; data: Record<string, unknown> }
 
+// A plain linear congruential generator is invertible: revealing any single
+// output (e.g. the first Aim Trainer target, which the player has to see to
+// play) lets an attacker solve for the generator's internal state and
+// reconstruct every later output — including, since challenge seeds are
+// derived from the match seed, every remaining challenge in the match.
+// Hashing (seed, counter) through SHA-256 for every call has no such
+// algebraic shortcut: recovering the seed from a digest is a preimage
+// attack, not solvable arithmetic, so this stays safe even once a value
+// has to be revealed for gameplay.
 export function seededRandom(seed: number): () => number {
-  let value = seed >>> 0;
-  return () => { value = (value * 1_664_525 + 1_013_904_223) >>> 0; return value / 0x1_0000_0000; };
+  let counter = 0;
+  return () => {
+    counter += 1;
+    const digest = createHash('sha256').update(`${seed}:${counter}`).digest();
+    return digest.readUInt32BE(0) / 0x1_0000_0000;
+  };
 }
 
 export function shuffled<T>(items: T[], random: () => number): T[] {
