@@ -12,12 +12,14 @@ import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
+import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 
 export function renderLeaderboard(container, ctx) {
   const filterGameId = state.selectedGameId || '';
-  const gameOptions = `<option value="">Gesamt</option>${state.games
-    .map((g) => `<option value="${g.id}" ${g.id === filterGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`)
-    .join('')}`;
+  const lbGameOptions = [
+    { value: '', label: 'Gesamt' },
+    ...state.games.map((g) => ({ value: g.id, label: `${g.icon} ${g.name}` })),
+  ];
 
   const standings = state.leaderboard?.standings || [];
   const rows = standings
@@ -93,10 +95,10 @@ export function renderLeaderboard(container, ctx) {
         <div class="grouped-page-section-title">
           <h2 id="leaderboard-filtered-title">Rangliste &amp; Spielzeit</h2>
         </div>
-        <label>
-          <span class="field-label">Spiel auswählen</span>
-          <select id="lb-filter">${gameOptions}</select>
-        </label>
+        <div>
+          <label class="field-label" for="lb-filter-search">Spiel auswählen</label>
+          ${searchSelectHtml('lb-filter', lbGameOptions, filterGameId, { placeholder: 'Spiel suchen…' })}
+        </div>
         <div class="stack">
           <section class="tournament-section-panel stack" aria-labelledby="leaderboard-ranking-title">
             <div class="grouped-page-section-title">
@@ -128,6 +130,7 @@ export function renderLeaderboard(container, ctx) {
     </div>
   `;
 
+  wireSearchSelect(container, 'lb-filter', lbGameOptions);
   container.querySelector('#lb-filter').addEventListener('change', async (e) => {
     state.selectedGameId = e.target.value || null;
     const gameId = state.selectedGameId || undefined;
@@ -162,6 +165,7 @@ export function openMatchForm(ctx, options = {}) {
   // for separately, so there's no way for the two to disagree.
   let advancedMode = false;
   const defaultGameId = options.presetGameId || state.selectedGameId || state.games[0].id;
+  const matchGameOptions = state.games.map((g) => ({ value: g.id, label: `${g.icon} ${g.name}` }));
 
   const presetTeamIndexByPlayer = new Map();
   if (options.presetTeams) {
@@ -204,12 +208,10 @@ export function openMatchForm(ctx, options = {}) {
           <div class="grouped-page-section-title">
             <h2 id="match-mode-title">Modus</h2>
           </div>
-          <label>
-            <span class="field-label">Spiel</span>
-            <select id="match-game">
-              ${state.games.map((g) => `<option value="${g.id}" ${g.id === defaultGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`).join('')}
-            </select>
-          </label>
+          <div>
+            <label class="field-label" for="match-game-search">Spiel</label>
+            ${searchSelectHtml('match-game', matchGameOptions, defaultGameId, { placeholder: 'Spiel suchen…' })}
+          </div>
           <div>
             <label class="check-row">
               <input type="checkbox" id="match-ffa" />
@@ -241,6 +243,7 @@ export function openMatchForm(ctx, options = {}) {
         return dirty ? 'Das eingetragene Ergebnis inklusive Sieger, Werten und Platzierungen geht verloren.' : null;
       },
       onMount: (modalEl) => {
+        wireSearchSelect(modalEl, 'match-game', matchGameOptions);
         const bodyEl = modalEl.querySelector('#match-body');
 
         function renderTeamPickers() {

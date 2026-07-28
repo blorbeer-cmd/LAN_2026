@@ -29,6 +29,7 @@ import { showCountdown, cancelCountdown } from '../countdown.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { isOwnFinishedMatch } from '../arcadeWatchFilter.js';
+import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 
 // The Arcade opens as a launcher: a compact grid of playable game tiles.
 // Picking one reveals that game's lobby below.
@@ -281,16 +282,11 @@ function arcadeStatsHtml() {
   if (!games.length) return `<div class="empty-state" style="padding:var(--space-4);">Noch keine abgeschlossenen Arcade-Runden.</div>`;
   if (!games.some((g) => g.gameType === activeStatsGame)) activeStatsGame = games[0].gameType;
 
+  const statsGameOptions = games.map((g) => ({ value: g.gameType, label: `${g.title} · ${arcadeMatchCountLabel(g.matches)}` }));
   const gameSelect = `
     <div>
-      <label for="arcade-stats-game" class="field-label">Spiel auswählen</label>
-      <select id="arcade-stats-game">
-        ${games
-          .map(
-            (g) => `<option value="${g.gameType}" ${g.gameType === activeStatsGame ? 'selected' : ''}>${escapeHtml(g.title)} · ${arcadeMatchCountLabel(g.matches)}</option>`
-          )
-          .join('')}
-      </select>
+      <label for="arcade-stats-game-search" class="field-label">Spiel auswählen</label>
+      ${searchSelectHtml('arcade-stats-game', statsGameOptions, activeStatsGame, { placeholder: 'Spiel suchen…' })}
     </div>`;
 
   const game = games.find((g) => g.gameType === activeStatsGame);
@@ -633,10 +629,13 @@ export function renderArcade(container, ctx) {
     btn.addEventListener('click', () => startArcadeWatch(btn.dataset.watchMatch));
   });
 
-  container.querySelector('#arcade-stats-game')?.addEventListener('change', (event) => {
-    activeStatsGame = event.currentTarget.value;
-    ctx.rerender();
-  });
+  if (container.querySelector('#arcade-stats-game')) {
+    wireSearchSelect(container, 'arcade-stats-game', (stats?.games ?? []).map((g) => ({ value: g.gameType, label: `${g.title} · ${arcadeMatchCountLabel(g.matches)}` })));
+    container.querySelector('#arcade-stats-game').addEventListener('change', (event) => {
+      activeStatsGame = event.currentTarget.value;
+      ctx.rerender();
+    });
+  }
 
   container.querySelectorAll('canvas[data-arcade-gallery-drawing]').forEach((canvas) => {
     const drawing = scribbleGallery.find((entry) => entry.id === canvas.dataset.arcadeGalleryDrawing);

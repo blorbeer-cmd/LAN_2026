@@ -38,6 +38,7 @@ import { showToast } from '../toast.js';
 import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { domainIcon } from '../domainIcons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { GAME_GENRES } from '../gameGenres.js';
 
 // Cached separately from `state` (like analytics.js does) since it's fetched
 // from its own endpoint, not part of the main loadAll() round-trip.
@@ -110,6 +111,12 @@ let draftKey = null; // `${round}:${playerId}` the current draft belongs to
 // (including a newly added game) defaults to selected.
 let limitGamesChecked = false;
 let excludedGameIds = new Set();
+
+// Genre chip filter narrowing which games are *visible* in the game-limit
+// checkbox grid above (OR semantics, same as the Spiele view's list filter).
+// Purely a view filter — it never touches excludedGameIds, so games hidden
+// by the filter keep whatever checked state they already had.
+let voteGenreFilter = new Set();
 
 // Guards the points sliders against a re-render landing mid-drag (another
 // player casting a vote, or a Bock rating changing elsewhere, both trigger a
@@ -472,7 +479,20 @@ export function renderVotes(container, ctx) {
         </div>
       </section>`;
   } else {
-    const gameCheckboxes = state.games
+    const usedVoteGenres = GAME_GENRES.filter((g) => state.games.some((game) => (game.genres ?? []).includes(g)));
+    const genreFilteredGames =
+      voteGenreFilter.size === 0 ? state.games : state.games.filter((g) => (g.genres ?? []).some((genre) => voteGenreFilter.has(genre)));
+    const voteGenreFilterHtml = usedVoteGenres.length
+      ? `<div class="chip-list" role="group" aria-label="Nach Genre filtern">
+           ${usedVoteGenres
+             .map(
+               (g) =>
+                 `<button type="button" class="chip${voteGenreFilter.has(g) ? ' is-active' : ''}" data-vote-genre-filter="${escapeHtml(g)}" aria-pressed="${voteGenreFilter.has(g)}">${escapeHtml(g)}</button>`,
+             )
+             .join('')}
+         </div>`
+      : '';
+    const gameCheckboxes = genreFilteredGames
       .map(
         (g) => `
         <label class="check-row">
@@ -512,7 +532,13 @@ export function renderVotes(container, ctx) {
               <button type="button" class="btn btn-sm" id="votes-select-all">Alle markieren</button>
               <button type="button" class="btn btn-sm" id="votes-select-none">Auswahl aufheben</button>
             </div>
+            ${voteGenreFilterHtml}
             <div id="votes-game-select" class="vote-game-grid">${gameCheckboxes}</div>
+            ${
+              genreFilteredGames.length === 0
+                ? `<p class="muted" style="font-size:var(--font-size-xs);">Keine Spiele mit den gewählten Genres.</p>`
+                : ''
+            }
           </div>
         </div>
         <div class="sticky-actions">
@@ -651,6 +677,15 @@ export function renderVotes(container, ctx) {
   container.querySelector('#votes-select-none')?.addEventListener('click', () => {
     excludedGameIds = new Set(state.games.map((g) => g.id));
     ctx.rerender();
+  });
+
+  container.querySelectorAll('[data-vote-genre-filter]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const g = btn.dataset.voteGenreFilter;
+      if (voteGenreFilter.has(g)) voteGenreFilter.delete(g);
+      else voteGenreFilter.add(g);
+      ctx.rerender();
+    });
   });
 
   const startBtn = container.querySelector('#votes-start');
