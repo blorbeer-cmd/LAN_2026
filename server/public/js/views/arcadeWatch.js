@@ -145,7 +145,7 @@ function rosterHtml(state) {
 
 function updateWatchMeta(state) {
   const status = document.querySelector('#arcade-watch-status');
-  if (status) status.textContent = state.paused ? 'Pause' : state.phase === 'countdown' ? 'Startet gleich' : 'Läuft';
+  if (status) status.textContent = state.phase === 'ended' ? 'Beendet' : state.paused ? 'Pause' : state.phase === 'countdown' ? 'Startet gleich' : 'Läuft';
 }
 
 function stateHtml(state) {
@@ -156,7 +156,8 @@ function stateHtml(state) {
     const title = challenge?.title ?? state.challenge ?? 'Mini-Challenge';
     const progress = `${Number(state.challengeIndex ?? 0) + 1} / ${Number(state.challengeCount ?? 4)}`;
     const scores = (state.scores ?? []).map((score) => `<div class="challenge-rush-score-row"><span>${escapeHtml(score.name ?? 'Spieler')}${score.forfeited ? ' · Forfait' : ''}</span><strong>${escapeHtml(String(score.score ?? 0))}</strong></div>`).join('');
-    return `<section class="challenge-rush-watch card stack"><div class="row-between"><strong>${escapeHtml(String(title))}</strong><span>${escapeHtml(progress)}</span></div><p class="muted">${state.paused ? 'Pause' : state.phase === 'countdown' ? 'Startet gleich' : state.phase === 'result' ? 'Auswertung' : 'Läuft'}</p><div class="challenge-rush-scoreboard">${scores || '<span class="muted">Noch keine Punkte</span>'}</div></section>`;
+    const status = state.phase === 'ended' ? 'Beendet' : state.paused ? 'Pause' : state.phase === 'countdown' ? 'Startet gleich' : state.phase === 'result' ? 'Auswertung' : 'Läuft';
+    return `<section class="challenge-rush-watch card stack"><div class="row-between"><strong>${escapeHtml(String(title))}</strong><span>${escapeHtml(progress)}</span></div><p class="muted">${status}</p><div class="challenge-rush-scoreboard">${scores || '<span class="muted">Noch keine Punkte</span>'}</div></section>`;
   }
   
   const [width, height] = arcadeStreamCanvasSize(state.gameType);
