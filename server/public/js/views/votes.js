@@ -118,6 +118,16 @@ let excludedGameIds = new Set();
 // by the filter keep whatever checked state they already had.
 let voteGenreFilter = new Set();
 
+// Games currently visible under the genre filter above — the single source
+// of truth for what "Alle markieren"/"Auswahl aufheben" and the start action
+// itself are allowed to touch, so a narrowed filter never affects games it
+// doesn't show.
+function voteFilterVisibleGames() {
+  return voteGenreFilter.size === 0
+    ? state.games
+    : state.games.filter((g) => (g.genres ?? []).some((genre) => voteGenreFilter.has(genre)));
+}
+
 // Guards the points sliders against a re-render landing mid-drag (another
 // player casting a vote, or a Bock rating changing elsewhere, both trigger a
 // renderCurrent() while this view is open) — see gameCatalog.js's identical
@@ -480,8 +490,7 @@ export function renderVotes(container, ctx) {
       </section>`;
   } else {
     const usedVoteGenres = GAME_GENRES.filter((g) => state.games.some((game) => (game.genres ?? []).includes(g)));
-    const genreFilteredGames =
-      voteGenreFilter.size === 0 ? state.games : state.games.filter((g) => (g.genres ?? []).some((genre) => voteGenreFilter.has(genre)));
+    const genreFilteredGames = voteFilterVisibleGames();
     const voteGenreFilterHtml = usedVoteGenres.length
       ? `<div class="chip-list" role="group" aria-label="Nach Genre filtern">
            ${usedVoteGenres
@@ -671,11 +680,11 @@ export function renderVotes(container, ctx) {
   });
 
   container.querySelector('#votes-select-all')?.addEventListener('click', () => {
-    excludedGameIds.clear();
+    for (const g of voteFilterVisibleGames()) excludedGameIds.delete(g.id);
     ctx.rerender();
   });
   container.querySelector('#votes-select-none')?.addEventListener('click', () => {
-    excludedGameIds = new Set(state.games.map((g) => g.id));
+    for (const g of voteFilterVisibleGames()) excludedGameIds.add(g.id);
     ctx.rerender();
   });
 
@@ -695,7 +704,9 @@ export function renderVotes(container, ctx) {
       const info = container.querySelector('#votes-info')?.value.trim() || undefined;
       let gameIds;
       if (limitGamesChecked) {
-        const checked = state.games.filter((g) => !excludedGameIds.has(g.id)).map((g) => g.id);
+        const checked = voteFilterVisibleGames()
+          .filter((g) => !excludedGameIds.has(g.id))
+          .map((g) => g.id);
         if (checked.length === 0) {
           return showToast('Bitte mindestens ein Spiel auswählen.', { error: true });
         }

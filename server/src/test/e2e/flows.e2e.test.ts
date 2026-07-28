@@ -765,6 +765,70 @@ test('Vote: game-limit selection survives an unrelated re-render and select-all/
   await page.waitForSelector('#votes-game-select-wrap[hidden]', { state: 'attached' });
 });
 
+test('Vote: genre filter scopes the game-limit list, select-all/none and the started round to visible games', async () => {
+  // Regression test: the genre chip filter only ever narrowed which games
+  // were *displayed* in the "Nur bestimmte Spiele" checkbox grid. "Alle
+  // markieren"/"Auswahl aufheben" and the actual start action still touched
+  // every game regardless of the active filter, so e.g. filtering to
+  // "Shooter" and clicking "Alle markieren" silently (re-)selected every
+  // other genre's games too, and starting the round could still include
+  // games the filter was hiding.
+  const gamesRes = await page.request.get(`${BASE_URL}/api/games`);
+  const games = (await gamesRes.json()) as Array<{ id: string; name: string }>;
+  const cs2 = games.find((g) => g.name === 'Counter-Strike 2')!;
+  const rocketLeague = games.find((g) => g.name === 'Rocket League')!;
+  await page.request.patch(`${BASE_URL}/api/games/${cs2.id}`, { data: { genres: ['Shooter'] } });
+  await page.request.patch(`${BASE_URL}/api/games/${rocketLeague.id}`, { data: { genres: ['Racing'] } });
+  await page.reload();
+  await page.waitForSelector('.nav-btn[data-view="home"]');
+
+  await page.click('[data-view="votes"]');
+  await page.waitForSelector('#votes-start');
+  await page.click('#votes-limit-games');
+  await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
+  // Manually deselect a game that the upcoming "Shooter" filter will hide -
+  // its excluded state must survive untouched by the filtered select-all/none.
+  const rocketLeagueRow = page.locator('#votes-game-select label.check-row').filter({ hasText: 'Rocket League' });
+  await rocketLeagueRow.locator('input').uncheck();
+
+  await page.click('[data-vote-genre-filter="Shooter"]');
+  const visibleRows = page.locator('#votes-game-select label.check-row');
+  await page.waitForFunction(() => document.querySelectorAll('#votes-game-select label.check-row').length === 1);
+  assert.equal(await visibleRows.count(), 1, 'only the Shooter-tagged game should be listed while filtered');
+  assert.match((await visibleRows.first().innerText()).trim(), /Counter-Strike 2/);
+
+  // "Auswahl aufheben" while filtered must only uncheck the visible game.
+  await page.click('#votes-select-none');
+  assert.equal(await visibleRows.first().locator('input').isChecked(), false);
+
+  // "Alle markieren" while filtered must only re-check the visible game, not
+  // the Rocket League checkbox this test manually excluded above.
+  await page.click('#votes-select-all');
+  assert.equal(await visibleRows.first().locator('input').isChecked(), true);
+
+  await page.click('[data-vote-genre-filter="Shooter"]');
+  await page.waitForFunction(() => document.querySelectorAll('#votes-game-select label.check-row').length > 1);
+  assert.equal(
+    await rocketLeagueRow.locator('input').isChecked(),
+    false,
+    'Rocket League must stay excluded — the filtered select-all above must not have touched it',
+  );
+
+  // Starting the round while the Shooter filter is active must only offer
+  // the currently visible, checked game(s) for voting, even though other
+  // games remain checked underneath the filter.
+  await page.click('[data-vote-genre-filter="Shooter"]');
+  await page.waitForFunction(() => document.querySelectorAll('#votes-game-select label.check-row').length === 1);
+  await page.click('#votes-start');
+  await page.waitForSelector('#votes-submit');
+  const openGameNames = await page.locator('.vote-row > div:first-of-type span.row').allInnerTexts();
+  assert.deepEqual(openGameNames.map((t) => t.trim()), ['Counter-Strike 2']);
+
+  await page.click('#votes-cancel');
+  await page.click('[data-confirm]');
+  await page.waitForSelector('#votes-start');
+});
+
 test('matchmaking Historie marks a recorded draw as Unentschieden', async () => {
   await page.click('.nav-btn[data-view="matchmaking"]');
   await page.click('#mm-generate');
