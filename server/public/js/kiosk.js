@@ -11,6 +11,7 @@ import { installIconReplacement, icon } from './icons.js';
 import { bannerContentHtml } from './pushFeed.js';
 import { drawArcadeStreamCanvas } from './arcadeStreamRenderer.js';
 import { domainIcon, installDomainIcons } from './domainIcons.js';
+import { snakeArenaLegendHtml } from './snakeArenaLegend.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -69,13 +70,19 @@ function drawLegacyKioskCanvas(canvas, game) {
 
   if (game.gameType === 'tetris') {
     const boards = game.players || [];
-    const boardW = w / Math.max(1, boards.length);
+    const columns = boards.length <= 2 ? Math.max(1, boards.length) : boards.length <= 4 ? 2 : 4;
+    const rows = Math.ceil(boards.length / columns);
+    const boardW = w / columns;
+    const boardH = h / Math.max(1, rows);
     boards.forEach((player, index) => {
-      const left = index * boardW + boardW * 0.1;
-      const top = h * 0.06;
+      const column = index % columns;
+      const rowIndex = Math.floor(index / columns);
+      const left = column * boardW + boardW * 0.1;
+      const top = rowIndex * boardH + boardH * 0.06;
       const bw = boardW * 0.8;
-      const bh = h * 0.88;
+      const bh = boardH * 0.8;
       const cell = Math.min(bw / 10, bh / 20);
+      ctx.globalAlpha = player.alive === false ? 0.45 : 1;
       ctx.fillStyle = cssColor('--bg-elevated');
       ctx.fillRect(left, top, cell * 10, cell * 20);
       (player.board || []).forEach((row, y) => row.forEach((value, x) => {
@@ -89,24 +96,15 @@ function drawLegacyKioskCanvas(canvas, game) {
       }
       ctx.fillStyle = cssColor('--text');
       ctx.font = `${parseFloat(getComputedStyle(document.body).fontSize) * 1.5}px sans-serif`;
-      ctx.fillText(player.name || 'Spieler', left, h * 0.98);
+      ctx.fillText(player.name || 'Spieler', left, (rowIndex + 1) * boardH - 4);
+      ctx.globalAlpha = 1;
     });
     return;
   }
 
   const world = game.world;
   if (!world) return;
-  if (game.gameType === 'snake') {
-    const cw = w / 32;
-    const ch = h / 20;
-    ctx.strokeStyle = cssColor('--accent-2');
-    ctx.globalAlpha = 0.12;
-    for (let x = 1; x < 32; x++) { ctx.beginPath(); ctx.moveTo(x * cw, 0); ctx.lineTo(x * cw, h); ctx.stroke(); }
-    for (let y = 1; y < 20; y++) { ctx.beginPath(); ctx.moveTo(0, y * ch); ctx.lineTo(w, y * ch); ctx.stroke(); }
-    ctx.globalAlpha = 1;
-    world.snakes.forEach((snake, index) => { ctx.fillStyle = index ? cssColor('--accent-3') : cssColor('--accent'); snake.body.forEach((part) => ctx.fillRect(part.x * cw, part.y * ch, cw - 2, ch - 2)); });
-    ctx.fillStyle = cssColor('--rank-1-gold'); ctx.beginPath(); ctx.arc((world.food.x + 0.5) * cw, (world.food.y + 0.5) * ch, Math.min(cw, ch) * 0.35, 0, Math.PI * 2); ctx.fill();
-  } else if (game.gameType === 'pong') {
+  if (game.gameType === 'pong') {
     const scaleX = w / 800;
     const scaleY = h / 450;
     ctx.fillStyle = cssColor('--accent'); ctx.fillRect(world.paddles[0].x * scaleX, world.paddles[0].y * scaleY, 12, world.paddles[0].height * scaleY);
@@ -140,7 +138,7 @@ function renderArcadeStream(game) {
   dashboard.hidden = true;
   gameView.hidden = false;
   document.getElementById('kiosk-game-title').textContent = GAME_NAMES[game.gameType] || 'Arcade';
-  document.getElementById('kiosk-game-status').textContent = game.phase === 'countdown' ? 'Startet gleich' : game.paused ? 'Pause' : 'Läuft';
+  document.getElementById('kiosk-game-status').textContent = game.phase === 'ended' ? 'Beendet' : game.phase === 'countdown' ? 'Startet gleich' : game.paused ? 'Pause' : 'Läuft';
   const content = document.getElementById('kiosk-game-content');
   if (game.gameType === 'quiz') {
     content.innerHTML = `<div class="kiosk-game-question">${escapeHtml(game.question || 'Nächste Frage kommt gleich.')}</div>`;
@@ -151,7 +149,13 @@ function renderArcadeStream(game) {
     return;
   }
   let canvas = content.querySelector('canvas');
-  if (!canvas) { content.innerHTML = '<canvas width="800" height="450" aria-label="Livebild des Arcade-Spiels"></canvas>'; canvas = content.querySelector('canvas'); }
+  if (!canvas) content.innerHTML = '';
+  const legendHtml = snakeArenaLegendHtml(game);
+  const existingLegend = content.querySelector('.snake-arena-legend');
+  if (legendHtml && !existingLegend) content.insertAdjacentHTML('afterbegin', legendHtml);
+  else if (legendHtml && existingLegend?.outerHTML !== legendHtml) existingLegend.outerHTML = legendHtml;
+  else if (!legendHtml) existingLegend?.remove();
+  if (!canvas) { content.insertAdjacentHTML('beforeend', '<canvas width="800" height="450" aria-label="Livebild des Arcade-Spiels"></canvas>'); canvas = content.querySelector('canvas'); }
   drawKioskCanvas(canvas, game);
 }
 

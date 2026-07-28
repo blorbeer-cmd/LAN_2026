@@ -90,22 +90,29 @@ function drawScribble(ctx, game, width, height) {
 
 function drawTetris(ctx, game, width, height) {
   const boards = game.players ?? [];
-  const boardWidth = width / Math.max(1, boards.length);
+  const columns = boards.length <= 2 ? Math.max(1, boards.length) : boards.length <= 4 ? 2 : 4;
+  const rows = Math.ceil(boards.length / columns);
+  const boardWidth = width / columns;
+  const boardHeight = height / Math.max(1, rows);
   boards.forEach((player, index) => {
-    const cell = Math.min((boardWidth * 0.8) / 10, (height * 0.88) / 20);
-    const left = index * boardWidth + (boardWidth - cell * 10) / 2;
-    const top = (height - cell * 20) / 2;
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const cell = Math.min((boardWidth * 0.78) / 10, (boardHeight * 0.78) / 20);
+    const left = column * boardWidth + (boardWidth - cell * 10) / 2;
+    const top = row * boardHeight + (boardHeight - cell * 20) / 2;
+    const playerAlpha = player.alive === false ? 0.45 : 1;
+    ctx.globalAlpha = playerAlpha;
     ctx.fillStyle = cssColor('--bg-elevated');
     ctx.fillRect(left, top, cell * 10, cell * 20);
     ctx.strokeStyle = cssColor('--border');
-    ctx.globalAlpha = 0.25;
+    ctx.globalAlpha = playerAlpha * 0.25;
     for (let x = 1; x < 10; x += 1) {
       ctx.beginPath(); ctx.moveTo(left + x * cell, top); ctx.lineTo(left + x * cell, top + cell * 20); ctx.stroke();
     }
     for (let y = 1; y < 20; y += 1) {
       ctx.beginPath(); ctx.moveTo(left, top + y * cell); ctx.lineTo(left + cell * 10, top + y * cell); ctx.stroke();
     }
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = playerAlpha;
     (player.board ?? []).forEach((row, y) => row.forEach((value, x) => {
       if (!value) return;
       ctx.fillStyle = TETRIS_COLORS[value] ?? cssColor('--text-muted');
@@ -120,8 +127,9 @@ function drawTetris(ctx, game, width, height) {
     ctx.fillStyle = cssColor('--text');
     ctx.font = `${parseFloat(getComputedStyle(document.body).fontSize) * 1.5}px sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(player.name || 'Spieler', left + cell * 5, height * 0.98);
+    ctx.fillText(player.name || 'Spieler', left + cell * 5, (row + 1) * boardHeight - 4);
     ctx.textAlign = 'start';
+    ctx.globalAlpha = 1;
   });
 }
 
@@ -131,6 +139,20 @@ function drawSnake(ctx, game, width, height) {
   const rows = game.render?.height ?? 20;
   const cellWidth = width / columns;
   const cellHeight = height / rows;
+  const bounds = world.safeBounds ?? { minX: 0, maxX: columns - 1, minY: 0, maxY: rows - 1 };
+  if (world.mode === 'arena') {
+    const left = bounds.minX * cellWidth;
+    const top = bounds.minY * cellHeight;
+    const right = (bounds.maxX + 1) * cellWidth;
+    const bottom = (bounds.maxY + 1) * cellHeight;
+    ctx.fillStyle = cssColor('--danger-bg');
+    ctx.fillRect(0, 0, width, top);
+    ctx.fillRect(0, bottom, width, height - bottom);
+    ctx.fillRect(0, top, left, bottom - top);
+    ctx.fillRect(right, top, width - right, bottom - top);
+    ctx.strokeStyle = cssColor('--danger');
+    ctx.strokeRect(left, top, right - left, bottom - top);
+  }
   ctx.strokeStyle = cssColor('--accent-2');
   ctx.globalAlpha = 0.12;
   for (let x = 1; x < columns; x += 1) {
@@ -140,10 +162,21 @@ function drawSnake(ctx, game, width, height) {
     ctx.beginPath(); ctx.moveTo(0, y * cellHeight); ctx.lineTo(width, y * cellHeight); ctx.stroke();
   }
   ctx.globalAlpha = 1;
+  const snakeColors = ['--accent', '--accent-3', '--state-playing', '--state-paused', '--accent-2', '--danger', '--rank-1-gold', '--text'];
   world.snakes.forEach((snake, index) => {
-    ctx.fillStyle = index ? cssColor('--accent-3') : cssColor('--accent');
+    ctx.globalAlpha = snake.alive === false ? 0.3 : 1;
+    ctx.fillStyle = cssColor(snakeColors[index % snakeColors.length]);
     snake.body.forEach((part) => ctx.fillRect(part.x * cellWidth + 1, part.y * cellHeight + 1, cellWidth - 2, cellHeight - 2));
+    if (world.mode === 'arena' && snake.body[0]) {
+      const head = snake.body[0];
+      ctx.fillStyle = cssColor('--bg');
+      ctx.font = `700 ${Math.max(12, Math.min(cellWidth, cellHeight) * 0.55)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${index + 1}`, (head.x + 0.5) * cellWidth, (head.y + 0.52) * cellHeight);
+    }
   });
+  ctx.globalAlpha = 1;
   ctx.fillStyle = cssColor('--rank-1-gold');
   ctx.beginPath();
   ctx.arc((world.food.x + 0.5) * cellWidth, (world.food.y + 0.5) * cellHeight, Math.min(cellWidth, cellHeight) * 0.35, 0, Math.PI * 2);
@@ -158,10 +191,28 @@ function drawPong(ctx, game, width, height) {
   ctx.strokeStyle = cssColor('--border');
   ctx.setLineDash([12, 14]);
   ctx.beginPath(); ctx.moveTo(width / 2, 0); ctx.lineTo(width / 2, height); ctx.stroke();
+  if (game.mode === 'doubles') {
+    ctx.beginPath(); ctx.moveTo(0, height / 2); ctx.lineTo(width, height / 2); ctx.stroke();
+  }
   ctx.setLineDash([]);
   world.paddles.forEach((paddle, index) => {
-    ctx.fillStyle = index ? cssColor('--accent-3') : cssColor('--accent');
+    const isRightTeam = paddle.team ? paddle.team === 'right' : index > 0;
+    ctx.fillStyle = isRightTeam ? cssColor('--accent-3') : cssColor('--accent');
     ctx.fillRect(paddle.x * scaleX, paddle.y * scaleY, render.paddleWidth * scaleX, render.paddleHeight * scaleY);
+    const name = game.players?.find((player) => player.id === paddle.playerId)?.name?.trim();
+    if (name) {
+      const parts = name.split(/\s+/);
+      const label = (parts.length > 1 ? `${parts[0][0]}${parts.at(-1)[0]}` : parts[0].slice(0, 2)).toUpperCase();
+      ctx.fillStyle = cssColor('--text');
+      ctx.font = `${Math.max(14, 18 * Math.min(scaleX, scaleY))}px sans-serif`;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = isRightTeam ? 'right' : 'left';
+      ctx.fillText(
+        label,
+        (paddle.x + (isRightTeam ? 0 : render.paddleWidth)) * scaleX + (isRightTeam ? -9 : 9),
+        (paddle.y + render.paddleHeight / 2) * scaleY
+      );
+    }
   });
   ctx.fillStyle = cssColor('--text');
   ctx.beginPath();

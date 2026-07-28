@@ -6,7 +6,8 @@ import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
+import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../infoTooltip.js';
 
 const W = 1000;
@@ -57,6 +58,9 @@ export function ensureBlobbySocket() {
     requestAnimationFrame(() => showCountdown(payload.beginsAt));
   });
   socket.on('blobby:state', (payload) => {
+    if (latest?.world?.ball && payload?.world?.ball && latest.world.ball.vx * payload.world.ball.vx < 0) {
+      playArcadeSound('blobby-hit');
+    }
     previous = latest;
     latest = payload;
     latestAt = performance.now();
@@ -68,6 +72,7 @@ export function ensureBlobbySocket() {
     if (match) match.scores = payload.scores;
     updateScoreDisplay();
     flashPoint(payload.scorer?.name);
+    playArcadeSound('blobby-score');
   });
   socket.on('blobby:match:paused', () => { if (match) { match.paused = true; if (currentView() === 'blobby') rerender(); } });
   socket.on('blobby:match:resumed', () => { if (match) { match.paused = false; if (currentView() === 'blobby') rerender(); } });
@@ -80,6 +85,7 @@ export function ensureBlobbySocket() {
     match.winnerTeam = payload.winnerTeam ?? null;
     match.scores = payload.scores ?? [];
     cancelCountdown();
+    if (match.winners?.length) playArcadeSound(match.winners.some((winner) => winner.id === myId()) ? 'blobby-win' : 'blobby-lose');
     window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
     stopAnimation();
     if (currentView() === 'blobby' || currentView() === 'arcade') rerender();
@@ -203,9 +209,9 @@ function lobbyList() {
 }
 export function renderBlobbyLobbyCard() {
   const lobby = myBlobbyLobby(); const noMe = !myId();
+  const createReason = !noMe && match ? 'Beende zuerst dein aktuelles Spiel.' : '';
   return `<div class="card stack arcade-lobby-card">
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
-    ${lobbyList()}
     <div class="arcade-lobby-create-actions">
       <div class="arcade-lobby-create-row">
         ${!lobby ? `<select id="blobby-mode" class="arcade-lobby-mode-compact" aria-label="Blobby-Modus">
@@ -213,9 +219,11 @@ export function renderBlobbyLobbyCard() {
           <option value="duel" ${lobbyMode === 'duel' ? 'selected' : ''}>Duell · 2</option>
         </select>` : ''}
         <button type="button" class="btn btn-primary btn-sm" id="blobby-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+        ${createReason ? infoTooltipHtml('blobby-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
       </div>
       ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="blobby-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
     </div>
+    ${lobbyList()}
   </div>`;
 }
 export async function leaveMyBlobbyLobby() {
@@ -398,10 +406,10 @@ export function renderBlobby(container) {
     },
     detailFor: (player) => teamLabel(player.team),
   });
-  container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Blobby Volley</h1>${arcadeExpandControlHtml()}<div id="blobby-roster">${roster}</div>
+  container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Blobby Volley</h1>${arcadeToolbarHtml()}<div id="blobby-roster">${roster}</div>
     <div class="blobby-court"><canvas id="blobby-canvas" width="${W}" height="${H}"></canvas><div id="blobby-point" class="blobby-point" hidden></div>${match.paused ? '<div class="blobby-pause-overlay">Pause</div>' : ''}</div>
     ${matchControlsHtml(host)}${resultHtml()}</div>`;
-  wireGame(container); wireArcadeExpandControl(container); startAnimation();
+  wireGame(container); wireArcadeToolbar(container); startAnimation();
 }
 function wireGame(container) {
   wireCanvasControls(container.querySelector('#blobby-canvas'));

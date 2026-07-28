@@ -94,6 +94,7 @@ test('a non-host participant can leave a running match in every arcade game', as
       const created = await emitAck(hostSocket, 'tetris:lobby:create', { playerId: hostId });
       assert.equal(created.ok, true);
       await emitAck(guestSocket, 'tetris:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
+      await emitAck(guestSocket, 'tetris:lobby:ready', { lobbyId: created.lobbyId, playerId: guestId, ready: true });
       const startPromise = waitForEvent(guestSocket, 'tetris:match:start') as Promise<{ matchId: string }>;
       const started = await emitAck(hostSocket, 'tetris:lobby:start', { lobbyId: created.lobbyId, playerId: hostId });
       assert.equal(started.ok, true);
@@ -111,6 +112,7 @@ test('a non-host participant can leave a running match in every arcade game', as
       const [hostId, guestId] = await makePlayers(baseUrl, ['Pong Host', 'Pong Guest']);
       const created = await emitAck(hostSocket, 'pong:lobby:create', { playerId: hostId });
       await emitAck(guestSocket, 'pong:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
+      await emitAck(guestSocket, 'pong:lobby:ready', { lobbyId: created.lobbyId, playerId: guestId, ready: true });
       const startPromise = waitForEvent(guestSocket, 'pong:match:start') as Promise<{ matchId: string }>;
       await emitAck(hostSocket, 'pong:lobby:start', { lobbyId: created.lobbyId, playerId: hostId });
       const { matchId } = await startPromise;
@@ -218,6 +220,7 @@ test('leaving a running match never shows the leaver their own "opponent left" t
       const [hostId, guestId] = await makePlayers(baseUrl, ['Toast Tetris Host', 'Toast Tetris Guest']);
       const created = await emitAck(hostSocket, 'tetris:lobby:create', { playerId: hostId });
       await emitAck(guestSocket, 'tetris:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
+      await emitAck(guestSocket, 'tetris:lobby:ready', { lobbyId: created.lobbyId, playerId: guestId, ready: true });
       const startPromise = waitForEvent(guestSocket, 'tetris:match:start') as Promise<{ matchId: string }>;
       await emitAck(hostSocket, 'tetris:lobby:start', { lobbyId: created.lobbyId, playerId: hostId });
       const { matchId } = await startPromise;

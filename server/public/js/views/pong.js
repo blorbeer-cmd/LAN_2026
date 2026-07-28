@@ -1,5 +1,5 @@
 import { connectSocket } from '../socket.js';
-import { escapeHtml } from '../format.js';
+import { avatarHtml, escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
@@ -7,7 +7,9 @@ import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeExpandControlHtml, matchRosterHtml, wireArcadeExpandControl } from './arcadeUi.js';
+import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
+import { playArcadeSound } from '../arcadeSound.js';
+import { infoTooltipHtml } from '../infoTooltip.js';
 
 const W = 960;
 const H = 540;
@@ -25,7 +27,8 @@ let latestAt = 0;
 let animation = null;
 let keyboardBound = false;
 let keys = { up: false, down: false };
-let targetScore = 7;
+let targetScore = 21;
+let lobbyMode = 'doubles';
 let impact = null;
 const trail = [];
 
@@ -65,6 +68,7 @@ export function ensurePongSocket() {
   socket.on('pong:state', (payload) => {
     if (latest?.world?.ball && payload?.world?.ball && latest.world.ball.vx * payload.world.ball.vx < 0) {
       impact = { x: payload.world.ball.x, y: payload.world.ball.y, life: 1 };
+      playArcadeSound('pong-hit');
     }
     previous = latest;
     latest = payload;
@@ -82,6 +86,7 @@ export function ensurePongSocket() {
     if (match) match.scores = payload.scores;
     updateRoster();
     flashPoint(payload.scorer?.name);
+    playArcadeSound('pong-score');
   });
   socket.on('pong:match:paused', () => { if (match) { match.paused = true; if (currentView() === 'pong') rerender(); } });
   socket.on('pong:match:resumed', () => { if (match) { match.paused = false; if (currentView() === 'pong') rerender(); } });
@@ -90,8 +95,17 @@ export function ensurePongSocket() {
     match.ended = true;
     match.running = false;
     match.winner = payload.winner ?? null;
+    match.winners = payload.winners ?? [];
+    match.winnerTeam = payload.winnerTeam ?? null;
     match.scores = payload.scores ?? [];
     cancelCountdown();
+    if (match.winner) {
+      const winnerIds = match.winners.map((winner) => winner.id);
+      const localPlayerWon = winnerIds.length
+        ? winnerIds.includes(myId())
+        : match.winner.id === myId();
+      playArcadeSound(localPlayerWon ? 'pong-win' : 'pong-lose');
+    }
     window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
     stopAnimation();
     if (currentView() === 'pong' || currentView() === 'arcade') rerender();
@@ -100,45 +114,123 @@ export function ensurePongSocket() {
   return socket;
 }
 
+function modeLabel(mode) {
+  return mode === 'doubles' ? 'Doppel' : 'Duell';
+}
+
+function teamLabel(team) {
+  return team === 'left' ? 'Team Blau' : 'Team Pink';
+}
+
+function lobbyMemberRow(player, lobby) {
+  const role = player.id === lobby.host.id ? 'Host' : player.ready ? 'Bereit' : 'Mitspieler';
+  return `<div class="arcade-lobby-member-row">
+    ${avatarHtml(player, 24)}
+    <span class="player-name">${escapeHtml(player.name)}</span>
+    <span class="arcade-lobby-member-role">${role}</span>
+  </div>`;
+}
+
+function teamLobbyHtml(lobby, team, joined) {
+  const players = lobby.players.filter((player) => player.team === team);
+  const limit = lobby.mode === 'doubles' ? 2 : 1;
+  const free = limit - players.length;
+  const joinAction = !joined && free > 0
+    ? `<button type="button" class="btn btn-sm btn-primary" data-pong-join="${lobby.id}" data-pong-team="${team}">Beitreten</button>`
+    : '';
+  return `<div class="tournament-section-panel">
+    <div class="row-between"><strong>${teamLabel(team)}</strong><span class="badge">${players.length}/${limit}</span></div>
+    <div class="arcade-lobby-member-list">
+      ${players.map((player) => lobbyMemberRow(player, lobby)).join('')}
+      ${free > 0 ? `<div class="arcade-lobby-member-row arcade-lobby-free-row">
+        <span class="arcade-lobby-avatar-slot" aria-hidden="true"></span>
+        <span class="muted arcade-lobby-free-label">${free} frei</span>
+        ${joinAction}
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+
+function startReason(lobby) {
+  const missing = lobby.playerLimit - lobby.players.length;
+  if (missing > 0) return `Noch ${missing} ${missing === 1 ? 'Person' : 'Personen'} benötigt.`;
+  const waiting = lobby.players.filter((player) => player.id !== lobby.host.id && !player.ready).length;
+  return waiting > 0 ? `Noch ${waiting} ${waiting === 1 ? 'Person ist' : 'Personen sind'} nicht bereit.` : '';
+}
+
 function lobbyList() {
   if (!lobbies.length) return '<div class="empty-state" style="padding:var(--space-4);">Keine offene Pong-Lobby.</div>';
   return lobbies.map((lobby) => {
     const isHost = lobby.host.id === myId();
     const joined = lobby.players.some((player) => player.id === myId());
-    const full = lobby.players.length >= 2 && !joined;
-    const ready = lobby.players.length === 2;
+    const full = lobby.players.length >= lobby.playerLimit && !joined;
+    const ready = lobby.players.length === lobby.playerLimit && lobby.players.every((player) => player.id === lobby.host.id || player.ready);
+    const reason = isHost && !ready ? startReason(lobby) : '';
     const settingsHtml = isHost
       ? `<label class="arcade-lobby-target-score">
           <span>Punkte bis Sieg</span>
           <select name="pong-target" aria-label="Punkte bis Sieg">
-            ${[5, 7, 10, 15].map((score) => `<option value="${score}" ${score === targetScore ? 'selected' : ''}>${score}</option>`).join('')}
+            ${[5, 7, 10, 15, 21].map((score) => `<option value="${score}" ${score === targetScore ? 'selected' : ''}>${score}</option>`).join('')}
           </select>
         </label>`
       : '';
     const footerActions = isHost
       ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-pong-close="${lobby.id}">Schließen</button>
-        <button type="button" class="btn btn-sm btn-equal btn-primary" id="pong-start" ${ready ? '' : 'disabled'}>Start</button>`
+        <span class="row" style="gap:var(--space-1);">
+          <button type="button" class="btn btn-sm btn-equal btn-primary" id="pong-start" ${ready ? '' : 'disabled'}>Start</button>
+          ${reason ? infoTooltipHtml(`pong-start-${lobby.id}`, 'Start nicht möglich', reason, 'warning') : ''}
+        </span>`
       : joined
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-pong-leave="${lobby.id}">Verlassen</button>
           ${readyToggleHtml(lobby, myId(), 'pong-ready')}`
         : '';
-    const joinAction = !joined && !isHost
-      ? `<button type="button" class="btn btn-sm btn-primary" data-pong-join="${lobby.id}" ${full ? 'disabled' : ''}>Beitreten</button>`
-      : '';
-    return arcadeLobbyEntryHtml(lobby, { playerLimit: 2, joinAction, settingsHtml, footerActions, full });
+    if (lobby.mode === 'duel') {
+      const joinAction = !joined && !isHost
+        ? `<button type="button" class="btn btn-sm btn-primary" data-pong-join="${lobby.id}" data-pong-team="right" ${full ? 'disabled' : ''}>Beitreten</button>`
+        : '';
+      return `<div class="stack">
+        <div class="row-between"><strong>${modeLabel(lobby.mode)}</strong><span class="badge">${lobby.players.length}/${lobby.playerLimit}</span></div>
+        ${arcadeLobbyEntryHtml(lobby, { joinAction, settingsHtml, footerActions, full })}
+      </div>`;
+    }
+    return `<div class="card stack arcade-lobby-entry">
+      <div class="arcade-lobby-entry-head">
+        <strong>${escapeHtml(lobby.host.name)}s Lobby</strong>
+        <span class="badge">${modeLabel(lobby.mode)} · ${lobby.players.length}/${lobby.playerLimit}</span>
+      </div>
+      <div class="two-column-card-grid">
+        ${teamLobbyHtml(lobby, 'left', joined)}
+        ${teamLobbyHtml(lobby, 'right', joined)}
+      </div>
+      <div class="arcade-lobby-control-bar">
+        ${settingsHtml ? `<div class="arcade-lobby-settings">${settingsHtml}</div>` : ''}
+        ${footerActions ? `<div class="arcade-lobby-entry-actions">${footerActions}</div>` : ''}
+      </div>
+    </div>`;
   }).join('');
 }
 
 export function renderPongLobbyCard() {
   const lobby = myPongLobby();
   const noMe = !myId();
+  const createReason = !noMe && match ? 'Beende zuerst dein aktuelles Spiel.' : '';
   return `<div class="card stack arcade-lobby-card">
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
-    ${lobbyList()}
     <div class="arcade-lobby-create-actions">
-      <button type="button" class="btn btn-primary btn-sm" id="pong-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+      ${!lobby ? `<label class="arcade-lobby-target-score arcade-lobby-mode">
+        <span class="title-with-info"><span>Modus</span>${infoTooltipHtml('pong-mode-info', 'Pong-Modus', 'Duell: 1 gegen 1. Doppel nach Pong 4: 2 gegen 2, ein Schläger je Person und standardmäßig 21 Punkte. Teilt die obere und untere Zone unter euch auf.')}</span>
+        <select id="pong-mode" aria-label="Pong-Modus">
+          <option value="doubles" ${lobbyMode === 'doubles' ? 'selected' : ''}>Doppel · 4</option>
+          <option value="duel" ${lobbyMode === 'duel' ? 'selected' : ''}>Duell · 2</option>
+        </select>
+      </label>` : ''}
+      <span class="row" style="gap:var(--space-1);">
+        <button type="button" class="btn btn-primary btn-sm" id="pong-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+        ${createReason ? infoTooltipHtml('pong-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+      </span>
       ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="pong-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
     </div>
+    ${lobbyList()}
   </div>`;
 }
 
@@ -150,19 +242,24 @@ export async function leaveMyPongLobby() {
 
 export function wirePongLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
   container.querySelectorAll('select[name="pong-target"]').forEach((input) => input.addEventListener('change', () => { targetScore = Number(input.value); }));
+  container.querySelector('#pong-mode')?.addEventListener('change', (event) => {
+    lobbyMode = event.target.value;
+    targetScore = lobbyMode === 'doubles' ? 21 : 7;
+  });
   container.querySelector('#pong-create')?.addEventListener('click', async () => {
     if (beforeCreate && !(await beforeCreate())) return;
-    const result = await emitAck('pong:lobby:create', { playerId: myId() });
+    const result = await emitAck('pong:lobby:create', { playerId: myId(), mode: lobbyMode });
     if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelector('#pong-bot')?.addEventListener('click', async () => {
     if (beforeCreate && !(await beforeCreate())) return;
+    targetScore = 7;
     const result = await emitAck('pong:lobby:bot', { playerId: myId() });
     if (!result?.ok) showToast(result?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelectorAll('[data-pong-join]').forEach((button) => button.addEventListener('click', async () => {
     if (beforeJoin && !(await beforeJoin())) return;
-    const result = await emitAck('pong:lobby:join', { lobbyId: button.dataset.pongJoin, playerId: myId() });
+    const result = await emitAck('pong:lobby:join', { lobbyId: button.dataset.pongJoin, playerId: myId(), team: button.dataset.pongTeam || 'auto' });
     if (!result?.ok) showToast(result?.error || 'Beitritt fehlgeschlagen.', { error: true });
   }));
   for (const [selector, attribute] of [['[data-pong-close]', 'pongClose'], ['[data-pong-leave]', 'pongLeave']]) {
@@ -220,6 +317,9 @@ function interpolatedWorld() {
     paddles: latest.world.paddles.map((paddle, index) => ({
       x: paddle.x,
       y: lerp(previous.world.paddles[index].y, paddle.y, progress),
+      team: paddle.team,
+      lane: paddle.lane,
+      playerId: paddle.playerId,
     })),
   };
 }
@@ -245,8 +345,21 @@ function drawArena(context) {
   context.strokeStyle = 'rgba(226,232,255,.30)';
   context.lineWidth = 3;
   context.beginPath(); context.moveTo(W / 2, 24); context.lineTo(W / 2, H - 24); context.stroke();
+  if (match?.mode === 'doubles') {
+    context.strokeStyle = 'rgba(226,232,255,.22)';
+    context.lineWidth = 2;
+    context.setLineDash([10, 12]);
+    context.beginPath(); context.moveTo(24, H / 2); context.lineTo(W - 24, H / 2); context.stroke();
+  }
   context.setLineDash([]);
   context.beginPath(); context.arc(W / 2, H / 2, 72, 0, Math.PI * 2); context.stroke();
+}
+
+function playerInitials(playerId, players = match?.players ?? []) {
+  const name = players.find((player) => player.id === playerId)?.name?.trim();
+  if (!name) return '';
+  const parts = name.split(/\s+/);
+  return (parts.length > 1 ? `${parts[0][0]}${parts.at(-1)[0]}` : parts[0].slice(0, 2)).toUpperCase();
 }
 
 function drawPaddle(context, paddle, color) {
@@ -261,6 +374,19 @@ function drawPaddle(context, paddle, color) {
   context.beginPath();
   context.roundRect(paddle.x, paddle.y, PADDLE_WIDTH, PADDLE_HEIGHT, 8);
   context.fill();
+  const label = playerInitials(paddle.playerId);
+  if (label) {
+    context.shadowBlur = 0;
+    context.fillStyle = '#ffffff'; // design-token-ok: canvas player initials need maximum contrast.
+    context.font = '700 18px sans-serif';
+    context.textBaseline = 'middle';
+    context.textAlign = paddle.team === 'left' ? 'left' : 'right';
+    context.fillText(
+      label,
+      paddle.team === 'left' ? paddle.x + PADDLE_WIDTH + 9 : paddle.x - 9,
+      paddle.y + PADDLE_HEIGHT / 2
+    );
+  }
   context.restore();
 }
 
@@ -301,8 +427,7 @@ function paint() {
   const world = interpolatedWorld();
   drawArena(context);
   if (world) {
-    drawPaddle(context, world.paddles[0], PLAYER_COLORS[0]);
-    drawPaddle(context, world.paddles[1], PLAYER_COLORS[1]);
+    world.paddles.forEach((paddle) => drawPaddle(context, paddle, PLAYER_COLORS[paddle.team === 'left' ? 0 : 1]));
     drawBall(context, world.ball);
   }
   animation = requestAnimationFrame(paint);
@@ -330,13 +455,27 @@ function updateRoster() {
   if (!roster || !match) return;
   roster.innerHTML = matchRosterHtml(match.players, {
     winnerId: match.winner?.id ?? null,
+    winnerIds: match.winners?.map((winner) => winner.id) ?? [],
     scoreFor: (player) => `${match.scores?.find((score) => score.playerId === player.id)?.score ?? 0}/${match.targetScore ?? targetScore}`,
+    detailFor: playerDetail,
   });
+}
+
+function playerDetail(player) {
+  if (match?.mode !== 'doubles') return teamLabel(player.team);
+  const paddle = latest?.world?.paddles?.find((entry) => entry.playerId === player.id);
+  const fallbackIndex = match.players.filter((entry) => entry.team === player.team).findIndex((entry) => entry.id === player.id);
+  const lane = paddle?.lane ?? (fallbackIndex === 0 ? 'upper' : 'lower');
+  return `${teamLabel(player.team)} · ${lane === 'upper' ? 'Oben' : 'Unten'}`;
 }
 
 function resultHtml() {
   if (!match?.ended) return '';
-  const text = match.winner ? `${escapeHtml(match.winner.name)} gewinnt!` : 'Match beendet';
+  const text = match.winnerTeam
+    ? `${teamLabel(match.winnerTeam)} gewinnt!`
+    : match.winner
+      ? `${escapeHtml(match.winner.name)} gewinnt!`
+      : 'Match beendet';
   return `<div class="card arcade-winner-card"><strong>${text}</strong><button class="btn btn-primary" id="pong-back">Zur Arcade</button></div>`;
 }
 
@@ -361,13 +500,15 @@ export function renderPong(container) {
   const isHost = match.host?.id === myId();
   const roster = matchRosterHtml(match.players, {
     winnerId: match.winner?.id ?? null,
+    winnerIds: match.winners?.map((winner) => winner.id) ?? [],
     scoreFor: (player) => `${match.scores?.find((score) => score.playerId === player.id)?.score ?? 0}/${match.targetScore ?? targetScore}`,
+    detailFor: playerDetail,
   });
-  container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Pong</h1>${arcadeExpandControlHtml()}<div id="pong-roster">${roster}</div>
+  container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Pong</h1>${arcadeToolbarHtml()}<div id="pong-roster">${roster}</div>
     <div class="pong-arena"><canvas id="pong-canvas" width="${W}" height="${H}"></canvas><div id="pong-point" class="pong-point" hidden></div>${match.paused ? '<div class="pong-overlay">Pause</div>' : ''}</div>
     ${matchControlsHtml(isHost)}${resultHtml()}</div>`;
   wireGame(container);
-  wireArcadeExpandControl(container);
+  wireArcadeToolbar(container);
   startAnimation();
 }
 

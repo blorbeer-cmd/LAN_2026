@@ -515,17 +515,41 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   grid and row height. A host's game settings belong inside that lobby card; the compact
   „Punkte bis Sieg“ control shares the separated footer with „Schließen“ and „Start“ from `--bp-md`
   instead of forming a wide radio-button block. Readiness is communicated in the player rows without
-  a duplicate status sentence. „Lobby öffnen“ follows the lobby cards at full width, while the
-  temporary „Gegen KI“ mode occupies its own full-width row below it. An empty lobby no longer adds
+  a duplicate status sentence. Tetris exposes a compact Duell/Arena selector before creation.
+  „Lobby öffnen“ precedes the lobby cards at full width, so opening a new lobby never requires
+  scrolling past every existing one first. Duell keeps two equal boards;
+  Arena accepts three to eight players and keeps the local board large beside a responsive grid of
+  opponent boards. On phones the local board sits above that grid. The current automatic attack
+  target receives a textual „Ziel“ marker in addition to its accent border, while eliminated
+  players remain visibly dimmed for spectating. Admins can create a „KI-Test“ with multiple bot
+  opponents in its own full-width row; the bot-count control is enabled only for Arena. An empty
+  lobby no longer adds
   a redundant waiting sentence. Member actions use the same destructive treatment for „Verlassen“
-  as the host's „Schließen“ action. Guest footers place „Verlassen“ before the readiness toggle;
+  as the host's „Schließen“ action, and only render for a member who actually joined that lobby.
+  Guest footers place „Verlassen“ before the readiness toggle;
   compact score selectors use the smaller shared row height. Create actions use the same inset as
-  lobby footer actions, so „Lobby öffnen“ and readiness controls align exactly.
+  lobby footer actions, so „Lobby öffnen“ and readiness controls align exactly. A disabled „Lobby
+  öffnen“ or „Start“ carries the same red `.info-tooltip-trigger--warning` reason pattern as Team
+  formation's „Teams auslosen“/„Draft starten“.
+  Blobby Volley and Pong both offer Duell (1 gegen 1) and Doppel (2 gegen 2). Doppel lobbies expose
+  two explicit teams with two slots each, require all four participants to be ready and award the
+  shared team score and win to both teammates. Pong follows Atari's Pong-4 rules: each participant
+  controls a separate paddle that remains in its assigned upper/lower half, player initials and roster
+  lane labels identify all four paddles, and Doppel defaults to 21 points.
   Statistics use the concise title „Statistiken“ and one full-width game dropdown whose options
   include each game's match count. The selected game is not repeated above its results. Those
   results follow directly without another enclosing card or accent rail; player rows reuse
   `.leaderboard-list-grid` for the shared one-/two-column ranking presentation and spell out wins
-  and losses in German.
+  and losses in German. Tetris Duell and Tetris Arena are separate dropdown entries so an Arena's
+  many non-winning placements do not distort the duel win rate. Arena rows instead show wins,
+  Top-3 finishes, average placement, cleared lines, sent garbage and knockouts. Matches containing
+  bots appear as separate „KI-Test“ entries and never alter the human-only Duell/Arena rankings.
+  Snake exposes a two-button mode toggle before lobby creation. „Klassisch“ remains the two-player
+  duel; „Arena“ accepts three to eight players and labels every lobby with mode and occupancy.
+  Arena matches keep eliminated players visibly in the roster with a textual status, while the
+  canvas dims their snake and marks the shrinking safe zone with the shared danger treatment.
+  Numbered head markers and a matching `Schlange N · Name` legend identify every participant
+  without relying on color; the same legend appears in player, spectator and kiosk contexts.
 - **Jam sessions** — Jam is a grouped page below „Mehr“. A dedicated local controller on the
   playback PC or kiosk Raspberry Pi connects Spotify through PKCE and never appears as a player.
   The server stores neither Spotify application credentials nor OAuth tokens. One participant

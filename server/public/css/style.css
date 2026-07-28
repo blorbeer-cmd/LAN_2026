@@ -84,6 +84,9 @@
   --challenge-rush-button-min-height: 96px;
   --challenge-rush-number-min-width: 48px;
   --challenge-rush-number-grid-width: 360px;
+  --challenge-rush-tile-grid-width: 360px;
+  --challenge-rush-traffic-light-size: 140px;
+  --challenge-rush-color-dot-size: 16px;
   --notification-panel-width: 360px;
   --search-panel-width: 640px;
 
@@ -583,7 +586,6 @@ textarea {
   width: min(100%, 560px);
   margin: 0 auto;
   aspect-ratio: 1;
-  min-width: calc(10 * var(--tap-target-size) + 9 * var(--space-1));
 }
 
 .battleship-cell {
@@ -609,6 +611,7 @@ textarea {
 .battleship-cell.is-sunk {
   background: var(--danger-bg);
   color: var(--danger);
+  border-color: var(--danger);
 }
 
 .battleship-cell.is-sunk {
@@ -621,6 +624,13 @@ textarea {
 .battleship-cell.is-miss {
   background: var(--state-offline-bg);
   color: var(--text-muted);
+  border-color: var(--text-muted);
+  font-size: var(--font-size-lg);
+}
+
+.battleship-cell.is-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .battleship-cell:disabled {
@@ -2240,6 +2250,33 @@ button.card {
 .challenge-rush-number { min-height: var(--space-8); font-size: var(--font-size-lg); }
 .challenge-rush-scoreboard { display: grid; gap: var(--space-1); }
 .challenge-rush-score-row { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--bg-elevated-2); }
+.challenge-rush-result { max-width: var(--challenge-rush-stage-max-width); margin-inline: auto; text-align: center; }
+.challenge-rush-ready-count { text-align: center; }
+.challenge-rush-final-row { flex-direction: column; align-items: stretch; gap: var(--space-1); text-align: left; }
+.challenge-rush-final-row-main { display: flex; justify-content: space-between; gap: var(--space-3); }
+.challenge-rush-final-breakdown { font-size: var(--font-size-xs); }
+.challenge-rush-target-progress { text-align: center; }
+.challenge-rush-playfield-badge { position: absolute; top: var(--space-2); left: var(--space-2); margin: 0; padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--bg-elevated-2); }
+/* Columns use minmax(0, 1fr) rather than a plain 1fr (equivalent to
+   minmax(auto, 1fr)): auto would floor each track at .challenge-rush-tile's
+   content size, which together with a fixed per-tile min-width/min-height
+   made the grid unable to shrink below tileCount/cols * min-size at narrow
+   effective widths (e.g. a zoomed-in phone) — the outer playfield's
+   `overflow: hidden` then clipped the outer tiles instead of letting the
+   grid reflow. Tiles now scale down together with the container instead. */
+.challenge-rush-tile-grid { display: grid; gap: var(--space-2); width: min(100%, var(--challenge-rush-tile-grid-width)); }
+.challenge-rush-tile { aspect-ratio: 1; width: 100%; min-width: 0; min-height: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated-2); cursor: pointer; }
+.challenge-rush-tile.is-active { background: var(--accent-gradient); border-color: transparent; box-shadow: var(--shadow-glow-accent); }
+.challenge-rush-tile.is-odd { background: var(--accent-gradient); border-style: dashed; border-color: var(--accent-text); }
+.challenge-rush-tile:disabled { cursor: default; opacity: 0.7; }
+.challenge-rush-traffic-light { width: var(--challenge-rush-traffic-light-size); height: var(--challenge-rush-traffic-light-size); margin-inline: auto; border: 0; border-radius: var(--radius-full); color: var(--accent-text); font-size: var(--font-size-lg); font-weight: var(--font-weight-black); cursor: pointer; }
+.challenge-rush-traffic-light.is-red { background: var(--danger); }
+.challenge-rush-traffic-light.is-green { background: var(--state-playing); }
+.challenge-rush-traffic-light:disabled { cursor: default; opacity: 0.7; }
+.challenge-rush-color-word { text-align: center; font-size: var(--font-size-3xl); font-weight: var(--font-weight-black); }
+.challenge-rush-color-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-2); width: 100%; }
+.challenge-rush-color-option { display: flex; align-items: center; justify-content: center; gap: var(--space-2); border-width: 2px; }
+.challenge-rush-color-dot { width: var(--challenge-rush-color-dot-size); height: var(--challenge-rush-color-dot-size); border-radius: var(--radius-full); }
 .arcade-tile-count {
   background: var(--state-playing-bg);
   color: var(--state-playing);
@@ -2257,14 +2294,13 @@ button.card {
   gap: var(--space-2);
 }
 .arcade-lobby-create-actions {
-  margin-top: auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   margin-right: var(--space-3);
   margin-left: var(--space-3);
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--border);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
 }
 .arcade-lobby-create-actions .btn {
   width: 100%;
@@ -2562,6 +2598,15 @@ button.card {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Optional genre tag next to the title; never allowed to shrink the title
+   below readability, so it's the one that gives way first on narrow rows. */
+.game-row-genre {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-xs);
 }
 /* Static (non-interactive) marker for "agent can detect this game", reusing
    the same green already used for "spielt"/"trackt gerade" elsewhere so the
@@ -2987,6 +3032,47 @@ button.card {
   align-items: center;
   gap: var(--space-2);
 }
+.tetris-board-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-xs);
+}
+.tetris-boards.is-arena {
+  width: 100%;
+  max-width: none;
+}
+.tetris-primary-board {
+  flex: 1 1 50%;
+  min-width: 0;
+}
+.tetris-primary-board > .tetris-board-col {
+  width: 100%;
+}
+.tetris-opponent-grid {
+  flex: 1 1 50%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--space-2);
+}
+.tetris-opponent-grid.is-spectator {
+  flex-basis: 100%;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.tetris-board-col.is-target .tetris-canvas {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-glow-accent);
+}
+.tetris-board-col.is-target .tetris-board-name::after {
+  content: ' · Ziel';
+  color: var(--accent);
+}
+.tetris-board-col.is-eliminated {
+  opacity: 0.52;
+}
 .tetris-canvas-wrap {
   position: relative;
   width: 100%;
@@ -3334,6 +3420,24 @@ button.card {
   justify-content: flex-end;
   margin-bottom: var(--space-3);
 }
+.arcade-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.arcade-toolbar .arcade-expand-control {
+  margin-bottom: 0;
+}
+.arcade-mute-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-target-size);
+  height: var(--tap-target-size);
+  padding: 0;
+}
 .arcade-game-shell.is-expanded {
   width: min(100%, calc(100vw - var(--space-4) - var(--space-4)));
   max-width: none;
@@ -3428,6 +3532,23 @@ button.card {
   height: auto;
   max-width: 100%;
 }
+.arcade-game-shell.is-expanded .tetris-opponent-grid .tetris-canvas-wrap {
+  width: 100%;
+}
+@media (max-width: 639px) { /* --bp-md */
+  .tetris-boards.is-arena {
+    flex-direction: column;
+    align-items: center;
+  }
+  .tetris-primary-board {
+    width: min(100%, calc(var(--space-8) * 6));
+  }
+  .tetris-opponent-grid,
+  .tetris-opponent-grid.is-spectator {
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
 .arcade-game-shell > .view-title {
   text-align: center;
 }
@@ -3465,6 +3586,25 @@ button.card {
 }
 .arcade-watch-player strong {
   color: var(--accent);
+}
+.snake-arena-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.snake-arena-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+}
+.snake-arena-legend-item strong {
+  color: var(--text);
 }
 .arcade-watch-shell canvas {
   display: block;

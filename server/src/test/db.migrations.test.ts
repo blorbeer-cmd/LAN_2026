@@ -643,10 +643,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 53);
+  assert.equal(migrations.length, 55);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 53 }, (_, index) => index + 1),
+    Array.from({ length: 55 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1112,8 +1112,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 53 }, (_, index) => index + 1),
-    'every version 1..53 runs exactly once',
+    Array.from({ length: 55 }, (_, index) => index + 1),
+    'every version 1..55 runs exactly once',
   );
 });
 
@@ -1269,6 +1269,39 @@ test('re-applying the reordered v41–v45 migrations over populated data is idem
     }>
   ).map((row) => row.version);
   assert.deepEqual(versions, [41, 42, 43, 44, 45], 'the cleared versions are recorded again after re-applying');
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 55 converts legacy free-text genre values into the multiselect JSON array and is restart-safe', () => {
+  const dbFile = makeTempDbPath('games-genre-multiselect');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture
+    .prepare('INSERT INTO games (id, name, created_at, genre) VALUES (?, ?, ?, ?)')
+    .run('legacy-genre-known', 'Legacy Known Genre', now, 'shooter');
+  fixture
+    .prepare('INSERT INTO games (id, name, created_at, genre) VALUES (?, ?, ?, ?)')
+    .run('legacy-genre-unknown', 'Legacy Unknown Genre', now, 'Battle Royale FPS Extreme');
+  fixture
+    .prepare('INSERT INTO games (id, name, created_at, genre) VALUES (?, ?, ?, ?)')
+    .run('legacy-genre-blank', 'Legacy Blank Genre', now, '   ');
+  fixture.exec('DELETE FROM schema_migrations WHERE version = 55');
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'a second start must skip the recorded migration');
+
+  const migrated = new Database(dbFile);
+  const known = migrated.prepare('SELECT genre FROM games WHERE id = ?').get('legacy-genre-known') as { genre: string };
+  assert.equal(known.genre, JSON.stringify(['Shooter']), 'a case-insensitive match is normalized to the canonical spelling');
+  const unknown = migrated.prepare('SELECT genre FROM games WHERE id = ?').get('legacy-genre-unknown') as { genre: string | null };
+  assert.equal(unknown.genre, null, 'free text that matches no known genre is cleared instead of kept unselectable');
+  const blank = migrated.prepare('SELECT genre FROM games WHERE id = ?').get('legacy-genre-blank') as { genre: string | null };
+  assert.equal(blank.genre, null);
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 55').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

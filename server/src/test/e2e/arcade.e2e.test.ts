@@ -138,6 +138,133 @@ after(async () => {
   serverProcess?.kill();
 });
 
+test('classic Snake guest returns to the Arcade immediately after leaving', async () => {
+  const hostPlayer = await createPlayer('Snake Leave Host');
+  const guestPlayer = await createPlayer('Snake Leave Guest');
+  const host = await openArcadeAs(hostPlayer.id);
+  const guest = await openArcadeAs(guestPlayer.id);
+  try {
+    await host.page.click('[data-game="snake"]');
+    await host.page.waitForSelector('#snake-create:not([disabled])');
+    await host.page.click('#snake-create');
+
+    await guest.page.click('[data-game="snake"]');
+    await guest.page.waitForSelector('[data-snake-join]');
+    await guest.page.click('[data-snake-join]');
+    await host.page.waitForSelector('#snake-start:not([disabled])');
+    await host.page.click('#snake-start');
+    await guest.page.waitForSelector('#snake-canvas');
+
+    await guest.page.click('#snake-leave-match');
+    await guest.page.click('[data-confirm]');
+    await guest.page.waitForSelector('.arcade-tiles');
+    assert.equal(await activeView(guest.page), 'arcade');
+    assert.equal(await guest.page.locator('#snake-canvas').count(), 0);
+
+    await host.page.waitForSelector('#snake-back');
+    await host.page.click('#snake-back');
+  } finally {
+    await host.context.close();
+    await guest.context.close();
+  }
+});
+
+test('the kiosk removes stale quiz markup before rendering a canvas game', async () => {
+  const hostPlayer = await createPlayer('Kiosk Transition Host');
+  const guestPlayer = await createPlayer('Kiosk Transition Guest');
+  const host = await openArcadeAs(hostPlayer.id);
+  const guest = await openArcadeAs(guestPlayer.id);
+  const kiosk = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  try {
+    await kiosk.goto(`${BASE_URL}/kiosk.html`);
+    await kiosk.waitForSelector('#kiosk-dashboard:not([hidden])');
+    await startQuizMatch(host.page, guest.page);
+    await kiosk.waitForSelector('#kiosk-game-content .kiosk-game-question');
+
+    await finishQuizMatch(host.page);
+    await guest.page.waitForSelector('#quiz-back');
+    await guest.page.click('#quiz-back');
+    await guest.page.waitForSelector('.arcade-tiles');
+
+    await host.page.click('[data-game="snake"]');
+    await host.page.waitForSelector('#snake-create:not([disabled])');
+    await host.page.click('#snake-create');
+    await guest.page.click('[data-game="snake"]');
+    await guest.page.waitForSelector('[data-snake-join]');
+    await guest.page.click('[data-snake-join]');
+    await host.page.waitForSelector('#snake-start:not([disabled])');
+    await host.page.click('#snake-start');
+
+    await kiosk.waitForSelector('#kiosk-game-content canvas');
+    assert.equal(await kiosk.locator('#kiosk-game-content .kiosk-game-question').count(), 0);
+
+    await host.page.click('#snake-finish');
+    await host.page.waitForSelector('#snake-back');
+    await host.page.click('#snake-back');
+  } finally {
+    await kiosk.close();
+    await host.context.close();
+    await guest.context.close();
+  }
+});
+
+test('Snake Arena elimination status updates in spectator and kiosk legends', async () => {
+  const players = await Promise.all([
+    createPlayer('Snake Status Host'),
+    createPlayer('Snake Status Zwei'),
+    createPlayer('Snake Status Drei'),
+    createPlayer('Snake Status Zuschauer'),
+  ]);
+  const actors = await Promise.all(players.map((player) => openArcadeAs(player.id)));
+  const [host, guest, leaver, spectator] = actors;
+  const kiosk = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  try {
+    await kiosk.goto(`${BASE_URL}/kiosk.html`);
+    await kiosk.waitForSelector('#kiosk-dashboard:not([hidden])');
+
+    await host.page.click('[data-game="snake"]');
+    await host.page.click('[data-snake-mode="arena"]');
+    await host.page.waitForSelector('[data-snake-mode="arena"][aria-pressed="true"]');
+    await host.page.click('#snake-create');
+
+    for (const actor of [guest, leaver]) {
+      await actor.page.click('[data-game="snake"]');
+      await actor.page.waitForSelector('[data-snake-join]');
+      await actor.page.click('[data-snake-join]');
+    }
+    await host.page.waitForSelector('#snake-start:not([disabled])');
+    await host.page.click('#snake-start');
+    await host.page.waitForSelector('#snake-pause');
+    await host.page.click('#snake-pause');
+    await host.page.waitForSelector('.snake-overlay');
+
+    await kiosk.waitForSelector('#kiosk-game-content .snake-arena-legend');
+    await spectator.page.waitForSelector('[data-watch-match]');
+    await spectator.page.click('[data-watch-match]');
+    await spectator.page.waitForSelector('.snake-arena-legend');
+
+    await leaver.page.waitForSelector('#snake-leave-match');
+    await leaver.page.click('#snake-leave-match');
+    await leaver.page.click('[data-confirm]');
+
+    for (const page of [spectator.page, kiosk]) {
+      await page.waitForFunction((playerName) => Array.from(document.querySelectorAll('.snake-arena-legend-item')).some(
+        (item) => item.textContent?.includes(playerName) && item.textContent.includes('Ausgeschieden')
+      ), players[2].name);
+      const legendItems = await page.locator('.snake-arena-legend-item').allTextContents();
+      assert.ok(legendItems.some((item) => item.includes(`${players[0].name} · Im Rennen`)));
+      assert.ok(legendItems.some((item) => item.includes(`${players[2].name} · Ausgeschieden`)));
+    }
+
+    await host.page.click('#snake-finish');
+    await host.page.waitForSelector('#snake-back');
+    await host.page.click('#snake-back');
+  } finally {
+    await kiosk.close();
+    await Promise.all(actors.map((actor) => actor.context.close()));
+  }
+});
+
 test('watch list: a finished match disappears and active watchers are sent back to the Arcade', async () => {
   const hostPlayer = await createPlayer('Watch Host');
   const guestPlayer = await createPlayer('Watch Guest');
@@ -338,6 +465,64 @@ test('expanded Tetris keeps the page free of horizontal scroll and the board ali
   }
 });
 
+test('Tetris Arena supports four ready players with one large local board and three opponent boards', async () => {
+  const players = await Promise.all(
+    ['Arena Browser Host', 'Arena Browser Zwei', 'Arena Browser Drei', 'Arena Browser Vier'].map(createPlayer),
+  );
+  const actors = await Promise.all(players.map((player) => openArcadeAs(player.id)));
+  const [host, ...guests] = actors;
+  let hostClosed = false;
+  try {
+    await host.page.click('[data-game="tetris"]');
+    await host.page.waitForSelector('#tetris-mode');
+    await host.page.selectOption('#tetris-mode', 'arena');
+    await host.page.waitForSelector('#tetris-create:not([disabled])');
+    await host.page.click('#tetris-create');
+
+    for (const guest of guests) {
+      if ((await guest.page.locator('[data-tetris-join]').count()) === 0) await guest.page.click('[data-game="tetris"]');
+      await guest.page.waitForSelector('[data-tetris-join]');
+      await guest.page.click('[data-tetris-join]');
+      await guest.page.waitForSelector('[data-tetris-ready][data-ready="1"]');
+      await guest.page.click('[data-tetris-ready][data-ready="1"]');
+    }
+
+    await host.page.waitForSelector('#tetris-start:not([disabled])');
+    await host.page.click('#tetris-start');
+    await host.page.waitForSelector('.tetris-boards.is-arena');
+    assert.equal(await host.page.locator('.tetris-canvas').count(), 4);
+    assert.equal(await host.page.locator('.tetris-primary-board .tetris-canvas').count(), 1);
+    assert.equal(await host.page.locator('.tetris-opponent-grid .tetris-canvas').count(), 3);
+
+    const layout = await host.page.evaluate(() => {
+      const primary = document.querySelector('.tetris-primary-board .tetris-canvas') as HTMLElement;
+      const opponent = document.querySelector('.tetris-opponent-grid .tetris-canvas') as HTMLElement;
+      return {
+        primaryWidth: primary.getBoundingClientRect().width,
+        opponentWidth: opponent.getBoundingClientRect().width,
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      };
+    });
+    assert.ok(layout.primaryWidth > layout.opponentWidth);
+    assert.ok(layout.scrollWidth <= layout.clientWidth);
+
+    await host.page.click('#tetris-pause');
+    await host.page.waitForSelector('#tetris-resume');
+    await host.context.close();
+    hostClosed = true;
+    await guests[0].page.waitForSelector('#tetris-resume');
+    await guests[0].page.click('#tetris-resume');
+    await guests[0].page.waitForSelector('#tetris-finish');
+    await guests[0].page.click('#tetris-finish');
+    await guests[0].page.click('[data-confirm]');
+    await guests[0].page.waitForSelector('#tetris-back');
+  } finally {
+    if (!hostClosed) await host.context.close();
+    for (const actor of guests) await actor.context.close();
+  }
+});
+
 test('Blobby Doppel: mobile lobby assigns two full teams and starts four players', async () => {
   const players = await Promise.all([
     createPlayer('Blobby Blau Host'),
@@ -378,6 +563,63 @@ test('Blobby Doppel: mobile lobby assigns two full teams and starts four players
     for (const actor of actors) {
       await actor.page.waitForSelector('#blobby-canvas');
       await actor.page.waitForSelector('.arcade-player-tile');
+      assert.equal(await actor.page.locator('.arcade-player-tile').count(), 4);
+    }
+  } finally {
+    await Promise.all(actors.map((actor) => actor.context.close()));
+  }
+});
+
+test('Pong Doppel: mobile and desktop lobbies assign two full teams and start four players', async () => {
+  const players = await Promise.all([
+    createPlayer('Pong Blau Host'),
+    createPlayer('Pong Blau Zwei'),
+    createPlayer('Pong Pink Eins'),
+    createPlayer('Pong Pink Zwei'),
+  ]);
+  const actors = await Promise.all(players.map((player, index) => openArcadeAs(
+    player.id,
+    index === 0 ? { viewport: { width: 1280, height: 800 } } : undefined
+  )));
+
+  try {
+    for (const actor of actors) {
+      await actor.page.click('[data-game="pong"]');
+      await actor.page.waitForSelector('#pong-create');
+    }
+    const [host, blue, pinkA, pinkB] = actors;
+    assert.equal(await host.page.locator('#pong-mode').inputValue(), 'doubles');
+    await host.page.click('#pong-create');
+    await host.page.waitForSelector('text=Team Blau');
+    await host.page.waitForSelector('text=Team Pink');
+    await host.page.waitForSelector('#pong-start:disabled');
+    assert.equal(await host.page.locator('select[name="pong-target"]').inputValue(), '21');
+
+    await blue.page.waitForSelector('[data-pong-team="left"]');
+    await blue.page.click('[data-pong-team="left"]');
+    await blue.page.waitForSelector('[data-pong-ready][data-ready="1"]');
+    await blue.page.click('[data-pong-ready][data-ready="1"]');
+
+    for (const actor of [pinkA, pinkB]) {
+      await actor.page.waitForSelector('[data-pong-team="right"]');
+      await actor.page.click('[data-pong-team="right"]');
+      await actor.page.waitForSelector('[data-pong-ready][data-ready="1"]');
+      await actor.page.click('[data-pong-ready][data-ready="1"]');
+    }
+
+    await host.page.waitForSelector('#pong-start:not([disabled])');
+    assert.equal(await host.page.locator('.arcade-lobby-member-row .player-name').count(), 4);
+    for (const actor of [host, blue]) {
+      const width = await actor.page.evaluate(() => ({
+        scroll: document.documentElement.scrollWidth,
+        client: document.documentElement.clientWidth,
+      }));
+      assert.ok(width.scroll <= width.client, 'the Pong Doppel lobby must not scroll horizontally');
+    }
+    await host.page.click('#pong-start');
+
+    for (const actor of actors) {
+      await actor.page.waitForSelector('#pong-canvas');
       assert.equal(await actor.page.locator('.arcade-player-tile').count(), 4);
     }
   } finally {
