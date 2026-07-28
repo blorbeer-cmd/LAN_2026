@@ -8,11 +8,12 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { registerChallengeRushSockets } from '../arcade/challengeRush';
 import { clearLobbyMemberships } from '../arcade/lobbyMembership';
+import { arcadeTiming } from '../arcade/timing';
 
 process.env.CHALLENGE_RUSH_RECONNECT_GRACE_MS = '100';
 
 type Ack = { ok: boolean; error?: string; [key: string]: unknown };
-type State = { matchId: string; phase: string; challengeIndex: number; challenge: { key: string; data: Record<string, unknown> }; scores: Array<{ playerId: string; connected: boolean; forfeited: boolean }>; history: Array<{ key: string; title: string; scores: Array<{ playerId: string; name: string; score: number }> }>; readyNext: string[] };
+type State = { matchId: string; phase: string; challengeIndex: number; challenge: { key: string; data: Record<string, unknown> }; scores: Array<{ playerId: string; connected: boolean; forfeited: boolean }>; history: Array<{ key: string; title: string; scores: Array<{ playerId: string; name: string; score: number }> }>; readyNext: string[]; remainingMs: number | null; paused: boolean };
 
 function connect(baseUrl: string, playerId?: string): Promise<ClientSocket> {
   return new Promise((resolve, reject) => {
@@ -175,6 +176,40 @@ test('Challenge Rush only advances past a result once every connected player is 
     assert.deepEqual(finalState.history[0].scores.map((s) => s.playerId).sort(), [guestId, hostId].sort());
   } finally {
     hostSocket.close(); guestSocket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
+  }
+});
+
+test('Challenge Rush announces every phase with its own remaining time', async () => {
+  clearLobbyMemberships();
+  const server = await makeServer();
+  const socket = await connect(server.baseUrl);
+  try {
+    const playerId = await player(server.baseUrl, 'Challenge Rush Countdown');
+    const created = await emitAck(socket, 'challenge-rush:lobby:create', { playerId });
+    const openingCountdown = nextState(socket, (state) => state.phase === 'countdown' && state.challengeIndex === 0);
+    const started = nextEvent<{ matchId: string }>(socket, 'challenge-rush:match:start');
+    await emitAck(socket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId });
+    const match = await started;
+    const opening = await openingCountdown;
+    assert.ok(opening.remainingMs !== null && opening.remainingMs > 0 && opening.remainingMs <= arcadeTiming.countdownMs, `opening countdown reported ${opening.remainingMs}ms`);
+
+    const playing = await nextState(socket, (state) => state.phase === 'playing');
+    const resultPromise = nextState(socket, (state) => state.phase === 'result');
+    await completeReactionCircle(socket, match.matchId, playerId, playing.challengeIndex, playing.challenge.data);
+    const result = await resultPromise;
+    // The result phase reports its own ready-timeout fallback, never the finished challenge's deadline.
+    assert.ok(result.remainingMs !== null && result.remainingMs > arcadeTiming.countdownMs, `result phase reported ${result.remainingMs}ms`);
+
+    // Someone who takes a moment before confirming still gets a complete countdown:
+    // the announced value must be the countdown itself, not the rest of the result timeout.
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const nextCountdown = nextState(socket, (state) => state.phase === 'countdown' && state.challengeIndex === 1);
+    assert.equal((await emitAck(socket, 'challenge-rush:challenge:ready', { matchId: match.matchId, playerId })).ok, true);
+    const between = await nextCountdown;
+    assert.ok(between.remainingMs !== null && between.remainingMs > 0 && between.remainingMs <= arcadeTiming.countdownMs, `between-challenge countdown reported ${between.remainingMs}ms`);
+    await emitAck(socket, 'challenge-rush:match:finish', { matchId: match.matchId, playerId });
+  } finally {
+    socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
   }
 });
 
