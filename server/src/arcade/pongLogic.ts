@@ -12,20 +12,35 @@ const BALL_HIT_ACCELERATION = 1.075;
 const BALL_HIT_BOOST = 12;
 
 export interface PongInput { up: boolean; down: boolean }
-export interface PongPaddle { x: number; y: number; vy: number }
+export type PongMode = 'duel' | 'doubles';
+export type PongTeam = 'left' | 'right';
+export interface PongPaddle { x: number; y: number; vy: number; team: PongTeam }
 export interface PongBall { x: number; y: number; vx: number; vy: number }
-export interface PongWorld { paddles: [PongPaddle, PongPaddle]; ball: PongBall }
+export interface PongWorld { paddles: PongPaddle[]; ball: PongBall }
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-export function createWorld(serveToward: 'left' | 'right' = 'right'): PongWorld {
+export function createWorld(serveToward: PongTeam = 'right', mode: PongMode = 'duel'): PongWorld {
+  const leftX = PADDLE_MARGIN;
+  const rightX = PONG_WIDTH - PADDLE_MARGIN - PADDLE_WIDTH;
+  const centerY = (PONG_HEIGHT - PADDLE_HEIGHT) / 2;
+  const upperY = PONG_HEIGHT / 4 - PADDLE_HEIGHT / 2;
+  const lowerY = PONG_HEIGHT * 3 / 4 - PADDLE_HEIGHT / 2;
+  const paddles: PongPaddle[] = mode === 'doubles'
+    ? [
+        { x: leftX, y: upperY, vy: 0, team: 'left' },
+        { x: leftX, y: lowerY, vy: 0, team: 'left' },
+        { x: rightX, y: upperY, vy: 0, team: 'right' },
+        { x: rightX, y: lowerY, vy: 0, team: 'right' },
+      ]
+    : [
+        { x: leftX, y: centerY, vy: 0, team: 'left' },
+        { x: rightX, y: centerY, vy: 0, team: 'right' },
+      ];
   return {
-    paddles: [
-      { x: PADDLE_MARGIN, y: (PONG_HEIGHT - PADDLE_HEIGHT) / 2, vy: 0 },
-      { x: PONG_WIDTH - PADDLE_MARGIN - PADDLE_WIDTH, y: (PONG_HEIGHT - PADDLE_HEIGHT) / 2, vy: 0 },
-    ],
+    paddles,
     ball: {
       x: PONG_WIDTH / 2,
       y: PONG_HEIGHT / 2,
@@ -57,11 +72,10 @@ function bounceFromPaddle(ball: PongBall, paddle: PongPaddle, direction: 1 | -1)
   return true;
 }
 
-// Returns the scoring player index, otherwise null.
-export function stepWorld(world: PongWorld, inputs: [PongInput, PongInput], dtSeconds: number): 0 | 1 | null {
+// Returns the scoring team, otherwise null.
+export function stepWorld(world: PongWorld, inputs: PongInput[], dtSeconds: number): PongTeam | null {
   const dt = clamp(dtSeconds, 0, 0.05);
-  movePaddle(world.paddles[0], inputs[0], dt);
-  movePaddle(world.paddles[1], inputs[1], dt);
+  world.paddles.forEach((paddle, index) => movePaddle(paddle, inputs[index] ?? { up: false, down: false }, dt));
 
   const ball = world.ball;
   ball.x += ball.vx * dt;
@@ -75,10 +89,11 @@ export function stepWorld(world: PongWorld, inputs: [PongInput, PongInput], dtSe
     ball.vy = -Math.abs(ball.vy);
   }
 
-  bounceFromPaddle(ball, world.paddles[0], 1);
-  bounceFromPaddle(ball, world.paddles[1], -1);
+  for (const paddle of world.paddles) {
+    if (bounceFromPaddle(ball, paddle, paddle.team === 'left' ? 1 : -1)) break;
+  }
 
-  if (ball.x < -BALL_RADIUS) return 1;
-  if (ball.x > PONG_WIDTH + BALL_RADIUS) return 0;
+  if (ball.x < -BALL_RADIUS) return 'right';
+  if (ball.x > PONG_WIDTH + BALL_RADIUS) return 'left';
   return null;
 }

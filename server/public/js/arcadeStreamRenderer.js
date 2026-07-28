@@ -160,7 +160,8 @@ function drawPong(ctx, game, width, height) {
   ctx.beginPath(); ctx.moveTo(width / 2, 0); ctx.lineTo(width / 2, height); ctx.stroke();
   ctx.setLineDash([]);
   world.paddles.forEach((paddle, index) => {
-    ctx.fillStyle = index ? cssColor('--accent-3') : cssColor('--accent');
+    const isRightTeam = paddle.team ? paddle.team === 'right' : index > 0;
+    ctx.fillStyle = isRightTeam ? cssColor('--accent-3') : cssColor('--accent');
     ctx.fillRect(paddle.x * scaleX, paddle.y * scaleY, render.paddleWidth * scaleX, render.paddleHeight * scaleY);
   });
   ctx.fillStyle = cssColor('--text');
