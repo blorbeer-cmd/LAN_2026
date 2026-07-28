@@ -234,6 +234,9 @@ test('Snake Arena elimination status updates in spectator and kiosk legends', as
     }
     await host.page.waitForSelector('#snake-start:not([disabled])');
     await host.page.click('#snake-start');
+    await host.page.waitForSelector('#snake-pause');
+    await host.page.click('#snake-pause');
+    await host.page.waitForSelector('.snake-overlay');
 
     await kiosk.waitForSelector('#kiosk-game-content .snake-arena-legend');
     await spectator.page.waitForSelector('[data-watch-match]');
