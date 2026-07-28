@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   canStartTetris,
+  isTargetableTetrisPlayer,
   nextArenaTarget,
   placementForEliminationBatch,
   placementForElimination,
@@ -54,6 +55,12 @@ test('simultaneous eliminations share the same competition placement', () => {
   assert.equal(placementForEliminationBatch(4, 2), 3);
   assert.equal(placementForEliminationBatch(3, 2), 2);
   assert.equal(placementForEliminationBatch(2, 2), 1);
+});
+
+test('a pending top-out is immediately excluded from Arena targeting', () => {
+  assert.equal(isTargetableTetrisPlayer({ alive: true, pendingElimination: false }), true);
+  assert.equal(isTargetableTetrisPlayer({ alive: true, pendingElimination: true }), false);
+  assert.equal(isTargetableTetrisPlayer({ alive: false, pendingElimination: false }), false);
 });
 
 test('the KI planner deterministically finds a legal target and ends with a hard drop', () => {

@@ -28,6 +28,7 @@ import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './
 import {
   TetrisMode,
   canStartTetris,
+  isTargetableTetrisPlayer,
   nextArenaTarget,
   placementForEliminationBatch,
   placementForElimination,
@@ -110,6 +111,7 @@ interface PlayerState {
   botPlan: InputAction[];
   botPlanKey: string | null;
   nextBotMoveAt: number;
+  pendingElimination: boolean;
   alive: boolean;
 }
 
@@ -131,6 +133,7 @@ interface TetrisMatch {
   paused: boolean;
   lastTick: number;
   stateDirty: boolean;
+  inputQueue: Array<{ playerId: string; action: InputAction }>;
   startedAt: number;
 }
 
@@ -220,7 +223,7 @@ function serializeState(match: TetrisMatch, state: PlayerState) {
     eliminatedAt: state.eliminatedAt,
     eliminationReason: state.eliminationReason,
     isBot: isBotId(state.ref.id),
-    alive: state.alive,
+    alive: isTargetableTetrisPlayer(state),
   };
 }
 
@@ -239,7 +242,14 @@ function broadcastState(io: Server, match: TetrisMatch) {
 }
 
 function aliveIds(match: TetrisMatch): Set<string> {
-  return new Set(match.players.filter((player) => match.states.get(player.id)?.alive).map((player) => player.id));
+  return new Set(
+    match.players
+      .filter((player) => {
+        const state = match.states.get(player.id);
+        return state ? isTargetableTetrisPlayer(state) : false;
+      })
+      .map((player) => player.id),
+  );
 }
 
 function attackTarget(match: TetrisMatch, state: PlayerState): PlayerState | null {
@@ -384,13 +394,14 @@ function eliminatePlayers(match: TetrisMatch, pending: PendingElimination[]) {
     ({ state }, index) => state.alive && pending.findIndex((entry) => entry.state === state) === index,
   );
   if (eliminations.length === 0) return;
-  const aliveBefore = aliveIds(match).size;
+  const aliveBefore = [...match.states.values()].filter((state) => state.alive).length;
   const placement = eliminations.length === 1
     ? placementForElimination(aliveBefore)
     : placementForEliminationBatch(aliveBefore, eliminations.length);
   const eliminatedAt = Date.now();
   for (const { state, reason } of eliminations) {
     state.alive = false;
+    state.pendingElimination = false;
     state.current = null;
     state.placement = placement;
     state.eliminatedAt = eliminatedAt;
@@ -432,6 +443,7 @@ function spawnNext(match: TetrisMatch, state: PlayerState, pendingEliminations?:
   if (collides(state.board, piece)) {
     if (pendingEliminations) {
       state.current = null;
+      state.pendingElimination = true;
       pendingEliminations.push({ state, reason: 'top-out', sourcePlayerId });
     } else {
       eliminatePlayer(match, state, 'top-out', sourcePlayerId);
@@ -495,7 +507,7 @@ function applyInput(
   action: InputAction,
   pendingEliminations?: PendingElimination[],
 ): boolean {
-  if (!state.current || !state.alive) return false;
+  if (!state.current || !isTargetableTetrisPlayer(state)) return false;
   switch (action) {
     case 'left': {
       const moved = tryMove(state.board, state.current, -1, 0);
@@ -565,8 +577,16 @@ function startLoop(io: Server, match: TetrisMatch) {
     let changed = false;
     const pendingEliminations: PendingElimination[] = [];
 
+    const queuedInputs = match.inputQueue.splice(0);
+    for (const input of queuedInputs) {
+      const state = match.states.get(input.playerId);
+      if (!state || !isTargetableTetrisPlayer(state)) continue;
+      const acted = applyInput(match, state, input.action, pendingEliminations);
+      changed = changed || acted;
+    }
+
     for (const bot of match.states.values()) {
-      if (!isBotId(bot.ref.id) || !bot.alive || !bot.current) continue;
+      if (!isBotId(bot.ref.id) || !isTargetableTetrisPlayer(bot) || !bot.current) continue;
       const key = String(bot.pieceIndex);
       if (bot.botPlanKey !== key || bot.botPlan.length === 0) {
         const target = chooseBotTarget(bot.board, bot.current);
@@ -642,6 +662,7 @@ function handleMatchDeparture(io: Server, match: TetrisMatch, playerId: string, 
   }
 
   match.socketIds.delete(playerId);
+  match.inputQueue = match.inputQueue.filter((input) => input.playerId !== playerId);
   eliminatePlayer(match, state, 'player-left');
   if (match.host.id === playerId) {
     const nextHost = match.players.find(
@@ -778,6 +799,9 @@ export function registerTetrisSockets(io: Server): void {
           error: lobby.mode === 'arena' ? 'Für eine Arena werden 3 bis 8 Spieler benötigt.' : 'Tetris Duell ist genau 1 gegen 1.',
         });
       }
+      if (lobby.players.some((player) => !isLobbyReady(lobby, player.id))) {
+        return ack?.({ ok: false, error: 'Alle Mitspieler müssen bereit sein.' });
+      }
       const matchId = nanoid();
       const room = `tetris:${matchId}`;
       for (const socketId of lobby.socketIds.values()) io.sockets.sockets.get(socketId)?.join(room);
@@ -802,6 +826,7 @@ export function registerTetrisSockets(io: Server): void {
         paused: false,
         lastTick: Date.now(),
         stateDirty: false,
+        inputQueue: [],
         startedAt: Date.now(),
       };
       for (const p of lobby.players) {
@@ -826,6 +851,7 @@ export function registerTetrisSockets(io: Server): void {
           botPlan: [],
           botPlanKey: null,
           nextBotMoveAt: Date.now(),
+          pendingElimination: false,
           alive: true,
         };
         spawnNext(match, state);
@@ -867,15 +893,18 @@ export function registerTetrisSockets(io: Server): void {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
       if (!match || !canUseLobby(socket, match) || !match.running || match.paused) return ack?.({ ok: false });
       const state = typeof payload?.playerId === 'string' ? match.states.get(payload.playerId) : null;
-      if (!state || isBotId(state.ref.id) || match.socketIds.get(state.ref.id) !== socket.id || !state.alive) return ack?.({ ok: false });
+      if (
+        !state ||
+        isBotId(state.ref.id) ||
+        match.socketIds.get(state.ref.id) !== socket.id ||
+        !isTargetableTetrisPlayer(state)
+      ) {
+        return ack?.({ ok: false });
+      }
       const valid: InputAction[] = ['left', 'right', 'rotate', 'rotateCcw', 'soft', 'hard'];
       if (!payload?.action || !valid.includes(payload.action)) return ack?.({ ok: false });
-
-      const changed = applyInput(match, state, payload.action);
-      if (changed) {
-        match.stateDirty = true;
-        checkGameOver(io, match);
-      }
+      if (match.inputQueue.length >= 128) return ack?.({ ok: false });
+      match.inputQueue.push({ playerId: state.ref.id, action: payload.action });
       ack?.({ ok: true });
     });
 
@@ -886,6 +915,7 @@ export function registerTetrisSockets(io: Server): void {
       if (match.socketIds.get(match.host.id) !== socket.id) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
       if (!match.running || match.paused) return ack?.({ ok: true });
       match.paused = true;
+      match.inputQueue = [];
       emitArcadeRoom(io, match.room, 'tetris:match:paused', { matchId: match.id }, match);
       broadcastState(io, match);
       ack?.({ ok: true });

@@ -50,3 +50,7 @@ export function placementForElimination(aliveBeforeElimination: number): number 
 export function placementForEliminationBatch(aliveBeforeElimination: number, eliminatedCount: number): number {
   return Math.max(1, aliveBeforeElimination - Math.max(1, eliminatedCount) + 1);
 }
+
+export function isTargetableTetrisPlayer(state: { alive: boolean; pendingElimination?: boolean }): boolean {
+  return state.alive && state.pendingElimination !== true;
+}

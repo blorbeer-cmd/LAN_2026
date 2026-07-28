@@ -60,6 +60,20 @@ test('Tetris Arena starts with four players, survives departures and records pla
     assert.equal((await emitAck(sockets[2], 'tetris:lobby:join', { lobbyId, playerId: thirdId })).ok, true);
     assert.equal((await emitAck(sockets[3], 'tetris:lobby:join', { lobbyId, playerId: fourthId })).ok, true);
 
+    const notReady = await emitAck(sockets[0], 'tetris:lobby:start', { lobbyId, playerId: hostId });
+    assert.equal(notReady.ok, false);
+    assert.match(notReady.error ?? '', /bereit/);
+    for (const [socket, playerId] of [
+      [sockets[1], secondId],
+      [sockets[2], thirdId],
+      [sockets[3], fourthId],
+    ] as Array<[ClientSocket, string]>) {
+      assert.equal(
+        (await emitAck(socket, 'tetris:lobby:ready', { lobbyId, playerId, ready: true })).ok,
+        true,
+      );
+    }
+
     const matchStarted = waitForEvent<{ matchId: string; mode: string; players: Array<{ id: string }> }>(
       sockets[1],
       'tetris:match:start',
@@ -160,6 +174,88 @@ test('a paused KI Arena ends when its last human host leaves', async () => {
   } finally {
     hostSocket.close();
     observerSocket.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    clearLobbyMemberships();
+  }
+});
+
+test('Tetris duel enforces readiness and batches simultaneous socket top-outs', async () => {
+  clearLobbyMemberships();
+  const httpServer = http.createServer(createApp());
+  const io = new Server(httpServer);
+  registerTetrisSockets(io);
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+  const hostSocket = await connect(baseUrl);
+  const guestSocket = await connect(baseUrl);
+
+  try {
+    const host = await request(baseUrl).post('/api/players').send({ name: 'Batch Host' });
+    const guest = await request(baseUrl).post('/api/players').send({ name: 'Batch Gast' });
+    const created = await emitAck(hostSocket, 'tetris:lobby:create', { playerId: host.body.id });
+    assert.equal(created.ok, true);
+    assert.equal(
+      (await emitAck(guestSocket, 'tetris:lobby:join', {
+        lobbyId: created.lobbyId,
+        playerId: guest.body.id,
+      })).ok,
+      true,
+    );
+
+    const notReady = await emitAck(hostSocket, 'tetris:lobby:start', {
+      lobbyId: created.lobbyId,
+      playerId: host.body.id,
+    });
+    assert.equal(notReady.ok, false);
+    assert.match(notReady.error ?? '', /bereit/);
+    assert.equal(
+      (await emitAck(guestSocket, 'tetris:lobby:ready', {
+        lobbyId: created.lobbyId,
+        playerId: guest.body.id,
+        ready: true,
+      })).ok,
+      true,
+    );
+
+    const startedPromise = waitForEvent<{ matchId: string; beginsAt: number }>(hostSocket, 'tetris:match:start');
+    assert.equal(
+      (await emitAck(hostSocket, 'tetris:lobby:start', {
+        lobbyId: created.lobbyId,
+        playerId: host.body.id,
+      })).ok,
+      true,
+    );
+    const started = await startedPromise;
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, started.beginsAt - Date.now()) + 25));
+
+    const outcome: {
+      ended?: {
+        winner: { id: string } | null;
+        scores: Array<{ playerId: string; placement: number | null; isWinner: boolean }>;
+      };
+    } = {};
+    hostSocket.on('tetris:match:end', (payload) => {
+      outcome.ended = payload;
+    });
+    for (let piece = 0; piece < 50 && !outcome.ended; piece += 1) {
+      const statePromise = waitForEvent(hostSocket, 'tetris:state');
+      const results = await Promise.all([
+        emitAck(hostSocket, 'tetris:input', { matchId: started.matchId, playerId: host.body.id, action: 'hard' }),
+        emitAck(guestSocket, 'tetris:input', { matchId: started.matchId, playerId: guest.body.id, action: 'hard' }),
+      ]);
+      assert.ok(results.every((result) => result.ok));
+      await statePromise;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    assert.ok(outcome.ended, 'identical hard drops should eventually top out both players');
+    assert.equal(outcome.ended.winner, null);
+    assert.deepEqual(outcome.ended.scores.map((score) => score.placement), [1, 1]);
+    assert.ok(outcome.ended.scores.every((score) => score.isWinner));
+  } finally {
+    hostSocket.close();
+    guestSocket.close();
     io.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     clearLobbyMemberships();
