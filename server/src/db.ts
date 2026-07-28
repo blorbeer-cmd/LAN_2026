@@ -2908,9 +2908,16 @@ registerMigration({ version: 54, name: 'add games info and genre columns', up: a
 // are matched case-insensitively against the allowed genre list and wrapped
 // into a JSON array in the same TEXT column (no schema change); anything
 // that doesn't match a known genre is cleared, since a stale free-text value
-// could no longer be selected or filtered on going forward. Mirrors
-// GAME_GENRES in server/src/routes/games.ts — keep both in sync.
-const GAME_GENRES_FOR_MIGRATION = [
+// could no longer be selected or filtered on going forward.
+//
+// This is a deliberate historical snapshot of the genres that existed when
+// migration 55 was written; it is intentionally NOT extended when GAME_GENRES
+// in server/src/routes/games.ts grows. A one-shot migration has to produce the
+// same result on every installation regardless of which server version first
+// ran it — otherwise the same legacy free text would survive on a late-migrated
+// database and be cleared on an early-migrated one. Genres added later are
+// selectable in the UI, they just don't retro-match legacy free text.
+const GAME_GENRES_AT_MIGRATION_55 = [
   'Shooter',
   'Fighting',
   'Racing',
@@ -2940,7 +2947,7 @@ function normalizeGamesGenreToMultiselect(): void {
       update.run(null, row.id);
       continue;
     }
-    const match = GAME_GENRES_FOR_MIGRATION.find((g) => g.toLowerCase() === trimmed.toLowerCase());
+    const match = GAME_GENRES_AT_MIGRATION_55.find((g) => g.toLowerCase() === trimmed.toLowerCase());
     update.run(match ? JSON.stringify([match]) : null, row.id);
   }
 }
