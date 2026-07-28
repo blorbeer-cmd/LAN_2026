@@ -928,6 +928,10 @@ test('generic arcade lobby channels require the immutable event scope', async ()
         rivalSocket.emit('pong:lobby:join', { lobbyId: created.lobbyId, playerId: rival }, resolve);
       });
       assert.equal(rivalJoined.ok, true, 'a participant in the immutable event scope may join');
+      const rivalReady = await new Promise<{ ok: boolean }>((resolve) => {
+        rivalSocket.emit('pong:lobby:ready', { lobbyId: created.lobbyId, playerId: rival, ready: true }, resolve);
+      });
+      assert.equal(rivalReady.ok, true);
       const started = await new Promise<{ ok: boolean; matchId?: string }>((resolve) => {
         hostSocket.emit('pong:lobby:start', { lobbyId: created.lobbyId, playerId: host }, resolve);
       });

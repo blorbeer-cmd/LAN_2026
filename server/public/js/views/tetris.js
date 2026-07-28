@@ -1,9 +1,9 @@
-// Tetris 1v1 "Battle" — the Arcade's realtime duel.
+// Tetris Duell and Arena — realtime matches for two through eight players.
 //
-// The server (src/arcade/tetris.ts) is authoritative: it owns both boards and
+// The server (src/arcade/tetris.ts) is authoritative: it owns every board and
 // pushes full `tetris:state` snapshots. This module only sends intents
 // (left/right/rotate/drop) and paints whatever comes back. Because the board is
-// a discrete grid, snapshots redraw the two <canvas> boards directly instead of
+// a discrete grid, snapshots redraw the mounted <canvas> boards directly instead of
 // rebuilding the DOM — a full rerender only runs on phase changes, never per
 // frame, so the canvases never flicker.
 //
@@ -52,6 +52,8 @@ let latestState = null; // last tetris:state payload
 let prevLines = {}; // playerId -> last seen line count, to detect fresh clears for FX
 let prevLevels = {}; // playerId -> last seen level, to detect level-ups for the level-up cue
 let inputBound = false;
+let lobbyMode = 'duel';
+let botCount = 3;
 
 function myId() {
   return getMyId();
@@ -113,15 +115,21 @@ export function ensureTetrisSocket() {
 
   socket.on('tetris:state', (payload) => {
     latestState = payload;
+    const previousHostId = match?.host?.id ?? null;
     if (match) {
       match.running = payload.running;
       match.paused = payload.paused;
+      match.mode = payload.mode ?? match.mode;
+      match.host = payload.host ?? match.host;
     }
     // Fast path: repaint the mounted canvases directly, no DOM rebuild.
     // The socket remains connected while the user visits other views. Never
     // trigger a render there: a frequent state tick must not compete with
     // bottom-navigation clicks or repaint the current view unnecessarily.
-    if (tetrisViewMounted()) paint();
+    if (tetrisViewMounted()) {
+      if ((match?.host?.id ?? null) !== previousHostId) rerender();
+      else paint();
+    }
   });
 
   socket.on('tetris:match:paused', () => {
@@ -151,8 +159,8 @@ export function ensureTetrisSocket() {
     if (tetrisViewMounted()) rerender();
   });
 
-  socket.on('tetris:opponent-left', () => {
-    if (match) showToast('Gegner hat das Match verlassen.', { error: true });
+  socket.on('tetris:opponent-left', (payload) => {
+    if (match) showToast(`${payload?.playerName || 'Ein Spieler'} hat das Match verlassen.`, { error: true });
   });
 
   bindKeyboard();
@@ -353,6 +361,12 @@ function updateRosterDisplay() {
       const state = latestState.players.find((p) => p.playerId === player.id);
       return state ? `${state.score} Pkt · ${state.lines} Z` : '0 Pkt';
     },
+    detailFor: (player) => {
+      const state = latestState.players.find((p) => p.playerId === player.id);
+      if (!state) return '';
+      if (state.placement) return `Platz ${state.placement}`;
+      return state.alive ? `${state.knockouts ?? 0} K.o. · ${state.garbageSent ?? 0} Angriff` : 'Ausgeschieden';
+    },
   });
 }
 
@@ -377,17 +391,18 @@ function checkClearFx(prefix, playerState) {
 
 function paint() {
   if (!latestState) return;
-  const me = latestState.players.find((p) => p.playerId === myId());
-  const opp = latestState.players.find((p) => p.playerId !== myId());
-  const left = me ?? latestState.players[0];
-  const right = me ? opp : latestState.players[1];
-  drawBoard(document.querySelector('#tetris-mine'), left);
-  drawBoard(document.querySelector('#tetris-opponent'), right);
+  const me = latestState.players.find((player) => player.playerId === myId());
+  document.querySelectorAll('[data-tetris-player-id]').forEach((column) => {
+    const playerState = latestState.players.find((player) => player.playerId === column.dataset.tetrisPlayerId);
+    const prefix = column.dataset.tetrisPrefix;
+    if (!prefix) return;
+    drawBoard(column.querySelector('.tetris-canvas'), playerState);
+    updateStatLine(prefix, playerState);
+    checkClearFx(prefix, playerState);
+    column.classList.toggle('is-eliminated', Boolean(playerState && !playerState.alive));
+    column.classList.toggle('is-target', me?.targetId === playerState?.playerId);
+  });
   updateRosterDisplay();
-  updateStatLine('tetris-mine', left);
-  updateStatLine('tetris-opponent', right);
-  checkClearFx('tetris-mine', left);
-  checkClearFx('tetris-opponent', right);
   paintOverlay();
 }
 
@@ -396,6 +411,12 @@ function paint() {
 function paintOverlay() {
   const overlay = document.querySelector('#tetris-overlay');
   if (!overlay) return;
+  const me = latestState?.players?.find((player) => player.playerId === myId());
+  if (me && !me.alive) {
+    overlay.hidden = false;
+    overlay.innerHTML = `<div class="tetris-overlay-text">Ausgeschieden${me.placement ? ` · Platz ${me.placement}` : ''}</div>`;
+    return;
+  }
   if (match?.paused) {
     overlay.hidden = false;
     overlay.innerHTML = `<div class="tetris-overlay-text">Pause</div>`;
@@ -413,10 +434,17 @@ function renderLobbyList() {
     .map((l) => {
       const isHost = l.host.id === myId();
       const joined = l.players.some((p) => p.id === myId());
-      const full = l.players.length >= 2 && !joined;
+      const playerLimit = l.playerLimit ?? (l.mode === 'arena' ? 8 : 2);
+      const full = l.players.length >= playerLimit && !joined;
       // Host can close their lobby; a joined guest can leave; otherwise join.
-      const ready = l.players.length === 2;
-      const startReason = ready ? '' : 'Noch nicht genug Spieler (mind. 2).';
+      const minimumReached = l.mode === 'arena' ? l.players.length >= 3 : l.players.length === 2;
+      const ready = minimumReached && l.players.every((player) => player.id === l.host.id || player.ready);
+      const minimumPlayers = l.mode === 'arena' ? 3 : 2;
+      const startReason = ready
+        ? ''
+        : !minimumReached
+          ? `Noch nicht genug Spieler (mind. ${minimumPlayers}).`
+          : 'Noch nicht alle Spieler sind bereit.';
       const footerActions = isHost
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-tetris-close="${l.id}">Schließen</button>
           <span class="row" style="gap:var(--space-1);">
@@ -430,7 +458,8 @@ function renderLobbyList() {
       const joinAction = !joined && !isHost
         ? `<button type="button" class="btn btn-sm btn-primary" data-tetris-join="${l.id}" ${full ? 'disabled' : ''}>Beitreten</button>`
         : '';
-      return arcadeLobbyEntryHtml(l, { playerLimit: 2, joinAction, footerActions, full });
+      const settingsHtml = `<span class="badge">${l.mode === 'arena' ? 'Arena' : 'Duell'} · ${l.players.length}/${playerLimit}</span>`;
+      return arcadeLobbyEntryHtml(l, { joinAction, settingsHtml, footerActions, full });
     })
     .join('');
 }
@@ -442,16 +471,35 @@ export function renderTetrisLobbyCard() {
   // obvious (disabled button + hint) instead of only flashing a toast on click,
   // which reads as "nothing happened".
   const noMe = !myId();
-  const createReason = !noMe && match ? 'Beende zuerst dein aktuelles Spiel.' : '';
+  const createReason = !noMe && match
+    ? 'Beende zuerst dein aktuelles Spiel.'
+    : !noMe && lobby
+      ? 'Du bist bereits in einer Lobby.'
+      : '';
   return `
     <div class="card stack arcade-lobby-card">
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
+      <div class="arcade-lobby-settings">
+        <label for="tetris-mode" class="field-label">Modus</label>
+        <select id="tetris-mode" ${lobby ? 'disabled' : ''}>
+          <option value="duel" ${lobbyMode === 'duel' ? 'selected' : ''}>Duell (2 Spieler)</option>
+          <option value="arena" ${lobbyMode === 'arena' ? 'selected' : ''}>Arena (3–8 Spieler)</option>
+        </select>
+        ${
+          currentPlayerMayUseArcadeAi()
+            ? `<label for="tetris-bot-count" class="field-label">KI-Gegner</label>
+              <select id="tetris-bot-count" ${lobby || lobbyMode !== 'arena' ? 'disabled' : ''}>
+                ${[2, 3, 4, 5, 6, 7].map((count) => `<option value="${count}" ${botCount === count ? 'selected' : ''}>${count}</option>`).join('')}
+              </select>`
+            : ''
+        }
+      </div>
       <div class="arcade-lobby-create-actions">
         <span class="row" style="gap:var(--space-1);">
-          <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+          <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${match || lobby || noMe ? 'disabled' : ''}>Lobby öffnen</button>
           ${createReason ? infoTooltipHtml('tetris-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
         </span>
-        ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="tetris-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
+        ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="tetris-bot" ${match || lobby || noMe ? 'disabled' : ''}>KI-Test starten</button>` : ''}
       </div>
       ${renderLobbyList()}
     </div>`;
@@ -464,16 +512,23 @@ export async function leaveMyTetrisLobby() {
 }
 
 export function wireTetrisLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
+  container.querySelector('#tetris-mode')?.addEventListener('change', (event) => {
+    lobbyMode = event.target.value === 'arena' ? 'arena' : 'duel';
+    rerender();
+  });
+  container.querySelector('#tetris-bot-count')?.addEventListener('change', (event) => {
+    botCount = Number(event.target.value) || 3;
+  });
   container.querySelector('#tetris-bot')?.addEventListener('click', async () => {
     if (beforeCreate && !(await beforeCreate())) return;
-    const res = await emitWithAck('tetris:lobby:bot', { playerId: myId() });
+    const res = await emitWithAck('tetris:lobby:bot', { playerId: myId(), mode: lobbyMode, botCount });
     if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelector('#tetris-create')?.addEventListener('click', async () => {
     const playerId = myId();
     if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
     if (beforeCreate && !(await beforeCreate())) return;
-    const res = await emitWithAck('tetris:lobby:create', { playerId });
+    const res = await emitWithAck('tetris:lobby:create', { playerId, mode: lobbyMode });
     if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
     showToast('Tetris-Lobby geöffnet.');
   });
@@ -515,18 +570,31 @@ export function wireTetrisLobbyCard(container, { beforeCreate, beforeJoin } = {}
 
 function endResultHtml() {
   if (!match?.ended) return '';
+  const headline = match.winner?.name ? `${escapeHtml(match.winner.name)} gewinnt` : 'Match beendet';
+  const ranking = [...(match.endScores ?? [])]
+    .sort((a, b) => (a.placement ?? Number.MAX_SAFE_INTEGER) - (b.placement ?? Number.MAX_SAFE_INTEGER) || b.score - a.score)
+    .map((score) => {
+      const placement = score.placement ? `Platz ${score.placement}` : 'Ohne Platzierung';
+      return `<div class="arcade-lobby-member-row">
+        <span class="player-name">${escapeHtml(score.name)}</span>
+        <span class="arcade-lobby-member-role">${placement} · ${score.score} Pkt · ${score.knockouts ?? 0} K.o.</span>
+      </div>`;
+    })
+    .join('');
   return `
     <div class="card arcade-winner-card">
-      <strong>Match beendet</strong>
+      <strong>${headline}</strong>
+      ${ranking ? `<div class="arcade-lobby-member-list">${ranking}</div>` : ''}
       <button type="button" class="btn btn-primary" id="tetris-back">Zur Arcade</button>
     </div>`;
 }
 
 // Both boards use the same fixed internal resolution; CSS scales them to equal
 // display size. An extra overlay canvas carries the particle effects.
-function boardColumn(prefix, label) {
+function boardColumn(prefix, label, playerId, { primary = false } = {}) {
   return `
-    <div class="tetris-board-col">
+    <div class="tetris-board-col${primary ? ' is-primary' : ''}" data-tetris-player-id="${escapeHtml(playerId)}" data-tetris-prefix="${prefix}">
+      <div class="tetris-board-name player-name">${escapeHtml(label)}</div>
       <div id="${prefix}-wrap" class="tetris-canvas-wrap">
         <canvas id="${prefix}" width="${BOARD_W}" height="${BOARD_H}" class="tetris-canvas"></canvas>
         <canvas id="${prefix}-fx" width="${BOARD_W}" height="${BOARD_H}" class="tetris-fx" aria-hidden="true"></canvas>
@@ -569,9 +637,8 @@ export function renderTetris(container, ctx) {
     return;
   }
 
-  const opponent = match.players.find((p) => p.id !== myId());
-  const oppLabel = amPlayer() ? escapeHtml(opponent?.name ?? 'Gegner') : escapeHtml(match.players[1]?.name ?? 'Spieler 2');
-  const meLabel = amPlayer() ? 'Du' : escapeHtml(match.players[0]?.name ?? 'Spieler 1');
+  const mine = match.players.find((player) => player.id === myId());
+  const orderedPlayers = mine ? [mine, ...match.players.filter((player) => player.id !== mine.id)] : match.players;
   const winnerId = match.winner?.id ?? null;
   const roster = matchRosterHtml(match.players, {
     winnerId,
@@ -580,15 +647,31 @@ export function renderTetris(container, ctx) {
       if (!state) return '0 Pkt';
       return `${state.score} Pkt · ${state.lines} Z`;
     },
+    detailFor: (player) => {
+      const state = latestState?.players?.find((p) => p.playerId === player.id);
+      if (!state) return '';
+      return state.placement ? `Platz ${state.placement}` : state.alive ? `${state.knockouts ?? 0} K.o.` : 'Ausgeschieden';
+    },
   });
+  const boardFor = (player, index, primary = false) => {
+    const prefix = primary ? 'tetris-mine' : `tetris-player-${index}`;
+    const label = player.id === myId() ? 'Du' : player.name;
+    return boardColumn(prefix, label, player.id, { primary });
+  };
+  const boardLayout =
+    match.mode === 'arena' && mine
+      ? `<div class="tetris-primary-board">${boardFor(mine, 0, true)}</div>
+         <div class="tetris-opponent-grid">${orderedPlayers.slice(1).map((player, index) => boardFor(player, index + 1)).join('')}</div>`
+      : match.mode === 'arena'
+        ? `<div class="tetris-opponent-grid is-spectator">${orderedPlayers.map((player, index) => boardFor(player, index)).join('')}</div>`
+      : orderedPlayers.map((player, index) => boardFor(player, index, player.id === myId() || (!mine && index === 0))).join('');
   container.innerHTML = `
-    <div class="arcade-game-shell"><h1 class="view-title">Tetris</h1>
+    <div class="arcade-game-shell"><h1 class="view-title">${match.mode === 'arena' ? 'Tetris Arena' : 'Tetris Duell'}</h1>
     ${arcadeToolbarHtml()}
     <div id="tetris-game">
       <div id="tetris-roster">${roster}</div>
-      <div id="tetris-boards" class="tetris-boards">
-        ${boardColumn('tetris-mine', meLabel)}
-        ${boardColumn('tetris-opponent', oppLabel)}
+      <div id="tetris-boards" class="tetris-boards ${match.mode === 'arena' ? 'is-arena' : 'is-duel'}">
+        ${boardLayout}
       </div>
       ${matchControls()}
       ${endResultHtml()}
@@ -618,6 +701,12 @@ function wireMatch(container) {
     if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
     const res = await emitWithAck('tetris:match:leave', { matchId: match?.matchId, playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
+    else {
+      match = null;
+      latestState = null;
+      cancelCountdown();
+      navigate('arcade');
+    }
   });
 
   container.querySelector('#tetris-back')?.addEventListener('click', () => {

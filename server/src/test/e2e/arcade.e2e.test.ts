@@ -338,6 +338,64 @@ test('expanded Tetris keeps the page free of horizontal scroll and the board ali
   }
 });
 
+test('Tetris Arena supports four ready players with one large local board and three opponent boards', async () => {
+  const players = await Promise.all(
+    ['Arena Browser Host', 'Arena Browser Zwei', 'Arena Browser Drei', 'Arena Browser Vier'].map(createPlayer),
+  );
+  const actors = await Promise.all(players.map((player) => openArcadeAs(player.id)));
+  const [host, ...guests] = actors;
+  let hostClosed = false;
+  try {
+    await host.page.click('[data-game="tetris"]');
+    await host.page.waitForSelector('#tetris-mode');
+    await host.page.selectOption('#tetris-mode', 'arena');
+    await host.page.waitForSelector('#tetris-create:not([disabled])');
+    await host.page.click('#tetris-create');
+
+    for (const guest of guests) {
+      if ((await guest.page.locator('[data-tetris-join]').count()) === 0) await guest.page.click('[data-game="tetris"]');
+      await guest.page.waitForSelector('[data-tetris-join]');
+      await guest.page.click('[data-tetris-join]');
+      await guest.page.waitForSelector('[data-tetris-ready][data-ready="1"]');
+      await guest.page.click('[data-tetris-ready][data-ready="1"]');
+    }
+
+    await host.page.waitForSelector('#tetris-start:not([disabled])');
+    await host.page.click('#tetris-start');
+    await host.page.waitForSelector('.tetris-boards.is-arena');
+    assert.equal(await host.page.locator('.tetris-canvas').count(), 4);
+    assert.equal(await host.page.locator('.tetris-primary-board .tetris-canvas').count(), 1);
+    assert.equal(await host.page.locator('.tetris-opponent-grid .tetris-canvas').count(), 3);
+
+    const layout = await host.page.evaluate(() => {
+      const primary = document.querySelector('.tetris-primary-board .tetris-canvas') as HTMLElement;
+      const opponent = document.querySelector('.tetris-opponent-grid .tetris-canvas') as HTMLElement;
+      return {
+        primaryWidth: primary.getBoundingClientRect().width,
+        opponentWidth: opponent.getBoundingClientRect().width,
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      };
+    });
+    assert.ok(layout.primaryWidth > layout.opponentWidth);
+    assert.ok(layout.scrollWidth <= layout.clientWidth);
+
+    await host.page.click('#tetris-pause');
+    await host.page.waitForSelector('#tetris-resume');
+    await host.context.close();
+    hostClosed = true;
+    await guests[0].page.waitForSelector('#tetris-resume');
+    await guests[0].page.click('#tetris-resume');
+    await guests[0].page.waitForSelector('#tetris-finish');
+    await guests[0].page.click('#tetris-finish');
+    await guests[0].page.click('[data-confirm]');
+    await guests[0].page.waitForSelector('#tetris-back');
+  } finally {
+    if (!hostClosed) await host.context.close();
+    for (const actor of guests) await actor.context.close();
+  }
+});
+
 test('Blobby Doppel: mobile lobby assigns two full teams and starts four players', async () => {
   const players = await Promise.all([
     createPlayer('Blobby Blau Host'),
@@ -378,6 +436,63 @@ test('Blobby Doppel: mobile lobby assigns two full teams and starts four players
     for (const actor of actors) {
       await actor.page.waitForSelector('#blobby-canvas');
       await actor.page.waitForSelector('.arcade-player-tile');
+      assert.equal(await actor.page.locator('.arcade-player-tile').count(), 4);
+    }
+  } finally {
+    await Promise.all(actors.map((actor) => actor.context.close()));
+  }
+});
+
+test('Pong Doppel: mobile and desktop lobbies assign two full teams and start four players', async () => {
+  const players = await Promise.all([
+    createPlayer('Pong Blau Host'),
+    createPlayer('Pong Blau Zwei'),
+    createPlayer('Pong Pink Eins'),
+    createPlayer('Pong Pink Zwei'),
+  ]);
+  const actors = await Promise.all(players.map((player, index) => openArcadeAs(
+    player.id,
+    index === 0 ? { viewport: { width: 1280, height: 800 } } : undefined
+  )));
+
+  try {
+    for (const actor of actors) {
+      await actor.page.click('[data-game="pong"]');
+      await actor.page.waitForSelector('#pong-create');
+    }
+    const [host, blue, pinkA, pinkB] = actors;
+    assert.equal(await host.page.locator('#pong-mode').inputValue(), 'doubles');
+    await host.page.click('#pong-create');
+    await host.page.waitForSelector('text=Team Blau');
+    await host.page.waitForSelector('text=Team Pink');
+    await host.page.waitForSelector('#pong-start:disabled');
+    assert.equal(await host.page.locator('select[name="pong-target"]').inputValue(), '21');
+
+    await blue.page.waitForSelector('[data-pong-team="left"]');
+    await blue.page.click('[data-pong-team="left"]');
+    await blue.page.waitForSelector('[data-pong-ready][data-ready="1"]');
+    await blue.page.click('[data-pong-ready][data-ready="1"]');
+
+    for (const actor of [pinkA, pinkB]) {
+      await actor.page.waitForSelector('[data-pong-team="right"]');
+      await actor.page.click('[data-pong-team="right"]');
+      await actor.page.waitForSelector('[data-pong-ready][data-ready="1"]');
+      await actor.page.click('[data-pong-ready][data-ready="1"]');
+    }
+
+    await host.page.waitForSelector('#pong-start:not([disabled])');
+    assert.equal(await host.page.locator('.arcade-lobby-member-row .player-name').count(), 4);
+    for (const actor of [host, blue]) {
+      const width = await actor.page.evaluate(() => ({
+        scroll: document.documentElement.scrollWidth,
+        client: document.documentElement.clientWidth,
+      }));
+      assert.ok(width.scroll <= width.client, 'the Pong Doppel lobby must not scroll horizontally');
+    }
+    await host.page.click('#pong-start');
+
+    for (const actor of actors) {
+      await actor.page.waitForSelector('#pong-canvas');
       assert.equal(await actor.page.locator('.arcade-player-tile').count(), 4);
     }
   } finally {
