@@ -68,6 +68,61 @@ export function validatePlacements(placements: unknown): { ok: true; fleet: Ship
   return { ok: true, fleet };
 }
 
+export function createRandomPlacements(random: () => number = Math.random): Placement[] {
+  const candidatesByShip = FLEET.map((ship) => {
+    const candidates: Placement[] = [];
+    for (const orientation of ['horizontal', 'vertical'] as const) {
+      for (let row = 0; row < BATTLESHIP_SIZE; row += 1) {
+        for (let col = 0; col < BATTLESHIP_SIZE; col += 1) {
+          const candidate = { shipId: ship.id, row, col, orientation };
+          if (cellsForPlacement(candidate, ship.length)) candidates.push(candidate);
+        }
+      }
+    }
+    for (let index = candidates.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(random() * (index + 1));
+      [candidates[index], candidates[swapIndex]] = [candidates[swapIndex], candidates[index]];
+    }
+    return candidates;
+  });
+  const placements: Placement[] = [];
+  const occupied = new Set<number>();
+  const placeShip = (index: number): boolean => {
+    if (index === FLEET.length) return true;
+    for (const placement of candidatesByShip[index]) {
+      const cells = cellsForPlacement(placement, FLEET[index].length);
+      if (!cells || cells.some((cell) => occupied.has(cell))) continue;
+      placements.push(placement);
+      cells.forEach((cell) => occupied.add(cell));
+      if (placeShip(index + 1)) return true;
+      placements.pop();
+      cells.forEach((cell) => occupied.delete(cell));
+    }
+    return false;
+  };
+  if (!placeShip(0)) {
+    throw new Error('Could not place Battleship bot fleet.');
+  }
+  return placements;
+}
+
+export function chooseBotShot(fired: Set<number>, hits: number[], random: () => number = Math.random): number | null {
+  const adjacent = hits.flatMap((cell) => {
+    const row = Math.floor(cell / BATTLESHIP_SIZE);
+    const col = cell % BATTLESHIP_SIZE;
+    return [
+      coordinate(row - 1, col),
+      coordinate(row + 1, col),
+      coordinate(row, col - 1),
+      coordinate(row, col + 1),
+    ];
+  }).filter((cell): cell is number => cell !== null && !fired.has(cell));
+  const candidates = adjacent.length > 0
+    ? [...new Set(adjacent)]
+    : Array.from({ length: BATTLESHIP_SIZE * BATTLESHIP_SIZE }, (_, cell) => cell).filter((cell) => !fired.has(cell));
+  return candidates.length > 0 ? candidates[Math.floor(random() * candidates.length)] : null;
+}
+
 export function applyShot(fleet: ShipState[], fired: Set<number>, row: number, col: number): ShotResult {
   const cell = coordinate(row, col);
   if (cell === null) return { ok: false, error: 'invalid-coordinate' };

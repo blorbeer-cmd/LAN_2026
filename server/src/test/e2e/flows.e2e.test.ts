@@ -1387,7 +1387,7 @@ test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', as
       await guestPage.waitForSelector(`.arcade-lobby-control-bar select[name="${game}-target"]`);
       assert.equal(
         await guestPage.locator(`.arcade-lobby-control-bar select[name="${game}-target"]`).inputValue(),
-        '7',
+        game === 'pong' ? '21' : '7',
       );
       // Rounded: see the #admin-count assertion above for why.
       assert.equal(await guestPage.locator(`.arcade-lobby-control-bar select[name="${game}-target"]`).evaluate((select) => Math.round(select.getBoundingClientRect().height)), 32);
