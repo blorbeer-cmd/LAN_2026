@@ -784,6 +784,14 @@ test('Vote: genre filter scopes the game-limit list, select-all/none and the sta
   t.after(async () => {
     const current = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
     if (current.open) await page.request.post(`${BASE_URL}/api/votes/cancel`);
+    // This test also mutates votes.js's own module state (limitGamesChecked,
+    // voteGenreFilter, excludedGameIds) — a lingering "Shooter"-only filter
+    // or excluded game would silently break a later test's default all-games
+    // "Abstimmung starten" (an empty/limited selection either starts the
+    // wrong round or, worse, gets silently rejected with nothing checked).
+    // A reload is the only way to reset that in-memory state.
+    await page.reload();
+    await page.waitForSelector('.nav-btn[data-view="home"]');
   });
   const gamesRes = await page.request.get(`${BASE_URL}/api/games`);
   const games = (await gamesRes.json()) as Array<{ id: string; name: string }>;
