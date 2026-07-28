@@ -103,56 +103,6 @@ test('Challenge Rush pauses active time and reconnects the same match', async ()
   }
 });
 
-test('Challenge Rush hides the reaction target until play, gates the next challenge behind a ready click, and ends with a per-challenge summary', async () => {
-  const actor = await openArcade(await createPlayer());
-  try {
-    await actor.page.click('[data-game="challenge-rush"]');
-
-    // First challenge is always reaction-circle (fixed CHALLENGES order): its target must stay
-    // invisible during the countdown and only appear once play begins. In E2E_FAST_TIMERS mode the
-    // countdown is only 50ms, and Playwright's default waitForFunction polling runs on
-    // requestAnimationFrame — under real CI CPU contention, whole animation frames can be skipped,
-    // silently missing a state that transient. A MutationObserver installed before the match even
-    // starts fires synchronously on every DOM mutation regardless of frame scheduling, so it can't
-    // miss the circle appearing even for a single render.
-    await actor.page.evaluate(() => {
-      (window as unknown as { __crViolation: boolean }).__crViolation = false;
-      const observer = new MutationObserver(() => {
-        const node = document.querySelector('.challenge-rush-stage');
-        if (node?.getAttribute('data-phase') !== 'playing' && document.querySelector('.challenge-rush-circle')) {
-          (window as unknown as { __crViolation: boolean }).__crViolation = true;
-        }
-      });
-      observer.observe(document.body, { childList: true, subtree: true, attributes: true });
-      (window as unknown as { __crObserver: MutationObserver }).__crObserver = observer;
-    });
-
-    await actor.page.click('#cr-create');
-    await actor.page.waitForSelector('[data-cr-start]');
-    await actor.page.click('[data-cr-start]');
-    await actor.page.waitForSelector('.challenge-rush-circle');
-    assert.equal(await actor.page.evaluate(() => (window as unknown as { __crViolation: boolean }).__crViolation), false);
-    await actor.page.click('.challenge-rush-circle');
-
-    // The result stays on screen until the player explicitly clicks ready — no automatic advance.
-    await actor.page.waitForSelector('#cr-ready-next');
-    await actor.page.waitForTimeout(200);
-    assert.equal(await actor.page.locator('.challenge-rush-stage').count(), 0);
-    await actor.page.click('#cr-ready-next');
-    await actor.page.waitForFunction(() => document.querySelector('.challenge-rush-stage')?.getAttribute('data-challenge-index') === '1');
-
-    await actor.page.waitForSelector('[data-cr-finish]');
-    await actor.page.click('[data-cr-finish]');
-    await actor.page.click('.modal [data-confirm]');
-
-    await actor.page.waitForSelector('.challenge-rush-final-breakdown');
-    const breakdown = await actor.page.locator('.challenge-rush-final-breakdown').first().textContent();
-    assert.ok(breakdown?.includes('Klick den Kreis'));
-  } finally {
-    await actor.context.close();
-  }
-});
-
 // Drives one round of whichever challenge is currently active based on the
 // stage's data-challenge-key, exercising every Phase 3 renderer's real click
 // wiring in a browser instead of just the socket protocol (already covered
@@ -200,6 +150,73 @@ async function playCurrentChallenge(page: Page): Promise<void> {
   }
   throw new Error(`Unbekannte Challenge im E2E-Test: ${key}`);
 }
+
+test('Challenge Rush hides the reaction target until play, gates the next challenge behind a ready click, and ends with a per-challenge summary', async () => {
+  const actor = await openArcade(await createPlayer());
+  try {
+    await actor.page.click('[data-game="challenge-rush"]');
+    await actor.page.click('#cr-create');
+    await actor.page.waitForSelector('[data-cr-start]');
+    await actor.page.click('[data-cr-start]');
+
+    // The challenge order is seeded/shuffled per match (server-side), so
+    // reaction-circle is no longer guaranteed to be first: skip ahead
+    // through whichever challenges come before it. Reading data-challenge-key
+    // is only meaningful once the DOM has actually advanced to the expected
+    // index — checking the selector's mere presence would risk reading the
+    // *previous* challenge's still-rendered key while its result is showing.
+    let reactionIndex = 0;
+    for (;;) {
+      await actor.page.waitForFunction((idx) => document.querySelector('.challenge-rush-stage')?.getAttribute('data-challenge-index') === String(idx), reactionIndex);
+      const key = await actor.page.locator('.challenge-rush-stage').getAttribute('data-challenge-key');
+      if (key === 'reaction-circle') break;
+      await actor.page.waitForFunction(() => document.querySelector('.challenge-rush-stage')?.getAttribute('data-phase') === 'playing');
+      await playCurrentChallenge(actor.page);
+      await actor.page.waitForSelector('#cr-ready-next:not([disabled])');
+      await actor.page.click('#cr-ready-next');
+      reactionIndex += 1;
+    }
+
+    // Its target must stay invisible during the countdown and only appear once play begins. In
+    // E2E_FAST_TIMERS mode the countdown is only 50ms, and Playwright's default waitForFunction
+    // polling runs on requestAnimationFrame — under real CI CPU contention, whole animation frames
+    // can be skipped, silently missing a state that transient. A MutationObserver installed before
+    // play begins fires synchronously on every DOM mutation regardless of frame scheduling, so it
+    // can't miss the circle appearing even for a single render.
+    await actor.page.evaluate(() => {
+      (window as unknown as { __crViolation: boolean }).__crViolation = false;
+      const observer = new MutationObserver(() => {
+        const node = document.querySelector('.challenge-rush-stage');
+        if (node?.getAttribute('data-phase') !== 'playing' && document.querySelector('.challenge-rush-circle')) {
+          (window as unknown as { __crViolation: boolean }).__crViolation = true;
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+      (window as unknown as { __crObserver: MutationObserver }).__crObserver = observer;
+    });
+
+    await actor.page.waitForSelector('.challenge-rush-circle');
+    assert.equal(await actor.page.evaluate(() => (window as unknown as { __crViolation: boolean }).__crViolation), false);
+    await actor.page.click('.challenge-rush-circle');
+
+    // The result stays on screen until the player explicitly clicks ready — no automatic advance.
+    await actor.page.waitForSelector('#cr-ready-next');
+    await actor.page.waitForTimeout(200);
+    assert.equal(await actor.page.locator('.challenge-rush-stage').count(), 0);
+    await actor.page.click('#cr-ready-next');
+    await actor.page.waitForFunction((idx) => document.querySelector('.challenge-rush-stage')?.getAttribute('data-challenge-index') === String(idx), reactionIndex + 1);
+
+    await actor.page.waitForSelector('[data-cr-finish]');
+    await actor.page.click('[data-cr-finish]');
+    await actor.page.click('.modal [data-confirm]');
+
+    await actor.page.waitForSelector('.challenge-rush-final-breakdown');
+    const breakdown = await actor.page.locator('.challenge-rush-final-breakdown').first().textContent();
+    assert.ok(breakdown?.includes('Klick den Kreis'));
+  } finally {
+    await actor.context.close();
+  }
+});
 
 test('Challenge Rush plays every Phase 3 mini-challenge to a final summary in the browser', async () => {
   const actor = await openArcade(await createPlayer());

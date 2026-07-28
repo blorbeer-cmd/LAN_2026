@@ -12,7 +12,7 @@ const COLOR_WORD_LABELS = { red: 'Rot', blue: 'Blau', green: 'Grün', yellow: 'G
 const COLOR_WORD_VARS = { red: 'var(--danger)', blue: 'var(--accent)', green: 'var(--state-playing)', yellow: 'var(--state-paused)' };
 const MEMORY_REVEAL_STEP_MS = 700; const MEMORY_REVEAL_SHOW_MS = 500;
 
-let socket = null; let lobbies = []; let match = null; let latestResult = null; let numberOrder = 1; let prevMyScore = null;
+let socket = null; let lobbies = []; let match = null; let numberOrder = 1; let prevMyScore = null;
 let countdownKey = null; let startedKey = null; let presentationKey = null;
 // Shared "how far into the current sequence" pointer for aim-trainer,
 // whack-a-mole, memory-sequence and color-word — only one of them is ever
@@ -29,20 +29,17 @@ function clearRevealTimers() { revealTimers.forEach(clearTimeout); revealTimers 
 function scheduleAt(delayMs, callback) { revealTimers.push(setTimeout(callback, Math.max(0, delayMs))); }
 function rerenderIfVisible() { if (currentView() === 'challengeRush') rerender(); }
 function elapsedInChallenge(state) { return (state.challenge?.durationMs ?? 0) - (state.remainingMs ?? 0); }
-// Both timers below are purely presentational: the server independently
+// The reveal animation is purely presentational: the server independently
 // validates timing from its own elapsed clock, so a client that paused,
 // reconnected or drifted only ever sees a wrong *animation*, never an unfair
 // score. Scheduling is re-derived from remainingMs on every relevant state
-// push (challenge start, pause, resume) instead of running once, so it stays
-// correct across those transitions.
-function scheduleTrafficLight(state) {
-  clearRevealTimers();
-  const elapsed = elapsedInChallenge(state);
-  const greenAtMs = Number(state.challenge?.data?.greenAtMs ?? 0);
-  if (elapsed >= greenAtMs) { trafficGreen = true; return; }
-  trafficGreen = false;
-  scheduleAt(greenAtMs - elapsed, () => { trafficGreen = true; rerenderIfVisible(); });
-}
+// push while actually playing (challenge start, resume) instead of running
+// once, so it stays correct across those transitions. Unlike the sequence
+// itself (which the player is meant to see and memorize), the traffic
+// light's exact green moment is never sent to the client at all — the
+// server pushes a dedicated event right when it happens (see
+// 'challenge-rush:traffic-light:green' below), so no script can precompute
+// the reaction window.
 function scheduleMemoryReveal(state) {
   clearRevealTimers();
   const sequence = state.challenge?.data?.sequence ?? [];
@@ -75,23 +72,45 @@ function syncPresentation(state) {
     cancelCountdown();
   }
   if (state.phase === 'playing' && startedKey !== key) { startedKey = key; playArcadeSound('challenge-start'); }
-  if (state.phase === 'playing' && !state.paused) {
-    if (state.challenge?.key === 'traffic-light') scheduleTrafficLight(state);
-    else if (state.challenge?.key === 'memory-sequence') scheduleMemoryReveal(state);
-  } else if (state.phase !== 'playing') {
-    clearRevealTimers();
-  }
+  // Pausing mid-'playing' must stop the reveal timers too, not just leaving
+  // 'playing' entirely — otherwise the memory-reveal animation keeps running
+  // in real time while the match is frozen, and replays part of the
+  // sequence again once resumed.
+  if (state.phase === 'playing' && !state.paused && state.challenge?.key === 'memory-sequence') scheduleMemoryReveal(state);
+  else clearRevealTimers();
+}
+
+// Restores this client's own progress within the current challenge from the
+// server's authoritative count instead of always starting from 0 — without
+// this, a reload/reconnect mid-round would desync the client (e.g. Aim
+// Trainer rendering target 0 again while the server already expects the
+// next one) and reject every further input as "Ungültiges Ziel." until the
+// round times out.
+function syncProgressFromServer(state) {
+  const mine = state.progress?.find((entry) => entry.playerId === myId());
+  if (!mine) return;
+  progressStep = state.challenge?.key === 'color-word' ? mine.correct + mine.errors : mine.correct;
 }
 
 export function ensureChallengeRushSocket() {
   if (socket) return socket;
   socket = connectSocket();
   socket.on('challenge-rush:lobbies', (payload) => { lobbies = payload?.lobbies ?? []; if (!match && currentView() === 'arcade') rerender(); });
-  socket.on('challenge-rush:match:start', (payload) => { match = { ...payload }; latestResult = null; prevMyScore = null; countdownKey = null; startedKey = null; navigate('challengeRush'); });
+  socket.on('challenge-rush:match:start', (payload) => { match = { ...payload }; prevMyScore = null; countdownKey = null; startedKey = null; navigate('challengeRush'); });
   socket.on('challenge-rush:match:state', (payload) => { match = { ...match, ...payload }; if (currentView() === 'challengeRush') rerender(); });
-  socket.on('challenge-rush:state', (payload) => { match = { ...match, ...payload }; if (payload.phase === 'countdown' && payload.challenge?.key === 'number-salad') numberOrder = 1; syncPresentation(payload); if (currentView() === 'challengeRush') rerender(); });
+  socket.on('challenge-rush:state', (payload) => {
+    match = { ...match, ...payload };
+    if (payload.phase === 'countdown' && payload.challenge?.key === 'number-salad') numberOrder = 1;
+    syncPresentation(payload);
+    syncProgressFromServer(payload);
+    if (currentView() === 'challengeRush') rerender();
+  });
+  socket.on('challenge-rush:traffic-light:green', (payload) => {
+    if (!match || payload?.matchId !== match.matchId || payload?.challengeIndex !== match.challengeIndex) return;
+    trafficGreen = true;
+    rerenderIfVisible();
+  });
   socket.on('challenge-rush:challenge:end', (payload) => {
-    latestResult = payload;
     const myScore = payload.scores?.find((score) => score.playerId === myId())?.score;
     if (myScore !== undefined) {
       if (prevMyScore !== null && myScore > prevMyScore) playArcadeSound('challenge-point');
@@ -101,7 +120,6 @@ export function ensureChallengeRushSocket() {
   });
   socket.on('challenge-rush:match:end', (payload) => {
     cancelCountdown();
-    latestResult = payload;
     match = { ...match, phase: 'ended', scores: payload.scores, draw: payload.draw === true, history: payload.history ?? match?.history ?? [] };
     if (payload.winnerId) playArcadeSound(payload.winnerId === myId() ? 'challenge-highscore' : 'challenge-gameover');
     else if (!payload.draw) playArcadeSound('challenge-gameover');
@@ -229,7 +247,7 @@ export function renderChallengeRush(container, ctx) {
       : `${challengeView(container)}${matchControlsHtml()}<section class="card stack"><h2>Zwischenstand</h2><div class="challenge-rush-scoreboard">${scoreText(scores)}</div></section>`;
   container.innerHTML = `<div class="arcade-game-shell"><button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button><h1 class="view-title">Challenge Rush</h1><div class="arcade-toolbar">${arcadeMuteControlHtml()}</div>${body}</div>`;
   wireArcadeMuteControl(container);
-  container.querySelector('#cr-back')?.addEventListener('click', () => { match = null; latestResult = null; navigate('arcade'); });
+  container.querySelector('#cr-back')?.addEventListener('click', () => { match = null; navigate('arcade'); });
   container.querySelector('[data-navigate="arcade"]')?.addEventListener('click', () => navigate('arcade'));
   container.querySelector('[data-cr-pause]')?.addEventListener('click', () => socket.emit('challenge-rush:match:pause', { matchId: match.matchId, playerId: myId() }, (result) => { if (!result?.ok) showToast(result?.error || 'Pause konnte nicht geändert werden.', { error: true }); }));
   container.querySelector('[data-cr-finish]')?.addEventListener('click', async () => { if (!(await confirmDialog('Challenge Rush wirklich für alle beenden?', { confirmText: 'Beenden', danger: true }))) return; const result = await emit('challenge-rush:match:finish', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Beenden fehlgeschlagen.', { error: true }); });

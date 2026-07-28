@@ -128,6 +128,8 @@ test('Phase 3 score helpers stay in the normalized 0..100 range', () => {
   assert.equal(scoreMemorySequence(0), 0);
   assert.equal(scoreOddOneOut(0), 100);
   assert.equal(scoreOddOneOut(99_999), 0);
+  assert.equal(scoreOddOneOut(0, 1), 85);
+  assert.ok(scoreOddOneOut(0, 1) < scoreOddOneOut(400, 0), 'a wrong guess should not beat an honest, slightly slower hit');
   assert.equal(scoreWhackAMole(WHACK_A_MOLE_SEQUENCE_LENGTH, 0, 3_000), 100);
   assert.equal(scoreWhackAMole(0, 99, 3_000), 0);
   assert.equal(scoreTrafficLight(120, false), 100);

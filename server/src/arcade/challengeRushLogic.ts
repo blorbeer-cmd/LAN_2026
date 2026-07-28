@@ -10,9 +10,9 @@ export const CHALLENGES: ChallengeDefinition[] = [
   { key: 'timing-10', title: 'Stoppe bei 10 Sekunden', description: 'Stoppe den unsichtbaren Timer möglichst genau bei 10,00 Sekunden.', durationMs: 15_000 },
   { key: 'aim-trainer', title: 'Aim Trainer', description: 'Triff alle Ziele so schnell wie möglich.', durationMs: 10_000 },
   { key: 'memory-sequence', title: 'Merk dir die Reihenfolge', description: 'Merke dir die aufleuchtenden Felder und wiederhole sie.', durationMs: 15_000 },
-  { key: 'odd-one-out', title: 'Finde den Unterschied', description: 'Finde das eine abweichende Feld im Raster.', durationMs: 8_000 },
+  { key: 'odd-one-out', title: 'Finde den Unterschied', description: 'Finde das eine abweichende Feld im Raster.', durationMs: 10_000 },
   { key: 'whack-a-mole', title: 'Whack-a-Mole', description: 'Klicke die aufleuchtenden Löcher in der richtigen Reihenfolge.', durationMs: 12_000 },
-  { key: 'traffic-light', title: 'Ampel-Reaktion', description: 'Klicke erst, wenn die Ampel auf Grün springt. Zu früh zählt als Fehlstart.', durationMs: 8_000 },
+  { key: 'traffic-light', title: 'Ampel-Reaktion', description: 'Klicke erst, wenn die Ampel auf Grün springt. Zu früh zählt als Fehlstart.', durationMs: 10_000 },
   { key: 'color-word', title: 'Farbwort-Chaos', description: 'Wähle die Schriftfarbe, nicht das geschriebene Wort.', durationMs: 12_000 },
 ];
 
@@ -23,7 +23,7 @@ export function seededRandom(seed: number): () => number {
   return () => { value = (value * 1_664_525 + 1_013_904_223) >>> 0; return value / 0x1_0000_0000; };
 }
 
-function shuffled<T>(items: T[], random: () => number): T[] {
+export function shuffled<T>(items: T[], random: () => number): T[] {
   const result = [...items];
   for (let index = result.length - 1; index > 0; index -= 1) { const swap = Math.floor(random() * (index + 1)); [result[index], result[swap]] = [result[swap], result[index]]; }
   return result;
@@ -101,7 +101,13 @@ export function scoreAimTrainer(hits: number, elapsedMs: number): number {
 export function scoreMemorySequence(correct: number): number {
   return safeScoreInput(Math.round((safeCount(correct) / MEMORY_SEQUENCE_LENGTH) * 100));
 }
-export function scoreOddOneOut(elapsedMs: number): number { return safeScoreInput(Math.round(100 - safeElapsed(elapsedMs) / 40)); }
+// Wrong guesses carry a real penalty so rapid blind-clicking through the grid
+// cannot outscore an honest look-and-click (the concept scores this challenge
+// on time alone, but a free wrong click would make random guessing the
+// mathematically better strategy at this tile count).
+export function scoreOddOneOut(elapsedMs: number, errors = 0): number {
+  return safeScoreInput(Math.round(100 - safeElapsed(elapsedMs) / 40 - safeCount(errors) * 15));
+}
 export function scoreWhackAMole(correct: number, errors: number, elapsedMs: number): number {
   return safeScoreInput(Math.round(safeCount(correct) * 12.5 - safeCount(errors) * 8 - Math.max(0, safeElapsed(elapsedMs) - 3_000) / 200));
 }

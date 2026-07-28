@@ -9,11 +9,11 @@ import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships }
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { arcadeTiming } from './timing';
 import {
-  CHALLENGES, challengePayload, isCurrentChallenge, isReadyForNext, remainingUntil,
+  CHALLENGES, challengePayload, isCurrentChallenge, isReadyForNext, remainingUntil, seededRandom, shuffled,
   scoreAimTrainer, scoreColorWord, scoreCps, scoreMemorySequence, scoreNumberSalad, scoreOddOneOut,
   scoreReaction, scoreTiming10, scoreTrafficLight, scoreWhackAMole, winnerIdForScores,
   COLOR_WORD_ROUND_COUNT, MEMORY_SEQUENCE_LENGTH, WHACK_A_MOLE_SEQUENCE_LENGTH, AIM_TRAINER_TARGET_COUNT,
-  type ChallengeKey,
+  type ChallengeKey, type ChallengePayload,
 } from './challengeRushLogic';
 
 const MAX_PLAYERS = 15;
@@ -31,6 +31,12 @@ interface Match {
   current: ReturnType<typeof challengePayload>; progress: Map<string, Progress>; scores: Map<string, number>;
   startedAt: number; timer: NodeJS.Timeout | null; deadlineAt: number | null; pausedRemainingMs: number | null; paused: boolean;
   reconnectTimers: Map<string, NodeJS.Timeout>; forfeited: Set<string>; readyNext: Set<string>; history: HistoryEntry[];
+  // Separate from `timer`/`deadlineAt` (which drive the challenge's overall
+  // deadline): a second, independently pausable countdown that only exists
+  // while the current challenge is 'traffic-light', so the exact green
+  // moment is a server push instead of client-known data (see
+  // scheduleGreenLight below).
+  greenTimer: NodeJS.Timeout | null; greenDeadlineAt: number | null; greenPausedRemainingMs: number | null;
 }
 
 const lobbies = new Map<string, Lobby>();
@@ -57,6 +63,29 @@ function progressPayload(progress: Progress) {
   return { clicks: progress.clicks, correct: progress.correct, errors: progress.errors, completed: progress.completed, score: progress.score };
 }
 
+// Sent to every player so a reload/reconnect mid-challenge can restore the
+// client's own step counter from the server instead of silently restarting
+// it at 0 while the server has already moved past step 0 (see the frontend's
+// syncProgressFromServer).
+function matchProgressPayload(match: Match) {
+  return match.players.map((player) => ({ playerId: player.id, ...progressPayload(match.progress.get(player.id)!) }));
+}
+
+// The wire-visible challenge payload: never the answer/target data for a
+// round that hasn't started yet (data is withheld entirely during
+// 'countdown'), and never traffic-light's exact green delay at any point —
+// that transition is a dedicated server push (see scheduleGreenLight)
+// instead of client-computed data, so no script can pre-calculate the exact
+// reaction window.
+function sanitizeChallengeForClient(match: Match): ChallengePayload {
+  if (match.phase === 'countdown') return { ...match.current, data: {} };
+  if (match.current.key === 'traffic-light') {
+    const { greenAtMs: _greenAtMs, ...safeData } = match.current.data as { greenAtMs?: number };
+    return { ...match.current, data: safeData };
+  }
+  return match.current;
+}
+
 function activeElapsed(progress: Progress, now = Date.now()): number {
   return progress.elapsedBeforePause + (progress.startedAt > 0 ? Math.max(0, now - progress.startedAt) : 0);
 }
@@ -64,6 +93,22 @@ function activeElapsed(progress: Progress, now = Date.now()): number {
 function clearTimer(match: Match): void {
   if (match.timer) clearTimeout(match.timer);
   match.timer = null;
+}
+
+function clearGreenTimer(match: Match): void {
+  if (match.greenTimer) clearTimeout(match.greenTimer);
+  match.greenTimer = null;
+}
+
+function scheduleGreenLight(io: Server, match: Match, delayMs: number): void {
+  clearGreenTimer(match);
+  const delay = Math.max(0, delayMs);
+  match.greenDeadlineAt = Date.now() + delay;
+  match.greenTimer = setTimeout(() => {
+    match.greenTimer = null;
+    match.greenDeadlineAt = null;
+    emitArcadeRoom(io, match.room, 'challenge-rush:traffic-light:green', { matchId: match.id, challengeIndex: match.index }, match);
+  }, delay);
 }
 
 function schedule(match: Match, delayMs: number, callback: () => void): void {
@@ -83,6 +128,10 @@ function pauseMatch(match: Match): void {
   }
   match.pausedRemainingMs = match.deadlineAt === null ? null : Math.max(0, match.deadlineAt - Date.now());
   clearTimer(match);
+  if (match.greenTimer) {
+    match.greenPausedRemainingMs = match.greenDeadlineAt === null ? null : Math.max(0, match.greenDeadlineAt - Date.now());
+    clearGreenTimer(match);
+  }
   match.paused = true;
 }
 
@@ -95,14 +144,20 @@ function resumeMatch(io: Server, match: Match): void {
   if (match.phase === 'countdown') schedule(match, remaining, () => beginChallenge(io, match));
   else if (match.phase === 'playing') schedule(match, remaining, () => finishChallenge(io, match));
   else if (match.phase === 'result') schedule(match, remaining, () => nextChallenge(io, match));
+  if (match.phase === 'playing' && match.greenPausedRemainingMs !== null) {
+    const remainingGreen = match.greenPausedRemainingMs;
+    match.greenPausedRemainingMs = null;
+    scheduleGreenLight(io, match, remainingGreen);
+  }
 }
 
 function publicState(match: Match) {
   return {
     matchId: match.id, phase: match.phase, challengeIndex: match.index, challengeCount: match.order.length,
-    challenge: match.current, scores: scorePayload(match), paused: match.paused,
+    challenge: sanitizeChallengeForClient(match), scores: scorePayload(match), paused: match.paused,
     remainingMs: match.paused ? match.pausedRemainingMs : remainingUntil(match.deadlineAt, Date.now()),
     history: match.history, readyNext: match.phase === 'result' ? [...match.readyNext] : [],
+    progress: matchProgressPayload(match),
   };
 }
 
@@ -119,6 +174,10 @@ function beginChallenge(io: Server, match: Match): void {
   const now = Date.now();
   for (const progress of match.progress.values()) { progress.startedAt = now; progress.elapsedBeforePause = 0; }
   schedule(match, match.current.durationMs, () => finishChallenge(io, match));
+  if (match.current.key === 'traffic-light') {
+    const greenAtMs = Number((match.current.data as { greenAtMs?: number }).greenAtMs ?? 0);
+    scheduleGreenLight(io, match, greenAtMs);
+  }
   emitState(io, match);
 }
 
@@ -141,6 +200,8 @@ function finishChallenge(io: Server, match: Match): void {
   if (match.phase !== 'playing' || match.paused) return;
   match.phase = 'result';
   clearTimer(match);
+  clearGreenTimer(match);
+  match.greenPausedRemainingMs = null;
   match.readyNext = new Set();
   for (const player of match.players) {
     const progress = match.progress.get(player.id)!;
@@ -180,7 +241,7 @@ function cleanupMatch(io: Server, match: Match): void {
 
 function finishMatch(io: Server, match: Match, reason = 'completed'): void {
   if (match.phase === 'ended') return;
-  match.phase = 'ended'; clearTimer(match);
+  match.phase = 'ended'; clearTimer(match); clearGreenTimer(match);
   const scores = scorePayload(match);
   const winnerId = reason === 'completed' ? winnerIdForScores(scores.filter((score) => !score.forfeited)) : null;
   endArcadeSession(real(match.players), 'challenge-rush', match);
@@ -220,8 +281,8 @@ function attachSocket(io: Server, socket: Socket, match: Match, playerId: string
 function startMatch(io: Server, lobby: Lobby): Match {
   const id = nanoid(); const room = `challenge-rush:${id}`;
   for (const socketId of lobby.socketIds.values()) io.sockets.sockets.get(socketId)?.join(room);
-  const seed = Math.floor(Math.random() * 0x7fffffff); const order = CHALLENGES.map((challenge) => challenge.key);
-  const match: Match = { id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: [...lobby.players], socketIds: new Map(lobby.socketIds), order, index: -1, phase: 'countdown', seed, current: challengePayload(order[0], seed), progress: new Map(), scores: new Map(lobby.players.map((player) => [player.id, 0])), startedAt: Date.now(), timer: null, deadlineAt: null, pausedRemainingMs: null, paused: false, reconnectTimers: new Map(), forfeited: new Set(), readyNext: new Set(), history: [] };
+  const seed = Math.floor(Math.random() * 0x7fffffff); const order = shuffled(CHALLENGES.map((challenge) => challenge.key), seededRandom(seed));
+  const match: Match = { id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: [...lobby.players], socketIds: new Map(lobby.socketIds), order, index: -1, phase: 'countdown', seed, current: challengePayload(order[0], seed), progress: new Map(), scores: new Map(lobby.players.map((player) => [player.id, 0])), startedAt: Date.now(), timer: null, deadlineAt: null, pausedRemainingMs: null, paused: false, reconnectTimers: new Map(), forfeited: new Set(), readyNext: new Set(), history: [], greenTimer: null, greenDeadlineAt: null, greenPausedRemainingMs: null };
   matches.set(id, match); releaseLobbyMemberships(lobby.players.map((player) => player.id), 'challenge-rush', lobby.id); lobbies.delete(lobby.id); emitLobbies(io);
   startArcadeSession(real(match.players), 'challenge-rush', match); emitArcadeRoom(io, room, 'challenge-rush:match:start', { matchId: id, host: match.host, players: match.players, challengeCount: order.length }, match); nextChallenge(io, match); return match;
 }
@@ -276,7 +337,7 @@ export function registerChallengeRushSockets(io: Server): void {
       }
       else if (match.current.key === 'odd-one-out') {
         if (payload.action !== 'select' || typeof payload.value !== 'number') return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) });
-        if (payload.value === match.current.data.oddIndex) { p.score = scoreOddOneOut(elapsed); p.completed = true; } else p.errors += 1;
+        if (payload.value === match.current.data.oddIndex) { p.score = scoreOddOneOut(elapsed, p.errors); p.completed = true; } else p.errors += 1;
       }
       else if (match.current.key === 'whack-a-mole') {
         const sequence = match.current.data.sequence as number[];
