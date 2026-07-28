@@ -276,7 +276,7 @@ function arcadeStatsHtml() {
   if (statsLoading && !stats) return `<div class="empty-state" style="padding:var(--space-4);">Statistiken laden…</div>`;
   const games = stats?.games ?? [];
   if (!games.length) return `<div class="empty-state" style="padding:var(--space-4);">Noch keine abgeschlossenen Arcade-Runden.</div>`;
-  if (!games.some((g) => g.gameType === activeStatsGame)) activeStatsGame = games[0].gameType;
+  if (!games.some((g) => (g.statsKey ?? g.gameType) === activeStatsGame)) activeStatsGame = games[0].statsKey ?? games[0].gameType;
 
   const gameSelect = `
     <div>
@@ -284,13 +284,14 @@ function arcadeStatsHtml() {
       <select id="arcade-stats-game">
         ${games
           .map(
-            (g) => `<option value="${g.gameType}" ${g.gameType === activeStatsGame ? 'selected' : ''}>${escapeHtml(g.title)} · ${arcadeMatchCountLabel(g.matches)}</option>`
+            (g) => `<option value="${g.statsKey ?? g.gameType}" ${(g.statsKey ?? g.gameType) === activeStatsGame ? 'selected' : ''}>${escapeHtml(g.title)} · ${arcadeMatchCountLabel(g.matches)}</option>`
           )
           .join('')}
       </select>
     </div>`;
 
-  const game = games.find((g) => g.gameType === activeStatsGame);
+  const game = games.find((g) => (g.statsKey ?? g.gameType) === activeStatsGame);
+  const isArenaStats = game.mode?.startsWith('arena');
   const rows = game.players
     .slice(0, 5)
     .map(
@@ -299,9 +300,14 @@ function arcadeStatsHtml() {
           <span class="lb-rank">${i + 1}</span>
           <span class="leaderboard-row-main">
             <strong class="player-name leaderboard-row-name">${escapeHtml(p.name)}</strong>
-            <span class="muted leaderboard-row-stat">${arcadeResultLabel(p.wins, p.losses)}</span>
+            <span class="muted leaderboard-row-stat">${
+              isArenaStats
+                ? `${p.wins} ${p.wins === 1 ? 'Sieg' : 'Siege'} · ${p.topThree}× Top 3 · Ø Platz ${p.averagePlacement?.toFixed(1) ?? '–'}`
+                : arcadeResultLabel(p.wins, p.losses)
+            }</span>
+            ${isArenaStats ? `<span class="muted leaderboard-row-stat">${p.lines} Zeilen · ${p.garbageSent} Angriff · ${p.knockouts} K.o.</span>` : ''}
           </span>
-          <strong class="lb-points">${Math.round(p.winRate * 100)}%</strong>
+          <strong class="lb-points">${isArenaStats ? `${p.knockouts} K.o.` : `${Math.round(p.winRate * 100)}%`}</strong>
         </div>`
     )
     .join('');

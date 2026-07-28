@@ -516,7 +516,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   „Punkte bis Sieg“ control shares the separated footer with „Schließen“ and „Start“ from `--bp-md`
   instead of forming a wide radio-button block. Readiness is communicated in the player rows without
   a duplicate status sentence. „Lobby öffnen“ follows the lobby cards at full width, while the
-  temporary „Gegen KI“ mode occupies its own full-width row below it. An empty lobby no longer adds
+  Tetris exposes a compact Duell/Arena selector before creation. Duell keeps two equal boards;
+  Arena accepts three to eight players and keeps the local board large beside a responsive grid of
+  opponent boards. On phones the local board sits above that grid. The current automatic attack
+  target receives a textual „Ziel“ marker in addition to its accent border, while eliminated
+  players remain visibly dimmed for spectating. Admins can create a „KI-Test“ with multiple bot
+  opponents; the bot-count control is enabled only for Arena. An empty lobby no longer adds
   a redundant waiting sentence. Member actions use the same destructive treatment for „Verlassen“
   as the host's „Schließen“ action. Guest footers place „Verlassen“ before the readiness toggle;
   compact score selectors use the smaller shared row height. Create actions use the same inset as
@@ -525,7 +530,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   include each game's match count. The selected game is not repeated above its results. Those
   results follow directly without another enclosing card or accent rail; player rows reuse
   `.leaderboard-list-grid` for the shared one-/two-column ranking presentation and spell out wins
-  and losses in German.
+  and losses in German. Tetris Duell and Tetris Arena are separate dropdown entries so an Arena's
+  many non-winning placements do not distort the duel win rate. Arena rows instead show wins,
+  Top-3 finishes, average placement, cleared lines, sent garbage and knockouts. Matches containing
+  bots appear as separate „KI-Test“ entries and never alter the human-only Duell/Arena rankings.
 - **Jam sessions** — Jam is a grouped page below „Mehr“. A dedicated local controller on the
   playback PC or kiosk Raspberry Pi connects Spotify through PKCE and never appears as a player.
   The server stores neither Spotify application credentials nor OAuth tokens. One participant

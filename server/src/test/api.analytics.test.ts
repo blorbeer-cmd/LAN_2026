@@ -340,6 +340,25 @@ test('GET /api/analytics/arcade skips legacy score rows with no player attributi
   assert.equal(after.body.totals.matches, before.body.totals.matches);
 });
 
+test('GET /api/analytics/arcade excludes Tetris KI identities from player activity', async () => {
+  const human = await request(app).post('/api/players').send({ name: 'Arena Mensch' });
+  const now = Date.now();
+  const scores = [
+    { playerId: human.body.id, name: human.body.name, score: 100, mode: 'arena', isBot: false },
+    { playerId: 'tetris-bot-1', name: 'Tetris-Bot 1', score: 200, mode: 'arena', isBot: true },
+  ];
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, 'tetris', NULL, ?, ?, 'completed', ?, ?)`,
+  ).run('arcade-analytics-tetris-ai', JSON.stringify(scores), JSON.stringify(scores), now - 1000, now);
+
+  const res = await request(app).get('/api/analytics/arcade');
+  assert.equal(res.status, 200);
+  const tetris = res.body.games.find((game: { gameType: string }) => game.gameType === 'tetris');
+  assert.equal(tetris.uniquePlayers, 1);
+  assert.equal(tetris.mostActive.name, 'Arena Mensch');
+});
+
 test('GET /api/analytics/arcade filters results by start time', async () => {
   const player = await request(app).post('/api/players').send({ name: 'Arcade Zeitraum' });
   const now = Date.now();

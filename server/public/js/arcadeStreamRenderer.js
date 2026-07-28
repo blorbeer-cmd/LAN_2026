@@ -90,11 +90,17 @@ function drawScribble(ctx, game, width, height) {
 
 function drawTetris(ctx, game, width, height) {
   const boards = game.players ?? [];
-  const boardWidth = width / Math.max(1, boards.length);
+  const columns = boards.length <= 2 ? Math.max(1, boards.length) : boards.length <= 4 ? 2 : 4;
+  const rows = Math.ceil(boards.length / columns);
+  const boardWidth = width / columns;
+  const boardHeight = height / Math.max(1, rows);
   boards.forEach((player, index) => {
-    const cell = Math.min((boardWidth * 0.8) / 10, (height * 0.88) / 20);
-    const left = index * boardWidth + (boardWidth - cell * 10) / 2;
-    const top = (height - cell * 20) / 2;
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const cell = Math.min((boardWidth * 0.78) / 10, (boardHeight * 0.78) / 20);
+    const left = column * boardWidth + (boardWidth - cell * 10) / 2;
+    const top = row * boardHeight + (boardHeight - cell * 20) / 2;
+    ctx.globalAlpha = player.alive === false ? 0.45 : 1;
     ctx.fillStyle = cssColor('--bg-elevated');
     ctx.fillRect(left, top, cell * 10, cell * 20);
     ctx.strokeStyle = cssColor('--border');
@@ -120,8 +126,9 @@ function drawTetris(ctx, game, width, height) {
     ctx.fillStyle = cssColor('--text');
     ctx.font = `${parseFloat(getComputedStyle(document.body).fontSize) * 1.5}px sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(player.name || 'Spieler', left + cell * 5, height * 0.98);
+    ctx.fillText(player.name || 'Spieler', left + cell * 5, (row + 1) * boardHeight - 4);
     ctx.textAlign = 'start';
+    ctx.globalAlpha = 1;
   });
 }
 

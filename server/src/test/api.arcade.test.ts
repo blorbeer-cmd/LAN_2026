@@ -95,11 +95,77 @@ test('GET /api/arcade/stats labels and aggregates tetris results too', async () 
   const res = await request(app).get('/api/arcade/stats');
   assert.equal(res.status, 200);
   const tetris = res.body.games.find((game: { gameType: string }) => game.gameType === 'tetris');
-  assert.equal(tetris.title, 'Tetris');
+  assert.equal(tetris.title, 'Tetris Duell');
   assert.equal(tetris.matches, 1);
   assert.equal(tetris.leader.name, 'Tetris Cara');
   assert.equal(tetris.players[0].wins, 1);
   assert.equal(tetris.players[0].losses, 0);
+});
+
+test('GET /api/arcade/stats separates KI Arena placements and excludes KI opponents', async () => {
+  const winner = await request(app).post('/api/players').send({ name: 'Arena Sieger' });
+  const runnerUp = await request(app).post('/api/players').send({ name: 'Arena Zweiter' });
+  const now = Date.now();
+  const scores = [
+    {
+      playerId: winner.body.id,
+      name: winner.body.name,
+      mode: 'arena',
+      score: 5200,
+      lines: 24,
+      placement: 1,
+      garbageSent: 8,
+      garbageReceived: 3,
+      knockouts: 2,
+    },
+    {
+      playerId: runnerUp.body.id,
+      name: runnerUp.body.name,
+      mode: 'arena',
+      score: 4100,
+      lines: 19,
+      placement: 2,
+      garbageSent: 5,
+      garbageReceived: 7,
+      knockouts: 1,
+    },
+    {
+      playerId: 'tetris-bot-1',
+      name: 'Tetris-Bot 1',
+      mode: 'arena',
+      isBot: true,
+      score: 1900,
+      lines: 8,
+      placement: 3,
+      garbageSent: 1,
+      garbageReceived: 5,
+      knockouts: 0,
+    },
+  ];
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    'tetris-arena-stats-result',
+    'tetris',
+    winner.body.id,
+    JSON.stringify(scores),
+    JSON.stringify(scores),
+    'completed',
+    now - 1000,
+    now,
+  );
+
+  const res = await request(app).get('/api/arcade/stats');
+  assert.equal(res.status, 200);
+  const arena = res.body.games.find((game: { statsKey: string }) => game.statsKey === 'tetris:arena-ai');
+  assert.equal(arena.title, 'Tetris Arena · KI-Test');
+  assert.equal(arena.matches, 1);
+  assert.equal(arena.players.length, 2);
+  assert.equal(arena.players[0].name, 'Arena Sieger');
+  assert.equal(arena.players[0].topThree, 1);
+  assert.equal(arena.players[0].averagePlacement, 1);
+  assert.equal(arena.players[0].knockouts, 2);
 });
 
 test('GET /api/arcade/stats summarizes completed scribble results under their own title', async () => {
