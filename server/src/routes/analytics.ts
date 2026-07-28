@@ -467,6 +467,7 @@ interface ArcadeResultFullRow {
 interface ArcadeScoreEntry {
   playerId: string;
   name: string;
+  isBot?: boolean;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -545,6 +546,7 @@ analyticsRouter.get('/arcade', (req, res) => {
     game.totalDurationMs += durationMs;
     game.longestDurationMs = Math.max(game.longestDurationMs, durationMs);
     for (const score of scores) {
+      if (score.isBot === true || score.playerId.startsWith('tetris-bot')) continue;
       game.players.add(score.playerId);
       allPlayers.add(score.playerId);
       const current = game.matchesByPlayer.get(score.playerId) ?? {
