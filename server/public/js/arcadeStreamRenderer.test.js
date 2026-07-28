@@ -167,3 +167,84 @@ test('the Battleship stream draws public shot data without fleet coordinates', (
   assert.deepEqual(labels.map(([name]) => name), ['Ada', 'Bob']);
   assert.equal(rectangles.length, 5);
 });
+
+test('the Tetris Arena stream distributes eight boards across two rows', () => {
+  const labels = [];
+  const context = {
+    clearRect() {},
+    fillRect() {},
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() {},
+    fillText: (...args) => labels.push(args),
+    fillStyle: '',
+    strokeStyle: '',
+    globalAlpha: 1,
+    font: '',
+    textAlign: 'start',
+  };
+  const canvas = { width: 1, height: 1, getContext: () => context };
+  const originalDocument = globalThis.document;
+  const originalGetComputedStyle = globalThis.getComputedStyle;
+  globalThis.document = { documentElement: {}, body: {} };
+  globalThis.getComputedStyle = () => ({ getPropertyValue: () => '#ffffff', fontSize: '16px' }); // design-token-ok: deterministic canvas test color
+
+  try {
+    drawArcadeStreamCanvas(canvas, {
+      gameType: 'tetris',
+      players: Array.from({ length: 8 }, (_, index) => ({
+        name: `Arena ${index + 1}`,
+        alive: index !== 7,
+        board: Array.from({ length: 20 }, () => Array(10).fill(0)),
+        current: null,
+      })),
+    });
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.getComputedStyle = originalGetComputedStyle;
+  }
+
+  assert.equal(labels.length, 8);
+  assert.equal(new Set(labels.map(([, , y]) => y)).size, 2);
+  assert.deepEqual(labels.map(([name]) => name), Array.from({ length: 8 }, (_, index) => `Arena ${index + 1}`));
+});
+
+test('the Tetris stream dims occupied cells for eliminated players', () => {
+  const fills = [];
+  const context = {
+    clearRect() {},
+    fillRect: (_x, _y, width, height) => fills.push({ width, height, alpha: context.globalAlpha }),
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() {},
+    fillText() {},
+    fillStyle: '',
+    strokeStyle: '',
+    globalAlpha: 1,
+    font: '',
+    textAlign: 'start',
+  };
+  const canvas = { width: 1, height: 1, getContext: () => context };
+  const originalDocument = globalThis.document;
+  const originalGetComputedStyle = globalThis.getComputedStyle;
+  globalThis.document = { documentElement: {}, body: {} };
+  globalThis.getComputedStyle = () => ({ getPropertyValue: () => '#ffffff', fontSize: '16px' }); // design-token-ok: deterministic canvas test color
+  const board = Array.from({ length: 20 }, () => Array(10).fill(0));
+  board[0][0] = 1;
+
+  try {
+    drawArcadeStreamCanvas(canvas, {
+      gameType: 'tetris',
+      players: [{ name: 'Ausgeschieden', alive: false, board, current: null }],
+    });
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.getComputedStyle = originalGetComputedStyle;
+  }
+
+  const occupiedCell = fills.filter(({ width, height }) => width < 50 && height < 50).at(-1);
+  assert.ok(occupiedCell);
+  assert.equal(occupiedCell.alpha, 0.45);
+});

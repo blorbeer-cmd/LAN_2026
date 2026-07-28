@@ -515,9 +515,15 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   grid and row height. A host's game settings belong inside that lobby card; the compact
   „Punkte bis Sieg“ control shares the separated footer with „Schließen“ and „Start“ from `--bp-md`
   instead of forming a wide radio-button block. Readiness is communicated in the player rows without
-  a duplicate status sentence. „Lobby öffnen“ precedes the lobby cards at full width, so opening a
-  new lobby never requires scrolling past every existing one first; the temporary „Gegen KI“ mode
-  occupies its own full-width row below it. An empty lobby no longer adds
+  a duplicate status sentence. Tetris exposes a compact Duell/Arena selector before creation.
+  „Lobby öffnen“ precedes the lobby cards at full width, so opening a new lobby never requires
+  scrolling past every existing one first. Duell keeps two equal boards;
+  Arena accepts three to eight players and keeps the local board large beside a responsive grid of
+  opponent boards. On phones the local board sits above that grid. The current automatic attack
+  target receives a textual „Ziel“ marker in addition to its accent border, while eliminated
+  players remain visibly dimmed for spectating. Admins can create a „KI-Test“ with multiple bot
+  opponents in its own full-width row; the bot-count control is enabled only for Arena. An empty
+  lobby no longer adds
   a redundant waiting sentence. Member actions use the same destructive treatment for „Verlassen“
   as the host's „Schließen“ action, and only render for a member who actually joined that lobby.
   Guest footers place „Verlassen“ before the readiness toggle;
@@ -534,7 +540,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   include each game's match count. The selected game is not repeated above its results. Those
   results follow directly without another enclosing card or accent rail; player rows reuse
   `.leaderboard-list-grid` for the shared one-/two-column ranking presentation and spell out wins
-  and losses in German.
+  and losses in German. Tetris Duell and Tetris Arena are separate dropdown entries so an Arena's
+  many non-winning placements do not distort the duel win rate. Arena rows instead show wins,
+  Top-3 finishes, average placement, cleared lines, sent garbage and knockouts. Matches containing
+  bots appear as separate „KI-Test“ entries and never alter the human-only Duell/Arena rankings.
   Snake exposes a two-button mode toggle before lobby creation. „Klassisch“ remains the two-player
   duel; „Arena“ accepts three to eight players and labels every lobby with mode and occupancy.
   Arena matches keep eliminated players visibly in the roster with a textual status, while the

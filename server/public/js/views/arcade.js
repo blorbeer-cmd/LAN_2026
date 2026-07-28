@@ -280,16 +280,17 @@ function arcadeStatsHtml() {
   if (statsLoading && !stats) return `<div class="empty-state" style="padding:var(--space-4);">Statistiken laden…</div>`;
   const games = stats?.games ?? [];
   if (!games.length) return `<div class="empty-state" style="padding:var(--space-4);">Noch keine abgeschlossenen Arcade-Runden.</div>`;
-  if (!games.some((g) => g.gameType === activeStatsGame)) activeStatsGame = games[0].gameType;
+  if (!games.some((g) => (g.statsKey ?? g.gameType) === activeStatsGame)) activeStatsGame = games[0].statsKey ?? games[0].gameType;
 
-  const statsGameOptions = games.map((g) => ({ value: g.gameType, label: `${g.title} · ${arcadeMatchCountLabel(g.matches)}` }));
+  const statsGameOptions = games.map((g) => ({ value: g.statsKey ?? g.gameType, label: `${g.title} · ${arcadeMatchCountLabel(g.matches)}` }));
   const gameSelect = `
     <div>
       <label for="arcade-stats-game-search" class="field-label">Spiel auswählen</label>
       ${searchSelectHtml('arcade-stats-game', statsGameOptions, activeStatsGame, { placeholder: 'Spiel suchen…' })}
     </div>`;
 
-  const game = games.find((g) => g.gameType === activeStatsGame);
+  const game = games.find((g) => (g.statsKey ?? g.gameType) === activeStatsGame);
+  const isArenaStats = game.mode?.startsWith('arena');
   const rows = game.players
     .slice(0, 5)
     .map(
@@ -298,9 +299,14 @@ function arcadeStatsHtml() {
           <span class="lb-rank">${i + 1}</span>
           <span class="leaderboard-row-main">
             <strong class="player-name leaderboard-row-name">${escapeHtml(p.name)}</strong>
-            <span class="muted leaderboard-row-stat">${arcadeResultLabel(p.wins, p.losses)}</span>
+            <span class="muted leaderboard-row-stat">${
+              isArenaStats
+                ? `${p.wins} ${p.wins === 1 ? 'Sieg' : 'Siege'} · ${p.topThree}× Top 3 · Ø Platz ${p.averagePlacement?.toFixed(1) ?? '–'}`
+                : arcadeResultLabel(p.wins, p.losses)
+            }</span>
+            ${isArenaStats ? `<span class="muted leaderboard-row-stat">${p.lines} Zeilen · ${p.garbageSent} Angriff · ${p.knockouts} K.o.</span>` : ''}
           </span>
-          <strong class="lb-points">${Math.round(p.winRate * 100)}%</strong>
+          <strong class="lb-points">${isArenaStats ? `${p.knockouts} K.o.` : `${Math.round(p.winRate * 100)}%`}</strong>
         </div>`
     )
     .join('');
@@ -630,7 +636,7 @@ export function renderArcade(container, ctx) {
   });
 
   if (container.querySelector('#arcade-stats-game')) {
-    wireSearchSelect(container, 'arcade-stats-game', (stats?.games ?? []).map((g) => ({ value: g.gameType, label: `${g.title} · ${arcadeMatchCountLabel(g.matches)}` })));
+    wireSearchSelect(container, 'arcade-stats-game', (stats?.games ?? []).map((g) => ({ value: g.statsKey ?? g.gameType, label: `${g.title} · ${arcadeMatchCountLabel(g.matches)}` })));
     container.querySelector('#arcade-stats-game').addEventListener('change', (event) => {
       activeStatsGame = event.currentTarget.value;
       ctx.rerender();
