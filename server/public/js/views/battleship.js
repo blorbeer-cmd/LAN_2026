@@ -6,6 +6,7 @@ import { confirmDialog } from '../modal.js';
 import { getMyId } from '../whoami.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { arcadeToolbarHtml, wireArcadeToolbar } from './arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
@@ -419,7 +420,7 @@ export function renderBattleshipLobbyCard() {
   const noMe = !myId();
   const hasLobby = Boolean(myBattleshipLobby());
   const createReason = noMe ? 'Wähle zuerst aus, wer du bist.' : hasLobby ? 'Du hast bereits eine offene Lobby.' : '';
-  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions"><span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-primary btn-sm" id="battleship-create" ${hasLobby || noMe ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('battleship-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}</span></div>${lobbyList()}</div>`;
+  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions"><span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-primary btn-sm" id="battleship-create" ${hasLobby || noMe ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('battleship-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}</span>${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="battleship-bot" ${hasLobby || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}</div>${lobbyList()}</div>`;
 }
 
 export function wireBattleshipLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
@@ -427,6 +428,11 @@ export function wireBattleshipLobbyCard(container, { beforeCreate, beforeJoin } 
     if (beforeCreate && !(await beforeCreate())) return;
     const result = await emitAck('battleship:lobby:create', { playerId: myId(), mode: 'duel' });
     if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
+  });
+  container.querySelector('#battleship-bot')?.addEventListener('click', async () => {
+    if (beforeCreate && !(await beforeCreate())) return;
+    const result = await emitAck('battleship:lobby:bot', { playerId: myId() });
+    if (!result?.ok) showToast(result?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelectorAll('[data-battleship-join]').forEach((button) => button.addEventListener('click', async () => {
     if (beforeJoin && !(await beforeJoin())) return;

@@ -35,6 +35,25 @@ function waitForStatePhase(socket: ClientSocket, phase: string): Promise<{ phase
   });
 }
 
+function waitForState(
+  socket: ClientSocket,
+  predicate: (payload: Record<string, unknown>) => boolean,
+): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off('battleship:state', onState);
+      reject(new Error('Timed out waiting for Battleship state.'));
+    }, 8000);
+    const onState = (payload: Record<string, unknown>) => {
+      if (!predicate(payload)) return;
+      clearTimeout(timer);
+      socket.off('battleship:state', onState);
+      resolve(payload);
+    };
+    socket.on('battleship:state', onState);
+  });
+}
+
 const placements = [
   { shipId: 'carrier', row: 0, col: 0, orientation: 'horizontal' },
   { shipId: 'battleship', row: 2, col: 0, orientation: 'horizontal' },
@@ -96,6 +115,50 @@ test('Battleship enforces the duel lobby gate and validates placement before fir
   } finally {
     hostSocket.close();
     guestSocket.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    clearLobbyMemberships();
+  }
+});
+
+test('Battleship restricts AI matches to admins and lets the bot place and fire', async () => {
+  clearLobbyMemberships();
+  const httpServer = http.createServer(createApp());
+  const io = new Server(httpServer);
+  registerBattleshipSockets(io);
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+  const hostSocket = await connect(baseUrl);
+  try {
+    const createdPlayer = await request(baseUrl).post('/api/players').send({ name: 'Battleship AI Admin' });
+    const host = createdPlayer.body.id as string;
+    const denied = await emitAck(hostSocket, 'battleship:lobby:bot', { playerId: host });
+    assert.equal(denied.ok, false);
+    assert.match(String(denied.error), /nur für Admins/);
+
+    await request(baseUrl).patch(`/api/players/${host}`).send({ isAdmin: true }).expect(200);
+    const created = await emitAck(hostSocket, 'battleship:lobby:bot', { playerId: host });
+    assert.equal(created.ok, true);
+
+    const started = waitForEvent<{ matchId: string }>(hostSocket, 'battleship:match:start');
+    assert.equal((await emitAck(hostSocket, 'battleship:lobby:start', { lobbyId: created.lobbyId, playerId: host })).ok, true);
+    const { matchId } = await started;
+    const playing = waitForStatePhase(hostSocket, 'playing');
+    const botShot = waitForState(hostSocket, (state) => {
+      const lastShot = state.lastShot as { playerId?: string } | undefined;
+      return lastShot?.playerId === 'battleship-bot';
+    });
+    assert.equal((await emitAck(hostSocket, 'battleship:setup:submit', { matchId, playerId: host, placements })).ok, true);
+    const playingState = await playing;
+    if (playingState.currentPlayerId === host) {
+      assert.equal((await emitAck(hostSocket, 'battleship:shot:fire', { matchId, playerId: host, row: 9, col: 9 })).ok, true);
+    }
+    const stateAfterBotShot = await botShot;
+    assert.equal(stateAfterBotShot.currentPlayerId, host);
+    const players = stateAfterBotShot.players as Array<{ id: string; placementReady: boolean }>;
+    assert.equal(players.find((player) => player.id === 'battleship-bot')?.placementReady, true);
+  } finally {
+    hostSocket.close();
     io.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     clearLobbyMemberships();
