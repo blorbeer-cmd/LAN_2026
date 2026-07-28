@@ -6,12 +6,12 @@ test('Snake Arena legend maps every head number to an escaped player name', () =
   const html = snakeArenaLegendHtml({
     gameType: 'snake',
     players: [{ name: 'Ada' }, { name: '<Bob>' }, { ref: { name: 'Carla' } }],
-    world: { mode: 'arena', snakes: [{}, {}, {}] },
+    world: { mode: 'arena', snakes: [{ alive: true }, { alive: false }, { alive: true }] },
   });
 
-  assert.match(html, /Schlange 1<\/strong><span>Ada/);
-  assert.match(html, /Schlange 2<\/strong><span>&lt;Bob&gt;/);
-  assert.match(html, /Schlange 3<\/strong><span>Carla/);
+  assert.match(html, /Schlange 1<\/strong><span>Ada · Im Rennen/);
+  assert.match(html, /Schlange 2<\/strong><span>&lt;Bob&gt; · Ausgeschieden/);
+  assert.match(html, /Schlange 3<\/strong><span>Carla · Im Rennen/);
 });
 
 test('Snake legend stays hidden outside Arena mode', () => {
