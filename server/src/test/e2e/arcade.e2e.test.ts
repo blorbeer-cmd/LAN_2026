@@ -385,6 +385,63 @@ test('Blobby Doppel: mobile lobby assigns two full teams and starts four players
   }
 });
 
+test('Pong Doppel: mobile and desktop lobbies assign two full teams and start four players', async () => {
+  const players = await Promise.all([
+    createPlayer('Pong Blau Host'),
+    createPlayer('Pong Blau Zwei'),
+    createPlayer('Pong Pink Eins'),
+    createPlayer('Pong Pink Zwei'),
+  ]);
+  const actors = await Promise.all(players.map((player, index) => openArcadeAs(
+    player.id,
+    index === 0 ? { viewport: { width: 1280, height: 800 } } : undefined
+  )));
+
+  try {
+    for (const actor of actors) {
+      await actor.page.click('[data-game="pong"]');
+      await actor.page.waitForSelector('#pong-create');
+    }
+    const [host, blue, pinkA, pinkB] = actors;
+    assert.equal(await host.page.locator('#pong-mode').inputValue(), 'doubles');
+    await host.page.click('#pong-create');
+    await host.page.waitForSelector('text=Team Blau');
+    await host.page.waitForSelector('text=Team Pink');
+    await host.page.waitForSelector('#pong-start:disabled');
+    assert.equal(await host.page.locator('select[name="pong-target"]').inputValue(), '21');
+
+    await blue.page.waitForSelector('[data-pong-team="left"]');
+    await blue.page.click('[data-pong-team="left"]');
+    await blue.page.waitForSelector('[data-pong-ready][data-ready="1"]');
+    await blue.page.click('[data-pong-ready][data-ready="1"]');
+
+    for (const actor of [pinkA, pinkB]) {
+      await actor.page.waitForSelector('[data-pong-team="right"]');
+      await actor.page.click('[data-pong-team="right"]');
+      await actor.page.waitForSelector('[data-pong-ready][data-ready="1"]');
+      await actor.page.click('[data-pong-ready][data-ready="1"]');
+    }
+
+    await host.page.waitForSelector('#pong-start:not([disabled])');
+    assert.equal(await host.page.locator('.arcade-lobby-member-row .player-name').count(), 4);
+    for (const actor of [host, blue]) {
+      const width = await actor.page.evaluate(() => ({
+        scroll: document.documentElement.scrollWidth,
+        client: document.documentElement.clientWidth,
+      }));
+      assert.ok(width.scroll <= width.client, 'the Pong Doppel lobby must not scroll horizontally');
+    }
+    await host.page.click('#pong-start');
+
+    for (const actor of actors) {
+      await actor.page.waitForSelector('#pong-canvas');
+      assert.equal(await actor.page.locator('.arcade-player-tile').count(), 4);
+    }
+  } finally {
+    await Promise.all(actors.map((actor) => actor.context.close()));
+  }
+});
+
 test('Scribble: expanded canvas keeps 8:5, live thumbs-up survives a reconnect, new turn starts blank', async () => {
   const hostPlayer = await createPlayer('Scribble Maler');
   const guestPlayer = await createPlayer('Scribble Rater');
