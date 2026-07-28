@@ -113,7 +113,7 @@ export function stepWorld(world: SnakeWorld): number[] {
       deaths.push(index);
     }
   });
-  if (next.some((snake) => same(snake.body[0], world.food) && snake.alive)) world.food = randomFood(world);
+  if (next.some((snake) => same(snake.body[0], world.food))) world.food = randomFood(world);
   world.tick += 1;
   return deaths;
 }

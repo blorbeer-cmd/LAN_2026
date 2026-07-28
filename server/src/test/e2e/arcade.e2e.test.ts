@@ -169,6 +169,45 @@ test('classic Snake guest returns to the Arcade immediately after leaving', asyn
   }
 });
 
+test('the kiosk removes stale quiz markup before rendering a canvas game', async () => {
+  const hostPlayer = await createPlayer('Kiosk Transition Host');
+  const guestPlayer = await createPlayer('Kiosk Transition Guest');
+  const host = await openArcadeAs(hostPlayer.id);
+  const guest = await openArcadeAs(guestPlayer.id);
+  const kiosk = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  try {
+    await kiosk.goto(`${BASE_URL}/kiosk.html`);
+    await kiosk.waitForSelector('#kiosk-dashboard:not([hidden])');
+    await startQuizMatch(host.page, guest.page);
+    await kiosk.waitForSelector('#kiosk-game-content .kiosk-game-question');
+
+    await finishQuizMatch(host.page);
+    await guest.page.waitForSelector('#quiz-back');
+    await guest.page.click('#quiz-back');
+    await guest.page.waitForSelector('.arcade-tiles');
+
+    await host.page.click('[data-game="snake"]');
+    await host.page.waitForSelector('#snake-create:not([disabled])');
+    await host.page.click('#snake-create');
+    await guest.page.click('[data-game="snake"]');
+    await guest.page.waitForSelector('[data-snake-join]');
+    await guest.page.click('[data-snake-join]');
+    await host.page.waitForSelector('#snake-start:not([disabled])');
+    await host.page.click('#snake-start');
+
+    await kiosk.waitForSelector('#kiosk-game-content canvas');
+    assert.equal(await kiosk.locator('#kiosk-game-content .kiosk-game-question').count(), 0);
+
+    await host.page.click('#snake-finish');
+    await host.page.waitForSelector('#snake-back');
+    await host.page.click('#snake-back');
+  } finally {
+    await kiosk.close();
+    await host.context.close();
+    await guest.context.close();
+  }
+});
+
 test('watch list: a finished match disappears and active watchers are sent back to the Arcade', async () => {
   const hostPlayer = await createPlayer('Watch Host');
   const guestPlayer = await createPlayer('Watch Guest');

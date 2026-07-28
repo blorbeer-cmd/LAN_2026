@@ -115,7 +115,7 @@ async function verifyArenaLeaveSecurity(authMode: 'legacy' | 'required'): Promis
 
   try {
     const playerIds: string[] = [];
-    for (let index = 0; index < 5; index += 1) {
+    for (let index = 0; index < 6; index += 1) {
       const response = await request(baseUrl).post('/api/players').send({ name: `${authMode} Arena ${index + 1} ${Date.now()} ${Math.random().toString(36).slice(2, 7)}` });
       assert.equal(response.status, 201);
       playerIds.push(response.body.id);
@@ -130,7 +130,7 @@ async function verifyArenaLeaveSecurity(authMode: 'legacy' | 'required'): Promis
 
     const created = await emitAck(sockets[0], 'snake:lobby:create', { playerId: playerIds[0], mode: 'arena' });
     assert.equal(created.ok, true, `${authMode}: create failed: ${JSON.stringify(created)}`);
-    for (let index = 1; index < sockets.length; index += 1) {
+    for (let index = 1; index < 5; index += 1) {
       const joined = await emitAck(sockets[index], 'snake:lobby:join', { lobbyId: created.lobbyId, playerId: playerIds[index] });
       assert.equal(joined.ok, true, `${authMode}: join ${index} failed: ${JSON.stringify(joined)}`);
     }
@@ -147,7 +147,8 @@ async function verifyArenaLeaveSecurity(authMode: 'legacy' | 'required'): Promis
         'SELECT COUNT(*) AS count FROM play_sessions WHERE player_id = ? AND game_id = ? AND group_id = ? AND ended_at IS NULL',
       ).get(playerId, snakeGameId, trackingGroupId) as { count: number }).count,
     });
-    for (const playerId of playerIds) assert.deepEqual(openTracking(playerId), { live: 1, sessions: 1 });
+    for (const playerId of playerIds.slice(0, 5)) assert.deepEqual(openTracking(playerId), { live: 1, sessions: 1 });
+    assert.deepEqual(openTracking(playerIds[5]), { live: 0, sessions: 0 });
 
     const spoofed = await emitAck(sockets[1], 'snake:match:leave', { matchId, playerId: playerIds[2] });
     assert.equal(spoofed.ok, false, `${authMode}: a socket must not eliminate another participant`);
@@ -166,6 +167,13 @@ async function verifyArenaLeaveSecurity(authMode: 'legacy' | 'required'): Promis
     for (const playerId of [playerIds[0], playerIds[2], playerIds[3], playerIds[4]]) {
       assert.deepEqual(openTracking(playerId), { live: 1, sessions: 1 });
     }
+
+    const replacementLobby = await emitAck(sockets[1], 'snake:lobby:create', { playerId: playerIds[1], mode: 'classic' });
+    assert.equal(replacementLobby.ok, true, `${authMode}: replacement create failed: ${JSON.stringify(replacementLobby)}`);
+    assert.equal((await emitAck(sockets[5], 'snake:lobby:join', { lobbyId: replacementLobby.lobbyId, playerId: playerIds[5] })).ok, true);
+    const replacementMatch = await emitAck(sockets[1], 'snake:lobby:start', { lobbyId: replacementLobby.lobbyId, playerId: playerIds[1] });
+    assert.equal(replacementMatch.ok, true, `${authMode}: replacement start failed: ${JSON.stringify(replacementMatch)}`);
+    assert.deepEqual(openTracking(playerIds[1]), { live: 1, sessions: 1 });
 
     const afterHostLeave = waitForSnakeState<{ host: { id: string }; world: { snakes: Array<{ alive: boolean }> } }>(
       sockets[2],
@@ -196,6 +204,8 @@ async function verifyArenaLeaveSecurity(authMode: 'legacy' | 'required'): Promis
     const ended = await matchEnd;
     assert.equal(ended.winner?.id, playerIds[4], `${authMode}: disconnect is an immediate forfeit`);
     assert.equal(ended.reason, 'completed');
+    assert.deepEqual(openTracking(playerIds[1]), { live: 1, sessions: 1 }, `${authMode}: the old Arena must not close replacement tracking`);
+    assert.equal((await emitAck(sockets[1], 'snake:match:finish', { matchId: replacementMatch.matchId, playerId: playerIds[1] })).ok, true);
   } finally {
     sockets.forEach((socket) => socket.close());
     io.close();

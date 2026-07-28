@@ -30,7 +30,7 @@ const BOT = { id: BOT_ID, name: 'Snake-Bot', avatar: null, color: '#ef5da8' };
 
 interface Player { id: string; name: string; avatar: string | null; color: string | null }
 interface Lobby { id: string; groupId: string; eventId: string | null; host: Player; players: Player[]; socketIds: Map<string, string>; ready: Set<string>; mode: SnakeMode; createdAt: number }
-interface Match { id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[]; socketIds: Map<string, string>; mode: SnakeMode; world: SnakeWorld; loop: NodeJS.Timeout | null; running: boolean; paused: boolean; startedAt: number }
+interface Match { id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[]; socketIds: Map<string, string>; departedPlayerIds: Set<string>; mode: SnakeMode; world: SnakeWorld; loop: NodeJS.Timeout | null; running: boolean; paused: boolean; startedAt: number }
 
 const lobbies = new Map<string, Lobby>();
 const matches = new Map<string, Match>();
@@ -86,7 +86,7 @@ function realPlayerIds(players: Player[]): string[] {
 function finish(io: Server, match: Match, winner: Player | null, reason: string) {
   if (match.loop) clearInterval(match.loop);
   match.loop = null;
-  endArcadeSession(realPlayerIds(match.players), 'snake', match);
+  endArcadeSession(realPlayerIds(match.players).filter((playerId) => !match.departedPlayerIds.has(playerId)), 'snake', match);
   const winnerId = winner && winner.id !== BOT_ID ? winner.id : null;
   // Store per-player score entries (playerId/name/score), like every other
   // arcade game, so the stats route can attribute results to players. The
@@ -123,6 +123,7 @@ function removeMatchPlayer(io: Server, match: Match, playerId: string): void {
     return;
   }
   endArcadeSession([playerId], 'snake', match);
+  match.departedPlayerIds.add(playerId);
   match.world.snakes[leaverIndex].alive = false;
   const livingPlayers = match.players.filter((_, index) => match.world.snakes[index].alive);
   if (match.host.id === playerId && livingPlayers[0]) match.host = livingPlayers[0];
@@ -183,6 +184,7 @@ function startMatch(io: Server, lobby: Lobby) {
     host: lobby.host,
     players: lobby.players,
     socketIds: new Map(lobby.socketIds),
+    departedPlayerIds: new Set(),
     mode: lobby.mode,
     world: createWorld(lobby.players.length, lobby.mode),
     loop: null,

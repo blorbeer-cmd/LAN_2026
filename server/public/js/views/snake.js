@@ -241,8 +241,8 @@ function paintBoard() {
   for (let y = 1; y < ROWS; y++) { context.beginPath(); context.moveTo(0, y * cellHeight); context.lineTo(width, y * cellHeight); context.stroke(); }
   const colors = ['--accent', '--accent-3', '--state-playing', '--state-paused', '--accent-2', '--danger', '--rank-1-gold', '--text'];
   world.snakes.forEach((snake, snakeIndex) => {
+    const glow = cssColor(colors[snakeIndex % colors.length]);
     snake.body.forEach((part, partIndex) => {
-      const glow = cssColor(colors[snakeIndex % colors.length]);
       context.globalAlpha = snake.alive ? 1 : 0.3;
       context.shadowColor = glow;
       context.shadowBlur = partIndex === 0 ? 18 : 8;
