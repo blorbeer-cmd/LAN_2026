@@ -207,14 +207,13 @@ export function renderBlobbyLobbyCard() {
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
     ${lobbyList()}
     <div class="arcade-lobby-create-actions">
-      ${!lobby ? `<label class="arcade-lobby-target-score arcade-lobby-mode">
-        <span class="title-with-info"><span>Modus</span>${infoTooltipHtml('blobby-mode-info', 'Blobby-Modus', 'Duell: 1 gegen 1. Doppel: 2 gegen 2.')}</span>
-        <select id="blobby-mode" aria-label="Blobby-Modus">
+      <div class="arcade-lobby-create-row">
+        ${!lobby ? `<select id="blobby-mode" class="arcade-lobby-mode-compact" aria-label="Blobby-Modus">
           <option value="doubles" ${lobbyMode === 'doubles' ? 'selected' : ''}>Doppel · 4</option>
           <option value="duel" ${lobbyMode === 'duel' ? 'selected' : ''}>Duell · 2</option>
-        </select>
-      </label>` : ''}
-      <button type="button" class="btn btn-primary btn-sm" id="blobby-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+        </select>` : ''}
+        <button type="button" class="btn btn-primary btn-sm" id="blobby-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+      </div>
       ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="blobby-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
     </div>
   </div>`;
