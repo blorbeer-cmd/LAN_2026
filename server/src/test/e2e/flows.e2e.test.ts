@@ -915,6 +915,16 @@ test('Ergebnis eintragen keeps a manual team reassignment after changing "Anzahl
   await page.click('[data-record-draw]');
   await page.waitForSelector('#match-players');
 
+  await page.click('#match-game-search');
+  await page.waitForSelector('#match-game-list:not([hidden])');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#match-game-list', { state: 'hidden' });
+  assert.equal(
+    await page.locator('#match-form').isVisible(),
+    true,
+    'Escape should close the game listbox without propagating to the result modal',
+  );
+
   const teamSelects = page.locator('[data-team-for]');
   const firstPlayerId = await teamSelects.nth(0).getAttribute('data-team-for');
   const originalValue = await teamSelects.nth(0).inputValue();
@@ -1205,6 +1215,11 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
     await tournamentGameList.evaluate((element) => getComputedStyle(element).maxHeight),
     '320px',
     'long game lists should scroll inside a bounded dropdown',
+  );
+  assert.notEqual(
+    await page.locator('#tourn-game-search + .search-select-toggle .ui-icon').evaluate((element) => getComputedStyle(element).transform),
+    'none',
+    'the dropdown chevron should rotate to communicate the open state',
   );
   await page.keyboard.press('Tab');
   await tournamentGameList.waitFor({ state: 'hidden' });

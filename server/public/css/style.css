@@ -1031,7 +1031,7 @@ select {
 .search-select.is-open .search-select-toggle {
   color: var(--text);
 }
-.search-select.is-open .search-select-toggle .icon {
+.search-select.is-open .search-select-toggle .ui-icon {
   transform: rotate(180deg);
 }
 .search-select-list {

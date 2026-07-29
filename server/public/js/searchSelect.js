@@ -151,6 +151,7 @@ export function wireSearchSelect(container, id, options, { onChange } = {}) {
       selectOption(filteredOptions[activeIndex]);
     } else if (event.key === 'Escape' && isOpen()) {
       event.preventDefault();
+      event.stopPropagation();
       close();
     } else if (event.key === 'Tab' && isOpen()) {
       close();
