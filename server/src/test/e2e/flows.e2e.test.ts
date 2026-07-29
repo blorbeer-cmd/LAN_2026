@@ -627,7 +627,7 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
       const url = new URL(response.url());
       return url.pathname === '/api/stats/playtime' && !url.searchParams.has('gameId');
     }),
-    page.fill('#lb-filter-search', `${filteredGame.icon} ${filteredGame.name}`),
+    page.fill('#lb-filter-search', filteredGame.name),
   ]);
   assert.equal(filteredPlaytimeResponse.ok(), true, 'per-player playtime should follow the selected game');
   assert.equal(allPlaytimeResponse.ok(), true, 'per-game playtime should keep loading all games');
@@ -1250,7 +1250,7 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
   await tournamentGameList.waitFor({ state: 'hidden' });
   assert.equal(
     await page.locator('#tourn-game-search').inputValue(),
-    `${initialTournamentGame.icon} ${initialTournamentGame.name}`,
+    initialTournamentGame.name,
     'Escape should close the listbox without changing the game',
   );
   const tournamentGameToggle = page.locator('#tourn-game-search + .search-select-toggle');
@@ -1274,7 +1274,7 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
   await page.locator('#tourn-teamcount').focus();
   assert.equal(
     await page.locator('#tourn-game-search').inputValue(),
-    `${initialTournamentGame.icon} ${initialTournamentGame.name}`,
+    initialTournamentGame.name,
     'leaving the picker without a new valid choice should restore its current selection',
   );
   await page.click('#tourn-game-search');
