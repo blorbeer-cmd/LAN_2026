@@ -80,6 +80,7 @@ test('Challenge Rush AI quick start is admin-gated, plays and ends when its huma
   clearLobbyMemberships();
   const server = await makeServer();
   const socket = await connect(server.baseUrl);
+  const extraSockets: ClientSocket[] = [];
   try {
     const playerId = await player(server.baseUrl, 'Challenge Rush KI Host');
     const denied = await emitAck(socket, 'challenge-rush:lobby:bot', { playerId });
@@ -87,6 +88,19 @@ test('Challenge Rush AI quick start is admin-gated, plays and ends when its huma
     assert.match(denied.error ?? '', /nur für Admins/);
 
     db.prepare('UPDATE players SET is_admin = 1 WHERE id = ?').run(playerId);
+    const normalLobbySocket = await connect(server.baseUrl);
+    extraSockets.push(normalLobbySocket);
+    const normalLobbyHostId = await player(server.baseUrl, 'Challenge Rush Parallel Normal Host');
+    const normalLobby = await emitAck(normalLobbySocket, 'challenge-rush:lobby:create', { playerId: normalLobbyHostId });
+    assert.equal(normalLobby.ok, true);
+
+    const aiLobbySocket = await connect(server.baseUrl);
+    extraSockets.push(aiLobbySocket);
+    const aiLobbyHostId = await player(server.baseUrl, 'Challenge Rush Parallel KI Host');
+    db.prepare('UPDATE players SET is_admin = 1 WHERE id = ?').run(aiLobbyHostId);
+    const aiLobby = await emitAck(aiLobbySocket, 'challenge-rush:lobby:bot', { playerId: aiLobbyHostId });
+    assert.equal(aiLobby.ok, true);
+
     const lobbiesPromise = nextEvent<{ lobbies: Array<{ id: string; players: Array<{ id: string; ready: boolean }> }> }>(socket, 'challenge-rush:lobbies');
     const created = await emitAck(socket, 'challenge-rush:lobby:bot', { playerId });
     assert.equal(created.ok, true);
@@ -108,6 +122,11 @@ test('Challenge Rush AI quick start is admin-gated, plays and ends when its huma
     const secondHumanLobby = await emitAck(socket, 'challenge-rush:lobby:create', { playerId });
     assert.equal(secondHumanLobby.ok, false);
     assert.match(secondHumanLobby.error ?? '', /laufendes Challenge-Rush-Match/);
+    for (const lobbyId of [normalLobby.lobbyId, aiLobby.lobbyId]) {
+      const joined = await emitAck(socket, 'challenge-rush:lobby:join', { lobbyId, playerId });
+      assert.equal(joined.ok, false);
+      assert.match(joined.error ?? '', /laufendes Challenge-Rush-Match/);
+    }
 
     const spoofedBotInput = await emitAck(socket, 'challenge-rush:challenge:input', {
       matchId: started.matchId,
@@ -126,6 +145,7 @@ test('Challenge Rush AI quick start is admin-gated, plays and ends when its huma
     assert.equal(ended.reason, 'no-human-players');
     assert.equal(ended.scores.find((score) => score.playerId === 'challenge-rush-bot')?.isBot, true);
   } finally {
+    for (const extraSocket of extraSockets) extraSocket.close();
     socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
   }
 });
