@@ -48,6 +48,7 @@ export function wireSearchSelect(container, id, options, { onChange } = {}) {
     wrapper.classList.toggle('is-open', expanded);
     search.setAttribute('aria-expanded', String(expanded));
     toggle.setAttribute('aria-expanded', String(expanded));
+    toggle.setAttribute('aria-label', expanded ? 'Auswahl schließen' : 'Auswahl öffnen');
   };
 
   const updateActiveOption = () => {
@@ -164,7 +165,8 @@ export function wireSearchSelect(container, id, options, { onChange } = {}) {
       focusSearchWithoutOpening();
       return;
     }
-    search.focus();
+    open({ clear: true });
+    focusSearchWithoutOpening();
   });
 
   list.addEventListener('pointermove', (event) => {
@@ -185,4 +187,13 @@ export function wireSearchSelect(container, id, options, { onChange } = {}) {
   wrapper.addEventListener('focusout', (event) => {
     if (!wrapper.contains(event.relatedTarget)) close();
   });
+
+  const closeFromOutsidePointer = (event) => {
+    if (!wrapper.isConnected) {
+      document.removeEventListener('pointerdown', closeFromOutsidePointer);
+      return;
+    }
+    if (isOpen() && !wrapper.contains(event.target)) close();
+  };
+  document.addEventListener('pointerdown', closeFromOutsidePointer);
 }

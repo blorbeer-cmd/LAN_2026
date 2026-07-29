@@ -1253,6 +1253,22 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
     `${initialTournamentGame.icon} ${initialTournamentGame.name}`,
     'Escape should close the listbox without changing the game',
   );
+  const tournamentGameToggle = page.locator('#tourn-game-search + .search-select-toggle');
+  assert.equal(await tournamentGameToggle.getAttribute('aria-label'), 'Auswahl öffnen');
+  await tournamentGameToggle.dispatchEvent('click');
+  await tournamentGameList.waitFor({ state: 'visible' });
+  assert.equal(
+    await tournamentGameToggle.getAttribute('aria-label'),
+    'Auswahl schließen',
+    'the toggle should expose its current close action while the listbox is open',
+  );
+  await page.locator('#tournament-draw-step-title').dispatchEvent('pointerdown');
+  await tournamentGameList.waitFor({ state: 'hidden' });
+  assert.equal(
+    await tournamentGameToggle.getAttribute('aria-label'),
+    'Auswahl öffnen',
+    'a pointer interaction outside the picker should close it and restore the toggle action',
+  );
   await page.click('#tourn-game-search');
   await tournamentGameList.waitFor({ state: 'visible' });
   await page.locator('#tourn-teamcount').focus();
