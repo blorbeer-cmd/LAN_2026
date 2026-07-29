@@ -1,7 +1,7 @@
 // Unit tests for searchSelectHtml(), the pure string-rendering half of the
-// searchable <select> stand-in (see searchSelect.js's header for why it
-// exists). wireSearchSelect() itself needs a real DOM and is exercised
-// indirectly by the e2e suite instead.
+// searchable combobox (see searchSelect.js's header for why it exists).
+// wireSearchSelect() itself needs a real DOM and is exercised indirectly by
+// the e2e suite instead.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -28,17 +28,32 @@ test('an unknown/empty selected value leaves the visible input blank', () => {
   assert.match(html, /<input type="text" id="my-field-search"[^>]*value=""/);
 });
 
-test('the datalist lists every option label', () => {
+test('renders a themed listbox instead of a native datalist', () => {
   const html = searchSelectHtml('my-field', OPTIONS, null);
-  assert.match(html, /<datalist id="my-field-list">/);
-  assert.match(html, /<option value="🎮 Counter-Strike 2">/);
-  assert.match(html, /<option value="🎮 Age of Empires 2">/);
+  assert.match(html, /class="search-select-list" role="listbox"/);
+  assert.match(html, /class="search-select-option" role="option"/);
+  assert.doesNotMatch(html, /<datalist/);
+  assert.match(html, />🎮 Counter-Strike 2<\/button>/);
+  assert.match(html, />🎮 Age of Empires 2<\/button>/);
+});
+
+test('connects the combobox to its listbox with accessible state', () => {
+  const html = searchSelectHtml('my-field', OPTIONS, 'g2');
+  assert.match(html, /id="my-field-search"[^>]*role="combobox"[^>]*aria-autocomplete="list"[^>]*aria-expanded="false"[^>]*aria-controls="my-field-list"/);
+  assert.match(html, /id="my-field-option-1"[^>]*aria-selected="true"/);
+  assert.match(html, /class="search-select-toggle" aria-label="Auswahl öffnen"/);
 });
 
 test('option labels are HTML-escaped', () => {
   const html = searchSelectHtml('my-field', [{ value: 'g1', label: '<b>Evil</b>' }], null);
   assert.doesNotMatch(html, /<b>Evil<\/b>/);
   assert.match(html, /&lt;b&gt;Evil&lt;\/b&gt;/);
+});
+
+test('option values are HTML-escaped', () => {
+  const html = searchSelectHtml('my-field', [{ value: '" onfocus="evil', label: 'Safe' }], null);
+  assert.doesNotMatch(html, /data-search-select-value="" onfocus=/);
+  assert.match(html, /data-search-select-value="&quot; onfocus=&quot;evil"/);
 });
 
 test('the placeholder defaults to a generic search hint and can be overridden', () => {

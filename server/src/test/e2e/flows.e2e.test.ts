@@ -609,10 +609,10 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
     );
   }
   await page.setViewportSize({ width: 390, height: 844 });
-  // #lb-filter is a searchable stand-in (searchSelect.js), not a native
-  // <select>: typing an option's exact datalist label into #lb-filter-search
-  // resolves the hidden #lb-filter input to that game's id, same as picking
-  // it from the browser's native suggestion list would.
+  // #lb-filter is a searchable combobox (searchSelect.js), not a native
+  // <select>: typing an option's exact label into #lb-filter-search resolves
+  // the hidden #lb-filter input to that game's id, just like choosing it from
+  // the app-rendered listbox.
   const gamesRes = await page.request.get(`${BASE_URL}/api/games`);
   const games = await gamesRes.json();
   const filteredGame = games[1];
@@ -1189,13 +1189,44 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
     '',
     'focusing the searchable picker should expose the full list without manually deleting the selected game',
   );
+  const tournamentGameList = page.locator('#tourn-game-list');
+  await tournamentGameList.waitFor({ state: 'visible' });
+  assert.equal(
+    await tournamentGameList.locator('.search-select-option').count(),
+    tournamentGames.length,
+    'the app-rendered listbox should expose every game before filtering',
+  );
+  assert.equal(
+    await tournamentGameList.evaluate((element) => getComputedStyle(element).backgroundColor),
+    'rgb(23, 30, 46)',
+    'the game listbox should use the dark Respawn surface instead of the native white browser popup',
+  );
+  assert.equal(
+    await tournamentGameList.evaluate((element) => getComputedStyle(element).maxHeight),
+    '320px',
+    'long game lists should scroll inside a bounded dropdown',
+  );
+  await page.keyboard.press('ArrowDown');
+  assert.ok(
+    await page.locator('#tourn-game-search').getAttribute('aria-activedescendant'),
+    'arrow-key navigation should expose the active option to assistive technology',
+  );
+  await page.keyboard.press('Escape');
+  await tournamentGameList.waitFor({ state: 'hidden' });
+  assert.equal(
+    await page.locator('#tourn-game-search').inputValue(),
+    `${initialTournamentGame.icon} ${initialTournamentGame.name}`,
+    'Escape should close the listbox without changing the game',
+  );
+  await page.click('#tourn-game-search');
   await page.locator('#tourn-teamcount').focus();
   assert.equal(
     await page.locator('#tourn-game-search').inputValue(),
     `${initialTournamentGame.icon} ${initialTournamentGame.name}`,
     'leaving the picker without a new valid choice should restore its current selection',
   );
-  await page.fill('#tourn-game-search', `${otherTournamentGame.icon} ${otherTournamentGame.name}`);
+  await page.click('#tourn-game-search');
+  await page.locator(`#tourn-game-list [data-search-select-value="${otherTournamentGame.id}"]`).click();
   await page.waitForFunction(
     (gameId) => (document.querySelector('#tourn-game') as HTMLInputElement | null)?.value === gameId,
     otherTournamentGame.id,
