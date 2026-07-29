@@ -14,9 +14,9 @@ test('renders the shared arcade mode toggle with the selected button', () => {
     'duel'
   );
 
-  assert.match(html, /id="pong-mode" class="arcade-lobby-mode-buttons" role="group" aria-label="Pong-Modus"/);
-  assert.match(html, /class="btn btn-sm btn-primary" data-arcade-mode="duel" aria-pressed="true">Duell<\/button>/);
-  assert.match(html, /class="btn btn-sm" data-arcade-mode="doubles" aria-pressed="false">Doppel<\/button>/);
+  assert.match(html, /id="pong-mode" class="arcade-mode-toggle" role="group" aria-label="Pong-Modus"/);
+  assert.match(html, /class="arcade-mode-toggle-btn is-active" data-arcade-mode="duel" aria-pressed="true">Duell<\/button>/);
+  assert.match(html, /class="arcade-mode-toggle-btn" data-arcade-mode="doubles" aria-pressed="false">Doppel<\/button>/);
   assert.doesNotMatch(html, /<select|>Modus</);
   assert.doesNotMatch(html, / disabled/);
 });
