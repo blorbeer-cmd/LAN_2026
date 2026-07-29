@@ -326,9 +326,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   additional selected-card highlight. The captain action stretches like the draw action and stays
   labeled simply „Draft starten“ without repeating participant counts already visible in the
   selections. Each player and captain checkbox grid has a directly labeled search field that filters
-  its visible rows without changing hidden selections; bulk selection actions apply only to the
-  currently visible search results. Switching modes keeps both selections and search terms intact, so
-  toggling back and forth loses no work.
+  its visible rows without changing hidden selections; where bulk selection actions are offered, they
+  apply only to the currently visible search results. Switching modes keeps both selections and search
+  terms intact, so toggling back and forth loses no work.
   „Teams auslosen“ and „Draft starten“ share one rule: each stays disabled until its minimum
   (2 selected players; 2–4 captains plus at least 1 pool player) is met, and a red
   `.info-tooltip-trigger--warning` beside the disabled button names the exact missing requirement —

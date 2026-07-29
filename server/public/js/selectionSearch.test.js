@@ -8,6 +8,11 @@ test('matchesSelectionSearch ignores casing and German diacritics', () => {
   assert.equal(matchesSelectionSearch('Grüße aus Köln', 'koln'), true);
 });
 
+test('matchesSelectionSearch preserves non-Latin letters', () => {
+  assert.equal(matchesSelectionSearch('Команда Дракон', 'дракон'), true);
+  assert.equal(matchesSelectionSearch('東京チーム', '東京'), true);
+});
+
 test('matchesSelectionSearch keeps all entries visible for an empty query', () => {
   assert.equal(matchesSelectionSearch('Counter-Strike 2', '  '), true);
 });
