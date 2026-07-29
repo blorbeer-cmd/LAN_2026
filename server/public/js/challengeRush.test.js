@@ -93,3 +93,13 @@ test('odd-one-out keeps every field structurally equal and exposes all five visu
     assert.equal((html.match(/class="challenge-rush-tile"/g) ?? []).length, 16);
   }
 });
+
+test('memory-matrix preview exposes marked cells to assistive technology, not just visually', () => {
+  const html = renderChallengeRushTrial(
+    { key: 'memory-matrix' },
+    { phase: 'preview', data: { type: 'matrix', size: 3, highlights: [1, 4] } },
+  );
+  assert.match(html, /aria-label="Feld 2, markiert"/);
+  assert.match(html, /aria-label="Feld 5, markiert"/);
+  assert.match(html, /aria-label="Feld 1"[^,]/);
+});

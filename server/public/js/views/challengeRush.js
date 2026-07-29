@@ -278,7 +278,13 @@ function matchControlsHtml() {
 function trialGrid(size, selectedCells, attribute, disabled, showOrder = false, disableSelected = false) {
   const selected = new Set(selectedCells);
   const order = new Map(selectedCells.map((cell, index) => [cell, index + 1]));
-  return `<div class="challenge-rush-memory-grid" style="--cr-grid-columns:${size}">${Array.from({ length: size * size }, (_, index) => `<button type="button" class="btn challenge-rush-memory-cell${selected.has(index) ? ' is-selected' : ''}" data-cr-${attribute}="${index}" aria-label="${showOrder && order.has(index) ? `Schritt ${order.get(index)}` : `Feld ${index + 1}`}" ${disabled || (disableSelected && selected.has(index)) ? 'disabled' : ''}>${showOrder && order.has(index) ? order.get(index) : selected.has(index) ? '•' : ''}</button>`).join('')}</div>`;
+  // The visible bullet/order-number marker on a selected cell is purely
+  // visual; without an equivalent cue in the accessible name (which
+  // otherwise always falls back to the plain "Feld N"), a screen-reader
+  // player has no way to tell a marked memory-matrix cell from an unmarked
+  // one and the challenge becomes unplayable non-visually.
+  const cellLabel = (index) => showOrder && order.has(index) ? `Schritt ${order.get(index)}` : selected.has(index) ? `Feld ${index + 1}, markiert` : `Feld ${index + 1}`;
+  return `<div class="challenge-rush-memory-grid" style="--cr-grid-columns:${size}">${Array.from({ length: size * size }, (_, index) => `<button type="button" class="btn challenge-rush-memory-cell${selected.has(index) ? ' is-selected' : ''}" data-cr-${attribute}="${index}" aria-label="${cellLabel(index)}" ${disabled || (disableSelected && selected.has(index)) ? 'disabled' : ''}>${showOrder && order.has(index) ? order.get(index) : selected.has(index) ? '•' : ''}</button>`).join('')}</div>`;
 }
 function trialOptions(trial, playing) {
   const options = Array.isArray(trial.data?.options) ? trial.data.options : [];

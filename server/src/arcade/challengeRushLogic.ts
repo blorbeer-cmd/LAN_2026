@@ -258,7 +258,14 @@ export function createTrial(key: ChallengeKey, seed: number, index: number, diff
     return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Drehe ${start} um ${turns * 90}° nach rechts.`, options: arrows }, expected);
   }
   if (key === 'word-scramble') {
-    const word = SCRAMBLE_WORDS[Math.floor(random() * SCRAMBLE_WORDS.length)]; const letters = shuffled([...word], random).join('');
+    const word = SCRAMBLE_WORDS[Math.floor(random() * SCRAMBLE_WORDS.length)];
+    const shuffledLetters = shuffled([...word], random).join('');
+    // A Fisher-Yates shuffle can land on the identity permutation by chance
+    // (or, for a word with repeated letters, on a different permutation that
+    // still spells the same string) — a rotation by one character is never
+    // equal to the source word for any entry in SCRAMBLE_WORDS (none of them
+    // are rotation-invariant), so it's a safe, still-scrambled fallback.
+    const letters = shuffledLetters === word ? `${word.slice(1)}${word[0]}` : shuffledLetters;
     return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Welches Wort steckt in „${letters}“?`, options: shuffled([word, ...SCRAMBLE_WORDS.filter((entry) => entry !== word).slice(0, 3)], random) }, word);
   }
   if (key === 'count-shapes') {
@@ -327,7 +334,12 @@ export function createTrial(key: ChallengeKey, seed: number, index: number, diff
     return { trialId: id, index, difficulty, phase: 'preview', phaseMs: previewMs(difficulty), inputMs: inputWindowMs(key, difficulty), data: { type: 'matrix', size, highlights }, expected: highlights, state: {} };
   }
   if (key === 'number-blind') {
-    const count = Math.min(12, 3 + difficulty + Math.floor(index / 5)); const positions = gridSequence(random, count, size);
+    // Bounded by the grid's own capacity, not just the flat 12 cap: at
+    // difficulty 1 (size 3, 9 cells) the uncapped formula exceeds 9 once
+    // index reaches 30, which would ask gridSequence for more unique
+    // positions than exist — producing `position: undefined` entries the
+    // client's 3x3 grid can never satisfy.
+    const count = Math.min(12, size * size, 3 + difficulty + Math.floor(index / 5)); const positions = gridSequence(random, count, size);
     const numbers = shuffled(Array.from({ length: count }, (_, value) => value + 1), random).map((number, position) => ({ number, position: positions[position] }));
     return { trialId: id, index, difficulty, phase: 'preview', phaseMs: previewMs(difficulty), inputMs: inputWindowMs(key, difficulty), data: { type: 'number-blind', size, numbers }, expected: [...numbers].sort((a, b) => a.number - b.number).map((entry) => entry.position), state: {} };
   }
@@ -376,18 +388,31 @@ export function validateTrialInput(key: ChallengeKey, trial: InternalTrial, acti
   }
   if (key === 'sequence-echo' || key === 'reverse-echo' || key === 'path-memory') {
     if (action !== 'sequence' || !Array.isArray(value)) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Folge.' };
-    const expected = trial.expected as number[]; const valid = value.every((entry) => typeof entry === 'number' && Number.isInteger(entry) && entry >= 0 && entry < Number(trial.data.size) ** 2) && new Set(value).size === value.length;
-    return valid && value.length === expected.length && expected.every((entry, index) => entry === value[index]) ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 70 + trial.difficulty * 6 } : wrong();
+    const expected = trial.expected as number[];
+    // Bound the length against the small known-good expected size before
+    // running .every/Set over the array: an authenticated LAN client could
+    // otherwise submit an arbitrarily large `value` array and force
+    // expensive O(n) work on the single Node.js event loop before the
+    // length mismatch is ever checked, stalling every other player's match.
+    if (value.length !== expected.length) return wrong();
+    const valid = value.every((entry) => typeof entry === 'number' && Number.isInteger(entry) && entry >= 0 && entry < Number(trial.data.size) ** 2) && new Set(value).size === value.length;
+    return valid && expected.every((entry, index) => entry === value[index]) ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 70 + trial.difficulty * 6 } : wrong();
   }
   if (key === 'memory-matrix') {
     if (action !== 'cells' || !Array.isArray(value)) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Felder.' };
-    const expected = [...(trial.expected as number[])].sort((a, b) => a - b); const received = [...value].sort((a, b) => Number(a) - Number(b)); const valid = received.every((entry) => typeof entry === 'number' && Number.isInteger(entry)) && new Set(received).size === received.length;
-    return valid && expected.length === received.length && expected.every((entry, index) => entry === received[index]) ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 70 + trial.difficulty * 6 } : wrong();
+    const expectedRaw = trial.expected as number[];
+    // Same length bound before the sort/Set work — see sequence-echo above.
+    if (value.length !== expectedRaw.length) return wrong();
+    const expected = [...expectedRaw].sort((a, b) => a - b); const received = [...value].sort((a, b) => Number(a) - Number(b)); const valid = received.every((entry) => typeof entry === 'number' && Number.isInteger(entry)) && new Set(received).size === received.length;
+    return valid && expected.every((entry, index) => entry === received[index]) ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 70 + trial.difficulty * 6 } : wrong();
   }
   if (key === 'number-blind') {
     if (action !== 'sequence' || !Array.isArray(value)) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Zahlenfolge.' };
-    const expected = trial.expected as number[]; const valid = value.every((entry) => typeof entry === 'number' && Number.isInteger(entry)) && new Set(value).size === value.length;
-    return valid && expected.length === value.length && expected.every((entry, index) => entry === value[index]) ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 72 + trial.difficulty * 5 } : wrong();
+    const expected = trial.expected as number[];
+    // Same length bound before the .every/Set work — see sequence-echo above.
+    if (value.length !== expected.length) return wrong();
+    const valid = value.every((entry) => typeof entry === 'number' && Number.isInteger(entry)) && new Set(value).size === value.length;
+    return valid && expected.every((entry, index) => entry === value[index]) ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 72 + trial.difficulty * 5 } : wrong();
   }
   if (key === 'n-back' || key === 'seen-before') {
     if (action !== 'choice' || typeof value !== 'boolean') return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Auswahl.' };
@@ -415,10 +440,13 @@ export function safeScoreInput(value: number): number { return Number.isFinite(v
 function safeCount(value: number): number { return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0; }
 function safeElapsed(value: number): number { return Number.isFinite(value) ? Math.max(0, value) : 0; }
 export function scoreReaction(elapsedMs: number): number { return safeScoreInput(Math.round(100 - Math.max(0, safeElapsed(elapsedMs) - 120) / 35)); }
-// Thirty seconds at two clicks per second is the normalized 100-point target.
-// Higher rates still score higher until the shared 100-point cap, while a
-// short burst no longer wins the entire round.
-export function scoreCps(clicks: number): number { return safeScoreInput(Math.round(safeCount(clicks) * (100 / 60))); }
+// Thirty seconds at eight clicks per second (240 clicks) is the normalized
+// 100-point target — a genuinely elite sustained rate, not just an early
+// couple of seconds of clicking, so two realistically fast but different
+// players (e.g. 3 vs. 8 sustained CPS) don't both saturate to the same
+// score within the first few seconds. Every click across the full round
+// still counts below that cap, keeping the whole 30 seconds meaningful.
+export function scoreCps(clicks: number): number { return safeScoreInput(Math.round(safeCount(clicks) * (100 / 240))); }
 export function scoreNumberSalad(correct: number, errors: number, elapsedMs: number): number {
   return safeScoreInput(Math.round(safeCount(correct) * 12.5 - safeCount(errors) * 8 - Math.max(0, safeElapsed(elapsedMs) - 2_000) / 180));
 }

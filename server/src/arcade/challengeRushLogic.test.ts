@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CHALLENGES, challengeOrder, challengePayload, createTrial, isCurrentChallenge, isReadyForNext, previewTrialData, remainingUntil, safeScoreInput,
-  seenBeforeSelection,
+  seenBeforeSelection, validateTrialInput,
   scoreAimTrainer, scoreColorWord, scoreCps, scoreMemorySequence, scoreNumberSalad, scoreOddOneOut,
   scoreReaction, scoreTiming10, scoreTrafficLight, scoreWhackAMole, winnerIdForScores,
   AIM_TRAINER_TARGET_COUNT, MEMORY_SEQUENCE_LENGTH, MEMORY_SEQUENCE_TILE_COUNT, ODD_ONE_OUT_TILE_COUNT,
@@ -24,7 +24,8 @@ test('trial IDs are opaque and independent from deterministic generator inputs',
 });
 test('scores stay in the normalized 0..100 range', () => {
   assert.equal(scoreReaction(120), 100); assert.equal(scoreReaction(99_999), 0);
-  assert.equal(scoreCps(20), 33); assert.equal(scoreCps(60), 100); assert.equal(scoreCps(-1), 0);
+  assert.equal(scoreCps(20), 8); assert.equal(scoreCps(60), 25); assert.equal(scoreCps(240), 100); assert.equal(scoreCps(-1), 0);
+  assert.ok(scoreCps(90) > scoreCps(60), 'a faster sustained rate must keep scoring higher below the saturation point');
   assert.equal(scoreNumberSalad(8, 0, 2_000), 100); assert.equal(scoreNumberSalad(0, 99, 2_000), 0);
   assert.equal(scoreTiming10(10_000), 100); assert.equal(scoreTiming10(12_000), 0);
 });
@@ -298,4 +299,47 @@ test('seen-before keeps both answers reachable without redefining an old symbol 
     seen = selection.seenSymbols;
   }
   assert.ok(yes > 0); assert.ok(no > 0);
+});
+
+test('word-scramble never presents the source word verbatim as its own scramble', () => {
+  for (let seed = 0; seed < 500; seed += 1) {
+    const trial = createTrial('word-scramble', seed, 0, 1 + (seed % 5));
+    const prompt = String(trial.data.prompt);
+    const letters = prompt.match(/„(.+?)“/)?.[1] ?? '';
+    assert.notEqual(letters, trial.expected, `seed ${seed} exposed the answer verbatim`);
+    assert.deepEqual([...letters].sort(), [...String(trial.expected)].sort());
+  }
+});
+
+test('number-blind never asks for more unique positions than the grid holds', () => {
+  for (let difficulty = 1; difficulty <= 5; difficulty += 1) {
+    for (let index = 0; index < 60; index += 4) {
+      const trial = createTrial('number-blind', 7, index, difficulty);
+      const size = Number(trial.data.size);
+      const numbers = trial.data.numbers as Array<{ position: number }>;
+      assert.ok(numbers.length <= size * size, `difficulty ${difficulty} index ${index} requested ${numbers.length} positions for a ${size}x${size} grid`);
+      assert.ok(numbers.every((entry) => Number.isInteger(entry.position)), `difficulty ${difficulty} index ${index} produced an undefined position`);
+      assert.equal(new Set(numbers.map((entry) => entry.position)).size, numbers.length);
+    }
+  }
+});
+
+test('array-based trial inputs reject a mismatched length before sorting/hashing the payload', () => {
+  const huge = Array.from({ length: 50_000 }, (_, index) => index);
+
+  const matrixTrial = createTrial('memory-matrix', 1, 0, 1);
+  matrixTrial.phase = 'input';
+  const rejected = validateTrialInput('memory-matrix', matrixTrial, 'cells', huge);
+  assert.equal(rejected.correct, false);
+  assert.equal(rejected.complete, true);
+
+  const sequenceTrial = createTrial('sequence-echo', 1, 0, 1);
+  sequenceTrial.phase = 'input';
+  const rejectedSequence = validateTrialInput('sequence-echo', sequenceTrial, 'sequence', huge);
+  assert.equal(rejectedSequence.correct, false);
+
+  const numberBlindTrial = createTrial('number-blind', 1, 0, 1);
+  numberBlindTrial.phase = 'input';
+  const rejectedNumberBlind = validateTrialInput('number-blind', numberBlindTrial, 'sequence', huge);
+  assert.equal(rejectedNumberBlind.correct, false);
 });
