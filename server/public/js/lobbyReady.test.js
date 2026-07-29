@@ -1,28 +1,28 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { arcadeLobbyModeSelectHtml } from './lobbyReady.js';
+import { arcadeLobbyModeButtonsHtml } from './lobbyReady.js';
 
-test('renders the shared arcade mode selector with the selected option', () => {
-  const html = arcadeLobbyModeSelectHtml(
+test('renders the shared arcade mode toggle with the selected button', () => {
+  const html = arcadeLobbyModeButtonsHtml(
     'pong-mode',
     'Pong-Modus',
     [
-      { value: 'doubles', label: 'Doppel · 4' },
-      { value: 'duel', label: 'Duell · 2' },
+      { value: 'duel', label: 'Duell' },
+      { value: 'doubles', label: 'Doppel' },
     ],
     'duel'
   );
 
-  assert.match(html, /class="arcade-lobby-mode-compact"/);
-  assert.match(html, /class="arcade-lobby-mode-control" for="pong-mode"><span>Modus<\/span>/);
-  assert.match(html, /aria-label="Pong-Modus"/);
-  assert.match(html, /<option value="duel" selected>Duell · 2<\/option>/);
+  assert.match(html, /id="pong-mode" class="arcade-mode-toggle" role="group" aria-label="Pong-Modus"/);
+  assert.match(html, /class="arcade-mode-toggle-btn is-active" data-arcade-mode="duel" aria-pressed="true">Duell<\/button>/);
+  assert.match(html, /class="arcade-mode-toggle-btn" data-arcade-mode="doubles" aria-pressed="false">Doppel<\/button>/);
+  assert.doesNotMatch(html, /<select|>Modus</);
   assert.doesNotMatch(html, / disabled/);
 });
 
-test('escapes selector attributes and supports disabled lobbies', () => {
-  const html = arcadeLobbyModeSelectHtml(
+test('escapes mode button content and supports disabled lobbies', () => {
+  const html = arcadeLobbyModeButtonsHtml(
     'mode-<x>',
     'Modus "Test"',
     [{ value: 'a&b', label: '<Arena>' }],
@@ -32,6 +32,6 @@ test('escapes selector attributes and supports disabled lobbies', () => {
 
   assert.match(html, /id="mode-&lt;x&gt;"/);
   assert.match(html, /aria-label="Modus &quot;Test&quot;"/);
-  assert.match(html, /<option value="a&amp;b" selected>&lt;Arena&gt;<\/option>/);
+  assert.match(html, /data-arcade-mode="a&amp;b" aria-pressed="true" disabled>&lt;Arena&gt;<\/button>/);
   assert.match(html, / disabled/);
 });

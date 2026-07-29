@@ -20,7 +20,7 @@ import { getMyId } from '../whoami.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyModeSelectHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../infoTooltip.js';
@@ -481,9 +481,9 @@ export function renderTetrisLobbyCard() {
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
       <div class="arcade-lobby-create-actions">
         <div class="arcade-lobby-create-row">
-          ${!lobby ? arcadeLobbyModeSelectHtml('tetris-mode', 'Tetris-Modus', [
-            { value: 'duel', label: 'Duell · 2' },
-            { value: 'arena', label: 'Arena · 3–8' },
+          ${!lobby ? arcadeLobbyModeButtonsHtml('tetris-mode', 'Tetris-Spielmodus', [
+            { value: 'duel', label: 'Duell' },
+            { value: 'arena', label: 'Arena' },
           ], lobbyMode) : ''}
           <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${match || lobby || noMe ? 'disabled' : ''}>Lobby öffnen</button>
           ${createReason ? infoTooltipHtml('tetris-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
@@ -509,10 +509,10 @@ export async function leaveMyTetrisLobby() {
 }
 
 export function wireTetrisLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
-  container.querySelector('#tetris-mode')?.addEventListener('change', (event) => {
-    lobbyMode = event.target.value === 'arena' ? 'arena' : 'duel';
+  container.querySelectorAll('#tetris-mode [data-arcade-mode]').forEach((button) => button.addEventListener('click', () => {
+    lobbyMode = button.dataset.arcadeMode === 'arena' ? 'arena' : 'duel';
     rerender();
-  });
+  }));
   container.querySelector('#tetris-bot-count')?.addEventListener('change', (event) => {
     botCount = Number(event.target.value) || 3;
   });
@@ -568,20 +568,26 @@ export function wireTetrisLobbyCard(container, { beforeCreate, beforeJoin } = {}
 function endResultHtml() {
   if (!match?.ended) return '';
   const headline = match.winner?.name ? `${escapeHtml(match.winner.name)} gewinnt` : 'Match beendet';
-  const ranking = [...(match.endScores ?? [])]
-    .sort((a, b) => (a.placement ?? Number.MAX_SAFE_INTEGER) - (b.placement ?? Number.MAX_SAFE_INTEGER) || b.score - a.score)
-    .map((score) => {
+  const scores = new Map((match.endScores ?? []).map((score) => [score.playerId, score]));
+  const ranking = [...match.players].sort((a, b) => {
+    const pa = scores.get(a.id)?.placement ?? Number.MAX_SAFE_INTEGER;
+    const pb = scores.get(b.id)?.placement ?? Number.MAX_SAFE_INTEGER;
+    return pa - pb || (scores.get(b.id)?.score ?? 0) - (scores.get(a.id)?.score ?? 0);
+  });
+  const rosterHtml = matchRosterHtml(ranking, {
+    winnerId: match.winner?.id ?? null,
+    scoreFor: (player) => `${scores.get(player.id)?.score ?? 0} Pkt`,
+    detailFor: (player) => {
+      const score = scores.get(player.id);
+      if (!score) return '';
       const placement = score.placement ? `Platz ${score.placement}` : 'Ohne Platzierung';
-      return `<div class="arcade-lobby-member-row">
-        <span class="player-name">${escapeHtml(score.name)}</span>
-        <span class="arcade-lobby-member-role">${placement} · ${score.score} Pkt · ${score.knockouts ?? 0} K.o.</span>
-      </div>`;
-    })
-    .join('');
+      return `${placement} · ${score.knockouts ?? 0} K.o.`;
+    },
+  });
   return `
     <div class="card arcade-winner-card">
       <strong>${headline}</strong>
-      ${ranking ? `<div class="arcade-lobby-member-list">${ranking}</div>` : ''}
+      ${rosterHtml}
       <button type="button" class="btn btn-primary" id="tetris-back">Zur Arcade</button>
     </div>`;
 }

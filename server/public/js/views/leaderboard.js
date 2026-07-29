@@ -18,7 +18,7 @@ export function renderLeaderboard(container, ctx) {
   const filterGameId = state.selectedGameId || '';
   const lbGameOptions = [
     { value: '', label: 'Gesamt' },
-    ...state.games.map((g) => ({ value: g.id, label: `${g.icon} ${g.name}` })),
+    ...state.games.map((g) => ({ value: g.id, label: g.name })),
   ];
 
   const standings = state.leaderboard?.standings || [];
@@ -165,7 +165,7 @@ export function openMatchForm(ctx, options = {}) {
   // for separately, so there's no way for the two to disagree.
   let advancedMode = false;
   const defaultGameId = options.presetGameId || state.selectedGameId || state.games[0].id;
-  const matchGameOptions = state.games.map((g) => ({ value: g.id, label: `${g.icon} ${g.name}` }));
+  const matchGameOptions = state.games.map((g) => ({ value: g.id, label: g.name }));
 
   const presetTeamIndexByPlayer = new Map();
   if (options.presetTeams) {

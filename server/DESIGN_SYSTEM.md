@@ -176,6 +176,8 @@ of player-name length.
 viewport-responsive on phones.
 `--search-panel-width` (640px) gives the global search palette enough room for titles and short
 descriptions while the shared modal remains full-width on phones.
+`--search-select-results-max-height` (320px) keeps a long searchable option list usable without
+letting it cover the full page; additional results scroll inside the dark listbox.
 
 ## Breakpoints
 
@@ -287,6 +289,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.global-search-result`, wired through `searchPalette.js`; opens from the topbar or with
   `Strg/Cmd + K`, searches both areas and current app content without an external service, and uses
   `.search-target-highlight` to expose a concrete result after navigation.
+- **Searchable select** — `.search-select` combines a text input with an app-rendered
+  `.search-select-list`/`.search-select-option` listbox. It replaces the browser's native
+  unthemeable `datalist` popup for long game catalogs, keeps the selected value in the existing
+  hidden input contract, filters while typing, caps long result lists locally and supports
+  pointer, touch, arrow keys, Enter, Escape and visible focus.
 - **Sticky in-card actions** — `.sticky-actions` pins a card's primary action(s) to the bottom of
   the viewport, just above the fixed bottom nav, while a long preceding list (vote game rows,
   player-selection grids) scrolls through. It stays bounded to its own card via `position: sticky`
@@ -520,7 +527,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   instead of forming a wide radio-button block. Readiness is communicated in the player rows without
   a duplicate status sentence. Tetris exposes a compact Duell/Arena selector before creation.
   „Lobby öffnen“ precedes the lobby cards at full width, so opening a new lobby never requires
-  scrolling past every existing one first. Duell keeps two equal boards;
+  scrolling past every existing one first. The mode selector is a small bordered segmented switch
+  (`.arcade-mode-toggle`) with a flat `--accent` fill on the active segment, deliberately distinct
+  from `.btn-primary`'s accent-gradient treatment so the pill reads as a setting rather than a
+  second, equally weighted action next to „Lobby öffnen“ — that primary create action keeps the
+  gradient to itself. Duell keeps two equal boards;
   Arena accepts three to eight players and keeps the local board large beside a responsive grid of
   opponent boards. On phones the local board sits above that grid. The current automatic attack
   target receives a textual „Ziel“ marker in addition to its accent border, while eliminated
@@ -534,7 +545,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   lobby footer actions, so „Lobby öffnen“ and readiness controls align exactly. A disabled „Lobby
   öffnen“ or „Start“ carries the same red `.info-tooltip-trigger--warning` reason pattern as Team
   formation's „Teams auslosen“/„Draft starten“.
-  Blobby Volley and Pong both offer Duell (1 gegen 1) and Doppel (2 gegen 2). Doppel lobbies expose
+  Blobby Volley and Pong both offer Duell (1 gegen 1) and Doppel (2 gegen 2) through the same
+  segmented switch, without a separate mode label or explanatory tooltip. Doppel lobbies expose
   two explicit teams with two slots each, require all four participants to be ready and award the
   shared team score and win to both teammates. Pong follows Atari's Pong-4 rules: each participant
   controls a separate paddle that remains in its assigned upper/lower half, player initials and roster
@@ -547,9 +559,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   many non-winning placements do not distort the duel win rate. Arena rows instead show wins,
   Top-3 finishes, average placement, cleared lines, sent garbage and knockouts. Matches containing
   bots appear as separate „KI-Test“ entries and never alter the human-only Duell/Arena rankings.
-  Mode-capable Arcade lobbies use the shared compact mode select in the same action row as lobby
-  creation. Snake „Klassisch“ remains the two-player duel; „Arena“ accepts three to eight players
-  and labels every lobby with mode and occupancy.
+  Mode-capable Arcade lobbies use the shared `.arcade-mode-toggle` segmented switch in the same
+  action row as lobby creation. Snake „Duell“ remains the two-player classic mode; „Arena“ accepts
+  three to eight players and labels every lobby with mode and occupancy.
   Arena matches keep eliminated players visibly in the roster with a textual status, while the
   canvas dims their snake and marks the shrinking safe zone with the shared danger treatment.
   Numbered head markers and a matching `Schlange N · Name` legend identify every participant

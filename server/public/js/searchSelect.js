@@ -1,59 +1,199 @@
-// Generic searchable stand-in for a native <select>: a visible text input
-// bound to a <datalist> (type to filter/autocomplete) plus a hidden
-// <input id="${id}"> holding the actual resolved value, so existing call
-// sites that read `container.querySelector('#${id}').value` or listen for
-// its 'change' event keep working unchanged — only the HTML-producing line
-// and one wireSearchSelect() call after render need to change. Mirrors the
-// dateTimeField.js drop-in pattern (hidden input as the stable interface,
-// themed visible control in front of it).
+// Shared searchable combobox used wherever a game must be selected. The
+// visible listbox is rendered by Respawn instead of the browser's native
+// <datalist> popup, so it follows the dark design system consistently while
+// preserving the hidden input contract used by the existing views.
 
 import { escapeHtml } from './format.js';
+import { icon } from './icons.js';
+
+function optionHtml(id, option, index, selectedValue) {
+  const selected = option.value === (selectedValue ?? '');
+  return `<button type="button" id="${id}-option-${index}" class="search-select-option" role="option" aria-selected="${selected}" tabindex="-1" data-search-select-index="${index}" data-search-select-value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</button>`;
+}
 
 // options: Array<{ value: string, label: string }>
 export function searchSelectHtml(id, options, selectedValue, { placeholder = 'Suchen…' } = {}) {
-  const selected = options.find((o) => o.value === (selectedValue ?? ''));
+  const selected = options.find((option) => option.value === (selectedValue ?? ''));
   const initialLabel = selected ? selected.label : '';
-  const datalistOptions = options.map((o) => `<option value="${escapeHtml(o.label)}"></option>`).join('');
+  const renderedOptions = options.map((option, index) => optionHtml(id, option, index, selectedValue)).join('');
+
   return `
-    <input type="hidden" id="${id}" value="${escapeHtml(selectedValue ?? '')}" />
-    <input type="text" id="${id}-search" list="${id}-list" value="${escapeHtml(initialLabel)}" placeholder="${escapeHtml(placeholder)}" autocomplete="off" />
-    <datalist id="${id}-list">${datalistOptions}</datalist>
+    <div class="search-select" data-search-select>
+      <input type="hidden" id="${id}" value="${escapeHtml(selectedValue ?? '')}" />
+      <div class="search-select-control">
+        <input type="text" id="${id}-search" value="${escapeHtml(initialLabel)}" placeholder="${escapeHtml(placeholder)}" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${id}-list" />
+        <button type="button" class="search-select-toggle" aria-label="Auswahl öffnen" aria-controls="${id}-list" aria-expanded="false" tabindex="-1">${icon('chevronDown')}</button>
+      </div>
+      <div id="${id}-list" class="search-select-list" role="listbox" aria-label="Verfügbare Optionen" hidden>${renderedOptions}</div>
+    </div>
   `;
 }
 
 export function wireSearchSelect(container, id, options, { onChange } = {}) {
   const hidden = container.querySelector(`#${id}`);
   const search = container.querySelector(`#${id}-search`);
-  if (!hidden || !search) return;
-  const byLabel = new Map(options.map((o) => [o.label.toLowerCase(), o.value]));
-  const labelForValue = () => options.find((o) => o.value === hidden.value)?.label ?? '';
+  const wrapper = search?.closest('[data-search-select]');
+  const list = container.querySelector(`#${id}-list`);
+  const toggle = wrapper?.querySelector('.search-select-toggle');
+  if (!hidden || !search || !wrapper || !list || !toggle) return;
 
-  // A datalist filters its suggestions against the input's current value.
-  // Leaving the selected game's full label in place therefore makes the
-  // dropdown look as if it only contains that one game. Clear the visible
-  // search text on focus so pointer, touch and keyboard users can immediately
-  // see/search the complete list; the hidden input keeps the valid selection.
-  search.addEventListener('focus', () => {
-    search.value = '';
-  });
+  let filteredOptions = options.map((option, originalIndex) => ({ ...option, originalIndex }));
+  let activeIndex = -1;
+  let suppressNextFocusOpen = false;
 
-  // Only resolves once the typed text exactly matches an option label (that's
-  // what selecting a <datalist> suggestion produces) — a partial in-progress
-  // search string just keeps the previous valid selection until it matches or
-  // the user picks a suggestion.
-  const resolve = () => {
-    const typed = search.value.trim().toLowerCase();
-    const value = byLabel.get(typed);
-    if (value === undefined) return;
-    if (hidden.value === value) return;
-    hidden.value = value;
-    hidden.dispatchEvent(new Event('change', { bubbles: true }));
-    onChange?.(value);
+  const labelForValue = () => options.find((option) => option.value === hidden.value)?.label ?? '';
+  const isOpen = () => !list.hidden;
+
+  const updateExpandedState = (expanded) => {
+    wrapper.classList.toggle('is-open', expanded);
+    search.setAttribute('aria-expanded', String(expanded));
+    toggle.setAttribute('aria-expanded', String(expanded));
+    toggle.setAttribute('aria-label', expanded ? 'Auswahl schließen' : 'Auswahl öffnen');
   };
 
-  search.addEventListener('input', resolve);
-  search.addEventListener('change', resolve);
-  search.addEventListener('blur', () => {
-    search.value = labelForValue();
+  const updateActiveOption = () => {
+    const optionElements = [...list.querySelectorAll('[data-search-select-index]')];
+    optionElements.forEach((element, index) => {
+      const active = index === activeIndex;
+      element.classList.toggle('is-active', active);
+    });
+    const active = optionElements[activeIndex];
+    if (active) search.setAttribute('aria-activedescendant', active.id);
+    else search.removeAttribute('aria-activedescendant');
+    active?.scrollIntoView({ block: 'nearest' });
+  };
+
+  const renderOptions = (query = '') => {
+    const normalizedQuery = query.trim().toLocaleLowerCase('de-DE');
+    filteredOptions = options
+      .map((option, originalIndex) => ({ ...option, originalIndex }))
+      .filter((option) => option.label.toLocaleLowerCase('de-DE').includes(normalizedQuery));
+
+    if (filteredOptions.length === 0) {
+      list.innerHTML = '<div class="search-select-empty">Kein passendes Spiel gefunden.</div>';
+      activeIndex = -1;
+      search.removeAttribute('aria-activedescendant');
+      return;
+    }
+
+    list.innerHTML = filteredOptions
+      .map((option) => optionHtml(id, option, option.originalIndex, hidden.value))
+      .join('');
+    const selectedIndex = filteredOptions.findIndex((option) => option.value === hidden.value);
+    activeIndex = selectedIndex >= 0 ? selectedIndex : 0;
+    updateActiveOption();
+  };
+
+  const open = ({ clear = false } = {}) => {
+    if (clear) search.value = '';
+    list.hidden = false;
+    updateExpandedState(true);
+    renderOptions(search.value);
+  };
+
+  const close = ({ restore = true } = {}) => {
+    if (restore) search.value = labelForValue();
+    list.hidden = true;
+    updateExpandedState(false);
+    search.removeAttribute('aria-activedescendant');
+    activeIndex = -1;
+  };
+
+  const focusSearchWithoutOpening = () => {
+    if (document.activeElement === search) return;
+    suppressNextFocusOpen = true;
+    search.focus({ preventScroll: true });
+  };
+
+  const selectOption = (option) => {
+    if (!option) return;
+    const changed = hidden.value !== option.value;
+    hidden.value = option.value;
+    search.value = option.label;
+    close({ restore: false });
+    focusSearchWithoutOpening();
+    if (!changed) return;
+    hidden.dispatchEvent(new Event('change', { bubbles: true }));
+    onChange?.(option.value);
+  };
+
+  const resolveExactMatch = () => {
+    const typed = search.value.trim().toLocaleLowerCase('de-DE');
+    const option = options.find((entry) => entry.label.toLocaleLowerCase('de-DE') === typed);
+    if (option) selectOption(option);
+  };
+
+  search.addEventListener('focus', () => {
+    if (suppressNextFocusOpen) {
+      suppressNextFocusOpen = false;
+      return;
+    }
+    if (!isOpen()) open({ clear: true });
   });
+  search.addEventListener('click', () => {
+    if (!isOpen()) open({ clear: true });
+  });
+  search.addEventListener('input', () => {
+    if (!isOpen()) open();
+    else renderOptions(search.value);
+    resolveExactMatch();
+  });
+  search.addEventListener('change', resolveExactMatch);
+  search.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!isOpen()) open({ clear: true });
+      if (filteredOptions.length === 0) return;
+      const direction = event.key === 'ArrowDown' ? 1 : -1;
+      activeIndex = (activeIndex + direction + filteredOptions.length) % filteredOptions.length;
+      updateActiveOption();
+    } else if (event.key === 'Enter' && isOpen()) {
+      event.preventDefault();
+      selectOption(filteredOptions[activeIndex]);
+    } else if (event.key === 'Escape' && isOpen()) {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    } else if (event.key === 'Tab' && isOpen()) {
+      close();
+    }
+  });
+
+  toggle.addEventListener('click', () => {
+    if (isOpen()) {
+      close();
+      focusSearchWithoutOpening();
+      return;
+    }
+    open({ clear: true });
+    focusSearchWithoutOpening();
+  });
+
+  list.addEventListener('pointermove', (event) => {
+    const optionElement = event.target.closest('[data-search-select-index]');
+    if (!optionElement) return;
+    const index = filteredOptions.findIndex((option) => option.originalIndex === Number(optionElement.dataset.searchSelectIndex));
+    if (index < 0 || index === activeIndex) return;
+    activeIndex = index;
+    updateActiveOption();
+  });
+  list.addEventListener('click', (event) => {
+    const optionElement = event.target.closest('[data-search-select-index]');
+    if (!optionElement) return;
+    const option = options[Number(optionElement.dataset.searchSelectIndex)];
+    selectOption(option);
+  });
+
+  wrapper.addEventListener('focusout', (event) => {
+    if (!wrapper.contains(event.relatedTarget)) close();
+  });
+
+  const closeFromOutsidePointer = (event) => {
+    if (!wrapper.isConnected) {
+      document.removeEventListener('pointerdown', closeFromOutsidePointer);
+      return;
+    }
+    if (isOpen() && !wrapper.contains(event.target)) close();
+  };
+  document.addEventListener('pointerdown', closeFromOutsidePointer);
 }

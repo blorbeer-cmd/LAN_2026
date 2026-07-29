@@ -277,7 +277,7 @@ function renderCreateForm(el, ctx) {
     : state.games[0].id;
   state.selectedGameId = selectedGameId;
 
-  const gameSelectOptions = state.games.map((g) => ({ value: g.id, label: `${g.icon} ${g.name}` }));
+  const gameSelectOptions = state.games.map((g) => ({ value: g.id, label: g.name }));
 
   const playerRows = state.players
     .map(

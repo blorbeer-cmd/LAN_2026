@@ -540,7 +540,7 @@ export function renderMatchmaking(container, ctx) {
     loadHistory(selectedGameId, ctx);
   }
 
-  const gameSelectOptions = state.games.map((g) => ({ value: g.id, label: `${g.icon} ${g.name}` }));
+  const gameSelectOptions = state.games.map((g) => ({ value: g.id, label: g.name }));
 
   const playerRows = state.players
     .map(

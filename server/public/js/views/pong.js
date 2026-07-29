@@ -6,7 +6,7 @@ import { getMyId } from '../whoami.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyModeSelectHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../infoTooltip.js';
@@ -218,11 +218,10 @@ export function renderPongLobbyCard() {
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
     <div class="arcade-lobby-create-actions">
       <div class="arcade-lobby-create-row">
-        ${!lobby ? arcadeLobbyModeSelectHtml('pong-mode', 'Pong-Modus', [
-          { value: 'doubles', label: 'Doppel · 4' },
-          { value: 'duel', label: 'Duell · 2' },
+        ${!lobby ? arcadeLobbyModeButtonsHtml('pong-mode', 'Pong-Spielmodus', [
+          { value: 'duel', label: 'Duell' },
+          { value: 'doubles', label: 'Doppel' },
         ], lobbyMode) : ''}
-        ${!lobby ? infoTooltipHtml('pong-mode-info', 'Pong-Modus', 'Duell: 1 gegen 1. Doppel nach Pong 4: 2 gegen 2, ein Schläger je Person und standardmäßig 21 Punkte. Teilt die obere und untere Zone unter euch auf.') : ''}
         <button type="button" class="btn btn-primary btn-sm" id="pong-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
         ${createReason ? infoTooltipHtml('pong-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
       </div>
@@ -240,10 +239,11 @@ export async function leaveMyPongLobby() {
 
 export function wirePongLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
   container.querySelectorAll('select[name="pong-target"]').forEach((input) => input.addEventListener('change', () => { targetScore = Number(input.value); }));
-  container.querySelector('#pong-mode')?.addEventListener('change', (event) => {
-    lobbyMode = event.target.value;
+  container.querySelectorAll('#pong-mode [data-arcade-mode]').forEach((button) => button.addEventListener('click', () => {
+    lobbyMode = button.dataset.arcadeMode === 'doubles' ? 'doubles' : 'duel';
     targetScore = lobbyMode === 'doubles' ? 21 : 7;
-  });
+    rerender();
+  }));
   container.querySelector('#pong-create')?.addEventListener('click', async () => {
     if (beforeCreate && !(await beforeCreate())) return;
     const result = await emitAck('pong:lobby:create', { playerId: myId(), mode: lobbyMode });
