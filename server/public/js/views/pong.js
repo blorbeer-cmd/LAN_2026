@@ -222,6 +222,7 @@ export function renderPongLobbyCard() {
           { value: 'doubles', label: 'Doppel · 4' },
           { value: 'duel', label: 'Duell · 2' },
         ], lobbyMode) : ''}
+        ${infoTooltipHtml('pong-mode-info', 'Pong-Modus', 'Duell: 1 gegen 1. Doppel nach Pong 4: 2 gegen 2, ein Schläger je Person und standardmäßig 21 Punkte. Teilt die obere und untere Zone unter euch auf.')}
         <button type="button" class="btn btn-primary btn-sm" id="pong-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
         ${createReason ? infoTooltipHtml('pong-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
       </div>

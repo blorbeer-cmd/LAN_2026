@@ -2316,7 +2316,7 @@ button.card {
 .arcade-lobby-create-row .btn {
   width: auto;
   flex: 1 1 0;
-  min-width: 0;
+  min-width: var(--arcade-lobby-mode-width);
 }
 .arcade-lobby-mode-compact {
   flex: 0 0 auto;
@@ -2340,6 +2340,17 @@ button.card {
   padding-top: var(--space-1);
   padding-bottom: var(--space-1);
   text-align: center;
+}
+.arcade-lobby-ai-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.arcade-lobby-ai-row .btn {
+  width: auto;
+  flex: 1 1 var(--arcade-lobby-mode-width);
+  min-width: var(--arcade-lobby-mode-width);
 }
 .arcade-lobby-entry {
   gap: var(--space-2);

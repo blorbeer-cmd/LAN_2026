@@ -488,17 +488,15 @@ export function renderTetrisLobbyCard() {
           <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${match || lobby || noMe ? 'disabled' : ''}>Lobby öffnen</button>
           ${createReason ? infoTooltipHtml('tetris-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
         </div>
-        ${
-          currentPlayerMayUseArcadeAi()
-            ? `<label class="arcade-lobby-bot-setting" for="tetris-bot-count">
-                <span>KI-Gegner</span>
-                <select id="tetris-bot-count" ${lobby || lobbyMode !== 'arena' ? 'disabled' : ''}>
-                  ${[2, 3, 4, 5, 6, 7].map((count) => `<option value="${count}" ${botCount === count ? 'selected' : ''}>${count}</option>`).join('')}
-                </select>
-              </label>`
-            : ''
-        }
-        ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="tetris-bot" ${match || lobby || noMe ? 'disabled' : ''}>KI-Test starten</button>` : ''}
+        ${currentPlayerMayUseArcadeAi() ? `<div class="arcade-lobby-ai-row">
+          <label class="arcade-lobby-bot-setting" for="tetris-bot-count">
+            <span>KI-Gegner</span>
+            <select id="tetris-bot-count" ${lobby || lobbyMode !== 'arena' ? 'disabled' : ''}>
+              ${[2, 3, 4, 5, 6, 7].map((count) => `<option value="${count}" ${botCount === count ? 'selected' : ''}>${count}</option>`).join('')}
+            </select>
+          </label>
+          <button type="button" class="btn btn-sm" id="tetris-bot" ${match || lobby || noMe ? 'disabled' : ''}>KI-Test starten</button>
+        </div>` : ''}
       </div>
       ${renderLobbyList()}
     </div>`;
