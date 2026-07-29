@@ -3270,8 +3270,11 @@ button.card {
   border-radius: var(--radius-sm);
 }
 .tetris-overlay-text {
+  padding: 0 var(--space-3);
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-black);
+  line-height: 1.3; /* design-token-ok: overrides the canvas-wrap's line-height:0 (an inline-canvas gap fix) so wrapped overlay text (e.g. "Ausgeschieden · Platz 2") doesn't collapse its lines onto each other */
+  text-align: center;
   color: var(--text);
 }
 @keyframes tetris-bg-pulse {
