@@ -6,7 +6,7 @@ import { getMyId } from '../whoami.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
-import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeSelectHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../infoTooltip.js';
@@ -217,17 +217,15 @@ export function renderPongLobbyCard() {
   return `<div class="card stack arcade-lobby-card">
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
     <div class="arcade-lobby-create-actions">
-      ${!lobby ? `<label class="arcade-lobby-target-score arcade-lobby-mode">
-        <span class="title-with-info"><span>Modus</span>${infoTooltipHtml('pong-mode-info', 'Pong-Modus', 'Duell: 1 gegen 1. Doppel nach Pong 4: 2 gegen 2, ein Schläger je Person und standardmäßig 21 Punkte. Teilt die obere und untere Zone unter euch auf.')}</span>
-        <select id="pong-mode" aria-label="Pong-Modus">
-          <option value="doubles" ${lobbyMode === 'doubles' ? 'selected' : ''}>Doppel · 4</option>
-          <option value="duel" ${lobbyMode === 'duel' ? 'selected' : ''}>Duell · 2</option>
-        </select>
-      </label>` : ''}
-      <span class="row" style="gap:var(--space-1);">
+      <div class="arcade-lobby-create-row">
+        ${!lobby ? arcadeLobbyModeSelectHtml('pong-mode', 'Pong-Modus', [
+          { value: 'doubles', label: 'Doppel · 4' },
+          { value: 'duel', label: 'Duell · 2' },
+        ], lobbyMode) : ''}
+        ${!lobby ? infoTooltipHtml('pong-mode-info', 'Pong-Modus', 'Duell: 1 gegen 1. Doppel nach Pong 4: 2 gegen 2, ein Schläger je Person und standardmäßig 21 Punkte. Teilt die obere und untere Zone unter euch auf.') : ''}
         <button type="button" class="btn btn-primary btn-sm" id="pong-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
         ${createReason ? infoTooltipHtml('pong-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
-      </span>
+      </div>
       ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="pong-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
     </div>
     ${lobbyList()}

@@ -2287,6 +2287,8 @@ button.card {
   margin-top: var(--space-3);
 }
 .arcade-lobby-card {
+  width: 100%;
+  box-sizing: border-box;
   min-height: var(--arcade-lobby-card-min-height);
   gap: var(--space-3);
 }
@@ -2311,10 +2313,19 @@ button.card {
   align-items: center;
   gap: var(--space-2);
 }
+.arcade-lobby-mode-control {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
 .arcade-lobby-create-row .btn {
   width: auto;
   flex: 1 1 0;
-  min-width: 0;
+  min-width: var(--arcade-lobby-mode-width);
 }
 .arcade-lobby-mode-compact {
   flex: 0 0 auto;
@@ -2323,6 +2334,32 @@ button.card {
   padding-top: var(--space-1);
   padding-bottom: var(--space-1);
   text-align: center;
+}
+.arcade-lobby-bot-setting {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+.arcade-lobby-bot-setting select {
+  width: calc(var(--space-8) + var(--space-6));
+  height: var(--space-7);
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+  text-align: center;
+}
+.arcade-lobby-ai-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.arcade-lobby-ai-row .btn {
+  width: auto;
+  flex: 1 1 var(--arcade-lobby-mode-width);
+  min-width: var(--arcade-lobby-mode-width);
 }
 .arcade-lobby-entry {
   gap: var(--space-2);

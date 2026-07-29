@@ -238,9 +238,8 @@ test('Snake Arena elimination status updates in spectator and kiosk legends', as
     await kiosk.goto(`${BASE_URL}/kiosk.html`);
     await kiosk.waitForSelector('#kiosk-dashboard:not([hidden])');
 
-    await openArcadeGame(host.page, 'snake', '[data-snake-mode="arena"]');
-    await host.page.click('[data-snake-mode="arena"]');
-    await host.page.waitForSelector('[data-snake-mode="arena"][aria-pressed="true"]');
+    await openArcadeGame(host.page, 'snake', '#snake-mode');
+    await host.page.selectOption('#snake-mode', 'arena');
     await host.page.click('#snake-create');
 
     for (const actor of [guest, leaver]) {
