@@ -15,6 +15,7 @@ import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { domainIcon } from '../domainIcons.js';
 import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
+import { matchesSelectionSearch, wireSelectionSearch } from '../selectionSearch.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -22,6 +23,7 @@ let checkedIds = null;
 let avoidAdjacentOpponents = false;
 let teamCountValue = '2';
 let selectedDrawPlayer = null;
+let drawPlayerSearchQuery = '';
 
 // Which of the two team-formation workflows is currently open below the
 // shared game picker — only one shows at a time so the game+mode choice
@@ -39,6 +41,8 @@ let draftCache = null; // { draft: {...} | null }
 let draftLoading = false;
 let draftPlayerIds = null; // independently selected participants for the next draft
 let draftCaptainIds = new Set(); // captains chosen in the start form
+let draftPlayerSearchQuery = '';
+let captainSearchQuery = '';
 
 async function loadDraft(ctx) {
   draftLoading = true;
@@ -541,7 +545,7 @@ export function renderMatchmaking(container, ctx) {
   const playerRows = state.players
     .map(
       (p) => `
-      <label class="check-row">
+      <label class="check-row" data-mm-draw-search-item data-selection-search="${escapeHtml(p.name)}">
         <input type="checkbox" data-player="${p.id}" ${checkedIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
@@ -552,7 +556,7 @@ export function renderMatchmaking(container, ctx) {
 
   const draftPlayerRows = state.players
     .map(
-      (p) => `<label class="check-row">
+      (p) => `<label class="check-row" data-mm-draft-search-item data-selection-search="${escapeHtml(p.name)}">
         <input type="checkbox" data-draft-player="${p.id}" ${draftPlayerIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
@@ -566,7 +570,7 @@ export function renderMatchmaking(container, ctx) {
   const draftPlayers = state.players.filter((p) => draftPlayerIds.has(p.id));
   const captainRows = draftPlayers
     .map(
-      (p) => `<label class="check-row">
+      (p) => `<label class="check-row" data-mm-captain-search-item data-selection-search="${escapeHtml(p.name)}">
         <input type="checkbox" data-captain-toggle="${p.id}" ${draftCaptainIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
@@ -608,15 +612,20 @@ export function renderMatchmaking(container, ctx) {
         <div class="tournament-create-step-title">
           <h3 id="matchmaking-draw-title">Auslosung</h3>
         </div>
+        <div>
+          <label class="field-label" for="mm-player-search">Spieler durchsuchen</label>
+          <input type="search" id="mm-player-search" value="${escapeHtml(drawPlayerSearchQuery)}" placeholder="Spieler suchen…" autocomplete="off" />
+        </div>
         <div class="selection-toolbar">
           <div class="tournament-team-count-field">
             <label class="field-label" for="mm-teamcount">Anzahl Teams</label>
             <input type="number" id="mm-teamcount" min="2" value="${escapeHtml(teamCountValue)}" />
           </div>
-          <button type="button" class="btn btn-sm" id="mm-select-all">Alle markieren</button>
-          <button type="button" class="btn btn-sm" id="mm-select-none">Auswahl aufheben</button>
+          <button type="button" class="btn btn-sm" id="mm-select-all">Sichtbare markieren</button>
+          <button type="button" class="btn btn-sm" id="mm-select-none">Sichtbare abwählen</button>
         </div>
         <div class="player-selection-grid tournament-player-grid">${playerRows}</div>
+        <p class="muted" data-mm-draw-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spieler gefunden.</p>
         <div class="check-row">
           <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
           <span class="title-with-info tournament-option-label">
@@ -653,17 +662,27 @@ export function renderMatchmaking(container, ctx) {
               )}
           </h3>
         </div>
+        <div>
+          <label class="field-label" for="draft-player-search">Spieler durchsuchen</label>
+          <input type="search" id="draft-player-search" value="${escapeHtml(draftPlayerSearchQuery)}" placeholder="Spieler suchen…" autocomplete="off" />
+        </div>
         <div class="selection-toolbar">
           <span class="field-label">Spieler</span>
-          <button type="button" class="btn btn-sm" id="draft-select-all">Alle markieren</button>
-          <button type="button" class="btn btn-sm" id="draft-select-none">Auswahl aufheben</button>
+          <button type="button" class="btn btn-sm" id="draft-select-all">Sichtbare markieren</button>
+          <button type="button" class="btn btn-sm" id="draft-select-none">Sichtbare abwählen</button>
         </div>
         <div class="player-selection-grid tournament-player-grid captain-selection-grid">${draftPlayerRows}</div>
+        <p class="muted" data-mm-draft-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spieler gefunden.</p>
         <div class="captain-selection-group">
           <div class="field-label">Captains</div>
+          <div>
+            <label class="field-label" for="captain-player-search">Captains durchsuchen</label>
+            <input type="search" id="captain-player-search" value="${escapeHtml(captainSearchQuery)}" placeholder="Spieler suchen…" autocomplete="off" />
+          </div>
           <div class="player-selection-grid tournament-player-grid captain-selection-grid">
             ${captainRows}
           </div>
+          <p class="muted" data-mm-captain-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spieler gefunden.</p>
         </div>
         <div class="sticky-actions">
           <div class="row" style="flex-wrap:wrap;">
@@ -685,6 +704,30 @@ export function renderMatchmaking(container, ctx) {
 
   wireInfoTooltips(container);
   wireDrawCards(container, ctx);
+  wireSelectionSearch(container, {
+    inputId: 'mm-player-search',
+    itemSelector: '[data-mm-draw-search-item]',
+    emptySelector: '[data-mm-draw-search-empty]',
+    onQueryChange: (query) => {
+      drawPlayerSearchQuery = query;
+    },
+  });
+  wireSelectionSearch(container, {
+    inputId: 'draft-player-search',
+    itemSelector: '[data-mm-draft-search-item]',
+    emptySelector: '[data-mm-draft-search-empty]',
+    onQueryChange: (query) => {
+      draftPlayerSearchQuery = query;
+    },
+  });
+  wireSelectionSearch(container, {
+    inputId: 'captain-player-search',
+    itemSelector: '[data-mm-captain-search-item]',
+    emptySelector: '[data-mm-captain-search-empty]',
+    onQueryChange: (query) => {
+      captainSearchQuery = query;
+    },
+  });
 
   container.querySelectorAll('[data-mm-mode]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -698,21 +741,29 @@ export function renderMatchmaking(container, ctx) {
   });
 
   container.querySelector('#mm-select-all')?.addEventListener('click', () => {
-    checkedIds = new Set(state.players.map((player) => player.id));
+    for (const player of state.players.filter((entry) => matchesSelectionSearch(entry.name, drawPlayerSearchQuery))) {
+      checkedIds.add(player.id);
+    }
     ctx.rerender();
   });
   container.querySelector('#mm-select-none')?.addEventListener('click', () => {
-    checkedIds.clear();
+    for (const player of state.players.filter((entry) => matchesSelectionSearch(entry.name, drawPlayerSearchQuery))) {
+      checkedIds.delete(player.id);
+    }
     ctx.rerender();
   });
 
   container.querySelector('#draft-select-all')?.addEventListener('click', () => {
-    draftPlayerIds = new Set(state.players.map((player) => player.id));
+    for (const player of state.players.filter((entry) => matchesSelectionSearch(entry.name, draftPlayerSearchQuery))) {
+      draftPlayerIds.add(player.id);
+    }
     ctx.rerender();
   });
   container.querySelector('#draft-select-none')?.addEventListener('click', () => {
-    draftPlayerIds.clear();
-    draftCaptainIds.clear();
+    for (const player of state.players.filter((entry) => matchesSelectionSearch(entry.name, draftPlayerSearchQuery))) {
+      draftPlayerIds.delete(player.id);
+      draftCaptainIds.delete(player.id);
+    }
     ctx.rerender();
   });
 

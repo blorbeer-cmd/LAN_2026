@@ -325,7 +325,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the associated player grid. Both selections use the standard checkbox-card state without an
   additional selected-card highlight. The captain action stretches like the draw action and stays
   labeled simply „Draft starten“ without repeating participant counts already visible in the
-  selections. Switching modes keeps both selections intact, so toggling back and forth loses no work.
+  selections. Each player and captain checkbox grid has a directly labeled search field that filters
+  its visible rows without changing hidden selections; where bulk selection actions are offered, they
+  apply only to the currently visible search results. Switching modes keeps both selections and search
+  terms intact, so toggling back and forth loses no work.
   „Teams auslosen“ and „Draft starten“ share one rule: each stays disabled until its minimum
   (2 selected players; 2–4 captains plus at least 1 pool player) is met, and a red
   `.info-tooltip-trigger--warning` beside the disabled button names the exact missing requirement —
@@ -636,6 +639,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Explanations sit in info tooltips immediately beside their titles. Title and info fields start at
   the same control height; the optional game filter uses an aligned toolbar and consistent gaps.
   The participant action spans the full width, with equal-width „Abbrechen“ and „Beenden“ actions below.
+  The optional game checkbox grid has a directly labeled text search in addition to its genre chips.
+  Both controls filter the visible rows, while text-search-hidden checkbox selections remain intact;
+  bulk selection actions apply only to the currently visible intersection.
   Vote-specific empty states center icon and copy vertically in both overview and history.
   Every identity can submit only once per round: the server enforces this atomically with `409`,
   empty points submissions are invalid, and the client replaces the submit action with a green
@@ -648,6 +654,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   cards. The completed row uses the shared collapsible-section presentation, starts collapsed and
   retains its open state across view re-renders. `.tournament-player-grid` keeps the player picker at two cards per row from `--bp-md`; phones
   stack one card per row so checkbox, avatar, name and skill value stay readable inside each card.
+  Tournament creation places a directly labeled player search above that grid; it filters rows
+  without clearing hidden selections, and its bulk actions affect only visible search results.
   `.tournament-detail-stats` and `.tournament-team-grid` expose real progress and roster information
   above a centered, locally scrollable bracket; team cards use at most two columns. The proposal
   grid follows the same two-column cap and uses draggable `.tournament-drag-player` rows, with

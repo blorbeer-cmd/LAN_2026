@@ -451,6 +451,17 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   // Matchmaking: draw teams for both players.
   await page.click('.nav-btn[data-view="matchmaking"]');
   assert.equal(await page.inputValue('#mm-teamcount'), '2');
+  await page.fill('#mm-player-search', 'E2E Bob');
+  await page.waitForFunction(() => document.querySelectorAll('[data-mm-draw-search-item]:not([hidden])').length === 1);
+  assert.equal(await page.locator('[data-mm-draw-search-item]:not([hidden])').getByText('E2E Bob', { exact: true }).count(), 1);
+  await page.click('#mm-select-none');
+  assert.equal(await page.locator('[data-mm-draw-search-item]:not([hidden]) [data-player]:checked').count(), 0);
+  assert.equal(
+    await page.locator('[data-mm-draw-search-item][hidden] [data-player]:checked').count(),
+    1,
+    'filtering must not clear a hidden player selection',
+  );
+  await page.fill('#mm-player-search', '');
   await page.click('#mm-select-none');
   assert.equal(await page.locator('[data-player]:checked').count(), 0);
   await page.click('#mm-select-all');
@@ -474,6 +485,11 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   // Only the selected mode's section renders — switch to Captain Draft to
   // reach its tooltip, then back to Auslosung to reach "Teams auslosen".
   await page.click('[data-mm-mode="draft"]');
+  assert.equal(await page.locator('#draft-player-search').count(), 1);
+  await page.fill('#captain-player-search', 'E2E Alice');
+  await page.waitForFunction(() => document.querySelectorAll('[data-mm-captain-search-item]:not([hidden])').length === 1);
+  assert.equal(await page.locator('[data-mm-captain-search-item]:not([hidden])').getByText('E2E Alice', { exact: true }).count(), 1);
+  await page.fill('#captain-player-search', '');
   const draftHelp = page.locator('[aria-controls="captain-draft-help"]');
   await draftHelp.waitFor();
   await draftHelp.click();
@@ -735,6 +751,19 @@ test('Vote: game-limit selection survives an unrelated re-render and select-all/
   const voteGameCheckboxes = page.locator('[data-vote-game-checkbox]');
   const voteGameCount = await voteGameCheckboxes.count();
   assert.ok(voteGameCount >= 2, 'test fixture must ship at least two games');
+  await page.fill('#votes-game-search', 'Counter-Strike 2');
+  await page.waitForFunction(() => document.querySelectorAll('[data-vote-game-search-item]:not([hidden])').length === 1);
+  await page.click('#votes-select-none');
+  assert.equal(await page.locator('[data-vote-game-search-item]:not([hidden]) [data-vote-game-checkbox]:checked').count(), 0);
+  assert.equal(
+    await page.locator('[data-vote-game-search-item][hidden] [data-vote-game-checkbox]:checked').count(),
+    voteGameCount - 1,
+    'filtering must preserve checked games outside the visible result',
+  );
+  await page.fill('#votes-game-search', 'Kein Treffer XYZ');
+  await page.waitForSelector('[data-vote-game-search-empty]:not([hidden])');
+  await page.fill('#votes-game-search', '');
+  await page.click('#votes-select-all');
   await voteGameCheckboxes.nth(0).uncheck();
   await voteGameCheckboxes.nth(1).uncheck();
 
@@ -1225,8 +1254,14 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
   await tournamentGameList.waitFor({ state: 'hidden' });
   assert.equal(
     await page.evaluate(() => document.activeElement?.id),
-    'tourn-teamcount',
+    'tourn-player-search',
     'Tab should leave the combobox instead of moving through every listbox option',
+  );
+  await page.keyboard.press('Tab');
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    'tourn-teamcount',
+    'the player search should participate in the normal form tab order',
   );
   await page.click('#tourn-game-search');
   await tournamentGameList.waitFor({ state: 'visible' });
@@ -1295,6 +1330,19 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
   const scoreHelp = page.locator('[aria-controls="tournament-score-help"]');
   const lobbyHelp = page.locator('[aria-controls="tournament-lobby-help"]');
   assert.ok((await page.locator('[data-create-player]').count()) >= 2);
+  await page.fill('#tourn-player-search', 'E2E Alice');
+  await page.waitForFunction(() => document.querySelectorAll('[data-tourn-player-search-item]:not([hidden])').length === 1);
+  assert.equal(await page.locator('[data-tourn-player-search-item]:not([hidden])').getByText('E2E Alice Pro', { exact: true }).count(), 1);
+  const hiddenTournamentSelections = await page.locator('[data-tourn-player-search-item][hidden] [data-create-player]:checked').count();
+  await page.click('#tourn-select-none');
+  assert.equal(await page.locator('[data-tourn-player-search-item]:not([hidden]) [data-create-player]:checked').count(), 0);
+  assert.equal(
+    await page.locator('[data-tourn-player-search-item][hidden] [data-create-player]:checked').count(),
+    hiddenTournamentSelections,
+    'filtering must preserve hidden tournament participants',
+  );
+  await page.click('#tourn-select-all');
+  await page.fill('#tourn-player-search', '');
   // Single column on the phone viewport; the two-column cap applies from
   // --bp-md where the cards have room for avatar, name and skill value.
   assert.equal(
