@@ -158,7 +158,7 @@ export function wireSnakeLobbyCard(container, { beforeCreate, beforeJoin } = {})
   }));
   container.querySelector('#snake-bot')?.addEventListener('click', async () => {
     if (beforeCreate && !(await beforeCreate())) return;
-    const result = await emitAck('snake:lobby:bot', { playerId: myId() });
+    const result = await emitAck('snake:lobby:bot', { playerId: myId(), mode: lobbyMode });
     if (!result?.ok) showToast(result?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelector('#snake-create')?.addEventListener('click', async () => {

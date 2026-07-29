@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CHALLENGES, challengePayload, isCurrentChallenge, isReadyForNext, remainingUntil, safeScoreInput,
+  CHALLENGES, challengePayload, isCurrentChallenge, isReadyForNext, planBotChallenge, remainingUntil, safeScoreInput,
   scoreAimTrainer, scoreColorWord, scoreCps, scoreMemorySequence, scoreNumberSalad, scoreOddOneOut,
   scoreReaction, scoreTiming10, scoreTrafficLight, scoreWhackAMole, winnerIdForScores,
   AIM_TRAINER_TARGET_COUNT, MEMORY_SEQUENCE_LENGTH, MEMORY_SEQUENCE_TILE_COUNT, ODD_ONE_OUT_TILE_COUNT,
@@ -11,6 +11,26 @@ import {
 test('same seed creates the same challenge data', () => {
   assert.deepEqual(challengePayload('number-salad', 123).data, challengePayload('number-salad', 123).data);
   assert.notDeepEqual(challengePayload('number-salad', 123).data, challengePayload('number-salad', 124).data);
+});
+
+test('Challenge Rush bot plans valid inputs for all ten challenge types', () => {
+  const plans = new Map(CHALLENGES.map((challenge, index) => {
+    const payload = challengePayload(challenge.key, 1_000 + index);
+    const plan = planBotChallenge(payload);
+    assert.ok(plan.length > 0, `${challenge.key} needs at least one bot action`);
+    assert.ok(plan.every((step) => step.atMs >= 40 && step.atMs < payload.durationMs));
+    assert.deepEqual([...plan].sort((left, right) => left.atMs - right.atMs), plan);
+    return [challenge.key, { payload, plan }] as const;
+  }));
+
+  assert.deepEqual(plans.get('number-salad')?.plan.map((step) => step.value), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.deepEqual(plans.get('aim-trainer')?.plan.map((step) => step.value), plans.get('aim-trainer')?.payload.data.targets);
+  assert.deepEqual(plans.get('memory-sequence')?.plan.map((step) => step.value), plans.get('memory-sequence')?.payload.data.sequence);
+  assert.deepEqual(plans.get('whack-a-mole')?.plan.map((step) => step.value), plans.get('whack-a-mole')?.payload.data.sequence);
+  assert.deepEqual(
+    plans.get('color-word')?.plan.map((step) => step.value),
+    (plans.get('color-word')?.payload.data.rounds as Array<{ textColor: string }>).map((round) => round.textColor),
+  );
 });
 test('scores stay in the normalized 0..100 range', () => {
   assert.equal(scoreReaction(120), 100); assert.equal(scoreReaction(99_999), 0);

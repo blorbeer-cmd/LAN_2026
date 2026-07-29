@@ -17,6 +17,7 @@ const DEFAULT_DUEL_TARGET_SCORE = 7;
 const DEFAULT_DOUBLES_TARGET_SCORE = 21;
 const BOT_ID = 'pong-bot';
 const BOT = { id: BOT_ID, name: 'Pong-Bot', avatar: null, color: '#ef5da8' };
+const BOT_ID_PREFIX = 'pong-bot-';
 
 interface Player { id: string; name: string; avatar: string | null; color: string | null }
 interface LobbyPlayer extends Player { team: PongTeam }
@@ -48,6 +49,18 @@ const matches = new Map<string, Match>();
 const idle = (): PongInput => ({ up: false, down: false });
 const playerLimit = (mode: PongMode) => mode === 'doubles' ? 4 : 2;
 const opposingTeam = (team: PongTeam): PongTeam => team === 'left' ? 'right' : 'left';
+
+function isBotId(playerId: string): boolean {
+  return playerId === BOT_ID || playerId.startsWith(BOT_ID_PREFIX);
+}
+
+function doublesBots(): LobbyPlayer[] {
+  return [
+    { id: `${BOT_ID_PREFIX}1`, name: 'Pong-Bot Partner', avatar: null, color: '#ef5da8', team: 'left' },
+    { id: `${BOT_ID_PREFIX}2`, name: 'Pong-Bot Gegner 1', avatar: null, color: '#ef5da8', team: 'right' },
+    { id: `${BOT_ID_PREFIX}3`, name: 'Pong-Bot Gegner 2', avatar: null, color: '#ef5da8', team: 'right' },
+  ];
+}
 
 function playerById(id: unknown): Player | null {
   if (typeof id !== 'string' || !id) return null;
@@ -119,6 +132,7 @@ function scorePayload(match: Match, winnerTeam?: PongTeam | null) {
     name: player.name,
     team: player.team,
     score: match.scores.get(player.team) ?? 0,
+    isBot: isBotId(player.id),
     ...(winnerTeam ? { isWinner: player.team === winnerTeam } : {}),
   }));
 }
@@ -147,7 +161,7 @@ function finish(io: Server, match: Match, winnerTeam: PongTeam | null, reason: s
   const resultScores = scorePayload(match, winnerTeam);
   recordArcadeResult({
     gameType: 'pong',
-    winnerId: match.mode === 'duel' && winner?.id !== BOT_ID ? winner?.id ?? null : null,
+    winnerId: match.mode === 'duel' && winner && !isBotId(winner.id) ? winner.id : null,
     players: match.players,
     scores: resultScores,
     reason,
@@ -167,16 +181,17 @@ function finish(io: Server, match: Match, winnerTeam: PongTeam | null, reason: s
 }
 
 function steerBot(match: Match) {
-  const paddle = match.world.paddles.find((entry) => entry.playerId === BOT_ID);
-  if (!paddle) return;
-  const input = match.inputs.get(BOT_ID);
-  if (!input) return;
-  const ballApproaching = paddle.team === 'left' ? match.world.ball.vx < 0 : match.world.ball.vx > 0;
-  const idleTarget = (PONG_HEIGHT - PADDLE_HEIGHT) / 2;
-  const target = ballApproaching ? match.world.ball.y - PADDLE_HEIGHT / 2 : idleTarget;
-  const deadZone = ballApproaching ? 24 : 42;
-  input.up = target < paddle.y - deadZone;
-  input.down = target > paddle.y + deadZone;
+  for (const paddle of match.world.paddles) {
+    if (!paddle.playerId || !isBotId(paddle.playerId)) continue;
+    const input = match.inputs.get(paddle.playerId);
+    if (!input) continue;
+    const ballApproaching = paddle.team === 'left' ? match.world.ball.vx < 0 : match.world.ball.vx > 0;
+    const idleTarget = (PONG_HEIGHT - PADDLE_HEIGHT) / 2;
+    const target = ballApproaching ? match.world.ball.y - PADDLE_HEIGHT / 2 : idleTarget;
+    const deadZone = ballApproaching ? 24 : 42;
+    input.up = target < paddle.y - deadZone;
+    input.down = target > paddle.y + deadZone;
+  }
 }
 
 function startLoop(io: Server, match: Match) {
@@ -265,16 +280,18 @@ export function registerPongSockets(io: Server): void {
       ack?.({ ok: true, lobbyId: lobby.id });
     });
 
-    socket.on('pong:lobby:bot', (payload: { playerId?: string }, ack?: (result: unknown) => void) => {
+    socket.on('pong:lobby:bot', (payload: { playerId?: string; mode?: PongMode }, ack?: (result: unknown) => void) => {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
+      const mode = payload.mode ?? 'duel';
+      if (mode !== 'duel' && mode !== 'doubles') return ack?.({ ok: false, error: 'Modus ist ungültig.' });
       const scope = socketArcadeScope(socket, player.id);
       if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
       const host = lobbyPlayer(player, 'left');
-      const bot = lobbyPlayer(BOT, 'right');
+      const bots = mode === 'doubles' ? doublesBots() : [lobbyPlayer(BOT, 'right')];
       const lobby: Lobby = {
-        id: nanoid(), ...scope, mode: 'duel', host, players: [host, bot], socketIds: new Map([[host.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now(),
+        id: nanoid(), ...scope, mode, host, players: [host, ...bots], socketIds: new Map([[host.id, socket.id]]), ready: new Set(bots.map((bot) => bot.id)), createdAt: Date.now(),
       };
       if (!claimLobbyMembership(player.id, 'pong', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromLobbies(io, socket.id);
@@ -380,7 +397,7 @@ export function registerPongSockets(io: Server): void {
     socket.on('pong:input', (payload: { matchId?: string; playerId?: string; input?: Partial<PongInput> }, ack?: (result: unknown) => void) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
       const input = payload?.playerId ? match?.inputs.get(payload.playerId) : null;
-      if (!match || !canUseLobby(socket, match) || !socketControlsPlayer(socket, match, payload.playerId) || !input || payload.playerId === BOT_ID || !match.running || match.paused) {
+      if (!match || !canUseLobby(socket, match) || !socketControlsPlayer(socket, match, payload.playerId) || !input || isBotId(payload.playerId) || !match.running || match.paused) {
         return ack?.({ ok: false, error: 'Eingabe nicht erlaubt.' });
       }
       input.up = payload.input?.up === true;

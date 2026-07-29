@@ -95,6 +95,52 @@ test('Snake Arena validates its mode and supports lobbies with three to eight pl
   }
 });
 
+test('Snake Arena AI quick start is admin-gated and fills all eight slots', async () => {
+  clearLobbyMemberships();
+  const httpServer = http.createServer(createApp());
+  const io = new Server(httpServer);
+  registerSnakeSockets(io);
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+  const socket = await connect(baseUrl);
+
+  try {
+    const player = await request(baseUrl).post('/api/players').send({ name: 'Snake KI Host' });
+    assert.equal(player.status, 201);
+
+    const denied = await emitAck(socket, 'snake:lobby:bot', { playerId: player.body.id, mode: 'arena' });
+    assert.equal(denied.ok, false);
+    assert.match(denied.error ?? '', /nur für Admins/);
+
+    db.prepare('UPDATE players SET is_admin = 1 WHERE id = ?').run(player.body.id);
+    const lobbiesPromise = waitForEvent<{ lobbies: Array<{ id: string; mode: string; players: Array<{ id: string; ready: boolean }> }> }>(socket, 'snake:lobbies');
+    const created = await emitAck(socket, 'snake:lobby:bot', { playerId: player.body.id, mode: 'arena' });
+    assert.equal(created.ok, true);
+    const lobby = (await lobbiesPromise).lobbies.find((entry) => entry.id === created.lobbyId);
+    assert.ok(lobby);
+    assert.equal(lobby.mode, 'arena');
+    assert.equal(lobby.players.length, 8);
+    assert.equal(lobby.players.filter((entry) => entry.id.startsWith('snake-bot-') && entry.ready).length, 7);
+
+    const startedPromise = waitForEvent<{ matchId: string; mode: string; players: Array<{ id: string }> }>(socket, 'snake:match:start');
+    const statePromise = waitForEvent<{ scores: Array<{ playerId: string; isBot: boolean }> }>(socket, 'snake:state');
+    const started = await emitAck(socket, 'snake:lobby:start', { lobbyId: created.lobbyId, playerId: player.body.id });
+    assert.equal(started.ok, true);
+    const startPayload = await startedPromise;
+    assert.equal(startPayload.mode, 'arena');
+    assert.equal(startPayload.players.length, 8);
+    const state = await statePromise;
+    assert.equal(state.scores.filter((entry) => entry.isBot).length, 7);
+
+    assert.equal((await emitAck(socket, 'snake:match:finish', { matchId: startPayload.matchId, playerId: player.body.id })).ok, true);
+  } finally {
+    socket.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    clearLobbyMemberships();
+  }
+});
+
 async function verifyArenaLeaveSecurity(authMode: 'legacy' | 'required'): Promise<void> {
   const originalAuthMode = config.authMode;
   (config as { authMode: 'legacy' | 'required' }).authMode = 'legacy';

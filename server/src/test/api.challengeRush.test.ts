@@ -9,13 +9,14 @@ import { createApp } from '../app';
 import { registerChallengeRushSockets } from '../arcade/challengeRush';
 import { clearLobbyMemberships } from '../arcade/lobbyMembership';
 import { challengeRushTiming } from '../arcade/challengeRushTiming';
+import { db } from '../db';
 
 process.env.CHALLENGE_RUSH_RECONNECT_GRACE_MS = '100';
 process.env.NODE_ENV = 'test';
 process.env.CHALLENGE_RUSH_FAST_TIMERS = '1';
 
 type Ack = { ok: boolean; error?: string; [key: string]: unknown };
-type State = { matchId: string; phase: string; challengeIndex: number; challenge: { key: string; data: Record<string, unknown> }; scores: Array<{ playerId: string; score: number; connected: boolean; forfeited: boolean }>; history: Array<{ key: string; title: string; scores: Array<{ playerId: string; name: string; score: number }> }>; readyNext: string[]; remainingMs: number | null; paused: boolean; trafficLightGreen?: boolean };
+type State = { matchId: string; phase: string; challengeIndex: number; challenge: { key: string; data: Record<string, unknown> }; scores: Array<{ playerId: string; score: number; connected: boolean; forfeited: boolean; isBot?: boolean }>; history: Array<{ key: string; title: string; scores: Array<{ playerId: string; name: string; score: number }> }>; readyNext: string[]; remainingMs: number | null; paused: boolean; trafficLightGreen?: boolean };
 
 function connect(baseUrl: string, playerId?: string): Promise<ClientSocket> {
   return new Promise((resolve, reject) => {
@@ -72,6 +73,53 @@ test('Challenge Rush keeps a lobby when a guest disconnects', async () => {
     assert.deepEqual(lobby?.players.map((entry) => entry.id), [hostId]);
   } finally {
     hostSocket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
+  }
+});
+
+test('Challenge Rush AI quick start is admin-gated, plays and ends when its human leaves', async () => {
+  clearLobbyMemberships();
+  const server = await makeServer();
+  const socket = await connect(server.baseUrl);
+  try {
+    const playerId = await player(server.baseUrl, 'Challenge Rush KI Host');
+    const denied = await emitAck(socket, 'challenge-rush:lobby:bot', { playerId });
+    assert.equal(denied.ok, false);
+    assert.match(denied.error ?? '', /nur für Admins/);
+
+    db.prepare('UPDATE players SET is_admin = 1 WHERE id = ?').run(playerId);
+    const lobbiesPromise = nextEvent<{ lobbies: Array<{ id: string; players: Array<{ id: string; ready: boolean }> }> }>(socket, 'challenge-rush:lobbies');
+    const created = await emitAck(socket, 'challenge-rush:lobby:bot', { playerId });
+    assert.equal(created.ok, true);
+    const lobby = (await lobbiesPromise).lobbies.find((entry) => entry.id === created.lobbyId);
+    assert.deepEqual(lobby?.players.map((entry) => entry.id), [playerId, 'challenge-rush-bot']);
+    assert.equal(lobby?.players.find((entry) => entry.id === 'challenge-rush-bot')?.ready, true);
+
+    const startedPromise = nextEvent<{ matchId: string; players: Array<{ id: string }> }>(socket, 'challenge-rush:match:start');
+    const playingPromise = nextState(socket, (state) => state.phase === 'playing');
+    assert.equal((await emitAck(socket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId })).ok, true);
+    const started = await startedPromise;
+    assert.equal(started.players.length, 2);
+    const playing = await playingPromise;
+    assert.equal(playing.scores.find((score) => score.playerId === 'challenge-rush-bot')?.isBot, true);
+
+    const spoofedBotInput = await emitAck(socket, 'challenge-rush:challenge:input', {
+      matchId: started.matchId,
+      playerId: 'challenge-rush-bot',
+      challengeIndex: playing.challengeIndex,
+      action: 'click',
+    });
+    assert.equal(spoofedBotInput.ok, false);
+
+    const result = await nextState(socket, (state) => state.phase === 'result');
+    assert.equal(result.scores.find((score) => score.playerId === 'challenge-rush-bot')?.isBot, true);
+
+    const endedPromise = nextEvent<{ reason: string; scores: Array<{ playerId: string; isBot: boolean }> }>(socket, 'challenge-rush:match:end');
+    assert.equal((await emitAck(socket, 'challenge-rush:match:leave', { matchId: started.matchId, playerId })).ok, true);
+    const ended = await endedPromise;
+    assert.equal(ended.reason, 'no-human-players');
+    assert.equal(ended.scores.find((score) => score.playerId === 'challenge-rush-bot')?.isBot, true);
+  } finally {
+    socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
   }
 });
 

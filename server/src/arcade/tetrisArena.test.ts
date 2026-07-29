@@ -26,10 +26,8 @@ test('Tetris modes keep duel exact and arena bounded to three through eight play
   assert.equal(canStartTetris('arena', 3), true);
   assert.equal(canStartTetris('arena', 8), true);
   assert.equal(canStartTetris('arena', 9), false);
-  assert.equal(tetrisBotCount('duel', 7), 1);
-  assert.equal(tetrisBotCount('arena', 1), 2);
-  assert.equal(tetrisBotCount('arena', 5), 5);
-  assert.equal(tetrisBotCount('arena', 99), 7);
+  assert.equal(tetrisBotCount('duel'), 1);
+  assert.equal(tetrisBotCount('arena'), 7);
 });
 
 test('arena targeting rotates over living opponents and skips eliminated players', () => {

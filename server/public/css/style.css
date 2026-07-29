@@ -2443,21 +2443,6 @@ button.card {
   flex: 1 1 0;
   min-width: var(--arcade-lobby-mode-width);
 }
-.arcade-lobby-bot-setting {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-muted);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-}
-.arcade-lobby-bot-setting select {
-  width: calc(var(--space-8) + var(--space-6));
-  height: var(--space-7);
-  padding-top: var(--space-1);
-  padding-bottom: var(--space-1);
-  text-align: center;
-}
 .arcade-lobby-ai-row {
   display: flex;
   flex-wrap: wrap;

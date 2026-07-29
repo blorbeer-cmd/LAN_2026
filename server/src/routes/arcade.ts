@@ -7,6 +7,7 @@ import { openLobbySummaries as blobbyLobbies } from '../arcade/blobby';
 import { openLobbySummaries as pongLobbies } from '../arcade/pong';
 import { openLobbySummaries as snakeLobbies } from '../arcade/snake';
 import { openLobbySummaries as battleshipLobbies } from '../arcade/battleship';
+import { isKnownArcadeBotId } from '../arcade/botIds';
 import { requestCanAccessGroupEvent, requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
 
 export const arcadeRouter = Router();
@@ -179,7 +180,7 @@ arcadeRouter.get('/stats', (req, res) => {
     };
     game.matches += 1;
     for (const score of scores) {
-      if (score.isBot === true || score.playerId.startsWith('tetris-bot')) continue;
+      if (score.isBot === true || isKnownArcadeBotId(score.playerId)) continue;
       const current = game.players.get(score.playerId) ?? {
         playerId: score.playerId,
         name: score.name,
@@ -222,7 +223,7 @@ arcadeRouter.get('/stats', (req, res) => {
     const baseMode = scores.some((score) => score.mode === 'arena') ? 'arena' : 'duel';
     const mode =
       row.game_type === 'tetris'
-        ? `${baseMode}${scores.some((score) => score.isBot === true || score.playerId.startsWith('tetris-bot')) ? '-ai' : ''}`
+        ? `${baseMode}${scores.some((score) => score.isBot === true || isKnownArcadeBotId(score.playerId)) ? '-ai' : ''}`
         : null;
     const statsKey = mode ? `${row.game_type}:${mode}` : row.game_type;
     if (row.game_type === 'tetris') {
