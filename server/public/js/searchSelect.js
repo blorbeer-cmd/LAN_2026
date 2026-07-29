@@ -129,6 +129,9 @@ export function wireSearchSelect(container, id, options, { onChange } = {}) {
     }
     if (!isOpen()) open({ clear: true });
   });
+  search.addEventListener('click', () => {
+    if (!isOpen()) open({ clear: true });
+  });
   search.addEventListener('input', () => {
     if (!isOpen()) open();
     else renderOptions(search.value);

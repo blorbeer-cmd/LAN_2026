@@ -1228,6 +1228,7 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
     'Escape should close the listbox without changing the game',
   );
   await page.click('#tourn-game-search');
+  await tournamentGameList.waitFor({ state: 'visible' });
   await page.locator('#tourn-teamcount').focus();
   assert.equal(
     await page.locator('#tourn-game-search').inputValue(),
@@ -1240,6 +1241,14 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
     (gameId) => (document.querySelector('#tourn-game') as HTMLInputElement | null)?.value === gameId,
     otherTournamentGame.id,
   );
+  await page.click('#tourn-game-search');
+  await tournamentGameList.waitFor({ state: 'visible' });
+  assert.equal(
+    await page.locator('#tourn-game-search').getAttribute('aria-expanded'),
+    'true',
+    'clicking the still-focused search field should reopen the listbox after a pointer selection',
+  );
+  await page.keyboard.press('Escape');
   const neighborHelp = page.locator('[aria-controls="tournament-neighbors-help"]');
   const scoreHelp = page.locator('[aria-controls="tournament-score-help"]');
   const lobbyHelp = page.locator('[aria-controls="tournament-lobby-help"]');
