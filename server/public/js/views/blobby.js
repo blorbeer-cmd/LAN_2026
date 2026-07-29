@@ -5,7 +5,7 @@ import { avatarHtml, escapeHtml } from '../format.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
-import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeSelectHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../infoTooltip.js';
@@ -214,10 +214,10 @@ export function renderBlobbyLobbyCard() {
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
     <div class="arcade-lobby-create-actions">
       <div class="arcade-lobby-create-row">
-        ${!lobby ? `<select id="blobby-mode" class="arcade-lobby-mode-compact" aria-label="Blobby-Modus">
-          <option value="doubles" ${lobbyMode === 'doubles' ? 'selected' : ''}>Doppel · 4</option>
-          <option value="duel" ${lobbyMode === 'duel' ? 'selected' : ''}>Duell · 2</option>
-        </select>` : ''}
+        ${!lobby ? arcadeLobbyModeSelectHtml('blobby-mode', 'Blobby-Modus', [
+          { value: 'doubles', label: 'Doppel · 4' },
+          { value: 'duel', label: 'Duell · 2' },
+        ], lobbyMode) : ''}
         <button type="button" class="btn btn-primary btn-sm" id="blobby-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
         ${createReason ? infoTooltipHtml('blobby-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
       </div>

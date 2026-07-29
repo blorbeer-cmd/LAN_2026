@@ -20,7 +20,7 @@ import { getMyId } from '../whoami.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
-import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeSelectHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../infoTooltip.js';
@@ -479,26 +479,25 @@ export function renderTetrisLobbyCard() {
   return `
     <div class="card stack arcade-lobby-card">
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
-      <div class="arcade-lobby-settings">
-        <label for="tetris-mode" class="field-label">Modus</label>
-        <select id="tetris-mode" ${lobby ? 'disabled' : ''}>
-          <option value="duel" ${lobbyMode === 'duel' ? 'selected' : ''}>Duell (2 Spieler)</option>
-          <option value="arena" ${lobbyMode === 'arena' ? 'selected' : ''}>Arena (3–8 Spieler)</option>
-        </select>
-        ${
-          currentPlayerMayUseArcadeAi()
-            ? `<label for="tetris-bot-count" class="field-label">KI-Gegner</label>
-              <select id="tetris-bot-count" ${lobby || lobbyMode !== 'arena' ? 'disabled' : ''}>
-                ${[2, 3, 4, 5, 6, 7].map((count) => `<option value="${count}" ${botCount === count ? 'selected' : ''}>${count}</option>`).join('')}
-              </select>`
-            : ''
-        }
-      </div>
       <div class="arcade-lobby-create-actions">
-        <span class="row" style="gap:var(--space-1);">
+        <div class="arcade-lobby-create-row">
+          ${!lobby ? arcadeLobbyModeSelectHtml('tetris-mode', 'Tetris-Modus', [
+            { value: 'duel', label: 'Duell · 2' },
+            { value: 'arena', label: 'Arena · 3–8' },
+          ], lobbyMode) : ''}
           <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${match || lobby || noMe ? 'disabled' : ''}>Lobby öffnen</button>
           ${createReason ? infoTooltipHtml('tetris-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
-        </span>
+        </div>
+        ${
+          currentPlayerMayUseArcadeAi()
+            ? `<label class="arcade-lobby-bot-setting" for="tetris-bot-count">
+                <span>KI-Gegner</span>
+                <select id="tetris-bot-count" ${lobby || lobbyMode !== 'arena' ? 'disabled' : ''}>
+                  ${[2, 3, 4, 5, 6, 7].map((count) => `<option value="${count}" ${botCount === count ? 'selected' : ''}>${count}</option>`).join('')}
+                </select>
+              </label>`
+            : ''
+        }
         ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="tetris-bot" ${match || lobby || noMe ? 'disabled' : ''}>KI-Test starten</button>` : ''}
       </div>
       ${renderLobbyList()}

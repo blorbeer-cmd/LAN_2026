@@ -6,7 +6,7 @@ import { confirmDialog } from '../modal.js';
 import { getMyId } from '../whoami.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeSelectHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../infoTooltip.js';
@@ -130,15 +130,15 @@ export function renderSnakeLobbyCard() {
   const createReason = !noMe && match ? 'Beende zuerst dein aktuelles Spiel.' : '';
   return `<div class="card stack arcade-lobby-card">
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
-    <div class="selection-toolbar" role="group" aria-label="Snake-Modus">
-      <button type="button" class="btn btn-sm ${lobbyMode === 'classic' ? 'btn-primary' : ''}" data-snake-mode="classic" aria-pressed="${lobbyMode === 'classic'}" ${modeLocked ? 'disabled' : ''}>Klassisch</button>
-      <button type="button" class="btn btn-sm ${lobbyMode === 'arena' ? 'btn-primary' : ''}" data-snake-mode="arena" aria-pressed="${lobbyMode === 'arena'}" ${modeLocked ? 'disabled' : ''}>Arena</button>
-    </div>
     <div class="arcade-lobby-create-actions">
-      <span class="row" style="gap:var(--space-1);">
+      <div class="arcade-lobby-create-row">
+        ${arcadeLobbyModeSelectHtml('snake-mode', 'Snake-Modus', [
+          { value: 'classic', label: 'Klassisch' },
+          { value: 'arena', label: 'Arena' },
+        ], lobbyMode, modeLocked)}
         <button type="button" class="btn btn-primary btn-sm" id="snake-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
         ${createReason ? infoTooltipHtml('snake-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
-      </span>
+      </div>
       ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="snake-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
     </div>
     ${lobbyList()}
@@ -152,10 +152,9 @@ export async function leaveMySnakeLobby() {
 }
 
 export function wireSnakeLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
-  container.querySelectorAll('[data-snake-mode]').forEach((button) => button.addEventListener('click', () => {
-    lobbyMode = button.dataset.snakeMode === 'arena' ? 'arena' : 'classic';
-    rerender();
-  }));
+  container.querySelector('#snake-mode')?.addEventListener('change', (event) => {
+    lobbyMode = event.target.value === 'arena' ? 'arena' : 'classic';
+  });
   container.querySelector('#snake-bot')?.addEventListener('click', async () => {
     if (beforeCreate && !(await beforeCreate())) return;
     const result = await emitAck('snake:lobby:bot', { playerId: myId() });

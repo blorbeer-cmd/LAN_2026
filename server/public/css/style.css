@@ -2287,6 +2287,8 @@ button.card {
   margin-top: var(--space-3);
 }
 .arcade-lobby-card {
+  width: 100%;
+  box-sizing: border-box;
   min-height: var(--arcade-lobby-card-min-height);
   gap: var(--space-3);
 }
@@ -2319,6 +2321,21 @@ button.card {
 .arcade-lobby-mode-compact {
   flex: 0 0 auto;
   width: var(--arcade-lobby-mode-width);
+  height: var(--space-7);
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+  text-align: center;
+}
+.arcade-lobby-bot-setting {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+.arcade-lobby-bot-setting select {
+  width: calc(var(--space-8) + var(--space-6));
   height: var(--space-7);
   padding-top: var(--space-1);
   padding-bottom: var(--space-1);

@@ -41,6 +41,18 @@ export function arcadeLobbyEntryHtml(
   </div>`;
 }
 
+// Every mode-capable arcade lobby uses the same compact selector so the
+// create action starts at the same height and the lobby cards stay aligned.
+export function arcadeLobbyModeSelectHtml(id, ariaLabel, options, selected, disabled = false) {
+  const optionHtml = options
+    .map(
+      ({ value, label }) =>
+        `<option value="${escapeHtml(value)}" ${value === selected ? 'selected' : ''}>${escapeHtml(label)}</option>`
+    )
+    .join('');
+  return `<select id="${escapeHtml(id)}" class="arcade-lobby-mode-compact" aria-label="${escapeHtml(ariaLabel)}"${disabled ? ' disabled' : ''}>${optionHtml}</select>`;
+}
+
 // Toggle button for the current player (guests only — the host has no ready
 // state to manage). `dataAttr` keeps each game's buttons in its own namespace,
 // e.g. 'quiz-ready' -> data-quiz-ready="<lobbyId>".
