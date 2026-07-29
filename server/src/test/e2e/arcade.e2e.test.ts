@@ -542,6 +542,15 @@ test('Tetris Arena supports four ready players with one large local board and th
     await guests[0].page.click('#tetris-finish');
     await guests[0].page.click('[data-confirm]');
     await guests[0].page.waitForSelector('#tetris-back');
+    // Regression guard: the end-of-match ranking must reuse the shared roster
+    // tile (avatar + full name) instead of a bare two-column row, which used
+    // to squeeze every name into a 24px avatar-sized column and truncate it
+    // down to a single letter (e.g. "T…", "B…").
+    const rosterNames = await guests[0].page
+      .locator('.arcade-winner-card .arcade-player-tile-body strong')
+      .allTextContents();
+    assert.equal(rosterNames.length, 4);
+    for (const player of players) assert.ok(rosterNames.includes(player.name), `missing full name for ${player.name}`);
   } finally {
     if (!hostClosed) await host.context.close();
     for (const actor of guests) await actor.context.close();

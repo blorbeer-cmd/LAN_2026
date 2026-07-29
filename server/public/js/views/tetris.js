@@ -568,20 +568,26 @@ export function wireTetrisLobbyCard(container, { beforeCreate, beforeJoin } = {}
 function endResultHtml() {
   if (!match?.ended) return '';
   const headline = match.winner?.name ? `${escapeHtml(match.winner.name)} gewinnt` : 'Match beendet';
-  const ranking = [...(match.endScores ?? [])]
-    .sort((a, b) => (a.placement ?? Number.MAX_SAFE_INTEGER) - (b.placement ?? Number.MAX_SAFE_INTEGER) || b.score - a.score)
-    .map((score) => {
+  const scores = new Map((match.endScores ?? []).map((score) => [score.playerId, score]));
+  const ranking = [...match.players].sort((a, b) => {
+    const pa = scores.get(a.id)?.placement ?? Number.MAX_SAFE_INTEGER;
+    const pb = scores.get(b.id)?.placement ?? Number.MAX_SAFE_INTEGER;
+    return pa - pb || (scores.get(b.id)?.score ?? 0) - (scores.get(a.id)?.score ?? 0);
+  });
+  const rosterHtml = matchRosterHtml(ranking, {
+    winnerId: match.winner?.id ?? null,
+    scoreFor: (player) => `${scores.get(player.id)?.score ?? 0} Pkt`,
+    detailFor: (player) => {
+      const score = scores.get(player.id);
+      if (!score) return '';
       const placement = score.placement ? `Platz ${score.placement}` : 'Ohne Platzierung';
-      return `<div class="arcade-lobby-member-row">
-        <span class="player-name">${escapeHtml(score.name)}</span>
-        <span class="arcade-lobby-member-role">${placement} · ${score.score} Pkt · ${score.knockouts ?? 0} K.o.</span>
-      </div>`;
-    })
-    .join('');
+      return `${placement} · ${score.knockouts ?? 0} K.o.`;
+    },
+  });
   return `
     <div class="card arcade-winner-card">
       <strong>${headline}</strong>
-      ${ranking ? `<div class="arcade-lobby-member-list">${ranking}</div>` : ''}
+      ${rosterHtml}
       <button type="button" class="btn btn-primary" id="tetris-back">Zur Arcade</button>
     </div>`;
 }
