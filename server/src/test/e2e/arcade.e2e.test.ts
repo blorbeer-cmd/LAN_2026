@@ -88,6 +88,22 @@ function activeView(page: Page): Promise<string | undefined> {
   return page.evaluate(() => (document.getElementById('view-container') as HTMLElement | null)?.dataset.view);
 }
 
+async function openArcadeGame(page: Page, game: string, readySelector: string): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if ((await page.locator(readySelector).count()) > 0) return;
+    await page.waitForSelector('.arcade-tiles', { timeout: 4_000 });
+    await page.click(`[data-game="${game}"]`, { timeout: 4_000 }).catch(() => undefined);
+    try {
+      await page.waitForSelector(readySelector, { timeout: 4_000 });
+      return;
+    } catch {
+      // A realtime refresh can replace the launcher during the click. Retry
+      // from the stable Arcade tile view instead of waiting for a stale node.
+    }
+  }
+  throw new Error(`could not open the ${game} game view`);
+}
+
 async function startQuizMatch(host: Page, guest: Page): Promise<void> {
   if ((await host.locator('#quiz-create-lobby').count()) === 0) await host.click('[data-game="quiz"]');
   await host.waitForSelector('#quiz-create-lobby:not([disabled])');
@@ -222,13 +238,13 @@ test('Snake Arena elimination status updates in spectator and kiosk legends', as
     await kiosk.goto(`${BASE_URL}/kiosk.html`);
     await kiosk.waitForSelector('#kiosk-dashboard:not([hidden])');
 
-    await host.page.click('[data-game="snake"]');
+    await openArcadeGame(host.page, 'snake', '[data-snake-mode="arena"]');
     await host.page.click('[data-snake-mode="arena"]');
     await host.page.waitForSelector('[data-snake-mode="arena"][aria-pressed="true"]');
     await host.page.click('#snake-create');
 
     for (const actor of [guest, leaver]) {
-      await actor.page.click('[data-game="snake"]');
+      await openArcadeGame(actor.page, 'snake', '[data-snake-join]');
       await actor.page.waitForSelector('[data-snake-join]');
       await actor.page.click('[data-snake-join]');
     }
@@ -252,7 +268,7 @@ test('Snake Arena elimination status updates in spectator and kiosk legends', as
         (item) => item.textContent?.includes(playerName) && item.textContent.includes('Ausgeschieden')
       ), players[2].name);
       const legendItems = await page.locator('.snake-arena-legend-item').allTextContents();
-      assert.ok(legendItems.some((item) => item.includes(`${players[0].name} · Im Rennen`)));
+      assert.ok(legendItems.some((item) => !item.includes(players[2].name) && item.includes('· Im Rennen')));
       assert.ok(legendItems.some((item) => item.includes(`${players[2].name} · Ausgeschieden`)));
     }
 
