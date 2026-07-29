@@ -7,12 +7,12 @@ import { recordArcadeResult } from './arcadeData';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
-import { arcadeTiming } from './timing';
+import { challengeRushTiming } from './challengeRushTiming';
 import {
   CHALLENGES, challengePayload, isCurrentChallenge, isReadyForNext, remainingUntil, seededRandom, shuffled,
   scoreAimTrainer, scoreColorWord, scoreCps, scoreMemorySequence, scoreNumberSalad, scoreOddOneOut,
   scoreReaction, scoreTiming10, scoreTrafficLight, scoreWhackAMole, winnerIdForScores,
-  COLOR_WORD_ROUND_COUNT, MEMORY_SEQUENCE_LENGTH, MEMORY_REVEAL_TOTAL_MS, WHACK_A_MOLE_SEQUENCE_LENGTH, AIM_TRAINER_TARGET_COUNT,
+  COLOR_WORD_ROUND_COUNT, MEMORY_SEQUENCE_LENGTH, WHACK_A_MOLE_SEQUENCE_LENGTH, AIM_TRAINER_TARGET_COUNT,
   type ChallengeKey, type ChallengePayload,
 } from './challengeRushLogic';
 
@@ -47,6 +47,16 @@ const owns = (socket: Socket, id: unknown): id is string => typeof id === 'strin
 const publicLobbies = (groupId: string, eventId: string | null) => [...lobbies.values()].filter((l) => l.groupId === groupId && l.eventId === eventId).map((l) => ({ id: l.id, host: l.host, players: l.players.map((p) => ({ ...p, ready: isLobbyReady(l, p.id) })), createdAt: l.createdAt }));
 const reconnectGraceMs = (): number => { const configured = Number(process.env.CHALLENGE_RUSH_RECONNECT_GRACE_MS); return Number.isFinite(configured) ? Math.max(50, Math.min(60_000, configured)) : DEFAULT_RECONNECT_GRACE_MS; };
 const resultReadyTimeoutMs = (): number => { const configured = Number(process.env.CHALLENGE_RUSH_RESULT_TIMEOUT_MS); return Number.isFinite(configured) ? Math.max(50, Math.min(120_000, configured)) : DEFAULT_RESULT_READY_TIMEOUT_MS; };
+
+function runtimeChallengePayload(key: ChallengeKey, seed: number): ChallengePayload {
+  const payload = challengePayload(key, seed);
+  const timing = challengeRushTiming();
+  if (timing.challengeDurationMs === null) return payload;
+  const data = key === 'traffic-light'
+    ? { ...payload.data, greenAtMs: timing.trafficLightGreenMs }
+    : payload.data;
+  return { ...payload, durationMs: timing.challengeDurationMs, data };
+}
 
 function emitLobbies(io: Server): void {
   for (const socket of io.sockets.sockets.values()) {
@@ -290,7 +300,7 @@ function nextChallenge(io: Server, match: Match): void {
   if (match.index + 1 >= match.order.length) return finishMatch(io, match);
   match.index += 1;
   match.phase = 'countdown';
-  match.current = challengePayload(match.order[match.index], (match.seed + match.index * 7919) >>> 0);
+  match.current = runtimeChallengePayload(match.order[match.index], (match.seed + match.index * 7919) >>> 0);
   // A forfeited player's Progress entry is rebuilt below like everyone
   // else's, but starts pre-completed at score 0 instead of `completed: false`
   // — otherwise it would silently accept real input again next round and,
@@ -303,7 +313,7 @@ function nextChallenge(io: Server, match: Match): void {
   // Arm the countdown before announcing the phase: the clients derive their
   // 3-2-1 overlay from this state's remainingMs, so it has to already be the
   // countdown deadline and not the result phase's ready-timeout.
-  schedule(match, arcadeTiming.countdownMs, () => beginChallenge(io, match));
+  schedule(match, challengeRushTiming().countdownMs, () => beginChallenge(io, match));
   emitState(io, match);
 }
 
@@ -358,7 +368,7 @@ function startMatch(io: Server, lobby: Lobby): Match {
   const id = nanoid(); const room = `challenge-rush:${id}`;
   for (const socketId of lobby.socketIds.values()) io.sockets.sockets.get(socketId)?.join(room);
   const seed = Math.floor(Math.random() * 0x7fffffff); const order = shuffled(CHALLENGES.map((challenge) => challenge.key), seededRandom(seed));
-  const match: Match = { id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: [...lobby.players], socketIds: new Map(lobby.socketIds), order, index: -1, phase: 'countdown', seed, current: challengePayload(order[0], seed), progress: new Map(), scores: new Map(lobby.players.map((player) => [player.id, 0])), startedAt: Date.now(), timer: null, deadlineAt: null, pausedRemainingMs: null, paused: false, reconnectTimers: new Map(), forfeited: new Set(), readyNext: new Set(), history: [], greenTimer: null, greenDeadlineAt: null, greenPausedRemainingMs: null };
+  const match: Match = { id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: [...lobby.players], socketIds: new Map(lobby.socketIds), order, index: -1, phase: 'countdown', seed, current: runtimeChallengePayload(order[0], seed), progress: new Map(), scores: new Map(lobby.players.map((player) => [player.id, 0])), startedAt: Date.now(), timer: null, deadlineAt: null, pausedRemainingMs: null, paused: false, reconnectTimers: new Map(), forfeited: new Set(), readyNext: new Set(), history: [], greenTimer: null, greenDeadlineAt: null, greenPausedRemainingMs: null };
   matches.set(id, match); releaseLobbyMemberships(lobby.players.map((player) => player.id), 'challenge-rush', lobby.id); lobbies.delete(lobby.id); emitLobbies(io);
   startArcadeSession(real(match.players), 'challenge-rush', match); emitArcadeRoom(io, room, 'challenge-rush:match:start', { matchId: id, host: match.host, players: match.players, challengeCount: order.length }, match); nextChallenge(io, match); return match;
 }
@@ -412,7 +422,7 @@ export function registerChallengeRushSockets(io: Server): void {
         // animation, so a scripted client could otherwise answer the instant
         // 'playing' starts and always score 100 — reject taps before the
         // reveal has actually finished.
-        if (elapsed < MEMORY_REVEAL_TOTAL_MS) return ack?.({ ok: false, error: 'Bitte die Reihenfolge erst abwarten.', progress: progressPayload(p) });
+        if (elapsed < challengeRushTiming().memoryRevealMs) return ack?.({ ok: false, error: 'Bitte die Reihenfolge erst abwarten.', progress: progressPayload(p) });
         if (payload.value === sequence[p.correct]) p.correct += 1; else p.errors += 1;
         if (p.errors > 0 || p.correct >= MEMORY_SEQUENCE_LENGTH) { p.score = scoreMemorySequence(p.correct); p.completed = true; }
       }
