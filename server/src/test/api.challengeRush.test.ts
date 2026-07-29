@@ -8,10 +8,11 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { registerChallengeRushSockets } from '../arcade/challengeRush';
 import { clearLobbyMemberships } from '../arcade/lobbyMembership';
-import { arcadeTiming } from '../arcade/timing';
-import { MEMORY_REVEAL_TOTAL_MS } from '../arcade/challengeRushLogic';
+import { challengeRushTiming } from '../arcade/challengeRushTiming';
 
 process.env.CHALLENGE_RUSH_RECONNECT_GRACE_MS = '100';
+process.env.NODE_ENV = 'test';
+process.env.CHALLENGE_RUSH_FAST_TIMERS = '1';
 
 type Ack = { ok: boolean; error?: string; [key: string]: unknown };
 type State = { matchId: string; phase: string; challengeIndex: number; challenge: { key: string; data: Record<string, unknown> }; scores: Array<{ playerId: string; score: number; connected: boolean; forfeited: boolean }>; history: Array<{ key: string; title: string; scores: Array<{ playerId: string; name: string; score: number }> }>; readyNext: string[]; remainingMs: number | null; paused: boolean; trafficLightGreen?: boolean };
@@ -192,7 +193,9 @@ test('Challenge Rush announces every phase with its own remaining time', async (
     await emitAck(socket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId });
     const match = await started;
     const opening = await openingCountdown;
-    assert.ok(opening.remainingMs !== null && opening.remainingMs > 0 && opening.remainingMs <= arcadeTiming.countdownMs, `opening countdown reported ${opening.remainingMs}ms`);
+    const countdownMs = challengeRushTiming().countdownMs;
+    assert.equal(countdownMs, 50);
+    assert.ok(opening.remainingMs !== null && opening.remainingMs > 0 && opening.remainingMs <= countdownMs, `opening countdown reported ${opening.remainingMs}ms`);
 
     const playing = await nextState(socket, (state) => state.phase === 'playing');
     const resultPromise = nextState(socket, (state) => state.phase === 'result');
@@ -202,7 +205,7 @@ test('Challenge Rush announces every phase with its own remaining time', async (
     await completeChallenge(socket, match.matchId, playerId, playing);
     const result = await resultPromise;
     // The result phase reports its own ready-timeout fallback, never the finished challenge's deadline.
-    assert.ok(result.remainingMs !== null && result.remainingMs > arcadeTiming.countdownMs, `result phase reported ${result.remainingMs}ms`);
+    assert.ok(result.remainingMs !== null && result.remainingMs > countdownMs, `result phase reported ${result.remainingMs}ms`);
 
     // Someone who takes a moment before confirming still gets a complete countdown:
     // the announced value must be the countdown itself, not the rest of the result timeout.
@@ -210,7 +213,7 @@ test('Challenge Rush announces every phase with its own remaining time', async (
     const nextCountdown = nextState(socket, (state) => state.phase === 'countdown' && state.challengeIndex === 1);
     assert.equal((await emitAck(socket, 'challenge-rush:challenge:ready', { matchId: match.matchId, playerId })).ok, true);
     const between = await nextCountdown;
-    assert.ok(between.remainingMs !== null && between.remainingMs > 0 && between.remainingMs <= arcadeTiming.countdownMs, `between-challenge countdown reported ${between.remainingMs}ms`);
+    assert.ok(between.remainingMs !== null && between.remainingMs > 0 && between.remainingMs <= countdownMs, `between-challenge countdown reported ${between.remainingMs}ms`);
     await emitAck(socket, 'challenge-rush:match:finish', { matchId: match.matchId, playerId });
   } finally {
     socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
@@ -333,7 +336,7 @@ async function completeChallenge(socket: ClientSocket, matchId: string, playerId
   if (key === 'cps') return send('click');
   if (key === 'number-salad') { const sorted = [...(data.numbers as number[])].sort((a, b) => a - b); return sendSequence(send, 'number', sorted, (n) => n); }
   if (key === 'timing-10') return send('stop');
-  if (key === 'memory-sequence') { await sleep(MEMORY_REVEAL_TOTAL_MS + 50); return sendSequence(send, 'tile', data.sequence as number[], (tile) => tile); }
+  if (key === 'memory-sequence') { await sleep(challengeRushTiming().memoryRevealMs + 50); return sendSequence(send, 'tile', data.sequence as number[], (tile) => tile); }
   if (key === 'odd-one-out') return send('select', data.oddIndex);
   if (key === 'whack-a-mole') return sendSteps(send, 'hit', (data.totalHits as number) ?? 8, data.activeHole, (next) => next?.activeHole);
   if (key === 'traffic-light') return send('click');
@@ -479,9 +482,9 @@ test('Challenge Rush ends memory-sequence on the first wrong tile with partial c
     // regardless of the formula.
     const wrongThird = (sequence[2] + 1) % 9;
     // The server rejects memory-sequence taps until the reveal animation
-    // window has actually elapsed (see MEMORY_REVEAL_TOTAL_MS), so this test
+    // window has actually elapsed (see challengeRushTiming().memoryRevealMs), so this test
     // must wait it out before sending real input, same as an honest player.
-    await sleep(MEMORY_REVEAL_TOTAL_MS + 50);
+    await sleep(challengeRushTiming().memoryRevealMs + 50);
     const resultPromise = nextState(socket, (state) => state.phase === 'result' && state.challengeIndex === playing.challengeIndex);
     const first = await emitAck(socket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId, challengeIndex: playing.challengeIndex, action: 'tile', value: sequence[0] });
     assert.equal((first.progress as { correct: number }).correct, 1);
