@@ -223,7 +223,7 @@ test('Snake Arena elimination status updates in spectator and kiosk legends', as
     await kiosk.waitForSelector('#kiosk-dashboard:not([hidden])');
 
     await host.page.click('[data-game="snake"]');
-    await host.page.selectOption('#snake-mode', 'arena');
+    await host.page.click('#snake-mode [data-arcade-mode="arena"]');
     await host.page.click('#snake-create');
 
     for (const actor of [guest, leaver]) {
@@ -473,8 +473,8 @@ test('Tetris Arena supports four ready players with one large local board and th
   let hostClosed = false;
   try {
     await host.page.click('[data-game="tetris"]');
-    await host.page.waitForSelector('#tetris-mode');
-    await host.page.selectOption('#tetris-mode', 'arena');
+    await host.page.waitForSelector('#tetris-mode [data-arcade-mode="arena"]');
+    await host.page.click('#tetris-mode [data-arcade-mode="arena"]');
     await host.page.waitForSelector('#tetris-create:not([disabled])');
     await host.page.click('#tetris-create');
 
@@ -537,7 +537,7 @@ test('Blobby Doppel: mobile lobby assigns two full teams and starts four players
       await actor.page.waitForSelector('#blobby-create');
     }
     const [host, blue, pinkA, pinkB] = actors;
-    assert.equal(await host.page.locator('#blobby-mode').inputValue(), 'doubles');
+    assert.equal(await host.page.locator('#blobby-mode [data-arcade-mode="doubles"]').getAttribute('aria-pressed'), 'true');
     await host.page.click('#blobby-create');
     await host.page.waitForSelector('text=Team Blau');
     await host.page.waitForSelector('text=Team Pink');
@@ -587,7 +587,7 @@ test('Pong Doppel: mobile and desktop lobbies assign two full teams and start fo
       await actor.page.waitForSelector('#pong-create');
     }
     const [host, blue, pinkA, pinkB] = actors;
-    assert.equal(await host.page.locator('#pong-mode').inputValue(), 'doubles');
+    assert.equal(await host.page.locator('#pong-mode [data-arcade-mode="doubles"]').getAttribute('aria-pressed'), 'true');
     await host.page.click('#pong-create');
     await host.page.waitForSelector('text=Team Blau');
     await host.page.waitForSelector('text=Team Pink');
