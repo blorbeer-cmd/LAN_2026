@@ -224,7 +224,7 @@ export function ensureChallengeRushSocket() {
     if (currentView() === 'challengeRush') rerender();
   });
   socket.on('challenge-rush:match:end', (payload) => {
-    cancelCountdown(); clearTrialTimer(); currentTrial = null;
+    cancelCountdown(); clearTrialTimer(); clearRevealTimers(); currentTrial = null;
     match = { ...match, phase: 'ended', scores: payload.scores, draw: payload.draw === true, history: payload.history ?? match?.history ?? [] };
     if (payload.winnerId) playArcadeSound(payload.winnerId === myId() ? 'challenge-highscore' : 'challenge-gameover');
     else if (!payload.draw) playArcadeSound('challenge-gameover');

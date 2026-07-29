@@ -563,12 +563,18 @@ export function registerChallengeRushSockets(io: Server): void {
         if (!p.trial || !visibleTrial || payload.trialId !== p.trial.trialId) return ack?.({ ...progress(), ignored: true, reason: 'stale-trial', trial: visibleTrial });
         const now = Date.now();
         if (p.trial.phase === 'preview') return ack?.({ ok: false, error: 'Die Vorschau läuft noch.', progress: progressPayload(p), trial: visibleTrial });
+        // The throttle floor has to gate a claimed 'timeout' just like every
+        // other action: a client can assert action:'timeout' regardless of
+        // its actual elapsed time, so without this check first, spamming
+        // that action would forfeit-and-regenerate trials (each a SHA-256-
+        // backed createTrial call) at unlimited speed instead of at most
+        // once per 30ms.
+        if (now - p.lastInputAt < 30) return ack?.({ ...progress(), ignored: true, trial: visibleTrial });
+        p.lastInputAt = now;
         if (payload.action === 'timeout' || trialElapsed(p, now) >= p.trial.inputMs) {
           finishPlayerTrial(io, match, payload.playerId as string, p, { accepted: true, complete: true, correct: false, errors: 1, rawScore: 0, error: 'Zeit abgelaufen.' });
           return ack?.({ ok: true, accepted: true, timedOut: true, progress: progressPayload(p), trial: publicTrial(p) });
         }
-        if (now - p.lastInputAt < 30) return ack?.({ ...progress(), ignored: true, trial: visibleTrial });
-        p.lastInputAt = now;
         if (match.current.key === 'memory-pairs' && payload.action === 'reveal') {
           const cardIndex = payload.value;
           const board = p.trial.expected as string[];
