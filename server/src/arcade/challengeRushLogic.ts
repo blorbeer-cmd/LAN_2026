@@ -285,7 +285,7 @@ export function createTrial(key: ChallengeKey, seed: number, index: number, diff
     return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Eine Kugel + ${known} kg = ${total} kg. Wie schwer ist die Kugel?`, options: numericOptions(expected, random) }, String(expected));
   }
   if (key === 'clock-angle') {
-    const hour = 1 + Math.floor(random() * 11); const minute = [0, 15, 30, 45][Math.floor(random() * 4)]; const difference = Math.abs((hour % 12) * 30 + minute * 0.5 - minute * 6); const expected = Math.round(Math.min(difference, 360 - difference));
+    const hour = 1 + Math.floor(random() * 11); const minute = [0, 15, 30, 45][Math.floor(random() * 4)]; const difference = Math.abs((hour % 12) * 30 + minute * 0.5 - minute * 6); const expected = Math.min(difference, 360 - difference);
     return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Wie groß ist der kleinere Winkel bei ${hour}:${String(minute).padStart(2, '0')} Uhr?`, options: numericOptions(expected, random, [15, -15, 30, -30]) }, String(expected));
   }
   if (key === 'binary-pattern') {
@@ -355,6 +355,18 @@ export function createTrial(key: ChallengeKey, seed: number, index: number, diff
   return { trialId: id, index, difficulty, phase: 'preview', phaseMs: previewMs(difficulty), inputMs: inputWindowMs(key, difficulty), data: { type: 'suitcase', items: list, position: position + 1, options: shuffled([list[position], ...shuffled(ITEMS.filter((item) => !list.includes(item)), random).slice(0, 3)], random) }, expected: list[position], state: {} };
 }
 
+export function previewTrialData(trial: InternalTrial): Record<string, unknown> {
+  const type = String(trial.data.type ?? '');
+  if (type === 'sequence') return { type, size: trial.data.size, sequence: trial.data.sequence };
+  if (type === 'matrix') return { type, size: trial.data.size, highlights: trial.data.highlights };
+  if (type === 'number-blind') return { type, size: trial.data.size, numbers: trial.data.numbers };
+  if (type === 'path') return { type, size: trial.data.size, path: trial.data.path };
+  if (type === 'missing') return { type, originalItems: trial.data.originalItems };
+  if (type === 'delayed-recall') return { type, prompt: trial.data.prompt, items: trial.data.items };
+  if (type === 'suitcase') return { type, items: trial.data.items };
+  return { type };
+}
+
 export function validateTrialInput(key: ChallengeKey, trial: InternalTrial, action: string, value: unknown): TrialResult {
   const wrong = (error = 'Falsche Antwort.'): TrialResult => ({ accepted: true, complete: true, correct: false, errors: 1, rawScore: 0, error });
   if (trial.phase === 'preview') return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Die Vorschau läuft noch.' };
@@ -403,7 +415,10 @@ export function safeScoreInput(value: number): number { return Number.isFinite(v
 function safeCount(value: number): number { return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0; }
 function safeElapsed(value: number): number { return Number.isFinite(value) ? Math.max(0, value) : 0; }
 export function scoreReaction(elapsedMs: number): number { return safeScoreInput(Math.round(100 - Math.max(0, safeElapsed(elapsedMs) - 120) / 35)); }
-export function scoreCps(clicks: number): number { return safeScoreInput(Math.round(safeCount(clicks) * 5)); }
+// Thirty seconds at two clicks per second is the normalized 100-point target.
+// Higher rates still score higher until the shared 100-point cap, while a
+// short burst no longer wins the entire round.
+export function scoreCps(clicks: number): number { return safeScoreInput(Math.round(safeCount(clicks) * (100 / 60))); }
 export function scoreNumberSalad(correct: number, errors: number, elapsedMs: number): number {
   return safeScoreInput(Math.round(safeCount(correct) * 12.5 - safeCount(errors) * 8 - Math.max(0, safeElapsed(elapsedMs) - 2_000) / 180));
 }

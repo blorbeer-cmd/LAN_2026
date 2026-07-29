@@ -50,6 +50,7 @@ export function freshInteraction(trialId, resume = {}) {
 export function nextInteractionState(previous, trial) {
   if (previous.trialId !== trial?.trialId) return freshInteraction(trial?.trialId, trial?.resume);
   const resumed = freshInteraction(trial?.trialId, trial?.resume);
+  if (resumed.revealSeq < previous.revealSeq) return { ...previous };
   return {
     ...previous,
     pair: resumed.pair,
@@ -60,6 +61,12 @@ export function nextInteractionState(previous, trial) {
 }
 export function pairHideStillApplies(state, trialId, revealSeq) {
   return state.trialId === trialId && state.revealSeq === revealSeq;
+}
+export function shouldPreserveInteractionOnMatchStart(previousMatch, nextMatch) {
+  return nextMatch?.reconnected === true && previousMatch?.matchId === nextMatch?.matchId;
+}
+export function focusableTrialSelector() {
+  return '[data-cr-choice], [data-cr-bool], [data-cr-sequence-cell], [data-cr-matrix-cell], [data-cr-number-position], [data-cr-pair-card]';
 }
 export function acknowledgedRevealSeq(currentRevealSeq, serverRevealSeq) {
   return Number.isSafeInteger(serverRevealSeq) && serverRevealSeq >= 0
@@ -179,7 +186,12 @@ export function ensureChallengeRushSocket() {
   if (socket) return socket;
   socket = connectSocket();
   socket.on('challenge-rush:lobbies', (payload) => { lobbies = payload?.lobbies ?? []; if (!match && currentView() === 'arcade') rerender(); });
-  socket.on('challenge-rush:match:start', (payload) => { match = { ...payload }; prevMyScore = null; countdownKey = null; startedKey = null; currentTrial = null; interaction = freshInteraction(null); navigate('challengeRush'); });
+  socket.on('challenge-rush:match:start', (payload) => {
+    const preserveInteraction = shouldPreserveInteractionOnMatchStart(match, payload);
+    match = { ...payload }; prevMyScore = null; countdownKey = null; startedKey = null;
+    if (!preserveInteraction) { currentTrial = null; interaction = freshInteraction(null); }
+    navigate('challengeRush');
+  });
   socket.on('challenge-rush:match:state', (payload) => { match = { ...match, ...payload }; if (currentView() === 'challengeRush') rerender(); });
   socket.on('challenge-rush:state', (payload) => {
     match = { ...match, ...payload };
@@ -196,6 +208,7 @@ export function ensureChallengeRushSocket() {
     interaction = nextInteractionState(interaction, currentTrial);
     scheduleTrialPhase();
     rerenderIfVisible();
+    queueMicrotask(() => document.querySelector(focusableTrialSelector())?.focus());
   });
   socket.on('challenge-rush:traffic-light:green', (payload) => {
     if (!match || payload?.matchId !== match.matchId || payload?.challengeIndex !== match.challengeIndex) return;
@@ -331,8 +344,10 @@ export function renderChallengeRushTrial(challenge, trial, playing = true) {
 }
 export function renderOddOneOut(data, playing = true) {
   const tileCount = data.tileCount ?? 16;
+  const oddPosition = playing ? Math.max(0, Math.min(tileCount - 1, Number(data.oddIndex))) : -1;
   const subtlety = Math.max(1, Math.min(5, Math.round(Number(data.subtlety)) || 1));
-  const tiles = Array.from({ length: tileCount }, (_, index) => `<button type="button" class="challenge-rush-tile" data-cr-tile="${index}" ${playing ? '' : 'disabled'} aria-label="Feld ${index + 1}"></button>`).join('');
+  const shapeLabel = (isOdd) => isOdd ? ['kreisförmig', 'stark abgerundet', 'diagonal abgerundet', 'eckig', 'halb abgerundet'][subtlety - 1] : 'normal abgerundet';
+  const tiles = Array.from({ length: tileCount }, (_, index) => `<button type="button" class="challenge-rush-tile" data-cr-tile="${index}" ${playing ? '' : 'disabled'} aria-label="Feld ${index + 1}, Form ${shapeLabel(index === oddPosition)}"></button>`).join('');
   return `<div class="challenge-rush-tile-grid challenge-rush-odd-grid" data-cr-subtlety="${subtlety}" style="grid-template-columns:repeat(4,minmax(0,1fr));">${tiles}</div>`;
 }
 function challengeView(container) {
@@ -501,8 +516,8 @@ export function renderChallengeRush(container, ctx) {
   }));
   container.querySelector('[data-cr-traffic]')?.addEventListener('click', () => send('click', undefined, () => rerender()));
   container.querySelectorAll('[data-cr-color]').forEach((button) => button.addEventListener('click', () => send('answer', button.dataset.crColor, (progress) => { progressStep = progress.correct + progress.errors; rerender(); container.querySelector('.challenge-rush-color-option')?.focus(); })));
-  container.querySelectorAll('[data-cr-choice]').forEach((button) => button.addEventListener('click', () => send('choice', button.dataset.crChoice)));
-  container.querySelectorAll('[data-cr-bool]').forEach((button) => button.addEventListener('click', () => send('choice', button.dataset.crBool === 'true')));
+  container.querySelectorAll('[data-cr-choice]').forEach((button) => button.addEventListener('click', () => send('choice', button.dataset.crChoice, () => { rerender(); container.querySelector('[data-cr-choice]')?.focus(); })));
+  container.querySelectorAll('[data-cr-bool]').forEach((button) => button.addEventListener('click', () => send('choice', button.dataset.crBool === 'true', () => { rerender(); container.querySelector('[data-cr-bool]')?.focus(); })));
   container.querySelectorAll('[data-cr-sequence-cell]').forEach((button) => button.addEventListener('click', () => {
     const value = Number(button.dataset.crSequenceCell);
     if (interaction.sequence.includes(value)) return;
@@ -510,6 +525,7 @@ export function renderChallengeRush(container, ctx) {
     const expectedLength = Number(currentTrial?.data?.sequenceLength ?? currentTrial?.data?.pathLength ?? 0);
     if (interaction.sequence.length >= expectedLength) send('sequence', [...interaction.sequence]);
     rerender();
+    container.querySelector(`[data-cr-sequence-cell="${value}"]`)?.focus();
   }));
   container.querySelectorAll('[data-cr-matrix-cell]').forEach((button) => button.addEventListener('click', () => {
     const value = Number(button.dataset.crMatrixCell);
@@ -517,6 +533,7 @@ export function renderChallengeRush(container, ctx) {
     interaction.cells.push(value);
     if (interaction.cells.length >= Number(currentTrial?.data?.highlightCount ?? 0)) send('cells', [...interaction.cells]);
     rerender();
+    container.querySelector(`[data-cr-matrix-cell="${value}"]`)?.focus();
   }));
   container.querySelectorAll('[data-cr-number-position]').forEach((button) => button.addEventListener('click', () => {
     const value = Number(button.dataset.crNumberPosition);
@@ -524,6 +541,7 @@ export function renderChallengeRush(container, ctx) {
     interaction.sequence.push(value);
     if (interaction.sequence.length >= Number(currentTrial?.data?.numberCount ?? 0)) send('sequence', [...interaction.sequence]);
     rerender();
+    container.querySelector(`[data-cr-number-position="${value}"]`)?.focus();
   }));
   container.querySelectorAll('[data-cr-pair-card]').forEach((button) => button.addEventListener('click', () => {
     const value = Number(button.dataset.crPairCard);
@@ -540,15 +558,18 @@ export function renderChallengeRush(container, ctx) {
         interaction.pair.forEach((entry) => interaction.found.add(entry));
         interaction.pair = [];
         rerender();
+        container.querySelector('[data-cr-pair-card]:not([disabled])')?.focus();
         return;
       }
       if (result.correct === false) {
         rerender();
+        container.querySelector(`[data-cr-pair-card="${value}"]`)?.focus();
         window.setTimeout(() => {
           if (currentTrial?.trialId !== trialId || !pairHideStillApplies(interaction, trialId, revealSeq)) return;
           for (const card of revealed) if (!interaction.found.has(card.index)) interaction.values.delete(card.index);
           interaction.pair = [];
           rerender();
+          container.querySelector('[data-cr-pair-card]:not([disabled])')?.focus();
         }, 650);
         return;
       }

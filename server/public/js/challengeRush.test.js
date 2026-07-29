@@ -8,6 +8,7 @@ import {
   pairHideStillApplies,
   renderChallengeRushTrial,
   renderOddOneOut,
+  shouldPreserveInteractionOnMatchStart,
 } from './views/challengeRush.js';
 
 test('same-trial replay preserves partial sequence and matrix input while merging server resume state', () => {
@@ -49,10 +50,29 @@ test('pair hide guard rejects an obsolete timer after another reveal', () => {
   assert.equal(pairHideStillApplies(state, 'trial-2', 3), false);
 });
 
+test('reconnect match-start preserves same-match partial input', () => {
+  assert.equal(shouldPreserveInteractionOnMatchStart({ matchId: 'match-1' }, { matchId: 'match-1', reconnected: true }), true);
+  assert.equal(shouldPreserveInteractionOnMatchStart({ matchId: 'match-1' }, { matchId: 'match-2', reconnected: true }), false);
+  assert.equal(shouldPreserveInteractionOnMatchStart({ matchId: 'match-1' }, { matchId: 'match-1' }), false);
+});
+
 test('memory reveal acknowledgements use the authoritative server sequence', () => {
   assert.equal(acknowledgedRevealSeq(3, 3), 3);
   assert.equal(acknowledgedRevealSeq(3, 4), 4);
   assert.equal(acknowledgedRevealSeq(3, undefined), 4);
+});
+
+test('an older memory resume cannot replace newer pair state', () => {
+  const state = freshInteraction('trial-1');
+  state.revealSeq = 3;
+  state.found.add(0);
+  state.pair = [4];
+  state.values.set(4, '◆');
+  const replay = nextInteractionState(state, { trialId: 'trial-1', resume: { revealSeq: 2, found: [], revealed: [] } });
+  assert.equal(replay.revealSeq, 3);
+  assert.deepEqual([...replay.found], [0]);
+  assert.deepEqual(replay.pair, [4]);
+  assert.equal(replay.values.get(4), '◆');
 });
 
 test('sequence-transform renders only the displayed terms, never the expected answer', () => {
@@ -68,6 +88,7 @@ test('odd-one-out keeps every field structurally equal and exposes all five visu
   for (let subtlety = 1; subtlety <= 5; subtlety += 1) {
     const html = renderOddOneOut({ tileCount: 16, oddIndex: 7, subtlety });
     assert.match(html, new RegExp(`data-cr-subtlety="${subtlety}"`));
+    assert.match(html, /Form /);
     assert.doesNotMatch(html, /oddIndex|odd-at|is-odd|abweichend/i);
     assert.equal((html.match(/class="challenge-rush-tile"/g) ?? []).length, 16);
   }

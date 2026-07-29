@@ -12,7 +12,7 @@ import {
   CHALLENGES, challengeOrder, challengePayload, createTrial, difficultyFor, isCurrentChallenge, isReadyForNext,
   isTrialChallenge, remainingUntil, scoreRepeatedTrials, seenBeforeSelection, validateTrialInput,
   scoreAimTrainer, scoreColorWord, scoreCps, scoreMemorySequence, scoreNumberSalad, scoreOddOneOut,
-  scoreReaction, scoreTiming10, scoreTrafficLight, scoreWhackAMole, winnerIdForScores,
+  scoreReaction, scoreTiming10, scoreTrafficLight, scoreWhackAMole, winnerIdForScores, previewTrialData,
   COLOR_WORD_ROUND_COUNT, MEMORY_SEQUENCE_LENGTH, WHACK_A_MOLE_SEQUENCE_LENGTH, AIM_TRAINER_TARGET_COUNT,
   type ChallengeKey, type ChallengePayload, type InternalTrial, type TrialPayload,
 } from './challengeRushLogic';
@@ -139,7 +139,7 @@ function publicTrial(progress: Progress, now = Date.now()): TrialPayload | null 
     trialId: trial.trialId, index: trial.index, difficulty: trial.difficulty, phase: trial.phase,
     phaseMs: trial.phaseMs, phaseRemainingMs: trial.phase === 'preview' ? Math.max(0, trial.phaseMs - elapsed) : 0,
     inputMs: trial.inputMs, inputRemainingMs: trial.phase === 'input' ? Math.max(0, trial.inputMs - elapsed) : trial.inputMs,
-    resume, data: trial.phase === 'preview' ? { ...trial.data } : inputTrialData(trial),
+    resume, data: trial.phase === 'preview' ? previewTrialData(trial) : inputTrialData(trial),
   };
 }
 
@@ -562,13 +562,13 @@ export function registerChallengeRushSockets(io: Server): void {
         const visibleTrial = publicTrial(p);
         if (!p.trial || !visibleTrial || payload.trialId !== p.trial.trialId) return ack?.({ ...progress(), ignored: true, reason: 'stale-trial', trial: visibleTrial });
         const now = Date.now();
-        if (now - p.lastInputAt < 30) return ack?.({ ...progress(), ignored: true, trial: visibleTrial });
-        p.lastInputAt = now;
         if (p.trial.phase === 'preview') return ack?.({ ok: false, error: 'Die Vorschau läuft noch.', progress: progressPayload(p), trial: visibleTrial });
         if (payload.action === 'timeout' || trialElapsed(p, now) >= p.trial.inputMs) {
           finishPlayerTrial(io, match, payload.playerId as string, p, { accepted: true, complete: true, correct: false, errors: 1, rawScore: 0, error: 'Zeit abgelaufen.' });
           return ack?.({ ok: true, accepted: true, timedOut: true, progress: progressPayload(p), trial: publicTrial(p) });
         }
+        if (now - p.lastInputAt < 30) return ack?.({ ...progress(), ignored: true, trial: visibleTrial });
+        p.lastInputAt = now;
         if (match.current.key === 'memory-pairs' && payload.action === 'reveal') {
           const cardIndex = payload.value;
           const board = p.trial.expected as string[];

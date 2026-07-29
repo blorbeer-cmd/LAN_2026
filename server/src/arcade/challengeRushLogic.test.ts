@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CHALLENGES, challengeOrder, challengePayload, createTrial, isCurrentChallenge, isReadyForNext, remainingUntil, safeScoreInput,
+  CHALLENGES, challengeOrder, challengePayload, createTrial, isCurrentChallenge, isReadyForNext, previewTrialData, remainingUntil, safeScoreInput,
   seenBeforeSelection,
   scoreAimTrainer, scoreColorWord, scoreCps, scoreMemorySequence, scoreNumberSalad, scoreOddOneOut,
   scoreReaction, scoreTiming10, scoreTrafficLight, scoreWhackAMole, winnerIdForScores,
@@ -24,7 +24,7 @@ test('trial IDs are opaque and independent from deterministic generator inputs',
 });
 test('scores stay in the normalized 0..100 range', () => {
   assert.equal(scoreReaction(120), 100); assert.equal(scoreReaction(99_999), 0);
-  assert.equal(scoreCps(20), 100); assert.equal(scoreCps(-1), 0);
+  assert.equal(scoreCps(20), 33); assert.equal(scoreCps(60), 100); assert.equal(scoreCps(-1), 0);
   assert.equal(scoreNumberSalad(8, 0, 2_000), 100); assert.equal(scoreNumberSalad(0, 99, 2_000), 0);
   assert.equal(scoreTiming10(10_000), 100); assert.equal(scoreTiming10(12_000), 0);
 });
@@ -52,6 +52,27 @@ test('score helpers normalize non-finite and extreme inputs', () => {
   assert.equal(scoreCps(Number.MAX_SAFE_INTEGER), 100);
   assert.equal(scoreNumberSalad(Number.MAX_SAFE_INTEGER, 0, 0), 100);
   assert.equal(winnerIdForScores([{ playerId: 'a', score: Number.NaN }, { playerId: 'b', score: 0 }]), null);
+});
+test('preview payloads contain only information intended for memorization', () => {
+  const delayed = previewTrialData(createTrial('delayed-recall', 1, 0, 2));
+  const missing = previewTrialData(createTrial('missing-item', 2, 0, 2));
+  const suitcase = previewTrialData(createTrial('suitcase-memory', 3, 0, 2));
+  assert.deepEqual(Object.keys(delayed).sort(), ['items', 'prompt', 'type']);
+  assert.deepEqual(Object.keys(missing).sort(), ['originalItems', 'type']);
+  assert.deepEqual(Object.keys(suitcase).sort(), ['items', 'type']);
+  assert.equal('options' in delayed, false);
+  assert.equal('options' in missing, false);
+  assert.equal('options' in suitcase, false);
+});
+test('clock-angle keeps exact half-degree answers', () => {
+  for (let seed = 0; seed < 400; seed += 1) {
+    const trial = createTrial('clock-angle', seed, 0, 1);
+    if (String(trial.data.prompt).includes(':15') || String(trial.data.prompt).includes(':45')) {
+      const [hour, minute] = [...String(trial.data.prompt).matchAll(/\d+/g)].map((match) => Number(match[0]));
+      const difference = Math.abs((hour % 12) * 30 + minute * 0.5 - minute * 6);
+      if (difference % 1 !== 0) assert.equal(trial.expected, String(Math.min(difference, 360 - difference)));
+    }
+  }
 });
 test('isReadyForNext requires every still-connected, non-forfeited player to confirm', () => {
   const entries = [
@@ -225,7 +246,7 @@ const REFERENCE_SOLUTIONS: Record<string, (trial: InternalTrial) => string> = {
   'clock-angle': (trial) => {
     const [hour, minute] = numbersIn(String(trial.data.prompt));
     const difference = Math.abs((hour % 12) * 30 + minute * 0.5 - minute * 6);
-    return String(Math.round(Math.min(difference, 360 - difference)));
+    return String(Math.min(difference, 360 - difference));
   },
   'binary-pattern': (trial) => { const bits = numbersIn(String(trial.data.prompt)); return String(1 - bits.at(-1)!); },
   'rule-switch': (trial) => {

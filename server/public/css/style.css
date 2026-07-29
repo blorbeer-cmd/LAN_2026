@@ -85,6 +85,7 @@
   --challenge-rush-number-min-width: 48px;
   --challenge-rush-number-grid-width: 360px;
   --challenge-rush-tile-grid-width: 360px;
+  --challenge-rush-trial-grid-max-width: 420px;
   --challenge-rush-traffic-light-size: 140px;
   --challenge-rush-color-dot-size: 16px;
   --notification-panel-width: 360px;
@@ -2351,12 +2352,12 @@ button.card {
 .challenge-rush-tile.is-odd { background: var(--accent-gradient); border-style: dashed; border-color: var(--accent-text); }
 .challenge-rush-tile:disabled { cursor: default; opacity: 0.7; }
 .challenge-rush-memory-grid,
-.challenge-rush-pairs-grid { display: grid; grid-template-columns: repeat(var(--cr-grid-columns, 3), minmax(0, 1fr)); gap: var(--space-2); width: min(100%, 420px); margin-inline: auto; }
+.challenge-rush-pairs-grid { display: grid; grid-template-columns: repeat(var(--cr-grid-columns, 3), minmax(0, 1fr)); gap: var(--space-2); width: min(100%, var(--challenge-rush-trial-grid-max-width)); margin-inline: auto; }
 .challenge-rush-memory-cell,
 .challenge-rush-memory-card { min-width: var(--tap-target-size); min-height: var(--tap-target-size); padding: var(--space-2); font-size: var(--font-size-lg); }
 .challenge-rush-memory-cell.is-selected,
 .challenge-rush-memory-card.is-selected { color: var(--accent-text); background: var(--accent-gradient); }
-.challenge-rush-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); width: min(100%, 420px); margin-inline: auto; }
+.challenge-rush-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); width: min(100%, var(--challenge-rush-trial-grid-max-width)); margin-inline: auto; }
 .challenge-rush-choice { min-height: var(--space-8); }
 .challenge-rush-logic-prompt { margin: 0; text-align: center; white-space: pre-line; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); }
 .challenge-rush-logic-matrix { display: grid; grid-template-columns: repeat(2, minmax(var(--space-8), 1fr)); gap: var(--space-2); width: min(100%, var(--challenge-rush-button-min-width)); text-align: center; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); }
