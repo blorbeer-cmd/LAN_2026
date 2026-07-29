@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 export type ChallengeKey =
   | 'reaction-circle' | 'cps' | 'number-salad' | 'timing-10'
@@ -213,7 +213,6 @@ function numericOptions(expected: number, random: () => number, offsets = [-1, 1
 function gridSequence(random: () => number, count: number, size: number): number[] {
   return shuffled(Array.from({ length: size * size }, (_, index) => index), random).slice(0, count);
 }
-function trialId(index: number, seed: number): string { return `${index}-${seed >>> 0}`; }
 function previewMs(difficulty: number): number { return Math.max(450, 1_000 - difficulty * 100); }
 export function inputWindowMs(key: ChallengeKey, difficulty: number): number {
   const level = Math.max(1, Math.min(5, difficulty));
@@ -229,7 +228,10 @@ function choiceTrial(key: ChallengeKey, id: string, index: number, difficulty: n
 export function createTrial(key: ChallengeKey, seed: number, index: number, difficulty: number, symbolHistory: string[] = []): InternalTrial {
   if (!isTrialChallenge(key)) throw new Error('Challenge verwendet keine Trials.');
   const random = seededRandom((seed ^ Math.imul(difficulty, 0x9e3779b9)) >>> 0);
-  const id = trialId(index, seed);
+  // The client uses this only as an opaque replay/stale-input token. Keeping
+  // it independent from the deterministic generator seed prevents clients
+  // from recreating `expected` or deriving later challenge seeds.
+  const id = randomUUID();
   const size = difficulty >= 4 ? 5 : difficulty >= 2 ? 4 : 3;
   if (key === 'number-sequence') {
     const start = 2 + Math.floor(random() * 8); const step = 1 + difficulty + Math.floor(random() * 3); const expected = start + step * 3;

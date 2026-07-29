@@ -14,6 +14,14 @@ test('same seed creates the same challenge data', () => {
   assert.deepEqual(challengePayload('number-salad', 123).data, challengePayload('number-salad', 123).data);
   assert.notDeepEqual(challengePayload('number-salad', 123).data, challengePayload('number-salad', 124).data);
 });
+test('trial IDs are opaque and independent from deterministic generator inputs', () => {
+  const first = createTrial('coin-change', 123_456_789, 0, 1);
+  const second = createTrial('coin-change', 123_456_789, 0, 1);
+  assert.notEqual(first.trialId, second.trialId);
+  assert.doesNotMatch(first.trialId, /123456789|^0-/);
+  assert.equal(first.expected, second.expected);
+  assert.deepEqual(first.data, second.data);
+});
 test('scores stay in the normalized 0..100 range', () => {
   assert.equal(scoreReaction(120), 100); assert.equal(scoreReaction(99_999), 0);
   assert.equal(scoreCps(20), 100); assert.equal(scoreCps(-1), 0);

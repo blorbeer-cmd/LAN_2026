@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  acknowledgedRevealSeq,
   freshInteraction,
   nextInteractionState,
   pairHideStillApplies,
@@ -39,11 +40,19 @@ test('a new trial resets local partial input', () => {
 
 test('pair hide guard rejects an obsolete timer after another reveal', () => {
   const state = freshInteraction('trial-1');
-  state.revealSeq = 2;
-  assert.equal(pairHideStillApplies(state, 'trial-1', 2), true);
-  state.revealSeq = 3;
-  assert.equal(pairHideStillApplies(state, 'trial-1', 2), false);
+  state.revealSeq = acknowledgedRevealSeq(1, 2);
+  const staleTimerSequence = state.revealSeq;
+  assert.equal(pairHideStillApplies(state, 'trial-1', staleTimerSequence), true);
+  const reconnected = nextInteractionState(state, { trialId: 'trial-1', resume: { revealSeq: 3 } });
+  assert.equal(reconnected.revealSeq, 3);
+  assert.equal(pairHideStillApplies(reconnected, 'trial-1', staleTimerSequence), false);
   assert.equal(pairHideStillApplies(state, 'trial-2', 3), false);
+});
+
+test('memory reveal acknowledgements use the authoritative server sequence', () => {
+  assert.equal(acknowledgedRevealSeq(3, 3), 3);
+  assert.equal(acknowledgedRevealSeq(3, 4), 4);
+  assert.equal(acknowledgedRevealSeq(3, undefined), 4);
 });
 
 test('sequence-transform renders only the displayed terms, never the expected answer', () => {
@@ -59,8 +68,7 @@ test('odd-one-out keeps every field structurally equal and exposes all five visu
   for (let subtlety = 1; subtlety <= 5; subtlety += 1) {
     const html = renderOddOneOut({ tileCount: 16, oddIndex: 7, subtlety });
     assert.match(html, new RegExp(`data-cr-subtlety="${subtlety}"`));
-    assert.match(html, /cr-odd-at-7/);
-    assert.doesNotMatch(html, /is-odd|abweichend/i);
+    assert.doesNotMatch(html, /oddIndex|odd-at|is-odd|abweichend/i);
     assert.equal((html.match(/class="challenge-rush-tile"/g) ?? []).length, 16);
   }
 });

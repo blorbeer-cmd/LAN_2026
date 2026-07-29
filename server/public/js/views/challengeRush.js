@@ -26,6 +26,7 @@ let memoryRevealDone = false; let memoryRevealIndex = -1; let trafficGreen = fal
 // silently swallowing further clicks as server-side duplicate-acks.
 let iCompleted = false;
 let revealTimers = [];
+let oddOneOutSheet = null;
 const myId = () => getMyId();
 const currentView = () => document.getElementById('view-container')?.dataset.view;
 const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
@@ -59,6 +60,27 @@ export function nextInteractionState(previous, trial) {
 }
 export function pairHideStillApplies(state, trialId, revealSeq) {
   return state.trialId === trialId && state.revealSeq === revealSeq;
+}
+export function acknowledgedRevealSeq(currentRevealSeq, serverRevealSeq) {
+  return Number.isSafeInteger(serverRevealSeq) && serverRevealSeq >= 0
+    ? serverRevealSeq
+    : Number(currentRevealSeq) + 1;
+}
+function clearOddOneOutPresentation() {
+  oddOneOutSheet?.replaceSync('');
+}
+function applyOddOneOutPresentation(container, oddIndex) {
+  const grid = container.querySelector('.challenge-rush-odd-grid');
+  const position = Number(oddIndex);
+  if (!grid || !Number.isInteger(position) || position < 0 || position >= grid.children.length) return;
+  if (!oddOneOutSheet) {
+    oddOneOutSheet = new CSSStyleSheet();
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, oddOneOutSheet];
+  }
+  // The selected index lives only in a constructed presentation stylesheet:
+  // no field or ancestor attribute, text node, or accessible name identifies
+  // the answer. Computed geometry remains available to visual browser tests.
+  oddOneOutSheet.replaceSync(`.challenge-rush-odd-grid > .challenge-rush-tile:nth-child(${position + 1}) { border-radius: var(--cr-odd-radius); background: color-mix(in srgb, var(--bg-elevated-2) 88%, var(--accent) 12%); }`);
 }
 function scheduleTrialPhase() {
   clearTrialTimer();
@@ -309,10 +331,9 @@ export function renderChallengeRushTrial(challenge, trial, playing = true) {
 }
 export function renderOddOneOut(data, playing = true) {
   const tileCount = data.tileCount ?? 16;
-  const oddPosition = playing ? Math.max(0, Math.min(tileCount - 1, Number(data.oddIndex))) : -1;
   const subtlety = Math.max(1, Math.min(5, Math.round(Number(data.subtlety)) || 1));
   const tiles = Array.from({ length: tileCount }, (_, index) => `<button type="button" class="challenge-rush-tile" data-cr-tile="${index}" ${playing ? '' : 'disabled'} aria-label="Feld ${index + 1}"></button>`).join('');
-  return `<div class="challenge-rush-tile-grid cr-odd-at-${oddPosition}" data-cr-subtlety="${subtlety}" style="grid-template-columns:repeat(4,minmax(0,1fr));">${tiles}</div>`;
+  return `<div class="challenge-rush-tile-grid challenge-rush-odd-grid" data-cr-subtlety="${subtlety}" style="grid-template-columns:repeat(4,minmax(0,1fr));">${tiles}</div>`;
 }
 function challengeView(container) {
   const challenge = match?.challenge;
@@ -420,6 +441,7 @@ function finalSummaryHtml(scores) {
 }
 export function renderChallengeRush(container, ctx) {
   ensureChallengeRushSocket();
+  clearOddOneOutPresentation();
   const scores = match?.scores ?? [];
   const body = match?.phase === 'ended'
     ? finalSummaryHtml(scores)
@@ -427,6 +449,9 @@ export function renderChallengeRush(container, ctx) {
       ? `${resultView()}${matchControlsHtml()}`
       : `${challengeView(container)}${matchControlsHtml()}<section class="card stack"><h2>Zwischenstand</h2><div class="challenge-rush-scoreboard">${scoreText(scores)}</div></section>`;
   container.innerHTML = `<div class="arcade-game-shell"><button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button><h1 class="view-title">Challenge Rush</h1><div class="arcade-toolbar">${arcadeMuteControlHtml()}</div>${body}</div>`;
+  if (match?.challenge?.key === 'odd-one-out' && match.phase === 'playing' && !match.paused && !iCompleted) {
+    applyOddOneOutPresentation(container, match.challenge.data?.oddIndex);
+  }
   wireArcadeMuteControl(container);
   container.querySelector('#cr-back')?.addEventListener('click', () => { clearTrialTimer(); currentTrial = null; match = null; navigate('arcade'); });
   container.querySelector('[data-navigate="arcade"]')?.addEventListener('click', () => navigate('arcade'));
@@ -509,7 +534,7 @@ export function renderChallengeRush(container, ctx) {
       const revealed = Array.isArray(result.revealedCards) ? result.revealedCards : [];
       revealed.forEach((card) => interaction.values.set(card.index, card.value));
       interaction.pair = revealed.map((card) => card.index);
-      interaction.revealSeq = Math.max(interaction.revealSeq + 1, Number(result.revealSeq ?? 0));
+      interaction.revealSeq = acknowledgedRevealSeq(interaction.revealSeq, result.revealSeq);
       const revealSeq = interaction.revealSeq;
       if (result.correct === true) {
         interaction.pair.forEach((entry) => interaction.found.add(entry));

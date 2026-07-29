@@ -151,7 +151,15 @@ async function playCurrentChallenge(page: Page): Promise<void> {
     return;
   }
   if (key === 'odd-one-out') {
-    const position = await page.locator('.challenge-rush-tile-grid[class*="cr-odd-at-"]').evaluate((node) => Number(Array.from(node.classList).find((name) => name.startsWith('cr-odd-at-'))?.slice('cr-odd-at-'.length)));
+    const position = await page.locator('.challenge-rush-odd-grid').evaluate((grid) => {
+      const signatures = Array.from(grid.children).map((node) => {
+        const style = getComputedStyle(node);
+        return [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomRightRadius, style.borderBottomLeftRadius].join('|');
+      });
+      const counts = new Map(signatures.map((signature) => [signature, signatures.filter((entry) => entry === signature).length]));
+      return signatures.findIndex((signature) => counts.get(signature) === 1);
+    });
+    assert.ok(position >= 0, 'Odd-One-Out muss über seine berechnete Form erkennbar sein.');
     await page.locator('.challenge-rush-tile').nth(position).click();
     return;
   }

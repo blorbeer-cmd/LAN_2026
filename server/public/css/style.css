@@ -2371,23 +2371,7 @@ button.card {
 .challenge-rush-tile-grid[data-cr-subtlety='3'] { --cr-odd-radius: 40% 10%; }
 .challenge-rush-tile-grid[data-cr-subtlety='4'] { --cr-odd-radius: 0; }
 .challenge-rush-tile-grid[data-cr-subtlety='5'] { --cr-odd-radius: 50% 0; }
-.challenge-rush-tile-grid[class*='cr-odd-at-'] > .challenge-rush-tile { transition: border-radius var(--motion-fast); }
-.challenge-rush-tile-grid.cr-odd-at-0 > :nth-child(1),
-.challenge-rush-tile-grid.cr-odd-at-1 > :nth-child(2),
-.challenge-rush-tile-grid.cr-odd-at-2 > :nth-child(3),
-.challenge-rush-tile-grid.cr-odd-at-3 > :nth-child(4),
-.challenge-rush-tile-grid.cr-odd-at-4 > :nth-child(5),
-.challenge-rush-tile-grid.cr-odd-at-5 > :nth-child(6),
-.challenge-rush-tile-grid.cr-odd-at-6 > :nth-child(7),
-.challenge-rush-tile-grid.cr-odd-at-7 > :nth-child(8),
-.challenge-rush-tile-grid.cr-odd-at-8 > :nth-child(9),
-.challenge-rush-tile-grid.cr-odd-at-9 > :nth-child(10),
-.challenge-rush-tile-grid.cr-odd-at-10 > :nth-child(11),
-.challenge-rush-tile-grid.cr-odd-at-11 > :nth-child(12),
-.challenge-rush-tile-grid.cr-odd-at-12 > :nth-child(13),
-.challenge-rush-tile-grid.cr-odd-at-13 > :nth-child(14),
-.challenge-rush-tile-grid.cr-odd-at-14 > :nth-child(15),
-.challenge-rush-tile-grid.cr-odd-at-15 > :nth-child(16) { border-radius: var(--cr-odd-radius); background: color-mix(in srgb, var(--bg-elevated-2) 88%, var(--accent) 12%); }
+.challenge-rush-odd-grid > .challenge-rush-tile { transition: border-radius var(--motion-fast); }
 .challenge-rush-traffic-light { width: var(--challenge-rush-traffic-light-size); height: var(--challenge-rush-traffic-light-size); margin-inline: auto; border: 0; border-radius: var(--radius-full); color: var(--accent-text); font-size: var(--font-size-lg); font-weight: var(--font-weight-black); cursor: pointer; }
 .challenge-rush-traffic-light.is-red { background: var(--danger); }
 .challenge-rush-traffic-light.is-green { background: var(--state-playing); }
