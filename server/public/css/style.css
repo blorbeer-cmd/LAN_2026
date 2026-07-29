@@ -1061,10 +1061,13 @@ select {
   text-align: left;
   cursor: pointer;
 }
-.search-select-option.is-active,
 .search-select-option[aria-selected='true'] {
   background: var(--accent-bg);
   color: var(--accent-text);
+}
+.search-select-option.is-active {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .search-select-empty {
   padding: var(--space-3);

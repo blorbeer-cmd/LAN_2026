@@ -1231,9 +1231,20 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
   await page.click('#tourn-game-search');
   await tournamentGameList.waitFor({ state: 'visible' });
   await page.keyboard.press('ArrowDown');
+  const activeTournamentGameId = await page.locator('#tourn-game-search').getAttribute('aria-activedescendant');
   assert.ok(
-    await page.locator('#tourn-game-search').getAttribute('aria-activedescendant'),
+    activeTournamentGameId,
     'arrow-key navigation should expose the active option to assistive technology',
+  );
+  assert.notEqual(
+    activeTournamentGameId,
+    await tournamentGameList.locator('[aria-selected="true"]').getAttribute('id'),
+    'arrow-key navigation should visibly distinguish the active option from the saved selection',
+  );
+  assert.equal(
+    await page.locator(`#${activeTournamentGameId}`).evaluate((element) => getComputedStyle(element).outlineStyle),
+    'solid',
+    'the active option should receive its own visible focus treatment',
   );
   await page.keyboard.press('Escape');
   await tournamentGameList.waitFor({ state: 'hidden' });
