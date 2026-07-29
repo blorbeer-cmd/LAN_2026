@@ -8,7 +8,7 @@ import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { arcadeTiming } from './timing';
-import { challengeOrder, challengePayload, createTrial, difficultyFor, isCurrentChallenge, isTrialChallenge, remainingUntil, scoreCps, scoreReaction, scoreRepeatedTrials, scoreTiming10, safeScoreInput, seenBeforeSelection, validateTrialInput, winnerIdForScores, type ChallengeKey, type InternalTrial, type TrialPayload } from './challengeRushLogic';
+import { challengeOrder, challengePayload, createTrial, difficultyFor, hidesPreviewTiming, isCurrentChallenge, isTrialChallenge, remainingUntil, scoreCps, scoreReaction, scoreRepeatedTrials, scoreTiming10, safeScoreInput, seenBeforeSelection, validateTrialInput, winnerIdForScores, type ChallengeKey, type InternalTrial, type TrialPayload } from './challengeRushLogic';
 
 const MAX_PLAYERS = 15;
 const DEFAULT_RECONNECT_GRACE_MS = 15_000;
@@ -22,7 +22,7 @@ interface Progress {
   startedAt: number; elapsedBeforePause: number; lastInputAt: number;
   rawScore: number; trials: number; streak: number; trialIndex: number; partialHits: number;
   trial: InternalTrial | null; trialStartedAt: number; trialElapsedBeforePause: number;
-  seenSymbols: Set<string>; symbolHistory: string[];
+  seenSymbols: string[]; symbolHistory: string[]; phaseTimer: NodeJS.Timeout | null;
 }
 interface Match {
   id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[]; socketIds: Map<string, string>;
@@ -78,7 +78,7 @@ function trialElapsed(progress: Progress, now = Date.now()): number {
 }
 
 function freshProgress(): Progress {
-  return { clicks: 0, errors: 0, correct: 0, completed: false, score: 0, startedAt: 0, elapsedBeforePause: 0, lastInputAt: 0, rawScore: 0, trials: 0, streak: 0, trialIndex: 0, partialHits: 0, trial: null, trialStartedAt: 0, trialElapsedBeforePause: 0, seenSymbols: new Set(), symbolHistory: [] };
+  return { clicks: 0, errors: 0, correct: 0, completed: false, score: 0, startedAt: 0, elapsedBeforePause: 0, lastInputAt: 0, rawScore: 0, trials: 0, streak: 0, trialIndex: 0, partialHits: 0, trial: null, trialStartedAt: 0, trialElapsedBeforePause: 0, seenSymbols: [], symbolHistory: [], phaseTimer: null };
 }
 
 function stablePlayerSeed(playerId: string): number {
@@ -96,10 +96,8 @@ function createMatchTrial(match: Match, progress: Progress, playerId: string): I
   if (isTrialChallenge(key)) {
     const trial = createTrial(key, seed, progress.trialIndex, difficulty, progress.symbolHistory);
     if (key === 'seen-before') {
-      const seen = [...progress.seenSymbols];
-      const selection = seenBeforeSelection(String(trial.data.symbol ?? ''), Boolean(trial.expected), seen, progress.trialIndex);
-      const { symbol, repeated } = selection;
-      trial.data.symbol = symbol; trial.expected = repeated; progress.seenSymbols.add(symbol);
+      const selection = seenBeforeSelection(String(trial.data.symbol ?? ''), Boolean(trial.expected), progress.seenSymbols, progress.trialIndex);
+      trial.data.symbol = selection.symbol; trial.expected = selection.repeated; progress.seenSymbols = selection.seenSymbols;
     }
     if (key === 'n-back') progress.symbolHistory.push(String(trial.data.symbol ?? ''));
     return trial;
@@ -123,10 +121,12 @@ export function inputTrialData(data: Record<string, unknown>): Record<string, un
   return data;
 }
 
-function trialPayload(progress: Progress): TrialPayload | null {
+function trialPayload(progress: Progress, key: ChallengeKey): TrialPayload | null {
   if (!progress.trial) return null;
   const elapsed = trialElapsed(progress);
-  if (progress.trial.phase === 'preview' && elapsed >= progress.trial.phaseMs) progress.trial.phase = 'input';
+  // Hidden-timing challenges only leave the preview through the server push, so polling
+  // `challenge-rush:trial:get` cannot reveal the switch a moment before it is announced.
+  if (progress.trial.phase === 'preview' && elapsed >= progress.trial.phaseMs && !hidesPreviewTiming(key)) progress.trial.phase = 'input';
   const { expected: _expected, state, ...payload } = progress.trial;
   const phase = progress.trial.phase;
   const publicData = phase === 'input' ? inputTrialData(payload.data) : payload.data;
@@ -145,25 +145,51 @@ function trialPayload(progress: Progress): TrialPayload | null {
     resume.revealed = revealed;
     resume.revealedCards = revealed.map((index) => ({ index, value: board[index] }));
   }
-  const phaseRemainingMs = phase === 'preview'
-    ? Math.max(0, payload.phaseMs - elapsed)
-    : 0;
   const inputRemainingMs = phase === 'input' && typeof payload.inputMs === 'number'
     ? Math.max(0, payload.inputMs - Math.max(0, elapsed - payload.phaseMs))
     : undefined;
+  if (hidesPreviewTiming(key)) {
+    const { phaseMs: _phaseMs, ...timingFree } = payload;
+    return { ...timingFree, phase, data, inputRemainingMs, resume };
+  }
+  const phaseRemainingMs = phase === 'preview'
+    ? Math.max(0, payload.phaseMs - elapsed)
+    : 0;
   return { ...payload, phase, data, phaseRemainingMs, inputRemainingMs, resume };
 }
 
 function emitTrial(io: Server, match: Match, playerId: string, target?: Socket): void {
-  const payload = trialPayload(match.progress.get(playerId)!);
+  const payload = trialPayload(match.progress.get(playerId)!, match.current.key);
   if (!payload) return;
   const socket = target ?? io.sockets.sockets.get(match.socketIds.get(playerId) ?? '');
   if (socket && canUseLobby(socket, match)) socket.emit('challenge-rush:trial', { matchId: match.id, challengeIndex: match.index, trial: payload });
 }
 
+function clearPhaseTimer(progress: Progress): void {
+  if (progress.phaseTimer) clearTimeout(progress.phaseTimer);
+  progress.phaseTimer = null;
+}
+
+// Challenges that hide their preview length cannot let the client poll for the switch, so the
+// server pushes the input phase itself once the remaining preview time has elapsed.
+function armPhaseTimer(io: Server, match: Match, progress: Progress, playerId: string): void {
+  clearPhaseTimer(progress);
+  const trial = progress.trial;
+  if (!trial || trial.phase !== 'preview' || !hidesPreviewTiming(match.current.key)) return;
+  const timer = setTimeout(() => {
+    progress.phaseTimer = null;
+    if (matches.get(match.id) !== match || match.phase !== 'playing' || match.paused || progress.trial !== trial || progress.completed) return;
+    trial.phase = 'input';
+    emitTrial(io, match, playerId);
+  }, Math.max(0, trial.phaseMs - trialElapsed(progress)));
+  timer.unref();
+  progress.phaseTimer = timer;
+}
+
 function startPlayerTrial(io: Server, match: Match, progress: Progress, playerId: string): void {
   progress.trial = createMatchTrial(match, progress, playerId); progress.trialStartedAt = Date.now(); progress.trialElapsedBeforePause = 0;
   emitTrial(io, match, playerId);
+  armPhaseTimer(io, match, progress, playerId);
 }
 
 function finishPlayerTrial(io: Server, match: Match, progress: Progress, playerId: string, rawScore: number, correct: boolean, errors = 0): void {
@@ -196,6 +222,7 @@ function pauseMatch(match: Match): void {
     for (const progress of match.progress.values()) {
       if (!progress.completed && progress.startedAt > 0) { progress.elapsedBeforePause += now - progress.startedAt; progress.startedAt = 0; }
       if (!progress.completed && progress.trialStartedAt > 0) { progress.trialElapsedBeforePause += now - progress.trialStartedAt; progress.trialStartedAt = 0; }
+      clearPhaseTimer(progress);
     }
   }
   match.pausedRemainingMs = match.deadlineAt === null ? null : Math.max(0, match.deadlineAt - Date.now());
@@ -210,7 +237,7 @@ function resumeMatch(io: Server, match: Match): void {
   match.pausedRemainingMs = null;
   if (match.phase === 'playing') for (const progress of match.progress.values()) if (!progress.completed) { progress.startedAt = Date.now(); if (progress.trial) progress.trialStartedAt = Date.now(); }
   if (match.phase === 'countdown') schedule(match, remaining, () => beginChallenge(io, match));
-  else if (match.phase === 'playing') { for (const player of match.players) emitTrial(io, match, player.id); schedule(match, remaining, () => finishChallenge(io, match)); }
+  else if (match.phase === 'playing') { for (const player of match.players) { emitTrial(io, match, player.id); const progress = match.progress.get(player.id); if (progress) armPhaseTimer(io, match, progress, player.id); } schedule(match, remaining, () => finishChallenge(io, match)); }
   else if (match.phase === 'result') schedule(match, remaining, () => nextChallenge(io, match));
 }
 
@@ -233,7 +260,7 @@ function beginChallenge(io: Server, match: Match): void {
   if (match.phase !== 'countdown' || match.paused) return;
   match.phase = 'playing';
   const now = Date.now();
-  for (const [playerId, progress] of match.progress) { progress.startedAt = now; progress.elapsedBeforePause = 0; progress.trialIndex = 0; progress.streak = 0; progress.rawScore = 0; progress.trials = 0; progress.correct = 0; progress.errors = 0; progress.partialHits = 0; progress.trial = null; progress.seenSymbols.clear(); progress.symbolHistory = []; startPlayerTrial(io, match, progress, playerId); }
+  for (const [playerId, progress] of match.progress) { progress.startedAt = now; progress.elapsedBeforePause = 0; progress.trialIndex = 0; progress.streak = 0; progress.rawScore = 0; progress.trials = 0; progress.correct = 0; progress.errors = 0; progress.partialHits = 0; progress.trial = null; progress.seenSymbols = []; progress.symbolHistory = []; startPlayerTrial(io, match, progress, playerId); }
   schedule(match, match.current.durationMs, () => finishChallenge(io, match));
   emitState(io, match);
 }
@@ -244,6 +271,7 @@ function finishChallenge(io: Server, match: Match): void {
   clearTimer(match);
   for (const player of match.players) {
     const progress = match.progress.get(player.id)!;
+    clearPhaseTimer(progress);
     if (!progress.completed) { progress.score = challengeScore(progress, match.current.key, match.current.durationMs); progress.completed = true; }
     match.scores.set(player.id, (match.scores.get(player.id) ?? 0) + progress.score);
   }
@@ -274,6 +302,7 @@ function cleanupMatch(io: Server, match: Match): void {
 function finishMatch(io: Server, match: Match, reason = 'completed'): void {
   if (match.phase === 'ended') return;
   match.phase = 'ended'; clearTimer(match);
+  for (const progress of match.progress.values()) clearPhaseTimer(progress);
   const scores = scorePayload(match);
   const winnerId = reason === 'completed' ? winnerIdForScores(scores.filter((score) => !score.forfeited)) : null;
   endArcadeSession(real(match.players), 'challenge-rush', match);
@@ -337,7 +366,7 @@ export function registerChallengeRushSockets(io: Server): void {
     socket.on('challenge-rush:challenge:input', (payload: { matchId?: string; playerId?: string; challengeIndex?: number; trialId?: string; action?: string; value?: unknown }, ack?: (r: unknown) => void) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null; const p = match && payload.playerId ? match.progress.get(payload.playerId) : null;
       if (!match || match.phase !== 'playing' || match.paused || !p || !owns(socket, payload.playerId) || match.socketIds.get(payload.playerId!) !== socket.id || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Eingabe nicht möglich.' });
-      const progress = () => ({ ok: true, progress: progressPayload(p), trial: trialPayload(p) });
+      const progress = () => ({ ok: true, progress: progressPayload(p), trial: trialPayload(p, match.current.key) });
       if (!isCurrentChallenge(payload.challengeIndex ?? -1, match.index)) return ack?.({ ...progress(), ignored: true, reason: 'stale-challenge' });
       if (p.trial && (typeof payload.trialId !== 'string' || payload.trialId !== p.trial.trialId)) return ack?.({ ...progress(), ignored: true, reason: 'stale-trial' });
       const now = Date.now(); if (p.completed) return ack?.({ ...progress(), duplicate: true }); if (now - p.lastInputAt < 30) return ack?.({ ...progress(), ignored: true }); p.lastInputAt = now;

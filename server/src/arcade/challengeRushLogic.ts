@@ -61,7 +61,9 @@ export interface TrialPayload {
   index: number;
   difficulty: number;
   phase: TrialPhase;
-  phaseMs: number;
+  // Omitted for challenges whose whole task is the phase change itself; the server pushes the
+  // switch instead of announcing when it happens.
+  phaseMs?: number;
   phaseRemainingMs?: number;
   inputMs?: number;
   inputRemainingMs?: number;
@@ -127,13 +129,24 @@ export function challengePayload(key: ChallengeKey, seed: number): ChallengePayl
 }
 
 export const CHALLENGE_SYMBOLS = ['◆', '●', '▲', '■', '★', '⬟', '✚', '☀', '☘', '⬢'] as const;
-export function seenBeforeSelection(baseSymbol: string, wantsRepeat: boolean, seenSymbols: string[], index: number): { symbol: string; repeated: boolean } {
-  const unused = CHALLENGE_SYMBOLS.filter((symbol) => !seenSymbols.includes(symbol));
-  const repeated = (wantsRepeat && seenSymbols.length > 0) || unused.length === 0;
-  return {
-    symbol: repeated ? seenSymbols[index % seenSymbols.length] : (unused[index % unused.length] ?? baseSymbol),
-    repeated,
-  };
+// „Schon gesehen?" consumes one new symbol per non-repeat trial, so its pool has to outlast a
+// full 30-second round. The smaller shared set stays in use where a wider alphabet would only
+// make the task noisier (n-back, memory pairs).
+export const SEEN_BEFORE_SYMBOLS = [
+  ...CHALLENGE_SYMBOLS,
+  '▼', '◀', '▶', '♠', '♥', '♦', '♣', '❄', '☾', '✿', '⌂', '⚑', '✎', '☯', '☂', '⚓', '✈', '☎', '♫', '✂',
+] as const;
+export function seenBeforeSelection(baseSymbol: string, wantsRepeat: boolean, seenSymbols: string[], index: number): { symbol: string; repeated: boolean; seenSymbols: string[] } {
+  const unused = SEEN_BEFORE_SYMBOLS.filter((symbol) => !seenSymbols.includes(symbol));
+  if (unused.length === 0) {
+    // Pool exhausted: start a fresh generation instead of answering „Ja" for the rest of the
+    // round, which would turn constant „Ja" into a guaranteed perfect score.
+    const symbol = SEEN_BEFORE_SYMBOLS[index % SEEN_BEFORE_SYMBOLS.length] ?? baseSymbol;
+    return { symbol, repeated: false, seenSymbols: [symbol] };
+  }
+  const repeated = wantsRepeat && seenSymbols.length > 0;
+  const symbol = repeated ? seenSymbols[index % seenSymbols.length] : unused[index % unused.length];
+  return { symbol, repeated, seenSymbols: repeated ? seenSymbols : [...seenSymbols, symbol] };
 }
 const ITEMS = ['Schlüssel', 'Becher', 'Würfel', 'Lampe', 'Karte', 'Stern', 'Brille', 'Uhr', 'Ball', 'Pfeil', 'Ring', 'Buch'];
 const COLOR_WORDS = [
@@ -147,9 +160,13 @@ const SCRAMBLE_WORDS = ['KARTE', 'LAMPE', 'STERN', 'BRILLE', 'WÜRFEL', 'KAMERA'
 const DIRECTIONS = ['Norden', 'Osten', 'Süden', 'Westen'];
 
 export interface InternalTrial extends TrialPayload {
+  phaseMs: number;
   expected: unknown;
   state: Record<string, unknown>;
 }
+
+// Challenges whose preview end is the answer itself: the client must never learn the switch time.
+export function hidesPreviewTiming(key: ChallengeKey): boolean { return key === 'traffic-light'; }
 
 function trialId(index: number, seed: number): string { return `${index}-${seed >>> 0}`; }
 function phaseMs(_key: ChallengeKey, difficulty: number): number { return Math.max(450, 1_000 - difficulty * 100); }
@@ -279,7 +296,8 @@ export function createTrial(key: ChallengeKey, seed: number, index: number, diff
     return choiceTrial(key, id, index, difficulty, { type: 'matrix-choice', matrix: [[a, b], [c, null]], prompt: `${a}  ${b}\n${c}  ?`, options: numericOptions(expected, random) }, String(expected));
   }
   if (key === 'coin-change') {
-    const amount = 8 + Math.floor(random() * 18); const expected = Math.floor(amount / 5) + Math.floor((amount % 5) / 2) + amount % 2;
+    // Greedy is optimal for 1/2/5; every remainder has to come from the previous step.
+    const amount = 8 + Math.floor(random() * 18); const expected = Math.floor(amount / 5) + Math.floor((amount % 5) / 2) + (amount % 5) % 2;
     return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Wie viele Münzen brauchst du mindestens für ${amount} € (1 €, 2 €, 5 €)?`, options: numericOptions(expected, random) }, String(expected));
   }
   if (key === 'letter-order') {
@@ -291,8 +309,12 @@ export function createTrial(key: ChallengeKey, seed: number, index: number, diff
     return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Wie hoch ist die Ziffernsumme von ${number}?`, options: numericOptions(expected, random) }, String(expected));
   }
   if (key === 'sequence-transform') {
-    const start = 2 + Math.floor(random() * 5); const expected = (start * 2 + 1) * 2 + 1;
-    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `${start} → ${start * 2 + 1} → ${(start * 2 + 1) * 2 + 1} → ?`, options: numericOptions(expected, random, [-1, 2, 4, -2]) }, String(expected));
+    // Prompt and answer come from the same series so the asked term can never be a visible one.
+    const start = 2 + Math.floor(random() * 5);
+    const terms = [start];
+    while (terms.length < 4) terms.push(terms[terms.length - 1] * 2 + 1);
+    const expected = terms[terms.length - 1];
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `${terms.slice(0, -1).join(' → ')} → ?`, options: numericOptions(expected, random, [-1, 2, 4, -2]) }, String(expected));
   }
   if (key === 'sequence-echo' || key === 'reverse-echo') {
     const length = Math.min(9, 2 + difficulty + Math.floor(index / 4));

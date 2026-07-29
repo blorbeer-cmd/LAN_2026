@@ -335,3 +335,41 @@ test('Challenge Rush host can abort a running match', async () => {
     socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
   }
 });
+
+type TrialEvent = { challengeIndex: number; trial: { trialId: string; phase: string; phaseMs?: number; phaseRemainingMs?: number; inputRemainingMs?: number; data: Record<string, unknown> } };
+
+function nextTrial(socket: ClientSocket, predicate: (payload: TrialEvent) => boolean): Promise<TrialEvent> {
+  return new Promise((resolve) => {
+    const onTrial = (payload: TrialEvent) => { if (predicate(payload)) resolve(payload); else socket.once('challenge-rush:trial', onTrial); };
+    socket.once('challenge-rush:trial', onTrial);
+  });
+}
+
+test('Challenge Rush hides the traffic-light switch time and pushes the green phase itself', async () => {
+  clearLobbyMemberships();
+  const server = await makeServer();
+  const socket = await connect(server.baseUrl);
+  try {
+    const playerId = await player(server.baseUrl, 'Challenge Rush Traffic Timing');
+    const created = await emitAck(socket, 'challenge-rush:lobby:create', { playerId });
+    const started = nextEvent<{ matchId: string }>(socket, 'challenge-rush:match:start');
+    const previewEvent = nextTrial(socket, (payload) => payload.trial.phase === 'preview');
+    await startMatchWithFirst(socket, created.lobbyId, playerId, 'traffic-light');
+    const [match, preview] = await Promise.all([started, previewEvent]);
+    assert.equal(preview.trial.phase, 'preview');
+    assert.equal('phaseMs' in preview.trial, false);
+    assert.equal(preview.trial.phaseRemainingMs, undefined);
+    assert.equal(preview.trial.inputRemainingMs, undefined);
+    assert.deepEqual(Object.values(preview.trial.data).filter((value) => typeof value === 'number'), []);
+
+    const green = nextTrial(socket, (payload) => payload.trial.phase === 'input');
+    const polled = await emitAck(socket, 'challenge-rush:trial:get', { matchId: match.matchId, playerId, challengeIndex: preview.challengeIndex });
+    assert.equal(polled.ok, true);
+    const input = await green;
+    assert.equal(input.trial.trialId, preview.trial.trialId);
+    assert.equal('phaseMs' in input.trial, false);
+    assert.equal(typeof input.trial.inputRemainingMs, 'number');
+  } finally {
+    socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
+  }
+});

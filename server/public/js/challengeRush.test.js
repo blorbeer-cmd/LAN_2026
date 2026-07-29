@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderChallengeRushTrial } from './views/challengeRush.js';
+import { freshInteraction, nextInteractionState, pairHideStillApplies, renderChallengeRushTrial } from './views/challengeRush.js';
 
 const challenge = (key) => ({ key, title: key, description: '', durationMs: 30_000 });
 const trial = (data, phase = 'input') => ({ trialId: 'fixture', index: 0, difficulty: 1, phase, phaseMs: phase === 'preview' ? 500 : 0, data });
@@ -54,4 +54,33 @@ test('matrix-missing renders a structured two-by-two grid', () => {
   assert.match(html, /role="grid"/);
   assert.match(html, /Gesuchte Zahl/);
   assert.match(html, />\?</);
+});
+
+test('odd-one-out carries a shape cue level so the target is not color-only', () => {
+  const subtle = renderChallengeRushTrial(challenge('odd-one-out'), trial({ type: 'odd-one-out', tileCount: 16, size: 4, oddIndex: 7, subtlety: 4 }));
+  assert.match(subtle, /data-cr-subtlety="4"/);
+  const fallback = renderChallengeRushTrial(challenge('odd-one-out'), trial({ type: 'odd-one-out', tileCount: 9, size: 3, oddIndex: 1, subtlety: 99 }));
+  assert.match(fallback, /data-cr-subtlety="5"/);
+  const missing = renderChallengeRushTrial(challenge('odd-one-out'), trial({ type: 'odd-one-out', tileCount: 9, size: 3, oddIndex: 1 }));
+  assert.match(missing, /data-cr-subtlety="1"/);
+});
+
+test('a repeated event for the running trial keeps partial input, a new trial resets it', () => {
+  const running = freshInteraction('trial-1');
+  running.sequence.push(2, 5);
+  running.cells.push(4);
+  assert.equal(nextInteractionState(running, { trialId: 'trial-1' }), running);
+  const next = nextInteractionState(running, { trialId: 'trial-2', resume: { correct: 3 } });
+  assert.deepEqual(next.sequence, []);
+  assert.deepEqual(next.cells, []);
+  assert.equal(next.whackHits, 3);
+});
+
+test('the mismatched-pair hide timer only applies to the reveal it was started for', () => {
+  const state = freshInteraction('trial-1');
+  state.revealSeq = 1;
+  assert.equal(pairHideStillApplies(state, 'trial-1', 1), true);
+  state.revealSeq = 2;
+  assert.equal(pairHideStillApplies(state, 'trial-1', 1), false);
+  assert.equal(pairHideStillApplies(state, 'trial-9', 2), false);
 });

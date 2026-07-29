@@ -2246,7 +2246,11 @@ button.card {
 .challenge-rush-memory-card { min-width: var(--tap-target-size); min-height: var(--tap-target-size); padding: var(--space-2); font-size: var(--font-size-lg); }
 .challenge-rush-memory-cell.is-selected,
 .challenge-rush-memory-card.is-selected { color: var(--accent-text); background: var(--accent-gradient); }
-.challenge-rush-memory-cell.is-odd { background: color-mix(in srgb, var(--bg-elevated-2) 88%, var(--accent) 12%); }
+/* The odd tile carries a shape difference next to its tint, so it never depends on color alone;
+   the server-side subtlety level only decides how pronounced that shape difference is. */
+.challenge-rush-memory-cell.is-odd { border-radius: var(--cr-odd-radius, var(--radius)); background: color-mix(in srgb, var(--bg-elevated-2) 88%, var(--accent) 12%); }
+.challenge-rush-memory-grid[data-cr-subtlety="1"] { --cr-odd-radius: var(--radius-full); }
+.challenge-rush-memory-grid[data-cr-subtlety="2"] { --cr-odd-radius: var(--radius-lg); }
 .challenge-rush-memory-grid.is-preview .challenge-rush-memory-cell { cursor: default; }
 .challenge-rush-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); width: min(100%, 420px); margin-inline: auto; }
 .challenge-rush-choice { min-height: var(--space-8); }

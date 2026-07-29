@@ -5,24 +5,34 @@ import { showToast } from '../toast.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 
 let socket = null; let lobbies = []; let match = null; let latestResult = null; let rerender = null; let currentTrial = null; let numberOrder = 1; let cpsClicks = 0;
-let interaction = { trialId: null, sequence: [], cells: [], pair: [], found: new Set(), values: new Map(), whackHits: 0 };
+let interaction = freshInteraction(null);
 const COLOR_WORD_LABELS = { red: 'Rot', blue: 'Blau', green: 'Grün', yellow: 'Gelb' };
 const COLOR_WORD_VARS = { red: 'var(--danger)', blue: 'var(--accent)', green: 'var(--state-playing)', yellow: 'var(--state-paused)' };
 const myId = () => getMyId();
 function navigate(view) { window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view })); }
 function emit(event, payload) { return new Promise((resolve) => socket?.emit(event, payload, resolve)); }
 function refresh() { rerender?.(); }
-function resetInteraction(trialId, resume = {}) {
-  const sequence = [];
+export function freshInteraction(trialId, resume = {}) {
   const found = new Set(Array.isArray(resume.found) ? resume.found : []);
   const pair = Array.isArray(resume.revealed) ? [...resume.revealed] : [];
   const values = new Map([...(Array.isArray(resume.foundCards) ? resume.foundCards : []), ...(Array.isArray(resume.revealedCards) ? resume.revealedCards : [])].map((card) => [card.index, card.value]));
-  interaction = { trialId, sequence, cells: [], pair, found, values, whackHits: Number(resume.correct) || 0 };
+  return { trialId, sequence: [], cells: [], pair, found, values, whackHits: Number(resume.correct) || 0, revealSeq: 0 };
+}
+// Pause, resume and reconnect re-send the running trial. Partial input of sequence and matrix
+// trials only lives on the client, so it must survive a repeated event for the same trial.
+export function nextInteractionState(previous, trial) {
+  return previous.trialId === trial?.trialId ? previous : freshInteraction(trial?.trialId, trial?.resume);
+}
+// The 650 ms hide timer of a mismatched pair must not wipe a card revealed in the meantime.
+export function pairHideStillApplies(state, trialId, revealSeq) {
+  return state.trialId === trialId && state.revealSeq === revealSeq;
 }
 function phaseTimer() {
   if (!currentTrial || match?.paused) return;
   const trialId = currentTrial.trialId;
   if (currentTrial.phase === 'preview') {
+    // Challenges whose preview length stays secret are switched by a server push instead.
+    if (typeof currentTrial.phaseRemainingMs !== 'number' && typeof currentTrial.phaseMs !== 'number') return;
     const delay = Number(currentTrial.phaseRemainingMs ?? currentTrial.phaseMs ?? 0);
     window.setTimeout(() => {
       if (currentTrial?.trialId !== trialId || currentTrial?.phase !== 'preview' || match?.paused) return;
@@ -44,7 +54,7 @@ export function ensureChallengeRushSocket() {
   socket.on('challenge-rush:match:start', (payload) => { match = { ...payload }; currentTrial = null; latestResult = null; numberOrder = 1; cpsClicks = 0; navigate('challengeRush'); });
   socket.on('challenge-rush:match:state', (payload) => { const previousIndex = match?.challengeIndex; match = { ...match, ...payload }; if (payload.challengeIndex !== previousIndex) { numberOrder = 1; cpsClicks = 0; } refresh(); });
   socket.on('challenge-rush:state', (payload) => { const previousIndex = match?.challengeIndex; match = { ...match, ...payload }; if (payload.challengeIndex !== previousIndex) { numberOrder = 1; cpsClicks = 0; } if (payload.phase !== 'playing') currentTrial = null; if (currentTrial && payload.paused === false) phaseTimer(); refresh(); });
-  socket.on('challenge-rush:trial', (payload) => { if (!match || payload?.matchId !== match.matchId || payload.challengeIndex !== match.challengeIndex) return; currentTrial = payload.trial; numberOrder = Number(currentTrial?.resume?.nextNumber ?? 1); resetInteraction(currentTrial?.trialId, currentTrial?.resume); phaseTimer(); refresh(); });
+  socket.on('challenge-rush:trial', (payload) => { if (!match || payload?.matchId !== match.matchId || payload.challengeIndex !== match.challengeIndex) return; currentTrial = payload.trial; numberOrder = Number(currentTrial?.resume?.nextNumber ?? 1); interaction = nextInteractionState(interaction, currentTrial); phaseTimer(); refresh(); });
   socket.on('challenge-rush:challenge:end', (payload) => { latestResult = payload; currentTrial = null; refresh(); });
   socket.on('challenge-rush:match:end', (payload) => { latestResult = payload; currentTrial = null; match = { ...match, phase: 'ended', scores: payload.scores, draw: payload.draw === true }; refresh(); });
   socket.on('disconnect', () => { if (match) match = { ...match, disconnected: true }; refresh(); });
@@ -110,7 +120,9 @@ function aimBody(trial, playing) {
 }
 function oddOneOutBody(trial, playing) {
   const tileCount = Number(trial.data.tileCount) || 9; const size = Number(trial.data.size) || Math.sqrt(tileCount);
-  return `<div class="challenge-rush-memory-grid" style="--cr-grid-columns:${size}">${Array.from({ length: tileCount }, (_, index) => `<button type="button" class="btn challenge-rush-memory-cell${index === Number(trial.data.oddIndex) ? ' is-odd' : ''}" data-cr-odd="${index}" aria-label="Feld ${index + 1}" ${playing ? '' : 'disabled'}></button>`).join('')}</div><p class="muted">Finde das abweichende Feld.</p>`;
+  // The odd tile also differs in shape, so it stays findable without color perception.
+  const subtlety = Math.max(1, Math.min(5, Math.round(Number(trial.data.subtlety)) || 1));
+  return `<div class="challenge-rush-memory-grid" style="--cr-grid-columns:${size}" data-cr-subtlety="${subtlety}">${Array.from({ length: tileCount }, (_, index) => `<button type="button" class="btn challenge-rush-memory-cell${index === Number(trial.data.oddIndex) ? ' is-odd' : ''}" data-cr-odd="${index}" aria-label="Feld ${index + 1}" ${playing ? '' : 'disabled'}></button>`).join('')}</div><p class="muted">Finde das abweichende Feld.</p>`;
 }
 function whackBody(trial, playing) {
   const sequence = Array.isArray(trial.data.sequence) ? trial.data.sequence : []; const size = Number(trial.data.size) || 3; const expectedLength = Number(trial.data.sequenceLength ?? sequence.length);
@@ -194,5 +206,5 @@ export function renderChallengeRush(container, ctx) { ensureChallengeRushSocket(
   container.querySelectorAll('[data-cr-color]').forEach((button) => button.addEventListener('click', () => send('answer', button.dataset.crColor)));
   container.querySelectorAll('[data-cr-choice]').forEach((button) => button.addEventListener('click', () => send('choice', button.dataset.crChoice)));
   container.querySelectorAll('[data-cr-bool]').forEach((button) => button.addEventListener('click', () => send('choice', button.dataset.crBool === 'true')));
-  container.querySelectorAll('[data-cr-pair-card]').forEach((button) => button.addEventListener('click', () => { const value = Number(button.dataset.crPairCard); if (interaction.found.has(value) || interaction.pair.includes(value)) return; const trialId = currentTrial?.trialId; send('reveal', value, (result) => { if (result.trial?.trialId !== trialId) return; const revealed = Array.isArray(result.revealedCards) ? result.revealedCards : []; revealed.forEach((card) => interaction.values.set(card.index, card.value)); interaction.pair = revealed.map((card) => card.index); if (result.correct === true) { interaction.pair.forEach((entry) => interaction.found.add(entry)); interaction.pair = []; refresh(); return; } if (result.correct === false) { refresh(); window.setTimeout(() => { if (currentTrial?.trialId !== trialId) return; for (const card of revealed) if (!interaction.found.has(card.index)) interaction.values.delete(card.index); interaction.pair = []; refresh(); }, 650); return; } refresh(); }); }));
+  container.querySelectorAll('[data-cr-pair-card]').forEach((button) => button.addEventListener('click', () => { const value = Number(button.dataset.crPairCard); if (interaction.found.has(value) || interaction.pair.includes(value)) return; const trialId = currentTrial?.trialId; send('reveal', value, (result) => { if (result.trial?.trialId !== trialId) return; const revealed = Array.isArray(result.revealedCards) ? result.revealedCards : []; revealed.forEach((card) => interaction.values.set(card.index, card.value)); interaction.pair = revealed.map((card) => card.index); interaction.revealSeq += 1; const revealSeq = interaction.revealSeq; if (result.correct === true) { interaction.pair.forEach((entry) => interaction.found.add(entry)); interaction.pair = []; refresh(); return; } if (result.correct === false) { refresh(); window.setTimeout(() => { if (currentTrial?.trialId !== trialId || !pairHideStillApplies(interaction, trialId, revealSeq)) return; for (const card of revealed) if (!interaction.found.has(card.index)) interaction.values.delete(card.index); interaction.pair = []; refresh(); }, 650); return; } refresh(); }); }));
 }
