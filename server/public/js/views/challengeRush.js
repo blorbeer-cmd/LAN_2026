@@ -7,6 +7,7 @@ import { arcadeMuteControlHtml, wireArcadeMuteControl, playArcadeSound } from '.
 import { infoTooltipHtml } from '../infoTooltip.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
+import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 
 const COLOR_WORD_LABELS = { red: 'Rot', blue: 'Blau', green: 'Grün', yellow: 'Gelb' };
 const COLOR_WORD_VARS = { red: 'var(--danger)', blue: 'var(--accent)', green: 'var(--state-playing)', yellow: 'var(--state-paused)' };
@@ -144,7 +145,20 @@ export function ensureChallengeRushSocket() {
     if (currentView() === 'challengeRush') rerender();
   });
   socket.on('disconnect', () => { if (match) match = { ...match, disconnected: true }; if (currentView() === 'challengeRush') rerender(); });
-  socket.on('connect', () => { if (match?.matchId) socket.emit('challenge-rush:match:reconnect', { matchId: match.matchId, playerId: myId() }, (result) => { if (result?.ok) { match = { ...match, reconnected: true, disconnected: false }; if (currentView() === 'challengeRush') rerender(); } }); });
+  socket.on('connect', () => { if (match?.matchId) socket.emit('challenge-rush:match:reconnect', { matchId: match.matchId, playerId: myId() }, (result) => {
+    if (result?.ok) { match = { ...match, reconnected: true, disconnected: false }; if (currentView() === 'challengeRush') rerender(); return; }
+    // Rejected reconnect means the server already forfeited us for exceeding
+    // the reconnect grace period (attachSocket refuses a forfeited player) —
+    // the match keeps running for the others, but nothing further will ever
+    // arrive for it here. Clearing the stale local match immediately (rather
+    // than leaving its pre-disconnect, not-yet-forfeited snapshot in place)
+    // is what lets hasChallengeRushMatch() report free again, so this player
+    // can start or join a new lobby right away instead of staying locked out
+    // until a manual "Verlassen" or a page reload.
+    const wasVisible = currentView() === 'challengeRush';
+    match = null;
+    if (wasVisible) { showToast('Challenge Rush wegen Zeitüberschreitung verlassen.', { error: true }); navigate('arcade'); }
+  }); });
   window.addEventListener('respawn:challenge-rush-disconnect', () => socket?.disconnect());
   window.addEventListener('respawn:challenge-rush-connect', () => socket?.connect());
   socket.emit('challenge-rush:lobbies:get');
@@ -152,11 +166,15 @@ export function ensureChallengeRushSocket() {
 }
 export function challengeRushLobbies() { return lobbies; }
 export function myChallengeRushLobby() { return lobbies.find((lobby) => lobby.players.some((player) => player.id === myId())); }
-export function hasChallengeRushMatch() { return Boolean(match && match.phase !== 'ended'); }
+export function hasChallengeRushMatch() {
+  const myScore = match?.scores?.find((score) => score.playerId === myId());
+  return Boolean(match && match.phase !== 'ended' && myScore?.forfeited !== true);
+}
 export function leaveMyChallengeRushLobby() { const lobby = myChallengeRushLobby(); return lobby ? emit('challenge-rush:lobby:leave', { lobbyId: lobby.id, playerId: myId() }) : Promise.resolve({ ok: true }); }
 function scoreText(scores = []) { return [...scores].sort((a, b) => b.score - a.score).map((score, index) => `<div class="challenge-rush-score-row"><span>${index + 1}. ${escapeHtml(score.name)}${score.forfeited ? ' · Forfait' : ''}</span><strong>${score.score}</strong></div>`).join(''); }
 export function renderChallengeRushLobbyCard() {
   const current = myChallengeRushLobby();
+  const activeMatch = hasChallengeRushMatch();
   const cards = lobbies.map((lobby) => {
     const joined = lobby.players.some((p) => p.id === myId());
     const isHost = lobby.host.id === myId();
@@ -167,14 +185,23 @@ export function renderChallengeRushLobbyCard() {
       : joined
         ? `<button type="button" class="btn btn-sm btn-danger" data-cr-leave="${lobby.id}">Verlassen</button>${readyToggleHtml(lobby, myId(), 'cr-ready')}`
         : '';
-    return arcadeLobbyEntryHtml(lobby, { full: lobby.players.length >= 15, joinAction: joined ? '' : `<button type="button" class="btn btn-sm btn-primary" data-cr-join="${lobby.id}" ${lobby.players.length >= 15 ? 'disabled' : ''}>Beitreten</button>`, footerActions });
+    const joinDisabled = lobby.players.length >= 15 || activeMatch;
+    return arcadeLobbyEntryHtml(lobby, { full: lobby.players.length >= 15, joinAction: joined ? '' : `<button type="button" class="btn btn-sm btn-primary" data-cr-join="${lobby.id}" ${joinDisabled ? 'disabled' : ''}>Beitreten</button>`, footerActions });
   }).join('');
   const noMe = !myId();
-  const createReason = noMe ? 'Wähle zuerst aus, wer du bist.' : current ? 'Du hast bereits eine offene Lobby.' : '';
-  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions"><span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-primary btn-sm" id="cr-create" ${current || noMe ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('cr-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}</span></div>${cards || '<div class="empty-state">Noch keine Lobby offen.</div>'}</div>`;
+  const createReason = noMe
+    ? 'Wähle zuerst aus, wer du bist.'
+    : activeMatch
+      ? 'Beende zuerst dein laufendes Challenge-Rush-Match.'
+      : current
+        ? 'Du hast bereits eine offene Lobby.'
+        : '';
+  const createDisabled = current || activeMatch || noMe;
+  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions"><span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-primary btn-sm" id="cr-create" ${createDisabled ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('cr-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}</span>${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="cr-bot" ${createDisabled ? 'disabled' : ''}>Gegen KI</button>` : ''}</div>${cards || '<div class="empty-state">Noch keine Lobby offen.</div>'}</div>`;
 }
 export function wireChallengeRushLobbyCard(container, { beforeCreate = async () => true, beforeJoin = async () => true } = {}) {
   container.querySelector('#cr-create')?.addEventListener('click', async () => { if (!(await beforeCreate())) return; const result = await emit('challenge-rush:lobby:create', { playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true }); });
+  container.querySelector('#cr-bot')?.addEventListener('click', async () => { if (!(await beforeCreate())) return; const result = await emit('challenge-rush:lobby:bot', { playerId: myId() }); if (!result?.ok) showToast(result?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true }); });
   container.querySelectorAll('[data-cr-join]').forEach((button) => button.addEventListener('click', async () => { if (!(await beforeJoin())) return; const result = await emit('challenge-rush:lobby:join', { lobbyId: button.dataset.crJoin, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Beitritt fehlgeschlagen.', { error: true }); }));
   container.querySelectorAll('[data-cr-leave]').forEach((button) => button.addEventListener('click', () => emit('challenge-rush:lobby:leave', { lobbyId: button.dataset.crLeave, playerId: myId() })));
   wireReadyToggle(container, 'cr-ready', async (lobbyId, ready) => { const result = await emit('challenge-rush:lobby:ready', { lobbyId, playerId: myId(), ready }); if (!result?.ok) showToast(result?.error || 'Bereit-Status konnte nicht gesetzt werden.', { error: true }); });

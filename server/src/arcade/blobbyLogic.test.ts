@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BALL_RADIUS, COURT_WIDTH, GROUND_Y, NET_X, createWorld, stepWorld } from './blobbyLogic';
+import { BALL_RADIUS, BLOB_RADIUS, COURT_WIDTH, GROUND_Y, NET_X, blobbyBotInput, createWorld, stepWorld } from './blobbyLogic';
 
 const idle = { left: false, right: false, jump: false };
 
@@ -90,4 +90,22 @@ test('ball collides with the second blob of a doubles team', () => {
   stepWorld(world, [idle, idle, idle, idle], 1 / 60);
 
   assert.ok(world.ball.vx > -320 || world.ball.vy < 0);
+});
+
+test('doubles bot lanes keep two same-team opponents separated', () => {
+  const world = createWorld('left', 'doubles');
+  for (let tick = 0; tick < 240; tick += 1) {
+    world.ball.x = 750;
+    world.ball.y = 140;
+    world.ball.vx = 0;
+    world.ball.vy = 0;
+    stepWorld(world, [
+      idle,
+      idle,
+      blobbyBotInput(world, 2, 'doubles', 0),
+      blobbyBotInput(world, 3, 'doubles', 1),
+    ], 1 / 60);
+  }
+
+  assert.ok(world.blobs[3].x - world.blobs[2].x >= BLOB_RADIUS * 2);
 });

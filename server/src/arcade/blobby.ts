@@ -2,7 +2,7 @@ import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { playerMayUseArcadeAi } from './adminAccess';
-import { BALL_RADIUS, BLOB_RADIUS, BlobbyInput, BlobbyMode, BlobbyWorld, COURT_HEIGHT, COURT_WIDTH, GROUND_Y, NET_HEIGHT, NET_X, createWorld, stepWorld } from './blobbyLogic';
+import { BALL_RADIUS, BLOB_RADIUS, BlobbyInput, BlobbyMode, BlobbyWorld, COURT_HEIGHT, COURT_WIDTH, GROUND_Y, NET_HEIGHT, NET_X, blobbyBotInput, createWorld, stepWorld } from './blobbyLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
@@ -17,6 +17,7 @@ const COUNTDOWN_MS = arcadeTiming.countdownMs;
 const DEFAULT_TARGET_SCORE = 7;
 const BOT_ID = 'blobby-bot';
 const BOT = { id: BOT_ID, name: 'Blobby-Bot', avatar: null, color: '#c24bd8' };
+const BOT_ID_PREFIX = 'blobby-bot-';
 
 type TeamSide = 'left' | 'right';
 interface PlayerRef { id: string; name: string; avatar: string | null; color: string | null }
@@ -46,6 +47,18 @@ const idle = (): BlobbyInput => ({ left: false, right: false, jump: false });
 const playerLimit = (mode: BlobbyMode) => mode === 'doubles' ? 4 : 2;
 const opposingTeam = (team: TeamSide): TeamSide => team === 'left' ? 'right' : 'left';
 const teamName = (team: TeamSide) => team === 'left' ? 'Team Blau' : 'Team Pink';
+
+function isBotId(playerId: string): boolean {
+  return playerId === BOT_ID || playerId.startsWith(BOT_ID_PREFIX);
+}
+
+function doublesBots(): LobbyPlayer[] {
+  return [
+    { id: `${BOT_ID_PREFIX}1`, name: 'Blobby-Bot Partner', avatar: null, color: '#c24bd8', team: 'left' },
+    { id: `${BOT_ID_PREFIX}2`, name: 'Blobby-Bot Gegner 1', avatar: null, color: '#c24bd8', team: 'right' },
+    { id: `${BOT_ID_PREFIX}3`, name: 'Blobby-Bot Gegner 2', avatar: null, color: '#c24bd8', team: 'right' },
+  ];
+}
 
 function playerById(id: unknown): PlayerRef | null {
   if (typeof id !== 'string' || !id) return null;
@@ -105,6 +118,7 @@ function scorePayload(match: Match, winnerTeam?: TeamSide | null) {
     name: p.name,
     team: p.team,
     score: match.scores.get(p.team) ?? 0,
+    isBot: isBotId(p.id),
     ...(winnerTeam ? { isWinner: p.team === winnerTeam } : {}),
   }));
 }
@@ -118,7 +132,7 @@ function snapshot(io: Server, match: Match) {
   broadcastArcadeKiosk(io, { gameType: 'blobby', groupId: match.groupId, eventId: match.eventId, ...payload, players: match.players });
 }
 function realPlayerIds(players: LobbyPlayer[]): string[] {
-  return players.filter((p) => p.id !== BOT_ID).map((p) => p.id);
+  return players.filter((p) => !isBotId(p.id)).map((p) => p.id);
 }
 function finish(io: Server, match: Match, winnerTeam: TeamSide | null, reason: string) {
   if (match.loop) clearInterval(match.loop);
@@ -129,7 +143,7 @@ function finish(io: Server, match: Match, winnerTeam: TeamSide | null, reason: s
   endArcadeSession(realPlayerIds(match.players), 'blobby', match);
   recordArcadeResult({
     gameType: 'blobby',
-    winnerId: match.mode === 'duel' && winner?.id !== BOT_ID ? winner?.id ?? null : null,
+    winnerId: match.mode === 'duel' && winner && !isBotId(winner.id) ? winner.id : null,
     players: match.players,
     scores: resultScores,
     reason,
@@ -162,14 +176,12 @@ function startLoop(io: Server, match: Match) {
       if (now - match.lastSnapshot >= SNAPSHOT_MS) { match.lastSnapshot = now; snapshot(io, match); }
       return;
     }
-    const botIndex = match.players.findIndex((player) => player.id === BOT_ID);
-    if (botIndex >= 0) {
-      const bot = match.world.blobs[botIndex];
-      const input = match.inputs.get(BOT_ID)!;
-      const targetX = Math.max(botIndex === 0 ? 60 : 540, Math.min(botIndex === 0 ? 460 : 940, match.world.ball.x));
-      input.left = targetX < bot.x - 16;
-      input.right = targetX > bot.x + 16;
-      if (bot.grounded && match.world.ball.y < bot.y - 34 && Math.abs(match.world.ball.x - bot.x) < 150) input.jump = true;
+    for (const [botIndex, player] of match.players.entries()) {
+      if (!isBotId(player.id)) continue;
+      const input = match.inputs.get(player.id);
+      if (!input) continue;
+      const teamSlot = match.players.filter((entry) => entry.team === player.team).findIndex((entry) => entry.id === player.id);
+      Object.assign(input, blobbyBotInput(match.world, botIndex, match.mode, teamSlot));
     }
     const landed = stepWorld(match.world, match.players.map((p) => match.inputs.get(p.id) ?? idle()), dt);
     // Jump is an edge-triggered action; movement remains held until key-up.
@@ -227,17 +239,19 @@ export function registerBlobbySockets(io: Server): void {
       removeFromLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby); emitLobbies(io); ack?.({ ok: true, lobbyId: lobby.id });
     });
-    socket.on('blobby:lobby:bot', (payload: { playerId?: string }, ack?: (r: unknown) => void) => {
+    socket.on('blobby:lobby:bot', (payload: { playerId?: string; mode?: BlobbyMode }, ack?: (r: unknown) => void) => {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
+      const mode = payload.mode ?? 'duel';
+      if (mode !== 'duel' && mode !== 'doubles') return ack?.({ ok: false, error: 'Modus ist ungültig.' });
       const scope = socketArcadeScope(socket, player.id);
       if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
       const host = lobbyPlayer(player, 'left');
-      const bot = lobbyPlayer(BOT, 'right');
+      const bots = mode === 'doubles' ? doublesBots() : [lobbyPlayer(BOT, 'right')];
       const lobby: Lobby = {
-        id: nanoid(), ...scope, mode: 'duel', host, players: [host, bot],
-        socketIds: new Map([[host.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now(),
+        id: nanoid(), ...scope, mode, host, players: [host, ...bots],
+        socketIds: new Map([[host.id, socket.id]]), ready: new Set(bots.map((bot) => bot.id)), createdAt: Date.now(),
       };
       if (!claimLobbyMembership(player.id, 'blobby', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromLobbies(io, socket.id);
@@ -302,7 +316,7 @@ export function registerBlobbySockets(io: Server): void {
     socket.on('blobby:input', (payload: { matchId?: string; playerId?: string; input?: Partial<BlobbyInput> }, ack?: (r: unknown) => void) => {
       const match = typeof payload.matchId === 'string' ? matches.get(payload.matchId) : null;
       const input = typeof payload.playerId === 'string' ? match?.inputs.get(payload.playerId) : null;
-      if (!match || !canUseLobby(socket, match) || !socketControlsPlayer(socket, match, payload.playerId) || !input || payload.playerId === BOT_ID || match.paused || !match.running) {
+      if (!match || !canUseLobby(socket, match) || !socketControlsPlayer(socket, match, payload.playerId) || !input || isBotId(payload.playerId) || match.paused || !match.running) {
         return ack?.({ ok: false, error: 'Eingabe nicht erlaubt.' });
       }
       input.left = payload.input?.left === true;

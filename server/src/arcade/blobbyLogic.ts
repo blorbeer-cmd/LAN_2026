@@ -47,6 +47,24 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+export function blobbyBotInput(world: BlobbyWorld, blobIndex: number, mode: BlobbyMode, teamSlot = 0): BlobbyInput {
+  const blob = world.blobs[blobIndex];
+  if (!blob) return { left: false, right: false, jump: false };
+  let minX = blob.side === 'left' ? BLOB_RADIUS : NET_X + BLOB_RADIUS;
+  let maxX = blob.side === 'left' ? NET_X - BLOB_RADIUS : COURT_WIDTH - BLOB_RADIUS;
+  if (mode === 'doubles') {
+    const middle = (minX + maxX) / 2;
+    if (teamSlot <= 0) maxX = middle - BLOB_RADIUS;
+    else minX = middle + BLOB_RADIUS;
+  }
+  const targetX = clamp(world.ball.x, minX, maxX);
+  return {
+    left: targetX < blob.x - 16,
+    right: targetX > blob.x + 16,
+    jump: blob.grounded && world.ball.y < blob.y - 34 && Math.abs(world.ball.x - blob.x) < 150,
+  };
+}
+
 function stepBlob(blob: BlobState, input: BlobbyInput, dt: number) {
   blob.vx = (input.right ? MOVE_SPEED : 0) - (input.left ? MOVE_SPEED : 0);
   if (input.jump && blob.grounded) {

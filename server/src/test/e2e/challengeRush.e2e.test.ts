@@ -9,26 +9,26 @@ const BASE_URL = `http://localhost:${PORT}`;
 let serverProcess: ChildProcess;
 let browser: Browser;
 
-async function waitForServer(): Promise<void> {
+async function waitForServer(baseUrl: string = BASE_URL): Promise<void> {
   const started = Date.now();
   while (Date.now() - started < 10_000) {
-    try { if ((await fetch(`${BASE_URL}/api/health`)).ok) return; } catch { /* startup */ }
+    try { if ((await fetch(`${baseUrl}/api/health`)).ok) return; } catch { /* startup */ }
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
   throw new Error('Challenge-Rush-E2E-Server wurde nicht bereit.');
 }
 
-async function createPlayer(): Promise<string> {
+async function createPlayer(baseUrl: string = BASE_URL): Promise<string> {
   const name = `Challenge Rush E2E ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const response = await fetch(`${BASE_URL}/api/players`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+  const response = await fetch(`${baseUrl}/api/players`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
   assert.equal(response.status, 201);
   return ((await response.json()) as { id: string }).id;
 }
 
-async function openArcade(playerId: string): Promise<{ context: BrowserContext; page: Page }> {
+async function openArcade(playerId: string, baseUrl: string = BASE_URL): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
-  await page.goto(BASE_URL);
+  await page.goto(baseUrl);
   await page.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), playerId);
   await page.reload();
   await page.waitForSelector('.nav-btn[data-view="more"]');
@@ -279,5 +279,55 @@ test('Challenge Rush lets a guest leave a running match without ending it for th
   } finally {
     await host.context.close();
     await guest.context.close();
+  }
+});
+
+test('Challenge Rush unlocks a new lobby immediately after a reconnect rejected past the forfeit grace period', async () => {
+  // A short, dedicated server instance keeps this test fast without lowering
+  // the shared server's default reconnect grace period out from under the
+  // other tests in this file, which rely on it staying reconnect-friendly.
+  const forfeitPort = 3917;
+  const forfeitBaseUrl = `http://localhost:${forfeitPort}`;
+  const forfeitProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
+    env: { ...process.env, PORT: String(forfeitPort), DB_FILE: ':memory:', ACCESS_TOKEN: '', CHALLENGE_RUSH_RECONNECT_GRACE_MS: '800' },
+    stdio: 'ignore',
+  });
+  try {
+    await waitForServer(forfeitBaseUrl);
+    const hostId = await createPlayer(forfeitBaseUrl);
+    const guestId = await createPlayer(forfeitBaseUrl);
+    const host = await openArcade(hostId, forfeitBaseUrl);
+    const guest = await openArcade(guestId, forfeitBaseUrl);
+    try {
+      await host.page.click('[data-game="challenge-rush"]');
+      await host.page.click('#cr-create');
+      await guest.page.click('[data-game="challenge-rush"]');
+      await guest.page.waitForSelector('[data-cr-join]');
+      await guest.page.click('[data-cr-join]');
+      await guest.page.waitForSelector('[data-cr-ready]');
+      await guest.page.click('[data-cr-ready]');
+      await host.page.waitForSelector('[data-cr-start]:not([disabled])');
+      await host.page.click('[data-cr-start]');
+      await guest.page.waitForSelector('.challenge-rush-stage');
+      await guest.page.waitForFunction(() => document.querySelector('.challenge-rush-stage')?.getAttribute('data-phase') === 'playing');
+
+      // Disconnect the guest and outlast the grace period so the server
+      // forfeits it (attachSocket then refuses this player's reconnect,
+      // server/src/arcade/challengeRush.ts) before the guest reconnects.
+      await guest.page.evaluate(() => window.dispatchEvent(new Event('respawn:challenge-rush-disconnect')));
+      await host.page.waitForFunction(() => document.body.textContent?.includes('Forfait') === true, { timeout: 5_000 });
+      await guest.page.evaluate(() => window.dispatchEvent(new Event('respawn:challenge-rush-connect')));
+
+      // The rejected reconnect must clear the guest's stale local match state
+      // and return them to the Arcade view instead of leaving the "Beende
+      // zuerst dein laufendes Challenge-Rush-Match" lock in place.
+      await guest.page.waitForSelector('#cr-create:not([disabled])', { timeout: 5_000 });
+      assert.equal(await guest.page.locator('#cr-create').isDisabled(), false);
+    } finally {
+      await host.context.close();
+      await guest.context.close();
+    }
+  } finally {
+    forfeitProcess.kill();
   }
 });
