@@ -50,7 +50,7 @@ export function arcadeLobbyModeSelectHtml(id, ariaLabel, options, selected, disa
         `<option value="${escapeHtml(value)}" ${value === selected ? 'selected' : ''}>${escapeHtml(label)}</option>`
     )
     .join('');
-  return `<select id="${escapeHtml(id)}" class="arcade-lobby-mode-compact" aria-label="${escapeHtml(ariaLabel)}"${disabled ? ' disabled' : ''}>${optionHtml}</select>`;
+  return `<label class="arcade-lobby-mode-control" for="${escapeHtml(id)}"><span>Modus</span><select id="${escapeHtml(id)}" class="arcade-lobby-mode-compact" aria-label="${escapeHtml(ariaLabel)}"${disabled ? ' disabled' : ''}>${optionHtml}</select></label>`;
 }
 
 // Toggle button for the current player (guests only — the host has no ready

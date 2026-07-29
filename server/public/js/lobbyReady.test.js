@@ -15,6 +15,7 @@ test('renders the shared arcade mode selector with the selected option', () => {
   );
 
   assert.match(html, /class="arcade-lobby-mode-compact"/);
+  assert.match(html, /class="arcade-lobby-mode-control" for="pong-mode"><span>Modus<\/span>/);
   assert.match(html, /aria-label="Pong-Modus"/);
   assert.match(html, /<option value="duel" selected>Duell · 2<\/option>/);
   assert.doesNotMatch(html, / disabled/);
