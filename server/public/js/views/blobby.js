@@ -5,7 +5,7 @@ import { avatarHtml, escapeHtml } from '../format.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyModeSelectHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../infoTooltip.js';
@@ -214,9 +214,9 @@ export function renderBlobbyLobbyCard() {
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
     <div class="arcade-lobby-create-actions">
       <div class="arcade-lobby-create-row">
-        ${!lobby ? arcadeLobbyModeSelectHtml('blobby-mode', 'Blobby-Modus', [
-          { value: 'doubles', label: 'Doppel · 4' },
-          { value: 'duel', label: 'Duell · 2' },
+        ${!lobby ? arcadeLobbyModeButtonsHtml('blobby-mode', 'Blobby-Spielmodus', [
+          { value: 'duel', label: 'Duell' },
+          { value: 'doubles', label: 'Doppel' },
         ], lobbyMode) : ''}
         <button type="button" class="btn btn-primary btn-sm" id="blobby-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
         ${createReason ? infoTooltipHtml('blobby-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
@@ -234,7 +234,10 @@ export async function leaveMyBlobbyLobby() {
 
 export function wireBlobbyLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
   container.querySelectorAll('select[name="blobby-target"]').forEach((input) => input.addEventListener('change', () => { targetScore = Number(input.value); }));
-  container.querySelector('#blobby-mode')?.addEventListener('change', (event) => { lobbyMode = event.target.value; });
+  container.querySelectorAll('#blobby-mode [data-arcade-mode]').forEach((button) => button.addEventListener('click', () => {
+    lobbyMode = button.dataset.arcadeMode === 'doubles' ? 'doubles' : 'duel';
+    rerender();
+  }));
   container.querySelector('#blobby-create')?.addEventListener('click', async () => {
     if (beforeCreate && !(await beforeCreate())) return;
     const res = await emitAck('blobby:lobby:create', { playerId: myId(), mode: lobbyMode });

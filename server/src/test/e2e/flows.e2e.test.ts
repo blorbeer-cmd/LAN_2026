@@ -609,10 +609,10 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
     );
   }
   await page.setViewportSize({ width: 390, height: 844 });
-  // #lb-filter is a searchable stand-in (searchSelect.js), not a native
-  // <select>: typing an option's exact datalist label into #lb-filter-search
-  // resolves the hidden #lb-filter input to that game's id, same as picking
-  // it from the browser's native suggestion list would.
+  // #lb-filter is a searchable combobox (searchSelect.js), not a native
+  // <select>: typing an option's exact label into #lb-filter-search resolves
+  // the hidden #lb-filter input to that game's id, just like choosing it from
+  // the app-rendered listbox.
   const gamesRes = await page.request.get(`${BASE_URL}/api/games`);
   const games = await gamesRes.json();
   const filteredGame = games[1];
@@ -915,6 +915,16 @@ test('Ergebnis eintragen keeps a manual team reassignment after changing "Anzahl
   await page.click('[data-record-draw]');
   await page.waitForSelector('#match-players');
 
+  await page.click('#match-game-search');
+  await page.waitForSelector('#match-game-list:not([hidden])');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#match-game-list', { state: 'hidden' });
+  assert.equal(
+    await page.locator('#match-form').isVisible(),
+    true,
+    'Escape should close the game listbox without propagating to the result modal',
+  );
+
   const teamSelects = page.locator('[data-team-for]');
   const firstPlayerId = await teamSelects.nth(0).getAttribute('data-team-for');
   const originalValue = await teamSelects.nth(0).inputValue();
@@ -1189,17 +1199,98 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
     '',
     'focusing the searchable picker should expose the full list without manually deleting the selected game',
   );
+  const tournamentGameList = page.locator('#tourn-game-list');
+  await tournamentGameList.waitFor({ state: 'visible' });
+  assert.equal(
+    await tournamentGameList.locator('.search-select-option').count(),
+    tournamentGames.length,
+    'the app-rendered listbox should expose every game before filtering',
+  );
+  assert.equal(
+    await tournamentGameList.evaluate((element) => getComputedStyle(element).backgroundColor),
+    'rgb(23, 30, 46)',
+    'the game listbox should use the dark Respawn surface instead of the native white browser popup',
+  );
+  assert.equal(
+    await tournamentGameList.evaluate((element) => getComputedStyle(element).maxHeight),
+    '320px',
+    'long game lists should scroll inside a bounded dropdown',
+  );
+  assert.notEqual(
+    await page.locator('#tourn-game-search + .search-select-toggle .ui-icon').evaluate((element) => getComputedStyle(element).transform),
+    'none',
+    'the dropdown chevron should rotate to communicate the open state',
+  );
+  await page.keyboard.press('Tab');
+  await tournamentGameList.waitFor({ state: 'hidden' });
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    'tourn-teamcount',
+    'Tab should leave the combobox instead of moving through every listbox option',
+  );
+  await page.click('#tourn-game-search');
+  await tournamentGameList.waitFor({ state: 'visible' });
+  await page.keyboard.press('ArrowDown');
+  const activeTournamentGameId = await page.locator('#tourn-game-search').getAttribute('aria-activedescendant');
+  assert.ok(
+    activeTournamentGameId,
+    'arrow-key navigation should expose the active option to assistive technology',
+  );
+  assert.notEqual(
+    activeTournamentGameId,
+    await tournamentGameList.locator('[aria-selected="true"]').getAttribute('id'),
+    'arrow-key navigation should visibly distinguish the active option from the saved selection',
+  );
+  assert.equal(
+    await page.locator(`#${activeTournamentGameId}`).evaluate((element) => getComputedStyle(element).outlineStyle),
+    'solid',
+    'the active option should receive its own visible focus treatment',
+  );
+  await page.keyboard.press('Escape');
+  await tournamentGameList.waitFor({ state: 'hidden' });
+  assert.equal(
+    await page.locator('#tourn-game-search').inputValue(),
+    `${initialTournamentGame.icon} ${initialTournamentGame.name}`,
+    'Escape should close the listbox without changing the game',
+  );
+  const tournamentGameToggle = page.locator('#tourn-game-search + .search-select-toggle');
+  assert.equal(await tournamentGameToggle.getAttribute('aria-label'), 'Auswahl öffnen');
+  await tournamentGameToggle.dispatchEvent('click');
+  await tournamentGameList.waitFor({ state: 'visible' });
+  assert.equal(
+    await tournamentGameToggle.getAttribute('aria-label'),
+    'Auswahl schließen',
+    'the toggle should expose its current close action while the listbox is open',
+  );
+  await page.locator('#tournament-draw-step-title').dispatchEvent('pointerdown');
+  await tournamentGameList.waitFor({ state: 'hidden' });
+  assert.equal(
+    await tournamentGameToggle.getAttribute('aria-label'),
+    'Auswahl öffnen',
+    'a pointer interaction outside the picker should close it and restore the toggle action',
+  );
+  await page.click('#tourn-game-search');
+  await tournamentGameList.waitFor({ state: 'visible' });
   await page.locator('#tourn-teamcount').focus();
   assert.equal(
     await page.locator('#tourn-game-search').inputValue(),
     initialTournamentGame.name,
     'leaving the picker without a new valid choice should restore its current selection',
   );
-  await page.fill('#tourn-game-search', otherTournamentGame.name);
+  await page.click('#tourn-game-search');
+  await page.locator(`#tourn-game-list [data-search-select-value="${otherTournamentGame.id}"]`).click();
   await page.waitForFunction(
     (gameId) => (document.querySelector('#tourn-game') as HTMLInputElement | null)?.value === gameId,
     otherTournamentGame.id,
   );
+  await page.click('#tourn-game-search');
+  await tournamentGameList.waitFor({ state: 'visible' });
+  assert.equal(
+    await page.locator('#tourn-game-search').getAttribute('aria-expanded'),
+    'true',
+    'clicking the still-focused search field should reopen the listbox after a pointer selection',
+  );
+  await page.keyboard.press('Escape');
   const neighborHelp = page.locator('[aria-controls="tournament-neighbors-help"]');
   const scoreHelp = page.locator('[aria-controls="tournament-score-help"]');
   const lobbyHelp = page.locator('[aria-controls="tournament-lobby-help"]');
