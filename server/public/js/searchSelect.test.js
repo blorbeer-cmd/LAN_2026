@@ -40,7 +40,7 @@ test('renders a themed listbox instead of a native datalist', () => {
 test('connects the combobox to its listbox with accessible state', () => {
   const html = searchSelectHtml('my-field', OPTIONS, 'g2');
   assert.match(html, /id="my-field-search"[^>]*role="combobox"[^>]*aria-autocomplete="list"[^>]*aria-expanded="false"[^>]*aria-controls="my-field-list"/);
-  assert.match(html, /id="my-field-option-1"[^>]*aria-selected="true"/);
+  assert.match(html, /id="my-field-option-1"[^>]*aria-selected="true"[^>]*tabindex="-1"/);
   assert.match(html, /class="search-select-toggle" aria-label="Auswahl öffnen"/);
 });
 

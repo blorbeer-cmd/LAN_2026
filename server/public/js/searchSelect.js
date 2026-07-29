@@ -8,7 +8,7 @@ import { icon } from './icons.js';
 
 function optionHtml(id, option, index, selectedValue) {
   const selected = option.value === (selectedValue ?? '');
-  return `<button type="button" id="${id}-option-${index}" class="search-select-option" role="option" aria-selected="${selected}" data-search-select-index="${index}" data-search-select-value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</button>`;
+  return `<button type="button" id="${id}-option-${index}" class="search-select-option" role="option" aria-selected="${selected}" tabindex="-1" data-search-select-index="${index}" data-search-select-value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</button>`;
 }
 
 // options: Array<{ value: string, label: string }>
@@ -148,6 +148,8 @@ export function wireSearchSelect(container, id, options, { onChange } = {}) {
       selectOption(filteredOptions[activeIndex]);
     } else if (event.key === 'Escape' && isOpen()) {
       event.preventDefault();
+      close();
+    } else if (event.key === 'Tab' && isOpen()) {
       close();
     }
   });

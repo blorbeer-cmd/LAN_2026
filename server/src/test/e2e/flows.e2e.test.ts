@@ -1206,6 +1206,15 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
     '320px',
     'long game lists should scroll inside a bounded dropdown',
   );
+  await page.keyboard.press('Tab');
+  await tournamentGameList.waitFor({ state: 'hidden' });
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    'tourn-teamcount',
+    'Tab should leave the combobox instead of moving through every listbox option',
+  );
+  await page.click('#tourn-game-search');
+  await tournamentGameList.waitFor({ state: 'visible' });
   await page.keyboard.press('ArrowDown');
   assert.ok(
     await page.locator('#tourn-game-search').getAttribute('aria-activedescendant'),
