@@ -39,6 +39,7 @@ import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { domainIcon } from '../domainIcons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { GAME_GENRES } from '../gameGenres.js';
+import { matchesSelectionSearch, wireSelectionSearch } from '../selectionSearch.js';
 
 // Cached separately from `state` (like analytics.js does) since it's fetched
 // from its own endpoint, not part of the main loadAll() round-trip.
@@ -111,6 +112,7 @@ let draftKey = null; // `${round}:${playerId}` the current draft belongs to
 // (including a newly added game) defaults to selected.
 let limitGamesChecked = false;
 let excludedGameIds = new Set();
+let voteGameSearchQuery = '';
 
 // Genre chip filter narrowing which games are *visible* in the game-limit
 // checkbox grid above (OR semantics, same as the Spiele view's list filter).
@@ -141,6 +143,10 @@ function voteFilterVisibleGames() {
   }
   if (voteGenreFilter.size === 0) return state.games;
   return state.games.filter((g) => (g.genres ?? []).some((genre) => voteGenreFilter.has(genre)));
+}
+
+function voteSearchVisibleGames() {
+  return voteFilterVisibleGames().filter((game) => matchesSelectionSearch(game.name, voteGameSearchQuery));
 }
 
 // Guards the points sliders against a re-render landing mid-drag (another
@@ -519,7 +525,7 @@ export function renderVotes(container, ctx) {
     const gameCheckboxes = genreFilteredGames
       .map(
         (g) => `
-        <label class="check-row">
+        <label class="check-row" data-vote-game-search-item data-selection-search="${escapeHtml(g.name)}">
           <input type="checkbox" data-vote-game-checkbox value="${g.id}" ${excludedGameIds.has(g.id) ? '' : 'checked'} />
           <span class="row" style="flex:1;gap:var(--space-2);">${escapeHtml(g.name)}</span>
         </label>`
@@ -551,13 +557,18 @@ export function renderVotes(container, ctx) {
             <span style="flex:1;">Nur bestimmte Spiele zur Wahl stellen</span>
           </label>
           <div id="votes-game-select-wrap" class="stack vote-game-select-wrap" ${limitGamesChecked ? '' : 'hidden'}>
+            <div>
+              <label class="field-label" for="votes-game-search">Spiele durchsuchen</label>
+              <input type="search" id="votes-game-search" value="${escapeHtml(voteGameSearchQuery)}" placeholder="Spiel suchen…" autocomplete="off" />
+            </div>
             <div class="selection-toolbar">
               <span class="field-label">Welche Spiele stehen zur Wahl?</span>
-              <button type="button" class="btn btn-sm" id="votes-select-all">Alle markieren</button>
-              <button type="button" class="btn btn-sm" id="votes-select-none">Auswahl aufheben</button>
+              <button type="button" class="btn btn-sm" id="votes-select-all">Sichtbare markieren</button>
+              <button type="button" class="btn btn-sm" id="votes-select-none">Sichtbare abwählen</button>
             </div>
             ${voteGenreFilterHtml}
             <div id="votes-game-select" class="vote-game-grid">${gameCheckboxes}</div>
+            <p class="muted" data-vote-game-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spiele gefunden.</p>
             ${
               genreFilteredGames.length === 0
                 ? `<p class="muted" style="font-size:var(--font-size-xs);">Keine Spiele mit den gewählten Genres.</p>`
@@ -694,12 +705,21 @@ export function renderVotes(container, ctx) {
     });
   });
 
+  wireSelectionSearch(container, {
+    inputId: 'votes-game-search',
+    itemSelector: '[data-vote-game-search-item]',
+    emptySelector: '[data-vote-game-search-empty]',
+    onQueryChange: (query) => {
+      voteGameSearchQuery = query;
+    },
+  });
+
   container.querySelector('#votes-select-all')?.addEventListener('click', () => {
-    for (const g of voteFilterVisibleGames()) excludedGameIds.delete(g.id);
+    for (const g of voteSearchVisibleGames()) excludedGameIds.delete(g.id);
     ctx.rerender();
   });
   container.querySelector('#votes-select-none')?.addEventListener('click', () => {
-    for (const g of voteFilterVisibleGames()) excludedGameIds.add(g.id);
+    for (const g of voteSearchVisibleGames()) excludedGameIds.add(g.id);
     ctx.rerender();
   });
 
