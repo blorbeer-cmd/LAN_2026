@@ -1176,6 +1176,30 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
   // create — the submit button only unlocks once a proposal exists.
   await page.waitForSelector('#tourn-propose');
   assert.equal(await page.locator('#tourn-submit').isDisabled(), true);
+  const tournamentGamesRes = await page.request.get(`${BASE_URL}/api/games`);
+  const tournamentGames = (await tournamentGamesRes.json()) as Array<{ id: string; icon: string; name: string }>;
+  assert.ok(tournamentGames.length >= 2, 'the searchable tournament picker needs at least two games');
+  const initialTournamentGameId = await page.locator('#tourn-game').inputValue();
+  const initialTournamentGame = tournamentGames.find((game) => game.id === initialTournamentGameId)!;
+  const otherTournamentGame = tournamentGames.find((game) => game.id !== initialTournamentGameId)!;
+  assert.ok(initialTournamentGame);
+  await page.click('#tourn-game-search');
+  assert.equal(
+    await page.locator('#tourn-game-search').inputValue(),
+    '',
+    'focusing the searchable picker should expose the full list without manually deleting the selected game',
+  );
+  await page.locator('#tourn-teamcount').focus();
+  assert.equal(
+    await page.locator('#tourn-game-search').inputValue(),
+    `${initialTournamentGame.icon} ${initialTournamentGame.name}`,
+    'leaving the picker without a new valid choice should restore its current selection',
+  );
+  await page.fill('#tourn-game-search', `${otherTournamentGame.icon} ${otherTournamentGame.name}`);
+  await page.waitForFunction(
+    (gameId) => (document.querySelector('#tourn-game') as HTMLInputElement | null)?.value === gameId,
+    otherTournamentGame.id,
+  );
   const neighborHelp = page.locator('[aria-controls="tournament-neighbors-help"]');
   const scoreHelp = page.locator('[aria-controls="tournament-score-help"]');
   const lobbyHelp = page.locator('[aria-controls="tournament-lobby-help"]');
