@@ -2394,17 +2394,43 @@ button.card {
   align-items: center;
   gap: var(--space-2);
 }
-.arcade-lobby-mode-buttons {
-  display: flex;
+/* Compact segmented switch: a bordered pill housing both mode segments so
+   they read as one grouped control rather than two more buttons the size of
+   "Lobby öffnen". Only the primary create action keeps the accent-gradient
+   treatment; the active segment uses flat --accent so it never competes with
+   that one primary action for attention. */
+.arcade-mode-toggle {
+  display: inline-flex;
   align-items: center;
-  flex: 2 1 var(--arcade-lobby-mode-width);
-  min-width: var(--arcade-lobby-mode-width);
-  gap: var(--space-2);
+  flex: 0 0 auto;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated-2);
 }
-.arcade-lobby-mode-buttons .btn {
-  width: auto;
-  min-width: 0;
-  flex: 1 1 0;
+.arcade-mode-toggle-btn {
+  border: none;
+  border-radius: var(--radius-full);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.arcade-mode-toggle-btn.is-active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.arcade-mode-toggle-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+@media (hover: hover) {
+  .arcade-mode-toggle-btn:hover:not(:disabled):not(.is-active) {
+    color: var(--text);
+  }
 }
 .arcade-lobby-create-row > .btn {
   width: auto;

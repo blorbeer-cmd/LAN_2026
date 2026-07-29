@@ -41,16 +41,18 @@ export function arcadeLobbyEntryHtml(
   </div>`;
 }
 
-// Every mode-capable arcade lobby uses the same two-button toggle so both
-// choices stay directly visible and the active one is announced beyond color.
+// Every mode-capable arcade lobby uses the same compact segmented switch so
+// the two choices read as one grouped control (not two more action buttons
+// competing with "Lobby öffnen") while the active one stays announced beyond
+// color via aria-pressed.
 export function arcadeLobbyModeButtonsHtml(id, ariaLabel, options, selected, disabled = false) {
   const buttonHtml = options
     .map(({ value, label }) => {
       const active = value === selected;
-      return `<button type="button" class="btn btn-sm${active ? ' btn-primary' : ''}" data-arcade-mode="${escapeHtml(value)}" aria-pressed="${active}"${disabled ? ' disabled' : ''}>${escapeHtml(label)}</button>`;
+      return `<button type="button" class="arcade-mode-toggle-btn${active ? ' is-active' : ''}" data-arcade-mode="${escapeHtml(value)}" aria-pressed="${active}"${disabled ? ' disabled' : ''}>${escapeHtml(label)}</button>`;
     })
     .join('');
-  return `<div id="${escapeHtml(id)}" class="arcade-lobby-mode-buttons" role="group" aria-label="${escapeHtml(ariaLabel)}">${buttonHtml}</div>`;
+  return `<div id="${escapeHtml(id)}" class="arcade-mode-toggle" role="group" aria-label="${escapeHtml(ariaLabel)}">${buttonHtml}</div>`;
 }
 
 // Toggle button for the current player (guests only — the host has no ready
