@@ -153,7 +153,10 @@ export function ensureChallengeRushSocket() {
 }
 export function challengeRushLobbies() { return lobbies; }
 export function myChallengeRushLobby() { return lobbies.find((lobby) => lobby.players.some((player) => player.id === myId())); }
-export function hasChallengeRushMatch() { return Boolean(match && match.phase !== 'ended'); }
+export function hasChallengeRushMatch() {
+  const myScore = match?.scores?.find((score) => score.playerId === myId());
+  return Boolean(match && match.phase !== 'ended' && myScore?.forfeited !== true);
+}
 export function leaveMyChallengeRushLobby() { const lobby = myChallengeRushLobby(); return lobby ? emit('challenge-rush:lobby:leave', { lobbyId: lobby.id, playerId: myId() }) : Promise.resolve({ ok: true }); }
 function scoreText(scores = []) { return [...scores].sort((a, b) => b.score - a.score).map((score, index) => `<div class="challenge-rush-score-row"><span>${index + 1}. ${escapeHtml(score.name)}${score.forfeited ? ' · Forfait' : ''}</span><strong>${score.score}</strong></div>`).join(''); }
 export function renderChallengeRushLobbyCard() {

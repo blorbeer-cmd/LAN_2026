@@ -162,6 +162,7 @@ arcadeRouter.get('/stats', (req, res) => {
       >;
     }
   >();
+  const aiScribbleMatchIds: string[] = [];
 
   const addResultToGame = (
     statsKey: string,
@@ -221,6 +222,7 @@ arcadeRouter.get('/stats', (req, res) => {
     if (scores.length === 0) continue;
 
     const hasBot = scores.some((score) => score.isBot === true || isKnownArcadeBotId(score.playerId));
+    if (hasBot && row.game_type === 'scribble') aiScribbleMatchIds.push(row.id);
     // Tetris exposes explicit AI variants below. Every other game keeps its
     // public ranking human-only, so an AI test match must not increment the
     // match, win or loss counters of its human participant.
@@ -247,6 +249,10 @@ arcadeRouter.get('/stats', (req, res) => {
   if (selectedEvent.eventId !== undefined) {
     drawingClauses.push('d.event_id IS ?');
     drawingParams.push(selectedEvent.eventId);
+  }
+  if (aiScribbleMatchIds.length > 0) {
+    drawingClauses.push(`d.match_id NOT IN (${aiScribbleMatchIds.map(() => '?').join(',')})`);
+    drawingParams.push(...aiScribbleMatchIds);
   }
   const scribbleArtPlayers = db.prepare(
     `SELECT d.artist_id AS player_id, d.artist_name AS name,
