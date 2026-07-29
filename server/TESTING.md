@@ -101,6 +101,10 @@ Wiederholungsfall ab.
 - `npm run test:e2e` setzt `E2E_FAST_TIMERS=1`. Der Schnellmodus verkürzt Arcade-Countdowns nur
   zusammen mit `NODE_ENV=test`; in Produktion und bei allen anderen Aufrufen bleiben die regulären
   drei Sekunden aktiv.
+- Die Socket-Integrationssuite `src/test/api.challengeRush.test.ts` setzt zusätzlich
+  `CHALLENGE_RUSH_FAST_TIMERS=1` zusammen mit `NODE_ENV=test`. Dieses separate Profil verkürzt nur
+  Challenge-Rush-Countdowns, -Deadlines, Memory-Reveal und Ampelverzögerung in dieser Testdatei;
+  `test:e2e`, andere Testprozesse und Produktion behalten ihre regulären Spielzeiten.
 - Der Produktions-Build (`npm run build`) schließt alle Testdateien aus – sie landen nie in `dist/`.
 - `index.ts` startet den Server nur, wenn es direkt ausgeführt wird (`require.main === module`),
   damit Tests die App importieren können, ohne einen Port zu belegen.

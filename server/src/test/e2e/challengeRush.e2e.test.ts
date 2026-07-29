@@ -28,20 +28,23 @@ async function createPlayer(): Promise<string> {
 async function openArcade(playerId: string): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
-  // This file's tests run at the busiest point of the whole e2e suite (right after Battleship's
-  // now audio-synthesizing duel specs), so the default 30s action timeout is more exposed to CI
-  // CPU contention than elsewhere. Each game view opens its own fresh socket.io connection lazily
-  // on first use (see socket.js), and a contended CPU can make even that initial handshake take
-  // multiple 20s connect-timeout/backoff cycles — 60s already proved insufficient in one real CI
-  // run, so this goes further; it has no bearing on what's actually being asserted.
-  page.setDefaultTimeout(90_000);
   await page.goto(BASE_URL);
   await page.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), playerId);
   await page.reload();
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="arcade"]');
-  await page.waitForSelector('.arcade-tiles');
-  return { context, page };
+  await page.waitForSelector('.nav-btn[data-view="more"]');
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.click('.nav-btn[data-view="more"]', { timeout: 4_000 }).catch(() => undefined);
+    try {
+      await page.click('[data-navigate="arcade"]', { timeout: 4_000 });
+      await page.waitForSelector('.arcade-tiles', { timeout: 4_000 });
+      return { context, page };
+    } catch {
+      // A late realtime refresh can replace the navigation target. Retry from
+      // the stable top-level navigation instead of extending every timeout.
+    }
+  }
+  await context.close();
+  throw new Error('could not open the Arcade view');
 }
 
 before(async () => {
@@ -196,6 +199,8 @@ test('Challenge Rush hides the reaction target until play, gates the next challe
     });
 
     await actor.page.waitForSelector('.challenge-rush-circle');
+    const challengeCount = Number((await actor.page.locator('.badge-playing').textContent())?.split('/')[1]?.trim());
+    assert.ok(Number.isInteger(challengeCount) && challengeCount > 0, `Ungültige Challenge-Anzahl: ${challengeCount}`);
     assert.equal(await actor.page.evaluate(() => (window as unknown as { __crViolation: boolean }).__crViolation), false);
     await actor.page.click('.challenge-rush-circle');
 
@@ -204,11 +209,12 @@ test('Challenge Rush hides the reaction target until play, gates the next challe
     await actor.page.waitForTimeout(200);
     assert.equal(await actor.page.locator('.challenge-rush-stage').count(), 0);
     await actor.page.click('#cr-ready-next');
-    await actor.page.waitForFunction((idx) => document.querySelector('.challenge-rush-stage')?.getAttribute('data-challenge-index') === String(idx), reactionIndex + 1);
-
-    await actor.page.waitForSelector('[data-cr-finish]');
-    await actor.page.click('[data-cr-finish]');
-    await actor.page.click('.modal [data-confirm]');
+    if (reactionIndex + 1 < challengeCount) {
+      await actor.page.waitForFunction((idx) => document.querySelector('.challenge-rush-stage')?.getAttribute('data-challenge-index') === String(idx), reactionIndex + 1);
+      await actor.page.waitForSelector('[data-cr-finish]');
+      await actor.page.click('[data-cr-finish]');
+      await actor.page.click('.modal [data-confirm]');
+    }
 
     await actor.page.waitForSelector('.challenge-rush-final-breakdown');
     const breakdown = await actor.page.locator('.challenge-rush-final-breakdown').first().textContent();
