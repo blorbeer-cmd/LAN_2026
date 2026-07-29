@@ -2412,10 +2412,16 @@ button.card {
   border: none;
   border-radius: var(--radius-full);
   padding: var(--space-2) var(--space-3);
+  /* Fixed to fit the longest label across every game ("Doppel") so both
+     segments stay the same size regardless of which pair of labels a given
+     game uses (Duell/Arena vs. Duell/Doppel) instead of hugging their own
+     shorter text. */
+  min-width: calc(var(--space-8) + var(--space-6));
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   color: var(--text-muted);
   background: transparent;
+  text-align: center;
   cursor: pointer;
   white-space: nowrap;
 }
