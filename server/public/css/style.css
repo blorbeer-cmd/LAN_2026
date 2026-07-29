@@ -2313,27 +2313,22 @@ button.card {
   align-items: center;
   gap: var(--space-2);
 }
-.arcade-lobby-mode-control {
+.arcade-lobby-mode-buttons {
   display: flex;
   align-items: center;
-  flex: 0 0 auto;
+  flex: 2 1 var(--arcade-lobby-mode-width);
+  min-width: var(--arcade-lobby-mode-width);
   gap: var(--space-2);
-  color: var(--text-muted);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
 }
-.arcade-lobby-create-row .btn {
+.arcade-lobby-mode-buttons .btn {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 0;
+}
+.arcade-lobby-create-row > .btn {
   width: auto;
   flex: 1 1 0;
   min-width: var(--arcade-lobby-mode-width);
-}
-.arcade-lobby-mode-compact {
-  flex: 0 0 auto;
-  width: var(--arcade-lobby-mode-width);
-  height: var(--space-7);
-  padding-top: var(--space-1);
-  padding-bottom: var(--space-1);
-  text-align: center;
 }
 .arcade-lobby-bot-setting {
   display: flex;

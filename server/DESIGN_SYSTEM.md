@@ -531,7 +531,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   lobby footer actions, so „Lobby öffnen“ and readiness controls align exactly. A disabled „Lobby
   öffnen“ or „Start“ carries the same red `.info-tooltip-trigger--warning` reason pattern as Team
   formation's „Teams auslosen“/„Draft starten“.
-  Blobby Volley and Pong both offer Duell (1 gegen 1) and Doppel (2 gegen 2). Doppel lobbies expose
+  Blobby Volley and Pong both offer Duell (1 gegen 1) and Doppel (2 gegen 2) as two direct buttons
+  without a separate mode label or explanatory tooltip. Doppel lobbies expose
   two explicit teams with two slots each, require all four participants to be ready and award the
   shared team score and win to both teammates. Pong follows Atari's Pong-4 rules: each participant
   controls a separate paddle that remains in its assigned upper/lower half, player initials and roster
@@ -544,8 +545,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   many non-winning placements do not distort the duel win rate. Arena rows instead show wins,
   Top-3 finishes, average placement, cleared lines, sent garbage and knockouts. Matches containing
   bots appear as separate „KI-Test“ entries and never alter the human-only Duell/Arena rankings.
-  Mode-capable Arcade lobbies use the shared compact mode select in the same action row as lobby
-  creation. Snake „Klassisch“ remains the two-player duel; „Arena“ accepts three to eight players
+  Mode-capable Arcade lobbies use the shared two-button mode toggle in the same action row as lobby
+  creation. Snake „Duell“ remains the two-player classic mode; „Arena“ accepts three to eight players
   and labels every lobby with mode and occupancy.
   Arena matches keep eliminated players visibly in the roster with a textual status, while the
   canvas dims their snake and marks the shrinking safe zone with the shared danger treatment.

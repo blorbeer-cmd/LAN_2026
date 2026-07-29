@@ -20,7 +20,7 @@ import { getMyId } from '../whoami.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyModeSelectHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../infoTooltip.js';
@@ -481,9 +481,9 @@ export function renderTetrisLobbyCard() {
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
       <div class="arcade-lobby-create-actions">
         <div class="arcade-lobby-create-row">
-          ${!lobby ? arcadeLobbyModeSelectHtml('tetris-mode', 'Tetris-Modus', [
-            { value: 'duel', label: 'Duell · 2' },
-            { value: 'arena', label: 'Arena · 3–8' },
+          ${!lobby ? arcadeLobbyModeButtonsHtml('tetris-mode', 'Tetris-Spielmodus', [
+            { value: 'duel', label: 'Duell' },
+            { value: 'arena', label: 'Arena' },
           ], lobbyMode) : ''}
           <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${match || lobby || noMe ? 'disabled' : ''}>Lobby öffnen</button>
           ${createReason ? infoTooltipHtml('tetris-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
@@ -509,10 +509,10 @@ export async function leaveMyTetrisLobby() {
 }
 
 export function wireTetrisLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
-  container.querySelector('#tetris-mode')?.addEventListener('change', (event) => {
-    lobbyMode = event.target.value === 'arena' ? 'arena' : 'duel';
+  container.querySelectorAll('#tetris-mode [data-arcade-mode]').forEach((button) => button.addEventListener('click', () => {
+    lobbyMode = button.dataset.arcadeMode === 'arena' ? 'arena' : 'duel';
     rerender();
-  });
+  }));
   container.querySelector('#tetris-bot-count')?.addEventListener('change', (event) => {
     botCount = Number(event.target.value) || 3;
   });
