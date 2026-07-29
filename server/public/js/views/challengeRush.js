@@ -12,10 +12,17 @@ const myId = () => getMyId();
 function navigate(view) { window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view })); }
 function emit(event, payload) { return new Promise((resolve) => socket?.emit(event, payload, resolve)); }
 function refresh() { rerender?.(); }
-function resetInteraction(trialId) { interaction = { trialId, sequence: [], cells: [], pair: [], found: new Set() }; }
+function resetInteraction(trialId, resume = {}) {
+  const sequence = currentTrial?.data?.type === 'whack-a-mole' && Array.isArray(currentTrial?.data?.sequence)
+    ? currentTrial.data.sequence.slice(0, Number(resume.correct) || 0)
+    : [];
+  interaction = { trialId, sequence, cells: [], pair: [], found: new Set(Array.isArray(resume.found) ? resume.found : []) };
+}
 function phaseTimer() {
-  if (!currentTrial || currentTrial.phase !== 'preview' || !currentTrial.phaseMs) return;
-  window.setTimeout(() => { if (currentTrial?.trialId !== interaction.trialId) return; if (match?.paused) return phaseTimer(); currentTrial = { ...currentTrial, phase: 'input' }; refresh(); }, currentTrial.phaseMs);
+  if (!currentTrial || currentTrial.phase !== 'preview') return;
+  const delay = Number(currentTrial.phaseRemainingMs ?? currentTrial.phaseMs ?? 0);
+  if (!delay) { currentTrial = { ...currentTrial, phase: 'input' }; refresh(); return; }
+  window.setTimeout(() => { if (currentTrial?.trialId !== interaction.trialId || currentTrial?.phase !== 'preview' || match?.paused) return; currentTrial = { ...currentTrial, phase: 'input', phaseRemainingMs: 0 }; refresh(); }, delay);
 }
 
 export function ensureChallengeRushSocket() {
@@ -24,12 +31,12 @@ export function ensureChallengeRushSocket() {
   socket.on('challenge-rush:lobbies', (payload) => { lobbies = payload?.lobbies ?? []; refresh(); });
   socket.on('challenge-rush:match:start', (payload) => { match = { ...payload }; currentTrial = null; latestResult = null; numberOrder = 1; cpsClicks = 0; navigate('challengeRush'); });
   socket.on('challenge-rush:match:state', (payload) => { const previousIndex = match?.challengeIndex; match = { ...match, ...payload }; if (payload.challengeIndex !== previousIndex) { numberOrder = 1; cpsClicks = 0; } refresh(); });
-  socket.on('challenge-rush:state', (payload) => { const previousIndex = match?.challengeIndex; match = { ...match, ...payload }; if (payload.challengeIndex !== previousIndex) { numberOrder = 1; cpsClicks = 0; } if (payload.phase !== 'playing') currentTrial = null; refresh(); });
-  socket.on('challenge-rush:trial', (payload) => { if (!match || payload?.matchId !== match.matchId || payload.challengeIndex !== match.challengeIndex) return; currentTrial = payload.trial; numberOrder = 1; resetInteraction(currentTrial?.trialId); phaseTimer(); refresh(); });
+  socket.on('challenge-rush:state', (payload) => { const previousIndex = match?.challengeIndex; match = { ...match, ...payload }; if (payload.challengeIndex !== previousIndex) { numberOrder = 1; cpsClicks = 0; } if (payload.phase !== 'playing') currentTrial = null; if (currentTrial?.phase === 'preview' && payload.paused === false) phaseTimer(); refresh(); });
+  socket.on('challenge-rush:trial', (payload) => { if (!match || payload?.matchId !== match.matchId || payload.challengeIndex !== match.challengeIndex) return; currentTrial = payload.trial; numberOrder = Number(currentTrial?.resume?.nextNumber ?? 1); resetInteraction(currentTrial?.trialId, currentTrial?.resume); phaseTimer(); refresh(); });
   socket.on('challenge-rush:challenge:end', (payload) => { latestResult = payload; currentTrial = null; refresh(); });
   socket.on('challenge-rush:match:end', (payload) => { latestResult = payload; currentTrial = null; match = { ...match, phase: 'ended', scores: payload.scores, draw: payload.draw === true }; refresh(); });
   socket.on('disconnect', () => { if (match) match = { ...match, disconnected: true }; refresh(); });
-  socket.on('connect', () => { if (match?.matchId) socket.emit('challenge-rush:match:reconnect', { matchId: match.matchId, playerId: myId() }, (result) => { if (result?.ok) { match = { ...match, reconnected: true, disconnected: false }; refresh(); } }); });
+  socket.on('connect', () => { if (match?.matchId) socket.emit('challenge-rush:match:reconnect', { matchId: match.matchId, playerId: myId(), reconnectToken: match.reconnectToken }, (result) => { if (result?.ok) { match = { ...match, reconnected: true, disconnected: false }; refresh(); } }); });
   window.addEventListener('respawn:challenge-rush-disconnect', () => socket?.disconnect());
   window.addEventListener('respawn:challenge-rush-connect', () => socket?.connect());
   socket.emit('challenge-rush:lobbies:get');
@@ -53,15 +60,16 @@ export function wireChallengeRushLobbyCard(container, { beforeCreate = async () 
   container.querySelectorAll('[data-cr-start]').forEach((button) => button.addEventListener('click', async () => { const result = await emit('challenge-rush:lobby:start', { lobbyId: button.dataset.crStart, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Start fehlgeschlagen.', { error: true }); }));
 }
 
-function gridHtml(size, cells, className, disabled, attribute = 'cell') {
+function gridHtml(size, cells, className, disabled, attribute = 'cell', showOrder = false) {
   const selected = new Set(cells);
-  return `<div class="challenge-rush-memory-grid ${className}" style="--cr-grid-columns:${size}">${Array.from({ length: size * size }, (_, index) => `<button type="button" class="btn challenge-rush-memory-cell${selected.has(index) ? ' is-selected' : ''}" data-cr-${attribute}="${index}" aria-label="Feld ${index + 1}" ${disabled ? 'disabled' : ''}>${selected.has(index) ? '●' : ''}</button>`).join('')}</div>`;
+  const order = new Map(cells.map((cell, index) => [cell, index + 1]));
+  return `<div class="challenge-rush-memory-grid ${className}" style="--cr-grid-columns:${size}">${Array.from({ length: size * size }, (_, index) => `<button type="button" class="btn challenge-rush-memory-cell${selected.has(index) ? ' is-selected' : ''}" data-cr-${attribute}="${index}" aria-label="${showOrder && order.has(index) ? `Schritt ${order.get(index)}` : `Feld ${index + 1}`}" ${disabled ? 'disabled' : ''}>${showOrder && order.has(index) ? order.get(index) : selected.has(index) ? '●' : ''}</button>`).join('')}</div>`;
 }
 function sequenceBody(trial, playing) {
   const data = trial.data; const sequence = Array.isArray(data.sequence) ? data.sequence : Array.isArray(data.path) ? data.path : [];
-  if (trial.phase === 'preview') return `${gridHtml(Number(data.size) || 3, sequence, 'is-preview', true)}<p class="muted">Merken …</p>`;
+  if (trial.phase === 'preview') return `${gridHtml(Number(data.size) || 3, sequence, 'is-preview', true, 'cell', true)}<p class="muted">Merken …</p>`;
   const selected = interaction.sequence;
-  return `${gridHtml(Number(data.size) || 3, selected, 'is-input', !playing, 'sequence-cell')}<p class="muted">${selected.length} / ${sequence.length} Felder</p>`;
+  return `${gridHtml(Number(data.size) || 3, selected, 'is-input', !playing, 'sequence-cell', true)}<p class="muted">${selected.length} / ${sequence.length} Felder</p>`;
 }
 function matrixBody(trial, playing) {
   const data = trial.data; const highlights = Array.isArray(data.highlights) ? data.highlights : [];
@@ -71,13 +79,12 @@ function matrixBody(trial, playing) {
 function numberBlindBody(trial, playing) {
   const data = trial.data; const numbers = Array.isArray(data.numbers) ? data.numbers : []; const size = Number(data.size) || 3;
   if (trial.phase === 'preview') { const byPosition = new Map(numbers.map((entry) => [entry.position, entry.number])); return `<div class="challenge-rush-memory-grid is-preview" style="--cr-grid-columns:${size}">${Array.from({ length: size * size }, (_, index) => `<button type="button" class="btn challenge-rush-memory-cell is-selected" aria-label="Zahl ${byPosition.get(index) ?? 'leer'}" disabled>${byPosition.get(index) ?? ''}</button>`).join('')}</div><p class="muted">Positionen merken …</p>`; }
-  const byPosition = new Map(numbers.map((entry) => [entry.position, entry.number]));
-  return `<div class="challenge-rush-memory-grid is-input" style="--cr-grid-columns:${size}">${Array.from({ length: size * size }, (_, index) => `<button type="button" class="btn challenge-rush-memory-cell${interaction.sequence.includes(index) ? ' is-selected' : ''}" data-cr-number-position="${index}" aria-label="Zahl ${byPosition.get(index) ?? 'leer'}" ${playing && byPosition.has(index) ? '' : 'disabled'}>${byPosition.get(index) ?? ''}</button>`).join('')}</div><p class="muted">${interaction.sequence.length} / ${numbers.length} Zahlen</p>`;
+  return `<div class="challenge-rush-memory-grid is-input" style="--cr-grid-columns:${size}">${Array.from({ length: size * size }, (_, index) => `<button type="button" class="btn challenge-rush-memory-cell${interaction.sequence.includes(index) ? ' is-selected' : ''}" data-cr-number-position="${index}" aria-label="Position ${index + 1}" ${playing && !interaction.sequence.includes(index) ? '' : 'disabled'}>${interaction.sequence.includes(index) ? interaction.sequence.indexOf(index) + 1 : '?'}</button>`).join('')}</div><p class="muted">${interaction.sequence.length} / ${numbers.length} Zahlen</p>`;
 }
 function pathBody(trial, playing) { return sequenceBody({ ...trial, data: { ...trial.data, sequence: trial.data.path } }, playing); }
 function pairsBody(trial, playing) {
   const cards = Array.isArray(trial.data.cards) ? trial.data.cards : [];
-  return `<div class="challenge-rush-pairs-grid" style="--cr-grid-columns:${Number(trial.data.boardSize) || 2}">${cards.map((card) => { const visible = interaction.found.has(card.index) || interaction.pair.includes(card.index); return `<button type="button" class="btn challenge-rush-memory-card${visible ? ' is-selected' : ''}" data-cr-pair-card="${card.index}" aria-label="Karte ${card.index + 1}" ${playing && !interaction.found.has(card.index) ? '' : 'disabled'}>${visible ? escapeHtml(String(card.value)) : '?'}</button>`; }).join('')}</div>`;
+  return `<div class="challenge-rush-pairs-grid" style="--cr-grid-columns:${Number(trial.data.boardSize) || 2}">${cards.map((card) => { const visible = interaction.found.has(card.index) || interaction.pair.includes(card.index); return `<button type="button" class="btn challenge-rush-memory-card${visible ? ' is-selected' : ''}" data-cr-pair-card="${card.index}" aria-label="Karte ${card.index + 1}" ${playing && !interaction.found.has(card.index) ? '' : 'disabled'}>${visible ? '●' : '?'}</button>`; }).join('')}</div>`;
 }
 function aimBody(trial, playing) {
   const target = trial.data.target;
@@ -86,7 +93,7 @@ function aimBody(trial, playing) {
 }
 function oddOneOutBody(trial, playing) {
   const tileCount = Number(trial.data.tileCount) || 9; const size = Number(trial.data.size) || Math.sqrt(tileCount);
-  return `<div class="challenge-rush-memory-grid" style="--cr-grid-columns:${size}">${Array.from({ length: tileCount }, (_, index) => `<button type="button" class="btn challenge-rush-memory-cell" data-cr-odd="${index}" aria-label="Feld ${index + 1}" ${playing ? '' : 'disabled'}></button>`).join('')}</div><p class="muted">Finde das abweichende Feld.</p>`;
+  return `<div class="challenge-rush-memory-grid" style="--cr-grid-columns:${size}">${Array.from({ length: tileCount }, (_, index) => `<button type="button" class="btn challenge-rush-memory-cell${index === Number(trial.data.oddIndex) ? ' is-odd' : ''}" data-cr-odd="${index}" aria-label="${index === Number(trial.data.oddIndex) ? 'Abweichendes Feld' : `Feld ${index + 1}`}" ${playing ? '' : 'disabled'}></button>`).join('')}</div><p class="muted">Finde das abweichende Feld.</p>`;
 }
 function whackBody(trial, playing) {
   const sequence = Array.isArray(trial.data.sequence) ? trial.data.sequence : []; const size = Number(trial.data.size) || 3; const next = interaction.sequence.length;
@@ -128,9 +135,17 @@ function challengeBody(challenge, trial, playing) {
   if (challenge.key === 'path-memory') return pathBody(trial, playing);
   if (challenge.key === 'memory-pairs') return pairsBody(trial, playing);
   if (challenge.key === 'n-back' || challenge.key === 'seen-before') return `<div class="challenge-rush-symbol">${escapeHtml(String(data.symbol ?? ''))}</div><div class="challenge-rush-choice-grid"><button type="button" class="btn challenge-rush-choice" data-cr-bool="true" ${playing ? '' : 'disabled'}>${challenge.key === 'n-back' ? 'Gleich' : 'Schon gesehen'}</button><button type="button" class="btn challenge-rush-choice" data-cr-bool="false" ${playing ? '' : 'disabled'}>${challenge.key === 'n-back' ? 'Anders' : 'Neu'}</button></div>`;
-  if (challenge.key === 'missing-item' || challenge.key === 'suitcase-memory') return `${trial.phase === 'preview' ? `<div class="challenge-rush-item-list">${(data.items ?? []).map((item) => `<span class="chip">${escapeHtml(String(item))}</span>`).join('')}</div><p class="muted">Merken …</p>` : optionsBody(trial, playing)}`;
+  if (challenge.key === 'missing-item') {
+    if (trial.phase === 'preview') return `<div class="challenge-rush-item-list">${(data.originalItems ?? data.items ?? []).map((item) => `<span class="chip">${escapeHtml(String(item))}</span>`).join('')}</div><p class="muted">Merken …</p>`;
+    return `<p class="challenge-rush-logic-prompt">Welche Karte fehlt?</p>${optionsBody(trial, playing)}`;
+  }
+  if (challenge.key === 'suitcase-memory') {
+    if (trial.phase === 'preview') return `<div class="challenge-rush-item-list">${(data.items ?? []).map((item) => `<span class="chip">${escapeHtml(String(item))}</span>`).join('')}</div><p class="muted">Merken …</p>`;
+    return `<p class="challenge-rush-logic-prompt">Welcher Gegenstand lag an Position ${escapeHtml(String(data.position ?? '?'))}?</p>${optionsBody(trial, playing)}`;
+  }
   return '<p class="muted">Bereit …</p>';
 }
+export function renderChallengeRushTrial(challenge, trial, playing = true) { return challengeBody(challenge, trial, playing); }
 function challengeView(container) {
   const challenge = match?.challenge; const playing = match?.phase === 'playing' && !match?.paused;
   const hostControls = match?.host?.id === myId() && match?.phase !== 'ended' ? `<button type="button" class="btn btn-sm" data-cr-pause>${match.paused ? 'Fortsetzen' : 'Pausieren'}</button>` : '';
@@ -139,7 +154,7 @@ function challengeView(container) {
 }
 export function renderChallengeRush(container, ctx) { ensureChallengeRushSocket(); rerender = () => renderChallengeRush(container, ctx); const scores = match?.scores ?? []; container.innerHTML = `<div class="arcade-game-shell"><button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button><h1 class="view-title">Challenge Rush</h1>${match?.phase === 'ended' ? `<section class="card stack"><h2>${match.draw ? 'Unentschieden' : 'Gesamtergebnis'}</h2><div class="challenge-rush-scoreboard">${scoreText(scores)}</div><button type="button" class="btn btn-primary" id="cr-back">Zur Arcade</button></section>` : `${challengeView(container)}<section class="card stack"><h2>Zwischenstand</h2><div class="challenge-rush-scoreboard">${scoreText(scores)}</div></section>`}</div>`; container.querySelector('#cr-back')?.addEventListener('click', () => { match = null; latestResult = null; currentTrial = null; navigate('arcade'); }); container.querySelector('[data-navigate="arcade"]')?.addEventListener('click', () => navigate('arcade'));
   container.querySelector('[data-cr-pause]')?.addEventListener('click', () => socket.emit('challenge-rush:match:pause', { matchId: match.matchId, playerId: myId() }, (result) => { if (!result?.ok) showToast(result?.error || 'Pause konnte nicht geändert werden.', { error: true }); }));
-  const send = (action, value, onAccepted = () => {}) => socket.emit('challenge-rush:challenge:input', { matchId: match.matchId, playerId: myId(), challengeIndex: match.challengeIndex, trialId: currentTrial?.trialId, action, value }, (result) => { if (!result?.ok && !result?.ignored) return showToast(result?.error || 'Eingabe abgelehnt.', { error: true }); if (result?.ok && !result?.ignored && !result?.duplicate) onAccepted(result); });
+  const send = (action, value, onAccepted = () => {}) => { const sentTrialId = currentTrial?.trialId; socket.emit('challenge-rush:challenge:input', { matchId: match.matchId, playerId: myId(), challengeIndex: match.challengeIndex, trialId: sentTrialId, action, value }, (result) => { if (!result?.ok && !result?.ignored) return showToast(result?.error || 'Eingabe abgelehnt.', { error: true }); if (result?.ok && !result?.ignored && !result?.duplicate && currentTrial?.trialId === sentTrialId) onAccepted(result); }); };
   container.querySelector('[data-cr-x]')?.addEventListener('click', (event) => { const circle = event.currentTarget; send('hit', { x: Number(circle.dataset.crX), y: Number(circle.dataset.crY) }); });
   container.querySelector('[data-cr-aim-x]')?.addEventListener('click', (event) => { const target = event.currentTarget; send('hit', { x: Number(target.dataset.crAimX), y: Number(target.dataset.crAimY) }); });
   container.querySelector('.challenge-rush-big-button:not([data-cr-stop])')?.addEventListener('click', () => send('click', undefined, (result) => { cpsClicks = Number(result.progress?.clicks ?? cpsClicks + 1); const counter = container.querySelector('#cr-clicks'); if (counter) counter.textContent = String(cpsClicks); }));
@@ -154,5 +169,5 @@ export function renderChallengeRush(container, ctx) { ensureChallengeRushSocket(
   container.querySelectorAll('[data-cr-color]').forEach((button) => button.addEventListener('click', () => send('answer', button.dataset.crColor)));
   container.querySelectorAll('[data-cr-choice]').forEach((button) => button.addEventListener('click', () => send('choice', button.dataset.crChoice)));
   container.querySelectorAll('[data-cr-bool]').forEach((button) => button.addEventListener('click', () => send('choice', button.dataset.crBool === 'true')));
-  container.querySelectorAll('[data-cr-pair-card]').forEach((button) => button.addEventListener('click', () => { const value = Number(button.dataset.crPairCard); if (interaction.found.has(value) || interaction.pair.includes(value)) return; interaction.pair.push(value); if (interaction.pair.length !== 2) return refresh(); const pair = [...interaction.pair]; const trialId = currentTrial?.trialId; const cards = currentTrial?.data?.cards ?? []; const same = cards[pair[0]]?.value === cards[pair[1]]?.value; send('pair', pair, (result) => { if (result.trial?.trialId !== trialId) return; if (same) pair.forEach((entry) => interaction.found.add(entry)); interaction.pair = []; refresh(); }); }));
+  container.querySelectorAll('[data-cr-pair-card]').forEach((button) => button.addEventListener('click', () => { const value = Number(button.dataset.crPairCard); if (interaction.found.has(value) || interaction.pair.includes(value)) return; interaction.pair.push(value); if (interaction.pair.length !== 2) return refresh(); const pair = [...interaction.pair]; const trialId = currentTrial?.trialId; send('pair', pair, (result) => { if (result.trial?.trialId !== trialId) return; if (result.correct) pair.forEach((entry) => interaction.found.add(entry)); interaction.pair = []; refresh(); }); }));
 }

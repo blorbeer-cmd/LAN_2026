@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CHALLENGES, challengePayload, createTrial, difficultyFor, isCurrentChallenge, isTrialChallenge, remainingUntil, safeScoreInput, scoreCps, scoreNumberSalad, scoreReaction, scoreTiming10, validateTrialInput, winnerIdForScores } from './challengeRushLogic';
+import { CHALLENGES, challengePayload, createTrial, difficultyFor, isCurrentChallenge, isTrialChallenge, remainingUntil, safeScoreInput, scoreCps, scoreNumberSalad, scoreReaction, scoreTiming10, scoreTrialThroughput, validateTrialInput, winnerIdForScores } from './challengeRushLogic';
 
 test('same seed creates the same challenge data', () => {
   assert.deepEqual(challengePayload('number-salad', 123).data, challengePayload('number-salad', 123).data);
@@ -124,6 +124,17 @@ test('memory trial validators cover choice, missing item, path and pairs', () =>
   const second = board.findIndex((value, index) => index !== first && value === board[first]);
   assert.equal(validateTrialInput('memory-pairs', pairs, 'pair', [first, second]).correct, true);
   assert.equal(validateTrialInput('memory-pairs', pairs, 'pair', [0, 0]).accepted, false);
+  const mismatchPairs = createTrial('memory-pairs', 100, 0, 1);
+  const mismatchBoard = mismatchPairs.expected as string[];
+  const mismatch = 0;
+  const mismatchOther = mismatchBoard.findIndex((value, index) => index !== mismatch && value !== mismatchBoard[mismatch]);
+  const mismatchResult = validateTrialInput('memory-pairs', mismatchPairs, 'pair', [mismatch, mismatchOther]);
+  assert.equal(mismatchResult.complete, false);
+  assert.equal(mismatchResult.rawScore, -4);
+  const pathValues = path.expected as number[];
+  assert.equal(validateTrialInput('path-memory', path, 'sequence', pathValues.map(String)).correct, false);
+  const matrix = createTrial('memory-matrix', 99, 0, 1); matrix.phase = 'input';
+  assert.equal(validateTrialInput('memory-matrix', matrix, 'cells', [null]).correct, false);
 });
 test('scores stay in the normalized 0..100 range', () => {
   assert.equal(scoreReaction(120), 100); assert.equal(scoreReaction(99_999), 0);
@@ -134,6 +145,20 @@ test('scores stay in the normalized 0..100 range', () => {
 test('ties do not select an arbitrary winner', () => {
   assert.equal(winnerIdForScores([{ playerId: 'a', score: 10 }, { playerId: 'b', score: 10 }]), null);
   assert.equal(winnerIdForScores([{ playerId: 'a', score: 11 }, { playerId: 'b', score: 10 }]), 'a');
+  assert.equal(winnerIdForScores([{ playerId: 'a', score: 150 }, { playerId: 'b', score: 120 }]), 'a');
+});
+
+test('N-back derives the expected answer from the server-side visible history', () => {
+  const history = ['◆', '●', '▲'];
+  const trial = createTrial('n-back', 123, 3, 1, history);
+  const previous = history[history.length - 1];
+  assert.equal(trial.data.n, 1);
+  assert.equal(trial.expected, trial.data.symbol === previous);
+});
+
+test('difficulty changes the generated task and throughput rewards completed trials', () => {
+  assert.notDeepEqual(createTrial('aim-trainer', 123, 0, 1).data, createTrial('aim-trainer', 123, 0, 5).data);
+  assert.ok(scoreTrialThroughput(600, 12, 12, 30_000) > scoreTrialThroughput(100, 2, 2, 30_000));
 });
 test('stale challenge generations and expired deadlines are rejected safely', () => {
   assert.equal(isCurrentChallenge(2, 2), true);

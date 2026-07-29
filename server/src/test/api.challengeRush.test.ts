@@ -84,10 +84,14 @@ test('Challenge Rush reconnects within grace and forfeits after grace while the 
     await emitAck(guestSocket, 'challenge-rush:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
     await emitAck(guestSocket, 'challenge-rush:lobby:ready', { lobbyId: created.lobbyId, playerId: guestId, ready: true });
     const started = nextEvent<{ matchId: string; challengeCount: number }>(hostSocket, 'challenge-rush:match:start');
+    const hostTrial = nextEvent<{ trial: { data: Record<string, unknown> } }>(hostSocket, 'challenge-rush:trial');
+    const guestTrial = nextEvent<{ trial: { data: Record<string, unknown> } }>(guestSocket, 'challenge-rush:trial');
     assert.equal((await emitAck(hostSocket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId: hostId })).ok, true);
     const match = await started;
-    assert.equal(match.challengeCount, 40);
     const playing = nextState(hostSocket, (state) => state.phase === 'playing');
+    const [hostTrialPayload, guestTrialPayload] = await Promise.all([hostTrial, guestTrial]);
+    assert.notDeepEqual(hostTrialPayload.trial.data, guestTrialPayload.trial.data);
+    assert.equal(match.challengeCount, 40);
     const initialState = await playing;
     assert.equal(initialState.matchId, match.matchId);
 
@@ -125,12 +129,12 @@ test('Challenge Rush serializes parallel last inputs and completes a player once
     const playerId = await player(server.baseUrl, 'Challenge Rush Race');
     const created = await emitAck(socket, 'challenge-rush:lobby:create', { playerId });
     const started = nextEvent<{ matchId: string }>(socket, 'challenge-rush:match:start');
+    const trialEvent = nextEvent<{ challengeIndex: number; trial: { trialId: string; data: Record<string, unknown> } }>(socket, 'challenge-rush:trial');
     await emitAck(socket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId });
     const match = await started;
-    const statePromise = nextState(socket, (candidate) => candidate.phase === 'playing');
-    const state = await statePromise;
-    const target = state.challenge.data;
-    const payload = { matchId: match.matchId, playerId, challengeIndex: state.challengeIndex, action: 'hit', value: { x: Number(target.x), y: Number(target.y) } };
+    const trial = await trialEvent;
+    const target = trial.trial.data as { x: number; y: number };
+    const payload = { matchId: match.matchId, playerId, challengeIndex: trial.challengeIndex, trialId: trial.trial.trialId, action: 'hit', value: { x: Number(target.x), y: Number(target.y) } };
     const results = await Promise.all([emitAck(socket, 'challenge-rush:challenge:input', payload), emitAck(socket, 'challenge-rush:challenge:input', payload)]);
     assert.equal(results.filter((result) => result.accepted === true).length, 1);
     assert.equal(results.filter((result) => result.accepted !== true).length, 1);
@@ -151,6 +155,15 @@ test('Challenge Rush rejects stale trial ids without ending the repeated challen
     await emitAck(socket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId });
     const [match, trial] = await Promise.all([started, trialEvent]);
     const target = trial.trial.data;
+    const missing = await emitAck(socket, 'challenge-rush:challenge:input', {
+      matchId: match.matchId,
+      playerId,
+      challengeIndex: trial.challengeIndex,
+      action: 'hit',
+      value: { x: Number(target.x), y: Number(target.y) },
+    });
+    assert.equal(missing.ignored, true);
+    assert.equal(missing.reason, 'stale-trial');
     const result = await emitAck(socket, 'challenge-rush:challenge:input', {
       matchId: match.matchId,
       playerId,
@@ -173,5 +186,25 @@ test('Challenge Rush rejects stale trial ids without ending the repeated challen
     assert.equal(accepted.accepted, true);
   } finally {
     socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
+  }
+});
+
+test('Challenge Rush binds legacy player control to the socket that claimed it', async () => {
+  clearLobbyMemberships();
+  const server = await makeServer();
+  const owner = await connect(server.baseUrl);
+  const attacker = await connect(server.baseUrl);
+  try {
+    const playerId = await player(server.baseUrl, 'Challenge Rush Legacy Binding');
+    const created = await emitAck(owner, 'challenge-rush:lobby:create', { playerId });
+    const started = nextEvent<{ matchId: string }>(owner, 'challenge-rush:match:start');
+    const trialEvent = nextEvent<{ challengeIndex: number; trial: { trialId: string; data: Record<string, unknown> } }>(owner, 'challenge-rush:trial');
+    await emitAck(owner, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId });
+    const [match, trial] = await Promise.all([started, trialEvent]);
+    const target = trial.trial.data as { x: number; y: number };
+    const result = await emitAck(attacker, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId, challengeIndex: trial.challengeIndex, trialId: trial.trial.trialId, action: 'hit', value: target });
+    assert.equal(result.ok, false);
+  } finally {
+    owner.close(); attacker.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
   }
 });

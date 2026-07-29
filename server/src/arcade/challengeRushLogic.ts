@@ -56,7 +56,7 @@ export const CHALLENGES: ChallengeDefinition[] = [
 ];
 
 export interface ChallengePayload { key: ChallengeKey; title: string; description: string; durationMs: number; seed: number; data: Record<string, unknown> }
-export interface TrialPayload { trialId: string; index: number; difficulty: number; phase: TrialPhase; phaseMs: number; data: Record<string, unknown> }
+export interface TrialPayload { trialId: string; index: number; difficulty: number; phase: TrialPhase; phaseMs: number; phaseRemainingMs?: number; resume?: Record<string, unknown>; data: Record<string, unknown> }
 export interface TrialResult { accepted: boolean; complete: boolean; correct: boolean; errors: number; rawScore: number; next?: TrialPayload; error?: string }
 
 export function seededRandom(seed: number): () => number {
@@ -127,8 +127,10 @@ function choiceTrial(key: ChallengeKey, id: string, index: number, difficulty: n
   return { trialId: id, index, difficulty, phase, phaseMs: previewMs, data, expected, state: {} };
 }
 
-export function createTrial(key: ChallengeKey, seed: number, index: number, difficulty: number): InternalTrial {
-  const random = seededRandom(seed);
+export function createTrial(key: ChallengeKey, seed: number, index: number, difficulty: number, symbolHistory: string[] = []): InternalTrial {
+  // Mix the difficulty into the deterministic seed so a streak changes the
+  // actual task, not just its score multiplier.
+  const random = seededRandom((seed ^ Math.imul(difficulty, 0x9e3779b9)) >>> 0);
   const id = trialId(index, seed);
   const size = difficulty >= 4 ? 5 : difficulty >= 2 ? 4 : 3;
   if (key === 'aim-trainer') {
@@ -262,13 +264,13 @@ export function createTrial(key: ChallengeKey, seed: number, index: number, diff
   }
   if (key === 'n-back') {
     const n = difficulty >= 3 ? 2 : 1;
-    const currentIndex = Math.max(n, index);
-    const shouldMatch = random() > 0.67;
-    const baseSeed = (seed - index * 104_729) >>> 0;
-    const previousSeed = (baseSeed + (currentIndex - n) * 104_729) >>> 0;
-    const previous = SYMBOLS[Math.floor(seededRandom(previousSeed)() * SYMBOLS.length)];
-    const symbol = shouldMatch ? previous : SYMBOLS[(SYMBOLS.indexOf(previous) + 1 + Math.floor(random() * (SYMBOLS.length - 1))) % SYMBOLS.length];
-    return { trialId: id, index, difficulty, phase: 'input', phaseMs: phaseMs(key, difficulty), data: { type: 'choice', symbol, n, itemIndex: currentIndex }, expected: shouldMatch, state: {} };
+    const previous = symbolHistory.length >= n ? symbolHistory[symbolHistory.length - n] : null;
+    const shouldMatch = previous !== null && random() > 0.67;
+    const candidate = SYMBOLS[Math.floor(random() * SYMBOLS.length)];
+    const symbol = shouldMatch ? previous : previous !== null && candidate === previous
+      ? SYMBOLS[(SYMBOLS.indexOf(previous) + 1 + Math.floor(random() * (SYMBOLS.length - 1))) % SYMBOLS.length]
+      : candidate;
+    return { trialId: id, index, difficulty, phase: 'input', phaseMs: phaseMs(key, difficulty), data: { type: 'choice', symbol, n, itemIndex: index }, expected: previous !== null && symbol === previous, state: {} };
   }
   if (key === 'seen-before') {
     const repeated = index > 0 && random() > 0.55;
@@ -283,7 +285,7 @@ export function createTrial(key: ChallengeKey, seed: number, index: number, diff
     const missing = items[missingIndex];
     const visible = items.filter((_, itemIndex) => itemIndex !== missingIndex);
     const options = shuffled([missing, ...shuffled(ITEMS.filter((item) => !items.includes(item)), random).slice(0, 3)], random);
-    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: phaseMs(key, difficulty), data: { type: 'missing', items: visible, options }, expected: missing, state: {} };
+    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: phaseMs(key, difficulty), data: { type: 'missing', items: visible, originalItems: items, options }, expected: missing, state: {} };
   }
   if (key === 'memory-pairs') {
     const pairCount = difficulty >= 4 ? 6 : difficulty >= 2 ? 3 : 2;
@@ -313,8 +315,8 @@ export function validateTrialInput(key: ChallengeKey, trial: InternalTrial, acti
     return valid ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 55 + trial.difficulty * 7 } : wrong('Ungültiges Ziel.');
   }
   if (key === 'odd-one-out') {
-    if (action !== 'select' || !Number.isInteger(Number(value))) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültiges Feld.' };
-    return Number(value) === trial.expected ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 65 + trial.difficulty * 6 } : wrong();
+    if (action !== 'select' || typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value >= Number(trial.data.tileCount)) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültiges Feld.' };
+    return value === trial.expected ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 65 + trial.difficulty * 6 } : wrong();
   }
   if (key === 'traffic-light') {
     if (action !== 'click') return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Reaktion.' };
@@ -329,27 +331,30 @@ export function validateTrialInput(key: ChallengeKey, trial: InternalTrial, acti
     return String(value) === String(trial.expected) ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 58 + trial.difficulty * 7 } : wrong();
   }
   if (key === 'whack-a-mole') {
-    if (action !== 'hit' || !Number.isInteger(Number(value))) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültiges Feld.' };
-    const sequence = trial.expected as number[]; const current = Number(trial.state.correct ?? 0);
-    if (Number(value) !== sequence[current]) return wrong();
+    if (action !== 'hit' || typeof value !== 'number' || !Number.isInteger(value)) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültiges Feld.' };
+    const sequence = trial.expected as number[]; const current = typeof trial.state.correct === 'number' ? trial.state.correct : 0;
+    if (value < 0 || value >= Number(trial.data.size) ** 2 || value !== sequence[current]) return wrong();
     const next = current + 1; trial.state.correct = next;
     return { accepted: true, complete: next >= sequence.length, correct: true, errors: 0, rawScore: next >= sequence.length ? 75 + trial.difficulty * 5 : 12 + trial.difficulty * 2 };
   }
   if (key === 'sequence-echo' || key === 'reverse-echo' || key === 'memory-sequence' || key === 'path-memory') {
     if (action !== 'sequence' || !Array.isArray(value)) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Folge.' };
-    const expected = trial.expected as number[]; const received = value.map(Number);
-    const correct = received.length === expected.length && received.every((entry, index) => entry === expected[index]);
+    const expected = trial.expected as number[]; const received = value;
+    const correct = received.length === expected.length && received.every((entry, index) => typeof entry === 'number' && Number.isInteger(entry) && entry >= 0 && entry < Number(trial.data.size) ** 2 && entry === expected[index]) && new Set(received).size === received.length;
     return correct ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 70 + trial.difficulty * 6 } : wrong();
   }
   if (key === 'memory-matrix') {
     if (action !== 'cells' || !Array.isArray(value)) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Felder.' };
-    const expected = [...(trial.expected as number[])].sort((a, b) => a - b); const received = value.map(Number).sort((a, b) => a - b);
-    const correct = expected.length === received.length && expected.every((entry, index) => entry === received[index]);
+    const expected = [...(trial.expected as number[])].sort((a, b) => a - b); const received = [...value].sort((a, b) => Number(a) - Number(b));
+    const valid = received.every((entry) => typeof entry === 'number' && Number.isInteger(entry) && entry >= 0 && entry < Number(trial.data.size) ** 2) && new Set(received).size === received.length;
+    const correct = valid && expected.length === received.length && expected.every((entry, index) => entry === received[index]);
     return correct ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 70 + trial.difficulty * 6 } : wrong();
   }
   if (key === 'number-blind') {
     if (action !== 'sequence' || !Array.isArray(value)) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Zahlenfolge.' };
-    const expected = trial.expected as number[]; const received = value.map(Number); const correct = expected.length === received.length && expected.every((entry, index) => entry === received[index]);
+    const expected = trial.expected as number[]; const received = value;
+    const valid = received.every((entry) => typeof entry === 'number' && Number.isInteger(entry) && entry >= 0 && entry < Number(trial.data.size) ** 2) && new Set(received).size === received.length;
+    const correct = valid && expected.length === received.length && expected.every((entry, index) => entry === received[index]);
     return correct ? { accepted: true, complete: true, correct: true, errors: 0, rawScore: 72 + trial.difficulty * 5 } : wrong();
   }
   if (key === 'n-back' || key === 'seen-before') {
@@ -362,7 +367,7 @@ export function validateTrialInput(key: ChallengeKey, trial: InternalTrial, acti
   }
   if (key === 'memory-pairs') {
     if (action !== 'pair' || !Array.isArray(value) || value.length !== 2) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültiges Paar.' };
-    const board = trial.expected as string[]; const first = Number(value[0]); const second = Number(value[1]);
+    const board = trial.expected as string[]; const first = value[0]; const second = value[1];
     if (!Number.isInteger(first) || !Number.isInteger(second) || first < 0 || second < 0 || first >= board.length || second >= board.length || first === second) {
       return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Karten.' };
     }
@@ -384,8 +389,18 @@ export function scoreCps(clicks: number): number { return safeScoreInput(Math.ro
 export function scoreNumberSalad(correct: number, errors: number, elapsedMs: number): number { return safeScoreInput(Math.round(safeCount(correct) * 12.5 - safeCount(errors) * 8 - Math.max(0, safeElapsed(elapsedMs) - 2_000) / 180)); }
 export function scoreTiming10(elapsedMs: number): number { return safeScoreInput(Math.round(100 - Math.abs(safeElapsed(elapsedMs) - 10_000) / 20)); }
 
+export function scoreTrialThroughput(rawScore: number, trials: number, correct: number, durationMs: number): number {
+  const safeTrials = safeCount(trials);
+  if (safeTrials === 0) return 0;
+  const averageRawScore = (Number.isFinite(rawScore) ? rawScore : 0) / safeTrials;
+  const accuracy = Math.max(0, Math.min(1, safeCount(correct) / safeTrials));
+  const targetTrials = Math.max(1, safeElapsed(durationMs) / 2_000);
+  const throughput = Math.min(1, safeTrials / targetTrials);
+  return safeScoreInput(Math.round(averageRawScore * 0.65 + accuracy * 25 + throughput * 10));
+}
+
 export function winnerIdForScores(scores: Array<{ playerId: string; score: number }>): string | null {
-  const normalized = scores.map((entry) => ({ ...entry, score: safeScoreInput(entry.score) }));
+  const normalized = scores.map((entry) => ({ ...entry, score: Number.isFinite(entry.score) ? Math.max(0, entry.score) : 0 }));
   const highest = Math.max(0, ...normalized.map((entry) => entry.score));
   const winners = normalized.filter((entry) => entry.score === highest);
   return winners.length === 1 ? winners[0].playerId : null;
