@@ -77,7 +77,7 @@ const GAMES = [
     id: 'challenge-rush',
     icon: icon('crosshair'),
     name: 'Challenge Rush',
-    help: 'Ziel: In vier kurzen Mini-Challenges möglichst viele Punkte sammeln. Steuerung: Tippen oder klicken.',
+    help: 'Ziel: In zehn zufällig gewählten Mini-Challenges möglichst viele Punkte sammeln. Steuerung: Tippen oder klicken.',
   },
 ];
 

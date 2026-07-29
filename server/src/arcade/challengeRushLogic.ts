@@ -56,7 +56,18 @@ export const CHALLENGES: ChallengeDefinition[] = [
 ];
 
 export interface ChallengePayload { key: ChallengeKey; title: string; description: string; durationMs: number; seed: number; data: Record<string, unknown> }
-export interface TrialPayload { trialId: string; index: number; difficulty: number; phase: TrialPhase; phaseMs: number; phaseRemainingMs?: number; resume?: Record<string, unknown>; data: Record<string, unknown> }
+export interface TrialPayload {
+  trialId: string;
+  index: number;
+  difficulty: number;
+  phase: TrialPhase;
+  phaseMs: number;
+  phaseRemainingMs?: number;
+  inputMs?: number;
+  inputRemainingMs?: number;
+  resume?: Record<string, unknown>;
+  data: Record<string, unknown>;
+}
 export interface TrialResult { accepted: boolean; complete: boolean; correct: boolean; errors: number; rawScore: number; next?: TrialPayload; error?: string }
 
 export function seededRandom(seed: number): () => number {
@@ -74,6 +85,17 @@ function shuffled<T>(values: T[], random: () => number): T[] {
   const result = [...values];
   for (let index = result.length - 1; index > 0; index -= 1) { const swap = Math.floor(random() * (index + 1)); [result[index], result[swap]] = [result[swap], result[index]]; }
   return result;
+}
+
+function numericOptions(expected: number, random: () => number, offsets = [-1, 1, 2, -2]): string[] {
+  const values = [expected];
+  for (const offset of offsets) {
+    const candidate = expected + offset;
+    if (candidate >= 0 && !values.includes(candidate)) values.push(candidate);
+    if (values.length === 4) break;
+  }
+  for (let offset = 3; values.length < 4; offset += 1) if (!values.includes(expected + offset)) values.push(expected + offset);
+  return shuffled(values.map(String), random);
 }
 
 function gridSequence(random: () => number, count: number, size: number): number[] {
@@ -104,7 +126,15 @@ export function challengePayload(key: ChallengeKey, seed: number): ChallengePayl
   return { ...current, seed, data: {} };
 }
 
-const SYMBOLS = ['◆', '●', '▲', '■', '★', '⬟', '✚', '☀', '☘', '⬢'];
+export const CHALLENGE_SYMBOLS = ['◆', '●', '▲', '■', '★', '⬟', '✚', '☀', '☘', '⬢'] as const;
+export function seenBeforeSelection(baseSymbol: string, wantsRepeat: boolean, seenSymbols: string[], index: number): { symbol: string; repeated: boolean } {
+  const unused = CHALLENGE_SYMBOLS.filter((symbol) => !seenSymbols.includes(symbol));
+  const repeated = (wantsRepeat && seenSymbols.length > 0) || unused.length === 0;
+  return {
+    symbol: repeated ? seenSymbols[index % seenSymbols.length] : (unused[index % unused.length] ?? baseSymbol),
+    repeated,
+  };
+}
 const ITEMS = ['Schlüssel', 'Becher', 'Würfel', 'Lampe', 'Karte', 'Stern', 'Brille', 'Uhr', 'Ball', 'Pfeil', 'Ring', 'Buch'];
 const COLOR_WORDS = [
   { key: 'red', word: 'Rot' }, { key: 'blue', word: 'Blau' }, { key: 'green', word: 'Grün' }, { key: 'yellow', word: 'Gelb' },
@@ -122,58 +152,67 @@ export interface InternalTrial extends TrialPayload {
 }
 
 function trialId(index: number, seed: number): string { return `${index}-${seed >>> 0}`; }
-function phaseMs(key: ChallengeKey, difficulty: number): number { return key === 'n-back' || key === 'seen-before' ? Math.max(420, 900 - difficulty * 80) : Math.max(450, 1_000 - difficulty * 100); }
+function phaseMs(_key: ChallengeKey, difficulty: number): number { return Math.max(450, 1_000 - difficulty * 100); }
+export function inputWindowMs(key: ChallengeKey, difficulty: number): number {
+  const level = Math.max(1, Math.min(5, difficulty));
+  if (key === 'n-back' || key === 'seen-before') return 1_800 - level * 180;
+  if (key === 'memory-pairs') return 9_000 - level * 600;
+  if (key === 'whack-a-mole' || MEMORY_KEYS.has(key)) return 6_500 - level * 450;
+  if (key === 'traffic-light') return 2_800 - level * 200;
+  return 5_500 - level * 500;
+}
 function choiceTrial(key: ChallengeKey, id: string, index: number, difficulty: number, data: Record<string, unknown>, expected: string | number, phase: TrialPhase = 'input', previewMs = 0): InternalTrial {
-  return { trialId: id, index, difficulty, phase, phaseMs: previewMs, data, expected, state: {} };
+  return { trialId: id, index, difficulty, phase, phaseMs: previewMs, inputMs: inputWindowMs(key, difficulty), data, expected, state: {} };
 }
 
 export function createTrial(key: ChallengeKey, seed: number, index: number, difficulty: number, symbolHistory: string[] = []): InternalTrial {
-  // Mix the difficulty into the deterministic seed so a streak changes the
-  // actual task, not just its score multiplier.
+  // Difficulty changes task size and/or the enforced answer window; mixing it
+  // into the seed additionally keeps consecutive levels deterministic but varied.
   const random = seededRandom((seed ^ Math.imul(difficulty, 0x9e3779b9)) >>> 0);
   const id = trialId(index, seed);
   const size = difficulty >= 4 ? 5 : difficulty >= 2 ? 4 : 3;
   if (key === 'aim-trainer') {
     const target = { x: 15 + random() * 70, y: 20 + random() * 60 };
-    return { trialId: id, index, difficulty, phase: 'input', phaseMs: 0, data: { type: 'aim-trainer', target }, expected: target, state: {} };
+    const radius = Math.max(7, 13 - difficulty);
+    return { trialId: id, index, difficulty, phase: 'input', phaseMs: 0, inputMs: inputWindowMs(key, difficulty), data: { type: 'aim-trainer', target: { ...target, radius } }, expected: { ...target, radius }, state: {} };
   }
   if (key === 'memory-sequence') {
     const length = Math.min(9, 2 + difficulty + Math.floor(index / 4));
     const sequence = gridSequence(random, length, size);
-    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: Math.max(450, 700 - difficulty * 50), data: { type: 'memory-sequence', size, sequence }, expected: sequence, state: {} };
+    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: Math.max(450, 700 - difficulty * 50), inputMs: inputWindowMs(key, difficulty), data: { type: 'memory-sequence', size, sequence }, expected: sequence, state: {} };
   }
   if (key === 'odd-one-out') {
     const tileCount = difficulty >= 4 ? 25 : difficulty >= 2 ? 16 : 9;
     const oddIndex = Math.floor(random() * tileCount);
-    return { trialId: id, index, difficulty, phase: 'input', phaseMs: 0, data: { type: 'odd-one-out', size: Math.sqrt(tileCount), tileCount, oddIndex }, expected: oddIndex, state: {} };
+    return { trialId: id, index, difficulty, phase: 'input', phaseMs: 0, inputMs: inputWindowMs(key, difficulty), data: { type: 'odd-one-out', size: Math.sqrt(tileCount), tileCount, oddIndex, subtlety: difficulty }, expected: oddIndex, state: {} };
   }
   if (key === 'whack-a-mole') {
     const length = Math.min(10, 3 + difficulty + Math.floor(index / 4));
     const sequence = gridSequence(random, length, size);
-    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: Math.max(400, 650 - difficulty * 45), data: { type: 'whack-a-mole', size, sequence }, expected: sequence, state: { correct: 0 } };
+    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: Math.max(400, 650 - difficulty * 45), inputMs: inputWindowMs(key, difficulty), data: { type: 'whack-a-mole', size, sequence }, expected: sequence, state: { correct: 0 } };
   }
   if (key === 'traffic-light') {
     const greenAtMs = 1_000 + Math.floor(random() * Math.max(500, 2_500 - difficulty * 250));
-    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: greenAtMs, data: { type: 'traffic-light', greenAtMs }, expected: true, state: {} };
+    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: greenAtMs, inputMs: inputWindowMs(key, difficulty), data: { type: 'traffic-light' }, expected: true, state: {} };
   }
   if (key === 'color-word') {
     const word = COLOR_WORDS[Math.floor(random() * COLOR_WORDS.length)];
     const textColor = COLOR_WORDS[Math.floor(random() * COLOR_WORDS.length)];
-    return { trialId: id, index, difficulty, phase: 'input', phaseMs: 0, data: { type: 'color-word', word: word.word, textColor: textColor.key, options: shuffled(COLOR_WORDS.map((entry) => entry.key), random) }, expected: textColor.key, state: {} };
+    return { trialId: id, index, difficulty, phase: 'input', phaseMs: 0, inputMs: inputWindowMs(key, difficulty), data: { type: 'color-word', word: word.word, textColor: textColor.key, options: shuffled(COLOR_WORDS.map((entry) => entry.key), random) }, expected: textColor.key, state: {} };
   }
   if (key === 'number-sequence') {
     const start = 2 + Math.floor(random() * 8); const step = 1 + difficulty + Math.floor(random() * 3); const expected = start + step * 3;
-    const options = shuffled([expected, expected - step, expected + step, expected + 1].map(String), random);
+    const options = numericOptions(expected, random, [-step, step, 1, -1]);
     return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `${start}, ${start + step}, ${start + step * 2}, ?`, options }, String(expected));
   }
   if (key === 'logic-equation') {
-    const a = 2 + Math.floor(random() * 8); const b = 2 + Math.floor(random() * 6); const c = 1 + Math.floor(random() * 4); const expected = a + b * c;
-    const options = shuffled([expected, expected + b, expected - c, expected + 2].map(String), random);
+    const range = 8 + difficulty * 4; const a = 2 + Math.floor(random() * range); const b = 2 + Math.floor(random() * (5 + difficulty)); const c = 1 + Math.floor(random() * (3 + difficulty)); const expected = a + b * c;
+    const options = numericOptions(expected, random, [b, -c, 2, -2]);
     return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `${a} + ${b} × ${c} = ?`, options }, String(expected));
   }
   if (key === 'pattern-complete') {
     const symbols = ['◆', '●', '▲', '■']; const base = Math.floor(random() * symbols.length); const pattern = [0, 1, 2, 0, 1, 2].map((offset) => symbols[(base + offset) % symbols.length]);
-    const expected = pattern[pattern.length - 1]; const options = shuffled([expected, symbols[(base + 1) % symbols.length], symbols[(base + 3) % symbols.length], symbols[(base + 2) % symbols.length]], random);
+    const expected = pattern[pattern.length - 1]; const options = shuffled([...symbols], random);
     return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `${pattern.slice(0, 5).join(' ')} ?`, options }, expected);
   }
   if (key === 'category-sort') {
@@ -195,12 +234,21 @@ export function createTrial(key: ChallengeKey, seed: number, index: number, diff
   }
   if (key === 'count-shapes') {
     const shapes = ['◆', '●', '▲']; const target = shapes[Math.floor(random() * shapes.length)]; const sequence = Array.from({ length: 6 + difficulty }, () => shapes[Math.floor(random() * shapes.length)]); const expected = sequence.filter((shape) => shape === target).length;
-    const options = shuffled([...new Set([expected, Math.max(0, expected - 1), expected + 1, expected + 2])].map(String), random);
+    const options = numericOptions(expected, random);
     return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Wie oft kommt ${target} vor?  ${sequence.join(' ')}`, options }, String(expected));
   }
   if (key === 'logic-order') {
-    const order = shuffled(['A', 'B', 'C'], random); const options = shuffled(['ABC', 'ACB', 'BAC', 'BCA', 'CAB', 'CBA'], random);
-    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `${order[0]} kommt vor ${order[1]}, ${order[1]} kommt vor ${order[2]}.`, options }, order.join(''));
+    const elements = difficulty >= 4 ? ['A', 'B', 'C', 'D'] : ['A', 'B', 'C'];
+    const order = shuffled(elements, random);
+    const clues = order.slice(1).map((entry, clueIndex) => clueIndex % 2 === 0
+      ? `${entry} kommt nach ${order[clueIndex]}.`
+      : `${order[clueIndex]} kommt vor ${entry}.`);
+    const permutations = (values: string[]): string[] => values.length <= 1
+      ? values
+      : values.flatMap((entry, entryIndex) => permutations(values.filter((_, index) => index !== entryIndex)).map((suffix) => entry + suffix));
+    const expected = order.join('');
+    const distractors = shuffled(permutations(elements).filter((entry) => entry !== expected), random).slice(0, 5);
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: shuffled(clues, random).join(' '), options: shuffled([expected, ...distractors], random) }, expected);
   }
   if (key === 'delayed-recall') {
     const items = shuffled(ITEMS, random).slice(0, Math.min(7, 3 + difficulty)); const expected = items[Math.floor(random() * items.length)]; const options = shuffled([expected, ...ITEMS.filter((item) => !items.includes(item)).slice(0, 3)], random);
@@ -212,11 +260,11 @@ export function createTrial(key: ChallengeKey, seed: number, index: number, diff
   }
   if (key === 'balance-scale') {
     const known = 3 + Math.floor(random() * 8); const total = known + 8 + Math.floor(random() * 8); const expected = total - known;
-    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Eine Kugel + ${known} kg = ${total} kg. Wie schwer ist die Kugel?`, options: shuffled([expected, expected - 1, expected + 1, expected + 2].map(String), random) }, String(expected));
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Eine Kugel + ${known} kg = ${total} kg. Wie schwer ist die Kugel?`, options: numericOptions(expected, random) }, String(expected));
   }
   if (key === 'clock-angle') {
     const hour = 1 + Math.floor(random() * 11); const minute = [0, 15, 30, 45][Math.floor(random() * 4)]; const hourAngle = (hour % 12) * 30 + minute * 0.5; const minuteAngle = minute * 6; const expected = Math.round(Math.min(Math.abs(hourAngle - minuteAngle), 360 - Math.abs(hourAngle - minuteAngle)));
-    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Wie groß ist der kleinere Winkel bei ${hour}:${String(minute).padStart(2, '0')} Uhr?`, options: shuffled([expected, expected + 15, Math.max(0, expected - 15), (expected + 30) % 180].map(String), random) }, String(expected));
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Wie groß ist der kleinere Winkel bei ${hour}:${String(minute).padStart(2, '0')} Uhr?`, options: numericOptions(expected, random, [15, -15, 30, -30]) }, String(expected));
   }
   if (key === 'binary-pattern') {
     const startsWithOne = random() > 0.5; const bits = Array.from({ length: 5 }, (_, position) => (startsWithOne ? position % 2 : (position + 1) % 2)); const expected = startsWithOne ? 1 : 0;
@@ -228,11 +276,11 @@ export function createTrial(key: ChallengeKey, seed: number, index: number, diff
   }
   if (key === 'matrix-missing') {
     const a = 1 + Math.floor(random() * 8); const b = a + 1 + Math.floor(random() * 5); const c = b + 1 + Math.floor(random() * 5); const expected = c + (b - a);
-    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `${a}  ${b}\n${c}  ?`, options: shuffled([expected, expected - 1, expected + 1, expected + 2].map(String), random) }, String(expected));
+    return choiceTrial(key, id, index, difficulty, { type: 'matrix-choice', matrix: [[a, b], [c, null]], prompt: `${a}  ${b}\n${c}  ?`, options: numericOptions(expected, random) }, String(expected));
   }
   if (key === 'coin-change') {
     const amount = 8 + Math.floor(random() * 18); const expected = Math.floor(amount / 5) + Math.floor((amount % 5) / 2) + amount % 2;
-    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Wie viele Münzen brauchst du mindestens für ${amount} € (1 €, 2 €, 5 €)?`, options: shuffled([expected, expected + 1, Math.max(1, expected - 1), expected + 2].map(String), random) }, String(expected));
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Wie viele Münzen brauchst du mindestens für ${amount} € (1 €, 2 €, 5 €)?`, options: numericOptions(expected, random) }, String(expected));
   }
   if (key === 'letter-order') {
     const letters = shuffled(['A', 'F', 'K', 'M', 'R'], random).slice(0, 3); const expected = [...letters].sort()[0];
@@ -240,43 +288,43 @@ export function createTrial(key: ChallengeKey, seed: number, index: number, diff
   }
   if (key === 'digit-sum') {
     const number = 12 + Math.floor(random() * 87); const expected = String(number).split('').reduce((sum, digit) => sum + Number(digit), 0);
-    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Wie hoch ist die Ziffernsumme von ${number}?`, options: shuffled([expected, expected + 1, Math.max(1, expected - 1), expected + 2].map(String), random) }, String(expected));
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `Wie hoch ist die Ziffernsumme von ${number}?`, options: numericOptions(expected, random) }, String(expected));
   }
   if (key === 'sequence-transform') {
     const start = 2 + Math.floor(random() * 5); const expected = (start * 2 + 1) * 2 + 1;
-    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `${start} → ${start * 2 + 1} → ${(start * 2 + 1) * 2 + 1} → ?`, options: shuffled([expected, expected - 1, expected + 2, expected + 4].map(String), random) }, String(expected));
+    return choiceTrial(key, id, index, difficulty, { type: 'choice', prompt: `${start} → ${start * 2 + 1} → ${(start * 2 + 1) * 2 + 1} → ?`, options: numericOptions(expected, random, [-1, 2, 4, -2]) }, String(expected));
   }
   if (key === 'sequence-echo' || key === 'reverse-echo') {
     const length = Math.min(9, 2 + difficulty + Math.floor(index / 4));
     const sequence = gridSequence(random, length, size);
-    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: phaseMs(key, difficulty), data: { type: 'sequence', size, sequence }, expected: key === 'reverse-echo' ? [...sequence].reverse() : sequence, state: {} };
+    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: phaseMs(key, difficulty), inputMs: inputWindowMs(key, difficulty), data: { type: 'sequence', size, sequence }, expected: key === 'reverse-echo' ? [...sequence].reverse() : sequence, state: {} };
   }
   if (key === 'memory-matrix') {
     const count = Math.min(size * size - 1, 2 + difficulty + Math.floor(index / 5));
     const highlights = gridSequence(random, count, size);
-    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: phaseMs(key, difficulty), data: { type: 'matrix', size, highlights }, expected: highlights, state: {} };
+    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: phaseMs(key, difficulty), inputMs: inputWindowMs(key, difficulty), data: { type: 'matrix', size, highlights }, expected: highlights, state: {} };
   }
   if (key === 'number-blind') {
     const count = Math.min(12, 3 + difficulty + Math.floor(index / 5));
     const positions = gridSequence(random, count, size);
     const numbers = shuffled(Array.from({ length: count }, (_, value) => value + 1), random).map((number, position) => ({ number, position: positions[position] }));
-    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: phaseMs(key, difficulty), data: { type: 'number-blind', size, numbers }, expected: numbers.sort((a, b) => a.number - b.number).map((entry) => entry.position), state: {} };
+    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: phaseMs(key, difficulty), inputMs: inputWindowMs(key, difficulty), data: { type: 'number-blind', size, numbers }, expected: numbers.sort((a, b) => a.number - b.number).map((entry) => entry.position), state: {} };
   }
   if (key === 'n-back') {
     const n = difficulty >= 3 ? 2 : 1;
     const previous = symbolHistory.length >= n ? symbolHistory[symbolHistory.length - n] : null;
     const shouldMatch = previous !== null && random() > 0.67;
-    const candidate = SYMBOLS[Math.floor(random() * SYMBOLS.length)];
+    const candidate = CHALLENGE_SYMBOLS[Math.floor(random() * CHALLENGE_SYMBOLS.length)];
     const symbol = shouldMatch ? previous : previous !== null && candidate === previous
-      ? SYMBOLS[(SYMBOLS.indexOf(previous) + 1 + Math.floor(random() * (SYMBOLS.length - 1))) % SYMBOLS.length]
+      ? CHALLENGE_SYMBOLS[(CHALLENGE_SYMBOLS.indexOf(previous as typeof CHALLENGE_SYMBOLS[number]) + 1 + Math.floor(random() * (CHALLENGE_SYMBOLS.length - 1))) % CHALLENGE_SYMBOLS.length]
       : candidate;
-    return { trialId: id, index, difficulty, phase: 'input', phaseMs: phaseMs(key, difficulty), data: { type: 'choice', symbol, n, itemIndex: index }, expected: previous !== null && symbol === previous, state: {} };
+    return { trialId: id, index, difficulty, phase: 'input', phaseMs: 0, inputMs: inputWindowMs(key, difficulty), data: { type: 'choice', symbol, n, itemIndex: index }, expected: previous !== null && symbol === previous, state: {} };
   }
   if (key === 'seen-before') {
     const repeated = index > 0 && random() > 0.55;
-    const symbolIndex = repeated ? Math.floor(random() * Math.max(1, Math.min(SYMBOLS.length, index))) : Math.floor(random() * SYMBOLS.length);
-    const symbol = SYMBOLS[symbolIndex];
-    return { trialId: id, index, difficulty, phase: 'input', phaseMs: phaseMs(key, difficulty), data: { type: 'choice', symbol }, expected: repeated, state: {} };
+    const symbolIndex = repeated ? Math.floor(random() * Math.max(1, Math.min(CHALLENGE_SYMBOLS.length, index))) : Math.floor(random() * CHALLENGE_SYMBOLS.length);
+    const symbol = CHALLENGE_SYMBOLS[symbolIndex];
+    return { trialId: id, index, difficulty, phase: 'input', phaseMs: 0, inputMs: inputWindowMs(key, difficulty), data: { type: 'choice', symbol }, expected: repeated, state: {} };
   }
   if (key === 'missing-item') {
     const count = Math.min(9, 3 + difficulty + Math.floor(index / 4));
@@ -284,28 +332,28 @@ export function createTrial(key: ChallengeKey, seed: number, index: number, diff
     const missingIndex = Math.floor(random() * items.length);
     const missing = items[missingIndex];
     const visible = items.filter((_, itemIndex) => itemIndex !== missingIndex);
-    const options = shuffled([missing, ...shuffled(ITEMS.filter((item) => !items.includes(item)), random).slice(0, 3)], random);
-    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: phaseMs(key, difficulty), data: { type: 'missing', items: visible, originalItems: items, options }, expected: missing, state: {} };
+    const options = shuffled([missing, ...shuffled(visible, random).slice(0, 3)], random);
+    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: phaseMs(key, difficulty), inputMs: inputWindowMs(key, difficulty), data: { type: 'missing', items: visible, originalItems: items, options }, expected: missing, state: {} };
   }
   if (key === 'memory-pairs') {
     const pairCount = difficulty >= 4 ? 6 : difficulty >= 2 ? 3 : 2;
-    const values = shuffled(SYMBOLS, random).slice(0, pairCount);
+    const values = shuffled([...CHALLENGE_SYMBOLS], random).slice(0, pairCount);
     const board = shuffled([...values, ...values], random);
-    return { trialId: id, index, difficulty, phase: 'input', phaseMs: 0, data: { type: 'pairs', boardSize: pairCount * 2 <= 6 ? 2 : 3, cards: board.map((value, cardIndex) => ({ index: cardIndex, value })) }, expected: board, state: { found: [], attempts: 0 }, };
+    return { trialId: id, index, difficulty, phase: 'input', phaseMs: 0, inputMs: inputWindowMs(key, difficulty), data: { type: 'pairs', boardSize: pairCount * 2 <= 6 ? 2 : 3, cards: board.map((value, cardIndex) => ({ index: cardIndex, value })) }, expected: board, state: { found: [], attempts: 0 }, };
   }
   if (key === 'path-memory') {
     const pathLength = Math.min(10, 2 + difficulty + Math.floor(index / 4));
     const path = gridSequence(random, pathLength, size);
-    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: Math.max(350, 700 - difficulty * 60), data: { type: 'path', size, path }, expected: path, state: {} };
+    return { trialId: id, index, difficulty, phase: 'preview', phaseMs: Math.max(350, 700 - difficulty * 60), inputMs: inputWindowMs(key, difficulty), data: { type: 'path', size, path }, expected: path, state: {} };
   }
   const count = Math.min(8, 2 + difficulty + Math.floor(index / 4));
   const list = shuffled(ITEMS, random).slice(0, count);
   const position = Math.floor(random() * list.length);
   const options = shuffled([list[position], ...shuffled(ITEMS.filter((item) => !list.includes(item)), random).slice(0, 3)], random);
-  return { trialId: id, index, difficulty, phase: 'preview', phaseMs: phaseMs(key, difficulty), data: { type: 'suitcase', items: list, position: position + 1, options }, expected: list[position], state: {} };
+  return { trialId: id, index, difficulty, phase: 'preview', phaseMs: phaseMs(key, difficulty), inputMs: inputWindowMs(key, difficulty), data: { type: 'suitcase', items: list, position: position + 1, options }, expected: list[position], state: {} };
 }
 
-export function validateTrialInput(key: ChallengeKey, trial: InternalTrial, action: string, value: unknown): TrialResult {
+export function validateTrialInput(key: ChallengeKey, trial: InternalTrial, action: string, value: unknown, responseMs = 0): TrialResult {
   const wrong = (error = 'Falsche Antwort.') => ({ accepted: true, complete: true, correct: false, errors: 1, rawScore: 0, error });
   if (trial.phase === 'preview' && key !== 'memory-pairs') return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Die Vorschau läuft noch.' };
   if (key === 'aim-trainer') {
@@ -320,7 +368,7 @@ export function validateTrialInput(key: ChallengeKey, trial: InternalTrial, acti
   }
   if (key === 'traffic-light') {
     if (action !== 'click') return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Reaktion.' };
-    return { accepted: true, complete: true, correct: true, errors: 0, rawScore: 45 + trial.difficulty * 7 };
+    return { accepted: true, complete: true, correct: true, errors: 0, rawScore: scoreReaction(responseMs) };
   }
   if (key === 'color-word') {
     if (action !== 'answer' || typeof value !== 'string') return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Farbwahl.' };
@@ -335,7 +383,7 @@ export function validateTrialInput(key: ChallengeKey, trial: InternalTrial, acti
     const sequence = trial.expected as number[]; const current = typeof trial.state.correct === 'number' ? trial.state.correct : 0;
     if (value < 0 || value >= Number(trial.data.size) ** 2 || value !== sequence[current]) return wrong();
     const next = current + 1; trial.state.correct = next;
-    return { accepted: true, complete: next >= sequence.length, correct: true, errors: 0, rawScore: next >= sequence.length ? 75 + trial.difficulty * 5 : 12 + trial.difficulty * 2 };
+    return { accepted: true, complete: next >= sequence.length, correct: true, errors: 0, rawScore: next >= sequence.length ? 75 + trial.difficulty * 5 : 0 };
   }
   if (key === 'sequence-echo' || key === 'reverse-echo' || key === 'memory-sequence' || key === 'path-memory') {
     if (action !== 'sequence' || !Array.isArray(value)) return { accepted: false, complete: false, correct: false, errors: 0, rawScore: 0, error: 'Ungültige Folge.' };
@@ -376,7 +424,7 @@ export function validateTrialInput(key: ChallengeKey, trial: InternalTrial, acti
     if (board[first] !== board[second]) return { accepted: true, complete: false, correct: false, errors: 1, rawScore: -4 };
     found.push(first, second); trial.state.found = found;
     const complete = found.length === board.length;
-    return { accepted: true, complete, correct: true, errors: 0, rawScore: complete ? 80 + trial.difficulty * 5 : 14 + trial.difficulty * 2 };
+    return { accepted: true, complete, correct: true, errors: 0, rawScore: complete ? 80 + trial.difficulty * 5 : 0 };
   }
   return wrong('Nicht unterstützte Eingabe.');
 }
@@ -385,8 +433,11 @@ export function safeScoreInput(value: number): number { return Number.isFinite(v
 function safeCount(value: number): number { return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0; }
 function safeElapsed(value: number): number { return Number.isFinite(value) ? Math.max(0, value) : 0; }
 export function scoreReaction(elapsedMs: number): number { return safeScoreInput(Math.round(100 - Math.max(0, safeElapsed(elapsedMs) - 120) / 35)); }
-export function scoreCps(clicks: number): number { return safeScoreInput(Math.round(safeCount(clicks) * 5)); }
-export function scoreNumberSalad(correct: number, errors: number, elapsedMs: number): number { return safeScoreInput(Math.round(safeCount(correct) * 12.5 - safeCount(errors) * 8 - Math.max(0, safeElapsed(elapsedMs) - 2_000) / 180)); }
+export function scoreCps(clicks: number, durationMs = 30_000): number {
+  const seconds = Math.max(1, safeElapsed(durationMs) / 1_000);
+  return safeScoreInput(Math.round((safeCount(clicks) / seconds / 8) * 100));
+}
+export function scoreNumberSalad(correct: number, errors: number): number { return safeScoreInput(Math.round(safeCount(correct) * 12.5 - safeCount(errors) * 8)); }
 export function scoreTiming10(elapsedMs: number): number { return safeScoreInput(Math.round(100 - Math.abs(safeElapsed(elapsedMs) - 10_000) / 20)); }
 
 export function scoreTrialThroughput(rawScore: number, trials: number, correct: number, durationMs: number): number {
@@ -397,6 +448,17 @@ export function scoreTrialThroughput(rawScore: number, trials: number, correct: 
   const targetTrials = Math.max(1, safeElapsed(durationMs) / 2_000);
   const throughput = Math.min(1, safeTrials / targetTrials);
   return safeScoreInput(Math.round(averageRawScore * 0.65 + accuracy * 25 + throughput * 10));
+}
+
+export function scoreRepeatedTrials(rawScore: number, trials: number, correct: number, partialHits: number, durationMs: number): number {
+  const partialCredit = Math.min(5, safeCount(partialHits) / 2);
+  if (safeCount(trials) === 0) return safeScoreInput(Math.round(partialCredit));
+  return safeScoreInput(scoreTrialThroughput(rawScore, trials, correct, durationMs) + partialCredit);
+}
+
+export function challengeOrder(seed: number, count = 10): ChallengeKey[] {
+  const boundedCount = Math.max(1, Math.min(CHALLENGES.length, Math.floor(count)));
+  return shuffled(CHALLENGES.map((challenge) => challenge.key), seededRandom(seed ^ 0x51ed270b)).slice(0, boundedCount);
 }
 
 export function winnerIdForScores(scores: Array<{ playerId: string; score: number }>): string | null {

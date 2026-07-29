@@ -2246,11 +2246,13 @@ button.card {
 .challenge-rush-memory-card { min-width: var(--tap-target-size); min-height: var(--tap-target-size); padding: var(--space-2); font-size: var(--font-size-lg); }
 .challenge-rush-memory-cell.is-selected,
 .challenge-rush-memory-card.is-selected { color: var(--accent-text); background: var(--accent-gradient); }
-.challenge-rush-memory-cell.is-odd { color: var(--accent-text); background: var(--accent-2); box-shadow: inset 0 0 0 2px var(--accent-3); }
+.challenge-rush-memory-cell.is-odd { background: color-mix(in srgb, var(--bg-elevated-2) 88%, var(--accent) 12%); }
 .challenge-rush-memory-grid.is-preview .challenge-rush-memory-cell { cursor: default; }
 .challenge-rush-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); width: min(100%, 420px); margin-inline: auto; }
 .challenge-rush-choice { min-height: var(--space-8); }
-.challenge-rush-logic-prompt { margin: 0; text-align: center; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); }
+.challenge-rush-logic-prompt { margin: 0; text-align: center; white-space: pre-line; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); }
+.challenge-rush-logic-matrix { display: grid; grid-template-columns: repeat(2, minmax(var(--space-8), 1fr)); gap: var(--space-2); width: min(100%, var(--challenge-rush-button-min-width)); text-align: center; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); }
+.challenge-rush-logic-matrix > span { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated-2); }
 .challenge-rush-symbol { display: grid; place-items: center; min-height: var(--challenge-rush-button-min-height); font-size: var(--font-size-3xl); }
 .challenge-rush-traffic-light { min-width: var(--challenge-rush-button-min-width); min-height: var(--challenge-rush-button-min-height); border: 0; border-radius: var(--radius-full); color: var(--accent-text); font-weight: var(--font-weight-black); cursor: pointer; }
 .challenge-rush-traffic-light.is-red { background: var(--danger); }

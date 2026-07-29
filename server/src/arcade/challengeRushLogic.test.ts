@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CHALLENGES, challengePayload, createTrial, difficultyFor, isCurrentChallenge, isTrialChallenge, remainingUntil, safeScoreInput, scoreCps, scoreNumberSalad, scoreReaction, scoreTiming10, scoreTrialThroughput, validateTrialInput, winnerIdForScores } from './challengeRushLogic';
+import { CHALLENGES, CHALLENGE_SYMBOLS, challengeOrder, challengePayload, createTrial, difficultyFor, isCurrentChallenge, isTrialChallenge, remainingUntil, safeScoreInput, scoreCps, scoreNumberSalad, scoreReaction, scoreRepeatedTrials, scoreTiming10, scoreTrialThroughput, seenBeforeSelection, validateTrialInput, winnerIdForScores } from './challengeRushLogic';
 
 test('same seed creates the same challenge data', () => {
   assert.deepEqual(challengePayload('number-salad', 123).data, challengePayload('number-salad', 123).data);
@@ -53,9 +53,11 @@ test('difficulty progression stays predictable across a full round', () => {
   const trialKeys = CHALLENGES.filter((challenge) => isTrialChallenge(challenge.key)).map((challenge) => challenge.key);
   for (const key of trialKeys) {
     const easy = createTrial(key, 77, 0, difficultyFor(0));
-    const hard = createTrial(key, 77, 8, difficultyFor(8));
+    const hard = createTrial(key, 77, 0, difficultyFor(8));
     assert.ok(hard.difficulty >= easy.difficulty, key);
     assert.ok(hard.phaseMs <= 30_000, key);
+    assert.ok(typeof easy.inputMs === 'number' && typeof hard.inputMs === 'number', key);
+    assert.ok(hard.inputMs < easy.inputMs, key);
   }
 });
 test('the twenty logic trials expose deterministic choices and validate the answer', () => {
@@ -64,10 +66,40 @@ test('the twenty logic trials expose deterministic choices and validate the answ
     const trial = createTrial(key, 42, 0, 2);
     const options = trial.data.options as unknown[];
     assert.ok(options.some((option) => String(option) === String(trial.expected)), key);
+    assert.equal(new Set(options.map(String)).size, options.length, key);
+    assert.equal(options.filter((option) => String(option) === String(trial.expected)).length, 1, key);
     if (trial.phase === 'preview') assert.equal(validateTrialInput(key, trial, 'choice', trial.expected).accepted, false, key);
     trial.phase = 'input';
     assert.equal(validateTrialInput(key, trial, 'choice', trial.expected).correct, true, key);
     assert.equal(validateTrialInput(key, trial, 'choice', '__wrong__').correct, false, key);
+  }
+});
+test('logic choices contain one unique correct option across varied seeds', () => {
+  const keys = ['number-sequence', 'logic-equation', 'pattern-complete', 'category-sort', 'direction-match', 'mental-rotation', 'word-scramble', 'count-shapes', 'logic-order', 'delayed-recall', 'prime-check', 'balance-scale', 'clock-angle', 'binary-pattern', 'rule-switch', 'matrix-missing', 'coin-change', 'letter-order', 'digit-sum', 'sequence-transform'] as const;
+  for (const key of keys) for (let seed = 0; seed < 200; seed += 1) {
+    const trial = createTrial(key, seed, seed % 8, 1 + (seed % 5));
+    const options = (trial.data.options ?? []) as unknown[];
+    assert.equal(new Set(options.map(String)).size, options.length, `${key}:${seed}`);
+    assert.equal(options.filter((option) => String(option) === String(trial.expected)).length, 1, `${key}:${seed}`);
+  }
+});
+
+test('logic-order requires interpreting shuffled constraints', () => {
+  for (let seed = 0; seed < 100; seed += 1) {
+    const trial = createTrial('logic-order', seed, 0, seed % 2 ? 2 : 5);
+    const mentioned = String(trial.data.prompt).match(/[A-D]/g)?.join('') ?? '';
+    assert.notEqual(mentioned.slice(0, String(trial.expected).length), trial.expected, String(trial.data.prompt));
+  }
+});
+
+test('missing-item choices all come from the original group', () => {
+  for (let seed = 0; seed < 100; seed += 1) {
+    const trial = createTrial('missing-item', seed, 0, 3);
+    const original = trial.data.originalItems as string[];
+    const visible = trial.data.items as string[];
+    const options = trial.data.options as string[];
+    assert.ok(options.every((item) => original.includes(item)));
+    assert.ok(!visible.includes(String(trial.expected)));
   }
 });
 test('the six additional challenge trials validate their intended input', () => {
@@ -85,7 +117,10 @@ test('the six additional challenge trials validate their intended input', () => 
     assert.equal(result.complete, index === whackSequence.length - 1);
   }
   const traffic = createTrial('traffic-light', 7, 0, 1); traffic.phase = 'input';
-  assert.equal(validateTrialInput('traffic-light', traffic, 'click', undefined).correct, true);
+  const fastTraffic = validateTrialInput('traffic-light', traffic, 'click', undefined, 120);
+  const slowTraffic = validateTrialInput('traffic-light', traffic, 'click', undefined, 1_200);
+  assert.equal(fastTraffic.correct, true);
+  assert.ok(fastTraffic.rawScore > slowTraffic.rawScore);
   const color = createTrial('color-word', 7, 0, 1);
   assert.equal(validateTrialInput('color-word', color, 'answer', color.expected).correct, true);
 });
@@ -122,7 +157,9 @@ test('memory trial validators cover choice, missing item, path and pairs', () =>
   const board = pairs.expected as string[];
   const first = board.findIndex((value, index) => board.indexOf(value) !== index);
   const second = board.findIndex((value, index) => index !== first && value === board[first]);
-  assert.equal(validateTrialInput('memory-pairs', pairs, 'pair', [first, second]).correct, true);
+  const firstPair = validateTrialInput('memory-pairs', pairs, 'pair', [first, second]);
+  assert.equal(firstPair.correct, true);
+  assert.equal(firstPair.rawScore, 0);
   assert.equal(validateTrialInput('memory-pairs', pairs, 'pair', [0, 0]).accepted, false);
   const mismatchPairs = createTrial('memory-pairs', 100, 0, 1);
   const mismatchBoard = mismatchPairs.expected as string[];
@@ -138,8 +175,8 @@ test('memory trial validators cover choice, missing item, path and pairs', () =>
 });
 test('scores stay in the normalized 0..100 range', () => {
   assert.equal(scoreReaction(120), 100); assert.equal(scoreReaction(99_999), 0);
-  assert.equal(scoreCps(20), 100); assert.equal(scoreCps(-1), 0);
-  assert.equal(scoreNumberSalad(8, 0, 2_000), 100); assert.equal(scoreNumberSalad(0, 99, 2_000), 0);
+  assert.ok(scoreCps(180) > scoreCps(60)); assert.equal(scoreCps(240), 100); assert.equal(scoreCps(-1), 0);
+  assert.equal(scoreNumberSalad(8, 0), 100); assert.equal(scoreNumberSalad(0, 99), 0);
   assert.equal(scoreTiming10(10_000), 100); assert.equal(scoreTiming10(12_000), 0);
 });
 test('ties do not select an arbitrary winner', () => {
@@ -156,9 +193,31 @@ test('N-back derives the expected answer from the server-side visible history', 
   assert.equal(trial.expected, trial.data.symbol === previous);
 });
 
+test('seen-before stays inside the symbol set and forces repeats after exhaustion', () => {
+  const seen: string[] = [];
+  for (let index = 0; index < 30; index += 1) {
+    const wantsRepeat = index % 3 === 0;
+    const selection = seenBeforeSelection('◆', wantsRepeat, seen, index);
+    assert.ok(CHALLENGE_SYMBOLS.includes(selection.symbol as typeof CHALLENGE_SYMBOLS[number]));
+    assert.equal(selection.repeated, seen.includes(selection.symbol));
+    if (!seen.includes(selection.symbol)) seen.push(selection.symbol);
+  }
+  assert.equal(seen.length, CHALLENGE_SYMBOLS.length);
+});
+
+test('matches use a deterministic shuffled subset of the 40 challenges', () => {
+  const first = challengeOrder(123);
+  assert.equal(first.length, 10);
+  assert.equal(new Set(first).size, 10);
+  assert.deepEqual(first, challengeOrder(123));
+  assert.notDeepEqual(first, challengeOrder(124));
+});
+
 test('difficulty changes the generated task and throughput rewards completed trials', () => {
-  assert.notDeepEqual(createTrial('aim-trainer', 123, 0, 1).data, createTrial('aim-trainer', 123, 0, 5).data);
+  assert.ok((createTrial('aim-trainer', 123, 0, 5).inputMs ?? 0) < (createTrial('aim-trainer', 123, 0, 1).inputMs ?? 0));
   assert.ok(scoreTrialThroughput(600, 12, 12, 30_000) > scoreTrialThroughput(100, 2, 2, 30_000));
+  assert.ok(scoreRepeatedTrials(225, 3, 3, 24, 30_000) > scoreRepeatedTrials(75, 1, 1, 8, 30_000));
+  assert.ok(scoreRepeatedTrials(75, 1, 1, 8, 30_000) > scoreRepeatedTrials(0, 1, 0, 3, 30_000));
 });
 test('stale challenge generations and expired deadlines are rejected safely', () => {
   assert.equal(isCurrentChallenge(2, 2), true);
@@ -170,11 +229,11 @@ test('score helpers normalize non-finite and extreme inputs', () => {
   for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
     assert.equal(scoreReaction(value), 100);
     assert.equal(scoreCps(value), 0);
-    assert.equal(scoreNumberSalad(value, value, value), 0);
+    assert.equal(scoreNumberSalad(value, value), 0);
     assert.equal(scoreTiming10(value), 0);
     assert.equal(safeScoreInput(value), 0);
   }
   assert.equal(scoreCps(Number.MAX_SAFE_INTEGER), 100);
-  assert.equal(scoreNumberSalad(Number.MAX_SAFE_INTEGER, 0, 0), 100);
+  assert.equal(scoreNumberSalad(Number.MAX_SAFE_INTEGER, 0), 100);
   assert.equal(winnerIdForScores([{ playerId: 'a', score: Number.NaN }, { playerId: 'b', score: 0 }]), null);
 });
