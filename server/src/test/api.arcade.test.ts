@@ -178,6 +178,46 @@ test('GET /api/arcade/stats separates KI Arena placements and excludes KI oppone
   assert.equal(arena.players[0].knockouts, 2);
 });
 
+test('GET /api/arcade/stats keeps non-Tetris AI matches out of human rankings', async () => {
+  const human = await request(app).post('/api/players').send({ name: 'KI Statistik Kontrollspieler' });
+  const before = await request(app).get('/api/arcade/stats');
+  const gameTypes = ['pong', 'blobby', 'snake', 'challenge-rush'];
+  const beforeGames = new Map(
+    gameTypes.map((gameType) => [
+      gameType,
+      before.body.games.find((game: { gameType: string }) => game.gameType === gameType),
+    ]),
+  );
+  const now = Date.now();
+
+  for (const gameType of gameTypes) {
+    const botId = `${gameType}-bot`;
+    const scores = [
+      { playerId: human.body.id, name: human.body.name, score: 10 },
+      { playerId: botId, name: 'KI', score: 20, isBot: true, isWinner: true },
+    ];
+    db.prepare(
+      `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+       VALUES (?, ?, NULL, ?, ?, 'completed', ?, ?)`,
+    ).run(
+      `arcade-ai-ranking-${gameType}`,
+      gameType,
+      JSON.stringify(scores),
+      JSON.stringify(scores),
+      now - 1000,
+      now,
+    );
+  }
+
+  const after = await request(app).get('/api/arcade/stats');
+  for (const gameType of gameTypes) {
+    assert.deepEqual(
+      after.body.games.find((game: { gameType: string }) => game.gameType === gameType),
+      beforeGames.get(gameType),
+    );
+  }
+});
+
 test('GET /api/arcade/stats summarizes completed scribble results under their own title', async () => {
   const carla = await request(app).post('/api/players').send({ name: 'Arcade Carla' });
   const dave = await request(app).post('/api/players').send({ name: 'Arcade Dave' });

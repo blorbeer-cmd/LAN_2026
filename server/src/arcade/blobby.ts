@@ -2,7 +2,7 @@ import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { playerMayUseArcadeAi } from './adminAccess';
-import { BALL_RADIUS, BLOB_RADIUS, BlobbyInput, BlobbyMode, BlobbyWorld, COURT_HEIGHT, COURT_WIDTH, GROUND_Y, NET_HEIGHT, NET_X, createWorld, stepWorld } from './blobbyLogic';
+import { BALL_RADIUS, BLOB_RADIUS, BlobbyInput, BlobbyMode, BlobbyWorld, COURT_HEIGHT, COURT_WIDTH, GROUND_Y, NET_HEIGHT, NET_X, blobbyBotInput, createWorld, stepWorld } from './blobbyLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from '../realtime';
@@ -178,15 +178,10 @@ function startLoop(io: Server, match: Match) {
     }
     for (const [botIndex, player] of match.players.entries()) {
       if (!isBotId(player.id)) continue;
-      const bot = match.world.blobs[botIndex];
       const input = match.inputs.get(player.id);
-      if (!bot || !input) continue;
-      const minX = bot.side === 'left' ? BLOB_RADIUS : NET_X + BLOB_RADIUS;
-      const maxX = bot.side === 'left' ? NET_X - BLOB_RADIUS : COURT_WIDTH - BLOB_RADIUS;
-      const targetX = Math.max(minX, Math.min(maxX, match.world.ball.x));
-      input.left = targetX < bot.x - 16;
-      input.right = targetX > bot.x + 16;
-      if (bot.grounded && match.world.ball.y < bot.y - 34 && Math.abs(match.world.ball.x - bot.x) < 150) input.jump = true;
+      if (!input) continue;
+      const teamSlot = match.players.filter((entry) => entry.team === player.team).findIndex((entry) => entry.id === player.id);
+      Object.assign(input, blobbyBotInput(match.world, botIndex, match.mode, teamSlot));
     }
     const landed = stepWorld(match.world, match.players.map((p) => match.inputs.get(p.id) ?? idle()), dt);
     // Jump is an edge-triggered action; movement remains held until key-up.

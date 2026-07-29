@@ -220,10 +220,16 @@ arcadeRouter.get('/stats', (req, res) => {
     );
     if (scores.length === 0) continue;
 
+    const hasBot = scores.some((score) => score.isBot === true || isKnownArcadeBotId(score.playerId));
+    // Tetris exposes explicit AI variants below. Every other game keeps its
+    // public ranking human-only, so an AI test match must not increment the
+    // match, win or loss counters of its human participant.
+    if (hasBot && row.game_type !== 'tetris') continue;
+
     const baseMode = scores.some((score) => score.mode === 'arena') ? 'arena' : 'duel';
     const mode =
       row.game_type === 'tetris'
-        ? `${baseMode}${scores.some((score) => score.isBot === true || isKnownArcadeBotId(score.playerId)) ? '-ai' : ''}`
+        ? `${baseMode}${hasBot ? '-ai' : ''}`
         : null;
     const statsKey = mode ? `${row.game_type}:${mode}` : row.game_type;
     if (row.game_type === 'tetris') {

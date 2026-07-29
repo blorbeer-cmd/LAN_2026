@@ -102,6 +102,13 @@ test('Challenge Rush AI quick start is admin-gated, plays and ends when its huma
     const playing = await playingPromise;
     assert.equal(playing.scores.find((score) => score.playerId === 'challenge-rush-bot')?.isBot, true);
 
+    const secondBotLobby = await emitAck(socket, 'challenge-rush:lobby:bot', { playerId });
+    assert.equal(secondBotLobby.ok, false);
+    assert.match(secondBotLobby.error ?? '', /laufendes Challenge-Rush-Match/);
+    const secondHumanLobby = await emitAck(socket, 'challenge-rush:lobby:create', { playerId });
+    assert.equal(secondHumanLobby.ok, false);
+    assert.match(secondHumanLobby.error ?? '', /laufendes Challenge-Rush-Match/);
+
     const spoofedBotInput = await emitAck(socket, 'challenge-rush:challenge:input', {
       matchId: started.matchId,
       playerId: 'challenge-rush-bot',
