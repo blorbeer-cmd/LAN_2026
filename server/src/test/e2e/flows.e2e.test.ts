@@ -1192,10 +1192,10 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
   await page.locator('#tourn-teamcount').focus();
   assert.equal(
     await page.locator('#tourn-game-search').inputValue(),
-    `${initialTournamentGame.icon} ${initialTournamentGame.name}`,
+    initialTournamentGame.name,
     'leaving the picker without a new valid choice should restore its current selection',
   );
-  await page.fill('#tourn-game-search', `${otherTournamentGame.icon} ${otherTournamentGame.name}`);
+  await page.fill('#tourn-game-search', otherTournamentGame.name);
   await page.waitForFunction(
     (gameId) => (document.querySelector('#tourn-game') as HTMLInputElement | null)?.value === gameId,
     otherTournamentGame.id,
