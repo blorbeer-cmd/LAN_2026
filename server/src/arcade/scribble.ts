@@ -471,6 +471,7 @@ function finishMatch(io: Server, match: ScribbleMatchState, winner: PlayerRef | 
     scores,
     reason,
     startedAt: match.startedAt,
+    matchId: match.id,
     scope: match,
   });
   // Only drawings someone actually marked with a thumb re-enter the final

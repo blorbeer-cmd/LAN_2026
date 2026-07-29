@@ -162,7 +162,22 @@ arcadeRouter.get('/stats', (req, res) => {
       >;
     }
   >();
-  const aiScribbleMatchIds: string[] = [];
+  const scribbleResultClauses = ['group_id = ?', "game_type = 'scribble'", 'source_match_id IS NOT NULL'];
+  const scribbleResultParams: Array<string | null> = [req.group!.id];
+  if (selectedEvent.eventId !== undefined) {
+    scribbleResultClauses.push('event_id IS ?');
+    scribbleResultParams.push(selectedEvent.eventId);
+  }
+  const aiScribbleMatchIds = (
+    db.prepare(
+      `SELECT source_match_id, scores
+       FROM arcade_results
+       WHERE ${scribbleResultClauses.join(' AND ')}`,
+    ).all(...scribbleResultParams) as Array<{ source_match_id: string; scores: string }>
+  ).filter((row) => parseJsonArray(row.scores).some((score) => {
+    const entry = score as ScoreEntry;
+    return entry?.isBot === true || isKnownArcadeBotId(entry?.playerId);
+  })).map((row) => row.source_match_id);
 
   const addResultToGame = (
     statsKey: string,
@@ -222,7 +237,6 @@ arcadeRouter.get('/stats', (req, res) => {
     if (scores.length === 0) continue;
 
     const hasBot = scores.some((score) => score.isBot === true || isKnownArcadeBotId(score.playerId));
-    if (hasBot && row.game_type === 'scribble') aiScribbleMatchIds.push(row.id);
     // Tetris exposes explicit AI variants below. Every other game keeps its
     // public ranking human-only, so an AI test match must not increment the
     // match, win or loss counters of its human participant.

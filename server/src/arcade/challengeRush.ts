@@ -444,6 +444,11 @@ function forfeitPlayer(io: Server, match: Match, playerId: string): void {
   const timer = match.reconnectTimers.get(playerId);
   if (timer) { clearTimeout(timer); match.reconnectTimers.delete(playerId); }
   match.forfeited.add(playerId);
+  const socketId = match.socketIds.get(playerId);
+  if (socketId) {
+    match.socketIds.delete(playerId);
+    io.sockets.sockets.get(socketId)?.leave(match.room);
+  }
   const progress = match.progress.get(playerId);
   if (progress && !progress.completed) { progress.completed = true; progress.score = 0; }
   if (match.players.some((player) => player.id === BOT_ID) && real(match.players).every((humanId) => match.forfeited.has(humanId))) return finishMatch(io, match, 'no-human-players');
@@ -453,7 +458,8 @@ function forfeitPlayer(io: Server, match: Match, playerId: string): void {
   else if (match.phase === 'result' && isReadyForNext(scorePayload(match), match.readyNext)) nextChallenge(io, match);
 }
 
-function attachSocket(io: Server, socket: Socket, match: Match, playerId: string): void {
+function attachSocket(io: Server, socket: Socket, match: Match, playerId: string): boolean {
+  if (match.forfeited.has(playerId)) return false;
   const previousTimer = match.reconnectTimers.get(playerId);
   if (previousTimer) clearTimeout(previousTimer);
   match.reconnectTimers.delete(playerId);
@@ -461,6 +467,7 @@ function attachSocket(io: Server, socket: Socket, match: Match, playerId: string
   socket.join(match.room);
   socket.emit('challenge-rush:match:start', { matchId: match.id, host: match.host, players: match.players, challengeCount: match.order.length, reconnected: true });
   emitState(io, match, socket, playerId);
+  return true;
 }
 
 function startMatch(io: Server, lobby: Lobby): Match {
@@ -490,7 +497,7 @@ export function registerChallengeRushSockets(io: Server): void {
     sendLobbies(); socket.on('challenge-rush:lobbies:get', sendLobbies); socket.on('scope:subscribe', sendLobbies); socket.on('room:subscribe', sendLobbies);
     const authPlayerId = socket.data.authPlayerId;
     if (typeof authPlayerId === 'string') for (const match of matches.values()) if (match.players.some((player) => player.id === authPlayerId)) attachSocket(io, socket, match, authPlayerId);
-    socket.on('challenge-rush:match:reconnect', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const match = payload?.matchId ? matches.get(payload.matchId) : null; if (!match || !payload.playerId || !match.players.some((player) => player.id === payload.playerId) || !socketArcadeScope(socket, payload.playerId)) return ack?.({ ok: false, error: 'Match-Wiederaufnahme verweigert.' }); attachSocket(io, socket, match, payload.playerId); ack?.({ ok: true }); });
+    socket.on('challenge-rush:match:reconnect', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const match = payload?.matchId ? matches.get(payload.matchId) : null; if (!match || !payload.playerId || !match.players.some((player) => player.id === payload.playerId) || !socketArcadeScope(socket, payload.playerId) || !attachSocket(io, socket, match, payload.playerId)) return ack?.({ ok: false, error: 'Match-Wiederaufnahme verweigert.' }); ack?.({ ok: true }); });
 
     socket.on('challenge-rush:lobby:create', (payload: { playerId?: string }, ack?: (r: unknown) => void) => {
       const player = playerById(payload?.playerId);
