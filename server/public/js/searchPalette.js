@@ -6,6 +6,9 @@ import { feedEntryTitle, feedLinkView } from './pushFeed.js';
 import { state } from './state.js';
 import { getMyId } from './whoami.js';
 import { isAdmin } from './admin.js';
+import { normalizeSearchText } from './searchText.js';
+
+export { normalizeSearchText };
 
 export const SEARCH_ENTRIES = [
   { view: 'home', title: 'Home', category: 'Bereich', description: 'Aktuelles, Live-Status und Überblick', aliases: 'start übersicht dashboard', priority: 100 },
@@ -31,16 +34,6 @@ export const SEARCH_ENTRIES = [
   { view: 'checklist', title: 'Checkliste', category: 'Bereich', description: 'Persönliche Packliste, To-Dos und Mitbring-Anfragen', aliases: 'packen todo aufgabe anfrage mitbringen packliste', priority: 66 },
   { view: 'seating', title: 'Sitzplan', category: 'Bereich', description: 'Plätze und sichtbare Monitore verwalten', aliases: 'sitzplatz tisch monitore nachbarn', priority: 67, adminOnly: true },
 ];
-
-export function normalizeSearchText(value) {
-  return String(value ?? '')
-    .toLocaleLowerCase('de-DE')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/ß/g, 'ss')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
 
 export function searchEntries(query, entries = SEARCH_ENTRIES, limit = 20) {
   const normalizedQuery = normalizeSearchText(query);

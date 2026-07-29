@@ -17,6 +17,7 @@ import { selectActiveLobbyMatches } from '../tournamentLobbies.js';
 import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
 import { withStepUp } from '../reauth.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
+import { matchesSelectionSearch, wireSelectionSearch } from '../selectionSearch.js';
 
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
@@ -56,6 +57,7 @@ let createProposedTeams = null; // [{ name, playerIds, players (for display), to
 let createSelectedPlayerId = null; // touch/keyboard fallback for moving a proposed player
 let createSeatConflicts = null; // { conflicts, considered } from the last proposal, for the seating note
 let createAvoidPairs = []; // seat-neighbor pairs from the last proposal, to re-flag conflicts after a manual move
+let createPlayerSearchQuery = '';
 
 // Re-derives each player's seatConflict flag/neighbor names (and the
 // seating-note count) from createAvoidPairs — needed after a manual
@@ -164,6 +166,7 @@ function resetCreateForm() {
   createSelectedPlayerId = null;
   createSeatConflicts = null;
   createAvoidPairs = [];
+  createPlayerSearchQuery = '';
 }
 
 // ---------- list + create ----------
@@ -279,7 +282,7 @@ function renderCreateForm(el, ctx) {
   const playerRows = state.players
     .map(
       (p) => `
-      <label class="check-row">
+      <label class="check-row" data-tourn-player-search-item data-selection-search="${escapeHtml(p.name)}">
         <input type="checkbox" data-create-player="${p.id}" ${createCheckedIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
@@ -343,15 +346,20 @@ function renderCreateForm(el, ctx) {
         </div>
         <label class="field-label" for="tourn-game-search">Spiel auswählen</label>
         ${searchSelectHtml('tourn-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen…' })}
+        <div>
+          <label class="field-label" for="tourn-player-search">Spieler durchsuchen</label>
+          <input type="search" id="tourn-player-search" value="${escapeHtml(createPlayerSearchQuery)}" placeholder="Spieler suchen…" autocomplete="off" />
+        </div>
         <div class="selection-toolbar">
           <div class="tournament-team-count-field">
             <label class="field-label" for="tourn-teamcount">Anzahl Teams</label>
             <input type="number" id="tourn-teamcount" min="2" value="${escapeHtml(createTeamCount)}" />
           </div>
-          <button type="button" class="btn btn-sm" id="tourn-select-all">Alle markieren</button>
-          <button type="button" class="btn btn-sm" id="tourn-select-none">Auswahl aufheben</button>
+          <button type="button" class="btn btn-sm" id="tourn-select-all">Sichtbare markieren</button>
+          <button type="button" class="btn btn-sm" id="tourn-select-none">Sichtbare abwählen</button>
         </div>
         <div class="player-selection-grid tournament-player-grid">${playerRows}</div>
+        <p class="muted" data-tourn-player-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spieler gefunden.</p>
         <div class="check-row">
           <input type="checkbox" id="tourn-avoid-adjacent" ${createAvoidAdjacent ? 'checked' : ''} />
           <span class="title-with-info tournament-option-label">
@@ -455,6 +463,14 @@ function renderCreateForm(el, ctx) {
   `;
 
   wireInfoTooltips(el);
+  wireSelectionSearch(el, {
+    inputId: 'tourn-player-search',
+    itemSelector: '[data-tourn-player-search-item]',
+    emptySelector: '[data-tourn-player-search-empty]',
+    onQueryChange: (query) => {
+      createPlayerSearchQuery = query;
+    },
+  });
 
   el.querySelector('#tourn-create-close').addEventListener('click', async () => {
     const hasEnteredData = Boolean(createProposedTeams) || Boolean(createLobbyName.trim()) || Boolean(createLobbyPassword.trim());
@@ -486,12 +502,16 @@ function renderCreateForm(el, ctx) {
   });
 
   el.querySelector('#tourn-select-all').addEventListener('click', () => {
-    createCheckedIds = new Set(state.players.map((player) => player.id));
+    for (const player of state.players.filter((entry) => matchesSelectionSearch(entry.name, createPlayerSearchQuery))) {
+      createCheckedIds.add(player.id);
+    }
     createProposedTeams = null;
     ctx.rerender();
   });
   el.querySelector('#tourn-select-none').addEventListener('click', () => {
-    createCheckedIds.clear();
+    for (const player of state.players.filter((entry) => matchesSelectionSearch(entry.name, createPlayerSearchQuery))) {
+      createCheckedIds.delete(player.id);
+    }
     createProposedTeams = null;
     ctx.rerender();
   });
