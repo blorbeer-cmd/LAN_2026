@@ -176,6 +176,8 @@ of player-name length.
 viewport-responsive on phones.
 `--search-panel-width` (640px) gives the global search palette enough room for titles and short
 descriptions while the shared modal remains full-width on phones.
+`--search-select-results-max-height` (320px) keeps a long searchable option list usable without
+letting it cover the full page; additional results scroll inside the dark listbox.
 
 ## Breakpoints
 
@@ -287,6 +289,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.global-search-result`, wired through `searchPalette.js`; opens from the topbar or with
   `Strg/Cmd + K`, searches both areas and current app content without an external service, and uses
   `.search-target-highlight` to expose a concrete result after navigation.
+- **Searchable select** — `.search-select` combines a text input with an app-rendered
+  `.search-select-list`/`.search-select-option` listbox. It replaces the browser's native
+  unthemeable `datalist` popup for long game catalogs, keeps the selected value in the existing
+  hidden input contract, filters while typing, caps long result lists locally and supports
+  pointer, touch, arrow keys, Enter, Escape and visible focus.
 - **Sticky in-card actions** — `.sticky-actions` pins a card's primary action(s) to the bottom of
   the viewport, just above the fixed bottom nav, while a long preceding list (vote game rows,
   player-selection grids) scrolls through. It stays bounded to its own card via `position: sticky`

@@ -89,6 +89,7 @@
   --challenge-rush-color-dot-size: 16px;
   --notification-panel-width: 360px;
   --search-panel-width: 640px;
+  --search-select-results-max-height: 320px;
 
   /* Avatar sizes — the one scale every avatar/color-dot rendering (see
      avatarHtml in format.js) should size itself from, instead of each call
@@ -998,6 +999,86 @@ select {
   background-repeat: no-repeat;
   background-position: right 12px center;
   padding-right: 38px;
+}
+
+/* Searchable select: the options stay inside the app instead of using the
+   browser's unthemeable native datalist popup. */
+.search-select {
+  position: relative;
+}
+.search-select-control {
+  position: relative;
+}
+.search-select-control > input {
+  padding-right: calc(var(--tap-target-size) + var(--space-2));
+}
+.search-select-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  place-items: center;
+  width: var(--tap-target-size);
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.search-select.is-open .search-select-toggle {
+  color: var(--text);
+}
+.search-select.is-open .search-select-toggle .ui-icon {
+  transform: rotate(180deg);
+}
+.search-select-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  left: 0;
+  max-height: var(--search-select-results-max-height);
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+}
+.search-select-option {
+  display: block;
+  width: 100%;
+  min-height: var(--tap-target-size);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--font-size-md);
+  text-align: left;
+  cursor: pointer;
+}
+.search-select-option[aria-selected='true'] {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+.search-select-option.is-active {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.search-select-empty {
+  padding: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+@media (hover: hover) {
+  .search-select-option:hover {
+    background: var(--bg-elevated-2);
+  }
 }
 /* Chrome/Edge render the datetime-local picker icon dark-on-dark by default
    (it doesn't follow color-scheme automatically inside a custom-background
