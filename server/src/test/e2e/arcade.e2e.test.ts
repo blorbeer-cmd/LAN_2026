@@ -259,6 +259,16 @@ test('Snake Arena elimination status updates in spectator and kiosk legends', as
     await spectator.page.click('[data-watch-match]');
     await spectator.page.waitForSelector('.snake-arena-legend');
 
+    // The arena can advance between the 50ms test countdown and the pause
+    // button becoming clickable, so either the host or the other guest may be
+    // the stable survivor. Capture an actually living non-leaver after the
+    // pause, then keep verifying that exact player on every readonly view.
+    const racingPlayerName = await spectator.page.locator('.snake-arena-legend-item').evaluateAll(
+      (items, candidateNames) => candidateNames.find((name) => items.some((item) => item.textContent?.includes(`${name} · Im Rennen`))) ?? null,
+      [players[0].name, players[1].name]
+    );
+    assert.ok(racingPlayerName, 'expected a paused host or guest to remain in the race');
+
     await leaver.page.waitForSelector('#snake-leave-match');
     await leaver.page.click('#snake-leave-match');
     await leaver.page.click('[data-confirm]');
@@ -268,7 +278,7 @@ test('Snake Arena elimination status updates in spectator and kiosk legends', as
         (item) => item.textContent?.includes(playerName) && item.textContent.includes('Ausgeschieden')
       ), players[2].name);
       const legendItems = await page.locator('.snake-arena-legend-item').allTextContents();
-      assert.ok(legendItems.some((item) => !item.includes(players[2].name) && item.includes('· Im Rennen')));
+      assert.ok(legendItems.some((item) => item.includes(`${racingPlayerName} · Im Rennen`)));
       assert.ok(legendItems.some((item) => item.includes(`${players[2].name} · Ausgeschieden`)));
     }
 
