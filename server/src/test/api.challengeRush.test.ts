@@ -9,7 +9,7 @@ import { createApp } from '../app';
 import { registerChallengeRushSockets } from '../arcade/challengeRush';
 import { clearLobbyMemberships } from '../arcade/lobbyMembership';
 import { challengeRushTiming } from '../arcade/challengeRushTiming';
-import { CHALLENGES } from '../arcade/challengeRushLogic';
+import { CHALLENGES, isTrialChallenge, type ChallengeKey } from '../arcade/challengeRushLogic';
 import { db } from '../db';
 
 process.env.CHALLENGE_RUSH_RECONNECT_GRACE_MS = '100';
@@ -109,13 +109,19 @@ test('Challenge Rush AI quick start is admin-gated, plays and ends when its huma
     assert.deepEqual(lobby?.players.map((entry) => entry.id), [playerId, 'challenge-rush-bot']);
     assert.equal(lobby?.players.find((entry) => entry.id === 'challenge-rush-bot')?.ready, true);
 
-    const startedPromise = nextEvent<{ matchId: string; players: Array<{ id: string }> }>(socket, 'challenge-rush:match:start');
+    const startedPromise = nextEvent<{ matchId: string; players: Array<{ id: string }>; challengeCount: number }>(socket, 'challenge-rush:match:start');
     const playingPromise = nextState(socket, (state) => state.phase === 'playing');
     assert.equal((await emitAck(socket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId })).ok, true);
     const started = await startedPromise;
     assert.equal(started.players.length, 2);
+    // A bot only ever plays the ten original single-payload challenges (see
+    // planBotChallenge/BOT_CHALLENGE_POOL); drawing from the full forty-
+    // challenge catalog here would silently spend most of a bot match on
+    // trial challenges the bot always scores 0 on.
+    assert.equal(started.challengeCount, 10);
     const playing = await playingPromise;
     assert.equal(playing.scores.find((score) => score.playerId === 'challenge-rush-bot')?.isBot, true);
+    assert.equal(isTrialChallenge(playing.challenge.key as ChallengeKey), false, `bot match must not draw a trial challenge, got ${playing.challenge.key}`);
 
     const secondBotLobby = await emitAck(socket, 'challenge-rush:lobby:bot', { playerId });
     assert.equal(secondBotLobby.ok, false);

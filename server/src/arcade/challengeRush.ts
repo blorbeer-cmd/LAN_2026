@@ -25,6 +25,11 @@ const END_REVEAL_MS = 12_000;
 const BOT_TICK_MS = 50;
 const BOT_ID = 'challenge-rush-bot';
 const BOT = { id: BOT_ID, name: 'Challenge-Bot', avatar: null, color: '#9163f5' };
+// The bot only ever plays the ten original single-payload challenges (see
+// planBotChallenge/isTrialChallenge) — a bot match draws its order from just
+// this pool instead of the full forty, so it doesn't spend most matches on
+// trial challenges the bot always scores 0 on.
+const BOT_CHALLENGE_POOL: ChallengeKey[] = CHALLENGES.filter((challenge) => !isTrialChallenge(challenge.key)).map((challenge) => challenge.key);
 
 interface Player { id: string; name: string; avatar: string | null; color: string | null }
 interface Lobby { id: string; groupId: string; eventId: string | null; host: Player; players: Player[]; socketIds: Map<string, string>; ready: Set<string>; createdAt: number }
@@ -631,7 +636,10 @@ function startMatch(io: Server, lobby: Lobby): Match {
   const id = nanoid(); const room = `challenge-rush:${id}`;
   for (const socketId of lobby.socketIds.values()) io.sockets.sockets.get(socketId)?.join(room);
   const seed = Math.floor(Math.random() * 0x7fffffff);
-  const order = challengeOrder(seed, isFastTest() ? CHALLENGES.length : 10);
+  const hasBot = lobby.players.some((player) => player.id === BOT_ID);
+  const order = hasBot
+    ? challengeOrder(seed, isFastTest() ? BOT_CHALLENGE_POOL.length : 10, BOT_CHALLENGE_POOL)
+    : challengeOrder(seed, isFastTest() ? CHALLENGES.length : 10);
   const match: Match = { id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: [...lobby.players], socketIds: new Map(lobby.socketIds), order, index: -1, phase: 'countdown', seed, current: runtimeChallengePayload(order[0], seed), progress: new Map(), scores: new Map(lobby.players.map((player) => [player.id, 0])), startedAt: Date.now(), timer: null, deadlineAt: null, pausedRemainingMs: null, paused: false, reconnectTimers: new Map(), forfeited: new Set(), readyNext: new Set(), history: [], greenTimer: null, greenDeadlineAt: null, greenPausedRemainingMs: null, botLoop: null, botPlan: [], botPlanCursor: 0 };
   matches.set(id, match); releaseLobbyMemberships(lobby.players.map((player) => player.id), 'challenge-rush', lobby.id); lobbies.delete(lobby.id); emitLobbies(io);
   match.botLoop = setInterval(() => runBotTick(io, match), BOT_TICK_MS);

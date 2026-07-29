@@ -558,9 +558,14 @@ export function scoreRepeatedTrials(rawScore: number, trials: number, correct: n
   const throughput = Math.min(1, safeTrials / targetTrials);
   return safeScoreInput(Math.round(averageRawScore * 0.65 + accuracy * 25 + throughput * 10 + partialCredit));
 }
-export function challengeOrder(seed: number, count = 10): ChallengeKey[] {
-  const boundedCount = Math.max(1, Math.min(CHALLENGES.length, Math.floor(count)));
-  return shuffled(CHALLENGES.map((challenge) => challenge.key), seededRandom(seed ^ 0x51ed270b)).slice(0, boundedCount);
+// `pool` lets a bot match restrict the draw to the ten original single-
+// payload challenges (see planBotChallenge/isTrialChallenge): a bot never
+// plays any of the thirty trial-based challenges, so drawing from the full
+// forty-challenge catalog there would silently spend most of a bot match on
+// challenges it always scores 0 on.
+export function challengeOrder(seed: number, count = 10, pool: ChallengeKey[] = CHALLENGES.map((challenge) => challenge.key)): ChallengeKey[] {
+  const boundedCount = Math.max(1, Math.min(pool.length, Math.floor(count)));
+  return shuffled(pool, seededRandom(seed ^ 0x51ed270b)).slice(0, boundedCount);
 }
 
 export function winnerIdForScores(scores: Array<{ playerId: string; score: number }>): string | null {
