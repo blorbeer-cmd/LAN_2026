@@ -26,6 +26,16 @@ export function wireSearchSelect(container, id, options, { onChange } = {}) {
   const search = container.querySelector(`#${id}-search`);
   if (!hidden || !search) return;
   const byLabel = new Map(options.map((o) => [o.label.toLowerCase(), o.value]));
+  const labelForValue = () => options.find((o) => o.value === hidden.value)?.label ?? '';
+
+  // A datalist filters its suggestions against the input's current value.
+  // Leaving the selected game's full label in place therefore makes the
+  // dropdown look as if it only contains that one game. Clear the visible
+  // search text on focus so pointer, touch and keyboard users can immediately
+  // see/search the complete list; the hidden input keeps the valid selection.
+  search.addEventListener('focus', () => {
+    search.value = '';
+  });
 
   // Only resolves once the typed text exactly matches an option label (that's
   // what selecting a <datalist> suggestion produces) — a partial in-progress
@@ -43,4 +53,7 @@ export function wireSearchSelect(container, id, options, { onChange } = {}) {
 
   search.addEventListener('input', resolve);
   search.addEventListener('change', resolve);
+  search.addEventListener('blur', () => {
+    search.value = labelForValue();
+  });
 }
