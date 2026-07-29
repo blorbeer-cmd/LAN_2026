@@ -8,19 +8,23 @@ import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { challengeRushTiming } from './challengeRushTiming';
+import { playerMayUseArcadeAi } from './adminAccess';
 import {
   CHALLENGES, challengeOrder, challengePayload, createTrial, difficultyFor, isCurrentChallenge, isReadyForNext,
-  isTrialChallenge, remainingUntil, scoreRepeatedTrials, seenBeforeSelection, validateTrialInput,
+  isTrialChallenge, planBotChallenge, remainingUntil, scoreRepeatedTrials, seenBeforeSelection, validateTrialInput,
   scoreAimTrainer, scoreColorWord, scoreCps, scoreMemorySequence, scoreNumberSalad, scoreOddOneOut,
   scoreReaction, scoreTiming10, scoreTrafficLight, scoreWhackAMole, winnerIdForScores, previewTrialData,
   COLOR_WORD_ROUND_COUNT, MEMORY_SEQUENCE_LENGTH, WHACK_A_MOLE_SEQUENCE_LENGTH, AIM_TRAINER_TARGET_COUNT,
-  type ChallengeKey, type ChallengePayload, type InternalTrial, type TrialPayload,
+  type BotChallengeStep, type ChallengeKey, type ChallengePayload, type InternalTrial, type TrialPayload,
 } from './challengeRushLogic';
 
 const MAX_PLAYERS = 15;
 const DEFAULT_RECONNECT_GRACE_MS = 15_000;
 const DEFAULT_RESULT_READY_TIMEOUT_MS = 20_000;
 const END_REVEAL_MS = 12_000;
+const BOT_TICK_MS = 50;
+const BOT_ID = 'challenge-rush-bot';
+const BOT = { id: BOT_ID, name: 'Challenge-Bot', avatar: null, color: '#9163f5' };
 
 interface Player { id: string; name: string; avatar: string | null; color: string | null }
 interface Lobby { id: string; groupId: string; eventId: string | null; host: Player; players: Player[]; socketIds: Map<string, string>; ready: Set<string>; createdAt: number }
@@ -44,13 +48,19 @@ interface Match {
   // moment is a server push instead of client-known data (see
   // scheduleGreenLight below).
   greenTimer: NodeJS.Timeout | null; greenDeadlineAt: number | null; greenPausedRemainingMs: number | null;
+  botLoop: NodeJS.Timeout | null; botPlan: BotChallengeStep[]; botPlanCursor: number;
 }
 
 const lobbies = new Map<string, Lobby>();
 const matches = new Map<string, Match>();
-const real = (players: Player[]) => players.filter((player) => !player.id.startsWith('bot-')).map((player) => player.id);
+const real = (players: Player[]) => players.filter((player) => player.id !== BOT_ID).map((player) => player.id);
 const playerById = (id: unknown): Player | null => typeof id === 'string' ? (db.prepare('SELECT id,name,avatar,color FROM players WHERE id=?').get(id) as Player | undefined) ?? null : null;
 const owns = (socket: Socket, id: unknown): id is string => typeof id === 'string' && Boolean(socketArcadeScope(socket, id));
+const hasActiveMatch = (playerId: string): boolean => [...matches.values()].some(
+  (match) => match.phase !== 'ended'
+    && !match.forfeited.has(playerId)
+    && match.players.some((player) => player.id === playerId),
+);
 const publicLobbies = (groupId: string, eventId: string | null) => [...lobbies.values()].filter((l) => l.groupId === groupId && l.eventId === eventId).map((l) => ({ id: l.id, host: l.host, players: l.players.map((p) => ({ ...p, ready: isLobbyReady(l, p.id) })), createdAt: l.createdAt }));
 const reconnectGraceMs = (): number => { const configured = Number(process.env.CHALLENGE_RUSH_RECONNECT_GRACE_MS); return Number.isFinite(configured) ? Math.max(50, Math.min(60_000, configured)) : DEFAULT_RECONNECT_GRACE_MS; };
 const resultReadyTimeoutMs = (): number => { const configured = Number(process.env.CHALLENGE_RUSH_RESULT_TIMEOUT_MS); return Number.isFinite(configured) ? Math.max(50, Math.min(120_000, configured)) : DEFAULT_RESULT_READY_TIMEOUT_MS; };
@@ -187,7 +197,7 @@ function emitLobbies(io: Server): void {
 }
 
 function scorePayload(match: Match) {
-  return match.players.map((player) => ({ playerId: player.id, name: player.name, score: match.scores.get(player.id) ?? 0, connected: match.socketIds.has(player.id), forfeited: match.forfeited.has(player.id) }));
+  return match.players.map((player) => ({ playerId: player.id, name: player.name, score: match.scores.get(player.id) ?? 0, connected: match.socketIds.has(player.id), forfeited: match.forfeited.has(player.id), isBot: player.id === BOT_ID }));
 }
 
 function progressPayload(progress: Progress) {
@@ -268,6 +278,93 @@ function nextStepPayload(match: Match, p: Progress): Record<string, unknown> | u
   if (match.current.key === 'whack-a-mole') { const sequence = (match.current.data as { sequence: number[] }).sequence; return { activeHole: sequence[p.correct] ?? null }; }
   if (match.current.key === 'color-word') { const rounds = (match.current.data as { rounds: Array<{ word: string; textColor: string; options: string[] }> }).rounds; return { round: rounds[p.correct + p.errors] ?? null }; }
   return undefined;
+}
+
+interface ChallengeInput {
+  challengeIndex?: number;
+  action?: string;
+  value?: number | string | { x?: number; y?: number };
+}
+
+function applyChallengeInput(io: Server, match: Match, playerId: string, input: ChallengeInput): Record<string, unknown> {
+  const p = match.progress.get(playerId);
+  if (match.phase !== 'playing' || match.paused || !p || match.forfeited.has(playerId)) return { ok: false, error: 'Eingabe nicht möglich.' };
+  const progress = () => ({ ok: true, progress: progressPayload(p) });
+  if (!isCurrentChallenge(input.challengeIndex ?? -1, match.index)) return { ...progress(), ignored: true, reason: 'stale-challenge' };
+  const now = Date.now();
+  if (p.completed) return { ...progress(), duplicate: true };
+  if (now - p.lastInputAt < 30) return { ...progress(), ignored: true };
+  p.lastInputAt = now;
+  const elapsed = Math.min(activeElapsed(p, now), match.current.durationMs);
+  const pointValue = (): { x?: number; y?: number } => (input.value && typeof input.value === 'object' ? input.value : {});
+  const hitsPoint = (target: { x?: unknown; y?: unknown }): boolean => {
+    const point = pointValue();
+    return typeof point.x === 'number' && typeof point.y === 'number' && Math.abs(point.x - Number(target.x)) <= 12 && Math.abs(point.y - Number(target.y)) <= 12;
+  };
+  if (match.current.key === 'reaction-circle') {
+    if (input.action !== 'hit' || !hitsPoint(match.current.data as { x: number; y: number })) return { ok: false, error: 'Ungültiges Ziel.', progress: progressPayload(p) };
+    p.score = scoreReaction(elapsed); p.completed = true;
+  } else if (match.current.key === 'cps') {
+    if (input.action !== 'click') return { ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) };
+    p.clicks += 1;
+  } else if (match.current.key === 'number-salad') {
+    const expected = p.correct + 1;
+    if (input.action !== 'number' || input.value !== expected) p.errors += 1; else p.correct += 1;
+    if (p.correct >= 8) { p.score = scoreNumberSalad(p.correct, p.errors, elapsed); p.completed = true; }
+  } else if (match.current.key === 'timing-10') {
+    if (input.action !== 'stop') return { ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) };
+    p.score = scoreTiming10(elapsed); p.completed = true;
+  } else if (match.current.key === 'aim-trainer') {
+    const targets = match.current.data.targets as Array<{ x: number; y: number }>;
+    if (input.action !== 'hit' || !hitsPoint(targets[p.correct] ?? {})) return { ok: false, error: 'Ungültiges Ziel.', progress: progressPayload(p) };
+    p.correct += 1;
+    if (p.correct >= AIM_TRAINER_TARGET_COUNT) { p.score = scoreAimTrainer(p.correct, elapsed); p.completed = true; }
+  } else if (match.current.key === 'memory-sequence') {
+    const sequence = match.current.data.sequence as number[];
+    if (input.action !== 'tile' || typeof input.value !== 'number') return { ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) };
+    if (elapsed < challengeRushTiming().memoryRevealMs) return { ok: false, error: 'Bitte die Reihenfolge erst abwarten.', progress: progressPayload(p) };
+    if (input.value === sequence[p.correct]) p.correct += 1; else p.errors += 1;
+    if (p.errors > 0 || p.correct >= MEMORY_SEQUENCE_LENGTH) { p.score = scoreMemorySequence(p.correct); p.completed = true; }
+  } else if (match.current.key === 'odd-one-out') {
+    if (input.action !== 'select' || typeof input.value !== 'number') return { ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) };
+    if (input.value === match.current.data.oddIndex) { p.score = scoreOddOneOut(elapsed, p.errors); p.completed = true; } else p.errors += 1;
+  } else if (match.current.key === 'whack-a-mole') {
+    const sequence = match.current.data.sequence as number[];
+    if (input.action !== 'hit' || typeof input.value !== 'number') return { ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) };
+    if (input.value === sequence[p.correct]) p.correct += 1; else p.errors += 1;
+    if (p.correct >= WHACK_A_MOLE_SEQUENCE_LENGTH) { p.score = scoreWhackAMole(p.correct, p.errors, elapsed); p.completed = true; }
+  } else if (match.current.key === 'traffic-light') {
+    if (input.action !== 'click') return { ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) };
+    const greenAtMs = Number(match.current.data.greenAtMs);
+    const falseStart = elapsed < greenAtMs;
+    p.score = scoreTrafficLight(elapsed - greenAtMs, falseStart);
+    if (falseStart) p.errors += 1;
+    p.completed = true;
+  } else {
+    const rounds = match.current.data.rounds as Array<{ textColor: string }>;
+    const roundIndex = p.correct + p.errors;
+    if (input.action !== 'answer' || typeof input.value !== 'string' || roundIndex >= rounds.length) return { ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) };
+    if (input.value === rounds[roundIndex].textColor) p.correct += 1; else p.errors += 1;
+    if (p.correct + p.errors >= COLOR_WORD_ROUND_COUNT) { p.score = scoreColorWord(p.correct, p.errors, elapsed); p.completed = true; }
+  }
+  // Browser E2E exercises the real renderer/click wiring for all forty
+  // challenges. One valid interaction is enough there; production still
+  // uses the complete 30-second or challenge-specific completion rules.
+  if (isE2EFastTest() && !p.completed) {
+    p.score = timeoutScore(match.current.key, p, elapsed);
+    p.completed = true;
+  }
+  if ([...match.progress.values()].every((entry) => entry.completed)) finishChallenge(io, match);
+  return { ok: true, accepted: true, progress: progressPayload(p), next: p.completed ? undefined : nextStepPayload(match, p) };
+}
+
+function runBotTick(io: Server, match: Match): void {
+  if (match.phase !== 'playing' || match.paused || !match.players.some((player) => player.id === BOT_ID)) return;
+  const progress = match.progress.get(BOT_ID);
+  const step = match.botPlan[match.botPlanCursor];
+  if (!progress || progress.completed || !step || activeElapsed(progress) < step.atMs) return;
+  const result = applyChallengeInput(io, match, BOT_ID, { challengeIndex: match.index, action: step.action, value: step.value });
+  if (result.accepted === true || result.duplicate === true || result.reason === 'stale-challenge') match.botPlanCursor += 1;
 }
 
 function activeElapsed(progress: Progress, now = Date.now()): number {
@@ -390,6 +487,12 @@ function beginChallenge(io: Server, match: Match): void {
     progress.elapsedBeforePause = 0;
     if (isTrialChallenge(match.current.key) && !progress.completed) createPlayerTrial(match, playerId, progress);
   }
+  // planBotChallenge only plans the original ten single-payload challenges;
+  // the thirty trial-based ones have no precomputable step list (each trial
+  // is generated fresh per player once the previous one completes), so the
+  // bot simply stays idle and scores 0 on those for now instead of guessing.
+  match.botPlan = planBotChallenge(match.current, { memoryRevealMs: challengeRushTiming().memoryRevealMs });
+  match.botPlanCursor = 0;
   schedule(match, match.current.durationMs, () => finishChallenge(io, match));
   if (match.current.key === 'traffic-light') {
     const greenAtMs = Number((match.current.data as { greenAtMs?: number }).greenAtMs ?? 0);
@@ -446,6 +549,8 @@ function nextChallenge(io: Server, match: Match): void {
   match.index += 1;
   match.phase = 'countdown';
   match.current = runtimeChallengePayload(match.order[match.index], (match.seed + match.index * 7919) >>> 0);
+  match.botPlan = [];
+  match.botPlanCursor = 0;
   // A forfeited player's Progress entry is rebuilt below like everyone
   // else's, but starts pre-completed at score 0 instead of `completed: false`
   // — otherwise it would silently accept real input again next round and,
@@ -463,6 +568,8 @@ function nextChallenge(io: Server, match: Match): void {
 }
 
 function cleanupMatch(io: Server, match: Match): void {
+  if (match.botLoop) clearInterval(match.botLoop);
+  match.botLoop = null;
   for (const timer of match.reconnectTimers.values()) clearTimeout(timer);
   match.reconnectTimers.clear();
   matches.delete(match.id);
@@ -473,11 +580,13 @@ function cleanupMatch(io: Server, match: Match): void {
 function finishMatch(io: Server, match: Match, reason = 'completed'): void {
   if (match.phase === 'ended') return;
   match.phase = 'ended'; clearTimer(match); clearGreenTimer(match);
+  if (match.botLoop) clearInterval(match.botLoop);
+  match.botLoop = null;
   const scores = scorePayload(match);
   const winnerId = reason === 'completed' ? winnerIdForScores(scores.filter((score) => !score.forfeited)) : null;
   endArcadeSession(real(match.players), 'challenge-rush', match);
-  recordArcadeResult({ gameType: 'challenge-rush', winnerId, players: match.players, scores: scores.map((score) => ({ ...score, isWinner: winnerId !== null && score.playerId === winnerId })), reason, startedAt: match.startedAt, scope: match });
-  emitArcadeRoom(io, match.room, 'challenge-rush:match:end', { matchId: match.id, winnerId, scores, draw: winnerId === null && reason === 'completed', history: match.history }, match);
+  recordArcadeResult({ gameType: 'challenge-rush', winnerId: winnerId === BOT_ID ? null : winnerId, players: match.players, scores: scores.map((score) => ({ ...score, isWinner: winnerId !== null && score.playerId === winnerId })), reason, startedAt: match.startedAt, scope: match });
+  emitArcadeRoom(io, match.room, 'challenge-rush:match:end', { matchId: match.id, winnerId, scores, draw: winnerId === null && reason === 'completed', reason, history: match.history }, match);
   broadcastArcadeKiosk(io, { gameType: 'challenge-rush', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'ended', scores });
   setTimeout(() => cleanupMatch(io, match), END_REVEAL_MS).unref();
 }
@@ -491,15 +600,22 @@ function forfeitPlayer(io: Server, match: Match, playerId: string): void {
   const timer = match.reconnectTimers.get(playerId);
   if (timer) { clearTimeout(timer); match.reconnectTimers.delete(playerId); }
   match.forfeited.add(playerId);
+  const socketId = match.socketIds.get(playerId);
+  if (socketId) {
+    match.socketIds.delete(playerId);
+    io.sockets.sockets.get(socketId)?.leave(match.room);
+  }
   const progress = match.progress.get(playerId);
   if (progress && !progress.completed) { progress.completed = true; progress.score = 0; }
+  if (match.players.some((player) => player.id === BOT_ID) && real(match.players).every((humanId) => match.forfeited.has(humanId))) return finishMatch(io, match, 'no-human-players');
   if (match.players.every((player) => match.forfeited.has(player.id))) return finishMatch(io, match, 'all-forfeited');
   emitState(io, match);
   if (match.phase === 'playing' && [...match.progress.values()].every((entry) => entry.completed)) finishChallenge(io, match);
   else if (match.phase === 'result' && isReadyForNext(scorePayload(match), match.readyNext)) nextChallenge(io, match);
 }
 
-function attachSocket(io: Server, socket: Socket, match: Match, playerId: string): void {
+function attachSocket(io: Server, socket: Socket, match: Match, playerId: string): boolean {
+  if (match.forfeited.has(playerId)) return false;
   const previousTimer = match.reconnectTimers.get(playerId);
   if (previousTimer) clearTimeout(previousTimer);
   match.reconnectTimers.delete(playerId);
@@ -508,6 +624,7 @@ function attachSocket(io: Server, socket: Socket, match: Match, playerId: string
   socket.emit('challenge-rush:match:start', { matchId: match.id, host: match.host, players: match.players, challengeCount: match.order.length, reconnected: true });
   emitState(io, match, socket, playerId);
   emitTrial(io, match, playerId);
+  return true;
 }
 
 function startMatch(io: Server, lobby: Lobby): Match {
@@ -515,8 +632,10 @@ function startMatch(io: Server, lobby: Lobby): Match {
   for (const socketId of lobby.socketIds.values()) io.sockets.sockets.get(socketId)?.join(room);
   const seed = Math.floor(Math.random() * 0x7fffffff);
   const order = challengeOrder(seed, isFastTest() ? CHALLENGES.length : 10);
-  const match: Match = { id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: [...lobby.players], socketIds: new Map(lobby.socketIds), order, index: -1, phase: 'countdown', seed, current: runtimeChallengePayload(order[0], seed), progress: new Map(), scores: new Map(lobby.players.map((player) => [player.id, 0])), startedAt: Date.now(), timer: null, deadlineAt: null, pausedRemainingMs: null, paused: false, reconnectTimers: new Map(), forfeited: new Set(), readyNext: new Set(), history: [], greenTimer: null, greenDeadlineAt: null, greenPausedRemainingMs: null };
+  const match: Match = { id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: [...lobby.players], socketIds: new Map(lobby.socketIds), order, index: -1, phase: 'countdown', seed, current: runtimeChallengePayload(order[0], seed), progress: new Map(), scores: new Map(lobby.players.map((player) => [player.id, 0])), startedAt: Date.now(), timer: null, deadlineAt: null, pausedRemainingMs: null, paused: false, reconnectTimers: new Map(), forfeited: new Set(), readyNext: new Set(), history: [], greenTimer: null, greenDeadlineAt: null, greenPausedRemainingMs: null, botLoop: null, botPlan: [], botPlanCursor: 0 };
   matches.set(id, match); releaseLobbyMemberships(lobby.players.map((player) => player.id), 'challenge-rush', lobby.id); lobbies.delete(lobby.id); emitLobbies(io);
+  match.botLoop = setInterval(() => runBotTick(io, match), BOT_TICK_MS);
+  match.botLoop.unref();
   startArcadeSession(real(match.players), 'challenge-rush', match); emitArcadeRoom(io, room, 'challenge-rush:match:start', { matchId: id, host: match.host, players: match.players, challengeCount: order.length }, match); nextChallenge(io, match); return match;
 }
 
@@ -536,10 +655,43 @@ export function registerChallengeRushSockets(io: Server): void {
     sendLobbies(); socket.on('challenge-rush:lobbies:get', sendLobbies); socket.on('scope:subscribe', sendLobbies); socket.on('room:subscribe', sendLobbies);
     const authPlayerId = socket.data.authPlayerId;
     if (typeof authPlayerId === 'string') for (const match of matches.values()) if (match.players.some((player) => player.id === authPlayerId)) attachSocket(io, socket, match, authPlayerId);
-    socket.on('challenge-rush:match:reconnect', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const match = payload?.matchId ? matches.get(payload.matchId) : null; if (!match || !payload.playerId || !match.players.some((player) => player.id === payload.playerId) || !socketArcadeScope(socket, payload.playerId)) return ack?.({ ok: false, error: 'Match-Wiederaufnahme verweigert.' }); attachSocket(io, socket, match, payload.playerId); ack?.({ ok: true }); });
+    socket.on('challenge-rush:match:reconnect', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const match = payload?.matchId ? matches.get(payload.matchId) : null; if (!match || !payload.playerId || !match.players.some((player) => player.id === payload.playerId) || !socketArcadeScope(socket, payload.playerId) || !attachSocket(io, socket, match, payload.playerId)) return ack?.({ ok: false, error: 'Match-Wiederaufnahme verweigert.' }); ack?.({ ok: true }); });
 
-    socket.on('challenge-rush:lobby:create', (payload: { playerId?: string }, ack?: (r: unknown) => void) => { const player = playerById(payload?.playerId); const scope = player ? socketArcadeScope(socket, player.id) : null; if (!player || !scope) return ack?.({ ok: false, error: 'Spieler- oder Gruppenzugriff verweigert.' }); const lobby: Lobby = { id: nanoid(), ...scope, host: player, players: [player], socketIds: new Map([[player.id, socket.id]]), ready: new Set(), createdAt: Date.now() }; if (!claimLobbyMembership(player.id, 'challenge-rush', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer Arcade-Lobby.' }); lobbies.set(lobby.id, lobby); emitLobbies(io); ack?.({ ok: true, lobbyId: lobby.id }); });
-    socket.on('challenge-rush:lobby:join', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null; const player = playerById(payload?.playerId); if (!lobby || !player || !canJoinLobby(socket, lobby, player.id)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' }); if (!lobby.players.some((entry) => entry.id === player.id) && lobby.players.length >= MAX_PLAYERS) return ack?.({ ok: false, error: 'Lobby ist voll.' }); if (!claimLobbyMembership(player.id, 'challenge-rush', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer Arcade-Lobby.' }); if (!lobby.players.some((entry) => entry.id === player.id)) lobby.players.push(player); lobby.socketIds.set(player.id, socket.id); emitLobbies(io); ack?.({ ok: true }); });
+    socket.on('challenge-rush:lobby:create', (payload: { playerId?: string }, ack?: (r: unknown) => void) => {
+      const player = playerById(payload?.playerId);
+      const scope = player ? socketArcadeScope(socket, player.id) : null;
+      if (!player || !scope) return ack?.({ ok: false, error: 'Spieler- oder Gruppenzugriff verweigert.' });
+      if (hasActiveMatch(player.id)) return ack?.({ ok: false, error: 'Beende zuerst dein laufendes Challenge-Rush-Match.' });
+      const lobby: Lobby = { id: nanoid(), ...scope, host: player, players: [player], socketIds: new Map([[player.id, socket.id]]), ready: new Set(), createdAt: Date.now() };
+      if (!claimLobbyMembership(player.id, 'challenge-rush', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer Arcade-Lobby.' });
+      lobbies.set(lobby.id, lobby);
+      emitLobbies(io);
+      ack?.({ ok: true, lobbyId: lobby.id });
+    });
+    socket.on('challenge-rush:lobby:bot', (payload: { playerId?: string }, ack?: (r: unknown) => void) => {
+      if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
+      const player = playerById(payload?.playerId);
+      const scope = player ? socketArcadeScope(socket, player.id) : null;
+      if (!player || !scope) return ack?.({ ok: false, error: 'Spieler- oder Gruppenzugriff verweigert.' });
+      if (hasActiveMatch(player.id)) return ack?.({ ok: false, error: 'Beende zuerst dein laufendes Challenge-Rush-Match.' });
+      const lobby: Lobby = { id: nanoid(), ...scope, host: player, players: [player, BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now() };
+      if (!claimLobbyMembership(player.id, 'challenge-rush', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer Arcade-Lobby.' });
+      lobbies.set(lobby.id, lobby);
+      emitLobbies(io);
+      ack?.({ ok: true, lobbyId: lobby.id });
+    });
+    socket.on('challenge-rush:lobby:join', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => {
+      const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null;
+      const player = playerById(payload?.playerId);
+      if (!lobby || !player || !canJoinLobby(socket, lobby, player.id)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' });
+      if (hasActiveMatch(player.id)) return ack?.({ ok: false, error: 'Beende zuerst dein laufendes Challenge-Rush-Match.' });
+      if (!lobby.players.some((entry) => entry.id === player.id) && lobby.players.length >= MAX_PLAYERS) return ack?.({ ok: false, error: 'Lobby ist voll.' });
+      if (!claimLobbyMembership(player.id, 'challenge-rush', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer Arcade-Lobby.' });
+      if (!lobby.players.some((entry) => entry.id === player.id)) lobby.players.push(player);
+      lobby.socketIds.set(player.id, socket.id);
+      emitLobbies(io);
+      ack?.({ ok: true });
+    });
     socket.on('challenge-rush:lobby:leave', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null; if (!lobby || !canUseLobby(socket, lobby) || !owns(socket, payload.playerId)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' }); if (payload.playerId === lobby.host.id) { releaseLobbyMemberships(lobby.players.map((player) => player.id), 'challenge-rush', lobby.id); lobbies.delete(lobby.id); } else { releaseLobbyMembership(payload.playerId, 'challenge-rush', lobby.id); lobby.players = lobby.players.filter((player) => player.id !== payload.playerId); lobby.socketIds.delete(payload.playerId); lobby.ready.delete(payload.playerId); } emitLobbies(io); ack?.({ ok: true }); });
     socket.on('challenge-rush:lobby:ready', (payload: { lobbyId?: string; playerId?: string; ready?: boolean }, ack?: (r: unknown) => void) => { const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null; if (!lobby || !canUseLobby(socket, lobby) || !owns(socket, payload.playerId) || !setLobbyReady(lobby, payload.playerId, payload.ready)) return ack?.({ ok: false, error: 'Bereit-Status konnte nicht gesetzt werden.' }); emitLobbies(io); ack?.({ ok: true }); });
     socket.on('challenge-rush:lobby:start', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null; if (!lobby || !canUseLobby(socket, lobby) || !owns(socket, payload.playerId) || payload.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' }); if (lobby.players.length < 1 || lobby.players.some((player) => !isLobbyReady(lobby, player.id))) return ack?.({ ok: false, error: 'Alle Mitspieler müssen bereit sein.' }); const match = startMatch(io, lobby); ack?.({ ok: true, matchId: match.id }); });
@@ -553,122 +705,71 @@ export function registerChallengeRushSockets(io: Server): void {
       socket.emit('challenge-rush:trial', { matchId: match.id, challengeIndex: match.index, trial });
       ack?.({ ok: true, trial });
     });
+    // The original ten single-payload challenges (reaction-circle, cps, ...)
+    // share one authoritative applyChallengeInput, also used by the bot tick
+    // below. The thirty trial-based challenges use a repeated
+    // generate-a-trial/validate-the-answer cycle that doesn't fit that same
+    // shape (each trial is per-player and regenerated on demand), so they
+    // stay handled here directly; the bot currently never plays them (see
+    // beginChallenge) and so never reaches this branch as BOT_ID.
     socket.on('challenge-rush:challenge:input', (payload: { matchId?: string; playerId?: string; challengeIndex?: number; trialId?: string; action?: string; value?: unknown }, ack?: (r: unknown) => void) => {
-      const match = payload?.matchId ? matches.get(payload.matchId) : null; const p = match && payload.playerId ? match.progress.get(payload.playerId) : null;
-      if (!match || match.phase !== 'playing' || match.paused || !p || !owns(socket, payload.playerId) || !canUseLobby(socket, match) || match.forfeited.has(payload.playerId as string)) return ack?.({ ok: false, error: 'Eingabe nicht möglich.' });
+      const match = payload?.matchId ? matches.get(payload.matchId) : null;
+      if (!match || payload.playerId === BOT_ID || !owns(socket, payload.playerId) || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Eingabe nicht möglich.' });
+      if (!isTrialChallenge(match.current.key)) return ack?.(applyChallengeInput(io, match, payload.playerId as string, payload as ChallengeInput));
+      const p = match.progress.get(payload.playerId as string);
+      if (match.phase !== 'playing' || match.paused || !p || match.forfeited.has(payload.playerId as string)) return ack?.({ ok: false, error: 'Eingabe nicht möglich.' });
       const progress = () => ({ ok: true, progress: progressPayload(p) });
       if (!isCurrentChallenge(payload.challengeIndex ?? -1, match.index)) return ack?.({ ...progress(), ignored: true, reason: 'stale-challenge' });
-      if (isTrialChallenge(match.current.key)) {
-        const visibleTrial = publicTrial(p);
-        if (!p.trial || !visibleTrial || payload.trialId !== p.trial.trialId) return ack?.({ ...progress(), ignored: true, reason: 'stale-trial', trial: visibleTrial });
-        const now = Date.now();
-        if (p.trial.phase === 'preview') return ack?.({ ok: false, error: 'Die Vorschau läuft noch.', progress: progressPayload(p), trial: visibleTrial });
-        // The throttle floor has to gate a claimed 'timeout' just like every
-        // other action: a client can assert action:'timeout' regardless of
-        // its actual elapsed time, so without this check first, spamming
-        // that action would forfeit-and-regenerate trials (each a SHA-256-
-        // backed createTrial call) at unlimited speed instead of at most
-        // once per 30ms.
-        if (now - p.lastInputAt < 30) return ack?.({ ...progress(), ignored: true, trial: visibleTrial });
-        p.lastInputAt = now;
-        if (payload.action === 'timeout' || trialElapsed(p, now) >= p.trial.inputMs) {
-          finishPlayerTrial(io, match, payload.playerId as string, p, { accepted: true, complete: true, correct: false, errors: 1, rawScore: 0, error: 'Zeit abgelaufen.' });
-          return ack?.({ ok: true, accepted: true, timedOut: true, progress: progressPayload(p), trial: publicTrial(p) });
+      const visibleTrial = publicTrial(p);
+      if (!p.trial || !visibleTrial || payload.trialId !== p.trial.trialId) return ack?.({ ...progress(), ignored: true, reason: 'stale-trial', trial: visibleTrial });
+      const now = Date.now();
+      if (p.trial.phase === 'preview') return ack?.({ ok: false, error: 'Die Vorschau läuft noch.', progress: progressPayload(p), trial: visibleTrial });
+      // The throttle floor has to gate a claimed 'timeout' just like every
+      // other action: a client can assert action:'timeout' regardless of
+      // its actual elapsed time, so without this check first, spamming
+      // that action would forfeit-and-regenerate trials (each a SHA-256-
+      // backed createTrial call) at unlimited speed instead of at most
+      // once per 30ms.
+      if (now - p.lastInputAt < 30) return ack?.({ ...progress(), ignored: true, trial: visibleTrial });
+      p.lastInputAt = now;
+      if (payload.action === 'timeout' || trialElapsed(p, now) >= p.trial.inputMs) {
+        finishPlayerTrial(io, match, payload.playerId as string, p, { accepted: true, complete: true, correct: false, errors: 1, rawScore: 0, error: 'Zeit abgelaufen.' });
+        return ack?.({ ok: true, accepted: true, timedOut: true, progress: progressPayload(p), trial: publicTrial(p) });
+      }
+      if (match.current.key === 'memory-pairs' && payload.action === 'reveal') {
+        const cardIndex = payload.value;
+        const board = p.trial.expected as string[];
+        const found = Array.isArray(p.trial.state.found) ? p.trial.state.found as number[] : [];
+        const revealed = Array.isArray(p.trial.state.revealed) ? p.trial.state.revealed as number[] : [];
+        if (!Number.isInteger(cardIndex) || Number(cardIndex) < 0 || Number(cardIndex) >= board.length || found.includes(Number(cardIndex)) || revealed.includes(Number(cardIndex))) {
+          return ack?.({ ok: false, error: 'Ungültige Karte.', progress: progressPayload(p), trial: publicTrial(p) });
         }
-        if (match.current.key === 'memory-pairs' && payload.action === 'reveal') {
-          const cardIndex = payload.value;
-          const board = p.trial.expected as string[];
-          const found = Array.isArray(p.trial.state.found) ? p.trial.state.found as number[] : [];
-          const revealed = Array.isArray(p.trial.state.revealed) ? p.trial.state.revealed as number[] : [];
-          if (!Number.isInteger(cardIndex) || Number(cardIndex) < 0 || Number(cardIndex) >= board.length || found.includes(Number(cardIndex)) || revealed.includes(Number(cardIndex))) {
-            return ack?.({ ok: false, error: 'Ungültige Karte.', progress: progressPayload(p), trial: publicTrial(p) });
-          }
-          revealed.push(Number(cardIndex));
-          p.trial.state.revealed = revealed;
-          p.trial.state.revealSeq = Number(p.trial.state.revealSeq ?? 0) + 1;
-          const revealedCards = revealed.map((index) => ({ index, value: board[index] }));
-          const revealSeq = Number(p.trial.state.revealSeq);
-          if (revealed.length < 2) return ack?.({ ok: true, accepted: true, progress: progressPayload(p), trial: publicTrial(p), revealedCards, revealSeq });
-          const result = validateTrialInput(match.current.key, p.trial, 'pair', [...revealed]);
-          p.trial.state.revealed = [];
-          const fastRound = isFastTest();
-          if (result.complete || fastRound) finishPlayerTrial(io, match, payload.playerId as string, p, fastRound ? { ...result, complete: true } : result);
-          else {
-            p.rawScore += result.rawScore;
-            p.errors += result.errors;
-            if (result.correct) p.partialHits += 1;
-          }
-          return ack?.({ ok: true, accepted: result.accepted, correct: result.correct, progress: progressPayload(p), trial: publicTrial(p), revealedCards, revealSeq });
-        }
-        const result = validateTrialInput(match.current.key, p.trial, payload.action ?? '', payload.value);
-        if (!result.accepted) return ack?.({ ok: false, error: result.error, progress: progressPayload(p), trial: publicTrial(p) });
-        if (result.complete) finishPlayerTrial(io, match, payload.playerId as string, p, result);
+        revealed.push(Number(cardIndex));
+        p.trial.state.revealed = revealed;
+        p.trial.state.revealSeq = Number(p.trial.state.revealSeq ?? 0) + 1;
+        const revealedCards = revealed.map((index) => ({ index, value: board[index] }));
+        const revealSeq = Number(p.trial.state.revealSeq);
+        if (revealed.length < 2) return ack?.({ ok: true, accepted: true, progress: progressPayload(p), trial: publicTrial(p), revealedCards, revealSeq });
+        const result = validateTrialInput(match.current.key, p.trial, 'pair', [...revealed]);
+        p.trial.state.revealed = [];
+        const fastRound = isFastTest();
+        if (result.complete || fastRound) finishPlayerTrial(io, match, payload.playerId as string, p, fastRound ? { ...result, complete: true } : result);
         else {
           p.rawScore += result.rawScore;
           p.errors += result.errors;
           if (result.correct) p.partialHits += 1;
         }
-        return ack?.({ ok: true, accepted: true, correct: result.correct, progress: progressPayload(p), trial: publicTrial(p) });
+        return ack?.({ ok: true, accepted: result.accepted, correct: result.correct, progress: progressPayload(p), trial: publicTrial(p), revealedCards, revealSeq });
       }
-      const now = Date.now(); if (p.completed) return ack?.({ ...progress(), duplicate: true }); if (now - p.lastInputAt < 30) return ack?.({ ...progress(), ignored: true }); p.lastInputAt = now;
-      const elapsed = Math.min(activeElapsed(p, now), match.current.durationMs);
-      const pointValue = (): { x?: number; y?: number } => (payload.value && typeof payload.value === 'object' ? payload.value : {});
-      const hitsPoint = (target: { x?: unknown; y?: unknown }): boolean => { const point = pointValue(); return typeof point.x === 'number' && typeof point.y === 'number' && Math.abs(point.x - Number(target.x)) <= 12 && Math.abs(point.y - Number(target.y)) <= 12; };
-      if (match.current.key === 'reaction-circle') { if (payload.action !== 'hit' || !hitsPoint(match.current.data as { x: number; y: number })) return ack?.({ ok: false, error: 'Ungültiges Ziel.', progress: progressPayload(p) }); p.score = scoreReaction(elapsed); p.completed = true; }
-      else if (match.current.key === 'cps') { if (payload.action !== 'click') return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) }); p.clicks += 1; }
-      else if (match.current.key === 'number-salad') { const expected = p.correct + 1; if (payload.action !== 'number' || payload.value !== expected) p.errors += 1; else p.correct += 1; if (p.correct >= 8) { p.score = scoreNumberSalad(p.correct, p.errors, elapsed); p.completed = true; } }
-      else if (match.current.key === 'timing-10') { if (payload.action !== 'stop') return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) }); p.score = scoreTiming10(elapsed); p.completed = true; }
-      else if (match.current.key === 'aim-trainer') {
-        const targets = match.current.data.targets as Array<{ x: number; y: number }>;
-        if (payload.action !== 'hit' || !hitsPoint(targets[p.correct] ?? {})) return ack?.({ ok: false, error: 'Ungültiges Ziel.', progress: progressPayload(p) });
-        p.correct += 1;
-        if (p.correct >= AIM_TRAINER_TARGET_COUNT) { p.score = scoreAimTrainer(p.correct, elapsed); p.completed = true; }
+      const result = validateTrialInput(match.current.key, p.trial, payload.action ?? '', payload.value);
+      if (!result.accepted) return ack?.({ ok: false, error: result.error, progress: progressPayload(p), trial: publicTrial(p) });
+      if (result.complete) finishPlayerTrial(io, match, payload.playerId as string, p, result);
+      else {
+        p.rawScore += result.rawScore;
+        p.errors += result.errors;
+        if (result.correct) p.partialHits += 1;
       }
-      else if (match.current.key === 'memory-sequence') {
-        const sequence = match.current.data.sequence as number[];
-        if (payload.action !== 'tile' || typeof payload.value !== 'number') return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) });
-        // The full sequence is already in the wire payload for the reveal
-        // animation, so a scripted client could otherwise answer the instant
-        // 'playing' starts and always score 100 — reject taps before the
-        // reveal has actually finished.
-        if (elapsed < challengeRushTiming().memoryRevealMs) return ack?.({ ok: false, error: 'Bitte die Reihenfolge erst abwarten.', progress: progressPayload(p) });
-        if (payload.value === sequence[p.correct]) p.correct += 1; else p.errors += 1;
-        if (p.errors > 0 || p.correct >= MEMORY_SEQUENCE_LENGTH) { p.score = scoreMemorySequence(p.correct); p.completed = true; }
-      }
-      else if (match.current.key === 'odd-one-out') {
-        if (payload.action !== 'select' || typeof payload.value !== 'number') return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) });
-        if (payload.value === match.current.data.oddIndex) { p.score = scoreOddOneOut(elapsed, p.errors); p.completed = true; } else p.errors += 1;
-      }
-      else if (match.current.key === 'whack-a-mole') {
-        const sequence = match.current.data.sequence as number[];
-        if (payload.action !== 'hit' || typeof payload.value !== 'number') return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) });
-        if (payload.value === sequence[p.correct]) p.correct += 1; else p.errors += 1;
-        if (p.correct >= WHACK_A_MOLE_SEQUENCE_LENGTH) { p.score = scoreWhackAMole(p.correct, p.errors, elapsed); p.completed = true; }
-      }
-      else if (match.current.key === 'traffic-light') {
-        if (payload.action !== 'click') return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) });
-        const greenAtMs = Number(match.current.data.greenAtMs);
-        const falseStart = elapsed < greenAtMs;
-        p.score = scoreTrafficLight(elapsed - greenAtMs, falseStart);
-        if (falseStart) p.errors += 1;
-        p.completed = true;
-      }
-      else if (match.current.key === 'color-word') {
-        const rounds = match.current.data.rounds as Array<{ textColor: string }>;
-        const roundIndex = p.correct + p.errors;
-        if (payload.action !== 'answer' || typeof payload.value !== 'string' || roundIndex >= rounds.length) return ack?.({ ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) });
-        if (payload.value === rounds[roundIndex].textColor) p.correct += 1; else p.errors += 1;
-        if (p.correct + p.errors >= COLOR_WORD_ROUND_COUNT) { p.score = scoreColorWord(p.correct, p.errors, elapsed); p.completed = true; }
-      }
-      // Browser E2E exercises the real renderer/click wiring for all forty
-      // challenges. One valid interaction is enough there; production still
-      // uses the complete 30-second or challenge-specific completion rules.
-      if (isE2EFastTest() && !p.completed) {
-        p.score = timeoutScore(match.current.key, p, elapsed);
-        p.completed = true;
-      }
-      if ([...match.progress.values()].every((entry) => entry.completed)) finishChallenge(io, match);
-      ack?.({ ok: true, accepted: true, progress: progressPayload(p), next: p.completed ? undefined : nextStepPayload(match, p) });
+      return ack?.({ ok: true, accepted: true, correct: result.correct, progress: progressPayload(p), trial: publicTrial(p) });
     });
     socket.on('challenge-rush:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => { const match = payload?.matchId ? matches.get(payload.matchId) : null; if (!match || !['countdown', 'playing', 'result'].includes(match.phase) || payload.playerId !== match.host.id || !owns(socket, payload.playerId) || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Pause ist in dieser Phase nicht möglich.' }); if (match.paused) resumeMatch(io, match); else pauseMatch(match); emitState(io, match); ack?.({ ok: true, paused: match.paused, remainingMs: match.pausedRemainingMs }); });
     socket.on('challenge-rush:challenge:ready', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => {

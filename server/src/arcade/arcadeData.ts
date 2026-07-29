@@ -82,6 +82,7 @@ export function recordArcadeResult(options: {
   reason: string;
   startedAt: number;
   endedAt?: number;
+  matchId?: string;
   scope?: ArcadeDataScope;
 }): string | null {
   const playerSnapshots = options.players.filter((player) => typeof (player.id ?? player.playerId) === 'string');
@@ -118,8 +119,8 @@ export function recordArcadeResult(options: {
   );
   const insertResult = db.prepare(
     `INSERT INTO arcade_results
-       (id, group_id, event_id, game_type, winner_id, players, scores, reason, started_at, ended_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, group_id, event_id, game_type, winner_id, players, scores, reason, started_at, ended_at, source_match_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertParticipant = db.prepare(
     `INSERT INTO arcade_result_participants
@@ -139,6 +140,7 @@ export function recordArcadeResult(options: {
       options.reason,
       options.startedAt,
       endedAt,
+      options.matchId ?? null,
     );
     for (const player of playerSnapshots) {
       const participantKey = String(player.id ?? player.playerId);

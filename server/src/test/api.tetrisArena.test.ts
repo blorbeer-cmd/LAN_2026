@@ -147,7 +147,6 @@ test('a paused KI Arena ends when its last human host leaves', async () => {
     const created = await emitAck(hostSocket, 'tetris:lobby:bot', {
       playerId: player.body.id,
       mode: 'arena',
-      botCount: 2,
     });
     assert.equal(created.ok, true);
     const startedPromise = waitForEvent<{ matchId: string; beginsAt: number }>(hostSocket, 'tetris:match:start');

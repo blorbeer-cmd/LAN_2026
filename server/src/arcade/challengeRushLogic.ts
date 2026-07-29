@@ -66,6 +66,16 @@ export interface TrialResult { accepted: boolean; complete: boolean; correct: bo
 
 export interface ChallengePayload { key: ChallengeKey; title: string; description: string; durationMs: number; seed: number; data: Record<string, unknown> }
 
+export interface BotChallengeStep {
+  atMs: number;
+  action: string;
+  value?: number | string | { x: number; y: number };
+}
+
+export interface BotChallengePlanOptions {
+  memoryRevealMs?: number;
+}
+
 // A plain linear congruential generator is invertible: revealing any single
 // output (e.g. the first Aim Trainer target, which the player has to see to
 // play) lets an attacker solve for the generator's internal state and
@@ -434,6 +444,71 @@ export function validateTrialInput(key: ChallengeKey, trial: InternalTrial, acti
     return { accepted: true, complete, correct: true, errors: 0, rawScore: complete ? 80 + trial.difficulty * 5 : 0 };
   }
   return wrong('Nicht unterstützte Eingabe.');
+}
+
+function spacedBotSteps(
+  count: number,
+  startAt: number,
+  endAt: number,
+  step: (index: number, atMs: number) => Omit<BotChallengeStep, 'atMs'>,
+): BotChallengeStep[] {
+  if (count <= 0) return [];
+  const safeStart = Math.max(40, Math.floor(startAt));
+  const safeEnd = Math.max(safeStart, Math.floor(endAt));
+  return Array.from({ length: count }, (_, index) => ({
+    atMs: Math.round(safeStart + (count === 1 ? 0 : ((safeEnd - safeStart) * index) / (count - 1))),
+    ...step(index, 0),
+  }));
+}
+
+// The thirty trial-based challenges (see isTrialChallenge) generate a fresh,
+// per-player trial only once the previous one completes, so there is no
+// fixed payload to precompute a step list against the way the original ten
+// single-payload challenges below allow. Bots simply sit those out (scoring
+// 0 via scoreRepeatedTrials' zero-trials case) rather than guessing; without
+// this guard every branch below falls through to the final color-word
+// case and crashes reading `.rounds` off an empty trial-challenge payload.
+export function planBotChallenge(challenge: ChallengePayload, options: BotChallengePlanOptions = {}): BotChallengeStep[] {
+  if (isTrialChallenge(challenge.key)) return [];
+  const random = seededRandom((challenge.seed ^ 0x51f15e) >>> 0);
+  const deadline = Math.max(80, challenge.durationMs - 80);
+  const clamp = (value: number) => Math.max(40, Math.min(deadline, Math.round(value)));
+
+  if (challenge.key === 'reaction-circle') {
+    const { x, y } = challenge.data as { x: number; y: number };
+    return [{ atMs: clamp(420 + random() * 220), action: 'hit', value: { x, y } }];
+  }
+  if (challenge.key === 'cps') {
+    const clicks = 12 + Math.floor(random() * 4);
+    return spacedBotSteps(clicks, 120, deadline, () => ({ action: 'click' }));
+  }
+  if (challenge.key === 'number-salad') {
+    return spacedBotSteps(8, 360, Math.min(deadline, 4_000), (index) => ({ action: 'number', value: index + 1 }));
+  }
+  if (challenge.key === 'timing-10') {
+    return [{ atMs: clamp(9_900 + random() * 200), action: 'stop' }];
+  }
+  if (challenge.key === 'aim-trainer') {
+    const targets = challenge.data.targets as Array<{ x: number; y: number }>;
+    return spacedBotSteps(targets.length, 450, Math.min(deadline, 4_300), (index) => ({ action: 'hit', value: targets[index] }));
+  }
+  if (challenge.key === 'memory-sequence') {
+    const sequence = challenge.data.sequence as number[];
+    const revealMs = options.memoryRevealMs ?? MEMORY_REVEAL_TOTAL_MS;
+    return spacedBotSteps(sequence.length, Math.min(deadline, revealMs + 180), Math.min(deadline, revealMs + 1_500), (index) => ({ action: 'tile', value: sequence[index] }));
+  }
+  if (challenge.key === 'odd-one-out') {
+    return [{ atMs: clamp(1_200 + random() * 700), action: 'select', value: Number(challenge.data.oddIndex) }];
+  }
+  if (challenge.key === 'whack-a-mole') {
+    const sequence = challenge.data.sequence as number[];
+    return spacedBotSteps(sequence.length, 350, Math.min(deadline, 4_200), (index) => ({ action: 'hit', value: sequence[index] }));
+  }
+  if (challenge.key === 'traffic-light') {
+    return [{ atMs: clamp(Number(challenge.data.greenAtMs) + 320 + random() * 240), action: 'click' }];
+  }
+  const rounds = challenge.data.rounds as Array<{ textColor: string }>;
+  return spacedBotSteps(rounds.length, 420, Math.min(deadline, 4_000), (index) => ({ action: 'answer', value: rounds[index].textColor }));
 }
 
 export function safeScoreInput(value: number): number { return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0; }

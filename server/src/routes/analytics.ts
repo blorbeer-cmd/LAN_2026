@@ -5,6 +5,7 @@
 // day/time range (?from=&to=, epoch ms).
 
 import { Router } from 'express';
+import { isKnownArcadeBotId } from '../arcade/botIds';
 import { db } from '../db';
 import { formatDurationMs, computePlaytime, aggregateByGame, type PlaySession } from '../playtime';
 import {
@@ -546,7 +547,7 @@ analyticsRouter.get('/arcade', (req, res) => {
     game.totalDurationMs += durationMs;
     game.longestDurationMs = Math.max(game.longestDurationMs, durationMs);
     for (const score of scores) {
-      if (score.isBot === true || score.playerId.startsWith('tetris-bot')) continue;
+      if (score.isBot === true || isKnownArcadeBotId(score.playerId)) continue;
       game.players.add(score.playerId);
       allPlayers.add(score.playerId);
       const current = game.matchesByPlayer.get(score.playerId) ?? {

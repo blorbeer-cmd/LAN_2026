@@ -6,6 +6,10 @@ export const SNAKE_ARENA_SHRINK_TICKS = 80;
 
 export type Direction = 'up' | 'down' | 'left' | 'right';
 export type SnakeMode = 'classic' | 'arena';
+
+export function snakeArenaBotCount(mode: SnakeMode): number {
+  return mode === 'arena' ? SNAKE_ARENA_MAX_PLAYERS - 1 : 1;
+}
 export interface Cell { x: number; y: number }
 export interface SafeBounds { minX: number; maxX: number; minY: number; maxY: number }
 export interface Snake { body: Cell[]; direction: Direction; nextDirection: Direction; score: number; alive: boolean }

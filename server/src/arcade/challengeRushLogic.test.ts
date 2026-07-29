@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CHALLENGES, challengeOrder, challengePayload, createTrial, isCurrentChallenge, isReadyForNext, previewTrialData, remainingUntil, safeScoreInput,
+  CHALLENGES, challengeOrder, challengePayload, createTrial, isCurrentChallenge, isReadyForNext, isTrialChallenge, planBotChallenge, previewTrialData, remainingUntil, safeScoreInput,
   seenBeforeSelection, validateTrialInput,
   scoreAimTrainer, scoreColorWord, scoreCps, scoreMemorySequence, scoreNumberSalad, scoreOddOneOut,
   scoreReaction, scoreTiming10, scoreTrafficLight, scoreWhackAMole, winnerIdForScores,
@@ -21,6 +21,39 @@ test('trial IDs are opaque and independent from deterministic generator inputs',
   assert.doesNotMatch(first.trialId, /123456789|^0-/);
   assert.equal(first.expected, second.expected);
   assert.deepEqual(first.data, second.data);
+});
+
+// planBotChallenge only ever plans the original ten single-payload
+// challenges; the thirty trial-based ones (see isTrialChallenge) generate a
+// fresh per-player trial on demand instead of one fixed payload, so a bot
+// simply sits those out (see challengeRush.ts's beginChallenge/runBotTick).
+test('Challenge Rush bot plans valid inputs for all ten original challenge types', () => {
+  const originalChallenges = CHALLENGES.filter((challenge) => !isTrialChallenge(challenge.key));
+  assert.equal(originalChallenges.length, 10);
+  const plans = new Map(originalChallenges.map((challenge, index) => {
+    const payload = challengePayload(challenge.key, 1_000 + index);
+    const plan = planBotChallenge(payload);
+    assert.ok(plan.length > 0, `${challenge.key} needs at least one bot action`);
+    assert.ok(plan.every((step) => step.atMs >= 40 && step.atMs < payload.durationMs));
+    assert.deepEqual([...plan].sort((left, right) => left.atMs - right.atMs), plan);
+    return [challenge.key, { payload, plan }] as const;
+  }));
+
+  assert.deepEqual(plans.get('number-salad')?.plan.map((step) => step.value), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.deepEqual(plans.get('aim-trainer')?.plan.map((step) => step.value), plans.get('aim-trainer')?.payload.data.targets);
+  assert.deepEqual(plans.get('memory-sequence')?.plan.map((step) => step.value), plans.get('memory-sequence')?.payload.data.sequence);
+  assert.deepEqual(plans.get('whack-a-mole')?.plan.map((step) => step.value), plans.get('whack-a-mole')?.payload.data.sequence);
+  assert.deepEqual(
+    plans.get('color-word')?.plan.map((step) => step.value),
+    (plans.get('color-word')?.payload.data.rounds as Array<{ textColor: string }>).map((round) => round.textColor),
+  );
+});
+test('Challenge Rush bot plans nothing for the thirty trial-based challenges instead of crashing', () => {
+  const trialChallenges = CHALLENGES.filter((challenge) => isTrialChallenge(challenge.key));
+  assert.equal(trialChallenges.length, 30);
+  for (const challenge of trialChallenges) {
+    assert.deepEqual(planBotChallenge(challengePayload(challenge.key, 42)), []);
+  }
 });
 test('scores stay in the normalized 0..100 range', () => {
   assert.equal(scoreReaction(120), 100); assert.equal(scoreReaction(99_999), 0);

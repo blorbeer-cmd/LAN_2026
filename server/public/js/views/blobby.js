@@ -221,7 +221,7 @@ export function renderBlobbyLobbyCard() {
         <button type="button" class="btn btn-primary btn-sm" id="blobby-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
         ${createReason ? infoTooltipHtml('blobby-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
       </div>
-      ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="blobby-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
+      ${currentPlayerMayUseArcadeAi() ? `<div class="arcade-lobby-ai-row"><button type="button" class="btn btn-sm" id="blobby-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button><button type="button" class="btn btn-sm" id="blobby-bot-doubles" ${match || noMe ? 'disabled' : ''}>Gegen KI (Doppel)</button></div>` : ''}
     </div>
     ${lobbyList()}
   </div>`;
@@ -247,6 +247,11 @@ export function wireBlobbyLobbyCard(container, { beforeCreate, beforeJoin } = {}
     if (beforeCreate && !(await beforeCreate())) return;
     const res = await emitAck('blobby:lobby:bot', { playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
+  });
+  container.querySelector('#blobby-bot-doubles')?.addEventListener('click', async () => {
+    if (beforeCreate && !(await beforeCreate())) return;
+    const res = await emitAck('blobby:lobby:bot', { playerId: myId(), mode: 'doubles' });
+    if (!res?.ok) showToast(res?.error || 'KI-Doppel-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelectorAll('[data-blobby-join]').forEach((b) => b.addEventListener('click', async () => {
     if (beforeJoin && !(await beforeJoin())) return;

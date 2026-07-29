@@ -128,3 +128,50 @@ test('Pong Doppel requires two full ready teams and awards the whole winning tea
     clearLobbyMemberships();
   }
 });
+
+test('Pong AI doubles quick start creates one human with three ready bots', async () => {
+  clearLobbyMemberships();
+  const httpServer = http.createServer(createApp());
+  const io = new Server(httpServer);
+  registerPongSockets(io);
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+  const socket = await connect(baseUrl);
+
+  try {
+    const response = await request(baseUrl).post('/api/players').send({ name: 'Pong KI Doppel Host' });
+    assert.equal(response.status, 201);
+    const hostId = response.body.id as string;
+    const denied = await emitAck(socket, 'pong:lobby:bot', { playerId: hostId, mode: 'doubles' });
+    assert.equal(denied.ok, false);
+    assert.match(denied.error ?? '', /nur für Admins/);
+
+    db.prepare('UPDATE players SET is_admin = 1 WHERE id = ?').run(hostId);
+    const lobbiesPromise = waitForEvent<{ lobbies: Array<{ id: string; mode: string; players: Array<{ id: string; team: string; ready: boolean }> }> }>(socket, 'pong:lobbies');
+    const created = await emitAck(socket, 'pong:lobby:bot', { playerId: hostId, mode: 'doubles' });
+    assert.equal(created.ok, true);
+    const lobby = (await lobbiesPromise).lobbies.find((entry) => entry.id === created.lobbyId);
+    assert.ok(lobby);
+    assert.equal(lobby.mode, 'doubles');
+    assert.deepEqual(lobby.players.map((player) => player.team), ['left', 'left', 'right', 'right']);
+    assert.equal(lobby.players.filter((player) => player.id.startsWith('pong-bot-') && player.ready).length, 3);
+
+    const startedPromise = waitForEvent<{ matchId: string; targetScore: number; players: Array<{ id: string; team: string }> }>(socket, 'pong:match:start');
+    const statePromise = waitForEvent<{ scores: Array<{ playerId: string; isBot: boolean }> }>(socket, 'pong:state');
+    assert.equal((await emitAck(socket, 'pong:lobby:start', { lobbyId: created.lobbyId, playerId: hostId })).ok, true);
+    const started = await startedPromise;
+    assert.equal(started.targetScore, 21);
+    assert.deepEqual(started.players.map((player) => player.team), ['left', 'left', 'right', 'right']);
+    const state = await statePromise;
+    assert.equal(state.scores.filter((score) => score.isBot).length, 3);
+
+    const endedPromise = waitForEvent<{ scores: Array<{ playerId: string; isBot: boolean }> }>(socket, 'pong:match:end');
+    assert.equal((await emitAck(socket, 'pong:match:finish', { matchId: started.matchId, playerId: hostId })).ok, true);
+    assert.equal((await endedPromise).scores.filter((score) => score.isBot).length, 3);
+  } finally {
+    socket.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    clearLobbyMemberships();
+  }
+});

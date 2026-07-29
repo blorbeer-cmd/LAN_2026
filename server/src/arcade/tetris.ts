@@ -714,7 +714,7 @@ export function registerTetrisSockets(io: Server): void {
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
     });
-    socket.on('tetris:lobby:bot', (payload: { playerId?: string; mode?: TetrisMode; botCount?: number }, ack?: (res: unknown) => void) => {
+    socket.on('tetris:lobby:bot', (payload: { playerId?: string; mode?: TetrisMode }, ack?: (res: unknown) => void) => {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
@@ -722,7 +722,7 @@ export function registerTetrisSockets(io: Server): void {
       if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
       const mode = tetrisMode(payload?.mode);
       if (!mode) return ack?.({ ok: false, error: 'Unbekannter Tetris-Modus.' });
-      const botCount = tetrisBotCount(mode, payload?.botCount);
+      const botCount = tetrisBotCount(mode);
       const bots = mode === 'arena' ? arenaBots(botCount) : [BOT];
       const lobby: TetrisLobby = {
         id: nanoid(),

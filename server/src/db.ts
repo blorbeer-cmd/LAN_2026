@@ -495,6 +495,7 @@ db.exec(`
     word            TEXT NOT NULL,
     draw_ops        TEXT NOT NULL,
     is_round_winner INTEGER NOT NULL DEFAULT 0,
+    is_ai_match     INTEGER NOT NULL DEFAULT 0,
     created_at      INTEGER NOT NULL,
     UNIQUE (match_id, turn_number)
   );
@@ -524,7 +525,8 @@ db.exec(`
     scores      TEXT NOT NULL,
     reason      TEXT NOT NULL,
     started_at  INTEGER NOT NULL,
-    ended_at    INTEGER NOT NULL
+    ended_at    INTEGER NOT NULL,
+    source_match_id TEXT
   );
 
   -- Info-Board: the answers to the questions everyone asks five times per
@@ -2363,7 +2365,6 @@ function addArcadeDataGroupScoping(): void {
   ]) {
     addColumn(table, 'event_id TEXT REFERENCES events(id) ON DELETE SET NULL');
   }
-
   for (const table of ['quiz_seen', 'scribble_seen', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
     addColumn(table, 'player_name_snapshot TEXT');
     db.prepare(
@@ -2386,7 +2387,6 @@ function addArcadeDataGroupScoping(): void {
     CREATE INDEX IF NOT EXISTS idx_scribble_favorites_group_event ON scribble_drawing_favorites(group_id, event_id, created_at);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_arcade_results_group_pk ON arcade_results(group_id, id);
     CREATE INDEX IF NOT EXISTS idx_arcade_results_group_event ON arcade_results(group_id, event_id, ended_at DESC);
-
     CREATE TABLE IF NOT EXISTS arcade_result_participants (
       result_id             TEXT NOT NULL,
       group_id              TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
@@ -2955,6 +2955,33 @@ registerMigration({
   version: 55,
   name: 'normalize games genre column to multiselect json',
   up: normalizeGamesGenreToMultiselect,
+});
+
+function addArcadeResultSourceMatchId(): void {
+  const columns = db.prepare('PRAGMA table_info(arcade_results)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'source_match_id')) {
+    db.exec('ALTER TABLE arcade_results ADD COLUMN source_match_id TEXT');
+  }
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_arcade_results_source_match ON arcade_results(group_id, game_type, source_match_id)',
+  );
+}
+registerMigration({
+  version: 56,
+  name: 'link arcade results to source matches',
+  up: addArcadeResultSourceMatchId,
+});
+
+function addScribbleDrawingIsAiMatch(): void {
+  const columns = db.prepare('PRAGMA table_info(scribble_drawings)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'is_ai_match')) {
+    db.exec('ALTER TABLE scribble_drawings ADD COLUMN is_ai_match INTEGER NOT NULL DEFAULT 0');
+  }
+}
+registerMigration({
+  version: 57,
+  name: 'mark scribble drawings from AI matches at persist time',
+  up: addScribbleDrawingIsAiMatch,
 });
 
 // Every migration is registered by now — run them all in ascending version
