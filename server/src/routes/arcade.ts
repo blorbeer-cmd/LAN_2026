@@ -268,6 +268,12 @@ arcadeRouter.get('/stats', (req, res) => {
     drawingClauses.push(`d.match_id NOT IN (${aiScribbleMatchIds.map(() => '?').join(',')})`);
     drawingParams.push(...aiScribbleMatchIds);
   }
+  // Belt-and-suspenders beyond the arcade_results lookup above: that lookup
+  // only sees matches that reached a persisted result row, so a still-active
+  // or crashed-before-finishMatch AI match would otherwise leak its drawings
+  // into the human ranking until (or unless) it ever finishes. Drawings are
+  // flagged at persist time (see scribble.ts persistCurrentDrawing) instead.
+  drawingClauses.push('d.is_ai_match = 0');
   const scribbleArtPlayers = db.prepare(
     `SELECT d.artist_id AS player_id, d.artist_name AS name,
             COUNT(*) AS drawings,

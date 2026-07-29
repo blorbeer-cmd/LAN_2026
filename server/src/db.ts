@@ -495,6 +495,7 @@ db.exec(`
     word            TEXT NOT NULL,
     draw_ops        TEXT NOT NULL,
     is_round_winner INTEGER NOT NULL DEFAULT 0,
+    is_ai_match     INTEGER NOT NULL DEFAULT 0,
     created_at      INTEGER NOT NULL,
     UNIQUE (match_id, turn_number)
   );
@@ -2969,6 +2970,18 @@ registerMigration({
   version: 56,
   name: 'link arcade results to source matches',
   up: addArcadeResultSourceMatchId,
+});
+
+function addScribbleDrawingIsAiMatch(): void {
+  const columns = db.prepare('PRAGMA table_info(scribble_drawings)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'is_ai_match')) {
+    db.exec('ALTER TABLE scribble_drawings ADD COLUMN is_ai_match INTEGER NOT NULL DEFAULT 0');
+  }
+}
+registerMigration({
+  version: 57,
+  name: 'mark scribble drawings from AI matches at persist time',
+  up: addScribbleDrawingIsAiMatch,
 });
 
 // Every migration is registered by now — run them all in ascending version

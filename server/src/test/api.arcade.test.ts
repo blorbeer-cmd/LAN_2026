@@ -259,6 +259,45 @@ test('GET /api/arcade/stats excludes drawings from non-completed Scribble AI mat
   }
 });
 
+test('GET /api/arcade/stats excludes drawings from a still-running or crashed Scribble AI match without a persisted result', async () => {
+  // Regresses the gap where the arcade_results-based lookup above misses a
+  // match that never reached finishMatch: persistCurrentDrawing marks the
+  // drawing is_ai_match at insert time instead, so this stays excluded even
+  // with no arcade_results row at all (mid-match stats request, or the
+  // process stopping before the match ever finishes).
+  const aiArtist = await request(app).post('/api/players').send({ name: 'KI Scribble Live Künstler' });
+  const normalArtist = await request(app).post('/api/players').send({ name: 'Scribble Live Ranglisten Künstler' });
+  const now = Date.now();
+  // A completed human result keeps the scribble entry present in `games` at
+  // all — the still-running AI match deliberately has no arcade_results row
+  // of its own, since that absence is exactly the gap being regressed here.
+  const normalScores = [{ playerId: normalArtist.body.id, name: normalArtist.body.name, score: 30 }];
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at, source_match_id)
+     VALUES (?, 'scribble', ?, ?, ?, 'completed', ?, ?, ?)`,
+  ).run('scribble-live-human-result', normalArtist.body.id, JSON.stringify(normalScores), JSON.stringify(normalScores), now - 1000, now, 'scribble-live-human-match');
+  db.prepare(
+    `INSERT INTO scribble_drawings
+       (id, match_id, round_number, turn_number, artist_id, artist_name, word, draw_ops, is_round_winner, is_ai_match, created_at)
+     VALUES (?, ?, 1, 1, ?, ?, 'Testwort', '[]', 0, 1, ?)`,
+  ).run('scribble-ai-live-drawing', 'scribble-ai-live-match', aiArtist.body.id, aiArtist.body.name, now);
+  db.prepare(
+    `INSERT INTO scribble_drawings
+       (id, match_id, round_number, turn_number, artist_id, artist_name, word, draw_ops, is_round_winner, is_ai_match, created_at)
+     VALUES (?, ?, 1, 1, ?, ?, 'Testwort', '[]', 0, 0, ?)`,
+  ).run('scribble-live-human-drawing', 'scribble-live-human-match', normalArtist.body.id, normalArtist.body.name, now);
+
+  try {
+    const res = await request(app).get('/api/arcade/stats').expect(200);
+    const scribble = res.body.games.find((game: { gameType: string }) => game.gameType === 'scribble');
+    assert.equal(scribble.artPlayers.some((player: { playerId: string }) => player.playerId === aiArtist.body.id), false);
+    assert.equal(scribble.artPlayers.some((player: { playerId: string }) => player.playerId === normalArtist.body.id), true);
+  } finally {
+    db.prepare("DELETE FROM scribble_drawings WHERE id IN ('scribble-ai-live-drawing', 'scribble-live-human-drawing')").run();
+    db.prepare("DELETE FROM arcade_results WHERE id = 'scribble-live-human-result'").run();
+  }
+});
+
 test('GET /api/arcade/stats summarizes completed scribble results under their own title', async () => {
   const carla = await request(app).post('/api/players').send({ name: 'Arcade Carla' });
   const dave = await request(app).post('/api/players').send({ name: 'Arcade Dave' });

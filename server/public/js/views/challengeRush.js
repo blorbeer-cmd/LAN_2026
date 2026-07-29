@@ -145,7 +145,20 @@ export function ensureChallengeRushSocket() {
     if (currentView() === 'challengeRush') rerender();
   });
   socket.on('disconnect', () => { if (match) match = { ...match, disconnected: true }; if (currentView() === 'challengeRush') rerender(); });
-  socket.on('connect', () => { if (match?.matchId) socket.emit('challenge-rush:match:reconnect', { matchId: match.matchId, playerId: myId() }, (result) => { if (result?.ok) { match = { ...match, reconnected: true, disconnected: false }; if (currentView() === 'challengeRush') rerender(); } }); });
+  socket.on('connect', () => { if (match?.matchId) socket.emit('challenge-rush:match:reconnect', { matchId: match.matchId, playerId: myId() }, (result) => {
+    if (result?.ok) { match = { ...match, reconnected: true, disconnected: false }; if (currentView() === 'challengeRush') rerender(); return; }
+    // Rejected reconnect means the server already forfeited us for exceeding
+    // the reconnect grace period (attachSocket refuses a forfeited player) —
+    // the match keeps running for the others, but nothing further will ever
+    // arrive for it here. Clearing the stale local match immediately (rather
+    // than leaving its pre-disconnect, not-yet-forfeited snapshot in place)
+    // is what lets hasChallengeRushMatch() report free again, so this player
+    // can start or join a new lobby right away instead of staying locked out
+    // until a manual "Verlassen" or a page reload.
+    const wasVisible = currentView() === 'challengeRush';
+    match = null;
+    if (wasVisible) { showToast('Challenge Rush wegen Zeitüberschreitung verlassen.', { error: true }); navigate('arcade'); }
+  }); });
   window.addEventListener('respawn:challenge-rush-disconnect', () => socket?.disconnect());
   window.addEventListener('respawn:challenge-rush-connect', () => socket?.connect());
   socket.emit('challenge-rush:lobbies:get');

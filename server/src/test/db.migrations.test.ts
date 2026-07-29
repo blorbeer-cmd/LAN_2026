@@ -643,10 +643,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 56);
+  assert.equal(migrations.length, 57);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 56 }, (_, index) => index + 1),
+    Array.from({ length: 57 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -697,6 +697,8 @@ test('records the complete migration history and does not duplicate it on restar
   assert.ok(participantColumns.some((column) => column.name === 'status'));
   const arcadeResultColumns = migrated.prepare('PRAGMA table_info(arcade_results)').all() as Array<{ name: string }>;
   assert.ok(arcadeResultColumns.some((column) => column.name === 'source_match_id'));
+  const scribbleDrawingColumns = migrated.prepare('PRAGMA table_info(scribble_drawings)').all() as Array<{ name: string }>;
+  assert.ok(scribbleDrawingColumns.some((column) => column.name === 'is_ai_match'));
   const auditColumns = migrated.prepare('PRAGMA table_info(admin_log)').all() as Array<{ name: string }>;
   assert.ok(auditColumns.some((column) => column.name === 'group_id'));
   for (const table of ['seating_layouts', 'seat_neighbors', 'game_pings', 'game_ping_interested']) {
@@ -1114,8 +1116,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 56 }, (_, index) => index + 1),
-    'every version 1..56 runs exactly once',
+    Array.from({ length: 57 }, (_, index) => index + 1),
+    'every version 1..57 runs exactly once',
   );
 });
 

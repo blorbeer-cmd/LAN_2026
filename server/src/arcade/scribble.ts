@@ -415,13 +415,18 @@ function persistCurrentDrawing(match: ScribbleMatchState): DrawingSummary | null
   if (!drawer || drawer.id === BOT_ID || !match.currentWord) return null;
   const id = nanoid();
   const round = Math.floor(match.turnsPlayed / match.players.length) + 1;
+  // Recorded at persist time, not derived later from arcade_results: a bot
+  // opponent's match never finishes with a completed result before its
+  // human drawings are queried (stats requested mid-match) or at all (host
+  // ends the match early, or the process stops before finishMatch runs).
+  const isAiMatch = match.players.some((player) => player.id === BOT_ID);
   db.prepare(
     `INSERT INTO scribble_drawings
-       (id, match_id, round_number, turn_number, artist_id, artist_name, word, draw_ops, created_at, group_id, event_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, match_id, round_number, turn_number, artist_id, artist_name, word, draw_ops, is_ai_match, created_at, group_id, event_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id, match.id, round, match.turnsPlayed + 1, drawer.id, drawer.name, match.currentWord,
-    JSON.stringify(match.strokes), Date.now(), match.groupId, match.eventId,
+    JSON.stringify(match.strokes), isAiMatch ? 1 : 0, Date.now(), match.groupId, match.eventId,
   );
   match.currentDrawingId = id;
   return drawingSummaries(match.id, round).find((drawing) => drawing.id === id) ?? null;
