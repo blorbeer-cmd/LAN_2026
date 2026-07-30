@@ -636,8 +636,15 @@ function startMatch(io: Server, lobby: Lobby): Match {
   const id = nanoid(); const room = `challenge-rush:${id}`;
   for (const socketId of lobby.socketIds.values()) io.sockets.sockets.get(socketId)?.join(room);
   const seed = Math.floor(Math.random() * 0x7fffffff);
-  const hasBot = lobby.players.some((player) => player.id === BOT_ID);
-  const order = hasBot
+  // Only the actual "quick start against the bot" case (a single human plus
+  // the bot) narrows the draw to BOT_CHALLENGE_POOL — a bot lobby joined by
+  // further humans (challenge-rush:lobby:join has no bot-specific limit, up
+  // to MAX_PLAYERS) keeps the full forty-challenge catalog for everyone,
+  // same as a normal match; the bot then simply scores 0 on whichever trial
+  // challenges come up, same as it already does mid-match after a human
+  // reconnects into a lobby that has since grown.
+  const soloAgainstBot = lobby.players.some((player) => player.id === BOT_ID) && real(lobby.players).length <= 1;
+  const order = soloAgainstBot
     ? challengeOrder(seed, isFastTest() ? BOT_CHALLENGE_POOL.length : 10, BOT_CHALLENGE_POOL)
     : challengeOrder(seed, isFastTest() ? CHALLENGES.length : 10);
   const match: Match = { id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: [...lobby.players], socketIds: new Map(lobby.socketIds), order, index: -1, phase: 'countdown', seed, current: runtimeChallengePayload(order[0], seed), progress: new Map(), scores: new Map(lobby.players.map((player) => [player.id, 0])), startedAt: Date.now(), timer: null, deadlineAt: null, pausedRemainingMs: null, paused: false, reconnectTimers: new Map(), forfeited: new Set(), readyNext: new Set(), history: [], greenTimer: null, greenDeadlineAt: null, greenPausedRemainingMs: null, botLoop: null, botPlan: [], botPlanCursor: 0 };

@@ -570,7 +570,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   canvas dims their snake and marks the shrinking safe zone with the shared danger treatment.
   Numbered head markers and a matching `Schlange N · Name` legend identify every participant
   without relying on color; the same legend appears in player, spectator and kiosk contexts.
-  Challenge Rush also offers an admin-gated „Gegen KI“ quick start for its complete challenge set.
+  Challenge Rush also offers an admin-gated „Gegen KI“ quick start; playing the bot solo draws
+  from its ten original single-payload challenges, since the bot cannot yet play the thirty
+  logic/memory trial challenges. A lobby that further humans join before it starts keeps the
+  full forty-challenge catalog like any other match, and the bot then simply scores 0 on
+  whichever trial challenges come up.
 - **Jam sessions** — Jam is a grouped page below „Mehr“. A dedicated local controller on the
   playback PC or kiosk Raspberry Pi connects Spotify through PKCE and never appears as a player.
   The server stores neither Spotify application credentials nor OAuth tokens. One participant

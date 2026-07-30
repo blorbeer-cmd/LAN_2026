@@ -161,6 +161,35 @@ test('Challenge Rush AI quick start is admin-gated, plays and ends when its huma
   }
 });
 
+test('a bot lobby joined by a second human keeps the full forty-challenge catalog', async () => {
+  clearLobbyMemberships();
+  const server = await makeServer();
+  const hostSocket = await connect(server.baseUrl);
+  const guestSocket = await connect(server.baseUrl);
+  try {
+    const hostId = await player(server.baseUrl, 'Challenge Rush KI Lobby Host');
+    db.prepare('UPDATE players SET is_admin = 1 WHERE id = ?').run(hostId);
+    const guestId = await player(server.baseUrl, 'Challenge Rush KI Lobby Guest');
+
+    const created = await emitAck(hostSocket, 'challenge-rush:lobby:bot', { playerId: hostId });
+    assert.equal(created.ok, true);
+    assert.equal((await emitAck(guestSocket, 'challenge-rush:lobby:join', { lobbyId: created.lobbyId, playerId: guestId })).ok, true);
+    assert.equal((await emitAck(guestSocket, 'challenge-rush:lobby:ready', { lobbyId: created.lobbyId, playerId: guestId, ready: true })).ok, true);
+
+    const startedPromise = nextEvent<{ matchId: string; players: Array<{ id: string }>; challengeCount: number }>(hostSocket, 'challenge-rush:match:start');
+    assert.equal((await emitAck(hostSocket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId: hostId })).ok, true);
+    const started = await startedPromise;
+    assert.equal(started.players.length, 3);
+    // Only a solo human-vs-bot lobby narrows the draw to the bot's ten
+    // playable challenges (see BOT_CHALLENGE_POOL in challengeRush.ts); once
+    // a second human joins before start, the match keeps the full catalog
+    // like any other match — the bot just scores 0 on trial challenges.
+    assert.equal(started.challengeCount, CHALLENGES.length);
+  } finally {
+    hostSocket.close(); guestSocket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
+  }
+});
+
 test('Challenge Rush reconnects within grace and forfeits after grace while the match continues', async () => {
   clearLobbyMemberships();
   const server = await makeServer(true);
