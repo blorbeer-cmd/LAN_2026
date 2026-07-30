@@ -195,6 +195,23 @@ test('GET /api/votes/history still lists a round nobody voted in', async () => {
   assert.deepEqual(entry.winners, []);
 });
 
+test('GET /api/votes/history ranks rounds with a result above later rounds nobody voted in', async () => {
+  // At this point round 1 (has votes) and round 3 (nobody voted, from the
+  // previous test) are both closed. Close a brand-new round 4 with a vote so
+  // the newest round in history is also a "no result" round beats out by an
+  // older-but-voted round. Voting for Age of Empires 2 here (rather than CS2)
+  // keeps this round's win out of the later "each result row reports its
+  // all-time vote win count" assertions, which pin CS2's and Rocket League's
+  // counts to exactly 1.
+  await request(app).post('/api/votes/start').send({ mode: 'single' });
+  await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameAoe2 });
+  const closed = await request(app).post('/api/votes/close');
+
+  const history = await request(app).get('/api/votes/history');
+  const rounds = history.body.history.map((h: { round: number }) => h.round);
+  assert.deepEqual(rounds, [closed.body.round, 1, 3]);
+});
+
 test('a fresh round with no votes yet is sorted by aggregate "Bock" rating (Beliebtheit)', async () => {
   // Rocket League gets rated much higher than CS2 by both players; with no
   // votes cast yet in the new round, the results order should already
