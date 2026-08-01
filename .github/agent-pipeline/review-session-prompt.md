@@ -165,8 +165,11 @@ Beende die Antwort mit genau einem JSON-Block und danach keinem weiteren Text:
    not perform the review. A prompt restriction and a later `git status` check are insufficient.
 6. Confirm that the final `reviewed_head_sha` equals the current GitHub head SHA. Treat a mismatch,
    missing JSON block or `blocked` verdict as no completed review.
-7. Put actionable findings into the PR discussion or hand the complete result to the
-   implementation session. Do not ask this review session to fix them.
+7. Hand the complete result to the implementation session. Actionable findings must be published
+   as resolvable inline review threads with an exact file and line anchor; do not publish them only
+   as top-level PR comments. If no stable inline anchor exists, classify the finding as
+   `needs-human`/blocked and keep the merge gate blocked. Do not ask this review session to fix
+   findings.
 8. After fixes are pushed, close this review context and start another detached review for the new
    SHA.
 

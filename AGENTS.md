@@ -76,5 +76,6 @@ für normale Implementierungsdetails gelten diese Kurzregeln:
 - Kein Coding-Agent approvt oder merged. `main`, Branch-Schutz, Workflows, Infrastruktur, Secrets
   und Deploy-Berechtigungen bleiben außerhalb automatischer Fixes. Der finale Merge gehört immer
   dem Nutzer.
-- Nach der Behebung eines Review-Findings markiert der Implementierungs-Agent die zugehörigen
-  Review-Threads und Kommentare als gelöst. Vor dem Merge ist dieser Zustand zu prüfen.
+- Nach der Behebung eines Review-Findings oder einer bestätigten Zurückweisung/Obsoleszenz markiert
+  der Implementierungs-Agent den zugehörigen auflösbaren Inline-Review-Thread einschließlich seiner
+  Kommentare als gelöst. Vor dem Merge ist dieser Zustand zu prüfen.
