@@ -25,6 +25,11 @@ async function createPlayer(baseUrl: string = BASE_URL): Promise<string> {
   return ((await response.json()) as { id: string }).id;
 }
 
+async function makeAdmin(playerId: string): Promise<void> {
+  const response = await fetch(`${BASE_URL}/api/players/${playerId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ isAdmin: true }) });
+  assert.equal(response.status, 200);
+}
+
 async function openArcade(playerId: string, baseUrl: string = BASE_URL): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
@@ -55,6 +60,91 @@ before(async () => {
 
 after(async () => { await browser?.close(); serverProcess?.kill(); });
 
+test('Challenge Rush admin can run selected tasks in checkbox order', async () => {
+  const playerId = await createPlayer();
+  await makeAdmin(playerId);
+  const actor = await openArcade(playerId);
+  try {
+    await actor.page.click('[data-game="challenge-rush"]');
+    await actor.page.click('.challenge-rush-test-selector > summary');
+    await actor.page.check('[data-cr-challenge-key="digit-sum"]');
+    await actor.page.check('[data-cr-challenge-key="binary-pattern"]');
+    await actor.page.click('#cr-create');
+    await actor.page.waitForSelector('[data-cr-start]');
+    const lobbySelection = (await actor.page.locator('.challenge-rush-lobby-selection').textContent()) ?? '';
+    const binaryTitle = 'Bin\u00e4rmuster';
+    assert.ok(lobbySelection.indexOf('Ziffernsumme') < lobbySelection.indexOf(binaryTitle));
+    await actor.page.click('[data-cr-start]');
+    await actor.page.waitForFunction(() => document.querySelector('.challenge-rush-stage')?.getAttribute('data-phase') === 'playing');
+    assert.equal(await actor.page.locator('.challenge-rush-stage').getAttribute('data-challenge-key'), 'digit-sum');
+    assert.match((await actor.page.locator('.badge-playing').textContent()) ?? '', /1 \/ 2/);
+    await playCurrentChallenge(actor.page);
+    await actor.page.waitForSelector('#cr-ready-next:not([disabled])');
+    await actor.page.click('#cr-ready-next');
+    await actor.page.waitForFunction(() => document.querySelector('.challenge-rush-stage')?.getAttribute('data-phase') === 'playing');
+    assert.equal(await actor.page.locator('.challenge-rush-stage').getAttribute('data-challenge-key'), 'binary-pattern');
+    assert.match((await actor.page.locator('.badge-playing').textContent()) ?? '', /2 \/ 2/);
+    await playCurrentChallenge(actor.page);
+    await actor.page.waitForSelector('#cr-ready-next:not([disabled])');
+    await actor.page.click('#cr-ready-next');
+    await actor.page.waitForSelector('.challenge-rush-final-breakdown');
+    const finalBreakdown = (await actor.page.locator('.challenge-rush-final-breakdown').textContent()) ?? '';
+    assert.ok(finalBreakdown.indexOf('Ziffernsumme') < finalBreakdown.indexOf(binaryTitle));
+  } finally {
+    await actor.context.close();
+  }
+});
+
+test('Challenge Rush drops a hidden admin selection after an identity switch', async () => {
+  const adminId = await createPlayer();
+  const playerId = await createPlayer();
+  await makeAdmin(adminId);
+  const actor = await openArcade(adminId);
+  try {
+    await actor.page.click('[data-game="challenge-rush"]');
+    await actor.page.click('.challenge-rush-test-selector > summary');
+    await actor.page.check('[data-cr-challenge-key="digit-sum"]');
+    await actor.page.evaluate((id) => {
+      localStorage.setItem('respawn_my_player_id', id);
+      window.dispatchEvent(new CustomEvent('respawn:identity-changed'));
+      window.dispatchEvent(new CustomEvent('respawn:rerender'));
+    }, playerId);
+    await actor.page.waitForSelector('#cr-create');
+    assert.equal(await actor.page.locator('.challenge-rush-test-selector').count(), 0);
+    await actor.page.click('#cr-create');
+    await actor.page.waitForSelector('[data-cr-start]');
+    assert.equal(await actor.page.locator('.challenge-rush-lobby-selection').count(), 0);
+  } finally {
+    await actor.context.close();
+  }
+});
+
+test('Challenge Rush focuses timed targets after start and server-side expiry', async () => {
+  for (const challenge of [
+    { key: 'aim-trainer', selector: '.challenge-rush-circle', expiryMs: 2_000 },
+    { key: 'whack-a-mole', selector: '.challenge-rush-tile.is-active', expiryMs: 1_600 },
+  ]) {
+    const playerId = await createPlayer();
+    await makeAdmin(playerId);
+    const actor = await openArcade(playerId);
+    try {
+      await actor.page.click('[data-game="challenge-rush"]');
+      await actor.page.click('.challenge-rush-test-selector > summary');
+      await actor.page.check(`[data-cr-challenge-key="${challenge.key}"]`);
+      await actor.page.click('#cr-create');
+      await actor.page.waitForSelector('[data-cr-start]');
+      await actor.page.click('[data-cr-start]');
+      await actor.page.waitForSelector(`${challenge.selector}:focus`);
+      await actor.page.waitForTimeout(challenge.expiryMs);
+      assert.equal(await actor.page.locator(challenge.selector).evaluate((node) => document.activeElement === node), true);
+      await actor.page.locator(challenge.selector).press('Space');
+      await actor.page.waitForSelector('#cr-ready-next:not([disabled])');
+    } finally {
+      await actor.context.close();
+    }
+  }
+});
+
 test('Challenge Rush pauses active time and reconnects the same match', async () => {
   const actor = await openArcade(await createPlayer());
   try {
@@ -67,6 +157,7 @@ test('Challenge Rush pauses active time and reconnects the same match', async ()
     await actor.page.waitForFunction(() => { const node = document.querySelector('.challenge-rush-stage'); return node?.getAttribute('data-phase') === 'playing' && Number(node.getAttribute('data-remaining-ms')) > 0; });
     const beforePause = await actor.page.locator('.challenge-rush-stage').evaluate((node) => ({
       matchId: node.getAttribute('data-match-id'), challengeIndex: node.getAttribute('data-challenge-index'), remainingMs: Number(node.getAttribute('data-remaining-ms')),
+      title: node.querySelector('h2')?.textContent, description: node.querySelector(':scope > p.muted')?.textContent,
     }));
     await actor.page.click('[data-cr-pause]');
     await actor.page.waitForFunction(() => document.body.textContent?.includes('Pause') === true);
@@ -76,6 +167,11 @@ test('Challenge Rush pauses active time and reconnects the same match', async ()
     assert.equal(paused.matchId, beforePause.matchId);
     assert.equal(paused.challengeIndex, beforePause.challengeIndex);
     assert.ok(paused.remainingMs > 0 && paused.remainingMs <= beforePause.remainingMs);
+    assert.equal(await actor.page.locator('.challenge-rush-playfield').getAttribute('data-cr-playfield-hidden'), 'true');
+    assert.equal(await actor.page.locator('.challenge-rush-playfield button').count(), 0);
+    assert.equal(await actor.page.locator('.challenge-rush-stage h2').textContent(), beforePause.title);
+    assert.equal(await actor.page.locator('.challenge-rush-stage > p.muted').textContent(), beforePause.description);
+    assert.equal(await actor.page.locator('.challenge-rush-concealed').count(), 1);
     await actor.page.waitForTimeout(1_000);
     assert.equal(Number(await actor.page.locator('.challenge-rush-stage').getAttribute('data-remaining-ms')), paused.remainingMs);
 
@@ -122,7 +218,9 @@ async function isStillPlaying(page: Page, key: string): Promise<boolean> {
 }
 
 async function waitForAction(page: Page, key: string, selector: string): Promise<boolean> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  // Memory previews intentionally last up to five seconds in production.
+  // Keep enough headroom for the preview transition and a busy CI browser.
+  for (let attempt = 0; attempt < 280; attempt += 1) {
     if (!(await isStillPlaying(page, key))) return false;
     if (await page.locator(selector).count()) return true;
     await page.waitForTimeout(25);
@@ -145,7 +243,7 @@ async function playCurrentChallenge(page: Page): Promise<void> {
   }
   if (key === 'timing-10') { await page.click('[data-cr-stop]'); return; }
   if (key === 'memory-sequence') {
-    if (!(await waitForAction(page, key, '.challenge-rush-tile:not([disabled])'))) return;
+    if (!(await waitForAction(page, key, '.challenge-rush-tile:not([disabled])'))) throw new Error(`${key} wurde nach der Vorschau nicht bedienbar.`);
     const tileCount = await page.locator('.challenge-rush-tile').count();
     for (let index = 0; index < tileCount; index += 1) { if (!(await isStillPlaying(page, key))) break; await page.click(`.challenge-rush-tile[data-cr-tile="${index}"]`); await page.waitForTimeout(80); }
     return;
@@ -173,7 +271,7 @@ async function playCurrentChallenge(page: Page): Promise<void> {
     return;
   }
   const actionSelector = '[data-cr-choice]:not([disabled]), [data-cr-bool]:not([disabled]), [data-cr-sequence-cell]:not([disabled]), [data-cr-matrix-cell]:not([disabled]), [data-cr-number-position]:not([disabled]), [data-cr-pair-card]:not([disabled])';
-  if (!(await waitForAction(page, key, actionSelector))) return;
+  if (!(await waitForAction(page, key, actionSelector))) throw new Error(`${key} wurde nach der Vorschau nicht bedienbar.`);
   if (await page.locator('[data-cr-choice]:not([disabled])').count()) { await page.locator('[data-cr-choice]:not([disabled])').first().click(); return; }
   if (await page.locator('[data-cr-bool]:not([disabled])').count()) { await page.locator('[data-cr-bool]:not([disabled])').first().click(); return; }
   if (await page.locator('[data-cr-pair-card]:not([disabled])').count()) {

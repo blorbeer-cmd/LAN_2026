@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CHALLENGES, challengeOrder, challengePayload, createTrial, isCurrentChallenge, isReadyForNext, isTrialChallenge, planBotChallenge, previewTrialData, remainingUntil, safeScoreInput,
-  seenBeforeSelection, validateTrialInput,
+  CHALLENGES, challengeOrder, challengePayload, createTrial, difficultyFor, isCurrentChallenge, isReadyForNext, isTrialChallenge, planBotChallenge, previewTrialData, remainingUntil, safeScoreInput,
+  seenBeforeSelection, timedTargetWindowMs, validateTrialInput,
   scoreAimTrainer, scoreColorWord, scoreCps, scoreMemorySequence, scoreNumberSalad, scoreOddOneOut,
   scoreReaction, scoreTiming10, scoreTrafficLight, scoreWhackAMole, winnerIdForScores,
   AIM_TRAINER_TARGET_COUNT, MEMORY_SEQUENCE_LENGTH, MEMORY_SEQUENCE_TILE_COUNT, ODD_ONE_OUT_TILE_COUNT,
@@ -26,7 +26,7 @@ test('trial IDs are opaque and independent from deterministic generator inputs',
 // planBotChallenge only ever plans the original ten single-payload
 // challenges; the thirty trial-based ones (see isTrialChallenge) generate a
 // fresh per-player trial on demand instead of one fixed payload, so a bot
-// simply sits those out (see challengeRush.ts's beginChallenge/runBotTick).
+// simply sits those out (see challengeRush.ts's beginChallenge/runMatchTick).
 test('Challenge Rush bot plans valid inputs for all ten original challenge types', () => {
   const originalChallenges = CHALLENGES.filter((challenge) => !isTrialChallenge(challenge.key));
   assert.equal(originalChallenges.length, 10);
@@ -88,7 +88,9 @@ test('score helpers normalize non-finite and extreme inputs', () => {
   assert.equal(winnerIdForScores([{ playerId: 'a', score: Number.NaN }, { playerId: 'b', score: 0 }]), null);
 });
 test('preview payloads contain only information intended for memorization', () => {
-  const delayed = previewTrialData(createTrial('delayed-recall', 1, 0, 2));
+  const delayedTrial = createTrial('delayed-recall', 1, 0, 2);
+  const pathTrial = createTrial('path-memory', 4, 0, 2);
+  const delayed = previewTrialData(delayedTrial);
   const missing = previewTrialData(createTrial('missing-item', 2, 0, 2));
   const suitcase = previewTrialData(createTrial('suitcase-memory', 3, 0, 2));
   assert.deepEqual(Object.keys(delayed).sort(), ['items', 'prompt', 'type']);
@@ -97,6 +99,21 @@ test('preview payloads contain only information intended for memorization', () =
   assert.equal('options' in delayed, false);
   assert.equal('options' in missing, false);
   assert.equal('options' in suitcase, false);
+  assert.ok(delayedTrial.phaseMs >= 2_500);
+  assert.ok(pathTrial.phaseMs >= 2_500);
+});
+test('difficulty rises with continued play even when a streak breaks', () => {
+  assert.equal(difficultyFor(0, 0), 1);
+  assert.equal(difficultyFor(0, 3), 2);
+  assert.equal(difficultyFor(0, 12), 5);
+  assert.ok(difficultyFor(6, 3) > difficultyFor(0, 3));
+});
+test('timed targets become faster but retain a playable minimum window', () => {
+  assert.equal(timedTargetWindowMs('aim-trainer', 0), 1_800);
+  assert.ok(timedTargetWindowMs('aim-trainer', 7) < timedTargetWindowMs('aim-trainer', 0));
+  assert.equal(timedTargetWindowMs('aim-trainer', 99), 650);
+  assert.equal(timedTargetWindowMs('whack-a-mole', 0), 1_400);
+  assert.equal(timedTargetWindowMs('whack-a-mole', 99), 500);
 });
 test('clock-angle keeps exact half-degree answers', () => {
   for (let seed = 0; seed < 400; seed += 1) {
@@ -217,9 +234,30 @@ test('Phase 3 score helpers stay in the normalized 0..100 range', () => {
 // same implementation that produced it.
 const REFERENCE_DIRECTIONS = ['Norden', 'Osten', 'Süden', 'Westen'];
 const REFERENCE_ARROWS = ['↑', '→', '↓', '←'];
-const REFERENCE_CATEGORIES: Record<string, string> = { Apfel: 'Obst', Banane: 'Obst', Birne: 'Obst', Karotte: 'Gemüse', Paprika: 'Gemüse', Gurke: 'Gemüse' };
+const REFERENCE_CATEGORIES: Record<string, string> = {
+  Apfel: 'Obst', Banane: 'Obst', Birne: 'Obst', Pflaume: 'Obst',
+  Karotte: 'Gemüse', Paprika: 'Gemüse', Gurke: 'Gemüse', Brokkoli: 'Gemüse',
+  Adler: 'Tier', Otter: 'Tier', Pinguin: 'Tier', Delfin: 'Tier',
+  Hammer: 'Werkzeug', Zange: 'Werkzeug', Säge: 'Werkzeug', Bohrer: 'Werkzeug',
+  Geige: 'Instrument', Trommel: 'Instrument', Flöte: 'Instrument', Klavier: 'Instrument',
+};
 const numbersIn = (text: string): number[] => (text.match(/-?\d+/g) ?? []).map(Number);
 const sortedLetters = (word: string): string => [...word].sort().join('');
+function nextPeriodicValue<T>(values: T[]): T {
+  for (let period = 1; period < values.length; period += 1) {
+    if (values.slice(period).every((value, index) => value === values[index])) return values[values.length % period];
+  }
+  throw new Error(`Keine periodische Regel in ${values.join(',')}`);
+}
+function nextNumberSequence(values: number[]): number {
+  const differences = values.slice(1).map((value, index) => value - values[index]);
+  if (differences.every((difference) => difference === differences[0])) return values.at(-1)! + differences[0];
+  if (values.length === 4 && values.slice(1).every((value, index) => value / values[index] === values[1] / values[0])) return values.at(-1)! * (values[1] / values[0]);
+  if (differences.length === 4 && differences[0] === differences[2] && differences[1] === differences[3]) return values.at(-1)! + differences[0];
+  if (differences.every((difference, index) => index === 0 || difference === differences[index - 1] + 1)) return values.at(-1)! + differences.at(-1)! + 1;
+  if (values.length === 5) return values[3] + (values[3] - values[1]);
+  throw new Error(`Unbekannte Zahlenregel in ${values.join(',')}`);
+}
 function minimumCoins(amount: number): number {
   const best = [0, ...Array.from({ length: amount }, () => Number.POSITIVE_INFINITY)];
   for (let value = 1; value <= amount; value += 1) {
@@ -232,17 +270,20 @@ function referencePermutations(values: string[]): string[] {
   return values.flatMap((entry, index) => referencePermutations(values.filter((_, other) => other !== index)).map((suffix) => entry + suffix));
 }
 const REFERENCE_SOLUTIONS: Record<string, (trial: InternalTrial) => string> = {
-  'number-sequence': (trial) => { const [first, second, third] = numbersIn(String(trial.data.prompt)); assert.equal(second - first, third - second); return String(third + (third - second)); },
+  'number-sequence': (trial) => String(nextNumberSequence(numbersIn(String(trial.data.prompt)))),
   'logic-equation': (trial) => { const [a, b, c] = numbersIn(String(trial.data.prompt)); return String(a + b * c); },
   'pattern-complete': (trial) => {
-    const tokens = String(trial.data.prompt).split(' ');
-    assert.equal(tokens.at(-1), '?'); assert.equal(tokens[3], tokens[0]); assert.equal(tokens[4], tokens[1]);
-    return tokens[2];
+    const tokens = String(trial.data.prompt).split(' '); assert.equal(tokens.pop(), '?');
+    return nextPeriodicValue(tokens);
   },
   'category-sort': (trial) => { const item = String(trial.data.prompt).match(/„(.+?)“/)?.[1] ?? ''; return REFERENCE_CATEGORIES[item] ?? `unbekannt:${item}`; },
   'direction-match': (trial) => {
-    const match = String(trial.data.prompt).match(/Starte im ([^\s]+) und drehe dich (\d+)×/);
-    assert.ok(match); return REFERENCE_DIRECTIONS[(REFERENCE_DIRECTIONS.indexOf(match[1]) + Number(match[2])) % 4];
+    const prompt = String(trial.data.prompt); const start = prompt.match(/Du schaust nach ([^.]+)\./)?.[1];
+    assert.ok(start); let direction = REFERENCE_DIRECTIONS.indexOf(start);
+    for (const command of prompt.matchAll(/(90|180)° nach (rechts|links)/g)) {
+      const turns = Number(command[1]) / 90; direction = (direction + (command[2] === 'rechts' ? turns : -turns) + 4) % 4;
+    }
+    return REFERENCE_DIRECTIONS[direction];
   },
   'mental-rotation': (trial) => {
     const match = String(trial.data.prompt).match(/Drehe (.) um (\d+)°/);
@@ -282,14 +323,14 @@ const REFERENCE_SOLUTIONS: Record<string, (trial: InternalTrial) => string> = {
     const difference = Math.abs((hour % 12) * 30 + minute * 0.5 - minute * 6);
     return String(Math.min(difference, 360 - difference));
   },
-  'binary-pattern': (trial) => { const bits = numbersIn(String(trial.data.prompt)); return String(1 - bits.at(-1)!); },
+  'binary-pattern': (trial) => String(nextPeriodicValue(numbersIn(String(trial.data.prompt)))),
   'rule-switch': (trial) => {
     const prompt = String(trial.data.prompt); const evenIsBlue = prompt.startsWith('Gerade Zahlen = Blau'); const number = numbersIn(prompt)[0];
     return number % 2 === 0 ? (evenIsBlue ? 'Blau' : 'Rot') : (evenIsBlue ? 'Rot' : 'Blau');
   },
   'matrix-missing': (trial) => { const [[a, b], [c]] = trial.data.matrix as number[][]; return String(c + (b - a)); },
   'coin-change': (trial) => String(minimumCoins(numbersIn(String(trial.data.prompt))[0])),
-  'letter-order': (trial) => (String(trial.data.prompt).match(/[A-Z](?=,|\?)/g) ?? []).sort()[0] ?? '',
+  'letter-order': (trial) => [...(trial.data.letters as string[])].sort()[0],
   'digit-sum': (trial) => String(String(numbersIn(String(trial.data.prompt))[0]).split('').reduce((sum, digit) => sum + Number(digit), 0)),
   'sequence-transform': (trial) => {
     const terms = numbersIn(String(trial.data.prompt));
@@ -310,6 +351,17 @@ test('all twenty logic generators agree with independent reference solutions', (
     }
   }
   assert.deepEqual([...coinAmounts].sort((a, b) => a - b), Array.from({ length: 18 }, (_, index) => index + 8));
+});
+
+test('formerly repetitive challenges generate a broad task pool at high difficulty', () => {
+  const uniquePrompts = (key: ChallengeKey) => new Set(Array.from({ length: 120 }, (_, seed) => {
+    const data = createTrial(key, seed, seed, 5).data;
+    return key === 'letter-order' ? JSON.stringify(data.letters) : String(data.prompt);
+  })).size;
+  assert.ok(uniquePrompts('number-sequence') >= 70);
+  assert.ok(uniquePrompts('binary-pattern') >= 12);
+  assert.ok(uniquePrompts('letter-order') >= 100);
+  assert.ok(uniquePrompts('digit-sum') >= 100);
 });
 
 test('sequence-transform asks for the first unseen term and never shows its answer', () => {

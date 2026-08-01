@@ -100,8 +100,9 @@ Wiederholungsfall ab.
   derselben Datei für den Forfait-Reconnect-Test). Ein doppelt vergebener Port lässt alle Tests der betroffenen Datei mit
   „Server did not become ready“ scheitern.
 - `npm run test:e2e` setzt `E2E_FAST_TIMERS=1`. Der Schnellmodus verkürzt Arcade-Countdowns nur
-  zusammen mit `NODE_ENV=test`; in Produktion und bei allen anderen Aufrufen bleiben die regulären
-  drei Sekunden aktiv.
+  zusammen mit `NODE_ENV=test`; in Produktion und bei allen anderen Aufrufen bleiben für die
+  gemeinsamen Arcade-Countdowns drei Sekunden aktiv. Challenge Rush verwendet abweichend fünf
+  Sekunden Lesezeit vor jeder Aufgabe und 30 Sekunden Bereitschaftsfrist nach einem Ergebnis.
 - Die Socket-Integrationssuite `src/test/api.challengeRush.test.ts` setzt zusätzlich
   `CHALLENGE_RUSH_FAST_TIMERS=1` zusammen mit `NODE_ENV=test`. Dieses separate Profil verkürzt nur
   Challenge-Rush-Countdowns, -Deadlines, Memory-Reveal und Ampelverzögerung in dieser Testdatei;
