@@ -1254,14 +1254,14 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
   await tournamentGameList.waitFor({ state: 'hidden' });
   assert.equal(
     await page.evaluate(() => document.activeElement?.id),
-    'tourn-player-search',
+    'tourn-teamcount',
     'Tab should leave the combobox instead of moving through every listbox option',
   );
-  await page.keyboard.press('Tab');
-  assert.equal(
-    await page.evaluate(() => document.activeElement?.id),
-    'tourn-teamcount',
-    'the player search should participate in the normal form tab order',
+  assert.ok(
+    await page.locator('#tourn-player-search').evaluate((search) => {
+      return search.nextElementSibling?.matches('.tournament-player-grid') === true;
+    }),
+    'the player search should be directly before the player list after the filters',
   );
   await page.click('#tourn-game-search');
   await tournamentGameList.waitFor({ state: 'visible' });
