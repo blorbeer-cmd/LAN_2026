@@ -44,6 +44,9 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 | 🎵 **Jam** | Gemeinsame Spotify-Warteschlange mit Suche, Wiedergabesteuerung und Kiosk-Anzeige. Ein fester Musik-PC oder Raspberry Pi hält die Spotify-Anmeldung lokal; auf dem Respawn-Server liegen keine Spotify-Zugangsdaten oder OAuth-Tokens. [Kurzanleitung](docs/JAM.md) |
 | 🔔 **Push-Benachrichtigungen** | Optionaler Web-Push-Opt-in fürs Handy: neue Abstimmung, neue Durchsage, anstehendes Turnier-Match – auch wenn die Seite gerade nicht offen ist. Ein Tipp springt direkt in den passenden Bereich; verpasste Nachrichten stehen in der Glocke der Kopfzeile. |
 | ⚙️ **Spiele & Events verwalten** | Spiele, Icons/eigene Logos, Teamgrößen und Prozessname-Zuordnungen (für die Live-Erkennung) zentral pflegen; Events anlegen und Tracking gezielt starten/stoppen. |
+| 📡 **Verbindungsstatus** | Wird die Live-Verbindung unterbrochen oder ist das Gerät offline, erscheint global ein Hinweis. Nach erfolgreichem Reconnect verschwindet er automatisch und die Gruppe wird neu abonniert. |
+| 🛡️ **LAN-Bereitschaft** | Der Admin-Bereich bündelt Event, Agent-Abdeckung und -Versionen, Prozess-Zuordnungen, Kiosk-Zugang, Server/SQLite und den letzten Backup-Status in einer kompakten Ampelübersicht. |
+| 💾 **Backup-Kette** | Vor jedem Aktivieren des Event-Trackings wird ein verifizierter SQLite-Snapshot angelegt; schlägt er fehl, bleibt das Event aus. Manuelle Downloads erzeugen weitere persistente Restore-Punkte, alte Snapshots werden automatisch rotiert. |
 | 🔒 **Zugangsschutz** | Leichtes, geteiltes Zugangs-Token schützt die Web-Oberfläche, falls der Server im Internet erreichbar ist. |
 | 🛡️ **Race-sicher** | Gleichzeitige Aktionen mehrerer Geräte (zwei Leute starten dieselbe Abstimmung, zwei melden dasselbe Turnier-Match) werden serverseitig sauber aufgelöst statt Daten zu duplizieren/korrumpieren – siehe `CLAUDE.md` → „Race-Sicherheit". |
 
@@ -212,8 +215,9 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
   die persönlichen Claim-Links für alle übrigen Profile erzeugen. Der Bootstrap-Pfad schließt
   sich, sobald das erste Admin-Konto beansprucht wurde; falls genau dieser einzige aktive Admin sein
   Passwort vergisst, kann derselbe Recovery-Code sein Passwort zurücksetzen.
-- **Backups:** noch nicht eingerichtet (siehe Security-Review) – für echte Daten vor der ersten
-  "richtigen" LAN auf dem neuen Server unbedingt einen Cron-Job mit `sqlite3 .backup` ergänzen.
+- **Backups:** Vor jedem Tracking-Start und bei jedem manuellen Admin-Download entsteht ein
+  integritätsgeprüfter Snapshot unter `data/backups/`. Restore und regelmäßiger Restore-Test sind
+  in [`server/OPERATIONS.md`](server/OPERATIONS.md#backup-und-restore) beschrieben.
 - **`GHCR_PULL_TOKEN` erneuern** (Fine-grained Tokens laufen ggf. ab): neuen Token erzeugen, das
   GitHub-Secret aktualisieren, dann auf dem Server (`ssh deploy@<HETZNER_HOST>`) die Zeile in
   `/opt/respawn/.env` von Hand ersetzen und `/opt/respawn/docker-login.sh` erneut ausführen –
@@ -234,11 +238,14 @@ Recovery-Code oder ein bereits beanspruchtes Admin-Konto.
 |---|---|---|
 | `PORT` | `3000` | Port, auf dem der Server lauscht. |
 | `DB_FILE` | `server/data/lan.db` | Pfad zur SQLite-Datei. Wird beim ersten Start angelegt. |
+| `BACKUP_DIR` | `<DB-Verzeichnis>/backups` | Verzeichnis für persistente, atomar geschriebene SQLite-Snapshots. Im Docker-Setup liegt es damit auf dem gemounteten `data`-Volume. |
+| `BACKUP_RETENTION` | `20` | Maximale Anzahl persistenter Snapshots; ältere Dateien werden nach einem erfolgreichen Backup entfernt. |
 | `ADMIN_RECOVERY_CODE` | *(leer)* | Starkes Bootstrap-/Recovery-Secret für den ersten beziehungsweise letzten Admin. In Produktion Pflicht. |
 | `BOOTSTRAP_ADMIN_<n>_NAME` / `BOOTSTRAP_ADMIN_<n>_PASSWORD` | *(leer)* | Optionale, beim Start angelegte fertige Admin-Konten (Slot `n` = 1…20), damit du nicht den Recovery-Weg gehen musst. Idempotent, überschreibt kein bestehendes Passwort. Details in [`docs/BOOTSTRAP-ADMINS.md`](docs/BOOTSTRAP-ADMINS.md). |
 | `KIOSK_TOKEN` | *(leer = Kiosk gesperrt)* | Separater Read-only-Zugang für die Kiosk-GET-Endpunkte und `kiosk:subscribe`; Aufruf als `/kiosk.html?token=...`. |
 | `COOKIE_SECURE` | `1` | Sichere Session-Cookies; nur für bewusstes lokales HTTP-Hosting mit `0` abschalten. |
 | `OFFLINE_TIMEOUT_MS` | `60000` | Nach wie vielen ms ohne Agent-Meldung ein Spieler als „offline" gilt. |
+| `EXPECTED_AGENT_VERSION` | `1.0.0` | Version, die die LAN-Bereitschaft als aktuell bewertet. Abweichende oder unbekannte Agent-Versionen werden vor dem Event hervorgehoben. |
 | `NODE_ENV` | *(leer)* | Auf `production` gesetzt (macht der Docker-Container automatisch): verlangt `ADMIN_RECOVERY_CODE` und beendet den Prozess bei unerwarteten Fehlern, damit Docker sauber neu startet. Für die LAN-Party selbst ohne Supervisor bewusst **nicht** setzen. |
 
 Beispiel:

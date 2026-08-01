@@ -1,15 +1,16 @@
-// Phase 5c communication data: announcements are persisted with an immutable
-// group/event recipient snapshot. Delivery is deliberately deferred.
+// Group/event announcements keep an immutable recipient snapshot and use the
+// shared in-app, kiosk and Web Push delivery pipeline immediately.
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { isNonEmptyString } from '../validation';
-import { recordPushLog, resolvePushTopic } from '../push';
+import { notifyPlayers, resolvePushTopic } from '../push';
 import { withBodyPlayerIdentity } from '../sessions';
 import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
 import { communicationRecipientIds } from '../communicationRecipients';
 import { activeGroupPlayers } from '../groupPlayers';
+import { broadcast, Events } from '../realtime';
 
 export const broadcastsRouter = Router();
 
@@ -122,14 +123,14 @@ broadcastsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     row.created_at,
   );
 
-  const pushEntry = recordPushLog(
+  const pushDelivery = notifyPlayers(
     recipientIds,
     { title: player.name, body: row.message, url: '/#broadcast' },
     'all',
     { key: broadcastTopicKey(row.id), expiresAt: row.ends_at },
     { groupId: row.group_id, eventId: row.event_id },
   );
-  res.status(201).json({
+  const created = {
     id: row.id,
     groupId: row.group_id,
     eventId: row.event_id,
@@ -141,9 +142,27 @@ broadcastsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     active: true,
     recipientIds,
     recipientCount: recipientIds.length,
-    pushLogId: pushEntry.id,
+    pushLogId: pushDelivery?.entry.id ?? null,
     createdAt: row.created_at,
-  });
+  };
+  const deliveredRecipientIds = pushDelivery?.recipientPlayerIds ?? [];
+  broadcast(
+    Events.broadcastNew,
+    {
+      id: created.id,
+      playerId: created.playerId,
+      playerName: created.playerName,
+      message: created.message,
+      endsAt: created.endsAt,
+      createdAt: created.createdAt,
+    },
+    {
+      groupId: row.group_id,
+      eventId: row.event_id,
+      recipientPlayerIds: deliveredRecipientIds,
+    },
+  );
+  res.status(201).json(created);
 });
 
 broadcastsRouter.post('/:id/end', ...withBodyPlayerIdentity, (req, res) => {
@@ -166,6 +185,7 @@ broadcastsRouter.post('/:id/end', ...withBodyPlayerIdentity, (req, res) => {
     .run(endedAt, row.id, row.group_id, endedAt);
   if (result.changes === 0) return res.status(409).json({ error: 'Durchsage ist bereits beendet oder abgelaufen.' });
 
-  resolvePushTopic(broadcastTopicKey(row.id), false, { groupId: row.group_id, eventId: row.event_id }, false);
+  resolvePushTopic(broadcastTopicKey(row.id), false, { groupId: row.group_id, eventId: row.event_id });
+  broadcast(Events.broadcastsChanged, { id: row.id, endedAt }, { groupId: row.group_id, eventId: row.event_id });
   res.json({ id: row.id, endedAt });
 });

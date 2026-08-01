@@ -10,6 +10,13 @@ function intFromEnv(name: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+const configuredDbFile =
+  process.env.DB_FILE === ':memory:'
+    ? ':memory:'
+    : process.env.DB_FILE
+      ? path.resolve(process.env.DB_FILE)
+      : path.join(__dirname, '..', 'data', 'lan.db');
+
 export const config = {
   // Port the HTTP/WebSocket server listens on.
   port: intFromEnv('PORT', 3000),
@@ -17,12 +24,17 @@ export const config = {
   // Absolute path to the SQLite database file. Kept outside the repo tree by
   // default (server/data/) and gitignored. The special value ":memory:" opens
   // an in-memory database (used by the test suite for isolation).
-  dbFile:
-    process.env.DB_FILE === ':memory:'
-      ? ':memory:'
-      : process.env.DB_FILE
-        ? path.resolve(process.env.DB_FILE)
-        : path.join(__dirname, '..', 'data', 'lan.db'),
+  dbFile: configuredDbFile,
+
+  // Persistent SQLite snapshots live beside the database by default, which
+  // keeps them on the same mounted /app/data volume in production. Retention
+  // bounds disk usage while preserving several independent restore points.
+  backupDir: process.env.BACKUP_DIR
+    ? path.resolve(process.env.BACKUP_DIR)
+    : configuredDbFile === ':memory:'
+      ? ''
+      : path.join(path.dirname(configuredDbFile), 'backups'),
+  backupRetention: Math.max(1, intFromEnv('BACKUP_RETENTION', 20)),
 
   // Public URL used inside downloaded agent configurations. This is preferred
   // over request-derived URL data when the app sits behind a reverse proxy.
@@ -32,6 +44,10 @@ export const config = {
   // many milliseconds. Keeps the board honest when an agent crashes or a PC
   // is shut down without a clean stop message.
   offlineTimeoutMs: intFromEnv('OFFLINE_TIMEOUT_MS', 60_000),
+
+  // Version currently shipped through the agent download. Diagnostics flag
+  // clients on another version before a LAN starts.
+  expectedAgentVersion: (process.env.EXPECTED_AGENT_VERSION ?? '1.0.0').trim(),
 
   // Dedicated read-only credential for the shared kiosk.
   kioskToken: process.env.KIOSK_TOKEN ?? '',

@@ -425,6 +425,7 @@ export const api = {
   },
 
   admin: {
+    readiness: () => apiFetch('/api/admin/readiness'),
     players: () => apiFetch('/api/admin/players'),
     audit: (limit = 100) => apiFetch(`/api/admin/audit?limit=${limit}`),
     agentDiagnostics: () => apiFetch('/api/admin/agent-diagnostics'),

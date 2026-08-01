@@ -72,7 +72,7 @@ test('organisation communication is roles-gated and event-scoped inside the one 
       assert.equal(eventBroadcastA.status, 201, JSON.stringify(eventBroadcastA.body));
       assert.deepEqual(groupBroadcast.body.recipientIds.sort(), [alice.account.id, bob.account.id].sort());
       assert.deepEqual(eventBroadcastA.body.recipientIds, [alice.account.id]);
-      assert.equal(deliveries, 0, 'data-only broadcasts must not invoke Web Push transport');
+      assert.equal(deliveries, 0, 'broadcasts without subscriptions must not invoke Web Push transport');
       assert.deepEqual((await scoped(app, 'get', '/api/broadcasts', alice)).body.broadcasts.map((e) => e.message), ['group room']);
 
       const aliceEventPush = await scoped(app, 'get', '/api/push/log?playerId=' + alice.account.id + '&eventId=' + eventA.body.id, alice);

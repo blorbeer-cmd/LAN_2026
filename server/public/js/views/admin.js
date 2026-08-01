@@ -4,7 +4,7 @@
 import { api } from '../api.js';
 import { confirmDialog, openModal } from '../modal.js';
 import { state } from '../state.js';
-import { escapeHtml } from '../format.js';
+import { escapeHtml, formatDateTime } from '../format.js';
 import { showToast } from '../toast.js';
 import { isAdmin, setAdmin } from '../admin.js';
 import { withStepUp } from '../reauth.js';
@@ -29,6 +29,15 @@ let adminMembersError = null;
 const roleChangesInFlight = new Set();
 let activeInvites = null;
 let activeInvitesLoading = false;
+let readiness = null;
+let readinessLoading = false;
+let readinessError = null;
+
+const READINESS_STATUS = {
+  ready: { label: 'Bereit', badge: 'badge-playing' },
+  warning: { label: 'Prüfen', badge: 'badge-paused' },
+  error: { label: 'Fehler', badge: 'badge-overdue' },
+};
 
 function inviteUrl(invite) {
   const param = invite.purpose === 'register' ? 'invite' : invite.purpose === 'test_login' ? 'testSession' : invite.purpose;
@@ -139,6 +148,40 @@ async function loadAdminMembers(ctx, force = false) {
 export function invalidateAdminMemberships() {
   adminMembers = null;
   adminMembersError = null;
+  invalidateAdminReadiness();
+}
+
+export function invalidateAdminReadiness() {
+  readiness = null;
+  readinessError = null;
+}
+
+function focusReadinessTarget(preferredId) {
+  const target =
+    (preferredId ? document.getElementById(preferredId) : null) ||
+    document.getElementById('admin-readiness-refresh') ||
+    document.getElementById('admin-readiness-status');
+  target?.focus({ preventScroll: true });
+}
+
+async function loadReadiness(ctx, force = false, restoreFocusId = null) {
+  if (readinessLoading || (readiness && !force)) return;
+  readinessLoading = true;
+  readinessError = null;
+  if (force) {
+    ctx.rerender();
+    focusReadinessTarget('admin-readiness-status');
+  }
+  try {
+    readiness = await api.admin.readiness();
+  } catch (error) {
+    readiness = null;
+    readinessError = error.message;
+  } finally {
+    readinessLoading = false;
+    ctx.rerender();
+    if (restoreFocusId) focusReadinessTarget(restoreFocusId);
+  }
 }
 
 function roleLabel(role) {
@@ -288,7 +331,7 @@ async function deletePlayer(player, ctx) {
   }
 }
 
-async function downloadBackup() {
+async function downloadBackup(ctx) {
   try {
     const result = await withStepUp(() => api.backup.download());
     if (result === undefined) return;
@@ -302,6 +345,7 @@ async function downloadBackup() {
     link.remove();
     URL.revokeObjectURL(url);
     showToast('Datenbank-Backup heruntergeladen.');
+    await loadReadiness(ctx, true);
   } catch (err) {
     showToast(err.message, { error: true });
   }
@@ -341,6 +385,7 @@ function renderPanel(container, ctx) {
   const players = adminPlayers || [];
   const testCount = players.filter((p) => p.is_test).length;
   if (agentDiagnostics === null && !diagnosticsLoading) loadAgentDiagnostics(ctx);
+  if (readiness === null && !readinessLoading && !readinessError) loadReadiness(ctx);
   const rows = players
     .map(
       (p) => `
@@ -418,12 +463,54 @@ function renderPanel(container, ctx) {
     })
     .join('');
 
+  const readinessChecks = (readiness?.checks || [])
+    .map((check) => {
+      const status = READINESS_STATUS[check.status] || READINESS_STATUS.warning;
+      const details = check.details.length
+        ? `<ul class="readiness-details">${check.details.map((detail) => `<li>${escapeHtml(detail)}</li>`).join('')}</ul>`
+        : '';
+      return `<div class="card stack readiness-check">
+        <div class="row-between" style="gap:var(--space-2);">
+          <strong>${escapeHtml(check.label)}</strong>
+          <span class="badge ${status.badge}">${status.label}</span>
+        </div>
+        <p class="readiness-check-summary">${escapeHtml(check.summary)}</p>
+        ${details}
+      </div>`;
+    })
+    .join('');
+  const overallStatus = READINESS_STATUS[readiness?.overall] || READINESS_STATUS.warning;
+  const readinessBody = readinessError
+    ? `<div class="notice notice-warning row-between" style="gap:var(--space-2);">
+        <span>Bereitschaft konnte nicht geladen werden.</span>
+        <button type="button" class="btn btn-sm" id="admin-readiness-retry">Erneut versuchen</button>
+      </div>`
+    : readinessLoading && readiness === null
+      ? '<div class="card muted">Bereitschaft wird geprüft…</div>'
+      : `<div class="readiness-overview row-between">
+          <span>
+            <strong>Gesamtstatus</strong>
+            <span class="muted">Stand ${formatDateTime(readiness?.generatedAt)} Uhr</span>
+          </span>
+          <span class="badge ${overallStatus.badge}">${overallStatus.label}</span>
+        </div>
+        <div class="two-column-card-grid">${readinessChecks}</div>`;
+
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <div class="row-between">
       <h1 class="view-title">Admin</h1>
     </div>
     <div class="grouped-page-sections">
+      <section class="card stack grouped-page-section" aria-labelledby="admin-readiness-title">
+        <div class="grouped-page-section-title">
+          <h2 id="admin-readiness-title">LAN-Bereitschaft</h2>
+          <button type="button" class="btn btn-sm" id="admin-readiness-refresh" ${readinessLoading ? 'disabled' : ''}>Aktualisieren</button>
+        </div>
+        <div id="admin-readiness-status" role="status" aria-live="polite" tabindex="-1">
+          ${readinessBody}
+        </div>
+      </section>
       <section class="card stack grouped-page-section" aria-labelledby="admin-onboarding-title">
         <div class="grouped-page-section-title"><h2 id="admin-onboarding-title">Onboarding &amp; Kontozugang</h2></div>
         <p class="muted">Neue Personen registrieren sich über einen allgemeinen Einmal-Link. Bestehende Profile erhalten einen persönlichen Claim-Link; für vergessene Passwörter gibt es einen Reset-Link.</p>
@@ -526,9 +613,13 @@ function renderPanel(container, ctx) {
 
   container.querySelector('#admin-cleanup').addEventListener('click', () => cleanupTestUsers(ctx));
 
-  container.querySelector('#download-backup').addEventListener('click', downloadBackup);
+  container.querySelector('#download-backup').addEventListener('click', () => downloadBackup(ctx));
   wireInfoTooltips(container);
 
+  container.querySelector('#admin-readiness-refresh').addEventListener('click', (event) =>
+    loadReadiness(ctx, true, event.currentTarget.id));
+  container.querySelector('#admin-readiness-retry')?.addEventListener('click', (event) =>
+    loadReadiness(ctx, true, event.currentTarget.id));
   container.querySelector('#agent-diagnostics-refresh').addEventListener('click', () => loadAgentDiagnostics(ctx, true));
   container.querySelector('#admin-members-retry')?.addEventListener('click', () => loadAdminMembers(ctx, true));
 

@@ -300,6 +300,53 @@ textarea {
   gap: var(--space-2);
 }
 
+/* Technical connection loss is a global app state, so it sits directly
+   below the header until Socket.IO confirms a successful reconnect. */
+.connection-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--state-paused);
+  background: var(--state-paused-bg);
+  color: var(--state-paused);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  text-align: center;
+}
+
+.connection-status .ui-icon {
+  flex: 0 0 auto;
+}
+
+.readiness-overview > span:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.readiness-check {
+  gap: var(--space-2);
+}
+
+.readiness-check-summary,
+.readiness-details {
+  margin: 0;
+}
+
+.readiness-check-summary {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.readiness-details {
+  padding-left: var(--space-5);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
 #broadcast-message {
   width: 100%;
 }

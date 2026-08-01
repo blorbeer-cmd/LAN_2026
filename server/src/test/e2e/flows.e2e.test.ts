@@ -231,8 +231,11 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
     });
   });
   assert.equal(identityFieldCenters.length, 4);
+  // Inline line-box rounding differs slightly across Windows font/rendering
+  // versions. A 2px center delta is visually aligned and must not make the
+  // otherwise unrelated end-to-end suite flaky.
   assert.ok(
-    Math.max(...identityFieldCenters) - Math.min(...identityFieldCenters) < 4,
+    Math.max(...identityFieldCenters) - Math.min(...identityFieldCenters) <= 2,
     `profile identity controls should remain vertically aligned: ${JSON.stringify(identityFieldCenters)}`,
   );
   const originalProfileColor = await page.inputValue('#profile-color');
@@ -2513,6 +2516,30 @@ test('Admin: the verified role exposes tools and can temporarily hide seeded tes
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
   await page.waitForSelector('#admin-banner:not([hidden]) >> text=Admin-Modus aktiv');
+
+  await page.waitForSelector('#admin-readiness-refresh:not([disabled])');
+  assert.equal(await page.locator('#admin-readiness-status').getAttribute('role'), 'status');
+  assert.equal(await page.locator('#admin-readiness-status').getAttribute('aria-live'), 'polite');
+
+  let failNextReadiness = true;
+  await page.route('**/api/admin/readiness', async (route) => {
+    if (!failNextReadiness) {
+      await route.continue();
+      return;
+    }
+    failNextReadiness = false;
+    await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Temporär nicht verfügbar.' }) });
+  });
+  await page.focus('#admin-readiness-refresh');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#admin-readiness-retry');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'admin-readiness-refresh');
+
+  await page.focus('#admin-readiness-retry');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#admin-readiness-refresh:not([disabled])');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'admin-readiness-refresh');
+  await page.unroute('**/api/admin/readiness');
 
   // Seed test users from the role-protected panel.
   await page.click('.nav-btn[data-view="more"]');

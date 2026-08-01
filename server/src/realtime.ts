@@ -273,8 +273,10 @@ export interface BroadcastScope {
   groupId: string;
   eventId?: string | null;
   // Personally targeted payloads (e.g. direct pushes): restricts delivery to
-  // exactly these players and keeps the payload off kiosk sockets entirely.
+  // exactly these players. Kiosk delivery remains off unless includeKiosk is
+  // explicitly set for a sanitised shared-screen payload.
   recipientPlayerIds?: string[];
+  includeKiosk?: boolean;
 }
 
 // The shared kiosk screen is a read-only display without an identity. It only
@@ -374,7 +376,7 @@ export function broadcast(event: string, payload: unknown, scope: BroadcastScope
   // handshake claim alone must never select the kiosk path).
   for (const socket of io.sockets.sockets.values()) {
     if (socket.data.kioskReadOnly) {
-      if (recipients) continue; // personally targeted payloads never reach the shared screen
+      if (recipients && !scope.includeKiosk) continue;
       if (!KIOSK_DELIVERED_EVENTS.has(event)) continue;
       if (socket.data.kioskGroupId !== groupId) continue;
       if (!kioskDeliveryAllowed(socket)) continue;

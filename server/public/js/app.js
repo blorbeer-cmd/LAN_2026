@@ -5,6 +5,8 @@
 import { api } from './api.js';
 import { ensureLogin } from './authGate.js';
 import { connectSocket } from './socket.js';
+import { initConnectionStatus } from './connectionStatus.js';
+import { createConnectionRefreshCoordinator } from './connectionRefresh.js';
 import { state } from './state.js';
 import { loadAll } from './data.js';
 import { showToast } from './toast.js';
@@ -41,7 +43,7 @@ import { invalidateHallOfFame, renderHallOfFame } from './views/hallOfFame.js';
 import { renderSeating, invalidateSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
 import { renderMore } from './views/more.js';
-import { invalidateAdminMemberships, renderAdmin } from './views/admin.js';
+import { invalidateAdminMemberships, invalidateAdminReadiness, renderAdmin } from './views/admin.js';
 import { invalidateMusic, renderMusic } from './views/music.js';
 import { icon, installIconReplacement } from './icons.js';
 import { initNumberStepper } from './numberStepper.js';
@@ -88,6 +90,7 @@ const VIEWS = {
 };
 
 let currentView = 'home';
+let appReady = false;
 const viewContainer = document.getElementById('view-container');
 let pendingSearchTarget = null;
 
@@ -265,7 +268,57 @@ function wireNav() {
 }
 
 function wireSocket() {
-  const socket = connectSocket();
+  let resolveInitialRefresh;
+  const initialRefresh = new Promise((resolve) => {
+    resolveInitialRefresh = resolve;
+  });
+  let reconnectFailureNotified = false;
+  const refreshCoordinator = createConnectionRefreshCoordinator({
+    refresh: async () => {
+      // Socket.IO does not replay arbitrary application events. Invalidate
+      // every secondary cache and reload the central REST state before the
+      // connection banner can be treated as authoritative again.
+      invalidateMissingSkills();
+      invalidateAktuellStatus();
+      invalidateSkillSuggestions();
+      invalidateMatchmakingHistory();
+      invalidateVoteHistory();
+      invalidateHallOfFame();
+      invalidateHomeSeating();
+      invalidateSeating();
+      invalidateChecklist();
+      invalidateTournaments();
+      invalidateBroadcasts();
+      invalidateInfoBoard();
+      invalidateFoodOrders();
+      invalidateArrivals();
+      invalidateAdminMemberships();
+      invalidateAdminReadiness();
+      invalidateMusic();
+      await refreshGroupContext({ throwOnError: true });
+      await Promise.all([loadAll(), refreshNotificationBanner({ throwOnError: true })]);
+      if (appReady) renderCurrent();
+    },
+    onRecovered: () => {
+      reconnectFailureNotified = false;
+      resolveInitialRefresh();
+    },
+    onFailure: () => {
+      if (reconnectFailureNotified) return;
+      showToast('Aktualisierung fehlgeschlagen – neuer Versuch läuft.', { error: true });
+      reconnectFailureNotified = true;
+    },
+    onUnauthorized: () => location.reload(),
+  });
+  window.addEventListener('respawn:connection-restored', (event) => {
+    refreshCoordinator.enqueue(event.detail);
+  });
+  window.addEventListener('respawn:connection-recovery-required', () => location.reload());
+
+  // Only the long-lived application socket owns the global connection banner.
+  // Arcade views open and intentionally close auxiliary sockets; those must
+  // never make the whole app appear offline.
+  const socket = connectSocket({ reportConnectionState: true });
 
   // These events carry no payload (or aren't worth special-casing) — just
   // reload everything. Infrequent (admin-type actions), so this is cheap.
@@ -287,6 +340,7 @@ function wireSocket() {
       // its separate cache so every open client shows the corrected winner.
       invalidateMatchmakingHistory();
       invalidateHallOfFame();
+      invalidateAdminReadiness();
       // players:changed covers a renamed gamer/real name or new avatar —
       // both the Home board and the Sitzplan editor embed a snapshot of
       // player data alongside the layout, so they need the same treatment
@@ -493,6 +547,7 @@ function wireSocket() {
     invalidateAdminMemberships();
     if (currentView === 'admin') renderCurrent();
   });
+  return initialRefresh;
 }
 
 async function main() {
@@ -508,9 +563,10 @@ async function main() {
     });
   });
   wireAdminMode();
-  wireSocket();
+  initConnectionStatus();
   initNotificationBanner();
-  await loadAll();
+  await wireSocket();
+  appReady = true;
   lastVoteRound = state.votes ? state.votes.round : null;
   // A push notification's deep link (e.g. /#votes, opened by sw.js when no
   // app window existed yet) overrides that default so the tap actually lands

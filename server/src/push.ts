@@ -97,7 +97,7 @@ interface SubscriptionRow {
 // notification center highlights these.
 export type PushAudience = 'all' | 'direct';
 
-interface PushLogEntry {
+export interface PushLogEntry {
   id: string;
   groupId: string;
   eventId: string | null;
@@ -107,6 +107,11 @@ interface PushLogEntry {
   audience: PushAudience;
   expiresAt: number | null;
   createdAt: number;
+}
+
+export interface PushDeliveryResult {
+  entry: PushLogEntry;
+  recipientPlayerIds: string[];
 }
 
 const ACTIVE_PUSH_SQL = 'resolved_at IS NULL AND (expires_at IS NULL OR expires_at > ?)';
@@ -368,8 +373,14 @@ export function notifyPlayers(
   audience: PushAudience = 'all',
   topic?: PushTopic,
   scope: { groupId: string; eventId?: string | null } = { groupId: DEFAULT_GROUP_ID },
-): void {
-  if (playerIds.length === 0) return;
+): PushDeliveryResult | null {
+  const recordKioskOnlyDelivery = (): PushDeliveryResult | null => {
+    if (audience !== 'all') return null;
+    const entry = recordPushLog([], payload, audience, topic, scope);
+    broadcast(Events.pushSent, entry, { ...scope, recipientPlayerIds: [], includeKiosk: true });
+    return { entry, recipientPlayerIds: [] };
+  };
+  if (playerIds.length === 0) return recordKioskOnlyDelivery();
 
   const placeholders = playerIds.map(() => '?').join(',');
   const eligible = db.prepare(
@@ -382,16 +393,24 @@ export function notifyPlayers(
        AND (? IS NULL OR EXISTS (SELECT 1 FROM event_participants ep WHERE ep.event_id = ? AND ep.player_id = gm.player_id AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}))`
   ).all(scope.groupId, ...playerIds, scope.eventId ?? null, scope.eventId ?? null, scope.eventId ?? null) as Array<{ playerId: string }>;
   playerIds = eligible.map((row) => row.playerId);
-  if (playerIds.length === 0) return;
+  // A shared kiosk has no personal mute preference. Keep a recipient-less
+  // group entry durable for its banner when there were no initial recipients
+  // or every individual target was filtered; personal feeds cannot see it and
+  // no Web Push request is sent.
+  if (playerIds.length === 0) return recordKioskOnlyDelivery();
 
   const entry = recordPushLog(playerIds, payload, audience, topic, scope);
-  // Group-wide entries stay a plain group broadcast (the kiosk banner is
-  // their deliberate consumer); personally targeted entries bind delivery to
-  // exactly the resolved recipients and never reach the shared kiosk.
+  // Every personal socket delivery is bound to the post-mute recipient set.
+  // Shared all-audience entries additionally reach the explicitly scoped
+  // kiosk, which has no personal mute preference.
   broadcast(
     Events.pushSent,
     entry,
-    audience === 'direct' ? { ...scope, recipientPlayerIds: playerIds } : scope,
+    {
+      ...scope,
+      recipientPlayerIds: playerIds,
+      ...(audience === 'all' ? { includeKiosk: true } : {}),
+    },
   );
 
   const recipientPlaceholders = playerIds.map(() => '?').join(',');
@@ -409,6 +428,7 @@ export function notifyPlayers(
         }
       });
   }
+  return { entry, recipientPlayerIds: playerIds };
 }
 
 // Persists the recipient definition and history only. Organisation routes use

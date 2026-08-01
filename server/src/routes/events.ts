@@ -34,8 +34,40 @@ import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { setEventTrackingConsent } from '../trackingContexts';
 import { activeGroupPlayers } from '../groupPlayers';
+import { createPersistentBackup } from '../backupService';
 
 export const eventsRouter = Router();
+
+let trackingStartQueue: Promise<void> = Promise.resolve();
+
+async function startTrackingWithBackup(id: string) {
+  const operation = async () => {
+    const event = getEvent(id);
+    const current = getTrackingEvent();
+    const canStart = Boolean(
+      event &&
+      event.id !== OUTSIDE_EVENTS_ID &&
+      !event.ended_at &&
+      event.status !== 'cancelled' &&
+      !event.tracking_enabled &&
+      (current.id === OUTSIDE_EVENTS_ID || current.id === event.id),
+    );
+    if (canStart) {
+      try {
+        await createPersistentBackup('pre-event');
+      } catch (error) {
+        return { backupError: error } as const;
+      }
+    }
+    return { result: startTracking(id) } as const;
+  };
+  const pending = trackingStartQueue.then(operation, operation);
+  trackingStartQueue = pending.then(
+    () => undefined,
+    () => undefined,
+  );
+  return pending;
+}
 
 const resolveEvent = resolveGroupResource<EventRow>({
   resourceType: 'Event',
@@ -358,8 +390,16 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
 
 // POST /api/events/:id/tracking/start - 409s (with the conflicting event's
 // id/name) if a different event is already tracking.
-eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin'), (req, res) => {
-  const result = startTracking(req.params.id);
+eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin'), async (req, res) => {
+  const attempt = await startTrackingWithBackup(req.params.id);
+  if ('backupError' in attempt) {
+    // eslint-disable-next-line no-console
+    console.error('Pre-event backup failed:', attempt.backupError);
+    return res.status(503).json({
+      error: 'Sicherungs-Snapshot fehlgeschlagen. Eventstart wurde zur Sicherheit abgebrochen.',
+    });
+  }
+  const { result } = attempt;
   if (!result.ok) {
     const status = result.code === 'not_found' ? 404 : result.code === 'conflict' ? 409 : 400;
     const conflict = result.conflictEventId ? getEvent(result.conflictEventId) : undefined;
