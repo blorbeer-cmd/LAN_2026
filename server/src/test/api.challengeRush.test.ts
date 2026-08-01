@@ -5,7 +5,7 @@ import type { AddressInfo } from 'net';
 import { Server } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp, installTestSocketIdentity } from './testApp';
 import { registerChallengeRushSockets } from '../arcade/challengeRush';
 import { clearLobbyMemberships } from '../arcade/lobbyMembership';
 import { challengeRushTiming } from '../arcade/challengeRushTiming';
@@ -43,8 +43,9 @@ function nextState(socket: ClientSocket, predicate: (state: State) => boolean): 
 }
 
 function makeServer(authenticatedSockets = false): Promise<{ httpServer: http.Server; io: Server; baseUrl: string }> {
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   if (authenticatedSockets) io.use((socket, next) => { socket.data.authPlayerId = socket.handshake.auth.playerId; next(); });
   registerChallengeRushSockets(io);
   return new Promise((resolve) => httpServer.listen(0, () => resolve({ httpServer, io, baseUrl: `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}` })));

@@ -1,5 +1,5 @@
 // Browser E2E test for real per-user login (see
-// docs/KONZEPT-USER-MANAGEMENT.md): once AUTH_MODE=required, an invite link
+// docs/KONZEPT-USER-MANAGEMENT.md): an invite link
 // registers a brand-new account and logs it straight in, logging out drops
 // back to the login gate, and logging back in with the same credentials
 // works. Bootstraps one admin via ADMIN_RECOVERY_CODE (through plain fetch,
@@ -98,8 +98,6 @@ before(async () => {
       ...process.env,
       PORT: String(PORT),
       DB_FILE: ':memory:',
-      AUTH_MODE: 'required',
-      ACCESS_TOKEN: 'obsolete-shared-token',
       ADMIN_RECOVERY_CODE: RECOVERY_CODE,
       KIOSK_TOKEN: 'e2e-kiosk-token',
     },
@@ -367,8 +365,7 @@ test('admin roster retries role loading, serializes changes and follows group ro
 });
 
 test('admin mints a test-session link; a second browser opens it as the seeded test player and sees its test peer', async () => {
-  // Required mode retires POST /api/admin/test-users (see admin.ts) in favor
-  // of the group-scoped endpoint; seed two so the redeemed identity's
+  // The Admin UI uses the group-scoped endpoint; seed two so the redeemed identity's
   // visibility of its *peer* (not just itself) can be checked.
   const groupsRes = await fetch(`${BASE_URL}/api/groups`, { headers: { Cookie: adminCookie } });
   const groupList = (await groupsRes.json()) as Array<{ id: string }>;

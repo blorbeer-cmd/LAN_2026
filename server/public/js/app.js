@@ -1,8 +1,8 @@
-// App bootstrap: token gate, tab switching, and wiring realtime events into
+// App bootstrap: login gate, tab switching, and wiring realtime events into
 // the shared state. Kept as one small orchestrator so each view module stays
 // focused on its own rendering logic.
 
-import { api, getToken, setToken } from './api.js';
+import { api } from './api.js';
 import { ensureLogin } from './authGate.js';
 import { connectSocket } from './socket.js';
 import { state } from './state.js';
@@ -205,64 +205,6 @@ function wireAdminMode() {
   // (see testFilter.js) — same "refetch so already-loaded data gets
   // re-filtered" reason as admin-changed above.
   window.addEventListener('respawn:test-identity-changed', () => ctx.refresh());
-}
-
-async function tokenWorks(candidate) {
-  try {
-    const res = await fetch('/api/health', { headers: { 'x-access-token': candidate } });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-// Legacy deployments use the shared-token gate; required auth replaces it
-// with the personal login gate.
-async function ensureAccess() {
-  const meta = await api.meta();
-  if (meta.accessProtection) await ensureToken();
-  if (meta.authMode === 'required') await ensureLogin();
-  return meta;
-}
-
-// Invite links carry the token in the URL (?token=...): opening one logs in
-// automatically without anyone having to type or paste anything, which is
-// the whole point of sending a link instead of a password.
-async function ensureToken() {
-  const fromUrl = new URLSearchParams(location.search).get('token');
-  if (fromUrl && (await tokenWorks(fromUrl))) {
-    setToken(fromUrl);
-    const cleanUrl = new URL(location.href);
-    cleanUrl.searchParams.delete('token');
-    history.replaceState(null, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
-    return;
-  }
-
-  const existing = getToken();
-  if (existing && (await tokenWorks(existing))) return;
-
-  const loginScreen = document.getElementById('login-screen');
-  const form = document.getElementById('login-form');
-  const input = document.getElementById('login-token');
-  const errorEl = document.getElementById('login-error');
-
-  loginScreen.hidden = false;
-
-  return new Promise((resolve) => {
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const candidate = input.value.trim();
-      if (!candidate) return;
-      if (await tokenWorks(candidate)) {
-        setToken(candidate);
-        loginScreen.hidden = true;
-        resolve();
-      } else {
-        errorEl.hidden = false;
-        errorEl.textContent = 'Token ungültig – bitte erneut versuchen.';
-      }
-    });
-  });
 }
 
 function wireNav() {
@@ -554,9 +496,9 @@ function wireSocket() {
 }
 
 async function main() {
-  const meta = await ensureAccess();
+  await ensureLogin();
   document.getElementById('app').hidden = false;
-  await initGroupContext(meta);
+  await initGroupContext();
   wireNav();
   initGlobalSearch((entry) => {
     if (entry.target?.type === 'tournament') focusTournament(entry.target.id);
@@ -570,10 +512,6 @@ async function main() {
   initNotificationBanner();
   await loadAll();
   lastVoteRound = state.votes ? state.votes.round : null;
-  // Nobody has set up "who am I" on this device yet (fresh invite link, new
-  // phone, …) — send them straight into self-onboarding instead of the Home
-  // view, so setting up name/avatar/skills/agent-key is the first thing
-  // they see, not something they have to go looking for.
   // A push notification's deep link (e.g. /#votes, opened by sw.js when no
   // app window existed yet) overrides that default so the tap actually lands
   // where the notification promised.
@@ -585,9 +523,7 @@ async function main() {
     ? hashView
     : VIEWS[restoredView]
       ? restoredView
-      : getMyId()
-        ? 'home'
-        : 'profile';
+      : 'home';
   // Establishes the base history entry the very first popstate can land on
   // (replace, not push — this page load shouldn't cost an extra back-step)
   // before any tab switch starts pushing entries on top of it.

@@ -9,7 +9,6 @@ import { nanoid } from 'nanoid';
 import webpush from 'web-push';
 import { db, DEFAULT_GROUP_ID, getState, setState } from './db';
 import { broadcast, Events } from './realtime';
-import { config } from './config';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 
 // Only recent entries matter (the Kiosk shows the latest one, the personal
@@ -373,7 +372,7 @@ export function notifyPlayers(
   if (playerIds.length === 0) return;
 
   const placeholders = playerIds.map(() => '?').join(',');
-  const eligible = config.authMode === 'legacy' ? playerIds.map((playerId) => ({ playerId })) : db.prepare(
+  const eligible = db.prepare(
     `SELECT DISTINCT gm.player_id AS playerId
      FROM group_memberships gm JOIN players p ON p.id = gm.player_id
      WHERE gm.group_id = ? AND gm.status = 'active' AND p.deactivated_at IS NULL AND p.is_test = 0
@@ -422,16 +421,6 @@ export function recordPushLog(
   topic?: PushTopic,
   scope: { groupId: string; eventId?: string | null } = { groupId: DEFAULT_GROUP_ID },
 ): PushLogEntry {
-  if (config.authMode === 'legacy') {
-    const insertMembership = db.prepare(
-      `INSERT OR IGNORE INTO group_memberships
-         (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
-       VALUES (?, ?, 'member', 'active', ?, NULL, 1, NULL)`,
-    );
-    const now = Date.now();
-    for (const playerId of playerIds) insertMembership.run(scope.groupId, playerId, now);
-  }
-
   // Logged regardless of how many subscriptions actually exist: this is a
   // record of "the app told these players something", for the Kiosk banner
   // and the Home feed, not a delivery receipt.

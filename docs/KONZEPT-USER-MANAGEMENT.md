@@ -94,7 +94,7 @@ Rev. 5 nicht neu bewertet:
 - Konto- und globales Auth-Rate-Limit, konstante Passwortprüfung auch für unbekannte Konten,
   `Retry-After` bei Sperren.
 - Fünf Minuten gültige, sessiongebundene Step-up-Reauthentifizierung für kritische Admin-Aktionen.
-- `AUTH_MODE=required` bindet REST- und Socket-Akteure an die Session.
+- REST- und Socket-Akteure sind immer an die verifizierte Session gebunden.
 
 Diese Punkte sind Bestand, kein neuer Auftrag dieses Dokuments.
 
@@ -245,8 +245,6 @@ Instanz- und Event-Consent sind eigenständige Freigaben: Ein deaktiviertes Inst
 blockiert keinen ausdrücklich freigegebenen teilnehmerprivaten Event-Kontext. Umgekehrt ersetzt
 Instanz-Tracking niemals den Event-Consent. Owner-/Adminrechte gewähren administrativen
 Event-Zugriff, aber keine persönliche Tracking-Einwilligung und keinen Tracking-Teilnahmestatus.
-Im Legacy-Modus bleibt ausschließlich für bereits `accepted`-Teilnehmende die bisherige
-rosterbasierte Event-Kompatibilität erhalten.
 
 Es gibt weiterhin keine dauerhaft gespeicherte globale Rohaktivität ohne Einwilligung. Ist kein
 Tracking erlaubt, wird der Report nur als technischer Heartbeat verarbeitet.

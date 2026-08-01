@@ -8,7 +8,7 @@ import { Router } from 'express';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isIntInRange } from '../validation';
-import { requireConfiguredUser } from '../sessions';
+import { requireUser } from '../sessions';
 
 export const preferencesRouter = Router();
 
@@ -42,7 +42,7 @@ preferencesRouter.get('/', (req, res) => {
 
 // PUT /api/preferences - upsert a single rating. Idempotent by design so the
 // frontend can fire-and-forget on every slider change.
-preferencesRouter.put('/', requireConfiguredUser, (req, res) => {
+preferencesRouter.put('/', requireUser, (req, res) => {
   const { playerId, gameId, rating } = req.body ?? {};
 
   if (typeof playerId !== 'string' || !playerId) {
@@ -76,7 +76,7 @@ preferencesRouter.put('/', requireConfiguredUser, (req, res) => {
 });
 
 // DELETE /api/preferences/:playerId/:gameId - clear a rating.
-preferencesRouter.delete('/:playerId/:gameId', requireConfiguredUser, (req, res) => {
+preferencesRouter.delete('/:playerId/:gameId', requireUser, (req, res) => {
   const { playerId, gameId } = req.params;
   if (req.player && playerId !== req.player.id) {
     return res.status(403).json({ error: 'Du kannst nur deine eigenen Bock-Ratings bearbeiten.' });

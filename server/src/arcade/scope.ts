@@ -1,7 +1,5 @@
 import { Server, Socket } from 'socket.io';
-import { config } from '../config';
-import { db, DEFAULT_GROUP_ID } from '../db';
-import { resolveGroupEventScope } from '../groupEventScope';
+import { db } from '../db';
 import { isParticipant } from '../events';
 
 export interface ArcadeScope {
@@ -37,18 +35,6 @@ function activeEventAccess(groupId: string, eventId: string, playerId: unknown):
 }
 
 export function socketArcadeScope(socket: Socket, playerId?: unknown): ArcadeScope | null {
-  if (config.authMode === 'legacy') {
-    if (playerId !== undefined) {
-      if (typeof playerId !== 'string' || !db.prepare('SELECT 1 FROM players WHERE id = ?').get(playerId)) return null;
-      db.prepare(
-        `INSERT OR IGNORE INTO group_memberships
-           (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
-         VALUES (?, ?, 'member', 'active', ?, NULL, 1, NULL)`,
-      ).run(DEFAULT_GROUP_ID, playerId, Date.now());
-    }
-    const scope = resolveGroupEventScope(DEFAULT_GROUP_ID, undefined);
-    return { groupId: DEFAULT_GROUP_ID, eventId: scope.ok ? scope.eventId : null };
-  }
   if (socket.data.kioskReadOnly) return null;
   const groupId = typeof socket.data.groupId === 'string' && socket.data.groupId ? socket.data.groupId : null;
   const authPlayerId = socket.data.authPlayerId;

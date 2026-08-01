@@ -7,11 +7,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 import { db } from '../db';
 import { getTrackingEventId } from '../events';
 
-const app = createApp();
+const app = createTestApp();
 
 interface PlayerBody {
   id: string;

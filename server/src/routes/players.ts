@@ -10,15 +10,14 @@ import { getTrackingEventId } from '../events';
 import { formatDurationMs, computePlaytime, type PlaySession } from '../playtime';
 import { sessionDurations, computeSimultaneousGameTime, type SessionDuration } from '../sessionStats';
 import { computeAwards } from '../awards';
-import { hasRecentReauthentication, requireConfiguredUser, withParamPlayerIdentity } from '../sessions';
+import { hasRecentReauthentication, requireUser, withParamPlayerIdentity } from '../sessions';
 import { requireAdmin } from '../auth';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { writeAdminAudit } from '../adminAudit';
 import { voidOutstandingInvites } from '../invites';
 import { activeGroupPlayers } from '../groupPlayers';
-import { activePlayerGroupIds, syncInstanceAdminForRole } from '../groups';
+import { activePlayerGroupIds, ensureDefaultGroupMembership, syncInstanceAdminForRole } from '../groups';
 import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
-import { config } from '../config';
 
 export const playersRouter = Router();
 
@@ -100,10 +99,9 @@ playersRouter.get('/', (_req, res) => {
   res.json(rows.map(toPublicPlayer));
 });
 
-// GET /api/players/:id - public profile details for everyone. Under required
-// auth the private agent API key is only visible to its owner or an admin;
-// legacy mode reveals it only to the matching device identity.
-playersRouter.get('/:id', requireConfiguredUser, (req, res) => {
+// GET /api/players/:id - public profile details for everyone. The private
+// agent API key is only visible to its owner or an admin.
+playersRouter.get('/:id', requireUser, (req, res) => {
   const row = db
     .prepare(
       `SELECT p.*, ls.last_seen AS agent_last_seen
@@ -115,15 +113,13 @@ playersRouter.get('/:id', requireConfiguredUser, (req, res) => {
   if (row.deactivated_at !== null && !req.player?.is_admin) {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   }
-  const maySeeApiKey = req.player
-    ? req.player.id === row.id || Boolean(req.player.is_admin)
-    : req.header('x-player-id') === row.id;
+  const maySeeApiKey = req.player?.id === row.id || Boolean(req.player?.is_admin);
   res.json(maySeeApiKey ? toPrivatePlayer(row) : toPublicPlayer(row));
 });
 
 // POST /api/players - create a player. Returns the API key once here (and via
 // the single-player GET) so the frontend can show/copy it.
-playersRouter.post('/', requireConfiguredUser, (req, res) => {
+playersRouter.post('/', requireUser, (req, res) => {
   if (req.player && !req.player.is_admin) {
     return res.status(403).json({ error: 'Nur Admins können weitere Spielerprofile anlegen.' });
   }
@@ -177,32 +173,33 @@ playersRouter.post('/', requireConfiguredUser, (req, res) => {
     row.created_at,
   );
 
+  ensureDefaultGroupMembership(row.id);
   broadcast(Events.playersChanged, null, { groupId: req.group!.id });
   res.status(201).json(row);
 });
 
 // PATCH /api/players/:id - rename, recolor, update the avatar, and/or
-// pause/resume tracking. Profile fields may only be changed by the device
-// identity currently assigned to that player. The x-player-id header is the
-// temporary identity boundary until future user management replaces the
-// device-local "who am I" selection with authenticated sessions.
+// pause/resume tracking. Profile fields may only be changed by the
+// authenticated account that owns that player.
 // trackingPaused is the player-side opt-out: while
 // true, the agent's reports for this player are received but silently
 // dropped (see routes/agent.ts) — no live status, no playtime, regardless
 // of whether an event is tracking.
-playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
+playersRouter.patch('/:id', requireUser, (req, res) => {
   const existing = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id) as PlayerRow | undefined;
   if (!existing) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+
+  if (Object.prototype.hasOwnProperty.call(req.body ?? {}, 'isAdmin') || Object.prototype.hasOwnProperty.call(req.body ?? {}, 'is_admin')) {
+    return res.status(400).json({ error: 'Adminrechte werden ausschließlich über die Gruppenrolle verwaltet.' });
+  }
 
   if (req.player && req.player.id !== existing.id && !req.player.is_admin) {
     return res.status(403).json({ error: 'Du kannst nur dein eigenes Profil bearbeiten.' });
   }
 
-  const { name, realName, color, avatar, trackingPaused, isAdmin } = req.body ?? {};
+  const { name, realName, color, avatar, trackingPaused } = req.body ?? {};
   const changesProfile = [name, realName, color, avatar, trackingPaused].some((value) => value !== undefined);
-  // In required mode req.player is already verified by the session; the
-  // x-player-id header is only the legacy fallback for non-session deployments.
-  const actorId = req.player?.id ?? req.header('x-player-id');
+  const actorId = req.player?.id;
   if (changesProfile && actorId !== existing.id) {
     return res.status(403).json({ error: 'Du kannst nur dein eigenes Profil bearbeiten.' });
   }
@@ -222,25 +219,6 @@ playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   if (trackingPaused !== undefined && typeof trackingPaused !== 'boolean') {
     return res.status(400).json({ error: 'trackingPaused muss ein Boolean sein.' });
   }
-  if (isAdmin !== undefined && typeof isAdmin !== 'boolean') {
-    return res.status(400).json({ error: 'isAdmin muss ein Boolean sein.' });
-  }
-  // Required mode freezes the group role (owner/admin/member) as the
-  // instance rights model (docs/plans/reset-single-group.md §9.1): is_admin
-  // is derived from it (see groups.ts, changeGroupMemberRole) instead of
-  // being settable here, so the two flags can no longer silently diverge.
-  // Legacy mode keeps this toggle exactly as before.
-  if (isAdmin !== undefined && config.authMode === 'required') {
-    return res.status(400).json({
-      error: 'Admin-Rechte werden im required-Modus über die Gruppenrolle vergeben (Gruppe → Mitglieder).',
-    });
-  }
-  if (isAdmin === true && existing.is_test) {
-    return res.status(409).json({ error: 'Test-Spieler können keine Admin-Rechte erhalten.' });
-  }
-  // Granting/revoking admin remains a legacy-mode admin-panel action; in
-  // required mode it happens exclusively via the group role.
-
   const nextName = name !== undefined ? name.trim() : existing.name;
   if (name !== undefined && nameTaken(nextName, existing.id)) {
     return res.status(409).json({ error: `Der Name "${nextName}" ist schon vergeben.` });
@@ -248,43 +226,15 @@ playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   const nextColor = color !== undefined ? color : existing.color;
   const nextAvatar = avatar !== undefined ? avatar : existing.avatar;
   const nextTrackingPaused = trackingPaused !== undefined ? (trackingPaused ? 1 : 0) : existing.tracking_paused;
-  const nextIsAdmin = isAdmin !== undefined ? (isAdmin ? 1 : 0) : existing.is_admin;
-
-  const roleChanged = nextIsAdmin !== existing.is_admin;
-  const update = db.transaction(() => {
-    if (roleChanged && existing.is_admin && nextIsAdmin === 0) {
-      const adminCount = (
-        db
-          .prepare(
-            'SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL AND (? = 0 OR password_hash IS NOT NULL)',
-          )
-          .get(req.player ? 1 : 0) as {
-          count: number;
-        }
-      ).count;
-      if (adminCount <= 1) return false;
-    }
-    db.prepare(
-      'UPDATE players SET name = ?, real_name = ?, color = ?, avatar = ?, tracking_paused = ?, is_admin = ? WHERE id = ?',
-    ).run(nextName, nextRealName, nextColor, nextAvatar, nextTrackingPaused, nextIsAdmin, existing.id);
-    if (roleChanged) {
-      writeAdminAudit({
-        actorPlayerId: req.player?.id,
-        action: nextIsAdmin ? 'admin_granted' : 'admin_revoked',
-        targetType: 'player',
-        targetId: existing.id,
-      });
-    }
-    return true;
-  })();
-  if (!update) return res.status(409).json({ error: 'Der letzte Admin kann seine Rolle nicht verlieren.' });
+  db.prepare(
+    'UPDATE players SET name = ?, real_name = ?, color = ?, avatar = ?, tracking_paused = ? WHERE id = ?',
+  ).run(nextName, nextRealName, nextColor, nextAvatar, nextTrackingPaused, existing.id);
 
   // Profile changes are visible in every group the player belongs to, not
   // only in the tab the request happened to come from.
   for (const groupId of activePlayerGroupIds(existing.id)) {
     broadcast(Events.playersChanged, null, { groupId });
   }
-  if (roleChanged) disconnectPlayerSockets(existing.id);
   res.json(
     toPrivatePlayer({
       ...existing,
@@ -293,7 +243,7 @@ playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
       color: nextColor,
       avatar: nextAvatar,
       tracking_paused: nextTrackingPaused,
-      is_admin: nextIsAdmin,
+      is_admin: existing.is_admin,
     }),
   );
 });
@@ -345,7 +295,7 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
       )
       .get(target.id);
     if (soleOwnedGroup) return 'last_group_owner';
-    if (config.authMode === 'required' && target.password_hash) {
+    if (target.password_hash) {
       const soleClaimedOwnedGroup = db
         .prepare(
           `SELECT gm.group_id
@@ -432,7 +382,7 @@ playersRouter.post('/:id/reactivate', requireAdmin, (req, res) => {
   res.status(204).end();
 });
 
-playersRouter.post('/:id/api-key/rotate', requireConfiguredUser, (req, res) => {
+playersRouter.post('/:id/api-key/rotate', requireUser, (req, res) => {
   const target = db.prepare('SELECT id, deactivated_at FROM players WHERE id = ?').get(req.params.id) as
     { id: string; deactivated_at: number | null } | undefined;
   if (!target || target.deactivated_at !== null) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
@@ -565,7 +515,7 @@ playersRouter.put('/:id/neighbors', ...withParamPlayerIdentity('id'), (req, res)
   // else got deleted shouldn't block saving the rest.
   const uniqueIds = [...new Set(neighborIds)].filter((id) => id !== player.id);
   const validPlayers = activeGroupPlayers(req.group!.id, uniqueIds);
-  if (config.authMode !== 'legacy' && validPlayers.size !== uniqueIds.length) {
+  if (validPlayers.size !== uniqueIds.length) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
   }
   const validIds = [...validPlayers.keys()];

@@ -11,6 +11,7 @@ test('searchEntries finds navigation targets by title and aliases', () => {
   assert.equal(searchEntries('Captain Draft')[0]?.view, 'matchmaking');
   assert.equal(searchEntries('Anreise')[0]?.view, 'arrivals');
   assert.equal(searchEntries('WLAN')[0]?.view, 'infoBoard');
+  assert.equal(searchEntries('Einladungslink')[0]?.view, 'admin');
 });
 
 test('searchEntries prioritizes an exact title and respects the result limit', () => {

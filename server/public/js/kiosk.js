@@ -4,7 +4,7 @@
 // format.js modules the main app uses, but renders its own compact layout
 // rather than the phone-sized views (see kiosk.html/css).
 
-import { api, getToken, setKioskMode, setToken } from './api.js';
+import { api, getKioskToken, setKioskMode, setKioskToken } from './api.js';
 import { connectSocket } from './socket.js';
 import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml, formatDateTime } from './format.js';
 import { installIconReplacement, icon } from './icons.js';
@@ -159,24 +159,16 @@ function renderArcadeStream(game) {
   drawKioskCanvas(canvas, game);
 }
 
-// Same idea as app.js's ensureAccess, but with no login form to fall back
-// to — a kiosk screen is set up once (via ?token=…, same as an invite link)
-// and then left running, so there's nobody there afterwards to type a token
-// in if it's missing.
+// A kiosk is set up once via ?token=… and then left running, so there is no
+// interactive login fallback when its dedicated credential is missing.
 async function ensureAccess() {
-  const meta = await api.meta();
-  const protectedAccess = meta.authMode === 'required' ? meta.kioskProtection : meta.accessProtection;
-  if (meta.authMode === 'required' && !meta.kioskProtection) return false;
-  if (!protectedAccess) return true;
-
   const fromUrl = new URLSearchParams(location.search).get('token');
-  if (fromUrl) setToken(fromUrl);
+  if (fromUrl) setKioskToken(fromUrl);
 
-  const token = getToken();
+  const token = getKioskToken();
   if (!token) return false;
   try {
-    const res = await fetch('/api/health', { headers: { 'x-access-token': token } });
-    if (!res.ok) return false;
+    await api.live.board();
     if (fromUrl) history.replaceState(null, '', `${location.pathname}${location.hash}`);
     return true;
   } catch {

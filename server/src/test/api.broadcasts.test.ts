@@ -4,9 +4,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 
-const app = createApp();
+const app = createTestApp();
 let playerId: string;
 let otherPlayerId: string;
 
@@ -17,12 +17,13 @@ test('setup: a player', async () => {
   otherPlayerId = other.body.id;
 });
 
-test('POST /api/broadcasts validates player and message', async () => {
+test('POST /api/broadcasts derives the sender from the session and validates the message', async () => {
   const noPlayer = await request(app).post('/api/broadcasts').send({ message: 'Hallo' });
-  assert.equal(noPlayer.status, 400);
+  assert.equal(noPlayer.status, 201);
+  assert.equal(noPlayer.body.playerName, 'Integration Test Admin');
 
   const ghost = await request(app).post('/api/broadcasts').send({ playerId: 'ghost', message: 'Hallo' });
-  assert.equal(ghost.status, 404);
+  assert.equal(ghost.status, 401);
 
   const empty = await request(app).post('/api/broadcasts').send({ playerId, message: '   ' });
   assert.equal(empty.status, 400);

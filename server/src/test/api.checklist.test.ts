@@ -8,10 +8,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 import { DEFAULT_CHECKLIST_ITEMS } from '../checklistDefaults';
 
-const app = createApp();
+const app = createTestApp();
 
 let alice: { id: string };
 let bob: { id: string };
@@ -23,12 +23,12 @@ test('setup: three players', async () => {
   carol = (await request(app).post('/api/players').send({ name: 'Packende Carol' })).body;
 });
 
-test('GET /api/checklist/items materializes the Grundstock once and is idempotent', async () => {
-  const missingPlayerId = await request(app).get('/api/checklist/items');
-  assert.equal(missingPlayerId.status, 400);
+test('GET /api/checklist/items derives the player from the session and materializes the Grundstock once', async () => {
+  const sessionDerived = await request(app).get('/api/checklist/items');
+  assert.equal(sessionDerived.status, 200);
 
   const ghost = await request(app).get('/api/checklist/items?playerId=ghost');
-  assert.equal(ghost.status, 404);
+  assert.equal(ghost.status, 401);
 
   const first = await request(app).get(`/api/checklist/items?playerId=${alice.id}`);
   assert.equal(first.status, 200);
@@ -65,7 +65,7 @@ test('POST /api/checklist/items adds and validates a custom item', async () => {
   assert.equal(tooLong.status, 400);
 
   const ghost = await request(app).post('/api/checklist/items').send({ playerId: 'ghost', label: 'Ersatzbrille' });
-  assert.equal(ghost.status, 404);
+  assert.equal(ghost.status, 401);
 
   const created = await request(app).post('/api/checklist/items').send({ playerId: alice.id, label: 'Ersatzbrille' });
   assert.equal(created.status, 201);
@@ -141,7 +141,7 @@ test('POST /api/checklist/tasks creates an open item_request, validated', async 
   assert.equal(tooLongDescription.status, 400);
 
   const ghost = await request(app).post('/api/checklist/tasks').send({ playerId: 'ghost', title: 'Controller' });
-  assert.equal(ghost.status, 404);
+  assert.equal(ghost.status, 401);
 
   const created = await request(app)
     .post('/api/checklist/tasks')
@@ -284,7 +284,7 @@ test('claim: cannot claim your own task/request, unknown task 404, exactly one w
   assert.equal(selfClaim.status, 409);
 
   const ghost = await request(app).post(`/api/checklist/tasks/${requestTaskId}/claim`).send({ playerId: 'ghost' });
-  assert.equal(ghost.status, 404);
+  assert.equal(ghost.status, 401);
 
   const results = await Promise.all([
     request(app).post(`/api/checklist/tasks/${requestTaskId}/claim`).send({ playerId: bob.id }),

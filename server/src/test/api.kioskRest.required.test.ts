@@ -1,5 +1,5 @@
-// AUTH_MODE and KIOSK_TOKEN are read at module import time, so the read-only
-// kiosk REST boundary is exercised in a child process with the environment
+// KIOSK_TOKEN is read at module import time, so the read-only kiosk REST
+// boundary is exercised in a child process with the environment
 // configured before app.ts and its routers load. Covers the token-only
 // dashboard load (/push/last must be reachable), the env-token archived-group
 // rejection, and the group-kiosk banner union that mirrors the socket rules.
@@ -79,7 +79,6 @@ test('a token-only kiosk can load the whole dashboard, honours archival, and uni
     env: {
       ...process.env,
       DB_FILE: ':memory:',
-      AUTH_MODE: 'required',
       COOKIE_SECURE: '0',
       KIOSK_TOKEN: 'required-kiosk-token',
       ADMIN_RECOVERY_CODE: 'kiosk-rest-recovery-code',

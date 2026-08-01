@@ -37,7 +37,7 @@ import { groupsRouter } from './groups';
 import { pingsRouter } from './pings';
 import { musicRouter } from './music';
 import { musicControllerRouter } from '../musicController';
-import { requireConfiguredUser, requireUser } from '../sessions';
+import { requireUser } from '../sessions';
 import { config } from '../config';
 import { extractToken } from '../auth';
 import { requireConfiguredGroupMembership } from '../groupAuthorization';
@@ -59,9 +59,8 @@ apiRouter.use('/auth', authRouter);
 // only this narrow command channel before browser/user authentication.
 apiRouter.use('/music/controller', musicControllerRouter);
 
-// Once required auth is enabled, every browser-facing feature API is behind
-// the verified session. Health and the anonymous auth flows above stay public;
-// legacy mode keeps the existing shared-token behavior unchanged.
+// Every browser-facing feature API is behind the verified session. Health and
+// the anonymous auth flows above stay public.
 const KIOSK_GET_PATHS = [
   /^\/live\/?$/,
   /^\/votes\/?$/,
@@ -79,7 +78,6 @@ const KIOSK_GET_PATHS = [
 
 apiRouter.use((req, res, next) => {
   const kioskRead =
-    config.authMode === 'required' &&
     req.method === 'GET' &&
     req.header('x-kiosk-mode') === '1' &&
     Boolean(config.kioskToken || resolveKioskToken(extractToken(req))) &&
@@ -105,7 +103,7 @@ apiRouter.use((req, res, next) => {
     req.kioskScope = { groupId, eventId: tokenScope?.eventId ?? null };
     return next();
   }
-  requireConfiguredUser(req, res, next);
+  requireUser(req, res, next);
 });
 
 // Resolves req.group for every feature route below (the group-scoped data

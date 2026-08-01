@@ -74,9 +74,9 @@ test('runBootstrapAdmins creates a ready-to-use admin with password and membersh
   assert.equal(membershipRole(player!.id), 'owner');
 });
 
-test('a second bootstrap admin becomes a plain admin, not a second owner', () => {
+test('a second bootstrap admin gets the admin group role, not a second owner', () => {
   // An owner already exists (created by the test above), so the next seeded
-  // account keeps is_admin but joins as a member rather than a second owner.
+  // account joins as an admin rather than a second owner.
   const name = `Boot Second ${nanoid(6)}`;
   const results = runBootstrapAdmins(env({ BOOTSTRAP_ADMIN_1_NAME: name, BOOTSTRAP_ADMIN_1_PASSWORD: 'second-admin-password' }));
   assert.deepEqual(
@@ -85,7 +85,7 @@ test('a second bootstrap admin becomes a plain admin, not a second owner', () =>
   );
   const player = playerByName(name)!;
   assert.equal(player.is_admin, 1);
-  assert.equal(membershipRole(player.id), 'member');
+  assert.equal(membershipRole(player.id), 'admin');
 });
 
 test('runBootstrapAdmins is idempotent and never overwrites an existing password', () => {

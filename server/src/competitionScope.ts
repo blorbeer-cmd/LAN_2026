@@ -1,4 +1,3 @@
-import { config } from './config';
 import { db, OUTSIDE_EVENTS_ID } from './db';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 import { getTrackingEvent } from './events';
@@ -19,11 +18,6 @@ export function competitionPlayersBelongToGroup(groupId: string, eventId: string
   if (!event || (eventId !== OUTSIDE_EVENTS_ID && event.group_id !== groupId)) return false;
 
   const placeholders = uniqueIds.map(() => '?').join(',');
-  if (config.authMode === 'legacy') {
-    const players = db.prepare(`SELECT id FROM players WHERE deactivated_at IS NULL AND id IN (${placeholders})`).all(...uniqueIds);
-    return players.length === uniqueIds.length;
-  }
-
   const players = db
     .prepare(
       `SELECT p.id

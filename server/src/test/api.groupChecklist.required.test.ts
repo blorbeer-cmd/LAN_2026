@@ -154,7 +154,6 @@ test('checklist mutations 404 across an event-scope boundary and group admins mo
     execFileSync(process.execPath, ['-e', script], {
       env: {
         ...process.env,
-        AUTH_MODE: 'required',
         ADMIN_RECOVERY_CODE: RECOVERY_CODE,
         COOKIE_SECURE: '0',
         DB_FILE: ':memory:',

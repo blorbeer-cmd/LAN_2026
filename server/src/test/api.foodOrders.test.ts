@@ -6,9 +6,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 
-const app = createApp();
+const app = createTestApp();
 
 let alice: { id: string };
 let bob: { id: string };
@@ -24,7 +24,7 @@ test('POST /api/food-orders validates title, player, sendAt, notes, link, paypal
   const noTitle = await request(app).post('/api/food-orders').send({ playerId: alice.id });
   assert.equal(noTitle.status, 400);
   const ghost = await request(app).post('/api/food-orders').send({ playerId: 'ghost', title: 'Pizza' });
-  assert.equal(ghost.status, 404);
+  assert.equal(ghost.status, 401);
   const badSendAt = await request(app)
     .post('/api/food-orders')
     .send({ playerId: alice.id, title: 'Pizza', sendAt: 'not-a-timestamp' });

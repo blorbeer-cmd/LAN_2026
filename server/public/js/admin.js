@@ -1,8 +1,7 @@
-// Device-local display state for the legacy one-tap Admin view. Required auth
-// derives the real permission from the server-side session role. This flag is
-// not a security boundary —
-// it just remembers "this phone is in admin mode" and controls whether test
-// players are visible (see testFilter.js).
+// Device-local display state for the Admin view. Real permission always comes
+// from the server-side session role; this flag is not a security boundary. It
+// only controls whether test players are visible on this device (see
+// testFilter.js).
 //
 // Every toggle fires 'respawn:admin-changed' on window so app.js can update the
 // persistent admin banner and refetch data with the new visibility, without

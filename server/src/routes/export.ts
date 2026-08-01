@@ -4,7 +4,7 @@
 // live views already use rather than re-deriving anything.
 
 import { Router } from 'express';
-import { db, DEFAULT_GROUP_ID } from '../db';
+import { db } from '../db';
 import { computeStandings, type MatchForScoring } from '../leaderboard';
 import { computePlaytime, aggregateByGame, formatDurationMs, type PlaySession } from '../playtime';
 import { computeAwards } from '../awards';
@@ -12,7 +12,6 @@ import { getTrackingEventId } from '../events';
 import { getCompletedTournamentSummaries } from './tournamentChampion';
 import { renderExportPdf } from '../pdfExport';
 import PDFDocument from 'pdfkit';
-import { config } from '../config';
 
 export const exportRouter = Router();
 
@@ -98,16 +97,13 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
     EventRow | undefined;
   if (!event) return undefined;
 
-  const players =
-    config.authMode === 'legacy'
-      ? (db.prepare('SELECT id, name, color FROM players').all() as PlayerRow[])
-      : (db
-          .prepare(
-            `SELECT p.id, p.name, p.color
-           FROM players p JOIN group_memberships gm ON gm.player_id = p.id
-           WHERE gm.group_id = ? AND gm.status = 'active'`,
-          )
-          .all(groupId) as PlayerRow[]);
+  const players = db
+    .prepare(
+      `SELECT p.id, p.name, p.color
+       FROM players p JOIN group_memberships gm ON gm.player_id = p.id
+       WHERE gm.group_id = ? AND gm.status = 'active'`,
+    )
+    .all(groupId) as PlayerRow[];
   const playerById = new Map(players.map((p) => [p.id, p]));
   const games = db
     .prepare('SELECT id, name, icon FROM games WHERE group_id = ? OR arcade_key IS NOT NULL')
@@ -137,7 +133,7 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
        FROM play_sessions
        WHERE event_id = ? AND (group_id = ? OR (? = 1 AND group_id IS NULL))`,
     )
-    .all(filterEventId, groupId, config.authMode === 'legacy' && groupId === DEFAULT_GROUP_ID ? 1 : 0) as Array<{
+    .all(filterEventId, groupId, 0) as Array<{
     player_id: string;
     game_id: string;
     started_at: number;

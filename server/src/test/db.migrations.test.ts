@@ -643,10 +643,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 57);
+  assert.equal(migrations.length, 58);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 57 }, (_, index) => index + 1),
+    Array.from({ length: 58 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -715,9 +715,9 @@ test('records the complete migration history and does not duplicate it on restar
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('required startup reconciles admin flags from active default-group roles once', () => {
+test('startup reconciles admin flags from active default-group roles once', () => {
   const dbFile = makeTempDbPath('required-admin-reconciliation');
-  runMigrations(dbFile, { AUTH_MODE: 'legacy' });
+  runMigrations(dbFile);
   const fixture = new Database(dbFile);
   const now = Date.now();
   const player = fixture.prepare(
@@ -738,15 +738,15 @@ test('required startup reconciles admin flags from active default-group roles on
   member.run('test-owner', 'owner', now);
   fixture.close();
 
-  runMigrations(dbFile, { AUTH_MODE: 'legacy' });
+  runMigrations(dbFile);
   let inspected = new Database(dbFile, { readonly: true });
   assert.deepEqual(inspected.prepare('SELECT id, is_admin FROM players WHERE id LIKE ? ORDER BY id').all('drift-%'), [
-    { id: 'drift-admin', is_admin: 0 },
-    { id: 'drift-member', is_admin: 1 },
+    { id: 'drift-admin', is_admin: 1 },
+    { id: 'drift-member', is_admin: 0 },
   ]);
   inspected.close();
 
-  const required = { AUTH_MODE: 'required', ADMIN_RECOVERY_CODE: 'reconciliation-test-code' };
+  const required = { ADMIN_RECOVERY_CODE: 'reconciliation-test-code' };
   runMigrations(dbFile, required);
   runMigrations(dbFile, required);
   inspected = new Database(dbFile, { readonly: true });
@@ -779,7 +779,7 @@ test('required startup reconciles admin flags from active default-group roles on
 
 test('required bootstrap promotes an active existing member once', () => {
   const dbFile = makeTempDbPath('required-bootstrap-active');
-  runMigrations(dbFile, { AUTH_MODE: 'legacy' });
+  runMigrations(dbFile);
   const fixture = new Database(dbFile);
   const now = Date.now();
   fixture.prepare(
@@ -798,7 +798,7 @@ test('required bootstrap promotes an active existing member once', () => {
   membership.run('bootstrap-member', 'member', now);
   fixture.close();
   const env = {
-    AUTH_MODE: 'required', ADMIN_RECOVERY_CODE: 'bootstrap-test-code',
+    ADMIN_RECOVERY_CODE: 'bootstrap-test-code',
     BOOTSTRAP_ADMIN_1_NAME: 'Bootstrap Member', BOOTSTRAP_ADMIN_1_PASSWORD: 'bootstrap-member-password',
   };
   const startup = () => execFileSync(process.execPath, ['-e',
@@ -822,7 +822,7 @@ test('required bootstrap promotes an active existing member once', () => {
 
 test('required bootstrap cannot derive rights from inactive memberships', () => {
   const dbFile = makeTempDbPath('required-bootstrap-inactive');
-  runMigrations(dbFile, { AUTH_MODE: 'legacy' });
+  runMigrations(dbFile);
   const fixture = new Database(dbFile);
   const now = Date.now();
   const player = fixture.prepare(
@@ -840,7 +840,7 @@ test('required bootstrap cannot derive rights from inactive memberships', () => 
   membership.run('invited-admin', 'admin', 'invited', null, null);
   fixture.close();
   const env = {
-    AUTH_MODE: 'required', ADMIN_RECOVERY_CODE: 'inactive-test-code',
+    ADMIN_RECOVERY_CODE: 'inactive-test-code',
     BOOTSTRAP_ADMIN_1_NAME: 'Removed Owner', BOOTSTRAP_ADMIN_1_PASSWORD: 'removed-owner-password',
     BOOTSTRAP_ADMIN_2_NAME: 'Invited Admin', BOOTSTRAP_ADMIN_2_PASSWORD: 'invited-admin-password',
   };
@@ -870,7 +870,7 @@ test('required bootstrap cannot derive rights from inactive memberships', () => 
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('account hardening clears only unclaimed and test-user legacy admin flags', () => {
+test('account hardening clears legacy admin flags without an active admin role', () => {
   const dbFile = makeTempDbPath('admin-role-cutover');
   runMigrations(dbFile);
 
@@ -891,7 +891,7 @@ test('account hardening clears only unclaimed and test-user legacy admin flags',
     .prepare('SELECT id, is_admin FROM players WHERE id IN (?, ?, ?) ORDER BY id')
     .all('claimed-admin', 'legacy-admin', 'test-admin');
   assert.deepEqual(roles, [
-    { id: 'claimed-admin', is_admin: 1 },
+    { id: 'claimed-admin', is_admin: 0 },
     { id: 'legacy-admin', is_admin: 0 },
     { id: 'test-admin', is_admin: 0 },
   ]);
@@ -1116,8 +1116,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 57 }, (_, index) => index + 1),
-    'every version 1..57 runs exactly once',
+    Array.from({ length: 58 }, (_, index) => index + 1),
+    'every version 1..58 runs exactly once',
   );
 });
 
@@ -1306,6 +1306,224 @@ test('migration 55 converts legacy free-text genre values into the multiselect J
   const blank = migrated.prepare('SELECT genre FROM games WHERE id = ?').get('legacy-genre-blank') as { genre: string | null };
   assert.equal(blank.genre, null);
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 55').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 58 preserves late legacy admins and backfills memberships without reviving tracking consent', () => {
+  const dbFile = makeTempDbPath('legacy-auth-cutover');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  const insertPlayer = fixture.prepare(
+    `INSERT INTO players
+       (id, name, api_key, tracking_paused, is_admin, is_test, password_hash, deactivated_at, created_at)
+     VALUES (?, ?, ?, ?, ?, 0, ?, NULL, ?)`,
+  );
+  const insertMembership = fixture.prepare(
+    `INSERT INTO group_memberships
+       (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
+     VALUES ('default-group', ?, ?, ?, ?, ?, ?, NULL)`,
+  );
+
+  insertPlayer.run('legacy-admin', 'Legacy Admin', 'legacy-admin-key', 0, 1, 'claimed-hash', now);
+  insertMembership.run('legacy-admin', 'member', 'active', now, null, 1);
+
+  insertPlayer.run('legacy-unclaimed-admin', 'Legacy Unclaimed Admin', 'legacy-unclaimed-admin-key', 0, 1, null, now);
+  insertMembership.run('legacy-unclaimed-admin', 'member', 'active', now, null, 1);
+
+  insertPlayer.run('late-player', 'Late Player', 'late-player-key', 0, 0, null, now + 1);
+
+  insertPlayer.run('revoked-player', 'Revoked Player', 'revoked-player-key', 0, 0, null, now + 2);
+  insertMembership.run('revoked-player', 'member', 'active', now + 2, null, 1);
+  fixture
+    .prepare(
+      `INSERT INTO group_tracking_consents
+         (id, group_id, player_id, granted_at, revoked_at, source)
+       VALUES (?, 'default-group', ?, ?, ?, 'user')`,
+    )
+    .run('revoked-consent', 'revoked-player', now + 2, now + 3);
+
+  fixture
+    .prepare(
+      `INSERT INTO events (id, name, starts_at, ends_at, group_id, status, visibility_scope)
+       VALUES (?, ?, ?, ?, 'default-group', 'published', 'participants')`,
+    )
+    .run('legacy-private-event', 'Legacy Private Event', now, now + 60_000);
+  fixture
+    .prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES ('legacy-private-event', ?, 'accepted')")
+    .run('late-player');
+  fixture
+    .prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES ('legacy-private-event', ?, 'accepted')")
+    .run('revoked-player');
+  fixture
+    .prepare(
+      `INSERT INTO event_tracking_consents
+         (id, event_id, group_id, player_id, accepted_at, revoked_at, source)
+       VALUES (?, 'legacy-private-event', 'default-group', ?, ?, ?, 'user')`,
+    )
+    .run('revoked-event-consent', 'revoked-player', now + 2, now + 3);
+
+  insertPlayer.run('removed-player', 'Removed Player', 'removed-player-key', 0, 0, null, now + 4);
+  insertMembership.run('removed-player', 'member', 'removed', now + 4, now + 5, 0);
+
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 58').run();
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile, { AUTH_MODE: 'legacy' }));
+  assert.doesNotThrow(
+    () => runMigrations(dbFile, { AUTH_MODE: 'legacy' }),
+    'the cutover migration must be restart-safe',
+  );
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT role, status, outside_tracking_enabled FROM group_memberships WHERE group_id = ? AND player_id = ?')
+      .get('default-group', 'legacy-admin'),
+    { role: 'admin', status: 'active', outside_tracking_enabled: 1 },
+  );
+  assert.deepEqual(
+    migrated.prepare('SELECT is_admin FROM players WHERE id = ?').get('legacy-admin'),
+    { is_admin: 1 },
+  );
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT role, status FROM group_memberships WHERE group_id = ? AND player_id = ?')
+      .get('default-group', 'legacy-unclaimed-admin'),
+    { role: 'admin', status: 'active' },
+  );
+  assert.deepEqual(
+    migrated.prepare('SELECT is_admin, password_hash FROM players WHERE id = ?').get('legacy-unclaimed-admin'),
+    { is_admin: 1, password_hash: null },
+  );
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT role, status, outside_tracking_enabled FROM group_memberships WHERE group_id = ? AND player_id = ?')
+      .get('default-group', 'late-player'),
+    { role: 'member', status: 'active', outside_tracking_enabled: 1 },
+  );
+  assert.equal(
+    (migrated
+      .prepare(
+        `SELECT COUNT(*) AS count FROM group_tracking_consents
+         WHERE group_id = ? AND player_id = ? AND revoked_at IS NULL`,
+      )
+      .get('default-group', 'late-player') as { count: number }).count,
+    1,
+  );
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT status, outside_tracking_enabled FROM group_memberships WHERE group_id = ? AND player_id = ?')
+      .get('default-group', 'revoked-player'),
+    { status: 'active', outside_tracking_enabled: 0 },
+  );
+  assert.equal(
+    (migrated
+      .prepare(
+        `SELECT COUNT(*) AS count FROM group_tracking_consents
+         WHERE group_id = ? AND player_id = ? AND revoked_at IS NULL`,
+      )
+      .get('default-group', 'revoked-player') as { count: number }).count,
+    0,
+  );
+  assert.equal(
+    (migrated
+      .prepare(
+        `SELECT COUNT(*) AS count FROM event_tracking_consents
+         WHERE event_id = ? AND player_id = ? AND revoked_at IS NULL`,
+      )
+      .get('legacy-private-event', 'late-player') as { count: number }).count,
+    1,
+  );
+  assert.equal(
+    (migrated
+      .prepare(
+        `SELECT COUNT(*) AS count FROM event_tracking_consents
+         WHERE event_id = ? AND player_id = ? AND revoked_at IS NULL`,
+      )
+      .get('legacy-private-event', 'revoked-player') as { count: number }).count,
+    0,
+  );
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT status, outside_tracking_enabled FROM group_memberships WHERE group_id = ? AND player_id = ?')
+      .get('default-group', 'removed-player'),
+    { status: 'removed', outside_tracking_enabled: 0 },
+  );
+  assert.equal(
+    (migrated
+      .prepare(
+        `SELECT COUNT(*) AS count FROM admin_log
+         WHERE target_id = ? AND action = 'admin_granted' AND details LIKE '%legacy_auth_cutover%'`,
+      )
+      .get('legacy-admin') as { count: number }).count,
+    1,
+  );
+  assert.equal(
+    (migrated
+      .prepare(
+        `SELECT COUNT(*) AS count FROM admin_log
+         WHERE target_id = ? AND action = 'admin_granted' AND details LIKE '%legacy_auth_cutover%'`,
+      )
+      .get('legacy-unclaimed-admin') as { count: number }).count,
+    1,
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 58').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 58 preserves missing event consent from required-auth operation', () => {
+  const dbFile = makeTempDbPath('required-auth-event-consent');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture
+    .prepare(
+      `INSERT INTO players
+         (id, name, api_key, tracking_paused, is_admin, is_test, password_hash, deactivated_at, created_at)
+       VALUES (?, ?, ?, 0, 0, 0, ?, NULL, ?)`,
+    )
+    .run('required-member', 'Required Member', 'required-member-key', 'claimed-hash', now);
+  fixture
+    .prepare(
+      `INSERT INTO group_memberships
+         (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
+       VALUES ('default-group', 'required-member', 'member', 'active', ?, NULL, 1, NULL)`,
+    )
+    .run(now);
+  fixture
+    .prepare(
+      `INSERT INTO events (id, name, starts_at, ends_at, group_id, status, visibility_scope)
+       VALUES ('required-private-event', 'Required Private Event', ?, ?, 'default-group', 'published', 'participants')`,
+    )
+    .run(now, now + 60_000);
+  fixture
+    .prepare(
+      `INSERT INTO event_participants (event_id, player_id, status)
+       VALUES ('required-private-event', 'required-member', 'accepted')`,
+    )
+    .run();
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 58').run();
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile, { AUTH_MODE: 'required' }));
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.equal(
+    (migrated
+      .prepare(
+        `SELECT COUNT(*) AS count FROM event_tracking_consents
+         WHERE event_id = 'required-private-event' AND player_id = 'required-member'`,
+      )
+      .get() as { count: number }).count,
+    0,
+    'accepted roster membership must not be upgraded to tracking consent in required auth mode',
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 58').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

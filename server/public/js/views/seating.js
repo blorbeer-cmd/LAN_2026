@@ -11,9 +11,7 @@ import { state } from '../state.js';
 import { escapeHtml, avatarHtml, stateLabel } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
-import { isAdmin } from '../admin.js';
 import { isGroupAdmin } from '../groupContext.js';
-import { authRequired } from '../authGate.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 const SIDES = ['top', 'right', 'bottom', 'left'];
@@ -290,10 +288,10 @@ async function load(ctx) {
 }
 
 export function renderSeating(container, ctx) {
-  // In required mode the server gates PUT /api/seating/layout on the group
-  // role (admin/owner), not the global is_admin flag. Mirror that check here
+  // The server gates PUT /api/seating/layout on the group role (admin/owner).
+  // Mirror that check here
   // so the editor is only shown when the save will actually succeed.
-  const canEdit = authRequired ? isGroupAdmin() : isAdmin();
+  const canEdit = isGroupAdmin();
   if (!canEdit) {
     container.innerHTML = `
       <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>

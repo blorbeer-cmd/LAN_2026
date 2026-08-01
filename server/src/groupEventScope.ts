@@ -1,4 +1,3 @@
-import { config } from './config';
 import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 import type { Request, Response } from 'express';
 import { isParticipant } from './events';
@@ -49,13 +48,7 @@ export function requestCanAccessGroupEvent(req: Request, eventId: GroupEventScop
   if (!event || event.group_id !== req.group?.id) return false;
   if (event.visibility_scope === 'group' || event.visibility_scope === 'public') return true;
   if (req.groupMembership?.role === 'admin' || req.groupMembership?.role === 'owner') return true;
-  if (req.player) return isParticipant(eventId, req.player.id);
-
-  // Legacy mode has no authenticated request player. Enforce the selected
-  // device identity when present, while preserving identity-less legacy API
-  // compatibility until required auth becomes universal.
-  const legacyPlayerId = req.header('x-player-id');
-  return config.authMode === 'legacy' && (!legacyPlayerId || isParticipant(eventId, legacyPlayerId));
+  return Boolean(req.player && isParticipant(eventId, req.player.id));
 }
 
 export function requireGroupEventAccess(req: Request, res: Response, eventId: GroupEventScope): boolean {
@@ -77,11 +70,6 @@ export function resolveGroupEventStorageId(groupId: string): string | null {
 }
 
 export function groupPlayerRows<T>(groupId: string, columns: string): T[] {
-  if (config.authMode === 'legacy') {
-    return db
-      .prepare(`SELECT ${columns} FROM players p WHERE p.deactivated_at IS NULL ORDER BY p.name COLLATE NOCASE`)
-      .all() as T[];
-  }
   return db
     .prepare(
       `SELECT ${columns}

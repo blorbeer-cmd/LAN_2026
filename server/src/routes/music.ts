@@ -89,10 +89,7 @@ function hash(value: string): string {
 }
 
 function actorPlayerId(req: Request): string | null {
-  if (req.player?.id) return req.player.id;
-  const bodyId = req.body?.playerId;
-  if (typeof bodyId === 'string' && bodyId) return bodyId;
-  return req.header('x-player-id') || null;
+  return req.player?.id ?? null;
 }
 
 function activePlayer(req: Request): { id: string; name: string; isAdmin: number } | null {
@@ -116,7 +113,6 @@ function mayControl(req: Request, session: MusicSessionRow, playerId: string): b
 }
 
 function mayManageController(req: Request, _player: { isAdmin: number }): boolean {
-  if (config.authMode === 'legacy') return req.header('x-admin-mode') === '1';
   return req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
 }
 
@@ -261,7 +257,7 @@ musicRouter.post('/controller-package', ...withBodyPlayerIdentity, (req, res) =>
   const setup = buildControllerSetup({
     respawnBaseUrl: resolveAgentServerUrl(req.protocol, req.get('host') ?? ''),
     pairingCode,
-    accessToken: config.authMode === 'legacy' ? config.accessToken : '',
+    accessToken: '',
   });
   res.attachment('Respawn-Jam-Controller.zip');
   res.set('Content-Type', 'application/zip');

@@ -4,7 +4,7 @@
 // process-name mappings the agent uses) lives in the Spiele view now — see
 // server/CLAUDE.md games reorg.
 
-import { api, getToken } from '../api.js';
+import { api } from '../api.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { state } from '../state.js';
 import { icon } from '../icons.js';
@@ -16,103 +16,10 @@ import { withStepUp } from '../reauth.js';
 import { getMyId } from '../whoami.js';
 
 const EVENT_HELP = 'Mehrere Events sind möglich. Nur ein Event erfasst gleichzeitig Live-Status und Spielzeit; alles andere bleibt „Außerhalb von Events“.';
-const INVITE_HELP = 'Link oder QR-Code teilen: öffnet Respawn eingeloggt und führt neue Spieler direkt zur Profil-Erstellung.';
-const KIOSK_HELP = 'Für gemeinsame Bildschirme: zeigt Live-Status, Vote, Rang und Turnier automatisch.';
+const KIOSK_HELP = 'Für gemeinsame Bildschirme: zeigt Live-Status, Vote, Rang und Turnier automatisch. Der Kiosk benötigt seinen eigenen Token.';
 
-// The invite link is the shared access token, not tied to any one event —
-// same link always leads into whichever event is currently active. Factored
-// out so it can be reused both in the Einstellungen page and in the
-// "share it now" modal shown right after starting a new event.
-function inviteUrl() {
-  const token = getToken();
-  return token ? `${location.origin}/?token=${encodeURIComponent(token)}` : location.origin;
-}
-
-function renderInviteLinkBody() {
+function renderKioskSection() {
   return `
-    <div class="invite-link-row">
-      <input type="text" id="invite-link" readonly value="${escapeHtml(inviteUrl())}" aria-label="Einladungslink" style="font-family:monospace;font-size:var(--font-size-xs);" />
-      <button type="button" class="btn btn-sm" id="invite-copy">Kopieren</button>
-      <button type="button" class="btn btn-sm" id="invite-qr-open">${icon('scanQrCode')} QR-Code</button>
-    </div>
-  `;
-}
-
-// Wires the copy button + QR toggle within whichever root contains
-// renderInviteLinkBody()'s markup (the settings page, or a modal).
-function wireInviteLinkBody(root) {
-  root.querySelector('#invite-copy').addEventListener('click', async () => {
-    const value = root.querySelector('#invite-link').value;
-    try {
-      await navigator.clipboard.writeText(value);
-      showToast('Einladungslink kopiert.');
-    } catch {
-      showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
-    }
-  });
-
-  root.querySelector('#invite-qr-open').addEventListener('click', () => {
-    const url = root.querySelector('#invite-link').value;
-    openModal(
-      'Einladungs-QR-Code',
-      '<div class="invite-qr-modal" data-invite-qr><div class="empty-state">QR-Code wird geladen…</div></div>',
-      {
-        onMount: async (modalEl) => {
-          modalEl.classList.add('invite-qr-backdrop');
-          const qrEl = modalEl.querySelector('[data-invite-qr]');
-          try {
-            // Rendered server-side and injected as trusted markup (our own
-            // /api/qrcode response, not user input), never via a third-party
-            // service that could see the access token embedded in the link.
-            qrEl.innerHTML = await api.qrcode.svg(url);
-          } catch (err) {
-            qrEl.innerHTML = '<div class="empty-state">QR-Code konnte nicht geladen werden.</div>';
-            showToast(err.message, { error: true });
-          }
-        },
-      }
-    );
-  });
-}
-
-// Shown right after starting a new event — the whole point of asking for a
-// time frame/location up front is to immediately hand over a link that's
-// ready to send, instead of making the admin go find "Einladungslink" again.
-function openShareLinkModal(eventName) {
-  const { el } = openModal(
-    `${escapeHtml(eventName)} gestartet`,
-    `
-      <div class="stack">
-        <div class="title-with-info">
-          <strong>Einladungslink</strong>
-          ${infoTooltipHtml('event-share-help', 'Einladungslink', INVITE_HELP)}
-        </div>
-        ${renderInviteLinkBody()}
-      </div>
-    `,
-    {
-      onMount: (modalEl) => {
-        wireInviteLinkBody(modalEl);
-        wireInfoTooltips(modalEl);
-      },
-    }
-  );
-  void el;
-}
-
-function renderInviteSection() {
-  const token = getToken();
-  return `
-    <section class="card stack grouped-page-section" aria-labelledby="settings-invite-title">
-      <div class="grouped-page-section-title">
-        <span class="title-with-info">
-          <h2 id="settings-invite-title">Einladungslink</h2>
-          ${infoTooltipHtml('settings-invite-help', 'Einladungslink', INVITE_HELP)}
-        </span>
-      </div>
-      ${renderInviteLinkBody()}
-    </section>
-
     <section class="card stack grouped-page-section" aria-labelledby="settings-kiosk-title">
       <div class="grouped-page-section-title">
         <span class="title-with-info">
@@ -120,7 +27,7 @@ function renderInviteSection() {
           ${infoTooltipHtml('settings-kiosk-help', 'TV-/Kiosk-Ansicht', KIOSK_HELP)}
         </span>
       </div>
-      <a href="/kiosk.html${token ? `?token=${encodeURIComponent(token)}` : ''}" target="_blank" rel="noopener" class="btn btn-block">Kiosk-Ansicht öffnen</a>
+      <a href="/kiosk.html" target="_blank" rel="noopener" class="btn btn-block">Kiosk-Ansicht öffnen</a>
     </section>
   `;
 }
@@ -322,7 +229,6 @@ function openEventForm(ctx, existing) {
               close();
               await ctx.refresh();
               showToast('Event angelegt.');
-              openShareLinkModal(name);
             }
           } catch (err) {
             showToast(err.message, { error: true });
@@ -426,14 +332,13 @@ export function renderSettings(container, ctx) {
     <h1 class="view-title">Einstellungen</h1>
     <div class="grouped-page-sections">
       ${renderEventSection()}
-      ${renderInviteSection()}
+      ${renderKioskSection()}
     </div>
   `;
 
   container.querySelectorAll('[data-export-event]').forEach((btn) => {
     btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent));
   });
-  wireInviteLinkBody(container);
   wireInfoTooltips(container);
 
   container.querySelector('#new-event-btn').addEventListener('click', () => openEventForm(ctx, null));

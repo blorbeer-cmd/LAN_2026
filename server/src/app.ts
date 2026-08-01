@@ -6,7 +6,6 @@ import express from 'express';
 import helmet from 'helmet';
 import path from 'path';
 
-import { requireAccess, accessProtectionEnabled } from './auth';
 import { apiRouter } from './routes';
 import { agentRouter } from './routes/agent';
 import { config } from './config';
@@ -25,27 +24,20 @@ export function createApp(): express.Express {
   // the 400 KB validation limit and return a useful 413 when it is exceeded.
   app.use(express.json({ limit: '1mb' }));
 
-  // Public endpoint so the frontend can choose the legacy shared-token gate
-  // or the required per-user login gate.
+  // Public metadata needed before login by the dedicated kiosk client.
   app.get('/api/meta', (_req, res) => {
     res.json({
-      accessProtection: accessProtectionEnabled(),
-      authMode: config.authMode,
-      kioskProtection: config.authMode === 'required' && Boolean(config.kioskToken),
+      kioskProtection: Boolean(config.kioskToken),
     });
   });
 
-  // Agent reports authenticate via the player's own API key (NFR-15), not the
-  // shared UI token — the agent never knows that token. Must be mounted
-  // before the requireAccess gate below so it isn't blocked by it.
+  // Agent reports authenticate via the player's own API key (NFR-15).
   app.use('/api/agent', agentRouter);
 
-  // Legacy browser APIs sit behind the shared-token gate. In required mode
-  // requireAccess is a compatibility no-op and apiRouter enforces sessions.
-  app.use('/api', requireAccess, apiRouter);
+  app.use('/api', apiRouter);
 
-  // Static frontend. The login screen itself is static and handles token entry
-  // client-side, so serving files openly is fine — the data APIs are protected.
+  // Static frontend. The login screen itself is public while data APIs require
+  // an authenticated session.
   // no-cache (not no-store) forces the browser to revalidate with the server
   // on every load via ETag instead of silently reusing a stale cached JS/CSS
   // file after a deploy — this is what caused updated views to appear "not

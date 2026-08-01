@@ -5,7 +5,7 @@ import type { AddressInfo } from 'net';
 import { Server } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp, installTestSocketIdentity } from './testApp';
 import { db } from '../db';
 import { registerArcadeSockets } from '../arcade/arcade';
 import { registerTetrisSockets } from '../arcade/tetris';
@@ -26,8 +26,9 @@ function emitAck(socket: ClientSocket, event: string, payload: unknown): Promise
 
 test('parallel Arcade lobby creation allows exactly one lobby per player', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerArcadeSockets(io);
   registerTetrisSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
@@ -59,8 +60,10 @@ test('parallel Arcade lobby creation allows exactly one lobby per player', async
 test('rapid-fire lobby creation keeps exactly one lobby and throttles the join push', async () => {
   clearLobbyMemberships();
   clearLobbyPushThrottle();
-  const httpServer = http.createServer(createApp());
+  db.prepare("DELETE FROM push_log WHERE title LIKE '%Quiz-Lobby%'").run();
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerArcadeSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;

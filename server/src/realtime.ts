@@ -170,12 +170,11 @@ function arcadePayloadScope(payload: Record<string, unknown>): ArcadeDeliverySco
     (payload.eventId === null || (typeof payload.eventId === 'string' && payload.eventId))
       ? { groupId: payload.groupId, eventId: payload.eventId as string | null }
       : null;
-  return explicit ?? (config.authMode === 'legacy' ? { groupId: DEFAULT_GROUP_ID, eventId: null } : null);
+  return explicit;
 }
 
 function normalSocketCanUseArcadeScope(socket: Socket, scope: ArcadeDeliveryScope): boolean {
   if (socket.data.kioskReadOnly) return false;
-  if (config.authMode === 'legacy') return true;
   const socketEventId = typeof socket.data.eventId === 'string' && socket.data.eventId ? socket.data.eventId : null;
   if (socket.data.groupId !== scope.groupId || socketEventId !== scope.eventId) return false;
   if (!activeGroupMember(scope.groupId, socket.data.authPlayerId)) return false;
@@ -199,7 +198,7 @@ function emitArcadeWatchListToSocket(socket: Socket): void {
       return scope && normalSocketCanUseArcadeScope(socket, scope);
     })
     .map(watchSummary);
-  if (config.authMode === 'legacy' || typeof socket.data.groupId === 'string') {
+  if (typeof socket.data.groupId === 'string') {
     socket.emit('arcade:watch:list', { matches });
   }
 }
@@ -275,8 +274,6 @@ export interface BroadcastScope {
   eventId?: string | null;
   // Personally targeted payloads (e.g. direct pushes): restricts delivery to
   // exactly these players and keeps the payload off kiosk sockets entirely.
-  // Legacy sockets carry no proven identity, so these payloads are not sent
-  // through realtime there at all.
   recipientPlayerIds?: string[];
 }
 
@@ -352,12 +349,10 @@ function rejectUnscopedBroadcast(event: string): never | void {
 // startup) — it simply no-ops.
 //
 // Empfängerregeln (default-deny):
-// - Legacy-Modus: die Installation ist ein einzelner Mandant ohne echte
-//   Gruppen-Sockets; jeder gescopte Broadcast geht an alle Clients.
-// - Required-Modus, normale Sockets: nur an Sockets, die genau diesen
+// - Normale Sockets: nur an Sockets, die genau diesen
 //   Gruppen-Scope abonniert haben UND deren aktive Mitgliedschaft (sowie ggf.
 //   Event-Teilnahme) unmittelbar vor der Auslieferung erneut bestätigt wurde.
-// - Required-Modus, Kiosk-Sockets: nur Events aus KIOSK_DELIVERED_EVENTS,
+// - Kiosk-Sockets: nur Events aus KIOSK_DELIVERED_EVENTS,
 //   nur für exakt den Gruppen-/Event-Scope des validierten Kiosk-Tokens.
 export function broadcast(event: string, payload: unknown, scope: BroadcastScope): void {
   if (!io) return;
@@ -366,17 +361,6 @@ export function broadcast(event: string, payload: unknown, scope: BroadcastScope
   const eventId = typeof scope.eventId === 'string' && scope.eventId ? scope.eventId : null;
   const hasRecipientFilter = Array.isArray(scope.recipientPlayerIds);
   const recipients = hasRecipientFilter ? new Set(scope.recipientPlayerIds) : null;
-  if (config.authMode === 'legacy') {
-    // A legacy socket has neither a session-bound player id nor a validated
-    // group subscription. Falling back to io.emit for a personally targeted
-    // payload would disclose it to every browser and kiosk, so the safe
-    // compatibility behavior is no realtime delivery. The persisted entry
-    // remains available through the recipient's authenticated history after
-    // upgrading to required mode.
-    if (hasRecipientFilter) return;
-    io.emit(event, payload);
-    return;
-  }
   // Unit/test adapters may expose only the historical io.emit surface.
   if (!io.sockets?.sockets) {
     io.emit(event, payload);
@@ -387,8 +371,7 @@ export function broadcast(event: string, payload: unknown, scope: BroadcastScope
   // queued payload.
   // Kiosk sockets are authenticated with a read-only kiosk token rather than
   // a player session; only the server-set kioskReadOnly flag counts (a
-  // handshake claim alone must never select the kiosk path). Legacy mode is
-  // handled above via io.emit, kiosk screens included.
+  // handshake claim alone must never select the kiosk path).
   for (const socket of io.sockets.sockets.values()) {
     if (socket.data.kioskReadOnly) {
       if (recipients) continue; // personally targeted payloads never reach the shared screen
@@ -585,22 +568,12 @@ export function registerArcadeKioskSockets(server: Server): void {
 }
 
 // Socket.IO connections bypass Express middleware entirely, so their access
-// rules mirror the REST API here: required mode accepts only a valid user
-// session, while legacy mode also supports the shared ACCESS_TOKEN.
-// Parameterized (defaulting to config.accessToken) so the exact matching
-// logic is unit-testable without depending on process-wide env state.
-//
-// Same-origin clients send the session cookie automatically. In legacy mode,
-// an existing user session remains a valid alternative to the shared token.
-export function createSocketAuthGuard(
-  accessToken: string = config.accessToken,
-  authMode: 'legacy' | 'required' = config.authMode,
-  kioskToken: string = config.kioskToken
-) {
+// rules mirror the REST API here: a valid user session or the dedicated
+// read-only kiosk credential is required.
+export function createSocketAuthGuard(kioskToken: string = config.kioskToken) {
   return (socket: Socket, next: (err?: Error) => void): void => {
     const kioskScope = socket.handshake.auth?.kiosk === true ? resolveKioskToken(socket.handshake.auth?.token) : null;
     if (
-      authMode === 'required' &&
       socket.handshake.auth?.kiosk === true &&
       ((Boolean(kioskToken) && socket.handshake.auth?.token === kioskToken) || Boolean(kioskScope))
     ) {
@@ -619,20 +592,14 @@ export function createSocketAuthGuard(
     if (resolved) {
       socket.data.authSessionId = resolved.session.id;
       socket.data.authPlayerId = resolved.player.id;
-      if (authMode === 'required') {
-        socket.use(([_, payload], proceed) => {
-          if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
-            (payload as Record<string, unknown>).playerId = resolved.player.id;
-          }
-          proceed();
-        });
-      }
+      socket.use(([_, payload], proceed) => {
+        if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+          (payload as Record<string, unknown>).playerId = resolved.player.id;
+        }
+        proceed();
+      });
       return next();
     }
-    if (authMode === 'required') return next(new Error('unauthorized'));
-    if (!accessToken) return next();
-    const token = socket.handshake.auth?.token ?? socket.handshake.query?.token;
-    if (token === accessToken) return next();
     next(new Error('unauthorized'));
   };
 }

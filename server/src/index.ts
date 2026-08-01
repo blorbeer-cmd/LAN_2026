@@ -4,12 +4,12 @@
 import http from 'http';
 import { Server } from 'socket.io';
 
-import { config, productionConfigError } from './config';
+import { config, productionConfigError, startupAccessConfigError } from './config';
 import './db'; // side-effect: open DB, create schema, seed defaults
+import { hasClaimedAdmin } from './accounts';
 import { runBootstrapAdmins } from './bootstrapAdmins';
 import { createApp } from './app';
 import { setIo, createSocketAuthGuard, registerArcadeKioskSockets } from './realtime';
-import { accessProtectionEnabled } from './auth';
 import { startOfflineSweeper } from './liveStatus';
 import { startArcadeHeartbeat } from './arcade/arcadeTracking';
 import { registerArcadeSockets } from './arcade/arcade';
@@ -39,6 +39,22 @@ function start(): void {
   // Seed any configured ready-to-use admin accounts (BOOTSTRAP_ADMIN_<n>_*)
   // before the first request can arrive. Idempotent and a no-op when unset.
   runBootstrapAdmins();
+
+  const claimedAdminExists = hasClaimedAdmin();
+  const accessError = startupAccessConfigError(claimedAdminExists);
+  if (accessError) {
+    // eslint-disable-next-line no-console
+    console.error(`FATAL: ${accessError}`);
+    process.exit(1);
+  }
+  if (!claimedAdminExists && process.env.LOCAL_GENERATED_RECOVERY_CODE === '1') {
+    // eslint-disable-next-line no-console
+    console.log('Frische lokale Datenbank: Für diesen Start wurde ein temporärer Erstzugang erzeugt.');
+    // eslint-disable-next-line no-console
+    console.log(`Öffne http://localhost:${config.port}/?claim=${config.adminRecoveryCode}`);
+    // eslint-disable-next-line no-console
+    console.log('Für einen dauerhaften Zugang ADMIN_RECOVERY_CODE oder BOOTSTRAP_ADMIN_1_NAME/PASSWORD setzen.');
+  }
 
   const app = createApp();
   const server = http.createServer(app);
@@ -82,10 +98,6 @@ function start(): void {
   server.listen(config.port, () => {
     // eslint-disable-next-line no-console
     console.log(`Respawn server läuft auf http://localhost:${config.port}`);
-    if (config.authMode === 'legacy' && !accessProtectionEnabled()) {
-      // eslint-disable-next-line no-console
-      console.log('Hinweis: Kein ACCESS_TOKEN gesetzt – Zugangsschutz ist deaktiviert.');
-    }
   });
 }
 

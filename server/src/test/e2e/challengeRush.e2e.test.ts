@@ -3,11 +3,20 @@ import assert from 'node:assert/strict';
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
+import {
+  addSessionCookie,
+  authenticatedServerEnv,
+  createE2EAccount,
+  loginE2EAdmin,
+  promoteE2EAdmin,
+} from './authHelpers';
 
 const PORT = 3916; // 3915 = battleship
 const BASE_URL = `http://localhost:${PORT}`;
 let serverProcess: ChildProcess;
 let browser: Browser;
+const adminCookies = new Map<string, string>();
+const playerCookies = new Map<string, string>();
 
 async function waitForServer(baseUrl: string = BASE_URL): Promise<void> {
   const started = Date.now();
@@ -20,22 +29,22 @@ async function waitForServer(baseUrl: string = BASE_URL): Promise<void> {
 
 async function createPlayer(baseUrl: string = BASE_URL): Promise<string> {
   const name = `Challenge Rush E2E ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const response = await fetch(`${baseUrl}/api/players`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
-  assert.equal(response.status, 201);
-  return ((await response.json()) as { id: string }).id;
+  const freshAdminCookie = await loginE2EAdmin(baseUrl);
+  adminCookies.set(baseUrl, freshAdminCookie);
+  const account = await createE2EAccount(baseUrl, freshAdminCookie, name);
+  playerCookies.set(`${baseUrl}:${account.id}`, account.cookie);
+  return account.id;
 }
 
 async function makeAdmin(playerId: string): Promise<void> {
-  const response = await fetch(`${BASE_URL}/api/players/${playerId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ isAdmin: true }) });
-  assert.equal(response.status, 200);
+  await promoteE2EAdmin(BASE_URL, adminCookies.get(BASE_URL)!, playerId);
 }
 
 async function openArcade(playerId: string, baseUrl: string = BASE_URL): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await addSessionCookie(context, baseUrl, playerCookies.get(`${baseUrl}:${playerId}`)!);
   const page = await context.newPage();
   await page.goto(baseUrl);
-  await page.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), playerId);
-  await page.reload();
   await page.waitForSelector('.nav-btn[data-view="more"]');
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await page.click('.nav-btn[data-view="more"]', { timeout: 4_000 }).catch(() => undefined);
@@ -53,8 +62,9 @@ async function openArcade(playerId: string, baseUrl: string = BASE_URL): Promise
 }
 
 before(async () => {
-  serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], { env: { ...process.env, PORT: String(PORT), DB_FILE: ':memory:', ACCESS_TOKEN: '' }, stdio: 'ignore' });
+  serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], { env: authenticatedServerEnv(PORT), stdio: 'ignore' });
   await waitForServer();
+  adminCookies.set(BASE_URL, await loginE2EAdmin(BASE_URL));
   browser = await chromium.launch();
 });
 
@@ -95,7 +105,7 @@ test('Challenge Rush admin can run selected tasks in checkbox order', async () =
   }
 });
 
-test('Challenge Rush drops a hidden admin selection after an identity switch', async () => {
+test('Challenge Rush drops a hidden admin selection after a session switch', async () => {
   const adminId = await createPlayer();
   const playerId = await createPlayer();
   await makeAdmin(adminId);
@@ -104,11 +114,11 @@ test('Challenge Rush drops a hidden admin selection after an identity switch', a
     await actor.page.click('[data-game="challenge-rush"]');
     await actor.page.click('.challenge-rush-test-selector > summary');
     await actor.page.check('[data-cr-challenge-key="digit-sum"]');
-    await actor.page.evaluate((id) => {
-      localStorage.setItem('respawn_my_player_id', id);
-      window.dispatchEvent(new CustomEvent('respawn:identity-changed'));
-      window.dispatchEvent(new CustomEvent('respawn:rerender'));
-    }, playerId);
+    await addSessionCookie(actor.context, BASE_URL, playerCookies.get(`${BASE_URL}:${playerId}`)!);
+    await actor.page.reload();
+    await actor.page.click('.nav-btn[data-view="more"]');
+    await actor.page.click('[data-navigate="arcade"]');
+    await actor.page.click('[data-game="challenge-rush"]');
     await actor.page.waitForSelector('#cr-create');
     assert.equal(await actor.page.locator('.challenge-rush-test-selector').count(), 0);
     await actor.page.click('#cr-create');
@@ -130,7 +140,11 @@ test('Challenge Rush focuses timed targets after start and server-side expiry', 
     try {
       await actor.page.click('[data-game="challenge-rush"]');
       await actor.page.click('.challenge-rush-test-selector > summary');
-      await actor.page.check(`[data-cr-challenge-key="${challenge.key}"]`);
+      const challengeOption = actor.page.locator(`[data-cr-challenge-key="${challenge.key}"]`);
+      await challengeOption.evaluate((option: HTMLInputElement) => {
+        option.checked = true;
+        option.dispatchEvent(new Event('change', { bubbles: true }));
+      });
       await actor.page.click('#cr-create');
       await actor.page.waitForSelector('[data-cr-start]');
       await actor.page.click('[data-cr-start]');
@@ -433,11 +447,12 @@ test('Challenge Rush unlocks a new lobby immediately after a reconnect rejected 
   const forfeitPort = 3917;
   const forfeitBaseUrl = `http://localhost:${forfeitPort}`;
   const forfeitProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
-    env: { ...process.env, PORT: String(forfeitPort), DB_FILE: ':memory:', ACCESS_TOKEN: '', CHALLENGE_RUSH_RECONNECT_GRACE_MS: '800' },
+    env: { ...authenticatedServerEnv(forfeitPort), CHALLENGE_RUSH_RECONNECT_GRACE_MS: '800' },
     stdio: 'ignore',
   });
   try {
     await waitForServer(forfeitBaseUrl);
+    adminCookies.set(forfeitBaseUrl, await loginE2EAdmin(forfeitBaseUrl));
     const hostId = await createPlayer(forfeitBaseUrl);
     const guestId = await createPlayer(forfeitBaseUrl);
     const host = await openArcade(hostId, forfeitBaseUrl);

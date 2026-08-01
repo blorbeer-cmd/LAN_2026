@@ -1,5 +1,4 @@
 import { nanoid } from 'nanoid';
-import { config } from '../config';
 import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from '../db';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from '../eventParticipation';
 import { getTrackingEvent } from '../events';
@@ -23,26 +22,6 @@ export function currentArcadeDataScope(playerIds: string[] = []): ArcadeDataScop
   const uniquePlayerIds = [...new Set(playerIds)];
   if (uniquePlayerIds.length === 0) return { groupId, eventId };
 
-  if (config.authMode === 'legacy') {
-    const placeholders = uniquePlayerIds.map(() => '?').join(',');
-    const playerCount = (
-      db.prepare(`SELECT COUNT(*) AS count FROM players WHERE id IN (${placeholders})`).get(...uniquePlayerIds) as {
-        count: number;
-      }
-    ).count;
-    if (playerCount !== uniquePlayerIds.length) return null;
-    const now = Date.now();
-    const ensureMembership = db.prepare(
-      `INSERT OR IGNORE INTO group_memberships
-         (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
-       VALUES (?, ?, 'member', 'active', ?, NULL, 1, NULL)`,
-    );
-    db.transaction(() => {
-      for (const playerId of uniquePlayerIds) ensureMembership.run(groupId, playerId, now);
-    })();
-    return { groupId, eventId };
-  }
-
   const placeholders = uniquePlayerIds.map(() => '?').join(',');
   const activeCount = (
     db
@@ -57,8 +36,7 @@ export function currentArcadeDataScope(playerIds: string[] = []): ArcadeDataScop
   ).count;
   if (activeCount !== uniquePlayerIds.length) return null;
 
-  // Legacy mode has one implicit group. Required mode additionally ensures
-  // that an event-scoped Arcade action only references that event's roster.
+  // Event-scoped Arcade actions may only reference that event's roster.
   if (eventId) {
     const participantCount = (
       db
@@ -93,7 +71,7 @@ export function recordArcadeResult(options: {
   const realPlayerById = new Map(realPlayers.map((player) => [player.id, player]));
   const realPlayerIds = participantKeys.filter((id) => realPlayerById.has(id));
   const scope = options.scope ?? currentArcadeDataScope(realPlayerIds);
-  if (scope && options.scope && config.authMode !== 'legacy') {
+  if (scope && options.scope) {
     const eventExists = scope.eventId === null || Boolean(
       db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(scope.eventId, scope.groupId),
     );

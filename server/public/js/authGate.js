@@ -1,9 +1,6 @@
-// Real per-user login gate (see docs/KONZEPT-USER-MANAGEMENT.md). Only ever
-// runs once the server reports authMode: 'required' via /api/meta — while
-// AUTH_MODE stays 'legacy' (the default), app.js never calls ensureLogin()
-// at all, so legacy deployments keep today's whoami.js-based identity.
-// Required mode locks the compatibility adapter to /api/me; feature routes
-// independently bind every actor playerId to that verified server session.
+// Real per-user login gate (see docs/KONZEPT-USER-MANAGEMENT.md). It locks the
+// view identity to /api/me; feature routes independently bind every actor id
+// to that verified server session.
 
 import { api } from './api.js';
 import { lockMyIdToSession } from './whoami.js';
@@ -33,13 +30,6 @@ function applySession(account) {
   setAdmin(Boolean(account.isAdmin));
   setTestIdentity(Boolean(account.isTest));
 }
-
-// Whether real per-user login is active for this session — true exactly
-// when ensureLogin() below has run (app.js only calls it while the server
-// reports authMode: 'required'). Read by profile.js to decide between the
-// old "Nicht du?" identity switcher (meaningless once a real, password-
-// backed session exists) and a real "Abmelden" that clears the session.
-export let authRequired = false;
 
 export async function logout() {
   try {
@@ -142,7 +132,6 @@ function renderTestSessionForm() {
 // completes whichever form applies (login by default, or register/claim
 // when the URL carries the matching invite/reset code).
 export async function ensureLogin() {
-  authRequired = true;
   const inviteCode = paramFromUrl('invite');
   const claimCode = paramFromUrl('claim');
   const resetCode = paramFromUrl('reset');

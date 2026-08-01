@@ -1,6 +1,5 @@
-// AUTH_MODE is read at module import time, so the required-mode security
-// boundary is exercised in a child process with the environment configured
-// before app.ts and its routers load.
+// The productive session boundary is exercised in a child process with its
+// recovery and kiosk configuration set before app.ts and its routers load.
 
 import { test } from 'node:test';
 import { execFileSync } from 'child_process';
@@ -10,7 +9,7 @@ const APP_JS_PATH = path.join(__dirname, '..', 'app.js');
 const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
 const RECOVERY_CODE = 'required-mode-recovery-code';
 
-test('required auth binds personal APIs to the session and protects API keys', () => {
+test('personal auth binds APIs to the session and protects API keys', () => {
   const script = `
     const assert = require('assert/strict');
     const request = require('supertest');
@@ -25,7 +24,6 @@ test('required auth binds personal APIs to the session and protects API keys', (
       const app = createApp();
       const meta = await request(app).get('/api/meta');
       assert.equal(meta.status, 200);
-      assert.equal(meta.body.accessProtection, false);
       assert.equal(meta.body.kioskProtection, true);
       const kioskRead = await request(app)
         .get('/api/live')
@@ -138,8 +136,8 @@ test('required auth binds personal APIs to the session and protects API keys', (
       const foreignPatch = await request(app).patch('/api/players/' + bob.account.id).set('Cookie', alice.cookie).send({ name: 'Spoofed Bob' });
       assert.equal(foreignPatch.status, 403);
 
-      // Required mode retires the direct isAdmin toggle: instance admin
-      // rights are derived from the group role instead (groups.ts,
+      // The direct isAdmin toggle is retired: instance admin rights are
+      // derived from the group role instead (groups.ts,
       // changeGroupMemberRole; docs/plans/reset-single-group.md §9.1).
       const legacyIsAdminToggle = await request(app).patch('/api/players/' + alice.account.id).set('Cookie', adminCookie).send({ isAdmin: true });
       assert.equal(legacyIsAdminToggle.status, 400);
@@ -310,8 +308,6 @@ test('required auth binds personal APIs to the session and protects API keys', (
     execFileSync(process.execPath, ['-e', script], {
       env: {
         ...process.env,
-        AUTH_MODE: 'required',
-        ACCESS_TOKEN: 'legacy-token-that-must-not-be-required',
         ADMIN_RECOVERY_CODE: RECOVERY_CODE,
         KIOSK_TOKEN: 'required-kiosk-token',
         COOKIE_SECURE: '0',
@@ -374,7 +370,6 @@ test('required auth recovery code restores the sole admin and revokes old device
     execFileSync(process.execPath, ['-e', script], {
       env: {
         ...process.env,
-        AUTH_MODE: 'required',
         ADMIN_RECOVERY_CODE: RECOVERY_CODE,
         COOKIE_SECURE: '0',
         DB_FILE: ':memory:',

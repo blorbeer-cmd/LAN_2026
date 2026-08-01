@@ -12,7 +12,6 @@
 
 import { nanoid } from 'nanoid';
 import { db } from './db';
-import { config } from './config';
 import { hashPassword, isValidPassword } from './accounts';
 import { isNonEmptyString } from './validation';
 import { ensureBootstrapAdminMembership } from './groups';
@@ -91,16 +90,9 @@ function seedOne(entry: BootstrapAdminEntry): BootstrapAdminAction {
       if (existing.is_test) return 'skipped-test';
       if (existing.deactivated_at !== null) return 'skipped-deactivated';
 
-      if (config.authMode === 'required') {
-        // Leave is_admin untouched until the membership helper derives it
-        // from the active role and writes any grant/revocation audit entry.
-        db.prepare('UPDATE players SET password_hash = ? WHERE id = ?').run(hashPassword(password), existing.id);
-      } else {
-        db.prepare('UPDATE players SET password_hash = ?, is_admin = 1 WHERE id = ?').run(
-          hashPassword(password),
-          existing.id,
-        );
-      }
+      // Leave is_admin untouched until the membership helper derives it from
+      // the active role and writes any grant/revocation audit entry.
+      db.prepare('UPDATE players SET password_hash = ? WHERE id = ?').run(hashPassword(password), existing.id);
       ensureBootstrapAdminMembership(existing.id);
       return 'claimed';
     }
@@ -114,7 +106,7 @@ function seedOne(entry: BootstrapAdminEntry): BootstrapAdminAction {
       name,
       DEFAULT_COLOR,
       nanoid(24),
-      config.authMode === 'required' ? 0 : 1,
+      0,
       hashPassword(password),
       Date.now(),
     );

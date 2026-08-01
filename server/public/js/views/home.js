@@ -10,7 +10,7 @@
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml } from '../format.js';
-import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { renderSeatingPlan } from './seating.js';
@@ -204,8 +204,6 @@ export function renderHome(container, ctx) {
   }
 
   const myId = getMyId();
-  const whoAmI = whoAmICardHtml('home-whoami', { marginBottom: 'var(--space-4)' });
-
   ensureAktuellLoaded();
   const cards = players
     .map((p) => {
@@ -235,7 +233,6 @@ export function renderHome(container, ctx) {
 
   container.innerHTML = `
     <h1 class="view-title">Home</h1>
-    ${whoAmI}
     <div class="grouped-page-sections">
       ${renderStatus()}
       <section class="card grouped-page-section stack" aria-labelledby="home-live-title">
@@ -248,8 +245,6 @@ export function renderHome(container, ctx) {
       ${renderHomeSeating(ctx)}
     </div>
   `;
-
-  wireWhoAmICard(container, 'home-whoami', ctx);
 
   container.querySelectorAll('[data-toggle-pause]').forEach((btn) => {
     btn.addEventListener('click', async () => {
