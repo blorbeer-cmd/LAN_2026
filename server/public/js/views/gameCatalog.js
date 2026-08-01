@@ -639,10 +639,6 @@ export function renderGameCatalog(container, ctx) {
           <button type="button" class="btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}" data-tab="catalog">Alle</button>
           <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
         </div>
-        <div>
-          <label class="field-label" for="game-catalog-search">Spiele durchsuchen</label>
-          <input type="search" id="game-catalog-search" value="${escapeHtml(gameSearchQuery)}" placeholder="Spiel suchen…" autocomplete="off" />
-        </div>
         <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
           ${sortButton('name', 'Name')}
           ${sortButton('myBock', 'Mein Bock')}
@@ -661,6 +657,7 @@ export function renderGameCatalog(container, ctx) {
                </div>`
             : ''
         }
+        <input type="search" id="game-catalog-search" value="${escapeHtml(gameSearchQuery)}" placeholder="Spiele suchen…" aria-label="Spiele suchen" autocomplete="off" />
         <div class="game-table">
           ${
             rows.length === 0
