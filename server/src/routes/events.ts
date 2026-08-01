@@ -35,6 +35,7 @@ import { writeAdminAudit } from '../adminAudit';
 import { config } from '../config';
 import { setEventTrackingConsent } from '../trackingContexts';
 import { activeGroupPlayers } from '../groupPlayers';
+import { createPersistentBackup } from '../backupService';
 
 export const eventsRouter = Router();
 
@@ -362,7 +363,26 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
 
 // POST /api/events/:id/tracking/start - 409s (with the conflicting event's
 // id/name) if a different event is already tracking.
-eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin'), (req, res) => {
+eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin'), async (req, res) => {
+  const event = req.groupResource as EventRow;
+  const current = getTrackingEvent();
+  const canStart =
+    event.id !== OUTSIDE_EVENTS_ID &&
+    !event.ended_at &&
+    event.status !== 'cancelled' &&
+    !event.tracking_enabled &&
+    (current.id === OUTSIDE_EVENTS_ID || current.id === event.id);
+  if (canStart) {
+    try {
+      await createPersistentBackup('pre-event');
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Pre-event backup failed:', error);
+      return res.status(503).json({
+        error: 'Sicherungs-Snapshot fehlgeschlagen. Eventstart wurde zur Sicherheit abgebrochen.',
+      });
+    }
+  }
   const result = startTracking(req.params.id);
   if (!result.ok) {
     const status = result.code === 'not_found' ? 404 : result.code === 'conflict' ? 409 : 400;

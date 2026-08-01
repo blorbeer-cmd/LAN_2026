@@ -1,6 +1,5 @@
-// "Durchsage" view: persists a message for the current group/event recipient
-// set. Phase 5c deliberately refreshes only the sending browser; delivery to
-// other devices, Push and Kiosk remain separate follow-up work.
+// "Durchsage" view: sends a time-limited message to the current group/event
+// through the shared in-app, kiosk and Web Push delivery pipeline.
 
 import { api } from '../api.js';
 import { escapeHtml, formatDateTime } from '../format.js';
@@ -28,8 +27,8 @@ async function loadHistory(ctx) {
   }
 }
 
-// Called from app.js on every broadcast:new socket event so the history
-// list is fresh next time this view renders.
+// Called from app.js on every broadcast lifecycle event so the history list
+// is fresh next time this view renders.
 export function invalidateBroadcasts() {
   historyCache = null;
 }
@@ -90,7 +89,7 @@ export function renderBroadcast(container, ctx) {
             ${infoTooltipHtml(
               'broadcast-delivery-help',
               'Neue Durchsage',
-              'Wird für die aktuelle Gruppe oder LAN gespeichert und erscheint in deiner Mitteilungshistorie. Andere Geräte, Push und Kiosk werden noch nicht automatisch beliefert.'
+              'Erreicht verbundene Geräte sofort, erscheint auf dem Kiosk und wird an Personen mit aktivierten Push-Mitteilungen gesendet.'
             )}
           </span>
         </div>
@@ -147,8 +146,6 @@ export function renderBroadcast(container, ctx) {
     submitBtn.disabled = true;
     try {
       await api.broadcasts.send(myId, message, endsAt);
-      // Refresh only this browser from the durable REST history. This keeps
-      // the sender's center current without introducing delivery signals.
       window.dispatchEvent(new CustomEvent('respawn:notifications-refresh'));
       const currentInput = container.querySelector('#broadcast-message');
       const currentEndsAtInput = container.querySelector('#broadcast-ends-at');

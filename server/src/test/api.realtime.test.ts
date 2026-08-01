@@ -1,6 +1,5 @@
-// Integration tests for the realtime path itself. Phase 5c deliberately
-// keeps organisation communication data-only, while the remaining tests
-// verify the Socket.IO wiring used by features that already deliver events.
+// Integration tests for Socket.IO delivery, including group broadcasts and
+// the transport/authentication wiring used by other realtime features.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -47,14 +46,14 @@ function connectClient(baseUrl: string, sessionToken?: string): Promise<ClientSo
   });
 }
 
-test('stored broadcasts do not deliver a Socket.IO event in Phase 5c', async () => {
+test('a new broadcast reaches every connected legacy client with its public payload', async () => {
   await withServer(async (baseUrl) => {
     const clientA = await connectClient(baseUrl);
     const clientB = await connectClient(baseUrl);
     try {
-      let received = 0;
-      clientA.on(Events.broadcastNew, () => { received += 1; });
-      clientB.on(Events.broadcastNew, () => { received += 1; });
+      const received: unknown[] = [];
+      clientA.on(Events.broadcastNew, (payload) => received.push(payload));
+      clientB.on(Events.broadcastNew, (payload) => received.push(payload));
 
       const player = await request(baseUrl).post('/api/players').send({ name: 'Realtime Test Player 2' });
       assert.equal(player.status, 201);
@@ -63,10 +62,17 @@ test('stored broadcasts do not deliver a Socket.IO event in Phase 5c', async () 
         .send({ playerId: player.body.id, message: 'Zweite Durchsage' });
       assert.equal(sent.status, 201);
 
-      // The HTTP response is produced after the route has finished. Give any
-      // accidentally queued Socket.IO packets one event-loop turn to arrive.
+      // The HTTP response is produced after the route has emitted. Give both
+      // clients one event-loop turn to consume their queued packets.
       await new Promise((resolve) => setTimeout(resolve, 50));
-      assert.equal(received, 0);
+      assert.equal(received.length, 2);
+      for (const payload of received as Array<Record<string, unknown>>) {
+        assert.equal(payload.id, sent.body.id);
+        assert.equal(payload.playerId, player.body.id);
+        assert.equal(payload.playerName, 'Realtime Test Player 2');
+        assert.equal(payload.message, 'Zweite Durchsage');
+        assert.equal('recipientIds' in payload, false, 'recipient snapshots stay in the REST response');
+      }
     } finally {
       clientA.close();
       clientB.close();

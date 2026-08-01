@@ -29,7 +29,7 @@ import {
   setIo,
 } from '../realtime';
 import { issueKioskToken, revokeKioskToken } from '../kioskTokens';
-import { notifyPlayers } from '../push';
+import { notifyPlayers, setPushMute } from '../push';
 import { createSession, SESSION_COOKIE_NAME } from '../sessions';
 import { registerPongSockets } from '../arcade/pong';
 
@@ -359,13 +359,28 @@ test('a direct push reaches only its resolved recipients and never the kiosk', a
       assert.equal(bobPush.count(), 0, 'other group members must not see a direct push payload');
       assert.equal(kioskPush.count(), 0, 'the shared kiosk must never render a direct push');
 
-      notifyPlayers([alice, bob], { title: 'Für alle', body: 'Gruppenweit' }, 'all', undefined, {
+      setPushMute(groupA, bob, null, true);
+      const groupDelivery = notifyPlayers([alice, bob], { title: 'Für alle', body: 'Gruppenweit' }, 'all', undefined, {
         groupId: groupA,
       });
+      assert.deepEqual(groupDelivery?.recipientPlayerIds, [alice], 'muted members are omitted from active delivery');
       await settle();
       assert.equal(alicePush.count(), 2);
       assert.equal(bobPush.count(), 1);
       assert.equal(kioskPush.count(), 1, 'group-wide entries remain the kiosk banner source');
+
+      setPushMute(groupA, alice, null, true);
+      const kioskOnlyDelivery = notifyPlayers(
+        [alice, bob],
+        { title: 'Nur Kiosk', body: 'Persönlich stummgeschaltet' },
+        'all',
+        undefined,
+        { groupId: groupA },
+      );
+      assert.ok(kioskOnlyDelivery?.entry.id, 'the shared kiosk keeps a durable group-wide entry');
+      assert.deepEqual(kioskOnlyDelivery?.recipientPlayerIds, []);
+      await settle();
+      assert.equal(kioskPush.count(), 2, 'the shared kiosk still receives an all-muted group announcement');
     } finally {
       aliceSocket.close();
       bobSocket.close();

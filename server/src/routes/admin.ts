@@ -10,8 +10,17 @@ import { createTestUsers, countTestUsers, MAX_TEST_USERS_PER_CALL } from '../tes
 import { deleteAllTestData, seedHallOfFameTestData } from '../testData';
 import { writeAdminAudit } from '../adminAudit';
 import { requireRecentReauthentication } from '../sessions';
+import { getReadiness } from '../readiness';
 
 export const adminRouter = Router();
+
+adminRouter.get('/readiness', requireAdmin, async (req, res, next) => {
+  try {
+    res.json(await getReadiness(req.group!.id));
+  } catch (error) {
+    next(error);
+  }
+});
 
 // POST /api/admin/test-users - body: { count }. Creates fully seeded test
 // players (seats + visible monitors, skill/Bock per game, play sessions,

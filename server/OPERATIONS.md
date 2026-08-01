@@ -41,6 +41,50 @@ pm2 set pm2-logrotate:retain 5
 Die Datenbankrotation ist davon unabhängig: SQLite-Backups bleiben ein eigener Betriebs- und
 Sicherheitsprozess.
 
+## Backup und Restore
+
+Respawn schreibt vor jedem Aktivieren des Event-Trackings einen persistenten SQLite-
+Snapshot. Der Eventstart erfolgt erst, nachdem `PRAGMA integrity_check` erfolgreich war und die
+Datei atomar von einer temporären Datei auf ihren endgültigen Namen verschoben wurde. Scheitert der
+Snapshot, antwortet der Start mit `503` und das Tracking bleibt ausgeschaltet. Auch der manuelle
+Download im Admin-Bereich erzeugt einen solchen persistenten Restore-Punkt.
+
+Standardmäßig liegen die Dateien im Ordner `backups` neben `DB_FILE`, im Docker-Setup also unter
+`/opt/respawn/data/backups/`. `BACKUP_DIR` kann einen anderen Pfad setzen; `BACKUP_RETENTION`
+begrenzt die Anzahl, standardmäßig auf 20. Das Verzeichnis muss auf einem persistenten Datenträger
+liegen und sollte zusätzlich extern kopiert werden, weil ein Snapshot auf demselben Host keinen
+Schutz vor einem Host- oder Datenträgerausfall bietet.
+
+Ein Snapshot lässt sich vor einem Restore ohne Schreibzugriff prüfen:
+
+```bash
+cd /opt/respawn
+docker compose run --rm --no-deps app npm run backup:verify -- /app/data/backups/<backup-datei>.sqlite
+```
+
+Der produktive Restore bleibt bewusst ein Operator-Vorgang. So bleibt die bisherige Datenbank als
+Rückfall erhalten:
+
+```bash
+cd /opt/respawn
+docker compose stop app
+cp -- data/lan.db data/lan.db.before-restore.sqlite
+cp -- data/backups/<backup-datei>.sqlite data/lan.db
+rm -f -- data/lan.db-wal data/lan.db-shm
+docker compose up -d --wait app
+```
+
+Danach `/api/health` und die LAN-Bereitschaft im Admin-Bereich prüfen und stichprobenartig Event,
+Spieler und Historie öffnen. Schlägt die Prüfung fehl, den Container erneut stoppen, die gesicherte
+`data/lan.db.before-restore.sqlite` nach `data/lan.db` kopieren, erneut die beiden möglichen
+`lan.db-wal`-/`lan.db-shm`-Dateien entfernen und wieder starten. Das Entfernen verhindert, dass ein
+zur ersetzten Datenbank gehörender WAL-Stand beim nächsten Start auf den Restore angewendet wird.
+
+Mindestens vor jeder LAN sollte der komplette Ablauf in einer separaten Testinstallation oder mit
+einer Kopie des `data`-Verzeichnisses geprobt werden. Ein erfolgreicher `backup:verify`-Lauf allein
+beweist die SQLite-Integrität; erst das Öffnen der wiederhergestellten App bestätigt auch den
+operativen Restore-Pfad.
+
 ## Produktions-Deployment
 
 Der Workflow `.github/workflows/deploy.yml` baut bereits in jedem Pull Request das vollständige

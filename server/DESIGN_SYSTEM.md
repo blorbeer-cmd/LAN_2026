@@ -285,6 +285,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.notification-center-entry` keeps the full personal history plus single/bulk read/remove state;
   unread entries use the accent edge and elevated background without an additional „Neu“ badge;
   the two bulk actions share the complete sticky footer width in equal columns below the history.
+- **Connection status** — `.connection-status` is the single global technical-state strip below the
+  topbar. A short initial Socket.IO connection stays hidden to avoid startup flicker; offline and
+  reconnect states remain visible with explicit German text until a confirmed reconnect hides the
+  strip. The state uses the shared paused color pair and a local Lucide icon, never color alone.
 - **Global search** — `.global-search` with `.global-search-results` and
   `.global-search-result`, wired through `searchPalette.js`; opens from the topbar or with
   `Strg/Cmd + K`, searches both areas and current app content without an external service, and uses
@@ -379,7 +383,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   link and the TV/Kiosk view. Their concise explanations live in contextual tooltips beside each
   heading. Event cards use the standard two-column nested-card grid. Invitation link, copy action
   and QR action share one compact row at one shared control height; the QR code opens in the shared centered modal rather than expanding
-  the settings page. Backup and seating-plan editing are absent from regular settings and live
+  the settings page. Admin begins with one „LAN-Bereitschaft“ group: its overall badge and responsive
+  two-column check cards cover Server/SQLite, Event and participants, agent coverage/version,
+  process mappings, Kiosk and the latest persistent backup. Every card pairs its semantic badge
+  with a textual summary and actionable detail; loading and retry errors stay inside the group.
+  Backup and seating-plan editing are absent from regular settings and live
   together as nested tool cards in the active Admin mode. Each tool card keeps its title, adjacent
   help tooltip and colorful primary action on one row; the seating editor returns to Admin and blocks
   editing outside that mode. Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and

@@ -7,8 +7,30 @@ function currentScope() {
   return sessionStorage.getItem(GROUP_KEY);
 }
 
-export function connectSocket({ kiosk = false } = {}) {
+export function connectionStateAfterFailure({ hasConnected, online }) {
+  if (!online) return 'offline';
+  return hasConnected ? 'reconnecting' : 'connecting';
+}
+
+export function connectSocket({ kiosk = false, reportConnectionState = false } = {}) {
   const socket = io({ auth: { token: getToken(), kiosk } });
+  if (reportConnectionState) {
+    let hasConnected = false;
+    const publishConnectionState = (state) => {
+      window.dispatchEvent(new CustomEvent('respawn:connection-state', { detail: { state } }));
+    };
+    publishConnectionState('connecting');
+    socket.on('connect', () => {
+      hasConnected = true;
+      publishConnectionState('connected');
+    });
+    socket.on('connect_error', () =>
+      publishConnectionState(connectionStateAfterFailure({ hasConnected, online: navigator.onLine })),
+    );
+    socket.on('disconnect', () =>
+      publishConnectionState(connectionStateAfterFailure({ hasConnected: true, online: navigator.onLine })),
+    );
+  }
   if (!kiosk) {
     const subscribe = () => {
       const groupId = currentScope();
@@ -17,10 +39,6 @@ export function connectSocket({ kiosk = false } = {}) {
     };
     socket.on('connect', subscribe);
     window.addEventListener('respawn:group-changed', subscribe);
-    socket.on('disconnect', () => {
-      // Socket.IO reconnects automatically; the connect handler deliberately
-      // re-subscribes so stale rooms never survive a reconnect.
-    });
   }
   return socket;
 }

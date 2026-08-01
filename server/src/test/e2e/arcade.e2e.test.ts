@@ -176,6 +176,11 @@ test('classic Snake guest returns to the Arcade immediately after leaving', asyn
     await guest.page.waitForSelector('.arcade-tiles');
     assert.equal(await activeView(guest.page), 'arcade');
     assert.equal(await guest.page.locator('#snake-canvas').count(), 0);
+    assert.equal(
+      await guest.page.locator('#connection-status').isHidden(),
+      true,
+      'closing an auxiliary game socket must not mark the whole app as disconnected',
+    );
 
     await host.page.waitForSelector('#snake-back');
     await host.page.click('#snake-back');
