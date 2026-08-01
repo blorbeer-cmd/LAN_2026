@@ -495,7 +495,7 @@ export function renderTetrisLobbyCard() {
               ${[2, 3, 4, 5, 6, 7].map((count) => `<option value="${count}" ${botCount === count ? 'selected' : ''}>${count}</option>`).join('')}
             </select>
           </label>
-          <button type="button" class="btn btn-sm" id="tetris-bot" ${match || lobby || noMe ? 'disabled' : ''}>KI-Test starten</button>
+          <button type="button" class="btn btn-sm" id="tetris-bot" ${match || lobby || noMe ? 'disabled' : ''}>Gegen KI</button>
         </div>` : ''}
       </div>
       ${renderLobbyList()}
