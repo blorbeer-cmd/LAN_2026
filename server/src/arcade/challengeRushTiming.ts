@@ -1,5 +1,4 @@
 import { MEMORY_REVEAL_TOTAL_MS } from './challengeRushLogic';
-import { arcadeTiming } from './timing';
 
 interface ChallengeRushTimingEnv {
   NODE_ENV?: string;
@@ -13,6 +12,8 @@ export interface ChallengeRushTiming {
   trafficLightGreenMs: number | null;
 }
 
+const CHALLENGE_RUSH_COUNTDOWN_MS = 5_000;
+
 /**
  * Keeps production gameplay timings intact while allowing the socket-level
  * integration suite to exercise the same state machine without waiting for
@@ -24,7 +25,9 @@ export function resolveChallengeRushTiming(env: ChallengeRushTimingEnv): Challen
   const useFastTimers = env.NODE_ENV === 'test' && env.CHALLENGE_RUSH_FAST_TIMERS === '1';
   if (!useFastTimers) {
     return {
-      countdownMs: arcadeTiming.countdownMs,
+      // A fresh task is announced before every mini-challenge. Five seconds
+      // lets players read it while the answer-bearing playfield stays hidden.
+      countdownMs: CHALLENGE_RUSH_COUNTDOWN_MS,
       challengeDurationMs: null,
       memoryRevealMs: MEMORY_REVEAL_TOTAL_MS,
       trafficLightGreenMs: null,

@@ -2326,6 +2326,9 @@ button.card {
 }
 .challenge-rush-stage { max-width: var(--challenge-rush-stage-max-width); margin-inline: auto; }
 .challenge-rush-playfield { position: relative; min-height: var(--challenge-rush-playfield-min-height); display: grid; place-items: center; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+.challenge-rush-playfield.is-concealed { background: var(--bg-elevated-2); }
+.challenge-rush-concealed { max-width: var(--challenge-rush-button-min-width); padding: var(--space-4); text-align: center; }
+.challenge-rush-concealed strong { font-size: var(--font-size-xl); }
 .challenge-rush-circle { position: absolute; width: var(--space-8); height: var(--space-8); transform: translate(-50%, -50%); border: 0; border-radius: var(--radius-full); background: var(--accent-gradient); box-shadow: var(--shadow-glow-accent); cursor: pointer; }
 .challenge-rush-big-button { min-width: var(--challenge-rush-button-min-width); min-height: var(--challenge-rush-button-min-height); border: 0; border-radius: var(--radius); color: var(--accent-text); background: var(--accent-gradient); font-size: var(--font-size-xl); font-weight: var(--font-weight-black); cursor: pointer; }
 .challenge-rush-number-grid { display: grid; grid-template-columns: repeat(4, minmax(var(--challenge-rush-number-min-width), 1fr)); gap: var(--space-2); width: min(100%, var(--challenge-rush-number-grid-width)); }
@@ -2362,6 +2365,8 @@ button.card {
 .challenge-rush-logic-prompt { margin: 0; text-align: center; white-space: pre-line; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); }
 .challenge-rush-logic-matrix { display: grid; grid-template-columns: repeat(2, minmax(var(--space-8), 1fr)); gap: var(--space-2); width: min(100%, var(--challenge-rush-button-min-width)); text-align: center; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); }
 .challenge-rush-logic-matrix > span { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated-2); }
+.challenge-rush-letter-row { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-3); margin-block: var(--space-3); }
+.challenge-rush-letter-row > span { display: grid; place-items: center; min-width: var(--space-8); min-height: var(--space-8); padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated-2); font-size: var(--font-size-2xl); font-weight: var(--font-weight-black); }
 .challenge-rush-symbol { display: grid; place-items: center; min-height: var(--challenge-rush-button-min-height); font-size: var(--font-size-3xl); }
 .challenge-rush-item-list { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--space-2); min-height: var(--space-8); }
 /* The differing field never receives a distinguishing class, attribute or
@@ -2411,6 +2416,43 @@ button.card {
 .arcade-lobby-create-actions .btn {
   width: 100%;
 }
+.challenge-rush-test-selector {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated-2);
+}
+.challenge-rush-test-selector > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--tap-target-size);
+  cursor: pointer;
+}
+.challenge-rush-test-selector[open] > summary { margin-bottom: var(--space-3); }
+.challenge-rush-test-actions { gap: var(--space-2); }
+.challenge-rush-test-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--challenge-rush-button-min-width), 1fr));
+  gap: var(--space-2);
+  max-height: calc(var(--space-8) * 6);
+  overflow-y: auto;
+}
+.challenge-rush-test-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  cursor: pointer;
+}
+.challenge-rush-test-option input { margin-top: var(--space-1); }
+.challenge-rush-test-option span { display: grid; gap: var(--space-1); }
+.challenge-rush-test-option small { line-height: var(--line-height-tight); }
+.challenge-rush-lobby-selection { margin: 0; }
 .arcade-lobby-create-row {
   display: flex;
   flex-wrap: wrap;

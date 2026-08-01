@@ -5,7 +5,7 @@ import { resolveChallengeRushTiming } from './challengeRushTiming';
 
 test('Challenge Rush keeps real timings unless tests explicitly opt into fast timers', () => {
   const expected = {
-    countdownMs: 3_000,
+    countdownMs: 5_000,
     challengeDurationMs: null,
     memoryRevealMs: MEMORY_REVEAL_TOTAL_MS,
     trafficLightGreenMs: null,

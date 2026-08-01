@@ -84,6 +84,15 @@ test('sequence-transform renders only the displayed terms, never the expected an
   assert.doesNotMatch(html, />23 →/);
 });
 
+test('letter-order renders every compared letter as a prominent task element', () => {
+  const html = renderChallengeRushTrial(
+    { key: 'letter-order' },
+    { phase: 'input', data: { type: 'letter-choice', prompt: 'Welcher Buchstabe steht alphabetisch zuerst?', letters: ['Q', 'B', 'M'], options: ['M', 'B', 'Q'] } },
+  );
+  assert.match(html, /challenge-rush-letter-row/);
+  for (const letter of ['Q', 'B', 'M']) assert.match(html, new RegExp(`<span>${letter}</span>`));
+});
+
 test('odd-one-out keeps every field structurally equal and exposes all five visual levels', () => {
   for (let subtlety = 1; subtlety <= 5; subtlety += 1) {
     const html = renderOddOneOut({ tileCount: 16, oddIndex: 7, subtlety });
