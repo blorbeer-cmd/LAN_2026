@@ -346,10 +346,6 @@ function renderCreateForm(el, ctx) {
         </div>
         <label class="field-label" for="tourn-game-search">Spiel auswählen</label>
         ${searchSelectHtml('tourn-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen…' })}
-        <div>
-          <label class="field-label" for="tourn-player-search">Spieler durchsuchen</label>
-          <input type="search" id="tourn-player-search" value="${escapeHtml(createPlayerSearchQuery)}" placeholder="Spieler suchen…" autocomplete="off" />
-        </div>
         <div class="selection-toolbar">
           <div class="tournament-team-count-field">
             <label class="field-label" for="tourn-teamcount">Anzahl Teams</label>
@@ -358,6 +354,7 @@ function renderCreateForm(el, ctx) {
           <button type="button" class="btn btn-sm" id="tourn-select-all">Sichtbare markieren</button>
           <button type="button" class="btn btn-sm" id="tourn-select-none">Sichtbare abwählen</button>
         </div>
+        <input type="search" id="tourn-player-search" value="${escapeHtml(createPlayerSearchQuery)}" placeholder="Spieler suchen…" aria-label="Spieler suchen" autocomplete="off" />
         <div class="player-selection-grid tournament-player-grid">${playerRows}</div>
         <p class="muted" data-tourn-player-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spieler gefunden.</p>
         <div class="check-row">

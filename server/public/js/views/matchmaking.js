@@ -612,10 +612,6 @@ export function renderMatchmaking(container, ctx) {
         <div class="tournament-create-step-title">
           <h3 id="matchmaking-draw-title">Auslosung</h3>
         </div>
-        <div>
-          <label class="field-label" for="mm-player-search">Spieler durchsuchen</label>
-          <input type="search" id="mm-player-search" value="${escapeHtml(drawPlayerSearchQuery)}" placeholder="Spieler suchen…" autocomplete="off" />
-        </div>
         <div class="selection-toolbar">
           <div class="tournament-team-count-field">
             <label class="field-label" for="mm-teamcount">Anzahl Teams</label>
@@ -624,6 +620,7 @@ export function renderMatchmaking(container, ctx) {
           <button type="button" class="btn btn-sm" id="mm-select-all">Sichtbare markieren</button>
           <button type="button" class="btn btn-sm" id="mm-select-none">Sichtbare abwählen</button>
         </div>
+        <input type="search" id="mm-player-search" value="${escapeHtml(drawPlayerSearchQuery)}" placeholder="Spieler suchen…" aria-label="Spieler suchen" autocomplete="off" />
         <div class="player-selection-grid tournament-player-grid">${playerRows}</div>
         <p class="muted" data-mm-draw-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spieler gefunden.</p>
         <div class="check-row">
@@ -662,23 +659,17 @@ export function renderMatchmaking(container, ctx) {
               )}
           </h3>
         </div>
-        <div>
-          <label class="field-label" for="draft-player-search">Spieler durchsuchen</label>
-          <input type="search" id="draft-player-search" value="${escapeHtml(draftPlayerSearchQuery)}" placeholder="Spieler suchen…" autocomplete="off" />
-        </div>
         <div class="selection-toolbar">
           <span class="field-label">Spieler</span>
           <button type="button" class="btn btn-sm" id="draft-select-all">Sichtbare markieren</button>
           <button type="button" class="btn btn-sm" id="draft-select-none">Sichtbare abwählen</button>
         </div>
+        <input type="search" id="draft-player-search" value="${escapeHtml(draftPlayerSearchQuery)}" placeholder="Spieler suchen…" aria-label="Spieler suchen" autocomplete="off" />
         <div class="player-selection-grid tournament-player-grid captain-selection-grid">${draftPlayerRows}</div>
         <p class="muted" data-mm-draft-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spieler gefunden.</p>
         <div class="captain-selection-group">
           <div class="field-label">Captains</div>
-          <div>
-            <label class="field-label" for="captain-player-search">Captains durchsuchen</label>
-            <input type="search" id="captain-player-search" value="${escapeHtml(captainSearchQuery)}" placeholder="Spieler suchen…" autocomplete="off" />
-          </div>
+          <input type="search" id="captain-player-search" value="${escapeHtml(captainSearchQuery)}" placeholder="Spieler suchen…" aria-label="Captains suchen" autocomplete="off" />
           <div class="player-selection-grid tournament-player-grid captain-selection-grid">
             ${captainRows}
           </div>

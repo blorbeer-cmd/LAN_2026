@@ -557,16 +557,13 @@ export function renderVotes(container, ctx) {
             <span style="flex:1;">Nur bestimmte Spiele zur Wahl stellen</span>
           </label>
           <div id="votes-game-select-wrap" class="stack vote-game-select-wrap" ${limitGamesChecked ? '' : 'hidden'}>
-            <div>
-              <label class="field-label" for="votes-game-search">Spiele durchsuchen</label>
-              <input type="search" id="votes-game-search" value="${escapeHtml(voteGameSearchQuery)}" placeholder="Spiel suchen…" autocomplete="off" />
-            </div>
             <div class="selection-toolbar">
               <span class="field-label">Welche Spiele stehen zur Wahl?</span>
               <button type="button" class="btn btn-sm" id="votes-select-all">Sichtbare markieren</button>
               <button type="button" class="btn btn-sm" id="votes-select-none">Sichtbare abwählen</button>
             </div>
             ${voteGenreFilterHtml}
+            <input type="search" id="votes-game-search" value="${escapeHtml(voteGameSearchQuery)}" placeholder="Spiele suchen…" aria-label="Spiele suchen" autocomplete="off" />
             <div id="votes-game-select" class="vote-game-grid">${gameCheckboxes}</div>
             <p class="muted" data-vote-game-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spiele gefunden.</p>
             ${
