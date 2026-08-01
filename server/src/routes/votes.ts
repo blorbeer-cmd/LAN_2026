@@ -700,6 +700,15 @@ votesRouter.get('/history', (req, res) => {
     };
   });
 
+  // Rounds nobody voted in (totalVoters === 0) carry no result to show, so they
+  // sink below every round that does; within each of those two groups the
+  // existing round-descending (= newest-first) order from the query above is
+  // preserved.
+  history.sort((a, b) => {
+    const hasResult = (h: (typeof history)[number]) => (h.totalVoters > 0 ? 1 : 0);
+    return hasResult(b) - hasResult(a) || b.round - a.round;
+  });
+
   res.json({ history });
 });
 

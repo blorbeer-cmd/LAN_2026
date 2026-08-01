@@ -19,10 +19,8 @@ export function canStartTetris(mode: TetrisMode, playerCount: number): boolean {
     : playerCount === TETRIS_DUEL_PLAYERS;
 }
 
-export function tetrisBotCount(mode: TetrisMode, value: unknown): number {
-  const fallback = mode === 'arena' ? 2 : 1;
-  const requested = Number.isInteger(value) ? Number(value) : fallback;
-  return Math.max(fallback, Math.min(tetrisPlayerLimit(mode) - 1, requested));
+export function tetrisBotCount(mode: TetrisMode): number {
+  return tetrisPlayerLimit(mode) - 1;
 }
 
 // Targets rotate through the stable lobby order. Advancing only after an

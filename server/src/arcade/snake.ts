@@ -7,6 +7,7 @@ import {
   Direction,
   isInsideSafeBounds,
   setDirection,
+  snakeArenaBotCount,
   SNAKE_ARENA_MAX_PLAYERS,
   SNAKE_ARENA_MIN_PLAYERS,
   SNAKE_HEIGHT,
@@ -27,6 +28,7 @@ const TICK_MS = 125;
 const COUNTDOWN_MS = arcadeTiming.countdownMs;
 const BOT_ID = 'snake-bot';
 const BOT = { id: BOT_ID, name: 'Snake-Bot', avatar: null, color: '#ef5da8' };
+const BOT_ID_PREFIX = 'snake-bot-';
 
 interface Player { id: string; name: string; avatar: string | null; color: string | null }
 interface Lobby { id: string; groupId: string; eventId: string | null; host: Player; players: Player[]; socketIds: Map<string, string>; ready: Set<string>; mode: SnakeMode; createdAt: number }
@@ -34,6 +36,19 @@ interface Match { id: string; groupId: string; eventId: string | null; room: str
 
 const lobbies = new Map<string, Lobby>();
 const matches = new Map<string, Match>();
+
+function isSnakeBotId(playerId: string): boolean {
+  return playerId === BOT_ID || playerId.startsWith(BOT_ID_PREFIX);
+}
+
+function arenaBots(count: number): Player[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `${BOT_ID_PREFIX}${index + 1}`,
+    name: `Snake-Bot ${index + 1}`,
+    avatar: null,
+    color: '#ef5da8',
+  }));
+}
 
 function playerById(id?: string): Player | null {
   if (!id) return null;
@@ -66,6 +81,7 @@ function snapshot(io: Server, match: Match) {
     playerId: player.id,
     name: player.name,
     score: match.world.snakes[index]?.score ?? 0,
+    isBot: isSnakeBotId(player.id),
   }));
   const payload = {
     matchId: match.id,
@@ -81,13 +97,13 @@ function snapshot(io: Server, match: Match) {
   broadcastArcadeKiosk(io, { gameType: 'snake', groupId: match.groupId, eventId: match.eventId, ...payload, players: match.players });
 }
 function realPlayerIds(players: Player[]): string[] {
-  return players.filter((p) => p.id !== BOT_ID).map((p) => p.id);
+  return players.filter((p) => !isSnakeBotId(p.id)).map((p) => p.id);
 }
 function finish(io: Server, match: Match, winner: Player | null, reason: string) {
   if (match.loop) clearInterval(match.loop);
   match.loop = null;
   endArcadeSession(realPlayerIds(match.players).filter((playerId) => !match.departedPlayerIds.has(playerId)), 'snake', match);
-  const winnerId = winner && winner.id !== BOT_ID ? winner.id : null;
+  const winnerId = winner && !isSnakeBotId(winner.id) ? winner.id : null;
   // Store per-player score entries (playerId/name/score), like every other
   // arcade game, so the stats route can attribute results to players. The
   // live emit below still sends the raw score array the client expects.
@@ -95,6 +111,7 @@ function finish(io: Server, match: Match, winner: Player | null, reason: string)
     playerId: player.id,
     name: player.name,
     score: match.world.snakes[index]?.score ?? 0,
+    isBot: isSnakeBotId(player.id),
   }));
   recordArcadeResult({
     gameType: 'snake',
@@ -126,6 +143,10 @@ function removeMatchPlayer(io: Server, match: Match, playerId: string): void {
   match.departedPlayerIds.add(playerId);
   match.world.snakes[leaverIndex].alive = false;
   const livingPlayers = match.players.filter((_, index) => match.world.snakes[index].alive);
+  if (!livingPlayers.some((player) => !isSnakeBotId(player.id))) {
+    finish(io, match, null, 'no-human-players');
+    return;
+  }
   if (match.host.id === playerId && livingPlayers[0]) match.host = livingPlayers[0];
   if (livingPlayers.length <= 1) finish(io, match, livingPlayers[0] ?? null, livingPlayers.length ? 'completed' : 'draw');
   else snapshot(io, match);
@@ -169,8 +190,9 @@ function botDirection(world: SnakeWorld, snakeIndex: number): Direction {
   return candidates.find((direction, candidateIndex, list) => direction !== opposite[snake.direction] && list.indexOf(direction) === candidateIndex && isSafe(world, snakeIndex, direction)) ?? snake.direction;
 }
 function steerBot(match: Match) {
-  const botIndex = match.players.findIndex((player) => player.id === BOT_ID);
-  if (botIndex >= 0) setDirection(match.world.snakes[botIndex], botDirection(match.world, botIndex));
+  match.players.forEach((player, botIndex) => {
+    if (isSnakeBotId(player.id)) setDirection(match.world.snakes[botIndex], botDirection(match.world, botIndex));
+  });
 }
 function startMatch(io: Server, lobby: Lobby) {
   const id = nanoid();
@@ -234,13 +256,16 @@ export function registerSnakeSockets(io: Server): void {
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
     });
-    socket.on('snake:lobby:bot', (payload: { playerId?: string }, ack?: (result: unknown) => void) => {
+    socket.on('snake:lobby:bot', (payload: { playerId?: string; mode?: SnakeMode }, ack?: (result: unknown) => void) => {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Spieler nicht gefunden.' });
+      if (payload?.mode !== undefined && payload.mode !== 'classic' && payload.mode !== 'arena') return ack?.({ ok: false, error: 'Unbekannter Snake-Modus.' });
       const scope = socketArcadeScope(socket, player.id);
       if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
-      const lobby: Lobby = { id: nanoid(), ...scope, host: player, players: [player, BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), mode: 'classic', createdAt: Date.now() };
+      const mode = payload.mode ?? 'classic';
+      const bots = mode === 'arena' ? arenaBots(snakeArenaBotCount(mode)) : [BOT];
+      const lobby: Lobby = { id: nanoid(), ...scope, host: player, players: [player, ...bots], socketIds: new Map([[player.id, socket.id]]), ready: new Set(bots.map((bot) => bot.id)), mode, createdAt: Date.now() };
       if (!claimLobbyMembership(player.id, 'snake', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby);
@@ -293,7 +318,7 @@ export function registerSnakeSockets(io: Server): void {
     socket.on('snake:input', (payload: { matchId?: string; playerId?: string; direction?: Direction }) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
       const index = match?.players.findIndex((player) => player.id === payload.playerId) ?? -1;
-      if (!match || !canUseLobby(socket, match) || payload.playerId !== matchPlayerIdForSocket(match, socket) || index < 0 || match.players[index].id === BOT_ID || !payload.direction || !match.running || match.paused) return;
+      if (!match || !canUseLobby(socket, match) || payload.playerId !== matchPlayerIdForSocket(match, socket) || index < 0 || isSnakeBotId(match.players[index].id) || !payload.direction || !match.running || match.paused) return;
       setDirection(match.world.snakes[index], payload.direction);
     });
     socket.on('snake:match:pause', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {

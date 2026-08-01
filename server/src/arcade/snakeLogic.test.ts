@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   createWorld,
   setDirection,
+  snakeArenaBotCount,
   SNAKE_ARENA_MAX_PLAYERS,
   SNAKE_ARENA_SHRINK_TICKS,
   stepWorld,
@@ -24,6 +25,11 @@ test('Snake Arena creates distinct starting positions for up to eight players', 
   assert.equal(new Set(occupied).size, occupied.length);
   assert.throws(() => createWorld(2, 'arena'), /3 to 8/);
   assert.throws(() => createWorld(9, 'arena'), /3 to 8/);
+});
+
+test('Snake AI quick starts fill the selected mode to its player limit', () => {
+  assert.equal(snakeArenaBotCount('classic'), 1);
+  assert.equal(snakeArenaBotCount('arena'), SNAKE_ARENA_MAX_PLAYERS - 1);
 });
 
 test('Snake Arena shrinks symmetrically and eliminates a head beyond the safe zone', () => {

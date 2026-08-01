@@ -17,6 +17,7 @@ import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
 import { domainIcon } from '../domainIcons.js';
 import { withStepUp } from '../reauth.js';
 import { GAME_GENRES, MAX_GENRES_PER_GAME } from '../gameGenres.js';
+import { wireSelectionSearch } from '../selectionSearch.js';
 
 let activeTab = 'catalog'; // 'catalog' | 'suggestions'
 let sortKey = 'name';
@@ -24,6 +25,10 @@ let sortDir = 'asc';
 // Genre chip filter for the list (OR semantics: a game matches if it has at
 // least one of the selected genres). Empty set means "no filter, show all".
 let genreFilter = new Set();
+// Free-text filter, same component/pattern as the Neue-Abstimmung game
+// picker in votes.js — hides already-rendered rows client-side instead of
+// re-filtering and re-rendering on every keystroke.
+let gameSearchQuery = '';
 
 function sameGenres(a, b) {
   if (a.length !== b.length) return false;
@@ -292,7 +297,7 @@ function gameRowHtml(game, myId) {
       ];
 
   return `
-    <div class="card game-table-row" data-search-game="${game.id}">
+    <div class="card game-table-row" data-search-game="${game.id}" data-game-catalog-search-item data-selection-search="${escapeHtml(game.name)}">
       <div class="game-row-name">
                 <strong class="game-row-title">${escapeHtml(game.name)}</strong>
         ${game.genres?.length ? `<span class="muted game-row-genre">${escapeHtml(game.genres.join(', '))}</span>` : ''}
@@ -634,6 +639,10 @@ export function renderGameCatalog(container, ctx) {
           <button type="button" class="btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}" data-tab="catalog">Alle</button>
           <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
         </div>
+        <div>
+          <label class="field-label" for="game-catalog-search">Spiele durchsuchen</label>
+          <input type="search" id="game-catalog-search" value="${escapeHtml(gameSearchQuery)}" placeholder="Spiel suchen…" autocomplete="off" />
+        </div>
         <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
           ${sortButton('name', 'Name')}
           ${sortButton('myBock', 'Mein Bock')}
@@ -659,6 +668,7 @@ export function renderGameCatalog(container, ctx) {
               : rows.map((g) => gameRowHtml(g, myId)).join('')
           }
         </div>
+        <p class="muted" data-game-catalog-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spiele gefunden.</p>
       </section>
     </div>
   `;
@@ -670,6 +680,15 @@ export function renderGameCatalog(container, ctx) {
       activeTab = btn.dataset.tab;
       ctx.rerender();
     });
+  });
+
+  wireSelectionSearch(container, {
+    inputId: 'game-catalog-search',
+    itemSelector: '[data-game-catalog-search-item]',
+    emptySelector: '[data-game-catalog-search-empty]',
+    onQueryChange: (query) => {
+      gameSearchQuery = query;
+    },
   });
 
   container.querySelectorAll('[data-genre-filter]').forEach((btn) => {

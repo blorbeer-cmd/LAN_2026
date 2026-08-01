@@ -53,7 +53,6 @@ let prevLines = {}; // playerId -> last seen line count, to detect fresh clears 
 let prevLevels = {}; // playerId -> last seen level, to detect level-ups for the level-up cue
 let inputBound = false;
 let lobbyMode = 'duel';
-let botCount = 3;
 
 function myId() {
   return getMyId();
@@ -489,12 +488,6 @@ export function renderTetrisLobbyCard() {
           ${createReason ? infoTooltipHtml('tetris-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
         </div>
         ${currentPlayerMayUseArcadeAi() ? `<div class="arcade-lobby-ai-row">
-          <label class="arcade-lobby-bot-setting" for="tetris-bot-count">
-            <span>KI-Gegner</span>
-            <select id="tetris-bot-count" ${lobby || lobbyMode !== 'arena' ? 'disabled' : ''}>
-              ${[2, 3, 4, 5, 6, 7].map((count) => `<option value="${count}" ${botCount === count ? 'selected' : ''}>${count}</option>`).join('')}
-            </select>
-          </label>
           <button type="button" class="btn btn-sm" id="tetris-bot" ${match || lobby || noMe ? 'disabled' : ''}>Gegen KI</button>
         </div>` : ''}
       </div>
@@ -513,12 +506,9 @@ export function wireTetrisLobbyCard(container, { beforeCreate, beforeJoin } = {}
     lobbyMode = button.dataset.arcadeMode === 'arena' ? 'arena' : 'duel';
     rerender();
   }));
-  container.querySelector('#tetris-bot-count')?.addEventListener('change', (event) => {
-    botCount = Number(event.target.value) || 3;
-  });
   container.querySelector('#tetris-bot')?.addEventListener('click', async () => {
     if (beforeCreate && !(await beforeCreate())) return;
-    const res = await emitWithAck('tetris:lobby:bot', { playerId: myId(), mode: lobbyMode, botCount });
+    const res = await emitWithAck('tetris:lobby:bot', { playerId: myId(), mode: lobbyMode });
     if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelector('#tetris-create')?.addEventListener('click', async () => {

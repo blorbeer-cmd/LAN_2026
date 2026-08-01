@@ -7,6 +7,7 @@ import { arcadeMuteControlHtml, wireArcadeMuteControl, playArcadeSound } from '.
 import { infoTooltipHtml } from '../infoTooltip.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
+import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 
 const COLOR_WORD_LABELS = { red: 'Rot', blue: 'Blau', green: 'Grün', yellow: 'Gelb' };
 const COLOR_WORD_VARS = { red: 'var(--danger)', blue: 'var(--accent)', green: 'var(--state-playing)', yellow: 'var(--state-paused)' };
@@ -14,6 +15,7 @@ const MEMORY_REVEAL_STEP_MS = 700; const MEMORY_REVEAL_SHOW_MS = 500;
 
 let socket = null; let lobbies = []; let match = null; let numberOrder = 1; let prevMyScore = null;
 let countdownKey = null; let startedKey = null; let presentationKey = null;
+let currentTrial = null; let trialTimer = null; let interaction = freshInteraction(null);
 // Shared "how far into the current sequence" pointer for aim-trainer,
 // whack-a-mole, memory-sequence and color-word — only one of them is ever
 // the active challenge at a time, so one counter is enough.
@@ -25,15 +27,85 @@ let memoryRevealDone = false; let memoryRevealIndex = -1; let trafficGreen = fal
 // silently swallowing further clicks as server-side duplicate-acks.
 let iCompleted = false;
 let revealTimers = [];
+let oddOneOutSheet = null;
 const myId = () => getMyId();
 const currentView = () => document.getElementById('view-container')?.dataset.view;
 const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
 function navigate(view) { window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view })); }
 function emit(event, payload) { return new Promise((resolve) => socket?.emit(event, payload, resolve)); }
 function clearRevealTimers() { revealTimers.forEach(clearTimeout); revealTimers = []; }
+function clearTrialTimer() { if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null; }
 function scheduleAt(delayMs, callback) { revealTimers.push(setTimeout(callback, Math.max(0, delayMs))); }
 function rerenderIfVisible() { if (currentView() === 'challengeRush') rerender(); }
 function elapsedInChallenge(state) { return (state.challenge?.durationMs ?? 0) - (state.remainingMs ?? 0); }
+export function freshInteraction(trialId, resume = {}) {
+  const found = new Set(Array.isArray(resume.found) ? resume.found : []);
+  const pair = Array.isArray(resume.revealed) ? [...resume.revealed] : [];
+  const cards = [...(Array.isArray(resume.foundCards) ? resume.foundCards : []), ...(Array.isArray(resume.revealedCards) ? resume.revealedCards : [])];
+  const values = new Map(cards.map((card) => [card.index, card.value]));
+  return { trialId, sequence: [], cells: [], pair, found, values, revealSeq: Number(resume.revealSeq ?? 0) };
+}
+// Re-sent events for the same trial occur after pause/resume and reconnect.
+// Keep unsent sequence/matrix input, but merge the server's newer authoritative
+// pair state so a lost reveal acknowledgement cannot leave the board stale.
+export function nextInteractionState(previous, trial) {
+  if (previous.trialId !== trial?.trialId) return freshInteraction(trial?.trialId, trial?.resume);
+  const resumed = freshInteraction(trial?.trialId, trial?.resume);
+  if (resumed.revealSeq < previous.revealSeq) return { ...previous };
+  return {
+    ...previous,
+    pair: resumed.pair,
+    found: resumed.found,
+    values: resumed.values,
+    revealSeq: Math.max(previous.revealSeq, resumed.revealSeq),
+  };
+}
+export function pairHideStillApplies(state, trialId, revealSeq) {
+  return state.trialId === trialId && state.revealSeq === revealSeq;
+}
+export function shouldPreserveInteractionOnMatchStart(previousMatch, nextMatch) {
+  return nextMatch?.reconnected === true && previousMatch?.matchId === nextMatch?.matchId;
+}
+export function focusableTrialSelector() {
+  return '[data-cr-choice], [data-cr-bool], [data-cr-sequence-cell], [data-cr-matrix-cell], [data-cr-number-position], [data-cr-pair-card]';
+}
+export function acknowledgedRevealSeq(currentRevealSeq, serverRevealSeq) {
+  return Number.isSafeInteger(serverRevealSeq) && serverRevealSeq >= 0
+    ? serverRevealSeq
+    : Number(currentRevealSeq) + 1;
+}
+function clearOddOneOutPresentation() {
+  oddOneOutSheet?.replaceSync('');
+}
+function applyOddOneOutPresentation(container, oddIndex) {
+  const grid = container.querySelector('.challenge-rush-odd-grid');
+  const position = Number(oddIndex);
+  if (!grid || !Number.isInteger(position) || position < 0 || position >= grid.children.length) return;
+  if (!oddOneOutSheet) {
+    oddOneOutSheet = new CSSStyleSheet();
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, oddOneOutSheet];
+  }
+  // The selected index lives only in a constructed presentation stylesheet:
+  // no field or ancestor attribute, text node, or accessible name identifies
+  // the answer. Computed geometry remains available to visual browser tests.
+  oddOneOutSheet.replaceSync(`.challenge-rush-odd-grid > .challenge-rush-tile:nth-child(${position + 1}) { border-radius: var(--cr-odd-radius); background: color-mix(in srgb, var(--bg-elevated-2) 88%, var(--accent) 12%); }`);
+}
+function scheduleTrialPhase() {
+  clearTrialTimer();
+  if (!currentTrial || match?.paused || match?.phase !== 'playing') return;
+  const trialId = currentTrial.trialId;
+  if (currentTrial.phase === 'preview') {
+    trialTimer = setTimeout(() => {
+      if (currentTrial?.trialId !== trialId || currentTrial.phase !== 'preview' || match?.paused) return;
+      socket?.emit('challenge-rush:trial:get', { matchId: match.matchId, playerId: myId(), challengeIndex: match.challengeIndex });
+    }, Math.max(0, Number(currentTrial.phaseRemainingMs ?? currentTrial.phaseMs ?? 0)) + 20);
+    return;
+  }
+  trialTimer = setTimeout(() => {
+    if (currentTrial?.trialId !== trialId || currentTrial.phase !== 'input' || match?.paused) return;
+    socket?.emit('challenge-rush:challenge:input', { matchId: match.matchId, playerId: myId(), challengeIndex: match.challengeIndex, trialId, action: 'timeout' });
+  }, Math.max(0, Number(currentTrial.inputRemainingMs ?? currentTrial.inputMs ?? 0)) + 20);
+}
 // The reveal animation is purely presentational: the server independently
 // validates timing from its own elapsed clock, so a client that paused,
 // reconnected or drifted only ever sees a wrong *animation*, never an unfair
@@ -72,8 +144,9 @@ function scheduleMemoryReveal(state) {
 function syncPresentation(state) {
   const key = `${state.matchId}:${state.challengeIndex}`;
   if (key !== presentationKey) {
-    presentationKey = key; clearRevealTimers();
+    presentationKey = key; clearRevealTimers(); clearTrialTimer();
     progressStep = 0; memoryRevealDone = false; memoryRevealIndex = -1; trafficGreen = false; iCompleted = false;
+    currentTrial = null; interaction = freshInteraction(null);
   }
   if (state.phase === 'countdown' && !state.paused) {
     if (countdownKey !== key) { countdownKey = key; showCountdown(Date.now() + (state.remainingMs ?? 0)); }
@@ -114,14 +187,29 @@ export function ensureChallengeRushSocket() {
   if (socket) return socket;
   socket = connectSocket();
   socket.on('challenge-rush:lobbies', (payload) => { lobbies = payload?.lobbies ?? []; if (!match && currentView() === 'arcade') rerender(); });
-  socket.on('challenge-rush:match:start', (payload) => { match = { ...payload }; prevMyScore = null; countdownKey = null; startedKey = null; navigate('challengeRush'); });
+  socket.on('challenge-rush:match:start', (payload) => {
+    const preserveInteraction = shouldPreserveInteractionOnMatchStart(match, payload);
+    match = { ...payload }; prevMyScore = null; countdownKey = null; startedKey = null;
+    if (!preserveInteraction) { currentTrial = null; interaction = freshInteraction(null); }
+    navigate('challengeRush');
+  });
   socket.on('challenge-rush:match:state', (payload) => { match = { ...match, ...payload }; if (currentView() === 'challengeRush') rerender(); });
   socket.on('challenge-rush:state', (payload) => {
     match = { ...match, ...payload };
     if (payload.phase === 'countdown' && payload.challenge?.key === 'number-salad') numberOrder = 1;
     syncPresentation(payload);
     syncProgressFromServer(payload);
+    if (payload.phase !== 'playing') { currentTrial = null; clearTrialTimer(); }
+    else if (currentTrial && payload.paused === false) scheduleTrialPhase();
     if (currentView() === 'challengeRush') rerender();
+  });
+  socket.on('challenge-rush:trial', (payload) => {
+    if (!match || payload?.matchId !== match.matchId || payload.challengeIndex !== match.challengeIndex) return;
+    currentTrial = payload.trial;
+    interaction = nextInteractionState(interaction, currentTrial);
+    scheduleTrialPhase();
+    rerenderIfVisible();
+    queueMicrotask(() => document.querySelector(focusableTrialSelector())?.focus());
   });
   socket.on('challenge-rush:traffic-light:green', (payload) => {
     if (!match || payload?.matchId !== match.matchId || payload?.challengeIndex !== match.challengeIndex) return;
@@ -137,14 +225,27 @@ export function ensureChallengeRushSocket() {
     if (currentView() === 'challengeRush') rerender();
   });
   socket.on('challenge-rush:match:end', (payload) => {
-    cancelCountdown();
+    cancelCountdown(); clearTrialTimer(); clearRevealTimers(); currentTrial = null;
     match = { ...match, phase: 'ended', scores: payload.scores, draw: payload.draw === true, history: payload.history ?? match?.history ?? [] };
     if (payload.winnerId) playArcadeSound(payload.winnerId === myId() ? 'challenge-highscore' : 'challenge-gameover');
     else if (!payload.draw) playArcadeSound('challenge-gameover');
     if (currentView() === 'challengeRush') rerender();
   });
   socket.on('disconnect', () => { if (match) match = { ...match, disconnected: true }; if (currentView() === 'challengeRush') rerender(); });
-  socket.on('connect', () => { if (match?.matchId) socket.emit('challenge-rush:match:reconnect', { matchId: match.matchId, playerId: myId() }, (result) => { if (result?.ok) { match = { ...match, reconnected: true, disconnected: false }; if (currentView() === 'challengeRush') rerender(); } }); });
+  socket.on('connect', () => { if (match?.matchId) socket.emit('challenge-rush:match:reconnect', { matchId: match.matchId, playerId: myId() }, (result) => {
+    if (result?.ok) { match = { ...match, reconnected: true, disconnected: false }; if (currentView() === 'challengeRush') rerender(); return; }
+    // Rejected reconnect means the server already forfeited us for exceeding
+    // the reconnect grace period (attachSocket refuses a forfeited player) —
+    // the match keeps running for the others, but nothing further will ever
+    // arrive for it here. Clearing the stale local match immediately (rather
+    // than leaving its pre-disconnect, not-yet-forfeited snapshot in place)
+    // is what lets hasChallengeRushMatch() report free again, so this player
+    // can start or join a new lobby right away instead of staying locked out
+    // until a manual "Verlassen" or a page reload.
+    const wasVisible = currentView() === 'challengeRush';
+    match = null;
+    if (wasVisible) { showToast('Challenge Rush wegen Zeitüberschreitung verlassen.', { error: true }); navigate('arcade'); }
+  }); });
   window.addEventListener('respawn:challenge-rush-disconnect', () => socket?.disconnect());
   window.addEventListener('respawn:challenge-rush-connect', () => socket?.connect());
   socket.emit('challenge-rush:lobbies:get');
@@ -152,11 +253,15 @@ export function ensureChallengeRushSocket() {
 }
 export function challengeRushLobbies() { return lobbies; }
 export function myChallengeRushLobby() { return lobbies.find((lobby) => lobby.players.some((player) => player.id === myId())); }
-export function hasChallengeRushMatch() { return Boolean(match && match.phase !== 'ended'); }
+export function hasChallengeRushMatch() {
+  const myScore = match?.scores?.find((score) => score.playerId === myId());
+  return Boolean(match && match.phase !== 'ended' && myScore?.forfeited !== true);
+}
 export function leaveMyChallengeRushLobby() { const lobby = myChallengeRushLobby(); return lobby ? emit('challenge-rush:lobby:leave', { lobbyId: lobby.id, playerId: myId() }) : Promise.resolve({ ok: true }); }
 function scoreText(scores = []) { return [...scores].sort((a, b) => b.score - a.score).map((score, index) => `<div class="challenge-rush-score-row"><span>${index + 1}. ${escapeHtml(score.name)}${score.forfeited ? ' · Forfait' : ''}</span><strong>${score.score}</strong></div>`).join(''); }
 export function renderChallengeRushLobbyCard() {
   const current = myChallengeRushLobby();
+  const activeMatch = hasChallengeRushMatch();
   const cards = lobbies.map((lobby) => {
     const joined = lobby.players.some((p) => p.id === myId());
     const isHost = lobby.host.id === myId();
@@ -167,14 +272,23 @@ export function renderChallengeRushLobbyCard() {
       : joined
         ? `<button type="button" class="btn btn-sm btn-danger" data-cr-leave="${lobby.id}">Verlassen</button>${readyToggleHtml(lobby, myId(), 'cr-ready')}`
         : '';
-    return arcadeLobbyEntryHtml(lobby, { full: lobby.players.length >= 15, joinAction: joined ? '' : `<button type="button" class="btn btn-sm btn-primary" data-cr-join="${lobby.id}" ${lobby.players.length >= 15 ? 'disabled' : ''}>Beitreten</button>`, footerActions });
+    const joinDisabled = lobby.players.length >= 15 || activeMatch;
+    return arcadeLobbyEntryHtml(lobby, { full: lobby.players.length >= 15, joinAction: joined ? '' : `<button type="button" class="btn btn-sm btn-primary" data-cr-join="${lobby.id}" ${joinDisabled ? 'disabled' : ''}>Beitreten</button>`, footerActions });
   }).join('');
   const noMe = !myId();
-  const createReason = noMe ? 'Wähle zuerst aus, wer du bist.' : current ? 'Du hast bereits eine offene Lobby.' : '';
-  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions"><span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-primary btn-sm" id="cr-create" ${current || noMe ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('cr-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}</span></div>${cards || '<div class="empty-state">Noch keine Lobby offen.</div>'}</div>`;
+  const createReason = noMe
+    ? 'Wähle zuerst aus, wer du bist.'
+    : activeMatch
+      ? 'Beende zuerst dein laufendes Challenge-Rush-Match.'
+      : current
+        ? 'Du hast bereits eine offene Lobby.'
+        : '';
+  const createDisabled = current || activeMatch || noMe;
+  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions"><span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-primary btn-sm" id="cr-create" ${createDisabled ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('cr-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}</span>${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="cr-bot" ${createDisabled ? 'disabled' : ''}>Gegen KI</button>` : ''}</div>${cards || '<div class="empty-state">Noch keine Lobby offen.</div>'}</div>`;
 }
 export function wireChallengeRushLobbyCard(container, { beforeCreate = async () => true, beforeJoin = async () => true } = {}) {
   container.querySelector('#cr-create')?.addEventListener('click', async () => { if (!(await beforeCreate())) return; const result = await emit('challenge-rush:lobby:create', { playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true }); });
+  container.querySelector('#cr-bot')?.addEventListener('click', async () => { if (!(await beforeCreate())) return; const result = await emit('challenge-rush:lobby:bot', { playerId: myId() }); if (!result?.ok) showToast(result?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true }); });
   container.querySelectorAll('[data-cr-join]').forEach((button) => button.addEventListener('click', async () => { if (!(await beforeJoin())) return; const result = await emit('challenge-rush:lobby:join', { lobbyId: button.dataset.crJoin, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Beitritt fehlgeschlagen.', { error: true }); }));
   container.querySelectorAll('[data-cr-leave]').forEach((button) => button.addEventListener('click', () => emit('challenge-rush:lobby:leave', { lobbyId: button.dataset.crLeave, playerId: myId() })));
   wireReadyToggle(container, 'cr-ready', async (lobbyId, ready) => { const result = await emit('challenge-rush:lobby:ready', { lobbyId, playerId: myId(), ready }); if (!result?.ok) showToast(result?.error || 'Bereit-Status konnte nicht gesetzt werden.', { error: true }); });
@@ -188,6 +302,87 @@ function matchControlsHtml() {
   const leave = !isHost ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-cr-leave-match>Verlassen</button>` : '';
   return `<div class="arcade-match-controls">${pause}${finish}${leave}</div>`;
 }
+function trialGrid(size, selectedCells, attribute, disabled, showOrder = false, disableSelected = false) {
+  const selected = new Set(selectedCells);
+  const order = new Map(selectedCells.map((cell, index) => [cell, index + 1]));
+  // The visible bullet/order-number marker on a selected cell is purely
+  // visual; without an equivalent cue in the accessible name (which
+  // otherwise always falls back to the plain "Feld N"), a screen-reader
+  // player has no way to tell a marked memory-matrix cell from an unmarked
+  // one and the challenge becomes unplayable non-visually.
+  const cellLabel = (index) => showOrder && order.has(index) ? `Schritt ${order.get(index)}` : selected.has(index) ? `Feld ${index + 1}, markiert` : `Feld ${index + 1}`;
+  return `<div class="challenge-rush-memory-grid" style="--cr-grid-columns:${size}">${Array.from({ length: size * size }, (_, index) => `<button type="button" class="btn challenge-rush-memory-cell${selected.has(index) ? ' is-selected' : ''}" data-cr-${attribute}="${index}" aria-label="${cellLabel(index)}" ${disabled || (disableSelected && selected.has(index)) ? 'disabled' : ''}>${showOrder && order.has(index) ? order.get(index) : selected.has(index) ? '•' : ''}</button>`).join('')}</div>`;
+}
+function trialOptions(trial, playing) {
+  const options = Array.isArray(trial.data?.options) ? trial.data.options : [];
+  return `<div class="challenge-rush-choice-grid">${options.map((option) => `<button type="button" class="btn challenge-rush-choice" data-cr-choice="${escapeHtml(String(option))}" ${playing && trial.phase === 'input' ? '' : 'disabled'}>${escapeHtml(String(option))}</button>`).join('')}</div>`;
+}
+function trialSequence(trial, playing) {
+  const data = trial.data ?? {};
+  const preview = Array.isArray(data.sequence) ? data.sequence : Array.isArray(data.path) ? data.path : [];
+  if (trial.phase === 'preview') return `${trialGrid(Number(data.size) || 3, preview, 'preview-cell', true, true)}<p class="muted">Merken …</p>`;
+  const length = Number(data.sequenceLength ?? data.pathLength ?? 0);
+  return `${trialGrid(Number(data.size) || 3, interaction.sequence, 'sequence-cell', !playing, true, true)}<p class="muted">${interaction.sequence.length} / ${length} Felder</p>`;
+}
+function trialMatrix(trial, playing) {
+  const data = trial.data ?? {};
+  if (trial.phase === 'preview') return `${trialGrid(Number(data.size) || 3, data.highlights ?? [], 'preview-cell', true)}<p class="muted">Positionen merken …</p>`;
+  return `${trialGrid(Number(data.size) || 3, interaction.cells, 'matrix-cell', !playing, false, true)}<p class="muted">${interaction.cells.length} / ${Number(data.highlightCount ?? 0)} Felder</p>`;
+}
+function trialNumberBlind(trial, playing) {
+  const data = trial.data ?? {}; const size = Number(data.size) || 3;
+  if (trial.phase === 'preview') {
+    const numbers = new Map((data.numbers ?? []).map((entry) => [entry.position, entry.number]));
+    return `<div class="challenge-rush-memory-grid" style="--cr-grid-columns:${size}">${Array.from({ length: size * size }, (_, index) => `<button type="button" class="btn challenge-rush-memory-cell${numbers.has(index) ? ' is-selected' : ''}" disabled aria-label="${numbers.has(index) ? `Zahl ${numbers.get(index)}` : `Leeres Feld ${index + 1}`}">${numbers.get(index) ?? ''}</button>`).join('')}</div><p class="muted">Positionen merken …</p>`;
+  }
+  return `${trialGrid(size, interaction.sequence, 'number-position', !playing, true, true)}<p class="muted">${interaction.sequence.length} / ${Number(data.numberCount ?? 0)} Zahlen</p>`;
+}
+function trialPairs(trial, playing) {
+  const cards = Array.isArray(trial.data?.cards) ? trial.data.cards : [];
+  return `<div class="challenge-rush-pairs-grid" style="--cr-grid-columns:${Number(trial.data?.boardSize) || 2}">${cards.map((card) => {
+    const found = interaction.found.has(card.index); const visible = found || interaction.pair.includes(card.index);
+    const value = interaction.values.get(card.index);
+    return `<button type="button" class="btn challenge-rush-memory-card${visible ? ' is-selected' : ''}" data-cr-pair-card="${card.index}" aria-label="Karte ${card.index + 1}${visible && value ? `: ${escapeHtml(String(value))}` : ''}" ${playing && !found ? '' : 'disabled'}>${visible ? escapeHtml(String(value ?? '')) : '?'}</button>`;
+  }).join('')}</div>`;
+}
+function trialChoice(trial, playing) {
+  const data = trial.data ?? {};
+  const matrix = Array.isArray(data.matrix) ? `<div class="challenge-rush-logic-matrix" role="grid" aria-label="Zwei mal zwei Zahlenmatrix">${data.matrix.flat().map((value, index) => `<span role="gridcell" aria-label="${index === 3 ? 'Gesuchte Zahl' : `Zahl ${escapeHtml(String(value))}`}">${value === null ? '?' : escapeHtml(String(value))}</span>`).join('')}</div>` : '';
+  const prompt = matrix || `<p class="challenge-rush-logic-prompt">${escapeHtml(String(data.prompt ?? ''))}</p>`;
+  if (trial.phase === 'preview') return `${prompt}<div class="challenge-rush-item-list">${(data.items ?? []).map((item) => `<span class="chip">${escapeHtml(String(item))}</span>`).join('')}</div><p class="muted">Merken …</p>`;
+  return `${prompt}${trialOptions(trial, playing)}`;
+}
+export function renderChallengeRushTrial(challenge, trial, playing = true) {
+  if (!trial) return '<p class="muted">Der erste Trial erscheint gleich …</p>';
+  const data = trial.data ?? {};
+  if (['number-sequence', 'logic-equation', 'pattern-complete', 'category-sort', 'direction-match', 'mental-rotation', 'word-scramble', 'count-shapes', 'logic-order', 'delayed-recall', 'prime-check', 'balance-scale', 'clock-angle', 'binary-pattern', 'rule-switch', 'matrix-missing', 'coin-change', 'letter-order', 'digit-sum', 'sequence-transform'].includes(challenge.key)) return trialChoice(trial, playing);
+  if (challenge.key === 'sequence-echo' || challenge.key === 'reverse-echo' || challenge.key === 'path-memory') return trialSequence(trial, playing);
+  if (challenge.key === 'memory-matrix') return trialMatrix(trial, playing);
+  if (challenge.key === 'number-blind') return trialNumberBlind(trial, playing);
+  if (challenge.key === 'memory-pairs') return trialPairs(trial, playing);
+  if (challenge.key === 'n-back' || challenge.key === 'seen-before') {
+    const n = Number(data.n) || 1;
+    const question = challenge.key === 'n-back' ? `Gleich wie vor ${n} ${n === 1 ? 'Schritt' : 'Schritten'}?` : 'War dieses Symbol schon zu sehen?';
+    return `<p class="challenge-rush-logic-prompt">${question}</p><div class="challenge-rush-symbol">${escapeHtml(String(data.symbol ?? ''))}</div><div class="challenge-rush-choice-grid"><button type="button" class="btn challenge-rush-choice" data-cr-bool="true" ${playing ? '' : 'disabled'}>Ja</button><button type="button" class="btn challenge-rush-choice" data-cr-bool="false" ${playing ? '' : 'disabled'}>Nein</button></div>`;
+  }
+  if (challenge.key === 'missing-item') {
+    if (trial.phase === 'preview') return `<div class="challenge-rush-item-list">${(data.originalItems ?? data.items ?? []).map((item) => `<span class="chip">${escapeHtml(String(item))}</span>`).join('')}</div><p class="muted">Merken …</p>`;
+    return `<div class="challenge-rush-item-list">${(data.items ?? []).map((item) => `<span class="chip">${escapeHtml(String(item))}</span>`).join('')}</div><p class="challenge-rush-logic-prompt">Welcher Gegenstand fehlt?</p>${trialOptions(trial, playing)}`;
+  }
+  if (challenge.key === 'suitcase-memory') {
+    if (trial.phase === 'preview') return `<div class="challenge-rush-item-list">${(data.items ?? []).map((item) => `<span class="chip">${escapeHtml(String(item))}</span>`).join('')}</div><p class="muted">Merken …</p>`;
+    return `<p class="challenge-rush-logic-prompt">Welcher Gegenstand lag an Position ${escapeHtml(String(data.position ?? '?'))}?</p>${trialOptions(trial, playing)}`;
+  }
+  return '<p class="muted">Trial wird vorbereitet …</p>';
+}
+export function renderOddOneOut(data, playing = true) {
+  const tileCount = data.tileCount ?? 16;
+  const oddPosition = playing ? Math.max(0, Math.min(tileCount - 1, Number(data.oddIndex))) : -1;
+  const subtlety = Math.max(1, Math.min(5, Math.round(Number(data.subtlety)) || 1));
+  const shapeLabel = (isOdd) => isOdd ? ['kreisförmig', 'stark abgerundet', 'diagonal abgerundet', 'eckig', 'halb abgerundet'][subtlety - 1] : 'normal abgerundet';
+  const tiles = Array.from({ length: tileCount }, (_, index) => `<button type="button" class="challenge-rush-tile" data-cr-tile="${index}" ${playing ? '' : 'disabled'} aria-label="Feld ${index + 1}, Form ${shapeLabel(index === oddPosition)}"></button>`).join('');
+  return `<div class="challenge-rush-tile-grid challenge-rush-odd-grid" data-cr-subtlety="${subtlety}" style="grid-template-columns:repeat(4,minmax(0,1fr));">${tiles}</div>`;
+}
 function challengeView(container) {
   const challenge = match?.challenge;
   // The match itself stays 'playing' until every player finishes this
@@ -197,10 +392,11 @@ function challengeView(container) {
   const playing = match?.phase === 'playing' && !match?.paused && !iCompleted;
   const data = challenge?.data ?? {};
   let body = '<p class="muted">Bereithalten – gleich geht’s los …</p>';
+  if (currentTrial) body = renderChallengeRushTrial(challenge, currentTrial, playing);
   // The reaction target's exact position is only rendered once play actually
   // starts, so nobody can pre-aim at it during the countdown (requirement:
   // reaction challenges must stay invisible until "Los!").
-  if (challenge?.key === 'reaction-circle') body = playing ? `<button type="button" class="challenge-rush-circle" data-cr-x="${data.x}" data-cr-y="${data.y}" style="left:${data.x}%;top:${data.y}%" aria-label="Kreis treffen"></button>` : '<p class="muted">Der Kreis erscheint, sobald es losgeht.</p>';
+  if (!currentTrial && challenge?.key === 'reaction-circle') body = playing ? `<button type="button" class="challenge-rush-circle" data-cr-x="${data.x}" data-cr-y="${data.y}" style="left:${data.x}%;top:${data.y}%" aria-label="Kreis treffen"></button>` : '<p class="muted">Der Kreis erscheint, sobald es losgeht.</p>';
   if (challenge?.key === 'cps') body = `<button type="button" class="challenge-rush-big-button" ${playing ? '' : 'disabled'}>KLICKEN</button><p class="muted">Klicks: <strong id="cr-clicks">0</strong></p>`;
   if (challenge?.key === 'number-salad') body = `<div class="challenge-rush-number-grid">${(data.numbers ?? []).map((number) => `<button type="button" class="btn challenge-rush-number" data-cr-number="${number}" ${playing ? '' : 'disabled'}>${number}</button>`).join('')}</div><p class="muted">Nächste Zahl: <strong>${numberOrder}</strong></p>`;
   if (challenge?.key === 'timing-10') body = `<button type="button" class="challenge-rush-big-button" data-cr-stop ${playing ? '' : 'disabled'}>STOPP</button><p class="muted">Keine laufende Zeit sichtbar – vertraue deinem Gefühl.</p>`;
@@ -232,15 +428,10 @@ function challengeView(container) {
     body = `<div class="challenge-rush-tile-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));">${tiles}</div><p class="muted" aria-live="polite">${!playing ? 'Bereithalten …' : memoryRevealDone ? `Feld ${progressStep + 1} von ${data.sequence?.length ?? 0}` : 'Merke dir die Reihenfolge …'}</p>`;
   }
   if (challenge?.key === 'odd-one-out') {
-    const tileCount = data.tileCount ?? 16;
-    // The `is-odd` class only conveys the differing tile visually; a screen
-    // reader user gets no equivalent signal from the identical "Feld N"
-    // labels, so the odd tile's accessible name states it explicitly too.
-    const tiles = Array.from({ length: tileCount }, (_, index) => {
-      const isOdd = playing && index === data.oddIndex;
-      return `<button type="button" class="challenge-rush-tile ${isOdd ? 'is-odd' : ''}" data-cr-tile="${index}" ${playing ? '' : 'disabled'} aria-label="Feld ${index + 1}${isOdd ? ' (abweichend)' : ''}"></button>`;
-    }).join('');
-    body = `<div class="challenge-rush-tile-grid" style="grid-template-columns:repeat(4,minmax(0,1fr));">${tiles}</div>`;
+    // Every field has the same classes, attributes and accessible name. The
+    // grid applies the visual shape difference through nth-child, keeping the
+    // answer out of both the target element and the accessibility tree.
+    body = renderOddOneOut(data, playing);
   }
   if (challenge?.key === 'whack-a-mole') {
     // Same minimization as Aim Trainer: only the current active hole
@@ -298,6 +489,7 @@ function finalSummaryHtml(scores) {
 }
 export function renderChallengeRush(container, ctx) {
   ensureChallengeRushSocket();
+  clearOddOneOutPresentation();
   const scores = match?.scores ?? [];
   const body = match?.phase === 'ended'
     ? finalSummaryHtml(scores)
@@ -305,20 +497,30 @@ export function renderChallengeRush(container, ctx) {
       ? `${resultView()}${matchControlsHtml()}`
       : `${challengeView(container)}${matchControlsHtml()}<section class="card stack"><h2>Zwischenstand</h2><div class="challenge-rush-scoreboard">${scoreText(scores)}</div></section>`;
   container.innerHTML = `<div class="arcade-game-shell"><button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button><h1 class="view-title">Challenge Rush</h1><div class="arcade-toolbar">${arcadeMuteControlHtml()}</div>${body}</div>`;
+  if (match?.challenge?.key === 'odd-one-out' && match.phase === 'playing' && !match.paused && !iCompleted) {
+    applyOddOneOutPresentation(container, match.challenge.data?.oddIndex);
+  }
   wireArcadeMuteControl(container);
-  container.querySelector('#cr-back')?.addEventListener('click', () => { match = null; navigate('arcade'); });
+  container.querySelector('#cr-back')?.addEventListener('click', () => { clearTrialTimer(); currentTrial = null; match = null; navigate('arcade'); });
   container.querySelector('[data-navigate="arcade"]')?.addEventListener('click', () => navigate('arcade'));
   container.querySelector('[data-cr-pause]')?.addEventListener('click', () => socket.emit('challenge-rush:match:pause', { matchId: match.matchId, playerId: myId() }, (result) => { if (!result?.ok) showToast(result?.error || 'Pause konnte nicht geändert werden.', { error: true }); }));
   container.querySelector('[data-cr-finish]')?.addEventListener('click', async () => { if (!(await confirmDialog('Challenge Rush wirklich für alle beenden?', { confirmText: 'Beenden', danger: true }))) return; const result = await emit('challenge-rush:match:finish', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Beenden fehlgeschlagen.', { error: true }); });
-  container.querySelector('[data-cr-leave-match]')?.addEventListener('click', async () => { if (!(await confirmDialog('Challenge Rush wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return; const result = await emit('challenge-rush:match:leave', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) return showToast(result?.error || 'Verlassen fehlgeschlagen.', { error: true }); match = null; navigate('arcade'); });
+  container.querySelector('[data-cr-leave-match]')?.addEventListener('click', async () => { if (!(await confirmDialog('Challenge Rush wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return; const result = await emit('challenge-rush:match:leave', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) return showToast(result?.error || 'Verlassen fehlgeschlagen.', { error: true }); clearTrialTimer(); currentTrial = null; match = null; navigate('arcade'); });
   container.querySelector('#cr-ready-next')?.addEventListener('click', async () => { const result = await emit('challenge-rush:challenge:ready', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Bereit-Status fehlgeschlagen.', { error: true }); });
   // The ack's optional `next` field (only set for aim-trainer/whack-a-mole/
   // color-word) carries the freshly revealed current step — merged in here
   // so every send() caller automatically sees it, since individual accepted
   // inputs don't otherwise trigger a full state broadcast.
-  const send = (action, value, onAccepted = () => {}) => socket.emit('challenge-rush:challenge:input', { matchId: match.matchId, playerId: myId(), challengeIndex: match.challengeIndex, action, value }, (result) => {
+  const send = (action, value, onAccepted = () => {}) => {
+    const sentTrialId = currentTrial?.trialId;
+    socket.emit('challenge-rush:challenge:input', { matchId: match.matchId, playerId: myId(), challengeIndex: match.challengeIndex, trialId: sentTrialId, action, value }, (result) => {
     if (!result?.ok && !result?.ignored) return showToast(result?.error || 'Eingabe abgelehnt.', { error: true });
     if (result?.ok && !result?.ignored && !result?.duplicate) {
+      if (result.trial) {
+        currentTrial = result.trial;
+        interaction = nextInteractionState(interaction, currentTrial);
+        scheduleTrialPhase();
+      }
       if (result.next && match?.challenge) match = { ...match, challenge: { ...match.challenge, data: { ...match.challenge.data, ...result.next } } };
       // Reflected immediately from this ack instead of waiting for the next
       // full state broadcast — the match stays 'playing' until every player
@@ -326,9 +528,10 @@ export function renderChallengeRush(container, ctx) {
       // (and show a waiting state) the moment they're done, not several
       // silently-ignored duplicate acks later.
       if (result.progress?.completed) { iCompleted = true; rerender(); }
-      onAccepted(result.progress);
+      onAccepted(sentTrialId ? result : result.progress);
     }
-  });
+    });
+  };
   container.querySelector('.challenge-rush-circle')?.addEventListener('click', (event) => { const circle = event.currentTarget; send('hit', { x: Number(circle.dataset.crX), y: Number(circle.dataset.crY) }, (progress) => { if (match?.challenge?.key === 'aim-trainer') { progressStep = progress.correct; rerender(); container.querySelector('.challenge-rush-circle')?.focus(); } }); });
   container.querySelector('.challenge-rush-big-button:not([data-cr-stop])')?.addEventListener('click', () => send('click', undefined, (progress) => { const counter = container.querySelector('#cr-clicks'); if (counter) counter.textContent = String(progress.clicks); }));
   container.querySelector('[data-cr-stop]')?.addEventListener('click', () => send('stop'));
@@ -346,4 +549,64 @@ export function renderChallengeRush(container, ctx) {
   }));
   container.querySelector('[data-cr-traffic]')?.addEventListener('click', () => send('click', undefined, () => rerender()));
   container.querySelectorAll('[data-cr-color]').forEach((button) => button.addEventListener('click', () => send('answer', button.dataset.crColor, (progress) => { progressStep = progress.correct + progress.errors; rerender(); container.querySelector('.challenge-rush-color-option')?.focus(); })));
+  container.querySelectorAll('[data-cr-choice]').forEach((button) => button.addEventListener('click', () => send('choice', button.dataset.crChoice, () => { rerender(); container.querySelector('[data-cr-choice]')?.focus(); })));
+  container.querySelectorAll('[data-cr-bool]').forEach((button) => button.addEventListener('click', () => send('choice', button.dataset.crBool === 'true', () => { rerender(); container.querySelector('[data-cr-bool]')?.focus(); })));
+  container.querySelectorAll('[data-cr-sequence-cell]').forEach((button) => button.addEventListener('click', () => {
+    const value = Number(button.dataset.crSequenceCell);
+    if (interaction.sequence.includes(value)) return;
+    interaction.sequence.push(value);
+    const expectedLength = Number(currentTrial?.data?.sequenceLength ?? currentTrial?.data?.pathLength ?? 0);
+    if (interaction.sequence.length >= expectedLength) send('sequence', [...interaction.sequence]);
+    rerender();
+    container.querySelector(`[data-cr-sequence-cell="${value}"]`)?.focus();
+  }));
+  container.querySelectorAll('[data-cr-matrix-cell]').forEach((button) => button.addEventListener('click', () => {
+    const value = Number(button.dataset.crMatrixCell);
+    if (interaction.cells.includes(value)) return;
+    interaction.cells.push(value);
+    if (interaction.cells.length >= Number(currentTrial?.data?.highlightCount ?? 0)) send('cells', [...interaction.cells]);
+    rerender();
+    container.querySelector(`[data-cr-matrix-cell="${value}"]`)?.focus();
+  }));
+  container.querySelectorAll('[data-cr-number-position]').forEach((button) => button.addEventListener('click', () => {
+    const value = Number(button.dataset.crNumberPosition);
+    if (interaction.sequence.includes(value)) return;
+    interaction.sequence.push(value);
+    if (interaction.sequence.length >= Number(currentTrial?.data?.numberCount ?? 0)) send('sequence', [...interaction.sequence]);
+    rerender();
+    container.querySelector(`[data-cr-number-position="${value}"]`)?.focus();
+  }));
+  container.querySelectorAll('[data-cr-pair-card]').forEach((button) => button.addEventListener('click', () => {
+    const value = Number(button.dataset.crPairCard);
+    if (interaction.found.has(value) || interaction.pair.includes(value)) return;
+    const trialId = currentTrial?.trialId;
+    send('reveal', value, (result) => {
+      if (result.trial?.trialId !== trialId) return;
+      const revealed = Array.isArray(result.revealedCards) ? result.revealedCards : [];
+      revealed.forEach((card) => interaction.values.set(card.index, card.value));
+      interaction.pair = revealed.map((card) => card.index);
+      interaction.revealSeq = acknowledgedRevealSeq(interaction.revealSeq, result.revealSeq);
+      const revealSeq = interaction.revealSeq;
+      if (result.correct === true) {
+        interaction.pair.forEach((entry) => interaction.found.add(entry));
+        interaction.pair = [];
+        rerender();
+        container.querySelector('[data-cr-pair-card]:not([disabled])')?.focus();
+        return;
+      }
+      if (result.correct === false) {
+        rerender();
+        container.querySelector(`[data-cr-pair-card="${value}"]`)?.focus();
+        window.setTimeout(() => {
+          if (currentTrial?.trialId !== trialId || !pairHideStillApplies(interaction, trialId, revealSeq)) return;
+          for (const card of revealed) if (!interaction.found.has(card.index)) interaction.values.delete(card.index);
+          interaction.pair = [];
+          rerender();
+          container.querySelector('[data-cr-pair-card]:not([disabled])')?.focus();
+        }, 650);
+        return;
+      }
+      rerender();
+    });
+  }));
 }

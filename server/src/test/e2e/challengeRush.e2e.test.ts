@@ -9,26 +9,26 @@ const BASE_URL = `http://localhost:${PORT}`;
 let serverProcess: ChildProcess;
 let browser: Browser;
 
-async function waitForServer(): Promise<void> {
+async function waitForServer(baseUrl: string = BASE_URL): Promise<void> {
   const started = Date.now();
   while (Date.now() - started < 10_000) {
-    try { if ((await fetch(`${BASE_URL}/api/health`)).ok) return; } catch { /* startup */ }
+    try { if ((await fetch(`${baseUrl}/api/health`)).ok) return; } catch { /* startup */ }
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
   throw new Error('Challenge-Rush-E2E-Server wurde nicht bereit.');
 }
 
-async function createPlayer(): Promise<string> {
+async function createPlayer(baseUrl: string = BASE_URL): Promise<string> {
   const name = `Challenge Rush E2E ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const response = await fetch(`${BASE_URL}/api/players`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+  const response = await fetch(`${baseUrl}/api/players`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
   assert.equal(response.status, 201);
   return ((await response.json()) as { id: string }).id;
 }
 
-async function openArcade(playerId: string): Promise<{ context: BrowserContext; page: Page }> {
+async function openArcade(playerId: string, baseUrl: string = BASE_URL): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
-  await page.goto(BASE_URL);
+  await page.goto(baseUrl);
   await page.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), playerId);
   await page.reload();
   await page.waitForSelector('.nav-btn[data-view="more"]');
@@ -121,6 +121,15 @@ async function isStillPlaying(page: Page, key: string): Promise<boolean> {
   return (await page.locator(`.challenge-rush-stage[data-phase="playing"][data-challenge-key="${key}"]`).count()) > 0;
 }
 
+async function waitForAction(page: Page, key: string, selector: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (!(await isStillPlaying(page, key))) return false;
+    if (await page.locator(selector).count()) return true;
+    await page.waitForTimeout(25);
+  }
+  return false;
+}
+
 async function playCurrentChallenge(page: Page): Promise<void> {
   const key = await page.locator('.challenge-rush-stage').getAttribute('data-challenge-key');
   if (!key) throw new Error('Keine aktive Challenge im E2E-Test gefunden.');
@@ -136,12 +145,24 @@ async function playCurrentChallenge(page: Page): Promise<void> {
   }
   if (key === 'timing-10') { await page.click('[data-cr-stop]'); return; }
   if (key === 'memory-sequence') {
-    await page.waitForSelector('.challenge-rush-tile:not([disabled])');
+    if (!(await waitForAction(page, key, '.challenge-rush-tile:not([disabled])'))) return;
     const tileCount = await page.locator('.challenge-rush-tile').count();
     for (let index = 0; index < tileCount; index += 1) { if (!(await isStillPlaying(page, key))) break; await page.click(`.challenge-rush-tile[data-cr-tile="${index}"]`); await page.waitForTimeout(80); }
     return;
   }
-  if (key === 'odd-one-out') { await page.click('.challenge-rush-tile.is-odd'); return; }
+  if (key === 'odd-one-out') {
+    const position = await page.locator('.challenge-rush-odd-grid').evaluate((grid) => {
+      const signatures = Array.from(grid.children).map((node) => {
+        const style = getComputedStyle(node);
+        return [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomRightRadius, style.borderBottomLeftRadius].join('|');
+      });
+      const counts = new Map(signatures.map((signature) => [signature, signatures.filter((entry) => entry === signature).length]));
+      return signatures.findIndex((signature) => counts.get(signature) === 1);
+    });
+    assert.ok(position >= 0, 'Odd-One-Out muss über seine berechnete Form erkennbar sein.');
+    await page.locator('.challenge-rush-tile').nth(position).click();
+    return;
+  }
   if (key === 'whack-a-mole') {
     for (let attempt = 0; attempt < 10 && await isStillPlaying(page, key) && await page.locator('.challenge-rush-tile.is-active').count() > 0; attempt += 1) { await page.click('.challenge-rush-tile.is-active'); await page.waitForTimeout(80); }
     return;
@@ -151,7 +172,27 @@ async function playCurrentChallenge(page: Page): Promise<void> {
     for (let attempt = 0; attempt < 8 && await isStillPlaying(page, key) && await page.locator('.challenge-rush-color-option').count() > 0; attempt += 1) { await page.locator('.challenge-rush-color-option').first().click(); await page.waitForTimeout(80); }
     return;
   }
-  throw new Error(`Unbekannte Challenge im E2E-Test: ${key}`);
+  const actionSelector = '[data-cr-choice]:not([disabled]), [data-cr-bool]:not([disabled]), [data-cr-sequence-cell]:not([disabled]), [data-cr-matrix-cell]:not([disabled]), [data-cr-number-position]:not([disabled]), [data-cr-pair-card]:not([disabled])';
+  if (!(await waitForAction(page, key, actionSelector))) return;
+  if (await page.locator('[data-cr-choice]:not([disabled])').count()) { await page.locator('[data-cr-choice]:not([disabled])').first().click(); return; }
+  if (await page.locator('[data-cr-bool]:not([disabled])').count()) { await page.locator('[data-cr-bool]:not([disabled])').first().click(); return; }
+  if (await page.locator('[data-cr-pair-card]:not([disabled])').count()) {
+    await page.locator('[data-cr-pair-card]:not([disabled])').first().click();
+    await page.waitForTimeout(80);
+    await page.locator('[data-cr-pair-card]:not([disabled])').nth(1).click();
+    return;
+  }
+  for (let attempt = 0; attempt < 25 && await isStillPlaying(page, key); attempt += 1) {
+    const cell = page.locator('[data-cr-sequence-cell]:not([disabled]), [data-cr-matrix-cell]:not([disabled]), [data-cr-number-position]:not([disabled])').first();
+    if (!(await cell.count())) break;
+    try {
+      await cell.click({ timeout: 1_000 });
+    } catch (error) {
+      if (!(await isStillPlaying(page, key))) return;
+      throw error;
+    }
+    await page.waitForTimeout(50);
+  }
 }
 
 test('Challenge Rush hides the reaction target until play, gates the next challenge behind a ready click, and ends with a per-challenge summary', async () => {
@@ -175,7 +216,9 @@ test('Challenge Rush hides the reaction target until play, gates the next challe
       if (key === 'reaction-circle') break;
       await actor.page.waitForFunction(() => document.querySelector('.challenge-rush-stage')?.getAttribute('data-phase') === 'playing');
       await playCurrentChallenge(actor.page);
-      await actor.page.waitForSelector('#cr-ready-next:not([disabled])');
+      await actor.page.waitForSelector('#cr-ready-next:not([disabled])').catch(async () => {
+        throw new Error(`Challenge ${key} an Index ${reactionIndex} erreichte kein Ergebnis; Bühne: ${await actor.page.locator('.challenge-rush-stage').getAttribute('data-challenge-key')}`);
+      });
       await actor.page.click('#cr-ready-next');
       reactionIndex += 1;
     }
@@ -232,19 +275,22 @@ test('Challenge Rush plays every Phase 3 mini-challenge to a final summary in th
     await actor.page.waitForSelector('[data-cr-start]');
     await actor.page.click('[data-cr-start]');
 
-    for (let index = 0; index < 10; index += 1) {
+    for (let index = 0; index < 40; index += 1) {
       await actor.page.waitForFunction((expectedIndex) => {
         const node = document.querySelector('.challenge-rush-stage');
         return node?.getAttribute('data-phase') === 'playing' && node.getAttribute('data-challenge-index') === String(expectedIndex);
       }, index);
+      const key = await actor.page.locator('.challenge-rush-stage').getAttribute('data-challenge-key');
       await playCurrentChallenge(actor.page);
-      await actor.page.waitForSelector('#cr-ready-next:not([disabled])');
+      await actor.page.waitForSelector('#cr-ready-next:not([disabled])').catch(async () => {
+        throw new Error(`Challenge ${key} an Index ${index} erreichte kein Ergebnis`);
+      });
       await actor.page.click('#cr-ready-next');
     }
 
     await actor.page.waitForSelector('.challenge-rush-final-breakdown');
     const titles = await actor.page.locator('.challenge-rush-final-breakdown').first().textContent();
-    for (const title of ['Klick den Kreis', 'Aim Trainer', 'Merk dir die Reihenfolge', 'Finde den Unterschied', 'Whack-a-Mole', 'Ampel-Reaktion', 'Farbwort-Chaos']) {
+    for (const title of ['Klick den Kreis', 'Aim Trainer', 'Merk dir die Reihenfolge', 'Finde den Unterschied', 'Whack-a-Mole', 'Ampel-Reaktion', 'Farbwort-Chaos', 'Münzwechsel', 'Folgen-Operator', 'Schon gesehen?']) {
       assert.ok(titles?.includes(title), `Ergebnis-Aufschlüsselung sollte "${title}" enthalten`);
     }
   } finally {
@@ -279,5 +325,55 @@ test('Challenge Rush lets a guest leave a running match without ending it for th
   } finally {
     await host.context.close();
     await guest.context.close();
+  }
+});
+
+test('Challenge Rush unlocks a new lobby immediately after a reconnect rejected past the forfeit grace period', async () => {
+  // A short, dedicated server instance keeps this test fast without lowering
+  // the shared server's default reconnect grace period out from under the
+  // other tests in this file, which rely on it staying reconnect-friendly.
+  const forfeitPort = 3917;
+  const forfeitBaseUrl = `http://localhost:${forfeitPort}`;
+  const forfeitProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
+    env: { ...process.env, PORT: String(forfeitPort), DB_FILE: ':memory:', ACCESS_TOKEN: '', CHALLENGE_RUSH_RECONNECT_GRACE_MS: '800' },
+    stdio: 'ignore',
+  });
+  try {
+    await waitForServer(forfeitBaseUrl);
+    const hostId = await createPlayer(forfeitBaseUrl);
+    const guestId = await createPlayer(forfeitBaseUrl);
+    const host = await openArcade(hostId, forfeitBaseUrl);
+    const guest = await openArcade(guestId, forfeitBaseUrl);
+    try {
+      await host.page.click('[data-game="challenge-rush"]');
+      await host.page.click('#cr-create');
+      await guest.page.click('[data-game="challenge-rush"]');
+      await guest.page.waitForSelector('[data-cr-join]');
+      await guest.page.click('[data-cr-join]');
+      await guest.page.waitForSelector('[data-cr-ready]');
+      await guest.page.click('[data-cr-ready]');
+      await host.page.waitForSelector('[data-cr-start]:not([disabled])');
+      await host.page.click('[data-cr-start]');
+      await guest.page.waitForSelector('.challenge-rush-stage');
+      await guest.page.waitForFunction(() => document.querySelector('.challenge-rush-stage')?.getAttribute('data-phase') === 'playing');
+
+      // Disconnect the guest and outlast the grace period so the server
+      // forfeits it (attachSocket then refuses this player's reconnect,
+      // server/src/arcade/challengeRush.ts) before the guest reconnects.
+      await guest.page.evaluate(() => window.dispatchEvent(new Event('respawn:challenge-rush-disconnect')));
+      await host.page.waitForFunction(() => document.body.textContent?.includes('Forfait') === true, { timeout: 5_000 });
+      await guest.page.evaluate(() => window.dispatchEvent(new Event('respawn:challenge-rush-connect')));
+
+      // The rejected reconnect must clear the guest's stale local match state
+      // and return them to the Arcade view instead of leaving the "Beende
+      // zuerst dein laufendes Challenge-Rush-Match" lock in place.
+      await guest.page.waitForSelector('#cr-create:not([disabled])', { timeout: 5_000 });
+      assert.equal(await guest.page.locator('#cr-create').isDisabled(), false);
+    } finally {
+      await host.context.close();
+      await guest.context.close();
+    }
+  } finally {
+    forfeitProcess.kill();
   }
 });

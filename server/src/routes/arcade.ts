@@ -7,6 +7,7 @@ import { openLobbySummaries as blobbyLobbies } from '../arcade/blobby';
 import { openLobbySummaries as pongLobbies } from '../arcade/pong';
 import { openLobbySummaries as snakeLobbies } from '../arcade/snake';
 import { openLobbySummaries as battleshipLobbies } from '../arcade/battleship';
+import { isKnownArcadeBotId } from '../arcade/botIds';
 import { requestCanAccessGroupEvent, requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
 
 export const arcadeRouter = Router();
@@ -161,6 +162,22 @@ arcadeRouter.get('/stats', (req, res) => {
       >;
     }
   >();
+  const scribbleResultClauses = ['group_id = ?', "game_type = 'scribble'", 'source_match_id IS NOT NULL'];
+  const scribbleResultParams: Array<string | null> = [req.group!.id];
+  if (selectedEvent.eventId !== undefined) {
+    scribbleResultClauses.push('event_id IS ?');
+    scribbleResultParams.push(selectedEvent.eventId);
+  }
+  const aiScribbleMatchIds = (
+    db.prepare(
+      `SELECT source_match_id, scores
+       FROM arcade_results
+       WHERE ${scribbleResultClauses.join(' AND ')}`,
+    ).all(...scribbleResultParams) as Array<{ source_match_id: string; scores: string }>
+  ).filter((row) => parseJsonArray(row.scores).some((score) => {
+    const entry = score as ScoreEntry;
+    return entry?.isBot === true || isKnownArcadeBotId(entry?.playerId);
+  })).map((row) => row.source_match_id);
 
   const addResultToGame = (
     statsKey: string,
@@ -179,7 +196,7 @@ arcadeRouter.get('/stats', (req, res) => {
     };
     game.matches += 1;
     for (const score of scores) {
-      if (score.isBot === true || score.playerId.startsWith('tetris-bot')) continue;
+      if (score.isBot === true || isKnownArcadeBotId(score.playerId)) continue;
       const current = game.players.get(score.playerId) ?? {
         playerId: score.playerId,
         name: score.name,
@@ -219,10 +236,16 @@ arcadeRouter.get('/stats', (req, res) => {
     );
     if (scores.length === 0) continue;
 
+    const hasBot = scores.some((score) => score.isBot === true || isKnownArcadeBotId(score.playerId));
+    // Tetris exposes explicit AI variants below. Every other game keeps its
+    // public ranking human-only, so an AI test match must not increment the
+    // match, win or loss counters of its human participant.
+    if (hasBot && row.game_type !== 'tetris') continue;
+
     const baseMode = scores.some((score) => score.mode === 'arena') ? 'arena' : 'duel';
     const mode =
       row.game_type === 'tetris'
-        ? `${baseMode}${scores.some((score) => score.isBot === true || score.playerId.startsWith('tetris-bot')) ? '-ai' : ''}`
+        ? `${baseMode}${hasBot ? '-ai' : ''}`
         : null;
     const statsKey = mode ? `${row.game_type}:${mode}` : row.game_type;
     if (row.game_type === 'tetris') {
@@ -241,6 +264,16 @@ arcadeRouter.get('/stats', (req, res) => {
     drawingClauses.push('d.event_id IS ?');
     drawingParams.push(selectedEvent.eventId);
   }
+  if (aiScribbleMatchIds.length > 0) {
+    drawingClauses.push(`d.match_id NOT IN (${aiScribbleMatchIds.map(() => '?').join(',')})`);
+    drawingParams.push(...aiScribbleMatchIds);
+  }
+  // Belt-and-suspenders beyond the arcade_results lookup above: that lookup
+  // only sees matches that reached a persisted result row, so a still-active
+  // or crashed-before-finishMatch AI match would otherwise leak its drawings
+  // into the human ranking until (or unless) it ever finishes. Drawings are
+  // flagged at persist time (see scribble.ts persistCurrentDrawing) instead.
+  drawingClauses.push('d.is_ai_match = 0');
   const scribbleArtPlayers = db.prepare(
     `SELECT d.artist_id AS player_id, d.artist_name AS name,
             COUNT(*) AS drawings,

@@ -85,6 +85,7 @@
   --challenge-rush-number-min-width: 48px;
   --challenge-rush-number-grid-width: 360px;
   --challenge-rush-tile-grid-width: 360px;
+  --challenge-rush-trial-grid-max-width: 420px;
   --challenge-rush-traffic-light-size: 140px;
   --challenge-rush-color-dot-size: 16px;
   --notification-panel-width: 360px;
@@ -2350,6 +2351,28 @@ button.card {
 .challenge-rush-tile.is-active { background: var(--accent-gradient); border-color: transparent; box-shadow: var(--shadow-glow-accent); }
 .challenge-rush-tile.is-odd { background: var(--accent-gradient); border-style: dashed; border-color: var(--accent-text); }
 .challenge-rush-tile:disabled { cursor: default; opacity: 0.7; }
+.challenge-rush-memory-grid,
+.challenge-rush-pairs-grid { display: grid; grid-template-columns: repeat(var(--cr-grid-columns, 3), minmax(0, 1fr)); gap: var(--space-2); width: min(100%, var(--challenge-rush-trial-grid-max-width)); margin-inline: auto; }
+.challenge-rush-memory-cell,
+.challenge-rush-memory-card { min-width: var(--tap-target-size); min-height: var(--tap-target-size); padding: var(--space-2); font-size: var(--font-size-lg); }
+.challenge-rush-memory-cell.is-selected,
+.challenge-rush-memory-card.is-selected { color: var(--accent-text); background: var(--accent-gradient); }
+.challenge-rush-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); width: min(100%, var(--challenge-rush-trial-grid-max-width)); margin-inline: auto; }
+.challenge-rush-choice { min-height: var(--space-8); }
+.challenge-rush-logic-prompt { margin: 0; text-align: center; white-space: pre-line; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); }
+.challenge-rush-logic-matrix { display: grid; grid-template-columns: repeat(2, minmax(var(--space-8), 1fr)); gap: var(--space-2); width: min(100%, var(--challenge-rush-button-min-width)); text-align: center; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); }
+.challenge-rush-logic-matrix > span { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated-2); }
+.challenge-rush-symbol { display: grid; place-items: center; min-height: var(--challenge-rush-button-min-height); font-size: var(--font-size-3xl); }
+.challenge-rush-item-list { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--space-2); min-height: var(--space-8); }
+/* The differing field never receives a distinguishing class, attribute or
+   accessible label. The parent selects it visually, with a shape difference
+   at every difficulty level so color perception is not required. */
+.challenge-rush-tile-grid[data-cr-subtlety='1'] { --cr-odd-radius: var(--radius-full); }
+.challenge-rush-tile-grid[data-cr-subtlety='2'] { --cr-odd-radius: var(--radius-lg); }
+.challenge-rush-tile-grid[data-cr-subtlety='3'] { --cr-odd-radius: 40% 10%; }
+.challenge-rush-tile-grid[data-cr-subtlety='4'] { --cr-odd-radius: 0; }
+.challenge-rush-tile-grid[data-cr-subtlety='5'] { --cr-odd-radius: 50% 0; }
+.challenge-rush-odd-grid > .challenge-rush-tile { transition: border-radius var(--motion-fast); }
 .challenge-rush-traffic-light { width: var(--challenge-rush-traffic-light-size); height: var(--challenge-rush-traffic-light-size); margin-inline: auto; border: 0; border-radius: var(--radius-full); color: var(--accent-text); font-size: var(--font-size-lg); font-weight: var(--font-weight-black); cursor: pointer; }
 .challenge-rush-traffic-light.is-red { background: var(--danger); }
 .challenge-rush-traffic-light.is-green { background: var(--state-playing); }
@@ -2442,21 +2465,6 @@ button.card {
   width: auto;
   flex: 1 1 0;
   min-width: var(--arcade-lobby-mode-width);
-}
-.arcade-lobby-bot-setting {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-muted);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-}
-.arcade-lobby-bot-setting select {
-  width: calc(var(--space-8) + var(--space-6));
-  height: var(--space-7);
-  padding-top: var(--space-1);
-  padding-bottom: var(--space-1);
-  text-align: center;
 }
 .arcade-lobby-ai-row {
   display: flex;
