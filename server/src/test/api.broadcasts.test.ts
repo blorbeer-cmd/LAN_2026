@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import type { Server } from 'socket.io';
 import { createApp } from '../app';
+import { DEFAULT_GROUP_ID } from '../db';
 import { Events, setIo } from '../realtime';
 
 const app = createApp();
@@ -105,6 +106,10 @@ test('only the creator can end an active broadcast and ending is idempotently gu
   assert.deepEqual(
     emitted.filter((entry) => entry.event === Events.broadcastsChanged).map((entry) => entry.payload),
     [{ id: created.body.id, endedAt: ended.body.endedAt }],
+  );
+  assert.deepEqual(
+    emitted.filter((entry) => entry.event === Events.pushChanged).map((entry) => entry.payload),
+    [{ groupId: DEFAULT_GROUP_ID }],
   );
 
   const again = await request(app).post(`/api/broadcasts/${created.body.id}/end`).send({ playerId });

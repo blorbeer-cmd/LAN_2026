@@ -329,6 +329,40 @@ function wireSocket() {
   // never make the whole app appear offline.
   const socket = connectSocket({ reportConnectionState: true });
 
+  let reconnectRefresh = null;
+  window.addEventListener('respawn:connection-restored', () => {
+    if (reconnectRefresh) return;
+    reconnectRefresh = (async () => {
+      // Socket.IO does not replay arbitrary application events. Invalidate
+      // every secondary cache and reload the central REST state before the
+      // connection banner can be treated as authoritative again.
+      invalidateMissingSkills();
+      invalidateAktuellStatus();
+      invalidateSkillSuggestions();
+      invalidateMatchmakingHistory();
+      invalidateVoteHistory();
+      invalidateHallOfFame();
+      invalidateHomeSeating();
+      invalidateSeating();
+      invalidateChecklist();
+      invalidateTournaments();
+      invalidateBroadcasts();
+      invalidateInfoBoard();
+      invalidateFoodOrders();
+      invalidateArrivals();
+      invalidateAdminMemberships();
+      invalidateAdminReadiness();
+      invalidateMusic();
+      await refreshGroupContext();
+      await Promise.all([ctx.refresh(), refreshNotificationBanner()]);
+    })()
+      .catch((error) => showToast(error.message, { error: true }))
+      .finally(() => {
+        reconnectRefresh = null;
+      });
+  });
+  window.addEventListener('respawn:connection-recovery-required', () => location.reload());
+
   // These events carry no payload (or aren't worth special-casing) — just
   // reload everything. Infrequent (admin-type actions), so this is cheap.
   const fullReloadEvents = [

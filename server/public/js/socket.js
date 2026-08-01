@@ -12,6 +12,10 @@ export function connectionStateAfterFailure({ hasConnected, online }) {
   return hasConnected ? 'reconnecting' : 'connecting';
 }
 
+export function isPermanentConnectionFailure({ reason, error }) {
+  return reason === 'io server disconnect' || error?.message === 'unauthorized';
+}
+
 export function connectSocket({ kiosk = false, reportConnectionState = false } = {}) {
   const socket = io({ auth: { token: getToken(), kiosk } });
   if (reportConnectionState) {
@@ -21,15 +25,27 @@ export function connectSocket({ kiosk = false, reportConnectionState = false } =
     };
     publishConnectionState('connecting');
     socket.on('connect', () => {
+      const reconnected = hasConnected;
       hasConnected = true;
       publishConnectionState('connected');
+      if (reconnected) window.dispatchEvent(new CustomEvent('respawn:connection-restored'));
     });
-    socket.on('connect_error', () =>
-      publishConnectionState(connectionStateAfterFailure({ hasConnected, online: navigator.onLine })),
-    );
-    socket.on('disconnect', () =>
-      publishConnectionState(connectionStateAfterFailure({ hasConnected: true, online: navigator.onLine })),
-    );
+    socket.on('connect_error', (error) => {
+      if (isPermanentConnectionFailure({ error })) {
+        publishConnectionState('offline');
+        window.dispatchEvent(new CustomEvent('respawn:connection-recovery-required'));
+        return;
+      }
+      publishConnectionState(connectionStateAfterFailure({ hasConnected, online: navigator.onLine }));
+    });
+    socket.on('disconnect', (reason) => {
+      if (isPermanentConnectionFailure({ reason })) {
+        publishConnectionState('offline');
+        window.dispatchEvent(new CustomEvent('respawn:connection-recovery-required'));
+        return;
+      }
+      publishConnectionState(connectionStateAfterFailure({ hasConnected: true, online: navigator.onLine }));
+    });
   }
   if (!kiosk) {
     const subscribe = () => {

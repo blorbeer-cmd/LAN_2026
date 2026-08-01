@@ -187,7 +187,7 @@ broadcastsRouter.post('/:id/end', ...withBodyPlayerIdentity, (req, res) => {
     .run(endedAt, row.id, row.group_id, endedAt);
   if (result.changes === 0) return res.status(409).json({ error: 'Durchsage ist bereits beendet oder abgelaufen.' });
 
-  resolvePushTopic(broadcastTopicKey(row.id), false, { groupId: row.group_id, eventId: row.event_id }, false);
+  resolvePushTopic(broadcastTopicKey(row.id), false, { groupId: row.group_id, eventId: row.event_id });
   broadcast(Events.broadcastsChanged, { id: row.id, endedAt }, { groupId: row.group_id, eventId: row.event_id });
   res.json({ id: row.id, endedAt });
 });

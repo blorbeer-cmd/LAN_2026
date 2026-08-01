@@ -23,7 +23,7 @@ after(async () => {
   if (tempDir) await fs.promises.rm(tempDir, { recursive: true, force: true });
 });
 
-test('tracking start creates a verified pre-event snapshot', async () => {
+test('concurrent tracking starts create exactly one verified pre-event snapshot', async () => {
   tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'respawn-event-backup-'));
   mutableConfig.dbFile = path.join(tempDir, 'lan.sqlite');
   mutableConfig.backupDir = path.join(tempDir, 'backups');
@@ -32,8 +32,10 @@ test('tracking start creates a verified pre-event snapshot', async () => {
     .post('/api/events')
     .send({ name: 'Backup Start', startsAt: Date.now(), endsAt: Date.now() + 60_000 });
 
-  const started = await request(app).post(`/api/events/${event.body.id}/tracking/start`);
-  assert.equal(started.status, 200, JSON.stringify(started.body));
+  const starts = await Promise.all(
+    Array.from({ length: 4 }, () => request(app).post(`/api/events/${event.body.id}/tracking/start`)),
+  );
+  assert.ok(starts.every((started) => started.status === 200), JSON.stringify(starts.map((started) => started.body)));
   const files = await fs.promises.readdir(mutableConfig.backupDir);
   assert.equal(files.filter((name) => name.startsWith('respawn-pre-event-') && name.endsWith('.sqlite')).length, 1);
   await request(app).post(`/api/events/${event.body.id}/tracking/stop`);
