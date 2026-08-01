@@ -51,6 +51,14 @@ function startReadingCountdown(remainingMs) {
 }
 function scheduleAt(delayMs, callback) { revealTimers.push(setTimeout(callback, Math.max(0, delayMs))); }
 function rerenderIfVisible() { if (currentView() === 'challengeRush') rerender(); }
+function focusTimedChallengeTarget(state) {
+  const selector = timedChallengeFocusSelector(state);
+  if (!selector) return;
+  queueMicrotask(() => {
+    if (currentView() !== 'challengeRush') return;
+    document.querySelector(selector)?.focus();
+  });
+}
 function elapsedInChallenge(state) { return (state.challenge?.durationMs ?? 0) - (state.remainingMs ?? 0); }
 export function freshInteraction(trialId, resume = {}) {
   const found = new Set(Array.isArray(resume.found) ? resume.found : []);
@@ -82,6 +90,12 @@ export function shouldPreserveInteractionOnMatchStart(previousMatch, nextMatch) 
 }
 export function focusableTrialSelector() {
   return '[data-cr-choice], [data-cr-bool], [data-cr-sequence-cell], [data-cr-matrix-cell], [data-cr-number-position], [data-cr-pair-card]';
+}
+export function timedChallengeFocusSelector(state) {
+  if (state?.phase !== 'playing' || state?.paused) return '';
+  if (state?.challenge?.key === 'aim-trainer') return '.challenge-rush-circle';
+  if (state?.challenge?.key === 'whack-a-mole') return '.challenge-rush-tile.is-active';
+  return '';
 }
 export function acknowledgedRevealSeq(currentRevealSeq, serverRevealSeq) {
   return Number.isSafeInteger(serverRevealSeq) && serverRevealSeq >= 0
@@ -212,7 +226,10 @@ export function ensureChallengeRushSocket() {
     if (!preserveInteraction) { currentTrial = null; interaction = freshInteraction(null); }
     navigate('challengeRush');
   });
-  socket.on('challenge-rush:match:state', (payload) => { match = { ...match, ...payload }; if (currentView() === 'challengeRush') rerender(); });
+  socket.on('challenge-rush:match:state', (payload) => {
+    match = { ...match, ...payload };
+    if (currentView() === 'challengeRush') { rerender(); focusTimedChallengeTarget(match); }
+  });
   socket.on('challenge-rush:state', (payload) => {
     match = { ...match, ...payload };
     if (payload.phase === 'countdown' && payload.challenge?.key === 'number-salad') numberOrder = 1;
@@ -220,7 +237,7 @@ export function ensureChallengeRushSocket() {
     syncProgressFromServer(payload);
     if (payload.phase !== 'playing') { currentTrial = null; clearTrialTimer(); }
     else if (currentTrial && payload.paused === false) scheduleTrialPhase();
-    if (currentView() === 'challengeRush') rerender();
+    if (currentView() === 'challengeRush') { rerender(); focusTimedChallengeTarget(match); }
   });
   socket.on('challenge-rush:trial', (payload) => {
     if (!match || payload?.matchId !== match.matchId || payload.challengeIndex !== match.challengeIndex) return;
@@ -267,6 +284,9 @@ export function ensureChallengeRushSocket() {
   }); });
   window.addEventListener('respawn:challenge-rush-disconnect', () => socket?.disconnect());
   window.addEventListener('respawn:challenge-rush-connect', () => socket?.connect());
+  window.addEventListener('respawn:identity-changed', () => {
+    if (!currentPlayerMayUseArcadeAi()) selectedChallengeKeys.clear();
+  });
   socket.emit('challenge-rush:lobbies:get');
   return socket;
 }
@@ -278,8 +298,15 @@ export function hasChallengeRushMatch() {
 }
 export function leaveMyChallengeRushLobby() { const lobby = myChallengeRushLobby(); return lobby ? emit('challenge-rush:lobby:leave', { lobbyId: lobby.id, playerId: myId() }) : Promise.resolve({ ok: true }); }
 function scoreText(scores = []) { return [...scores].sort((a, b) => b.score - a.score).map((score, index) => `<div class="challenge-rush-score-row"><span>${index + 1}. ${escapeHtml(score.name)}${score.forfeited ? ' · Forfait' : ''}</span><strong>${score.score}</strong></div>`).join(''); }
-function selectedChallenges() { return challengeCatalog.filter((challenge) => selectedChallengeKeys.has(challenge.key)); }
-function challengeSelectionPayload() { return selectedChallenges().map((challenge) => challenge.key); }
+export function orderedChallengeSelection(catalog, selectedKeys) {
+  const byKey = new Map(catalog.map((challenge) => [challenge.key, challenge]));
+  return [...selectedKeys].map((key) => byKey.get(key)).filter(Boolean);
+}
+export function challengeSelectionForPlayer(catalog, selectedKeys, maySelect) {
+  return maySelect ? orderedChallengeSelection(catalog, selectedKeys).map((challenge) => challenge.key) : [];
+}
+function selectedChallenges() { return orderedChallengeSelection(challengeCatalog, selectedChallengeKeys); }
+function challengeSelectionPayload() { return challengeSelectionForPlayer(challengeCatalog, selectedChallengeKeys, currentPlayerMayUseArcadeAi()); }
 function adminChallengeSelectorHtml(disabled) {
   if (!currentPlayerMayUseArcadeAi()) return '';
   const count = selectedChallenges().length;

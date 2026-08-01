@@ -60,7 +60,7 @@ before(async () => {
 
 after(async () => { await browser?.close(); serverProcess?.kill(); });
 
-test('Challenge Rush admin can start a targeted run with one selected task', async () => {
+test('Challenge Rush admin can run selected tasks in checkbox order', async () => {
   const playerId = await createPlayer();
   await makeAdmin(playerId);
   const actor = await openArcade(playerId);
@@ -68,15 +68,80 @@ test('Challenge Rush admin can start a targeted run with one selected task', asy
     await actor.page.click('[data-game="challenge-rush"]');
     await actor.page.click('.challenge-rush-test-selector > summary');
     await actor.page.check('[data-cr-challenge-key="digit-sum"]');
+    await actor.page.check('[data-cr-challenge-key="binary-pattern"]');
     await actor.page.click('#cr-create');
     await actor.page.waitForSelector('[data-cr-start]');
-    assert.match((await actor.page.locator('.challenge-rush-lobby-selection').textContent()) ?? '', /Ziffernsumme/);
+    const lobbySelection = (await actor.page.locator('.challenge-rush-lobby-selection').textContent()) ?? '';
+    const binaryTitle = 'Bin\u00e4rmuster';
+    assert.ok(lobbySelection.indexOf('Ziffernsumme') < lobbySelection.indexOf(binaryTitle));
     await actor.page.click('[data-cr-start]');
     await actor.page.waitForFunction(() => document.querySelector('.challenge-rush-stage')?.getAttribute('data-phase') === 'playing');
     assert.equal(await actor.page.locator('.challenge-rush-stage').getAttribute('data-challenge-key'), 'digit-sum');
-    assert.match((await actor.page.locator('.badge-playing').textContent()) ?? '', /1 \/ 1/);
+    assert.match((await actor.page.locator('.badge-playing').textContent()) ?? '', /1 \/ 2/);
+    await playCurrentChallenge(actor.page);
+    await actor.page.waitForSelector('#cr-ready-next:not([disabled])');
+    await actor.page.click('#cr-ready-next');
+    await actor.page.waitForFunction(() => document.querySelector('.challenge-rush-stage')?.getAttribute('data-phase') === 'playing');
+    assert.equal(await actor.page.locator('.challenge-rush-stage').getAttribute('data-challenge-key'), 'binary-pattern');
+    assert.match((await actor.page.locator('.badge-playing').textContent()) ?? '', /2 \/ 2/);
+    await playCurrentChallenge(actor.page);
+    await actor.page.waitForSelector('#cr-ready-next:not([disabled])');
+    await actor.page.click('#cr-ready-next');
+    await actor.page.waitForSelector('.challenge-rush-final-breakdown');
+    const finalBreakdown = (await actor.page.locator('.challenge-rush-final-breakdown').textContent()) ?? '';
+    assert.ok(finalBreakdown.indexOf('Ziffernsumme') < finalBreakdown.indexOf(binaryTitle));
   } finally {
     await actor.context.close();
+  }
+});
+
+test('Challenge Rush drops a hidden admin selection after an identity switch', async () => {
+  const adminId = await createPlayer();
+  const playerId = await createPlayer();
+  await makeAdmin(adminId);
+  const actor = await openArcade(adminId);
+  try {
+    await actor.page.click('[data-game="challenge-rush"]');
+    await actor.page.click('.challenge-rush-test-selector > summary');
+    await actor.page.check('[data-cr-challenge-key="digit-sum"]');
+    await actor.page.evaluate((id) => {
+      localStorage.setItem('respawn_my_player_id', id);
+      window.dispatchEvent(new CustomEvent('respawn:identity-changed'));
+      window.dispatchEvent(new CustomEvent('respawn:rerender'));
+    }, playerId);
+    await actor.page.waitForSelector('#cr-create');
+    assert.equal(await actor.page.locator('.challenge-rush-test-selector').count(), 0);
+    await actor.page.click('#cr-create');
+    await actor.page.waitForSelector('[data-cr-start]');
+    assert.equal(await actor.page.locator('.challenge-rush-lobby-selection').count(), 0);
+  } finally {
+    await actor.context.close();
+  }
+});
+
+test('Challenge Rush focuses timed targets after start and server-side expiry', async () => {
+  for (const challenge of [
+    { key: 'aim-trainer', selector: '.challenge-rush-circle', expiryMs: 2_000 },
+    { key: 'whack-a-mole', selector: '.challenge-rush-tile.is-active', expiryMs: 1_600 },
+  ]) {
+    const playerId = await createPlayer();
+    await makeAdmin(playerId);
+    const actor = await openArcade(playerId);
+    try {
+      await actor.page.click('[data-game="challenge-rush"]');
+      await actor.page.click('.challenge-rush-test-selector > summary');
+      await actor.page.check(`[data-cr-challenge-key="${challenge.key}"]`);
+      await actor.page.click('#cr-create');
+      await actor.page.waitForSelector('[data-cr-start]');
+      await actor.page.click('[data-cr-start]');
+      await actor.page.waitForSelector(`${challenge.selector}:focus`);
+      await actor.page.waitForTimeout(challenge.expiryMs);
+      assert.equal(await actor.page.locator(challenge.selector).evaluate((node) => document.activeElement === node), true);
+      await actor.page.locator(challenge.selector).press('Space');
+      await actor.page.waitForSelector('#cr-ready-next:not([disabled])');
+    } finally {
+      await actor.context.close();
+    }
   }
 });
 

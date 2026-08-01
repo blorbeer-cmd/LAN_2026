@@ -3,12 +3,15 @@ import assert from 'node:assert/strict';
 
 import {
   acknowledgedRevealSeq,
+  challengeSelectionForPlayer,
   freshInteraction,
   nextInteractionState,
+  orderedChallengeSelection,
   pairHideStillApplies,
   renderChallengeRushTrial,
   renderOddOneOut,
   shouldPreserveInteractionOnMatchStart,
+  timedChallengeFocusSelector,
 } from './views/challengeRush.js';
 
 test('same-trial replay preserves partial sequence and matrix input while merging server resume state', () => {
@@ -60,6 +63,24 @@ test('memory reveal acknowledgements use the authoritative server sequence', () 
   assert.equal(acknowledgedRevealSeq(3, 3), 3);
   assert.equal(acknowledgedRevealSeq(3, 4), 4);
   assert.equal(acknowledgedRevealSeq(3, undefined), 4);
+});
+
+test('admin challenge selection keeps checkbox insertion order and is omitted for non-admins', () => {
+  const catalog = [
+    { key: 'binary-pattern', title: 'Binary pattern' },
+    { key: 'digit-sum', title: 'Ziffernsumme' },
+  ];
+  const selected = new Set(['digit-sum', 'binary-pattern']);
+  assert.deepEqual(orderedChallengeSelection(catalog, selected).map(({ key }) => key), ['digit-sum', 'binary-pattern']);
+  assert.deepEqual(challengeSelectionForPlayer(catalog, selected, true), ['digit-sum', 'binary-pattern']);
+  assert.deepEqual(challengeSelectionForPlayer(catalog, selected, false), []);
+});
+
+test('timed target focus is requested only while its challenge is actively playable', () => {
+  assert.equal(timedChallengeFocusSelector({ phase: 'playing', paused: false, challenge: { key: 'aim-trainer' } }), '.challenge-rush-circle');
+  assert.equal(timedChallengeFocusSelector({ phase: 'playing', paused: false, challenge: { key: 'whack-a-mole' } }), '.challenge-rush-tile.is-active');
+  assert.equal(timedChallengeFocusSelector({ phase: 'countdown', paused: false, challenge: { key: 'aim-trainer' } }), '');
+  assert.equal(timedChallengeFocusSelector({ phase: 'playing', paused: true, challenge: { key: 'whack-a-mole' } }), '');
 });
 
 test('an older memory resume cannot replace newer pair state', () => {
