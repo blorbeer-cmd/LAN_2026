@@ -330,7 +330,10 @@ function wireSocket() {
   const socket = connectSocket({ reportConnectionState: true });
 
   let reconnectRefresh = null;
-  window.addEventListener('respawn:connection-restored', () => {
+  let reconnectRetryTimer = null;
+  let reconnectComplete = null;
+  let reconnectFailureNotified = false;
+  const refreshAfterReconnect = () => {
     if (reconnectRefresh) return;
     reconnectRefresh = (async () => {
       // Socket.IO does not replay arbitrary application events. Invalidate
@@ -353,13 +356,36 @@ function wireSocket() {
       invalidateAdminMemberships();
       invalidateAdminReadiness();
       invalidateMusic();
-      await refreshGroupContext();
-      await Promise.all([ctx.refresh(), refreshNotificationBanner()]);
+      await refreshGroupContext({ throwOnError: true });
+      await Promise.all([ctx.refresh(), refreshNotificationBanner({ throwOnError: true })]);
+      if (reconnectRetryTimer) window.clearTimeout(reconnectRetryTimer);
+      reconnectRetryTimer = null;
+      reconnectFailureNotified = false;
+      reconnectComplete?.();
     })()
-      .catch((error) => showToast(error.message, { error: true }))
+      .catch((error) => {
+        if (error.status === 401) {
+          location.reload();
+          return;
+        }
+        if (!reconnectFailureNotified) {
+          showToast('Aktualisierung fehlgeschlagen – neuer Versuch läuft.', { error: true });
+          reconnectFailureNotified = true;
+        }
+        if (!reconnectRetryTimer) {
+          reconnectRetryTimer = window.setTimeout(() => {
+            reconnectRetryTimer = null;
+            refreshAfterReconnect();
+          }, 3000);
+        }
+      })
       .finally(() => {
         reconnectRefresh = null;
       });
+  };
+  window.addEventListener('respawn:connection-restored', (event) => {
+    reconnectComplete = event.detail?.complete ?? null;
+    refreshAfterReconnect();
   });
   window.addEventListener('respawn:connection-recovery-required', () => location.reload());
 

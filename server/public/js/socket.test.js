@@ -64,20 +64,22 @@ test('the reporting socket announces reconnect refreshes and permanent recovery'
   );
   const handlers = new Map();
   const events = [];
+  const fakeSocket = {
+    connected: false,
+    on: (event, handler) => handlers.set(event, [...(handlers.get(event) ?? []), handler]),
+    emit: () => undefined,
+  };
   const defineGlobal = (name, value) =>
     Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
   try {
-    defineGlobal('io', () => ({
-      on: (event, handler) => handlers.set(event, [...(handlers.get(event) ?? []), handler]),
-      emit: () => undefined,
-    }));
+    defineGlobal('io', () => fakeSocket);
     defineGlobal('localStorage', { getItem: () => null });
     defineGlobal('sessionStorage', { getItem: () => null });
     defineGlobal('navigator', { onLine: true });
     defineGlobal('window', {
       addEventListener: () => undefined,
       dispatchEvent: (event) => {
-        events.push({ type: event.type, state: event.detail?.state });
+        events.push({ type: event.type, state: event.detail?.state, complete: event.detail?.complete });
         return true;
       },
     });
@@ -91,10 +93,20 @@ test('the reporting socket announces reconnect refreshes and permanent recovery'
       },
     );
 
-    const emit = (event, payload) => handlers.get(event).forEach((handler) => handler(payload));
+    const emit = (event, payload) => {
+      if (event === 'connect') fakeSocket.connected = true;
+      if (event === 'disconnect') fakeSocket.connected = false;
+      handlers.get(event).forEach((handler) => handler(payload));
+    };
     connectSocket({ reportConnectionState: true });
     emit('connect');
     emit('connect');
+    assert.deepEqual(
+      events.filter((event) => event.type === 'respawn:connection-state').map((event) => event.state),
+      ['connecting', 'connected', 'reconnecting'],
+      'a reconnect stays pending until the authoritative refresh acknowledges it',
+    );
+    events.find((event) => event.type === 'respawn:connection-restored').complete();
     emit('disconnect', 'io server disconnect');
     emit('connect_error', new Error('unauthorized'));
 
@@ -105,6 +117,7 @@ test('the reporting socket announces reconnect refreshes and permanent recovery'
         'respawn:connection-state',
         'respawn:connection-state',
         'respawn:connection-restored',
+        'respawn:connection-state',
         'respawn:connection-state',
         'respawn:connection-recovery-required',
         'respawn:connection-state',

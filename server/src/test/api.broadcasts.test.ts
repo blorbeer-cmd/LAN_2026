@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import type { Server } from 'socket.io';
 import { createApp } from '../app';
-import { DEFAULT_GROUP_ID } from '../db';
+import { db, DEFAULT_GROUP_ID } from '../db';
+import { setPushMute } from '../push';
 import { Events, setIo } from '../realtime';
 
 const app = createApp();
@@ -90,6 +91,56 @@ test('POST /api/broadcasts defaults to one hour, stores the deadline, and lists 
   assert.equal(list.body.broadcasts[0].playerName, 'Ansager');
   assert.equal(list.body.broadcasts[0].endsAt, customEndsAt);
   assert.equal(list.body.broadcasts[0].active, true);
+});
+
+test('legacy event broadcasts enforce recipients and mutes while preserving a kiosk-only entry', async () => {
+  const event = await request(app)
+    .post('/api/events')
+    .send({ name: 'Stumme Event-Durchsage', startsAt: Date.now(), endsAt: Date.now() + 60_000 });
+  assert.equal(event.status, 201);
+  const roster = await request(app)
+    .put(`/api/events/${event.body.id}/participants`)
+    .send({ playerIds: [playerId] });
+  assert.equal(roster.status, 200);
+  setPushMute(DEFAULT_GROUP_ID, playerId, event.body.id, true);
+  emitted.length = 0;
+
+  try {
+    const sent = await request(app)
+      .post('/api/broadcasts')
+      .send({ playerId, eventId: event.body.id, message: 'Nur der Kiosk darf das zeigen' });
+    assert.equal(sent.status, 201, JSON.stringify(sent.body));
+    assert.ok(sent.body.pushLogId, 'an all-audience message keeps its kiosk log entry');
+    assert.equal(emitted.filter((entry) => entry.event === Events.broadcastNew).length, 0);
+    assert.equal(emitted.filter((entry) => entry.event === Events.pushSent).length, 1);
+    const push = db.prepare('SELECT player_ids AS playerIds FROM push_log WHERE id = ?').get(sent.body.pushLogId) as {
+      playerIds: string;
+    };
+    assert.deepEqual(JSON.parse(push.playerIds), [], 'muted players are absent from personal and Web Push delivery');
+  } finally {
+    setPushMute(DEFAULT_GROUP_ID, playerId, event.body.id, false);
+  }
+});
+
+test('an event without participants still creates its kiosk banner', async () => {
+  const event = await request(app)
+    .post('/api/events')
+    .send({ name: 'Leeres Event', startsAt: Date.now(), endsAt: Date.now() + 60_000 });
+  assert.equal(event.status, 201);
+  emitted.length = 0;
+
+  const sent = await request(app)
+    .post('/api/broadcasts')
+    .send({ playerId, eventId: event.body.id, message: 'Kiosk ohne Teilnehmer' });
+  assert.equal(sent.status, 201, JSON.stringify(sent.body));
+  assert.ok(sent.body.pushLogId);
+  assert.equal(emitted.filter((entry) => entry.event === Events.broadcastNew).length, 0);
+  assert.equal(emitted.filter((entry) => entry.event === Events.pushSent).length, 1);
+  const push = db
+    .prepare('SELECT event_id AS eventId, player_ids AS playerIds FROM push_log WHERE id = ?')
+    .get(sent.body.pushLogId) as { eventId: string; playerIds: string };
+  assert.equal(push.eventId, event.body.id);
+  assert.deepEqual(JSON.parse(push.playerIds), []);
 });
 
 test('only the creator can end an active broadcast and ending is idempotently guarded', async () => {

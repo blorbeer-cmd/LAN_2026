@@ -375,29 +375,45 @@ export function notifyPlayers(
   topic?: PushTopic,
   scope: { groupId: string; eventId?: string | null } = { groupId: DEFAULT_GROUP_ID },
 ): PushDeliveryResult | null {
-  if (playerIds.length === 0) return null;
-
-  const placeholders = playerIds.map(() => '?').join(',');
-  const eligible = config.authMode === 'legacy' ? playerIds.map((playerId) => ({ playerId })) : db.prepare(
-    `SELECT DISTINCT gm.player_id AS playerId
-     FROM group_memberships gm JOIN players p ON p.id = gm.player_id
-     WHERE gm.group_id = ? AND gm.status = 'active' AND p.deactivated_at IS NULL AND p.is_test = 0
-       AND gm.player_id IN (${placeholders})
-       AND NOT EXISTS (SELECT 1 FROM push_mutes pm WHERE pm.group_id = gm.group_id AND pm.player_id = gm.player_id
-                      AND (pm.event_id IS NULL OR pm.event_id IS ?))
-       AND (? IS NULL OR EXISTS (SELECT 1 FROM event_participants ep WHERE ep.event_id = ? AND ep.player_id = gm.player_id AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}))`
-  ).all(scope.groupId, ...playerIds, scope.eventId ?? null, scope.eventId ?? null, scope.eventId ?? null) as Array<{ playerId: string }>;
-  playerIds = eligible.map((row) => row.playerId);
-  if (playerIds.length === 0) {
-    // A shared kiosk has no personal mute preference. Keep a recipient-less
-    // group entry durable for its banner even when every individual target
-    // muted this scope; personal feeds cannot see an entry without recipient
-    // rows and no Web Push request is sent.
+  const recordKioskOnlyDelivery = (): PushDeliveryResult | null => {
     if (audience !== 'all') return null;
     const entry = recordPushLog([], payload, audience, topic, scope);
     broadcast(Events.pushSent, entry, scope);
     return { entry, recipientPlayerIds: [] };
-  }
+  };
+  if (playerIds.length === 0) return recordKioskOnlyDelivery();
+
+  const placeholders = playerIds.map(() => '?').join(',');
+  const eligible = (
+    config.authMode === 'legacy'
+      ? db
+          .prepare(
+            `SELECT DISTINCT p.id AS playerId
+             FROM players p
+             WHERE p.deactivated_at IS NULL AND p.is_test = 0 AND p.id IN (${placeholders})
+               AND NOT EXISTS (SELECT 1 FROM push_mutes pm WHERE pm.group_id = ? AND pm.player_id = p.id
+                              AND (pm.event_id IS NULL OR pm.event_id IS ?))
+               AND (? IS NULL OR EXISTS (SELECT 1 FROM event_participants ep WHERE ep.event_id = ? AND ep.player_id = p.id AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}))`,
+          )
+          .all(...playerIds, scope.groupId, scope.eventId ?? null, scope.eventId ?? null, scope.eventId ?? null)
+      : db
+          .prepare(
+            `SELECT DISTINCT gm.player_id AS playerId
+             FROM group_memberships gm JOIN players p ON p.id = gm.player_id
+             WHERE gm.group_id = ? AND gm.status = 'active' AND p.deactivated_at IS NULL AND p.is_test = 0
+               AND gm.player_id IN (${placeholders})
+               AND NOT EXISTS (SELECT 1 FROM push_mutes pm WHERE pm.group_id = gm.group_id AND pm.player_id = gm.player_id
+                              AND (pm.event_id IS NULL OR pm.event_id IS ?))
+               AND (? IS NULL OR EXISTS (SELECT 1 FROM event_participants ep WHERE ep.event_id = ? AND ep.player_id = gm.player_id AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}))`,
+          )
+          .all(scope.groupId, ...playerIds, scope.eventId ?? null, scope.eventId ?? null, scope.eventId ?? null)
+  ) as Array<{ playerId: string }>;
+  playerIds = eligible.map((row) => row.playerId);
+  // A shared kiosk has no personal mute preference. Keep a recipient-less
+  // group entry durable for its banner when there were no initial recipients
+  // or every individual target was filtered; personal feeds cannot see it and
+  // no Web Push request is sent.
+  if (playerIds.length === 0) return recordKioskOnlyDelivery();
 
   const entry = recordPushLog(playerIds, payload, audience, topic, scope);
   // Group-wide entries stay a plain group broadcast (the kiosk banner is

@@ -73,6 +73,9 @@ test('rapid-fire lobby creation keeps exactly one lobby and throttles the join p
     // push_log row to be written per un-throttled create.
     const other = await request(baseUrl).post('/api/players').send({ name: 'Spam Bystander' });
     assert.equal(other.status, 201);
+    const pushesBefore = db
+      .prepare("SELECT COUNT(*) AS count FROM push_log WHERE title LIKE '%Quiz-Lobby%'")
+      .get() as { count: number };
 
     // Ten parallel create clicks: exactly one may win, the rest get a clean
     // rejection instead of duplicating lobbies or overwriting state.
@@ -106,7 +109,11 @@ test('rapid-fire lobby creation keeps exactly one lobby and throttles the join p
     const pushRows = db
       .prepare("SELECT COUNT(*) AS count FROM push_log WHERE title LIKE '%Quiz-Lobby%'")
       .get() as { count: number };
-    assert.equal(pushRows.count, 1, 'lobby-create pushes must be throttled to one per cooldown window');
+    assert.equal(
+      pushRows.count - pushesBefore.count,
+      1,
+      'lobby-create pushes must be throttled to one per cooldown window',
+    );
   } finally {
     client.close();
     io.close();

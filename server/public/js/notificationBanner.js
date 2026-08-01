@@ -273,7 +273,7 @@ export function renderBanner() {
   });
 }
 
-export async function refreshNotificationBanner() {
+export async function refreshNotificationBanner({ throwOnError = false } = {}) {
   const myId = getMyId();
   const thisEpoch = ++epoch;
   if (!myId) {
@@ -297,13 +297,14 @@ export async function refreshNotificationBanner() {
     highlightEntry = current.entry;
     scheduleHighlightExpiry();
     loadedForId = myId;
-  } catch {
+  } catch (error) {
     if (thisEpoch !== epoch) return;
     entries = [];
     highlightEntry = null;
     clearHighlightExpiryTimer();
     loadedForId = myId;
     loadError = true;
+    if (throwOnError) throw error;
   } finally {
     if (thisEpoch === epoch) {
       loading = false;

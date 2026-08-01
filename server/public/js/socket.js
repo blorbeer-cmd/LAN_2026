@@ -20,6 +20,7 @@ export function connectSocket({ kiosk = false, reportConnectionState = false } =
   const socket = io({ auth: { token: getToken(), kiosk } });
   if (reportConnectionState) {
     let hasConnected = false;
+    let connectionGeneration = 0;
     const publishConnectionState = (state) => {
       window.dispatchEvent(new CustomEvent('respawn:connection-state', { detail: { state } }));
     };
@@ -27,8 +28,21 @@ export function connectSocket({ kiosk = false, reportConnectionState = false } =
     socket.on('connect', () => {
       const reconnected = hasConnected;
       hasConnected = true;
-      publishConnectionState('connected');
-      if (reconnected) window.dispatchEvent(new CustomEvent('respawn:connection-restored'));
+      const generation = ++connectionGeneration;
+      if (!reconnected) {
+        publishConnectionState('connected');
+        return;
+      }
+      publishConnectionState('reconnecting');
+      window.dispatchEvent(
+        new CustomEvent('respawn:connection-restored', {
+          detail: {
+            complete: () => {
+              if (socket.connected && generation === connectionGeneration) publishConnectionState('connected');
+            },
+          },
+        }),
+      );
     });
     socket.on('connect_error', (error) => {
       if (isPermanentConnectionFailure({ error })) {
@@ -39,6 +53,7 @@ export function connectSocket({ kiosk = false, reportConnectionState = false } =
       publishConnectionState(connectionStateAfterFailure({ hasConnected, online: navigator.onLine }));
     });
     socket.on('disconnect', (reason) => {
+      connectionGeneration += 1;
       if (isPermanentConnectionFailure({ reason })) {
         publishConnectionState('offline');
         window.dispatchEvent(new CustomEvent('respawn:connection-recovery-required'));

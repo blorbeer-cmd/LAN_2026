@@ -22,7 +22,7 @@ export function isGroupAdmin() {
   return group ? ['owner', 'admin'].includes(group.role) : false;
 }
 
-export async function refreshGroupContext() {
+export async function refreshGroupContext({ throwOnError = false } = {}) {
   try {
     groups = await api.groups.list();
     const storedId = sessionStorage.getItem(GROUP_KEY);
@@ -38,6 +38,7 @@ export async function refreshGroupContext() {
       window.dispatchEvent(new CustomEvent('respawn:group-changed', { detail: selectedGroup() }));
     }
   } catch (error) {
+    if (throwOnError) throw error;
     if (error.status !== 401) showToast(error.message, { error: true });
   }
 }

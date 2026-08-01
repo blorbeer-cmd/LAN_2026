@@ -146,6 +146,11 @@ broadcastsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     pushLogId: pushDelivery?.entry.id ?? null,
     createdAt: row.created_at,
   };
+  const deliveredRecipientIds = pushDelivery?.recipientPlayerIds ?? [];
+  const requiresRecipientFilter =
+    config.authMode === 'required' ||
+    row.event_id !== null ||
+    deliveredRecipientIds.length !== recipientIds.length;
   broadcast(
     Events.broadcastNew,
     {
@@ -156,11 +161,11 @@ broadcastsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
       endsAt: created.endsAt,
       createdAt: created.createdAt,
     },
-    config.authMode === 'required'
+    requiresRecipientFilter
       ? {
           groupId: row.group_id,
           eventId: row.event_id,
-          recipientPlayerIds: pushDelivery?.recipientPlayerIds ?? [],
+          recipientPlayerIds: deliveredRecipientIds,
         }
       : { groupId: row.group_id, eventId: row.event_id },
   );
