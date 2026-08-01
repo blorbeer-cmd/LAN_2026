@@ -8,6 +8,7 @@ const require = createRequire(import.meta.url);
 export function prepareLocalEnvironment(source = process.env, randomBytes = crypto.randomBytes) {
   const env = { ...source };
   if (env.NODE_ENV === 'production') return { env, generatedRecoveryCode: null };
+  if (!env.COOKIE_SECURE?.trim()) env.COOKIE_SECURE = '0';
   const hasRecoveryCode = Boolean(env.ADMIN_RECOVERY_CODE?.trim());
   const hasBootstrapAdmin = Object.keys(env).some((key) => {
     const match = /^BOOTSTRAP_ADMIN_(\d+)_NAME$/.exec(key);

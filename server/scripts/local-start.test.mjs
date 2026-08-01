@@ -12,6 +12,7 @@ test('creates a temporary recovery code when local startup has no first-user pat
   assert.equal(result.env.ADMIN_RECOVERY_CODE, result.generatedRecoveryCode);
   assert.equal(result.env.LOCAL_GENERATED_RECOVERY_CODE, '1');
   assert.equal(result.env.PORT, '3001');
+  assert.equal(result.env.COOKIE_SECURE, '0');
 });
 
 test('keeps an explicitly configured recovery code', () => {
@@ -43,4 +44,11 @@ test('never synthesizes production credentials', () => {
 
   assert.equal(result.generatedRecoveryCode, null);
   assert.equal(result.env.ADMIN_RECOVERY_CODE, undefined);
+  assert.equal(result.env.COOKIE_SECURE, undefined);
+});
+
+test('keeps an explicit local cookie policy', () => {
+  const result = prepareLocalEnvironment({ COOKIE_SECURE: '1' }, deterministicRandom);
+
+  assert.equal(result.env.COOKIE_SECURE, '1');
 });

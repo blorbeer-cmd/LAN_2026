@@ -119,7 +119,9 @@ npm start
 Danach im Browser `http://localhost:3000` öffnen. Auf einer frischen lokalen Datenbank erzeugen
 `npm run dev` und `npm start` automatisch einen temporären Recovery-Code und geben den vollständigen
 `/?claim=...`-Link in der Konsole aus. Für einen dauerhaften lokalen Zugang stattdessen
-`ADMIN_RECOVERY_CODE` oder ein vollständiges `BOOTSTRAP_ADMIN_<n>_NAME`/`_PASSWORD`-Paar setzen.
+`ADMIN_RECOVERY_CODE` oder ein vollständiges `BOOTSTRAP_ADMIN_<n>_NAME`/`_PASSWORD`-Paar setzen. Die
+beiden lokalen Wrapper setzen außerdem `COOKIE_SECURE=0`, damit persönliche Sessions über bewusstes
+LAN-HTTP funktionieren; für HTTPS kann der Wert explizit auf `1` gesetzt werden.
 
 ### Code-Qualität
 
@@ -242,7 +244,7 @@ Recovery-Code oder ein bereits beanspruchtes Admin-Konto.
 Beispiel:
 
 ```bash
-PORT=3000 ADMIN_RECOVERY_CODE="$(openssl rand -hex 32)" KIOSK_TOKEN="$(openssl rand -hex 32)" node dist/index.js
+PORT=3000 COOKIE_SECURE=0 ADMIN_RECOVERY_CODE="$(openssl rand -hex 32)" KIOSK_TOKEN="$(openssl rand -hex 32)" node dist/index.js
 ```
 
 Den Recovery-Code geheim halten: Er bootstrapt den ersten Admin und kann genau den einzigen aktiven

@@ -98,6 +98,8 @@ Für lokale Starts ohne bestehendes Konto erzeugen `npm run dev` und `npm start`
 Recovery-Code und geben den vollständigen Claim-Link aus. Der direkte Runtime-Aufruf
 `node dist/index.js` beendet sich auf einer leeren Datenbank dagegen bewusst, wenn weder ein
 beanspruchtes Admin-Konto noch `ADMIN_RECOVERY_CODE` vorhanden ist.
+Die lokalen npm-Wrapper setzen standardmäßig `COOKIE_SECURE=0`, damit persönliche Sessions über
+bewusstes LAN-HTTP funktionieren; direkte Starts müssen diesen Wert selbst setzen oder HTTPS nutzen.
 
 Alternativ zum Recovery-Claim können ein oder mehrere Admins beim Start direkt aus der `.env`
 angelegt werden (`BOOTSTRAP_ADMIN_<n>_NAME` / `BOOTSTRAP_ADMIN_<n>_PASSWORD`). Das Seeding ist

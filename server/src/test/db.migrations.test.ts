@@ -1330,6 +1330,9 @@ test('migration 58 preserves late legacy admins and backfills memberships withou
   insertPlayer.run('legacy-admin', 'Legacy Admin', 'legacy-admin-key', 0, 1, 'claimed-hash', now);
   insertMembership.run('legacy-admin', 'member', 'active', now, null, 1);
 
+  insertPlayer.run('legacy-unclaimed-admin', 'Legacy Unclaimed Admin', 'legacy-unclaimed-admin-key', 0, 1, null, now);
+  insertMembership.run('legacy-unclaimed-admin', 'member', 'active', now, null, 1);
+
   insertPlayer.run('late-player', 'Late Player', 'late-player-key', 0, 0, null, now + 1);
 
   insertPlayer.run('revoked-player', 'Revoked Player', 'revoked-player-key', 0, 0, null, now + 2);
@@ -1341,6 +1344,26 @@ test('migration 58 preserves late legacy admins and backfills memberships withou
        VALUES (?, 'default-group', ?, ?, ?, 'user')`,
     )
     .run('revoked-consent', 'revoked-player', now + 2, now + 3);
+
+  fixture
+    .prepare(
+      `INSERT INTO events (id, name, starts_at, ends_at, group_id, status, visibility_scope)
+       VALUES (?, ?, ?, ?, 'default-group', 'published', 'participants')`,
+    )
+    .run('legacy-private-event', 'Legacy Private Event', now, now + 60_000);
+  fixture
+    .prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES ('legacy-private-event', ?, 'accepted')")
+    .run('late-player');
+  fixture
+    .prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES ('legacy-private-event', ?, 'accepted')")
+    .run('revoked-player');
+  fixture
+    .prepare(
+      `INSERT INTO event_tracking_consents
+         (id, event_id, group_id, player_id, accepted_at, revoked_at, source)
+       VALUES (?, 'legacy-private-event', 'default-group', ?, ?, ?, 'user')`,
+    )
+    .run('revoked-event-consent', 'revoked-player', now + 2, now + 3);
 
   insertPlayer.run('removed-player', 'Removed Player', 'removed-player-key', 0, 0, null, now + 4);
   insertMembership.run('removed-player', 'member', 'removed', now + 4, now + 5, 0);
@@ -1361,6 +1384,16 @@ test('migration 58 preserves late legacy admins and backfills memberships withou
   assert.deepEqual(
     migrated.prepare('SELECT is_admin FROM players WHERE id = ?').get('legacy-admin'),
     { is_admin: 1 },
+  );
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT role, status FROM group_memberships WHERE group_id = ? AND player_id = ?')
+      .get('default-group', 'legacy-unclaimed-admin'),
+    { role: 'admin', status: 'active' },
+  );
+  assert.deepEqual(
+    migrated.prepare('SELECT is_admin, password_hash FROM players WHERE id = ?').get('legacy-unclaimed-admin'),
+    { is_admin: 1, password_hash: null },
   );
   assert.deepEqual(
     migrated
@@ -1392,6 +1425,24 @@ test('migration 58 preserves late legacy admins and backfills memberships withou
       .get('default-group', 'revoked-player') as { count: number }).count,
     0,
   );
+  assert.equal(
+    (migrated
+      .prepare(
+        `SELECT COUNT(*) AS count FROM event_tracking_consents
+         WHERE event_id = ? AND player_id = ? AND revoked_at IS NULL`,
+      )
+      .get('legacy-private-event', 'late-player') as { count: number }).count,
+    1,
+  );
+  assert.equal(
+    (migrated
+      .prepare(
+        `SELECT COUNT(*) AS count FROM event_tracking_consents
+         WHERE event_id = ? AND player_id = ? AND revoked_at IS NULL`,
+      )
+      .get('legacy-private-event', 'revoked-player') as { count: number }).count,
+    0,
+  );
   assert.deepEqual(
     migrated
       .prepare('SELECT status, outside_tracking_enabled FROM group_memberships WHERE group_id = ? AND player_id = ?')
@@ -1405,6 +1456,15 @@ test('migration 58 preserves late legacy admins and backfills memberships withou
          WHERE target_id = ? AND action = 'admin_granted' AND details LIKE '%legacy_auth_cutover%'`,
       )
       .get('legacy-admin') as { count: number }).count,
+    1,
+  );
+  assert.equal(
+    (migrated
+      .prepare(
+        `SELECT COUNT(*) AS count FROM admin_log
+         WHERE target_id = ? AND action = 'admin_granted' AND details LIKE '%legacy_auth_cutover%'`,
+      )
+      .get('legacy-unclaimed-admin') as { count: number }).count,
     1,
   );
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 58').get());

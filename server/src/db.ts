@@ -2995,7 +2995,7 @@ function backfillLegacyAuthCutoverState(): void {
     `INSERT INTO group_memberships
        (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
      SELECT ?, p.id,
-            CASE WHEN p.is_admin = 1 AND p.is_test = 0 AND p.password_hash IS NOT NULL THEN 'admin' ELSE 'member' END,
+            CASE WHEN p.is_admin = 1 AND p.is_test = 0 THEN 'admin' ELSE 'member' END,
             'active', p.created_at, NULL,
             CASE WHEN p.tracking_paused = 1 THEN 0 ELSE 1 END,
             NULL
@@ -3011,7 +3011,7 @@ function backfillLegacyAuthCutoverState(): void {
       `SELECT p.id
        FROM players p
        JOIN group_memberships gm ON gm.group_id = ? AND gm.player_id = p.id
-       WHERE p.is_admin = 1 AND p.is_test = 0 AND p.password_hash IS NOT NULL AND p.deactivated_at IS NULL
+       WHERE p.is_admin = 1 AND p.is_test = 0 AND p.deactivated_at IS NULL
          AND gm.status = 'active' AND gm.role = 'member'`,
     )
     .all(DEFAULT_GROUP_ID) as Array<{ id: string }>;
@@ -3068,6 +3068,27 @@ function backfillLegacyAuthCutoverState(): void {
   );
   for (const membership of membershipsWithoutConsent) {
     insertConsent.run(nanoid(), membership.group_id, membership.player_id, membership.granted_at);
+  }
+
+  const eventParticipantsWithoutConsent = db
+    .prepare(
+      `SELECT ep.event_id, e.group_id, ep.player_id
+       FROM event_participants ep
+       JOIN events e ON e.id = ep.event_id
+       JOIN players p ON p.id = ep.player_id
+       WHERE ep.status = 'accepted' AND p.deactivated_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM event_tracking_consents c
+           WHERE c.event_id = ep.event_id AND c.player_id = ep.player_id
+         )`,
+    )
+    .all() as Array<{ event_id: string; group_id: string; player_id: string }>;
+  const insertEventConsent = db.prepare(
+    `INSERT INTO event_tracking_consents (id, event_id, group_id, player_id, accepted_at, revoked_at, source)
+     VALUES (?, ?, ?, ?, ?, NULL, 'migration')`,
+  );
+  for (const participant of eventParticipantsWithoutConsent) {
+    insertEventConsent.run(nanoid(), participant.event_id, participant.group_id, participant.player_id, now);
   }
 }
 registerMigration({

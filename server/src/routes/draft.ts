@@ -11,7 +11,7 @@
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { db, DEFAULT_GROUP_ID } from '../db';
+import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { notifyPlayers, resolvePushTopic } from '../push';
 import { withBodyPlayerIdentity } from '../sessions';
@@ -348,8 +348,8 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
   // A finished draft is a set of teams like any matchmaking draw — log it
   // into the same history so Team-Historie shows drafted teams too. Ratings
   // aren't part of a draft, so they're stored as 0/absent.
-  const historyEventId = row.event_id;
-  if (completed && state.draft && historyEventId !== null) {
+  const historyEventId = row.event_id ?? OUTSIDE_EVENTS_ID;
+  if (completed && state.draft) {
     const teamsSnapshot = state.draft.teams.map((t) => ({
       players: t.players.map((p) => ({ ...p, rating: null })),
       totalRating: 0,

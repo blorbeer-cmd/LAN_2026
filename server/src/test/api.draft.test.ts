@@ -128,6 +128,13 @@ test('a full 2-captain draft: snake order, turn enforcement, auto-assigned last 
   assert.equal(latest.teams.length, 2);
   assert.equal(latest.teams[0].players.length, 3);
   assert.equal(latest.status, 'completed');
+
+  const teamHistory = await request(app).get(`/api/matchmaking/history?gameId=${gameId}`);
+  assert.equal(teamHistory.status, 200);
+  assert.ok(
+    teamHistory.body.history.some((entry: { source: string }) => entry.source === 'draft'),
+    'a completed group-room draft must remain visible in Team-Historie',
+  );
 });
 
 test('POST /api/draft/cancel abandons a running draft', async () => {
