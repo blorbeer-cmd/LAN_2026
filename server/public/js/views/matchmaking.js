@@ -669,7 +669,7 @@ export function renderMatchmaking(container, ctx) {
         <p class="muted" data-mm-draft-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spieler gefunden.</p>
         <div class="captain-selection-group">
           <div class="field-label">Captains</div>
-          <input type="search" id="captain-player-search" value="${escapeHtml(captainSearchQuery)}" placeholder="Spieler suchen…" aria-label="Spieler suchen" autocomplete="off" />
+          <input type="search" id="captain-player-search" value="${escapeHtml(captainSearchQuery)}" placeholder="Spieler suchen…" aria-label="Captains suchen" autocomplete="off" />
           <div class="player-selection-grid tournament-player-grid captain-selection-grid">
             ${captainRows}
           </div>
