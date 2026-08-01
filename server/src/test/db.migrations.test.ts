@@ -1371,8 +1371,11 @@ test('migration 58 preserves late legacy admins and backfills memberships withou
   fixture.prepare('DELETE FROM schema_migrations WHERE version = 58').run();
   fixture.close();
 
-  assert.doesNotThrow(() => runMigrations(dbFile));
-  assert.doesNotThrow(() => runMigrations(dbFile), 'the cutover migration must be restart-safe');
+  assert.doesNotThrow(() => runMigrations(dbFile, { AUTH_MODE: 'legacy' }));
+  assert.doesNotThrow(
+    () => runMigrations(dbFile, { AUTH_MODE: 'legacy' }),
+    'the cutover migration must be restart-safe',
+  );
 
   const migrated = new Database(dbFile, { readonly: true });
   assert.deepEqual(
@@ -1466,6 +1469,59 @@ test('migration 58 preserves late legacy admins and backfills memberships withou
       )
       .get('legacy-unclaimed-admin') as { count: number }).count,
     1,
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 58').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 58 preserves missing event consent from required-auth operation', () => {
+  const dbFile = makeTempDbPath('required-auth-event-consent');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture
+    .prepare(
+      `INSERT INTO players
+         (id, name, api_key, tracking_paused, is_admin, is_test, password_hash, deactivated_at, created_at)
+       VALUES (?, ?, ?, 0, 0, 0, ?, NULL, ?)`,
+    )
+    .run('required-member', 'Required Member', 'required-member-key', 'claimed-hash', now);
+  fixture
+    .prepare(
+      `INSERT INTO group_memberships
+         (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
+       VALUES ('default-group', 'required-member', 'member', 'active', ?, NULL, 1, NULL)`,
+    )
+    .run(now);
+  fixture
+    .prepare(
+      `INSERT INTO events (id, name, starts_at, ends_at, group_id, status, visibility_scope)
+       VALUES ('required-private-event', 'Required Private Event', ?, ?, 'default-group', 'published', 'participants')`,
+    )
+    .run(now, now + 60_000);
+  fixture
+    .prepare(
+      `INSERT INTO event_participants (event_id, player_id, status)
+       VALUES ('required-private-event', 'required-member', 'accepted')`,
+    )
+    .run();
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 58').run();
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile, { AUTH_MODE: 'required' }));
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.equal(
+    (migrated
+      .prepare(
+        `SELECT COUNT(*) AS count FROM event_tracking_consents
+         WHERE event_id = 'required-private-event' AND player_id = 'required-member'`,
+      )
+      .get() as { count: number }).count,
+    0,
+    'accepted roster membership must not be upgraded to tracking consent in required auth mode',
   );
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 58').get());
   migrated.close();

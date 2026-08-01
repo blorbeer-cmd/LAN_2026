@@ -3070,25 +3070,34 @@ function backfillLegacyAuthCutoverState(): void {
     insertConsent.run(nanoid(), membership.group_id, membership.player_id, membership.granted_at);
   }
 
-  const eventParticipantsWithoutConsent = db
-    .prepare(
-      `SELECT ep.event_id, e.group_id, ep.player_id
-       FROM event_participants ep
-       JOIN events e ON e.id = ep.event_id
-       JOIN players p ON p.id = ep.player_id
-       WHERE ep.status = 'accepted' AND p.deactivated_at IS NULL
-         AND NOT EXISTS (
-           SELECT 1 FROM event_tracking_consents c
-           WHERE c.event_id = ep.event_id AND c.player_id = ep.player_id
-         )`,
-    )
-    .all() as Array<{ event_id: string; group_id: string; player_id: string }>;
-  const insertEventConsent = db.prepare(
-    `INSERT INTO event_tracking_consents (id, event_id, group_id, player_id, accepted_at, revoked_at, source)
-     VALUES (?, ?, ?, ?, ?, NULL, 'migration')`,
-  );
-  for (const participant of eventParticipantsWithoutConsent) {
-    insertEventConsent.run(nanoid(), participant.event_id, participant.group_id, participant.player_id, now);
+  // Before this cutover, required auth always had to be configured explicitly;
+  // an unset value and "legacy" both selected the shared-login behavior. Read
+  // that retired setting only as one-shot migration provenance: accepted roster
+  // rows from a required-auth installation must never be reinterpreted as
+  // tracking consent merely because no consent history exists.
+  const previousAuthModeWasLegacy =
+    process.env.AUTH_MODE === undefined || process.env.AUTH_MODE === '' || process.env.AUTH_MODE === 'legacy';
+  if (previousAuthModeWasLegacy) {
+    const eventParticipantsWithoutConsent = db
+      .prepare(
+        `SELECT ep.event_id, e.group_id, ep.player_id
+         FROM event_participants ep
+         JOIN events e ON e.id = ep.event_id
+         JOIN players p ON p.id = ep.player_id
+         WHERE ep.status = 'accepted' AND p.deactivated_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM event_tracking_consents c
+             WHERE c.event_id = ep.event_id AND c.player_id = ep.player_id
+           )`,
+      )
+      .all() as Array<{ event_id: string; group_id: string; player_id: string }>;
+    const insertEventConsent = db.prepare(
+      `INSERT INTO event_tracking_consents (id, event_id, group_id, player_id, accepted_at, revoked_at, source)
+       VALUES (?, ?, ?, ?, ?, NULL, 'migration')`,
+    );
+    for (const participant of eventParticipantsWithoutConsent) {
+      insertEventConsent.run(nanoid(), participant.event_id, participant.group_id, participant.player_id, now);
+    }
   }
 }
 registerMigration({
