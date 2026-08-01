@@ -2,8 +2,7 @@
 // brand-new player, claim an existing one, log in/out, change a password,
 // and (admin-only) issue/revoke the invite codes that gate all of the above.
 //
-// Feature routes enforce these sessions when AUTH_MODE=required; legacy mode
-// preserves the existing shared-token behavior for explicit rollbacks.
+// Feature routes enforce these sessions for every browser request.
 
 import { Router, type RequestHandler } from 'express';
 import { nanoid } from 'nanoid';

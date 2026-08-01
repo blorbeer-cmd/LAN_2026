@@ -11,7 +11,7 @@ import type { AddressInfo } from 'net';
 import { Server } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp, installTestSocketIdentity } from './testApp';
 import { registerScribbleSockets } from '../arcade/scribble';
 import { clearLobbyMemberships } from '../arcade/lobbyMembership';
 import { db } from '../db';
@@ -76,8 +76,9 @@ async function startMatchAndBeginDrawing(
 
 test('Scribble live thumbs-up: toggles, rejects the artist and stale tokens, never touches reactions', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerScribbleSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
@@ -124,8 +125,9 @@ test('Scribble live thumbs-up: toggles, rejects the artist and stale tokens, nev
 
 test('Scribble final favorite: pickable once the match ends, spans every drawing, rejects a lone artist voting for themself', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerScribbleSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
@@ -190,8 +192,9 @@ test('Scribble final favorite: pickable once the match ends, spans every drawing
 
 test('Scribble leave with 3+ remaining players: the match keeps running for the others (no match:end reaches them)', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerScribbleSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;

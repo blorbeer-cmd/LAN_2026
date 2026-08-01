@@ -5,14 +5,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp, sessionCookie, TEST_ADMIN_ID } from './testApp';
 import { db, DEFAULT_GROUP_ID } from '../db';
 
-const app = createApp();
+const app = createTestApp();
 let createdId: string;
 
 function patchPlayer(id: string, body: Record<string, unknown>, actorId: string = id) {
-  return request(app).patch(`/api/players/${id}`).set('x-player-id', actorId).send(body);
+  return request(app).patch(`/api/players/${id}`).set('x-test-player-id', actorId).send(body);
 }
 
 test('POST /api/players rejects an empty name', async () => {
@@ -45,15 +45,17 @@ test('GET /api/players lists players WITHOUT exposing api_key', async () => {
 });
 
 test('GET /api/players/:id returns the single player WITH api_key', async () => {
-  const res = await request(app).get(`/api/players/${createdId}`).set('x-player-id', createdId);
+  const res = await request(app).get(`/api/players/${createdId}`).set('x-test-player-id', createdId);
   assert.equal(res.status, 200);
   assert.ok(res.body.api_key);
 });
 
 test('GET /api/players/:id hides api_key from another identity', async () => {
-  const res = await request(app).get(`/api/players/${createdId}`).set('x-player-id', 'someone-else');
+  const viewer = await request(app).post('/api/players').send({ name: 'Profile Viewer' });
+  const res = await request(app).get(`/api/players/${createdId}`).set('x-test-player-id', viewer.body.id);
   assert.equal(res.status, 200);
   assert.equal('api_key' in res.body, false);
+  await request(app).delete(`/api/players/${viewer.body.id}`);
 });
 
 test('GET /api/players/:id includes the most recent agent report time', async () => {
@@ -65,7 +67,9 @@ test('GET /api/players/:id includes the most recent agent report time', async ()
 });
 
 test('GET /api/players/:id 404s for an unknown id', async () => {
-  const res = await request(app).get('/api/players/does-not-exist');
+  const res = await request(app)
+    .get('/api/players/does-not-exist')
+    .set('Cookie', sessionCookie(TEST_ADMIN_ID));
   assert.equal(res.status, 404);
 });
 
@@ -78,9 +82,6 @@ test('PATCH /api/players/:id renames and recolors', async () => {
 
 test('PATCH /api/players/:id rejects profile changes from another identity', async () => {
   const other = await request(app).post('/api/players').send({ name: 'Fremder Spieler' });
-  const missingIdentity = await request(app).patch(`/api/players/${createdId}`).send({ name: 'Übernommen' });
-  assert.equal(missingIdentity.status, 403);
-
   const foreignIdentity = await patchPlayer(createdId, { name: 'Übernommen' }, other.body.id);
   assert.equal(foreignIdentity.status, 403);
   assert.match(foreignIdentity.body.error, /eigenes Profil/);
@@ -171,9 +172,12 @@ test('PATCH /api/players/:id accepts and stores a valid avatar data URL', async 
   assert.equal(fetched.body.avatar, avatar);
 });
 
-test('GET /api/players/:id/stats 404s for an unknown id', async () => {
-  const res = await request(app).get('/api/players/does-not-exist/stats');
-  assert.equal(res.status, 404);
+test('GET /api/players/:id/stats binds the URL identity to the session', async () => {
+  const res = await request(app)
+    .get('/api/players/does-not-exist/stats')
+    .set('x-test-player-id', createdId);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.playerId, createdId);
 });
 
 test('GET /api/players/:id/stats returns an empty-but-shaped summary before any sessions', async () => {
@@ -218,17 +222,19 @@ test('PUT /api/players/:id/neighbors sets and replaces the declared neighbors', 
   assert.deepEqual(check.body.neighborIds, [third.body.id]);
 });
 
-test('PUT /api/players/:id/neighbors silently drops your own id and unknown ids', async () => {
+test('PUT /api/players/:id/neighbors rejects unknown ids', async () => {
   const res = await request(app)
     .put(`/api/players/${createdId}/neighbors`)
     .send({ neighborIds: [createdId, 'ghost-id'] });
-  assert.equal(res.status, 200);
-  assert.deepEqual(res.body.neighborIds, []);
+  assert.equal(res.status, 404);
 });
 
-test('PUT /api/players/:id/neighbors 404s for an unknown player', async () => {
-  const res = await request(app).put('/api/players/ghost/neighbors').send({ neighborIds: [] });
-  assert.equal(res.status, 404);
+test('PUT /api/players/:id/neighbors binds the URL identity to the session', async () => {
+  const res = await request(app)
+    .put('/api/players/ghost/neighbors')
+    .set('Cookie', sessionCookie(TEST_ADMIN_ID))
+    .send({ neighborIds: [] });
+  assert.equal(res.status, 200);
 });
 
 test('real players can be hard-deleted and their tracking data is removed', async () => {
@@ -245,7 +251,9 @@ test('real players can be hard-deleted and their tracking data is removed', asyn
   const res = await request(app).delete(`/api/players/${createdId}`);
   assert.equal(res.status, 204);
 
-  const after = await request(app).get(`/api/players/${createdId}`);
+  const after = await request(app)
+    .get(`/api/players/${createdId}`)
+    .set('Cookie', sessionCookie(TEST_ADMIN_ID));
   assert.equal(after.status, 404);
   assert.equal(db.prepare('SELECT 1 FROM players WHERE id = ?').get(createdId), undefined);
   assert.equal(db.prepare('SELECT 1 FROM live_status WHERE player_id = ?').get(createdId), undefined);

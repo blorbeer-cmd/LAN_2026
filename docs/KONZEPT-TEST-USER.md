@@ -14,8 +14,8 @@ ohne 15 Handys. Dazu gehört:
 2. Test-User sind **nur im Admin-Modus sichtbar** – normale Geräte sehen sie nirgends
    (Spielerliste, Sitzplan, Leaderboard, Live-Status, …).
 3. Der **Admin-Modus ist deutlich erkennbar** (dauerhafter Hinweis, nicht nur im Admin-Tab).
-4. Der **Admin-PIN entfällt**. Im Legacy-Modus genügt lokal ein Klick; unter Required-Auth
-   entscheidet ausschließlich die serverseitige Admin-Rolle der Session.
+4. Der **Admin-PIN entfällt**. Ausschließlich die serverseitige Admin-Rolle der Session
+   entscheidet über Admin-Zugriff.
 
 ## Ist-Zustand (relevant)
 
@@ -23,7 +23,7 @@ ohne 15 Handys. Dazu gehört:
   einer Schleife `POST /api/players` auf. Die Spieler sind normale Spieler ohne Markierung,
   ohne Seed-Daten, für alle sichtbar.
 - Im damaligen Ausgangszustand war der Admin-Modus ein Gerät-lokales Flag (`localStorage`) mit
-  optionalem PIN. Required-Auth ersetzt diese Vertrauensannahme durch die Session-Rolle.
+  optionalem PIN. Die persönliche Session ersetzt diese Vertrauensannahme durch ihre Serverrolle.
 - Sitzplan: `seating_layouts.assignments` (JSON `{side, seat, playerId}`), beim Speichern
   leitet `syncAutoSeatNeighbors` aus Kanten-Nachbarschaft automatisch `seat_neighbors`-Zeilen
   (`source='auto'`) ab → genau das ist „Sichtbare Monitore".
@@ -112,15 +112,15 @@ Solange der Admin-Modus aktiv ist:
 
 ### 5. PIN entfernt
 
-- `views/admin.js`: Unlock-Screen entfällt komplett; der Admin-Tab zeigt direkt einen
-  „Admin-Modus aktivieren"-Schalter (ein Klick an/aus).
-- Server: `requireAdmin` prüft unter Required-Auth die echte Session-Rolle. `ADMIN_PIN`,
+- `views/admin.js`: Ein Unlock-Screen oder lokaler Aktivierungsschalter entfällt komplett;
+  verifizierte Owner/Admins sehen die Werkzeuge direkt. Der sichtbare Banner kann die
+  Testspieler-Darstellung auf einem Gerät vorübergehend ausblenden.
+- Server: `requireAdmin` prüft die echte Session-Rolle. `ADMIN_PIN`,
   `x-admin-pin` sowie `GET /api/admin/status` und `POST /api/admin/unlock` sind entfernt.
-  Der Legacy-Modus behält bis zum Cutover bewusst seinen lokalen Ein-Klick-Vertrauensmodus.
 
 ### 6. Als Testspieler anmelden (Testsitzung)
 
-Unter `AUTH_MODE=required` bindet jede Anfrage an genau eine Session — ein Admin kann sich
+Jede Anfrage ist an genau eine Session gebunden — ein Admin kann sich
 also nicht einfach clientseitig als Test-Spieler ausgeben, um Multi-User-Features (Vote,
 Mitfahrgelegenheiten, Arcade-Lobbys, Push-Zustellung) allein zu testen. Statt die
 Session-Bindung aufzuweichen, bekommt ein zweites Gerät/Browserfenster eine **echte, zweite

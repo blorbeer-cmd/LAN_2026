@@ -1,4 +1,4 @@
-// Admin extras are session-role protected in required mode.
+// Admin extras are protected by the authenticated session role.
 
 import { Router } from 'express';
 import { requireAdmin } from '../auth';
@@ -26,9 +26,6 @@ adminRouter.get('/readiness', requireAdmin, async (req, res, next) => {
 // players (seats + visible monitors, skill/Bock per game, play sessions,
 // two of them live) in one transaction — see testUsers.ts.
 adminRouter.post('/test-users', requireAdmin, (req, res) => {
-  if (config.authMode === 'required') {
-    return res.status(403).json({ error: 'Test-Spieler werden über die aktive Gruppe verwaltet.' });
-  }
   const { count } = req.body ?? {};
   if (!Number.isInteger(count) || count < 1 || count > MAX_TEST_USERS_PER_CALL) {
     return res.status(400).json({ error: `count muss eine ganze Zahl zwischen 1 und ${MAX_TEST_USERS_PER_CALL} sein.` });
@@ -50,9 +47,6 @@ adminRouter.post('/test-users', requireAdmin, (req, res) => {
 // fixtures with a dense deterministic 2015-2026 data set. Kept separate from
 // player creation so adding another test participant never rewrites history.
 adminRouter.post('/test-data/hall-of-fame', requireAdmin, (req, res) => {
-  if (config.authMode === 'required') {
-    return res.status(403).json({ error: 'Test-Daten werden über die aktive Gruppe verwaltet.' });
-  }
   try {
     const created = seedHallOfFameTestData();
     broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
@@ -68,9 +62,6 @@ adminRouter.post('/test-data/hall-of-fame', requireAdmin, (req, res) => {
 // DELETE /api/admin/test-users - removes every test player and everything
 // hanging off them (skills, Bock, sessions, seats, neighbors, live rows).
 adminRouter.delete('/test-users', requireAdmin, requireRecentReauthentication, (req, res) => {
-  if (config.authMode === 'required') {
-    return res.status(403).json({ error: 'Test-Spieler werden über die aktive Gruppe verwaltet.' });
-  }
   const { deletedPlayers, deletedEvents } = deleteAllTestData();
   writeAdminAudit({
     actorPlayerId: req.player?.id,

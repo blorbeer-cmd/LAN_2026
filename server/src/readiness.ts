@@ -66,27 +66,17 @@ function eventCheck(groupId: string, now: number): ReadinessCheck {
 }
 
 function agentsCheck(groupId: string, now: number): ReadinessCheck {
-  const rows = (config.authMode === 'legacy'
-    ? db
-        .prepare(
-          `SELECT p.name, d.agent_version, d.last_report_at
-           FROM players p
-           LEFT JOIN agent_diagnostics d ON d.player_id = p.id
-           WHERE p.deactivated_at IS NULL AND p.is_test = 0
-           ORDER BY p.name COLLATE NOCASE`,
-        )
-        .all()
-    : db
-        .prepare(
-          `SELECT p.name, d.agent_version, d.last_report_at
-           FROM group_memberships gm
-           JOIN players p ON p.id = gm.player_id
-           LEFT JOIN agent_diagnostics d ON d.player_id = p.id
-           WHERE gm.group_id = ? AND gm.status = 'active'
-             AND p.deactivated_at IS NULL AND p.is_test = 0
-           ORDER BY p.name COLLATE NOCASE`,
-        )
-        .all(groupId)) as AgentRow[];
+  const rows = db
+    .prepare(
+      `SELECT p.name, d.agent_version, d.last_report_at
+       FROM group_memberships gm
+       JOIN players p ON p.id = gm.player_id
+       LEFT JOIN agent_diagnostics d ON d.player_id = p.id
+       WHERE gm.group_id = ? AND gm.status = 'active'
+         AND p.deactivated_at IS NULL AND p.is_test = 0
+       ORDER BY p.name COLLATE NOCASE`,
+    )
+    .all(groupId) as AgentRow[];
   const installed = rows.filter((row) => row.last_report_at !== null);
   const online = installed.filter((row) => now - row.last_report_at! <= config.offlineTimeoutMs);
   const missing = rows.filter((row) => row.last_report_at === null).map((row) => row.name);
@@ -134,15 +124,6 @@ function processMappingsCheck(groupId: string): ReadinessCheck {
 }
 
 function kioskCheck(groupId: string): ReadinessCheck {
-  if (config.authMode === 'legacy') {
-    return {
-      id: 'kiosk',
-      label: 'Kiosk',
-      status: 'ready',
-      summary: 'Kiosk nutzt den gemeinsamen Legacy-Zugang.',
-      details: [],
-    };
-  }
   const persisted = (
     db.prepare('SELECT COUNT(*) AS count FROM kiosk_tokens WHERE group_id = ? AND revoked_at IS NULL').get(groupId) as {
       count: number;

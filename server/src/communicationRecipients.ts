@@ -1,4 +1,3 @@
-import { config } from './config';
 import { db } from './db';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 
@@ -6,28 +5,6 @@ import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 // the current event roster, intersected with active accounts/memberships so a
 // removed or deactivated account can never become a new recipient.
 export function communicationRecipientIds(groupId: string, eventId: string | null): string[] {
-  if (config.authMode === 'legacy') {
-    const ids = (
-      eventId === null
-        ? (db.prepare('SELECT id FROM players WHERE deactivated_at IS NULL ORDER BY id').all() as Array<{ id: string }>)
-        : (db
-            .prepare(
-              `SELECT ep.player_id AS id
-               FROM event_participants ep JOIN players p ON p.id = ep.player_id
-               WHERE ep.event_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
-                 AND p.deactivated_at IS NULL ORDER BY ep.player_id`,
-            )
-            .all(eventId) as Array<{ id: string }>)
-    ).map((row) => row.id);
-    const insertMembership = db.prepare(
-      `INSERT OR IGNORE INTO group_memberships
-         (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
-       VALUES (?, ?, 'member', 'active', ?, NULL, 1, NULL)`,
-    );
-    const now = Date.now();
-    for (const id of ids) insertMembership.run(groupId, id, now);
-    return ids;
-  }
   if (eventId === null) {
     return (
       db

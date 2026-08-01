@@ -4,9 +4,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 
-const app = createApp();
+const app = createTestApp();
 let playerId: string;
 let gameId: string;
 
@@ -23,11 +23,11 @@ test('PUT /api/skills rejects an out-of-range rating', async () => {
   assert.equal(res.status, 400);
 });
 
-test('PUT /api/skills rejects an unknown player', async () => {
+test('PUT /api/skills rejects an invalid session identity', async () => {
   const res = await request(app)
     .put('/api/skills')
     .send({ playerId: 'ghost', gameId, rating: 5 });
-  assert.equal(res.status, 404);
+  assert.equal(res.status, 401);
 });
 
 test('PUT /api/skills creates a rating', async () => {

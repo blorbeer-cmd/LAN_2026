@@ -3,9 +3,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp, TEST_ADMIN_ID } from './testApp';
 
-const app = createApp();
+const app = createTestApp();
 let a: string;
 let b: string;
 let c: string;
@@ -25,7 +25,7 @@ test('GET /api/seating starts with everyone unplaced', async () => {
   const res = await request(app).get('/api/seating');
   assert.equal(res.status, 200);
   assert.deepEqual(res.body.groups, []);
-  assert.equal(res.body.unplacedPlayers.length, 4);
+  assert.equal(res.body.unplacedPlayers.filter((player: { id: string }) => player.id !== TEST_ADMIN_ID).length, 4);
 });
 
 test('GET /api/seating groups a chain of declared neighbors into one cluster', async () => {
@@ -39,7 +39,10 @@ test('GET /api/seating groups a chain of declared neighbors into one cluster', a
     res.body.groups[0].map((p: { id: string }) => p.id).sort(),
     [a, b, c].sort()
   );
-  assert.deepEqual(res.body.unplacedPlayers.map((p: { id: string }) => p.id), [d]);
+  assert.deepEqual(
+    res.body.unplacedPlayers.filter((p: { id: string }) => p.id !== TEST_ADMIN_ID).map((p: { id: string }) => p.id),
+    [d],
+  );
 });
 
 test('GET /api/seating dedupes a pair declared from both directions', async () => {
@@ -55,7 +58,7 @@ test('GET /api/seating dedupes a pair declared from both directions', async () =
 });
 
 test('GET /api/seating/layout includes each player\'s optional real name', async () => {
-  await request(app).patch(`/api/players/${a}`).set('x-player-id', a).send({ realName: 'Anna Beispiel' });
+  await request(app).patch(`/api/players/${a}`).set('x-test-player-id', a).send({ realName: 'Anna Beispiel' });
 
   const res = await request(app).get('/api/seating/layout');
   const playerA = res.body.players.find((p: { id: string }) => p.id === a);

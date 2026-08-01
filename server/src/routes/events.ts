@@ -32,7 +32,6 @@ import { requireConfiguredGroupMembership, requireGroupRole, resolveGroupResourc
 import { activePlayerGroupIds } from '../groups';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
-import { config } from '../config';
 import { setEventTrackingConsent } from '../trackingContexts';
 import { activeGroupPlayers } from '../groupPlayers';
 import { createPersistentBackup } from '../backupService';
@@ -100,9 +99,7 @@ function serializeEvent(event: ReturnType<typeof getEvent>) {
 }
 
 function requestPlayerId(req: Request): string | undefined {
-  if (req.player) return req.player.id;
-  const legacyIdentity = req.header('x-player-id');
-  return legacyIdentity && legacyIdentity.length <= 200 ? legacyIdentity : undefined;
+  return req.player?.id;
 }
 
 // GET /api/events - every real event plus the "außerhalb von Events"
@@ -133,8 +130,7 @@ eventsRouter.get('/:id', resolveEvent, (req, res) => {
 });
 
 // Event tracking is an explicit personal decision, separate from an
-// administrator's roster. In legacy mode the historical accepted roster
-// remains a compatibility acceptance; required mode must grant here.
+// administrator's roster.
 function updateEventTrackingConsent(req: Request, res: Response, granted: boolean): void {
   const event = req.groupResource as EventRow;
   if (!event || event.id === OUTSIDE_EVENTS_ID) { res.status(404).json({ error: 'Event nicht gefunden.' }); return; }
@@ -477,19 +473,15 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
   const uniqueIds = [...new Set(playerIds)];
   if (uniqueIds.length > 0) {
     const placeholders = uniqueIds.map(() => '?').join(',');
-    const found = (
-      config.authMode === 'legacy'
-        ? db.prepare(`SELECT id FROM players WHERE id IN (${placeholders})`).all(...uniqueIds)
-        : db
-            .prepare(
-              `SELECT p.id
-             FROM players p
-             JOIN group_memberships gm ON gm.player_id = p.id
-             WHERE gm.group_id = ? AND gm.status = 'active' AND p.deactivated_at IS NULL
-               AND p.id IN (${placeholders})`,
-            )
-            .all(req.group!.id, ...uniqueIds)
-    ) as Array<{
+    const found = db
+      .prepare(
+        `SELECT p.id
+         FROM players p
+         JOIN group_memberships gm ON gm.player_id = p.id
+         WHERE gm.group_id = ? AND gm.status = 'active' AND p.deactivated_at IS NULL
+           AND p.id IN (${placeholders})`,
+      )
+      .all(req.group!.id, ...uniqueIds) as Array<{
       id: string;
     }>;
     if (found.length !== uniqueIds.length) {

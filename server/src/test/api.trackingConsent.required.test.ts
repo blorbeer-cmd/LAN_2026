@@ -1,4 +1,4 @@
-import { after, before, test } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'http';
 import type { AddressInfo } from 'net';
@@ -7,20 +7,9 @@ import request from 'supertest';
 import { Server } from 'socket.io';
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
 import { createApp } from '../app';
-import { config } from '../config';
 import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from '../db';
 import { createSocketAuthGuard, Events, registerArcadeKioskSockets, setIo } from '../realtime';
 import { createSession, SESSION_COOKIE_NAME } from '../sessions';
-
-const originalAuthMode = config.authMode;
-
-before(() => {
-  (config as { authMode: 'legacy' | 'required' }).authMode = 'required';
-});
-
-after(() => {
-  (config as { authMode: 'legacy' | 'required' }).authMode = originalAuthMode;
-});
 
 function connect(baseUrl: string, sessionToken: string): Promise<ClientSocket> {
   return new Promise((resolve, reject) => {
@@ -53,11 +42,11 @@ function nextLiveChange(socket: ClientSocket): Promise<unknown> {
   });
 }
 
-test('required-auth tracking consent is self-only, idempotent and revokes agent fan-out immediately', async () => {
+test('tracking consent is self-only, idempotent and revokes agent fan-out immediately', async () => {
   const app = createApp();
   const httpServer = http.createServer(app);
   const io = new Server(httpServer);
-  io.use(createSocketAuthGuard('', 'required'));
+  io.use(createSocketAuthGuard());
   registerArcadeKioskSockets(io);
   setIo(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));

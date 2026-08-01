@@ -178,9 +178,7 @@ export function hasRecentReauthentication(sessionId: string | undefined): boolea
   return Boolean(row?.reauthenticated_at && row.reauthenticated_at > Date.now() - REAUTH_TTL_MS);
 }
 
-// Critical admin mutations require a password confirmation in required mode.
-// Legacy requests have no session-bound player and keep their existing trust
-// model until the deployment is cut over.
+// Critical admin mutations require a recent password confirmation.
 export const requireRecentReauthentication: RequestHandler = (req, res, next): void => {
   if (req.player && !hasRecentReauthentication(req.sessionId)) {
     res.status(403).json({ error: 'Bitte bestätige dein Passwort.', code: 'reauth_required' });
@@ -200,9 +198,7 @@ export function deleteAllSessionsForPlayer(playerId: string, exceptSessionId?: s
   }
 }
 
-// Gate for routes that require a logged-in user. Not wired onto any feature
-// routes yet (see config.authMode) — this phase only introduces the
-// mechanism; enforcing it across the app is a later, separate change.
+// Gate for routes that require a logged-in user.
 export const requireUser: RequestHandler = (req: Request, res: Response, next: NextFunction): void => {
   const token = getSessionToken(req);
   const resolved = token ? verifySession(token) : undefined;
@@ -216,17 +212,6 @@ export const requireUser: RequestHandler = (req: Request, res: Response, next: N
   next();
 };
 
-// Phase 2 compatibility bridge: personal feature routes use these stacks so
-// AUTH_MODE=required makes the verified session authoritative while legacy
-// deployments keep accepting their existing client-selected playerId.
-export const requireConfiguredUser: RequestHandler = (req, res, next): void => {
-  if (config.authMode === 'legacy') {
-    next();
-    return;
-  }
-  requireUser(req, res, next);
-};
-
 const bindBodyPlayerId: RequestHandler = (req, _res, next): void => {
   if (req.player) req.body = { ...(req.body ?? {}), playerId: req.player.id };
   next();
@@ -237,20 +222,18 @@ const bindQueryPlayerId: RequestHandler = (req, _res, next): void => {
   next();
 };
 
-export const withBodyPlayerIdentity: RequestHandler[] = [requireConfiguredUser, bindBodyPlayerId];
-export const withQueryPlayerIdentity: RequestHandler[] = [requireConfiguredUser, bindQueryPlayerId];
+export const withBodyPlayerIdentity: RequestHandler[] = [requireUser, bindBodyPlayerId];
+export const withQueryPlayerIdentity: RequestHandler[] = [requireUser, bindQueryPlayerId];
 
 export function withParamPlayerIdentity(paramName = 'playerId'): RequestHandler[] {
   const bindParam: RequestHandler = (req, _res, next): void => {
     if (req.player) req.params[paramName] = req.player.id;
     next();
   };
-  return [requireConfiguredUser, bindParam];
+  return [requireUser, bindParam];
 }
 
-// Stacks on top of requireUser for the small number of endpoints only an
-// admin may call. Kept separate from the legacy PIN-based requireAdmin in
-// auth.ts, which stays wired to existing routes unchanged.
+// Stacks on top of requireUser for endpoints only an admin may call.
 export const requireSessionAdmin: RequestHandler[] = [
   requireUser,
   (req: Request, res: Response, next: NextFunction): void => {

@@ -10,12 +10,6 @@ function intFromEnv(name: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-export function parseAuthMode(value: string | undefined): 'legacy' | 'required' {
-  if (value === undefined || value === '' || value === 'legacy') return 'legacy';
-  if (value === 'required') return 'required';
-  throw new Error(`Ungültiger AUTH_MODE "${value}". Erlaubt sind "legacy" und "required".`);
-}
-
 const configuredDbFile =
   process.env.DB_FILE === ':memory:'
     ? ':memory:'
@@ -42,10 +36,6 @@ export const config = {
       : path.join(path.dirname(configuredDbFile), 'backups'),
   backupRetention: Math.max(1, intFromEnv('BACKUP_RETENTION', 20)),
 
-  // Shared access token protecting the whole app (light protection because the
-  // server is reachable from the cloud). If empty, access protection is OFF.
-  accessToken: process.env.ACCESS_TOKEN ?? '',
-
   // Public URL used inside downloaded agent configurations. This is preferred
   // over request-derived URL data when the app sits behind a reverse proxy.
   publicBaseUrl: (process.env.PUBLIC_BASE_URL ?? '').trim().replace(/\/+$/, ''),
@@ -59,11 +49,7 @@ export const config = {
   // clients on another version before a LAN starts.
   expectedAgentVersion: (process.env.EXPECTED_AGENT_VERSION ?? '1.0.0').trim(),
 
-  // 'legacy' (default) preserves the pre-account behavior. 'required' makes
-  // session identity and roles authoritative across feature/admin routes.
-  authMode: parseAuthMode(process.env.AUTH_MODE),
-
-  // Dedicated read-only credential for the shared kiosk in required mode.
+  // Dedicated read-only credential for the shared kiosk.
   kioskToken: process.env.KIOSK_TOKEN ?? '',
 
   // Session cookies are Secure by default (required for SameSite cookies to
@@ -78,18 +64,24 @@ export const config = {
   adminRecoveryCode: process.env.ADMIN_RECOVERY_CODE ?? '',
 } as const;
 
-// Production must have one complete access model: legacy needs its shared
-// token; required auth needs the recovery secret that bootstraps and recovers
-// the first/last admin. Pure so index.ts can test this without starting.
+// Production needs the recovery secret that bootstraps and recovers the
+// first/last admin. Pure so index.ts can test this without starting.
 export function productionConfigError(
-  cfg: Pick<typeof config, 'accessToken' | 'authMode' | 'adminRecoveryCode'> = config
+  cfg: Pick<typeof config, 'adminRecoveryCode'> = config
 ): string | null {
-  if (cfg.authMode === 'required') {
-    if (!cfg.adminRecoveryCode) {
-      return 'AUTH_MODE=required erfordert ADMIN_RECOVERY_CODE. Server wird nicht gestartet.';
-    }
-  } else if (!cfg.accessToken) {
-    return 'NODE_ENV=production erfordert ACCESS_TOKEN. Server wird nicht gestartet.';
+  if (!cfg.adminRecoveryCode) {
+    return 'NODE_ENV=production erfordert ADMIN_RECOVERY_CODE. Server wird nicht gestartet.';
   }
   return null;
+}
+
+// Every installation needs at least one route through the login gate. A
+// configured bootstrap admin is created before this check runs; afterwards
+// either a claimed account or the recovery code must exist.
+export function startupAccessConfigError(
+  hasClaimedAdminAccount: boolean,
+  cfg: Pick<typeof config, 'adminRecoveryCode'> = config,
+): string | null {
+  if (hasClaimedAdminAccount || cfg.adminRecoveryCode) return null;
+  return 'Kein beanspruchtes Admin-Konto und kein ADMIN_RECOVERY_CODE konfiguriert. Server wird nicht gestartet.';
 }

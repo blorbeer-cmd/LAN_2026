@@ -13,7 +13,7 @@ import { state } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
-import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { getMyId } from '../whoami.js';
 import { icon } from '../icons.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
@@ -622,7 +622,6 @@ export function renderFoodOrders(container, ctx) {
       <h1 class="view-title">Essen</h1>
       <button type="button" class="btn btn-primary btn-sm" id="order-new-btn" ${myId ? '' : 'disabled'}>Bestellung öffnen</button>
     </div>
-    ${whoAmICardHtml('food-whoami')}
     <div class="grouped-page-sections" style="margin-top:var(--space-3);">
       <section class="card stack grouped-page-section" aria-labelledby="food-open-title">
         <div class="grouped-page-section-title"><h2 id="food-open-title">Offene Bestellungen</h2></div>
@@ -647,7 +646,6 @@ export function renderFoodOrders(container, ctx) {
     </div>
   `;
 
-  wireWhoAmICard(container, 'food-whoami', ctx);
   wireInfoTooltips(container);
 
   container.querySelectorAll('[data-add-item-form]').forEach((f) => {

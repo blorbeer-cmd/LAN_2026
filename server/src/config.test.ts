@@ -4,34 +4,24 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseAuthMode, productionConfigError } from './config';
+import { productionConfigError, startupAccessConfigError } from './config';
 
-test('parseAuthMode rejects unsafe fallback values', () => {
-  assert.equal(parseAuthMode(undefined), 'legacy');
-  assert.equal(parseAuthMode('legacy'), 'legacy');
-  assert.equal(parseAuthMode('required'), 'required');
-  assert.throws(() => parseAuthMode('Required'), /AUTH_MODE/);
+test('productionConfigError accepts a configured recovery code', () => {
+  assert.equal(productionConfigError({ adminRecoveryCode: 'recovery-secret' }), null);
 });
 
-test('productionConfigError: legacy mode passes when ACCESS_TOKEN is set', () => {
-  assert.equal(
-    productionConfigError({ accessToken: 'tok', authMode: 'legacy', adminRecoveryCode: '' }),
-    null
-  );
+test('productionConfigError requires ADMIN_RECOVERY_CODE', () => {
+  assert.match(productionConfigError({ adminRecoveryCode: '' }) ?? '', /ADMIN_RECOVERY_CODE/);
 });
 
-test('productionConfigError: legacy mode fails when ACCESS_TOKEN is empty', () => {
-  const error = productionConfigError({ accessToken: '', authMode: 'legacy', adminRecoveryCode: '' });
-  assert.match(error ?? '', /ACCESS_TOKEN/);
+test('startupAccessConfigError accepts an existing claimed admin account', () => {
+  assert.equal(startupAccessConfigError(true, { adminRecoveryCode: '' }), null);
 });
 
-test('productionConfigError: required mode replaces ACCESS_TOKEN with ADMIN_RECOVERY_CODE', () => {
-  assert.equal(
-    productionConfigError({ accessToken: '', authMode: 'required', adminRecoveryCode: 'recovery-secret' }),
-    null
-  );
-  assert.match(
-    productionConfigError({ accessToken: 'obsolete-token', authMode: 'required', adminRecoveryCode: '' }) ?? '',
-    /ADMIN_RECOVERY_CODE/
-  );
+test('startupAccessConfigError accepts a recovery path for a fresh database', () => {
+  assert.equal(startupAccessConfigError(false, { adminRecoveryCode: 'first-user-secret' }), null);
+});
+
+test('startupAccessConfigError rejects an installation without a claimed admin or first-user path', () => {
+  assert.match(startupAccessConfigError(false, { adminRecoveryCode: '' }) ?? '', /ADMIN_RECOVERY_CODE/);
 });

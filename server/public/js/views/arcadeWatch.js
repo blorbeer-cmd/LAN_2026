@@ -60,18 +60,24 @@ function renderSignature(state) {
 }
 
 function joinWatch(matchId) {
-  ensureSocket().emit('arcade:watch:join', { matchId, playerId: getMyId() }, (result) => {
-    if (!result?.ok) {
-      watchedMatchId = null;
-      watchedState = null;
-      resetVoting();
-      if (isArcadeWatchView()) navigateReplace('arcade');
-      return;
-    }
-    watchCanVote = result.canVote === true;
-    watchVotingPlayerId = result.votingPlayerId ?? null;
-    rerender();
-  });
+  const activeSocket = ensureSocket();
+  const requestJoin = () => {
+    activeSocket.emit('arcade:watch:join', { matchId, playerId: getMyId() }, (result) => {
+      if (!result?.ok) {
+        showToast(result?.error || 'Zuschauen ist gerade nicht möglich.');
+        watchedMatchId = null;
+        watchedState = null;
+        resetVoting();
+        if (isArcadeWatchView()) navigateReplace('arcade');
+        return;
+      }
+      watchCanVote = result.canVote === true;
+      watchVotingPlayerId = result.votingPlayerId ?? null;
+      rerender();
+    });
+  };
+  if (activeSocket.connected) requestJoin();
+  else activeSocket.once('connect', requestJoin);
 }
 
 function ensureSocket() {

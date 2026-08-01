@@ -3,11 +3,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 import { db } from '../db';
 import { KIOSK_RESULT_DURATION_MS, KIOSK_RESULT_REVEAL_DELAY_MS, voteNotificationPlayerIds } from '../routes/votes';
 
-const app = createApp();
+const app = createTestApp();
 let playerA: string;
 let playerB: string;
 let gameCs2: string;
@@ -58,7 +58,7 @@ test('POST /api/votes/start rejects starting a second round while one is open', 
 
 test('POST /api/votes rejects an unknown player or game', async () => {
   const badPlayer = await request(app).post('/api/votes').send({ playerId: 'ghost', gameId: gameCs2 });
-  assert.equal(badPlayer.status, 404);
+  assert.equal(badPlayer.status, 401);
   const badGame = await request(app).post('/api/votes').send({ playerId: playerA, gameId: 'ghost' });
   assert.equal(badGame.status, 404);
 });

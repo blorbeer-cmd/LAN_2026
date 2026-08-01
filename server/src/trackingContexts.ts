@@ -1,6 +1,5 @@
 import { nanoid } from 'nanoid';
 import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
-import { config } from './config';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 
 export interface TrackingContext { groupId: string; eventId: string | null; weight: number; }
@@ -10,22 +9,19 @@ export interface TrackingContext { groupId: string; eventId: string | null; weig
 // the report's time proportionally, so analytics never double-count a tick.
 export function activeTrackingContexts(playerId: string, now = Date.now()): TrackingContext[] {
   const groups = db.prepare(
-    `SELECT gm.group_id, gm.outside_tracking_enabled FROM group_memberships gm
+    `SELECT gm.group_id FROM group_memberships gm
      JOIN groups g ON g.id = gm.group_id
      WHERE gm.player_id = ? AND gm.status = 'active' AND g.archived_at IS NULL`,
-  ).all(playerId) as Array<{ group_id: string; outside_tracking_enabled: number }>;
-  if (!groups.length && config.authMode === 'legacy' && !(db.prepare('SELECT 1 FROM group_memberships WHERE player_id = ? LIMIT 1').get(playerId))) {
-    groups.push({ group_id: DEFAULT_GROUP_ID, outside_tracking_enabled: 1 });
-  }
+  ).all(playerId) as Array<{ group_id: string }>;
   const result: TrackingContext[] = [];
-  for (const { group_id: groupId, outside_tracking_enabled: outsideTrackingEnabled } of groups) {
+  for (const { group_id: groupId } of groups) {
     const hasGroupConsent = Boolean(
       db.prepare(
         `SELECT 1 FROM group_tracking_consents
          WHERE group_id = ? AND player_id = ? AND revoked_at IS NULL
          LIMIT 1`,
       ).get(groupId, playerId),
-    ) || (config.authMode === 'legacy' && Boolean(outsideTrackingEnabled));
+    );
     const events = db.prepare(
       `SELECT e.id, e.visibility_scope FROM events e
        WHERE e.group_id = ? AND e.tracking_enabled = 1 AND e.status = 'published'
@@ -42,13 +38,12 @@ export function activeTrackingContexts(playerId: string, now = Date.now()): Trac
                  SELECT 1 FROM event_tracking_consents c
                  WHERE c.event_id = e.id AND c.player_id = ? AND c.revoked_at IS NULL
                )
-               OR ? = 'legacy'
              )
            )
          )
          AND e.starts_at <= ? AND (e.ends_at IS NULL OR e.ends_at > ?)
        ORDER BY e.id`,
-    ).all(groupId, hasGroupConsent ? 1 : 0, playerId, playerId, config.authMode, now, now) as Array<{ id: string; visibility_scope: string }>;
+    ).all(groupId, hasGroupConsent ? 1 : 0, playerId, playerId, now, now) as Array<{ id: string; visibility_scope: string }>;
     const activeEventCount = (db.prepare("SELECT COUNT(*) AS count FROM events WHERE group_id = ? AND tracking_enabled = 1 AND status = 'published' AND starts_at <= ? AND (ends_at IS NULL OR ends_at > ?)").get(groupId, now, now) as { count: number }).count;
     if (events.length) {
       const weight = 1 / events.length;

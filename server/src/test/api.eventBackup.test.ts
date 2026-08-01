@@ -4,10 +4,10 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import request from 'supertest';
-import { createApp } from '../app';
 import { config } from '../config';
+import { createTestApp } from './testApp';
 
-const app = createApp();
+const app = createTestApp();
 const mutableConfig = config as unknown as { dbFile: string; backupDir: string; backupRetention: number };
 const original = {
   dbFile: mutableConfig.dbFile,

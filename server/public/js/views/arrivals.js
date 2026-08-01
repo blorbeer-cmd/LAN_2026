@@ -7,7 +7,7 @@ import { state } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
-import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { getMyId } from '../whoami.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
@@ -382,7 +382,6 @@ export function renderArrivals(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">An- & Abreise</h1>
-    ${whoAmICardHtml('arrivals-whoami', { marginBottom: 'var(--space-3)' })}
     ${
       loaded
         ? `<div class="arrivals-layout grouped-page-sections">
@@ -394,7 +393,6 @@ export function renderArrivals(container, ctx) {
     }
   `;
 
-  wireWhoAmICard(container, 'arrivals-whoami', ctx);
   if (!loaded) return;
 
   wireInfoTooltips(container);

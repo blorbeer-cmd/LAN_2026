@@ -286,12 +286,12 @@ Betroffene Dateien: `server/public/js/views/home.js`, `server/public/js/views/se
   An-/Abreise verwenden.
 - An-/Abreise: Felder umbenennen, falsche Fahrgemeinschaftssymbole entfernen und Zeitangaben mit
   einer responsiven Feldreihe nebeneinanderstellen.
-- Spieler bleibt eine lesbare Übersicht ohne Anlegeaktion. Fremde Profile sind read-only;
-  Erstauswahl, Selbstbearbeitung und Identitätswechsel laufen über „Mein Profil“. Admin bündelt
-  Sitzplan, Backup und lokale Testdatenwerkzeuge, ohne daraus allgemeine Spieler- oder
-  Rollenverwaltung abzuleiten. Die wiederholten „Du bist …“-Karten entfallen, sobald lokal eine
-  Identität gewählt ist. Durchsagen verwenden den gemeinsamen gruppierten Aufbau und die
-  standardmäßig geschlossene „Historie“.
+- Spieler bleibt eine lesbare Übersicht ohne Anlegeaktion. Fremde Profile sind read-only; die
+  persönliche Login-Session legt die Identität fest, „Mein Profil“ bearbeitet ausschließlich das
+  eigene Konto. Admin bündelt Sitzplan, Backup und lokale Testdatenwerkzeuge, ohne daraus
+  allgemeine Spieler- oder Rollenverwaltung abzuleiten. Die wiederholten „Du bist …“-Karten und
+  lokale Identitätswechsel entfallen. Durchsagen verwenden den gemeinsamen gruppierten Aufbau und
+  die standardmäßig geschlossene „Historie“.
 
 Betroffene Dateien vor allem: `server/public/js/views/more.js`, `infoBoard.js`, `gameCatalog.js`,
 `foodOrders.js`, `arcade.js`, `arrivals.js`, `broadcast.js`, `hallOfFame.js` und

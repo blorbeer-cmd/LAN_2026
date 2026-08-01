@@ -58,7 +58,7 @@ eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur d
 - Die Zustellmatrix des gescopten Broadcast-Modells liegt in
   `src/test/realtime.delivery.required.test.ts`: default-deny für unabonnierte Sockets, Kiosk-Token
   samt Event-Allowlist, Eventzugriff für Teilnehmer/Admins/Owner, Produzenten eventgebundener
-  Payloads, empfängergebundene Legacy-Pushes, immutable Arcade-Lobby-/Match-Scopes samt
+  Payloads, empfängergebundene Pushes, immutable Arcade-Lobby-/Match-Scopes samt
   Watch-/Replay-Pfaden, Mitgliedschaftsentzug und Gruppenwechsel bei offenem Socket, ungescopte
   Fach-Broadcasts sowie das globale Instanz-Signal. Ein Teil dieser Suite legt ihre Testgruppen
   direkt per SQL an (nicht über die API) und bleibt damit unabhängig vom Ein-Gruppen-Rückschnitt

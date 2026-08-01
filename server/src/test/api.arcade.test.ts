@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
-import { db } from '../db';
+import { createTestApp } from './testApp';
+import { db, DEFAULT_GROUP_ID } from '../db';
 
-const app = createApp();
+const app = createTestApp();
 
 test('GET /api/arcade/lobbies returns the (empty) cross-game open-lobby list', async () => {
   // Lobbies are created over Socket.IO, which these HTTP-only tests don't
@@ -466,14 +466,17 @@ test('GET /api/arcade/stats ignores legacy Snake rows that stored a bare score a
   assert.equal(legacy, undefined);
 });
 
-test('arcade AI access follows the selected player admin flag', async () => {
+test('arcade AI access follows the server-managed group admin role', async () => {
   const player = await request(app).post('/api/players').send({ name: 'Arcade Non Admin' });
   assert.equal(player.body.is_admin, 0);
 
   const { playerMayUseArcadeAi } = await import('../arcade/adminAccess');
   assert.equal(playerMayUseArcadeAi(player.body.id), false);
 
-  await request(app).patch(`/api/players/${player.body.id}`).send({ isAdmin: true }).expect(200);
+  await request(app)
+    .patch(`/api/groups/${DEFAULT_GROUP_ID}/members/${player.body.id}`)
+    .send({ role: 'admin' })
+    .expect(200);
   assert.equal(playerMayUseArcadeAi(player.body.id), true);
   assert.equal(playerMayUseArcadeAi('missing-player'), false);
 });

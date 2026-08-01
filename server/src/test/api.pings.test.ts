@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 import { db } from '../db';
 
-const app = createApp();
+const app = createTestApp();
 let gameId: string;
 let playerA: string;
 let playerB: string;
@@ -17,7 +17,7 @@ test('setup ping players and game', async () => {
 });
 
 test('pings validate references and expiry bounds', async () => {
-  assert.equal((await request(app).post('/api/pings').send({ playerId: 'ghost', gameId })).status, 404);
+  assert.equal((await request(app).post('/api/pings').send({ playerId: 'ghost', gameId })).status, 401);
   assert.equal((await request(app).post('/api/pings').send({ playerId: playerA, gameId: 'ghost' })).status, 404);
   assert.equal(
     (await request(app).post('/api/pings').send({ playerId: playerA, gameId, expiresInMinutes: 999 })).status,

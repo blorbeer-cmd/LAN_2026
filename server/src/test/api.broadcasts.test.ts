@@ -5,19 +5,18 @@ import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import type { Server } from 'socket.io';
-import { createApp } from '../app';
 import { db, DEFAULT_GROUP_ID } from '../db';
 import { setPushMute } from '../push';
 import { Events, setIo } from '../realtime';
+import { createTestApp } from './testApp';
 
-const app = createApp();
+const app = createTestApp();
 let playerId: string;
 let otherPlayerId: string;
 const emitted: Array<{ event: string; payload: unknown }> = [];
 
 setIo({
   emit: (event: string, payload: unknown) => emitted.push({ event, payload }),
-  sockets: { sockets: new Map() },
 } as unknown as Server);
 
 after(() => setIo(null));
@@ -29,12 +28,13 @@ test('setup: a player', async () => {
   otherPlayerId = other.body.id;
 });
 
-test('POST /api/broadcasts validates player and message', async () => {
+test('POST /api/broadcasts derives the sender from the session and validates the message', async () => {
   const noPlayer = await request(app).post('/api/broadcasts').send({ message: 'Hallo' });
-  assert.equal(noPlayer.status, 400);
+  assert.equal(noPlayer.status, 201);
+  assert.equal(noPlayer.body.playerName, 'Integration Test Admin');
 
   const ghost = await request(app).post('/api/broadcasts').send({ playerId: 'ghost', message: 'Hallo' });
-  assert.equal(ghost.status, 404);
+  assert.equal(ghost.status, 401);
 
   const empty = await request(app).post('/api/broadcasts').send({ playerId, message: '   ' });
   assert.equal(empty.status, 400);
@@ -93,7 +93,7 @@ test('POST /api/broadcasts defaults to one hour, stores the deadline, and lists 
   assert.equal(list.body.broadcasts[0].active, true);
 });
 
-test('legacy event broadcasts enforce recipients and mutes while preserving a kiosk-only entry', async () => {
+test('event broadcasts enforce recipients and mutes while preserving a kiosk-only entry', async () => {
   const event = await request(app)
     .post('/api/events')
     .send({ name: 'Stumme Event-Durchsage', startsAt: Date.now(), endsAt: Date.now() + 60_000 });
@@ -111,7 +111,6 @@ test('legacy event broadcasts enforce recipients and mutes while preserving a ki
       .send({ playerId, eventId: event.body.id, message: 'Nur der Kiosk darf das zeigen' });
     assert.equal(sent.status, 201, JSON.stringify(sent.body));
     assert.ok(sent.body.pushLogId, 'an all-audience message keeps its kiosk log entry');
-    assert.equal(emitted.filter((entry) => entry.event === Events.broadcastNew).length, 0);
     assert.equal(emitted.filter((entry) => entry.event === Events.pushSent).length, 1);
     const push = db.prepare('SELECT player_ids AS playerIds FROM push_log WHERE id = ?').get(sent.body.pushLogId) as {
       playerIds: string;
@@ -125,7 +124,12 @@ test('legacy event broadcasts enforce recipients and mutes while preserving a ki
 test('an event without participants still creates its kiosk banner', async () => {
   const event = await request(app)
     .post('/api/events')
-    .send({ name: 'Leeres Event', startsAt: Date.now(), endsAt: Date.now() + 60_000 });
+    .send({
+      name: 'Leeres Event',
+      startsAt: Date.now(),
+      endsAt: Date.now() + 60_000,
+      visibilityScope: 'group',
+    });
   assert.equal(event.status, 201);
   emitted.length = 0;
 
@@ -134,7 +138,6 @@ test('an event without participants still creates its kiosk banner', async () =>
     .send({ playerId, eventId: event.body.id, message: 'Kiosk ohne Teilnehmer' });
   assert.equal(sent.status, 201, JSON.stringify(sent.body));
   assert.ok(sent.body.pushLogId);
-  assert.equal(emitted.filter((entry) => entry.event === Events.broadcastNew).length, 0);
   assert.equal(emitted.filter((entry) => entry.event === Events.pushSent).length, 1);
   const push = db
     .prepare('SELECT event_id AS eventId, player_ids AS playerIds FROM push_log WHERE id = ?')

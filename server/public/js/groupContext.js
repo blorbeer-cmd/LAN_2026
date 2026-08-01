@@ -43,7 +43,6 @@ export async function refreshGroupContext({ throwOnError = false } = {}) {
   }
 }
 
-export async function initGroupContext(meta) {
-  if (meta.authMode !== 'required') return;
+export async function initGroupContext() {
   await refreshGroupContext();
 }

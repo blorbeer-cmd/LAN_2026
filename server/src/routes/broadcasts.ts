@@ -11,7 +11,6 @@ import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventSc
 import { communicationRecipientIds } from '../communicationRecipients';
 import { activeGroupPlayers } from '../groupPlayers';
 import { broadcast, Events } from '../realtime';
-import { config } from '../config';
 
 export const broadcastsRouter = Router();
 
@@ -147,10 +146,6 @@ broadcastsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     createdAt: row.created_at,
   };
   const deliveredRecipientIds = pushDelivery?.recipientPlayerIds ?? [];
-  const requiresRecipientFilter =
-    config.authMode === 'required' ||
-    row.event_id !== null ||
-    deliveredRecipientIds.length !== recipientIds.length;
   broadcast(
     Events.broadcastNew,
     {
@@ -161,13 +156,11 @@ broadcastsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
       endsAt: created.endsAt,
       createdAt: created.createdAt,
     },
-    requiresRecipientFilter
-      ? {
-          groupId: row.group_id,
-          eventId: row.event_id,
-          recipientPlayerIds: deliveredRecipientIds,
-        }
-      : { groupId: row.group_id, eventId: row.event_id },
+    {
+      groupId: row.group_id,
+      eventId: row.event_id,
+      recipientPlayerIds: deliveredRecipientIds,
+    },
   );
   res.status(201).json(created);
 });

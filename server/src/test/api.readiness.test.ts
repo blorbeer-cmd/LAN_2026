@@ -4,11 +4,11 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import request from 'supertest';
-import { createApp } from '../app';
 import { config } from '../config';
 import { db } from '../db';
+import { createTestApp } from './testApp';
 
-const app = createApp();
+const app = createTestApp();
 
 test('GET /api/admin/readiness reports all operational checks', async () => {
   const res = await request(app).get('/api/admin/readiness');

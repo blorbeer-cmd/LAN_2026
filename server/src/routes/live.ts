@@ -1,5 +1,5 @@
-// Browser-facing live-status board (FR-13). Sits behind the shared UI access
-// token, unlike the agent's own report endpoint.
+// Browser-facing live-status board (FR-13). It uses the personal browser
+// session, unlike the agent's own key-authenticated report endpoint.
 
 import { Router } from 'express';
 import { db } from '../db';

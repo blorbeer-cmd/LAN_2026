@@ -57,7 +57,7 @@ test('only an explicitly designated socket reports global connection state', () 
   }
 });
 
-test('the reporting socket announces reconnect refreshes and permanent recovery', () => {
+test('the reporting socket confirms initial and reconnect generations only after refresh', () => {
   const globalNames = ['io', 'localStorage', 'sessionStorage', 'window', 'CustomEvent', 'navigator'];
   const originalDescriptors = new Map(
     globalNames.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]),
@@ -79,7 +79,12 @@ test('the reporting socket announces reconnect refreshes and permanent recovery'
     defineGlobal('window', {
       addEventListener: () => undefined,
       dispatchEvent: (event) => {
-        events.push({ type: event.type, state: event.detail?.state, complete: event.detail?.complete });
+        events.push({
+          type: event.type,
+          state: event.detail?.state,
+          generation: event.detail?.generation,
+          complete: event.detail?.complete,
+        });
         return true;
       },
     });
@@ -100,13 +105,23 @@ test('the reporting socket announces reconnect refreshes and permanent recovery'
     };
     connectSocket({ reportConnectionState: true });
     emit('connect');
+    assert.deepEqual(
+      events.filter((event) => event.type === 'respawn:connection-state').map((event) => event.state),
+      ['connecting'],
+      'the initial transport connect stays pending until authoritative state has loaded',
+    );
+    const initialRefresh = events.find((event) => event.type === 'respawn:connection-restored');
+    assert.equal(initialRefresh.generation, 1);
+    assert.equal(initialRefresh.complete(), true);
     emit('connect');
     assert.deepEqual(
       events.filter((event) => event.type === 'respawn:connection-state').map((event) => event.state),
       ['connecting', 'connected', 'reconnecting'],
       'a reconnect stays pending until the authoritative refresh acknowledges it',
     );
-    events.find((event) => event.type === 'respawn:connection-restored').complete();
+    const reconnectRefresh = events.filter((event) => event.type === 'respawn:connection-restored').at(-1);
+    assert.equal(reconnectRefresh.generation, 2);
+    assert.equal(reconnectRefresh.complete(), true);
     emit('disconnect', 'io server disconnect');
     emit('connect_error', new Error('unauthorized'));
 
@@ -114,6 +129,7 @@ test('the reporting socket announces reconnect refreshes and permanent recovery'
       events.map((event) => event.type),
       [
         'respawn:connection-state',
+        'respawn:connection-restored',
         'respawn:connection-state',
         'respawn:connection-state',
         'respawn:connection-restored',

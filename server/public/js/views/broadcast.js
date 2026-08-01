@@ -4,7 +4,7 @@
 import { api } from '../api.js';
 import { escapeHtml, formatDateTime } from '../format.js';
 import { showToast } from '../toast.js';
-import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { getMyId } from '../whoami.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
@@ -80,7 +80,6 @@ export function renderBroadcast(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Durchsage</h1>
-    ${whoAmICardHtml('broadcast-whoami', { marginBottom: 'var(--space-3)' })}
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="broadcast-new-title">
         <div class="grouped-page-section-title">
@@ -118,7 +117,6 @@ export function renderBroadcast(container, ctx) {
     </div>
   `;
 
-  wireWhoAmICard(container, 'broadcast-whoami', ctx);
   wireDateTimeField(container, 'broadcast-ends-at');
   wireInfoTooltips(container);
 

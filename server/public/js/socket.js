@@ -1,10 +1,10 @@
-// Socket.IO client setup. Authenticates with the same shared access token as
-// the REST API (server-side enforced in index.ts's io.use()).
+// Socket.IO client setup. Browser sessions use their HttpOnly cookie; only the
+// read-only kiosk sends its dedicated token in the handshake.
 
-import { getToken, GROUP_KEY } from './api.js';
+import { getKioskToken, GROUP_KEY } from './api.js';
 
 function currentScope() {
-  return sessionStorage.getItem(GROUP_KEY);
+  return sessionStorage.getItem(GROUP_KEY) || 'default-group';
 }
 
 export function connectionStateAfterFailure({ hasConnected, online }) {
@@ -17,7 +17,7 @@ export function isPermanentConnectionFailure({ reason, error }) {
 }
 
 export function connectSocket({ kiosk = false, reportConnectionState = false } = {}) {
-  const socket = io({ auth: { token: getToken(), kiosk } });
+  const socket = io({ auth: kiosk ? { token: getKioskToken(), kiosk: true } : {} });
   if (reportConnectionState) {
     let hasConnected = false;
     let connectionGeneration = 0;
@@ -29,16 +29,15 @@ export function connectSocket({ kiosk = false, reportConnectionState = false } =
       const reconnected = hasConnected;
       hasConnected = true;
       const generation = ++connectionGeneration;
-      if (!reconnected) {
-        publishConnectionState('connected');
-        return;
-      }
-      publishConnectionState('reconnecting');
+      if (reconnected) publishConnectionState('reconnecting');
       window.dispatchEvent(
         new CustomEvent('respawn:connection-restored', {
           detail: {
+            generation,
             complete: () => {
-              if (socket.connected && generation === connectionGeneration) publishConnectionState('connected');
+              if (!socket.connected || generation !== connectionGeneration) return false;
+              publishConnectionState('connected');
+              return true;
             },
           },
         }),

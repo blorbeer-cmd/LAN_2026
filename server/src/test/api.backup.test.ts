@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 
-const app = createApp();
+const app = createTestApp();
 
 test('GET /api/backup clearly rejects the in-memory test database', async () => {
   const res = await request(app).get('/api/backup');

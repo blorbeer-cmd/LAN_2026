@@ -1,8 +1,5 @@
-// Admin panel: one-tap admin mode (no PIN for now — see
-// docs/KONZEPT-TEST-USER.md), seeded test players to try features solo,
-// grant/revoke admin, delete players, and agent diagnostics. Most features
-// stay open to everyone in the LAN trust model; this is just the extra role
-// for testing and moderation.
+// Admin panel for authenticated owners/admins: onboarding, roles, seeded test
+// players, account lifecycle and agent diagnostics.
 
 import { api } from '../api.js';
 import { confirmDialog, openModal } from '../modal.js';
@@ -13,7 +10,6 @@ import { isAdmin, setAdmin } from '../admin.js';
 import { withStepUp } from '../reauth.js';
 import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
-import { authRequired } from '../authGate.js';
 import { getMyId } from '../whoami.js';
 import { currentGroup, refreshGroupContext } from '../groupContext.js';
 
@@ -100,7 +96,7 @@ function openInviteModal(invite) {
 }
 
 async function loadActiveInvites(ctx, force = false) {
-  if (!authRequired || activeInvitesLoading || (activeInvites && !force)) return;
+  if (activeInvitesLoading || (activeInvites && !force)) return;
   activeInvitesLoading = true;
   try {
     activeInvites = await api.auth.invites();
@@ -118,7 +114,7 @@ async function loadAdminPlayers(ctx, force = false) {
   adminPlayersLoading = true;
   try {
     adminPlayers = await api.admin.players();
-    const group = authRequired ? currentGroup() : null;
+    const group = currentGroup();
     adminMembers = group ? await api.groups.members(group.id) : [];
   } catch (error) {
     showToast(error.message, { error: true });
@@ -131,7 +127,7 @@ async function loadAdminPlayers(ctx, force = false) {
 }
 
 async function loadAdminMembers(ctx, force = false) {
-  if (!authRequired || adminMembersLoading || (adminMembers !== null && !force)) return;
+  if (adminMembersLoading || (adminMembers !== null && !force)) return;
   adminMembersLoading = true;
   adminMembersError = null;
   ctx.rerender();
@@ -160,11 +156,22 @@ export function invalidateAdminReadiness() {
   readinessError = null;
 }
 
-async function loadReadiness(ctx, force = false) {
+function focusReadinessTarget(preferredId) {
+  const target =
+    (preferredId ? document.getElementById(preferredId) : null) ||
+    document.getElementById('admin-readiness-refresh') ||
+    document.getElementById('admin-readiness-status');
+  target?.focus({ preventScroll: true });
+}
+
+async function loadReadiness(ctx, force = false, restoreFocusId = null) {
   if (readinessLoading || (readiness && !force)) return;
   readinessLoading = true;
   readinessError = null;
-  if (force) ctx.rerender();
+  if (force) {
+    ctx.rerender();
+    focusReadinessTarget('admin-readiness-status');
+  }
   try {
     readiness = await api.admin.readiness();
   } catch (error) {
@@ -173,6 +180,7 @@ async function loadReadiness(ctx, force = false) {
   } finally {
     readinessLoading = false;
     ctx.rerender();
+    if (restoreFocusId) focusReadinessTarget(restoreFocusId);
   }
 }
 
@@ -182,7 +190,7 @@ function roleLabel(role) {
 
 function roleControl(player) {
   const membership = adminMembers?.find((member) => member.playerId === player.id);
-  if (!authRequired || !membership || player.deactivated_at) return '';
+  if (!membership || player.deactivated_at) return '';
 
   const myRole = currentGroup()?.role;
   const canChangeOwner = myRole === 'owner';
@@ -232,7 +240,8 @@ async function refreshAdminData(ctx) {
   await ctx.refresh();
   await Promise.all([
     loadAdminPlayers(ctx, true),
-    ...(authRequired ? [loadAdminMembers(ctx, true), loadActiveInvites(ctx, true)] : []),
+    loadAdminMembers(ctx, true),
+    loadActiveInvites(ctx, true),
   ]);
 }
 
@@ -310,17 +319,6 @@ async function cleanupTestUsers(ctx) {
   }
 }
 
-async function toggleAdmin(player, ctx) {
-  try {
-    const updated = await withStepUp(() => api.players.update(player.id, { isAdmin: !player.is_admin }));
-    if (updated === undefined) return;
-    showToast(player.is_admin ? `${player.name} ist kein Admin mehr.` : `${player.name} ist jetzt Admin.`);
-    await refreshAdminData(ctx);
-  } catch (err) {
-    showToast(err.message, { error: true });
-  }
-}
-
 async function deletePlayer(player, ctx) {
   if (!(await confirmDialog(`Spieler "${player.name}" wirklich löschen? Alle Tracking-Daten, Sitzungen und persönlichen Kontodaten werden unwiderruflich entfernt.`))) return;
   try {
@@ -380,31 +378,10 @@ async function reactivatePlayer(player, ctx) {
   }
 }
 
-function renderActivate(container) {
-  container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-    <h1 class="view-title">Admin</h1>
-    <div class="grouped-page-sections">
-      <section class="card stack grouped-page-section" aria-labelledby="admin-mode-title">
-        <div class="grouped-page-section-title"><h2 id="admin-mode-title">Admin-Modus</h2></div>
-        <p class="muted">Im Admin-Modus kannst du Test-Spieler mit fertigen Daten anlegen,
-        Admin-Rechte vergeben und Spieler löschen. Test-Spieler sind nur sichtbar,
-        solange der Admin-Modus aktiv ist.</p>
-        <button type="button" class="btn btn-primary btn-block" id="admin-activate">Admin-Modus aktivieren</button>
-      </section>
-    </div>
-  `;
-
-  container.querySelector('#admin-activate').addEventListener('click', () => {
-    setAdmin(true); // app.js reacts to respawn:admin-changed: banner + refresh
-    showToast('Admin-Modus aktiv.');
-  });
-}
-
 function renderPanel(container, ctx) {
   if (adminPlayers === null && !adminPlayersLoading) loadAdminPlayers(ctx);
-  if (authRequired && adminMembers === null && !adminMembersLoading && !adminMembersError) loadAdminMembers(ctx);
-  if (authRequired && activeInvites === null && !activeInvitesLoading) loadActiveInvites(ctx);
+  if (adminMembers === null && !adminMembersLoading && !adminMembersError) loadAdminMembers(ctx);
+  if (activeInvites === null && !activeInvitesLoading) loadActiveInvites(ctx);
   const players = adminPlayers || [];
   const testCount = players.filter((p) => p.is_test).length;
   if (agentDiagnostics === null && !diagnosticsLoading) loadAgentDiagnostics(ctx);
@@ -423,12 +400,10 @@ function renderPanel(container, ctx) {
         <span class="row admin-player-actions" style="gap:var(--space-2);">
           ${roleControl(p)}
           ${!p.is_test || p.deactivated_at ? `<button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">${p.deactivated_at ? 'Dauerhaft loeschen' : 'Loeschen'}</button>` : ''}
-          ${authRequired && p.is_test && !p.deactivated_at ? `<button type="button" class="btn btn-sm" data-test-session="${p.id}">Testsitzung öffnen</button>` : ''}
+          ${p.is_test && !p.deactivated_at ? `<button type="button" class="btn btn-sm" data-test-session="${p.id}">Testsitzung öffnen</button>` : ''}
           ${p.deactivated_at
             ? `<button type="button" class="btn btn-sm" data-reactivate-player="${p.id}">Reaktivieren</button>`
-            : authRequired
-              ? ''
-              : `<button type="button" class="btn btn-sm" data-toggle-admin="${p.id}" ${p.is_test ? 'disabled' : ''}>${p.is_admin ? 'Admin entziehen' : 'Admin machen'}</button>`}
+            : ''}
           ${p.deactivated_at ? '' : p.is_test ? `<button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">Löschen</button>` : `<button type="button" class="btn btn-sm btn-danger" data-deactivate-player="${p.id}">Deaktivieren</button>`}
         </span>
       </div>`
@@ -525,7 +500,6 @@ function renderPanel(container, ctx) {
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <div class="row-between">
       <h1 class="view-title">Admin</h1>
-      ${authRequired ? '' : '<button type="button" class="btn btn-sm" id="admin-leave">Modus verlassen</button>'}
     </div>
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="admin-readiness-title">
@@ -533,20 +507,18 @@ function renderPanel(container, ctx) {
           <h2 id="admin-readiness-title">LAN-Bereitschaft</h2>
           <button type="button" class="btn btn-sm" id="admin-readiness-refresh" ${readinessLoading ? 'disabled' : ''}>Aktualisieren</button>
         </div>
-        ${readinessBody}
+        <div id="admin-readiness-status" role="status" aria-live="polite" tabindex="-1">
+          ${readinessBody}
+        </div>
       </section>
-      ${
-        authRequired
-          ? `<section class="card stack grouped-page-section" aria-labelledby="admin-onboarding-title">
+      <section class="card stack grouped-page-section" aria-labelledby="admin-onboarding-title">
         <div class="grouped-page-section-title"><h2 id="admin-onboarding-title">Onboarding &amp; Kontozugang</h2></div>
         <p class="muted">Neue Personen registrieren sich über einen allgemeinen Einmal-Link. Bestehende Profile erhalten einen persönlichen Claim-Link; für vergessene Passwörter gibt es einen Reset-Link.</p>
         <button type="button" class="btn btn-primary" id="admin-register-link">Link für neue Person erstellen</button>
         <div class="stack">${accountRows || '<span class="muted">Keine aktiven echten Konten vorhanden.</span>'}</div>
         <div class="section-title">Aktive Einmal-Links</div>
         <div class="stack">${activeInvitesLoading && activeInvites === null ? '<span class="muted">Links werden geladen…</span>' : inviteRows || '<span class="muted">Keine aktiven Links.</span>'}</div>
-      </section>`
-          : ''
-      }
+      </section>
       <section class="card stack grouped-page-section" aria-labelledby="admin-tools-title">
         <div class="grouped-page-section-title"><h2 id="admin-tools-title">Werkzeuge</h2></div>
         <div class="two-column-card-grid">
@@ -587,7 +559,7 @@ function renderPanel(container, ctx) {
         <div class="grouped-page-section-title">
           <span class="title-with-info">
             <h2 id="admin-players-title">Benutzer (${players.length})</h2>
-            ${authRequired ? infoTooltipHtml('admin-role-help', 'Rollen', ADMIN_ROLE_HELP) : ''}
+            ${infoTooltipHtml('admin-role-help', 'Rollen', ADMIN_ROLE_HELP)}
           </span>
         </div>
         ${
@@ -613,11 +585,6 @@ function renderPanel(container, ctx) {
       </section>
     </div>
   `;
-
-  container.querySelector('#admin-leave')?.addEventListener('click', () => {
-    setAdmin(false);
-    showToast('Admin-Modus verlassen.');
-  });
 
   container.querySelector('#admin-register-link')?.addEventListener('click', () => createLoginInvite('register', null, ctx));
   container.querySelectorAll('[data-create-login-link]').forEach((button) => {
@@ -649,8 +616,10 @@ function renderPanel(container, ctx) {
   container.querySelector('#download-backup').addEventListener('click', () => downloadBackup(ctx));
   wireInfoTooltips(container);
 
-  container.querySelector('#admin-readiness-refresh').addEventListener('click', () => loadReadiness(ctx, true));
-  container.querySelector('#admin-readiness-retry')?.addEventListener('click', () => loadReadiness(ctx, true));
+  container.querySelector('#admin-readiness-refresh').addEventListener('click', (event) =>
+    loadReadiness(ctx, true, event.currentTarget.id));
+  container.querySelector('#admin-readiness-retry')?.addEventListener('click', (event) =>
+    loadReadiness(ctx, true, event.currentTarget.id));
   container.querySelector('#agent-diagnostics-refresh').addEventListener('click', () => loadAgentDiagnostics(ctx, true));
   container.querySelector('#admin-members-retry')?.addEventListener('click', () => loadAdminMembers(ctx, true));
 
@@ -658,13 +627,6 @@ function renderPanel(container, ctx) {
     btn.addEventListener('click', () => {
       const player = players.find((p) => p.id === btn.dataset.testSession);
       if (player) createLoginInvite('test_login', player, ctx);
-    });
-  });
-
-  container.querySelectorAll('[data-toggle-admin]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const player = players.find((p) => p.id === btn.dataset.toggleAdmin);
-      if (player) toggleAdmin(player, ctx);
     });
   });
 
@@ -699,23 +661,18 @@ function renderPanel(container, ctx) {
 }
 
 export function renderAdmin(container, ctx) {
-  if (authRequired) {
-    const current = (state.players || []).find((player) => player.id === getMyId());
-    if (!current?.is_admin) {
-      if (isAdmin()) setAdmin(false);
-      container.innerHTML = `
-        <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
-        <h1 class="view-title">${icon('shield')} Admin</h1>
-        <div class="card"><p class="muted">Dieses Konto hat keine Admin-Rechte.</p></div>`;
-      return;
-    }
-    if (!isAdmin()) {
-      setAdmin(true);
-      return;
-    }
-    renderPanel(container, ctx);
+  const current = (state.players || []).find((player) => player.id === getMyId());
+  if (!current?.is_admin) {
+    if (isAdmin()) setAdmin(false);
+    container.innerHTML = `
+      <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
+      <h1 class="view-title">${icon('shield')} Admin</h1>
+      <div class="card"><p class="muted">Dieses Konto hat keine Admin-Rechte.</p></div>`;
     return;
   }
-  if (isAdmin()) renderPanel(container, ctx);
-  else renderActivate(container);
+  if (!isAdmin()) {
+    setAdmin(true);
+    return;
+  }
+  renderPanel(container, ctx);
 }

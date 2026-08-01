@@ -1,11 +1,12 @@
-// App bootstrap: token gate, tab switching, and wiring realtime events into
+// App bootstrap: login gate, tab switching, and wiring realtime events into
 // the shared state. Kept as one small orchestrator so each view module stays
 // focused on its own rendering logic.
 
-import { api, getToken, setToken } from './api.js';
+import { api } from './api.js';
 import { ensureLogin } from './authGate.js';
 import { connectSocket } from './socket.js';
 import { initConnectionStatus } from './connectionStatus.js';
+import { createConnectionRefreshCoordinator } from './connectionRefresh.js';
 import { state } from './state.js';
 import { loadAll } from './data.js';
 import { showToast } from './toast.js';
@@ -89,6 +90,7 @@ const VIEWS = {
 };
 
 let currentView = 'home';
+let appReady = false;
 const viewContainer = document.getElementById('view-container');
 let pendingSearchTarget = null;
 
@@ -208,64 +210,6 @@ function wireAdminMode() {
   window.addEventListener('respawn:test-identity-changed', () => ctx.refresh());
 }
 
-async function tokenWorks(candidate) {
-  try {
-    const res = await fetch('/api/health', { headers: { 'x-access-token': candidate } });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-// Legacy deployments use the shared-token gate; required auth replaces it
-// with the personal login gate.
-async function ensureAccess() {
-  const meta = await api.meta();
-  if (meta.accessProtection) await ensureToken();
-  if (meta.authMode === 'required') await ensureLogin();
-  return meta;
-}
-
-// Invite links carry the token in the URL (?token=...): opening one logs in
-// automatically without anyone having to type or paste anything, which is
-// the whole point of sending a link instead of a password.
-async function ensureToken() {
-  const fromUrl = new URLSearchParams(location.search).get('token');
-  if (fromUrl && (await tokenWorks(fromUrl))) {
-    setToken(fromUrl);
-    const cleanUrl = new URL(location.href);
-    cleanUrl.searchParams.delete('token');
-    history.replaceState(null, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
-    return;
-  }
-
-  const existing = getToken();
-  if (existing && (await tokenWorks(existing))) return;
-
-  const loginScreen = document.getElementById('login-screen');
-  const form = document.getElementById('login-form');
-  const input = document.getElementById('login-token');
-  const errorEl = document.getElementById('login-error');
-
-  loginScreen.hidden = false;
-
-  return new Promise((resolve) => {
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const candidate = input.value.trim();
-      if (!candidate) return;
-      if (await tokenWorks(candidate)) {
-        setToken(candidate);
-        loginScreen.hidden = true;
-        resolve();
-      } else {
-        errorEl.hidden = false;
-        errorEl.textContent = 'Token ungültig – bitte erneut versuchen.';
-      }
-    });
-  });
-}
-
 function wireNav() {
   // Topbar and admin-banner icons come from icons.js like everywhere else
   // (index.html stays free of hand-copied SVG paths); the app shell is
@@ -324,18 +268,13 @@ function wireNav() {
 }
 
 function wireSocket() {
-  // Only the long-lived application socket owns the global connection banner.
-  // Arcade views open and intentionally close auxiliary sockets; those must
-  // never make the whole app appear offline.
-  const socket = connectSocket({ reportConnectionState: true });
-
-  let reconnectRefresh = null;
-  let reconnectRetryTimer = null;
-  let reconnectComplete = null;
+  let resolveInitialRefresh;
+  const initialRefresh = new Promise((resolve) => {
+    resolveInitialRefresh = resolve;
+  });
   let reconnectFailureNotified = false;
-  const refreshAfterReconnect = () => {
-    if (reconnectRefresh) return;
-    reconnectRefresh = (async () => {
+  const refreshCoordinator = createConnectionRefreshCoordinator({
+    refresh: async () => {
       // Socket.IO does not replay arbitrary application events. Invalidate
       // every secondary cache and reload the central REST state before the
       // connection banner can be treated as authoritative again.
@@ -357,37 +296,29 @@ function wireSocket() {
       invalidateAdminReadiness();
       invalidateMusic();
       await refreshGroupContext({ throwOnError: true });
-      await Promise.all([ctx.refresh(), refreshNotificationBanner({ throwOnError: true })]);
-      if (reconnectRetryTimer) window.clearTimeout(reconnectRetryTimer);
-      reconnectRetryTimer = null;
+      await Promise.all([loadAll(), refreshNotificationBanner({ throwOnError: true })]);
+      if (appReady) renderCurrent();
+    },
+    onRecovered: () => {
       reconnectFailureNotified = false;
-      reconnectComplete?.();
-    })()
-      .catch((error) => {
-        if (error.status === 401) {
-          location.reload();
-          return;
-        }
-        if (!reconnectFailureNotified) {
-          showToast('Aktualisierung fehlgeschlagen – neuer Versuch läuft.', { error: true });
-          reconnectFailureNotified = true;
-        }
-        if (!reconnectRetryTimer) {
-          reconnectRetryTimer = window.setTimeout(() => {
-            reconnectRetryTimer = null;
-            refreshAfterReconnect();
-          }, 3000);
-        }
-      })
-      .finally(() => {
-        reconnectRefresh = null;
-      });
-  };
+      resolveInitialRefresh();
+    },
+    onFailure: () => {
+      if (reconnectFailureNotified) return;
+      showToast('Aktualisierung fehlgeschlagen – neuer Versuch läuft.', { error: true });
+      reconnectFailureNotified = true;
+    },
+    onUnauthorized: () => location.reload(),
+  });
   window.addEventListener('respawn:connection-restored', (event) => {
-    reconnectComplete = event.detail?.complete ?? null;
-    refreshAfterReconnect();
+    refreshCoordinator.enqueue(event.detail);
   });
   window.addEventListener('respawn:connection-recovery-required', () => location.reload());
+
+  // Only the long-lived application socket owns the global connection banner.
+  // Arcade views open and intentionally close auxiliary sockets; those must
+  // never make the whole app appear offline.
+  const socket = connectSocket({ reportConnectionState: true });
 
   // These events carry no payload (or aren't worth special-casing) — just
   // reload everything. Infrequent (admin-type actions), so this is cheap.
@@ -616,12 +547,13 @@ function wireSocket() {
     invalidateAdminMemberships();
     if (currentView === 'admin') renderCurrent();
   });
+  return initialRefresh;
 }
 
 async function main() {
-  const meta = await ensureAccess();
+  await ensureLogin();
   document.getElementById('app').hidden = false;
-  await initGroupContext(meta);
+  await initGroupContext();
   wireNav();
   initGlobalSearch((entry) => {
     if (entry.target?.type === 'tournament') focusTournament(entry.target.id);
@@ -632,14 +564,10 @@ async function main() {
   });
   wireAdminMode();
   initConnectionStatus();
-  wireSocket();
   initNotificationBanner();
-  await loadAll();
+  await wireSocket();
+  appReady = true;
   lastVoteRound = state.votes ? state.votes.round : null;
-  // Nobody has set up "who am I" on this device yet (fresh invite link, new
-  // phone, …) — send them straight into self-onboarding instead of the Home
-  // view, so setting up name/avatar/skills/agent-key is the first thing
-  // they see, not something they have to go looking for.
   // A push notification's deep link (e.g. /#votes, opened by sw.js when no
   // app window existed yet) overrides that default so the tap actually lands
   // where the notification promised.
@@ -651,9 +579,7 @@ async function main() {
     ? hashView
     : VIEWS[restoredView]
       ? restoredView
-      : getMyId()
-        ? 'home'
-        : 'profile';
+      : 'home';
   // Establishes the base history entry the very first popstate can land on
   // (replace, not push — this page load shouldn't cost an extra back-step)
   // before any tab switch starts pushing entries on top of it.

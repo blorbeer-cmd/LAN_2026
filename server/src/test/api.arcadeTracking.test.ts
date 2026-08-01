@@ -8,12 +8,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 import { db, DEFAULT_GROUP_ID } from '../db';
 import { getLiveBoard } from '../liveStatus';
 import { startArcadeSession, endArcadeSession } from '../arcade/arcadeTracking';
 
-const app = createApp();
+const app = createTestApp();
 
 async function makePlayer(name: string): Promise<string> {
   const res = await request(app).post('/api/players').send({ name });

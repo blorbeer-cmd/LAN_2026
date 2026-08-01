@@ -10,7 +10,7 @@ import type { AddressInfo } from 'net';
 import { Server } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp, installTestSocketIdentity } from './testApp';
 import { registerArcadeSockets } from '../arcade/arcade';
 import { registerTetrisSockets } from '../arcade/tetris';
 import { registerPongSockets } from '../arcade/pong';
@@ -47,8 +47,9 @@ async function makePlayers(baseUrl: string, names: string[]): Promise<string[]> 
 
 test('a non-host participant can leave a running match in every arcade game', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerArcadeSockets(io);
   registerTetrisSockets(io);
   registerPongSockets(io);
@@ -184,8 +185,9 @@ test('a non-host participant can leave a running match in every arcade game', as
 
 test('leaving a running match never shows the leaver their own "opponent left" toast', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerArcadeSockets(io);
   registerTetrisSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
@@ -246,8 +248,9 @@ test('leaving a running match never shows the leaver their own "opponent left" t
 
 test('scribble: leaving revokes guess authorization instead of letting a departed player keep scoring in a 3+ player match', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerScribbleSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
@@ -317,8 +320,9 @@ test('scribble: leaving revokes guess authorization instead of letting a departe
 
 test('a host finishing a match at the same instant a guest leaves it resolves cleanly (no crash, no duplicate result)', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerArcadeSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;

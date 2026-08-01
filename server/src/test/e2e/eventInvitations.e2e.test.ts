@@ -55,8 +55,6 @@ before(async () => {
       ...process.env,
       PORT: String(PORT),
       DB_FILE: ':memory:',
-      AUTH_MODE: 'required',
-      ACCESS_TOKEN: '',
       ADMIN_RECOVERY_CODE: RECOVERY_CODE,
     },
     stdio: 'ignore',
