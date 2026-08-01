@@ -488,7 +488,7 @@ export function renderTetrisLobbyCard() {
           ${createReason ? infoTooltipHtml('tetris-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
         </div>
         ${currentPlayerMayUseArcadeAi() ? `<div class="arcade-lobby-ai-row">
-          <button type="button" class="btn btn-sm" id="tetris-bot" ${match || lobby || noMe ? 'disabled' : ''}>KI-Test starten</button>
+          <button type="button" class="btn btn-sm" id="tetris-bot" ${match || lobby || noMe ? 'disabled' : ''}>Gegen KI</button>
         </div>` : ''}
       </div>
       ${renderLobbyList()}

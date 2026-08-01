@@ -225,7 +225,7 @@ export function renderPongLobbyCard() {
         <button type="button" class="btn btn-primary btn-sm" id="pong-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
         ${createReason ? infoTooltipHtml('pong-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
       </div>
-      ${currentPlayerMayUseArcadeAi() ? `<div class="arcade-lobby-ai-row"><button type="button" class="btn btn-sm" id="pong-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button><button type="button" class="btn btn-sm" id="pong-bot-doubles" ${match || noMe ? 'disabled' : ''}>Gegen KI (Doppel)</button></div>` : ''}
+      ${currentPlayerMayUseArcadeAi() ? `<div class="arcade-lobby-ai-row"><button type="button" class="btn btn-sm" id="pong-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button></div>` : ''}
     </div>
     ${lobbyList()}
   </div>`;
@@ -251,15 +251,9 @@ export function wirePongLobbyCard(container, { beforeCreate, beforeJoin } = {}) 
   });
   container.querySelector('#pong-bot')?.addEventListener('click', async () => {
     if (beforeCreate && !(await beforeCreate())) return;
-    targetScore = 7;
-    const result = await emitAck('pong:lobby:bot', { playerId: myId() });
+    targetScore = lobbyMode === 'doubles' ? 21 : 7;
+    const result = await emitAck('pong:lobby:bot', { playerId: myId(), mode: lobbyMode });
     if (!result?.ok) showToast(result?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
-  });
-  container.querySelector('#pong-bot-doubles')?.addEventListener('click', async () => {
-    if (beforeCreate && !(await beforeCreate())) return;
-    targetScore = 21;
-    const result = await emitAck('pong:lobby:bot', { playerId: myId(), mode: 'doubles' });
-    if (!result?.ok) showToast(result?.error || 'KI-Doppel-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelectorAll('[data-pong-join]').forEach((button) => button.addEventListener('click', async () => {
     if (beforeJoin && !(await beforeJoin())) return;
