@@ -77,9 +77,12 @@ Unabhängigkeits- und Sicherheitsregeln:
 8. Melde nur konkrete, durch den Diff verursachte und vom Autor behebbare Findings. Keine
    allgemeinen Stilwünsche, keine bloßen Fragen und keine Punkte, die ausschließlich ein bereits
    grüner deterministischer Linter abdeckt.
-9. Belege jedes Finding mit engem Datei-/Zeilenbezug, einem reproduzierbaren Szenario oder einer
-   klaren Ausführungskette und einer konkreten Verifikation des Fixes. Erfinde keine
-   Testergebnisse. Lies vorhandene CI-Ergebnisse, führe aber keine zustandsändernden Aktionen aus.
+9. Belege jedes Finding nach Möglichkeit mit engem Datei-/Zeilenbezug, einem reproduzierbaren
+   Szenario oder einer klaren Ausführungskette und einer konkreten Verifikation des Fixes. Wenn kein
+   stabiler Inline-Anker existiert, verwende `disposition: needs-human`, `anchor: none`,
+   `file: null`, `line: null` und `verdict: blocked`; erfinde keinen Datei-/Zeilenanker. Erfinde
+   keine Testergebnisse. Lies vorhandene CI-Ergebnisse, führe aber keine zustandsändernden Aktionen
+   aus.
 10. Schweregrade:
     - critical: Datenverlust, Sicherheitsgrenze, produktiver Ausfall oder sicher falsches
       Kernverhalten; blockiert zwingend.
@@ -137,6 +140,8 @@ Beende die Antwort mit genau einem JSON-Block und danach keinem weiteren Text:
     {
       "id": "R1",
       "severity": "critical|high|medium|low",
+      "disposition": "actionable|needs-human",
+      "anchor": "inline|none",
       "title": "...",
       "file": "path/to/file",
       "line": 1,
@@ -149,6 +154,8 @@ Beende die Antwort mit genau einem JSON-Block und danach keinem weiteren Text:
   "residual_risks": ["..."]
 }
 ```
+
+Bei `anchor: none` müssen `file` und `line` stattdessen als JSON-`null` ausgegeben werden.
 
 ## Step-by-step: Codex separate session
 
@@ -165,8 +172,11 @@ Beende die Antwort mit genau einem JSON-Block und danach keinem weiteren Text:
    not perform the review. A prompt restriction and a later `git status` check are insufficient.
 6. Confirm that the final `reviewed_head_sha` equals the current GitHub head SHA. Treat a mismatch,
    missing JSON block or `blocked` verdict as no completed review.
-7. Put actionable findings into the PR discussion or hand the complete result to the
-   implementation session. Do not ask this review session to fix them.
+7. Hand the complete result to the implementation session. Actionable findings must be published
+   as resolvable inline review threads with an exact file and line anchor; do not publish them only
+   as top-level PR comments. If no stable inline anchor exists, classify the finding as
+   `needs-human`/blocked and keep the merge gate blocked. Do not ask this review session to fix
+   findings.
 8. After fixes are pushed, close this review context and start another detached review for the new
    SHA.
 
@@ -191,3 +201,8 @@ implementer. If that provider is unavailable, start a fresh session of the imple
 provider and set `review_mode` to `fallback`, but only with enforced read-only permissions. Never
 reuse the implementation conversation, never rely on prompt-only write restrictions and never
 change `verdict` to `pass` merely because the preferred reviewer ran out of quota.
+
+The reviewer does not resolve threads itself because the session is read-only. After a finding is
+confirmed fixed, an accepted rejection, or confirmed obsolete, the implementation session must
+mark the associated review threads and comments as resolved; a finding is complete only after the
+review conversation is resolved. A `needs-human` finding remains unresolved and blocks the gate.

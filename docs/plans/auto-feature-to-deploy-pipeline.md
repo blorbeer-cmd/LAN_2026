@@ -201,21 +201,38 @@ Jedes Review liefert maschinenlesbar:
 reviewer-provider: claude|codex
 review-mode: cross|fallback
 reviewed-head-sha: <sha>
-verdict: pass|changes-required
+verdict: pass|changes-required|blocked
 findings:
-  - severity: critical|high|medium|low
-    file: <path>
+  - id: <finding-id>
+    severity: critical|high|medium|low
+    disposition: actionable|needs-human
+    anchor: inline|none
+    file: <path or null>
     line: <line or null>
     summary: <short text>
     rationale: <why this matters>
     verification: <how to verify the fix>
 ```
 
+Actionable Findings werden als auflösbare Inline-Review-Threads mit konkretem Datei-/Zeilenanker
+veröffentlicht. Top-Level-PR-Kommentare können Kontext dokumentieren, gelten aber nicht als
+blockierende Findings und können das Merge-Gate nicht erfüllen. Gibt es keinen stabilen Inline-
+Anker, wird mit `disposition: needs-human`, `anchor: none`, `file: null`, `line: null` und
+`verdict: blocked` gekennzeichnet; die vollständigen Finding-Details bleiben im Ergebnis erhalten
+und das Gate bleibt blockiert.
+
 Der Implementierungs-Agent bearbeitet jedes Finding nachvollziehbar:
 
 - `fixed`: Änderung und Prüfung nennen,
-- `rejected`: fachliche Begründung liefern; der Reviewer entscheidet erneut,
+- `rejected`: fachliche Begründung liefern; der Reviewer entscheidet erneut. Bestätigt der Reviewer
+  die Zurückweisung oder erklärt das Finding für obsolet, wird der ursprüngliche Thread ebenfalls
+  abgeschlossen,
 - `needs-human`: bei kritischer oder mehrdeutiger Entscheidung eskalieren.
+
+Nach einem bestätigten `fixed`, einer akzeptierten Zurückweisung oder einer bestätigten Obsoleszenz
+markiert der Implementierungs-Agent den zugehörigen Inline-Review-Thread und die darin enthaltenen
+Kommentare als gelöst. Ein Finding gilt für das Merge-Gate erst als abgeschlossen, wenn die
+Behebung beziehungsweise Entscheidung geprüft und die zugehörige Review-Konversation gelöst ist.
 
 Nach jedem Fix-Commit beginnt ein vollständiger Review des neuen Head-SHAs. Nach drei erfolglosen
 Reviewrunden wird nicht weiter zwischen Agenten gependelt; der PR wechselt zu
@@ -276,7 +293,8 @@ erfolgreich, wenn:
 - der Branch aktuell und konfliktfrei ist,
 - das Review exakt den aktuellen Head-SHA geprüft hat,
 - das Review `pass` meldet,
-- alle Review-Findings und blockierenden Threads erledigt sind,
+- alle blockierenden Review-Findings erledigt und jeder zugehörige auflösbare Inline-Review-Thread
+  als gelöst markiert ist,
 - Thread-Snapshots für den aktuellen Head monoton versioniert sind und kein älterer Snapshot einen
   neueren Diskussionsstand überschreiben kann,
 - kein `agent:waiting`, `agent:needs-human` oder `agent:no-auto` aktiv ist,
