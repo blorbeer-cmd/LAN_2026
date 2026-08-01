@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { writeAdminAudit } from '../adminAudit';
-import { config } from '../config';
 import { db } from '../db';
 import { requireGroupEventAccess, resolveGroupEventScope, type GroupEventScope } from '../groupEventScope';
 import { resolveGroupResource } from '../groupAuthorization';
@@ -124,8 +123,8 @@ pingsRouter.get('/', (req, res) => {
   res.json({ groupId: req.group!.id, eventId: scope.eventId, pings: buildPings(req.group!.id, scope.eventId, false) });
 });
 
-// POST /api/pings - active members create a short-lived request. Required
-// auth binds playerId to the session; legacy keeps the existing body shape.
+// POST /api/pings - active members create a short-lived request. The actor is
+// always bound to the verified session, regardless of the submitted body.
 pingsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId, gameId, message, expiresInMinutes, eventId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -221,7 +220,7 @@ pingsRouter.delete('/:id', resolvePing, (req, res) => {
   const ping = req.groupResource as PingRow;
   const role = req.groupMembership?.role;
   const mayModerate = role === 'admin' || role === 'owner';
-  if (config.authMode !== 'legacy' && req.player?.id !== ping.player_id && !mayModerate) {
+  if (req.player?.id !== ping.player_id && !mayModerate) {
     writeAdminAudit({
       actorPlayerId: req.player?.id,
       groupId: ping.group_id,

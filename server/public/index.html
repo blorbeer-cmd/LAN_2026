@@ -19,24 +19,8 @@
   <link rel="stylesheet" href="/css/style.css?v=38" />
 </head>
 <body>
-  <div id="login-screen" class="login-screen" hidden>
-    <form id="login-form" class="login-card">
-      <img class="login-logo" src="/img/logo.svg" alt="" width="72" height="72" />
-      <h1 class="brand-title">Respawn</h1>
-      <p class="muted">Zugangs-Token eingeben, um fortzufahren.</p>
-      <input id="login-token" type="password" inputmode="text" autocomplete="off" placeholder="Token" autofocus />
-      <button type="submit" class="btn btn-primary">Beitreten</button>
-      <p id="login-error" class="error-text" hidden></p>
-    </form>
-  </div>
-
-  <!-- Real per-user login/register/claim gate (see
-       docs/KONZEPT-USER-MANAGEMENT.md, public/js/authGate.js). Only ever
-       shown when the server reports authMode: 'required' via /api/meta —
-       stays empty and hidden otherwise, so nothing changes for today's
-       shared-token-only deployments. Content is rendered into it by
-       authGate.js, not hardcoded here, since which form (login/register/
-       claim) applies depends on the URL the visitor arrived with. -->
+  <!-- Login/register/claim content is rendered by authGate.js because the
+       applicable form depends on the invite, claim or reset URL. -->
   <div id="auth-screen" class="login-screen" hidden></div>
 
   <div id="app" class="app" hidden>

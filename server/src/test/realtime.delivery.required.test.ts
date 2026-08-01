@@ -1,13 +1,10 @@
-// Delivery-rule matrix for the scoped realtime model in required-auth mode:
+// Delivery-rule matrix for the scoped realtime model:
 // normal sockets only receive their subscribed group scope with a live
 // membership re-check at delivery time, kiosk sockets only receive the
 // allowlisted events of their validated token scope, and an accidentally
 // unscoped fachlicher broadcast neither goes global nor disappears silently.
-//
-// config.authMode is patched for this file only — every test file runs in its
-// own process (see TESTING.md), so the override cannot leak elsewhere.
 
-import { test, before, after } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'http';
 import type { AddressInfo } from 'net';
@@ -17,7 +14,6 @@ import { nanoid } from 'nanoid';
 import request from 'supertest';
 import { createApp } from '../app';
 import { db, DEFAULT_GROUP_ID } from '../db';
-import { config } from '../config';
 import {
   broadcast,
   broadcastArcadeKiosk,
@@ -32,16 +28,6 @@ import { issueKioskToken, revokeKioskToken } from '../kioskTokens';
 import { notifyPlayers } from '../push';
 import { createSession, SESSION_COOKIE_NAME } from '../sessions';
 import { registerPongSockets } from '../arcade/pong';
-
-const originalAuthMode = config.authMode;
-
-before(() => {
-  (config as { authMode: 'legacy' | 'required' }).authMode = 'required';
-});
-
-after(() => {
-  (config as { authMode: 'legacy' | 'required' }).authMode = originalAuthMode;
-});
 
 function createPlayer(name: string): string {
   const id = nanoid();
@@ -80,7 +66,7 @@ async function withRequiredServer(
 ): Promise<void> {
   const httpServer = http.createServer();
   const io = new Server(httpServer);
-  io.use(createSocketAuthGuard('', 'required', envKioskToken));
+  io.use(createSocketAuthGuard(envKioskToken));
   registerArcadeKioskSockets(io);
   registerAdditionalSockets?.(io);
   setIo(io);
@@ -569,45 +555,6 @@ test('event-bound tournament, draft, matchmaking and vote producers exclude norm
     }
   } finally {
     setIo(null);
-  }
-});
-
-test('legacy mode never globally emits personally targeted push payloads', () => {
-  const groupA = createGroup('Legacy Direct Push A');
-  const alice = createPlayer('Legacy Push Alice');
-  addMembership(groupA, alice, 'owner');
-  const emitted: Array<{ event: string; payload: unknown }> = [];
-  const fakeIo = {
-    sockets: { sockets: new Map() },
-    emit(event: string, payload: unknown) { emitted.push({ event, payload }); },
-  };
-  (config as { authMode: 'legacy' | 'required' }).authMode = 'legacy';
-  setIo(fakeIo as unknown as Server);
-  try {
-    notifyPlayers(
-      [alice],
-      { title: 'Legacy private', body: 'Must not be broadcast globally' },
-      'direct',
-      undefined,
-      { groupId: groupA },
-    );
-    assert.equal(
-      emitted.filter((delivery) => delivery.event === Events.pushSent).length,
-      0,
-      'legacy sockets have no proven identity, so no direct realtime payload is safe',
-    );
-
-    notifyPlayers([alice], { title: 'Legacy group', body: 'Group-wide compatibility' }, 'all', undefined, {
-      groupId: groupA,
-    });
-    assert.equal(
-      emitted.filter((delivery) => delivery.event === Events.pushSent).length,
-      1,
-      'group-wide legacy notifications keep their compatibility broadcast',
-    );
-  } finally {
-    setIo(null);
-    (config as { authMode: 'legacy' | 'required' }).authMode = 'required';
   }
 });
 

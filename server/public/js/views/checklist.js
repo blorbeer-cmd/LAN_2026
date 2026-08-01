@@ -12,7 +12,7 @@ import { state } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
-import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { getMyId } from '../whoami.js';
 import { icon } from '../icons.js';
 import { dateTimeFieldHtml, wireDateTimeField, parseDatetimeLocalMs } from '../dateTimeField.js';
 import { dueBadgeInfo, isOverdue } from '../checklistDue.js';
@@ -198,11 +198,8 @@ function openClaimForm(ctx, myId, taskId) {
   );
 }
 
-// state.players is the whole instance roster. In required mode, use the
-// start group's active memberships because activeGroupPlayers validates the
-// same retained group_id boundary on creation. Membership lookup needs a real
-// session, so legacy mode falls back to the global roster; it has no account
-// session and uses the same single implicit group.
+// Use the start group's active memberships because activeGroupPlayers
+// validates the same retained group_id boundary on creation.
 async function assigneeCandidates() {
   const groupId = sessionStorage.getItem(GROUP_KEY);
   if (!groupId) return state.players;
@@ -436,7 +433,6 @@ export function renderChecklist(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Checkliste</h1>
-    ${whoAmICardHtml('checklist-whoami')}
     <div class="row" style="gap:var(--space-2);margin-top:var(--space-3);">
       <button type="button" class="btn${activeTab === 'packliste' ? ' btn-primary' : ''}" aria-pressed="${activeTab === 'packliste'}" data-checklist-tab="packliste" style="flex:1;">Meine Packliste</button>
       <button type="button" class="btn${activeTab === 'todos' ? ' btn-primary' : ''}" aria-pressed="${activeTab === 'todos'}" data-checklist-tab="todos" style="flex:1;">To-Dos${todosTabBadge}</button>
@@ -491,7 +487,6 @@ export function renderChecklist(container, ctx) {
     if (prevItemFocused) labelInput.focus();
   }
 
-  wireWhoAmICard(container, 'checklist-whoami', ctx);
 
   container.querySelectorAll('[data-checklist-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {

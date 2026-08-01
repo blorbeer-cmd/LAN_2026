@@ -10,12 +10,6 @@ function intFromEnv(name: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-export function parseAuthMode(value: string | undefined): 'legacy' | 'required' {
-  if (value === undefined || value === '' || value === 'legacy') return 'legacy';
-  if (value === 'required') return 'required';
-  throw new Error(`Ungültiger AUTH_MODE "${value}". Erlaubt sind "legacy" und "required".`);
-}
-
 export const config = {
   // Port the HTTP/WebSocket server listens on.
   port: intFromEnv('PORT', 3000),
@@ -30,10 +24,6 @@ export const config = {
         ? path.resolve(process.env.DB_FILE)
         : path.join(__dirname, '..', 'data', 'lan.db'),
 
-  // Shared access token protecting the whole app (light protection because the
-  // server is reachable from the cloud). If empty, access protection is OFF.
-  accessToken: process.env.ACCESS_TOKEN ?? '',
-
   // Public URL used inside downloaded agent configurations. This is preferred
   // over request-derived URL data when the app sits behind a reverse proxy.
   publicBaseUrl: (process.env.PUBLIC_BASE_URL ?? '').trim().replace(/\/+$/, ''),
@@ -43,11 +33,7 @@ export const config = {
   // is shut down without a clean stop message.
   offlineTimeoutMs: intFromEnv('OFFLINE_TIMEOUT_MS', 60_000),
 
-  // 'legacy' (default) preserves the pre-account behavior. 'required' makes
-  // session identity and roles authoritative across feature/admin routes.
-  authMode: parseAuthMode(process.env.AUTH_MODE),
-
-  // Dedicated read-only credential for the shared kiosk in required mode.
+  // Dedicated read-only credential for the shared kiosk.
   kioskToken: process.env.KIOSK_TOKEN ?? '',
 
   // Session cookies are Secure by default (required for SameSite cookies to
@@ -62,18 +48,13 @@ export const config = {
   adminRecoveryCode: process.env.ADMIN_RECOVERY_CODE ?? '',
 } as const;
 
-// Production must have one complete access model: legacy needs its shared
-// token; required auth needs the recovery secret that bootstraps and recovers
-// the first/last admin. Pure so index.ts can test this without starting.
+// Production needs the recovery secret that bootstraps and recovers the
+// first/last admin. Pure so index.ts can test this without starting.
 export function productionConfigError(
-  cfg: Pick<typeof config, 'accessToken' | 'authMode' | 'adminRecoveryCode'> = config
+  cfg: Pick<typeof config, 'adminRecoveryCode'> = config
 ): string | null {
-  if (cfg.authMode === 'required') {
-    if (!cfg.adminRecoveryCode) {
-      return 'AUTH_MODE=required erfordert ADMIN_RECOVERY_CODE. Server wird nicht gestartet.';
-    }
-  } else if (!cfg.accessToken) {
-    return 'NODE_ENV=production erfordert ACCESS_TOKEN. Server wird nicht gestartet.';
+  if (!cfg.adminRecoveryCode) {
+    return 'NODE_ENV=production erfordert ADMIN_RECOVERY_CODE. Server wird nicht gestartet.';
   }
   return null;
 }

@@ -1,5 +1,5 @@
 // Browser E2E test: drives the real built server + real Chromium through the
-// main click paths (self-onboarding, players, matchmaking, voting,
+// main click paths (personal login, players, matchmaking, voting,
 // leaderboard, game admin, tournament). Separate from the fast
 // unit/integration suite (`npm test`) — run via `npm run test:e2e` since it
 // spawns a server process and a browser, which is much slower.
@@ -10,6 +10,15 @@ import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { chromium, Browser, Page } from 'playwright';
 import { normalizeAnswer } from '../../arcade/quizLogic';
+import {
+  addSessionCookie,
+  authenticatedServerEnv,
+  createE2EAccount,
+  E2E_ADMIN_PASSWORD,
+  E2E_KIOSK_TOKEN,
+  loginE2EAdmin,
+  type E2EAccount,
+} from './authHelpers';
 
 const RUN_ARCADE_FLOWS = process.env.E2E_FLOW_PARTITION === 'arcade';
 const PORT = RUN_ARCADE_FLOWS ? 3913 : 3901;
@@ -28,6 +37,11 @@ const test = (name: string, fn: (context: TestContext) => void | Promise<void>):
 let serverProcess: ChildProcess;
 let browser: Browser;
 let page: Page;
+let adminCookie: string;
+let alice: E2EAccount;
+let bob: E2EAccount;
+let analyticsPlayer: E2EAccount | undefined;
+const accountsByName = new Map<string, E2EAccount>();
 
 async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
   const start = Date.now();
@@ -55,35 +69,67 @@ async function openMatchmakingHistory(): Promise<void> {
 }
 
 async function switchIdentityAndOpenArrivals(label: string): Promise<void> {
-  await page.click('#profile-btn');
-  await page.waitForSelector('#profile-not-me');
-  await page.click('#profile-not-me');
-  await page.selectOption('#profile-whoami', { label });
-  await page.waitForSelector('#profile-not-me');
+  const account = accountsByName.get(label);
+  assert.ok(account, `missing E2E account for ${label}`);
+  await addSessionCookie(page.context(), BASE_URL, account.cookie);
+  await page.reload();
+  await page.waitForSelector('#app:not([hidden])');
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="arrivals"]');
   await page.waitForSelector('[data-new-carpool="arrival"]');
 }
 
-async function createPlayerForFlow(name: string): Promise<void> {
-  const response = await page.request.post(`${BASE_URL}/api/players`, { data: { name } });
-  assert.equal(response.status(), 201);
+async function createAccountForFlow(name: string): Promise<E2EAccount> {
+  const reauthenticated = await fetch(`${BASE_URL}/api/auth/reauth`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: alice.cookie },
+    body: JSON.stringify({ password: alice.password }),
+  });
+  assert.equal(reauthenticated.status, 204, await reauthenticated.text());
+  adminCookie = alice.cookie;
+  const account = await createE2EAccount(BASE_URL, adminCookie, name);
+  accountsByName.set(name, account);
   await page.reload();
   await page.waitForSelector(`[data-player]:has-text("${name}")`);
+  return account;
+}
+
+async function bootstrapAdminAccount(name: string): Promise<E2EAccount> {
+  const meResponse = await fetch(`${BASE_URL}/api/me`, { headers: { cookie: adminCookie } });
+  assert.equal(meResponse.status, 200, await meResponse.clone().text());
+  const me = await meResponse.json() as { id: string };
+  const renamed = await fetch(`${BASE_URL}/api/players/${me.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({ name }),
+  });
+  assert.equal(renamed.status, 200, await renamed.clone().text());
+  return { id: me.id, name, cookie: adminCookie, password: E2E_ADMIN_PASSWORD };
 }
 
 before(async () => {
   serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
-    env: { ...process.env, PORT: String(PORT), DB_FILE: ':memory:', ACCESS_TOKEN: '' },
+    env: authenticatedServerEnv(PORT),
     stdio: 'ignore',
   });
   await waitForServer(`${BASE_URL}/api/health`);
+  adminCookie = await loginE2EAdmin(BASE_URL);
+  alice = await bootstrapAdminAccount(RUN_ARCADE_FLOWS ? 'E2E Alice Pro' : 'E2E Alice');
+  bob = await createE2EAccount(BASE_URL, adminCookie, 'E2E Bob');
+  accountsByName.set(alice.name, alice);
+  accountsByName.set('E2E Alice Pro', alice);
+  accountsByName.set(bob.name, bob);
+  if (RUN_ARCADE_FLOWS) {
+    analyticsPlayer = await createE2EAccount(BASE_URL, adminCookie, 'Analytics E2E Player');
+    accountsByName.set(analyticsPlayer.name, analyticsPlayer);
+  }
   // Let Playwright resolve its own installed browser (via `npx playwright
   // install chromium`, run before `npm run test:e2e`) instead of a fixed
   // path — a hardcoded path only worked in one specific pre-provisioned
   // environment and broke everywhere else, including CI.
   browser = await chromium.launch();
   page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await addSessionCookie(page.context(), BASE_URL, alice.cookie);
   // Native confirm() dialogs (vote cancel, game delete, tracking start) —
   // accept them so click-through tests don't hang.
   page.on('dialog', (d) => void d.accept());
@@ -94,21 +140,8 @@ before(async () => {
     if (msg.type() === 'error') console.error('[console.error]', msg.text());
   });
 
-  if (RUN_ARCADE_FLOWS) {
-    const createPlayer = async (name: string): Promise<{ id: string }> => {
-      const response = await page.request.post(`${BASE_URL}/api/players`, { data: { name } });
-      assert.equal(response.status(), 201, `failed to seed ${name}`);
-      return response.json() as Promise<{ id: string }>;
-    };
-    const host = await createPlayer('E2E Alice Pro');
-    await createPlayer('E2E Bob');
-    await createPlayer('Analytics E2E Player');
-
-    await page.goto(BASE_URL);
-    await page.evaluate((playerId) => localStorage.setItem('respawn_my_player_id', playerId), host.id);
-    await page.reload();
-    await page.waitForSelector('.nav-btn[data-view="home"]');
-  }
+  await page.goto(BASE_URL);
+  await page.waitForSelector('.nav-btn[data-view="home"]');
 });
 
 after(async () => {
@@ -116,11 +149,18 @@ after(async () => {
   serverProcess?.kill();
 });
 
-test('fresh device lands on self-onboarding and creates its profile there', async () => {
-  await page.goto(BASE_URL);
-  await page.waitForSelector('#app:not([hidden])');
+test('fresh device uses the personal login and reaches the app with its verified account', async (t) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const loginPage = await context.newPage();
+  t.after(async () => context.close());
+  await loginPage.goto(BASE_URL);
+  await loginPage.waitForSelector('#auth-screen:not([hidden])');
+  await loginPage.fill('#auth-name', alice.name);
+  await loginPage.fill('#auth-password', alice.password);
+  await loginPage.click('#auth-form button[type="submit"]');
+  await loginPage.waitForSelector('#app:not([hidden])');
 
-  const topbarWordmark = page.locator('.topbar-title .brand-title');
+  const topbarWordmark = loginPage.locator('.topbar-title .brand-title');
   assert.equal((await topbarWordmark.textContent())?.trim(), 'Respawn');
   assert.deepEqual(
     await topbarWordmark.evaluate((element) => {
@@ -130,19 +170,9 @@ test('fresh device lands on self-onboarding and creates its profile there', asyn
     { fontStyle: 'normal', transform: 'none' },
   );
 
-  // No identity stored on this device yet -> the app must route straight to
-  // the profile/onboarding view, not the Live board.
-  assert.equal((await page.textContent('.view-title'))?.trim(), 'Willkommen bei Respawn');
-
-  await page.fill('#profile-new-name', 'E2E Alice');
-  await page.click('#profile-new-form button[type="submit"]');
-
-  // Creating the profile switches into the full profile editor for the new
-  // identity (name field prefilled, agent download, an onboarding nudge
-  // toward the Spiele view since nothing's rated yet).
-  await page.waitForSelector('#profile-name');
-  assert.equal(await page.inputValue('#profile-name'), 'E2E Alice');
-  await page.waitForSelector('text=Bock & Skill eintragen');
+  await loginPage.click('#profile-btn');
+  await loginPage.waitForSelector('#profile-name');
+  assert.equal(await loginPage.inputValue('#profile-name'), alice.name);
 });
 
 test('Einstellungen und Profil use grouped help while admin tools stay out of regular settings', async (t) => {
@@ -160,29 +190,12 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   });
   await page.click('#settings-btn');
   await page.waitForSelector('#settings-events-title');
-  assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 3);
+  assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 2);
   assert.equal(await page.locator('[data-navigate="seating"]').count(), 0);
   assert.equal(await page.locator('#download-backup').count(), 0);
-  assert.equal(
-    await page.locator('.invite-link-row').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
-    3,
-  );
-  assert.equal(await page.locator('.invite-link-row').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
-  assert.deepEqual(
-    // Rounded: getBoundingClientRect() can return a sub-pixel value like
-    // 43.999969482421875 for an intended 44px depending on the browser's
-    // layout rounding, which a strict-equality assertion here flakes on.
-    await page.locator('.invite-link-row > *').evaluateAll((controls) => controls.map((control) => Math.round(control.getBoundingClientRect().height))),
-    [44, 44, 44],
-  );
   await page.click('[aria-label="Mehr Informationen zu Events"]');
   await page.waitForSelector('#settings-events-help:not([hidden])');
   await page.click('[aria-label="Mehr Informationen zu Events"]');
-  await page.click('#invite-qr-open');
-  await page.waitForSelector('.modal[aria-label="Einladungs-QR-Code"] .invite-qr-modal svg');
-  const qrModalBox = await page.locator('.modal[aria-label="Einladungs-QR-Code"]').boundingBox();
-  assert.ok(qrModalBox && Math.abs(qrModalBox.y + qrModalBox.height / 2 - 422) < 24, 'QR modal should be vertically centered on the phone viewport');
-  await page.click('.modal[aria-label="Einladungs-QR-Code"] [data-close]');
   await page.click('#new-event-btn');
   assert.equal(await page.getByText('Tracking', { exact: true }).count(), 0);
   await page.click('.modal[aria-label="Neues Event"] [data-close]');
@@ -204,20 +217,24 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   assert.equal(await page.locator('.profile-color-trigger').evaluate((element) => getComputedStyle(element).borderRadius), '8px');
   assert.equal(await page.locator('input[type="color"]').count(), 0);
   assert.equal(await page.locator('.profile-identity-fields').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 4);
-  assert.ok(await page.locator('.profile-identity-fields').evaluate((editor) => {
+  const identityFieldCenters = await page.locator('.profile-identity-fields').evaluate((editor) => {
     const controls = [
       editor.querySelector('.profile-avatar-control'),
       editor.querySelector('.profile-color-trigger'),
       editor.querySelector('#profile-name'),
       editor.querySelector('#profile-real-name'),
     ];
-    if (controls.some((control) => !control)) return false;
-    const centers = controls.map((control) => {
+    if (controls.some((control) => !control)) return [];
+    return controls.map((control) => {
       const box = control!.getBoundingClientRect();
       return box.top + box.height / 2;
     });
-    return Math.max(...centers) - Math.min(...centers) < 2;
-  }));
+  });
+  assert.equal(identityFieldCenters.length, 4);
+  assert.ok(
+    Math.max(...identityFieldCenters) - Math.min(...identityFieldCenters) < 4,
+    `profile identity controls should remain vertically aligned: ${JSON.stringify(identityFieldCenters)}`,
+  );
   const originalProfileColor = await page.inputValue('#profile-color');
   await page.click('#profile-color-trigger');
   await page.waitForSelector('.profile-color-picker-modal .profile-color-picker-wheel');
@@ -259,31 +276,16 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   assert.equal(await page.getByText('Auf diesem Gerät aktiv.', { exact: true }).count(), 0);
 });
 
-test('Admin mode owns the seating editor and backup tools', async (t) => {
-  // Admin mode is only meant to be left via the explicit #admin-leave click
-  // at the very end of this test. If an assertion above it throws instead,
-  // that click is skipped and admin mode stays active for every later test
-  // in this shared page/session — several of which assume a fresh,
-  // non-admin start and hang waiting for #admin-activate, which no longer
-  // exists once admin is already active. This safety net leaves admin mode
-  // via the always-present banner button regardless of how the test ends,
-  // so one broken assertion here can no longer cascade into unrelated ones.
+test('the authenticated admin role owns the seating editor and backup tools', async (t) => {
   t.after(async () => {
     // This test switches to a desktop viewport for the pool-column check;
     // always restore the shared page's mobile default regardless of how the
     // test ends (same viewport-leak safety net as the Einstellungen test).
     await page.setViewportSize({ width: 390, height: 844 });
-    if (await page.locator('#admin-banner-leave').isVisible()) {
-      await page.click('#admin-banner-leave');
-      await page.waitForSelector('#admin-banner', { state: 'hidden' });
-    }
   });
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
-  await page.click('#admin-activate');
   await page.waitForSelector('#admin-banner:not([hidden])');
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="admin"]');
   await page.waitForSelector('#admin-tools-title');
   assert.equal(await page.locator('#download-backup').count(), 1);
   assert.equal(await page.locator('[data-navigate="seating"]').count(), 1);
@@ -359,9 +361,6 @@ test('Admin mode owns the seating editor and backup tools', async (t) => {
   await page.waitForSelector('#seating-monitors-help:not([hidden])');
   await page.click('[aria-label="Mehr Informationen zu Konfiguration"]');
   await page.waitForSelector('#seating-save-help:not([hidden])');
-  await page.click('[data-navigate="admin"]');
-  await page.click('#admin-leave');
-  await page.waitForSelector('#admin-banner', { state: 'hidden' });
 });
 
 test('global search filters areas, supports keyboard navigation and restores focus', async (t) => {
@@ -437,7 +436,7 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   // second profile through the API that future user management will own.
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="players"]');
-  await createPlayerForFlow('E2E Bob');
+  await page.waitForSelector('[data-player]:has-text("E2E Bob")');
 
   // Other profiles are read-only; the current identity opens its own editor.
   await page.click('button[data-player] >> text=E2E Bob');
@@ -505,8 +504,8 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   assert.ok(teamCards >= 2, 'expected at least 2 team cards');
 
   // Voting: start a round (points mode, the only mode offered when starting
-  // fresh), rate a game, and submit. The device identity was already set
-  // during onboarding, so no "who am I" picker appears. Moving a slider only
+  // fresh), rate a game, and submit. Alice's personal session already fixes
+  // the voter identity, so no extra identity form appears. Moving a slider only
   // stages a local draft — it must not count as a vote until the submit
   // button is pressed. While the round is open, no per-game distribution
   // (bars/counts) may be visible anywhere — only total participation and the
@@ -1042,8 +1041,8 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
   }
   await page.click('#profile-btn');
 
-  // The device identity is still "E2E Alice" from onboarding, so this view
-  // opens straight into the profile editor rather than the identity picker.
+  // The personal session still belongs to "E2E Alice", so this view opens
+  // straight into her profile editor.
   await page.waitForSelector('#profile-name');
   // Profile-local neighbor/push state loads immediately after the first
   // paint and can replace the form once. Let that initial render settle so
@@ -1075,6 +1074,7 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
     const el = document.querySelector('#profile-name') as HTMLInputElement | null;
     return el?.value === 'E2E Alice Pro';
   });
+  alice.name = 'E2E Alice Pro';
 
   // Bock/Skill-Ratings live in the Spiele view now, reachable from here via
   // the onboarding nudge; the personal stats dashboard is one tap away too
@@ -1084,13 +1084,11 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
   await page.waitForSelector('text=Meine Statistiken');
   await page.waitForSelector('#my-stats-event');
 
-  // Back to the profile; "Nicht du?" resets identity back to the picker.
+  // Back to the profile; the session remains bound to this account.
   await page.click('[data-navigate="profile"]');
-  await page.waitForSelector('#profile-not-me');
-  await page.click('#profile-not-me');
-  await page.waitForSelector('#profile-whoami');
+  await page.waitForSelector('#profile-name');
   // Restore the identity — later tests (tournament) still act as her.
-  await page.selectOption('#profile-whoami', { label: 'E2E Alice Pro' });
+  assert.equal(await page.inputValue('#profile-name'), 'E2E Alice Pro');
 });
 
 test('Sitzplan: the real name set in Mein Profil shows in small everywhere the seating plan renders', async () => {
@@ -1105,7 +1103,6 @@ test('Sitzplan: the real name set in Mein Profil shows in small everywhere the s
   // simulate reliably.
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
-  await page.click('#admin-activate');
   await page.waitForSelector('#admin-banner:not([hidden])');
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
@@ -1127,8 +1124,6 @@ test('Sitzplan: the real name set in Mein Profil shows in small everywhere the s
   assert.equal(await homeSeatName.evaluate((element) => getComputedStyle(element).fontWeight), '600');
   assert.equal(await homeSeatName.evaluate((element) => getComputedStyle(element).textAlign), 'left');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.click('#admin-banner-leave');
-  await page.waitForSelector('#admin-banner', { state: 'hidden' });
 });
 
 test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bock/Skill inline', async () => {
@@ -1553,19 +1548,11 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
 });
 
 test('Arcade: open a quiz lobby, see it on Home, then close it again', async (t) => {
-  const players = (await (await fetch(`${BASE_URL}/api/players`)).json()) as Array<{ id: string; name: string }>;
-  let guest = players.find((player) => player.name === 'E2E Bob');
-  if (!guest) {
-    const created = await page.request.post(`${BASE_URL}/api/players`, { data: { name: 'E2E Bob' } });
-    assert.ok(created.ok(), `guest setup failed (${created.status()}): ${await created.text()}`);
-    guest = await created.json() as { id: string; name: string };
-  }
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const guestPage = await guestContext.newPage();
   t.after(async () => guestContext.close());
+  await addSessionCookie(guestContext, BASE_URL, bob.cookie);
   await guestPage.goto(BASE_URL);
-  await guestPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), guest.id);
-  await guestPage.reload();
   await guestPage.waitForSelector('.nav-btn[data-view="home"]');
 
   await page.click('.nav-btn[data-view="more"]');
@@ -1609,23 +1596,14 @@ test('Arcade: open a quiz lobby, see it on Home, then close it again', async (t)
 });
 
 test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', async () => {
-  const players = (await (await fetch(`${BASE_URL}/api/players`)).json()) as Array<{ id: string; name: string }>;
-  let guest = players.find((p) => p.name === 'E2E Bob');
-  if (!guest) {
-    const created = await page.request.post(`${BASE_URL}/api/players`, { data: { name: 'E2E Bob' } });
-    assert.equal(created.status(), 201);
-    guest = await created.json() as { id: string; name: string };
-  }
-
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="arcade"]');
 
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const guestPage = await guestContext.newPage();
   try {
+    await addSessionCookie(guestContext, BASE_URL, bob.cookie);
     await guestPage.goto(BASE_URL);
-    await guestPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), guest!.id);
-    await guestPage.reload();
     await guestPage.waitForSelector('.nav-btn[data-view="more"]');
     await guestPage.click('.nav-btn[data-view="more"]');
     await guestPage.click('[data-navigate="arcade"]');
@@ -1689,17 +1667,12 @@ test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', as
 test('Arcade: a lobby guest flags themselves ready and the host sees it', async () => {
   // Reuses "E2E Bob" (added earlier) as the guest on a second device — see
   // the Scribble test below for why the roster must not grow here.
-  const players = (await (await fetch(`${BASE_URL}/api/players`)).json()) as Array<{ id: string; name: string }>;
-  const guest = players.find((p) => p.name === 'E2E Bob');
-  assert.ok(guest, 'expected "E2E Bob" (added by an earlier test) to exist');
-
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const guestPage = await guestContext.newPage();
   guestPage.on('pageerror', (err) => console.error('[guest pageerror]', err.message));
   try {
+    await addSessionCookie(guestContext, BASE_URL, bob.cookie);
     await guestPage.goto(BASE_URL);
-    await guestPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), guest!.id);
-    await guestPage.reload();
     await guestPage.waitForSelector('.nav-btn[data-view="more"]');
     await guestPage.click('.nav-btn[data-view="more"]');
     await guestPage.click('[data-navigate="arcade"]');
@@ -1735,20 +1708,15 @@ test('Arcade: a lobby guest flags themselves ready and the host sees it', async 
 });
 
 test('Arcade: a non-player can watch a running quiz without seeing the question', async () => {
-  const players = (await (await fetch(`${BASE_URL}/api/players`)).json()) as Array<{ id: string; name: string }>;
-  const guest = players.find((p) => p.name === 'E2E Bob');
-  const spectator = players.find((p) => p.name === 'Analytics E2E Player');
-  assert.ok(guest, 'expected "E2E Bob" to exist');
-  assert.ok(spectator, 'expected "Analytics E2E Player" to exist');
+  assert.ok(analyticsPlayer, 'expected the analytics spectator account to exist');
 
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const spectatorContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const guestPage = await guestContext.newPage();
   const spectatorPage = await spectatorContext.newPage();
   try {
+    await addSessionCookie(guestContext, BASE_URL, bob.cookie);
     await guestPage.goto(BASE_URL);
-    await guestPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), guest!.id);
-    await guestPage.reload();
     await guestPage.waitForSelector('.nav-btn[data-view="more"]');
     await guestPage.click('.nav-btn[data-view="more"]');
     await guestPage.click('[data-navigate="arcade"]');
@@ -1766,9 +1734,8 @@ test('Arcade: a non-player can watch a running quiz without seeing the question'
     await page.click('#quiz-start-lobby');
     await page.waitForSelector('#quiz-answer-form');
 
+    await addSessionCookie(spectatorContext, BASE_URL, analyticsPlayer.cookie);
     await spectatorPage.goto(BASE_URL);
-    await spectatorPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), spectator!.id);
-    await spectatorPage.reload();
     await spectatorPage.waitForSelector('.nav-btn[data-view="more"]');
     await spectatorPage.click('.nav-btn[data-view="more"]');
     await spectatorPage.click('[data-navigate="arcade"]');
@@ -1792,18 +1759,14 @@ test('Arcade: a non-player can watch a running quiz without seeing the question'
 test('Arcade: Scribble - host draws, a second device guesses correctly, both see the reveal', async () => {
   // Unlike the quiz/draft flows above, Scribble strictly gates who may act
   // (only the current drawer can choose a word/draw, only raters may guess —
-  // enforced both client- and server-side), so a single shared-identity page
-  // can't drive both sides. A second real browser context, logged in as a
+  // enforced both client- and server-side), so one session cannot drive both
+  // sides. A second real browser context, logged in as a
   // second player, is the only way to exercise the actual guess path.
   // Reuses "E2E Bob" (added by the earlier click-through test) rather than
   // adding a fresh roster player — the Captain-Draft test later in this
   // suite has a hardcoded pick-loop bound tied to the pool size, so growing
   // the roster here would silently break it.
-  const players = (await (await fetch(`${BASE_URL}/api/players`)).json()) as Array<{ id: string; name: string }>;
-  const guesser = players.find((p) => p.name === 'E2E Bob');
-  const spectator = players.find((p) => p.name === 'Analytics E2E Player');
-  assert.ok(guesser, 'expected "E2E Bob" (added by an earlier test) to exist');
-  assert.ok(spectator, 'expected "Analytics E2E Player" to exist');
+  assert.ok(analyticsPlayer, 'expected the analytics spectator account to exist');
 
   const guesserContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const spectatorContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -1812,17 +1775,15 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
   guesserPage.on('pageerror', (err) => console.error('[guesser pageerror]', err.message));
   spectatorPage.on('pageerror', (err) => console.error('[spectator pageerror]', err.message));
   try {
+    await addSessionCookie(guesserContext, BASE_URL, bob.cookie);
     await guesserPage.goto(BASE_URL);
-    await guesserPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), guesser!.id);
-    await guesserPage.reload();
     await guesserPage.waitForSelector('.nav-btn[data-view="more"]');
     await guesserPage.click('.nav-btn[data-view="more"]');
     await guesserPage.click('[data-navigate="arcade"]');
     await guesserPage.click('[data-game="scribble"]');
 
+    await addSessionCookie(spectatorContext, BASE_URL, analyticsPlayer.cookie);
     await spectatorPage.goto(BASE_URL);
-    await spectatorPage.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), spectator!.id);
-    await spectatorPage.reload();
     await spectatorPage.waitForSelector('.nav-btn[data-view="more"]');
     await spectatorPage.click('.nav-btn[data-view="more"]');
     await spectatorPage.click('[data-navigate="arcade"]');
@@ -1891,13 +1852,28 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     // streamed stroke (the intermittent CI failure this flow covers).
     await guesserPage.evaluate(
       () =>
-        new Promise<void>((resolve) => {
+        new Promise<void>((resolve, reject) => {
           const probe = (window as any).io();
-          probe.once('arcade:watch:list', () => {
+          const timeout = setTimeout(() => {
             probe.close();
-            setTimeout(resolve, 0);
+            reject(new Error('watch-list probe timed out'));
+          }, 5_000);
+          probe.once('connect', () => {
+            probe.emit('scope:subscribe', { groupId: 'default-group', eventId: null }, (result: { error?: string }) => {
+              if (result?.error) {
+                clearTimeout(timeout);
+                probe.close();
+                reject(new Error(result.error));
+                return;
+              }
+              probe.once('arcade:watch:list', () => {
+                clearTimeout(timeout);
+                probe.close();
+                setTimeout(resolve, 0);
+              });
+              probe.emit('arcade:watch:list');
+            });
           });
-          probe.emit('arcade:watch:list');
         })
     );
     assert.ok(
@@ -2122,7 +2098,7 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
   // A third player to later demonstrate a full carpool.
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="players"]');
-  await createPlayerForFlow('E2E Carol');
+  await createAccountForFlow('E2E Carol');
 
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="arrivals"]');
@@ -2257,8 +2233,9 @@ test('Durchsage: notification center can navigate, mark read and remove without 
 
   // A visible time-limited banner removes itself at its deadline even when
   // no later socket event happens and the user never clicks it.
-  const myId = await page.evaluate(() => localStorage.getItem('respawn_my_player_id'));
-  assert.ok(myId);
+  const meResponse = await page.request.get(`${BASE_URL}/api/me`);
+  assert.equal(meResponse.status(), 200);
+  const { id: myId } = await meResponse.json() as { id: string };
   const expiring = await page.request.post(`${BASE_URL}/api/broadcasts`, {
     data: { playerId: myId, message: 'Läuft automatisch ab', endsAt: Date.now() + 2000 },
   });
@@ -2275,7 +2252,7 @@ test('Captain-Draft: pick captains, run the live draft to completion', async () 
   await page.click('[data-mm-mode="draft"]');
   await page.waitForSelector('[data-captain-toggle]');
 
-  // The device identity ("E2E Alice Pro") must be a captain so this page is
+  // The session account ("E2E Alice Pro") must be a captain so this page is
   // allowed to pick; E2E Bob is the second captain, everyone else is pool.
   await page.click('label.check-row:has-text("E2E Alice Pro") input[data-captain-toggle]');
   await page.click('label.check-row:has-text("E2E Bob") input[data-captain-toggle]');
@@ -2346,8 +2323,7 @@ test('Aktuell: an open vote\'s title (if set) shows on Home\'s status card', asy
 });
 
 test('Kiosk: centers tournament content and shows only the latest feature push across the full width', async () => {
-  const playersRes = await page.request.get(`${BASE_URL}/api/players`);
-  const [{ id: playerId }] = await playersRes.json();
+  const playerId = alice.id;
 
   // Send a Durchsage first, then trigger a different feature's push (opening
   // a food order) — the banner must show the *food order's* push afterward,
@@ -2385,7 +2361,7 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
   });
 
   await page.setViewportSize({ width: 1280, height: 720 });
-  await page.goto(`${BASE_URL}/kiosk.html`);
+  await page.goto(`${BASE_URL}/kiosk.html?token=${E2E_KIOSK_TOKEN}`);
   assert.equal((await page.locator('.kiosk-header .brand-title').textContent())?.trim(), 'Respawn');
   assert.deepEqual(
     await page.locator('#kiosk-dashboard > .kiosk-card > div').evaluateAll((contents) => contents.map((content) => content.id)),
@@ -2529,22 +2505,25 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
   await page.setViewportSize({ width: 390, height: 844 });
 });
 
-test('Admin: one-tap mode with banner, seeded test users visible only in admin mode', async () => {
+test('Admin: the verified role exposes tools and can temporarily hide seeded test users', async () => {
   await page.goto(BASE_URL);
   await page.waitForSelector('#app:not([hidden])');
 
   // Enter admin mode — no PIN prompt, one tap (see docs/KONZEPT-TEST-USER.md).
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
-  await page.click('#admin-activate');
   await page.waitForSelector('#admin-banner:not([hidden]) >> text=Admin-Modus aktiv');
 
-  // Seed test users; the admin toggle triggers a refresh, so re-open the view.
+  // Seed test users from the role-protected panel.
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
+  const reauthenticated = await page.request.post(`${BASE_URL}/api/auth/reauth`, {
+    data: { password: alice.password },
+  });
+  assert.equal(reauthenticated.status(), 204, await reauthenticated.text());
   await page.fill('#admin-count', '4');
   const seedResponse = page.waitForResponse(
-    (response) => response.url().endsWith('/api/admin/test-users') && response.request().method() === 'POST'
+    (response) => response.url().includes('/test-users') && response.request().method() === 'POST'
   );
   await page.click('#admin-bulk');
   const seeded = await seedResponse;
@@ -2552,10 +2531,25 @@ test('Admin: one-tap mode with banner, seeded test users visible only in admin m
   assert.ok(seeded.ok(), `test-user seed failed (${seeded.status()}): ${seededText}`);
   const seededBody = JSON.parse(seededText) as { created: Array<{ id: string; name: string }> };
   const pausedTestPlayer = seededBody.created[2];
-  const pauseResponse = await page.request.post(`${BASE_URL}/api/live/${pausedTestPlayer.id}/note`, {
-    data: { note: 'Pause / Essen' },
+  const testSessionInviteResponse = await page.request.post(`${BASE_URL}/api/auth/invites`, {
+    data: { purpose: 'test_login', playerId: pausedTestPlayer.id },
   });
-  assert.ok(pauseResponse.ok(), `test-user pause failed (${pauseResponse.status()}): ${await pauseResponse.text()}`);
+  assert.equal(testSessionInviteResponse.status(), 201, await testSessionInviteResponse.text());
+  const testSessionInvite = await testSessionInviteResponse.json() as { code: string };
+  const testSessionResponse = await fetch(`${BASE_URL}/api/auth/test-session`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code: testSessionInvite.code }),
+  });
+  assert.equal(testSessionResponse.status, 200, await testSessionResponse.clone().text());
+  const testSessionCookie = testSessionResponse.headers.get('set-cookie')?.split(';')[0];
+  assert.ok(testSessionCookie, 'test session must set a cookie');
+  const pauseResponse = await fetch(`${BASE_URL}/api/live/${pausedTestPlayer.id}/note`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: testSessionCookie },
+    body: JSON.stringify({ note: 'Pause / Essen' }),
+  });
+  assert.equal(pauseResponse.status, 200, await pauseResponse.text());
   await page.click('[aria-label="Mehr Informationen zu Vorhandene Test-Spieler"]');
   await page.waitForSelector('#admin-test-count-help:not([hidden]) >> text=4 Test-Spieler vorhanden');
   await page.keyboard.press('Escape');
@@ -2599,10 +2593,9 @@ test('Admin: one-tap mode with banner, seeded test users visible only in admin m
   await page.waitForSelector('#admin-banner', { state: 'hidden' });
   await page.waitForFunction(() => !document.body.textContent?.includes('Test Alex'));
 
-  // Back in admin mode, cleanup removes them and their data again.
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="admin"]');
-  await page.click('#admin-activate');
+  // Reload restores the display state from the verified admin session.
+  await page.reload();
+  await page.waitForSelector('#app:not([hidden])');
   await page.waitForSelector('#admin-banner:not([hidden])');
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
@@ -2613,5 +2606,4 @@ test('Admin: one-tap mode with banner, seeded test users visible only in admin m
   await page.waitForSelector('#admin-test-count-help:not([hidden]) >> text=0 Test-Spieler vorhanden');
   const cleanedHall = await (await page.request.get(`${BASE_URL}/api/hall-of-fame`)).json() as { events: Array<{ eventName: string }> };
   assert.equal(cleanedHall.events.filter((event) => event.eventName.startsWith('Respawn Test-LAN')).length, 0);
-  await page.click('#admin-banner-leave');
 });

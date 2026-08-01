@@ -207,11 +207,7 @@ const resolveChecklistTask = resolveGroupResource<TaskRow>({
 // *not* falling back to the global req.player.is_admin flag: that's an
 // instance-wide moderation role unrelated to any specific group's management
 // and must not let someone who merely has a "member" role in this group
-// override its own admins/owner (see the required-mode regression in
-// api.groupChecklist.required.test.ts).
-// Legacy mode never populates req.groupMembership, so this is creator/
-// assignee-only there - matching requireGroupRole's own legacy behavior of
-// having no group-role concept to check in the first place.
+// override its own admins/owner (see the authorization regression tests).
 function isChecklistModerator(req: Request): boolean {
   const role = req.groupMembership?.role;
   return role === 'owner' || role === 'admin';

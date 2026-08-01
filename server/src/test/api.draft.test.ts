@@ -6,10 +6,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 import { snakeCaptainIndex } from '../routes/draft';
 
-const app = createApp();
+const app = createTestApp();
 
 let gameId: string;
 let players: Array<{ id: string; name: string }>;
@@ -120,16 +120,14 @@ test('a full 2-captain draft: snake order, turn enforcement, auto-assigned last 
   const late = await request(app).post('/api/draft/pick').send({ playerId: capA.id, pickPlayerId: p2.id });
   assert.equal(late.status, 409);
 
-  // The completed draft shows up in the shared Team-Historie.
-  const history = await request(app).get(`/api/matchmaking/history?gameId=${gameId}`);
+  // Outside an event, the completed draft stays in the group-room draft history.
+  const history = await request(app).get('/api/draft/history');
   assert.equal(history.status, 200);
   assert.ok(history.body.history.length >= 1);
   const latest = history.body.history[0];
   assert.equal(latest.teams.length, 2);
   assert.equal(latest.teams[0].players.length, 3);
-  // Marked as coming from a Captain-Draft, so Team-/Ergebnis-Historie can
-  // show a "Captain-Draft" badge instead of looking like a random draw.
-  assert.equal(latest.source, 'draft');
+  assert.equal(latest.status, 'completed');
 });
 
 test('POST /api/draft/cancel abandons a running draft', async () => {

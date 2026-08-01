@@ -166,7 +166,6 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
     execFileSync(process.execPath, ['-e', script], {
       env: {
         ...process.env,
-        AUTH_MODE: 'required',
         ADMIN_RECOVERY_CODE: RECOVERY_CODE,
         COOKIE_SECURE: '0',
         DB_FILE: ':memory:',

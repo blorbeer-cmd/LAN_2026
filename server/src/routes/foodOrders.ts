@@ -17,7 +17,7 @@ import { broadcast, Events } from '../realtime';
 import { requireGroupEventAccess, resolveGroupEventStorageId } from '../groupEventScope';
 import { isIntInRange, isNonEmptyString, isValidUrl } from '../validation';
 import { notifyPlayers, resolvePushTopic, updatePushTopicExpiry } from '../push';
-import { requireConfiguredUser, withBodyPlayerIdentity } from '../sessions';
+import { requireUser, withBodyPlayerIdentity } from '../sessions';
 import { communicationRecipientIds } from '../communicationRecipients';
 
 export const foodOrdersRouter = Router();
@@ -269,7 +269,7 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
 // open/closed like items are. Each field is independent: omit a field to
 // leave it as-is, pass null to clear it. A finalized order is fully locked,
 // though: no more edits of any kind.
-foodOrdersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
+foodOrdersRouter.patch('/:id', requireUser, (req, res) => {
   const order = getOrder(req.params.id, req.group!.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
@@ -326,7 +326,7 @@ foodOrdersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
 // here, this is deliberately NOT gated on open/closed/finalized: scrapping an
 // order opened by mistake, or one nobody wants to keep around after the LAN,
 // must stay possible at every stage, not just while it's still open.
-foodOrdersRouter.delete('/:id', requireConfiguredUser, (req, res) => {
+foodOrdersRouter.delete('/:id', requireUser, (req, res) => {
   const order = getOrder(req.params.id, req.group!.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
@@ -408,7 +408,7 @@ foodOrdersRouter.delete('/:id/items/:itemId', ...withBodyPlayerIdentity, (req, r
 // pay — same authorization as close. Deliberately not gated on open/closed:
 // settling up normally happens after the order is already closed. A
 // finalized order is fully locked, though.
-foodOrdersRouter.patch('/:id/items/:itemId', requireConfiguredUser, (req, res) => {
+foodOrdersRouter.patch('/:id/items/:itemId', requireUser, (req, res) => {
   const order = getOrder(req.params.id, req.group!.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
@@ -435,7 +435,7 @@ foodOrdersRouter.patch('/:id/items/:itemId', requireConfiguredUser, (req, res) =
 // POST /api/food-orders/:id/close - freezes the list ("wird abgeschickt" in
 // the UI). Exactly one closer wins; the second tap gets a 409 instead of
 // double-notifying everyone.
-foodOrdersRouter.post('/:id/close', requireConfiguredUser, (req, res) => {
+foodOrdersRouter.post('/:id/close', requireUser, (req, res) => {
   const order = getOrder(req.params.id, req.group!.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
@@ -458,7 +458,7 @@ foodOrdersRouter.post('/:id/close', requireConfiguredUser, (req, res) => {
 // POST /api/food-orders/:id/reopen - undoes a close so items/prices can be
 // corrected or added and paid status keeps changing. Only from the (non-
 // final) closed state; a finalized order can never be reopened.
-foodOrdersRouter.post('/:id/reopen', requireConfiguredUser, (req, res) => {
+foodOrdersRouter.post('/:id/reopen', requireUser, (req, res) => {
   const order = getOrder(req.params.id, req.group!.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
@@ -480,7 +480,7 @@ foodOrdersRouter.post('/:id/reopen', requireConfiguredUser, (req, res) => {
 // ("wird geschlossen" in the UI): no more reopening, items, paid changes or
 // metadata edits. Only from the closed/"abgeschickt" state (close first,
 // then finalize once everyone has settled up).
-foodOrdersRouter.post('/:id/finalize', requireConfiguredUser, (req, res) => {
+foodOrdersRouter.post('/:id/finalize', requireUser, (req, res) => {
   const order = getOrder(req.params.id, req.group!.id);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {

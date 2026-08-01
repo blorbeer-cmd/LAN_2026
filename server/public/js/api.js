@@ -1,11 +1,10 @@
-// Fetch wrapper: attaches the legacy shared access token (if any) and normalizes
-// errors so callers always get either parsed JSON or a thrown Error with the
+// Fetch wrapper: attaches the dedicated kiosk credential when needed and
+// normalizes errors so callers get parsed JSON or a thrown Error with the
 // server's German error message.
 
 import { filterTestUsers } from './testFilter.js';
 
-const TOKEN_KEY = 'respawn_access_token';
-const PLAYER_ID_KEY = 'respawn_my_player_id';
+const KIOSK_TOKEN_KEY = 'respawn_kiosk_token';
 let kioskMode = false;
 // One instance, one group: this is no longer sent as a request header (the
 // server always resolves the single start group on its own) but stays as the
@@ -17,21 +16,21 @@ export function setKioskMode(enabled) {
   kioskMode = Boolean(enabled);
 }
 
-export function getToken() {
-  return localStorage.getItem(TOKEN_KEY) || '';
+export function getKioskToken() {
+  return localStorage.getItem(KIOSK_TOKEN_KEY) || '';
 }
 
-export function setToken(token) {
-  localStorage.setItem(TOKEN_KEY, token);
+export function setKioskToken(token) {
+  localStorage.setItem(KIOSK_TOKEN_KEY, token);
 }
 
 export async function apiFetch(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-  const token = getToken();
-  if (token) headers['x-access-token'] = token;
-  const playerId = localStorage.getItem(PLAYER_ID_KEY);
-  if (playerId) headers['x-player-id'] = playerId;
-  if (kioskMode) headers['x-kiosk-mode'] = '1';
+  if (kioskMode) {
+    const token = getKioskToken();
+    if (token) headers['x-access-token'] = token;
+    headers['x-kiosk-mode'] = '1';
+  }
   // Tells the server this device currently sees test players (admin mode).
   // Needed for replace-style writes like the seating layout: a non-admin
   // client's state has test users filtered out, so its saves must not be
@@ -66,13 +65,9 @@ export async function apiFetch(path, options = {}) {
 
 // For endpoints that don't return JSON (e.g. the QR code SVG) — apiFetch
 // always tries to JSON.parse the body, which would silently swallow a
-// non-JSON response. Still attaches the access token like apiFetch does.
+// non-JSON response.
 export async function fetchText(path) {
   const headers = {};
-  const token = getToken();
-  if (token) headers['x-access-token'] = token;
-  const playerId = localStorage.getItem(PLAYER_ID_KEY);
-  if (playerId) headers['x-player-id'] = playerId;
   if (localStorage.getItem('respawn_admin') === '1') headers['x-admin-mode'] = '1';
   const res = await fetch(path, { headers });
   const text = await res.text();
@@ -88,17 +83,12 @@ export async function fetchText(path) {
   return text;
 }
 
-// For binary downloads (the personalized agent ZIP): needs the access token
-// attached like every other call, but must hand back a Blob (with its
+// For binary downloads (the personalized agent ZIP): hands back a Blob (with its
 // filename) instead of trying to JSON.parse it, and read the server's error
 // JSON on failure the same way fetchText does.
 export async function fetchBlob(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (options.body) headers['Content-Type'] = 'application/json';
-  const token = getToken();
-  if (token) headers['x-access-token'] = token;
-  const playerId = localStorage.getItem(PLAYER_ID_KEY);
-  if (playerId) headers['x-player-id'] = playerId;
   if (localStorage.getItem('respawn_admin') === '1') headers['x-admin-mode'] = '1';
   const res = await fetch(path, { ...options, headers });
   if (!res.ok) {
@@ -142,8 +132,7 @@ export const api = {
       apiFetch(`/api/groups/${encodeURIComponent(groupId)}/test-users`, { method: 'DELETE' }),
   },
 
-  // Real per-user login (see docs/KONZEPT-USER-MANAGEMENT.md). Only used by
-  // authGate.js, and only once the server reports authMode: 'required'.
+  // Real per-user login (see docs/KONZEPT-USER-MANAGEMENT.md).
   auth: {
     register: (data) => apiFetch('/api/auth/register', { method: 'POST', body: JSON.stringify(data) }),
     claim: (data) => apiFetch('/api/auth/claim', { method: 'POST', body: JSON.stringify(data) }),
@@ -431,10 +420,9 @@ export const api = {
         : apiFetch('/api/admin/test-users', { method: 'POST', body: JSON.stringify({ count }) });
     },
     seedHallOfFame: () => apiFetch('/api/admin/test-data/hall-of-fame', { method: 'POST' }),
-    cleanupTestUsers: () => {
-      const groupId = sessionStorage.getItem(GROUP_KEY);
-      return groupId ? api.groups.cleanupTestUsers(groupId) : apiFetch('/api/admin/test-users', { method: 'DELETE' });
-    },
+    // The Admin panel promises to remove all marked test data, including the
+    // historical Test-LAN fixtures. The group endpoint only removes players.
+    cleanupTestUsers: () => apiFetch('/api/admin/test-users', { method: 'DELETE' }),
   },
 
   foodOrders: {

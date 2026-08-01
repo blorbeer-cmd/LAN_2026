@@ -3,9 +3,9 @@
 // app can cross — so this is as automated as it gets: one ZIP, tailored to
 // the requesting player (their own API key and this server's URL already
 // filled in), containing the prebuilt agent.exe plus a Windows batch script
-// that copies everything into place and registers autostart. Behind the
-// shared UI access token (mounted under /api, unlike /api/agent/report which
-// authenticates via the player's own key instead).
+// that copies everything into place and registers autostart. The download is
+// bound to the personal browser session; /api/agent/report authenticates
+// independently with the player's agent key.
 
 import { Router } from 'express';
 import fs from 'fs';

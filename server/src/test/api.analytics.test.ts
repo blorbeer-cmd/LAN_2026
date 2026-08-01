@@ -5,10 +5,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 import { db } from '../db';
 
-const app = createApp();
+const app = createTestApp();
 let cs2GameId: string;
 let rlGameId: string;
 let playerA: string;
@@ -153,6 +153,9 @@ test('eventId filters analytics precisely, independent of session timestamps', a
     endsAt: Date.now() + 24 * 60 * 60 * 1000,
   });
   await request(app).put(`/api/events/${secondEvent.body.id}/participants`).send({ playerIds: [playerB] });
+  await request(app)
+    .post(`/api/events/${secondEvent.body.id}/tracking-consent`)
+    .send({ playerId: playerB, granted: true });
   await request(app).post(`/api/events/${secondEvent.body.id}/tracking/start`).send({});
   await report(apiKeyB, ['rocketleague.exe']);
   await new Promise((r) => setTimeout(r, 30));

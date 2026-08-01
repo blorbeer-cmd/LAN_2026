@@ -9,16 +9,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { nanoid } from 'nanoid';
-import { db } from './db';
+import { db, DEFAULT_GROUP_ID } from './db';
 import { setIo } from './realtime';
 import { sweepOnce } from './liveStatus';
 import { config } from './config';
 
-test('sweepOnce broadcasts the live board via io.emit', () => {
+test('sweepOnce broadcasts the live board to an authenticated group socket', () => {
   const emitted: Array<{ event: string; payload: unknown }> = [];
-  const fakeIo = { emit: (event: string, payload: unknown) => emitted.push({ event, payload }) };
-  setIo(fakeIo as any);
-
   const playerId = nanoid();
   db.prepare('INSERT INTO players (id, name, color, api_key, created_at) VALUES (?, ?, ?, ?, ?)').run(
     playerId,
@@ -27,6 +24,18 @@ test('sweepOnce broadcasts the live board via io.emit', () => {
     nanoid(),
     Date.now()
   );
+  db.prepare(
+    `INSERT INTO group_memberships (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+     VALUES (?, ?, 'member', 'active', ?, 1)`,
+  ).run(DEFAULT_GROUP_ID, playerId, Date.now());
+  const fakeIo = {
+    emit() { throw new Error('group broadcasts must never use io.emit'); },
+    sockets: { sockets: new Map([['player', {
+      data: { groupId: DEFAULT_GROUP_ID, authPlayerId: playerId },
+      emit: (event: string, payload: unknown) => emitted.push({ event, payload }),
+    }]]) },
+  };
+  setIo(fakeIo as any);
 
   sweepOnce(Date.now());
 
@@ -82,9 +91,7 @@ test('sweepOnce refreshes every group that carries live rows, each under its own
   }
 });
 
-test('sweepOnce isolates group boards by actual required-mode recipient', () => {
-  const originalAuthMode = config.authMode;
-  (config as { authMode: 'legacy' | 'required' }).authMode = 'required';
+test('sweepOnce isolates group boards by actual recipient', () => {
   const groupA = nanoid();
   const groupB = nanoid();
   const playerA = nanoid();
@@ -128,7 +135,7 @@ test('sweepOnce isolates group boards by actual required-mode recipient', () => 
 
   try {
     sweepOnce(now);
-    assert.deepEqual(globalEmits, [], 'required-mode sweeps never fall back to a global emit');
+    assert.deepEqual(globalEmits, [], 'sweeps never fall back to a global emit');
     assert.equal(received.get('groupA')!.length, 1, 'group A receives exactly its board refresh');
     assert.equal(received.get('groupB')!.length, 1, 'group B receives exactly its board refresh');
     assert.equal(received.get('unscoped')!.length, 0, 'an unscoped socket receives no board');
@@ -140,7 +147,6 @@ test('sweepOnce isolates group boards by actual required-mode recipient', () => 
     assert.ok(!boardB.some((entry) => entry.player_id === playerA), 'group B board excludes group A players');
   } finally {
     setIo(null);
-    (config as { authMode: 'legacy' | 'required' }).authMode = originalAuthMode;
   }
 });
 

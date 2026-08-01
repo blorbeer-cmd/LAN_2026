@@ -106,8 +106,8 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 ## Vote
 
 - [x] [x] Hinweis „Du bist …“ entfernen
-  - Kommentar: Bei bekannter lokaler Identität wird die gemeinsame `whoami.js`-Karte nicht mehr
-    angezeigt. Erstauswahl und Profilwechsel bleiben bis zur Session-Identität verfügbar.
+  - Kommentar: Die persönliche Login-Session liefert die Identität; eine Erstauswahl oder ein
+    lokaler Profilwechsel ist nicht mehr vorgesehen.
 - [x] [x] Symbol bei „Neue Abstimmung starten“ entfernen
 - [x] [x] Buttons „Bewertung abschicken“ und „Beenden und Gewinner küren“ sauber aufeinander ausrichten
 - [x] [x] Beschreibung kürzen auf: „Punkte frei verteilen, höchste Summe gewinnt.“
@@ -152,7 +152,7 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 - [x] [ ] Symbol im Seitentitel entfernen
 - [x] [ ] „Essen bestellen“ in „Essen“ umbenennen
 - [x] [ ] Hinweis „Du bist …“ entfernen
-  - Kommentar: Zentral über `whoami.js` umgesetzt; Profilwechsel bleibt unter „Mein Profil“ möglich.
+  - Kommentar: Die persönliche Login-Session liefert die Identität zentral.
 - [x] [ ] „+ Info & Link“ in „Info“ umbenennen
 - [x] [ ] Bezeichnungen in den Infos vereinfachen
   - [x] [ ] „Geht raus um“ in „Versand“ umbenennen
@@ -163,7 +163,7 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 ## Arcade
 
 - [x] [ ] Hinweis „Du bist …“ entfernen
-  - Kommentar: Zentral über `whoami.js` umgesetzt; Profilwechsel bleibt unter „Mein Profil“ möglich.
+  - Kommentar: Die persönliche Login-Session liefert die Identität zentral.
 - [x] [ ] Symbol beim Seitentitel „Spiele“ entfernen
 - [x] [ ] Beschreibung der Kachel „… aktuell mit Mehrspieler-Gaming-Quiz.“ in „Minigame-Lobbies“ ändern
   - Notiz: Die Anordnung wirkt grundsätzlich gut; die Spiele selbst wurden zuletzt nicht erneut geprüft.
@@ -172,7 +172,7 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 
 - [x] [ ] Symbol im Seitentitel entfernen
 - [x] [ ] Hinweis „Du bist …“ entfernen
-  - Kommentar: Zentral über `whoami.js` umgesetzt; Profilwechsel bleibt unter „Mein Profil“ möglich.
+  - Kommentar: Die persönliche Login-Session liefert die Identität zentral.
 - [x] [ ] „Notiz, z. B. komme nach der Arbeit“ in „Notiz (optional)“ umbenennen
 - [x] [ ] „ETA (Ankunft ca.)“ in „Ankunft“ umbenennen
 - [x] [ ] Kleine, falsche Symbole bei Fahrgemeinschaften entfernen
@@ -183,7 +183,7 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
 ## Durchsage
 
 - [x] [ ] Hinweis „Du bist …“ entfernen
-  - Kommentar: Zentral über `whoami.js` umgesetzt; Profilwechsel bleibt unter „Mein Profil“ möglich.
+  - Kommentar: Die persönliche Login-Session liefert die Identität zentral.
 - [ ] [ ] Erklärung „Erscheint sofort auf allen offenen Geräten, auf dem Kiosk-Bildschirm und als Push-Benachrichtigung bei allen, die Push aktiviert haben.“ entfernen
   - Kommentar (Usermanagement): Zurückstellen. Empfängerkreis, Realtime-Rooms, Push und Kiosk
     werden in Phase 5 eventbezogen; der heutige Erklärungstext wäre dann fachlich überholt.
@@ -271,8 +271,8 @@ Strukturierte Feedbackliste zur gemeinsamen Durchsicht und späteren Abarbeitung
     Event-Sichtbarkeit in den Phasen 3 und 5 zu Admin-Funktionen.
 - [ ] [ ] Erklärung zum Einladungslink und QR-Code entfernen
   - Notiz: „Diesen Link verschicken (oder den QR-Code zeigen/aushängen) …“
-  - Kommentar (Usermanagement): Zurückstellen. Der geteilte Access-Token wird in Phase 4 durch
-    Invite-/Claim-Codes mit eigener Verwaltungsoberfläche ersetzt.
+  - Kommentar (Usermanagement): Persönliche Invite-/Claim-Codes werden im Admin-Bereich verwaltet;
+    der frühere geteilte Zugang ist entfallen.
 - [ ] [ ] Erklärung zum gemeinsamen Bildschirm/Beamer entfernen
   - Notiz: „Für einen gemeinsamen Bildschirm/Beamer im Raum …“
   - Kommentar (Usermanagement): Zurückstellen. Phase 5 ersetzt den globalen Kiosk-Zugriff durch

@@ -3,9 +3,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 
-const app = createApp();
+const app = createTestApp();
 let playerId: string;
 let apiKey: string;
 let otherPlayerId: string;
@@ -21,14 +21,15 @@ test('setup: two players', async () => {
   cs2GameId = games.body.find((g: { name: string }) => g.name === 'Counter-Strike 2').id;
 });
 
-test('GET /api/digest requires a playerId', async () => {
+test('GET /api/digest derives the player from the session', async () => {
   const res = await request(app).get('/api/digest');
-  assert.equal(res.status, 400);
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.missingSkills, []);
 });
 
-test('GET /api/digest 404s for an unknown player', async () => {
+test('GET /api/digest rejects an invalid session identity', async () => {
   const res = await request(app).get('/api/digest?playerId=ghost');
-  assert.equal(res.status, 404);
+  assert.equal(res.status, 401);
 });
 
 test('digest starts with nothing to report', async () => {

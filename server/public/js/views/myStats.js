@@ -15,8 +15,7 @@ let statsLoading = false;
 let statsForPlayerId = null;
 let statsEventId = '';
 
-// Called from profile.js when the active identity changes ("Nicht du?"),
-// so a stale stranger's stats don't flash before the fresh fetch lands.
+// Clears cached personal stats before the next session-scoped fetch.
 export function invalidateMyStats() {
   statsCache = null;
   statsForPlayerId = null;

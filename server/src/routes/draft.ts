@@ -19,7 +19,6 @@ import { trackingEventIdForGroup } from '../competitionScope';
 import { OUTSIDE_EVENTS_ID } from '../events';
 import { requireGroupRole } from '../groupAuthorization';
 import { activeGroupPlayers, type GroupPlayerSnapshot } from '../groupPlayers';
-import { config } from '../config';
 
 export const draftRouter = Router();
 
@@ -349,8 +348,7 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
   // A finished draft is a set of teams like any matchmaking draw — log it
   // into the same history so Team-Historie shows drafted teams too. Ratings
   // aren't part of a draft, so they're stored as 0/absent.
-  const historyEventId =
-    row.event_id ?? (config.authMode === 'legacy' && groupId === DEFAULT_GROUP_ID ? OUTSIDE_EVENTS_ID : null);
+  const historyEventId = row.event_id;
   if (completed && state.draft && historyEventId !== null) {
     const teamsSnapshot = state.draft.teams.map((t) => ({
       players: t.players.map((p) => ({ ...p, rating: null })),

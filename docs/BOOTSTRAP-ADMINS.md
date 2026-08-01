@@ -4,29 +4,21 @@ Damit du nicht den Recovery-Code-Weg gehen musst, kann der Server beim Start ein
 **fertige Admin-Konten** anlegen. Namen und Startpasswörter kommen dabei ausschließlich aus
 Umgebungsvariablen (der Server-`.env`) – **niemals aus dem Code oder dem Repository**.
 
-Das ist v. a. für `AUTH_MODE=required` gedacht (persönliche Logins). Ohne gesetzte Variablen passiert
-nichts – die Funktion ist dann ein reiner No-Op.
+Ohne gesetzte Bootstrap-Variablen passiert nichts – die Funktion ist dann ein reiner No-Op.
 
-## Voraussetzung: persönliche Logins müssen erst aktiv sein
+## Voraussetzung
 
-> **Wichtig:** Auf diesem Server sind `AUTH_MODE` und `ADMIN_RECOVERY_CODE` **noch nicht** gesetzt.
-> Solange der Server im Standard `AUTH_MODE=legacy` läuft, sind die Bootstrap-Admins wirkungslos
-> (kein persönlicher Login). Setze deshalb im selben `.env`-Schritt zuerst:
+Setze für Produktion im selben `.env`-Schritt zuerst:
 
 ```
-AUTH_MODE=required
 ADMIN_RECOVERY_CODE=<starkes Secret, z. B. `openssl rand -hex 32`>
-KIOSK_TOKEN=<eigenes Secret; ohne diesen bleibt der TV-/Kiosk-Zugang im Required-Modus gesperrt>
+KIOSK_TOKEN=<eigenes Secret; ohne diesen bleibt der TV-/Kiosk-Zugang gesperrt>
 ```
 
-- `AUTH_MODE=required` schaltet persönliche Logins scharf und ersetzt den geteilten Web-Zugang.
-- `ADMIN_RECOVERY_CODE` ist in Produktion mit `AUTH_MODE=required` **Pflicht**: Ohne ihn verweigert
+- `ADMIN_RECOVERY_CODE` ist in Produktion **Pflicht**: Ohne ihn verweigert
   der Server bewusst den Start (Break-Glass für den ersten/letzten Admin). Geheim halten, nicht an
   Teilnehmende verteilen.
-- Ein bestehendes `ACCESS_TOKEN` kann für Rollbacks auf alte Images in der `.env` bleiben; im
-  Required-Modus wird es ignoriert.
-
-Diese drei Zeilen und die `BOOTSTRAP_ADMIN_*`-Zeilen unten trägst du **gemeinsam in einem Rutsch**
+Diese beiden Zeilen und die `BOOTSTRAP_ADMIN_*`-Zeilen unten trägst du **gemeinsam in einem Rutsch**
 ein und startest danach einmal neu (siehe „Wo eintragen").
 
 ## Was eintragen
@@ -57,8 +49,8 @@ Bootstrap läuft einmal beim Hochfahren.
 ### A) Docker auf dem Hetzner-Server
 
 1. `ssh deploy@<HETZNER_HOST>`
-2. `sudo nano /opt/respawn/.env` – falls `AUTH_MODE`, `ADMIN_RECOVERY_CODE` und `KIOSK_TOKEN` dort
-   noch **nicht** stehen (aktuell der Fall), zuerst die drei Zeilen aus „Voraussetzung" oben ergänzen
+2. `sudo nano /opt/respawn/.env` – falls `ADMIN_RECOVERY_CODE` und `KIOSK_TOKEN` dort
+   noch **nicht** stehen, zuerst die zwei Zeilen aus „Voraussetzung" oben ergänzen
    und danach die `BOOTSTRAP_ADMIN_*`-Zeilen ans Ende hängen.
 3. Neu starten, damit die Variablen greifen:
    ```bash
@@ -73,7 +65,7 @@ Bootstrap läuft einmal beim Hochfahren.
 Entweder in deiner `.env`/Startumgebung setzen oder direkt beim Start mitgeben:
 
 ```bash
-AUTH_MODE=required ADMIN_RECOVERY_CODE=... KIOSK_TOKEN=... \
+ADMIN_RECOVERY_CODE=... KIOSK_TOKEN=... \
 BOOTSTRAP_ADMIN_1_NAME=Alice BOOTSTRAP_ADMIN_1_PASSWORD=... \
 BOOTSTRAP_ADMIN_2_NAME=Bob   BOOTSTRAP_ADMIN_2_PASSWORD=... \
 node dist/index.js

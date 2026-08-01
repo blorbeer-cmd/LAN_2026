@@ -1,5 +1,4 @@
-// "Mein Profil": required auth binds identity to the session; legacy mode
-// keeps whoami.js as a compatibility selector. Players can maintain their own
+// "Mein Profil": authentication binds identity to the session. Players maintain their own
 // gamer name (unique across everyone), a profile picture and seat neighbors.
 // Bock/Skill-Ratings moved to the Spiele view (see server/CLAUDE.md games
 // reorg) — that's where the group averages live too, so this page just
@@ -11,11 +10,10 @@
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, avatarHtml } from '../format.js';
-import { getMyId, setMyId } from '../whoami.js';
-import { authRequired, logout } from '../authGate.js';
+import { getMyId } from '../whoami.js';
+import { logout } from '../authGate.js';
 import { showToast } from '../toast.js';
 import { getPushSubscriptionState, enablePush, disablePush } from '../push.js';
-import { invalidateMyStats } from './myStats.js';
 import { resizeImageFile } from '../imageUtils.js';
 import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
@@ -187,51 +185,6 @@ let neighborsForPlayerId = null;
 let pushState = null;
 let pushBusy = false;
 
-function renderIdentityPicker(container, ctx) {
-  const myId = getMyId();
-  container.innerHTML = `
-    <h1 class="view-title">Willkommen bei Respawn</h1>
-    <div class="grouped-page-sections">
-      <section class="card stack grouped-page-section" aria-labelledby="profile-create-title">
-        <div class="grouped-page-section-title"><h2 id="profile-create-title">Profil anlegen</h2></div>
-        <form id="profile-new-form" class="field-row">
-          <input type="text" id="profile-new-name" placeholder="Dein Gamer-Name" maxlength="60" required autofocus />
-          <button type="submit" class="btn btn-primary">Los geht's</button>
-        </form>
-        <div class="muted" style="font-size:var(--font-size-xs);">Profilbild, Skills und dein Agent-Key richtest du direkt im Anschluss ein.</div>
-      </section>
-      <section class="card stack grouped-page-section" aria-labelledby="profile-existing-title">
-        <div class="grouped-page-section-title"><h2 id="profile-existing-title">Schon dabei?</h2></div>
-        <select id="profile-whoami">
-          <option value="">– deinen Namen wählen –</option>
-          ${state.players.map((p) => `<option value="${p.id}" ${p.id === myId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
-        </select>
-      </section>
-    </div>
-  `;
-
-  container.querySelector('#profile-whoami').addEventListener('change', (e) => {
-    if (!e.target.value) return;
-    setMyId(e.target.value);
-    ctx.rerender();
-  });
-
-  container.querySelector('#profile-new-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const name = container.querySelector('#profile-new-name').value.trim();
-    if (!name) return;
-    try {
-      const created = await api.players.create({ name });
-      await ctx.refresh();
-      setMyId(created.id);
-      showToast(`Willkommen, ${created.name}!`);
-      ctx.rerender();
-    } catch (err) {
-      showToast(err.message, { error: true });
-    }
-  });
-}
-
 // The seating plan editor (seating.js) may have just auto-filled/updated our
 // own visible-monitor pairs — refetch next render instead of showing a stale
 // cache (same pattern as live.js's seatingCache invalidation).
@@ -310,7 +263,7 @@ export function renderProfile(container, ctx) {
   const myId = getMyId();
   const me = state.players.find((p) => p.id === myId);
   if (!me) {
-    renderIdentityPicker(container, ctx);
+    container.innerHTML = '<div class="empty-state">Dein Profil konnte nicht geladen werden.</div>';
     return;
   }
 
@@ -330,11 +283,7 @@ export function renderProfile(container, ctx) {
   container.innerHTML = `
     <div class="row-between profile-page-header">
       <h1 class="view-title">Mein Profil</h1>
-      ${
-        authRequired
-          ? `<button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>`
-          : `<button type="button" class="btn btn-sm" id="profile-not-me">Nicht du?</button>`
-      }
+      <button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>
     </div>
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="profile-data-title">
@@ -365,9 +314,7 @@ export function renderProfile(container, ctx) {
         </div>
       </section>
 
-      ${
-        authRequired
-          ? `<section class="card stack grouped-page-section" aria-labelledby="profile-password-title">
+      <section class="card stack grouped-page-section" aria-labelledby="profile-password-title">
                <div class="grouped-page-section-title"><h2 id="profile-password-title">Passwort ändern</h2></div>
                <form class="stack" id="profile-password-form">
                  <div class="row">
@@ -381,9 +328,7 @@ export function renderProfile(container, ctx) {
                  <p class="muted" style="font-size:var(--font-size-xs);margin:0;">Wähl ein Passwort, das du dir gut merken kannst.</p>
                  <button type="submit" class="btn btn-primary btn-sm">Passwort speichern</button>
                </form>
-             </section>`
-          : ''
-      }
+      </section>
 
       ${
         state.games.length === 0 || hasAnyRating
@@ -460,41 +405,29 @@ export function renderProfile(container, ctx) {
 
   wireInfoTooltips(container);
 
-  // "Nicht du?" (a passwordless identity switch) stops making sense once a
-  // real, password-backed session is active — the account IS the identity
-  // then, so the same button instead really signs out (see authGate.js).
-  if (authRequired) {
-    container.querySelector('#profile-logout').addEventListener('click', () => logout());
-    container.querySelectorAll('[data-password-toggle]').forEach((button) => {
-      button.addEventListener('click', () => {
-        const input = container.querySelector(`#${button.dataset.passwordToggle}`);
-        const visible = input.type === 'password';
-        input.type = visible ? 'text' : 'password';
-        button.innerHTML = icon(visible ? 'eyeOff' : 'eye');
-        button.setAttribute('aria-label', visible ? 'Passwort verbergen' : 'Passwort anzeigen');
-        button.title = button.getAttribute('aria-label');
-      });
+  container.querySelector('#profile-logout').addEventListener('click', () => logout());
+  container.querySelectorAll('[data-password-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const input = container.querySelector(`#${button.dataset.passwordToggle}`);
+      const visible = input.type === 'password';
+      input.type = visible ? 'text' : 'password';
+      button.innerHTML = icon(visible ? 'eyeOff' : 'eye');
+      button.setAttribute('aria-label', visible ? 'Passwort verbergen' : 'Passwort anzeigen');
+      button.title = button.getAttribute('aria-label');
     });
-    container.querySelector('#profile-password-form').addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const currentPassword = container.querySelector('#profile-current-password');
-      const newPassword = container.querySelector('#profile-new-password');
-      try {
-        await api.auth.changePassword({ currentPassword: currentPassword.value, newPassword: newPassword.value });
-        event.currentTarget.reset();
-        showToast('Passwort geändert. Andere Geräte wurden abgemeldet.');
-      } catch (error) {
-        showToast(error.message, { error: true });
-      }
-    });
-  } else {
-    container.querySelector('#profile-not-me').addEventListener('click', () => {
-      setMyId('');
-      invalidateMyStats();
-      neighborsForPlayerId = null;
-      ctx.rerender();
-    });
-  }
+  });
+  container.querySelector('#profile-password-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const currentPassword = container.querySelector('#profile-current-password');
+    const newPassword = container.querySelector('#profile-new-password');
+    try {
+      await api.auth.changePassword({ currentPassword: currentPassword.value, newPassword: newPassword.value });
+      event.currentTarget.reset();
+      showToast('Passwort geändert. Andere Geräte wurden abgemeldet.');
+    } catch (error) {
+      showToast(error.message, { error: true });
+    }
+  });
 
   // Fetched lazily (the roster list intentionally omits API keys) and only
   // ever for your own profile — see the players.js detail modal for the

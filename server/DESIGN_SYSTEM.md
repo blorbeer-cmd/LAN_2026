@@ -240,11 +240,9 @@ view and to new views unless a documented domain constraint requires a different
    `domainIcons.js`; all other appearances reuse those mappings. Visible German page labels stay
    concise (`Teams`, `Vote`, `Rang`, `Info`, `Trivia`, `Historie`), while longer explanations and
    former labels may appear only in help text or technical documentation where needed.
-10. **Keep future user management behind a clear boundary.** The current roster is readable by
-    everyone, but only the device's selected identity can edit its own profile. Player creation,
-    deletion, roles and foreign-profile editing are not added to regular UI until authenticated
-    user management owns those actions. Document this temporary identity boundary whenever a new
-    profile-related flow depends on it.
+10. **Keep account management behind the authenticated boundary.** The current roster is readable
+    by every signed-in member, while only the session account can edit its own profile. Player
+    creation, deletion, roles and foreign-profile editing remain admin-only actions.
 
 ## Components
 
@@ -355,16 +353,15 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the icon's tooltip and accessible label retain the full „Skill-Level“ meaning. Team headers show
   the same icon with a dynamically calculated total; missing ratings contribute `0`, stated
   explicitly in its tooltip and accessible label.
-- **Player profiles** — The roster is public and opens read-only details for other participants.
-  The current device identity is marked as „Mein Profil“ and opens the dedicated self-service
+- **Player profiles** — The roster is available to signed-in members and opens read-only details for other participants.
+  The session account is marked as „Mein Profil“ and opens the dedicated self-service
   profile editor. Foreign profiles expose neither edit/delete actions nor the private agent key;
-  the API omits the private agent key and rejects profile-field updates when `x-player-id` does not
+  the API omits the private agent key and rejects profile-field updates when the session does not
   match the target player.
   The roster itself has no duplicate „Teilnehmende“ heading and no player-creation action. Player
-  creation stays deliberately deferred until authenticated user management owns that workflow. The
+  creation stays in the authenticated Admin workflow. The
   desktop roster keeps exactly two equal-width cards per row; an odd final player does not stretch.
-  This device-local identity header is deliberately documented as the temporary boundary that
-  future authenticated user management must replace. The self-service profile uses the shared
+  The self-service profile uses the shared
   grouped-page hierarchy for profile data, Agent setup, Push, visible monitors and personal stats.
   Agent setup is split into three stable nested cards for choosing tracking, downloading and
   installing; tracking pause belongs to the first step beside foreground-activity tracking, and
@@ -375,11 +372,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   below that row. The foreground option uses the concise label „Erweitertes Tracking“. Push uses the same checkbox language with its
   explanation in a tooltip instead of an action button and omits a redundant off-state sentence.
   Visible-monitor choices form exactly two columns from `--bp-md`, with phones kept to one column.
-- **Settings and admin tools** — Settings uses separate grouped cards for Events, the invitation
-  link and the TV/Kiosk view. Their concise explanations live in contextual tooltips beside each
-  heading. Event cards use the standard two-column nested-card grid. Invitation link, copy action
-  and QR action share one compact row at one shared control height; the QR code opens in the shared centered modal rather than expanding
-  the settings page. Backup and seating-plan editing are absent from regular settings and live
+- **Settings and admin tools** — Settings uses separate grouped cards for Events and the TV/Kiosk
+  view. Account invitations and claim/reset links live in Admin's authenticated onboarding group;
+  their QR codes open in the shared centered modal. Event cards use the standard two-column nested-card grid.
+  Backup and seating-plan editing are absent from regular settings and live
   together as nested tool cards in the active Admin mode. Each tool card keeps its title, adjacent
   help tooltip and colorful primary action on one row; the seating editor returns to Admin and blocks
   editing outside that mode. Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and

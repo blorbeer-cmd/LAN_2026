@@ -1,8 +1,6 @@
 // Integration tests for the new /api/auth/* + /api/me endpoints, run against
-// the real Express app and an in-memory DB. Nothing here is wired into any
-// existing route yet (see config.authMode), so these tests only exercise the
-// new surface in isolation. Tests build on each other in sequence, same as
-// the rest of this suite.
+// the real Express app and an in-memory DB. Tests build on each other in
+// sequence, same as the rest of this suite.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,6 +9,8 @@ import { createApp } from '../app';
 import { createInvite } from '../invites';
 import { SESSION_COOKIE_NAME } from '../sessions';
 import { db } from '../db';
+import { ensureDefaultGroupMembership } from '../groups';
+import { nanoid } from 'nanoid';
 
 const app = createApp();
 
@@ -28,11 +28,10 @@ let adminId: string;
 let adminCookie: string;
 
 test('setup: seed an unclaimed admin player and claim it via a claim invite', async () => {
-  const created = await request(app).post('/api/players').send({ name: 'Auth Admin' });
-  assert.equal(created.status, 201);
-  adminId = created.body.id;
-  const promoted = await request(app).patch(`/api/players/${adminId}`).send({ isAdmin: true });
-  assert.equal(promoted.status, 200);
+  adminId = nanoid();
+  db.prepare('INSERT INTO players (id, name, api_key, is_admin, created_at) VALUES (?, ?, ?, 1, ?)')
+    .run(adminId, 'Auth Admin', nanoid(24), Date.now());
+  ensureDefaultGroupMembership(adminId, { bootstrapAdmin: true });
 
   const invite = createInvite({ purpose: 'claim', playerId: adminId, createdBy: adminId });
   const claimed = await request(app).post('/api/auth/claim').send({ code: invite.code, password: 'admin password one' });
@@ -67,7 +66,7 @@ test('POST /api/auth/invites is rejected without a session', async () => {
 });
 
 test('POST /api/auth/invites is rejected for a non-admin session', async () => {
-  const player = await request(app).post('/api/players').send({ name: 'Plain Member' });
+  const player = await request(app).post('/api/players').set('Cookie', adminCookie).send({ name: 'Plain Member' });
   const invite = createInvite({ purpose: 'claim', playerId: player.body.id, createdBy: adminId });
   const claimed = await request(app).post('/api/auth/claim').send({ code: invite.code, password: 'member password' });
   const memberCookie = sessionCookie(claimed);
@@ -303,7 +302,7 @@ test('revoking a nonexistent invite code 404s', async () => {
 // --- test-player sessions ("Testsitzung öffnen") ---
 
 test('POST /api/auth/invites rejects purpose "test_login" for a real (non-test) player', async () => {
-  const real = await request(app).post('/api/players').send({ name: 'Real Not Test Player' });
+  const real = await request(app).post('/api/players').set('Cookie', adminCookie).send({ name: 'Real Not Test Player' });
   const res = await request(app)
     .post('/api/auth/invites')
     .set('Cookie', adminCookie)
@@ -312,7 +311,7 @@ test('POST /api/auth/invites rejects purpose "test_login" for a real (non-test) 
 });
 
 test('a full test-session round trip: mint as admin, redeem once, then the code is dead', async () => {
-  const testPlayer = await request(app).post('/api/players').send({ name: 'Seeded Test Player' });
+  const testPlayer = await request(app).post('/api/players').set('Cookie', adminCookie).send({ name: 'Seeded Test Player' });
   db.prepare('UPDATE players SET is_test = 1 WHERE id = ?').run(testPlayer.body.id);
 
   const minted = await request(app)
@@ -341,7 +340,7 @@ test('a full test-session round trip: mint as admin, redeem once, then the code 
 });
 
 test('a test-session code stops working if the player loses its is_test marking before redemption', async () => {
-  const testPlayer = await request(app).post('/api/players').send({ name: 'Unmarked Before Redeem' });
+  const testPlayer = await request(app).post('/api/players').set('Cookie', adminCookie).send({ name: 'Unmarked Before Redeem' });
   db.prepare('UPDATE players SET is_test = 1 WHERE id = ?').run(testPlayer.body.id);
 
   const minted = await request(app)
@@ -357,7 +356,7 @@ test('a test-session code stops working if the player loses its is_test marking 
 });
 
 test('a test-session code stops working if the player is deactivated before redemption', async () => {
-  const testPlayer = await request(app).post('/api/players').send({ name: 'Deactivated Before Redeem' });
+  const testPlayer = await request(app).post('/api/players').set('Cookie', adminCookie).send({ name: 'Deactivated Before Redeem' });
   db.prepare('UPDATE players SET is_test = 1 WHERE id = ?').run(testPlayer.body.id);
 
   const minted = await request(app)
@@ -373,7 +372,7 @@ test('a test-session code stops working if the player is deactivated before rede
 });
 
 test('registered players and invite creators remain deletable', async () => {
-  const creator = await request(app).post('/api/players').send({ name: 'Disposable Invite Creator' });
+  const creator = await request(app).post('/api/players').set('Cookie', adminCookie).send({ name: 'Disposable Invite Creator' });
   const invite = createInvite({ purpose: 'register', createdBy: creator.body.id });
   const registered = await request(app)
     .post('/api/auth/register')
@@ -384,6 +383,6 @@ test('registered players and invite creators remain deletable', async () => {
   // pins the invite audit foreign-key behavior this test targets.
   db.prepare('UPDATE players SET is_test = 1 WHERE id IN (?, ?)').run(creator.body.id, registered.body.id);
 
-  assert.equal((await request(app).delete(`/api/players/${creator.body.id}`)).status, 204);
-  assert.equal((await request(app).delete(`/api/players/${registered.body.id}`)).status, 204);
+  assert.equal((await request(app).delete(`/api/players/${creator.body.id}`).set('Cookie', adminCookie)).status, 204);
+  assert.equal((await request(app).delete(`/api/players/${registered.body.id}`).set('Cookie', adminCookie)).status, 204);
 });

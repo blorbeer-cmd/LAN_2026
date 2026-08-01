@@ -10,12 +10,21 @@ import assert from 'node:assert/strict';
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
+import {
+  addSessionCookie,
+  authenticatedServerEnv,
+  createE2EAccount,
+  E2E_KIOSK_TOKEN,
+  loginE2EAdmin,
+} from './authHelpers';
 
 const PORT = 3903; // 3901 = flows, 3902 = access, 3910 = agent integration
 const BASE_URL = `http://localhost:${PORT}`;
 
 let serverProcess: ChildProcess;
 let browser: Browser;
+let adminCookie: string;
+const playerCookies = new Map<string, string>();
 
 interface Actor {
   context: BrowserContext;
@@ -37,34 +46,31 @@ async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
 }
 
 async function createPlayer(name: string): Promise<{ id: string; name: string }> {
-  const res = await fetch(`${BASE_URL}/api/players`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
-  if (res.status !== 201) throw new Error(`creating player "${name}" failed: ${res.status}`);
-  return res.json() as Promise<{ id: string; name: string }>;
+  const account = await createE2EAccount(BASE_URL, adminCookie, name);
+  playerCookies.set(account.id, account.cookie);
+  return account;
 }
 
-// Opens a fresh context+page logged in (via localStorage identity) as the
-// given player, already sitting on the Arcade view.
+// Opens a fresh context+page with the player's personal session.
 async function openArcadeAs(
   playerId: string,
   { viewport = { width: 390, height: 844 }, expanded = false } = {}
 ): Promise<Actor> {
   const context = await browser.newContext({ viewport });
+  const cookie = playerCookies.get(playerId);
+  assert.ok(cookie, `missing personal session for ${playerId}`);
+  await addSessionCookie(context, BASE_URL, cookie);
   const page = await context.newPage();
   page.on('pageerror', (err) => console.error('[pageerror]', err.message));
   await page.goto(BASE_URL);
   await page.evaluate(
-    ({ id, expand }) => {
-      localStorage.setItem('respawn_my_player_id', id);
+    (expand) => {
       // The expand preference must already exist before the game view first
       // renders — that ordering is exactly what the geometry regressions
       // below are about (see wireArcadeExpandControl).
       localStorage.setItem('lan-arcade-expanded', String(expand));
     },
-    { id: playerId, expand: expanded }
+    expanded
   );
   await page.reload();
   await page.waitForSelector('.nav-btn[data-view="more"]');
@@ -142,10 +148,11 @@ const countPaintedPixels = (page: Page, selector: string) =>
 
 before(async () => {
   serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
-    env: { ...process.env, PORT: String(PORT), DB_FILE: ':memory:', ACCESS_TOKEN: '' },
+    env: authenticatedServerEnv(PORT),
     stdio: 'ignore',
   });
   await waitForServer(`${BASE_URL}/api/health`);
+  adminCookie = await loginE2EAdmin(BASE_URL);
   browser = await chromium.launch();
 });
 
@@ -192,7 +199,7 @@ test('the kiosk removes stale quiz markup before rendering a canvas game', async
   const guest = await openArcadeAs(guestPlayer.id);
   const kiosk = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   try {
-    await kiosk.goto(`${BASE_URL}/kiosk.html`);
+    await kiosk.goto(`${BASE_URL}/kiosk.html?token=${E2E_KIOSK_TOKEN}`);
     await kiosk.waitForSelector('#kiosk-dashboard:not([hidden])');
     await startQuizMatch(host.page, guest.page);
     await kiosk.waitForSelector('#kiosk-game-content .kiosk-game-question');
@@ -235,7 +242,7 @@ test('Snake Arena elimination status updates in spectator and kiosk legends', as
   const [host, guest, leaver, spectator] = actors;
   const kiosk = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   try {
-    await kiosk.goto(`${BASE_URL}/kiosk.html`);
+    await kiosk.goto(`${BASE_URL}/kiosk.html?token=${E2E_KIOSK_TOKEN}`);
     await kiosk.waitForSelector('#kiosk-dashboard:not([hidden])');
 
     await openArcadeGame(host.page, 'snake', '#snake-mode [data-arcade-mode="arena"]');
@@ -256,6 +263,12 @@ test('Snake Arena elimination status updates in spectator and kiosk legends', as
     await kiosk.waitForSelector('#kiosk-game-content .snake-arena-legend');
     await spectator.page.waitForSelector('[data-watch-match]');
     await spectator.page.click('[data-watch-match]');
+    await spectator.page.waitForTimeout(500);
+    assert.equal(
+      await activeView(spectator.page),
+      'arcadeWatch',
+      (await spectator.page.locator('.toast').last().textContent().catch(() => null)) ?? 'watch view closed without an error',
+    );
     await spectator.page.waitForSelector('.snake-arena-legend');
 
     // The arena can advance between the 50ms test countdown and the pause
@@ -398,7 +411,9 @@ test('rapid fire: lobby-create burst keeps one lobby, ready toggle survives spam
     await host.page.waitForSelector('[data-close-lobby]');
     await host.page.waitForTimeout(400); // let every ack/broadcast settle
     assert.equal(await host.page.locator('[data-close-lobby]').count(), 1, 'the burst must leave exactly one own lobby');
-    const lobbies = (await (await fetch(`${BASE_URL}/api/arcade/lobbies`)).json()) as { lobbies: unknown[] };
+    const lobbies = (await (
+      await fetch(`${BASE_URL}/api/arcade/lobbies`, { headers: { cookie: adminCookie } })
+    ).json()) as { lobbies: unknown[] };
     assert.equal(lobbies.lobbies.length, 1, 'the server must hold exactly one open lobby after the burst');
 
     if ((await guest.page.locator('[data-join-lobby]').count()) === 0) await guest.page.click('[data-game="quiz"]');

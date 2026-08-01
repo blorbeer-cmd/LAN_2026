@@ -5,7 +5,8 @@ import type { AddressInfo } from 'net';
 import { Server } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp, installTestSocketIdentity } from './testApp';
+import { DEFAULT_GROUP_ID } from '../db';
 import { registerBattleshipSockets } from '../arcade/battleship';
 import { clearLobbyMemberships } from '../arcade/lobbyMembership';
 
@@ -64,8 +65,9 @@ const placements = [
 
 test('Battleship enforces the duel lobby gate and validates placement before firing', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerBattleshipSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
@@ -123,8 +125,9 @@ test('Battleship enforces the duel lobby gate and validates placement before fir
 
 test('Battleship restricts AI matches to admins and lets the bot place and fire', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerBattleshipSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
@@ -136,7 +139,10 @@ test('Battleship restricts AI matches to admins and lets the bot place and fire'
     assert.equal(denied.ok, false);
     assert.match(String(denied.error), /nur für Admins/);
 
-    await request(baseUrl).patch(`/api/players/${host}`).send({ isAdmin: true }).expect(200);
+    await request(baseUrl)
+      .patch(`/api/groups/${DEFAULT_GROUP_ID}/members/${host}`)
+      .send({ role: 'admin' })
+      .expect(200);
     const created = await emitAck(hostSocket, 'battleship:lobby:bot', { playerId: host });
     assert.equal(created.ok, true);
 

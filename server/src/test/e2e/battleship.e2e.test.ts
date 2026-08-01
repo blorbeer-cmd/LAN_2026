@@ -4,12 +4,21 @@ import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
+import {
+  addSessionCookie,
+  authenticatedServerEnv,
+  createE2EAccount,
+  loginE2EAdmin,
+  promoteE2EAdmin,
+} from './authHelpers';
 
 const PORT = 3915;
 const BASE_URL = `http://localhost:${PORT}`;
 
 let serverProcess: ChildProcess;
 let browser: Browser;
+let adminCookie: string;
+const playerCookies = new Map<string, string>();
 
 interface Actor {
   context: BrowserContext;
@@ -30,30 +39,22 @@ async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
 }
 
 async function createPlayer(name: string): Promise<{ id: string }> {
-  const response = await fetch(`${BASE_URL}/api/players`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
-  assert.equal(response.status, 201);
-  return response.json() as Promise<{ id: string }>;
+  const account = await createE2EAccount(BASE_URL, adminCookie, name);
+  playerCookies.set(account.id, account.cookie);
+  return account;
 }
 
 async function grantAdmin(playerId: string): Promise<void> {
-  const response = await fetch(`${BASE_URL}/api/players/${playerId}`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ isAdmin: true }),
-  });
-  assert.equal(response.status, 200);
+  await promoteE2EAdmin(BASE_URL, adminCookie, playerId);
 }
 
 async function openArcadeAs(playerId: string): Promise<Actor> {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const cookie = playerCookies.get(playerId);
+  assert.ok(cookie);
+  await addSessionCookie(context, BASE_URL, cookie);
   const page = await context.newPage();
   await page.goto(BASE_URL);
-  await page.evaluate((id) => localStorage.setItem('respawn_my_player_id', id), playerId);
-  await page.reload();
   await page.waitForSelector('.nav-btn[data-view="more"]');
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="arcade"]');
@@ -115,16 +116,14 @@ function waitForSocketEvent<T>(socket: ClientSocket, event: string, predicate: (
 before(async () => {
   serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
     env: {
-      ...process.env,
-      PORT: String(PORT),
-      DB_FILE: ':memory:',
-      ACCESS_TOKEN: '',
+      ...authenticatedServerEnv(PORT),
       NODE_ENV: 'test',
       E2E_FAST_TIMERS: '1',
     },
     stdio: 'ignore',
   });
   await waitForServer(`${BASE_URL}/api/health`);
+  adminCookie = await loginE2EAdmin(BASE_URL);
   browser = await chromium.launch();
 });
 
@@ -138,7 +137,11 @@ test('Battleship: two browsers play a complete duel and watch state reveals then
   const guestPlayer = await createPlayer('Battleship E2E Guest');
   const host = await openArcadeAs(hostPlayer.id);
   const guest = await openArcadeAs(guestPlayer.id);
-  const watcher = ioClient(BASE_URL, { transports: ['websocket'], reconnection: false });
+  const watcher = ioClient(BASE_URL, {
+    transports: ['websocket'],
+    reconnection: false,
+    extraHeaders: { Cookie: playerCookies.get(hostPlayer.id)! },
+  });
 
   try {
     await host.page.click('#battleship-create');
@@ -161,6 +164,7 @@ test('Battleship: two browsers play a complete duel and watch state reveals then
 
     const matchId = await host.page.locator('[data-battleship-match]').getAttribute('data-battleship-match');
     assert.ok(matchId);
+    await new Promise((resolve) => watcher.emit('scope:subscribe', { groupId: 'default-group', eventId: null }, resolve));
     const runningState = waitForSocketEvent<{
       matchId: string;
       phase: string;

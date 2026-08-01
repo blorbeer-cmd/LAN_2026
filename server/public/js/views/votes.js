@@ -1,6 +1,5 @@
-// "What's next?" voting view (FR-19..21). Voting needs to know WHO is voting;
-// since the tool has no per-person login (just the shared access token),
-// each phone remembers "who I am" locally so casting a vote takes no form.
+// "What's next?" voting view (FR-19..21). The personal session identifies the
+// voter, so casting a vote needs no extra identity form.
 //
 // Layout, top to bottom:
 // 1. Either "start a new round" controls (idle), or the full interactive
@@ -35,7 +34,7 @@ import { state } from '../state.js';
 import { escapeHtml, formatDate, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
-import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { getMyId } from '../whoami.js';
 import { domainIcon } from '../domainIcons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { GAME_GENRES } from '../gameGenres.js';
@@ -97,7 +96,7 @@ async function loadMine(round, playerId, ctx) {
 // Local, not-yet-submitted picks. Tapping a game or dragging a slider only
 // changes this draft; nothing reaches the server until the submit button is
 // pressed. Reseeded from mineCache once per round/player (draftKey tracks
-// that so a fresh round or a "Nicht du?" identity switch starts blank/fresh
+// that so a fresh round starts blank/fresh
 // rather than carrying over a stale draft).
 let draftSingleGameId = null;
 let draftPoints = null; // Map<gameId, points>
@@ -468,7 +467,6 @@ export function renderVotes(container, ctx) {
     draftKey = mineCacheKey;
   }
 
-  const whoAmI = whoAmICardHtml('whoami');
   const totalPlayers = state.players.length;
 
   let openSectionHtml = '';
@@ -581,8 +579,6 @@ export function renderVotes(container, ctx) {
 
   container.innerHTML = `
     <h1 class="view-title">Vote</h1>
-    ${whoAmI}
-
     ${openSectionHtml}
 
     <section class="card vote-page-section stack" aria-labelledby="vote-current-result-title">
@@ -607,7 +603,6 @@ export function renderVotes(container, ctx) {
     </details>
   `;
 
-  wireWhoAmICard(container, 'whoami', ctx);
   wireInfoTooltips(container);
 
   container.querySelector('[data-vote-history]')?.addEventListener('toggle', (event) => {

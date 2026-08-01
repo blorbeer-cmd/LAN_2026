@@ -715,9 +715,9 @@ test('records the complete migration history and does not duplicate it on restar
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('required startup reconciles admin flags from active default-group roles once', () => {
+test('startup reconciles admin flags from active default-group roles once', () => {
   const dbFile = makeTempDbPath('required-admin-reconciliation');
-  runMigrations(dbFile, { AUTH_MODE: 'legacy' });
+  runMigrations(dbFile);
   const fixture = new Database(dbFile);
   const now = Date.now();
   const player = fixture.prepare(
@@ -738,15 +738,15 @@ test('required startup reconciles admin flags from active default-group roles on
   member.run('test-owner', 'owner', now);
   fixture.close();
 
-  runMigrations(dbFile, { AUTH_MODE: 'legacy' });
+  runMigrations(dbFile);
   let inspected = new Database(dbFile, { readonly: true });
   assert.deepEqual(inspected.prepare('SELECT id, is_admin FROM players WHERE id LIKE ? ORDER BY id').all('drift-%'), [
-    { id: 'drift-admin', is_admin: 0 },
-    { id: 'drift-member', is_admin: 1 },
+    { id: 'drift-admin', is_admin: 1 },
+    { id: 'drift-member', is_admin: 0 },
   ]);
   inspected.close();
 
-  const required = { AUTH_MODE: 'required', ADMIN_RECOVERY_CODE: 'reconciliation-test-code' };
+  const required = { ADMIN_RECOVERY_CODE: 'reconciliation-test-code' };
   runMigrations(dbFile, required);
   runMigrations(dbFile, required);
   inspected = new Database(dbFile, { readonly: true });
@@ -779,7 +779,7 @@ test('required startup reconciles admin flags from active default-group roles on
 
 test('required bootstrap promotes an active existing member once', () => {
   const dbFile = makeTempDbPath('required-bootstrap-active');
-  runMigrations(dbFile, { AUTH_MODE: 'legacy' });
+  runMigrations(dbFile);
   const fixture = new Database(dbFile);
   const now = Date.now();
   fixture.prepare(
@@ -798,7 +798,7 @@ test('required bootstrap promotes an active existing member once', () => {
   membership.run('bootstrap-member', 'member', now);
   fixture.close();
   const env = {
-    AUTH_MODE: 'required', ADMIN_RECOVERY_CODE: 'bootstrap-test-code',
+    ADMIN_RECOVERY_CODE: 'bootstrap-test-code',
     BOOTSTRAP_ADMIN_1_NAME: 'Bootstrap Member', BOOTSTRAP_ADMIN_1_PASSWORD: 'bootstrap-member-password',
   };
   const startup = () => execFileSync(process.execPath, ['-e',
@@ -822,7 +822,7 @@ test('required bootstrap promotes an active existing member once', () => {
 
 test('required bootstrap cannot derive rights from inactive memberships', () => {
   const dbFile = makeTempDbPath('required-bootstrap-inactive');
-  runMigrations(dbFile, { AUTH_MODE: 'legacy' });
+  runMigrations(dbFile);
   const fixture = new Database(dbFile);
   const now = Date.now();
   const player = fixture.prepare(
@@ -840,7 +840,7 @@ test('required bootstrap cannot derive rights from inactive memberships', () => 
   membership.run('invited-admin', 'admin', 'invited', null, null);
   fixture.close();
   const env = {
-    AUTH_MODE: 'required', ADMIN_RECOVERY_CODE: 'inactive-test-code',
+    ADMIN_RECOVERY_CODE: 'inactive-test-code',
     BOOTSTRAP_ADMIN_1_NAME: 'Removed Owner', BOOTSTRAP_ADMIN_1_PASSWORD: 'removed-owner-password',
     BOOTSTRAP_ADMIN_2_NAME: 'Invited Admin', BOOTSTRAP_ADMIN_2_PASSWORD: 'invited-admin-password',
   };
@@ -870,7 +870,7 @@ test('required bootstrap cannot derive rights from inactive memberships', () => 
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('account hardening clears only unclaimed and test-user legacy admin flags', () => {
+test('account hardening clears legacy admin flags without an active admin role', () => {
   const dbFile = makeTempDbPath('admin-role-cutover');
   runMigrations(dbFile);
 
@@ -891,7 +891,7 @@ test('account hardening clears only unclaimed and test-user legacy admin flags',
     .prepare('SELECT id, is_admin FROM players WHERE id IN (?, ?, ?) ORDER BY id')
     .all('claimed-admin', 'legacy-admin', 'test-admin');
   assert.deepEqual(roles, [
-    { id: 'claimed-admin', is_admin: 1 },
+    { id: 'claimed-admin', is_admin: 0 },
     { id: 'legacy-admin', is_admin: 0 },
     { id: 'test-admin', is_admin: 0 },
   ]);

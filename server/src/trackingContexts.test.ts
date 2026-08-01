@@ -1,10 +1,8 @@
-import { test, beforeEach, after } from 'node:test';
+import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { config } from './config';
 import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 import { activeTrackingContexts, setEventTrackingConsent, setGroupTrackingConsent } from './trackingContexts';
 
-const originalAuthMode = config.authMode;
 let seq = 0;
 
 function ids(prefix: string): string {
@@ -49,7 +47,6 @@ function createTrackingEvent(
 }
 
 beforeEach(() => {
-  (config as { authMode: 'legacy' | 'required' }).authMode = 'required';
   db.exec(`
     DELETE FROM tracking_live_games;
     DELETE FROM tracking_live_contexts;
@@ -59,10 +56,6 @@ beforeEach(() => {
     DELETE FROM event_participants;
     DELETE FROM events WHERE id != 'outside-events';
   `);
-});
-
-after(() => {
-  (config as { authMode: 'legacy' | 'required' }).authMode = originalAuthMode;
 });
 
 test('group consent grant, revoke and re-grant are idempotent and revoke the live outside context', () => {
@@ -203,11 +196,9 @@ test('group and public event tracking retain the group-consent contract', () => 
   }
 });
 
-test('legacy accepted participants retain roster-based event compatibility without a consent row', () => {
+test('accepted participants still require explicit event consent', () => {
   const now = Date.now();
   const playerId = createPlayer(now);
   const eventId = createTrackingEvent(playerId, now);
-  (config as { authMode: 'legacy' | 'required' }).authMode = 'legacy';
-
-  assert.deepEqual(activeTrackingContexts(playerId, now), [{ groupId: DEFAULT_GROUP_ID, eventId, weight: 1 }]);
+  assert.deepEqual(activeTrackingContexts(playerId, now), []);
 });

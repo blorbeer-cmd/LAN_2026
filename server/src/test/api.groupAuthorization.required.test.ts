@@ -214,7 +214,6 @@ test('group roles, event resources and audit stay isolated inside the one real g
     execFileSync(process.execPath, ['-e', script], {
       env: {
         ...process.env,
-        AUTH_MODE: 'required',
         ADMIN_RECOVERY_CODE: RECOVERY_CODE,
         COOKIE_SECURE: '0',
         DB_FILE: ':memory:',
@@ -309,7 +308,6 @@ test('promoting an unclaimed member to admin does not silently escalate them to 
     execFileSync(process.execPath, ['-e', script], {
       env: {
         ...process.env,
-        AUTH_MODE: 'required',
         ADMIN_RECOVERY_CODE: RECOVERY_CODE,
         COOKIE_SECURE: '0',
         DB_FILE: ':memory:',

@@ -2,7 +2,7 @@ import { api } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
 import { showToast } from '../toast.js';
-import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { getMyId } from '../whoami.js';
 
 let cache = null;
 let loading = false;
@@ -456,11 +456,9 @@ export function renderMusic(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Jam</h1>
-    ${whoAmICardHtml('music-whoami')}
     <div class="grouped-page-sections">
       ${cache ? `${setupHtml(cache)}${connectionHtml(cache)}${activeSessionHtml(cache)}` : '<section class="card grouped-page-section"><div class="empty-state">Lädt…</div></section>'}
     </div>`;
-  wireWhoAmICard(container, 'music-whoami', ctx);
   if (!cache) {
     scheduleProgress(container);
     return;

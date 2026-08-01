@@ -4,9 +4,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 
-const app = createApp();
+const app = createTestApp();
 
 let alice: { id: string };
 let bob: { id: string };
@@ -47,7 +47,7 @@ test('PUT /api/arrivals/mine upserts a player arrival row', async () => {
 
 test('PUT /api/arrivals/mine validates player and timestamps', async () => {
   const ghost = await request(app).put('/api/arrivals/mine').send({ playerId: 'ghost' });
-  assert.equal(ghost.status, 404);
+  assert.equal(ghost.status, 401);
   const badTime = await request(app).put('/api/arrivals/mine').send({ playerId: alice.id, arrivalAt: 'soon' });
   assert.equal(badTime.status, 400);
 });

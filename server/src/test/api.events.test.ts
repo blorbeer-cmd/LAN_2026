@@ -6,10 +6,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 import { db } from '../db';
 
-const app = createApp();
+const app = createTestApp();
 
 test('GET /api/events/active returns the "außerhalb von Events" sentinel out of the box', async () => {
   const res = await request(app).get('/api/events/active');
@@ -150,6 +150,10 @@ test('participants roster gates who actually gets tracked while an event is trac
     .send({ playerIds: [rostered.body.id] });
   assert.equal(putRes.status, 200);
   assert.deepEqual(putRes.body.participantIds, [rostered.body.id]);
+  const consent = await request(app)
+    .post(`/api/events/${eventAId}/tracking-consent`)
+    .send({ playerId: rostered.body.id, granted: true });
+  assert.equal(consent.status, 200);
 
   const rosteredReport = await request(app)
     .post('/api/agent/report')
@@ -175,7 +179,7 @@ test('participants roster gates who actually gets tracked while an event is trac
   assert.equal(removeRes.status, 200);
   const afterRemoval = await request(app).get('/api/live');
   const removedEntry = afterRemoval.body.find((r: { player_id: string }) => r.player_id === rostered.body.id);
-  assert.equal(removedEntry.state, 'offline');
+  assert.equal(removedEntry.state, 'online');
   assert.deepEqual(removedEntry.games, []);
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM play_sessions WHERE player_id = ? AND ended_at IS NULL').get(rostered.body.id) as { count: number }).count,

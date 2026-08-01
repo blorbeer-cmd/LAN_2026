@@ -9,7 +9,6 @@ import './db'; // side-effect: open DB, create schema, seed defaults
 import { runBootstrapAdmins } from './bootstrapAdmins';
 import { createApp } from './app';
 import { setIo, createSocketAuthGuard, registerArcadeKioskSockets } from './realtime';
-import { accessProtectionEnabled } from './auth';
 import { startOfflineSweeper } from './liveStatus';
 import { startArcadeHeartbeat } from './arcade/arcadeTracking';
 import { registerArcadeSockets } from './arcade/arcade';
@@ -82,10 +81,6 @@ function start(): void {
   server.listen(config.port, () => {
     // eslint-disable-next-line no-console
     console.log(`Respawn server läuft auf http://localhost:${config.port}`);
-    if (config.authMode === 'legacy' && !accessProtectionEnabled()) {
-      // eslint-disable-next-line no-console
-      console.log('Hinweis: Kein ACCESS_TOKEN gesetzt – Zugangsschutz ist deaktiviert.');
-    }
   });
 }
 

@@ -13,7 +13,7 @@ import { escapeHtml } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { suggestProcessNames } from '../gameProcessSuggestions.js';
-import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { getMyId } from '../whoami.js';
 import { domainIcon } from '../domainIcons.js';
 import { withStepUp } from '../reauth.js';
 import { GAME_GENRES, MAX_GENRES_PER_GAME } from '../gameGenres.js';
@@ -631,7 +631,6 @@ export function renderGameCatalog(container, ctx) {
       <h1 class="view-title">Spiele</h1>
       <button type="button" class="btn btn-primary btn-sm" id="suggest-new">Spiel vorschlagen</button>
     </div>
-    ${whoAmICardHtml('whoami')}
     <div class="grouped-page-sections" style="margin-top:var(--space-3);">
       <section class="card stack grouped-page-section" aria-labelledby="game-catalog-list-title">
         <div class="grouped-page-section-title"><h2 id="game-catalog-list-title">${activeTab === 'catalog' ? 'Spielekatalog' : 'Vorschläge'}</h2></div>
@@ -670,7 +669,6 @@ export function renderGameCatalog(container, ctx) {
     </div>
   `;
 
-  wireWhoAmICard(container, 'whoami', ctx);
 
   container.querySelectorAll('[data-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {

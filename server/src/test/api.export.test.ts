@@ -4,11 +4,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { nanoid } from 'nanoid';
 import request from 'supertest';
-import { createApp } from '../app';
-import { db } from '../db';
+import { createTestApp } from './testApp';
+import { db, DEFAULT_GROUP_ID } from '../db';
 import { getTrackingEventId } from '../events';
 
-const app = createApp();
+const app = createTestApp();
 let gameId: string;
 let playerA: string;
 let playerB: string;
@@ -69,12 +69,15 @@ test('GET /api/export includes a completed tournament champion', async () => {
 });
 
 test('GET /api/export includes playtime-by-player/game and awards from recorded play sessions', async () => {
+  await request(app)
+    .post(`/api/groups/${DEFAULT_GROUP_ID}/tracking-consent`)
+    .send({ playerId: playerA, granted: true });
   const eventId = getTrackingEventId();
   const now = Date.now();
   const oneHourAgo = now - 3_600_000;
   db.prepare(
-    'INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at, active_ms) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(nanoid(), playerA, gameId, eventId, oneHourAgo, now, 3_600_000);
+    'INSERT INTO play_sessions (id, player_id, game_id, event_id, group_id, started_at, ended_at, active_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(nanoid(), playerA, gameId, eventId, DEFAULT_GROUP_ID, oneHourAgo, now, 3_600_000);
 
   const res = await request(app).get('/api/export');
   assert.equal(res.status, 200);

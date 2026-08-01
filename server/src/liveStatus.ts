@@ -94,25 +94,15 @@ export function getLiveBoard(groupId: string): LiveBoardEntry[] {
     .all(now - config.offlineTimeoutMs, now) as Array<{ player_id: string }>;
   const recentlyActiveSessionPlayers = new Set(recentSessionRows.map((row) => row.player_id));
 
-  // Legacy mode predates the group system: players created via the simple
-  // "add a participant" flow never get a group_memberships row at all (there
-  // is no account/onboarding step to attach one), so gating the roster on
-  // membership there would silently drop them from their own live board.
-  // Required mode enforces real membership like every other group-owned read.
-  const players =
-    config.authMode === 'legacy'
-      ? (db
-          .prepare('SELECT id, name, color, avatar FROM players WHERE deactivated_at IS NULL ORDER BY name COLLATE NOCASE')
-          .all() as Array<{ id: string; name: string; color: string; avatar: string | null }>)
-      : (db
-          .prepare(
-            `SELECT p.id, p.name, p.color, p.avatar
-             FROM players p
-             JOIN group_memberships gm ON gm.player_id = p.id
-             WHERE p.deactivated_at IS NULL AND gm.group_id = ? AND gm.status = 'active'
-             ORDER BY p.name COLLATE NOCASE`
-          )
-          .all(groupId) as Array<{ id: string; name: string; color: string; avatar: string | null }>);
+  const players = db
+    .prepare(
+      `SELECT p.id, p.name, p.color, p.avatar
+       FROM players p
+       JOIN group_memberships gm ON gm.player_id = p.id
+       WHERE p.deactivated_at IS NULL AND gm.group_id = ? AND gm.status = 'active'
+       ORDER BY p.name COLLATE NOCASE`
+    )
+    .all(groupId) as Array<{ id: string; name: string; color: string; avatar: string | null }>;
 
   const statusRows = db
     .prepare('SELECT player_id, MAX(last_seen) AS last_seen, MAX(manual_note) AS manual_note, MAX(activity_tracked) AS activity_tracked FROM tracking_live_contexts WHERE group_id = ? GROUP BY player_id')
@@ -275,7 +265,6 @@ export function startOfflineSweeper(io: Server): void {
 
     const refreshPresence = () => {
       const groupIds = activePlayerGroupIds(playerId);
-      if (config.authMode === 'legacy' || groupIds.length === 0) groupIds.push(DEFAULT_GROUP_ID);
       for (const groupId of new Set(groupIds)) {
         broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
       }

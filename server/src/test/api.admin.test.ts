@@ -1,13 +1,13 @@
-// Admin base: role toggling and test-user administration in legacy mode.
+// Admin base: instance roles are managed only through group memberships.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 
-const app = createApp();
+const app = createTestApp();
 
-test('PATCH /api/players/:id toggles is_admin and validates the type', async () => {
+test('PATCH /api/players/:id rejects the retired direct is_admin toggle', async () => {
   const created = await request(app).post('/api/players').send({ name: 'AdminTest' });
   assert.equal(created.status, 201);
   assert.equal(created.body.is_admin, 0);
@@ -17,16 +17,8 @@ test('PATCH /api/players/:id toggles is_admin and validates the type', async () 
   assert.equal(bad.status, 400);
 
   const grant = await request(app).patch(`/api/players/${id}`).send({ isAdmin: true });
-  assert.equal(grant.status, 200);
-  assert.equal(grant.body.is_admin, 1);
-
-  const single = await request(app).get(`/api/players/${id}`);
-  assert.equal(single.body.is_admin, 1);
-
-  const second = await request(app).post('/api/players').send({ name: 'SecondAdminTest' });
-  assert.equal((await request(app).patch(`/api/players/${second.body.id}`).send({ isAdmin: true })).status, 200);
+  assert.equal(grant.status, 400);
 
   const revoke = await request(app).patch(`/api/players/${id}`).send({ isAdmin: false });
-  assert.equal(revoke.status, 200);
-  assert.equal(revoke.body.is_admin, 0);
+  assert.equal(revoke.status, 400);
 });

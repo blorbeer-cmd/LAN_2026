@@ -5,7 +5,7 @@ import type { AddressInfo } from 'net';
 import { Server } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp, installTestSocketIdentity } from './testApp';
 import { registerPongSockets } from '../arcade/pong';
 import { clearLobbyMemberships } from '../arcade/lobbyMembership';
 import { db } from '../db';
@@ -28,8 +28,9 @@ function waitForEvent<T>(socket: ClientSocket, event: string): Promise<T> {
 
 test('Pong Doppel requires two full ready teams and awards the whole winning team', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerPongSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
@@ -131,8 +132,9 @@ test('Pong Doppel requires two full ready teams and awards the whole winning tea
 
 test('Pong AI doubles quick start creates one human with three ready bots', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerPongSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;

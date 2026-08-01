@@ -2989,11 +2989,9 @@ registerMigration({
 // single place migrations actually execute.
 runRegisteredMigrations();
 
-// In required mode the active default-group role is the source of truth for
-// instance admin rights. Run this on every startup so a later mode switch is
-// reconciled as well; only actual changes are audited.
-function reconcileRequiredModeInstanceAdmins(): void {
-  if (config.authMode !== 'required') return;
+// The active default-group role is the source of truth for instance admin
+// rights. Reconcile on every startup; only actual changes are audited.
+function reconcileInstanceAdmins(): void {
   const mismatches = db
     .prepare(
       `WITH derived AS (
@@ -3034,7 +3032,7 @@ function reconcileRequiredModeInstanceAdmins(): void {
   })();
 }
 
-reconcileRequiredModeInstanceAdmins();
+reconcileInstanceAdmins();
 
 // createPushMuteTable() ensures the delivery tables push_mutes and kiosk_tokens
 // (both also created inside v44) *outside* the version counter, on every start.

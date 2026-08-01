@@ -118,7 +118,6 @@ test('game catalog, process names, skills/preferences and live status are roles-
     execFileSync(process.execPath, ['-e', script], {
       env: {
         ...process.env,
-        AUTH_MODE: 'required',
         ADMIN_RECOVERY_CODE: RECOVERY_CODE,
         COOKIE_SECURE: '0',
         DB_FILE: ':memory:',
@@ -174,7 +173,6 @@ test('catalog administration keeps working in required single-group mode', () =>
     execFileSync(process.execPath, ['-e', script], {
       env: {
         ...process.env,
-        AUTH_MODE: 'required',
         ADMIN_RECOVERY_CODE: RECOVERY_CODE,
         COOKIE_SECURE: '0',
         DB_FILE: ':memory:',

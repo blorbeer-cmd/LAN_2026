@@ -19,12 +19,16 @@ const { getRunningProcessNames } = require('../../processList');
 
 const PORT = 3910;
 const BASE_URL = `http://localhost:${PORT}`;
+const ADMIN_NAME = 'Agent E2E Admin';
+const ADMIN_PASSWORD = 'agent-e2e-admin-password';
 
 let serverProcess;
 let stopAgent;
 let configFile;
 let stateFilePath;
 let player;
+let adminCookie;
+let playerCookie;
 
 async function waitForServer(url, timeoutMs = 10_000) {
   const start = Date.now();
@@ -46,16 +50,37 @@ before(async () => {
     throw new Error(`Server build not found at ${serverEntry} — run "npm run build" in server/ first.`);
   }
   serverProcess = spawn('node', [serverEntry], {
-    env: { ...process.env, PORT: String(PORT), DB_FILE: ':memory:', ACCESS_TOKEN: '' },
+    env: {
+      ...process.env,
+      PORT: String(PORT),
+      DB_FILE: ':memory:',
+      COOKIE_SECURE: '0',
+      BOOTSTRAP_ADMIN_1_NAME: ADMIN_NAME,
+      BOOTSTRAP_ADMIN_1_PASSWORD: ADMIN_PASSWORD,
+    },
     stdio: 'ignore',
   });
   await waitForServer(`${BASE_URL}/api/health`);
+  const login = await fetch(`${BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: ADMIN_NAME, password: ADMIN_PASSWORD }),
+  });
+  assert.equal(login.status, 200);
+  adminCookie = login.headers.get('set-cookie').split(';')[0];
+  const reauthenticated = await fetch(`${BASE_URL}/api/auth/reauth`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    body: JSON.stringify({ password: ADMIN_PASSWORD }),
+  });
+  assert.equal(reauthenticated.status, 204);
 });
 
 after(async () => {
   if (stopAgent) stopAgent();
   serverProcess?.kill();
   if (configFile && fs.existsSync(configFile)) fs.unlinkSync(configFile);
+  if (stateFilePath && fs.existsSync(stateFilePath)) fs.unlinkSync(stateFilePath);
 });
 
 test('agent reports the running node process and the server reflects it as "playing"', async () => {
@@ -66,23 +91,37 @@ test('agent reports the running node process and the server reflects it as "play
   // Map our own detected process name to a throwaway game.
   const gameRes = await fetch(`${BASE_URL}/api/games`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
     body: JSON.stringify({ name: 'E2E Node Game' }),
   });
   const game = await gameRes.json();
   await fetch(`${BASE_URL}/api/games/${game.id}/processes`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
     body: JSON.stringify({ processName: nodeProcessName }),
   });
 
   // Create a player and grab their API key.
   const playerRes = await fetch(`${BASE_URL}/api/players`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
     body: JSON.stringify({ name: 'E2E Agent Player' }),
   });
   player = await playerRes.json();
+  const inviteRes = await fetch(`${BASE_URL}/api/auth/invites`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    body: JSON.stringify({ purpose: 'claim', playerId: player.id }),
+  });
+  const invite = await inviteRes.json();
+  assert.equal(inviteRes.status, 201, JSON.stringify(invite));
+  const claimRes = await fetch(`${BASE_URL}/api/auth/claim`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: invite.code, password: 'agent-e2e-player-password' }),
+  });
+  assert.equal(claimRes.status, 200);
+  playerCookie = claimRes.headers.get('set-cookie').split(';')[0];
 
   // Write a real agent config file and start the real agent loop.
   configFile = path.join(os.tmpdir(), `agent-e2e-config-${Date.now()}.json`);
@@ -98,7 +137,7 @@ test('agent reports the running node process and the server reflects it as "play
   // Give it a couple of poll cycles to scan + report.
   await new Promise((r) => setTimeout(r, 1200));
 
-  const liveRes = await fetch(`${BASE_URL}/api/live`);
+  const liveRes = await fetch(`${BASE_URL}/api/live`, { headers: { Cookie: adminCookie } });
   const board = await liveRes.json();
   const entry = board.find((p) => p.player_id === player.id);
 
@@ -111,11 +150,10 @@ test('agent reports the running node process and the server reflects it as "play
 });
 
 test('pausing via the web profile (PATCH /api/players) is picked up by the already-running agent', async () => {
-  // The web profile always sends the device identity header (see
-  // server/public/js/api.js); profile-field updates without it are rejected.
+  // The productive web profile uses the player's personal session.
   await fetch(`${BASE_URL}/api/players/${player.id}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', 'x-player-id': player.id },
+    headers: { 'Content-Type': 'application/json', Cookie: playerCookie },
     body: JSON.stringify({ trackingPaused: true }),
   });
 
@@ -127,7 +165,7 @@ test('pausing via the web profile (PATCH /api/players) is picked up by the alrea
 
   await fetch(`${BASE_URL}/api/players/${player.id}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', 'x-player-id': player.id },
+    headers: { 'Content-Type': 'application/json', Cookie: playerCookie },
     body: JSON.stringify({ trackingPaused: false }),
   });
   await new Promise((r) => setTimeout(r, 700));

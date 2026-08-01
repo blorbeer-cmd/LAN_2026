@@ -3,9 +3,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 
-const app = createApp();
+const app = createTestApp();
 let createdId: string;
 
 test('GET /api/games returns the seeded default games with process names', async () => {
@@ -202,9 +202,9 @@ test('POST /api/games rejects a malformed trailer link', async () => {
   assert.equal(res.status, 400);
 });
 
-test('POST /api/games rejects an unknown playerId as suggester', async () => {
+test('POST /api/games rejects an invalid session identity', async () => {
   const res = await request(app).post('/api/games').send({ name: 'Orphan Suggestion', status: 'suggestion', playerId: 'nope' });
-  assert.equal(res.status, 404);
+  assert.equal(res.status, 401);
 });
 
 test('POST /api/games/:id/promote moves a suggestion into the catalog', async () => {

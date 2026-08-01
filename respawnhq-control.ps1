@@ -4,11 +4,9 @@ Add-Type -AssemblyName System.Drawing
 $RepoRoot = "C:\Users\BOB\LAN_2026"
 $ServerDir = Join-Path $RepoRoot "server"
 $LogDir = Join-Path $RepoRoot "logs"
-$AccessToken = "NudelGehtImmer"   # nur im Legacy-Modus genutzt; in "required" ignoriert
 $TunnelName = "lan2026"
 
 # --- Vorgaben fuer die GUI-Felder (koennen im Fenster ueberschrieben werden) ---
-$DefaultAuthRequired = $true       # Checkbox-Vorgabe: $true = required, $false = legacy
 $DefaultAdmin1Name   = "Bob"
 $DefaultAdmin1Pass   = ""          # leer lassen und im Fenster eintragen
 $DefaultAdmin2Name   = ""
@@ -16,7 +14,7 @@ $DefaultAdmin2Pass   = ""
 
 # --- Optionale Extras (nur bei Bedarf, kein GUI-Feld) ---
 $AdminRecoveryCode = ""            # optional; lokal ohne NODE_ENV=production nicht zwingend
-$KioskToken        = ""            # optional; leer = Kiosk im required-Modus gesperrt
+$KioskToken        = ""            # optional; leer = Kiosk gesperrt
 # $env:COOKIE_SECURE bewusst NICHT gesetzt: Auslieferung laeuft ueber den HTTPS-Tunnel,
 # sichere Cookies funktionieren dort. Nur fuer nacktes http://<LAN-IP> auf "0" setzen.
 
@@ -31,7 +29,6 @@ $script:TunnelProcess = $null
 $script:reallyExit = $false
 
 # GUI-Referenzen (werden weiter unten befuellt; Start-ServerProc liest sie zur Laufzeit)
-$script:chkRequired   = $null
 $script:txtAdmin1Name = $null
 $script:txtAdmin1Pass = $null
 $script:txtAdmin2Name = $null
@@ -45,12 +42,6 @@ function Stop-All {
 }
 
 function Start-ServerProc {
-    # Auth-Modus aus der Checkbox (Fallback: Vorgabe oben)
-    $requiredOn = $DefaultAuthRequired
-    if ($script:chkRequired) { $requiredOn = $script:chkRequired.Checked }
-    $env:AUTH_MODE    = if ($requiredOn) { "required" } else { "legacy" }
-    $env:ACCESS_TOKEN = $AccessToken
-
     if ($AdminRecoveryCode) { $env:ADMIN_RECOVERY_CODE = $AdminRecoveryCode }
     else { Remove-Item Env:ADMIN_RECOVERY_CODE -ErrorAction SilentlyContinue }
     if ($KioskToken) { $env:KIOSK_TOKEN = $KioskToken }
@@ -62,14 +53,12 @@ function Start-ServerProc {
     Remove-Item Env:BOOTSTRAP_ADMIN_2_NAME     -ErrorAction SilentlyContinue
     Remove-Item Env:BOOTSTRAP_ADMIN_2_PASSWORD -ErrorAction SilentlyContinue
 
-    if ($requiredOn) {
-        $n1 = if ($script:txtAdmin1Name) { $script:txtAdmin1Name.Text.Trim() } else { $DefaultAdmin1Name }
-        $p1 = if ($script:txtAdmin1Pass) { $script:txtAdmin1Pass.Text }        else { $DefaultAdmin1Pass }
-        $n2 = if ($script:txtAdmin2Name) { $script:txtAdmin2Name.Text.Trim() } else { $DefaultAdmin2Name }
-        $p2 = if ($script:txtAdmin2Pass) { $script:txtAdmin2Pass.Text }        else { $DefaultAdmin2Pass }
-        if ($n1 -and $p1) { $env:BOOTSTRAP_ADMIN_1_NAME = $n1; $env:BOOTSTRAP_ADMIN_1_PASSWORD = $p1 }
-        if ($n2 -and $p2) { $env:BOOTSTRAP_ADMIN_2_NAME = $n2; $env:BOOTSTRAP_ADMIN_2_PASSWORD = $p2 }
-    }
+    $n1 = if ($script:txtAdmin1Name) { $script:txtAdmin1Name.Text.Trim() } else { $DefaultAdmin1Name }
+    $p1 = if ($script:txtAdmin1Pass) { $script:txtAdmin1Pass.Text }        else { $DefaultAdmin1Pass }
+    $n2 = if ($script:txtAdmin2Name) { $script:txtAdmin2Name.Text.Trim() } else { $DefaultAdmin2Name }
+    $p2 = if ($script:txtAdmin2Pass) { $script:txtAdmin2Pass.Text }        else { $DefaultAdmin2Pass }
+    if ($n1 -and $p1) { $env:BOOTSTRAP_ADMIN_1_NAME = $n1; $env:BOOTSTRAP_ADMIN_1_PASSWORD = $p1 }
+    if ($n2 -and $p2) { $env:BOOTSTRAP_ADMIN_2_NAME = $n2; $env:BOOTSTRAP_ADMIN_2_PASSWORD = $p2 }
 
     $script:ServerProcess = Start-Process -FilePath "node" -ArgumentList @("dist/index.js") -WorkingDirectory $ServerDir -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput $ServerOutLog -RedirectStandardError $ServerErrLog
@@ -81,7 +70,7 @@ function Start-TunnelProc {
 }
 
 function Test-ServerHealthy {
-    try { (Invoke-WebRequest -Uri "http://localhost:3000/api/health" -Headers @{ "x-access-token" = $AccessToken } -TimeoutSec 3 -UseBasicParsing).StatusCode -eq 200 }
+    try { (Invoke-WebRequest -Uri "http://localhost:3000/api/health" -TimeoutSec 3 -UseBasicParsing).StatusCode -eq 200 }
     catch { $false }
 }
 
@@ -140,37 +129,29 @@ $txtBranch.Size = New-Object System.Drawing.Size(280,22)
 $txtBranch.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 $form.Controls.Add($txtBranch)
 
-# --- Login-Einstellungen (Auth-Modus + Start-Admins) ---
+# --- Login-Einstellungen (Start-Admins) ---
 $grpLogin = New-Object System.Windows.Forms.GroupBox
 $grpLogin.Text = "Login-Einstellungen"
 $grpLogin.Location = New-Object System.Drawing.Point(20,118)
-$grpLogin.Size = New-Object System.Drawing.Size(340,150)
+$grpLogin.Size = New-Object System.Drawing.Size(340,125)
 $form.Controls.Add($grpLogin)
-
-$chkRequired = New-Object System.Windows.Forms.CheckBox
-$chkRequired.Text = "Persoenliche Logins (aus = Legacy)"
-$chkRequired.Location = New-Object System.Drawing.Point(14,22)
-$chkRequired.Size = New-Object System.Drawing.Size(315,22)
-$chkRequired.Checked = $DefaultAuthRequired
-$grpLogin.Controls.Add($chkRequired)
-$script:chkRequired = $chkRequired
 
 $lblAdmins = New-Object System.Windows.Forms.Label
 $lblAdmins.Text = "Erste Admins (Name / Passwort) - nur beim ersten Start noetig:"
-$lblAdmins.Location = New-Object System.Drawing.Point(14,50)
+$lblAdmins.Location = New-Object System.Drawing.Point(14,22)
 $lblAdmins.Size = New-Object System.Drawing.Size(315,18)
 $lblAdmins.Font = New-Object System.Drawing.Font("Segoe UI", 8)
 $grpLogin.Controls.Add($lblAdmins)
 
 $txtAdmin1Name = New-Object System.Windows.Forms.TextBox
-$txtAdmin1Name.Location = New-Object System.Drawing.Point(14,72)
+$txtAdmin1Name.Location = New-Object System.Drawing.Point(14,44)
 $txtAdmin1Name.Size = New-Object System.Drawing.Size(150,22)
 $txtAdmin1Name.Text = $DefaultAdmin1Name
 $grpLogin.Controls.Add($txtAdmin1Name)
 $script:txtAdmin1Name = $txtAdmin1Name
 
 $txtAdmin1Pass = New-Object System.Windows.Forms.TextBox
-$txtAdmin1Pass.Location = New-Object System.Drawing.Point(174,72)
+$txtAdmin1Pass.Location = New-Object System.Drawing.Point(174,44)
 $txtAdmin1Pass.Size = New-Object System.Drawing.Size(150,22)
 $txtAdmin1Pass.UseSystemPasswordChar = $true
 $txtAdmin1Pass.Text = $DefaultAdmin1Pass
@@ -178,14 +159,14 @@ $grpLogin.Controls.Add($txtAdmin1Pass)
 $script:txtAdmin1Pass = $txtAdmin1Pass
 
 $txtAdmin2Name = New-Object System.Windows.Forms.TextBox
-$txtAdmin2Name.Location = New-Object System.Drawing.Point(14,100)
+$txtAdmin2Name.Location = New-Object System.Drawing.Point(14,72)
 $txtAdmin2Name.Size = New-Object System.Drawing.Size(150,22)
 $txtAdmin2Name.Text = $DefaultAdmin2Name
 $grpLogin.Controls.Add($txtAdmin2Name)
 $script:txtAdmin2Name = $txtAdmin2Name
 
 $txtAdmin2Pass = New-Object System.Windows.Forms.TextBox
-$txtAdmin2Pass.Location = New-Object System.Drawing.Point(174,100)
+$txtAdmin2Pass.Location = New-Object System.Drawing.Point(174,72)
 $txtAdmin2Pass.Size = New-Object System.Drawing.Size(150,22)
 $txtAdmin2Pass.UseSystemPasswordChar = $true
 $txtAdmin2Pass.Text = $DefaultAdmin2Pass
@@ -260,7 +241,7 @@ $btnUpdate.Add_Click({
     & npm --prefix $ServerDir install 2>&1 | Out-Null
     Write-Log "npm run build..."
     & npm --prefix $ServerDir run build 2>&1 | Out-Null
-    Write-Log "Starte neu (Modus: $(if ($chkRequired.Checked) { 'required' } else { 'legacy' }))..."
+    Write-Log "Starte neu..."
     Start-ServerProc
     Start-TunnelProc
     Write-Log "Fertig: '$branch' laeuft jetzt."
@@ -268,7 +249,7 @@ $btnUpdate.Add_Click({
 })
 
 $btnRestart.Add_Click({
-    Write-Log "Starte neu (Modus: $(if ($chkRequired.Checked) { 'required' } else { 'legacy' }))..."
+    Write-Log "Starte neu..."
     Stop-All
     Start-Sleep -Seconds 2
     Start-ServerProc
@@ -327,7 +308,7 @@ $form.Add_Shown({
     Write-Log "Raeume alte Prozesse auf..."
     Stop-All
     Start-Sleep -Seconds 1
-    Write-Log "Starte Server und Tunnel (Modus: $(if ($chkRequired.Checked) { 'required' } else { 'legacy' }))..."
+    Write-Log "Starte Server und Tunnel..."
     Start-ServerProc
     Start-TunnelProc
 })

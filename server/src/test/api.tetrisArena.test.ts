@@ -5,7 +5,7 @@ import type { AddressInfo } from 'net';
 import { Server } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp, DEFAULT_GROUP_ID, installTestSocketIdentity, TEST_ADMIN_ID } from './testApp';
 import { registerTetrisSockets } from '../arcade/tetris';
 import { clearLobbyMemberships } from '../arcade/lobbyMembership';
 import { db } from '../db';
@@ -28,8 +28,9 @@ function waitForEvent<T>(socket: ClientSocket, event: string): Promise<T> {
 
 test('Tetris Arena starts with four players, survives departures and records placements once', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerTetrisSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
@@ -131,8 +132,9 @@ test('Tetris Arena starts with four players, survives departures and records pla
 
 test('a paused KI Arena ends when its last human host leaves', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerTetrisSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
@@ -155,7 +157,11 @@ test('a paused KI Arena ends when its last human host leaves', async () => {
       true,
     );
     const started = await startedPromise;
-    io.sockets.sockets.get(observerSocket.id!)?.join(`tetris:${started.matchId}`);
+    const observer = io.sockets.sockets.get(observerSocket.id!);
+    assert.ok(observer);
+    observer.data.authPlayerId = TEST_ADMIN_ID;
+    observer.data.groupId = DEFAULT_GROUP_ID;
+    observer.join(`tetris:${started.matchId}`);
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, started.beginsAt - Date.now()) + 25));
 
     assert.equal(
@@ -181,8 +187,9 @@ test('a paused KI Arena ends when its last human host leaves', async () => {
 
 test('Tetris duel enforces readiness and batches simultaneous socket top-outs', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerTetrisSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;

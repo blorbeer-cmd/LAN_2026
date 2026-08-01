@@ -59,10 +59,9 @@ before(async () => {
       ...process.env,
       PORT: String(PORT),
       DB_FILE: ':memory:',
-      AUTH_MODE: 'required',
       ADMIN_RECOVERY_CODE: RECOVERY_CODE,
       COOKIE_SECURE: '0',
-      KIOSK_TOKEN: 'legacy-phase5e-token',
+      KIOSK_TOKEN: 'e2e-phase5e-token',
     },
     stdio: 'ignore',
   });

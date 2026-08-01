@@ -1,5 +1,4 @@
 import { db, DEFAULT_GROUP_ID } from './db';
-import { config } from './config';
 import { writeAdminAudit } from './adminAudit';
 
 export { DEFAULT_GROUP_ID };
@@ -197,16 +196,15 @@ function activeClaimedOwnerCount(groupId: string): number {
   ).count;
 }
 
-// Required mode freezes group role (owner/admin/member) as the instance
+// Group role (owner/admin/member) is the instance
 // rights model (see docs/plans/reset-single-group.md §9.1). players.is_admin
 // — the separate flag still gating account-management routes (invites,
 // backup, (de)activation, see auth.ts/players.ts) — is derived from it here
 // instead of staying independently settable, so the two can no longer
 // silently diverge. Scoped to the one real group on purpose: a hypothetical
 // future secondary group must not be able to grant instance-wide rights.
-// Legacy mode keeps is_admin a directly togglable flag and is untouched.
 export function syncInstanceAdminForRole(groupId: string, playerId: string, role: GroupRole, actorPlayerId?: string): boolean {
-  if (config.authMode !== 'required' || groupId !== DEFAULT_GROUP_ID) return false;
+  if (groupId !== DEFAULT_GROUP_ID) return false;
   const player = db.prepare('SELECT is_admin FROM players WHERE id = ?').get(playerId) as
     { is_admin: number } | undefined;
   if (!player) return false;
@@ -230,15 +228,15 @@ export function syncInstanceAdminForCurrentRole(playerId: string, actorPlayerId?
 }
 
 // Startup bootstrap accounts are system-managed rather than changed by a
-// signed-in owner. In required mode they still have to go through the group
-// role source of truth so seeding cannot recreate is_admin/role drift after
+// signed-in owner. They still go through the group role source of truth so
+// seeding cannot recreate is_admin/role drift after
 // the startup reconciliation has already run. The first account remains the
 // owner selected by ensureDefaultGroupMembership; later bootstrap accounts
 // become admins.
 export function ensureBootstrapAdminMembership(playerId: string): GroupMembershipRow {
   return db.transaction(() => {
     let membership = ensureDefaultGroupMembership(playerId);
-    if (config.authMode === 'required' && membership.status === 'active' && membership.role === 'member') {
+    if (membership.status === 'active' && membership.role === 'member') {
       db.prepare(
         `UPDATE group_memberships SET role = 'admin'
          WHERE group_id = ? AND player_id = ? AND status = 'active'`,
@@ -272,10 +270,7 @@ export function changeGroupMemberRole(
     if (target.role === 'owner' && nextRole !== 'owner') {
       const removesLastActiveOwner = activeOwnerCount(groupId) <= 1;
       const removesLastClaimedOwner =
-        config.authMode === 'required' &&
-        groupId === DEFAULT_GROUP_ID &&
-        targetPlayer.password_hash !== null &&
-        activeClaimedOwnerCount(groupId) <= 1;
+        groupId === DEFAULT_GROUP_ID && targetPlayer.password_hash !== null && activeClaimedOwnerCount(groupId) <= 1;
       if (removesLastActiveOwner || removesLastClaimedOwner) {
         return { ok: false, code: 'last_owner' } as const;
       }
@@ -309,10 +304,7 @@ export function removeGroupMember(
         { password_hash: string | null } | undefined;
       const removesLastActiveOwner = activeOwnerCount(groupId) <= 1;
       const removesLastClaimedOwner =
-        config.authMode === 'required' &&
-        groupId === DEFAULT_GROUP_ID &&
-        targetPlayer?.password_hash != null &&
-        activeClaimedOwnerCount(groupId) <= 1;
+        groupId === DEFAULT_GROUP_ID && targetPlayer?.password_hash != null && activeClaimedOwnerCount(groupId) <= 1;
       if (removesLastActiveOwner || removesLastClaimedOwner) {
         return { ok: false, code: 'last_owner' } as const;
       }

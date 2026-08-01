@@ -8,10 +8,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 import { createInvite } from '../invites';
 
-const app = createApp();
+const app = createTestApp();
 
 const statusCounts = (statuses: number[]) =>
   statuses.reduce<Record<number, number>>((acc, s) => ((acc[s] = (acc[s] ?? 0) + 1), acc), {});
@@ -334,12 +334,12 @@ test('simultaneous test-user seeding: no duplicate names or double-booked seats'
 test('simultaneous broadcast endings: exactly one request ends the announcement', async () => {
   const created = await request(app)
     .post('/api/broadcasts')
-    .send({ playerId: playerIds[0], message: 'Race-Durchsage' });
+    .send({ message: 'Race-Durchsage' });
   assert.equal(created.status, 201);
 
   const results = await Promise.all(
     Array.from({ length: 6 }, () =>
-      request(app).post(`/api/broadcasts/${created.body.id}/end`).send({ playerId: playerIds[0] })
+      request(app).post(`/api/broadcasts/${created.body.id}/end`).send({})
     )
   );
   const counts = statusCounts(results.map((result) => result.status));

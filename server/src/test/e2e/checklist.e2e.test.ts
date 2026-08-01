@@ -9,6 +9,13 @@ import assert from 'node:assert/strict';
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { chromium, Browser, Page } from 'playwright';
+import {
+  addSessionCookie,
+  authenticatedServerEnv,
+  createE2EAccount,
+  E2EAccount,
+  loginE2EAdmin,
+} from './authHelpers';
 
 const PORT = 3912; // 3901 flows, 3902 access, 3903 arcade, 3904 authGate, 3910 agent integration, 3911 phase5e isolation
 const BASE_URL = `http://localhost:${PORT}`;
@@ -16,6 +23,8 @@ const BASE_URL = `http://localhost:${PORT}`;
 let serverProcess: ChildProcess;
 let browser: Browser;
 let page: Page;
+let alice: E2EAccount;
+let bob: E2EAccount;
 
 async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
   const start = Date.now();
@@ -37,20 +46,21 @@ async function openChecklist(): Promise<void> {
   await page.waitForSelector('.view-title:has-text("Checkliste")');
 }
 
-async function switchIdentity(label: string): Promise<void> {
-  await page.click('#profile-btn');
-  await page.waitForSelector('#profile-not-me');
-  await page.click('#profile-not-me');
-  await page.selectOption('#profile-whoami', { label });
-  await page.waitForSelector('#profile-not-me');
+async function switchAccount(account: E2EAccount): Promise<void> {
+  await addSessionCookie(page.context(), BASE_URL, account.cookie);
+  await page.reload();
+  await page.waitForSelector('#app:not([hidden])');
 }
 
 before(async () => {
   serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
-    env: { ...process.env, PORT: String(PORT), DB_FILE: ':memory:', ACCESS_TOKEN: '' },
+    env: authenticatedServerEnv(PORT),
     stdio: 'ignore',
   });
   await waitForServer(`${BASE_URL}/api/health`);
+  const adminCookie = await loginE2EAdmin(BASE_URL);
+  alice = await createE2EAccount(BASE_URL, adminCookie, 'E2E Checklist Alice');
+  bob = await createE2EAccount(BASE_URL, adminCookie, 'E2E Checklist Bob');
   browser = await chromium.launch();
   page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   page.on('dialog', (d) => void d.accept());
@@ -66,18 +76,10 @@ after(async () => {
 });
 
 test('create a To-Do as one member, claim and complete it as another, "Mir zugewiesen" reflects the assignee', async () => {
-  const alice = await page.request.post(`${BASE_URL}/api/players`, { data: { name: 'E2E Checklist Alice' } });
-  assert.equal(alice.status(), 201);
-  const bob = await page.request.post(`${BASE_URL}/api/players`, { data: { name: 'E2E Checklist Bob' } });
-  assert.equal(bob.status(), 201);
-
+  await addSessionCookie(page.context(), BASE_URL, alice.cookie);
   await page.goto(BASE_URL);
   await page.waitForSelector('#app:not([hidden])');
   await openChecklist();
-
-  // No local identity yet - the view's own "Wer bist du?" picker appears
-  // (whoAmICardHtml), separate from the global profile switcher.
-  await page.selectOption('#checklist-whoami', { label: 'E2E Checklist Alice' });
   await page.waitForSelector('#checklist-new-todo-btn:not([disabled])');
 
   // Defaults to the To-Dos tab (not Meine Packliste).
@@ -120,7 +122,7 @@ test('create a To-Do as one member, claim and complete it as another, "Mir zugew
   assert.equal(await openCard.locator('[data-claim-task]').count(), 0);
   assert.equal(await openCard.locator('[data-cancel-task]').count(), 1);
 
-  await switchIdentity('E2E Checklist Bob');
+  await switchAccount(bob);
   await openChecklist();
   await page.waitForSelector('#checklist-new-todo-btn:not([disabled])');
 
@@ -150,8 +152,7 @@ test('create a To-Do as one member, claim and complete it as another, "Mir zugew
 });
 
 test('any member (not just Owner/Admin) can create and directly self-assign a To-Do', async () => {
-  await page.goto(BASE_URL);
-  await page.waitForSelector('#app:not([hidden])');
+  await switchAccount(bob);
   await openChecklist();
   await page.waitForSelector('#checklist-new-todo-btn:not([disabled])');
 

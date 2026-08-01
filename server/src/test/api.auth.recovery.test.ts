@@ -29,6 +29,7 @@ test('recovery code registers exactly one admin, then stops working', () => {
     const assert = require('assert/strict');
     const request = require('supertest');
     const { createApp } = require(${JSON.stringify(APP_JS_PATH)});
+    const { db } = require(${JSON.stringify(DB_JS_PATH)});
 
     (async () => {
       const app = createApp();
@@ -59,22 +60,24 @@ test('recovery code can instead claim an existing unclaimed player as admin, the
     const assert = require('assert/strict');
     const request = require('supertest');
     const { createApp } = require(${JSON.stringify(APP_JS_PATH)});
+    const { db } = require(${JSON.stringify(DB_JS_PATH)});
 
     (async () => {
       const app = createApp();
 
-      const playerA = await request(app).post('/api/players').send({ name: 'Unclaimed Legacy Player' });
-      assert.equal(playerA.status, 201);
+      const playerA = { id: 'unclaimed-recovery-player-a' };
+      db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+        .run(playerA.id, 'Unclaimed Player', 'unclaimed-recovery-key-a', Date.now());
 
       const bootstrapAccounts = await request(app).get('/api/auth/bootstrap-accounts').query({
         code: ${JSON.stringify(RECOVERY_CODE)},
       });
       assert.equal(bootstrapAccounts.status, 200);
-      assert.deepEqual(bootstrapAccounts.body.map((player) => player.id), [playerA.body.id]);
+      assert.deepEqual(bootstrapAccounts.body.map((player) => player.id), [playerA.id]);
 
       const claimed = await request(app).post('/api/auth/claim').send({
         code: ${JSON.stringify(RECOVERY_CODE)},
-        playerId: playerA.body.id,
+        playerId: playerA.id,
         password: 'claimed via recovery code',
       });
       assert.equal(claimed.status, 200, 'recovery-code claim should succeed: ' + JSON.stringify(claimed.body));
@@ -85,10 +88,12 @@ test('recovery code can instead claim an existing unclaimed player as admin, the
         'bootstrap account listing must close with the recovery path'
       );
 
-      const playerB = await request(app).post('/api/players').send({ name: 'Second Unclaimed Player' });
+      const playerB = { id: 'unclaimed-recovery-player-b' };
+      db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+        .run(playerB.id, 'Second Unclaimed Player', 'unclaimed-recovery-key-b', Date.now());
       const secondClaim = await request(app).post('/api/auth/claim').send({
         code: ${JSON.stringify(RECOVERY_CODE)},
-        playerId: playerB.body.id,
+        playerId: playerB.id,
         password: 'irrelevant password',
       });
       assert.equal(secondClaim.status, 400, 'recovery code must stop working once an admin has claimed: ' + JSON.stringify(secondClaim.body));
@@ -99,7 +104,7 @@ test('recovery code can instead claim an existing unclaimed player as admin, the
   `);
 });
 
-// Required mode derives players.is_admin from the group role
+// Personal auth derives players.is_admin from the group role
 // (groups.ts, syncInstanceAdminForRole). recoveryCodeUsable() (routes/auth.ts)
 // gates the recovery code on hasClaimedAdmin() (is_admin=1 + password_hash),
 // a check independent of groups.ts's own hasOwner reading - a stale
@@ -109,7 +114,7 @@ test('recovery code can instead claim an existing unclaimed player as admin, the
 const APP_JS_PATH_REQUIRED = APP_JS_PATH;
 const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
 
-test('recovery code bootstrap still grants admin in required mode despite a stale unclaimed owner row', () => {
+test('recovery code bootstrap still grants admin despite a stale unclaimed owner row', () => {
   const script = `
     const assert = require('assert/strict');
     const request = require('supertest');
@@ -153,7 +158,7 @@ test('recovery code bootstrap still grants admin in required mode despite a stal
   `;
   try {
     execFileSync(process.execPath, ['-e', script], {
-      env: { ...process.env, AUTH_MODE: 'required', ADMIN_RECOVERY_CODE: RECOVERY_CODE, COOKIE_SECURE: '0', DB_FILE: ':memory:' },
+      env: { ...process.env, ADMIN_RECOVERY_CODE: RECOVERY_CODE, COOKIE_SECURE: '0', DB_FILE: ':memory:' },
       stdio: 'pipe',
     });
   } catch (error) {
@@ -213,7 +218,7 @@ test('recovery code claim on an already-migrated legacy member still grants owne
   `;
   try {
     execFileSync(process.execPath, ['-e', script], {
-      env: { ...process.env, AUTH_MODE: 'required', ADMIN_RECOVERY_CODE: RECOVERY_CODE, COOKIE_SECURE: '0', DB_FILE: ':memory:' },
+      env: { ...process.env, ADMIN_RECOVERY_CODE: RECOVERY_CODE, COOKIE_SECURE: '0', DB_FILE: ':memory:' },
       stdio: 'pipe',
     });
   } catch (error) {

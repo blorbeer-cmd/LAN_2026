@@ -51,9 +51,8 @@ Image-Build und keinen Produktionsneustart aus. Vor einem App-Update wird die ve
 `docker-compose.yml` auf den Server übertragen; Geheimnisse verbleiben ausschließlich in dessen
 nicht versionierter `.env`.
 
-Das Runtime-Image besitzt einen Docker-Healthcheck gegen `/api/health`. Im Required-Auth-Modus ist
-dieser reine Status-Endpunkt ohne Session erreichbar; ältere Legacy-Images verwenden dafür weiter
-den im Container vorhandenen `ACCESS_TOKEN`. Das Deployment verwendet `docker compose up -d --wait` und gilt deshalb
+Das Runtime-Image besitzt einen Docker-Healthcheck gegen `/api/health`. Dieser reine Status-Endpunkt
+ist ohne Session erreichbar. Das Deployment verwendet `docker compose up -d --wait` und gilt deshalb
 erst als erfolgreich, wenn der neue Node-Prozess Anfragen beantwortet. Bei Pull-, Start- oder
 Healthcheck-Fehlern gibt der Workflow automatisch `docker compose ps app` und die letzten 100
 Container-Logzeilen aus. Dabei wird das zuvor gepinnte Image wieder gestartet, sodass ein kaputtes
@@ -83,12 +82,11 @@ zurückzufallen.
 Die Compose-Konfiguration verwendet den lokalen Docker-Logging-Treiber mit Größen- und
 Dateilimits, damit App- und Tunnel-Logs den Datenträger nicht unbegrenzt füllen.
 
-Für `AUTH_MODE=required` muss die nicht versionierte Server-`.env` einen starken
-`ADMIN_RECOVERY_CODE` enthalten. Der Server verweigert in Produktion andernfalls bewusst den
-Start, damit ein Deployment nicht ohne erreichbaren ersten/letzten Admin live geht. Beim Cutover
-wird zuerst über `/?claim=<RECOVERY_CODE>` ein bestehendes Profil als Admin beansprucht; erst danach
-werden die übrigen persönlichen Claim-Links verteilt. `ACCESS_TOKEN` bleibt ausschließlich für
-Rollbacks auf Legacy-Images in der `.env` und wird vom aktuellen Required-Modus ignoriert.
+Die nicht versionierte Server-`.env` muss einen starken `ADMIN_RECOVERY_CODE` enthalten. Der Server
+verweigert in Produktion andernfalls bewusst den Start, damit ein Deployment nicht ohne
+erreichbaren ersten/letzten Admin live geht. Beim erstmaligen Einrichten wird über
+`/?claim=<RECOVERY_CODE>` ein bestehendes Profil als Admin beansprucht; erst danach werden die
+übrigen persönlichen Claim-Links verteilt.
 Der Bootstrap-Pfad ist danach geschlossen. Gibt es genau einen aktiven, beanspruchten Admin, kann
 `/?reset=<RECOVERY_CODE>` dieses letzte Admin-Konto wiederherstellen; bei mehreren Admins wird der
 Recovery-Code für Resets abgelehnt.
@@ -98,10 +96,10 @@ angelegt werden (`BOOTSTRAP_ADMIN_<n>_NAME` / `BOOTSTRAP_ADMIN_<n>_PASSWORD`). D
 idempotent und überschreibt kein bereits gesetztes Passwort; Details und Betriebshinweise stehen in
 [`../docs/BOOTSTRAP-ADMINS.md`](../docs/BOOTSTRAP-ADMINS.md).
 
-Der gemeinsam genutzte Bildschirm erhält im Required-Modus einen separaten `KIOSK_TOKEN` und wird
+Der gemeinsam genutzte Bildschirm erhält einen separaten `KIOSK_TOKEN` und wird
 einmalig über `/kiosk.html?token=<KIOSK_TOKEN>` eingerichtet. Dieser Zugang ist serverseitig auf die
 vom Dashboard benötigten GET-Endpunkte und das Socket-Ereignis `kiosk:subscribe` begrenzt. Ohne
-`KIOSK_TOKEN` bleibt der Kiosk im Required-Modus gesperrt. Die spätere eventbezogene Token-Ausgabe
+`KIOSK_TOKEN` bleibt der Kiosk gesperrt. Die spätere eventbezogene Token-Ausgabe
 aus dem User-Management-Konzept ersetzt diesen vorläufigen installationsweiten Token.
 
 Eine Instanz bedient genau eine Freundesgruppe (`docs/plans/reset-single-group.md`); es gibt keine

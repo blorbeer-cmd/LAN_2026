@@ -4,12 +4,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp, sessionCookie, TEST_ADMIN_ID } from './testApp';
 import { db } from '../db';
 import { config } from '../config';
 import { createSession } from '../sessions';
 
-const app = createApp();
+const app = createTestApp();
 let playerId: string;
 
 test('setup: a player with no agent report yet', async () => {
@@ -36,9 +36,16 @@ test('a login session stops implying online after the short presence window', as
   assert.equal(entry.state, 'offline');
 });
 
-test('POST /api/live/:playerId/note 404s for an unknown player', async () => {
-  const res = await request(app).post('/api/live/ghost/note').send({ note: 'Pause' });
-  assert.equal(res.status, 404);
+test('POST /api/live/:playerId/note binds the URL identity to the session', async () => {
+  const res = await request(app)
+    .post('/api/live/ghost/note')
+    .set('Cookie', sessionCookie(TEST_ADMIN_ID))
+    .send({ note: 'Pause' });
+  assert.equal(res.status, 200);
+  await request(app)
+    .post('/api/live/ghost/note')
+    .set('Cookie', sessionCookie(TEST_ADMIN_ID))
+    .send({ note: null });
 });
 
 test('POST /api/live/:playerId/note rejects an overly long note', async () => {
