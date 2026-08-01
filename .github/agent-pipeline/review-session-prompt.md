@@ -191,3 +191,7 @@ implementer. If that provider is unavailable, start a fresh session of the imple
 provider and set `review_mode` to `fallback`, but only with enforced read-only permissions. Never
 reuse the implementation conversation, never rely on prompt-only write restrictions and never
 change `verdict` to `pass` merely because the preferred reviewer ran out of quota.
+
+The reviewer does not resolve threads itself because the session is read-only. After a finding is
+confirmed fixed, the implementation session must mark the associated review threads and comments
+as resolved; a finding is complete only after the review conversation is resolved.

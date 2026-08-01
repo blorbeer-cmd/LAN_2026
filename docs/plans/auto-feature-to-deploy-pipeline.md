@@ -217,6 +217,10 @@ Der Implementierungs-Agent bearbeitet jedes Finding nachvollziehbar:
 - `rejected`: fachliche Begründung liefern; der Reviewer entscheidet erneut,
 - `needs-human`: bei kritischer oder mehrdeutiger Entscheidung eskalieren.
 
+Nach einem bestätigten `fixed` markiert der Implementierungs-Agent den zugehörigen Review-Thread
+und die darin enthaltenen Kommentare als gelöst. Ein Finding gilt für das Merge-Gate erst als
+abgeschlossen, wenn die Behebung geprüft und die zugehörige Review-Konversation gelöst ist.
+
 Nach jedem Fix-Commit beginnt ein vollständiger Review des neuen Head-SHAs. Nach drei erfolglosen
 Reviewrunden wird nicht weiter zwischen Agenten gependelt; der PR wechselt zu
 `agent:needs-human`.
@@ -276,7 +280,8 @@ erfolgreich, wenn:
 - der Branch aktuell und konfliktfrei ist,
 - das Review exakt den aktuellen Head-SHA geprüft hat,
 - das Review `pass` meldet,
-- alle Review-Findings und blockierenden Threads erledigt sind,
+- alle Review-Findings und blockierenden Threads erledigt sowie die zugehörigen Review-
+  Konversationen als gelöst markiert sind,
 - Thread-Snapshots für den aktuellen Head monoton versioniert sind und kein älterer Snapshot einen
   neueren Diskussionsstand überschreiben kann,
 - kein `agent:waiting`, `agent:needs-human` oder `agent:no-auto` aktiv ist,
