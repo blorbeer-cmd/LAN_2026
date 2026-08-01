@@ -77,9 +77,12 @@ Unabhängigkeits- und Sicherheitsregeln:
 8. Melde nur konkrete, durch den Diff verursachte und vom Autor behebbare Findings. Keine
    allgemeinen Stilwünsche, keine bloßen Fragen und keine Punkte, die ausschließlich ein bereits
    grüner deterministischer Linter abdeckt.
-9. Belege jedes Finding mit engem Datei-/Zeilenbezug, einem reproduzierbaren Szenario oder einer
-   klaren Ausführungskette und einer konkreten Verifikation des Fixes. Erfinde keine
-   Testergebnisse. Lies vorhandene CI-Ergebnisse, führe aber keine zustandsändernden Aktionen aus.
+9. Belege jedes Finding nach Möglichkeit mit engem Datei-/Zeilenbezug, einem reproduzierbaren
+   Szenario oder einer klaren Ausführungskette und einer konkreten Verifikation des Fixes. Wenn kein
+   stabiler Inline-Anker existiert, verwende `disposition: needs-human`, `anchor: none`,
+   `file: null`, `line: null` und `verdict: blocked`; erfinde keinen Datei-/Zeilenanker. Erfinde
+   keine Testergebnisse. Lies vorhandene CI-Ergebnisse, führe aber keine zustandsändernden Aktionen
+   aus.
 10. Schweregrade:
     - critical: Datenverlust, Sicherheitsgrenze, produktiver Ausfall oder sicher falsches
       Kernverhalten; blockiert zwingend.
@@ -137,6 +140,8 @@ Beende die Antwort mit genau einem JSON-Block und danach keinem weiteren Text:
     {
       "id": "R1",
       "severity": "critical|high|medium|low",
+      "disposition": "actionable|needs-human",
+      "anchor": "inline|none",
       "title": "...",
       "file": "path/to/file",
       "line": 1,
@@ -149,6 +154,8 @@ Beende die Antwort mit genau einem JSON-Block und danach keinem weiteren Text:
   "residual_risks": ["..."]
 }
 ```
+
+Bei `anchor: none` müssen `file` und `line` stattdessen als JSON-`null` ausgegeben werden.
 
 ## Step-by-step: Codex separate session
 
@@ -196,5 +203,6 @@ reuse the implementation conversation, never rely on prompt-only write restricti
 change `verdict` to `pass` merely because the preferred reviewer ran out of quota.
 
 The reviewer does not resolve threads itself because the session is read-only. After a finding is
-confirmed fixed, the implementation session must mark the associated review threads and comments
-as resolved; a finding is complete only after the review conversation is resolved.
+confirmed fixed, an accepted rejection, or confirmed obsolete, the implementation session must
+mark the associated review threads and comments as resolved; a finding is complete only after the
+review conversation is resolved. A `needs-human` finding remains unresolved and blocks the gate.

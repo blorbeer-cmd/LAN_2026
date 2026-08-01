@@ -201,20 +201,25 @@ Jedes Review liefert maschinenlesbar:
 reviewer-provider: claude|codex
 review-mode: cross|fallback
 reviewed-head-sha: <sha>
-verdict: pass|changes-required
+verdict: pass|changes-required|blocked
 findings:
-  - severity: critical|high|medium|low
-    file: <path>
-    line: <concrete line>
+  - id: <finding-id>
+    severity: critical|high|medium|low
+    disposition: actionable|needs-human
+    anchor: inline|none
+    file: <path or null>
+    line: <line or null>
     summary: <short text>
     rationale: <why this matters>
     verification: <how to verify the fix>
 ```
 
-Blockierende Findings werden als auflösbare Inline-Review-Threads mit konkretem Datei-/Zeilenanker
+Actionable Findings werden als auflösbare Inline-Review-Threads mit konkretem Datei-/Zeilenanker
 veröffentlicht. Top-Level-PR-Kommentare können Kontext dokumentieren, gelten aber nicht als
 blockierende Findings und können das Merge-Gate nicht erfüllen. Gibt es keinen stabilen Inline-
-Anker, wird das Finding als `needs-human` eskaliert und das Gate bleibt blockiert.
+Anker, wird mit `disposition: needs-human`, `anchor: none`, `file: null`, `line: null` und
+`verdict: blocked` gekennzeichnet; die vollständigen Finding-Details bleiben im Ergebnis erhalten
+und das Gate bleibt blockiert.
 
 Der Implementierungs-Agent bearbeitet jedes Finding nachvollziehbar:
 
