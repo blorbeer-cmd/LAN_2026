@@ -5,7 +5,8 @@ import http from 'http';
 import { Server } from 'socket.io';
 
 import { config, productionConfigError, startupAccessConfigError } from './config';
-import { db } from './db'; // side-effect: open DB, create schema, seed defaults
+import './db'; // side-effect: open DB, create schema, seed defaults
+import { hasClaimedAdmin } from './accounts';
 import { runBootstrapAdmins } from './bootstrapAdmins';
 import { createApp } from './app';
 import { setIo, createSocketAuthGuard, registerArcadeKioskSockets } from './realtime';
@@ -39,22 +40,14 @@ function start(): void {
   // before the first request can arrive. Idempotent and a no-op when unset.
   runBootstrapAdmins();
 
-  const hasClaimedAccount = Boolean(
-    db
-      .prepare(
-        `SELECT 1 FROM players
-         WHERE password_hash IS NOT NULL AND is_test = 0 AND deactivated_at IS NULL
-         LIMIT 1`,
-      )
-      .get(),
-  );
-  const accessError = startupAccessConfigError(hasClaimedAccount);
+  const claimedAdminExists = hasClaimedAdmin();
+  const accessError = startupAccessConfigError(claimedAdminExists);
   if (accessError) {
     // eslint-disable-next-line no-console
     console.error(`FATAL: ${accessError}`);
     process.exit(1);
   }
-  if (!hasClaimedAccount && process.env.LOCAL_GENERATED_RECOVERY_CODE === '1') {
+  if (!claimedAdminExists && process.env.LOCAL_GENERATED_RECOVERY_CODE === '1') {
     // eslint-disable-next-line no-console
     console.log('Frische lokale Datenbank: Für diesen Start wurde ein temporärer Erstzugang erzeugt.');
     // eslint-disable-next-line no-console

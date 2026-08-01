@@ -224,7 +224,7 @@ auf jedem beliebigen kleinen Linux-Server/VPS ohne Docker – für die LAN-Party
 bisher `npm install && npm run build && npm start` auf einem Laptop im WLAN. Ist die Datenbank leer
 und kein Erstzugang konfiguriert, zeigt `npm start` den einmalig für diesen Prozess erzeugten
 `/?claim=...`-Link an; der direkte Aufruf `node dist/index.js` verlangt dagegen explizit einen
-Recovery-Code oder ein bereits beanspruchtes Konto.
+Recovery-Code oder ein bereits beanspruchtes Admin-Konto.
 
 ### Umgebungsvariablen
 

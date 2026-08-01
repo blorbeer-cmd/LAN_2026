@@ -63,9 +63,9 @@ export function productionConfigError(
 // configured bootstrap admin is created before this check runs; afterwards
 // either a claimed account or the recovery code must exist.
 export function startupAccessConfigError(
-  hasClaimedAccount: boolean,
+  hasClaimedAdminAccount: boolean,
   cfg: Pick<typeof config, 'adminRecoveryCode'> = config,
 ): string | null {
-  if (hasClaimedAccount || cfg.adminRecoveryCode) return null;
-  return 'Kein beanspruchtes Konto und kein ADMIN_RECOVERY_CODE konfiguriert. Server wird nicht gestartet.';
+  if (hasClaimedAdminAccount || cfg.adminRecoveryCode) return null;
+  return 'Kein beanspruchtes Admin-Konto und kein ADMIN_RECOVERY_CODE konfiguriert. Server wird nicht gestartet.';
 }

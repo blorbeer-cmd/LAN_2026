@@ -97,7 +97,7 @@ Recovery-Code für Resets abgelehnt.
 Für lokale Starts ohne bestehendes Konto erzeugen `npm run dev` und `npm start` einen temporären
 Recovery-Code und geben den vollständigen Claim-Link aus. Der direkte Runtime-Aufruf
 `node dist/index.js` beendet sich auf einer leeren Datenbank dagegen bewusst, wenn weder ein
-beanspruchtes Konto noch `ADMIN_RECOVERY_CODE` vorhanden ist.
+beanspruchtes Admin-Konto noch `ADMIN_RECOVERY_CODE` vorhanden ist.
 
 Alternativ zum Recovery-Claim können ein oder mehrere Admins beim Start direkt aus der `.env`
 angelegt werden (`BOOTSTRAP_ADMIN_<n>_NAME` / `BOOTSTRAP_ADMIN_<n>_PASSWORD`). Das Seeding ist
