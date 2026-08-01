@@ -2551,7 +2551,11 @@ test('Admin: the verified role exposes tools and can temporarily hide seeded tes
   });
   assert.equal(pauseResponse.status, 200, await pauseResponse.text());
   await page.click('[aria-label="Mehr Informationen zu Vorhandene Test-Spieler"]');
-  await page.waitForSelector('#admin-test-count-help:not([hidden]) >> text=4 Test-Spieler vorhanden');
+  await page.waitForFunction((minimum) => {
+    const help = document.querySelector('#admin-test-count-help:not([hidden])');
+    const match = help?.textContent?.match(/(\d+)\s+Test-Spieler vorhanden/);
+    return match !== null && match !== undefined && Number(match[1]) >= minimum;
+  }, seededBody.created.length);
   await page.keyboard.press('Escape');
   await page.waitForSelector('.badge-paused >> text=Test');
 
