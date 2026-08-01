@@ -5,6 +5,7 @@
 import { filterTestUsers } from './testFilter.js';
 
 const KIOSK_TOKEN_KEY = 'respawn_kiosk_token';
+const LEGACY_KIOSK_TOKEN_KEY = 'respawn_access_token';
 let kioskMode = false;
 // One instance, one group: this is no longer sent as a request header (the
 // server always resolves the single start group on its own) but stays as the
@@ -17,11 +18,25 @@ export function setKioskMode(enabled) {
 }
 
 export function getKioskToken() {
-  return localStorage.getItem(KIOSK_TOKEN_KEY) || '';
+  const token = localStorage.getItem(KIOSK_TOKEN_KEY);
+  if (token) {
+    localStorage.removeItem(LEGACY_KIOSK_TOKEN_KEY);
+    return token;
+  }
+
+  // Before the auth cutover the dedicated kiosk credential shared the
+  // browser key used by the removed legacy login. Move it once so already
+  // configured kiosk screens keep working without reviving shared auth.
+  const legacyToken = localStorage.getItem(LEGACY_KIOSK_TOKEN_KEY);
+  if (!legacyToken) return '';
+  localStorage.setItem(KIOSK_TOKEN_KEY, legacyToken);
+  localStorage.removeItem(LEGACY_KIOSK_TOKEN_KEY);
+  return legacyToken;
 }
 
 export function setKioskToken(token) {
   localStorage.setItem(KIOSK_TOKEN_KEY, token);
+  localStorage.removeItem(LEGACY_KIOSK_TOKEN_KEY);
 }
 
 export async function apiFetch(path, options = {}) {

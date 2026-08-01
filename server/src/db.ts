@@ -2984,6 +2984,98 @@ registerMigration({
   up: addScribbleDrawingIsAiMatch,
 });
 
+// The former shared-login flow could create players and grant admin flags
+// long after the group and consent migrations had already run. Bring those
+// late legacy rows onto the now-authoritative membership/consent model before
+// startup reconciles the denormalized players.is_admin flag from group roles.
+function backfillLegacyAuthCutoverState(): void {
+  const now = Date.now();
+
+  db.prepare(
+    `INSERT INTO group_memberships
+       (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
+     SELECT ?, p.id,
+            CASE WHEN p.is_admin = 1 AND p.is_test = 0 AND p.password_hash IS NOT NULL THEN 'admin' ELSE 'member' END,
+            'active', p.created_at, NULL,
+            CASE WHEN p.tracking_paused = 1 THEN 0 ELSE 1 END,
+            NULL
+     FROM players p
+     WHERE p.deactivated_at IS NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM group_memberships gm WHERE gm.group_id = ? AND gm.player_id = p.id
+       )`,
+  ).run(DEFAULT_GROUP_ID, DEFAULT_GROUP_ID);
+
+  const legacyAdmins = db
+    .prepare(
+      `SELECT p.id
+       FROM players p
+       JOIN group_memberships gm ON gm.group_id = ? AND gm.player_id = p.id
+       WHERE p.is_admin = 1 AND p.is_test = 0 AND p.password_hash IS NOT NULL AND p.deactivated_at IS NULL
+         AND gm.status = 'active' AND gm.role = 'member'`,
+    )
+    .all(DEFAULT_GROUP_ID) as Array<{ id: string }>;
+  const promote = db.prepare(
+    `UPDATE group_memberships SET role = 'admin'
+     WHERE group_id = ? AND player_id = ? AND status = 'active' AND role = 'member'`,
+  );
+  const audit = db.prepare(
+    `INSERT INTO admin_log (id, actor_player_id, group_id, action, target_type, target_id, details, created_at)
+     VALUES (?, NULL, ?, 'admin_granted', 'player', ?, ?, ?)`,
+  );
+  for (const player of legacyAdmins) {
+    promote.run(DEFAULT_GROUP_ID, player.id);
+    audit.run(
+      nanoid(),
+      DEFAULT_GROUP_ID,
+      player.id,
+      JSON.stringify({ via: 'legacy_auth_cutover', role: 'admin' }),
+      now,
+    );
+  }
+
+  // A recorded revocation wins over the old membership projection. Only
+  // members with no consent history at all receive the migration grant.
+  db.prepare(
+    `UPDATE group_memberships AS gm
+     SET outside_tracking_enabled = 0
+     WHERE gm.status = 'active' AND gm.outside_tracking_enabled = 1
+       AND EXISTS (
+         SELECT 1 FROM group_tracking_consents c
+         WHERE c.group_id = gm.group_id AND c.player_id = gm.player_id
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM group_tracking_consents c
+         WHERE c.group_id = gm.group_id AND c.player_id = gm.player_id AND c.revoked_at IS NULL
+       )`,
+  ).run();
+
+  const membershipsWithoutConsent = db
+    .prepare(
+      `SELECT gm.group_id, gm.player_id, COALESCE(gm.joined_at, p.created_at, ?) AS granted_at
+       FROM group_memberships gm
+       JOIN players p ON p.id = gm.player_id
+       WHERE gm.status = 'active' AND gm.outside_tracking_enabled = 1
+         AND NOT EXISTS (
+           SELECT 1 FROM group_tracking_consents c
+           WHERE c.group_id = gm.group_id AND c.player_id = gm.player_id
+         )`,
+    )
+    .all(now) as Array<{ group_id: string; player_id: string; granted_at: number }>;
+  const insertConsent = db.prepare(
+    `INSERT INTO group_tracking_consents (id, group_id, player_id, granted_at, revoked_at, source)
+     VALUES (?, ?, ?, ?, NULL, 'migration')`,
+  );
+  for (const membership of membershipsWithoutConsent) {
+    insertConsent.run(nanoid(), membership.group_id, membership.player_id, membership.granted_at);
+  }
+}
+registerMigration({
+  version: 58,
+  name: 'backfill legacy auth cutover memberships and grants',
+  up: backfillLegacyAuthCutoverState,
+});
+
 // Every migration is registered by now — run them all in ascending version
 // order (see registerMigration/runRegisteredMigrations above). This is the
 // single place migrations actually execute.

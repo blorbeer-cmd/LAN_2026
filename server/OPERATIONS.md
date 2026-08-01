@@ -57,7 +57,10 @@ erst als erfolgreich, wenn der neue Node-Prozess Anfragen beantwortet. Bei Pull-
 Healthcheck-Fehlern gibt der Workflow automatisch `docker compose ps app` und die letzten 100
 Container-Logzeilen aus. Dabei wird das zuvor gepinnte Image wieder gestartet, sodass ein kaputtes
 Image nicht bis zu einem manuellen Eingriff produktiv bleibt. Auch das generierte Rollback-Skript
-wartet auf einen gesunden Container.
+wartet auf einen gesunden Container. Auf frisch provisionierten Hosts hinterlegt Cloud-Init
+zusätzlich `LEGACY_ROLLBACK_ACCESS_TOKEN`; nur das Rollback-Skript übersetzt ihn für Images vor der
+Login-Umstellung in `AUTH_MODE=required` und `ACCESS_TOKEN`. Der laufende aktuelle Server ignoriert
+diese Kompatibilitätswerte.
 
 Die Pflichtchecks laufen als parallele Jobs (Server-Checks, Browser-E2E, Agent, Runtime-Image-Build)
 statt als eine serielle Kette; der `publish`-Job veröffentlicht das Image nach grünen Checks aus dem
@@ -90,6 +93,11 @@ erreichbaren ersten/letzten Admin live geht. Beim erstmaligen Einrichten wird ü
 Der Bootstrap-Pfad ist danach geschlossen. Gibt es genau einen aktiven, beanspruchten Admin, kann
 `/?reset=<RECOVERY_CODE>` dieses letzte Admin-Konto wiederherstellen; bei mehreren Admins wird der
 Recovery-Code für Resets abgelehnt.
+
+Für lokale Starts ohne bestehendes Konto erzeugen `npm run dev` und `npm start` einen temporären
+Recovery-Code und geben den vollständigen Claim-Link aus. Der direkte Runtime-Aufruf
+`node dist/index.js` beendet sich auf einer leeren Datenbank dagegen bewusst, wenn weder ein
+beanspruchtes Konto noch `ADMIN_RECOVERY_CODE` vorhanden ist.
 
 Alternativ zum Recovery-Claim können ein oder mehrere Admins beim Start direkt aus der `.env`
 angelegt werden (`BOOTSTRAP_ADMIN_<n>_NAME` / `BOOTSTRAP_ADMIN_<n>_PASSWORD`). Das Seeding ist

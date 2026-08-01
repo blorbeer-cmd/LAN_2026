@@ -116,7 +116,10 @@ npm install
 npm start
 ```
 
-Danach im Browser `http://localhost:3000` öffnen.
+Danach im Browser `http://localhost:3000` öffnen. Auf einer frischen lokalen Datenbank erzeugen
+`npm run dev` und `npm start` automatisch einen temporären Recovery-Code und geben den vollständigen
+`/?claim=...`-Link in der Konsole aus. Für einen dauerhaften lokalen Zugang stattdessen
+`ADMIN_RECOVERY_CODE` oder ein vollständiges `BOOTSTRAP_ADMIN_<n>_NAME`/`_PASSWORD`-Paar setzen.
 
 ### Code-Qualität
 
@@ -196,7 +199,10 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
   Container-Healthcheck und zeigt bei einem Startfehler automatisch Status und die letzten 100
   App-Logzeilen; anschließend stellt er das zuvor laufende Image wieder her.
 - **Rollback:** auf dem Server (`ssh deploy@<HETZNER_HOST>`) `/opt/respawn/rollback.sh <git-sha>`
-  ausführen – pinnt das Docker-Image auf einen früheren, bereits gebauten Stand.
+  ausführen – pinnt das Docker-Image auf einen früheren, bereits gebauten Stand. Frisch
+  provisionierte Hosts behalten dafür eine nur vom Rollback-Skript verwendete Kopie des
+  Kiosk-Secrets; bei Images vor der Umstellung auf persönliche Logins setzt das Skript daraus die
+  damaligen `AUTH_MODE=required`-/`ACCESS_TOKEN`-Werte. Aktuelle Images ignorieren diese Altwerte.
 - **Bestehenden Server auf persönliche Logins vorbereiten:** Vor dem Deploy in
   `/opt/lan2026/.env` ein starkes `ADMIN_RECOVERY_CODE` und einen separaten `KIOSK_TOKEN` ergänzen.
   Anschließend `docker compose up -d --wait app`. Beim ersten Aufruf `/?claim=<RECOVERY_CODE>`
@@ -215,7 +221,10 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
 
 Der Server ist weiterhin ein normaler Node.js-Prozess mit einer SQLite-Datei und läuft genauso gut
 auf jedem beliebigen kleinen Linux-Server/VPS ohne Docker – für die LAN-Party selbst reicht wie
-bisher `npm install && npm run build && npm start` auf einem Laptop im WLAN.
+bisher `npm install && npm run build && npm start` auf einem Laptop im WLAN. Ist die Datenbank leer
+und kein Erstzugang konfiguriert, zeigt `npm start` den einmalig für diesen Prozess erzeugten
+`/?claim=...`-Link an; der direkte Aufruf `node dist/index.js` verlangt dagegen explizit einen
+Recovery-Code oder ein bereits beanspruchtes Konto.
 
 ### Umgebungsvariablen
 

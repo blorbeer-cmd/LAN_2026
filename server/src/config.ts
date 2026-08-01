@@ -58,3 +58,14 @@ export function productionConfigError(
   }
   return null;
 }
+
+// Every installation needs at least one route through the login gate. A
+// configured bootstrap admin is created before this check runs; afterwards
+// either a claimed account or the recovery code must exist.
+export function startupAccessConfigError(
+  hasClaimedAccount: boolean,
+  cfg: Pick<typeof config, 'adminRecoveryCode'> = config,
+): string | null {
+  if (hasClaimedAccount || cfg.adminRecoveryCode) return null;
+  return 'Kein beanspruchtes Konto und kein ADMIN_RECOVERY_CODE konfiguriert. Server wird nicht gestartet.';
+}

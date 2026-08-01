@@ -84,6 +84,9 @@ write_files:
     content: |
       ADMIN_RECOVERY_CODE=$APP_ADMIN_RECOVERY_CODE
       KIOSK_TOKEN=$APP_KIOSK_TOKEN
+      # Retained only for emergency rollback to an image from before personal
+      # logins. Current images ignore the legacy AUTH_MODE/ACCESS_TOKEN pair.
+      LEGACY_ROLLBACK_ACCESS_TOKEN=$APP_KIOSK_TOKEN
       CF_TUNNEL_TOKEN=$CF_TUNNEL_TOKEN
       GHCR_PULL_TOKEN=$GHCR_PULL_TOKEN
       GHCR_PULL_USERNAME=$GHCR_PULL_USERNAME
@@ -101,6 +104,31 @@ write_files:
         exit 1
       fi
       cd /opt/respawn
+      set_env() {
+        local key="$1"
+        local value="$2"
+        local tmp
+        local found=0
+        tmp="$(mktemp /opt/respawn/.env.XXXXXX)"
+        while IFS= read -r line || [ -n "$line" ]; do
+          if [[ "$line" == "$key="* ]]; then
+            printf '%s=%s\n' "$key" "$value"
+            found=1
+          else
+            printf '%s\n' "$line"
+          fi
+        done < .env > "$tmp"
+        if [ "$found" -eq 0 ]; then
+          printf '%s=%s\n' "$key" "$value" >> "$tmp"
+        fi
+        chmod 0600 "$tmp"
+        mv "$tmp" .env
+      }
+      legacy_token="$(sed -n 's/^LEGACY_ROLLBACK_ACCESS_TOKEN=//p' .env | tail -n 1)"
+      if [ -n "$legacy_token" ]; then
+        set_env AUTH_MODE required
+        set_env ACCESS_TOKEN "$legacy_token"
+      fi
       sed -i "s#^IMAGE=.*#IMAGE=ghcr.io/blorbeer-cmd/respawn:${1}#" .env
       docker compose pull app
       if ! docker compose up -d --wait --wait-timeout 90 app cloudflared; then
