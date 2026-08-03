@@ -595,7 +595,7 @@ function openGameDetail(gameId, ctx) {
         });
 
         el.querySelector('#edit-delete').addEventListener('click', async () => {
-          if (!(await confirmDialog(`${game.name} wirklich löschen? Skill-/Bock-Wertungen und Ergebnisse dazu gehen verloren.`))) return;
+          if (!(await confirmDialog(`${game.name} wirklich löschen? Skill-/Bock-Wertungen und Ergebnisse dazu gehen verloren.`, { confirmText: 'Löschen', danger: true }))) return;
           try {
             const removed = await withStepUp(() => api.games.remove(gameId));
             if (removed === undefined) return;

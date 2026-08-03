@@ -2147,6 +2147,26 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
 
   await switchIdentityAndOpenArrivals('E2E Alice Pro');
   await page.click('[data-remove-carpool]');
+  await page.waitForSelector('[data-confirm]');
+  // Destructive confirm dialogs must default focus to Cancel (not the danger
+  // action) and use a concrete verb, so a stray Enter right after opening
+  // cannot re-trigger the deletion.
+  assert.equal(
+    await page.locator('.modal-body [data-cancel]').evaluate((el) => el === document.activeElement),
+    true
+  );
+  assert.equal(await page.locator('[data-confirm]').innerText(), 'Löschen');
+  assert.equal(
+    await page.locator('[data-confirm]').evaluate((el) => el.classList.contains('btn-danger')),
+    true
+  );
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
+  // The carpool must still exist - Enter cancelled instead of confirming.
+  await page.waitForSelector('[data-remove-carpool]');
+
+  // Deleting for real still works through an explicit confirm click.
+  await page.click('[data-remove-carpool]');
   await page.click('[data-confirm]');
   await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
 });

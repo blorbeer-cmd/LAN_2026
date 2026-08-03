@@ -589,7 +589,7 @@ export function renderChecklist(container, ctx) {
 
   container.querySelectorAll('[data-cancel-task]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      if (!(await confirmDialog('Zurückziehen? Das To-Do verschwindet aus dem Pool.'))) return;
+      if (!(await confirmDialog('Zurückziehen? Das To-Do verschwindet aus dem Pool.', { confirmText: 'Zurückziehen' }))) return;
       try {
         await api.checklist.cancel(btn.dataset.cancelTask, myId);
         tasksCache = null;

@@ -303,7 +303,7 @@ async function createTestUsers(count, ctx) {
 }
 
 async function cleanupTestUsers(ctx) {
-  if (!(await confirmDialog('Alle markierten Testdaten löschen? Das entfernt Test-Spieler sowie historische Test-LANs mitsamt Ergebnissen und Turnieren.'))) return;
+  if (!(await confirmDialog('Alle markierten Testdaten löschen? Das entfernt Test-Spieler sowie historische Test-LANs mitsamt Ergebnissen und Turnieren.', { confirmText: 'Löschen', danger: true }))) return;
   try {
     const res = await withStepUp(() => api.admin.cleanupTestUsers());
     if (res === undefined) return;
@@ -320,7 +320,7 @@ async function cleanupTestUsers(ctx) {
 }
 
 async function deletePlayer(player, ctx) {
-  if (!(await confirmDialog(`Spieler "${player.name}" wirklich löschen? Alle Tracking-Daten, Sitzungen und persönlichen Kontodaten werden unwiderruflich entfernt.`))) return;
+  if (!(await confirmDialog(`Spieler "${player.name}" wirklich löschen? Alle Tracking-Daten, Sitzungen und persönlichen Kontodaten werden unwiderruflich entfernt.`, { confirmText: 'Löschen', danger: true }))) return;
   try {
     const removed = await withStepUp(() => api.players.remove(player.id));
     if (removed === undefined) return;
@@ -399,7 +399,7 @@ function renderPanel(container, ctx) {
         </span>
         <span class="row admin-player-actions" style="gap:var(--space-2);">
           ${roleControl(p)}
-          ${!p.is_test || p.deactivated_at ? `<button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">${p.deactivated_at ? 'Dauerhaft loeschen' : 'Loeschen'}</button>` : ''}
+          ${!p.is_test || p.deactivated_at ? `<button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">${p.deactivated_at ? 'Dauerhaft löschen' : 'Löschen'}</button>` : ''}
           ${p.is_test && !p.deactivated_at ? `<button type="button" class="btn btn-sm" data-test-session="${p.id}">Testsitzung öffnen</button>` : ''}
           ${p.deactivated_at
             ? `<button type="button" class="btn btn-sm" data-reactivate-player="${p.id}">Reaktivieren</button>`
@@ -454,7 +454,7 @@ function renderPanel(container, ctx) {
             <strong>${escapeHtml(entry.name)}</strong>
             <span class="row" style="gap:var(--space-2);">
               <span class="badge ${entry.online ? 'badge-playing' : 'badge-offline'}">${entry.online ? 'Agent online' : 'Agent offline'}</span>
-              <span class="badge">v${escapeHtml(entry.agentVersion || 'unbekannt')}</span>
+              <span class="badge">${entry.agentVersion ? `v${escapeHtml(entry.agentVersion)}` : 'Version unbekannt'}</span>
             </span>
           </div>
           <div class="muted" style="font-size:var(--font-size-xs);">Letzter Report: ${escapeHtml(lastReport)}</div>

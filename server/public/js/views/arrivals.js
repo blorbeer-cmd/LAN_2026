@@ -476,7 +476,7 @@ export function renderArrivals(container, ctx) {
 
   container.querySelectorAll('[data-remove-carpool]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      if (!(await confirmDialog('Fahrgemeinschaft löschen?'))) return;
+      if (!(await confirmDialog('Fahrgemeinschaft löschen?', { confirmText: 'Löschen', danger: true }))) return;
       try {
         await api.arrivals.removeCarpool(btn.dataset.removeCarpool, myId);
         dirty = true;

@@ -795,7 +795,7 @@ export function renderVotes(container, ctx) {
   const cancelBtn = container.querySelector('#votes-cancel');
   if (cancelBtn) {
     cancelBtn.addEventListener('click', async () => {
-      if (!(await confirmDialog('Abstimmung wirklich abbrechen? Alle Stimmen gehen verloren.'))) return;
+      if (!(await confirmDialog('Abstimmung wirklich abbrechen? Alle Stimmen gehen verloren.', { confirmText: 'Abbrechen', danger: true }))) return;
       try {
         // No ctx.refresh(): see the start button above.
         state.votes = await api.votes.cancel();

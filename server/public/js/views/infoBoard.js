@@ -155,7 +155,7 @@ export function renderInfoBoard(container, ctx) {
     btn.addEventListener('click', async () => {
       const entry = (cache || []).find((e) => e.id === btn.dataset.deleteEntry);
       if (!entry) return;
-      if (!(await confirmDialog(`Eintrag "${entry.title}" wirklich löschen?`))) return;
+      if (!(await confirmDialog(`Eintrag "${entry.title}" wirklich löschen?`, { confirmText: 'Löschen', danger: true }))) return;
       try {
         const removed = await withStepUp(() => api.info.remove(entry.id));
         if (removed === undefined) return;

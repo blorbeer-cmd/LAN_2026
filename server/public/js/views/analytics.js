@@ -253,7 +253,7 @@ function renderPlaytimeContent() {
           <span class="lb-rank">${i + 1}</span>
                     <span style="flex:1;">
             ${escapeHtml(g.gameName)}
-            <div class="muted" style="font-size:var(--font-size-xs);">${g.playerCount} Spieler · ${g.sessionCount} Session(s)</div>
+            <div class="muted" style="font-size:var(--font-size-xs);">${g.playerCount} Spieler · ${g.sessionCount} ${g.sessionCount === 1 ? 'Sitzung' : 'Sitzungen'}</div>
           </span>
           <span class="lb-points">${escapeHtml(g.totalFormatted)}</span>
         </div>`
