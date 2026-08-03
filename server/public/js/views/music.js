@@ -3,6 +3,10 @@ import { escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+
+const JAM_HELP =
+  'Gemeinsame Musik-Warteschlange für die LAN. Ein PC oder Kiosk-Pi mit Spotify wird einmalig als Controller gekoppelt; wer darauf eine Wiedergabe startet, ist Host. Alle anderen können pausieren, überspringen und Songs vorschlagen – ein eigenes Spotify-Konto brauchen sie dafür nicht.';
 
 let cache = null;
 let loading = false;
@@ -82,7 +86,11 @@ function scheduleProgress(container) {
 function setupHtml(status) {
   if (!status.controller?.online) {
     return `
-      <section class="card stack music-setup-card">
+      <section class="card stack music-setup-card" aria-labelledby="music-setup-title">
+          <span class="title-with-info">
+            <strong id="music-setup-title">Jam einrichten</strong>
+            ${infoTooltipHtml('music-setup-help', 'Jam einrichten', JAM_HELP)}
+          </span>
           ${status.controller ? `<p><strong>${escapeHtml(status.controller.label)}</strong><span class="muted"> ist gerade nicht erreichbar.</span></p>` : ''}
           ${pairing ? `<div class="music-pairing-panel">
             <div class="music-pairing-header">
@@ -463,6 +471,7 @@ export function renderMusic(container, ctx) {
     scheduleProgress(container);
     return;
   }
+  wireInfoTooltips(container);
   wireSetup(container, ctx);
   wireConnection(container, ctx);
   wireSession(container, ctx);

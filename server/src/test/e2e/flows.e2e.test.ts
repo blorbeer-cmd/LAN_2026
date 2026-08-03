@@ -298,7 +298,11 @@ test('the authenticated admin role owns the seating editor and backup tools', as
   assert.equal(await page.locator('#admin-backup-help').count(), 1);
   assert.equal(await page.locator('#admin-test-count-help').count(), 1);
   assert.equal(await page.locator('#admin-test-data-help').count(), 1);
-  assert.equal(await page.locator('.admin-tool-row').count(), 2);
+  // Global Event/Kiosk management is reachable from Admin's tool grid too,
+  // not only through the personal-looking topbar gear.
+  assert.equal(await page.locator('[data-navigate="settings"]').count(), 1);
+  assert.equal(await page.locator('#admin-event-kiosk-help').count(), 1);
+  assert.equal(await page.locator('.admin-tool-row').count(), 3);
   assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
   assert.equal(await page.locator('#admin-cleanup').textContent(), 'Test-Daten aufräumen');
   // The count field's own id now sits one level down, inside the

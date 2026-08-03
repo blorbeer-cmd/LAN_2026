@@ -79,7 +79,22 @@ function openPlayerDetail(playerId) {
           </div>
         </div>
         <p class="muted" style="font-size:var(--font-size-xs);margin:0;">Dieses Profil kann nur von ${escapeHtml(player.name)} selbst bearbeitet werden.</p>
-        ${state.games.length > 0 ? `<div class="section-title">Bock-o-Meter</div>${ratingRows('bock')}<div class="section-title">Skill-Ratings</div>${ratingRows('skill')}` : ''}
+        ${
+          state.games.length > 0
+            ? `<details class="collapsible-section">
+                 <summary class="collapsible-section-header">
+                   <h2>Bock &amp; Skill</h2>
+                   <span class="collapsible-section-summary-end">
+                     <span class="badge">${state.games.length}</span>
+                     <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+                   </span>
+                 </summary>
+                 <div class="collapsible-section-content">
+                   <div class="section-title">Bock-o-Meter</div>${ratingRows('bock')}<div class="section-title">Skill-Ratings</div>${ratingRows('skill')}
+                 </div>
+               </details>`
+            : ''
+        }
       </div>
     `
   );

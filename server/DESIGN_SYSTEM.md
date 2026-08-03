@@ -362,6 +362,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   profile editor. Foreign profiles expose neither edit/delete actions nor the private agent key;
   the API omits the private agent key and rejects profile-field updates when the session does not
   match the target player.
+  A foreign profile's detail dialog leads with identity (avatar, Gamertag, real name); the complete
+  „Bock & Skill“ rating list across every game sits inside one initially collapsed
+  `.collapsible-section` carrying the total game count, so a roster of many games does not force a
+  long scroll just to see who someone is.
   The roster itself has no duplicate „Teilnehmende“ heading and no player-creation action. Player
   creation stays in the authenticated Admin workflow. The
   desktop roster keeps exactly two equal-width cards per row; an odd final player does not stretch.
@@ -384,9 +388,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   process mappings, Kiosk and the latest persistent backup. Every card pairs its semantic badge
   with a textual summary and actionable detail; loading and retry errors stay inside the group.
   Backup and seating-plan editing are absent from regular settings and live
-  together as nested tool cards in the active Admin mode. Each tool card keeps its title, adjacent
-  help tooltip and colorful primary action on one row; the seating editor returns to Admin and blocks
-  editing outside that mode. Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and
+  together as nested tool cards in the active Admin mode. A third tool card, „Event- &
+  Kioskverwaltung“, links into the settings view itself — the personal-looking topbar gear is not
+  the only entry point into that global, non-personal management surface. Each tool card keeps its
+  title, adjacent help tooltip and colorful primary action on one row; the seating editor returns
+  to Admin and blocks editing outside that mode. Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and
   need no separate Admin action. The test-data fixture explanation and the existing test-player count live in adjacent
   tooltips; the compact count input, „Test-Daten aufräumen“ and create action share one control row
   in that order. Cleanup removes every marked test player and test LAN
@@ -580,7 +586,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   logic/memory trial challenges. A lobby that further humans join before it starts keeps the
   full forty-challenge catalog like any other match, and the bot then simply scores 0 on
   whichever trial challenges come up.
-- **Jam sessions** — Jam is a grouped page below „Mehr“. A dedicated local controller on the
+- **Jam sessions** — Jam is a grouped page below „Mehr“. Its setup card, shown whenever no
+  controller is paired yet or the paired one is offline, leads with a title-with-info explaining
+  Jam's purpose, the controller/host concept and that only the controller device needs Spotify —
+  the unconfigured state is not silently empty. A dedicated local controller on the
   playback PC or kiosk Raspberry Pi connects Spotify through PKCE and never appears as a player.
   The server stores neither Spotify application credentials nor OAuth tokens. One participant
   starts a session on an explicitly selected playback device; this player is the host. All active

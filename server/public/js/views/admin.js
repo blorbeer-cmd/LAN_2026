@@ -15,6 +15,7 @@ import { currentGroup, refreshGroupContext } from '../groupContext.js';
 
 const SEATING_HELP = 'Tisch, Plätze und Sitzordnung verwalten.';
 const BACKUP_HELP = 'Aktuellen Stand als SQLite-Datei sichern.';
+const EVENT_KIOSK_HELP = 'Events anlegen, Tracking starten/stoppen und die TV-/Kiosk-Ansicht öffnen.';
 const TEST_DATA_HELP = 'Kommen fertig eingerichtet: Platz im Sitzplan samt sichtbarer Monitore, Skill- und Bock-Werte pro Spiel, Spielzeit fürs aktive Event – zwei davon spielen gerade. Nur im Admin-Modus sichtbar.';
 const ADMIN_ROLE_HELP = 'Owner und Admins dürfen den Admin-Bereich verwalten. Mindestens ein aktiver Owner muss erhalten bleiben.';
 
@@ -535,6 +536,13 @@ function renderPanel(container, ctx) {
               ${infoTooltipHtml('admin-backup-help', 'Backup', BACKUP_HELP)}
             </span>
             <button type="button" class="btn btn-primary btn-sm" id="download-backup">Herunterladen</button>
+          </div>
+          <div class="card admin-tool-row">
+            <span class="title-with-info">
+              <strong>Event- &amp; Kioskverwaltung</strong>
+              ${infoTooltipHtml('admin-event-kiosk-help', 'Event- & Kioskverwaltung', EVENT_KIOSK_HELP)}
+            </span>
+            <button type="button" class="btn btn-primary btn-sm" data-navigate="settings">Öffnen</button>
           </div>
         </div>
       </section>
