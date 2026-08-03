@@ -49,6 +49,22 @@ test('the correct hour/minute <option> is marked selected', () => {
   assert.match(html, /<option value="20" selected>20<\/option>/);
 });
 
+test('opts.label gives the trigger and both time selects a distinct accessible name', () => {
+  const d = new Date(2026, 6, 8, 9, 20, 0);
+  const html = dateTimeFieldHtml('f1', d.getTime(), { label: 'Ankunft', clearable: true });
+  assert.match(html, /data-dt-trigger aria-label="Ankunft, Mi\., 08\.07\.2026"/);
+  assert.match(html, /data-dt-hour aria-label="Ankunft, Stunde"/);
+  assert.match(html, /data-dt-minute aria-label="Ankunft, Minute"/);
+  assert.match(html, /aria-label="Ankunft löschen"/);
+});
+
+test('without opts.label the fields fall back to the generic "Datum löschen" clear label and no aria-label', () => {
+  const html = dateTimeFieldHtml('f1', Date.now(), { clearable: true });
+  assert.doesNotMatch(html, /data-dt-trigger aria-label/);
+  assert.doesNotMatch(html, /data-dt-hour aria-label/);
+  assert.match(html, /aria-label="Datum löschen"/);
+});
+
 test('opts.dateOnly omits the whole hour/minute row, e.g. for a due date with no meaningful time-of-day', () => {
   const d = new Date(2026, 6, 8, 14, 37, 0);
   const html = dateTimeFieldHtml('f1', d.getTime(), { dateOnly: true });

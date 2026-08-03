@@ -285,7 +285,7 @@ function renderOpenRows(votes, draftReady, hasSubmitted) {
             <span class="muted" style="font-size:var(--font-size-xs);">Punkte</span>
             <span class="skill-value">${pointsVal}</span>
             <input type="range" class="skill-row-slider" min="0" max="10" step="1"
-                   data-points-slider="${r.gameId}" value="${pointsVal}" ${hasSubmitted ? 'disabled' : ''} />
+                   data-points-slider="${r.gameId}" value="${pointsVal}" aria-label="${escapeHtml(`Punkte für ${r.gameName}`)}" ${hasSubmitted ? 'disabled' : ''} />
           </div>`;
       }
 

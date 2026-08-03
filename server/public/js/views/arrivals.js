@@ -57,11 +57,11 @@ function renderMyForm(myId) {
         <div class="field-row">
           <div>
             <label for="arrival-at" class="field-label">Ankunft</label>
-            ${dateTimeFieldHtml('arrival-at', own?.arrival_at ?? null, { clearable: true, disabled: !myId })}
+            ${dateTimeFieldHtml('arrival-at', own?.arrival_at ?? null, { clearable: true, disabled: !myId, label: 'Ankunft' })}
           </div>
           <div>
             <label for="departure-at" class="field-label">Abreise</label>
-            ${dateTimeFieldHtml('departure-at', own?.departure_at ?? null, { clearable: true, disabled: !myId })}
+            ${dateTimeFieldHtml('departure-at', own?.departure_at ?? null, { clearable: true, disabled: !myId, label: 'Abreise' })}
           </div>
         </div>
         <textarea class="arrival-note-input" id="arrival-note" maxlength="240" rows="1" placeholder="Notiz (optional)" ${myId ? '' : 'disabled'}>${escapeHtml(own?.note || '')}</textarea>
@@ -312,11 +312,11 @@ function openCarpoolForm(direction, myId, ctx, existing = null) {
         <div class="field-row">
           <div>
             <label for="carpool-start-at" class="field-label">Start</label>
-            ${dateTimeFieldHtml('carpool-start-at', existing?.startAt ?? defaultStartAt, { clearable: true })}
+            ${dateTimeFieldHtml('carpool-start-at', existing?.startAt ?? defaultStartAt, { clearable: true, label: 'Start' })}
           </div>
           <div>
             <label for="carpool-eta-at" class="field-label">Ankunft</label>
-            ${dateTimeFieldHtml('carpool-eta-at', existing?.etaAt ?? defaultEtaAt, { clearable: true })}
+            ${dateTimeFieldHtml('carpool-eta-at', existing?.etaAt ?? defaultEtaAt, { clearable: true, label: 'Ankunft' })}
           </div>
         </div>
         <div>

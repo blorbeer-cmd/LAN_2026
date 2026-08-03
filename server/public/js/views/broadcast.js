@@ -99,7 +99,7 @@ export function renderBroadcast(container, ctx) {
           </div>
           <div>
             <label for="broadcast-ends-at" class="field-label">Sichtbar bis</label>
-            ${dateTimeFieldHtml('broadcast-ends-at', displayEndsAt, { disabled: !myId })}
+            ${dateTimeFieldHtml('broadcast-ends-at', displayEndsAt, { disabled: !myId, label: 'Sichtbar bis' })}
           </div>
           <button type="submit" class="btn btn-primary" ${myId ? '' : 'disabled'}>Senden</button>
         </form>

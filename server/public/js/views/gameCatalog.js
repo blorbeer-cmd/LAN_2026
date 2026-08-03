@@ -192,16 +192,17 @@ function suggestionChipHtml(gameId, suggestion, mine) {
     >${icon('brain', { className: 'skill-suggestion-icon' })} ${suggestion.rating}</button>`;
 }
 
-function ratingRowHtml({ label, accentClass, mine, avg, count, gameId, kind, disabled, suggestionHtml }) {
+function ratingRowHtml({ label, accentClass, mine, avg, count, gameId, gameName, kind, disabled, suggestionHtml }) {
   const avgText = avg === null ? '' : `Ø ${avg.toFixed(1)} (${count})`;
   const sliderValue = mine ?? 5;
+  const sliderLabel = kind === 'bock' ? `Bock auf ${gameName}` : `Skill in ${gameName}`;
   return `
     <div class="skill-row" data-game="${gameId}" data-kind="${kind}">
       <span class="row" style="gap:var(--space-2);flex-wrap:wrap;">
         ${label} <span class="muted game-avg-note">${avgText}</span> ${suggestionHtml || ''}
       </span>
       <span class="skill-value">${mine ?? ''}</span>
-      <input type="range" class="skill-row-slider ${accentClass}" min="1" max="10" step="1" value="${sliderValue}" ${disabled ? 'disabled' : ''} />
+      <input type="range" class="skill-row-slider ${accentClass}" min="1" max="10" step="1" value="${sliderValue}" aria-label="${escapeHtml(sliderLabel)}" ${disabled ? 'disabled' : ''} />
     </div>`;
 }
 
@@ -271,6 +272,7 @@ function gameRowHtml(game, myId) {
     avg: bockStats.avg,
     count: bockStats.count,
     gameId: game.id,
+    gameName: game.name,
     kind: 'bock',
     disabled: !myId,
   });
@@ -290,6 +292,7 @@ function gameRowHtml(game, myId) {
           avg: skillStats.avg,
           count: skillStats.count,
           gameId: game.id,
+          gameName: game.name,
           kind: 'skill',
           disabled: !myId,
           suggestionHtml: suggestionChipHtml(game.id, suggestionFor(game.id, myId), mySkill),

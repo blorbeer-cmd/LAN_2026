@@ -165,11 +165,11 @@ function openEventForm(ctx, existing) {
         <div class="field-row">
           <div>
             <label for="event-starts" class="field-label">Beginnt am</label>
-            ${dateTimeFieldHtml('event-starts', existing?.starts_at ?? now, { clearable: false })}
+            ${dateTimeFieldHtml('event-starts', existing?.starts_at ?? now, { clearable: false, label: 'Beginnt am' })}
           </div>
           <div>
             <label for="event-ends" class="field-label">Endet am</label>
-            ${dateTimeFieldHtml('event-ends', existing?.ends_at ?? defaultEnd, { clearable: isEdit })}
+            ${dateTimeFieldHtml('event-ends', existing?.ends_at ?? defaultEnd, { clearable: isEdit, label: 'Endet am' })}
           </div>
         </div>
         <div>
