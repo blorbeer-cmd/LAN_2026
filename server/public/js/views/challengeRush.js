@@ -329,7 +329,7 @@ export function renderChallengeRushLobbyCard() {
     const startReady = lobby.players.every((p) => p.ready || p.id === lobby.host.id);
     const startReason = startReady ? '' : 'Nicht alle Mitspieler sind bereit.';
     const footerActions = isHost
-      ? `<button type="button" class="btn btn-sm btn-danger" data-cr-leave="${lobby.id}">Schließen</button><span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-sm btn-primary" data-cr-start="${lobby.id}" ${startReady ? '' : 'disabled'}>Start</button>${startReason ? infoTooltipHtml(`cr-start-${lobby.id}`, 'Start nicht möglich', startReason, 'warning') : ''}</span>`
+      ? `<span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-sm btn-primary" data-cr-start="${lobby.id}" ${startReady ? '' : 'disabled'}>Start</button>${startReason ? infoTooltipHtml(`cr-start-${lobby.id}`, 'Start nicht möglich', startReason, 'warning') : ''}</span><button type="button" class="btn btn-sm btn-danger" data-cr-leave="${lobby.id}">Schließen</button>`
       : joined
         ? `<button type="button" class="btn btn-sm btn-danger" data-cr-leave="${lobby.id}">Verlassen</button>${readyToggleHtml(lobby, myId(), 'cr-ready')}`
         : '';

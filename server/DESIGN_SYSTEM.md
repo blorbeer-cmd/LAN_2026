@@ -527,9 +527,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   role/readiness at the right, a direct join action in a free-slot row and host/member actions in a
   separated full-width footer. Host labels, free labels and join actions share an exact three-column
   grid and row height. A host's game settings belong inside that lobby card; the compact
-  „Punkte bis Sieg“ control shares the separated footer with „Schließen“ and „Start“ from `--bp-md`
-  instead of forming a wide radio-button block. Readiness is communicated in the player rows without
-  a duplicate status sentence. Tetris exposes a compact Duell/Arena selector before creation.
+  „Punkte bis Sieg“ control shares the separated footer with „Start“ and „Schließen“ from `--bp-md`
+  instead of forming a wide radio-button block. „Start“ precedes „Schließen“ in that footer so the
+  primary action reads first, ahead of the destructive one. Readiness is communicated in the player
+  rows without a duplicate status sentence. Tetris exposes a compact Duell/Arena selector before creation.
   „Lobby öffnen“ precedes the lobby cards at full width, so opening a new lobby never requires
   scrolling past every existing one first. The mode selector is a small bordered segmented switch
   (`.arcade-mode-toggle`) with a flat `--accent` fill on the active segment, deliberately distinct

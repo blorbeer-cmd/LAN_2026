@@ -445,11 +445,11 @@ function renderLobbyList() {
           ? `Noch nicht genug Spieler (mind. ${minimumPlayers}).`
           : 'Noch nicht alle Spieler sind bereit.';
       const footerActions = isHost
-        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-tetris-close="${l.id}">Schließen</button>
-          <span class="row" style="gap:var(--space-1);">
+        ? `<span class="row" style="gap:var(--space-1);">
             <button type="button" class="btn btn-sm btn-equal btn-primary" id="tetris-start" ${ready ? '' : 'disabled'}>Start</button>
             ${startReason ? infoTooltipHtml(`tetris-start-${l.id}`, 'Start nicht möglich', startReason, 'warning') : ''}
-          </span>`
+          </span>
+          <button type="button" class="btn btn-sm btn-equal btn-danger" data-tetris-close="${l.id}">Schließen</button>`
         : joined
           ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-tetris-leave="${l.id}">Verlassen</button>
             ${readyToggleHtml(l, myId(), 'tetris-ready')}`

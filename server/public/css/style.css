@@ -4471,6 +4471,13 @@ input[type='number'].tournament-score-input {
     column-gap: var(--space-6);
   }
 }
+/* A third column keeps each 0-10 slider at a sane width instead of stretching
+   it across half of --content-max-width's full 1320px on a wide desktop. */
+@media (min-width: 1280px) { /* --bp-xl */
+  .vote-game-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
 /* The gradient lives on the track itself (fixed left-to-right, full width)
    rather than on the fill: a gradient set as the fill's own background would
    get re-normalized to whatever narrow width that particular bar happens to

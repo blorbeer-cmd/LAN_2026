@@ -107,11 +107,11 @@ function lobbyList() {
     const modeLabel = lobby.mode === 'arena' ? 'Arena' : 'Klassisch';
     const settingsHtml = `<span class="badge">${modeLabel} · ${lobby.players.length}/${playerLimit}</span>`;
     const footerActions = isHost
-      ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-snake-close="${lobby.id}">Schließen</button>
-        <span class="row" style="gap:var(--space-1);">
+      ? `<span class="row" style="gap:var(--space-1);">
           <button type="button" class="btn btn-sm btn-equal btn-primary" id="snake-start" ${ready ? '' : 'disabled'}>Start</button>
           ${startReason ? infoTooltipHtml(`snake-start-${lobby.id}`, 'Start nicht möglich', startReason, 'warning') : ''}
-        </span>`
+        </span>
+        <button type="button" class="btn btn-sm btn-equal btn-danger" data-snake-close="${lobby.id}">Schließen</button>`
       : joined
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-snake-leave="${lobby.id}">Verlassen</button>
           ${readyToggleHtml(lobby, myId(), 'snake-ready')}`

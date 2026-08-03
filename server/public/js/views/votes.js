@@ -480,6 +480,17 @@ export function renderVotes(container, ctx) {
     const submitLabel = votes.mode === 'points' ? 'Bewertung abschicken' : 'Stimme abschicken';
     const submittedLabel = votes.mode === 'points' ? 'Bewertung abgegeben' : 'Stimme abgegeben';
     const participationLabel = votes.mode === 'points' ? 'Bewertungen abgegeben' : 'Stimmen abgegeben';
+    // Own rating progress through this round's game list - only meaningful in
+    // points mode (single mode's one pick is already reflected by the
+    // Auswählen/Ausgewählt button state) and only while still filling it in.
+    const ratedCount =
+      votes.mode === 'points' && mineReady
+        ? votes.results.filter((r) => (draftPoints.get(r.gameId) ?? 0) > 0).length
+        : 0;
+    const progressHtml =
+      votes.mode === 'points' && mineReady && !hasSubmitted
+        ? `<div class="muted" style="font-size:var(--font-size-xs);">${ratedCount} von ${votes.results.length} bewertet</div>`
+        : '';
     openSectionHtml = `
       <section class="card vote-page-section vote-workflow-section stack" aria-labelledby="vote-current-title">
         <div class="tournament-create-step-title">
@@ -493,6 +504,7 @@ export function renderVotes(container, ctx) {
           <span>${participationLabel}</span>
           <strong>${votes.totalVoters} / ${totalPlayers}</strong>
         </div>
+        ${progressHtml}
         ${votes.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0;">${escapeHtml(votes.info)}</p>` : ''}
         ${rows}
         <div class="vote-action-stack sticky-actions">
