@@ -651,9 +651,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   New/current-round controls come first, followed by separate full-width cards for „Letzter Vote“
   and „Top 10 nach Bock-Level“. An open round exposes a bordered participation counter with the
   submitted and eligible-player totals, updated through the existing realtime refresh. In points
-  mode, an open round the current identity hasn't submitted yet also shows its own rating progress
-  („X von Y bewertet“) beside an „Unbewertet“ chip that narrows the game grid to still-unrated rows;
-  `.vote-game-grid` itself keeps two columns from `--bp-md` and gains a third from `--bp-xl`
+  mode, an open round that the current identity hasn't submitted yet also shows its own rating
+  progress („X von Y bewertet“) beside an „Unbewertet“ chip that narrows the game grid to
+  still-unrated rows. `.vote-game-grid` itself keeps two columns from `--bp-md` and gains a third from `--bp-xl`
   (1280px) instead of stretching each 0-10 slider across half of a wide desktop's full content
   width. The latest
   result and every history card show up to ten scored games with the same compact rows and
