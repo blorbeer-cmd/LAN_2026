@@ -4057,6 +4057,13 @@ input[type='range'] {
   --slider-low: #9bb7f5;
   --slider-high: #536dff;
 }
+/* An untouched Bock/Skill slider still renders at a plausible mid-value
+   (ratings are stored 1-10, never 0, so there's no true "empty" position) -
+   dimmed until the player's own input event fires, so it doesn't read as an
+   already-set rating at a glance. */
+.skill-row-slider-unset {
+  opacity: 0.5;
+}
 .skill-value {
   font-variant-numeric: tabular-nums;
   font-weight: var(--font-weight-bold);

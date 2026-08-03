@@ -101,6 +101,9 @@ async function loadMine(round, playerId, ctx) {
 let draftSingleGameId = null;
 let draftPoints = null; // Map<gameId, points>
 let draftKey = null; // `${round}:${playerId}` the current draft belongs to
+// Points-mode-only toggle: hides already-rated rows so working through a
+// long game list doesn't mean scrolling past everything already done.
+let voteUnratedOnly = false;
 
 // "Neue Abstimmung" game-limit filter. Persisted here (like matchmaking.js's
 // checkedIds) rather than left in the DOM, because a votes:changed/
@@ -269,7 +272,12 @@ function renderTop10(results) {
 // ---------- open round: stage a local draft, submit explicitly ----------
 
 function renderOpenRows(votes, draftReady, hasSubmitted) {
-  return votes.results
+  const showUnratedOnly = votes.mode === 'points' && voteUnratedOnly && draftReady && !hasSubmitted;
+  const results = showUnratedOnly ? votes.results.filter((r) => (draftPoints.get(r.gameId) ?? 0) === 0) : votes.results;
+  if (showUnratedOnly && results.length === 0) {
+    return `<div class="empty-state">Alle Spiele bewertet.</div>`;
+  }
+  return results
     .map((r) => {
       let action = '';
       let pointsSliderRow = '';
@@ -487,10 +495,13 @@ export function renderVotes(container, ctx) {
       votes.mode === 'points' && mineReady
         ? votes.results.filter((r) => (draftPoints.get(r.gameId) ?? 0) > 0).length
         : 0;
-    const progressHtml =
-      votes.mode === 'points' && mineReady && !hasSubmitted
-        ? `<div class="muted" style="font-size:var(--font-size-xs);">${ratedCount} von ${votes.results.length} bewertet</div>`
-        : '';
+    const showProgress = votes.mode === 'points' && mineReady && !hasSubmitted;
+    const progressHtml = showProgress
+      ? `<div class="row-between" style="flex-wrap:wrap;gap:var(--space-2);">
+           <span class="muted" style="font-size:var(--font-size-xs);">${ratedCount} von ${votes.results.length} bewertet</span>
+           <button type="button" class="chip${voteUnratedOnly ? ' is-active' : ''}" id="votes-unrated-toggle" aria-pressed="${voteUnratedOnly}">Unbewertet</button>
+         </div>`
+      : '';
     openSectionHtml = `
       <section class="card vote-page-section vote-workflow-section stack" aria-labelledby="vote-current-title">
         <div class="tournament-create-step-title">
@@ -626,6 +637,11 @@ export function renderVotes(container, ctx) {
       draftSingleGameId = btn.dataset.voteSelect;
       ctx.rerender();
     });
+  });
+
+  container.querySelector('#votes-unrated-toggle')?.addEventListener('click', () => {
+    voteUnratedOnly = !voteUnratedOnly;
+    ctx.rerender();
   });
 
   container.querySelectorAll('[data-points-slider]').forEach((slider) => {

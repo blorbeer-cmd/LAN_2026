@@ -556,6 +556,22 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
     1,
     'moving a slider must not submit it by itself'
   );
+
+  // Own rating progress and the "Unbewertet" filter reflect the two just-
+  // staged (not yet submitted) picks against the round's full game count.
+  const totalGames = await page.locator('[data-points-slider]').count();
+  await page.waitForSelector(`.vote-workflow-section >> text=2 von ${totalGames} bewertet`);
+  await page.click('#votes-unrated-toggle');
+  await page.waitForFunction(
+    (expected) => document.querySelectorAll('[data-points-slider]').length === expected,
+    totalGames - 2
+  );
+  await page.click('#votes-unrated-toggle');
+  await page.waitForFunction(
+    (expected) => document.querySelectorAll('[data-points-slider]').length === expected,
+    totalGames
+  );
+
   await page.click('#votes-submit');
   await page.waitForSelector('.vote-participation-status:has-text("1 / 2")');
   await page.waitForSelector('.vote-submitted-state:has-text("Bewertung abgegeben")');
@@ -1167,12 +1183,45 @@ test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bo
   const partyspielRow = page.locator('.game-table-row', { hasText: 'E2E Partyspiel' });
   await partyspielRow.waitFor();
   const bockSlider = partyspielRow.locator('.skill-row[data-kind="bock"] input[type="range"]');
+  const skillSlider = partyspielRow.locator('.skill-row[data-kind="skill"] input[type="range"]');
+
+  // An unrated slider still has to sit at a plausible-looking position
+  // (Bock/Skill are stored 1-10, never 0) - it stays dimmed and shows an
+  // en dash instead of a blank label until touched.
+  assert.ok(await bockSlider.evaluate((el) => el.classList.contains('skill-row-slider-unset')));
+  assert.equal(await partyspielRow.locator('[data-kind="bock"] .skill-value').textContent(), '–');
+  assert.ok(await skillSlider.evaluate((el) => el.classList.contains('skill-row-slider-unset')));
+
+  // Both "X offen" facet filters are independent AND conditions: with both
+  // active the still-fully-unrated game stays visible.
+  await page.click('[data-rating-filter="bock"]');
+  await page.click('[data-rating-filter="skill"]');
+  await partyspielRow.waitFor();
+
   await bockSlider.fill('8');
   await page.waitForFunction(() => {
     const cards = Array.from(document.querySelectorAll('.game-table-row'));
     const card = cards.find((c) => c.textContent?.includes('E2E Partyspiel'));
     return card?.querySelector('[data-kind="bock"] .skill-value')?.textContent === '8';
   });
+  assert.equal(await bockSlider.evaluate((el) => el.classList.contains('skill-row-slider-unset')), false);
+  // Bock is rated now but Skill isn't - "Bock offen" alone already excludes
+  // the row even though "Skill offen" is still active too (AND, not OR).
+  await page.waitForSelector('.game-table-row:has-text("E2E Partyspiel")', { state: 'detached' });
+
+  await page.click('[data-rating-filter="bock"]');
+  await partyspielRow.waitFor();
+  await skillSlider.fill('7');
+  await page.waitForFunction(() => {
+    const cards = Array.from(document.querySelectorAll('.game-table-row'));
+    const card = cards.find((c) => c.textContent?.includes('E2E Partyspiel'));
+    return card?.querySelector('[data-kind="skill"] .skill-value')?.textContent === '7';
+  });
+  await page.waitForSelector('.game-table-row:has-text("E2E Partyspiel")', { state: 'detached' });
+
+  // Restore filter state for whatever runs next in this shared-page suite.
+  await page.click('[data-rating-filter="skill"]');
+  await partyspielRow.waitFor();
 });
 
 test('Spiele: a skill suggestion chip appears after enough recorded results and can be applied', async () => {

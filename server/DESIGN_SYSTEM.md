@@ -357,6 +357,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the icon's tooltip and accessible label retain the full „Skill-Level“ meaning. Team headers show
   the same icon with a dynamically calculated total; missing ratings contribute `0`, stated
   explicitly in its tooltip and accessible label.
+- **Game catalog** — Bock and Skill sliders in the game catalog are stored 1-10 and have no true
+  empty position, so an untouched slider still renders at a plausible mid-value; it stays dimmed
+  (`.skill-row-slider-unset`) and its number label shows the same en dash `skillDisplay.js` uses
+  elsewhere for "no rating yet" until the player's own input event fires. Two independent chip
+  filters, „Bock offen“ and „Skill offen“ (the latter only on the catalog tab, since suggestions
+  never collect a skill rating), narrow the list to games the current identity hasn't rated yet on
+  that facet; both active at once is an AND, unlike the genre chips' OR-within-one-facet semantics.
 - **Player profiles** — The roster is available to signed-in members and opens read-only details for other participants.
   The session account is marked as „Mein Profil“ and opens the dedicated self-service
   profile editor. Foreign profiles expose neither edit/delete actions nor the private agent key;
@@ -643,7 +650,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   same card grouping as the other polished workflows without an accent rail.
   New/current-round controls come first, followed by separate full-width cards for „Letzter Vote“
   and „Top 10 nach Bock-Level“. An open round exposes a bordered participation counter with the
-  submitted and eligible-player totals, updated through the existing realtime refresh. The latest
+  submitted and eligible-player totals, updated through the existing realtime refresh. In points
+  mode, an open round the current identity hasn't submitted yet also shows its own rating progress
+  („X von Y bewertet“) beside an „Unbewertet“ chip that narrows the game grid to still-unrated rows;
+  `.vote-game-grid` itself keeps two columns from `--bp-md` and gains a third from `--bp-xl`
+  (1280px) instead of stretching each 0-10 slider across half of a wide desktop's full content
+  width. The latest
   result and every history card show up to ten scored games with the same compact rows and
   responsive columns as the Bock ranking; games with zero votes or points are omitted. History
   keeps an explicit detail action for the complete non-zero bar view. Equal top scores use the same
