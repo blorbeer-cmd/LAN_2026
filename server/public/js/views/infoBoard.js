@@ -9,6 +9,7 @@ import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { withStepUp } from '../reauth.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 let cache = null;
 let loading = false;
@@ -48,7 +49,9 @@ function openEntryForm(ctx, existing) {
     isEdit ? 'Eintrag bearbeiten' : 'Neuer Eintrag',
     `
       <form id="info-form" class="stack">
+        <label for="info-title" class="field-label">Titel</label>
         <input type="text" id="info-title" maxlength="80" required autofocus placeholder="z.B. WLAN" value="${escapeHtml(existing?.title ?? '')}" />
+        <label for="info-content" class="field-label">Inhalt</label>
         <textarea id="info-content" maxlength="1000" rows="4" required placeholder="z.B. Netz: Respawn / Passwort: …">${escapeHtml(existing?.content ?? '')}</textarea>
         <button type="submit" class="btn btn-primary btn-block">${isEdit ? 'Speichern' : 'Anlegen'}</button>
       </form>
@@ -91,10 +94,10 @@ export function renderInfoBoard(container, ctx) {
 
   const entries =
     loading || cache === null
-      ? `<div class="empty-state">Lädt…</div>`
+      ? emptyStateHtml('Lädt…')
       : cache.length === 0
-        ? `<div class="empty-state">Noch keine Einträge.<br />
-           <span class="muted" style="font-size:var(--font-size-sm);">Gut aufgehoben hier: WLAN-Passwort, Discord-Link, Server-IPs, Hausregeln.</span></div>`
+        ? emptyStateHtml(`Noch keine Einträge.<br />
+           <span class="muted" style="font-size:var(--font-size-sm);">Gut aufgehoben hier: WLAN-Passwort, Discord-Link, Server-IPs, Hausregeln.</span>`)
         : `<div class="two-column-card-grid">${[...cache]
             .sort((a, b) => a.title.localeCompare(b.title, 'de', { sensitivity: 'base' }))
             .map(

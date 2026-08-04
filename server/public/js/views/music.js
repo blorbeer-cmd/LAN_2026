@@ -4,6 +4,7 @@ import { icon } from '../icons.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 const JAM_HELP =
   'Gemeinsame Musik-Warteschlange für die LAN. Ein PC oder Kiosk-Pi mit Spotify wird einmalig als Controller gekoppelt; wer darauf eine Wiedergabe startet, ist Host. Alle anderen können pausieren, überspringen und Songs vorschlagen – ein eigenes Spotify-Konto brauchen sie dafür nicht.';
@@ -105,7 +106,7 @@ function setupHtml(status) {
           <p class="muted music-pairing-hint">ZIP entpacken und die passende Startdatei öffnen.</p>` : ''}
           ${status.canManageController
             ? `<button type="button" class="btn btn-primary btn-block" id="music-download-controller" ${getMyId() ? '' : 'disabled'}>Controller herunterladen</button>`
-            : '<div class="empty-state">Ein Gruppen-Admin richtet den Jam-Controller ein.</div>'}
+            : emptyStateHtml('Ein Gruppen-Admin richtet den Jam-Controller ein.')}
       </section>`;
   }
   return '';
@@ -152,7 +153,7 @@ function nowPlayingHtml(session) {
           </div>
           <span class="muted music-duration">${durationLabel(currentProgress(session))} / ${durationLabel(track.durationMs)}</span>
         ` : `
-          <div class="empty-state music-no-playback">Auf ${escapeHtml(session.deviceName)} läuft gerade kein Titel.</div>
+          ${emptyStateHtml(`Auf ${escapeHtml(session.deviceName)} läuft gerade kein Titel.`, { className: 'music-no-playback' })}
         `}
       </div>
       ${canControlPlayback ? `
@@ -189,7 +190,7 @@ function requestQueueHtml(session) {
             <button type="button" class="icon-btn" data-music-move="down" aria-label="${escapeHtml(entry.name)} nach unten" ${index === queued.length - 1 ? 'disabled' : ''}>${icon('arrowDown')}</button>` : ''}
             <button type="button" class="icon-btn" data-music-remove aria-label="${escapeHtml(entry.name)} entfernen">${icon('trash')}</button>
           </span>` : ''}
-        </div>`).join('')}</div>` : '<div class="empty-state">Noch keine Songwünsche.</div>'}
+        </div>`).join('')}</div>` : emptyStateHtml('Noch keine Songwünsche.')}
     </section>`;
 }
 
@@ -210,7 +211,7 @@ function activeSessionHtml(status) {
 }
 
 function searchResultsHtml() {
-  if (searchLoading) return '<div class="empty-state">Spotify wird durchsucht…</div>';
+  if (searchLoading) return emptyStateHtml('Spotify wird durchsucht…');
   if (searchResults === null) return '';
   return searchResults.length ? `<div class="two-column-card-grid music-search-results">${searchResults.map((track) => `
     <div class="card music-search-result">
@@ -220,7 +221,7 @@ function searchResultsHtml() {
         <span class="muted">${escapeHtml(track.artist)}</span>
       </span>
       <button type="button" class="btn btn-sm" data-music-add="${escapeHtml(track.id)}">Hinzufügen</button>
-    </div>`).join('')}</div>` : '<div class="empty-state">Keine Titel gefunden.</div>';
+    </div>`).join('')}</div>` : emptyStateHtml('Keine Titel gefunden.');
 }
 
 function wireSearchResults(container) {
@@ -372,11 +373,11 @@ function wireConnection(container, ctx) {
   });
   container.querySelector('#music-load-devices')?.addEventListener('click', async () => {
     const area = container.querySelector('#music-device-area');
-    area.innerHTML = '<div class="empty-state">Geräte werden geladen…</div>';
+    area.innerHTML = emptyStateHtml('Geräte werden geladen…');
     try {
       const { devices } = await api.music.devices();
       if (!devices.length) {
-        area.innerHTML = '<div class="empty-state">Spotify auf dem gewünschten Gerät öffnen und dort kurz Musik starten.</div>';
+        area.innerHTML = emptyStateHtml('Spotify auf dem gewünschten Gerät öffnen und dort kurz Musik starten.');
         return;
       }
       area.innerHTML = `
@@ -396,7 +397,7 @@ function wireConnection(container, ctx) {
         }
       });
     } catch (error) {
-      area.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+      area.innerHTML = emptyStateHtml(escapeHtml(error.message));
     }
   });
 }
@@ -421,7 +422,7 @@ function wireSession(container, ctx) {
     } catch (error) {
       searchResults = null;
       searchLoading = false;
-      target.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+      target.innerHTML = emptyStateHtml(escapeHtml(error.message));
     }
   });
   container.querySelector('#music-toggle-playback')?.addEventListener('click', async () => {
@@ -465,7 +466,7 @@ export function renderMusic(container, ctx) {
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Jam</h1>
     <div class="grouped-page-sections">
-      ${cache ? `${setupHtml(cache)}${connectionHtml(cache)}${activeSessionHtml(cache)}` : '<section class="card grouped-page-section"><div class="empty-state">Lädt…</div></section>'}
+      ${cache ? `${setupHtml(cache)}${connectionHtml(cache)}${activeSessionHtml(cache)}` : `<section class="card grouped-page-section">${emptyStateHtml('Lädt…')}</section>`}
     </div>`;
   if (!cache) {
     scheduleProgress(container);

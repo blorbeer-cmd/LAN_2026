@@ -18,6 +18,7 @@ import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
 import { withStepUp } from '../reauth.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 import { matchesSelectionSearch, wireSelectionSearch } from '../selectionSearch.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
@@ -219,9 +220,9 @@ function renderList(container, ctx) {
   let currentListHtml;
   let completedListHtml = '';
   if (listLoading || listCache === null) {
-    currentListHtml = `<div class="empty-state">Lädt…</div>`;
+    currentListHtml = emptyStateHtml('Lädt…');
   } else if (listCache.length === 0) {
-    currentListHtml = `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('tournaments'))}</span><br />Noch keine Turniere.</div>`;
+    currentListHtml = emptyStateHtml('<br />Noch keine Turniere.', { icon: icon(domainIcon('tournaments')) });
   } else {
     const activeTournaments = listCache.filter((t) => t.status !== 'completed');
     const completedTournaments = listCache.filter((t) => t.status === 'completed');
@@ -263,7 +264,9 @@ function renderList(container, ctx) {
 
 function renderCreateForm(el, ctx) {
   if (state.games.length === 0 || state.players.length < 2) {
-    el.innerHTML = `<div class="empty-state" style="padding:var(--space-4);">Dafür braucht es mindestens ein Spiel und 2 Spieler.</div>`;
+    el.innerHTML = emptyStateHtml('Dafür braucht es mindestens ein Spiel und 2 Spieler.', {
+      style: 'padding:var(--space-4);',
+    });
     return;
   }
 
@@ -1031,7 +1034,7 @@ function renderGroupKnockout(t, ctx) {
     knockoutMatches.length === 0
       ? `<section class="tournament-section-panel tournament-group-panel stack">
            <div class="tournament-create-step-title"><h3>K.O.-Runde</h3><span class="muted">Entscheidungsphase</span></div>
-           <div class="empty-state">Startet automatisch, sobald alle Gruppenspiele entschieden sind.</div>
+           ${emptyStateHtml('Startet automatisch, sobald alle Gruppenspiele entschieden sind.')}
          </section>`
       : `<section class="tournament-section-panel tournament-group-panel stack">
            <div class="tournament-create-step-title"><h3>K.O.-Runde</h3><span class="muted">Entscheidungsphase</span></div>
@@ -1081,7 +1084,7 @@ function renderDetail(container, ctx) {
   if (detailLoading || !detailCache) {
     container.innerHTML = `
       <button type="button" class="btn btn-sm" id="tourn-back">‹ Zurück</button>
-      <div class="empty-state">Lädt…</div>`;
+      ${emptyStateHtml('Lädt…')}`;
     container.querySelector('#tourn-back').addEventListener('click', () => {
       currentTournamentId = null;
       editingResultMatchId = null;

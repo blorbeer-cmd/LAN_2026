@@ -11,6 +11,7 @@ import { getMyId } from '../whoami.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 let cache = null;
 let loading = false;
@@ -281,7 +282,7 @@ function renderPeopleList() {
                  <span role="columnheader">${renderPeopleSortButton('departure', 'Abreise')}</span>
                  <span role="columnheader">Notiz</span>
                </div>${rows}`
-            : '<div class="empty-state">Noch keine Spieler.</div>'
+            : emptyStateHtml('Noch keine Spieler.')
         }
       </div>
     </section>`;
@@ -389,7 +390,7 @@ export function renderArrivals(container, ctx) {
              ${renderCarpools(myId)}
              ${renderPeopleList()}
            </div>`
-        : '<div class="empty-state">Lädt…</div>'
+        : emptyStateHtml('Lädt…')
     }
   `;
 

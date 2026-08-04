@@ -9,6 +9,7 @@ import { escapeHtml, formatDateTime } from '../format.js';
 import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 let statsCache = null;
 let statsLoading = false;
@@ -47,7 +48,7 @@ function renderEventOptions() {
 
 function renderStats() {
   if (statsLoading || !statsCache) {
-    return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
+    return emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' });
   }
   const s = statsCache;
 
@@ -94,7 +95,7 @@ function renderStats() {
           )
           .join('')}
       </div>`
-    : `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon('award')}</span>Noch keine eigenen Awards.</div>`;
+    : emptyStateHtml('Noch keine eigenen Awards.', { style: 'padding:var(--space-4);', icon: icon('award') });
 
   const gamesHtml = s.games.length
     ? s.games
@@ -110,7 +111,7 @@ function renderStats() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Spielzeit erfasst.</div>`;
+    : emptyStateHtml('Noch keine Spielzeit erfasst.', { style: 'padding:var(--space-4);' });
 
   const eventsHtml = s.events.length
     ? s.events
@@ -122,7 +123,7 @@ function renderStats() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Events mit Spielzeit.</div>`;
+    : emptyStateHtml('Noch keine Events mit Spielzeit.', { style: 'padding:var(--space-4);' });
 
   const longestHtml = s.longestSessions.length
     ? s.longestSessions
@@ -137,7 +138,7 @@ function renderStats() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Sessions.</div>`;
+    : emptyStateHtml('Noch keine Sessions.', { style: 'padding:var(--space-4);' });
 
   return `
     <div class="card stack">
@@ -165,7 +166,7 @@ export function renderMyStats(container, ctx) {
   if (!me) {
     container.innerHTML = `
       <button type="button" class="btn btn-sm" data-navigate="profile">‹ Zurück zum Profil</button>
-      <div class="empty-state" style="margin-top:var(--space-4);"><span class="empty-state-icon">${icon('user')}</span>Bitte erst dein Profil einrichten.</div>
+      ${emptyStateHtml('Bitte erst dein Profil einrichten.', { style: 'margin-top:var(--space-4);', icon: icon('user') })}
     `;
     return;
   }

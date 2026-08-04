@@ -10,6 +10,7 @@ import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, readyToggleHtml, wire
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../infoTooltip.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 const W = 960;
 const H = 540;
@@ -159,7 +160,7 @@ function startReason(lobby) {
 }
 
 function lobbyList() {
-  if (!lobbies.length) return '<div class="empty-state" style="padding:var(--space-4);">Keine offene Pong-Lobby.</div>';
+  if (!lobbies.length) return emptyStateHtml('Keine offene Pong-Lobby.', { style: 'padding:var(--space-4);' });
   return lobbies.map((lobby) => {
     const isHost = lobby.host.id === myId();
     const joined = lobby.players.some((player) => player.id === myId());

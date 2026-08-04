@@ -10,6 +10,7 @@ import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 import { arcadeToolbarHtml, wireArcadeToolbar } from './arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 const SIZE = 10;
 const SHIPS = [
@@ -231,7 +232,7 @@ function ownGridHtml(player) {
 function renderBattle() {
   const me = match.players.find((player) => player.id === myId());
   const target = match.players.find((player) => player.id !== myId());
-  if (!me || !target) return '<div class="empty-state">Gegner nicht gefunden.</div>';
+  if (!me || !target) return emptyStateHtml('Gegner nicht gefunden.');
   const canFire = match.phase === 'playing' && !match.paused && match.currentPlayerId === myId();
   const status = match.paused ? 'Pause' : canFire ? 'Du bist am Zug' : `Warte auf ${escapeHtml(match.players.find((player) => player.id === match.currentPlayerId)?.name ?? 'Gegner')}`;
   const resultLabels = { miss: 'Wasser', hit: 'Treffer' };
@@ -395,7 +396,7 @@ function wireBattle(container) {
 }
 
 function lobbyList() {
-  if (!lobbies.length) return '<div class="empty-state" style="padding:var(--space-4);">Keine offene Lobby.</div>';
+  if (!lobbies.length) return emptyStateHtml('Keine offene Lobby.', { style: 'padding:var(--space-4);' });
   return lobbies.map((lobby) => {
     const joined = lobby.players.some((player) => player.id === myId());
     const isHost = lobby.host.id === myId();

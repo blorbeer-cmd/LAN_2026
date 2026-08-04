@@ -22,6 +22,7 @@ import { state } from '../state.js';
 import { escapeHtml, formatDateTime, avatarHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 let activeTab = 'playtime'; // 'playtime' | 'matches' | 'arcade'
 
@@ -189,12 +190,12 @@ export function renderAnalytics(container, ctx) {
 
 function renderActiveTabContent() {
   if (activeTab === 'matches') {
-    return matchesLoading || !matchesCache ? `<div class="empty-state">Lädt…</div>` : renderMatchesContent();
+    return matchesLoading || !matchesCache ? emptyStateHtml('Lädt…') : renderMatchesContent();
   }
   if (activeTab === 'arcade') {
-    return arcadeLoading || !arcadeCache ? `<div class="empty-state">Lädt…</div>` : renderArcadeContent();
+    return arcadeLoading || !arcadeCache ? emptyStateHtml('Lädt…') : renderArcadeContent();
   }
-  return loading || !cache ? `<div class="empty-state">Lädt…</div>` : renderPlaytimeContent();
+  return loading || !cache ? emptyStateHtml('Lädt…') : renderPlaytimeContent();
 }
 
 function renderArcadeContent() {
@@ -218,7 +219,7 @@ function renderArcadeContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine abgeschlossenen Arcade-Matches.</div>`;
+    : emptyStateHtml('Noch keine abgeschlossenen Arcade-Matches.', { style: 'padding:var(--space-4);' });
 
   return `
     <section class="card stack grouped-page-section" aria-labelledby="analytics-arcade-total-title">
@@ -259,7 +260,7 @@ function renderPlaytimeContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions für dieses Event.</div>`;
+    : emptyStateHtml('Keine Sessions für dieses Event.', { style: 'padding:var(--space-4);' });
 
   const awardsHtml = awards.length
     ? awards
@@ -278,7 +279,7 @@ function renderPlaytimeContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Awards für dieses Event.</div>`;
+    : emptyStateHtml('Noch keine Awards für dieses Event.', { style: 'padding:var(--space-4);' });
 
   const longestPerGameHtml = overview.longestSessionsPerGame.length
     ? overview.longestSessionsPerGame
@@ -291,7 +292,7 @@ function renderPlaytimeContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions für dieses Event.</div>`;
+    : emptyStateHtml('Keine Sessions für dieses Event.', { style: 'padding:var(--space-4);' });
 
   const sessionRows = sessions
     .slice(0, 100)
@@ -331,7 +332,7 @@ function renderPlaytimeContent() {
       </summary>
       <div class="collapsible-section-content">
         <div class="leaderboard-list-grid">
-          ${sessionRows || `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions für dieses Event.</div>`}
+          ${sessionRows || emptyStateHtml('Keine Sessions für dieses Event.', { style: 'padding:var(--space-4);' })}
         </div>
       </div>
     </details>
@@ -361,7 +362,7 @@ function renderMatchesContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Ergebnisse eingetragen.</div>`;
+    : emptyStateHtml('Noch keine Ergebnisse eingetragen.', { style: 'padding:var(--space-4);' });
 
   const tournamentByGameRows = tournaments.byGame.length
     ? tournaments.byGame
@@ -373,7 +374,7 @@ function renderMatchesContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Turniere.</div>`;
+    : emptyStateHtml('Noch keine Turniere.', { style: 'padding:var(--space-4);' });
 
   const formatRows = tournaments.byFormat.length
     ? tournaments.byFormat
@@ -385,7 +386,7 @@ function renderMatchesContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Turnierarten.</div>`;
+    : emptyStateHtml('Noch keine Turnierarten.', { style: 'padding:var(--space-4);' });
 
   const drawRows = draws.byGame.length
     ? draws.byGame
@@ -397,7 +398,7 @@ function renderMatchesContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Teams ausgelost.</div>`;
+    : emptyStateHtml('Noch keine Teams ausgelost.', { style: 'padding:var(--space-4);' });
 
   const funCards = [];
   if (fun.biggestRivalry) {
@@ -436,7 +437,7 @@ function renderMatchesContent() {
   }
   const funHtml = funCards.length
     ? `<div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));">${funCards.join('')}</div>`
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch nicht genug Ergebnisse.</div>`;
+    : emptyStateHtml('Noch nicht genug Ergebnisse.', { style: 'padding:var(--space-4);' });
 
   return `
     <section class="card stack grouped-page-section" aria-labelledby="analytics-match-results-title">

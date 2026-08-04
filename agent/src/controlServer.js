@@ -55,6 +55,7 @@ function renderPage() {
   }
   .btn-primary { background: #3b82f6; color: white; }
   .btn-danger { background: transparent; color: #ff453a; border: 1px solid rgba(255,69,58,0.5); width: 100%; }
+  .btn-cancel { background: rgba(128,128,128,0.15); color: inherit; }
   .switch { position: relative; width: 44px; height: 26px; flex-shrink: 0; }
   .switch input { opacity: 0; width: 0; height: 0; }
   .slider {
@@ -111,6 +112,10 @@ function renderPage() {
 
     <div class="danger-zone">
       <button class="btn-danger" id="uninstallBtn">🗑 Agent komplett deinstallieren</button>
+      <div id="uninstallConfirmRow" style="display:flex;gap:10px;margin-top:10px;" hidden>
+        <button class="btn-cancel" id="uninstallCancelBtn" style="flex:1;">Abbrechen</button>
+        <button class="btn-danger" id="uninstallConfirmBtn" style="width:auto;flex:1;">Ja, deinstallieren</button>
+      </div>
       <div class="hint">Entfernt Autostart, beendet den Agent und löscht alle Dateien von diesem PC.</div>
     </div>
 
@@ -171,14 +176,27 @@ document.getElementById('autostartToggle').addEventListener('change', async (e) 
   await loadStatus();
 });
 
-document.getElementById('uninstallBtn').addEventListener('click', async () => {
-  if (!confirm('Agent wirklich komplett deinstallieren? Autostart wird entfernt, alle Dateien gelöscht und das Tracking gestoppt.')) return;
+document.getElementById('uninstallBtn').addEventListener('click', () => {
+  document.getElementById('uninstallBtn').hidden = true;
+  document.getElementById('uninstallConfirmRow').hidden = false;
+  // Default focus lands on Abbrechen, not the destructive action -- native
+  // confirmation dialogs leave focus and the Enter key under the browser's
+  // control rather than this page's, which is the hazard this avoids.
+  document.getElementById('uninstallCancelBtn').focus();
+});
+document.getElementById('uninstallCancelBtn').addEventListener('click', () => {
+  document.getElementById('uninstallConfirmRow').hidden = true;
+  document.getElementById('uninstallBtn').hidden = false;
+});
+document.getElementById('uninstallConfirmBtn').addEventListener('click', async () => {
   const res = await fetch('/api/uninstall', { method: 'POST' });
   if (res.ok) {
     document.getElementById('card').innerHTML =
       '<h1>Deinstalliert</h1><p class="sub">Der Agent wurde beendet und alle Dateien wurden entfernt. Dieses Fenster kannst du jetzt schließen.</p>';
   } else {
     showMsg('Deinstallation fehlgeschlagen.', true);
+    document.getElementById('uninstallConfirmRow').hidden = true;
+    document.getElementById('uninstallBtn').hidden = false;
   }
 });
 

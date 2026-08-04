@@ -5,6 +5,7 @@ import { getMyId } from '../whoami.js';
 import { icon } from '../icons.js';
 import { showToast } from '../toast.js';
 import { snakeArenaLegendHtml } from '../snakeArenaLegend.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 const GAME_NAMES = {
   quiz: 'Gaming-Quiz',
@@ -155,7 +156,7 @@ function updateWatchMeta(state) {
 }
 
 function stateHtml(state) {
-  if (!state) return '<div class="empty-state">Verbindung zum Spiel wird hergestellt…</div>';
+  if (!state) return emptyStateHtml('Verbindung zum Spiel wird hergestellt…');
   if (state.gameType === 'quiz') return '<div class="arcade-watch-safe-note">Frage und Antworten werden für Zuschauer verborgen.</div>';
   if (state.gameType === 'challenge-rush') {
     const challenge = typeof state.challenge === 'object' ? state.challenge : null;

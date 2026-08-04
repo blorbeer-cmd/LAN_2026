@@ -24,6 +24,7 @@ import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, readyToggleHtml, wire
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../infoTooltip.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 const COLS = 10;
 const ROWS = 20;
@@ -428,7 +429,7 @@ function paintOverlay() {
 // ---------- Lobby card (rendered inline inside the Arcade view) ----------
 
 function renderLobbyList() {
-  if (lobbies.length === 0) return `<div class="empty-state" style="padding:var(--space-4);">Keine offene Tetris-Lobby.</div>`;
+  if (lobbies.length === 0) return emptyStateHtml('Keine offene Tetris-Lobby.', { style: 'padding:var(--space-4);' });
   return lobbies
     .map((l) => {
       const isHost = l.host.id === myId();
@@ -626,7 +627,7 @@ export function renderTetris(container, ctx) {
     // The play view is only for live matches; anything else belongs in Arcade.
     container.innerHTML = `
       <button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button>
-      <div class="empty-state" style="margin-top:var(--space-4);">Kein laufendes Tetris-Match.</div>`;
+      ${emptyStateHtml('Kein laufendes Tetris-Match.', { style: 'margin-top:var(--space-4);' })}`;
     return;
   }
 

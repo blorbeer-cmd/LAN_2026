@@ -15,6 +15,7 @@ import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { renderSeatingPlan } from './seating.js';
 import { ensureAktuellLoaded, aktuellItems } from '../aktuellStatus.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
 
@@ -50,7 +51,7 @@ function renderHomeSeating(ctx) {
   return `<section class="card grouped-page-section live-seating stack" aria-labelledby="home-seating-title">
     <div class="grouped-page-section-title"><h2 id="home-seating-title">Sitzplan</h2></div>
     ${seatingLoading || seatingCache === null
-      ? '<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>'
+      ? emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' })
       : renderSeatingPlan(seatingCache.layout, seatingCache.players)}
   </section>`;
 }
@@ -195,11 +196,11 @@ export function renderHome(container, ctx) {
   if (players.length === 0) {
     container.innerHTML = `
       <h1 class="view-title">Home</h1>
-      <div class="empty-state">
+      ${emptyStateHtml(`
         <img src="/img/mascot.svg" alt="" width="72" height="66" class="mascot" />
         Noch keine Spieler angelegt.<br />
         <button type="button" class="btn btn-primary btn-sm" data-navigate="profile" style="margin-top:var(--space-3);">Eigenes Profil anlegen</button>
-      </div>`;
+      `)}`;
     return;
   }
 

@@ -11,7 +11,7 @@ function requestReauthentication() {
       `<form id="reauth-form" class="stack">
         <p class="muted" style="margin:0;">Diese sicherheitskritische Aktion wird für fünf Minuten freigeschaltet.</p>
         <div class="row">
-          <input id="reauth-password" type="password" autocomplete="current-password" required autofocus style="flex:1;" placeholder="Dein Passwort" />
+          <input id="reauth-password" type="password" autocomplete="current-password" required autofocus style="flex:1;" placeholder="Dein Passwort" aria-label="Passwort" />
           <button type="button" class="icon-btn" id="reauth-toggle" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
         </div>
         <button type="submit" class="btn btn-primary btn-block">Bestätigen</button>

@@ -8,6 +8,7 @@ import { escapeHtml, avatarHtml, formatDate } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 let cache = null;
 let loading = false;
@@ -32,7 +33,7 @@ async function load(ctx) {
 
 function rankedRows(entries, suffix) {
   if (entries.length === 0) {
-    return `<div class="empty-state" style="padding:var(--space-4);">Noch keine Daten.</div>`;
+    return emptyStateHtml('Noch keine Daten.', { style: 'padding:var(--space-4);' });
   }
   return entries
     .map(
@@ -112,7 +113,7 @@ export function renderHallOfFame(container, ctx) {
     <h1 class="view-title">Hall of Fame</h1>
     ${
       loading || cache === null
-        ? `<div class="empty-state">Lädt…</div>`
+        ? emptyStateHtml('Lädt…')
         : `
       <div class="grouped-page-sections">
         <section class="card stack grouped-page-section" aria-labelledby="hall-overall-title">
@@ -127,7 +128,7 @@ export function renderHallOfFame(container, ctx) {
           <div class="grouped-page-section-title"><h2 id="hall-events-title">Nach LAN</h2></div>
           ${
             events.length === 0
-              ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('hallOfFame'))}</span>Noch keine Events.</div>`
+              ? emptyStateHtml('Noch keine Events.', { icon: icon(domainIcon('hallOfFame')) })
               : `<select id="hall-event-select" aria-label="LAN">
                    ${events.map((event) => `<option value="${event.eventId}" ${event.eventId === selectedEventId ? 'selected' : ''}>${escapeHtml(event.eventName)}</option>`).join('')}
                  </select>

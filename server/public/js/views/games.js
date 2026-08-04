@@ -14,6 +14,7 @@ import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { withStepUp } from '../reauth.js';
 import { getMyId } from '../whoami.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 const EVENT_HELP = 'Mehrere Events sind möglich. Nur ein Event erfasst gleichzeitig Live-Status und Spielzeit; alles andere bleibt „Außerhalb von Events“.';
 const KIOSK_HELP = 'Für gemeinsame Bildschirme: zeigt Live-Status, Vote, Rang und Turnier automatisch. Der Kiosk benötigt seinen eigenen Token.';
@@ -118,7 +119,7 @@ function renderEventSection() {
       }
       ${
         realEvents.length === 0
-          ? `<div class="empty-state"><span class="empty-state-icon">${icon('calendar')}</span>Noch keine Events angelegt.</div>`
+          ? emptyStateHtml('Noch keine Events angelegt.', { icon: icon('calendar') })
           : `<div class="two-column-card-grid settings-event-grid">${cards}</div>`
       }
     </section>
@@ -262,7 +263,7 @@ function renderParticipantsBody(event) {
         </div>`;
     })
     .join('');
-  return `<div class="stack"><p class="muted" style="font-size:var(--font-size-xs);">Nur zugesagte Spieler erhalten Teilnehmerdaten und werden bei aktivem Event-Tracking berücksichtigt.</p>${state.players.length === 0 ? `<div class="empty-state">Noch keine Spieler.</div>` : rows}</div>`;
+  return `<div class="stack"><p class="muted" style="font-size:var(--font-size-xs);">Nur zugesagte Spieler erhalten Teilnehmerdaten und werden bei aktivem Event-Tracking berücksichtigt.</p>${state.players.length === 0 ? emptyStateHtml('Noch keine Spieler.') : rows}</div>`;
 }
 
 // Event managers invite active group members here. Acceptance remains a
@@ -296,7 +297,7 @@ function openParticipantsForm(ctx, event) {
         <p class="muted" style="font-size:var(--font-size-xs);">
           Nur zugesagte Spieler erhalten Teilnehmerdaten und werden bei aktivem Event-Tracking berücksichtigt.
         </p>
-        ${state.players.length === 0 ? `<div class="empty-state">Noch keine Spieler.</div>` : rows}
+        ${state.players.length === 0 ? emptyStateHtml('Noch keine Spieler.') : rows}
       </div>
     `,
     {

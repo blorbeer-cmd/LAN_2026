@@ -9,6 +9,7 @@ import { escapeHtml, formatDateTime } from './format.js';
 import { feedEntryIcon, feedEntryTitle, feedLinkView, FEED_LINK_LABELS } from './pushFeed.js';
 import { showToast } from './toast.js';
 import { confirmDialog } from './modal.js';
+import { emptyStateHtml } from './emptyState.js';
 
 const FEED_LIMIT = 20;
 
@@ -80,16 +81,16 @@ function entryHtml(entry) {
 
 function panelContentHtml(myId) {
   if (!myId) {
-    return '<div class="empty-state notification-center-empty">Wähle zuerst dein Profil aus.</div>';
+    return emptyStateHtml('Wähle zuerst dein Profil aus.', { className: 'notification-center-empty' });
   }
   if (loading && loadedForId !== myId) {
-    return '<div class="empty-state notification-center-empty">Mitteilungen werden geladen…</div>';
+    return emptyStateHtml('Mitteilungen werden geladen…', { className: 'notification-center-empty' });
   }
   if (loadError) {
-    return '<div class="empty-state notification-center-empty">Mitteilungen konnten nicht geladen werden.</div>';
+    return emptyStateHtml('Mitteilungen konnten nicht geladen werden.', { className: 'notification-center-empty' });
   }
   if (entries.length === 0) {
-    return '<div class="empty-state notification-center-empty">Keine Mitteilungen.</div>';
+    return emptyStateHtml('Keine Mitteilungen.', { className: 'notification-center-empty' });
   }
   return `<div class="notification-center-list">${entries.slice(0, FEED_LIMIT).map(entryHtml).join('')}</div>`;
 }

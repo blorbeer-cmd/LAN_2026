@@ -8,6 +8,7 @@ import { openModal } from '../modal.js';
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
 import { getMyId } from '../whoami.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 export function renderPlayers(container) {
   const myId = getMyId();
@@ -30,7 +31,7 @@ export function renderPlayers(container) {
       <section class="card stack grouped-page-section" aria-label="Spielerliste">
         ${
           state.players.length === 0
-            ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('players'))}</span>Noch keine Spieler.</div>`
+            ? emptyStateHtml('Noch keine Spieler.', { icon: icon(domainIcon('players')) })
             : `<div class="two-column-card-grid player-roster-grid">${rows}</div>`
         }
       </section>
