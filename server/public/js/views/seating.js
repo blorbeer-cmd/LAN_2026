@@ -13,6 +13,7 @@ import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { isGroupAdmin } from '../groupContext.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 const SIDES = ['top', 'right', 'bottom', 'left'];
 const LABELS = { top: 'Oben', right: 'Rechts', bottom: 'Unten', left: 'Links' };
@@ -307,7 +308,7 @@ export function renderSeating(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Sitzplan</h1>
-    ${loading ? '<div class="empty-state">Lädt…</div>' : cache === null ? '<div class="empty-state">Fehler beim Laden.</div>' : renderEditor()}`;
+    ${loading ? emptyStateHtml('Lädt…') : cache === null ? emptyStateHtml('Fehler beim Laden.') : renderEditor()}`;
   if (cache) {
     wireInfoTooltips(container);
     wireEditor(container, ctx);

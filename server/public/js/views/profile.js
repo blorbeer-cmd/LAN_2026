@@ -18,6 +18,7 @@ import { resizeImageFile } from '../imageUtils.js';
 import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { confirmDialog, openModal } from '../modal.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 const TRACKING_PAUSE_HELP = 'Pausiert Live-Status und Spielzeit. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.';
 const ACTIVITY_TRACKING_HELP = 'Erfasst zusätzlich, ob das Spielfenster im Vordergrund ist. Der Wert lässt sich später in der Agent-Steuerung ändern.';
@@ -212,10 +213,10 @@ async function loadNeighbors(playerId, ctx) {
 function renderNeighbors(myId) {
   const others = state.players.filter((p) => p.id !== myId);
   if (others.length === 0) {
-    return `<div class="empty-state" style="padding:var(--space-4);">Noch keine anderen Spieler da.</div>`;
+    return emptyStateHtml('Noch keine anderen Spieler da.', { style: 'padding:var(--space-4);' });
   }
   if (neighborsLoading || neighborsCache === null) {
-    return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
+    return emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' });
   }
   const checked = new Set(neighborsCache.neighborIds);
   const rows = others
@@ -263,7 +264,7 @@ export function renderProfile(container, ctx) {
   const myId = getMyId();
   const me = state.players.find((p) => p.id === myId);
   if (!me) {
-    container.innerHTML = '<div class="empty-state">Dein Profil konnte nicht geladen werden.</div>';
+    container.innerHTML = emptyStateHtml('Dein Profil konnte nicht geladen werden.');
     return;
   }
 

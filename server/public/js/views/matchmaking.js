@@ -16,6 +16,7 @@ import { domainIcon } from '../domainIcons.js';
 import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 import { matchesSelectionSearch, wireSelectionSearch } from '../selectionSearch.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -407,14 +408,14 @@ function renderHistory() {
     return renderHistoryDetails(
       'Historie',
       0,
-      '<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>'
+      emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' })
     );
   }
   if (historyCache.length === 0) {
     return renderHistoryDetails(
       'Historie',
       0,
-      '<div class="empty-state" style="padding:var(--space-4);">Noch keine Auslosungen für dieses Spiel.</div>'
+      emptyStateHtml('Noch keine Auslosungen für dieses Spiel.', { style: 'padding:var(--space-4);' })
     );
   }
 
@@ -503,7 +504,7 @@ export function renderMatchmaking(container, ctx) {
   if (state.games.length === 0 || state.players.length === 0) {
     container.innerHTML = `
       <h1 class="view-title">Teams</h1>
-      <div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('matchmaking'))}</span>Dafür braucht es mindestens ein Spiel und 2 Spieler.</div>`;
+      ${emptyStateHtml('Dafür braucht es mindestens ein Spiel und 2 Spieler.', { icon: icon(domainIcon('matchmaking')) })}`;
     return;
   }
 

@@ -17,6 +17,7 @@ import { getMyId } from '../whoami.js';
 import { icon } from '../icons.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 let cache = null;
 let loading = false;
@@ -338,7 +339,7 @@ function renderOpenOrder(order, myId) {
       ${
         myId
           ? `<form class="food-order-item-form" data-add-item-form="${order.id}">
-               <input type="text" data-item-desc placeholder="z.B. Margherita groß" maxlength="120" required />
+               <input type="text" data-item-desc placeholder="z.B. Margherita groß" maxlength="120" required aria-label="Artikelbezeichnung" />
                <label class="food-order-quantity-field">
                  <input type="number" class="food-order-quantity-input" data-item-quantity placeholder="Anzahl" min="1" max="99" inputmode="numeric" aria-label="Anzahl" />
                  <span aria-hidden="true">×</span>
@@ -408,6 +409,7 @@ function openNewOrderForm(ctx, myId) {
     'Neue Sammelbestellung',
     `
       <form id="order-form" class="stack">
+        <label for="order-title" class="field-label">Titel</label>
         <input type="text" id="order-title" maxlength="80" required autofocus placeholder="z.B. Pizza bei Luigi's" />
         <div>
           <label for="order-sendat" class="field-label">Versand (optional)</label>
@@ -610,10 +612,10 @@ export function renderFoodOrders(container, ctx) {
 
   const openHtml =
     loading || cache === null
-      ? `<div class="empty-state">Lädt…</div>`
+      ? emptyStateHtml('Lädt…')
       : openOrders.length === 0
-        ? `<div class="empty-state">Gerade keine offene Bestellung.<br />
-           <span class="muted" style="font-size:var(--font-size-sm);">Starte eine, wenn ihr was bestellen wollt – alle können sich dann selbst eintragen.</span></div>`
+        ? emptyStateHtml(`Gerade keine offene Bestellung.<br />
+           <span class="muted" style="font-size:var(--font-size-sm);">Starte eine, wenn ihr was bestellen wollt – alle können sich dann selbst eintragen.</span>`)
         : `<div class="two-column-card-grid food-order-grid">${openOrders.map((o) => renderOpenOrder(o, myId)).join('')}</div>`;
 
   container.innerHTML = `

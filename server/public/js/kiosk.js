@@ -12,6 +12,7 @@ import { bannerContentHtml } from './pushFeed.js';
 import { drawArcadeStreamCanvas } from './arcadeStreamRenderer.js';
 import { domainIcon, installDomainIcons } from './domainIcons.js';
 import { snakeArenaLegendHtml } from './snakeArenaLegend.js';
+import { emptyStateHtml } from './emptyState.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -178,7 +179,7 @@ async function ensureAccess() {
 
 function renderLive(players) {
   if (players.length === 0) {
-    return `<div class="empty-state">Noch keine Spieler.</div>`;
+    return emptyStateHtml('Noch keine Spieler.');
   }
   const sorted = [...players].sort((a, b) => {
     const rankDiff = STATE_RANK[a.state] - STATE_RANK[b.state];
@@ -308,7 +309,7 @@ function renderVotes(votes) {
     clearVoteDisplayTimer();
   }
   if (!vote) {
-    return `<div class="empty-state kiosk-vote-state">Keine offene Abstimmung.</div>`;
+    return emptyStateHtml('Keine offene Abstimmung.', { className: 'kiosk-vote-state' });
   }
   const heading = vote.mode === 'single' ? 'Stichwahl läuft' : 'Abstimmung läuft';
   return `
@@ -327,7 +328,7 @@ function renderVotes(votes) {
 
 function renderLeaderboard(standings) {
   if (!standings || standings.length === 0) {
-    return `<div class="empty-state">Noch keine Ergebnisse.</div>`;
+    return emptyStateHtml('Noch keine Ergebnisse.');
   }
   const rows = standings
     .slice(0, 8)
@@ -355,7 +356,7 @@ function tournamentStandingRow(name, standing, index, { compact = false } = {}) 
 }
 
 function renderTournament(t) {
-  if (!t) return `<div class="empty-state">Kein Turnier.</div>`;
+  if (!t) return emptyStateHtml('Kein Turnier.');
   const teamsById = new Map(t.teams.map((team) => [team.id, team]));
   const teamName = (id) => (id ? escapeHtml(teamsById.get(id)?.name ?? 'TBD') : 'TBD');
 
@@ -604,7 +605,7 @@ async function refreshAll() {
       if (requestVersion !== refreshVersion) return;
       document.getElementById('kiosk-tournament').innerHTML = renderTournament(detail);
     } else {
-      document.getElementById('kiosk-tournament').innerHTML = `<div class="empty-state">Kein offenes Turnier.</div>`;
+      document.getElementById('kiosk-tournament').innerHTML = emptyStateHtml('Kein offenes Turnier.');
     }
   } catch (err) {
     // A kiosk screen has nobody to dismiss a toast — log and try again on
@@ -665,10 +666,10 @@ function updateClock() {
 async function main() {
   const ok = await ensureAccess();
   if (!ok) {
-    document.getElementById('kiosk-root').innerHTML = `
-      <div class="empty-state" style="padding:var(--space-8);font-size:var(--font-size-lg);">
-        Kein Zugriff — diese Seite mit <code>?token=…</code> öffnen (wie der Einladungslink).
-      </div>`;
+    document.getElementById('kiosk-root').innerHTML = emptyStateHtml(
+      'Kein Zugriff — diese Seite mit <code>?token=…</code> öffnen (wie der Einladungslink).',
+      { style: 'padding:var(--space-8);font-size:var(--font-size-lg);' },
+    );
     return;
   }
 
@@ -709,5 +710,7 @@ async function main() {
 main().catch((err) => {
   // eslint-disable-next-line no-console
   console.error(err);
-  document.getElementById('kiosk-root').innerHTML = `<div class="empty-state" style="padding:var(--space-8);">Fehler beim Start: ${err.message}</div>`;
+  document.getElementById('kiosk-root').innerHTML = emptyStateHtml(`Fehler beim Start: ${err.message}`, {
+    style: 'padding:var(--space-8);',
+  });
 });

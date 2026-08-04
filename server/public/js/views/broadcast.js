@@ -7,6 +7,7 @@ import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { icon } from '../icons.js';
+import { emptyStateHtml } from '../emptyState.js';
 import { domainIcon } from '../domainIcons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
@@ -35,10 +36,10 @@ export function invalidateBroadcasts() {
 
 function renderHistory(myId) {
   if (historyLoading || historyCache === null) {
-    return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
+    return emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' });
   }
   if (historyCache.length === 0) {
-    return `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('broadcast'))}</span>Noch keine Durchsagen.</div>`;
+    return emptyStateHtml('Noch keine Durchsagen.', { icon: icon(domainIcon('broadcast')) });
   }
   const now = Date.now();
   const rows = historyCache

@@ -18,6 +18,7 @@ import { domainIcon } from '../domainIcons.js';
 import { withStepUp } from '../reauth.js';
 import { GAME_GENRES, MAX_GENRES_PER_GAME } from '../gameGenres.js';
 import { wireSelectionSearch } from '../selectionSearch.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 let activeTab = 'catalog'; // 'catalog' | 'suggestions'
 let sortKey = 'name';
@@ -458,7 +459,7 @@ function openGameDetail(gameId, ctx) {
             : ''
         }
         <div class="row" style="align-items:stretch;">
-          <input type="text" id="new-process" placeholder="z.B. cs2.exe" style="flex:1;" />
+          <input type="text" id="new-process" placeholder="z.B. cs2.exe" style="flex:1;" aria-label="Prozessname" />
           <button type="button" class="btn" id="add-process">+</button>
         </div>
 
@@ -704,7 +705,7 @@ export function renderGameCatalog(container, ctx) {
         <div class="game-table">
           ${
             rows.length === 0
-              ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('gameCatalog'))}</span>${emptyMessage}</div>`
+              ? emptyStateHtml(emptyMessage, { icon: icon(domainIcon('gameCatalog')) })
               : rows.map((g) => gameRowHtml(g, myId)).join('')
           }
         </div>

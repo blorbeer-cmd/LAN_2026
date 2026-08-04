@@ -24,6 +24,7 @@ import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobby
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../infoTooltip.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 const SWATCHES = [
   '#1a1a1a',
@@ -813,7 +814,7 @@ export function ensureScribbleSocket() {
 // ---------- Lobby card (rendered inline inside the Arcade view) ----------
 
 function renderLobbyList() {
-  if (lobbies.length === 0) return `<div class="empty-state" style="padding:var(--space-4);">Keine offene Scribble-Lobby.</div>`;
+  if (lobbies.length === 0) return emptyStateHtml('Keine offene Scribble-Lobby.', { style: 'padding:var(--space-4);' });
   return lobbies
     .map((l) => {
       const isHost = l.host.id === myId();
@@ -955,7 +956,7 @@ export function renderScribbleRoom(container) {
     // The play view is only for live matches; anything else belongs in Arcade.
     container.innerHTML = `
       <button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button>
-      <div class="empty-state" style="margin-top:var(--space-4);">Kein laufendes Scribble-Match.</div>`;
+      ${emptyStateHtml('Kein laufendes Scribble-Match.', { style: 'margin-top:var(--space-4);' })}`;
     return;
   }
 

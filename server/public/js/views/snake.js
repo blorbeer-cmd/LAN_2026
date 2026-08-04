@@ -10,6 +10,7 @@ import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, readyToggleHtml, wire
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../infoTooltip.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 const COLS = 32;
 const ROWS = 20;
@@ -95,7 +96,7 @@ export function ensureSnakeSocket() {
 }
 
 function lobbyList() {
-  if (!lobbies.length) return '<div class="empty-state" style="padding:var(--space-4);">Keine offene Snake-Lobby.</div>';
+  if (!lobbies.length) return emptyStateHtml('Keine offene Snake-Lobby.', { style: 'padding:var(--space-4);' });
   return lobbies.map((lobby) => {
     const isHost = lobby.host.id === myId();
     const joined = lobby.players.some((player) => player.id === myId());

@@ -8,6 +8,7 @@ import { infoTooltipHtml } from '../infoTooltip.js';
 import { cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../modal.js';
 import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 const COLOR_WORD_LABELS = { red: 'Rot', blue: 'Blau', green: 'Grün', yellow: 'Gelb' };
 const COLOR_WORD_VARS = { red: 'var(--danger)', blue: 'var(--accent)', green: 'var(--state-playing)', yellow: 'var(--state-paused)' };
@@ -347,7 +348,7 @@ export function renderChallengeRushLobbyCard() {
         ? 'Du hast bereits eine offene Lobby.'
         : '';
   const createDisabled = current || activeMatch || noMe;
-  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions">${adminChallengeSelectorHtml(Boolean(createDisabled))}<span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-primary btn-sm" id="cr-create" ${createDisabled ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('cr-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}</span>${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="cr-bot" ${createDisabled ? 'disabled' : ''}>Gegen KI</button>` : ''}</div>${cards || '<div class="empty-state">Noch keine Lobby offen.</div>'}</div>`;
+  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions">${adminChallengeSelectorHtml(Boolean(createDisabled))}<span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-primary btn-sm" id="cr-create" ${createDisabled ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('cr-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}</span>${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="cr-bot" ${createDisabled ? 'disabled' : ''}>Gegen KI</button>` : ''}</div>${cards || emptyStateHtml('Noch keine Lobby offen.')}</div>`;
 }
 export function wireChallengeRushLobbyCard(container, { beforeCreate = async () => true, beforeJoin = async () => true } = {}) {
   const createPayload = () => { const keys = challengeSelectionPayload(); return keys.length ? { playerId: myId(), challengeKeys: keys } : { playerId: myId() }; };

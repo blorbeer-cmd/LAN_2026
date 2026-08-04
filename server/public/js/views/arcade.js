@@ -30,6 +30,7 @@ import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobby
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { isOwnFinishedMatch } from '../arcadeWatchFilter.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 // The Arcade opens as a launcher: a compact grid of playable game tiles.
 // Picking one reveals that game's lobby below.
@@ -251,7 +252,7 @@ function scribbleArtStatsHtml(game) {
             <span class="muted leaderboard-row-stat">Cool ${player.reactionBreakdown.cool} · Kreativ ${player.reactionBreakdown.creative} · Witzig ${player.reactionBreakdown.funny}</span>
           </span>
         </div>`).join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine bewerteten Scribble-Bilder.</div>`;
+    : emptyStateHtml('Noch keine bewerteten Scribble-Bilder.', { style: 'padding:var(--space-4);' });
   const galleryHtml = scribbleGallery.length
     ? `<div class="scribble-gallery-grid">${scribbleGallery.map((drawing) => `
         <article class="card stack scribble-drawing-card is-winner">
@@ -259,7 +260,7 @@ function scribbleArtStatsHtml(game) {
           <div class="scribble-stored-canvas-wrap"><canvas data-arcade-gallery-drawing="${drawing.id}" aria-label="Rundenbild von ${escapeHtml(drawing.artistName)}"></canvas></div>
           <div class="muted">${escapeHtml(drawing.word)} · ${drawing.favoriteVotes} Favoriten · ${drawing.reactionCount} Reaktionen</div>
         </article>`).join('')}</div>`
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch kein Rundenbild gekürt.</div>`;
+    : emptyStateHtml('Noch kein Rundenbild gekürt.', { style: 'padding:var(--space-4);' });
   return `
     <div class="section-title">Beste Bilder pro Spieler</div>
     <div class="leaderboard-list-grid">${artRows}</div>
@@ -277,9 +278,9 @@ function arcadeResultLabel(wins, losses) {
 
 function arcadeStatsHtml() {
   if (!stats && !statsLoading) return '';
-  if (statsLoading && !stats) return `<div class="empty-state" style="padding:var(--space-4);">Statistiken laden…</div>`;
+  if (statsLoading && !stats) return emptyStateHtml('Statistiken laden…', { style: 'padding:var(--space-4);' });
   const games = stats?.games ?? [];
-  if (!games.length) return `<div class="empty-state" style="padding:var(--space-4);">Noch keine abgeschlossenen Arcade-Runden.</div>`;
+  if (!games.length) return emptyStateHtml('Noch keine abgeschlossenen Arcade-Runden.', { style: 'padding:var(--space-4);' });
   if (!games.some((g) => (g.statsKey ?? g.gameType) === activeStatsGame)) activeStatsGame = games[0].statsKey ?? games[0].gameType;
 
   const statsGameOptions = games.map((g) => ({ value: g.statsKey ?? g.gameType, label: `${g.title} · ${arcadeMatchCountLabel(g.matches)}` }));
@@ -319,7 +320,7 @@ function arcadeStatsHtml() {
 }
 
 function renderLobbyList() {
-  if (lobbies.length === 0) return `<div class="empty-state" style="padding:var(--space-4);">Keine offene Quiz-Lobby.</div>`;
+  if (lobbies.length === 0) return emptyStateHtml('Keine offene Quiz-Lobby.', { style: 'padding:var(--space-4);' });
   return lobbies
     .map((l) => {
       const isHost = l.host.id === getMyId();
@@ -402,13 +403,13 @@ function renderMatch() {
         </div>
         <h2 style="font-size:var(--font-size-lg);margin:0;">${escapeHtml(currentQuestion.question)}</h2>
         <div class="row">
-          <input type="text" id="quiz-answer" autocomplete="off" placeholder="Antwort" style="flex:1;" ${match.paused ? 'disabled' : ''} />
+          <input type="text" id="quiz-answer" autocomplete="off" placeholder="Antwort" style="flex:1;" aria-label="Antwort" ${match.paused ? 'disabled' : ''} />
           <button type="submit" class="btn btn-primary" ${match.paused ? 'disabled' : ''}>Senden</button>
         </div>
       </form></div>`
     : match.ended
-      ? `<div class="empty-state" style="margin-top:var(--space-3);">Match beendet.</div>`
-      : `<div class="empty-state" style="margin-top:var(--space-3);">Nächste Frage kommt…</div>`;
+      ? emptyStateHtml('Match beendet.', { style: 'margin-top:var(--space-3);' })
+      : emptyStateHtml('Nächste Frage kommt…', { style: 'margin-top:var(--space-3);' });
   return `
     ${roster}
     ${result}
@@ -704,7 +705,7 @@ export function renderQuizRoom(container, ctx) {
   if (!match) {
     container.innerHTML = `
       <button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button>
-      <div class="empty-state" style="margin-top:var(--space-4);">Kein laufendes Quiz-Match.</div>`;
+      ${emptyStateHtml('Kein laufendes Quiz-Match.', { style: 'margin-top:var(--space-4);' })}`;
     return;
   }
   container.innerHTML = `

@@ -13,6 +13,7 @@ import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
+import { emptyStateHtml } from '../emptyState.js';
 import { icon } from '../icons.js';
 import { dateTimeFieldHtml, wireDateTimeField, parseDatetimeLocalMs } from '../dateTimeField.js';
 import { dueBadgeInfo, isOverdue } from '../checklistDue.js';
@@ -82,7 +83,7 @@ function renderItems(myId) {
     return `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um deine Packliste zu sehen.</div>`;
   }
   if (itemsCache === null || itemsCacheForId !== myId) {
-    return `<div class="empty-state">Lädt…</div>`;
+    return emptyStateHtml('Lädt…');
   }
   const rows = itemsCache
     .map(
@@ -99,7 +100,7 @@ function renderItems(myId) {
   return `
     <div class="checklist-item-list">${rows}</div>
     <form class="row" data-add-item-form style="gap:var(--space-2);">
-      <input type="text" data-item-label placeholder="z.B. Skill" maxlength="80" required style="flex:1;" />
+      <input type="text" data-item-label placeholder="z.B. Skill" maxlength="80" required style="flex:1;" aria-label="Neuer Packlisten-Eintrag" />
       <button type="submit" class="btn btn-sm">Hinzufügen</button>
     </form>`;
 }
@@ -411,16 +412,16 @@ export function renderChecklist(container, ctx) {
 
   const mineHtml =
     loadingTasks && tasksCache === null
-      ? `<div class="empty-state">Lädt…</div>`
+      ? emptyStateHtml('Lädt…')
       : mineTasks.length === 0
-        ? `<div class="empty-state">Aktuell liegt nichts bei dir.</div>`
+        ? emptyStateHtml('Aktuell liegt nichts bei dir.')
         : `<div class="two-column-card-grid">${mineTasks.map((t) => renderTaskCard(t, myId, 'mine')).join('')}</div>`;
 
   const openHtml =
     loadingTasks && tasksCache === null
-      ? `<div class="empty-state">Lädt…</div>`
+      ? emptyStateHtml('Lädt…')
       : openFiltered.length === 0
-        ? `<div class="empty-state">Gerade nichts Offenes.</div>`
+        ? emptyStateHtml('Gerade nichts Offenes.')
         : `<div class="two-column-card-grid">${openFiltered.map((t) => renderTaskCard(t, myId, 'open')).join('')}</div>`;
 
   const underwayHtml =

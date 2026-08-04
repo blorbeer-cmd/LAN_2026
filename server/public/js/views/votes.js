@@ -39,6 +39,7 @@ import { domainIcon } from '../domainIcons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { GAME_GENRES } from '../gameGenres.js';
 import { matchesSelectionSearch, wireSelectionSearch } from '../selectionSearch.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 // Cached separately from `state` (like analytics.js does) since it's fetched
 // from its own endpoint, not part of the main loadAll() round-trip.
@@ -255,7 +256,7 @@ function submissionCountLabel(count, mode) {
 function renderTop10(results) {
   const top10 = topByPreference(results, 10);
   if (top10.length === 0) {
-    return `<div class="empty-state" style="padding:var(--space-4);">Noch keine Spiele im Katalog.</div>`;
+    return emptyStateHtml('Noch keine Spiele im Katalog.', { style: 'padding:var(--space-4);' });
   }
   const rowHtml = (r, i) => `
     <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
@@ -275,7 +276,7 @@ function renderOpenRows(votes, draftReady, hasSubmitted) {
   const showUnratedOnly = votes.mode === 'points' && voteUnratedOnly && draftReady && !hasSubmitted;
   const results = showUnratedOnly ? votes.results.filter((r) => (draftPoints.get(r.gameId) ?? 0) === 0) : votes.results;
   if (showUnratedOnly && results.length === 0) {
-    return `<div class="empty-state">Alle Spiele bewertet.</div>`;
+    return emptyStateHtml('Alle Spiele bewertet.');
   }
   return results
     .map((r) => {
@@ -363,14 +364,18 @@ function renderVoteRanking(results, mode, winnerGameIds) {
 
 function renderCurrentVote({ allowRunoff = false } = {}) {
   if (historyLoading || historyCache === null) {
-    return `<div class="empty-state vote-empty-state" style="padding:var(--space-4);">Lädt…</div>`;
+    return emptyStateHtml('Lädt…', { className: 'vote-empty-state', style: 'padding:var(--space-4);' });
   }
   if (historyCache.length === 0) {
-    return `<div class="empty-state vote-empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon(domainIcon('votes'))}</span><span>Noch keine Abstimmung durchgeführt.</span></div>`;
+    return emptyStateHtml('<span>Noch keine Abstimmung durchgeführt.</span>', {
+      className: 'vote-empty-state',
+      style: 'padding:var(--space-4);',
+      icon: icon(domainIcon('votes')),
+    });
   }
   const h = historyCache[0];
   if (!h.totalVoters) {
-    return `<div class="empty-state vote-empty-state" style="padding:var(--space-4);">Niemand hat abgestimmt.</div>`;
+    return emptyStateHtml('Niemand hat abgestimmt.', { className: 'vote-empty-state', style: 'padding:var(--space-4);' });
   }
   const meta = [h.title, formatDateTime(h.closedAt), h.mode === 'single' ? 'Stichwahl' : null]
     .filter(Boolean)
@@ -393,10 +398,14 @@ function renderCurrentVote({ allowRunoff = false } = {}) {
 
 function renderHistory() {
   if (historyLoading || historyCache === null) {
-    return `<div class="empty-state vote-empty-state" style="padding:var(--space-4);">Lädt…</div>`;
+    return emptyStateHtml('Lädt…', { className: 'vote-empty-state', style: 'padding:var(--space-4);' });
   }
   if (historyCache.length === 0) {
-    return `<div class="empty-state vote-empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon(domainIcon('votes'))}</span><span>Noch keine vergangenen Abstimmungen.</span></div>`;
+    return emptyStateHtml('<span>Noch keine vergangenen Abstimmungen.</span>', {
+      className: 'vote-empty-state',
+      style: 'padding:var(--space-4);',
+      icon: icon(domainIcon('votes')),
+    });
   }
   // Each round stays visually separate and repeats the same compact ranking
   // used by "Letzter Vote". The detail action retains the full bar view.
@@ -414,14 +423,14 @@ function renderHistory() {
             <button type="button" class="btn btn-sm" data-open-history-round="${h.round}">Details</button>
           </div>
           ${h.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0;">${escapeHtml(h.info)}</p>` : ''}
-          ${h.totalVoters ? renderVoteRanking(h.results, h.mode, h.winnerGameIds) : '<div class="empty-state">Niemand hat abgestimmt.</div>'}
+          ${h.totalVoters ? renderVoteRanking(h.results, h.mode, h.winnerGameIds) : emptyStateHtml('Niemand hat abgestimmt.')}
         </div>`;
     })
     .join('');
 }
 
 async function openHistoryRoundDetail(round) {
-  const { el } = openModal('Lädt…', `<div class="empty-state">Lädt…</div>`);
+  const { el } = openModal('Lädt…', emptyStateHtml('Lädt…'));
   try {
     const detail = await api.votes.historyRound(round);
     const titleEl = el.querySelector('.modal-header h2');
@@ -440,7 +449,7 @@ async function openHistoryRoundDetail(round) {
     }
   } catch (err) {
     const bodyEl = el.querySelector('.modal-body');
-    if (bodyEl) bodyEl.innerHTML = `<div class="empty-state">${escapeHtml(err.message)}</div>`;
+    if (bodyEl) bodyEl.innerHTML = emptyStateHtml(escapeHtml(err.message));
   }
 }
 
@@ -451,7 +460,7 @@ export function renderVotes(container, ctx) {
 
   const votes = state.votes;
   if (!votes) {
-    container.innerHTML = `<h1 class="view-title">Vote</h1><div class="empty-state">Lädt…</div>`;
+    container.innerHTML = `<h1 class="view-title">Vote</h1>${emptyStateHtml('Lädt…')}`;
     return;
   }
 
