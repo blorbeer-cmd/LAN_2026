@@ -4159,6 +4159,13 @@ input[type='range'].preference-row-slider {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+/* A player without an own rating still enters the draw with the server's
+   neutral fallback, so the value stays visible: the parentheses plus this
+   dimming mark it as derived rather than self-reported. Same role on a team
+   total, where the parenthesized number counts the unrated players. */
+.rating-unrated {
+  opacity: 0.7;
+}
 .team-player-name {
   overflow: hidden;
   text-overflow: ellipsis;

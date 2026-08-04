@@ -517,6 +517,29 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   const teamCards = await page.locator('.team-card').count();
   assert.ok(teamCards >= 2, 'expected at least 2 team cards');
 
+  // Neither of these two players rated the game, so both enter the draw with
+  // the server's neutral fallback. That has to stay visible: each row shows
+  // the parenthesized fallback, and every team header's total is the sum of
+  // its own visible rows plus the count of unrated players.
+  assert.ok((await page.locator('.team-card .team-player .rating-unrated').count()) > 0);
+  const drawnTeams = await page.locator('.team-card').evaluateAll((cards) =>
+    cards.map((card) => ({
+      header: card.querySelector('.team-skill-total')?.textContent?.trim() ?? '',
+      players: Array.from(card.querySelectorAll('.team-player .rating')).map(
+        (row) => row.textContent?.trim() ?? ''
+      ),
+    }))
+  );
+  for (const team of drawnTeams) {
+    const ratings = team.players.map((text) => Number(text.replace(/[()]/g, '')));
+    const [total, unratedCount] = team.header.replace(/[()]/g, ' ').trim().split(/\s+/).map(Number);
+    assert.equal(
+      total,
+      ratings.reduce((sum, rating) => sum + rating, 0)
+    );
+    assert.equal(unratedCount ?? 0, team.players.filter((text) => text.startsWith('(')).length);
+  }
+
   // Voting: start a round (points mode, the only mode offered when starting
   // fresh), rate a game, and submit. Alice's personal session already fixes
   // the voter identity, so no extra identity form appears. Moving a slider only

@@ -22,7 +22,11 @@ import { competitionPlayersBelongToGroup, trackingEventIdForGroup } from '../com
 
 export const matchmakingRouter = Router();
 
-const DEFAULT_RATING = 5; // neutral middle rating for players without one
+// Neutral middle rating for players without one. The frontend shows this same
+// value in parentheses for such a player and includes it in the team total
+// (UNRATED_SKILL_VALUE in public/js/skillDisplay.js) — change both together,
+// or the displayed totals stop matching the draw they came from.
+const DEFAULT_RATING = 5;
 const deliveryEventId = (eventId: string): string | null => (eventId === OUTSIDE_EVENTS_ID ? null : eventId);
 
 interface GameRow {
