@@ -477,7 +477,7 @@ function wireDraftBoard(container, ctx) {
   const cancelBtn = container.querySelector('#draft-cancel');
   if (cancelBtn) {
     cancelBtn.addEventListener('click', async () => {
-      if (!(await confirmDialog('Draft wirklich abbrechen?', { confirmText: 'Abbrechen', danger: true }))) return;
+      if (!(await confirmDialog('Draft wirklich abbrechen?', { confirmText: 'Draft abbrechen', danger: true }))) return;
       try {
         draftCache = await api.draft.cancel();
         ctx.rerender();

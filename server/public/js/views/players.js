@@ -85,7 +85,7 @@ function openPlayerDetail(playerId) {
                  <summary class="collapsible-section-header">
                    <h2>Bock &amp; Skill</h2>
                    <span class="collapsible-section-summary-end">
-                     <span class="badge">${state.games.length}</span>
+                     <span class="badge badge-offline">${state.games.length}</span>
                      <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
                    </span>
                  </summary>

@@ -911,6 +911,13 @@ test('Vote: genre filter scopes the game-limit list, select-all/none and the sta
   assert.deepEqual(openGameNames.map((t) => t.trim()), ['Counter-Strike 2']);
 
   await page.click('#votes-cancel');
+  await page.waitForSelector('[data-confirm]');
+  assert.equal(await page.locator('[data-confirm]').innerText(), 'Abstimmung abbrechen');
+  assert.notEqual(
+    await page.locator('[data-confirm]').innerText(),
+    await page.locator('.modal-body [data-cancel]').innerText(),
+    'the destructive confirm button must read differently than the neighboring Abbrechen button',
+  );
   await page.click('[data-confirm]');
   await page.waitForSelector('#votes-start');
 });
@@ -2334,6 +2341,20 @@ test('Captain-Draft: pick captains, run the live draft to completion', async () 
   await page.click('label.check-row:has-text("E2E Bob") input[data-captain-toggle]');
   await page.waitForSelector('#draft-start:not([disabled])');
   await page.click('#draft-start');
+  await page.waitForSelector('text=Captain Draft läuft');
+
+  // The destructive draft-cancel confirmation must read differently than the
+  // neighboring Abbrechen button (both used to say "Abbrechen"). Dismiss via
+  // the dialog's own Abbrechen button so the draft keeps running afterward.
+  await page.click('#draft-cancel');
+  await page.waitForSelector('[data-confirm]');
+  assert.equal(await page.locator('[data-confirm]').innerText(), 'Draft abbrechen');
+  assert.notEqual(
+    await page.locator('[data-confirm]').innerText(),
+    await page.locator('.modal-body [data-cancel]').innerText(),
+  );
+  await page.click('.modal-body [data-cancel]');
+  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
 
   // Live board appears; it's Alice's turn (first captain). Keep picking
   // until the pool is empty — the last player is auto-assigned server-side,
