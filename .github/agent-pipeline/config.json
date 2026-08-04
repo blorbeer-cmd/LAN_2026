@@ -7,7 +7,7 @@
   },
   "providerAuthorAllowlist": {
     "codex": ["blorbeer-cmd", "chatgpt-codex-connector[bot]"],
-    "claude": ["blorbeer-cmd"]
+    "claude": ["blorbeer-cmd", "claude[bot]"]
   },
   "allowedScopes": ["root", "server", "frontend", "agent", "docs", "infra"],
   "scopePathPrefixes": {
