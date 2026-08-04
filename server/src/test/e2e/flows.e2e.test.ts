@@ -505,6 +505,13 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
 
   await page.click('[data-mm-mode="draw"]');
   await page.waitForSelector('#mm-generate');
+  // The sticky action bar must not steal clicks from rows scrolling behind
+  // it: only real controls (the button here) opt back into pointer events,
+  // the bar's own background stays pass-through (see .sticky-actions in
+  // style.css).
+  const stickyActions = page.locator('.sticky-actions', { has: page.locator('#mm-generate') });
+  assert.equal(await stickyActions.evaluate((el) => getComputedStyle(el).pointerEvents), 'none');
+  assert.equal(await page.locator('#mm-generate').evaluate((el) => getComputedStyle(el).pointerEvents), 'auto');
   await page.click('#mm-generate');
   await page.waitForSelector('.team-card');
   const teamCards = await page.locator('.team-card').count();
