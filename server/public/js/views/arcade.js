@@ -332,11 +332,11 @@ function renderLobbyList() {
         : '';
       const startReason = l.players.length < 2 ? 'Noch nicht genug Spieler (mind. 2).' : '';
       const footerActions = isHost
-        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-close-lobby="${l.id}">Schließen</button>
-          <span class="row" style="gap:var(--space-1);">
+        ? `<span class="row" style="gap:var(--space-1);">
             <button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-start-lobby" ${l.players.length < 2 ? 'disabled' : ''}>Start</button>
             ${startReason ? infoTooltipHtml(`quiz-start-${l.id}`, 'Start nicht möglich', startReason, 'warning') : ''}
-          </span>`
+          </span>
+          <button type="button" class="btn btn-sm btn-equal btn-danger" data-close-lobby="${l.id}">Schließen</button>`
         : joined
           ? readyToggleHtml(l, getMyId(), 'quiz-ready')
           : '';

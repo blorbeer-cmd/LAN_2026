@@ -101,6 +101,9 @@ async function loadMine(round, playerId, ctx) {
 let draftSingleGameId = null;
 let draftPoints = null; // Map<gameId, points>
 let draftKey = null; // `${round}:${playerId}` the current draft belongs to
+// Points-mode-only toggle: hides already-rated rows so working through a
+// long game list doesn't mean scrolling past everything already done.
+let voteUnratedOnly = false;
 
 // "Neue Abstimmung" game-limit filter. Persisted here (like matchmaking.js's
 // checkedIds) rather than left in the DOM, because a votes:changed/
@@ -269,7 +272,12 @@ function renderTop10(results) {
 // ---------- open round: stage a local draft, submit explicitly ----------
 
 function renderOpenRows(votes, draftReady, hasSubmitted) {
-  return votes.results
+  const showUnratedOnly = votes.mode === 'points' && voteUnratedOnly && draftReady && !hasSubmitted;
+  const results = showUnratedOnly ? votes.results.filter((r) => (draftPoints.get(r.gameId) ?? 0) === 0) : votes.results;
+  if (showUnratedOnly && results.length === 0) {
+    return `<div class="empty-state">Alle Spiele bewertet.</div>`;
+  }
+  return results
     .map((r) => {
       let action = '';
       let pointsSliderRow = '';
@@ -285,7 +293,7 @@ function renderOpenRows(votes, draftReady, hasSubmitted) {
             <span class="muted" style="font-size:var(--font-size-xs);">Punkte</span>
             <span class="skill-value">${pointsVal}</span>
             <input type="range" class="skill-row-slider" min="0" max="10" step="1"
-                   data-points-slider="${r.gameId}" value="${pointsVal}" ${hasSubmitted ? 'disabled' : ''} />
+                   data-points-slider="${r.gameId}" value="${pointsVal}" aria-label="${escapeHtml(`Punkte für ${r.gameName}`)}" ${hasSubmitted ? 'disabled' : ''} />
           </div>`;
       }
 
@@ -480,6 +488,20 @@ export function renderVotes(container, ctx) {
     const submitLabel = votes.mode === 'points' ? 'Bewertung abschicken' : 'Stimme abschicken';
     const submittedLabel = votes.mode === 'points' ? 'Bewertung abgegeben' : 'Stimme abgegeben';
     const participationLabel = votes.mode === 'points' ? 'Bewertungen abgegeben' : 'Stimmen abgegeben';
+    // Own rating progress through this round's game list - only meaningful in
+    // points mode (single mode's one pick is already reflected by the
+    // Auswählen/Ausgewählt button state) and only while still filling it in.
+    const ratedCount =
+      votes.mode === 'points' && mineReady
+        ? votes.results.filter((r) => (draftPoints.get(r.gameId) ?? 0) > 0).length
+        : 0;
+    const showProgress = votes.mode === 'points' && mineReady && !hasSubmitted;
+    const progressHtml = showProgress
+      ? `<div class="row-between" style="flex-wrap:wrap;gap:var(--space-2);">
+           <span class="muted" style="font-size:var(--font-size-xs);">${ratedCount} von ${votes.results.length} bewertet</span>
+           <button type="button" class="chip${voteUnratedOnly ? ' is-active' : ''}" id="votes-unrated-toggle" aria-pressed="${voteUnratedOnly}">Unbewertet</button>
+         </div>`
+      : '';
     openSectionHtml = `
       <section class="card vote-page-section vote-workflow-section stack" aria-labelledby="vote-current-title">
         <div class="tournament-create-step-title">
@@ -493,6 +515,7 @@ export function renderVotes(container, ctx) {
           <span>${participationLabel}</span>
           <strong>${votes.totalVoters} / ${totalPlayers}</strong>
         </div>
+        ${progressHtml}
         ${votes.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0;">${escapeHtml(votes.info)}</p>` : ''}
         ${rows}
         <div class="vote-action-stack sticky-actions">
@@ -614,6 +637,11 @@ export function renderVotes(container, ctx) {
       draftSingleGameId = btn.dataset.voteSelect;
       ctx.rerender();
     });
+  });
+
+  container.querySelector('#votes-unrated-toggle')?.addEventListener('click', () => {
+    voteUnratedOnly = !voteUnratedOnly;
+    ctx.rerender();
   });
 
   container.querySelectorAll('[data-points-slider]').forEach((slider) => {
@@ -795,7 +823,7 @@ export function renderVotes(container, ctx) {
   const cancelBtn = container.querySelector('#votes-cancel');
   if (cancelBtn) {
     cancelBtn.addEventListener('click', async () => {
-      if (!(await confirmDialog('Abstimmung wirklich abbrechen? Alle Stimmen gehen verloren.'))) return;
+      if (!(await confirmDialog('Abstimmung wirklich abbrechen? Alle Stimmen gehen verloren.', { confirmText: 'Abstimmung abbrechen', danger: true }))) return;
       try {
         // No ctx.refresh(): see the start button above.
         state.votes = await api.votes.cancel();

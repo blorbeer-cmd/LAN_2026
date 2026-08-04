@@ -117,9 +117,13 @@ export function confirmDialog(message, { title = 'Bestätigen', confirmText = 'O
       backdrop.remove();
       resolve(result);
     };
+    // No global Enter handler: hijacking Enter regardless of what's focused
+    // would let it re-confirm a destructive action from anywhere in the
+    // dialog. Initial focus sits on Cancel (below), so Enter's native
+    // button-activation behavior already does the safe thing by default;
+    // only Escape needs an explicit document-level shortcut.
     const onKey = (e) => {
       if (e.key === 'Escape') finish(false);
-      if (e.key === 'Enter') finish(true);
     };
     backdrop.addEventListener('click', (e) => {
       if (e.target === backdrop) finish(false);
@@ -127,7 +131,7 @@ export function confirmDialog(message, { title = 'Bestätigen', confirmText = 'O
     backdrop.querySelectorAll('[data-cancel]').forEach((b) => b.addEventListener('click', () => finish(false)));
     backdrop.querySelector('[data-confirm]').addEventListener('click', () => finish(true));
     document.addEventListener('keydown', onKey);
-    backdrop.querySelector('[data-confirm]').focus();
+    backdrop.querySelector('.modal-body [data-cancel]').focus();
   });
 }
 

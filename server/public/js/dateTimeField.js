@@ -13,7 +13,7 @@
 // `wireDateTimeField()` after render — `container.querySelector('#id').value`
 // keeps working unchanged.
 
-import { toDatetimeLocal } from './format.js';
+import { toDatetimeLocal, escapeHtml } from './format.js';
 import { icon } from './icons.js';
 
 const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
@@ -77,6 +77,17 @@ export function dateTimeFieldHtml(id, rawValueMs, opts = {}) {
   const valueMs = rawValueMs ? (opts.dateOnly ? rawValueMs : snapToStep(rawValueMs)) : rawValueMs;
   const hasValue = Boolean(valueMs);
   const d = hasValue ? new Date(valueMs) : null;
+  // opts.label names the field for assistive tech (e.g. "Ankunft",
+  // "Beginnt am"): the visible <label for="id"> elsewhere in each view
+  // targets the hidden input, which a screen reader never focuses, so the
+  // actually interactive trigger button and hour/minute selects need their
+  // own aria-label built from the same text instead of relying on that
+  // orphaned association.
+  const fieldLabel = opts.label ? escapeHtml(opts.label) : '';
+  const triggerLabel = fieldLabel ? ` aria-label="${fieldLabel}, ${escapeHtml(formatDateLabel(valueMs))}"` : '';
+  const hourLabel = fieldLabel ? ` aria-label="${fieldLabel}, Stunde"` : '';
+  const minuteLabel = fieldLabel ? ` aria-label="${fieldLabel}, Minute"` : '';
+  const clearLabel = fieldLabel ? `${fieldLabel} löschen` : 'Datum löschen';
   const timeGroupHtml = opts.dateOnly
     ? ''
     : (() => {
@@ -92,19 +103,19 @@ export function dateTimeFieldHtml(id, rawValueMs, opts = {}) {
           .join('');
         return `
       <div class="dt-time-group">
-        <select class="dt-time-select" data-dt-hour ${hasValue ? '' : 'disabled'} ${opts.disabled ? 'disabled' : ''}>${hourOptions}</select>
+        <select class="dt-time-select" data-dt-hour${hourLabel} ${hasValue ? '' : 'disabled'} ${opts.disabled ? 'disabled' : ''}>${hourOptions}</select>
         <span class="dt-time-sep">:</span>
-        <select class="dt-time-select" data-dt-minute ${hasValue ? '' : 'disabled'} ${opts.disabled ? 'disabled' : ''}>${minuteOptions}</select>
+        <select class="dt-time-select" data-dt-minute${minuteLabel} ${hasValue ? '' : 'disabled'} ${opts.disabled ? 'disabled' : ''}>${minuteOptions}</select>
       </div>`;
       })();
   return `
     <div class="dt-field" data-dt-field="${id}">
       <input type="hidden" id="${id}" value="${hasValue ? toDatetimeLocal(valueMs) : ''}" />
-      <button type="button" class="dt-date-btn" data-dt-trigger ${opts.disabled ? 'disabled' : ''}>
+      <button type="button" class="dt-date-btn" data-dt-trigger${triggerLabel} ${opts.disabled ? 'disabled' : ''}>
         <span class="dt-date-btn-label">${formatDateLabel(valueMs)}</span>
       </button>
       ${timeGroupHtml}
-      ${opts.clearable ? `<button type="button" class="dt-clear-btn icon-btn" data-dt-clear title="Datum löschen" aria-label="Datum löschen" ${hasValue ? '' : 'hidden'} ${opts.disabled ? 'disabled' : ''}>${icon('x')}</button>` : ''}
+      ${opts.clearable ? `<button type="button" class="dt-clear-btn icon-btn" data-dt-clear title="${escapeHtml(clearLabel)}" aria-label="${escapeHtml(clearLabel)}" ${hasValue ? '' : 'hidden'} ${opts.disabled ? 'disabled' : ''}>${icon('x')}</button>` : ''}
     </div>`;
 }
 

@@ -165,11 +165,11 @@ function openEventForm(ctx, existing) {
         <div class="field-row">
           <div>
             <label for="event-starts" class="field-label">Beginnt am</label>
-            ${dateTimeFieldHtml('event-starts', existing?.starts_at ?? now, { clearable: false })}
+            ${dateTimeFieldHtml('event-starts', existing?.starts_at ?? now, { clearable: false, label: 'Beginnt am' })}
           </div>
           <div>
             <label for="event-ends" class="field-label">Endet am</label>
-            ${dateTimeFieldHtml('event-ends', existing?.ends_at ?? defaultEnd, { clearable: isEdit })}
+            ${dateTimeFieldHtml('event-ends', existing?.ends_at ?? defaultEnd, { clearable: isEdit, label: 'Endet am' })}
           </div>
         </div>
         <div>
@@ -375,7 +375,7 @@ export function renderSettings(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.events || []).find((e) => e.id === btn.dataset.startTracking);
       if (!event) return;
-      if (!(await confirmDialog(`Tracking für „${event.name}" starten? Live-Status und Spielzeit werden ab jetzt für die Teilnehmer erfasst.`))) return;
+      if (!(await confirmDialog(`Tracking für „${event.name}" starten? Live-Status und Spielzeit werden ab jetzt für die Teilnehmer erfasst.`, { confirmText: 'Tracking starten' }))) return;
       try {
         await api.events.startTracking(event.id);
         await ctx.refresh();
@@ -389,7 +389,7 @@ export function renderSettings(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.events || []).find((e) => e.id === btn.dataset.stopTracking);
       if (!event) return;
-      if (!(await confirmDialog(`Tracking für „${event.name}" stoppen? Es läuft dann wieder alles unter „Außerhalb von Events".`))) return;
+      if (!(await confirmDialog(`Tracking für „${event.name}" stoppen? Es läuft dann wieder alles unter „Außerhalb von Events".`, { confirmText: 'Tracking stoppen' }))) return;
       try {
         await api.events.stopTracking(event.id);
         await ctx.refresh();
@@ -403,7 +403,7 @@ export function renderSettings(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.events || []).find((e) => e.id === btn.dataset.endEvent);
       if (!event) return;
-      if (!(await confirmDialog(`Event „${event.name}" endgültig beenden? Das lässt sich nicht rückgängig machen.`))) return;
+      if (!(await confirmDialog(`Event „${event.name}" endgültig beenden? Das lässt sich nicht rückgängig machen.`, { confirmText: 'Beenden', danger: true }))) return;
       try {
         await api.events.end(event.id);
         await ctx.refresh();

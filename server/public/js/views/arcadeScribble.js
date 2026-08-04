@@ -841,11 +841,11 @@ function renderLobbyList() {
         : '';
       const startReason = ready ? '' : 'Noch nicht genug Spieler (mind. 2).';
       const footerActions = isHost
-        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-close="${l.id}">Schließen</button>
-          <span class="row" style="gap:var(--space-1);">
+        ? `<span class="row" style="gap:var(--space-1);">
             <button type="button" class="btn btn-sm btn-equal btn-primary" id="scribble-start" ${ready ? '' : 'disabled'}>Start</button>
             ${startReason ? infoTooltipHtml(`scribble-start-${l.id}`, 'Start nicht möglich', startReason, 'warning') : ''}
-          </span>`
+          </span>
+          <button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-close="${l.id}">Schließen</button>`
         : joined
           ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-leave="${l.id}">Verlassen</button>
             ${readyToggleHtml(l, myId(), 'scribble-ready')}`

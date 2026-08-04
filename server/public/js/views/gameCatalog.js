@@ -25,6 +25,11 @@ let sortDir = 'asc';
 // Genre chip filter for the list (OR semantics: a game matches if it has at
 // least one of the selected genres). Empty set means "no filter, show all".
 let genreFilter = new Set();
+// Independent facets ('bock', 'skill'): AND semantics across the two - if
+// both are active, only games missing *both* of the current identity's own
+// ratings stay visible, since each is its own separate condition to satisfy
+// (unlike genreFilter's alternative-values-of-one-facet OR).
+let ratingFilter = new Set();
 // Free-text filter, same component/pattern as the Neue-Abstimmung game
 // picker in votes.js — hides already-rendered rows client-side instead of
 // re-filtering and re-rendering on every keystroke.
@@ -192,16 +197,25 @@ function suggestionChipHtml(gameId, suggestion, mine) {
     >${icon('brain', { className: 'skill-suggestion-icon' })} ${suggestion.rating}</button>`;
 }
 
-function ratingRowHtml({ label, accentClass, mine, avg, count, gameId, kind, disabled, suggestionHtml }) {
+function ratingRowHtml({ label, accentClass, mine, avg, count, gameId, gameName, kind, disabled, suggestionHtml }) {
   const avgText = avg === null ? '' : `Ø ${avg.toFixed(1)} (${count})`;
+  const isUnset = mine == null;
   const sliderValue = mine ?? 5;
+  const sliderLabelBase = kind === 'bock' ? `Bock auf ${gameName}` : `Skill in ${gameName}`;
+  // The slider itself can't sit at a visible "empty" position (Bock/Skill
+  // ratings are stored 1-10, never 0), so an untouched slider still starts
+  // at a plausible-looking mid-value. skill-row-slider-unset dims it until
+  // the player's own input event fires (see the pointerdown/input wiring
+  // below), and the value label shows the same en dash skillDisplay.js
+  // already uses elsewhere for "no rating yet" instead of going blank.
+  const sliderLabel = isUnset ? `${sliderLabelBase} – noch nicht bewertet` : sliderLabelBase;
   return `
     <div class="skill-row" data-game="${gameId}" data-kind="${kind}">
       <span class="row" style="gap:var(--space-2);flex-wrap:wrap;">
         ${label} <span class="muted game-avg-note">${avgText}</span> ${suggestionHtml || ''}
       </span>
-      <span class="skill-value">${mine ?? ''}</span>
-      <input type="range" class="skill-row-slider ${accentClass}" min="1" max="10" step="1" value="${sliderValue}" ${disabled ? 'disabled' : ''} />
+      <span class="skill-value">${mine ?? '–'}</span>
+      <input type="range" class="skill-row-slider ${accentClass}${isUnset ? ' skill-row-slider-unset' : ''}" min="1" max="10" step="1" value="${sliderValue}" aria-label="${escapeHtml(sliderLabel)}" ${disabled ? 'disabled' : ''} />
     </div>`;
 }
 
@@ -271,6 +285,7 @@ function gameRowHtml(game, myId) {
     avg: bockStats.avg,
     count: bockStats.count,
     gameId: game.id,
+    gameName: game.name,
     kind: 'bock',
     disabled: !myId,
   });
@@ -290,6 +305,7 @@ function gameRowHtml(game, myId) {
           avg: skillStats.avg,
           count: skillStats.count,
           gameId: game.id,
+          gameName: game.name,
           kind: 'skill',
           disabled: !myId,
           suggestionHtml: suggestionChipHtml(game.id, suggestionFor(game.id, myId), mySkill),
@@ -595,7 +611,7 @@ function openGameDetail(gameId, ctx) {
         });
 
         el.querySelector('#edit-delete').addEventListener('click', async () => {
-          if (!(await confirmDialog(`${game.name} wirklich löschen? Skill-/Bock-Wertungen und Ergebnisse dazu gehen verloren.`))) return;
+          if (!(await confirmDialog(`${game.name} wirklich löschen? Skill-/Bock-Wertungen und Ergebnisse dazu gehen verloren.`, { confirmText: 'Löschen', danger: true }))) return;
           try {
             const removed = await withStepUp(() => api.games.remove(gameId));
             if (removed === undefined) return;
@@ -619,11 +635,31 @@ export function renderGameCatalog(container, ctx) {
   if (suggestionsCache === null && !suggestionsLoading) loadSuggestions(ctx);
 
   const myId = getMyId();
-  const games = state.games
-    .filter((g) => (activeTab === 'suggestions' ? g.isSuggestion : !g.isSuggestion))
-    .filter((g) => genreFilter.size === 0 || (g.genres ?? []).some((genre) => genreFilter.has(genre)));
+  const tabGames = state.games.filter((g) => (activeTab === 'suggestions' ? g.isSuggestion : !g.isSuggestion));
+  const games = tabGames
+    .filter((g) => genreFilter.size === 0 || (g.genres ?? []).some((genre) => genreFilter.has(genre)))
+    .filter((g) => {
+      if (!myId || ratingFilter.size === 0) return true;
+      if (ratingFilter.has('bock') && myRating(state.preferences, myId, g.id) !== null) return false;
+      // Suggestions never show or collect a skill rating (see gameRowHtml),
+      // so this facet no-ops there instead of hiding every suggestion just
+      // because none of them have one.
+      if (activeTab === 'catalog' && ratingFilter.has('skill') && myRating(state.skills, myId, g.id) !== null) return false;
+      return true;
+    });
   const rows = sortedGames(games, myId);
   const usedGenres = GAME_GENRES.filter((g) => state.games.some((game) => (game.genres ?? []).includes(g)));
+  // Distinguishes a genuinely empty catalog/suggestion pool from "filtered
+  // down to nothing" - the rating filter case gets a positive framing since
+  // reaching it is the point of using that filter, not an error state.
+  const emptyMessage =
+    tabGames.length === 0
+      ? activeTab === 'suggestions'
+        ? 'Noch keine vorgeschlagenen Spiele.'
+        : 'Noch keine Spiele im Katalog.'
+      : ratingFilter.size > 0
+        ? 'Alles bewertet – keine offenen Spiele mit diesem Filter.'
+        : 'Keine Spiele für diese Filter.';
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
@@ -656,11 +692,19 @@ export function renderGameCatalog(container, ctx) {
                </div>`
             : ''
         }
+        ${
+          myId
+            ? `<div class="chip-list" role="group" aria-label="Nach fehlender eigener Bewertung filtern">
+                 <button type="button" class="chip${ratingFilter.has('bock') ? ' is-active' : ''}" data-rating-filter="bock" aria-pressed="${ratingFilter.has('bock')}">Bock offen</button>
+                 ${activeTab === 'catalog' ? `<button type="button" class="chip${ratingFilter.has('skill') ? ' is-active' : ''}" data-rating-filter="skill" aria-pressed="${ratingFilter.has('skill')}">Skill offen</button>` : ''}
+               </div>`
+            : ''
+        }
         <input type="search" id="game-catalog-search" value="${escapeHtml(gameSearchQuery)}" placeholder="Spiele suchen…" aria-label="Spiele suchen" autocomplete="off" />
         <div class="game-table">
           ${
             rows.length === 0
-              ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('gameCatalog'))}</span>${activeTab === 'suggestions' ? 'Noch keine vorgeschlagenen Spiele.' : 'Noch keine Spiele im Katalog.'}</div>`
+              ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('gameCatalog'))}</span>${emptyMessage}</div>`
               : rows.map((g) => gameRowHtml(g, myId)).join('')
           }
         </div>
@@ -691,6 +735,15 @@ export function renderGameCatalog(container, ctx) {
       const g = btn.dataset.genreFilter;
       if (genreFilter.has(g)) genreFilter.delete(g);
       else genreFilter.add(g);
+      ctx.rerender();
+    });
+  });
+
+  container.querySelectorAll('[data-rating-filter]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const k = btn.dataset.ratingFilter;
+      if (ratingFilter.has(k)) ratingFilter.delete(k);
+      else ratingFilter.add(k);
       ctx.rerender();
     });
   });
@@ -728,6 +781,7 @@ export function renderGameCatalog(container, ctx) {
     let debounceTimer = null;
     slider.addEventListener('input', () => {
       valueEl.textContent = slider.value;
+      slider.classList.remove('skill-row-slider-unset');
       updateSliderTone();
       sliderSaving = true;
       clearTimeout(debounceTimer);

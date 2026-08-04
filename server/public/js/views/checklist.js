@@ -300,7 +300,7 @@ async function openCreateTodoForm(ctx, myId) {
         </div>
         <div>
           <span class="field-label">Fällig bis (optional)</span>
-          ${dateTimeFieldHtml('todo-due', prev.dueAtMs, { dateOnly: true, clearable: true })}
+          ${dateTimeFieldHtml('todo-due', prev.dueAtMs, { dateOnly: true, clearable: true, label: 'Fällig bis' })}
         </div>
         <button type="submit" class="btn btn-primary btn-block">To-Do erstellen</button>
       </form>`;
@@ -589,7 +589,7 @@ export function renderChecklist(container, ctx) {
 
   container.querySelectorAll('[data-cancel-task]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      if (!(await confirmDialog('Zurückziehen? Das To-Do verschwindet aus dem Pool.'))) return;
+      if (!(await confirmDialog('Zurückziehen? Das To-Do verschwindet aus dem Pool.', { confirmText: 'Zurückziehen' }))) return;
       try {
         await api.checklist.cancel(btn.dataset.cancelTask, myId);
         tasksCache = null;

@@ -175,11 +175,11 @@ function lobbyList() {
         </label>`
       : '';
     const footerActions = isHost
-      ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-pong-close="${lobby.id}">Schließen</button>
-        <span class="row" style="gap:var(--space-1);">
+      ? `<span class="row" style="gap:var(--space-1);">
           <button type="button" class="btn btn-sm btn-equal btn-primary" id="pong-start" ${ready ? '' : 'disabled'}>Start</button>
           ${reason ? infoTooltipHtml(`pong-start-${lobby.id}`, 'Start nicht möglich', reason, 'warning') : ''}
-        </span>`
+        </span>
+        <button type="button" class="btn btn-sm btn-equal btn-danger" data-pong-close="${lobby.id}">Schließen</button>`
       : joined
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-pong-leave="${lobby.id}">Verlassen</button>
           ${readyToggleHtml(lobby, myId(), 'pong-ready')}`

@@ -411,7 +411,7 @@ function openNewOrderForm(ctx, myId) {
         <input type="text" id="order-title" maxlength="80" required autofocus placeholder="z.B. Pizza bei Luigi's" />
         <div>
           <label for="order-sendat" class="field-label">Versand (optional)</label>
-          ${dateTimeFieldHtml('order-sendat', null, { clearable: true })}
+          ${dateTimeFieldHtml('order-sendat', null, { clearable: true, label: 'Versand' })}
         </div>
         <div>
           <label for="order-notes" class="field-label">Info (optional)</label>
@@ -499,7 +499,7 @@ function openDetailsForm(ctx, order) {
       <form id="details-form" class="stack">
         <div>
           <label for="sendat-input" class="field-label">Versand</label>
-          ${dateTimeFieldHtml('sendat-input', order.sendAt, { clearable: true })}
+          ${dateTimeFieldHtml('sendat-input', order.sendAt, { clearable: true, label: 'Versand' })}
         </div>
         <div>
           <label for="notes-input" class="field-label">Info</label>
@@ -765,7 +765,7 @@ export function renderFoodOrders(container, ctx) {
 
   container.querySelectorAll('[data-close-order]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      if (!(await confirmDialog('Bestellung abschicken? Danach kann niemand mehr etwas eintragen.'))) return;
+      if (!(await confirmDialog('Bestellung abschicken? Danach kann niemand mehr etwas eintragen.', { confirmText: 'Abschicken' }))) return;
       try {
         await api.foodOrders.close(btn.dataset.closeOrder);
         cache = null;
@@ -794,7 +794,8 @@ export function renderFoodOrders(container, ctx) {
     btn.addEventListener('click', async () => {
       if (
         !(await confirmDialog(
-          'Bestellung schließen? Danach sind keine Änderungen mehr möglich – auch nicht durch erneutes Öffnen.'
+          'Bestellung schließen? Danach sind keine Änderungen mehr möglich – auch nicht durch erneutes Öffnen.',
+          { confirmText: 'Schließen' }
         ))
       )
         return;
@@ -811,7 +812,7 @@ export function renderFoodOrders(container, ctx) {
 
   container.querySelectorAll('[data-delete-order]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      if (!(await confirmDialog('Bestellung endgültig löschen? Alle eingetragenen Positionen gehen dabei verloren.'))) return;
+      if (!(await confirmDialog('Bestellung endgültig löschen? Alle eingetragenen Positionen gehen dabei verloren.', { confirmText: 'Löschen', danger: true }))) return;
       try {
         await api.foodOrders.remove(btn.dataset.deleteOrder);
         cache = null;

@@ -4057,6 +4057,13 @@ input[type='range'] {
   --slider-low: #9bb7f5;
   --slider-high: #536dff;
 }
+/* An untouched Bock/Skill slider still renders at a plausible mid-value
+   (ratings are stored 1-10, never 0, so there's no true "empty" position) -
+   dimmed until the player's own input event fires, so it doesn't read as an
+   already-set rating at a glance. */
+.skill-row-slider-unset {
+  opacity: 0.5;
+}
 .skill-value {
   font-variant-numeric: tabular-nums;
   font-weight: var(--font-weight-bold);
@@ -4469,6 +4476,13 @@ input[type='number'].tournament-score-input {
   .vote-ranking-columns {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: var(--space-6);
+  }
+}
+/* A third column keeps each 0-10 slider at a sane width instead of stretching
+   it across half of --content-max-width's full 1320px on a wide desktop. */
+@media (min-width: 1280px) { /* --bp-xl */
+  .vote-game-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 /* The gradient lives on the track itself (fixed left-to-right, full width)

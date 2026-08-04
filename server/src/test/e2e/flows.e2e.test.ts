@@ -298,7 +298,11 @@ test('the authenticated admin role owns the seating editor and backup tools', as
   assert.equal(await page.locator('#admin-backup-help').count(), 1);
   assert.equal(await page.locator('#admin-test-count-help').count(), 1);
   assert.equal(await page.locator('#admin-test-data-help').count(), 1);
-  assert.equal(await page.locator('.admin-tool-row').count(), 2);
+  // Global Event/Kiosk management is reachable from Admin's tool grid too,
+  // not only through the personal-looking topbar gear.
+  assert.equal(await page.locator('[data-navigate="settings"]').count(), 1);
+  assert.equal(await page.locator('#admin-event-kiosk-help').count(), 1);
+  assert.equal(await page.locator('.admin-tool-row').count(), 3);
   assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
   assert.equal(await page.locator('#admin-cleanup').textContent(), 'Test-Daten aufräumen');
   // The count field's own id now sits one level down, inside the
@@ -552,6 +556,22 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
     1,
     'moving a slider must not submit it by itself'
   );
+
+  // Own rating progress and the "Unbewertet" filter reflect the two just-
+  // staged (not yet submitted) picks against the round's full game count.
+  const totalGames = await page.locator('[data-points-slider]').count();
+  await page.waitForSelector(`.vote-workflow-section >> text=2 von ${totalGames} bewertet`);
+  await page.click('#votes-unrated-toggle');
+  await page.waitForFunction(
+    (expected) => document.querySelectorAll('[data-points-slider]').length === expected,
+    totalGames - 2
+  );
+  await page.click('#votes-unrated-toggle');
+  await page.waitForFunction(
+    (expected) => document.querySelectorAll('[data-points-slider]').length === expected,
+    totalGames
+  );
+
   await page.click('#votes-submit');
   await page.waitForSelector('.vote-participation-status:has-text("1 / 2")');
   await page.waitForSelector('.vote-submitted-state:has-text("Bewertung abgegeben")');
@@ -891,6 +911,13 @@ test('Vote: genre filter scopes the game-limit list, select-all/none and the sta
   assert.deepEqual(openGameNames.map((t) => t.trim()), ['Counter-Strike 2']);
 
   await page.click('#votes-cancel');
+  await page.waitForSelector('[data-confirm]');
+  assert.equal(await page.locator('[data-confirm]').innerText(), 'Abstimmung abbrechen');
+  assert.notEqual(
+    await page.locator('[data-confirm]').innerText(),
+    await page.locator('.modal-body [data-cancel]').innerText(),
+    'the destructive confirm button must read differently than the neighboring Abbrechen button',
+  );
   await page.click('[data-confirm]');
   await page.waitForSelector('#votes-start');
 });
@@ -1163,12 +1190,45 @@ test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bo
   const partyspielRow = page.locator('.game-table-row', { hasText: 'E2E Partyspiel' });
   await partyspielRow.waitFor();
   const bockSlider = partyspielRow.locator('.skill-row[data-kind="bock"] input[type="range"]');
+  const skillSlider = partyspielRow.locator('.skill-row[data-kind="skill"] input[type="range"]');
+
+  // An unrated slider still has to sit at a plausible-looking position
+  // (Bock/Skill are stored 1-10, never 0) - it stays dimmed and shows an
+  // en dash instead of a blank label until touched.
+  assert.ok(await bockSlider.evaluate((el) => el.classList.contains('skill-row-slider-unset')));
+  assert.equal(await partyspielRow.locator('[data-kind="bock"] .skill-value').textContent(), '–');
+  assert.ok(await skillSlider.evaluate((el) => el.classList.contains('skill-row-slider-unset')));
+
+  // Both "X offen" facet filters are independent AND conditions: with both
+  // active the still-fully-unrated game stays visible.
+  await page.click('[data-rating-filter="bock"]');
+  await page.click('[data-rating-filter="skill"]');
+  await partyspielRow.waitFor();
+
   await bockSlider.fill('8');
   await page.waitForFunction(() => {
     const cards = Array.from(document.querySelectorAll('.game-table-row'));
     const card = cards.find((c) => c.textContent?.includes('E2E Partyspiel'));
     return card?.querySelector('[data-kind="bock"] .skill-value')?.textContent === '8';
   });
+  assert.equal(await bockSlider.evaluate((el) => el.classList.contains('skill-row-slider-unset')), false);
+  // Bock is rated now but Skill isn't - "Bock offen" alone already excludes
+  // the row even though "Skill offen" is still active too (AND, not OR).
+  await page.waitForSelector('.game-table-row:has-text("E2E Partyspiel")', { state: 'detached' });
+
+  await page.click('[data-rating-filter="bock"]');
+  await partyspielRow.waitFor();
+  await skillSlider.fill('7');
+  await page.waitForFunction(() => {
+    const cards = Array.from(document.querySelectorAll('.game-table-row'));
+    const card = cards.find((c) => c.textContent?.includes('E2E Partyspiel'));
+    return card?.querySelector('[data-kind="skill"] .skill-value')?.textContent === '7';
+  });
+  await page.waitForSelector('.game-table-row:has-text("E2E Partyspiel")', { state: 'detached' });
+
+  // Restore filter state for whatever runs next in this shared-page suite.
+  await page.click('[data-rating-filter="skill"]');
+  await partyspielRow.waitFor();
 });
 
 test('Spiele: a skill suggestion chip appears after enough recorded results and can be applied', async () => {
@@ -2147,6 +2207,26 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
 
   await switchIdentityAndOpenArrivals('E2E Alice Pro');
   await page.click('[data-remove-carpool]');
+  await page.waitForSelector('[data-confirm]');
+  // Destructive confirm dialogs must default focus to Cancel (not the danger
+  // action) and use a concrete verb, so a stray Enter right after opening
+  // cannot re-trigger the deletion.
+  assert.equal(
+    await page.locator('.modal-body [data-cancel]').evaluate((el) => el === document.activeElement),
+    true
+  );
+  assert.equal(await page.locator('[data-confirm]').innerText(), 'Löschen');
+  assert.equal(
+    await page.locator('[data-confirm]').evaluate((el) => el.classList.contains('btn-danger')),
+    true
+  );
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
+  // The carpool must still exist - Enter cancelled instead of confirming.
+  await page.waitForSelector('[data-remove-carpool]');
+
+  // Deleting for real still works through an explicit confirm click.
+  await page.click('[data-remove-carpool]');
   await page.click('[data-confirm]');
   await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
 });
@@ -2261,6 +2341,20 @@ test('Captain-Draft: pick captains, run the live draft to completion', async () 
   await page.click('label.check-row:has-text("E2E Bob") input[data-captain-toggle]');
   await page.waitForSelector('#draft-start:not([disabled])');
   await page.click('#draft-start');
+  await page.waitForSelector('text=Captain Draft läuft');
+
+  // The destructive draft-cancel confirmation must read differently than the
+  // neighboring Abbrechen button (both used to say "Abbrechen"). Dismiss via
+  // the dialog's own Abbrechen button so the draft keeps running afterward.
+  await page.click('#draft-cancel');
+  await page.waitForSelector('[data-confirm]');
+  assert.equal(await page.locator('[data-confirm]').innerText(), 'Draft abbrechen');
+  assert.notEqual(
+    await page.locator('[data-confirm]').innerText(),
+    await page.locator('.modal-body [data-cancel]').innerText(),
+  );
+  await page.click('.modal-body [data-cancel]');
+  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
 
   // Live board appears; it's Alice's turn (first captain). Keep picking
   // until the pool is empty — the last player is auto-assigned server-side,

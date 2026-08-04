@@ -12,14 +12,14 @@ const ITEMS = [
   { view: 'arrivals', title: 'An- & Abreise' },
   { view: 'arcade', title: 'Arcade' },
   { view: 'analytics', title: 'Auswertungen' },
+  { view: 'checklist', title: 'Checkliste' },
   { view: 'broadcast', title: 'Durchsage' },
   { view: 'foodOrders', title: 'Essen' },
   { view: 'hallOfFame', title: 'Hall of Fame' },
   { view: 'infoBoard', title: 'Info' },
-  { view: 'checklist', title: 'Checkliste' },
   { view: 'music', title: 'Jam' },
-  { view: 'players', title: 'Spieler' },
   { view: 'gameCatalog', title: 'Spiele' },
+  { view: 'players', title: 'Spieler' },
 ];
 
 export function renderMore(container) {
