@@ -127,14 +127,14 @@ test("a complete task contract is parsed and normalized", () => {
 });
 
 test("the CLI exposes validated contract metadata as GitHub outputs", () => {
+  // Both SHAs point at HEAD so the diff is empty and the assertion does not depend on whatever
+  // the surrounding checkout happens to contain. Scope coverage against a real diff is asserted
+  // by the dedicated scope tests below; mixing both here made this test fail whenever the working
+  // copy sat on unrelated commits.
   const actualHeadSha = execFileSync("git", ["rev-parse", "HEAD"], {
     encoding: "utf8",
   }).trim();
-  const actualBaseSha = execFileSync(
-    "git",
-    ["merge-base", "HEAD", "origin/main"],
-    { encoding: "utf8" },
-  ).trim();
+  const actualBaseSha = actualHeadSha;
   const { result, output, summary } = runValidatorCli(
     body({ "base-sha": actualBaseSha }),
     {},

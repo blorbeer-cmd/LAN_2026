@@ -1,0 +1,120 @@
+name: Agent pipeline reconcile
+
+# Derives the pipeline state of an agent pull request from the current GitHub state and keeps the
+# pipeline labels and the sticky status comment in sync. It starts no agent, writes no commit
+# status, and never approves or merges.
+
+on:
+  # These events always load the workflow definition from the trusted default branch.
+  # Never execute or check out code from the pull-request head in this workflow.
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+      - ready_for_review
+      - converted_to_draft
+      - labeled
+      - unlabeled
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  check_suite:
+    types: [completed]
+  # Safety net for lost webhooks, late provider reactions and missed check results.
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    name: Collect pull requests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      pull_requests: ${{ steps.select.outputs.pull_requests }}
+    steps:
+      - name: Select pull requests to reconcile
+        id: select
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${EVENT_PR}" ]]; then
+            # A pull-request scoped event reconciles exactly that pull request.
+            selected="[${EVENT_PR}]"
+          else
+            # Scheduled sweeps and check-suite events reconcile every open pull request; the
+            # reconciler decides per pull request whether it participates at all.
+            selected=$(gh pr list --state open --limit 100 --json number --jq '[.[].number]')
+          fi
+          echo "pull_requests=${selected}" >> "$GITHUB_OUTPUT"
+          echo "Selected pull requests: ${selected}"
+
+  reconcile:
+    name: Reconcile pull request
+    needs: collect
+    if: needs.collect.outputs.pull_requests != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: read
+      # Covers the pipeline labels and the sticky status comment on pull requests.
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        pull_request: ${{ fromJson(needs.collect.outputs.pull_requests) }}
+    concurrency:
+      # Serialises every mutation per pull request, across event and scheduled runs alike.
+      group: agent-pipeline-reconcile-${{ matrix.pull_request }}
+      # Safe to cancel: the reconciler is stateless, so the next run rebuilds the full state from
+      # GitHub and repairs anything a cancelled run left half-applied.
+      cancel-in-progress: true
+    steps:
+      # Run only the reconciler and configuration from the trusted default branch.
+      # No code from any pull-request head is checked out or executed.
+      - name: Check out trusted reconciler
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Detect trusted reconciler
+        id: trusted
+        shell: bash
+        run: |
+          if [[ -f scripts/agent-pipeline-reconcile.mjs && -f .github/agent-pipeline/config.json ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Trusted default branch does not contain the reconciler yet; safely skipping this bootstrap run."
+          fi
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        if: steps.trusted.outputs.available == 'true'
+        with:
+          node-version: 24
+
+      - name: Reconcile pipeline state
+        if: steps.trusted.outputs.available == 'true'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # Repository-wide kill switch; `agent:no-auto` remains the per-pull-request one.
+          AGENT_PIPELINE_DISABLED: ${{ vars.AGENT_PIPELINE_DISABLED }}
+        run: >-
+          node scripts/agent-pipeline-reconcile.mjs reconcile
+          --repository "${{ github.repository }}"
+          --pr "${{ matrix.pull_request }}"
+          --apply
