@@ -76,6 +76,15 @@ test('GET / serves the HTML control page', async () => {
   assert.match(body, /Respawn-Agent/);
 });
 
+test('GET / uses an inline confirm step for uninstall, not the native confirm()', async () => {
+  const res = await fetch(`${baseUrl}/`);
+  const body = await res.text();
+  assert.doesNotMatch(body, /confirm\(/);
+  assert.match(body, /id="uninstallConfirmRow"/);
+  assert.match(body, /id="uninstallCancelBtn"/);
+  assert.match(body, /id="uninstallConfirmBtn"/);
+});
+
 test('GET /api/status reflects current state', async () => {
   state.paused = true;
   const res = await fetch(`${baseUrl}/api/status`);
