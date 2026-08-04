@@ -303,6 +303,18 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   unrelated card further down the page. Used for the open vote round's submit/cancel/beenden stack
   and the „Abstimmung starten“ action in Vote, and the „Teams auslosen“/„Draft starten“ actions in
   Team formation and Tournament creation.
+  While it's stuck, whatever list row is scrolling past directly behind it is briefly hidden —
+  reproducible on a full-size roster at common laptop heights like 1366×768, not only on phones.
+  A structural fix (reserving matching blank space so no real row ever lines up behind the bar)
+  would need to track live content height for every row along the whole scrollable region, i.e.
+  turn each long list into its own internally-scrolling box instead of scrolling with the page —
+  a materially different, riskier interaction model for a narrow, self-resolving annoyance
+  (scrolling a little further always clears it). Instead the bar reuses the topbar/bottom-nav
+  frosted-glass treatment (`background: rgba(23, 30, 46, 0.7)` plus `backdrop-filter: blur(16px)
+  saturate(1.4)` where supported) so a covered row stays legible through it, and only its actual
+  controls (`button`, `a`, `input`, `[tabindex]`) opt back into `pointer-events` — the bar's own
+  background is `pointer-events: none`, so a click on the empty part of the bar falls through to
+  whatever row is currently behind it instead of being swallowed by the bar's wrapping layout.
 - **Collapsible section** — `.collapsible-section` uses a native `details` element with
   `.collapsible-section-header`, a count/status badge and `.collapsible-section-chevron`. It is the
   standard presentation for collapsed histories, completed tournament lists and closed order

@@ -2203,7 +2203,25 @@ button.draft-pool-player {
    gap) below the true end of the scrollable content, and a sticky
    element's offset is resolved against that reserved edge. Re-adding the
    nav height here double-counts it and parks the bar a full nav-height
-   too high, floating over mid-list rows with a dead gap above the nav. */
+   too high, floating over mid-list rows with a dead gap above the nav.
+
+   While it's stuck, whatever list row is scrolling past directly behind it
+   is briefly hidden — measured on a full ~17-player roster, that's a real,
+   reproducible overlap at common sizes like 1366x768, not just a mobile
+   edge case. A permanent fix (reserving matching blank space above the bar
+   so no real row ever lines up behind it) needs the reserved amount to
+   track live content height — every row can pass behind the bar at some
+   scroll position, not only the last one, so the reservation would have to
+   span the whole scrollable region, i.e. effectively turn each long list
+   into its own internally-scrolling box instead of scrolling with the
+   page. That's a materially different, riskier interaction model for a
+   narrow, self-resolving annoyance (scrolling a little further always
+   clears it). Instead: keep the same frosted-glass treatment already used
+   for the topbar/bottom nav below so a covered row stays legible through
+   the bar, and let clicks fall through the bar's own empty background onto
+   whatever row is currently behind it — the annoyance shrinks from "can't
+   see or reach it" to "reads dimmer for a moment", without the bigger
+   rework's risk. */
 .sticky-actions {
   position: sticky;
   bottom: 0;
@@ -2211,6 +2229,24 @@ button.draft-pool-player {
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
   background: var(--bg-elevated);
+  pointer-events: none;
+}
+/* Re-enable only actual controls, not their wrapping layout divs (e.g. the
+   flex `.row` around a button) — those wrappers can span wider than the
+   control itself, and giving pointer-events back to the whole wrapper would
+   silently reopen the same dead zone this rule exists to remove. */
+.sticky-actions button,
+.sticky-actions a,
+.sticky-actions input,
+.sticky-actions [tabindex] {
+  pointer-events: auto;
+}
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sticky-actions {
+    background: rgba(23, 30, 46, 0.7);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(16px) saturate(1.4);
+  }
 }
 
 /* Cards that ARE buttons (game rows, tournament list, "Mehr" hub): lift
