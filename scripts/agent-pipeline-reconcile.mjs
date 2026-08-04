@@ -34,12 +34,15 @@ const MANAGED_LABEL_KEYS = [
   "review",
   "readyForMerge",
   "uiChanged",
+  // Derived from the live escalation condition, not from its own previous value. Treating it as
+  // add-only would strand a pull request under it forever once the condition was resolved, and
+  // reading it back as an input would make the phase depend on itself. `agent:no-auto` remains the
+  // manual way for a human to stop automation.
+  "needsHuman",
 ];
 
-// `needsHuman` is add-only: automation may raise it, but only a human may clear it again.
 // `noAuto` is never written at all. `waiting` and `reviewFallback` belong to the provider phases
 // that do not exist yet, so this reconciler must neither set nor clear them.
-const ADD_ONLY_LABEL_KEYS = ["needsHuman"];
 
 const PHASE_LABEL_KEYS = {
   implementing: "implementing",
@@ -118,6 +121,26 @@ export function evaluateReviews(reviews, headSha, allowedReviewerLogins) {
 }
 
 /**
+ * True for check runs the pipeline produces itself.
+ *
+ * The reconcile workflow runs on `pull_request_target`, and those check runs attach to the pull
+ * request's head SHA — the very list this function guards. Without the exclusion the reconciler
+ * reads its own job as a gating check: `in_progress` while it runs, and `cancelled` after
+ * `cancel-in-progress` aborts it, which would look like a CI failure that never existed.
+ *
+ * Matrix jobs are reported as `<job name> (<value>)`, so a configured name also matches its
+ * parenthesised variants. `selfCheckNames` must stay in sync with the job names in
+ * `.github/workflows/agent-pipeline-reconcile.yml`.
+ */
+export function isOwnCheckRun(name, config) {
+  if (typeof name !== "string") return false;
+  if (name === config.statusContext) return true;
+  return (config.selfCheckNames ?? []).some(
+    (own) => name === own || name.startsWith(`${own} (`),
+  );
+}
+
+/**
  * Check runs are fetched per SHA. A snapshot carrying results for a different SHA counts as
  * unknown rather than as a pass.
  */
@@ -129,9 +152,8 @@ export function evaluateChecks(snapshot, config) {
     return { state: "unknown", failing: [], pending: [] };
   }
 
-  // The readiness status itself must never gate readiness.
   const relevant = (snapshot.checkRuns ?? []).filter(
-    (run) => run.name !== config.statusContext,
+    (run) => !isOwnCheckRun(run.name, config),
   );
 
   const failing = [];
@@ -248,6 +270,10 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     config,
   );
 
+  // Derived from the changed paths alone, so it survives a temporarily broken contract.
+  const uiPathChanged =
+    matchingPaths(snapshot.changedFiles, config.uiPathPrefixes).length > 0;
+
   const contractErrors = [...parsed.errors, ...validation.errors];
   if (contractErrors.length) {
     // A broken contract is a diagnosis, never a reason to guess and act. It stays self-healing:
@@ -260,19 +286,14 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
       ready: false,
       blockers: contractErrors.map((error) => `Invalid task contract: ${error}`),
       contract: validation.normalized,
+      // Keep reporting a UI change here; dropping it would strip a still-correct `ui:changed`.
+      details: { uiChanged: uiPathChanged },
     };
   }
 
   const contract = validation.normalized;
   const blockers = [];
 
-  // Sticky escalation: only a human clears this, so automation must not resume on its own.
-  const escalated = hasLabel("needsHuman");
-  if (escalated) {
-    blockers.push(
-      "A human decision is pending; the escalation label is still set.",
-    );
-  }
   const waiting = hasLabel("waiting");
   if (waiting) {
     blockers.push("A required provider or service is temporarily unavailable.");
@@ -326,15 +347,18 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     snapshot.changedFiles,
     config.protectedPathPrefixes,
   );
-  if (protectedPaths.length && !reviews.humanApproval) {
+  // Automation must not resolve this itself: a workflow or infrastructure change needs a human to
+  // approve the exact current head. Escalation is derived from that condition rather than from a
+  // label, so approving the head clears it again without any label bookkeeping.
+  const needsHumanApproval =
+    protectedPaths.length > 0 && !reviews.humanApproval;
+  if (needsHumanApproval) {
     blockers.push(
       `Workflow or infrastructure paths changed and need an explicit human approval of the current head: ${protectedPaths.join(", ")}.`,
     );
   }
 
-  const uiChanged =
-    matchingPaths(snapshot.changedFiles, config.uiPathPrefixes).length > 0 ||
-    contract.uiChanged === true;
+  const uiChanged = uiPathChanged || contract.uiChanged === true;
   if (uiChanged && snapshot.uiNoticeHeadSha !== snapshot.headSha) {
     blockers.push(
       snapshot.uiNoticeHeadSha
@@ -345,13 +369,13 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
 
   const mechanicallyGreen =
     !snapshot.isDraft &&
-    !escalated &&
     !waiting &&
     mergeability === "clean" &&
     checks.state === "passing";
 
   let phase;
-  if (escalated) {
+  if (needsHumanApproval) {
+    // Must outrank the review phase: no amount of agent work can clear this one.
     phase = "needs-human";
   } else if (mergeability === "conflicted") {
     phase = "conflict-fix";
@@ -406,14 +430,10 @@ export function planLabels(currentLabels, readiness, config = loadConfig()) {
   if (readiness.details?.uiChanged) desired.add(labelName(config, "uiChanged"));
 
   const managed = MANAGED_LABEL_KEYS.map((key) => labelName(config, key));
-  const writable = [
-    ...managed,
-    ...ADD_ONLY_LABEL_KEYS.map((key) => labelName(config, key)),
-  ];
 
   return {
     add: [...desired].filter(
-      (label) => !current.has(label) && writable.includes(label),
+      (label) => !current.has(label) && managed.includes(label),
     ),
     remove: managed.filter(
       (label) => current.has(label) && !desired.has(label),

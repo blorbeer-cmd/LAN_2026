@@ -19,7 +19,15 @@ on:
       - unlabeled
   pull_request_review:
     types: [submitted, edited, dismissed]
-  check_suite:
+  # GitHub does not deliver check_suite events for suites created by GitHub Actions, and every
+  # check in this repository comes from Actions. workflow_run does fire for them, so this is what
+  # actually observes the CI-running to CI-green transition. The workflow list must never include
+  # this workflow itself, which would make it retrigger on its own completion.
+  workflow_run:
+    workflows:
+      - CI/CD
+      - Agent pipeline contract
+      - Agent pipeline tests
     types: [completed]
   # Safety net for lost webhooks, late provider reactions and missed check results.
   schedule:
@@ -47,14 +55,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           EVENT_PR: ${{ github.event.pull_request.number }}
+          # workflow_run carries the pull requests its run belonged to, but the list is empty for
+          # fork runs and for runs GitHub could not associate; the sweep below covers those.
+          RUN_PR: ${{ github.event.workflow_run.pull_requests[0].number }}
         run: |
           set -euo pipefail
           if [[ -n "${EVENT_PR}" ]]; then
             # A pull-request scoped event reconciles exactly that pull request.
             selected="[${EVENT_PR}]"
+          elif [[ -n "${RUN_PR}" ]]; then
+            selected="[${RUN_PR}]"
           else
-            # Scheduled sweeps and check-suite events reconcile every open pull request; the
-            # reconciler decides per pull request whether it participates at all.
+            # Scheduled sweeps and unattributed workflow runs reconcile every open pull request;
+            # the reconciler decides per pull request whether it participates at all.
             selected=$(gh pr list --state open --limit 100 --json number --jq '[.[].number]')
           fi
           echo "pull_requests=${selected}" >> "$GITHUB_OUTPUT"

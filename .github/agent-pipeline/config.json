@@ -27,6 +27,7 @@
   "protectedPathPrefixes": [".github/workflows/", "infra/"],
   "reviewPromptPath": ".github/agent-pipeline/review-session-prompt.md",
   "statusContext": "Agent pipeline / ready for human merge",
+  "selfCheckNames": ["Collect pull requests", "Reconcile pull request"],
   "reviewTimeoutMinutes": 45,
   "waitingEscalationHours": 24,
   "labels": {

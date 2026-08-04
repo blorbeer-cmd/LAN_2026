@@ -6,6 +6,7 @@ import {
   deriveReadiness,
   evaluateChecks,
   evaluateReviews,
+  isOwnCheckRun,
   parseUiNoticeHeadSha,
   planLabels,
   reconcile,
@@ -256,6 +257,50 @@ test("a running check blocks but does not start a fix", () => {
   assert.match(readiness.blockers.join("\n"), /still running/);
 });
 
+test("the reconciler's own check runs never gate readiness", () => {
+  // The reconcile workflow runs on pull_request_target, so its jobs attach to the PR head SHA and
+  // would otherwise be read back as CI. cancel-in-progress additionally leaves cancelled runs,
+  // which would look like a failure that never happened.
+  const checks = evaluateChecks(
+    {
+      headSha: HEAD,
+      checkRunsHeadSha: HEAD,
+      checkRuns: [
+        { name: "Collect pull requests", status: "completed", conclusion: "cancelled" },
+        { name: "Reconcile pull request (351)", status: "in_progress", conclusion: null },
+        { name: "server tests", status: "completed", conclusion: "success" },
+      ],
+    },
+    config,
+  );
+  assert.equal(checks.state, "passing");
+  assert.deepEqual(checks.failing, []);
+  assert.deepEqual(checks.pending, []);
+});
+
+test("own check runs are recognised including matrix suffixes", () => {
+  assert.equal(isOwnCheckRun("Collect pull requests", config), true);
+  assert.equal(isOwnCheckRun("Reconcile pull request (7)", config), true);
+  assert.equal(isOwnCheckRun(config.statusContext, config), true);
+  // A foreign check that merely starts similarly must still count.
+  assert.equal(isOwnCheckRun("Reconcile pull requests upstream", config), false);
+  assert.equal(isOwnCheckRun("server tests", config), false);
+});
+
+test("a fully green snapshot stays ready while the reconciler runs on it", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({
+      checkRuns: [
+        { name: "Agent pipeline / contract", status: "completed", conclusion: "success" },
+        { name: "Reconcile pull request (351)", status: "in_progress", conclusion: null },
+      ],
+    }),
+    config,
+  );
+  assert.equal(readiness.ready, true);
+  assert.equal(readiness.phase, "ready-for-merge");
+});
+
 test("the readiness status itself never gates readiness", () => {
   const checks = evaluateChecks(
     {
@@ -306,6 +351,12 @@ test("protected path changes require an explicit human approval", () => {
   );
   assert.equal(withBotOnly.ready, false);
   assert.match(withBotOnly.blockers.join("\n"), /explicit human approval/);
+  // No agent can clear this, so it must escalate visibly instead of parking under "review".
+  assert.equal(withBotOnly.phase, "needs-human");
+  assert.deepEqual(planLabels([], withBotOnly, config).add, [
+    config.labels.pipeline,
+    config.labels.needsHuman,
+  ]);
 
   const withHuman = deriveReadiness(
     readySnapshot({
@@ -328,6 +379,12 @@ test("protected path changes require an explicit human approval", () => {
     config,
   );
   assert.equal(withHuman.ready, true);
+  // The escalation label must come off again once the human approved that exact head.
+  assert.deepEqual(
+    planLabels([config.labels.pipeline, config.labels.needsHuman], withHuman, config)
+      .remove,
+    [config.labels.needsHuman],
+  );
 });
 
 test("a UI change blocks until its notice covers the current head", () => {
@@ -395,17 +452,37 @@ test("an invalid contract reports a diagnosis and stays self-healing", () => {
   assert.ok(!plan.add.includes(config.labels.needsHuman));
 });
 
-test("the escalation label keeps automation stopped", () => {
+test("the escalation label is derived, not read back as its own cause", () => {
+  // A stale agent:needs-human on an otherwise green pull request must not keep it stopped, or the
+  // phase would depend on its own previous value and could never recover.
   const readiness = deriveReadiness(
     readySnapshot({ labels: [config.labels.needsHuman] }),
     config,
   );
-  assert.equal(readiness.phase, "needs-human");
-  assert.equal(readiness.ready, false);
+  assert.equal(readiness.phase, "ready-for-merge");
+  assert.equal(readiness.ready, true);
 
-  // Add-only: the reconciler must never clear it again.
   const plan = planLabels([config.labels.needsHuman], readiness, config);
-  assert.ok(!plan.remove.includes(config.labels.needsHuman));
+  assert.ok(plan.remove.includes(config.labels.needsHuman));
+});
+
+test("an invalid contract keeps a still-correct ui:changed label", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({
+      body: contractBody({ scope: "docs" }),
+      changedFiles: ["server/public/app.js"],
+    }),
+    config,
+  );
+  assert.equal(readiness.phase, "contract-invalid");
+  assert.equal(readiness.details.uiChanged, true);
+
+  const plan = planLabels(
+    [config.labels.pipeline, config.labels.uiChanged],
+    readiness,
+    config,
+  );
+  assert.deepEqual(plan.remove, []);
 });
 
 test("the waiting label blocks readiness and is never cleared here", () => {

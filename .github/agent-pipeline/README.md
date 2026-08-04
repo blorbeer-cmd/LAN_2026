@@ -43,7 +43,22 @@ What it deliberately does not do:
 - write the `Agent pipeline / ready for human merge` commit status (phase 7),
 - approve or merge anything,
 - set or clear `agent:waiting` and `agent:review-fallback`, which belong to the provider phases,
-- clear `agent:needs-human`; automation may raise it, only a human clears it again.
+- accept a fallback review as satisfying the gate. Only an approval from the counter provider's
+  allowlist counts, so a pull request reviewed through the fallback path described in the plan
+  still reports a missing cross-review. Phase 5 owns the fallback flow; wiring it up here, where
+  `agent:review-fallback` is only a hand-set label and nothing verifies that a fallback review
+  actually happened, would turn the label into a gate bypass.
+
+`agent:needs-human` is derived from the live escalation condition rather than kept as its own
+state, so it clears again once that condition is gone. Reading it back as an input would make the
+phase depend on its own previous value and could strand a pull request under it forever. To stop
+automation by hand, use `agent:no-auto`.
+
+Its own check runs are excluded from the CI evaluation via `selfCheckNames`. The reconcile
+workflow runs on `pull_request_target`, whose check runs attach to the pull request's head SHA, so
+without that exclusion the reconciler would read its own job as a running — or, after
+`cancel-in-progress`, a cancelled and therefore failing — CI check. `selfCheckNames` must stay in
+sync with the job names in `.github/workflows/agent-pipeline-reconcile.yml`.
 
 Idempotence: labels already in the desired state produce no API call, and an unchanged status
 comment body is not rewritten. Re-running the reconciler on an unchanged pull request performs no
@@ -80,8 +95,14 @@ merge-base diff; use `root` for intentional multi-area changes. `ui-change: unkn
 blocking until a later classification resolves it.
 
 Changes below `.github/workflows/` and `infra/` are reported as protected paths. The reconciler
-blocks readiness for such a pull request until a human approval review covers the exact current
-head SHA.
+escalates such a pull request to `agent:needs-human` until an approval review from a non-bot
+account covers the exact current head SHA, because no agent can clear that condition itself.
+
+Note for the current transitional setup: GitHub forbids approving your own pull request. While
+agent pull requests are authored by the repository owner's own account rather than by
+`claude[bot]`, that approval cannot be given, and a protected-path pull request stays escalated
+until it is merged by hand. Once the pipeline opens pull requests under the app identity, the
+owner can approve them normally.
 
 ## Local verification
 
