@@ -535,17 +535,60 @@ async function paginate(path, token) {
 }
 
 const REVIEW_THREADS_QUERY = `
-  query($owner: String!, $repo: String!, $number: Int!) {
+  query($owner: String!, $repo: String!, $number: Int!, $after: String) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $number) {
         mergeStateStatus
-        reviewThreads(first: 100) {
+        reviewThreads(first: 100, after: $after) {
           nodes { isResolved isOutdated }
+          pageInfo { hasNextPage endCursor }
         }
       }
     }
   }
 `;
+
+// A thread the reconciler could not read must block rather than silently count as resolved.
+const UNREADABLE_THREAD = { isResolved: false, isOutdated: false };
+
+/**
+ * Reads mergeStateStatus and every review thread, following the GraphQL cursor.
+ *
+ * Returns null when the query fails, and a blocking placeholder thread when the page cap is
+ * reached, so an incompletely read discussion can never open the gate.
+ */
+async function fetchReviewThreads({ owner, repo, pullNumber, token }) {
+  const nodes = [];
+  let after = null;
+  let mergeStateStatus = null;
+
+  for (let page = 1; page <= 10; page += 1) {
+    let data;
+    try {
+      data = await graphql(
+        REVIEW_THREADS_QUERY,
+        { owner, repo, number: Number(pullNumber), after },
+        token,
+      );
+    } catch {
+      return null;
+    }
+
+    const pullRequest = data?.repository?.pullRequest;
+    if (!pullRequest) return null;
+    mergeStateStatus = pullRequest.mergeStateStatus ?? mergeStateStatus;
+    nodes.push(...(pullRequest.reviewThreads?.nodes ?? []));
+
+    const pageInfo = pullRequest.reviewThreads?.pageInfo;
+    if (!pageInfo?.hasNextPage) {
+      return { mergeStateStatus, reviewThreads: nodes };
+    }
+    after = pageInfo.endCursor;
+  }
+
+  // More threads exist than the cap allows. Block instead of judging on a partial read.
+  return { mergeStateStatus, reviewThreads: [...nodes, UNREADABLE_THREAD] };
+}
 
 /** Reads everything the pure logic needs, all bound to the current head SHA. */
 export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
@@ -554,14 +597,16 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
 
   const [files, checkRuns, reviews, comments, graph] = await Promise.all([
     paginate(`/repos/${owner}/${repo}/pulls/${pullNumber}/files`, token),
-    paginate(`/repos/${owner}/${repo}/commits/${headSha}/check-runs`, token),
+    // `filter=latest` keeps only the most recent attempt per check, so a rerun of a failed job on
+    // an unchanged head supersedes its earlier failure. Set explicitly rather than relying on the
+    // API default staying that way.
+    paginate(
+      `/repos/${owner}/${repo}/commits/${headSha}/check-runs?filter=latest`,
+      token,
+    ),
     paginate(`/repos/${owner}/${repo}/pulls/${pullNumber}/reviews`, token),
     paginate(`/repos/${owner}/${repo}/issues/${pullNumber}/comments`, token),
-    graphql(
-      REVIEW_THREADS_QUERY,
-      { owner, repo, number: Number(pullNumber) },
-      token,
-    ).catch(() => null),
+    fetchReviewThreads({ owner, repo, pullNumber, token }),
   ]);
 
   const statusComment = comments.find((comment) =>
@@ -581,9 +626,7 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
       headSha,
       mergeable: pr.mergeable,
       mergeStateStatus:
-        graph?.repository?.pullRequest?.mergeStateStatus ??
-        pr.mergeable_state?.toUpperCase() ??
-        null,
+        graph?.mergeStateStatus ?? pr.mergeable_state?.toUpperCase() ?? null,
       labels: (pr.labels ?? []).map((label) => label.name),
       changedFiles: files.map((file) => file.filename),
       checkRunsHeadSha: headSha,
@@ -599,9 +642,7 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
         submittedAt: review.submitted_at,
       })),
       // A missing GraphQL result must not look like "no unresolved threads".
-      reviewThreads:
-        graph?.repository?.pullRequest?.reviewThreads?.nodes ??
-        [{ isResolved: false, isOutdated: false }],
+      reviewThreads: graph?.reviewThreads ?? [UNREADABLE_THREAD],
       uiNoticeHeadSha: parseUiNoticeHeadSha(comments),
       statusCommentBody: statusComment?.body ?? null,
     },

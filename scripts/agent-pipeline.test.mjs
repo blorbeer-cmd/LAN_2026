@@ -289,6 +289,32 @@ test("changed files are classified from the merge base", () => {
   }
 });
 
+test("the real git ancestor check accepts and rejects actual commits", () => {
+  // Exercises validateBaseShaAncestry through its default `isAncestor`, which shells out to
+  // `git merge-base --is-ancestor`. The mocked test below covers the branching, but only this one
+  // proves the subprocess itself still behaves as the contract assumes.
+  const head = execFileSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).trim();
+  const parent = execFileSync("git", ["rev-parse", "HEAD~1"], {
+    encoding: "utf8",
+  }).trim();
+  assert.notEqual(head, parent);
+
+  // The parent really is an ancestor of HEAD, so nothing is reported.
+  assert.deepEqual(validateBaseShaAncestry(parent, parent, head), []);
+
+  // Reversed, HEAD is not an ancestor of its own parent, so both checks must fire.
+  const errors = validateBaseShaAncestry(head, parent, parent);
+  assert.ok(
+    errors.some((error) => error.includes("ancestor of the current PR head")),
+  );
+  assert.ok(errors.some((error) => error.includes("base branch")));
+
+  // A commit is its own ancestor, so the self-comparison must stay silent.
+  assert.deepEqual(validateBaseShaAncestry(head, head, head), []);
+});
+
 test("declared base SHA must also belong to the PR base branch", () => {
   const fabricatedBase = headSha;
   const errors = validateBaseShaAncestry(

@@ -271,6 +271,25 @@ test("the readiness status itself never gates readiness", () => {
   assert.equal(checks.state, "passing");
 });
 
+test("duplicate check-run entries for one name stay blocking", () => {
+  // The API is asked for filter=latest, so this should not occur. If it ever does, erring toward
+  // blocking is deliberate: deduplicating by name would open the gate on a partial view and would
+  // also collapse two genuinely different checks that happen to share a name.
+  const checks = evaluateChecks(
+    {
+      headSha: HEAD,
+      checkRunsHeadSha: HEAD,
+      checkRuns: [
+        { name: "server tests", status: "completed", conclusion: "failure" },
+        { name: "server tests", status: "completed", conclusion: "success" },
+      ],
+    },
+    config,
+  );
+  assert.equal(checks.state, "failing");
+  assert.deepEqual(checks.failing, ["server tests"]);
+});
+
 test("a draft pull request is never ready", () => {
   const readiness = deriveReadiness(readySnapshot({ isDraft: true }), config);
   assert.equal(readiness.ready, false);
