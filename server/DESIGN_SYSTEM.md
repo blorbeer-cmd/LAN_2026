@@ -251,6 +251,15 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Button** — `.btn` (default), `.btn-primary`, `.btn-danger`, `.btn-block`
   (full width), `.btn-sm` (compact). Combine variant + size, e.g.
   `class="btn btn-primary btn-sm"`.
+- **Mode / setting choice** — pick the widget by the shape of the decision, not by habit: a native
+  `<select>` for three or more mutually exclusive named options (tournament format); the
+  `.btn`/`.btn-primary` two-or-three-way toggle (`aria-pressed`, usually inside `.selection-toolbar`)
+  for a plain either/or choice with no competing primary action nearby (Team formation's
+  Auslosung/Captain Draft, Checkliste's tabs, the To-Do dialog's Art/Zuweisen-an); the Arcade
+  section's `.arcade-mode-toggle` segmented pill only when the toggle sits directly beside a primary
+  gradient CTA it must not visually compete with; a plain checkbox only for an independent on/off
+  flag (Hin-/Rückspiel, Punktestand tracken, Spielauswahl einschränken), never for a named exclusive
+  choice among alternatives.
 - **Input** — plain `<input>`/`<select>`/`<textarea>` are styled globally by
   type selector; no class needed.
 - **Number stepper** — every `input[type="number"]` is enhanced app-wide by
