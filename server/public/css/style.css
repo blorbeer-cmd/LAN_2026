@@ -4565,7 +4565,11 @@ input[type='number'].tournament-score-input {
 }
 .grouped-page-section .empty-state {
   display: flex;
-  min-height: calc(var(--row-min-h) * 2);
+  /* Was 2x row height: fine for a single empty section, but several pages
+     (Hall of Fame, Checkliste) stack two or three of these in one view on a
+     fresh install, and the doubled height compounds into a wall of blank
+     space for a couple of short German sentences. */
+  min-height: var(--row-min-h);
   flex-direction: column;
   align-items: center;
   justify-content: center;
